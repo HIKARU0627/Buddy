@@ -1,0 +1,39 @@
+{
+  "name": "buddy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Buddy development workspace — B00 preparation",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24.19.0 <25",
+    "pnpm": "12.11.2"
+  },
+  "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck",
+    "build": "node scripts/clean.mjs && pnpm -r --workspace-concurrency=1 run build",
+    "test": "node scripts/run-tests.mjs",
+    "design:check": "node scripts/check-design.mjs",
+    "check": "pnpm run doctor && pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm test && pnpm run security:check",
+    "security:setup": "node scripts/install-gitleaks.mjs",
+    "security:check": "node scripts/check-public-content.mjs",
+    "security:staged": "node scripts/check-public-content.mjs --staged && node scripts/run-gitleaks.mjs --staged",
+    "security:scan": "node scripts/run-gitleaks.mjs",
+    "public:check": "node scripts/run-gitleaks.mjs && node scripts/check-public-content.mjs --history",
+    "hooks:install": "pnpm run security:setup && node scripts/install-hooks.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "yaml": "2.9.1"
+  }
+}

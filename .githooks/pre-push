@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+node scripts/check-push.mjs
+pnpm run security:check
+pnpm run security:scan

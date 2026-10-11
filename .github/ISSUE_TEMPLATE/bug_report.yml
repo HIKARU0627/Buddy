@@ -1,0 +1,25 @@
+name: 不具合報告
+description: 個人情報を含まない再現手順を報告します
+body:
+  - type: markdown
+    attributes:
+      value: |
+        API キー・メール本文・音声・本番 DB・個人情報を貼らないでください。
+        脆弱性や漏えいは SECURITY.md の非公開手順を使ってください。
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 合成データでの再現手順
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待結果と実際の結果
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS・Node.js・pnpm の版
+      description: ユーザー名や端末名は含めないでください。

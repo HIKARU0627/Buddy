@@ -6,6 +6,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    ignore:
+      # typescript-eslint 8.71.2 requires TypeScript <6.1.0.
+      # Revisit this ceiling together with the lint toolchain.
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
+      # Keep Node types aligned with the Node 24 runtime in package.json / CI.
+      - dependency-name: '@types/node'
+        versions: ['>=25.0.0']
     groups:
       development-tooling:
         dependency-type: development

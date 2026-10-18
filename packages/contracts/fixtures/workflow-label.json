@@ -1,0 +1,38 @@
+{
+  "status": "specification_only",
+  "case_ids": ["X01", "X02", "X03", "X04", "X05", "QA41", "QA42"],
+  "steps": [
+    {
+      "step": "sealed-input",
+      "expected": "Core fixes input evidence and revision; no effect"
+    },
+    {
+      "step": "interpretation",
+      "expected": "Resolve allowed target and quote evidence; model has no permission"
+    },
+    {
+      "step": "preview",
+      "expected": "Freeze intent and hash; no external write"
+    },
+    {
+      "step": "approve",
+      "expected": "Compare scope, preview, content and state; acceptance is not durable or success"
+    },
+    {
+      "step": "durable",
+      "expected": "One approval and durable outbox commit; still no claim of external success"
+    },
+    {
+      "step": "dispatch",
+      "expected": "Recheck input, permissions, safety and budget; persist dispatch intent; one write only"
+    },
+    {
+      "step": "unknown",
+      "expected": "No automatic retry; reconcile by reading"
+    },
+    {
+      "step": "confirmed",
+      "expected": "Show success only with operation-specific evidence"
+    }
+  ]
+}

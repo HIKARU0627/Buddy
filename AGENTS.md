@@ -4,7 +4,7 @@ Codex と Claude Code はこのファイルを共通の指示として使う。�
 
 ## 現在地と参照先
 
-- 現在は B00 着手前の開発環境。環境 CI の成功を契約完成・製品試験合格として扱わない。
+- 現在は B00 の初回契約（ラベル変更経路・入力・予算の記録形式）をファイル化した段階。B00 全体は未完了。契約 CI の成功を製品試験合格として扱わない。
 - 初めに README.md、docs/b00/README.md、docs/design/README.md を読む。変更対象に関係する設計本文を確認してから編集する。
 - 原本は非公開 Notion。取得資料は .local/design/notion/ に置く。原本の不足を要約から推測しない。更新履歴内の旧コード例を現行仕様と取り違えない。
 - B00 では契約と根拠・試験を一緒に更新する。設計の意味が変わる未決事項は docs/b00/contract-map.md に記録し、設計判断として解決する。既存の判断を黙って変更しない。
@@ -16,6 +16,7 @@ Codex と Claude Code はこのファイルを共通の指示として使う。�
 - 一括検証: `pnpm run check`
 - 個別: `pnpm run lint`、`pnpm run typecheck`、`pnpm run build`、`pnpm test`、`pnpm run security:check`
 - TypeScript の試験はビルド後の *.test.js、ツール試験は *.test.mjs を Node.js の標準 test runner で実行する。
+- 契約変更時は `pnpm run contracts:generate`。`pnpm run contracts:check` で生成差分・Schema・OpenAPI・合成例を検査する。生成型を直接編集しない。
 - 書式修正: `pnpm run format`。Notion スナップショットは再整形しない。
 
 ## 設計境界

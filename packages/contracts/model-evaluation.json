@@ -1,0 +1,58 @@
+{
+  "schema": "buddy.model-evaluation.v1",
+  "candidates": [
+    {
+      "candidate_id": "voice-live",
+      "provider": "openai",
+      "model": "gpt-live-1",
+      "role": "voice",
+      "priority": "primary",
+      "status": "candidate",
+      "requires_explicit_request": false,
+      "activation": "requires_evaluation"
+    },
+    {
+      "candidate_id": "intent-luna",
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "role": "intent",
+      "priority": "primary",
+      "status": "candidate",
+      "requires_explicit_request": false,
+      "activation": "requires_evaluation"
+    },
+    {
+      "candidate_id": "background-haiku",
+      "provider": "anthropic",
+      "model": "claude-haiku-5-5",
+      "role": "background_text",
+      "priority": "primary",
+      "status": "candidate",
+      "requires_explicit_request": false,
+      "activation": "requires_evaluation"
+    },
+    {
+      "candidate_id": "consult-sonnet",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "role": "advanced_consult",
+      "priority": "comparison",
+      "status": "candidate",
+      "requires_explicit_request": true,
+      "activation": "requires_evaluation"
+    },
+    {
+      "candidate_id": "asr-reazon",
+      "provider": "local",
+      "model": "ReazonSpeech",
+      "role": "local_asr",
+      "priority": "primary",
+      "status": "candidate",
+      "requires_explicit_request": false,
+      "activation": "requires_evaluation"
+    }
+  ],
+  "automatic_upgrade": false,
+  "automatic_paid_fallback": false,
+  "prices_verified_at": null
+}

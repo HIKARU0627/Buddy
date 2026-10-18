@@ -1,0 +1,24 @@
+{
+  "intent": {
+    "account_id": "00000000-0000-4000-8000-000000000002",
+    "action": {
+      "add": ["follow-up"],
+      "kind": "mail.labels.change",
+      "remove": []
+    },
+    "content_version": "1",
+    "effects": {
+      "external_recipients": [],
+      "reconcile_scope": "exact_target"
+    },
+    "operation_id": "00000000-0000-4000-8000-000000000001",
+    "permission_revision": "1",
+    "provider": "mock",
+    "schema": "buddy.operation.v1",
+    "target": {
+      "remote_id": "mail-001",
+      "source_revision": "r1"
+    }
+  },
+  "expected_sha256": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf"
+}

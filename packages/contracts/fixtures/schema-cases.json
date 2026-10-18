@@ -1,0 +1,473 @@
+[
+  {
+    "id": "input-text",
+    "schema": "InputSnapshot",
+    "valid": true,
+    "value": {
+      "schema": "buddy.input.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "turn_id": "00000000-0000-4000-8000-000000000013",
+      "request_revision": "1",
+      "transcript_revision": null,
+      "text": "このメールにfollow-upラベルを付けて",
+      "captured_at": "2030-01-01T00:00:00Z",
+      "state": "sealed",
+      "sealReason": "submitted_text",
+      "input_evidence": "submitted_text",
+      "audio": null,
+      "policy_version": null
+    }
+  },
+  {
+    "id": "wire-label",
+    "schema": "LabelMailWireResponse",
+    "valid": true,
+    "value": {
+      "intent": "label_mail",
+      "target_candidate_id": "00000000-0000-4000-8000-000000000020",
+      "add_labels": ["follow-up"],
+      "remove_labels": [],
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": null,
+      "clarify_question": null,
+      "confidence": 0.9
+    }
+  },
+  {
+    "id": "intent-h01",
+    "schema": "LabelOperationIntent",
+    "valid": true,
+    "value": {
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "action": {
+        "add": ["follow-up"],
+        "kind": "mail.labels.change",
+        "remove": []
+      },
+      "content_version": "1",
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      },
+      "operation_id": "00000000-0000-4000-8000-000000000001",
+      "permission_revision": "1",
+      "provider": "mock",
+      "schema": "buddy.operation.v1",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      }
+    }
+  },
+  {
+    "id": "preview-label",
+    "schema": "LabelPreview",
+    "valid": true,
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000032",
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1"
+    }
+  },
+  {
+    "id": "approve-label",
+    "schema": "ApprovalRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000030",
+      "command_scope_id": "00000000-0000-4000-8000-000000000033",
+      "preview_id": "00000000-0000-4000-8000-000000000032",
+      "content_version": "1",
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "expected_state_revision": "1"
+    }
+  },
+  {
+    "id": "accepted-not-durable",
+    "schema": "CommandReceipt",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000030",
+      "command_id": "00000000-0000-4000-8000-000000000031",
+      "operation_id": "00000000-0000-4000-8000-000000000001",
+      "state_revision": "2",
+      "status": "accepted",
+      "committed_state_revision": null
+    }
+  },
+  {
+    "id": "durable-not-success",
+    "schema": "CommandReceipt",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000030",
+      "command_id": "00000000-0000-4000-8000-000000000031",
+      "operation_id": "00000000-0000-4000-8000-000000000001",
+      "state_revision": "2",
+      "status": "durable",
+      "committed_state_revision": "2"
+    }
+  },
+  {
+    "id": "operation-unknown",
+    "schema": "OperationSnapshot",
+    "valid": true,
+    "value": {
+      "operation_id": "00000000-0000-4000-8000-000000000001",
+      "content_version": "1",
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "3",
+      "state": "unknown_held",
+      "approval_state": "valid",
+      "allowed_actions": ["reconcile"],
+      "result": {
+        "status": "unknown",
+        "provider_receipt_id": null
+      }
+    }
+  },
+  {
+    "id": "metadata-event",
+    "schema": "EventEnvelope",
+    "valid": true,
+    "value": {
+      "schema": "buddy.event.v1",
+      "event_id": "00000000-0000-4000-8000-000000000040",
+      "store_generation": "00000000-0000-4000-8000-000000000041",
+      "sequence": "1",
+      "event_cursor": "opaque-test-cursor",
+      "operation_id": "00000000-0000-4000-8000-000000000001",
+      "state_revision": "2",
+      "event_type": "command.durable",
+      "occurred_at": "2030-01-01T00:00:01Z"
+    }
+  },
+  {
+    "id": "budget-pending",
+    "schema": "BudgetReservation",
+    "valid": true,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-000000000050",
+      "request_id": "00000000-0000-4000-8000-000000000051",
+      "profile_id": "00000000-0000-4000-8000-000000000052",
+      "price_version": "synthetic-v1",
+      "budget_month": "2030-01",
+      "budget_scope": "background",
+      "reserved_amount": {
+        "currency": "USD",
+        "amount": "100"
+      },
+      "max_liability": {
+        "currency": "USD",
+        "amount": "400"
+      },
+      "status": "usage_unknown",
+      "provider_reconciliation_id": null,
+      "actual_gross": null,
+      "credit_applied": null,
+      "additional_spend": null,
+      "credit_cycle_id": null
+    }
+  },
+  {
+    "id": "approval-in-model-output",
+    "schema": "LabelMailWireResponse",
+    "valid": false,
+    "value": {
+      "intent": "label_mail",
+      "target_candidate_id": "00000000-0000-4000-8000-000000000020",
+      "add_labels": ["follow-up"],
+      "remove_labels": [],
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": null,
+      "clarify_question": null,
+      "confidence": 0.9,
+      "approved": true
+    }
+  },
+  {
+    "id": "unknown-intent",
+    "schema": "LabelMailWireResponse",
+    "valid": false,
+    "value": {
+      "intent": "run_tool",
+      "target_candidate_id": "00000000-0000-4000-8000-000000000020",
+      "add_labels": ["follow-up"],
+      "remove_labels": [],
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": null,
+      "clarify_question": null,
+      "confidence": 0.9
+    }
+  },
+  {
+    "id": "numeric-revision",
+    "schema": "InputSnapshot",
+    "valid": false,
+    "value": {
+      "schema": "buddy.input.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "turn_id": "00000000-0000-4000-8000-000000000013",
+      "request_revision": 1,
+      "transcript_revision": null,
+      "text": "このメールにfollow-upラベルを付けて",
+      "captured_at": "2030-01-01T00:00:00Z",
+      "state": "sealed",
+      "sealReason": "submitted_text",
+      "input_evidence": "submitted_text",
+      "audio": null,
+      "policy_version": null
+    }
+  },
+  {
+    "id": "leading-zero-revision",
+    "schema": "InputSnapshot",
+    "valid": false,
+    "value": {
+      "schema": "buddy.input.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "turn_id": "00000000-0000-4000-8000-000000000013",
+      "request_revision": "01",
+      "transcript_revision": null,
+      "text": "このメールにfollow-upラベルを付けて",
+      "captured_at": "2030-01-01T00:00:00Z",
+      "state": "sealed",
+      "sealReason": "submitted_text",
+      "input_evidence": "submitted_text",
+      "audio": null,
+      "policy_version": null
+    }
+  },
+  {
+    "id": "unverified-sealed",
+    "schema": "InputSnapshot",
+    "valid": false,
+    "value": {
+      "schema": "buddy.input.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "turn_id": "00000000-0000-4000-8000-000000000013",
+      "request_revision": "1",
+      "transcript_revision": null,
+      "text": "このメールにfollow-upラベルを付けて",
+      "captured_at": "2030-01-01T00:00:00Z",
+      "state": "sealed",
+      "sealReason": "submitted_text",
+      "input_evidence": "unverified",
+      "audio": null,
+      "policy_version": null
+    }
+  },
+  {
+    "id": "live-missing-policy",
+    "schema": "InputSnapshot",
+    "valid": false,
+    "value": {
+      "schema": "buddy.input.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "turn_id": "00000000-0000-4000-8000-000000000013",
+      "request_revision": "1",
+      "transcript_revision": null,
+      "text": "このメールにfollow-upラベルを付けて",
+      "captured_at": "2030-01-01T00:00:00Z",
+      "state": "sealed",
+      "sealReason": "live_transcript_policy",
+      "input_evidence": "live_policy_observed",
+      "audio": null,
+      "policy_version": null
+    }
+  },
+  {
+    "id": "accepted-claims-commit",
+    "schema": "CommandReceipt",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000030",
+      "command_id": "00000000-0000-4000-8000-000000000031",
+      "operation_id": "00000000-0000-4000-8000-000000000001",
+      "state_revision": "2",
+      "status": "accepted",
+      "committed_state_revision": "2"
+    }
+  },
+  {
+    "id": "durable-missing-commit",
+    "schema": "CommandReceipt",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000030",
+      "command_id": "00000000-0000-4000-8000-000000000031",
+      "operation_id": "00000000-0000-4000-8000-000000000001",
+      "state_revision": "2",
+      "status": "durable",
+      "committed_state_revision": null
+    }
+  },
+  {
+    "id": "unknown-command-field",
+    "schema": "ApprovalRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000030",
+      "command_scope_id": "00000000-0000-4000-8000-000000000033",
+      "preview_id": "00000000-0000-4000-8000-000000000032",
+      "content_version": "1",
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "expected_state_revision": "1",
+      "device_id": "00000000-0000-4000-8000-000000000099"
+    }
+  },
+  {
+    "id": "interpretation-label",
+    "schema": "LabelMailInterpretation",
+    "valid": true,
+    "value": {
+      "schema": "buddy.interpretation.label-mail.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "request_revision": "1",
+      "intent": "label_mail",
+      "relation": "new",
+      "target_workflow_id": null,
+      "args": {
+        "target_candidate_id": "00000000-0000-4000-8000-000000000020",
+        "add_labels": ["follow-up"],
+        "remove_labels": []
+      },
+      "evidence": [
+        {
+          "field": "add_labels",
+          "input_id": "00000000-0000-4000-8000-000000000010",
+          "request_revision": "1",
+          "quote": "follow-up",
+          "start_utf16": 6,
+          "end_utf16": 15
+        }
+      ]
+    }
+  },
+  {
+    "id": "readiness-blocked",
+    "schema": "ActionReadiness",
+    "valid": true,
+    "value": {
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "request_revision": "1",
+      "state": "blocked",
+      "reason_codes": ["input_unverified"],
+      "policy_version": "1",
+      "permission_revision": "1"
+    }
+  },
+  {
+    "id": "state-command",
+    "schema": "StateCommand",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000030",
+      "command_scope_id": "00000000-0000-4000-8000-000000000033",
+      "expected_state_revision": "1"
+    }
+  },
+  {
+    "id": "event-page",
+    "schema": "EventPage",
+    "valid": true,
+    "value": {
+      "events": [
+        {
+          "schema": "buddy.event.v1",
+          "event_id": "00000000-0000-4000-8000-000000000040",
+          "store_generation": "00000000-0000-4000-8000-000000000041",
+          "sequence": "1",
+          "event_cursor": "opaque-test-cursor",
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "state_revision": "2",
+          "event_type": "command.durable",
+          "occurred_at": "2030-01-01T00:00:01Z"
+        }
+      ],
+      "event_cursor": "opaque-test-cursor",
+      "resnapshot_required": false
+    }
+  },
+  {
+    "id": "api-error",
+    "schema": "ApiError",
+    "valid": true,
+    "value": {
+      "code": "expired_scope",
+      "message": "以前の接続情報は使えません。",
+      "request_id": null
+    }
+  },
+  {
+    "id": "credit-unknown",
+    "schema": "CreditObservation",
+    "valid": true,
+    "value": {
+      "provider": "anthropic",
+      "organization_ref": "synthetic-organization",
+      "cycle_id": "synthetic-cycle",
+      "observed_at": "2030-01-01T00:00:00Z",
+      "expires_at": "2030-02-01T00:00:00Z",
+      "balance": null,
+      "status": "unknown",
+      "shared": true
+    }
+  },
+  {
+    "id": "empty-sealed-input",
+    "schema": "InputSnapshot",
+    "valid": false,
+    "value": {
+      "schema": "buddy.input.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "turn_id": "00000000-0000-4000-8000-000000000013",
+      "request_revision": "1",
+      "transcript_revision": null,
+      "text": "",
+      "captured_at": "2030-01-01T00:00:00Z",
+      "state": "sealed",
+      "sealReason": "submitted_text",
+      "input_evidence": "submitted_text",
+      "audio": null,
+      "policy_version": null
+    }
+  }
+]

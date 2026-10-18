@@ -1,0 +1,1516 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://buddy.invalid/contracts/v1",
+  "title": "BuddyContract",
+  "description": "B00初回範囲。全24意図や全APIの完成を表さない。",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/InputSnapshot"
+    },
+    {
+      "$ref": "#/$defs/LabelMailWireResponse"
+    },
+    {
+      "$ref": "#/$defs/LabelMailInterpretation"
+    },
+    {
+      "$ref": "#/$defs/ActionReadiness"
+    },
+    {
+      "$ref": "#/$defs/LabelOperationIntent"
+    },
+    {
+      "$ref": "#/$defs/CommandContext"
+    },
+    {
+      "$ref": "#/$defs/PreviewRequest"
+    },
+    {
+      "$ref": "#/$defs/LabelPreview"
+    },
+    {
+      "$ref": "#/$defs/ApprovalRequest"
+    },
+    {
+      "$ref": "#/$defs/StateCommand"
+    },
+    {
+      "$ref": "#/$defs/CommandReceipt"
+    },
+    {
+      "$ref": "#/$defs/OperationSnapshot"
+    },
+    {
+      "$ref": "#/$defs/EventEnvelope"
+    },
+    {
+      "$ref": "#/$defs/EventPage"
+    },
+    {
+      "$ref": "#/$defs/ApiError"
+    },
+    {
+      "$ref": "#/$defs/BudgetReservation"
+    },
+    {
+      "$ref": "#/$defs/CreditObservation"
+    },
+    {
+      "$ref": "#/$defs/ModelEvaluationPlan"
+    }
+  ],
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "B00初版のランダムUUID v4。認証情報ではない。"
+    },
+    "Revision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "非負整数の10進文字列。各フィールドの版の意味は互換ではない。"
+    },
+    "UtcTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "UTC RFC 3339。元の地域時間と終日は別に扱う。"
+    },
+    "LocalDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "Hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "Amount": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。"
+    },
+    "Money": {
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "amount": {
+          "$ref": "#/$defs/Amount"
+        }
+      },
+      "required": ["currency", "amount"],
+      "additionalProperties": false
+    },
+    "IntentName": {
+      "type": "string",
+      "enum": [
+        "query_schedule",
+        "query_mail",
+        "query_tasks",
+        "query_memory",
+        "create_task",
+        "create_note",
+        "label_mail",
+        "draft_reply",
+        "create_event",
+        "update_event",
+        "send_mail",
+        "trash_mail",
+        "undo_action",
+        "update_task",
+        "research",
+        "memory_save",
+        "memory_forget",
+        "memory_correct",
+        "dev_status",
+        "handoff_screen",
+        "smalltalk",
+        "general_question",
+        "consult",
+        "unclear"
+      ]
+    },
+    "AudioRange": {
+      "type": "object",
+      "properties": {
+        "audio_epoch": {
+          "$ref": "#/$defs/Id"
+        },
+        "first_frame_seq": {
+          "$ref": "#/$defs/Revision"
+        },
+        "last_frame_seq": {
+          "$ref": "#/$defs/Revision"
+        },
+        "start_sample": {
+          "$ref": "#/$defs/Revision"
+        },
+        "end_sample": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "audio_epoch",
+        "first_frame_seq",
+        "last_frame_seq",
+        "start_sample",
+        "end_sample"
+      ],
+      "additionalProperties": false
+    },
+    "InputSnapshot": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "type": "string",
+              "const": "buddy.input.v1"
+            },
+            "input_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "session_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "workflow_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "turn_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "request_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "transcript_revision": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Revision"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "captured_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "state": {
+              "type": "string",
+              "const": "sealed"
+            },
+            "sealReason": {
+              "type": "string",
+              "const": "submitted_text"
+            },
+            "input_evidence": {
+              "type": "string",
+              "const": "submitted_text"
+            },
+            "audio": {
+              "type": "null"
+            },
+            "policy_version": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "schema",
+            "input_id",
+            "session_id",
+            "workflow_id",
+            "turn_id",
+            "request_revision",
+            "transcript_revision",
+            "text",
+            "captured_at",
+            "state",
+            "sealReason",
+            "input_evidence",
+            "audio",
+            "policy_version"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "type": "string",
+              "const": "buddy.input.v1"
+            },
+            "input_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "session_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "workflow_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "turn_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "request_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "transcript_revision": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Revision"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "captured_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "state": {
+              "type": "string",
+              "const": "sealed"
+            },
+            "sealReason": {
+              "type": "string",
+              "const": "user_corrected"
+            },
+            "input_evidence": {
+              "type": "string",
+              "const": "submitted_text"
+            },
+            "audio": {
+              "type": "null"
+            },
+            "policy_version": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "schema",
+            "input_id",
+            "session_id",
+            "workflow_id",
+            "turn_id",
+            "request_revision",
+            "transcript_revision",
+            "text",
+            "captured_at",
+            "state",
+            "sealReason",
+            "input_evidence",
+            "audio",
+            "policy_version"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "type": "string",
+              "const": "buddy.input.v1"
+            },
+            "input_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "session_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "workflow_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "turn_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "request_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "transcript_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "captured_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "state": {
+              "type": "string",
+              "const": "sealed"
+            },
+            "sealReason": {
+              "type": "string",
+              "const": "local_asr_segment"
+            },
+            "input_evidence": {
+              "type": "string",
+              "const": "full_audio_segment"
+            },
+            "audio": {
+              "$ref": "#/$defs/AudioRange"
+            },
+            "policy_version": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "schema",
+            "input_id",
+            "session_id",
+            "workflow_id",
+            "turn_id",
+            "request_revision",
+            "transcript_revision",
+            "text",
+            "captured_at",
+            "state",
+            "sealReason",
+            "input_evidence",
+            "audio",
+            "policy_version"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "type": "string",
+              "const": "buddy.input.v1"
+            },
+            "input_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "session_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "workflow_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "turn_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "request_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "transcript_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "captured_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "state": {
+              "type": "string",
+              "const": "sealed"
+            },
+            "sealReason": {
+              "type": "string",
+              "const": "live_transcript_policy"
+            },
+            "input_evidence": {
+              "type": "string",
+              "const": "live_policy_observed"
+            },
+            "audio": {
+              "$ref": "#/$defs/AudioRange"
+            },
+            "policy_version": {
+              "$ref": "#/$defs/Revision"
+            }
+          },
+          "required": [
+            "schema",
+            "input_id",
+            "session_id",
+            "workflow_id",
+            "turn_id",
+            "request_revision",
+            "transcript_revision",
+            "text",
+            "captured_at",
+            "state",
+            "sealReason",
+            "input_evidence",
+            "audio",
+            "policy_version"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "type": "string",
+              "const": "buddy.input.v1"
+            },
+            "input_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "session_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "workflow_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "turn_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "request_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "transcript_revision": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Revision"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "captured_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "state": {
+              "type": "string",
+              "enum": ["collecting", "end_candidate", "superseded", "blocked"]
+            },
+            "sealReason": {
+              "type": "null"
+            },
+            "input_evidence": {
+              "type": "string",
+              "enum": [
+                "submitted_text",
+                "full_audio_segment",
+                "live_policy_observed",
+                "unverified"
+              ]
+            },
+            "audio": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AudioRange"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "policy_version": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Revision"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "schema",
+            "input_id",
+            "session_id",
+            "workflow_id",
+            "turn_id",
+            "request_revision",
+            "transcript_revision",
+            "text",
+            "captured_at",
+            "state",
+            "sealReason",
+            "input_evidence",
+            "audio",
+            "policy_version"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。"
+    },
+    "LabelMailWireResponse": {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "type": "string",
+          "const": "label_mail"
+        },
+        "target_candidate_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_labels": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "remove_labels": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relation": {
+          "type": "string",
+          "enum": ["new", "clarification", "correction", "cancel"]
+        },
+        "target_workflow_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reply_text": {
+          "type": "null"
+        },
+        "clarify_question": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "intent",
+        "target_candidate_id",
+        "add_labels",
+        "remove_labels",
+        "relation",
+        "target_workflow_id",
+        "reply_text",
+        "clarify_question",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "description": "24意図のうち最初のlabel_mailプロファイルだけ。root object、全フィールド必須、欠落はnull。承認・effect_kind・状態・根拠をモデルに生成させない。"
+    },
+    "FieldEvidence": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": ["target_candidate_id", "add_labels", "remove_labels"]
+        },
+        "input_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_utf16": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_utf16": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "field",
+        "input_id",
+        "request_revision",
+        "quote",
+        "start_utf16",
+        "end_utf16"
+      ],
+      "additionalProperties": false
+    },
+    "LabelMailInterpretation": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.interpretation.label-mail.v1"
+        },
+        "input_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "workflow_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "intent": {
+          "type": "string",
+          "const": "label_mail"
+        },
+        "relation": {
+          "type": "string",
+          "enum": ["new", "clarification", "correction", "cancel"]
+        },
+        "target_workflow_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "target_candidate_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "add_labels": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "remove_labels": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": ["target_candidate_id", "add_labels", "remove_labels"],
+          "additionalProperties": false
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldEvidence"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "schema",
+        "input_id",
+        "workflow_id",
+        "request_revision",
+        "intent",
+        "relation",
+        "target_workflow_id",
+        "args",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "description": "Coreの対象解決・意味検証後のみ作成可能。契約検証だけで検証済みにはならない。"
+    },
+    "ActionReadiness": {
+      "type": "object",
+      "properties": {
+        "workflow_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "state": {
+          "type": "string",
+          "enum": ["blocked", "preview_only", "needs_approval", "auto_eligible"]
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "policy_version": {
+          "$ref": "#/$defs/Revision"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "request_revision",
+        "state",
+        "reason_codes",
+        "policy_version",
+        "permission_revision"
+      ],
+      "additionalProperties": false,
+      "description": "Core計算結果。auto_eligibleも最終transactionの再検査を省略しない。"
+    },
+    "LabelOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/Revision"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph"]
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "remote_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_revision": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["remote_id", "source_revision"],
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "mail.labels.change"
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "remove": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": ["kind", "add", "remove"],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 0
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "exact_target"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "provider",
+        "account_id",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "H01のラベル変更のみ。content_hashはこの確定intent全体のJCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。"
+    },
+    "CommandContext": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["request_id", "command_scope_id"],
+      "additionalProperties": false
+    },
+    "PreviewRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["request_id", "command_scope_id"],
+      "additionalProperties": false
+    },
+    "LabelPreview": {
+      "type": "object",
+      "properties": {
+        "preview_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "intent": {
+          "$ref": "#/$defs/LabelOperationIntent"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": ["preview_id", "intent", "content_hash", "state_revision"],
+      "additionalProperties": false
+    },
+    "ApprovalRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "preview_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/Revision"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "expected_state_revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "preview_id",
+        "content_version",
+        "content_hash",
+        "expected_state_revision"
+      ],
+      "additionalProperties": false
+    },
+    "StateCommand": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_state_revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": ["request_id", "command_scope_id", "expected_state_revision"],
+      "additionalProperties": false
+    },
+    "CommandReceipt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "command_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "operation_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "state_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "status": {
+              "type": "string",
+              "const": "accepted"
+            },
+            "committed_state_revision": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "request_id",
+            "command_id",
+            "operation_id",
+            "state_revision",
+            "status",
+            "committed_state_revision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "command_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "operation_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "state_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "status": {
+              "type": "string",
+              "const": "durable"
+            },
+            "committed_state_revision": {
+              "$ref": "#/$defs/Revision"
+            }
+          },
+          "required": [
+            "request_id",
+            "command_id",
+            "operation_id",
+            "state_revision",
+            "status",
+            "committed_state_revision"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "受付ACKとdurable ACK。どちらも外部変更の成功ではない。"
+    },
+    "OperationSnapshot": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/Revision"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "awaiting_approval",
+            "approved",
+            "preparing",
+            "dispatching",
+            "reconciling",
+            "succeeded",
+            "unknown_held",
+            "not_executed",
+            "cancelled",
+            "superseded"
+          ]
+        },
+        "approval_state": {
+          "type": "string",
+          "enum": ["none", "valid", "revoked", "expired"]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["preview", "approve", "cancel", "reconcile", "retry"]
+          },
+          "uniqueItems": true
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed_success",
+                    "confirmed_not_executed",
+                    "unknown"
+                  ]
+                },
+                "provider_receipt_id": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["status", "provider_receipt_id"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "content_version",
+        "content_hash",
+        "state_revision",
+        "state",
+        "approval_state",
+        "allowed_actions",
+        "result"
+      ],
+      "additionalProperties": false,
+      "description": "最初のラベル変更用状態投影。allowed_actionsは表示補助であり、実行時の認可ではない。"
+    },
+    "EventEnvelope": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.event.v1"
+        },
+        "event_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "store_generation": {
+          "$ref": "#/$defs/Id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/Revision"
+        },
+        "event_cursor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "event_type": {
+          "type": "string",
+          "enum": ["operation.updated", "command.durable"]
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "schema",
+        "event_id",
+        "store_generation",
+        "sequence",
+        "event_cursor",
+        "operation_id",
+        "state_revision",
+        "event_type",
+        "occurred_at"
+      ],
+      "additionalProperties": false,
+      "description": "最初の操作通知のみ。本文、宛先、認証情報を含めない。カーソルは認証の代わりではない。"
+    },
+    "EventPage": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EventEnvelope"
+          }
+        },
+        "event_cursor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resnapshot_required": {
+          "type": "boolean"
+        }
+      },
+      "required": ["events", "event_cursor", "resnapshot_required"],
+      "additionalProperties": false
+    },
+    "ApiError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "unauthenticated",
+            "forbidden",
+            "conflict",
+            "expired_scope",
+            "invalid_input",
+            "budget_held",
+            "rate_limited",
+            "dependency_unavailable"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["code", "message", "request_id"],
+      "additionalProperties": false
+    },
+    "BudgetReservation": {
+      "type": "object",
+      "properties": {
+        "reservation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "price_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budget_month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "budget_scope": {
+          "type": "string",
+          "enum": [
+            "conversation",
+            "background",
+            "search",
+            "voice",
+            "approved_overage"
+          ]
+        },
+        "reserved_amount": {
+          "$ref": "#/$defs/Money"
+        },
+        "max_liability": {
+          "$ref": "#/$defs/Money"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["reserved", "usage_unknown", "settled"]
+        },
+        "provider_reconciliation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actual_gross": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "credit_applied": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "additional_spend": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "credit_cycle_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reservation_id",
+        "request_id",
+        "profile_id",
+        "price_version",
+        "budget_month",
+        "budget_scope",
+        "reserved_amount",
+        "max_liability",
+        "status",
+        "provider_reconciliation_id",
+        "actual_gross",
+        "credit_applied",
+        "additional_spend",
+        "credit_cycle_id"
+      ],
+      "additionalProperties": false,
+      "description": "RとMは加算しない。R<=M、同一通貨、gross=credit+spend、未精算の保持は意味検査で確認。通常料金枠とクレジットは別。実費M超過も切り捨てず記録する。"
+    },
+    "CreditObservation": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "const": "anthropic"
+        },
+        "organization_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cycle_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "balance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["observed", "unknown", "expired"]
+        },
+        "shared": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "organization_ref",
+        "cycle_id",
+        "observed_at",
+        "expires_at",
+        "balance",
+        "status",
+        "shared"
+      ],
+      "additionalProperties": false,
+      "description": "残高の観測であり将来の利用保証ではない。取得APIや認証を規定しない。組織内共有消費・失効を別検査する。"
+    },
+    "ModelCandidate": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["openai", "anthropic", "local"]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "voice",
+            "intent",
+            "background_text",
+            "advanced_consult",
+            "local_asr"
+          ]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["primary", "comparison"]
+        },
+        "status": {
+          "type": "string",
+          "const": "candidate"
+        },
+        "requires_explicit_request": {
+          "type": "boolean"
+        },
+        "activation": {
+          "type": "string",
+          "const": "requires_evaluation"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "provider",
+        "model",
+        "role",
+        "priority",
+        "status",
+        "requires_explicit_request",
+        "activation"
+      ],
+      "additionalProperties": false
+    },
+    "ModelEvaluationPlan": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.model-evaluation.v1"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModelCandidate"
+          }
+        },
+        "automatic_upgrade": {
+          "type": "boolean",
+          "const": false
+        },
+        "automatic_paid_fallback": {
+          "type": "boolean",
+          "const": false
+        },
+        "prices_verified_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "candidates",
+        "automatic_upgrade",
+        "automatic_paid_fallback",
+        "prices_verified_at"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

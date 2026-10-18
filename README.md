@@ -2,7 +2,7 @@
 
 生活・学習・開発を支える、デバイスに依存しない個人 AI アシスタント。
 
-現在は **B00（契約のファイル化）に着手するための開発環境** です。製品の Core / UI、OpenAPI / JSON Schema、DB マイグレーションは未実装です。CI は環境・型設定・依存境界・公開情報の検査を検証します。
+現在は **B00（契約のファイル化）の初回範囲を作成した段階** です。入力・ラベル変更・承認受付・状態通知・予算記録の JSON Schema、対象経路の OpenAPI、生成型と合成例を検査できます。製品の Core / UI、DB マイグレーション、全 API・全意図の契約は未完成です。B00 全体の完了を意味しません。
 
 ## セットアップ
 
@@ -27,12 +27,14 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [情報管理と公開前確認](docs/public-release.md)
 - [開発手順・Codex / Claude Code](docs/development.md)
 - [開発基盤の選定理由](docs/adr/0001-development-baseline.md)
+- [契約検証ツールと初回の具体化](docs/adr/0002-contract-validation.md)
+- [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成
 
 | 場所                 | 責務・現在の状態                                                     |
 | -------------------- | -------------------------------------------------------------------- |
-| `packages/contracts` | API / イベント / ワイヤ契約。B00 用の配置先                          |
+| `packages/contracts` | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続    |
 | `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成          |
 | `packages/storage`   | Core の保存アダプター。マイグレーション案は B00 で作成               |
 | `apps/core`          | Electron から独立した Node.js 中枢。現在は型検査・ビルド用の空の入口 |
@@ -43,16 +45,18 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 
 ## コマンド
 
-| コマンド                  | 用途                                                     |
-| ------------------------- | -------------------------------------------------------- |
-| `pnpm run doctor`         | Node / pnpm とワークスペース確認                         |
-| `pnpm run check`          | 書式・lint・型・ビルド・試験・資料の整合を一括検証       |
-| `pnpm run format`         | ソースと開発資料の書式修正                               |
-| `pnpm run lint`           | 静的解析と直接 import の依存方向検査                     |
-| `pnpm run typecheck`      | 全ワークスペースの厳格な型検査                           |
-| `pnpm run build`          | 全ワークスペースを `dist/` へビルド                      |
-| `pnpm test`               | Node.js 標準 test runner。初期状態では開発基盤の検査のみ |
-| `pnpm run security:check` | 公開対象に非公開情報が混入していないか確認               |
+| コマンド                      | 用途                                                   |
+| ----------------------------- | ------------------------------------------------------ |
+| `pnpm run doctor`             | Node / pnpm とワークスペース確認                       |
+| `pnpm run check`              | 書式・lint・型・ビルド・試験・資料の整合を一括検証     |
+| `pnpm run format`             | ソースと開発資料の書式修正                             |
+| `pnpm run lint`               | 静的解析と直接 import の依存方向検査                   |
+| `pnpm run typecheck`          | 全ワークスペースの厳格な型検査                         |
+| `pnpm run build`              | 全ワークスペースを `dist/` へビルド                    |
+| `pnpm test`                   | 開発基盤と契約境界の合成検査。実 API・製品統合は未実施 |
+| `pnpm run contracts:generate` | JSON Schema から TypeScript 型を再生成                 |
+| `pnpm run contracts:check`    | 生成差分、Schema、OpenAPI、合成例を検証                |
+| `pnpm run security:check`     | 公開対象に非公開情報が混入していないか確認             |
 
 Codex は [AGENTS.md](AGENTS.md)、Claude Code は [CLAUDE.md](CLAUDE.md) から同じ共通指示を読みます。
 

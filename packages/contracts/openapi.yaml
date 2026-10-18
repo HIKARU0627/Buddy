@@ -1,0 +1,238 @@
+openapi: 3.1.2
+info:
+  title: Buddy B00 — label operation slice
+  version: 0.1.0
+  description: 最初のラベル変更経路だけをファイル化。サーバー実装・認可・DB transaction・全APIの完成を表さない。
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+security:
+  - deviceToken: []
+paths:
+  /v1/operations/{id}:
+    parameters:
+      - &a1
+        name: id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas/buddy.schema.json#/$defs/Id
+        description: 操作ID。認証主体はトークンから解決する。
+    get:
+      operationId: getOperation
+      summary: 現在の操作状態を取得
+      responses:
+        '200':
+          description: 現在値。過去の命令受付結果とは別。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/OperationSnapshot
+        '401': &a2
+          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+        '403': &a3
+          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+        '409': &a4
+          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+        '410': &a5
+          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+        '422': &a6
+          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+        '429': &a7
+          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+        '503': &a8
+          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+  /v1/operations/{id}/preview:
+    parameters:
+      - *a1
+    post:
+      operationId: previewOperation
+      summary: ラベル変更の承認表示を準備
+      description: 外部変更なし。previewは端末・接続・内容に結び付け、ロック・移動・失効時は拒否。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/PreviewRequest
+      responses:
+        '200':
+          description: 確定した内容とhash。承認ではない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/LabelPreview
+        '401': *a2
+        '403': *a3
+        '409': *a4
+        '410': *a5
+        '422': *a6
+        '429': *a7
+        '503': *a8
+  /v1/operations/{id}/approve:
+    parameters:
+      - *a1
+    post:
+      operationId: approveOperation
+      summary: 操作のapprove要求
+      description: 同じscope/requestと同じ内容は同じレシート。異なる内容の再利用は409。結果不明の自動再送なし。retryは未実行確認後の本人明示操作のみ。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/ApprovalRequest
+      responses:
+        '202':
+          description: 受付またはdurable記録。外部変更成功を意味しない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
+        '401': *a2
+        '403': *a3
+        '409': *a4
+        '410': *a5
+        '422': *a6
+        '429': *a7
+        '503': *a8
+  /v1/operations/{id}/cancel:
+    parameters:
+      - *a1
+    post:
+      operationId: cancelOperation
+      summary: 操作のcancel要求
+      description: 同じscope/requestと同じ内容は同じレシート。異なる内容の再利用は409。結果不明の自動再送なし。retryは未実行確認後の本人明示操作のみ。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/StateCommand
+      responses:
+        '202':
+          description: 受付またはdurable記録。外部変更成功を意味しない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
+        '401': *a2
+        '403': *a3
+        '409': *a4
+        '410': *a5
+        '422': *a6
+        '429': *a7
+        '503': *a8
+  /v1/operations/{id}/reconcile:
+    parameters:
+      - *a1
+    post:
+      operationId: reconcileOperation
+      summary: 操作のreconcile要求
+      description: 同じscope/requestと同じ内容は同じレシート。異なる内容の再利用は409。結果不明の自動再送なし。retryは未実行確認後の本人明示操作のみ。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/StateCommand
+      responses:
+        '202':
+          description: 受付またはdurable記録。外部変更成功を意味しない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
+        '401': *a2
+        '403': *a3
+        '409': *a4
+        '410': *a5
+        '422': *a6
+        '429': *a7
+        '503': *a8
+  /v1/operations/{id}/retry:
+    parameters:
+      - *a1
+    post:
+      operationId: retryOperation
+      summary: 操作のretry要求
+      description: 同じscope/requestと同じ内容は同じレシート。異なる内容の再利用は409。結果不明の自動再送なし。retryは未実行確認後の本人明示操作のみ。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/StateCommand
+      responses:
+        '202':
+          description: 受付またはdurable記録。外部変更成功を意味しない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
+        '401': *a2
+        '403': *a3
+        '409': *a4
+        '410': *a5
+        '422': *a6
+        '429': *a7
+        '503': *a8
+  /v1/events:
+    get:
+      operationId: getEvents
+      summary: 操作イベントの再取得
+      description: 認証はヘッダー。本文なし。DB世代と再生可能範囲を検査し、期限外は再snapshotを要求。WSS購読契約は後続。
+      parameters:
+        - name: cursor
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: 不透明カーソル。秘密や認証トークンではない。
+      responses:
+        '200':
+          description: 表示権でフィルターしたイベント。連番の飛びだけで欠落と判定しない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/EventPage
+        '401': *a2
+        '403': *a3
+        '409': *a4
+        '410': *a5
+        '422': *a6
+        '429': *a7
+        '503': *a8
+components:
+  securitySchemes:
+    deviceToken:
+      type: http
+      scheme: bearer
+      description: 登録端末トークン。scope・OS解除・明示再開・表示権はCoreで別に検査する。Rendererへ公開しない。

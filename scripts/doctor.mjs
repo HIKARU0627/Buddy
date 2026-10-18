@@ -33,4 +33,6 @@ console.log(
   `Buddy: Node ${process.versions.node}, pnpm ${pnpmMatch?.[1] ?? '未確認'}, ${workspaces.length} workspaces`,
 );
 console.log(`Root: ${fileURLToPath(root)}`);
-console.log('環境検証です。B00 の契約と製品機能は未完成です。');
+console.log(
+  '環境検証です。B00 は初回契約のみで、全契約と製品機能は未完成です。',
+);

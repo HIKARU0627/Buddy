@@ -82,7 +82,14 @@ export function semanticErrors(name, value) {
     )
       errors.push('expired_observation');
   }
-  if (name === 'FieldEvidence' && value.start_utf16 >= value.end_utf16)
+  if (name === 'TimeZone') {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: value });
+    } catch {
+      errors.push('unknown_time_zone');
+    }
+  }
+  if (name === 'InputFieldEvidence' && value.start_utf16 >= value.end_utf16)
     errors.push('quote_range');
   if (name === 'OperationSnapshot') {
     if (

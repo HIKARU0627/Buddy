@@ -1,7 +1,7 @@
 # 契約対応表
 
 状態: **B00-01 の台帳展開**。契約ごとに配置先・根拠の節・試験 ID・利用工程・現状を記録しました。ファイル化済みは初回範囲だけで、B00 全体は未完了です。
-照合した原本: プロジェクトのトップページ、開発前の決定事項（D01〜D16、J01〜J17）、設計 03、05（予約と最大負担・profile・DeploymentManifest の節）、06、07、08、09 §1〜8、10、11、設計レビュー記録（F01〜F05）、設計修正案 v1.2（14・16・17 節の決定記録）。取得日は 2026-10-19、原本の最終更新は 2026-10-10〜18 です。
+照合した原本: プロジェクトのトップページ、開発前の決定事項（D01〜D16、J01〜J17）、設計 01〜04、05（予約と最大負担・profile・DeploymentManifest の節）、06、07、08、09 §1〜8、10、11、設計レビュー記録（F01〜F05）、設計修正案 v1.2（14・16・17 節の決定記録）。取得日は 2026-10-19、原本の最終更新は 2026-10-10〜18 です。
 原本の更新履歴内の旧例は現行契約にしません。修正案 v1.2 は記録であり、正本は反映先の各設計本文です。照合しなかった原本は末尾に記録しています。
 
 ## 凡例
@@ -66,7 +66,7 @@ ID・時刻・金額・null・版の文字列表現の共通規則は B00-02（#
 | ActionReadiness                                          | S:ActionReadiness                             | 10 §5A F01・§6A、08 §3                | QA41、QA27、X21、X39             | B10、B13      | 形式。種別ごとの束縛項目は未定義    |
 | WorkContext                                              | S:WorkContext、M:async_context_guards         | 08 §5、11 §5B、修正案 H06             | QA33、QA34、QA45、X15            | B06、B10、B13 | 未作成                              |
 | 実行経路の登録表（Read / LocalCommand / RemoteMutation） | D: の意図ごとの登録表                         | 08 §3 D15、修正案 H02                 | QA27、QA28、QA38                 | B04、B13      | 未作成。未明記の分類は U06          |
-| ConnectorCapability（操作別の前提条件）                  | D: と connectors の能力登録                   | 08 §3、11 §5A（質問 133）             | QA22、QA23、QA25                 | B08、B09、B13 | 未作成                              |
+| ConnectorCapability（操作別の前提条件）                  | D: と connectors の能力登録                   | 08 §3、04 変更操作と結果照合、11 §5A  | QA22、QA23、QA25                 | B08、B09、B13 | 未作成                              |
 | OperationIntent（buddy.operation.v1）                    | S:OperationIntent                             | 08 §2                                 | X03、X09、H01                    | B04、B13、B14 | 形式（LabelOperationIntent だけ）   |
 | PreviewRequest / Preview                                 | S:PreviewRequest、S:LabelPreview              | 07 §2・§3                             | X02、X09                         | B03、B04      | 形式（ラベル変更だけ）              |
 | ApprovalRequest                                          | S:ApprovalRequest                             | 07 §2・§3、08 §1                      | X01、X02、X03、X09、X61          | B03、B04      | 形式                                |
@@ -80,21 +80,21 @@ ID・時刻・金額・null・版の文字列表現の共通規則は B00-02（#
 
 ### 会話・委譲・音声制御・出力先（担当: B00-04 #19）
 
-| 契約                                                                          | 配置先                                    | 根拠                      | 試験                    | 利用     | 状態                       |
-| ----------------------------------------------------------------------------- | ----------------------------------------- | ------------------------- | ----------------------- | -------- | -------------------------- |
-| ConversationContext（buddy.context.v1）                                       | S:ConversationContext                     | 10 §4                     | X36、X47、X17           | B05、B10 | 未作成                     |
-| DelegationIntent / DelegationResult                                           | S:DelegationIntent、S:DelegationResult    | 10 §5・§6A                | X29、X33、X49、X51      | B05、B10 | 未作成                     |
-| InteractionMode と input_kind / output_kind                                   | S:InteractionMode                         | 10 §4・§6・§6A            | X46、X47、X26、X49      | B05、B10 | 未作成                     |
-| 出力先（mode / device_id / session_epoch）                                    | S:OutputTarget（WorkContext から参照）    | 07 §5 D15、08 §5          | QA34、X49               | B05、B10 | 未作成                     |
-| PendingClarification                                                          | S:PendingClarification                    | 10 §5A-5                  | X27、QA04               | B10      | 未作成                     |
-| ResultView（結果の種類と画面部品）                                            | S:ResultView                              | 10 §6A                    | X46、X49                | B02、B10 | 未作成。対応表の欠けは U06 |
-| SessionControlPhrases（会話の操作の照合表）                                   | S:SessionControlPhrases                   | 10 §5・§10（質問 126）    | X58、QA43               | B05、B10 | 未作成                     |
-| DeviceIOState                                                                 | S:DeviceIOState                           | 07 §2・§5、09 §6          | X13、X14、QA43          | B01、B05 | 未作成                     |
-| AudioControl（stop_playback / close_voice_session / suspend_io と理由・世代） | S:AudioControl                            | 10 §1・§1A（F03）         | QA43、X13、X30、X58     | B05      | 未作成                     |
-| 音声・表示リース（heartbeat・nonce・期限）                                    | S:Lease                                   | 07 §5、10 §2A             | X13、X14、X25、X28      | B03、B05 | 未作成                     |
-| LiveSessionRequest / LiveSessionAnswer（purpose 付き）                        | S:LiveSessionRequest、S:LiveSessionAnswer | 07 §2、10 §2              | X26、X31、X32、X54、X17 | B05      | 未作成                     |
-| LiveControlState（control_state・control_epoch）                              | S:LiveControlState、M:live_sessions       | 10 §2A                    | X25、X28、QA24          | B05、B07 | 未作成                     |
-| 音声のイベント（サイドバンド接続済み・委譲の処理中・読み上げ要求・停止）      | S:EventEnvelope の種別追加                | 10 §2・§3・§7・§10、07 §2 | X29、X35、X54、X55      | B05      | 未作成                     |
+| 契約                                                                          | 配置先                                    | 根拠                           | 試験                    | 利用     | 状態                       |
+| ----------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------ | ----------------------- | -------- | -------------------------- |
+| ConversationContext（buddy.context.v1）                                       | S:ConversationContext                     | 10 §4                          | X36、X47、X17           | B05、B10 | 未作成                     |
+| DelegationIntent / DelegationResult                                           | S:DelegationIntent、S:DelegationResult    | 10 §5・§6A                     | X29、X33、X49、X51      | B05、B10 | 未作成                     |
+| InteractionMode と input_kind / output_kind                                   | S:InteractionMode                         | 10 §4・§6・§6A                 | X46、X47、X26、X49      | B05、B10 | 未作成                     |
+| 出力先（mode / device_id / session_epoch）                                    | S:OutputTarget（WorkContext から参照）    | 07 §5 D15、08 §5               | QA34、X49               | B05、B10 | 未作成                     |
+| PendingClarification                                                          | S:PendingClarification                    | 10 §5A-5                       | X27、QA04               | B10      | 未作成                     |
+| ResultView（結果の種類と画面部品）                                            | S:ResultView                              | 10 §6A、01 いつも見える状態    | X46、X49                | B02、B10 | 未作成。対応表の欠けは U06 |
+| SessionControlPhrases（会話の操作の照合表）                                   | S:SessionControlPhrases                   | 10 §5・§10（質問 126）         | X58、QA43               | B05、B10 | 未作成                     |
+| DeviceIOState                                                                 | S:DeviceIOState                           | 07 §2・§5、01 いつも見える状態 | X13、X14、QA43          | B01、B05 | 未作成                     |
+| AudioControl（stop_playback / close_voice_session / suspend_io と理由・世代） | S:AudioControl                            | 10 §1・§1A（F03）              | QA43、X13、X30、X58     | B05      | 未作成                     |
+| 音声・表示リース（heartbeat・nonce・期限）                                    | S:Lease                                   | 07 §5、10 §2A                  | X13、X14、X25、X28      | B03、B05 | 未作成                     |
+| LiveSessionRequest / LiveSessionAnswer（purpose 付き）                        | S:LiveSessionRequest、S:LiveSessionAnswer | 07 §2、10 §2                   | X26、X31、X32、X54、X17 | B05      | 未作成                     |
+| LiveControlState（control_state・control_epoch）                              | S:LiveControlState、M:live_sessions       | 10 §2A                         | X25、X28、QA24          | B05、B07 | 未作成                     |
+| 音声のイベント（サイドバンド接続済み・委譲の処理中・読み上げ要求・停止）      | S:EventEnvelope の種別追加                | 10 §2・§3・§7・§10、07 §2      | X29、X35、X54、X55      | B05      | 未作成                     |
 
 ### 予算（担当: B00-05 #20）
 
@@ -139,18 +139,20 @@ ID・時刻・金額・null・版の文字列表現の共通規則は B00-02（#
 
 ### 通信（担当: B00-08 #25）
 
-| 契約                                   | 配置先                                  | 根拠                | 試験               | 利用     | 状態                        |
-| -------------------------------------- | --------------------------------------- | ------------------- | ------------------ | -------- | --------------------------- |
-| 端末認証・command_scope_id（24 時間）  | API: securitySchemes、S:CommandContext  | 07 §2、02（未照合） | X04、X42、X19      | B03      | 形式（CommandContext のみ） |
-| GET /v1/bootstrap                      | API:/v1/bootstrap                       | 07 §2               | X20、X42           | B03      | 未作成                      |
-| GET /v1/snapshot と event_cursor       | API:/v1/snapshot                        | 07 §2・§4           | X11                | B03      | 未作成                      |
-| POST /v1/sessions、/turns              | API:/v1/sessions                        | 07 §2、10 §6        | X36、X46、X49      | B03、B10 | 未作成                      |
-| POST /v1/sessions/{id}/handoff         | API:/v1/sessions/{id}/handoff           | 07 §2・§5、10 §8    | X45、X02           | B03      | 未作成                      |
-| 操作の取得・preview・承認・状態命令    | API:/v1/operations/...                  | 07 §2・§3           | X01〜X09           | B03、B04 | 形式（ラベル変更）          |
-| 自動実行一覧・取り消し・安全停止の解除 | API:/v1/auto-actions、/v1/safety/resume | 07 §2               | X23、X24           | B13      | 未作成                      |
-| 入出力停止・再開                       | API:/v1/io/stop、/v1/io/resume          | 07 §2・§5、10 §1A   | X13、X14、QA43     | B03、B05 | 未作成                      |
-| WSS /v1/events と GET /v1/events       | API:/v1/events                          | 07 §2・§4           | X11、X12           | B03      | GET のみ形式                |
-| Live の開始・終了                      | API:/v1/live/sessions、/close           | 07 §2、10 §2        | X26、X28、X31、X32 | B05      | 未作成                      |
+| 契約                                   | 配置先                                              | 根拠                                          | 試験               | 利用     | 状態                        |
+| -------------------------------------- | --------------------------------------------------- | --------------------------------------------- | ------------------ | -------- | --------------------------- |
+| 端末認証・command_scope_id（24 時間）  | API: securitySchemes、S:CommandContext              | 07 §2、02 端末登録と接続                      | X04、X42、X19      | B03      | 形式（CommandContext のみ） |
+| GET /v1/bootstrap                      | API:/v1/bootstrap                                   | 07 §2                                         | X20、X42           | B03      | 未作成                      |
+| GET /v1/snapshot と event_cursor       | API:/v1/snapshot                                    | 07 §2・§4                                     | X11                | B03      | 未作成                      |
+| POST /v1/sessions、/turns              | API:/v1/sessions                                    | 07 §2、10 §6                                  | X36、X46、X49      | B03、B10 | 未作成                      |
+| POST /v1/sessions/{id}/handoff         | API:/v1/sessions/{id}/handoff                       | 07 §2・§5、10 §8                              | X45、X02           | B03      | 未作成                      |
+| 操作の取得・preview・承認・状態命令    | API:/v1/operations/...                              | 07 §2・§3                                     | X01〜X09           | B03、B04 | 形式（ラベル変更）          |
+| 自動実行一覧・取り消し・安全停止の解除 | API:/v1/auto-actions、/v1/safety/resume             | 07 §2                                         | X23、X24           | B13      | 未作成                      |
+| 入出力停止・再開                       | API:/v1/io/stop、/v1/io/resume                      | 07 §2・§5、10 §1A                             | X13、X14、QA43     | B03、B05 | 未作成                      |
+| WSS /v1/events と GET /v1/events       | API:/v1/events                                      | 07 §2・§4                                     | X11、X12           | B03      | GET のみ形式                |
+| Live の開始・終了                      | API:/v1/live/sessions、/close                       | 07 §2、10 §2                                  | X26、X28、X31、X32 | B05      | 未作成                      |
+| 端末の登録（ペアリング）・失効         | API: 経路は未定（U10）、S:DeviceRegistration        | 02 端末登録と接続、01 接続・端末              | X04、X42           | B03      | 未作成                      |
+| 接続と取得範囲の選択                   | API: 経路は未定（U10）、S:Connection、M:connections | 04 接続・権限・取得する対象、03 データ表、D03 | X09、X37、T05      | B08、B09 | 未作成                      |
 
 ### domain 境界と保存（担当: B00-09 #26）
 
@@ -161,6 +163,8 @@ ID・時刻・金額・null・版の文字列表現の共通規則は B00-02（#
 | DB worker の命令（command_id・expected_state_revision）                                                                                                                                                    | D: と storage の境界            | 11 §9 D15、08 §3 D15                   | QA15、QA16、QA17、X60                    | B02           | 未作成                        |
 | 通知の配信と一覧の分離                                                                                                                                                                                     | D: 通知、M:deliveries           | 08 §7                                  | X12、X35                                 | B11           | 未作成                        |
 | 忘却と非同期結果の競合                                                                                                                                                                                     | D: 忘却、M:async_context_guards | 08 §6                                  | X15、X16、QA34                           | B06           | 未作成                        |
+| 予定重複の判定（終了を含まない区間・同一予定の判定）                                                                                                                                                       | D: 気づきの規則                 | 04 予定重複                            | T05                                      | B11           | 未作成                        |
+| 参照の再試行上限と外部書込みの再試行 0 回                                                                                                                                                                  | D: と connectors の規則         | 04 再試行の初期値、08 §3               | X07、X08、QA25                           | B08、B09      | 未作成                        |
 | 拡張・LLM が迂回できない境界                                                                                                                                                                               | D: 依存方向の規則               | 08 §8、03 言語変更・自己拡張           | X19                                      | B01〜         | lint の依存方向検査のみ       |
 | 保存表（operation_versions、approvals、operation_attempts / steps、command_receipts、event_outbox、async_context_guards、budget_reservations、live_sessions、auto_actions / undo_records、safety_breaker） | M: 各表                         | 08 §5、03 データ表・保存期限           | X01、X02、X06、X10、X16、X60、QA15、QA38 | B02、B06      | 境界仕様のみ                  |
 | 保存表（sync_batch / staging、notification_candidates、request_entities、memories / memory_sources、forget_ledger、user_directives、intent_shadow、sessions / turns、source_items）                        | M: 各表                         | 03 データ表・保存期限、11 §1A・§4・§5A | QA44、X12、X64、X15、X16、X17            | B02、B06、B08 | 未作成                        |
@@ -179,32 +183,32 @@ ID・時刻・金額・null・版の文字列表現の共通規則は B00-02（#
 承認の「自動」は D05 の自動実行 4 操作（メモ・用事登録、元に戻せるラベル変更、返信下書きの保存、自分だけの予定作成）で、方針による自動承認と安全停止・取り消しの対象です。「画面」は内容版に結び付いた画面承認で、音声の「はい」は承認にしません。
 方式 C（Live 文字起こしの暫定入力）から進めるのは、自動の 4 操作で他の条件をすべて満たす場合だけです（10 §5A F01、QA41）。それ以外の変更は全文確定または方式 A / ③ の再入力が必要です。固有引数の契約は `label_mail` 以外未作成で、多くの意図は引数の形が原本に定義されていません（U07）。
 
-| intent           | 経路                                   | 承認                                   | 方式 C   | 結果表示（10 §6A）            | 主な根拠                                | 試験                |
-| ---------------- | -------------------------------------- | -------------------------------------- | -------- | ----------------------------- | --------------------------------------- | ------------------- |
-| query_schedule   | Read（明記）                           | なし                                   | —        | 予定カード                    | 修正案 H02、10 §6A、X49                 | X49、QA27、QA33     |
-| query_mail       | Read（明記: 許可されたメール参照）     | なし                                   | —        | 未定義                        | 修正案 H02                              | QA27                |
-| query_tasks      | Read（未明記）                         | なし                                   | —        | 用事の行                      | 10 §6A                                  | QA27                |
-| query_memory     | Read（未明記）                         | なし                                   | —        | 未定義                        | 03 忘却と再取り込み（RAM 内検索）       | X15                 |
-| create_task      | LocalCommand（明記）                   | 自動                                   | 可       | 完了の 1 行と取り消し         | 08 §9、11 §5、修正案 H02、X59           | X21、X59、QA38、X61 |
-| create_note      | LocalCommand（明記）                   | 自動                                   | 可       | 完了の 1 行と取り消し         | 08 §9、修正案 H02                       | X21                 |
-| label_mail       | RemoteMutation（明記）                 | 自動（Outlook は質問 133 で保留）      | 可       | 完了の 1 行と取り消し         | 08 §2 H01・§9、11 §5・§5A、09 §1、J10   | X01〜X11、X21       |
-| draft_reply      | RemoteMutation（明記）                 | 自動（下書き保存まで）                 | 可       | 完了の 1 行と取り消し         | 08 §4・§9、11 §5・§6                    | X10、X40、X41、QA25 |
-| create_event     | RemoteMutation（明記）                 | 自分だけの予定は自動、他は画面         | 条件付き | 完了の 1 行と取り消し         | 08 §9、11 §5・§5A、D05、J11             | X21、X27、QA22      |
-| update_event     | RemoteMutation（明記）                 | 画面                                   | 不可     | 変更確認画面を開く            | 10 §5 追加した意図、11 §5A              | X27、X64            |
-| send_mail        | RemoteMutation（明記）                 | 画面                                   | 不可     | 変更確認画面を開く            | 10 §5、11 §6 D15、08 §4                 | X10、QA25、T03      |
-| trash_mail       | RemoteMutation（未明記）               | 画面                                   | 不可     | 変更確認画面を開く            | 10 §5、D05、J07（ごみ箱への移動まで）   | T03                 |
-| undo_action      | 未明記（取り消し一覧を開く）           | 取り消し自体は画面操作                 | —        | 未定義                        | 10 §5、D14、07 §2 undo、J12             | X24、X40、X65       |
-| update_task      | LocalCommand（明記: 承認後の用事更新） | 画面                                   | 不可     | 変更確認画面を開く            | 08 §9、10 §5、修正案 H02                | X61、X64            |
-| research         | Read（未明記。裏の job）               | なし（費用予約あり）                   | —        | 完了は気づき（research_done） | 10 §5 裏のジョブ、11 §4、05 公開Web調査 | X33、X18            |
-| memory_save      | LocalCommand（明記）                   | 本人の明示依頼。記録しない会話では不可 | 不可     | 未定義                        | 10 §5、11 §7、D04、D05、D14             | X44、X59、QA41      |
-| memory_forget    | 未明記                                 | 画面承認の要件なし（一覧・会話で可）   | 未明記   | 未定義                        | D04、03 忘却と再取り込み、08 §6         | X15、X16            |
-| memory_correct   | 未明記                                 | 画面承認の要件なし（一覧・会話で可）   | 未明記   | 未定義                        | D04、11 §7、J15                         | X44                 |
-| dev_status       | Read（未明記）                         | なし                                   | —        | 未定義                        | 10 §5                                   | —                   |
-| handoff_screen   | 未明記（表示権の移動）                 | 操作承認ではない                       | —        | 未定義                        | 07 §2・§5、10 §8、D06                   | X45、T01            |
-| smalltalk        | 状態変更なし                           | なし                                   | —        | 吹き出し                      | 10 §5・§6A                              | X49                 |
-| general_question | 状態変更なし                           | なし                                   | —        | 吹き出し                      | 10 §5・§6A                              | X49                 |
-| consult          | 状態変更なし（高度は裏の job）         | なし                                   | —        | 未定義                        | 10 §5、05 冒頭の追補                    | X66                 |
-| unclear          | 状態変更なし（聞き返し）               | なし                                   | —        | 入力欄の上の質問              | 10 §5・§6A、修正案 P01                  | QA02、X27           |
+| intent           | 経路                                   | 承認                                           | 方式 C   | 結果表示（10 §6A）            | 主な根拠                                | 試験                |
+| ---------------- | -------------------------------------- | ---------------------------------------------- | -------- | ----------------------------- | --------------------------------------- | ------------------- |
+| query_schedule   | Read（明記）                           | なし                                           | —        | 予定カード                    | 修正案 H02、10 §6A、X49                 | X49、QA27、QA33     |
+| query_mail       | Read（明記: 許可されたメール参照）     | なし                                           | —        | 未定義                        | 修正案 H02                              | QA27                |
+| query_tasks      | Read（未明記）                         | なし                                           | —        | 用事の行                      | 10 §6A                                  | QA27                |
+| query_memory     | Read（未明記）                         | なし                                           | —        | 未定義                        | 03 忘却と再取り込み（RAM 内検索）       | X15                 |
+| create_task      | LocalCommand（明記）                   | 自動                                           | 可       | 完了の 1 行と取り消し         | 08 §9、11 §5、修正案 H02、X59           | X21、X59、QA38、X61 |
+| create_note      | LocalCommand（明記）                   | 自動                                           | 可       | 完了の 1 行と取り消し         | 08 §9、修正案 H02                       | X21                 |
+| label_mail       | RemoteMutation（明記）                 | 自動（Outlook は質問 133 で保留）              | 可       | 完了の 1 行と取り消し         | 08 §2 H01・§9、11 §5・§5A、09 §1、J10   | X01〜X11、X21       |
+| draft_reply      | RemoteMutation（明記）                 | 自動（下書き保存まで）                         | 可       | 完了の 1 行と取り消し         | 08 §4・§9、11 §5・§6                    | X10、X40、X41、QA25 |
+| create_event     | RemoteMutation（明記）                 | 自分だけの予定は自動、他は画面                 | 条件付き | 完了の 1 行と取り消し         | 08 §9、11 §5・§5A、D05、J11             | X21、X27、QA22      |
+| update_event     | RemoteMutation（明記）                 | 画面                                           | 不可     | 変更確認画面を開く            | 10 §5、11 §5A、01 流れ A                | X27、X64            |
+| send_mail        | RemoteMutation（明記）                 | 画面                                           | 不可     | 変更確認画面を開く            | 10 §5、11 §6 D15、08 §4                 | X10、QA25、T03      |
+| trash_mail       | RemoteMutation（未明記）               | 画面                                           | 不可     | 変更確認画面を開く            | 10 §5、D05、J07（ごみ箱への移動まで）   | T03                 |
+| undo_action      | 未明記（取り消し一覧を開く）           | 取り消し自体は画面操作                         | —        | 未定義                        | 10 §5、D14、07 §2 undo、J12             | X24、X40、X65       |
+| update_task      | LocalCommand（明記: 承認後の用事更新） | 画面                                           | 不可     | 変更確認画面を開く            | 08 §9、10 §5、修正案 H02                | X61、X64            |
+| research         | Read（未明記。裏の job）               | なし（費用予約あり）                           | —        | 完了は気づき（research_done） | 10 §5、11 §4、05 公開Web調査、01 流れ D | X33、X18            |
+| memory_save      | LocalCommand（明記）                   | 本人の明示依頼。記録しない会話では不可         | 不可     | 未定義                        | 10 §5、11 §7、D04、D05、D14             | X44、X59、QA41      |
+| memory_forget    | 未明記                                 | 画面承認の要件なし。明確な対象は二重確認しない | 未明記   | 未定義                        | D04、01 流れ E、03 忘却と再取り込み     | X15、X16            |
+| memory_correct   | 未明記                                 | 画面承認の要件なし（一覧・会話で可）           | 未明記   | 未定義                        | D04、11 §7、J15                         | X44                 |
+| dev_status       | Read（未明記）                         | なし                                           | —        | 未定義                        | 10 §5                                   | —                   |
+| handoff_screen   | 未明記（表示権の移動）                 | 操作承認ではない                               | —        | 未定義                        | 07 §2・§5、10 §8、D06、01 流れ C        | X45、T01            |
+| smalltalk        | 状態変更なし                           | なし                                           | —        | 吹き出し                      | 10 §5・§6A                              | X49                 |
+| general_question | 状態変更なし                           | なし                                           | —        | 吹き出し                      | 10 §5・§6A                              | X49                 |
+| consult          | 状態変更なし（高度は裏の job）         | なし                                           | —        | 未定義                        | 10 §5、05 冒頭の追補                    | X66                 |
+| unclear          | 状態変更なし（聞き返し）               | なし                                           | —        | 入力欄の上の質問              | 10 §5・§6A、修正案 P01                  | QA02、X27           |
 
 会話の操作（「ちょっと待って」「記録しないで」等）は意図ではなく SessionControlPhrases で扱います（10 §5、X58）。通信失敗・timeout・拒否・schema 不正は `unclear` に混ぜず ModelOutcome で区別します（10 §6A D15、QA02）。
 
@@ -253,20 +257,21 @@ QA41〜QA45 は代表入力・拒否入力・期待遷移を B00 で fixture 化
 
 設計の意味・既存の判断が変わり得るものです。結論が出たら、この表に結論と反映先を追記します。
 
-| ID  | 対象                                 | 根拠                                                                                                                                                                                                                               | 選択肢                                                                                                                                              | 影響                                                                      | 判断先        |
-| --- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------- |
-| U01 | FieldEvidence の名前と位置の単位     | 現在の S:FieldEvidence は入力引数の根拠で UTF-16（ADR 0002）。03 データ表・11 §3 の FieldEvidence は抽出の根拠で status / refs、コードポイント・end 排他（QA11）                                                                   | (a) 入力側を別名にし、抽出側を原本の名前で定義 (b) 両方をコードポイントに統一（ADR 0002 の変更） (c) 一つの判別共用体                               | 生成型の名前、fixture、位置照合の実装、QA11                               | #9、#13       |
-| U02 | InputSnapshot の項目                 | 03 データ表は origin（typed / local_asr / live_fragment）・permission_revision・forgetting_generation を含む。07 §1 と現在の schema にはない                                                                                       | (a) InputSnapshot に追加 (b) WorkContext 側に置き、InputSnapshot は 07 §1 の範囲に留める                                                            | 最終検査で入力時点の許可・忘却を照合する方法                              | #13           |
-| U03 | 音声の世代の型                       | 10 §1A は「世代を進め」「現在の世代にだけ作用」と順序を前提にする。現在の AudioRange.audio_epoch は Id（UUID）。07 §1 は ID を UUID、版を 10 進文字列とする                                                                        | (a) Revision（順序比較で遅着を拒否） (b) Id（等値比較のみ。現在値は Core が保持）                                                                   | 遅着 ACK・旧音声の拒否方法、AudioControl・Lease・LiveControlState         | #19、#9       |
-| U04 | 2 つの request_revision              | 07 §1 は本人の依頼の版と抽出した依頼の版を「型を分けて混同しない」とする。08 §1 と修正案 §17.3 は両方を request_revision と呼ぶ                                                                                                    | (a) フィールド名は同じで $defs を分け、同じ object に並べない (b) 抽出側の名前を変える（設計の語彙変更）                                            | notification_candidates・WorkContext・RequestEntity の項目名              | #9            |
-| U05 | ExtractionResult v2 の schema 名     | 06・09 §6・11 §11 は buddy.extraction.v1 を挙げ、v2 は名前の定めがない                                                                                                                                                             | (a) buddy.extraction.v2 (b) 版を schema 名に入れず互換性規則で管理                                                                                  | 互換性規則、保存済み抽出結果の再利用条件（11 §5B）                        | #21、#9       |
-| U06 | 意図の経路・承認・結果表示の未明記分 | 修正案 H02 の例示と 10 §5・§6A の対応表に含まれない意図がある（上の台帳の「未明記」「未定義」）。D04 は記憶を「一覧・会話で訂正・忘却できる」とするが、経路と方式 C の入力で進めてよいかは記述がない                               | 意図ごとに経路・方式 C の可否・結果表示を設計判断として決め、D04・D05・D14・J12 と矛盾しないことを確認する                                          | 実行経路の登録表、ResultView、記憶の保存・忘却の権限                      | #13、#19、#22 |
-| U07 | 24 意図の固定フィールド群と固有引数  | 10 §6A D15 は intent と固定フィールド群（全項目必須・null 可・additionalProperties=false）を定める。固有引数は H01 のラベル変更と、11 §5・§6 の一部（用事・予定・下書き・送信の項目）以外は定義がない。confidence の型も定義がない | 意図ごとの引数を本文から拾える範囲で定義し、不足は設計判断として記録する。confidence を数値にするか段階にするかを決め、認可に使わないことを固定する | WireResponse、provider の schema 制限（修正案 P02）、評価セットの正解形式 | #13           |
-| U08 | フィールド名の表記                   | 07 §1 の sealReason は camelCase。他の契約と現在の schema は snake_case。修正案 v1.2 の概念コードは camelCase                                                                                                                      | (a) 原本どおり sealReason を残す (b) seal_reason に統一し、原本との対応を記録する                                                                   | 生成型、fixture、原本照合の手間                                           | #9            |
-| U09 | 比較 campaign の上限の表現           | 05 F02 は比較 campaign の上限にも M 検査を適用するとする。現在の budget_scope に campaign を表す値がない                                                                                                                           | (a) budget_scope に追加 (b) campaign_id を予約に追加し、background の内数として検査                                                                 | QA20・QA42 の受付検査、影モードの停止条件                                 | #20           |
+| ID  | 対象                                 | 根拠                                                                                                                                                                                                                                          | 選択肢                                                                                                                                              | 影響                                                                                                   | 判断先        |
+| --- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------- |
+| U01 | FieldEvidence の名前と位置の単位     | 現在の S:FieldEvidence は入力引数の根拠で UTF-16（ADR 0002）。03 データ表・11 §3 の FieldEvidence は抽出の根拠で status / refs、コードポイント・end 排他（QA11）                                                                              | (a) 入力側を別名にし、抽出側を原本の名前で定義 (b) 両方をコードポイントに統一（ADR 0002 の変更） (c) 一つの判別共用体                               | 生成型の名前、fixture、位置照合の実装、QA11                                                            | #9、#13       |
+| U02 | InputSnapshot の項目                 | 03 データ表は origin（typed / local_asr / live_fragment）・permission_revision・forgetting_generation を含む。07 §1 と現在の schema にはない                                                                                                  | (a) InputSnapshot に追加 (b) WorkContext 側に置き、InputSnapshot は 07 §1 の範囲に留める                                                            | 最終検査で入力時点の許可・忘却を照合する方法                                                           | #13           |
+| U03 | 音声の世代の型                       | 10 §1A は「世代を進め」「現在の世代にだけ作用」と順序を前提にする。現在の AudioRange.audio_epoch は Id（UUID）。07 §1 は ID を UUID、版を 10 進文字列とする                                                                                   | (a) Revision（順序比較で遅着を拒否） (b) Id（等値比較のみ。現在値は Core が保持）                                                                   | 遅着 ACK・旧音声の拒否方法、AudioControl・Lease・LiveControlState                                      | #19、#9       |
+| U04 | 2 つの request_revision              | 07 §1 は本人の依頼の版と抽出した依頼の版を「型を分けて混同しない」とする。08 §1 と修正案 §17.3 は両方を request_revision と呼ぶ                                                                                                               | (a) フィールド名は同じで $defs を分け、同じ object に並べない (b) 抽出側の名前を変える（設計の語彙変更）                                            | notification_candidates・WorkContext・RequestEntity の項目名                                           | #9            |
+| U05 | ExtractionResult v2 の schema 名     | 06・09 §6・11 §11 は buddy.extraction.v1 を挙げ、v2 は名前の定めがない                                                                                                                                                                        | (a) buddy.extraction.v2 (b) 版を schema 名に入れず互換性規則で管理                                                                                  | 互換性規則、保存済み抽出結果の再利用条件（11 §5B）                                                     | #21、#9       |
+| U06 | 意図の経路・承認・結果表示の未明記分 | 修正案 H02 の例示と 10 §5・§6A の対応表に含まれない意図がある（上の台帳の「未明記」「未定義」）。D04 と 01 流れ E は記憶を一覧・会話で訂正・忘却でき、明確な対象には二重確認を足さないとするが、経路と方式 C の入力で進めてよいかは記述がない | 意図ごとに経路・方式 C の可否・結果表示を設計判断として決め、D04・D05・D14・J12 と矛盾しないことを確認する                                          | 実行経路の登録表、ResultView、記憶の保存・忘却の権限                                                   | #13、#19、#22 |
+| U07 | 24 意図の固定フィールド群と固有引数  | 10 §6A D15 は intent と固定フィールド群（全項目必須・null 可・additionalProperties=false）を定める。固有引数は H01 のラベル変更と、11 §5・§6 の一部（用事・予定・下書き・送信の項目）以外は定義がない。confidence の型も定義がない            | 意図ごとの引数を本文から拾える範囲で定義し、不足は設計判断として記録する。confidence を数値にするか段階にするかを決め、認可に使わないことを固定する | WireResponse、provider の schema 制限（修正案 P02）、評価セットの正解形式                              | #13           |
+| U08 | フィールド名の表記                   | 07 §1 の sealReason は camelCase。他の契約と現在の schema は snake_case。修正案 v1.2 の概念コードは camelCase                                                                                                                                 | (a) 原本どおり sealReason を残す (b) seal_reason に統一し、原本との対応を記録する                                                                   | 生成型、fixture、原本照合の手間                                                                        | #9            |
+| U09 | 比較 campaign の上限の表現           | 05 F02 は比較 campaign の上限にも M 検査を適用するとする。現在の budget_scope に campaign を表す値がない                                                                                                                                      | (a) budget_scope に追加 (b) campaign_id を予約に追加し、background の内数として検査                                                                 | QA20・QA42 の受付検査、影モードの停止条件                                                              | #20           |
+| U10 | 端末登録と接続設定の HTTP 経路       | 02 端末登録と接続（ワンタイムコード・端末トークン・証明書の固定・失効）、01 接続・端末の画面、04 接続・権限と取得対象の選択、06 B03 の拒否試験。07 §2 の API 表にこれらの経路がない                                                           | (a) B00-08 で経路を設計判断として追加し、根拠と影響を記録する (b) 07 を改版してから追加する                                                         | B03 の契約試験（無登録端末・失効トークン・不一致証明書の拒否）と取得範囲の検査を契約に結び付けられない | #25           |
 
 これまでの未解決事項（認可・最終ガードの未実装、外部クレジットの取得方法・価格・通貨換算・課金上限の未検証、全 API・保存制約・試験全件の未対応）は継続します。取得方法を推測で契約にしません。
 
 ## 照合しなかった原本
 
-設計 01・02・04、構想ページ、技術検証ページ、質問データベース、評価セットの本文は今回取得していません。台帳ではこれらを、照合した本文からの参照として記録しただけです。該当する契約の作業では、事前に本文を確認します。
+構想ページ、技術検証ページ、質問データベース、評価セットの本文は今回取得していません。いずれも契約の根拠ではなく、要件の経緯・実測結果・回答原本・評価データの置き場所です。評価セットの書き出し形式（tests/eval）を作る B00-07 では、評価セットの項目を事前に確認します。

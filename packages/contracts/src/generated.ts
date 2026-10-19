@@ -23,7 +23,22 @@ export type BuddyContract =
   | ApiError
   | BudgetReservation
   | CreditObservation
-  | ModelEvaluationPlan;
+  | ModelEvaluationPlan
+  | InteractionMode
+  | ConversationContext
+  | DelegationIntent
+  | DelegationResult
+  | PendingClarification
+  | ResultView
+  | AudioControl
+  | Lease
+  | LiveSessionRequest
+  | LiveSessionAnswer
+  | LiveSessionClose
+  | LiveControlState
+  | DeviceIOState
+  | VoiceEvent
+  | SessionControlPhrases;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -266,6 +281,109 @@ export type YearMonth = string;
  * 通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。
  */
 export type Amount = string;
+/**
+ * 入力と出力の組み合わせ（設計 10 §6A、D14）。④文字→音声は作らない。
+ */
+export type InteractionMode =
+  | {
+      input_kind: 'voice_live';
+      output_mode: 'voice';
+    }
+  | {
+      input_kind: 'text';
+      output_mode: 'text';
+    }
+  | {
+      input_kind: 'voice_local';
+      output_mode: 'text';
+    };
+/**
+ * 発言の入力の種類（設計 10 §4）。voice_live は GPT-Live-1 の文字起こし、voice_local は端末内の音声認識（③）、text は文字入力。
+ */
+export type InputKind = 'voice_live' | 'voice_local' | 'text';
+/**
+ * サイドバンド制御経路の世代（設計 10 §2A）。
+ */
+export type ControlEpoch = string;
+/**
+ * 結果の種類と画面部品（設計 10 §6A、ADR 0005）。
+ */
+export type ResultViewKind =
+  | 'schedule_cards'
+  | 'task_rows'
+  | 'insight_rows'
+  | 'mail_rows'
+  | 'memory_rows'
+  | 'completion_line'
+  | 'approval_link'
+  | 'clarification'
+  | 'speech_bubble'
+  | 'accepted_line'
+  | 'status_line'
+  | 'undo_list_link';
+/**
+ * 定型文の版。定型文はコードの部品として版管理する（設計 10 §5、§6A）。
+ */
+export type TemplateVersion = string;
+/**
+ * 停止命令（設計 10 §1A F03、02 停止）。現在の世代にだけ作用し、古い世代の開始・再生・ASR 結果・遅着 ACK では解除しない。理由ごとの再開条件は domain の表（ADR 0005）。会話の終了と処理の取消は別の命令。
+ */
+export type AudioControl =
+  | {
+      action: 'stop_playback';
+      reason: 'user_stop' | 'barge_in';
+      device_id: Id;
+      scope: null;
+      io_epoch: IoEpoch;
+      audio_epoch: AudioEpoch | null;
+      output_epoch: OutputEpoch;
+      issued_by: 'device' | 'core';
+      issued_at: UtcTime;
+    }
+  | {
+      action: 'close_voice_session';
+      reason:
+        | 'silence'
+        | 'output_mode_text'
+        | 'budget_reached'
+        | 'private_conversation'
+        | 'conversation_ended'
+        | 'device_move'
+        | 'provider_failure'
+        | 'sideband_lost';
+      device_id: Id;
+      scope: null;
+      io_epoch: IoEpoch;
+      audio_epoch: AudioEpoch;
+      output_epoch: OutputEpoch;
+      issued_by: 'device' | 'core';
+      issued_at: UtcTime;
+    }
+  | {
+      action: 'suspend_io';
+      reason:
+        | 'device_io_stop'
+        | 'os_lock'
+        | 'guest_mode'
+        | 'global_stop'
+        | 'device_revoked'
+        | 'core_lease_lost';
+      device_id: Id;
+      scope: 'local' | 'guest' | 'global';
+      io_epoch: IoEpoch;
+      audio_epoch: AudioEpoch | null;
+      output_epoch: OutputEpoch;
+      issued_by: 'device' | 'core';
+      issued_at: UtcTime;
+    };
+/**
+ * 端末入出力の世代。進めた後は古い世代の要求・結果を拒否する（設計 10 §1A）。
+ */
+export type IoEpoch = string;
+/**
+ * 再生出力の世代。読み上げ停止で進める（設計 10 §1A）。
+ */
+export type OutputEpoch = string;
 
 export interface AudioRange {
   audio_epoch: AudioEpoch;
@@ -574,4 +692,808 @@ export interface ModelCandidate {
   status: 'candidate';
   requires_explicit_request: boolean;
   activation: 'requires_evaluation';
+}
+/**
+ * GPT-Live-1 の接続作成時に渡す会話文脈（設計 10 §4）。メール本文・予定の詳細・記憶の全文、個人のメールアドレスを入れない。記録しない会話では RAM だけに置く。
+ */
+export interface ConversationContext {
+  schema: 'buddy.context.v1';
+  session_id: Id;
+  store_generation: StoreGeneration;
+  summary: string | null;
+  /**
+   * @maxItems 6
+   *
+   * Items: 直近の発言。本人の発言は入力の種類を持ち、Buddy の発言は null。
+   */
+  recent_turns:
+    | []
+    | [
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+      ]
+    | [
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+      ]
+    | [
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+      ]
+    | [
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+      ]
+    | [
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+      ]
+    | [
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+        {
+          role: 'user' | 'buddy';
+          text: string;
+          at: UtcTime;
+          input_kind: InputKind | null;
+        },
+      ];
+  /**
+   * @maxItems 10
+   *
+   * Items: 承認待ち・結果不明・新しい気づきの順に並べる。
+   */
+  active_items:
+    | []
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ]
+    | [
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+        {
+          kind: 'candidate' | 'operation';
+          id: Id;
+          title: string;
+          state: string;
+        },
+      ];
+  directives_temporary: string[];
+  directives_persistent: string[];
+  /**
+   * 会話中の端末。
+   */
+  device: {
+    name: string;
+    screen_available: boolean;
+  };
+  /**
+   * 予算の目安。実際の予約・受付は Core が別に検査する。
+   */
+  budget_hint: {
+    conversation_minutes_left: number | null;
+    llm_state: 'normal' | 'saving' | 'stopped';
+  };
+}
+/**
+ * Live からの委譲の受付（設計 10 §5）。依頼の文字は含まない。対象の発話・文字起こしの版は Core が 5A 節の手順で確定する。delegation_id は provider の不透明な ID。
+ */
+export interface DelegationIntent {
+  delegation_id: string;
+  live_session_id: Id;
+  session_id: Id;
+  audio_epoch: AudioEpoch;
+  control_epoch: ControlEpoch;
+  offset_ms: number | null;
+  received_at: UtcTime;
+}
+/**
+ * 音声で返す委譲の結果（設計 10 §5・§6A、ADR 0005）。読み上げ文はコードの定型文だけから作る。1 回の追記は 400 トークン以内、最大 3 回で、超える分は画面に出す。出力先は音声に固定され、文字の依頼の結果には使わない。
+ */
+export interface DelegationResult {
+  delegation_id: string;
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  live_session_id: Id;
+  audio_epoch: AudioEpoch;
+  output: OutputTarget;
+  facts: ResultFact[];
+  more_count: number;
+  template_id: string;
+  template_version: TemplateVersion;
+  /**
+   * @minItems 1
+   * @maxItems 3
+   */
+  commentary_parts: [string] | [string, string] | [string, string, string];
+}
+/**
+ * 構造化した事実の 1 項目。モデルが作った自由文を入れない。
+ */
+export interface ResultFact {
+  kind: ResultViewKind;
+  ref_id: Id | null;
+  title: string | null;
+  start: DateOrDateTime | null;
+  end: DateOrDateTime | null;
+  due: DateOrDateTime | null;
+  count: number | null;
+}
+/**
+ * 聞き返しの保留（設計 10 §5A-5）。回答は対象が一意な場合だけ元の依頼へ補完する。期限切れ・複数対象・話題転換では自動補完しない。記録しない会話では ram_only。
+ */
+export interface PendingClarification {
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  session_id: Id;
+  intent: IntentName;
+  /**
+   * @minItems 1
+   */
+  missing_fields: [
+    (
+      | 'target_candidate_id'
+      | 'start'
+      | 'end'
+      | 'due'
+      | 'title'
+      | 'body'
+      | 'subject'
+      | 'add_labels'
+      | 'remove_labels'
+      | 'task_change'
+      | 'memory_kind'
+      | 'query'
+      | 'device_name'
+    ),
+    ...(
+      | 'target_candidate_id'
+      | 'start'
+      | 'end'
+      | 'due'
+      | 'title'
+      | 'body'
+      | 'subject'
+      | 'add_labels'
+      | 'remove_labels'
+      | 'task_change'
+      | 'memory_kind'
+      | 'query'
+      | 'device_name'
+    )[],
+  ];
+  original_args: IntentArgs;
+  question: string;
+  created_at: UtcTime;
+  expires_at: UtcTime;
+  persistence: 'session' | 'ram_only';
+}
+/**
+ * 文字で返すときの結果表示。本文を複製しない。
+ */
+export interface ResultView {
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  intent: IntentName;
+  kind: ResultViewKind;
+  /**
+   * 利用者に見せる状態（設計 01 いつも見える状態 D15）。内部の理由コードや API 名は見せない。
+   */
+  status:
+    | 'ready'
+    | 'needs_review'
+    | 'confirming_input'
+    | 'budget_held'
+    | 'preparing'
+    | 'reconciling'
+    | 'unknown_result'
+    | 'partial_success';
+  /**
+   * Items: 表示する対象の参照。本文は開いたときに許可範囲内で取得する。
+   */
+  item_refs: {
+    kind: string;
+    id: Id;
+  }[];
+  more_count: number;
+  template_id: string | null;
+  template_version: TemplateVersion | null;
+}
+/**
+ * 音声・機密表示のリース（設計 07 §5、10 §2A）。端末は要求送信時の単調時計から期限を計算し、遅れた応答の受信時刻から足し直さない。heartbeat 2 秒・期限 6 秒は設計初期値。
+ */
+export interface Lease {
+  lease_id: Id;
+  kind: 'audio' | 'display';
+  device_id: Id;
+  core_instance_id: Id;
+  command_scope_id: Id;
+  io_epoch: IoEpoch;
+  nonce: string;
+  heartbeat_ms: number;
+  ttl_ms: number;
+}
+/**
+ * 端末の SDP offer で Live の接続を求める（設計 07 §2、10 §2）。音声所有権のある端末だけが呼べる。予算不足は 422、記録しない会話中は 409。
+ */
+export interface LiveSessionRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  session_id: Id;
+  purpose: 'conversation' | 'notification';
+  sdp_offer: string;
+}
+/**
+ * 中枢が返す SDP answer。端末はサイドバンド接続済みのイベントを受けるまで送信トラックを無効にする（設計 10 §2）。OpenAI の資格情報は含めない。
+ */
+export interface LiveSessionAnswer {
+  live_session_id: Id;
+  purpose: 'conversation' | 'notification';
+  sdp_answer: string;
+  audio_epoch: AudioEpoch;
+  control_epoch: ControlEpoch;
+  session_epoch: SessionEpoch;
+}
+/**
+ * 端末からの Live 終了の通知（設計 07 §2）。使用秒数が確認できるまで予約を精算済みにしない。
+ */
+export interface LiveSessionClose {
+  request_id: Id;
+  command_scope_id: Id;
+  reason:
+    | 'silence'
+    | 'output_mode_text'
+    | 'budget_reached'
+    | 'private_conversation'
+    | 'conversation_ended'
+    | 'device_move'
+    | 'provider_failure'
+    | 'sideband_lost'
+    | 'device_io_stop'
+    | 'os_lock'
+    | 'guest_mode'
+    | 'global_stop'
+    | 'device_revoked'
+    | 'core_lease_lost';
+  audio_epoch: AudioEpoch;
+}
+/**
+ * Live のサイドバンド制御の状態（設計 10 §2A）。lost では新規委譲・読み上げ・送出前の変更を止める。終了や使用量が確認できなければ予約を保持する。
+ */
+export interface LiveControlState {
+  live_session_id: Id;
+  control_state: 'connecting' | 'ready' | 'lost' | 'closing' | 'closed';
+  control_epoch: ControlEpoch;
+  closure: 'open' | 'close_requested' | 'close_confirmed' | 'close_unconfirmed';
+  usage_seconds: number | null;
+  reservation_state: 'reserved' | 'held' | 'settled';
+}
+/**
+ * 端末の入出力状態（設計 07 §2・§5、01 いつも見える状態）。ロック状態が取得できなければ解除済みと扱わない。
+ */
+export interface DeviceIOState {
+  device_id: Id;
+  io_epoch: IoEpoch;
+  output_epoch: OutputEpoch;
+  lock_state: 'unlocked' | 'locked' | 'unknown';
+  stop_scope: 'none' | 'local' | 'guest' | 'global';
+  input_permitted: boolean;
+  voice_state:
+    | 'waiting_wake_word'
+    | 'conversation_live'
+    | 'reading_aloud'
+    | 'device_stopped'
+    | 'global_stopped'
+    | 'budget_voice_stopped'
+    | 'private_voice_off'
+    | 'listening_text_reply';
+  output_mode: 'voice' | 'text';
+  private_conversation: boolean;
+  audio_lease_valid: boolean;
+}
+/**
+ * 音声の制御イベント（設計 10 §2・§3・§7）。本文・文字起こし・認証情報を含めない。読み上げ要求は候補 ID だけを最大 5 件。
+ */
+export interface VoiceEvent {
+  schema: 'buddy.voice-event.v1';
+  event_id: Id;
+  event_type:
+    | 'sideband_connected'
+    | 'delegation_processing'
+    | 'delegation_backgrounded'
+    | 'read_aloud_requested'
+    | 'audio_control';
+  device_id: Id;
+  session_id: Id | null;
+  live_session_id: Id | null;
+  audio_epoch: AudioEpoch | null;
+  control_epoch: ControlEpoch | null;
+  /**
+   * @maxItems 5
+   */
+  candidate_ids:
+    | []
+    | [Id]
+    | [Id, Id]
+    | [Id, Id, Id]
+    | [Id, Id, Id, Id]
+    | [Id, Id, Id, Id, Id];
+  audio_control: AudioControl | null;
+  occurred_at: UtcTime;
+}
+/**
+ * 会話そのものの操作の照合表（設計 10 §5 v0.6、質問 126）。意図判定（LLM）に入れず、画面のボタンと同じ処理をする。版を管理する。
+ */
+export interface SessionControlPhrases {
+  version: TemplateVersion;
+  /**
+   * @minItems 1
+   *
+   * Items: 短い発話の全体がこの言い回しに一致したときだけ使う。
+   */
+  phrases: [
+    {
+      phrase: string;
+      action:
+        | 'extend_silence'
+        | 'stop_playback'
+        | 'end_conversation'
+        | 'start_private_conversation'
+        | 'reply_in_text';
+    },
+    ...{
+      phrase: string;
+      action:
+        | 'extend_silence'
+        | 'stop_playback'
+        | 'end_conversation'
+        | 'start_private_conversation'
+        | 'reply_in_text';
+    }[],
+  ];
 }

@@ -1,0 +1,144 @@
+{
+  "status": "specification_only",
+  "description": "遅れて届いた結果・音声・ACK の受け入れの期待値（設計 07 §5 D15、10 §1A・§2A、X13・X29・X49、QA34・QA43）。手で書いたもので、domain の実装から生成していない。音声で返せない結果は画面（一覧）に回し、それ以外の遅着は破棄する。",
+  "current": {
+    "deviceId": "00000000-0000-4000-8000-000000000050",
+    "ioEpoch": "4",
+    "audioEpoch": "7",
+    "outputEpoch": "12",
+    "sessionEpoch": "3",
+    "ioSuspended": false,
+    "audioLeaseValid": true
+  },
+  "cases": [
+    {
+      "id": "voice-result-current",
+      "delivery": {
+        "kind": "voice_output",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "mode": "voice",
+        "audioEpoch": "7",
+        "outputEpoch": "12",
+        "sessionEpoch": "3"
+      },
+      "expected": { "decision": "accept" }
+    },
+    {
+      "id": "voice-result-old-output-epoch",
+      "refs": ["10 §1A 読み上げ停止", "QA43"],
+      "delivery": {
+        "kind": "voice_output",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "mode": "voice",
+        "audioEpoch": "7",
+        "outputEpoch": "11",
+        "sessionEpoch": "3"
+      },
+      "expected": { "decision": "screen_only", "reason": "stale_epoch" }
+    },
+    {
+      "id": "voice-result-old-session",
+      "refs": ["07 §5 D15", "X29"],
+      "delivery": {
+        "kind": "voice_output",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "mode": "voice",
+        "audioEpoch": "7",
+        "outputEpoch": "12",
+        "sessionEpoch": "2"
+      },
+      "expected": { "decision": "screen_only", "reason": "stale_epoch" }
+    },
+    {
+      "id": "voice-result-old-device",
+      "refs": ["07 §5 D15", "QA34"],
+      "delivery": {
+        "kind": "voice_output",
+        "deviceId": "00000000-0000-4000-8000-000000000051",
+        "mode": "voice",
+        "audioEpoch": "7",
+        "outputEpoch": "12",
+        "sessionEpoch": "3"
+      },
+      "expected": { "decision": "screen_only", "reason": "other_device" }
+    },
+    {
+      "id": "text-request-result-to-open-voice-session",
+      "refs": ["D14", "10 §6", "X49"],
+      "delivery": {
+        "kind": "voice_output",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "mode": "text",
+        "audioEpoch": "7",
+        "outputEpoch": "12",
+        "sessionEpoch": "3"
+      },
+      "expected": { "decision": "screen_only", "reason": "text_request" }
+    },
+    {
+      "id": "late-asr-after-reconnect",
+      "refs": ["10 §5A", "QA06"],
+      "delivery": {
+        "kind": "asr_result",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "audioEpoch": "6"
+      },
+      "expected": { "decision": "discard", "reason": "stale_epoch" }
+    },
+    {
+      "id": "late-stop-ack-cannot-resume",
+      "refs": ["10 §1A", "X30"],
+      "delivery": {
+        "kind": "stop_ack",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "ioEpoch": "3"
+      },
+      "expected": { "decision": "discard", "reason": "stale_epoch" }
+    },
+    {
+      "id": "old-device-live-start",
+      "refs": ["X13", "10 §8"],
+      "delivery": {
+        "kind": "live_start",
+        "deviceId": "00000000-0000-4000-8000-000000000051",
+        "ioEpoch": "4"
+      },
+      "expected": { "decision": "discard", "reason": "other_device" }
+    },
+    {
+      "id": "epoch-ahead-of-core",
+      "refs": ["ADR 0005 世代の担当"],
+      "delivery": {
+        "kind": "asr_result",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "audioEpoch": "8"
+      },
+      "expected": { "decision": "discard", "reason": "unknown_epoch" }
+    }
+  ],
+  "suspended_cases": [
+    {
+      "id": "voice-result-while-suspended",
+      "refs": ["X13", "X29"],
+      "delivery": {
+        "kind": "voice_output",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "mode": "voice",
+        "audioEpoch": "7",
+        "outputEpoch": "12",
+        "sessionEpoch": "3"
+      },
+      "expected": { "decision": "screen_only", "reason": "voice_unavailable" }
+    },
+    {
+      "id": "live-start-while-suspended",
+      "refs": ["X31", "10 §1A"],
+      "delivery": {
+        "kind": "live_start",
+        "deviceId": "00000000-0000-4000-8000-000000000050",
+        "ioEpoch": "4"
+      },
+      "expected": { "decision": "discard", "reason": "io_suspended" }
+    }
+  ]
+}

@@ -5,7 +5,7 @@
 ## 入力から結果まで
 
 1. Core が入力の由来・範囲・最新版を確認し InputSnapshot を固定する。端末や LLM が付けた sealed を信用しない。
-2. LabelMailWireResponse は提案。candidate ID の存在・権限、ラベルの存在・可逆性、引用・入力版、relation と対象 workflow を検査する。不足は聞き返し、失敗・timeout・拒否を unclear に混ぜない。
+2. WireResponse（旧 LabelMailWireResponse。ADR 0004）は提案。candidate ID の存在・権限、ラベルの存在・可逆性、引用・入力版、relation と対象 workflow を検査する。不足は聞き返し、失敗・timeout・拒否を unclear に混ぜない。
 3. Interpretation の作成と ActionReadiness の計算は別。方式 C の暫定入力では許可済みの自動操作だけを候補にできる。その他条件で画面承認が必要なら全文確定／再入力へ戻す。記憶保存へ流用しない。
 4. 確定 intent を JCS 化して hash を計算し、画面の preview に結び付ける。ラベル変更でも根拠不足なら保留。認可なしで画面承認待ちへ進めて解決したことにしない。
 5. 承認は operation_id / content_version / content_hash と scope / preview / 表示権等を照合して記録する。内容版と状態版を区別する。同じ内容への重複承認で実行系列を増やさない。

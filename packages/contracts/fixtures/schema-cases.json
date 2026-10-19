@@ -9,6 +9,7 @@
       "session_id": "00000000-0000-4000-8000-000000000011",
       "workflow_id": "00000000-0000-4000-8000-000000000012",
       "turn_id": "00000000-0000-4000-8000-000000000013",
+      "origin": "typed",
       "request_revision": "1",
       "transcript_revision": null,
       "text": "このメールにfollow-upラベルを付けて",
@@ -17,18 +18,32 @@
       "seal_reason": "submitted_text",
       "input_evidence": "submitted_text",
       "audio": null,
-      "policy_version": null
+      "policy_version": null,
+      "permission_revision": "1",
+      "forgetting_generation": "1"
     }
   },
   {
     "id": "wire-label",
-    "schema": "LabelMailWireResponse",
+    "schema": "WireResponse",
     "valid": true,
     "value": {
       "intent": "label_mail",
-      "target_candidate_id": "00000000-0000-4000-8000-000000000020",
-      "add_labels": ["follow-up"],
-      "remove_labels": [],
+      "args": {
+        "target_candidate_id": "00000000-0000-4000-8000-000000000020",
+        "start": null,
+        "end": null,
+        "due": null,
+        "title": null,
+        "body": null,
+        "subject": null,
+        "add_labels": ["follow-up"],
+        "remove_labels": [],
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
       "relation": "new",
       "target_workflow_id": null,
       "reply_text": null,
@@ -195,13 +210,25 @@
   },
   {
     "id": "approval-in-model-output",
-    "schema": "LabelMailWireResponse",
+    "schema": "WireResponse",
     "valid": false,
     "value": {
       "intent": "label_mail",
-      "target_candidate_id": "00000000-0000-4000-8000-000000000020",
-      "add_labels": ["follow-up"],
-      "remove_labels": [],
+      "args": {
+        "target_candidate_id": "00000000-0000-4000-8000-000000000020",
+        "start": null,
+        "end": null,
+        "due": null,
+        "title": null,
+        "body": null,
+        "subject": null,
+        "add_labels": ["follow-up"],
+        "remove_labels": [],
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
       "relation": "new",
       "target_workflow_id": null,
       "reply_text": null,
@@ -212,13 +239,25 @@
   },
   {
     "id": "unknown-intent",
-    "schema": "LabelMailWireResponse",
+    "schema": "WireResponse",
     "valid": false,
     "value": {
       "intent": "run_tool",
-      "target_candidate_id": "00000000-0000-4000-8000-000000000020",
-      "add_labels": ["follow-up"],
-      "remove_labels": [],
+      "args": {
+        "target_candidate_id": "00000000-0000-4000-8000-000000000020",
+        "start": null,
+        "end": null,
+        "due": null,
+        "title": null,
+        "body": null,
+        "subject": null,
+        "add_labels": ["follow-up"],
+        "remove_labels": [],
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
       "relation": "new",
       "target_workflow_id": null,
       "reply_text": null,
@@ -236,6 +275,7 @@
       "session_id": "00000000-0000-4000-8000-000000000011",
       "workflow_id": "00000000-0000-4000-8000-000000000012",
       "turn_id": "00000000-0000-4000-8000-000000000013",
+      "origin": "typed",
       "request_revision": 1,
       "transcript_revision": null,
       "text": "このメールにfollow-upラベルを付けて",
@@ -244,7 +284,9 @@
       "seal_reason": "submitted_text",
       "input_evidence": "submitted_text",
       "audio": null,
-      "policy_version": null
+      "policy_version": null,
+      "permission_revision": "1",
+      "forgetting_generation": "1"
     }
   },
   {
@@ -257,6 +299,7 @@
       "session_id": "00000000-0000-4000-8000-000000000011",
       "workflow_id": "00000000-0000-4000-8000-000000000012",
       "turn_id": "00000000-0000-4000-8000-000000000013",
+      "origin": "typed",
       "request_revision": "01",
       "transcript_revision": null,
       "text": "このメールにfollow-upラベルを付けて",
@@ -265,7 +308,9 @@
       "seal_reason": "submitted_text",
       "input_evidence": "submitted_text",
       "audio": null,
-      "policy_version": null
+      "policy_version": null,
+      "permission_revision": "1",
+      "forgetting_generation": "1"
     }
   },
   {
@@ -278,6 +323,7 @@
       "session_id": "00000000-0000-4000-8000-000000000011",
       "workflow_id": "00000000-0000-4000-8000-000000000012",
       "turn_id": "00000000-0000-4000-8000-000000000013",
+      "origin": "typed",
       "request_revision": "1",
       "transcript_revision": null,
       "text": "このメールにfollow-upラベルを付けて",
@@ -286,7 +332,9 @@
       "seal_reason": "submitted_text",
       "input_evidence": "unverified",
       "audio": null,
-      "policy_version": null
+      "policy_version": null,
+      "permission_revision": "1",
+      "forgetting_generation": "1"
     }
   },
   {
@@ -299,6 +347,7 @@
       "session_id": "00000000-0000-4000-8000-000000000011",
       "workflow_id": "00000000-0000-4000-8000-000000000012",
       "turn_id": "00000000-0000-4000-8000-000000000013",
+      "origin": "live_fragment",
       "request_revision": "1",
       "transcript_revision": null,
       "text": "このメールにfollow-upラベルを付けて",
@@ -307,7 +356,9 @@
       "seal_reason": "live_transcript_policy",
       "input_evidence": "live_policy_observed",
       "audio": null,
-      "policy_version": null
+      "policy_version": null,
+      "permission_revision": "1",
+      "forgetting_generation": "1"
     }
   },
   {
@@ -352,10 +403,10 @@
   },
   {
     "id": "interpretation-label",
-    "schema": "LabelMailInterpretation",
+    "schema": "Interpretation",
     "valid": true,
     "value": {
-      "schema": "buddy.interpretation.label-mail.v1",
+      "schema": "buddy.interpretation.v1",
       "input_id": "00000000-0000-4000-8000-000000000010",
       "workflow_id": "00000000-0000-4000-8000-000000000012",
       "request_revision": "1",
@@ -364,8 +415,18 @@
       "target_workflow_id": null,
       "args": {
         "target_candidate_id": "00000000-0000-4000-8000-000000000020",
+        "start": null,
+        "end": null,
+        "due": null,
+        "title": null,
+        "body": null,
+        "subject": null,
         "add_labels": ["follow-up"],
-        "remove_labels": []
+        "remove_labels": [],
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
       },
       "evidence": [
         {
@@ -386,6 +447,7 @@
     "value": {
       "workflow_id": "00000000-0000-4000-8000-000000000012",
       "request_revision": "1",
+      "route": "remote_mutation",
       "state": "blocked",
       "reason_codes": ["input_unverified"],
       "policy_version": "1",
@@ -459,6 +521,7 @@
       "session_id": "00000000-0000-4000-8000-000000000011",
       "workflow_id": "00000000-0000-4000-8000-000000000012",
       "turn_id": "00000000-0000-4000-8000-000000000013",
+      "origin": "typed",
       "request_revision": "1",
       "transcript_revision": null,
       "text": "",
@@ -467,7 +530,9 @@
       "seal_reason": "submitted_text",
       "input_evidence": "submitted_text",
       "audio": null,
-      "policy_version": null
+      "policy_version": null,
+      "permission_revision": "1",
+      "forgetting_generation": "1"
     }
   },
   {
@@ -741,6 +806,273 @@
       "code": "teapot",
       "message": "x",
       "request_id": null
+    }
+  },
+  {
+    "id": "wire-create-event",
+    "schema": "WireResponse",
+    "valid": true,
+    "value": {
+      "intent": "create_event",
+      "args": {
+        "target_candidate_id": null,
+        "start": "2030-10-07T16:00",
+        "end": "2030-10-07T17:00",
+        "due": null,
+        "title": "面談",
+        "body": null,
+        "subject": null,
+        "add_labels": null,
+        "remove_labels": null,
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": null,
+      "clarify_question": null,
+      "confidence": 0.8
+    }
+  },
+  {
+    "id": "wire-task-date-only-due",
+    "schema": "WireResponse",
+    "valid": true,
+    "value": {
+      "intent": "create_task",
+      "args": {
+        "target_candidate_id": null,
+        "start": null,
+        "end": null,
+        "due": "2030-10-07",
+        "title": "参加可否を返信",
+        "body": null,
+        "subject": null,
+        "add_labels": null,
+        "remove_labels": null,
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": null,
+      "clarify_question": null,
+      "confidence": 0.8
+    }
+  },
+  {
+    "id": "wire-smalltalk-reply",
+    "schema": "WireResponse",
+    "valid": true,
+    "value": {
+      "intent": "smalltalk",
+      "args": {
+        "target_candidate_id": null,
+        "start": null,
+        "end": null,
+        "due": null,
+        "title": null,
+        "body": null,
+        "subject": null,
+        "add_labels": null,
+        "remove_labels": null,
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": "こんにちは",
+      "clarify_question": null,
+      "confidence": 0.8
+    }
+  },
+  {
+    "id": "wire-effect-kind",
+    "schema": "WireResponse",
+    "valid": false,
+    "value": {
+      "intent": "create_task",
+      "args": {
+        "target_candidate_id": null,
+        "start": null,
+        "end": null,
+        "due": null,
+        "title": "x",
+        "body": null,
+        "subject": null,
+        "add_labels": null,
+        "remove_labels": null,
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": null,
+      "clarify_question": null,
+      "confidence": 0.8,
+      "effect_kind": "read"
+    }
+  },
+  {
+    "id": "wire-datetime-with-zone",
+    "schema": "WireResponse",
+    "valid": false,
+    "value": {
+      "intent": "create_event",
+      "args": {
+        "target_candidate_id": null,
+        "start": "2030-10-07T16:00+09:00",
+        "end": null,
+        "due": null,
+        "title": "面談",
+        "body": null,
+        "subject": null,
+        "add_labels": null,
+        "remove_labels": null,
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": null,
+      "clarify_question": null,
+      "confidence": 0.8
+    }
+  },
+  {
+    "id": "wire-unknown-arg",
+    "schema": "WireResponse",
+    "valid": false,
+    "value": {
+      "intent": "create_task",
+      "args": {
+        "target_candidate_id": null,
+        "start": null,
+        "end": null,
+        "due": null,
+        "title": "x",
+        "body": null,
+        "subject": null,
+        "add_labels": null,
+        "remove_labels": null,
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null,
+        "recipients": ["someone@example.invalid"]
+      },
+      "relation": "new",
+      "target_workflow_id": null,
+      "reply_text": null,
+      "clarify_question": null,
+      "confidence": 0.8
+    }
+  },
+  {
+    "id": "input-live-with-typed-origin",
+    "schema": "InputSnapshot",
+    "valid": false,
+    "value": {
+      "schema": "buddy.input.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "turn_id": "00000000-0000-4000-8000-000000000013",
+      "origin": "typed",
+      "request_revision": "1",
+      "transcript_revision": null,
+      "text": "このメールにfollow-upラベルを付けて",
+      "captured_at": "2030-01-01T00:00:00Z",
+      "state": "sealed",
+      "seal_reason": "live_transcript_policy",
+      "input_evidence": "live_policy_observed",
+      "audio": {
+        "audio_epoch": "7",
+        "first_frame_seq": "1",
+        "last_frame_seq": "2",
+        "start_sample": "0",
+        "end_sample": "320"
+      },
+      "policy_version": "1",
+      "permission_revision": "1",
+      "forgetting_generation": "1"
+    }
+  },
+  {
+    "id": "input-missing-forgetting-generation",
+    "schema": "InputSnapshot",
+    "valid": false,
+    "value": {
+      "schema": "buddy.input.v1",
+      "input_id": "00000000-0000-4000-8000-000000000010",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "turn_id": "00000000-0000-4000-8000-000000000013",
+      "origin": "typed",
+      "request_revision": "1",
+      "transcript_revision": null,
+      "text": "このメールにfollow-upラベルを付けて",
+      "captured_at": "2030-01-01T00:00:00Z",
+      "state": "sealed",
+      "seal_reason": "submitted_text",
+      "input_evidence": "submitted_text",
+      "audio": null,
+      "policy_version": null,
+      "permission_revision": "1"
+    }
+  },
+  {
+    "id": "workflow-correction",
+    "schema": "WorkflowRequest",
+    "valid": true,
+    "value": {
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "request_revision": "2",
+      "supersedes_request_revision": "1",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "turn_id": "00000000-0000-4000-8000-000000000014",
+      "input_id": "00000000-0000-4000-8000-000000000015",
+      "relation": "correction",
+      "state": "active",
+      "created_at": "2030-01-01T00:00:05Z"
+    }
+  },
+  {
+    "id": "work-context-text",
+    "schema": "WorkContext",
+    "valid": true,
+    "value": {
+      "cause_id": "00000000-0000-4000-8000-000000000010",
+      "input": {
+        "input_id": "00000000-0000-4000-8000-000000000010",
+        "request_revision": "1"
+      },
+      "permission_revision": "1",
+      "read_set": [
+        {
+          "source_id": "mail-001",
+          "source_revision": "r1",
+          "expires_at": "2030-01-02T00:00:00Z",
+          "forgetting_generation": "1"
+        }
+      ],
+      "query_scopes": [],
+      "output": {
+        "mode": "text",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_epoch": null
+      },
+      "related_analysis": null
     }
   }
 ]

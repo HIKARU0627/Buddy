@@ -18,6 +18,7 @@ const read = async (path) =>
 // ADR 0003: プロパティ名ごとの版の型。新しい版のフィールドはここへ追加する。
 const VERSION_FIELDS = {
   request_revision: 'RequestRevision',
+  supersedes_request_revision: 'RequestRevision',
   transcript_revision: 'TranscriptRevision',
   content_version: 'ContentVersion',
   state_revision: 'StateRevision',

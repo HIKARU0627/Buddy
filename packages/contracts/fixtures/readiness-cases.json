@@ -1,0 +1,279 @@
+{
+  "status": "specification_only",
+  "description": "変更を伴う意図の実行可否の期待値（QA41、X51、X59、QA05 ほか）。設計本文から手で書いたもので、実装から生成していない。checks は既定値（全検査合格・安全停止なし・方針が自動実行を許す）からの差分だけを書く。",
+  "default_checks": {
+    "utteranceHold": false,
+    "targetResolved": true,
+    "evidenceVerified": true,
+    "permissionCurrent": true,
+    "policyCurrent": true,
+    "safetyStopped": false,
+    "autoPolicyAllows": true
+  },
+  "cases": [
+    {
+      "id": "text-label-auto",
+      "refs": ["08 §9", "D05"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "label_mail",
+      "checks": {},
+      "expected": {
+        "route": "remote_mutation",
+        "state": "auto_eligible",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "text-label-test-policy-approval",
+      "refs": ["09 §1", "X01"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "label_mail",
+      "checks": { "autoPolicyAllows": false },
+      "expected": {
+        "route": "remote_mutation",
+        "state": "needs_approval",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "live-label-four-operations",
+      "refs": ["QA41", "10 §5A F01"],
+      "input": { "state": "sealed", "inputEvidence": "live_policy_observed" },
+      "intent": "label_mail",
+      "checks": {},
+      "expected": {
+        "route": "remote_mutation",
+        "state": "auto_eligible",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "live-create-task",
+      "refs": ["QA41", "X59"],
+      "input": { "state": "sealed", "inputEvidence": "live_policy_observed" },
+      "intent": "create_task",
+      "checks": {},
+      "expected": {
+        "route": "local_command",
+        "state": "auto_eligible",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "live-memory-save-needs-full-text",
+      "refs": ["QA41", "X59", "10 §5 追加した意図"],
+      "input": { "state": "sealed", "inputEvidence": "live_policy_observed" },
+      "intent": "memory_save",
+      "checks": {},
+      "expected": {
+        "route": "local_command",
+        "state": "blocked",
+        "reasonCodes": ["requires_full_text"]
+      }
+    },
+    {
+      "id": "live-send-mail-needs-full-text",
+      "refs": ["QA41", "D14"],
+      "input": { "state": "sealed", "inputEvidence": "live_policy_observed" },
+      "intent": "send_mail",
+      "checks": {},
+      "expected": {
+        "route": "remote_mutation",
+        "state": "blocked",
+        "reasonCodes": ["requires_full_text"]
+      }
+    },
+    {
+      "id": "live-event-not-self-only-is-not-promoted",
+      "refs": ["10 §5A F01", "J11"],
+      "input": { "state": "sealed", "inputEvidence": "live_policy_observed" },
+      "intent": "create_event",
+      "checks": { "autoPolicyAllows": false },
+      "expected": {
+        "route": "remote_mutation",
+        "state": "blocked",
+        "reasonCodes": ["requires_full_text"]
+      }
+    },
+    {
+      "id": "live-memory-forget-needs-full-text",
+      "refs": ["ADR 0004（U06）"],
+      "input": { "state": "sealed", "inputEvidence": "live_policy_observed" },
+      "intent": "memory_forget",
+      "checks": {},
+      "expected": {
+        "route": "local_command",
+        "state": "blocked",
+        "reasonCodes": ["requires_full_text"]
+      }
+    },
+    {
+      "id": "live-handoff",
+      "refs": ["ADR 0004（U06）", "01 流れ C"],
+      "input": { "state": "sealed", "inputEvidence": "live_policy_observed" },
+      "intent": "handoff_screen",
+      "checks": {},
+      "expected": {
+        "route": "local_command",
+        "state": "auto_eligible",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "text-send-mail-screen",
+      "refs": ["D05", "D14"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "send_mail",
+      "checks": {},
+      "expected": {
+        "route": "remote_mutation",
+        "state": "needs_approval",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "text-update-task-screen",
+      "refs": ["X61", "08 §9"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "update_task",
+      "checks": {},
+      "expected": {
+        "route": "local_command",
+        "state": "needs_approval",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "text-trash-mail-screen",
+      "refs": ["D05", "J07"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "trash_mail",
+      "checks": {},
+      "expected": {
+        "route": "remote_mutation",
+        "state": "needs_approval",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "full-audio-memory-save",
+      "refs": ["X59", "10 §5A 方式 A"],
+      "input": { "state": "sealed", "inputEvidence": "full_audio_segment" },
+      "intent": "memory_save",
+      "checks": {},
+      "expected": {
+        "route": "local_command",
+        "state": "auto_eligible",
+        "reasonCodes": []
+      }
+    },
+    {
+      "id": "collecting-input",
+      "refs": ["X51", "10 §5A-3"],
+      "input": { "state": "collecting", "inputEvidence": "unverified" },
+      "intent": "create_event",
+      "checks": {},
+      "expected": {
+        "route": "remote_mutation",
+        "state": "blocked",
+        "reasonCodes": ["input_not_sealed", "input_unverified"]
+      }
+    },
+    {
+      "id": "blocked-input-known-gap",
+      "refs": ["QA05"],
+      "input": { "state": "blocked", "inputEvidence": "live_policy_observed" },
+      "intent": "create_task",
+      "checks": {},
+      "expected": {
+        "route": "local_command",
+        "state": "blocked",
+        "reasonCodes": ["input_not_sealed"]
+      }
+    },
+    {
+      "id": "utterance-hold",
+      "refs": ["10 §5A-3", "QA35"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "create_task",
+      "checks": { "utteranceHold": true },
+      "expected": {
+        "route": "local_command",
+        "state": "blocked",
+        "reasonCodes": ["utterance_hold"]
+      }
+    },
+    {
+      "id": "target-unresolved",
+      "refs": ["QA03"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "label_mail",
+      "checks": { "targetResolved": false },
+      "expected": {
+        "route": "remote_mutation",
+        "state": "blocked",
+        "reasonCodes": ["target_unresolved"]
+      }
+    },
+    {
+      "id": "evidence-unverified",
+      "refs": ["X39", "08 §9"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "draft_reply",
+      "checks": { "evidenceVerified": false },
+      "expected": {
+        "route": "remote_mutation",
+        "state": "blocked",
+        "reasonCodes": ["evidence_unverified"]
+      }
+    },
+    {
+      "id": "permission-changed",
+      "refs": ["X09", "T03"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "send_mail",
+      "checks": { "permissionCurrent": false },
+      "expected": {
+        "route": "remote_mutation",
+        "state": "blocked",
+        "reasonCodes": ["permission_changed"]
+      }
+    },
+    {
+      "id": "policy-changed",
+      "refs": ["08 §1"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "create_note",
+      "checks": { "policyCurrent": false },
+      "expected": {
+        "route": "local_command",
+        "state": "blocked",
+        "reasonCodes": ["policy_changed"]
+      }
+    },
+    {
+      "id": "safety-stopped-auto",
+      "refs": ["X23", "08 §9"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "create_task",
+      "checks": { "safetyStopped": true },
+      "expected": {
+        "route": "local_command",
+        "state": "blocked",
+        "reasonCodes": ["safety_stopped"]
+      }
+    },
+    {
+      "id": "safety-stopped-screen-approval-unaffected",
+      "refs": ["08 §9"],
+      "input": { "state": "sealed", "inputEvidence": "submitted_text" },
+      "intent": "send_mail",
+      "checks": { "safetyStopped": true },
+      "expected": {
+        "route": "remote_mutation",
+        "state": "needs_approval",
+        "reasonCodes": []
+      }
+    }
+  ]
+}

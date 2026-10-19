@@ -162,6 +162,42 @@ export function semanticErrors(name, value) {
     errors.push('voice_without_session_epoch');
   if (name === 'WorkContext' && value.output)
     errors.push(...semanticErrors('OutputTarget', value.output));
+  if (name === 'DelegationResult') {
+    if (value.output.mode !== 'voice')
+      errors.push('delegation_result_not_voice');
+    errors.push(...semanticErrors('OutputTarget', value.output));
+  }
+  if (name === 'LiveControlState') {
+    if (value.closure === 'close_confirmed' && value.usage_seconds === null)
+      errors.push('confirmed_without_usage');
+    if (
+      value.reservation_state === 'settled' &&
+      (value.closure !== 'close_confirmed' || value.usage_seconds === null)
+    )
+      errors.push('settled_without_confirmed_usage');
+  }
+  if (name === 'DeviceIOState') {
+    if (
+      value.input_permitted &&
+      (value.lock_state !== 'unlocked' || value.stop_scope !== 'none')
+    )
+      errors.push('input_permitted_while_locked_or_stopped');
+    if (
+      value.voice_state === 'conversation_live' &&
+      (!value.input_permitted ||
+        !value.audio_lease_valid ||
+        value.output_mode !== 'voice' ||
+        value.private_conversation)
+    )
+      errors.push('live_without_voice_conditions');
+  }
+  if (name === 'Lease' && value.heartbeat_ms >= value.ttl_ms)
+    errors.push('heartbeat_not_shorter_than_ttl');
+  if (
+    name === 'PendingClarification' &&
+    Date.parse(value.expires_at) <= Date.parse(value.created_at)
+  )
+    errors.push('expires_before_created');
   if (name === 'BudgetReservation') {
     const amounts = [
       value.reserved_amount,

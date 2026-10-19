@@ -1,0 +1,26 @@
+{
+  "status": "specification_only",
+  "description": "会話の操作の照合表の例と照合の期待値（設計 10 §3・§5、X58）。言い回しは原本の例。実際の表は版管理して B05・B10 で調整する。",
+  "table": {
+    "version": "1",
+    "phrases": [
+      { "phrase": "ちょっと待って", "action": "extend_silence" },
+      { "phrase": "少し待って", "action": "extend_silence" },
+      { "phrase": "読み上げを止めて", "action": "stop_playback" },
+      { "phrase": "もう終わり", "action": "end_conversation" },
+      { "phrase": "会話を終わる", "action": "end_conversation" },
+      { "phrase": "記録しないで", "action": "start_private_conversation" },
+      { "phrase": "文字で返して", "action": "reply_in_text" }
+    ]
+  },
+  "matches": [
+    { "utterance": "ちょっと待って", "expected": "extend_silence" },
+    { "utterance": "ちょっと待って。", "expected": "extend_silence" },
+    { "utterance": " もう終わり！ ", "expected": "end_conversation" },
+    { "utterance": "記録しないで", "expected": "start_private_conversation" },
+    { "utterance": "終わりの時間教えて", "expected": null },
+    { "utterance": "待ち合わせ場所どこだっけ", "expected": null },
+    { "utterance": "ちょっと待って、明日の予定を入れて", "expected": null },
+    { "utterance": "", "expected": null }
+  ]
+}

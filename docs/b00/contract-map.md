@@ -78,21 +78,21 @@ ID・時刻・金額・null・版の文字列表現と検査の層の割り当�
 
 ### 会話・委譲・音声制御・出力先（担当: B00-04 #19）
 
-| 契約                                                                          | 配置先                                    | 根拠                           | 試験                    | 利用     | 状態                       |
-| ----------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------ | ----------------------- | -------- | -------------------------- |
-| ConversationContext（buddy.context.v1）                                       | S:ConversationContext                     | 10 §4                          | X36、X47、X17           | B05、B10 | 未作成                     |
-| DelegationIntent / DelegationResult                                           | S:DelegationIntent、S:DelegationResult    | 10 §5・§6A                     | X29、X33、X49、X51      | B05、B10 | 未作成                     |
-| InteractionMode と input_kind / output_kind                                   | S:InteractionMode                         | 10 §4・§6・§6A                 | X46、X47、X26、X49      | B05、B10 | 未作成                     |
-| 出力先（mode / device_id / session_epoch）                                    | S:OutputTarget（WorkContext から参照）    | 07 §5 D15、08 §5               | QA34、X49               | B05、B10 | 未作成                     |
-| PendingClarification                                                          | S:PendingClarification                    | 10 §5A-5                       | X27、QA04               | B10      | 未作成                     |
-| ResultView（結果の種類と画面部品）                                            | S:ResultView                              | 10 §6A、01 いつも見える状態    | X46、X49                | B02、B10 | 未作成。対応表の欠けは U06 |
-| SessionControlPhrases（会話の操作の照合表）                                   | S:SessionControlPhrases                   | 10 §5・§10（質問 126）         | X58、QA43               | B05、B10 | 未作成                     |
-| DeviceIOState                                                                 | S:DeviceIOState                           | 07 §2・§5、01 いつも見える状態 | X13、X14、QA43          | B01、B05 | 未作成                     |
-| AudioControl（stop_playback / close_voice_session / suspend_io と理由・世代） | S:AudioControl                            | 10 §1・§1A（F03）              | QA43、X13、X30、X58     | B05      | 未作成                     |
-| 音声・表示リース（heartbeat・nonce・期限）                                    | S:Lease                                   | 07 §5、10 §2A                  | X13、X14、X25、X28      | B03、B05 | 未作成                     |
-| LiveSessionRequest / LiveSessionAnswer（purpose 付き）                        | S:LiveSessionRequest、S:LiveSessionAnswer | 07 §2、10 §2                   | X26、X31、X32、X54、X17 | B05      | 未作成                     |
-| LiveControlState（control_state・control_epoch）                              | S:LiveControlState、M:live_sessions       | 10 §2A                         | X25、X28、QA24          | B05、B07 | 未作成                     |
-| 音声のイベント（サイドバンド接続済み・委譲の処理中・読み上げ要求・停止）      | S:EventEnvelope の種別追加                | 10 §2・§3・§7・§10、07 §2      | X29、X35、X54、X55      | B05      | 未作成                     |
+| 契約                                                                          | 配置先                                                        | 根拠                           | 試験                    | 利用     | 状態                                                |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------ | ----------------------- | -------- | --------------------------------------------------- |
+| ConversationContext（buddy.context.v1）                                       | S:ConversationContext                                         | 10 §4                          | X36、X47、X17           | B05、B10 | 形式（ADR 0005）                                    |
+| DelegationIntent / DelegationResult                                           | S:DelegationIntent、S:DelegationResult                        | 10 §5・§6A                     | X29、X33、X49、X51      | B05、B10 | 形式。結果は音声の出力先だけ（ADR 0005）            |
+| InteractionMode と input_kind / output_kind                                   | S:InteractionMode                                             | 10 §4・§6・§6A                 | X46、X47、X26、X49      | B05、B10 | 形式。①②③だけを受け付ける（ADR 0005）               |
+| 出力先（mode / device_id / session_epoch）                                    | S:OutputTarget（WorkContext から参照）                        | 07 §5 D15、08 §5               | QA34、X49               | B05、B10 | 形式。出力先の決定は domain（ADR 0005）             |
+| PendingClarification                                                          | S:PendingClarification                                        | 10 §5A-5                       | X27、QA04               | B10      | 形式（ADR 0005）                                    |
+| ResultView（結果の種類と画面部品）                                            | S:ResultView                                                  | 10 §6A、01 いつも見える状態    | X46、X49                | B02、B10 | 形式。全意図の対応表は domain（ADR 0005）           |
+| SessionControlPhrases（会話の操作の照合表）                                   | S:SessionControlPhrases                                       | 10 §5・§10（質問 126）         | X58、QA43               | B05、B10 | 形式と照合関数（ADR 0005）                          |
+| DeviceIOState                                                                 | S:DeviceIOState                                               | 07 §2・§5、01 いつも見える状態 | X13、X14、QA43          | B01、B05 | 形式（ADR 0005）                                    |
+| AudioControl（stop_playback / close_voice_session / suspend_io と理由・世代） | S:AudioControl                                                | 10 §1・§1A（F03）              | QA43、X13、X30、X58     | B05      | 形式。理由ごとの動作と再開条件は domain（ADR 0005） |
+| 音声・表示リース（heartbeat・nonce・期限）                                    | S:Lease                                                       | 07 §5、10 §2A                  | X13、X14、X25、X28      | B03、B05 | 形式（ADR 0005）                                    |
+| LiveSessionRequest / LiveSessionAnswer（purpose 付き）                        | S:LiveSessionRequest、S:LiveSessionAnswer、S:LiveSessionClose | 07 §2、10 §2                   | X26、X31、X32、X54、X17 | B05      | 形式。終了通知 LiveSessionClose も追加（ADR 0005）  |
+| LiveControlState（control_state・control_epoch）                              | S:LiveControlState、M:live_sessions                           | 10 §2A                         | X25、X28、QA24          | B05、B07 | 形式（ADR 0005）                                    |
+| 音声のイベント（サイドバンド接続済み・委譲の処理中・読み上げ要求・停止）      | S:VoiceEvent                                                  | 10 §2・§3・§7・§10、07 §2      | X29、X35、X54、X55      | B05      | 形式（ADR 0005）                                    |
 
 ### 予算（担当: B00-05 #20）
 
@@ -181,44 +181,44 @@ ID・時刻・金額・null・版の文字列表現と検査の層の割り当�
 承認の「自動」は D05 の自動実行 4 操作（メモ・用事登録、元に戻せるラベル変更、返信下書きの保存、自分だけの予定作成）で、方針による自動承認と安全停止・取り消しの対象です。「画面」は内容版に結び付いた画面承認で、音声の「はい」は承認にしません。
 方式 C（Live 文字起こしの暫定入力）から進めるのは、自動の 4 操作で他の条件をすべて満たす場合だけです（10 §5A F01、QA41）。それ以外の変更は全文確定または方式 A / ③ の再入力が必要です。引数は全意図共通の `IntentArgs` で、意図ごとの必須・許可は意図表で検査します（U07、ADR 0004）。
 
-| intent           | 経路                                     | 承認                                           | 方式 C           | 結果表示（10 §6A）            | 主な根拠                                | 試験                |
-| ---------------- | ---------------------------------------- | ---------------------------------------------- | ---------------- | ----------------------------- | --------------------------------------- | ------------------- |
-| query_schedule   | Read（明記）                             | なし                                           | —                | 予定カード                    | 修正案 H02、10 §6A、X49                 | X49、QA27、QA33     |
-| query_mail       | Read（明記: 許可されたメール参照）       | なし                                           | —                | 未定義                        | 修正案 H02                              | QA27                |
-| query_tasks      | Read（ADR 0004）                         | なし                                           | —                | 用事の行                      | 10 §6A                                  | QA27                |
-| query_memory     | Read（ADR 0004）                         | なし                                           | —                | 未定義                        | 03 忘却と再取り込み（RAM 内検索）       | X15                 |
-| create_task      | LocalCommand（明記）                     | 自動                                           | 可               | 完了の 1 行と取り消し         | 08 §9、11 §5、修正案 H02、X59           | X21、X59、QA38、X61 |
-| create_note      | LocalCommand（明記）                     | 自動                                           | 可               | 完了の 1 行と取り消し         | 08 §9、修正案 H02                       | X21                 |
-| label_mail       | RemoteMutation（明記）                   | 自動（Outlook は質問 133 で保留）              | 可               | 完了の 1 行と取り消し         | 08 §2 H01・§9、11 §5・§5A、09 §1、J10   | X01〜X11、X21       |
-| draft_reply      | RemoteMutation（明記）                   | 自動（下書き保存まで）                         | 可               | 完了の 1 行と取り消し         | 08 §4・§9、11 §5・§6                    | X10、X40、X41、QA25 |
-| create_event     | RemoteMutation（明記）                   | 自分だけの予定は自動、他は画面                 | 条件付き         | 完了の 1 行と取り消し         | 08 §9、11 §5・§5A、D05、J11             | X21、X27、QA22      |
-| update_event     | RemoteMutation（明記）                   | 画面                                           | 不可             | 変更確認画面を開く            | 10 §5、11 §5A、01 流れ A                | X27、X64            |
-| send_mail        | RemoteMutation（明記）                   | 画面                                           | 不可             | 変更確認画面を開く            | 10 §5、11 §6 D15、08 §4                 | X10、QA25、T03      |
-| trash_mail       | RemoteMutation（ADR 0004）               | 画面                                           | 不可             | 変更確認画面を開く            | 10 §5、D05、J07（ごみ箱への移動まで）   | T03                 |
-| undo_action      | Read（取り消し一覧を開くだけ。ADR 0004） | 取り消し自体は画面操作                         | —                | 未定義                        | 10 §5、D14、07 §2 undo、J12             | X24、X40、X65       |
-| update_task      | LocalCommand（明記: 承認後の用事更新）   | 画面                                           | 不可             | 変更確認画面を開く            | 08 §9、10 §5、修正案 H02                | X61、X64            |
-| research         | Read（裏の job を含む。ADR 0004）        | なし（費用予約あり）                           | —                | 完了は気づき（research_done） | 10 §5、11 §4、05 公開Web調査、01 流れ D | X33、X18            |
-| memory_save      | LocalCommand（明記）                     | 本人の明示依頼。記録しない会話では不可         | 不可             | 未定義                        | 10 §5、11 §7、D04、D05、D14             | X44、X59、QA41      |
-| memory_forget    | LocalCommand（ADR 0004）                 | 画面承認の要件なし。明確な対象は二重確認しない | 不可（全文確定） | 未定義                        | D04、01 流れ E、03 忘却と再取り込み     | X15、X16            |
-| memory_correct   | LocalCommand（ADR 0004）                 | 画面承認の要件なし（一覧・会話で可）           | 不可（全文確定） | 未定義                        | D04、11 §7、J15                         | X44                 |
-| dev_status       | Read（ADR 0004）                         | なし                                           | —                | 未定義                        | 10 §5                                   | —                   |
-| handoff_screen   | LocalCommand（ADR 0004）                 | 操作承認ではない                               | 可               | 未定義                        | 07 §2・§5、10 §8、D06、01 流れ C        | X45、T01            |
-| smalltalk        | Read（応答のみ。ADR 0004）               | なし                                           | —                | 吹き出し                      | 10 §5・§6A                              | X49                 |
-| general_question | Read（応答のみ。ADR 0004）               | なし                                           | —                | 吹き出し                      | 10 §5・§6A                              | X49                 |
-| consult          | Read（裏の job を含む。ADR 0004）        | なし                                           | —                | 未定義                        | 10 §5、05 冒頭の追補                    | X66                 |
-| unclear          | Read（聞き返し。ADR 0004）               | なし                                           | —                | 入力欄の上の質問              | 10 §5・§6A、修正案 P01                  | QA02、X27           |
+| intent           | 経路                                     | 承認                                           | 方式 C           | 結果表示（10 §6A、ADR 0005） | 主な根拠                                | 試験                |
+| ---------------- | ---------------------------------------- | ---------------------------------------------- | ---------------- | ---------------------------- | --------------------------------------- | ------------------- |
+| query_schedule   | Read（明記）                             | なし                                           | —                | 予定カード                   | 修正案 H02、10 §6A、X49                 | X49、QA27、QA33     |
+| query_mail       | Read（明記: 許可されたメール参照）       | なし                                           | —                | メール一覧の行               | 修正案 H02                              | QA27                |
+| query_tasks      | Read（ADR 0004）                         | なし                                           | —                | 用事の行                     | 10 §6A                                  | QA27                |
+| query_memory     | Read（ADR 0004）                         | なし                                           | —                | 記憶の行                     | 03 忘却と再取り込み（RAM 内検索）       | X15                 |
+| create_task      | LocalCommand（明記）                     | 自動                                           | 可               | 完了の 1 行と取り消し        | 08 §9、11 §5、修正案 H02、X59           | X21、X59、QA38、X61 |
+| create_note      | LocalCommand（明記）                     | 自動                                           | 可               | 完了の 1 行と取り消し        | 08 §9、修正案 H02                       | X21                 |
+| label_mail       | RemoteMutation（明記）                   | 自動（Outlook は質問 133 で保留）              | 可               | 完了の 1 行と取り消し        | 08 §2 H01・§9、11 §5・§5A、09 §1、J10   | X01〜X11、X21       |
+| draft_reply      | RemoteMutation（明記）                   | 自動（下書き保存まで）                         | 可               | 完了の 1 行と取り消し        | 08 §4・§9、11 §5・§6                    | X10、X40、X41、QA25 |
+| create_event     | RemoteMutation（明記）                   | 自分だけの予定は自動、他は画面                 | 条件付き         | 完了の 1 行と取り消し        | 08 §9、11 §5・§5A、D05、J11             | X21、X27、QA22      |
+| update_event     | RemoteMutation（明記）                   | 画面                                           | 不可             | 変更確認画面を開く           | 10 §5、11 §5A、01 流れ A                | X27、X64            |
+| send_mail        | RemoteMutation（明記）                   | 画面                                           | 不可             | 変更確認画面を開く           | 10 §5、11 §6 D15、08 §4                 | X10、QA25、T03      |
+| trash_mail       | RemoteMutation（ADR 0004）               | 画面                                           | 不可             | 変更確認画面を開く           | 10 §5、D05、J07（ごみ箱への移動まで）   | T03                 |
+| undo_action      | Read（取り消し一覧を開くだけ。ADR 0004） | 取り消し自体は画面操作                         | —                | 取り消し一覧を開くボタン     | 10 §5、D14、07 §2 undo、J12             | X24、X40、X65       |
+| update_task      | LocalCommand（明記: 承認後の用事更新）   | 画面                                           | 不可             | 変更確認画面を開く           | 08 §9、10 §5、修正案 H02                | X61、X64            |
+| research         | Read（裏の job を含む。ADR 0004）        | なし（費用予約あり）                           | —                | 受付の 1 行（完了は気づき）  | 10 §5、11 §4、05 公開Web調査、01 流れ D | X33、X18            |
+| memory_save      | LocalCommand（明記）                     | 本人の明示依頼。記録しない会話では不可         | 不可             | 完了の 1 行                  | 10 §5、11 §7、D04、D05、D14             | X44、X59、QA41      |
+| memory_forget    | LocalCommand（ADR 0004）                 | 画面承認の要件なし。明確な対象は二重確認しない | 不可（全文確定） | 完了の 1 行                  | D04、01 流れ E、03 忘却と再取り込み     | X15、X16            |
+| memory_correct   | LocalCommand（ADR 0004）                 | 画面承認の要件なし（一覧・会話で可）           | 不可（全文確定） | 完了の 1 行                  | D04、11 §7、J15                         | X44                 |
+| dev_status       | Read（ADR 0004）                         | なし                                           | —                | 吹き出し                     | 10 §5                                   | —                   |
+| handoff_screen   | LocalCommand（ADR 0004）                 | 操作承認ではない                               | 可               | 状態の 1 行                  | 07 §2・§5、10 §8、D06、01 流れ C        | X45、T01            |
+| smalltalk        | Read（応答のみ。ADR 0004）               | なし                                           | —                | 吹き出し                     | 10 §5・§6A                              | X49                 |
+| general_question | Read（応答のみ。ADR 0004）               | なし                                           | —                | 吹き出し                     | 10 §5・§6A                              | X49                 |
+| consult          | Read（裏の job を含む。ADR 0004）        | なし                                           | —                | 吹き出し                     | 10 §5、05 冒頭の追補                    | X66                 |
+| unclear          | Read（聞き返し。ADR 0004）               | なし                                           | —                | 入力欄の上の質問             | 10 §5・§6A、修正案 P01                  | QA02、X27           |
 
 会話の操作（「ちょっと待って」「記録しないで」等）は意図ではなく SessionControlPhrases で扱います（10 §5、X58）。通信失敗・timeout・拒否・schema 不正は `unclear` に混ぜず ModelOutcome で区別します（10 §6A D15、QA02）。
 
 ## F01〜F05 と QA41〜QA45
 
-| 指摘 | 契約                                                                                           | 根拠                                 | 試験（組で検証）           | 現状                                                             | 担当     |
-| ---- | ---------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------- | ---------------------------------------------------------------- | -------- |
-| F01  | InputSnapshot の state・seal_reason・input_evidence・policy_version、ActionReadiness、最終検査 | 07 §1、10 §5A、08 §3、03 データ表    | QA41、X51、X59、QA05、QA08 | 形式と F01 の形の試験あり。意味検査・QA41 の許可／拒否表は未作成 | #13      |
-| F02  | BudgetReservation の R / M・予算月・scope、精算キー、超過枠の承認 ID                           | 05 予約と最大負担の区別、03 データ表 | QA42、X18、QA20            | 形式と局所的な不変条件の試験のみ。受付時の M 検査・精算は未作成  | #20      |
-| F03  | AudioControl の action・reason・世代、停止理由ごとの再開条件                                   | 10 §1A、07 §5                        | QA43、X13、X30、X58        | 未作成                                                           | #19      |
-| F04  | SyncBatch の開始時世代・cursor、active_scan_id、担当世代、公開 CAS                             | 11 §1A、03 データ表                  | QA44、QA18、QA19、QA36     | 未作成                                                           | #21      |
-| F05  | RequestChange、related_analysis、analysis_plan_complete、CandidateSnapshot / WorkContext       | 11 §5B、08 §3、03 データ表           | QA45、QA32、X64、X65       | 未作成                                                           | #21、#13 |
+| 指摘 | 契約                                                                                           | 根拠                                 | 試験（組で検証）           | 現状                                                                        | 担当     |
+| ---- | ---------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------- | --------------------------------------------------------------------------- | -------- |
+| F01  | InputSnapshot の state・seal_reason・input_evidence・policy_version、ActionReadiness、最終検査 | 07 §1、10 §5A、08 §3、03 データ表    | QA41、X51、X59、QA05、QA08 | 形式と F01 の形の試験あり。意味検査・QA41 の許可／拒否表は未作成            | #13      |
+| F02  | BudgetReservation の R / M・予算月・scope、精算キー、超過枠の承認 ID                           | 05 予約と最大負担の区別、03 データ表 | QA42、X18、QA20            | 形式と局所的な不変条件の試験のみ。受付時の M 検査・精算は未作成             | #20      |
+| F03  | AudioControl の action・reason・世代、停止理由ごとの再開条件                                   | 10 §1A、07 §5                        | QA43、X13、X30、X58        | 形式と domain の動作・再開条件の表、期待値 fixture あり。端末の実装は未着手 | #19      |
+| F04  | SyncBatch の開始時世代・cursor、active_scan_id、担当世代、公開 CAS                             | 11 §1A、03 データ表                  | QA44、QA18、QA19、QA36     | 未作成                                                                      | #21      |
+| F05  | RequestChange、related_analysis、analysis_plan_complete、CandidateSnapshot / WorkContext       | 11 §5B、08 §3、03 データ表           | QA45、QA32、X64、X65       | 未作成                                                                      | #21、#13 |
 
 QA41〜QA45 は代表入力・拒否入力・期待遷移を B00 で fixture 化し、実行は B05・B07・B08 / B09・B10 / B13 で行います（09 §6）。形式検査の合格を統合試験の合格にしません。
 

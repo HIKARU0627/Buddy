@@ -1,0 +1,164 @@
+{
+  "status": "specification_only",
+  "description": "停止理由ごとの動作と再開条件の期待値（設計 10 §1A F03、QA43、X13・X30・X58）。原本の表から手で書き、domain の実装から生成していない。keeps_mic は収音・Live 入力・VAD を維持すること。",
+  "cases": [
+    {
+      "reason": "user_stop",
+      "action": "stop_playback",
+      "closes_live": false,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "playback_queue"
+    },
+    {
+      "reason": "barge_in",
+      "action": "stop_playback",
+      "closes_live": false,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "playback_queue"
+    },
+    {
+      "reason": "silence",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "wake_word"
+    },
+    {
+      "reason": "output_mode_text",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "local_asr_until_voice_mode"
+    },
+    {
+      "reason": "budget_reached",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "local_asr_until_budget"
+    },
+    {
+      "reason": "private_conversation",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "local_asr_until_private_ends"
+    },
+    {
+      "reason": "conversation_ended",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": true,
+      "scope": null,
+      "resume": "wake_word_new_session"
+    },
+    {
+      "reason": "device_move",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "wake_word_on_new_device"
+    },
+    {
+      "reason": "provider_failure",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "local_asr_or_wake_word"
+    },
+    {
+      "reason": "sideband_lost",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "local_asr_or_wake_word"
+    },
+    {
+      "reason": "device_io_stop",
+      "action": "suspend_io",
+      "closes_live": true,
+      "keeps_mic": false,
+      "ends_session": false,
+      "scope": "local",
+      "resume": "explicit_screen_resume"
+    },
+    {
+      "reason": "os_lock",
+      "action": "suspend_io",
+      "closes_live": true,
+      "keeps_mic": false,
+      "ends_session": false,
+      "scope": "local",
+      "resume": "explicit_screen_resume"
+    },
+    {
+      "reason": "guest_mode",
+      "action": "suspend_io",
+      "closes_live": true,
+      "keeps_mic": false,
+      "ends_session": false,
+      "scope": "guest",
+      "resume": "explicit_screen_resume"
+    },
+    {
+      "reason": "global_stop",
+      "action": "suspend_io",
+      "closes_live": true,
+      "keeps_mic": false,
+      "ends_session": false,
+      "scope": "global",
+      "resume": "explicit_screen_resume"
+    },
+    {
+      "reason": "device_revoked",
+      "action": "suspend_io",
+      "closes_live": true,
+      "keeps_mic": false,
+      "ends_session": false,
+      "scope": "local",
+      "resume": "explicit_screen_resume"
+    },
+    {
+      "reason": "core_lease_lost",
+      "action": "suspend_io",
+      "closes_live": true,
+      "keeps_mic": false,
+      "ends_session": false,
+      "scope": "local",
+      "resume": "explicit_screen_resume"
+    }
+  ],
+  "overlaps": [
+    { "first": "barge_in", "second": "os_lock", "expected": "os_lock" },
+    {
+      "first": "sideband_lost",
+      "second": "core_lease_lost",
+      "expected": "core_lease_lost"
+    },
+    { "first": "global_stop", "second": "silence", "expected": "global_stop" },
+    {
+      "first": "user_stop",
+      "second": "budget_reached",
+      "expected": "budget_reached"
+    }
+  ]
+}

@@ -37,6 +37,7 @@ const VERSION_FIELDS = {
   session_epoch: 'SessionEpoch',
   source_revision: 'SourceRevision',
   store_generation: 'StoreGeneration',
+  template_version: 'TemplateVersion',
   sequence: 'Sequence',
   first_frame_seq: 'Sequence',
   last_frame_seq: 'Sequence',
@@ -66,6 +67,7 @@ const DECIMAL_KINDS = [
   'OutputEpoch',
   'ControlEpoch',
   'SessionEpoch',
+  'TemplateVersion',
   'Sequence',
 ];
 

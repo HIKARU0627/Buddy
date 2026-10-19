@@ -1074,5 +1074,586 @@
       },
       "related_analysis": null
     }
+  },
+  {
+    "id": "mode-voice-live",
+    "schema": "InteractionMode",
+    "valid": true,
+    "value": {
+      "input_kind": "voice_live",
+      "output_mode": "voice"
+    }
+  },
+  {
+    "id": "mode-local-asr-text",
+    "schema": "InteractionMode",
+    "valid": true,
+    "value": {
+      "input_kind": "voice_local",
+      "output_mode": "text"
+    }
+  },
+  {
+    "id": "mode-text-to-voice",
+    "schema": "InteractionMode",
+    "valid": false,
+    "value": {
+      "input_kind": "text",
+      "output_mode": "voice"
+    }
+  },
+  {
+    "id": "mode-live-to-text",
+    "schema": "InteractionMode",
+    "valid": false,
+    "value": {
+      "input_kind": "voice_live",
+      "output_mode": "text"
+    }
+  },
+  {
+    "id": "context-v1",
+    "schema": "ConversationContext",
+    "valid": true,
+    "value": {
+      "schema": "buddy.context.v1",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "store_generation": "00000000-0000-4000-8000-000000000041",
+      "summary": null,
+      "recent_turns": [
+        {
+          "role": "user",
+          "text": "明日の予定は？",
+          "at": "2030-01-01T00:00:00Z",
+          "input_kind": "voice_live"
+        },
+        {
+          "role": "buddy",
+          "text": "予定は2件です",
+          "at": "2030-01-01T00:00:04Z",
+          "input_kind": null
+        }
+      ],
+      "active_items": [
+        {
+          "kind": "operation",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "ラベルの付与",
+          "state": "awaiting_approval"
+        }
+      ],
+      "directives_temporary": [],
+      "directives_persistent": [],
+      "device": {
+        "name": "synthetic-desk",
+        "screen_available": true
+      },
+      "budget_hint": {
+        "conversation_minutes_left": null,
+        "llm_state": "normal"
+      }
+    }
+  },
+  {
+    "id": "context-too-many-turns",
+    "schema": "ConversationContext",
+    "valid": false,
+    "value": {
+      "schema": "buddy.context.v1",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "store_generation": "00000000-0000-4000-8000-000000000041",
+      "summary": null,
+      "recent_turns": [
+        {
+          "role": "user",
+          "text": "x",
+          "at": "2030-01-01T00:00:00Z",
+          "input_kind": "text"
+        },
+        {
+          "role": "user",
+          "text": "x",
+          "at": "2030-01-01T00:00:00Z",
+          "input_kind": "text"
+        },
+        {
+          "role": "user",
+          "text": "x",
+          "at": "2030-01-01T00:00:00Z",
+          "input_kind": "text"
+        },
+        {
+          "role": "user",
+          "text": "x",
+          "at": "2030-01-01T00:00:00Z",
+          "input_kind": "text"
+        },
+        {
+          "role": "user",
+          "text": "x",
+          "at": "2030-01-01T00:00:00Z",
+          "input_kind": "text"
+        },
+        {
+          "role": "user",
+          "text": "x",
+          "at": "2030-01-01T00:00:00Z",
+          "input_kind": "text"
+        },
+        {
+          "role": "user",
+          "text": "x",
+          "at": "2030-01-01T00:00:00Z",
+          "input_kind": "text"
+        }
+      ],
+      "active_items": [
+        {
+          "kind": "operation",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "ラベルの付与",
+          "state": "awaiting_approval"
+        }
+      ],
+      "directives_temporary": [],
+      "directives_persistent": [],
+      "device": {
+        "name": "synthetic-desk",
+        "screen_available": true
+      },
+      "budget_hint": {
+        "conversation_minutes_left": null,
+        "llm_state": "normal"
+      }
+    }
+  },
+  {
+    "id": "delegation-intent",
+    "schema": "DelegationIntent",
+    "valid": true,
+    "value": {
+      "delegation_id": "synthetic-delegation-1",
+      "live_session_id": "00000000-0000-4000-8000-000000000070",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "audio_epoch": "7",
+      "control_epoch": "1",
+      "offset_ms": 1200,
+      "received_at": "2030-01-01T00:00:05Z"
+    }
+  },
+  {
+    "id": "delegation-result-voice",
+    "schema": "DelegationResult",
+    "valid": true,
+    "value": {
+      "delegation_id": "synthetic-delegation-1",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "request_revision": "1",
+      "live_session_id": "00000000-0000-4000-8000-000000000070",
+      "audio_epoch": "7",
+      "output": {
+        "mode": "voice",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_epoch": "3"
+      },
+      "facts": [
+        {
+          "kind": "schedule_cards",
+          "ref_id": "00000000-0000-4000-8000-000000000080",
+          "title": "ゼミ",
+          "start": "2030-10-08T13:00",
+          "end": "2030-10-08T14:00",
+          "due": null,
+          "count": null
+        }
+      ],
+      "more_count": 0,
+      "template_id": "schedule.list",
+      "template_version": "1",
+      "commentary_parts": ["予定は1件。8日13時から14時にゼミ"]
+    }
+  },
+  {
+    "id": "delegation-result-four-parts",
+    "schema": "DelegationResult",
+    "valid": false,
+    "value": {
+      "delegation_id": "synthetic-delegation-1",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "request_revision": "1",
+      "live_session_id": "00000000-0000-4000-8000-000000000070",
+      "audio_epoch": "7",
+      "output": {
+        "mode": "voice",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_epoch": "3"
+      },
+      "facts": [
+        {
+          "kind": "schedule_cards",
+          "ref_id": "00000000-0000-4000-8000-000000000080",
+          "title": "ゼミ",
+          "start": "2030-10-08T13:00",
+          "end": "2030-10-08T14:00",
+          "due": null,
+          "count": null
+        }
+      ],
+      "more_count": 0,
+      "template_id": "schedule.list",
+      "template_version": "1",
+      "commentary_parts": ["a", "b", "c", "d"]
+    }
+  },
+  {
+    "id": "delegation-result-free-text-field",
+    "schema": "DelegationResult",
+    "valid": false,
+    "value": {
+      "delegation_id": "synthetic-delegation-1",
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "request_revision": "1",
+      "live_session_id": "00000000-0000-4000-8000-000000000070",
+      "audio_epoch": "7",
+      "output": {
+        "mode": "voice",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_epoch": "3"
+      },
+      "facts": [
+        {
+          "kind": "schedule_cards",
+          "ref_id": "00000000-0000-4000-8000-000000000080",
+          "title": "ゼミ",
+          "start": "2030-10-08T13:00",
+          "end": "2030-10-08T14:00",
+          "due": null,
+          "count": null
+        }
+      ],
+      "more_count": 0,
+      "template_id": "schedule.list",
+      "template_version": "1",
+      "commentary_parts": ["予定は1件。8日13時から14時にゼミ"],
+      "model_summary": "モデルの自由文"
+    }
+  },
+  {
+    "id": "pending-clarification",
+    "schema": "PendingClarification",
+    "valid": true,
+    "value": {
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "request_revision": "1",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "intent": "label_mail",
+      "missing_fields": ["target_candidate_id"],
+      "original_args": {
+        "target_candidate_id": null,
+        "start": null,
+        "end": null,
+        "due": null,
+        "title": null,
+        "body": null,
+        "subject": null,
+        "add_labels": ["follow-up"],
+        "remove_labels": null,
+        "task_change": null,
+        "memory_kind": null,
+        "query": null,
+        "device_name": null
+      },
+      "question": "どのメールですか。件名の一部でも大丈夫です",
+      "created_at": "2030-01-01T00:00:05Z",
+      "expires_at": "2030-01-01T00:05:05Z",
+      "persistence": "session"
+    }
+  },
+  {
+    "id": "result-view-schedule",
+    "schema": "ResultView",
+    "valid": true,
+    "value": {
+      "workflow_id": "00000000-0000-4000-8000-000000000012",
+      "request_revision": "1",
+      "intent": "query_schedule",
+      "kind": "schedule_cards",
+      "status": "ready",
+      "item_refs": [
+        {
+          "kind": "event",
+          "id": "00000000-0000-4000-8000-000000000080"
+        }
+      ],
+      "more_count": 0,
+      "template_id": "schedule.list",
+      "template_version": "1"
+    }
+  },
+  {
+    "id": "audio-stop-playback",
+    "schema": "AudioControl",
+    "valid": true,
+    "value": {
+      "action": "stop_playback",
+      "reason": "barge_in",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "scope": null,
+      "io_epoch": "4",
+      "audio_epoch": "7",
+      "output_epoch": "12",
+      "issued_by": "device",
+      "issued_at": "2030-01-01T00:00:10Z"
+    }
+  },
+  {
+    "id": "audio-close-silence",
+    "schema": "AudioControl",
+    "valid": true,
+    "value": {
+      "action": "close_voice_session",
+      "reason": "silence",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "scope": null,
+      "io_epoch": "4",
+      "audio_epoch": "7",
+      "output_epoch": "12",
+      "issued_by": "device",
+      "issued_at": "2030-01-01T00:00:10Z"
+    }
+  },
+  {
+    "id": "audio-suspend-lock",
+    "schema": "AudioControl",
+    "valid": true,
+    "value": {
+      "action": "suspend_io",
+      "reason": "os_lock",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "scope": "local",
+      "io_epoch": "4",
+      "audio_epoch": null,
+      "output_epoch": "12",
+      "issued_by": "device",
+      "issued_at": "2030-01-01T00:00:10Z"
+    }
+  },
+  {
+    "id": "audio-stop-with-lock-reason",
+    "schema": "AudioControl",
+    "valid": false,
+    "value": {
+      "action": "stop_playback",
+      "reason": "os_lock",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "scope": null,
+      "io_epoch": "4",
+      "audio_epoch": "7",
+      "output_epoch": "12",
+      "issued_by": "device",
+      "issued_at": "2030-01-01T00:00:10Z"
+    }
+  },
+  {
+    "id": "audio-suspend-without-scope",
+    "schema": "AudioControl",
+    "valid": false,
+    "value": {
+      "action": "suspend_io",
+      "reason": "global_stop",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "scope": null,
+      "io_epoch": "4",
+      "audio_epoch": "7",
+      "output_epoch": "12",
+      "issued_by": "device",
+      "issued_at": "2030-01-01T00:00:10Z"
+    }
+  },
+  {
+    "id": "audio-close-without-audio-epoch",
+    "schema": "AudioControl",
+    "valid": false,
+    "value": {
+      "action": "close_voice_session",
+      "reason": "silence",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "scope": null,
+      "io_epoch": "4",
+      "audio_epoch": null,
+      "output_epoch": "12",
+      "issued_by": "device",
+      "issued_at": "2030-01-01T00:00:10Z"
+    }
+  },
+  {
+    "id": "lease-audio",
+    "schema": "Lease",
+    "valid": true,
+    "value": {
+      "lease_id": "00000000-0000-4000-8000-000000000090",
+      "kind": "audio",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "core_instance_id": "00000000-0000-4000-8000-000000000091",
+      "command_scope_id": "00000000-0000-4000-8000-000000000033",
+      "io_epoch": "4",
+      "nonce": "synthetic-nonce-1",
+      "heartbeat_ms": 2000,
+      "ttl_ms": 6000
+    }
+  },
+  {
+    "id": "live-request",
+    "schema": "LiveSessionRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000092",
+      "command_scope_id": "00000000-0000-4000-8000-000000000033",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "purpose": "conversation",
+      "sdp_offer": "v=0 synthetic-offer"
+    }
+  },
+  {
+    "id": "live-request-with-api-key",
+    "schema": "LiveSessionRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000092",
+      "command_scope_id": "00000000-0000-4000-8000-000000000033",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "purpose": "conversation",
+      "sdp_offer": "v=0 synthetic-offer",
+      "api_key": "not-allowed"
+    }
+  },
+  {
+    "id": "live-answer",
+    "schema": "LiveSessionAnswer",
+    "valid": true,
+    "value": {
+      "live_session_id": "00000000-0000-4000-8000-000000000070",
+      "purpose": "conversation",
+      "sdp_answer": "v=0 synthetic-answer",
+      "audio_epoch": "7",
+      "control_epoch": "1",
+      "session_epoch": "3"
+    }
+  },
+  {
+    "id": "live-close",
+    "schema": "LiveSessionClose",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000093",
+      "command_scope_id": "00000000-0000-4000-8000-000000000033",
+      "reason": "silence",
+      "audio_epoch": "7"
+    }
+  },
+  {
+    "id": "live-control-unconfirmed",
+    "schema": "LiveControlState",
+    "valid": true,
+    "value": {
+      "live_session_id": "00000000-0000-4000-8000-000000000070",
+      "control_state": "lost",
+      "control_epoch": "2",
+      "closure": "close_unconfirmed",
+      "usage_seconds": null,
+      "reservation_state": "held"
+    }
+  },
+  {
+    "id": "device-io-live",
+    "schema": "DeviceIOState",
+    "valid": true,
+    "value": {
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "io_epoch": "4",
+      "output_epoch": "12",
+      "lock_state": "unlocked",
+      "stop_scope": "none",
+      "input_permitted": true,
+      "voice_state": "conversation_live",
+      "output_mode": "voice",
+      "private_conversation": false,
+      "audio_lease_valid": true
+    }
+  },
+  {
+    "id": "voice-event-read-aloud",
+    "schema": "VoiceEvent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.voice-event.v1",
+      "event_id": "00000000-0000-4000-8000-000000000094",
+      "event_type": "read_aloud_requested",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "live_session_id": null,
+      "audio_epoch": null,
+      "control_epoch": null,
+      "candidate_ids": ["00000000-0000-4000-8000-000000000081"],
+      "audio_control": null,
+      "occurred_at": "2030-01-01T00:00:20Z"
+    }
+  },
+  {
+    "id": "voice-event-with-transcript",
+    "schema": "VoiceEvent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.voice-event.v1",
+      "event_id": "00000000-0000-4000-8000-000000000094",
+      "event_type": "read_aloud_requested",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "session_id": "00000000-0000-4000-8000-000000000011",
+      "live_session_id": null,
+      "audio_epoch": null,
+      "control_epoch": null,
+      "candidate_ids": ["00000000-0000-4000-8000-000000000081"],
+      "audio_control": null,
+      "occurred_at": "2030-01-01T00:00:20Z",
+      "transcript": "本文を載せない"
+    }
+  },
+  {
+    "id": "session-control-phrases",
+    "schema": "SessionControlPhrases",
+    "valid": true,
+    "value": {
+      "version": "1",
+      "phrases": [
+        {
+          "phrase": "ちょっと待って",
+          "action": "extend_silence"
+        },
+        {
+          "phrase": "少し待って",
+          "action": "extend_silence"
+        },
+        {
+          "phrase": "読み上げを止めて",
+          "action": "stop_playback"
+        },
+        {
+          "phrase": "もう終わり",
+          "action": "end_conversation"
+        },
+        {
+          "phrase": "会話を終わる",
+          "action": "end_conversation"
+        },
+        {
+          "phrase": "記録しないで",
+          "action": "start_private_conversation"
+        },
+        {
+          "phrase": "文字で返して",
+          "action": "reply_in_text"
+        }
+      ]
+    }
   }
 ]

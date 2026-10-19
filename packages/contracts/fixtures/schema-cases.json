@@ -14,7 +14,7 @@
       "text": "このメールにfollow-upラベルを付けて",
       "captured_at": "2030-01-01T00:00:00Z",
       "state": "sealed",
-      "sealReason": "submitted_text",
+      "seal_reason": "submitted_text",
       "input_evidence": "submitted_text",
       "audio": null,
       "policy_version": null
@@ -241,7 +241,7 @@
       "text": "このメールにfollow-upラベルを付けて",
       "captured_at": "2030-01-01T00:00:00Z",
       "state": "sealed",
-      "sealReason": "submitted_text",
+      "seal_reason": "submitted_text",
       "input_evidence": "submitted_text",
       "audio": null,
       "policy_version": null
@@ -262,7 +262,7 @@
       "text": "このメールにfollow-upラベルを付けて",
       "captured_at": "2030-01-01T00:00:00Z",
       "state": "sealed",
-      "sealReason": "submitted_text",
+      "seal_reason": "submitted_text",
       "input_evidence": "submitted_text",
       "audio": null,
       "policy_version": null
@@ -283,7 +283,7 @@
       "text": "このメールにfollow-upラベルを付けて",
       "captured_at": "2030-01-01T00:00:00Z",
       "state": "sealed",
-      "sealReason": "submitted_text",
+      "seal_reason": "submitted_text",
       "input_evidence": "unverified",
       "audio": null,
       "policy_version": null
@@ -304,7 +304,7 @@
       "text": "このメールにfollow-upラベルを付けて",
       "captured_at": "2030-01-01T00:00:00Z",
       "state": "sealed",
-      "sealReason": "live_transcript_policy",
+      "seal_reason": "live_transcript_policy",
       "input_evidence": "live_policy_observed",
       "audio": null,
       "policy_version": null
@@ -464,10 +464,283 @@
       "text": "",
       "captured_at": "2030-01-01T00:00:00Z",
       "state": "sealed",
-      "sealReason": "submitted_text",
+      "seal_reason": "submitted_text",
       "input_evidence": "submitted_text",
       "audio": null,
       "policy_version": null
+    }
+  },
+  {
+    "id": "common-id-v4",
+    "schema": "Id",
+    "valid": true,
+    "value": "00000000-0000-4000-8000-000000000001"
+  },
+  {
+    "id": "common-id-uppercase",
+    "schema": "Id",
+    "valid": false,
+    "value": "00000000-0000-4000-8000-00000000000A"
+  },
+  {
+    "id": "common-id-nil",
+    "schema": "Id",
+    "valid": false,
+    "value": "00000000-0000-0000-0000-000000000000"
+  },
+  {
+    "id": "common-id-v1",
+    "schema": "Id",
+    "valid": false,
+    "value": "00000000-0000-1000-8000-000000000001"
+  },
+  {
+    "id": "common-decimal-zero",
+    "schema": "NonNegativeDecimal",
+    "valid": true,
+    "value": "0"
+  },
+  {
+    "id": "common-decimal-large",
+    "schema": "ContentVersion",
+    "valid": true,
+    "value": "340282366920938463463374607431768211456"
+  },
+  {
+    "id": "common-decimal-leading-zero",
+    "schema": "StateRevision",
+    "valid": false,
+    "value": "01"
+  },
+  {
+    "id": "common-decimal-negative",
+    "schema": "PolicyVersion",
+    "valid": false,
+    "value": "-1"
+  },
+  {
+    "id": "common-decimal-fraction",
+    "schema": "PermissionRevision",
+    "valid": false,
+    "value": "1.0"
+  },
+  {
+    "id": "common-decimal-json-number",
+    "schema": "RequestRevision",
+    "valid": false,
+    "value": 1
+  },
+  {
+    "id": "common-decimal-empty",
+    "schema": "Sequence",
+    "valid": false,
+    "value": ""
+  },
+  {
+    "id": "common-epoch-decimal",
+    "schema": "AudioEpoch",
+    "valid": true,
+    "value": "12"
+  },
+  {
+    "id": "common-epoch-uuid",
+    "schema": "IoEpoch",
+    "valid": false,
+    "value": "00000000-0000-4000-8000-000000000060"
+  },
+  {
+    "id": "common-source-revision-opaque",
+    "schema": "SourceRevision",
+    "valid": true,
+    "value": "r1"
+  },
+  {
+    "id": "common-store-generation-uuid",
+    "schema": "StoreGeneration",
+    "valid": true,
+    "value": "00000000-0000-4000-8000-000000000070"
+  },
+  {
+    "id": "common-store-generation-decimal",
+    "schema": "StoreGeneration",
+    "valid": false,
+    "value": "3"
+  },
+  {
+    "id": "common-utc-basic",
+    "schema": "UtcTime",
+    "valid": true,
+    "value": "2030-01-01T00:00:00Z"
+  },
+  {
+    "id": "common-utc-fraction",
+    "schema": "UtcTime",
+    "valid": true,
+    "value": "2030-01-01T00:00:00.1234567Z"
+  },
+  {
+    "id": "common-utc-leap-second",
+    "schema": "UtcTime",
+    "valid": false,
+    "value": "2030-12-31T23:59:60Z"
+  },
+  {
+    "id": "common-utc-lowercase-z",
+    "schema": "UtcTime",
+    "valid": false,
+    "value": "2030-01-01T00:00:00z"
+  },
+  {
+    "id": "common-utc-offset",
+    "schema": "UtcTime",
+    "valid": false,
+    "value": "2030-01-01T09:00:00+09:00"
+  },
+  {
+    "id": "common-utc-zero-offset",
+    "schema": "UtcTime",
+    "valid": false,
+    "value": "2030-01-01T00:00:00+00:00"
+  },
+  {
+    "id": "common-utc-no-zone",
+    "schema": "UtcTime",
+    "valid": false,
+    "value": "2030-01-01T00:00:00"
+  },
+  {
+    "id": "common-utc-impossible-date",
+    "schema": "UtcTime",
+    "valid": false,
+    "value": "2030-02-30T00:00:00Z"
+  },
+  {
+    "id": "common-local-date-leap-day",
+    "schema": "LocalDate",
+    "valid": true,
+    "value": "2032-02-29"
+  },
+  {
+    "id": "common-local-date-not-leap",
+    "schema": "LocalDate",
+    "valid": false,
+    "value": "2031-02-29"
+  },
+  {
+    "id": "common-local-date-with-time",
+    "schema": "LocalDate",
+    "valid": false,
+    "value": "2030-01-01T00:00:00Z"
+  },
+  {
+    "id": "common-year-month",
+    "schema": "YearMonth",
+    "valid": true,
+    "value": "2030-12"
+  },
+  {
+    "id": "common-year-month-13",
+    "schema": "YearMonth",
+    "valid": false,
+    "value": "2030-13"
+  },
+  {
+    "id": "common-time-zone",
+    "schema": "TimeZone",
+    "valid": true,
+    "value": "Asia/Tokyo"
+  },
+  {
+    "id": "common-time-zone-offset",
+    "schema": "TimeZone",
+    "valid": false,
+    "value": "+09:00"
+  },
+  {
+    "id": "common-money-micro",
+    "schema": "Money",
+    "valid": true,
+    "value": {
+      "currency": "USD",
+      "amount": "1000000"
+    }
+  },
+  {
+    "id": "common-money-lowercase-currency",
+    "schema": "Money",
+    "valid": false,
+    "value": {
+      "currency": "usd",
+      "amount": "1"
+    }
+  },
+  {
+    "id": "common-money-leading-zero",
+    "schema": "Money",
+    "valid": false,
+    "value": {
+      "currency": "USD",
+      "amount": "0100"
+    }
+  },
+  {
+    "id": "common-money-negative",
+    "schema": "Money",
+    "valid": false,
+    "value": {
+      "currency": "USD",
+      "amount": "-1"
+    }
+  },
+  {
+    "id": "common-money-extra-field",
+    "schema": "Money",
+    "valid": false,
+    "value": {
+      "currency": "USD",
+      "amount": "1",
+      "fx": "1.2"
+    }
+  },
+  {
+    "id": "common-hash-lower",
+    "schema": "Hash",
+    "valid": true,
+    "value": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf"
+  },
+  {
+    "id": "common-hash-upper",
+    "schema": "Hash",
+    "valid": false,
+    "value": "72C8A8C172BDA32F8DF7933DCA1C490198A0F3670CE03ADC40445D55A68B00BF"
+  },
+  {
+    "id": "common-api-error",
+    "schema": "ApiError",
+    "valid": true,
+    "value": {
+      "code": "expired_scope",
+      "message": "以前の接続または表示情報は使えません",
+      "request_id": null
+    }
+  },
+  {
+    "id": "common-api-error-missing-request",
+    "schema": "ApiError",
+    "valid": false,
+    "value": {
+      "code": "conflict",
+      "message": "内容または状態が変わりました"
+    }
+  },
+  {
+    "id": "common-api-error-unknown-code",
+    "schema": "ApiError",
+    "valid": false,
+    "value": {
+      "code": "teapot",
+      "message": "x",
+      "request_id": null
     }
   }
 ]

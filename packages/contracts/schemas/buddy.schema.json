@@ -66,20 +66,131 @@
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "description": "B00初版のランダムUUID v4。認証情報ではない。"
     },
-    "Revision": {
+    "NonNegativeDecimal": {
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)$",
-      "description": "非負整数の10進文字列。各フィールドの版の意味は互換ではない。"
+      "description": "先頭ゼロのない非負整数の10進文字列。版・連番の用途別の型はすべてこの pattern を持つ。プロパティから直接参照せず、用途別の型を使う（ADR 0003）。"
+    },
+    "RequestRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "本人の依頼（入力）の版。訂正が一つの依頼に確定したときだけ上がる（設計 07 §1、10 §5A）。抽出した依頼の版とは別の型。"
+    },
+    "RequestEntityRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "抽出した依頼（request_entity）の版（設計 11 §5A）。本人の依頼の版 RequestRevision と同じ object に並べない。"
+    },
+    "TranscriptRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "文字起こしの版（設計 10 §5A）。"
+    },
+    "ContentVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。"
+    },
+    "StateRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "処理状態の更新番号。競合検査用で、内容が同じなら ContentVersion は変えない（設計 07 §1、08 §1）。"
+    },
+    "PolicyVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "自動実行などの方針の版（設計 08 §1）。"
+    },
+    "PermissionRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "Buddy 側の許可設定の版（設計 07 §1、08 §1）。"
+    },
+    "ForgettingGeneration": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "忘却台帳の世代（設計 03、08 §1・§6）。"
+    },
+    "ScopeRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "取得範囲（scope）の版（設計 11 §1A）。"
+    },
+    "AnalysisRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "関連解析の判定の版（設計 11 §5B）。"
+    },
+    "PublishedGeneration": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "同期の公開世代（設計 11 §1・§1A）。外部サービスの同時点 snapshot を意味しない。"
+    },
+    "IoEpoch": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "端末入出力の世代。進めた後は古い世代の要求・結果を拒否する（設計 10 §1A）。"
+    },
+    "AudioEpoch": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "音声接続・収音区間の世代。再接続・端末交代で進める（設計 07 §1、10 §1A・§5A）。"
+    },
+    "OutputEpoch": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "再生出力の世代。読み上げ停止で進める（設計 10 §1A）。"
+    },
+    "ControlEpoch": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "サイドバンド制御経路の世代（設計 10 §2A）。"
+    },
+    "SessionEpoch": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "結果の出力先とした会話接続の世代（設計 07 §5、08 §5）。"
+    },
+    "Sequence": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "連番・カウンタ（イベント連番、音声 frame 番号、sample 位置）。版ではない。"
+    },
+    "SourceRevision": {
+      "type": "string",
+      "minLength": 1,
+      "description": "元サービスが返す対象の版（etag、履歴 ID など）。不透明な文字列で、大小比較しない（設計 07 §1、11 §3）。"
+    },
+    "StoreGeneration": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "DB の世代。通常の再起動では維持し、バックアップ復元・新規作成で新しい値にする。等値比較だけに使う（設計 07 §1・§4、ADR 0003）。"
+    },
+    "EventCursor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "中枢が発行する不透明なイベント位置。認証の代わりにしない（設計 07 §4）。"
     },
     "UtcTime": {
       "type": "string",
       "format": "date-time",
-      "pattern": "Z$",
-      "description": "UTC RFC 3339。元の地域時間と終日は別に扱う。"
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9](\\.[0-9]+)?Z$",
+      "description": "UTC の RFC 3339 表現。区切りは大文字の T と Z だけ。JavaScript の Date で扱えないうるう秒は拒否する。元の地域時間と終日は別に扱う。"
     },
     "LocalDate": {
       "type": "string",
       "format": "date"
+    },
+    "YearMonth": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+      "description": "暦月（予算月など）。"
+    },
+    "TimeZone": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$",
+      "description": "IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。"
     },
     "Hash": {
       "type": "string",
@@ -137,19 +248,19 @@
       "type": "object",
       "properties": {
         "audio_epoch": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/AudioEpoch"
         },
         "first_frame_seq": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/Sequence"
         },
         "last_frame_seq": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/Sequence"
         },
         "start_sample": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/Sequence"
         },
         "end_sample": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/Sequence"
         }
       },
       "required": [
@@ -183,12 +294,12 @@
               "$ref": "#/$defs/Id"
             },
             "request_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/RequestRevision"
             },
             "transcript_revision": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/Revision"
+                  "$ref": "#/$defs/TranscriptRevision"
                 },
                 {
                   "type": "null"
@@ -206,7 +317,7 @@
               "type": "string",
               "const": "sealed"
             },
-            "sealReason": {
+            "seal_reason": {
               "type": "string",
               "const": "submitted_text"
             },
@@ -232,7 +343,7 @@
             "text",
             "captured_at",
             "state",
-            "sealReason",
+            "seal_reason",
             "input_evidence",
             "audio",
             "policy_version"
@@ -259,12 +370,12 @@
               "$ref": "#/$defs/Id"
             },
             "request_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/RequestRevision"
             },
             "transcript_revision": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/Revision"
+                  "$ref": "#/$defs/TranscriptRevision"
                 },
                 {
                   "type": "null"
@@ -282,7 +393,7 @@
               "type": "string",
               "const": "sealed"
             },
-            "sealReason": {
+            "seal_reason": {
               "type": "string",
               "const": "user_corrected"
             },
@@ -308,7 +419,7 @@
             "text",
             "captured_at",
             "state",
-            "sealReason",
+            "seal_reason",
             "input_evidence",
             "audio",
             "policy_version"
@@ -335,10 +446,10 @@
               "$ref": "#/$defs/Id"
             },
             "request_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/RequestRevision"
             },
             "transcript_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/TranscriptRevision"
             },
             "text": {
               "type": "string",
@@ -351,7 +462,7 @@
               "type": "string",
               "const": "sealed"
             },
-            "sealReason": {
+            "seal_reason": {
               "type": "string",
               "const": "local_asr_segment"
             },
@@ -377,7 +488,7 @@
             "text",
             "captured_at",
             "state",
-            "sealReason",
+            "seal_reason",
             "input_evidence",
             "audio",
             "policy_version"
@@ -404,10 +515,10 @@
               "$ref": "#/$defs/Id"
             },
             "request_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/RequestRevision"
             },
             "transcript_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/TranscriptRevision"
             },
             "text": {
               "type": "string",
@@ -420,7 +531,7 @@
               "type": "string",
               "const": "sealed"
             },
-            "sealReason": {
+            "seal_reason": {
               "type": "string",
               "const": "live_transcript_policy"
             },
@@ -432,7 +543,7 @@
               "$ref": "#/$defs/AudioRange"
             },
             "policy_version": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/PolicyVersion"
             }
           },
           "required": [
@@ -446,7 +557,7 @@
             "text",
             "captured_at",
             "state",
-            "sealReason",
+            "seal_reason",
             "input_evidence",
             "audio",
             "policy_version"
@@ -473,12 +584,12 @@
               "$ref": "#/$defs/Id"
             },
             "request_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/RequestRevision"
             },
             "transcript_revision": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/Revision"
+                  "$ref": "#/$defs/TranscriptRevision"
                 },
                 {
                   "type": "null"
@@ -495,7 +606,7 @@
               "type": "string",
               "enum": ["collecting", "end_candidate", "superseded", "blocked"]
             },
-            "sealReason": {
+            "seal_reason": {
               "type": "null"
             },
             "input_evidence": {
@@ -520,7 +631,7 @@
             "policy_version": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/Revision"
+                  "$ref": "#/$defs/PolicyVersion"
                 },
                 {
                   "type": "null"
@@ -539,7 +650,7 @@
             "text",
             "captured_at",
             "state",
-            "sealReason",
+            "seal_reason",
             "input_evidence",
             "audio",
             "policy_version"
@@ -644,7 +755,7 @@
       "additionalProperties": false,
       "description": "24意図のうち最初のlabel_mailプロファイルだけ。root object、全フィールド必須、欠落はnull。承認・effect_kind・状態・根拠をモデルに生成させない。"
     },
-    "FieldEvidence": {
+    "InputFieldEvidence": {
       "type": "object",
       "properties": {
         "field": {
@@ -655,7 +766,7 @@
           "$ref": "#/$defs/Id"
         },
         "request_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/RequestRevision"
         },
         "quote": {
           "type": "string",
@@ -678,7 +789,8 @@
         "start_utf16",
         "end_utf16"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "入力引数の根拠。位置は JavaScript の UTF-16 コード単位（ADR 0002）。抽出の根拠 FieldEvidence（設計 03・11、コードポイント）とは別の型（ADR 0003）。"
     },
     "LabelMailInterpretation": {
       "type": "object",
@@ -694,7 +806,7 @@
           "$ref": "#/$defs/Id"
         },
         "request_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/RequestRevision"
         },
         "intent": {
           "type": "string",
@@ -743,7 +855,7 @@
         "evidence": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/FieldEvidence"
+            "$ref": "#/$defs/InputFieldEvidence"
           },
           "minItems": 1
         }
@@ -769,7 +881,7 @@
           "$ref": "#/$defs/Id"
         },
         "request_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/RequestRevision"
         },
         "state": {
           "type": "string",
@@ -783,10 +895,10 @@
           }
         },
         "policy_version": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/PolicyVersion"
         },
         "permission_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/PermissionRevision"
         }
       },
       "required": [
@@ -811,10 +923,10 @@
           "$ref": "#/$defs/Id"
         },
         "content_version": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/ContentVersion"
         },
         "permission_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/PermissionRevision"
         },
         "provider": {
           "type": "string",
@@ -831,8 +943,7 @@
               "minLength": 1
             },
             "source_revision": {
-              "type": "string",
-              "minLength": 1
+              "$ref": "#/$defs/SourceRevision"
             }
           },
           "required": ["remote_id", "source_revision"],
@@ -938,7 +1049,7 @@
           "$ref": "#/$defs/Hash"
         },
         "state_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/StateRevision"
         }
       },
       "required": ["preview_id", "intent", "content_hash", "state_revision"],
@@ -957,13 +1068,13 @@
           "$ref": "#/$defs/Id"
         },
         "content_version": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/ContentVersion"
         },
         "content_hash": {
           "$ref": "#/$defs/Hash"
         },
         "expected_state_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/StateRevision"
         }
       },
       "required": [
@@ -986,7 +1097,7 @@
           "$ref": "#/$defs/Id"
         },
         "expected_state_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/StateRevision"
         }
       },
       "required": ["request_id", "command_scope_id", "expected_state_revision"],
@@ -1007,7 +1118,7 @@
               "$ref": "#/$defs/Id"
             },
             "state_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/StateRevision"
             },
             "status": {
               "type": "string",
@@ -1040,14 +1151,14 @@
               "$ref": "#/$defs/Id"
             },
             "state_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/StateRevision"
             },
             "status": {
               "type": "string",
               "const": "durable"
             },
             "committed_state_revision": {
-              "$ref": "#/$defs/Revision"
+              "$ref": "#/$defs/StateRevision"
             }
           },
           "required": [
@@ -1070,13 +1181,13 @@
           "$ref": "#/$defs/Id"
         },
         "content_version": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/ContentVersion"
         },
         "content_hash": {
           "$ref": "#/$defs/Hash"
         },
         "state_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/StateRevision"
         },
         "state": {
           "type": "string",
@@ -1163,20 +1274,19 @@
           "$ref": "#/$defs/Id"
         },
         "store_generation": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/StoreGeneration"
         },
         "sequence": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/Sequence"
         },
         "event_cursor": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/EventCursor"
         },
         "operation_id": {
           "$ref": "#/$defs/Id"
         },
         "state_revision": {
-          "$ref": "#/$defs/Revision"
+          "$ref": "#/$defs/StateRevision"
         },
         "event_type": {
           "type": "string",
@@ -1210,8 +1320,7 @@
           }
         },
         "event_cursor": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/EventCursor"
         },
         "resnapshot_required": {
           "type": "boolean"
@@ -1271,8 +1380,7 @@
           "minLength": 1
         },
         "budget_month": {
-          "type": "string",
-          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          "$ref": "#/$defs/YearMonth"
         },
         "budget_scope": {
           "type": "string",

@@ -32,12 +32,12 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
-      request_revision: Revision;
-      transcript_revision: Revision | null;
+      request_revision: RequestRevision;
+      transcript_revision: TranscriptRevision | null;
       text: string;
       captured_at: UtcTime;
       state: 'sealed';
-      sealReason: 'submitted_text';
+      seal_reason: 'submitted_text';
       input_evidence: 'submitted_text';
       audio: null;
       policy_version: null;
@@ -48,12 +48,12 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
-      request_revision: Revision;
-      transcript_revision: Revision | null;
+      request_revision: RequestRevision;
+      transcript_revision: TranscriptRevision | null;
       text: string;
       captured_at: UtcTime;
       state: 'sealed';
-      sealReason: 'user_corrected';
+      seal_reason: 'user_corrected';
       input_evidence: 'submitted_text';
       audio: null;
       policy_version: null;
@@ -64,12 +64,12 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
-      request_revision: Revision;
-      transcript_revision: Revision;
+      request_revision: RequestRevision;
+      transcript_revision: TranscriptRevision;
       text: string;
       captured_at: UtcTime;
       state: 'sealed';
-      sealReason: 'local_asr_segment';
+      seal_reason: 'local_asr_segment';
       input_evidence: 'full_audio_segment';
       audio: AudioRange;
       policy_version: null;
@@ -80,15 +80,15 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
-      request_revision: Revision;
-      transcript_revision: Revision;
+      request_revision: RequestRevision;
+      transcript_revision: TranscriptRevision;
       text: string;
       captured_at: UtcTime;
       state: 'sealed';
-      sealReason: 'live_transcript_policy';
+      seal_reason: 'live_transcript_policy';
       input_evidence: 'live_policy_observed';
       audio: AudioRange;
-      policy_version: Revision;
+      policy_version: PolicyVersion;
     }
   | {
       schema: 'buddy.input.v1';
@@ -96,33 +96,65 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
-      request_revision: Revision;
-      transcript_revision: Revision | null;
+      request_revision: RequestRevision;
+      transcript_revision: TranscriptRevision | null;
       text: string;
       captured_at: UtcTime;
       state: 'collecting' | 'end_candidate' | 'superseded' | 'blocked';
-      sealReason: null;
+      seal_reason: null;
       input_evidence:
         | 'submitted_text'
         | 'full_audio_segment'
         | 'live_policy_observed'
         | 'unverified';
       audio: AudioRange | null;
-      policy_version: Revision | null;
+      policy_version: PolicyVersion | null;
     };
 /**
  * B00初版のランダムUUID v4。認証情報ではない。
  */
 export type Id = string;
 /**
- * 非負整数の10進文字列。各フィールドの版の意味は互換ではない。
+ * 本人の依頼（入力）の版。訂正が一つの依頼に確定したときだけ上がる（設計 07 §1、10 §5A）。抽出した依頼の版とは別の型。
  */
-export type Revision = string;
+export type RequestRevision = string;
 /**
- * UTC RFC 3339。元の地域時間と終日は別に扱う。
+ * 文字起こしの版（設計 10 §5A）。
+ */
+export type TranscriptRevision = string;
+/**
+ * UTC の RFC 3339 表現。区切りは大文字の T と Z だけ。JavaScript の Date で扱えないうるう秒は拒否する。元の地域時間と終日は別に扱う。
  */
 export type UtcTime = string;
+/**
+ * 音声接続・収音区間の世代。再接続・端末交代で進める（設計 07 §1、10 §1A・§5A）。
+ */
+export type AudioEpoch = string;
+/**
+ * 連番・カウンタ（イベント連番、音声 frame 番号、sample 位置）。版ではない。
+ */
+export type Sequence = string;
+/**
+ * 自動実行などの方針の版（設計 08 §1）。
+ */
+export type PolicyVersion = string;
+/**
+ * Buddy 側の許可設定の版（設計 07 §1、08 §1）。
+ */
+export type PermissionRevision = string;
+/**
+ * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
+ */
+export type ContentVersion = string;
+/**
+ * 元サービスが返す対象の版（etag、履歴 ID など）。不透明な文字列で、大小比較しない（設計 07 §1、11 §3）。
+ */
+export type SourceRevision = string;
 export type Hash = string;
+/**
+ * 処理状態の更新番号。競合検査用で、内容が同じなら ContentVersion は変えない（設計 07 §1、08 §1）。
+ */
+export type StateRevision = string;
 /**
  * 受付ACKとdurable ACK。どちらも外部変更の成功ではない。
  */
@@ -131,7 +163,7 @@ export type CommandReceipt =
       request_id: Id;
       command_id: Id;
       operation_id: Id;
-      state_revision: Revision;
+      state_revision: StateRevision;
       status: 'accepted';
       committed_state_revision: null;
     }
@@ -139,21 +171,33 @@ export type CommandReceipt =
       request_id: Id;
       command_id: Id;
       operation_id: Id;
-      state_revision: Revision;
+      state_revision: StateRevision;
       status: 'durable';
-      committed_state_revision: Revision;
+      committed_state_revision: StateRevision;
     };
+/**
+ * DB の世代。通常の再起動では維持し、バックアップ復元・新規作成で新しい値にする。等値比較だけに使う（設計 07 §1・§4、ADR 0003）。
+ */
+export type StoreGeneration = string;
+/**
+ * 中枢が発行する不透明なイベント位置。認証の代わりにしない（設計 07 §4）。
+ */
+export type EventCursor = string;
+/**
+ * 暦月（予算月など）。
+ */
+export type YearMonth = string;
 /**
  * 通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。
  */
 export type Amount = string;
 
 export interface AudioRange {
-  audio_epoch: Id;
-  first_frame_seq: Revision;
-  last_frame_seq: Revision;
-  start_sample: Revision;
-  end_sample: Revision;
+  audio_epoch: AudioEpoch;
+  first_frame_seq: Sequence;
+  last_frame_seq: Sequence;
+  start_sample: Sequence;
+  end_sample: Sequence;
 }
 /**
  * 24意図のうち最初のlabel_mailプロファイルだけ。root object、全フィールド必須、欠落はnull。承認・effect_kind・状態・根拠をモデルに生成させない。
@@ -176,7 +220,7 @@ export interface LabelMailInterpretation {
   schema: 'buddy.interpretation.label-mail.v1';
   input_id: Id;
   workflow_id: Id;
-  request_revision: Revision;
+  request_revision: RequestRevision;
   intent: 'label_mail';
   relation: 'new' | 'clarification' | 'correction' | 'cancel';
   target_workflow_id: Id | null;
@@ -188,12 +232,15 @@ export interface LabelMailInterpretation {
   /**
    * @minItems 1
    */
-  evidence: [FieldEvidence, ...FieldEvidence[]];
+  evidence: [InputFieldEvidence, ...InputFieldEvidence[]];
 }
-export interface FieldEvidence {
+/**
+ * 入力引数の根拠。位置は JavaScript の UTF-16 コード単位（ADR 0002）。抽出の根拠 FieldEvidence（設計 03・11、コードポイント）とは別の型（ADR 0003）。
+ */
+export interface InputFieldEvidence {
   field: 'target_candidate_id' | 'add_labels' | 'remove_labels';
   input_id: Id;
-  request_revision: Revision;
+  request_revision: RequestRevision;
   quote: string;
   start_utf16: number;
   end_utf16: number;
@@ -203,11 +250,11 @@ export interface FieldEvidence {
  */
 export interface ActionReadiness {
   workflow_id: Id;
-  request_revision: Revision;
+  request_revision: RequestRevision;
   state: 'blocked' | 'preview_only' | 'needs_approval' | 'auto_eligible';
   reason_codes: string[];
-  policy_version: Revision;
-  permission_revision: Revision;
+  policy_version: PolicyVersion;
+  permission_revision: PermissionRevision;
 }
 /**
  * H01のラベル変更のみ。content_hashはこの確定intent全体のJCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。
@@ -215,13 +262,13 @@ export interface ActionReadiness {
 export interface LabelOperationIntent {
   schema: 'buddy.operation.v1';
   operation_id: Id;
-  content_version: Revision;
-  permission_revision: Revision;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
   provider: 'mock' | 'gmail' | 'microsoft_graph';
   account_id: Id;
   target: {
     remote_id: string;
-    source_revision: string;
+    source_revision: SourceRevision;
   };
   action: {
     kind: 'mail.labels.change';
@@ -248,29 +295,29 @@ export interface LabelPreview {
   preview_id: Id;
   intent: LabelOperationIntent;
   content_hash: Hash;
-  state_revision: Revision;
+  state_revision: StateRevision;
 }
 export interface ApprovalRequest {
   request_id: Id;
   command_scope_id: Id;
   preview_id: Id;
-  content_version: Revision;
+  content_version: ContentVersion;
   content_hash: Hash;
-  expected_state_revision: Revision;
+  expected_state_revision: StateRevision;
 }
 export interface StateCommand {
   request_id: Id;
   command_scope_id: Id;
-  expected_state_revision: Revision;
+  expected_state_revision: StateRevision;
 }
 /**
  * 最初のラベル変更用状態投影。allowed_actionsは表示補助であり、実行時の認可ではない。
  */
 export interface OperationSnapshot {
   operation_id: Id;
-  content_version: Revision;
+  content_version: ContentVersion;
   content_hash: Hash;
-  state_revision: Revision;
+  state_revision: StateRevision;
   state:
     | 'awaiting_approval'
     | 'approved'
@@ -295,17 +342,17 @@ export interface OperationSnapshot {
 export interface EventEnvelope {
   schema: 'buddy.event.v1';
   event_id: Id;
-  store_generation: Id;
-  sequence: Revision;
-  event_cursor: string;
+  store_generation: StoreGeneration;
+  sequence: Sequence;
+  event_cursor: EventCursor;
   operation_id: Id;
-  state_revision: Revision;
+  state_revision: StateRevision;
   event_type: 'operation.updated' | 'command.durable';
   occurred_at: UtcTime;
 }
 export interface EventPage {
   events: EventEnvelope[];
-  event_cursor: string;
+  event_cursor: EventCursor;
   resnapshot_required: boolean;
 }
 export interface ApiError {
@@ -329,7 +376,7 @@ export interface BudgetReservation {
   request_id: Id;
   profile_id: Id;
   price_version: string;
-  budget_month: string;
+  budget_month: YearMonth;
   budget_scope:
     'conversation' | 'background' | 'search' | 'voice' | 'approved_overage';
   reserved_amount: Money;

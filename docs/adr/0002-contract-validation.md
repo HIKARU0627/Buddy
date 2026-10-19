@@ -29,7 +29,7 @@ H01 と追加の境界例は実行するが、RFC 全体の完全適合証明と
 - 未知、未確定、適用しない値は契約で明示した null。省略や空配列とは同一視しない。
 - InputSnapshot の本文は不変の入力。sealed と input_evidence を分離する。音声の訂正は文字確定へ自動昇格させない。再接続時の epoch と有効版の照合は Core の責務。
 - LabelMailWireResponse は最初の限定比較用。24 intent の全引数形式として使わない。対象候補 ID は Core が渡した候補集合の範囲で解決する。モデルは承認・状態・effect_kind を指定できない。
-- FieldEvidence の位置は JavaScript の UTF-16 コード単位で表し、元入力の版・引用との一致を Core が確認する。機械的に形が通っただけでは証拠として受理しない。
+- FieldEvidence（ADR 0003 で InputFieldEvidence に改名）の位置は JavaScript の UTF-16 コード単位で表し、元入力の版・引用との一致を Core が確認する。機械的に形が通っただけでは証拠として受理しない。
 - OperationSnapshot / EventEnvelope は初回のラベル操作用。preview、scope、ロック、表示権、現行版の検査なしに承認しない。HTTP 202 / accepted / durable は外部成功ではない。
 - BudgetReservation は R / M と gross / credit / spend を分離。R / M を加算しない。M を超えた実費も記録可能にし、新規有料処理を止めるのは Core の責務。
 - CreditObservation は残高の観測。請求周期と予算月を分け、共有組織の残高を専有したとみなさない。プロバイダーの未確認 API を契約に作らない。

@@ -93,8 +93,8 @@ test('large revisions are strings without floating-point loss', () => {
     parseStrictJson(JSON.stringify(input)).request_revision,
     '9007199254740993123456789',
   );
-  assert(!validators['Revision']('1.0'));
-  assert(!validators['Revision']('-1'));
+  assert(!validators['NonNegativeDecimal']('1.0'));
+  assert(!validators['NonNegativeDecimal']('-1'));
 });
 
 test('UTC and calendar dates reject impossible dates and local timestamps', () => {
@@ -106,12 +106,12 @@ test('UTC and calendar dates reject impossible dates and local timestamps', () =
 
 test('F01 shape: Live evidence cannot impersonate full capture or text correction', () => {
   const input = fixture('input-text');
-  input.sealReason = 'live_transcript_policy';
+  input.seal_reason = 'live_transcript_policy';
   input.input_evidence = 'live_policy_observed';
   input.policy_version = '1';
   input.transcript_revision = '1';
   input.audio = {
-    audio_epoch: '00000000-0000-4000-8000-000000000060',
+    audio_epoch: '7',
     first_frame_seq: '1',
     last_frame_seq: '2',
     start_sample: '0',
@@ -122,7 +122,7 @@ test('F01 shape: Live evidence cannot impersonate full capture or text correctio
   const fake = { ...input, input_evidence: 'full_audio_segment' };
   assert(!validators['InputSnapshot'](fake));
   assert(
-    !validators['InputSnapshot']({ ...input, sealReason: 'user_corrected' }),
+    !validators['InputSnapshot']({ ...input, seal_reason: 'user_corrected' }),
   );
   assert(!validators['InputSnapshot']({ ...input, policy_version: null }));
   input.audio.end_sample = '0';
@@ -254,9 +254,9 @@ test('synthetic evidence refers to the exact source revision and UTF-16 range', 
       input.text.slice(evidence.start_utf16, evidence.end_utf16),
       evidence.quote,
     );
-    assert.deepEqual(semanticErrors('FieldEvidence', evidence), []);
+    assert.deepEqual(semanticErrors('InputFieldEvidence', evidence), []);
     assert.deepEqual(
-      semanticErrors('FieldEvidence', {
+      semanticErrors('InputFieldEvidence', {
         ...evidence,
         end_utf16: evidence.start_utf16,
       }),

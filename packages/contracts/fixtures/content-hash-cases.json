@@ -1,0 +1,82 @@
+{
+  "description": "内容 hash（JCS＋SHA-256）の期待値。正規形は手書きのリテラル、SHA-256 は OS の shasum で計算し、検査対象の canonicalize と Node.js crypto では生成していない。",
+  "cases": [
+    {
+      "id": "h01",
+      "note": "設計 08 §2 の H01。入力はキー順を逆にし空白を入れた。期待値は同じ",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"follow-up\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"follow-up\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf"
+    },
+    {
+      "id": "permission-revision-2",
+      "note": "許可版だけ変更。H01 と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"2\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"follow-up\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"follow-up\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"2\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "57cd9fee37ff7df4e51bed6c41bde3b53cc76eeb1140ac91f3ba11c23943fac3"
+    },
+    {
+      "id": "content-version-2",
+      "note": "内容版だけ変更。H01 と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"2\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"follow-up\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"follow-up\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"2\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "f5ae3c3583fbeb9e9846c745083424be1b497df6c614c0c657f1b680c3a4c136"
+    },
+    {
+      "id": "remote-id-different",
+      "note": "対象 ID だけ変更。H01 と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-002\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"follow-up\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"follow-up\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-002\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "8a12f5a499ac2396dca6406eda6247135593a0e9a46be1b1e9c6efc1977bfa5e"
+    },
+    {
+      "id": "source-revision-r2",
+      "note": "元サービスの対象版だけ変更。H01 と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r2\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"follow-up\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"follow-up\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r2\"}}",
+      "expected_sha256": "016227c77e24d29fac0c68b68570755b194cd30a3c381ba06d39a5fe4260d41f"
+    },
+    {
+      "id": "labels-ab",
+      "note": "配列の順序 A→B",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"follow-up\",\n   \"later\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"follow-up\",\"later\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "c6b4ecf4b2c02cf87567bb5cc09d21f37469425c03c9f15cfdeaaed8f686100a"
+    },
+    {
+      "id": "labels-ba",
+      "note": "配列の順序 B→A。JCS は配列順を保つため labels-ab と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"later\",\n   \"follow-up\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"later\",\"follow-up\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "37fb8b34ce2a92c65d0d505ec2c751dbc03fa426b455f66ec89caf06900d7806"
+    },
+    {
+      "id": "label-non-ascii",
+      "note": "非 ASCII のラベル。JCS はエスケープせず UTF-8 のまま出力する",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"\\u8981\\u5bfe\\u5fdc\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"\u8981\u5bfe\u5fdc\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "7c8848576813b6ed99d2e5f52c5a3c17bcf65dc5ae9edf48810dfbc64cedb349"
+    },
+    {
+      "id": "label-nfc",
+      "note": "NFC の é（U+00E9）",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"caf\\u00e9\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"caf\u00e9\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "653c2701fdc991d544f5e39132132127b4c088bf92f18de7dda6096a5bcab838"
+    },
+    {
+      "id": "label-nfd",
+      "note": "NFD の e＋結合アクセント（U+0065 U+0301）。Unicode 正規化しないため label-nfc と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"cafe\\u0301\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"cafe\u0301\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "3b9098bb4db39ab30a5181cf8b391dbf37605f6193801125f9a10a34cd92458f"
+    },
+    {
+      "id": "label-escapes",
+      "note": "引用符・バックスラッシュ・制御文字。JCS の短縮エスケープと小文字の \\u001f",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"a\\\"b\\\\c\\u001f\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"a\\\"b\\\\c\\u001f\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "b16d3e655be9fe0f9d82bf397d120e4e8eb7de8e95ddb5dcfdaeca2ee6b761a2"
+    }
+  ]
+}

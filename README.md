@@ -28,6 +28,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [開発手順・Codex / Claude Code](docs/development.md)
 - [開発基盤の選定理由](docs/adr/0001-development-baseline.md)
 - [契約検証ツールと初回の具体化](docs/adr/0002-contract-validation.md)
+- [共通表現と用途別の版](docs/adr/0003-common-representation.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

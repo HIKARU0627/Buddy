@@ -38,6 +38,8 @@ const VERSION_FIELDS = {
   source_revision: 'SourceRevision',
   store_generation: 'StoreGeneration',
   template_version: 'TemplateVersion',
+  reservation_revision: 'ReservationRevision',
+  expected_reservation_revision: 'ReservationRevision',
   sequence: 'Sequence',
   first_frame_seq: 'Sequence',
   last_frame_seq: 'Sequence',
@@ -45,9 +47,8 @@ const VERSION_FIELDS = {
   end_sample: 'Sequence',
 };
 // 型の決定を後続 Issue に残す版。決めたら VERSION_FIELDS へ移す。
-const PENDING_VERSION_FIELDS = new Set([
-  'price_version', // 単価の版は B00-05（#20）で決める
-]);
+// price_version は不透明な単価の版の ID（設定で決める）で、順序比較しない（ADR 0006）。
+const OPAQUE_VERSION_FIELDS = new Set(['price_version']);
 // 抽出した依頼の版を使う定義。RequestEntity 等を追加した時点で登録する（U04）。
 const REQUEST_ENTITY_DEFS = new Set();
 const DECIMAL_KINDS = [
@@ -68,6 +69,7 @@ const DECIMAL_KINDS = [
   'ControlEpoch',
   'SessionEpoch',
   'TemplateVersion',
+  'ReservationRevision',
   'Sequence',
 ];
 
@@ -103,7 +105,7 @@ test('version fields use their own revision type and never the shared base', () 
       );
       if (/_(?:revision|version|generation|epoch)$/u.test(field))
         assert(
-          field in VERSION_FIELDS || PENDING_VERSION_FIELDS.has(field),
+          field in VERSION_FIELDS || OPAQUE_VERSION_FIELDS.has(field),
           `${owner}.${field} has no assigned version type`,
         );
       if (!(field in VERSION_FIELDS)) continue;

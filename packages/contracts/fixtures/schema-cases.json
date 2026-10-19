@@ -187,11 +187,12 @@
     "valid": true,
     "value": {
       "reservation_id": "00000000-0000-4000-8000-000000000050",
+      "reservation_revision": "0",
       "request_id": "00000000-0000-4000-8000-000000000051",
       "profile_id": "00000000-0000-4000-8000-000000000052",
       "price_version": "synthetic-v1",
       "budget_month": "2030-01",
-      "budget_scope": "background",
+      "pool_id": "llm.background",
       "reserved_amount": {
         "currency": "USD",
         "amount": "100"
@@ -205,7 +206,9 @@
       "actual_gross": null,
       "credit_applied": null,
       "additional_spend": null,
-      "credit_cycle_id": null
+      "credit_cycle_id": null,
+      "approval_id": null,
+      "overrun_reviewed": false
     }
   },
   {
@@ -1654,6 +1657,289 @@
           "action": "reply_in_text"
         }
       ]
+    }
+  },
+  {
+    "id": "budget-config-synthetic",
+    "schema": "BudgetConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-config.v1",
+      "currency": "XTS",
+      "pools": [
+        {
+          "pool_id": "total",
+          "parent_pool_id": null,
+          "limit": {
+            "currency": "XTS",
+            "amount": "200"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm",
+          "parent_pool_id": "total",
+          "limit": {
+            "currency": "XTS",
+            "amount": "100"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm.background",
+          "parent_pool_id": "llm",
+          "limit": {
+            "currency": "XTS",
+            "amount": "80"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm.background.campaign",
+          "parent_pool_id": "llm.background",
+          "limit": {
+            "currency": "XTS",
+            "amount": "10"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "search",
+          "parent_pool_id": "total",
+          "limit": {
+            "currency": "XTS",
+            "amount": "30"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "voice",
+          "parent_pool_id": null,
+          "limit": {
+            "currency": "XTS",
+            "amount": "50"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "overage",
+          "parent_pool_id": null,
+          "limit": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "requires_approval": true
+        }
+      ],
+      "verified_price_versions": ["p1"]
+    }
+  },
+  {
+    "id": "budget-config-uppercase-pool",
+    "schema": "BudgetConfig",
+    "valid": false,
+    "value": {
+      "schema": "buddy.budget-config.v1",
+      "currency": "XTS",
+      "pools": [
+        {
+          "pool_id": "Total",
+          "parent_pool_id": null,
+          "limit": {
+            "currency": "XTS",
+            "amount": "200"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm",
+          "parent_pool_id": "total",
+          "limit": {
+            "currency": "XTS",
+            "amount": "100"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm.background",
+          "parent_pool_id": "llm",
+          "limit": {
+            "currency": "XTS",
+            "amount": "80"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm.background.campaign",
+          "parent_pool_id": "llm.background",
+          "limit": {
+            "currency": "XTS",
+            "amount": "10"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "search",
+          "parent_pool_id": "total",
+          "limit": {
+            "currency": "XTS",
+            "amount": "30"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "voice",
+          "parent_pool_id": null,
+          "limit": {
+            "currency": "XTS",
+            "amount": "50"
+          },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "overage",
+          "parent_pool_id": null,
+          "limit": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "requires_approval": true
+        }
+      ],
+      "verified_price_versions": ["p1"]
+    }
+  },
+  {
+    "id": "budget-admission-request",
+    "schema": "BudgetAdmissionRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000000a0",
+      "pool_id": "llm.background",
+      "budget_month": "2030-10",
+      "profile_id": "00000000-0000-4000-8000-0000000000a1",
+      "price_version": "p1",
+      "reserved_amount": {
+        "currency": "XTS",
+        "amount": "1"
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "approval_id": null
+    }
+  },
+  {
+    "id": "budget-admission-rejected",
+    "schema": "BudgetAdmissionResult",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000000a0",
+      "admitted": false,
+      "reason_codes": ["m_limit:llm"],
+      "reservation_id": null
+    }
+  },
+  {
+    "id": "budget-top-up",
+    "schema": "BudgetTopUp",
+    "valid": true,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-0000000000a2",
+      "expected_reservation_revision": "0",
+      "delta_reserved": {
+        "currency": "XTS",
+        "amount": "5"
+      },
+      "delta_max_liability": {
+        "currency": "XTS",
+        "amount": "5"
+      }
+    }
+  },
+  {
+    "id": "budget-settlement",
+    "schema": "BudgetSettlement",
+    "valid": true,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-0000000000a2",
+      "request_id": "00000000-0000-4000-8000-0000000000a0",
+      "provider_reconciliation_id": "synthetic-usage-1",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_cycle_id": null
+    }
+  },
+  {
+    "id": "budget-released",
+    "schema": "BudgetReservation",
+    "valid": true,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-000000000050",
+      "reservation_revision": "0",
+      "request_id": "00000000-0000-4000-8000-000000000051",
+      "profile_id": "00000000-0000-4000-8000-000000000052",
+      "price_version": "synthetic-v1",
+      "budget_month": "2030-01",
+      "pool_id": "llm.background",
+      "reserved_amount": {
+        "currency": "USD",
+        "amount": "100"
+      },
+      "max_liability": {
+        "currency": "USD",
+        "amount": "400"
+      },
+      "status": "released",
+      "provider_reconciliation_id": null,
+      "actual_gross": null,
+      "credit_applied": null,
+      "additional_spend": null,
+      "credit_cycle_id": null,
+      "approval_id": null,
+      "overrun_reviewed": false
+    }
+  },
+  {
+    "id": "budget-old-scope-field",
+    "schema": "BudgetReservation",
+    "valid": false,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-000000000050",
+      "reservation_revision": "0",
+      "request_id": "00000000-0000-4000-8000-000000000051",
+      "profile_id": "00000000-0000-4000-8000-000000000052",
+      "price_version": "synthetic-v1",
+      "budget_month": "2030-01",
+      "pool_id": "llm.background",
+      "reserved_amount": {
+        "currency": "USD",
+        "amount": "100"
+      },
+      "max_liability": {
+        "currency": "USD",
+        "amount": "400"
+      },
+      "status": "usage_unknown",
+      "provider_reconciliation_id": null,
+      "actual_gross": null,
+      "credit_applied": null,
+      "additional_spend": null,
+      "credit_cycle_id": null,
+      "approval_id": null,
+      "overrun_reviewed": false,
+      "budget_scope": "background"
     }
   }
 ]

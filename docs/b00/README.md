@@ -24,7 +24,7 @@
 - 検証ツール: 厳格な生 JSON、JCS / H01、Schema・OpenAPI、生成型、局所的な不変条件を検査。F01 / F02 の記録形式を検査したことと QA41 / QA42 の統合合格は別。
 - モデル候補: 音声・即時判断・文章解析・高度相談・端末内 ASR を役割で分離。採用前に評価が必要で、実行可能な deployment manifest は未作成。
 
-契約ファイル化はモデルの本採用より先に進めます。正解例の本人確認は並行可能です。共通表現と用途別の版の型は B00-02（[ADR 0003](../adr/0003-common-representation.md)）、意図表・実行可否・入力から結果までの契約は B00-03（[ADR 0004](../adr/0004-intent-table-and-readiness.md)）、会話・委譲・音声制御・出力先は B00-04（[ADR 0005](../adr/0005-conversation-and-voice-control.md)）で決めました。次は予算（B00-05）、同期・関連解析（B00-06）へ広げます。全終了条件が揃うまでは B01 の着手可能と判定しません。
+契約ファイル化はモデルの本採用より先に進めます。正解例の本人確認は並行可能です。共通表現と用途別の版の型は B00-02（[ADR 0003](../adr/0003-common-representation.md)）、意図表・実行可否・入力から結果までの契約は B00-03（[ADR 0004](../adr/0004-intent-table-and-readiness.md)）、会話・委譲・音声制御・出力先は B00-04（[ADR 0005](../adr/0005-conversation-and-voice-control.md)）、予約 R・最大負担 M と精算は B00-05（[ADR 0006](../adr/0006-budget-reservation-and-liability.md)）で決めました。次は同期・抽出・関連解析（B00-06）へ広げます。全終了条件が揃うまでは B01 の着手可能と判定しません。
 
 今回のファイル形式の選択と、未実装の実行境界は [ADR 0002](../adr/0002-contract-validation.md) と [初回の境界仕様](boundaries.md) にまとめています。
 

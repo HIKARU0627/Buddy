@@ -107,6 +107,7 @@ test('UTC and calendar dates reject impossible dates and local timestamps', () =
 test('F01 shape: Live evidence cannot impersonate full capture or text correction', () => {
   const input = fixture('input-text');
   input.seal_reason = 'live_transcript_policy';
+  input.origin = 'live_fragment';
   input.input_evidence = 'live_policy_observed';
   input.policy_version = '1';
   input.transcript_revision = '1';
@@ -145,15 +146,11 @@ test('label actions reject no-op and overlapping add/remove semantics', () => {
 test('corrections need a target; new requests cannot target an old workflow', () => {
   const wire = fixture('wire-label');
   wire.relation = 'correction';
-  assert.deepEqual(semanticErrors('LabelMailWireResponse', wire), [
-    'relation_target',
-  ]);
+  assert.deepEqual(semanticErrors('WireResponse', wire), ['relation_target']);
   wire.target_workflow_id = '00000000-0000-4000-8000-000000000061';
-  assert.deepEqual(semanticErrors('LabelMailWireResponse', wire), []);
+  assert.deepEqual(semanticErrors('WireResponse', wire), []);
   wire.relation = 'new';
-  assert.deepEqual(semanticErrors('LabelMailWireResponse', wire), [
-    'relation_target',
-  ]);
+  assert.deepEqual(semanticErrors('WireResponse', wire), ['relation_target']);
 });
 
 test('budget facts distinguish R/M, uncertain usage and credit settlement', () => {
@@ -263,7 +260,18 @@ test('synthetic evidence refers to the exact source revision and UTF-16 range', 
       ['quote_range'],
     );
   }
-  assert(!validators['LabelMailInterpretation']({ ...value, evidence: [] }));
+  assert(validators['Interpretation'](value));
+  assert.deepEqual(semanticErrors('Interpretation', value), []);
+  const stale = structuredClone(value);
+  stale.evidence[0].request_revision = '2';
+  assert.deepEqual(semanticErrors('Interpretation', stale), [
+    'evidence_input_mismatch',
+  ]);
+  const empty = structuredClone(value);
+  empty.evidence[0].field = 'title';
+  assert.deepEqual(semanticErrors('Interpretation', empty), [
+    'evidence_for_empty_field',
+  ]);
 });
 
 test('model plan is candidate-only and does not activate fallbacks', async () => {

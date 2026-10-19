@@ -5,10 +5,12 @@
  */
 export type BuddyContract =
   | InputSnapshot
-  | LabelMailWireResponse
-  | LabelMailInterpretation
+  | WireResponse
+  | Interpretation
+  | WorkflowRequest
+  | WorkContext
   | ActionReadiness
-  | LabelOperationIntent
+  | OperationIntent
   | CommandContext
   | PreviewRequest
   | LabelPreview
@@ -32,6 +34,7 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
+      origin: 'typed';
       request_revision: RequestRevision;
       transcript_revision: TranscriptRevision | null;
       text: string;
@@ -41,6 +44,8 @@ export type InputSnapshot =
       input_evidence: 'submitted_text';
       audio: null;
       policy_version: null;
+      permission_revision: PermissionRevision;
+      forgetting_generation: ForgettingGeneration;
     }
   | {
       schema: 'buddy.input.v1';
@@ -48,6 +53,7 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
+      origin: 'typed';
       request_revision: RequestRevision;
       transcript_revision: TranscriptRevision | null;
       text: string;
@@ -57,6 +63,8 @@ export type InputSnapshot =
       input_evidence: 'submitted_text';
       audio: null;
       policy_version: null;
+      permission_revision: PermissionRevision;
+      forgetting_generation: ForgettingGeneration;
     }
   | {
       schema: 'buddy.input.v1';
@@ -64,6 +72,7 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
+      origin: 'local_asr';
       request_revision: RequestRevision;
       transcript_revision: TranscriptRevision;
       text: string;
@@ -73,6 +82,8 @@ export type InputSnapshot =
       input_evidence: 'full_audio_segment';
       audio: AudioRange;
       policy_version: null;
+      permission_revision: PermissionRevision;
+      forgetting_generation: ForgettingGeneration;
     }
   | {
       schema: 'buddy.input.v1';
@@ -80,6 +91,7 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
+      origin: 'live_fragment';
       request_revision: RequestRevision;
       transcript_revision: TranscriptRevision;
       text: string;
@@ -89,6 +101,8 @@ export type InputSnapshot =
       input_evidence: 'live_policy_observed';
       audio: AudioRange;
       policy_version: PolicyVersion;
+      permission_revision: PermissionRevision;
+      forgetting_generation: ForgettingGeneration;
     }
   | {
       schema: 'buddy.input.v1';
@@ -96,6 +110,7 @@ export type InputSnapshot =
       session_id: Id;
       workflow_id: Id;
       turn_id: Id;
+      origin: 'typed' | 'local_asr' | 'live_fragment';
       request_revision: RequestRevision;
       transcript_revision: TranscriptRevision | null;
       text: string;
@@ -109,6 +124,8 @@ export type InputSnapshot =
         | 'unverified';
       audio: AudioRange | null;
       policy_version: PolicyVersion | null;
+      permission_revision: PermissionRevision;
+      forgetting_generation: ForgettingGeneration;
     };
 /**
  * B00初版のランダムUUID v4。認証情報ではない。
@@ -127,6 +144,14 @@ export type TranscriptRevision = string;
  */
 export type UtcTime = string;
 /**
+ * Buddy 側の許可設定の版（設計 07 §1、08 §1）。
+ */
+export type PermissionRevision = string;
+/**
+ * 忘却台帳の世代（設計 03、08 §1・§6）。
+ */
+export type ForgettingGeneration = string;
+/**
  * 音声接続・収音区間の世代。再接続・端末交代で進める（設計 07 §1、10 §1A・§5A）。
  */
 export type AudioEpoch = string;
@@ -138,19 +163,69 @@ export type Sequence = string;
  * 自動実行などの方針の版（設計 08 §1）。
  */
 export type PolicyVersion = string;
+export type IntentName =
+  | 'query_schedule'
+  | 'query_mail'
+  | 'query_tasks'
+  | 'query_memory'
+  | 'create_task'
+  | 'create_note'
+  | 'label_mail'
+  | 'draft_reply'
+  | 'create_event'
+  | 'update_event'
+  | 'send_mail'
+  | 'trash_mail'
+  | 'undo_action'
+  | 'update_task'
+  | 'research'
+  | 'memory_save'
+  | 'memory_forget'
+  | 'memory_correct'
+  | 'dev_status'
+  | 'handoff_screen'
+  | 'smalltalk'
+  | 'general_question'
+  | 'consult'
+  | 'unclear';
 /**
- * Buddy 側の許可設定の版（設計 07 §1、08 §1）。
+ * 日付だけ、または地域日時。日付だけの値を 23:59 などの時刻に変換しない（設計 11 §5 D15）。
  */
-export type PermissionRevision = string;
+export type DateOrDateTime = LocalDate | LocalDateTime;
+export type LocalDate = string;
 /**
- * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
+ * タイムゾーンなしの地域日時。タイムゾーンは本人の設定から Core が付ける（設計 11 §3）。実在の日時かは意味検査で確認する。
  */
-export type ContentVersion = string;
+export type LocalDateTime = string;
 /**
  * 元サービスが返す対象の版（etag、履歴 ID など）。不透明な文字列で、大小比較しない（設計 07 §1、11 §3）。
  */
 export type SourceRevision = string;
+/**
+ * 取得範囲（scope）の版（設計 11 §1A）。
+ */
+export type ScopeRevision = string;
+/**
+ * 同期の公開世代（設計 11 §1・§1A）。外部サービスの同時点 snapshot を意味しない。
+ */
+export type PublishedGeneration = string;
 export type Hash = string;
+/**
+ * 結果の出力先とした会話接続の世代（設計 07 §5、08 §5）。
+ */
+export type SessionEpoch = string;
+/**
+ * 関連解析の判定の版（設計 11 §5B）。
+ */
+export type AnalysisRevision = string;
+/**
+ * 承認対象として確定した変更内容。B00 時点はラベル変更（H01）だけ。他の操作は後続で追加する。
+ */
+export type OperationIntent = LabelOperationIntent;
+/**
+ * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
+ */
+export type ContentVersion = string;
 /**
  * 処理状態の更新番号。競合検査用で、内容が同じなら ContentVersion は変えない（設計 07 §1、08 §1）。
  */
@@ -200,45 +275,69 @@ export interface AudioRange {
   end_sample: Sequence;
 }
 /**
- * 24意図のうち最初のlabel_mailプロファイルだけ。root object、全フィールド必須、欠落はnull。承認・effect_kind・状態・根拠をモデルに生成させない。
+ * モデルの生出力のローカル完全検証用（設計 10 §6A D15）。承認・effect_kind・実行経路・状態を持たない。provider へ送る wire schema は、ここから pattern・format を除いた部分集合を adapter が作る。confidence は観測値で、認可に使わない。
  */
-export interface LabelMailWireResponse {
-  intent: 'label_mail';
-  target_candidate_id: Id | null;
-  add_labels: string[] | null;
-  remove_labels: string[] | null;
+export interface WireResponse {
+  intent: IntentName;
+  args: IntentArgs;
   relation: 'new' | 'clarification' | 'correction' | 'cancel';
   target_workflow_id: Id | null;
-  reply_text: null;
+  reply_text: string | null;
   clarify_question: string | null;
   confidence: number;
 }
 /**
- * Coreの対象解決・意味検証後のみ作成可能。契約検証だけで検証済みにはならない。
+ * 24 意図共通の引数（ADR 0004）。全項目必須で、使わない項目は null。意図ごとの必須・許可は domain の意図表で検査する。対象 ID は Core が渡した候補から選ぶ。
  */
-export interface LabelMailInterpretation {
-  schema: 'buddy.interpretation.label-mail.v1';
+export interface IntentArgs {
+  target_candidate_id: Id | null;
+  start: DateOrDateTime | null;
+  end: DateOrDateTime | null;
+  due: DateOrDateTime | null;
+  title: string | null;
+  body: string | null;
+  subject: string | null;
+  add_labels: string[] | null;
+  remove_labels: string[] | null;
+  task_change: ('complete' | 'reschedule' | 'delete') | null;
+  memory_kind:
+    | ('preference' | 'goal' | 'person' | 'routine' | 'lexicon' | 'progress')
+    | null;
+  query: string | null;
+  device_name: string | null;
+}
+/**
+ * Core が対象解決と意味検証を終えた後だけ作る。schema に合格しただけでは検証済みにならない。
+ */
+export interface Interpretation {
+  schema: 'buddy.interpretation.v1';
   input_id: Id;
   workflow_id: Id;
   request_revision: RequestRevision;
-  intent: 'label_mail';
+  intent: IntentName;
   relation: 'new' | 'clarification' | 'correction' | 'cancel';
   target_workflow_id: Id | null;
-  args: {
-    target_candidate_id: Id;
-    add_labels: string[];
-    remove_labels: string[];
-  };
-  /**
-   * @minItems 1
-   */
-  evidence: [InputFieldEvidence, ...InputFieldEvidence[]];
+  args: IntentArgs;
+  evidence: InputFieldEvidence[];
 }
 /**
  * 入力引数の根拠。位置は JavaScript の UTF-16 コード単位（ADR 0002）。抽出の根拠 FieldEvidence（設計 03・11、コードポイント）とは別の型（ADR 0003）。
  */
 export interface InputFieldEvidence {
-  field: 'target_candidate_id' | 'add_labels' | 'remove_labels';
+  field:
+    | 'target_candidate_id'
+    | 'start'
+    | 'end'
+    | 'due'
+    | 'title'
+    | 'body'
+    | 'subject'
+    | 'add_labels'
+    | 'remove_labels'
+    | 'task_change'
+    | 'memory_kind'
+    | 'query'
+    | 'device_name';
   input_id: Id;
   request_revision: RequestRevision;
   quote: string;
@@ -246,15 +345,68 @@ export interface InputFieldEvidence {
   end_utf16: number;
 }
 /**
- * Core計算結果。auto_eligibleも最終transactionの再検査を省略しない。
+ * 一つの依頼の版（設計 10 §5A）。訂正・補足が一つの workflow に確定したときだけ版を上げ、別件は別の workflow にする。
+ */
+export interface WorkflowRequest {
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  supersedes_request_revision: RequestRevision | null;
+  session_id: Id;
+  turn_id: Id;
+  input_id: Id;
+  relation: 'new' | 'clarification' | 'correction' | 'cancel';
+  state: 'active' | 'superseded' | 'cancelled' | 'completed';
+  created_at: UtcTime;
+}
+/**
+ * 非同期処理が参照した最小の集合（設計 08 §5 D15、11 §5B）。クラウド送信・保存・表示・commit の直前に共通の検査で現在値と照合する。
+ */
+export interface WorkContext {
+  cause_id: Id;
+  input: {
+    input_id: Id;
+    request_revision: RequestRevision;
+  } | null;
+  permission_revision: PermissionRevision;
+  read_set: {
+    source_id: string;
+    source_revision: SourceRevision;
+    expires_at: UtcTime;
+    forgetting_generation: ForgettingGeneration;
+  }[];
+  query_scopes: {
+    scope_id: Id;
+    scope_revision: ScopeRevision;
+    published_generation: PublishedGeneration;
+    query_hash: Hash;
+  }[];
+  output: OutputTarget | null;
+  related_analysis: {
+    group_id: Id;
+    analysis_revision: AnalysisRevision;
+    source_set_hash: Hash;
+    published_generation: PublishedGeneration;
+  } | null;
+}
+/**
+ * 入力時に固定した結果の出力先（設計 07 §5 D15）。音声は対象端末・接続世代・音声リースが有効なときだけ使う。
+ */
+export interface OutputTarget {
+  mode: 'text' | 'voice';
+  device_id: Id;
+  session_epoch: SessionEpoch | null;
+}
+/**
+ * 変更操作の実行可否を Core のコードが計算した結果（設計 10 §6A D15）。経路は意図表から決め、モデルや端末が指定しない。auto_eligible も最終 transaction の再検査を省略しない。
  */
 export interface ActionReadiness {
   workflow_id: Id;
   request_revision: RequestRevision;
-  state: 'blocked' | 'preview_only' | 'needs_approval' | 'auto_eligible';
   reason_codes: string[];
   policy_version: PolicyVersion;
   permission_revision: PermissionRevision;
+  route: 'local_command' | 'remote_mutation';
+  state: 'blocked' | 'preview_only' | 'needs_approval' | 'auto_eligible';
 }
 /**
  * H01のラベル変更のみ。content_hashはこの確定intent全体のJCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。

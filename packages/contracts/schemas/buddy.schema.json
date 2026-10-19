@@ -8,16 +8,22 @@
       "$ref": "#/$defs/InputSnapshot"
     },
     {
-      "$ref": "#/$defs/LabelMailWireResponse"
+      "$ref": "#/$defs/WireResponse"
     },
     {
-      "$ref": "#/$defs/LabelMailInterpretation"
+      "$ref": "#/$defs/Interpretation"
+    },
+    {
+      "$ref": "#/$defs/WorkflowRequest"
+    },
+    {
+      "$ref": "#/$defs/WorkContext"
     },
     {
       "$ref": "#/$defs/ActionReadiness"
     },
     {
-      "$ref": "#/$defs/LabelOperationIntent"
+      "$ref": "#/$defs/OperationIntent"
     },
     {
       "$ref": "#/$defs/CommandContext"
@@ -182,6 +188,22 @@
       "type": "string",
       "format": "date"
     },
+    "LocalDateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?$",
+      "description": "タイムゾーンなしの地域日時。タイムゾーンは本人の設定から Core が付ける（設計 11 §3）。実在の日時かは意味検査で確認する。"
+    },
+    "DateOrDateTime": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LocalDate"
+        },
+        {
+          "$ref": "#/$defs/LocalDateTime"
+        }
+      ],
+      "description": "日付だけ、または地域日時。日付だけの値を 23:59 などの時刻に変換しない（設計 11 §5 D15）。"
+    },
     "YearMonth": {
       "type": "string",
       "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
@@ -293,6 +315,10 @@
             "turn_id": {
               "$ref": "#/$defs/Id"
             },
+            "origin": {
+              "type": "string",
+              "const": "typed"
+            },
             "request_revision": {
               "$ref": "#/$defs/RequestRevision"
             },
@@ -330,6 +356,12 @@
             },
             "policy_version": {
               "type": "null"
+            },
+            "permission_revision": {
+              "$ref": "#/$defs/PermissionRevision"
+            },
+            "forgetting_generation": {
+              "$ref": "#/$defs/ForgettingGeneration"
             }
           },
           "required": [
@@ -338,6 +370,7 @@
             "session_id",
             "workflow_id",
             "turn_id",
+            "origin",
             "request_revision",
             "transcript_revision",
             "text",
@@ -346,7 +379,9 @@
             "seal_reason",
             "input_evidence",
             "audio",
-            "policy_version"
+            "policy_version",
+            "permission_revision",
+            "forgetting_generation"
           ],
           "additionalProperties": false
         },
@@ -368,6 +403,10 @@
             },
             "turn_id": {
               "$ref": "#/$defs/Id"
+            },
+            "origin": {
+              "type": "string",
+              "const": "typed"
             },
             "request_revision": {
               "$ref": "#/$defs/RequestRevision"
@@ -406,6 +445,12 @@
             },
             "policy_version": {
               "type": "null"
+            },
+            "permission_revision": {
+              "$ref": "#/$defs/PermissionRevision"
+            },
+            "forgetting_generation": {
+              "$ref": "#/$defs/ForgettingGeneration"
             }
           },
           "required": [
@@ -414,6 +459,7 @@
             "session_id",
             "workflow_id",
             "turn_id",
+            "origin",
             "request_revision",
             "transcript_revision",
             "text",
@@ -422,7 +468,9 @@
             "seal_reason",
             "input_evidence",
             "audio",
-            "policy_version"
+            "policy_version",
+            "permission_revision",
+            "forgetting_generation"
           ],
           "additionalProperties": false
         },
@@ -444,6 +492,10 @@
             },
             "turn_id": {
               "$ref": "#/$defs/Id"
+            },
+            "origin": {
+              "type": "string",
+              "const": "local_asr"
             },
             "request_revision": {
               "$ref": "#/$defs/RequestRevision"
@@ -475,6 +527,12 @@
             },
             "policy_version": {
               "type": "null"
+            },
+            "permission_revision": {
+              "$ref": "#/$defs/PermissionRevision"
+            },
+            "forgetting_generation": {
+              "$ref": "#/$defs/ForgettingGeneration"
             }
           },
           "required": [
@@ -483,6 +541,7 @@
             "session_id",
             "workflow_id",
             "turn_id",
+            "origin",
             "request_revision",
             "transcript_revision",
             "text",
@@ -491,7 +550,9 @@
             "seal_reason",
             "input_evidence",
             "audio",
-            "policy_version"
+            "policy_version",
+            "permission_revision",
+            "forgetting_generation"
           ],
           "additionalProperties": false
         },
@@ -513,6 +574,10 @@
             },
             "turn_id": {
               "$ref": "#/$defs/Id"
+            },
+            "origin": {
+              "type": "string",
+              "const": "live_fragment"
             },
             "request_revision": {
               "$ref": "#/$defs/RequestRevision"
@@ -544,6 +609,12 @@
             },
             "policy_version": {
               "$ref": "#/$defs/PolicyVersion"
+            },
+            "permission_revision": {
+              "$ref": "#/$defs/PermissionRevision"
+            },
+            "forgetting_generation": {
+              "$ref": "#/$defs/ForgettingGeneration"
             }
           },
           "required": [
@@ -552,6 +623,7 @@
             "session_id",
             "workflow_id",
             "turn_id",
+            "origin",
             "request_revision",
             "transcript_revision",
             "text",
@@ -560,7 +632,9 @@
             "seal_reason",
             "input_evidence",
             "audio",
-            "policy_version"
+            "policy_version",
+            "permission_revision",
+            "forgetting_generation"
           ],
           "additionalProperties": false
         },
@@ -582,6 +656,10 @@
             },
             "turn_id": {
               "$ref": "#/$defs/Id"
+            },
+            "origin": {
+              "type": "string",
+              "enum": ["typed", "local_asr", "live_fragment"]
             },
             "request_revision": {
               "$ref": "#/$defs/RequestRevision"
@@ -637,6 +715,12 @@
                   "type": "null"
                 }
               ]
+            },
+            "permission_revision": {
+              "$ref": "#/$defs/PermissionRevision"
+            },
+            "forgetting_generation": {
+              "$ref": "#/$defs/ForgettingGeneration"
             }
           },
           "required": [
@@ -645,6 +729,7 @@
             "session_id",
             "workflow_id",
             "turn_id",
+            "origin",
             "request_revision",
             "transcript_revision",
             "text",
@@ -653,24 +738,85 @@
             "seal_reason",
             "input_evidence",
             "audio",
-            "policy_version"
+            "policy_version",
+            "permission_revision",
+            "forgetting_generation"
           ],
           "additionalProperties": false
         }
       ],
       "description": "Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。"
     },
-    "LabelMailWireResponse": {
+    "IntentArgs": {
       "type": "object",
       "properties": {
-        "intent": {
-          "type": "string",
-          "const": "label_mail"
-        },
         "target_candidate_id": {
           "anyOf": [
             {
               "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "due": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
             },
             {
               "type": "null"
@@ -707,6 +853,85 @@
             }
           ]
         },
+        "task_change": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["complete", "reschedule", "delete"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "memory_kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "preference",
+                "goal",
+                "person",
+                "routine",
+                "lexicon",
+                "progress"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "device_name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "target_candidate_id",
+        "start",
+        "end",
+        "due",
+        "title",
+        "body",
+        "subject",
+        "add_labels",
+        "remove_labels",
+        "task_change",
+        "memory_kind",
+        "query",
+        "device_name"
+      ],
+      "additionalProperties": false,
+      "description": "24 意図共通の引数（ADR 0004）。全項目必須で、使わない項目は null。意図ごとの必須・許可は domain の意図表で検査する。対象 ID は Core が渡した候補から選ぶ。"
+    },
+    "WireResponse": {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "$ref": "#/$defs/IntentName"
+        },
+        "args": {
+          "$ref": "#/$defs/IntentArgs"
+        },
         "relation": {
           "type": "string",
           "enum": ["new", "clarification", "correction", "cancel"]
@@ -722,7 +947,15 @@
           ]
         },
         "reply_text": {
-          "type": "null"
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "clarify_question": {
           "anyOf": [
@@ -743,9 +976,7 @@
       },
       "required": [
         "intent",
-        "target_candidate_id",
-        "add_labels",
-        "remove_labels",
+        "args",
         "relation",
         "target_workflow_id",
         "reply_text",
@@ -753,14 +984,28 @@
         "confidence"
       ],
       "additionalProperties": false,
-      "description": "24意図のうち最初のlabel_mailプロファイルだけ。root object、全フィールド必須、欠落はnull。承認・effect_kind・状態・根拠をモデルに生成させない。"
+      "description": "モデルの生出力のローカル完全検証用（設計 10 §6A D15）。承認・effect_kind・実行経路・状態を持たない。provider へ送る wire schema は、ここから pattern・format を除いた部分集合を adapter が作る。confidence は観測値で、認可に使わない。"
     },
     "InputFieldEvidence": {
       "type": "object",
       "properties": {
         "field": {
           "type": "string",
-          "enum": ["target_candidate_id", "add_labels", "remove_labels"]
+          "enum": [
+            "target_candidate_id",
+            "start",
+            "end",
+            "due",
+            "title",
+            "body",
+            "subject",
+            "add_labels",
+            "remove_labels",
+            "task_change",
+            "memory_kind",
+            "query",
+            "device_name"
+          ]
         },
         "input_id": {
           "$ref": "#/$defs/Id"
@@ -792,12 +1037,12 @@
       "additionalProperties": false,
       "description": "入力引数の根拠。位置は JavaScript の UTF-16 コード単位（ADR 0002）。抽出の根拠 FieldEvidence（設計 03・11、コードポイント）とは別の型（ADR 0003）。"
     },
-    "LabelMailInterpretation": {
+    "Interpretation": {
       "type": "object",
       "properties": {
         "schema": {
           "type": "string",
-          "const": "buddy.interpretation.label-mail.v1"
+          "const": "buddy.interpretation.v1"
         },
         "input_id": {
           "$ref": "#/$defs/Id"
@@ -809,8 +1054,7 @@
           "$ref": "#/$defs/RequestRevision"
         },
         "intent": {
-          "type": "string",
-          "const": "label_mail"
+          "$ref": "#/$defs/IntentName"
         },
         "relation": {
           "type": "string",
@@ -827,37 +1071,13 @@
           ]
         },
         "args": {
-          "type": "object",
-          "properties": {
-            "target_candidate_id": {
-              "$ref": "#/$defs/Id"
-            },
-            "add_labels": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
-              "uniqueItems": true
-            },
-            "remove_labels": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
-              "uniqueItems": true
-            }
-          },
-          "required": ["target_candidate_id", "add_labels", "remove_labels"],
-          "additionalProperties": false
+          "$ref": "#/$defs/IntentArgs"
         },
         "evidence": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/InputFieldEvidence"
-          },
-          "minItems": 1
+          }
         }
       },
       "required": [
@@ -872,7 +1092,224 @@
         "evidence"
       ],
       "additionalProperties": false,
-      "description": "Coreの対象解決・意味検証後のみ作成可能。契約検証だけで検証済みにはならない。"
+      "description": "Core が対象解決と意味検証を終えた後だけ作る。schema に合格しただけでは検証済みにならない。"
+    },
+    "WorkflowRequest": {
+      "type": "object",
+      "properties": {
+        "workflow_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/RequestRevision"
+        },
+        "supersedes_request_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestRevision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "turn_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "input_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "relation": {
+          "type": "string",
+          "enum": ["new", "clarification", "correction", "cancel"]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["active", "superseded", "cancelled", "completed"]
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "request_revision",
+        "supersedes_request_revision",
+        "session_id",
+        "turn_id",
+        "input_id",
+        "relation",
+        "state",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "description": "一つの依頼の版（設計 10 §5A）。訂正・補足が一つの workflow に確定したときだけ版を上げ、別件は別の workflow にする。"
+    },
+    "OutputTarget": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["text", "voice"]
+        },
+        "device_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "session_epoch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionEpoch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["mode", "device_id", "session_epoch"],
+      "additionalProperties": false,
+      "description": "入力時に固定した結果の出力先（設計 07 §5 D15）。音声は対象端末・接続世代・音声リースが有効なときだけ使う。"
+    },
+    "WorkContext": {
+      "type": "object",
+      "properties": {
+        "cause_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "input": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "input_id": {
+                  "$ref": "#/$defs/Id"
+                },
+                "request_revision": {
+                  "$ref": "#/$defs/RequestRevision"
+                }
+              },
+              "required": ["input_id", "request_revision"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "read_set": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source_revision": {
+                "$ref": "#/$defs/SourceRevision"
+              },
+              "expires_at": {
+                "$ref": "#/$defs/UtcTime"
+              },
+              "forgetting_generation": {
+                "$ref": "#/$defs/ForgettingGeneration"
+              }
+            },
+            "required": [
+              "source_id",
+              "source_revision",
+              "expires_at",
+              "forgetting_generation"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "query_scopes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "scope_id": {
+                "$ref": "#/$defs/Id"
+              },
+              "scope_revision": {
+                "$ref": "#/$defs/ScopeRevision"
+              },
+              "published_generation": {
+                "$ref": "#/$defs/PublishedGeneration"
+              },
+              "query_hash": {
+                "$ref": "#/$defs/Hash"
+              }
+            },
+            "required": [
+              "scope_id",
+              "scope_revision",
+              "published_generation",
+              "query_hash"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "output": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "related_analysis": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "group_id": {
+                  "$ref": "#/$defs/Id"
+                },
+                "analysis_revision": {
+                  "$ref": "#/$defs/AnalysisRevision"
+                },
+                "source_set_hash": {
+                  "$ref": "#/$defs/Hash"
+                },
+                "published_generation": {
+                  "$ref": "#/$defs/PublishedGeneration"
+                }
+              },
+              "required": [
+                "group_id",
+                "analysis_revision",
+                "source_set_hash",
+                "published_generation"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cause_id",
+        "input",
+        "permission_revision",
+        "read_set",
+        "query_scopes",
+        "output",
+        "related_analysis"
+      ],
+      "additionalProperties": false,
+      "description": "非同期処理が参照した最小の集合（設計 08 §5 D15、11 §5B）。クラウド送信・保存・表示・commit の直前に共通の検査で現在値と照合する。"
     },
     "ActionReadiness": {
       "type": "object",
@@ -882,10 +1319,6 @@
         },
         "request_revision": {
           "$ref": "#/$defs/RequestRevision"
-        },
-        "state": {
-          "type": "string",
-          "enum": ["blocked", "preview_only", "needs_approval", "auto_eligible"]
         },
         "reason_codes": {
           "type": "array",
@@ -899,18 +1332,27 @@
         },
         "permission_revision": {
           "$ref": "#/$defs/PermissionRevision"
+        },
+        "route": {
+          "type": "string",
+          "enum": ["local_command", "remote_mutation"]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["blocked", "preview_only", "needs_approval", "auto_eligible"]
         }
       },
       "required": [
         "workflow_id",
         "request_revision",
+        "route",
         "state",
         "reason_codes",
         "policy_version",
         "permission_revision"
       ],
       "additionalProperties": false,
-      "description": "Core計算結果。auto_eligibleも最終transactionの再検査を省略しない。"
+      "description": "変更操作の実行可否を Core のコードが計算した結果（設計 10 §6A D15）。経路は意図表から決め、モデルや端末が指定しない。auto_eligible も最終 transaction の再検査を省略しない。"
     },
     "LabelOperationIntent": {
       "type": "object",
@@ -1009,6 +1451,14 @@
       ],
       "additionalProperties": false,
       "description": "H01のラベル変更のみ。content_hashはこの確定intent全体のJCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。"
+    },
+    "OperationIntent": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LabelOperationIntent"
+        }
+      ],
+      "description": "承認対象として確定した変更内容。B00 時点はラベル変更（H01）だけ。他の操作は後続で追加する。"
     },
     "CommandContext": {
       "type": "object",

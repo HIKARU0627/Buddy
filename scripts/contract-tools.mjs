@@ -122,10 +122,46 @@ export function semanticErrors(name, value) {
     if (add.some((label) => remove.includes(label)))
       errors.push('conflicting_labels');
   }
-  if (name === 'LabelMailWireResponse') {
+  if (name === 'WireResponse' || name === 'Interpretation') {
     if ((value.relation === 'new') !== (value.target_workflow_id === null))
       errors.push('relation_target');
   }
+  if (name === 'Interpretation')
+    for (const evidence of value.evidence) {
+      if (
+        evidence.input_id !== value.input_id ||
+        evidence.request_revision !== value.request_revision
+      )
+        errors.push('evidence_input_mismatch');
+      if (value.args[evidence.field] === null)
+        errors.push('evidence_for_empty_field');
+    }
+  if (name === 'LocalDateTime') {
+    const [date, time] = value.split('T');
+    const [year, month, day] = date.split('-').map(Number);
+    const [hour, minute, second = 0] = time.split(':').map(Number);
+    const at = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+    if (
+      at.getUTCFullYear() !== year ||
+      at.getUTCMonth() !== month - 1 ||
+      at.getUTCDate() !== day ||
+      at.getUTCHours() !== hour ||
+      at.getUTCMinutes() !== minute ||
+      at.getUTCSeconds() !== second
+    )
+      errors.push('invalid_local_datetime');
+  }
+  if (name === 'WorkflowRequest') {
+    const previous = value.supersedes_request_revision;
+    if ((value.relation === 'new') !== (previous === null))
+      errors.push('relation_supersedes');
+    if (previous !== null && BigInt(previous) >= BigInt(value.request_revision))
+      errors.push('revision_not_increasing');
+  }
+  if (name === 'OutputTarget' && value.mode === 'voice' && !value.session_epoch)
+    errors.push('voice_without_session_epoch');
+  if (name === 'WorkContext' && value.output)
+    errors.push(...semanticErrors('OutputTarget', value.output));
   if (name === 'BudgetReservation') {
     const amounts = [
       value.reserved_amount,

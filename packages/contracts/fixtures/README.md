@@ -9,6 +9,9 @@
 - `delivery-cases.json`: 古い世代・端末・出力先へ遅れて届いた結果の受け入れの期待値。
 - `session-control-phrases.json`: 会話の操作の照合表の例と照合の期待値（X58）。
 - `budget-scenarios.json`: 合成設定（通貨 XTS、合成の上限）による予算の受付・精算のシナリオ。本人の金額を含まない。
+- `sync-scenarios.json`: 同期の走査の排他・公開前の照合の期待値（QA44・QA36 ほか）。
+- `analysis-cases.json`: 関連解析の ready、取消の順序の逆転、再作成抑止の期待値（QA45 ほか）。
+- `extraction-cases.json`: 候補起点の自動実行の検査と期限の変換の期待値（X39・X62・X63 ほか）。
 - `workflow-label.json`: 実行境界の期待結果。`specification_only` で、DB・外部処理の実行済み記録ではありません。
 
 追加の生JSON・JCS・入力根拠・局所的な費用不変条件は `scripts/contracts.test.mjs` で確認します。実データ・認証情報・個人予算を置きません。

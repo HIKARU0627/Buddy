@@ -1,0 +1,363 @@
+{
+  "status": "specification_only",
+  "description": "抽出結果から候補起点の自動実行へ進めるかの期待値（設計 11 §3・§5・§5A、X38・X39・X41・X62・X63、QA09〜QA11）。手で書いたもので、domain の実装から生成していない。年不明・根拠の不一致・未読を推測で埋めない。",
+  "zone": "Asia/Tokyo",
+  "received_at_local": "2030-10-05T08:30",
+  "base_request": {
+    "kind": "reply_required",
+    "deadline": {
+      "kind": "instant",
+      "local_datetime": "2030-10-07T17:00",
+      "zone": "Asia/Tokyo",
+      "original_text": "2030年10月7日17時までに"
+    },
+    "fields": [
+      {
+        "field": "summary",
+        "status": "explicit",
+        "refs": [
+          {
+            "source_id": "body",
+            "source_revision": "r1",
+            "quote": "参加可否を返信してください",
+            "start": 15,
+            "end": 28
+          }
+        ],
+        "rule_id": null
+      },
+      {
+        "field": "deadline",
+        "status": "explicit",
+        "refs": [
+          {
+            "source_id": "body",
+            "source_revision": "r1",
+            "quote": "2030年10月7日17時までに",
+            "start": 0,
+            "end": 15
+          }
+        ],
+        "rule_id": null
+      }
+    ],
+    "in_quoted_text": false,
+    "confidence_observed": "high",
+    "addressed_to_me": true,
+    "from_automated_sender": false
+  },
+  "base_context": {
+    "ownCalendarSelected": true,
+    "labelAssigned": true,
+    "draftExists": false,
+    "budgetAvailable": true
+  },
+  "cases": [
+    {
+      "id": "normal",
+      "expected": {
+        "common": [],
+        "create_task": [],
+        "create_event": [],
+        "label_mail": [],
+        "draft_reply": []
+      }
+    },
+    {
+      "id": "year-unknown",
+      "refs": ["X63", "QA09"],
+      "request": {
+        "deadline": {
+          "kind": "unresolved",
+          "reason": "missing_year",
+          "original_text": "10月7日まで"
+        }
+      },
+      "expected": {
+        "common": ["deadline_unresolved:missing_year"],
+        "create_task": ["deadline_not_fixed"],
+        "create_event": ["deadline_not_fixed", "deadline_not_instant"]
+      }
+    },
+    {
+      "id": "past-deadline",
+      "refs": ["X63 締切は10月7日でした"],
+      "received_at_local": "2030-10-08T10:00",
+      "expected": { "common": ["deadline_past"] }
+    },
+    {
+      "id": "date-only",
+      "refs": ["QA09", "11 §5 D15"],
+      "request": {
+        "deadline": {
+          "kind": "date",
+          "date": "2030-10-07",
+          "original_text": "10月7日まで（2030年）"
+        }
+      },
+      "expected": {
+        "common": [],
+        "create_task": [],
+        "create_event": ["deadline_not_instant"]
+      }
+    },
+    {
+      "id": "date-only-on-received-day-is-not-past",
+      "refs": ["11 §5 D15"],
+      "request": {
+        "deadline": {
+          "kind": "date",
+          "date": "2030-10-05",
+          "original_text": "本日中"
+        }
+      },
+      "expected": { "common": [] }
+    },
+    {
+      "id": "deadline-quote-conflict",
+      "refs": ["X39", "QA11"],
+      "request": {
+        "fields": [
+          {
+            "field": "summary",
+            "status": "explicit",
+            "refs": [
+              {
+                "source_id": "body",
+                "source_revision": "r1",
+                "quote": "参加可否を返信してください",
+                "start": 15,
+                "end": 28
+              }
+            ],
+            "rule_id": null
+          },
+          {
+            "field": "deadline",
+            "status": "conflicting",
+            "refs": [],
+            "rule_id": null
+          }
+        ]
+      },
+      "expected": { "common": ["evidence_conflicting:deadline"] }
+    },
+    {
+      "id": "quote-not-found",
+      "refs": ["X39", "QA11 古い source_revision"],
+      "request": {
+        "fields": [
+          {
+            "field": "summary",
+            "status": "missing",
+            "refs": [],
+            "rule_id": null
+          },
+          {
+            "field": "deadline",
+            "status": "explicit",
+            "refs": [
+              {
+                "source_id": "body",
+                "source_revision": "r1",
+                "quote": "2030年10月7日17時までに",
+                "start": 0,
+                "end": 15
+              }
+            ],
+            "rule_id": null
+          }
+        ]
+      },
+      "expected": { "common": ["evidence_missing:summary"] }
+    },
+    {
+      "id": "explicit-without-ref",
+      "refs": ["11 §3"],
+      "request": {
+        "fields": [
+          {
+            "field": "summary",
+            "status": "explicit",
+            "refs": [],
+            "rule_id": null
+          }
+        ]
+      },
+      "expected": { "common": ["evidence_explicit:summary"] }
+    },
+    {
+      "id": "unread-attachment",
+      "refs": ["X62", "QA10"],
+      "completeness": {
+        "unread_source_ids": ["attachment-1"],
+        "truncated_source_ids": []
+      },
+      "expected": { "common": ["unread_sources"] }
+    },
+    {
+      "id": "truncated-body",
+      "refs": ["X62", "QA10"],
+      "completeness": {
+        "unread_source_ids": [],
+        "truncated_source_ids": ["body"]
+      },
+      "expected": { "common": ["truncated_sources"] }
+    },
+    {
+      "id": "quoted-request",
+      "refs": ["X39 引用内の依頼"],
+      "request": { "in_quoted_text": true },
+      "expected": { "common": ["in_quoted_text"] }
+    },
+    {
+      "id": "cc-only",
+      "refs": ["X41"],
+      "request": { "addressed_to_me": false },
+      "expected": {
+        "common": [],
+        "create_task": ["not_addressed_to_me"],
+        "draft_reply": ["not_addressed_to_me"]
+      }
+    },
+    {
+      "id": "automated-sender",
+      "refs": ["X38", "11 §5"],
+      "request": { "from_automated_sender": true },
+      "expected": {
+        "create_task": ["automated_sender"],
+        "draft_reply": ["automated_sender"]
+      }
+    },
+    {
+      "id": "low-confidence",
+      "refs": ["11 §3"],
+      "request": { "confidence_observed": "low" },
+      "expected": {
+        "common": ["confidence_low"],
+        "create_task": ["confidence_low"],
+        "create_event": ["confidence_low", "confidence_not_high"]
+      }
+    },
+    {
+      "id": "medium-confidence",
+      "refs": ["11 §5"],
+      "request": { "confidence_observed": "medium" },
+      "expected": {
+        "common": [],
+        "create_task": [],
+        "create_event": ["confidence_not_high"]
+      }
+    },
+    {
+      "id": "fyi",
+      "refs": ["11 §3 kind"],
+      "request": { "kind": "fyi" },
+      "expected": {
+        "create_task": ["not_a_request"],
+        "draft_reply": ["not_reply_required"]
+      }
+    },
+    {
+      "id": "draft-exists-and-label-unassigned",
+      "refs": ["11 §5"],
+      "context": { "draftExists": true, "labelAssigned": false },
+      "expected": {
+        "label_mail": ["label_not_assigned"],
+        "draft_reply": ["draft_exists"]
+      }
+    }
+  ],
+  "deadlines": [
+    {
+      "id": "exact",
+      "wire": {
+        "resolution": "exact_datetime",
+        "local_datetime": "2030-10-07T17:00",
+        "local_date": null,
+        "original_text": "10月7日17時",
+        "unresolved_reason": null
+      },
+      "expected": {
+        "kind": "instant",
+        "local_datetime": "2030-10-07T17:00",
+        "zone": "Asia/Tokyo",
+        "original_text": "10月7日17時"
+      }
+    },
+    {
+      "id": "date",
+      "wire": {
+        "resolution": "date_only",
+        "local_datetime": null,
+        "local_date": "2030-10-07",
+        "original_text": "10月7日",
+        "unresolved_reason": null
+      },
+      "expected": {
+        "kind": "date",
+        "date": "2030-10-07",
+        "original_text": "10月7日"
+      }
+    },
+    {
+      "id": "missing-year",
+      "wire": {
+        "resolution": "relative_unresolved",
+        "local_datetime": null,
+        "local_date": null,
+        "original_text": "10月7日まで",
+        "unresolved_reason": "missing_year"
+      },
+      "expected": {
+        "kind": "unresolved",
+        "reason": "missing_year",
+        "original_text": "10月7日まで"
+      }
+    },
+    {
+      "id": "guessed-year-rejected",
+      "wire": {
+        "resolution": "relative_unresolved",
+        "local_datetime": null,
+        "local_date": "2030-10-07",
+        "original_text": "10月7日まで",
+        "unresolved_reason": "missing_year"
+      },
+      "expected": null
+    },
+    {
+      "id": "exact-without-datetime",
+      "wire": {
+        "resolution": "exact_datetime",
+        "local_datetime": null,
+        "local_date": null,
+        "original_text": "17時",
+        "unresolved_reason": null
+      },
+      "expected": null
+    },
+    {
+      "id": "none-with-date",
+      "wire": {
+        "resolution": "none",
+        "local_datetime": null,
+        "local_date": "2030-10-07",
+        "original_text": null,
+        "unresolved_reason": null
+      },
+      "expected": null
+    },
+    {
+      "id": "none",
+      "wire": {
+        "resolution": "none",
+        "local_datetime": null,
+        "local_date": null,
+        "original_text": null,
+        "unresolved_reason": null
+      },
+      "expected": { "kind": "none" }
+    }
+  ]
+}

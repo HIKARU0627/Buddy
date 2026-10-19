@@ -1941,5 +1941,461 @@
       "overrun_reviewed": false,
       "budget_scope": "background"
     }
+  },
+  {
+    "id": "extraction-v2",
+    "schema": "ExtractionResult",
+    "valid": true,
+    "value": {
+      "schema": "buddy.extraction.v2",
+      "source_account_id": "00000000-0000-4000-8000-000000000002",
+      "thread_id": "thread-001",
+      "message_id": "mail-001",
+      "source_revision": "r1",
+      "profile_id": "00000000-0000-4000-8000-0000000000a1",
+      "prompt_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "schema_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "requests": [
+        {
+          "request_index": 0,
+          "kind": "reply_required",
+          "summary": "参加可否の返信",
+          "deadline": {
+            "kind": "date",
+            "date": "2030-10-07",
+            "original_text": "2030年10月7日まで"
+          },
+          "fields": [
+            {
+              "field": "summary",
+              "status": "explicit",
+              "refs": [
+                {
+                  "source_id": "body",
+                  "source_revision": "r1",
+                  "quote": "参加可否を返信してください",
+                  "start": 15,
+                  "end": 28
+                }
+              ],
+              "rule_id": null
+            },
+            {
+              "field": "deadline",
+              "status": "explicit",
+              "refs": [
+                {
+                  "source_id": "body",
+                  "source_revision": "r1",
+                  "quote": "参加可否を返信してください",
+                  "start": 15,
+                  "end": 28
+                }
+              ],
+              "rule_id": null
+            }
+          ],
+          "in_quoted_text": false,
+          "confidence_observed": "high",
+          "addressed_to_me": true,
+          "from_automated_sender": false,
+          "request_entity_id": "00000000-0000-4000-8000-0000000000b0",
+          "request_revision": "1"
+        }
+      ],
+      "changes": [
+        {
+          "relation": "cancel",
+          "target_request_entity_id": null,
+          "resolution": "ambiguous",
+          "fields": [
+            {
+              "field": "change",
+              "status": "missing",
+              "refs": [],
+              "rule_id": null
+            }
+          ],
+          "new_deadline": null
+        }
+      ],
+      "completeness": {
+        "source_revisions": [
+          {
+            "source_id": "body",
+            "source_revision": "r1"
+          },
+          {
+            "source_id": "attachment-1",
+            "source_revision": "a1"
+          }
+        ],
+        "unread_source_ids": ["attachment-1"],
+        "truncated_source_ids": []
+      }
+    }
+  },
+  {
+    "id": "extraction-v1-schema-name",
+    "schema": "ExtractionResult",
+    "valid": false,
+    "value": {
+      "schema": "buddy.extraction.v1",
+      "source_account_id": "00000000-0000-4000-8000-000000000002",
+      "thread_id": "thread-001",
+      "message_id": "mail-001",
+      "source_revision": "r1",
+      "profile_id": "00000000-0000-4000-8000-0000000000a1",
+      "prompt_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "schema_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "requests": [
+        {
+          "request_index": 0,
+          "kind": "reply_required",
+          "summary": "参加可否の返信",
+          "deadline": {
+            "kind": "date",
+            "date": "2030-10-07",
+            "original_text": "2030年10月7日まで"
+          },
+          "fields": [
+            {
+              "field": "summary",
+              "status": "explicit",
+              "refs": [
+                {
+                  "source_id": "body",
+                  "source_revision": "r1",
+                  "quote": "参加可否を返信してください",
+                  "start": 15,
+                  "end": 28
+                }
+              ],
+              "rule_id": null
+            },
+            {
+              "field": "deadline",
+              "status": "explicit",
+              "refs": [
+                {
+                  "source_id": "body",
+                  "source_revision": "r1",
+                  "quote": "参加可否を返信してください",
+                  "start": 15,
+                  "end": 28
+                }
+              ],
+              "rule_id": null
+            }
+          ],
+          "in_quoted_text": false,
+          "confidence_observed": "high",
+          "addressed_to_me": true,
+          "from_automated_sender": false,
+          "request_entity_id": "00000000-0000-4000-8000-0000000000b0",
+          "request_revision": "1"
+        }
+      ],
+      "changes": [
+        {
+          "relation": "cancel",
+          "target_request_entity_id": null,
+          "resolution": "ambiguous",
+          "fields": [
+            {
+              "field": "change",
+              "status": "missing",
+              "refs": [],
+              "rule_id": null
+            }
+          ],
+          "new_deadline": null
+        }
+      ],
+      "completeness": {
+        "source_revisions": [
+          {
+            "source_id": "body",
+            "source_revision": "r1"
+          },
+          {
+            "source_id": "attachment-1",
+            "source_revision": "a1"
+          }
+        ],
+        "unread_source_ids": ["attachment-1"],
+        "truncated_source_ids": []
+      }
+    }
+  },
+  {
+    "id": "extraction-date-with-time",
+    "schema": "ExtractionResult",
+    "valid": false,
+    "value": {
+      "schema": "buddy.extraction.v2",
+      "source_account_id": "00000000-0000-4000-8000-000000000002",
+      "thread_id": "thread-001",
+      "message_id": "mail-001",
+      "source_revision": "r1",
+      "profile_id": "00000000-0000-4000-8000-0000000000a1",
+      "prompt_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "schema_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "requests": [
+        {
+          "request_index": 0,
+          "kind": "reply_required",
+          "summary": "参加可否の返信",
+          "deadline": {
+            "kind": "date",
+            "date": "2030-10-07T23:59",
+            "original_text": "x"
+          },
+          "fields": [
+            {
+              "field": "summary",
+              "status": "explicit",
+              "refs": [
+                {
+                  "source_id": "body",
+                  "source_revision": "r1",
+                  "quote": "参加可否を返信してください",
+                  "start": 15,
+                  "end": 28
+                }
+              ],
+              "rule_id": null
+            },
+            {
+              "field": "deadline",
+              "status": "explicit",
+              "refs": [
+                {
+                  "source_id": "body",
+                  "source_revision": "r1",
+                  "quote": "参加可否を返信してください",
+                  "start": 15,
+                  "end": 28
+                }
+              ],
+              "rule_id": null
+            }
+          ],
+          "in_quoted_text": false,
+          "confidence_observed": "high",
+          "addressed_to_me": true,
+          "from_automated_sender": false,
+          "request_entity_id": "00000000-0000-4000-8000-0000000000b0",
+          "request_revision": "1"
+        }
+      ],
+      "changes": [
+        {
+          "relation": "cancel",
+          "target_request_entity_id": null,
+          "resolution": "ambiguous",
+          "fields": [
+            {
+              "field": "change",
+              "status": "missing",
+              "refs": [],
+              "rule_id": null
+            }
+          ],
+          "new_deadline": null
+        }
+      ],
+      "completeness": {
+        "source_revisions": [
+          {
+            "source_id": "body",
+            "source_revision": "r1"
+          },
+          {
+            "source_id": "attachment-1",
+            "source_revision": "a1"
+          }
+        ],
+        "unread_source_ids": ["attachment-1"],
+        "truncated_source_ids": []
+      }
+    }
+  },
+  {
+    "id": "deadline-unresolved-year",
+    "schema": "Deadline",
+    "valid": true,
+    "value": {
+      "kind": "unresolved",
+      "reason": "missing_year",
+      "original_text": "10月7日まで"
+    }
+  },
+  {
+    "id": "deadline-unresolved-with-guessed-date",
+    "schema": "Deadline",
+    "valid": false,
+    "value": {
+      "kind": "unresolved",
+      "reason": "missing_year",
+      "original_text": "10月7日まで",
+      "date": "2030-10-07"
+    }
+  },
+  {
+    "id": "request-entity",
+    "schema": "RequestEntity",
+    "valid": true,
+    "value": {
+      "request_entity_id": "00000000-0000-4000-8000-0000000000b0",
+      "request_revision": "2",
+      "source_account_id": "00000000-0000-4000-8000-000000000002",
+      "thread_id": "thread-001",
+      "origin_message_id": "mail-001",
+      "anchor": {
+        "source_id": "body",
+        "source_revision": "r1",
+        "quote": "参加可否を返信してください",
+        "start": 15,
+        "end": 28
+      },
+      "state": "active",
+      "recreation_suppressed": true,
+      "created_operations": [
+        {
+          "operation_kind": "create_task",
+          "operation_id": "00000000-0000-4000-8000-0000000000b1",
+          "account_id": "00000000-0000-4000-8000-000000000002",
+          "calendar_id": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "related-analysis-pending",
+    "schema": "RelatedAnalysis",
+    "valid": true,
+    "value": {
+      "group_id": "00000000-0000-4000-8000-0000000000b2",
+      "analysis_revision": "3",
+      "source_set_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "published_generation": "6",
+      "plan_complete": false,
+      "status": "pending",
+      "sources": [
+        {
+          "source_id": "mail-001",
+          "source_revision": "r1",
+          "state": "analyzed",
+          "rule_id": null
+        },
+        {
+          "source_id": "mail-002",
+          "source_revision": "r1",
+          "state": "unread",
+          "rule_id": null
+        }
+      ],
+      "unresolved_change_count": 0
+    }
+  },
+  {
+    "id": "candidate",
+    "schema": "CandidateSnapshot",
+    "valid": true,
+    "value": {
+      "candidate_id": "00000000-0000-4000-8000-0000000000b3",
+      "kind": "mail_reply",
+      "state": "new",
+      "request_entity_id": "00000000-0000-4000-8000-0000000000b0",
+      "request_revision": "2",
+      "source_revision": "r1",
+      "notification_key": "1111111111111111111111111111111111111111111111111111111111111111",
+      "title": "参加可否の返信：10/7まで",
+      "deadline": {
+        "kind": "date",
+        "date": "2030-10-07",
+        "original_text": "2030年10月7日まで"
+      },
+      "initial_import": false,
+      "unread_partial": true,
+      "related_analysis": {
+        "group_id": "00000000-0000-4000-8000-0000000000b2",
+        "analysis_revision": "3",
+        "source_set_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "published_generation": "6"
+      },
+      "operation_ids": []
+    }
+  },
+  {
+    "id": "candidate-title-too-long",
+    "schema": "CandidateSnapshot",
+    "valid": false,
+    "value": {
+      "candidate_id": "00000000-0000-4000-8000-0000000000b3",
+      "kind": "mail_reply",
+      "state": "new",
+      "request_entity_id": "00000000-0000-4000-8000-0000000000b0",
+      "request_revision": "2",
+      "source_revision": "r1",
+      "notification_key": "1111111111111111111111111111111111111111111111111111111111111111",
+      "title": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ",
+      "deadline": {
+        "kind": "date",
+        "date": "2030-10-07",
+        "original_text": "2030年10月7日まで"
+      },
+      "initial_import": false,
+      "unread_partial": true,
+      "related_analysis": {
+        "group_id": "00000000-0000-4000-8000-0000000000b2",
+        "analysis_revision": "3",
+        "source_set_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "published_generation": "6"
+      },
+      "operation_ids": []
+    }
+  },
+  {
+    "id": "sync-batch",
+    "schema": "SyncBatch",
+    "valid": true,
+    "value": {
+      "scan_id": "00000000-0000-4000-8000-0000000000c0",
+      "scope_id": "00000000-0000-4000-8000-0000000000c1",
+      "scope_revision": "1",
+      "kind": "full",
+      "status": "staged",
+      "scan_started_at": "2030-10-05T01:00:00Z",
+      "window_start": "2030-07-07T00:00:00Z",
+      "window_end": "2030-10-05T01:00:00Z",
+      "query_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+      "base_generation": "5",
+      "base_watermark": "2030-10-05T00:00:00Z",
+      "base_provider_cursor": "h100",
+      "executor_generation": "2",
+      "page_cursor": "page-2",
+      "diff_count": null
+    }
+  },
+  {
+    "id": "sync-scope",
+    "schema": "SyncScopeState",
+    "valid": true,
+    "value": {
+      "scope_id": "00000000-0000-4000-8000-0000000000c1",
+      "scope_revision": "1",
+      "active_scan_id": "00000000-0000-4000-8000-0000000000c0",
+      "active_generation": "5",
+      "committed_watermark": "2030-10-05T00:00:00Z",
+      "provider_cursor": "h100",
+      "executor_generation": "2",
+      "last_incremental_completed_at": null,
+      "last_full_reconciled_at": null,
+      "pending_incremental": true,
+      "pending_full": false,
+      "analysis_plan_complete_generation": "5"
+    }
   }
 ]

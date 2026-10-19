@@ -39,6 +39,10 @@ const VERSION_FIELDS = {
   store_generation: 'StoreGeneration',
   template_version: 'TemplateVersion',
   reservation_revision: 'ReservationRevision',
+  executor_generation: 'ExecutorGeneration',
+  base_generation: 'PublishedGeneration',
+  active_generation: 'PublishedGeneration',
+  analysis_plan_complete_generation: 'PublishedGeneration',
   expected_reservation_revision: 'ReservationRevision',
   sequence: 'Sequence',
   first_frame_seq: 'Sequence',
@@ -50,7 +54,11 @@ const VERSION_FIELDS = {
 // price_version は不透明な単価の版の ID（設定で決める）で、順序比較しない（ADR 0006）。
 const OPAQUE_VERSION_FIELDS = new Set(['price_version']);
 // 抽出した依頼の版を使う定義。RequestEntity 等を追加した時点で登録する（U04）。
-const REQUEST_ENTITY_DEFS = new Set();
+const REQUEST_ENTITY_DEFS = new Set([
+  'ExtractedRequest',
+  'RequestEntity',
+  'CandidateSnapshot',
+]);
 const DECIMAL_KINDS = [
   'RequestRevision',
   'RequestEntityRevision',
@@ -70,6 +78,7 @@ const DECIMAL_KINDS = [
   'SessionEpoch',
   'TemplateVersion',
   'ReservationRevision',
+  'ExecutorGeneration',
   'Sequence',
 ];
 

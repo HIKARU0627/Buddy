@@ -1,0 +1,490 @@
+{
+  "status": "specification_only",
+  "description": "予約 R・最大負担 M・精算の期待値（設計 05 予約と最大負担の区別 F02、QA42・QA20・X18・X26・X34・X53）。合成設定（通貨 XTS は ISO の試験用コード、上限は合成値）で、本人の金額を含まない。期待値は設計本文から手で書き、domain の実装から生成していない。admit が受け付けられたら予約を reserved・版 0 で追加する。",
+  "config": {
+    "schema": "buddy.budget-config.v1",
+    "currency": "XTS",
+    "pools": [
+      {
+        "pool_id": "total",
+        "parent_pool_id": null,
+        "limit": { "currency": "XTS", "amount": "200" },
+        "requires_approval": false
+      },
+      {
+        "pool_id": "llm",
+        "parent_pool_id": "total",
+        "limit": { "currency": "XTS", "amount": "100" },
+        "requires_approval": false
+      },
+      {
+        "pool_id": "llm.background",
+        "parent_pool_id": "llm",
+        "limit": { "currency": "XTS", "amount": "80" },
+        "requires_approval": false
+      },
+      {
+        "pool_id": "llm.background.campaign",
+        "parent_pool_id": "llm.background",
+        "limit": { "currency": "XTS", "amount": "10" },
+        "requires_approval": false
+      },
+      {
+        "pool_id": "search",
+        "parent_pool_id": "total",
+        "limit": { "currency": "XTS", "amount": "30" },
+        "requires_approval": false
+      },
+      {
+        "pool_id": "voice",
+        "parent_pool_id": null,
+        "limit": { "currency": "XTS", "amount": "50" },
+        "requires_approval": false
+      },
+      {
+        "pool_id": "overage",
+        "parent_pool_id": null,
+        "limit": { "currency": "XTS", "amount": "25" },
+        "requires_approval": true
+      }
+    ],
+    "verified_price_versions": ["p1"]
+  },
+  "defaults": { "month": "2030-10", "price": "p1" },
+  "scenarios": [
+    {
+      "id": "qa42-scaled",
+      "title": "QA42 を合成上限に縮めた例。M で受付を判定し、R が収まっても M を超える要求を拒否する",
+      "initial": [
+        {
+          "id": "base",
+          "pool": "llm",
+          "r": "92",
+          "m": "92",
+          "status": "settled",
+          "actual": "92",
+          "receipt": "p-base"
+        }
+      ],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "A",
+          "pool": "llm",
+          "r": "1",
+          "m": "4",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "B",
+          "pool": "llm",
+          "r": "1",
+          "m": "4",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "X",
+          "pool": "llm",
+          "r": "1",
+          "m": "1",
+          "expected": { "admitted": false, "reasonCodes": ["m_limit:llm"] }
+        },
+        {
+          "op": "settle",
+          "id": "A",
+          "actual": "3",
+          "receipt": "p-A",
+          "expected": { "ok": true, "duplicate": false, "overrun": false }
+        },
+        {
+          "op": "settle",
+          "id": "B",
+          "actual": "3",
+          "receipt": "p-B",
+          "expected": { "ok": true, "duplicate": false, "overrun": false }
+        },
+        {
+          "op": "admit",
+          "id": "C",
+          "pool": "llm",
+          "r": "1",
+          "m": "3",
+          "expected": { "admitted": false, "reasonCodes": ["m_limit:llm"] }
+        },
+        {
+          "op": "admit",
+          "id": "D",
+          "pool": "llm",
+          "r": "1",
+          "m": "2",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "settle",
+          "id": "A",
+          "actual": "3",
+          "receipt": "p-A",
+          "expected": { "ok": true, "duplicate": true, "overrun": false }
+        },
+        {
+          "op": "settle",
+          "id": "A",
+          "actual": "4",
+          "receipt": "p-A",
+          "expected": { "ok": false, "reasonCodes": ["settlement_conflict"] }
+        }
+      ]
+    },
+    {
+      "id": "r-exceeded-within-m-versus-overrun",
+      "title": "R を超えても M 以内なら通常の精算。M 超過は全額記録し、確認まで同じ枠と子孫の新規受付を止める",
+      "initial": [],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "E",
+          "pool": "llm",
+          "r": "2",
+          "m": "5",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "settle",
+          "id": "E",
+          "actual": "4",
+          "receipt": "p-E",
+          "expected": { "ok": true, "duplicate": false, "overrun": false }
+        },
+        {
+          "op": "admit",
+          "id": "F",
+          "pool": "llm",
+          "r": "2",
+          "m": "5",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "settle",
+          "id": "F",
+          "actual": "7",
+          "receipt": "p-F",
+          "expected": { "ok": true, "duplicate": false, "overrun": true },
+          "record": { "status": "settled", "actualGross": "7" }
+        },
+        {
+          "op": "admit",
+          "id": "G",
+          "pool": "llm",
+          "r": "1",
+          "m": "1",
+          "expected": { "admitted": false, "reasonCodes": ["overrun_hold:llm"] }
+        },
+        {
+          "op": "admit",
+          "id": "H",
+          "pool": "search",
+          "r": "1",
+          "m": "1",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "I",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "1",
+          "expected": { "admitted": false, "reasonCodes": ["overrun_hold:llm"] }
+        },
+        { "op": "review_overrun", "id": "F" },
+        {
+          "op": "admit",
+          "id": "G2",
+          "pool": "llm",
+          "r": "1",
+          "m": "1",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        }
+      ]
+    },
+    {
+      "id": "protected-conversation-and-campaign",
+      "title": "自発的な解析の枠が尽きても会話は親の枠まで続けられる。比較 campaign も M で検査する",
+      "initial": [
+        {
+          "id": "bg1",
+          "pool": "llm.background",
+          "r": "50",
+          "m": "78",
+          "status": "reserved"
+        }
+      ],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "J",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "3",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["m_limit:llm.background"]
+          }
+        },
+        {
+          "op": "admit",
+          "id": "K",
+          "pool": "llm",
+          "r": "1",
+          "m": "3",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "L",
+          "pool": "llm.background.campaign",
+          "r": "1",
+          "m": "2",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "M",
+          "pool": "llm.background.campaign",
+          "r": "1",
+          "m": "9",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": [
+              "m_limit:llm.background.campaign",
+              "m_limit:llm.background"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "approved-overage",
+      "title": "超過枠は承認 ID のある依頼だけが使い、承認済みでも超過枠の上限を M で守る",
+      "initial": [],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "N",
+          "pool": "overage",
+          "r": "5",
+          "m": "10",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["approval_required"]
+          }
+        },
+        {
+          "op": "admit",
+          "id": "N2",
+          "pool": "overage",
+          "r": "5",
+          "m": "10",
+          "approval": "approval-1",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "O",
+          "pool": "overage",
+          "r": "5",
+          "m": "16",
+          "approval": "approval-2",
+          "expected": { "admitted": false, "reasonCodes": ["m_limit:overage"] }
+        },
+        {
+          "op": "admit",
+          "id": "O2",
+          "pool": "llm",
+          "r": "1",
+          "m": "1",
+          "approval": "approval-2",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        }
+      ]
+    },
+    {
+      "id": "unknown-usage-across-month",
+      "title": "usage 不明は R / M を保持し、月が替わっても元の月に残す。遅れて精算しても元の月に計上する",
+      "initial": [
+        {
+          "id": "u1",
+          "pool": "llm",
+          "r": "30",
+          "m": "60",
+          "status": "reserved",
+          "month": "2030-09"
+        }
+      ],
+      "steps": [
+        {
+          "op": "mark_unknown",
+          "id": "u1",
+          "expected": { "ok": true },
+          "record": { "status": "usage_unknown" }
+        },
+        {
+          "op": "admit",
+          "id": "P1",
+          "pool": "llm",
+          "r": "10",
+          "m": "50",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "P2",
+          "pool": "llm",
+          "r": "10",
+          "m": "50",
+          "month": "2030-09",
+          "expected": { "admitted": false, "reasonCodes": ["m_limit:llm"] }
+        },
+        {
+          "op": "release",
+          "id": "u1",
+          "sent": false,
+          "expected": { "ok": false, "reasonCodes": ["possibly_sent"] }
+        },
+        {
+          "op": "settle",
+          "id": "u1",
+          "actual": "20",
+          "receipt": "p-u1",
+          "expected": { "ok": true, "duplicate": false, "overrun": false },
+          "record": { "status": "settled", "budgetMonth": "2030-09" }
+        },
+        {
+          "op": "admit",
+          "id": "P3",
+          "pool": "llm",
+          "r": "10",
+          "m": "50",
+          "month": "2030-09",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        }
+      ]
+    },
+    {
+      "id": "top-up-release-and-price",
+      "title": "追加予約は同じ行の版を上げる。未送信が確実な予約だけを解放する。価格未確認の版は受け付けない",
+      "initial": [],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "V",
+          "pool": "voice",
+          "r": "10",
+          "m": "10",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "top_up",
+          "id": "V",
+          "revision": "0",
+          "dr": "5",
+          "dm": "5",
+          "expected": { "ok": true },
+          "record": { "reserved": "15", "maxLiability": "15", "revision": "1" }
+        },
+        {
+          "op": "top_up",
+          "id": "V",
+          "revision": "0",
+          "dr": "5",
+          "dm": "5",
+          "expected": { "ok": false, "reasonCodes": ["revision_conflict"] }
+        },
+        {
+          "op": "top_up",
+          "id": "V",
+          "revision": "1",
+          "dr": "40",
+          "dm": "40",
+          "expected": {
+            "ok": false,
+            "reasonCodes": ["r_limit:voice", "m_limit:voice"]
+          }
+        },
+        {
+          "op": "admit",
+          "id": "W",
+          "pool": "llm",
+          "r": "1",
+          "m": "1",
+          "price": "p2",
+          "expected": { "admitted": false, "reasonCodes": ["price_unverified"] }
+        },
+        {
+          "op": "admit",
+          "id": "Q",
+          "pool": "voice",
+          "r": "30",
+          "m": "30",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "Z",
+          "pool": "voice",
+          "r": "10",
+          "m": "10",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["r_limit:voice", "m_limit:voice"]
+          }
+        },
+        {
+          "op": "release",
+          "id": "Q",
+          "sent": false,
+          "expected": { "ok": true },
+          "record": { "status": "released" }
+        },
+        {
+          "op": "release",
+          "id": "Q",
+          "sent": false,
+          "expected": { "ok": false, "reasonCodes": ["released"] }
+        },
+        {
+          "op": "admit",
+          "id": "Z2",
+          "pool": "voice",
+          "r": "10",
+          "m": "10",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "release",
+          "id": "V",
+          "sent": true,
+          "expected": { "ok": false, "reasonCodes": ["possibly_sent"] }
+        },
+        {
+          "op": "mark_unknown",
+          "id": "Q",
+          "expected": { "ok": false, "reasonCodes": ["not_active"] }
+        },
+        {
+          "op": "admit",
+          "id": "V-dup",
+          "request": "req-V",
+          "pool": "voice",
+          "r": "1",
+          "m": "1",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["duplicate_request"]
+          }
+        }
+      ]
+    }
+  ]
+}

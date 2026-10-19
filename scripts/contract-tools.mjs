@@ -82,6 +82,35 @@ export function semanticErrors(name, value) {
     )
       errors.push('expired_observation');
   }
+  if (name === 'BudgetConfig') {
+    const pools = new Map();
+    for (const pool of value.pools) {
+      if (pools.has(pool.pool_id)) errors.push('duplicate_pool');
+      pools.set(pool.pool_id, pool);
+      if (pool.limit.currency !== value.currency)
+        errors.push('currency_mismatch');
+    }
+    for (const pool of value.pools) {
+      const seen = new Set([pool.pool_id]);
+      let parent = pool.parent_pool_id;
+      while (parent !== null) {
+        const node = pools.get(parent);
+        if (!node) {
+          errors.push('unknown_parent_pool');
+          break;
+        }
+        if (seen.has(parent)) {
+          errors.push('pool_cycle');
+          break;
+        }
+        seen.add(parent);
+        parent = node.parent_pool_id;
+      }
+      const direct = pools.get(pool.parent_pool_id);
+      if (direct && BigInt(pool.limit.amount) > BigInt(direct.limit.amount))
+        errors.push('child_limit_exceeds_parent');
+    }
+  }
   if (name === 'TimeZone') {
     try {
       new Intl.DateTimeFormat('en', { timeZone: value });
@@ -226,6 +255,9 @@ export function semanticErrors(name, value) {
       (value.actual_gross || value.credit_applied || value.additional_spend)
     )
       errors.push('unconfirmed_usage');
+    if (value.status === 'released' && value.provider_reconciliation_id)
+      errors.push('released_with_provider_receipt');
+    if (value.overrun_reviewed && !settled) errors.push('review_without_usage');
     if (
       settled &&
       value.actual_gross &&

@@ -108,6 +108,21 @@
     },
     {
       "$ref": "#/$defs/SessionControlPhrases"
+    },
+    {
+      "$ref": "#/$defs/BudgetConfig"
+    },
+    {
+      "$ref": "#/$defs/BudgetAdmissionRequest"
+    },
+    {
+      "$ref": "#/$defs/BudgetAdmissionResult"
+    },
+    {
+      "$ref": "#/$defs/BudgetTopUp"
+    },
+    {
+      "$ref": "#/$defs/BudgetSettlement"
     }
   ],
   "$defs": {
@@ -253,6 +268,11 @@
       "type": "string",
       "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
       "description": "暦月（予算月など）。"
+    },
+    "BudgetPoolId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$",
+      "description": "予算枠の ID（設定で決める。例: llm、llm.background）。個人の金額は設定の値に置き、契約には含めない。"
     },
     "TimeZone": {
       "type": "string",
@@ -1583,6 +1603,11 @@
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)$",
       "description": "定型文の版。定型文はコードの部品として版管理する（設計 10 §5、§6A）。"
+    },
+    "ReservationRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "予約行の版。追加予約（top-up）ごとに上がる（ADR 0006）。"
     },
     "ResultFact": {
       "type": "object",
@@ -3018,6 +3043,9 @@
         "reservation_id": {
           "$ref": "#/$defs/Id"
         },
+        "reservation_revision": {
+          "$ref": "#/$defs/ReservationRevision"
+        },
         "request_id": {
           "$ref": "#/$defs/Id"
         },
@@ -3031,15 +3059,8 @@
         "budget_month": {
           "$ref": "#/$defs/YearMonth"
         },
-        "budget_scope": {
-          "type": "string",
-          "enum": [
-            "conversation",
-            "background",
-            "search",
-            "voice",
-            "approved_overage"
-          ]
+        "pool_id": {
+          "$ref": "#/$defs/BudgetPoolId"
         },
         "reserved_amount": {
           "$ref": "#/$defs/Money"
@@ -3049,7 +3070,7 @@
         },
         "status": {
           "type": "string",
-          "enum": ["reserved", "usage_unknown", "settled"]
+          "enum": ["reserved", "usage_unknown", "settled", "released"]
         },
         "provider_reconciliation_id": {
           "anyOf": [
@@ -3102,15 +3123,29 @@
               "type": "null"
             }
           ]
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "overrun_reviewed": {
+          "type": "boolean"
         }
       },
       "required": [
         "reservation_id",
+        "reservation_revision",
         "request_id",
         "profile_id",
         "price_version",
         "budget_month",
-        "budget_scope",
+        "pool_id",
         "reserved_amount",
         "max_liability",
         "status",
@@ -3118,10 +3153,221 @@
         "actual_gross",
         "credit_applied",
         "additional_spend",
+        "credit_cycle_id",
+        "approval_id",
+        "overrun_reviewed"
+      ],
+      "additionalProperties": false,
+      "description": "予約 R と最大負担 M（設計 05 予約と最大負担の区別 F02、ADR 0006）。R と M は加算しない。予算月は受付時の元の月で、月替わりでも変えない。usage が不明なら R と M を保持する。released は provider へ送っていないことが記録上確実な場合だけ。実費が M を超えても切り捨てずに記録し、確認（overrun_reviewed）まで同じ枠の新規受付を止める。"
+    },
+    "BudgetPool": {
+      "type": "object",
+      "properties": {
+        "pool_id": {
+          "$ref": "#/$defs/BudgetPoolId"
+        },
+        "parent_pool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetPoolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "$ref": "#/$defs/Money"
+        },
+        "requires_approval": {
+          "type": "boolean"
+        }
+      },
+      "required": ["pool_id", "parent_pool_id", "limit", "requires_approval"],
+      "additionalProperties": false,
+      "description": "予算の枠。予約は葉の枠に計上し、受付時は祖先の枠もすべて検査する。requires_approval の枠（個別承認の超過枠）は承認 ID のある予約だけが使う。"
+    },
+    "BudgetConfig": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.budget-config.v1"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "pools": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/BudgetPool"
+          }
+        },
+        "verified_price_versions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": ["schema", "currency", "pools", "verified_price_versions"],
+      "additionalProperties": false,
+      "description": "実行時の予算設定（設計 05 F02、J17 の構造）。金額は本人の設定で、公開する契約・試験には合成値だけを使う。価格が確認されていない版の profile は受け付けない。"
+    },
+    "BudgetAdmissionRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "pool_id": {
+          "$ref": "#/$defs/BudgetPoolId"
+        },
+        "budget_month": {
+          "$ref": "#/$defs/YearMonth"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "price_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reserved_amount": {
+          "$ref": "#/$defs/Money"
+        },
+        "max_liability": {
+          "$ref": "#/$defs/Money"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_id",
+        "pool_id",
+        "budget_month",
+        "profile_id",
+        "price_version",
+        "reserved_amount",
+        "max_liability",
+        "approval_id"
+      ],
+      "additionalProperties": false,
+      "description": "有料処理の受付要求。精算済み額＋未精算の R＋今回の R と、精算済み額＋未精算の M＋今回の M の両方が、経路上のすべての枠で上限以下のときだけ受け付ける。"
+    },
+    "BudgetAdmissionResult": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "admitted": {
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reservation_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["request_id", "admitted", "reason_codes", "reservation_id"],
+      "additionalProperties": false,
+      "description": "受付の結果。予算不足のときに出力上限を無断で削らない。"
+    },
+    "BudgetTopUp": {
+      "type": "object",
+      "properties": {
+        "reservation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_reservation_revision": {
+          "$ref": "#/$defs/ReservationRevision"
+        },
+        "delta_reserved": {
+          "$ref": "#/$defs/Money"
+        },
+        "delta_max_liability": {
+          "$ref": "#/$defs/Money"
+        }
+      },
+      "required": [
+        "reservation_id",
+        "expected_reservation_revision",
+        "delta_reserved",
+        "delta_max_liability"
+      ],
+      "additionalProperties": false,
+      "description": "追加予約。同じ予約行の R と M を増やし、追加分だけを受付検査する（ADR 0006）。"
+    },
+    "BudgetSettlement": {
+      "type": "object",
+      "properties": {
+        "reservation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider_reconciliation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actual_gross": {
+          "$ref": "#/$defs/Money"
+        },
+        "credit_applied": {
+          "$ref": "#/$defs/Money"
+        },
+        "additional_spend": {
+          "$ref": "#/$defs/Money"
+        },
+        "credit_cycle_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reservation_id",
+        "request_id",
+        "provider_reconciliation_id",
+        "actual_gross",
+        "credit_applied",
+        "additional_spend",
         "credit_cycle_id"
       ],
       "additionalProperties": false,
-      "description": "RとMは加算しない。R<=M、同一通貨、gross=credit+spend、未精算の保持は意味検査で確認。通常料金枠とクレジットは別。実費M超過も切り捨てず記録する。"
+      "description": "確定した usage による精算。request_id と provider の照合 ID で一度だけ適用し、元の月・元の枠に計上する。同じ値の再適用は変化なし、異なる値は競合。"
     },
     "CreditObservation": {
       "type": "object",

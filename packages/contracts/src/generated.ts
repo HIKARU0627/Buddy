@@ -38,7 +38,12 @@ export type BuddyContract =
   | LiveControlState
   | DeviceIOState
   | VoiceEvent
-  | SessionControlPhrases;
+  | SessionControlPhrases
+  | BudgetConfig
+  | BudgetAdmissionRequest
+  | BudgetAdmissionResult
+  | BudgetTopUp
+  | BudgetSettlement;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -274,9 +279,17 @@ export type StoreGeneration = string;
  */
 export type EventCursor = string;
 /**
+ * 予約行の版。追加予約（top-up）ごとに上がる（ADR 0006）。
+ */
+export type ReservationRevision = string;
+/**
  * 暦月（予算月など）。
  */
 export type YearMonth = string;
+/**
+ * 予算枠の ID（設定で決める。例: llm、llm.background）。個人の金額は設定の値に置き、契約には含めない。
+ */
+export type BudgetPoolId = string;
 /**
  * 通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。
  */
@@ -639,24 +652,26 @@ export interface ApiError {
   request_id: Id | null;
 }
 /**
- * RとMは加算しない。R<=M、同一通貨、gross=credit+spend、未精算の保持は意味検査で確認。通常料金枠とクレジットは別。実費M超過も切り捨てず記録する。
+ * 予約 R と最大負担 M（設計 05 予約と最大負担の区別 F02、ADR 0006）。R と M は加算しない。予算月は受付時の元の月で、月替わりでも変えない。usage が不明なら R と M を保持する。released は provider へ送っていないことが記録上確実な場合だけ。実費が M を超えても切り捨てずに記録し、確認（overrun_reviewed）まで同じ枠の新規受付を止める。
  */
 export interface BudgetReservation {
   reservation_id: Id;
+  reservation_revision: ReservationRevision;
   request_id: Id;
   profile_id: Id;
   price_version: string;
   budget_month: YearMonth;
-  budget_scope:
-    'conversation' | 'background' | 'search' | 'voice' | 'approved_overage';
+  pool_id: BudgetPoolId;
   reserved_amount: Money;
   max_liability: Money;
-  status: 'reserved' | 'usage_unknown' | 'settled';
+  status: 'reserved' | 'usage_unknown' | 'settled' | 'released';
   provider_reconciliation_id: string | null;
   actual_gross: Money | null;
   credit_applied: Money | null;
   additional_spend: Money | null;
   credit_cycle_id: string | null;
+  approval_id: Id | null;
+  overrun_reviewed: boolean;
 }
 export interface Money {
   currency: string;
@@ -1496,4 +1511,68 @@ export interface SessionControlPhrases {
         | 'reply_in_text';
     }[],
   ];
+}
+/**
+ * 実行時の予算設定（設計 05 F02、J17 の構造）。金額は本人の設定で、公開する契約・試験には合成値だけを使う。価格が確認されていない版の profile は受け付けない。
+ */
+export interface BudgetConfig {
+  schema: 'buddy.budget-config.v1';
+  currency: string;
+  /**
+   * @minItems 1
+   */
+  pools: [BudgetPool, ...BudgetPool[]];
+  verified_price_versions: string[];
+}
+/**
+ * 予算の枠。予約は葉の枠に計上し、受付時は祖先の枠もすべて検査する。requires_approval の枠（個別承認の超過枠）は承認 ID のある予約だけが使う。
+ */
+export interface BudgetPool {
+  pool_id: BudgetPoolId;
+  parent_pool_id: BudgetPoolId | null;
+  limit: Money;
+  requires_approval: boolean;
+}
+/**
+ * 有料処理の受付要求。精算済み額＋未精算の R＋今回の R と、精算済み額＋未精算の M＋今回の M の両方が、経路上のすべての枠で上限以下のときだけ受け付ける。
+ */
+export interface BudgetAdmissionRequest {
+  request_id: Id;
+  pool_id: BudgetPoolId;
+  budget_month: YearMonth;
+  profile_id: Id;
+  price_version: string;
+  reserved_amount: Money;
+  max_liability: Money;
+  approval_id: Id | null;
+}
+/**
+ * 受付の結果。予算不足のときに出力上限を無断で削らない。
+ */
+export interface BudgetAdmissionResult {
+  request_id: Id;
+  admitted: boolean;
+  reason_codes: string[];
+  reservation_id: Id | null;
+}
+/**
+ * 追加予約。同じ予約行の R と M を増やし、追加分だけを受付検査する（ADR 0006）。
+ */
+export interface BudgetTopUp {
+  reservation_id: Id;
+  expected_reservation_revision: ReservationRevision;
+  delta_reserved: Money;
+  delta_max_liability: Money;
+}
+/**
+ * 確定した usage による精算。request_id と provider の照合 ID で一度だけ適用し、元の月・元の枠に計上する。同じ値の再適用は変化なし、異なる値は競合。
+ */
+export interface BudgetSettlement {
+  reservation_id: Id;
+  request_id: Id;
+  provider_reconciliation_id: string;
+  actual_gross: Money;
+  credit_applied: Money;
+  additional_spend: Money;
+  credit_cycle_id: string | null;
 }

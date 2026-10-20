@@ -1,0 +1,29 @@
+{
+  "name": "@buddy/desktop",
+  "productName": "Buddy Desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/electron/main.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.pure.json && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json && vite build --logLevel warn",
+    "dev": "pnpm --filter \"@buddy/desktop...\" --workspace-concurrency=1 run build && electron .",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@buddy/contracts": "workspace:*",
+    "@buddy/domain": "workspace:*",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "44.9.0",
+    "vite": "8.3.4"
+  }
+}

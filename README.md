@@ -38,6 +38,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [domain 境界と保存マイグレーション案](docs/adr/0010-domain-boundary-and-storage-draft.md)
 - [生成型・CI・試験対応表と B00 の完了判定](docs/adr/0011-b00-completion-review.md)
 - [デスクトップの型付き IPC の契約](docs/adr/0014-b01-desktop-ipc-contract.md)
+- [デスクトップの最小アプリ（トレイ常駐・端末状態の記録）](docs/adr/0015-b01-desktop-minimal-app.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成
@@ -48,7 +49,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 | `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成          |
 | `packages/storage`   | Core の保存アダプター。マイグレーション案は B00 で作成               |
 | `apps/core`          | Electron から独立した Node.js 中枢。現在は型検査・ビルド用の空の入口 |
-| `apps/desktop`       | 将来の Electron / React クライアントの配置先。B02 で実装             |
+| `apps/desktop`       | Electron / React クライアント。B01 はトレイ常駐・端末状態の記録まで  |
 | `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                       |
 | `scripts`            | 環境確認、設計資料の整合検査、試験実行                               |
 | `docs/design`        | 公開できる設計概要と非公開原本の参照手順                             |

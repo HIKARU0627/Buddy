@@ -1,0 +1,152 @@
+{
+  "status": "specification_only",
+  "description": "評価セット（意図判定）の行を tests/eval の書き出し形式へ変換する期待値（設計 10 §10、ADR 0008）。行はすべて合成で、実際の評価セットの本文を写していない。",
+  "options": {
+    "baseTime": "2030-10-08T00:00:00Z",
+    "zone": "Asia/Tokyo",
+    "offset": "+09:00",
+    "split": "judgment",
+    "groupId": "group-1"
+  },
+  "args": [
+    {
+      "id": "range-aliases",
+      "text": "date_from=2030-10-09T12:00+09:00; date_to=2030-10-09T18:00+09:00",
+      "expected": {
+        "ok": true,
+        "args": { "start": "2030-10-09T12:00", "end": "2030-10-09T18:00" }
+      }
+    },
+    {
+      "id": "date-only-and-text",
+      "text": "due=2030-10-10; title=合成の用事",
+      "expected": {
+        "ok": true,
+        "args": { "due": "2030-10-10", "title": "合成の用事" }
+      }
+    },
+    {
+      "id": "no-args",
+      "text": "（なし）",
+      "expected": { "ok": true, "args": {} }
+    },
+    {
+      "id": "pending",
+      "text": "（論点が決まってから）",
+      "expected": { "ok": false, "error": "expected_args_pending" }
+    },
+    {
+      "id": "unknown-key",
+      "text": "place=合成の場所",
+      "expected": { "ok": false, "error": "unknown_arg_key:place" }
+    },
+    {
+      "id": "offset-mismatch",
+      "text": "date_from=2030-10-09T12:00Z",
+      "expected": { "ok": false, "error": "offset_mismatch:date_from" }
+    },
+    {
+      "id": "duplicate-after-alias",
+      "text": "date_from=2030-10-09T12:00+09:00; start=2030-10-09T13:00+09:00",
+      "expected": { "ok": false, "error": "duplicate_arg:start" }
+    },
+    {
+      "id": "array-format-unconfirmed",
+      "text": "add_labels=合成ラベル",
+      "expected": {
+        "ok": false,
+        "error": "array_format_unconfirmed:add_labels"
+      }
+    },
+    {
+      "id": "malformed",
+      "text": "title",
+      "expected": { "ok": false, "error": "malformed:title" }
+    }
+  ],
+  "rows": [
+    {
+      "id": "confirmed-row",
+      "row": {
+        "id": "E901",
+        "utterance": "合成の発話：明日の午後の予定",
+        "intent": "query_schedule",
+        "args": "date_from=2030-10-09T12:00+09:00; date_to=2030-10-09T18:00+09:00",
+        "inputKind": "音声（端末の認識）",
+        "categories": ["基本", "日時表現"],
+        "context": "—",
+        "status": "確認済み"
+      },
+      "expected": {
+        "schema": "buddy.eval-case.v1",
+        "case_id": "E901",
+        "use": "intent_args",
+        "split": "judgment",
+        "group_id": "group-1",
+        "review_status": "confirmed",
+        "input": {
+          "text": "合成の発話：明日の午後の予定",
+          "input_kind": "voice_local",
+          "base_time": "2030-10-08T00:00:00Z",
+          "zone": "Asia/Tokyo",
+          "context": null
+        },
+        "categories": ["basic", "datetime"],
+        "expected": {
+          "intent": "query_schedule",
+          "args": { "start": "2030-10-09T12:00", "end": "2030-10-09T18:00" }
+        }
+      }
+    },
+    {
+      "id": "unknown-input-kind",
+      "row": {
+        "id": "E902",
+        "utterance": "合成の発話",
+        "intent": "smalltalk",
+        "args": "（なし）",
+        "inputKind": "手書き",
+        "categories": [],
+        "context": "—",
+        "status": "未確認"
+      },
+      "expected": { "ok": false, "error": "unknown_input_kind" }
+    }
+  ],
+  "selection": {
+    "cases": [
+      {
+        "case_id": "E1",
+        "review_status": "confirmed",
+        "split": "judgment",
+        "group_id": "g1"
+      },
+      {
+        "case_id": "E2",
+        "review_status": "unconfirmed",
+        "split": "judgment",
+        "group_id": "g2"
+      },
+      {
+        "case_id": "E3",
+        "review_status": "on_hold",
+        "split": "judgment",
+        "group_id": "g3"
+      },
+      {
+        "case_id": "E4",
+        "review_status": "confirmed",
+        "split": "tuning",
+        "group_id": "g4"
+      },
+      {
+        "case_id": "E5",
+        "review_status": "confirmed",
+        "split": "judgment",
+        "group_id": "g4"
+      }
+    ],
+    "expected_judgment": ["E1", "E5"],
+    "expected_leaks": ["g4"]
+  }
+}

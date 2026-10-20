@@ -18,13 +18,13 @@
 ## 初回に作成したもの
 
 - `packages/contracts/schemas/buddy.schema.json`: 共通表現・入力・ラベル変更・受付と状態・予算の記録形式。24 intent は名前の一覧まで、固有引数は label_mail だけ。
-- `packages/contracts/openapi.yaml`: 操作取得、preview / approve / cancel / reconcile / retry、イベント再取得の部分契約。bootstrap・sessions・音声・同期等は未ファイル化。
+- `packages/contracts/openapi.yaml`: 設計 07 §2 の全経路と、端末の登録・失効・連携の接続（U10）。経路ごとの Core の検査は `x-buddy-core-checks` と domain の `api.ts` が同じ表（[ADR 0009](../adr/0009-openapi-auth-events-and-reconnect.md)）。
 - `packages/contracts/src/generated.ts`: Schema から生成。生成差分を CI で拒否。
 - `packages/contracts/fixtures/`: 正常／拒否例と H01。`workflow-label.json` は遷移の期待結果で、実行済み試験ではない。
 - 検証ツール: 厳格な生 JSON、JCS / H01、Schema・OpenAPI、生成型、局所的な不変条件を検査。F01 / F02 の記録形式を検査したことと QA41 / QA42 の統合合格は別。
 - モデル候補: 音声・即時判断・文章解析・高度相談・端末内 ASR を役割で分離。採用前に評価が必要で、実行可能な deployment manifest は未作成。
 
-契約ファイル化はモデルの本採用より先に進めます。正解例の本人確認は並行可能です。共通表現と用途別の版の型は B00-02（[ADR 0003](../adr/0003-common-representation.md)）、意図表・実行可否・入力から結果までの契約は B00-03（[ADR 0004](../adr/0004-intent-table-and-readiness.md)）、会話・委譲・音声制御・出力先は B00-04（[ADR 0005](../adr/0005-conversation-and-voice-control.md)）、予約 R・最大負担 M と精算は B00-05（[ADR 0006](../adr/0006-budget-reservation-and-liability.md)）、同期世代・抽出 v2・関連解析は B00-06（[ADR 0007](../adr/0007-sync-extraction-and-related-analysis.md)）、記憶・忘却とモデル評価の交換形式は B00-07（[ADR 0008](../adr/0008-memory-forgetting-and-model-evaluation.md)）で決めました。次は OpenAPI（B00-08）、保存案（B00-09）です。全終了条件が揃うまでは B01 の着手可能と判定しません。
+契約ファイル化はモデルの本採用より先に進めます。正解例の本人確認は並行可能です。共通表現と用途別の版の型は B00-02（[ADR 0003](../adr/0003-common-representation.md)）、意図表・実行可否・入力から結果までの契約は B00-03（[ADR 0004](../adr/0004-intent-table-and-readiness.md)）、会話・委譲・音声制御・出力先は B00-04（[ADR 0005](../adr/0005-conversation-and-voice-control.md)）、予約 R・最大負担 M と精算は B00-05（[ADR 0006](../adr/0006-budget-reservation-and-liability.md)）、同期世代・抽出 v2・関連解析は B00-06（[ADR 0007](../adr/0007-sync-extraction-and-related-analysis.md)）、記憶・忘却とモデル評価の交換形式は B00-07（[ADR 0008](../adr/0008-memory-forgetting-and-model-evaluation.md)）、OpenAPI・認証・イベント・再接続は B00-08（[ADR 0009](../adr/0009-openapi-auth-events-and-reconnect.md)）で決めました。次は domain 境界と保存案（B00-09）、B00 の完了判定（B00-10）です。全終了条件が揃うまでは B01 の着手可能と判定しません。
 
 今回のファイル形式の選択と、未実装の実行境界は [ADR 0002](../adr/0002-contract-validation.md) と [初回の境界仕様](boundaries.md) にまとめています。
 

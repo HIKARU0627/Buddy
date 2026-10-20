@@ -1,0 +1,1193 @@
+{
+  "status": "specification_only",
+  "description": "経路ごとの正常な要求・応答と、Core の検査による拒否の期待値（設計 07 §2〜§5、02 端末登録と接続、11 §10、X04・X11・X13・X14・X42、ADR 0009）。手で書いたもので、domain の実装から生成していない。応答の例は schema-cases の合成値を流用した。",
+  "contexts": {
+    "ok": {
+      "bodyBytes": 1000,
+      "deviceAuthenticated": true,
+      "claimSecretMatches": true,
+      "homeNetwork": true,
+      "commandScope": "current",
+      "lockState": "unlocked",
+      "screenOperation": true,
+      "hubLocal": true,
+      "audioOwner": "self",
+      "revisionMatches": true
+    },
+    "no_token": {
+      "deviceAuthenticated": false
+    },
+    "bad_claim_secret": {
+      "claimSecretMatches": false
+    },
+    "outside_home": {
+      "homeNetwork": false
+    },
+    "stale_scope": {
+      "commandScope": "stale"
+    },
+    "locked": {
+      "lockState": "locked"
+    },
+    "lock_unknown": {
+      "lockState": "unknown"
+    },
+    "voice_origin": {
+      "screenOperation": false
+    },
+    "remote_device": {
+      "hubLocal": false
+    },
+    "audio_other": {
+      "audioOwner": "other"
+    },
+    "audio_none": {
+      "audioOwner": "none"
+    },
+    "stale_revision": {
+      "revisionMatches": false
+    },
+    "too_large": {
+      "bodyBytes": 262145
+    },
+    "preauth_too_large": {
+      "bodyBytes": 16385
+    },
+    "no_token_outside_home": {
+      "deviceAuthenticated": false,
+      "homeNetwork": false
+    }
+  },
+  "operations": {
+    "getBootstrap": {
+      "response": {
+        "api_version": "1.0",
+        "core_instance_id": "00000000-0000-4000-8000-000000000001",
+        "store_generation": "00000000-0000-4000-8000-000000000002",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "command_scope_expires_at": "2030-10-06T00:00:00Z",
+        "capabilities": ["webrtc", "local_asr"],
+        "io_state": {
+          "device_id": "00000000-0000-4000-8000-000000000050",
+          "io_epoch": "4",
+          "output_epoch": "12",
+          "lock_state": "unlocked",
+          "stop_scope": "none",
+          "input_permitted": true,
+          "voice_state": "conversation_live",
+          "output_mode": "voice",
+          "private_conversation": false,
+          "audio_lease_valid": true
+        }
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"]
+      ]
+    },
+    "getSnapshot": {
+      "response": {
+        "store_generation": "00000000-0000-4000-8000-000000000002",
+        "core_instance_id": "00000000-0000-4000-8000-000000000001",
+        "event_cursor": "c-1",
+        "view": "full",
+        "io_state": {
+          "device_id": "00000000-0000-4000-8000-000000000050",
+          "io_epoch": "4",
+          "output_epoch": "12",
+          "lock_state": "unlocked",
+          "stop_scope": "none",
+          "input_permitted": true,
+          "voice_state": "conversation_live",
+          "output_mode": "voice",
+          "private_conversation": false,
+          "audio_lease_valid": true
+        },
+        "sessions": [
+          {
+            "session_id": "00000000-0000-4000-8000-000000000003",
+            "storage_mode": "normal",
+            "display_device_id": "00000000-0000-4000-8000-000000000050",
+            "route_revision": "1",
+            "turns": [
+              {
+                "turn_id": "00000000-0000-4000-8000-000000000004",
+                "role": "user",
+                "text": "合成の発言",
+                "at": "2030-10-05T00:00:00Z",
+                "input_kind": "text"
+              }
+            ]
+          }
+        ],
+        "candidates": [
+          {
+            "candidate_id": "00000000-0000-4000-8000-0000000000b3",
+            "kind": "mail_reply",
+            "state": "new",
+            "request_entity_id": "00000000-0000-4000-8000-0000000000b0",
+            "request_revision": "2",
+            "source_revision": "r1",
+            "notification_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "title": "参加可否の返信：10/7まで",
+            "deadline": {
+              "kind": "date",
+              "date": "2030-10-07",
+              "original_text": "2030年10月7日まで"
+            },
+            "initial_import": false,
+            "unread_partial": true,
+            "related_analysis": {
+              "group_id": "00000000-0000-4000-8000-0000000000b2",
+              "analysis_revision": "3",
+              "source_set_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+              "published_generation": "6"
+            },
+            "operation_ids": []
+          }
+        ],
+        "operations": [
+          {
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "content_version": "1",
+            "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+            "state_revision": "3",
+            "state": "unknown_held",
+            "approval_state": "valid",
+            "allowed_actions": ["reconcile"],
+            "result": {
+              "status": "unknown",
+              "provider_receipt_id": null
+            }
+          }
+        ]
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"]
+      ]
+    },
+    "createSession": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "storage_mode": "private"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "session_id": "00000000-0000-4000-8000-000000000003",
+        "storage_mode": "private",
+        "route_revision": "1"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "storage_mode": "forever"
+        }
+      ]
+    },
+    "postTurn": {
+      "params": {
+        "session_id": "00000000-0000-4000-8000-000000000003"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "text": "明日の予定は？",
+        "input_kind": "text"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "session_id": "00000000-0000-4000-8000-000000000003",
+        "turn_id": "00000000-0000-4000-8000-000000000004",
+        "input_id": "00000000-0000-4000-8000-000000000005",
+        "workflow_id": "00000000-0000-4000-8000-000000000006",
+        "status": "answered",
+        "result_view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000012",
+          "request_revision": "1",
+          "intent": "query_schedule",
+          "kind": "schedule_cards",
+          "status": "ready",
+          "item_refs": [
+            {
+              "kind": "event",
+              "id": "00000000-0000-4000-8000-000000000080"
+            }
+          ],
+          "more_count": 0,
+          "template_id": "schedule.list",
+          "template_version": "1"
+        },
+        "reply_text": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "text": "合成",
+          "input_kind": "voice_live"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "text": "",
+          "input_kind": "text"
+        }
+      ]
+    },
+    "handoffSession": {
+      "params": {
+        "session_id": "00000000-0000-4000-8000-000000000003"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "target_device_id": "00000000-0000-4000-8000-000000000007",
+        "expected_route_revision": "1"
+      },
+      "response": {
+        "session_id": "00000000-0000-4000-8000-000000000003",
+        "route_revision": "2",
+        "display_device_id": "00000000-0000-4000-8000-000000000007",
+        "state": "moving"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "target_device_id": "00000000-0000-4000-8000-000000000007"
+        }
+      ]
+    },
+    "getOperation": {
+      "params": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "response": {
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "content_version": "1",
+        "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+        "state_revision": "3",
+        "state": "unknown_held",
+        "approval_state": "valid",
+        "allowed_actions": ["reconcile"],
+        "result": {
+          "status": "unknown",
+          "provider_receipt_id": null
+        }
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"]
+      ]
+    },
+    "previewOperation": {
+      "params": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002"
+      },
+      "response": {
+        "preview_id": "00000000-0000-4000-8000-000000000032",
+        "intent": {
+          "account_id": "00000000-0000-4000-8000-000000000002",
+          "action": {
+            "add": ["follow-up"],
+            "kind": "mail.labels.change",
+            "remove": []
+          },
+          "content_version": "1",
+          "effects": {
+            "external_recipients": [],
+            "reconcile_scope": "exact_target"
+          },
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "permission_revision": "1",
+          "provider": "mock",
+          "schema": "buddy.operation.v1",
+          "target": {
+            "remote_id": "mail-001",
+            "source_revision": "r1"
+          }
+        },
+        "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+        "state_revision": "1"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001"
+        }
+      ]
+    },
+    "approveOperation": {
+      "params": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_scope_id": "00000000-0000-4000-8000-000000000033",
+        "preview_id": "00000000-0000-4000-8000-000000000032",
+        "content_version": "1",
+        "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+        "expected_state_revision": "1"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_id": "00000000-0000-4000-8000-000000000031",
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "state_revision": "2",
+        "status": "accepted",
+        "committed_state_revision": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000000030",
+          "command_scope_id": "00000000-0000-4000-8000-000000000033",
+          "preview_id": "00000000-0000-4000-8000-000000000032",
+          "content_version": "1",
+          "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+          "expected_state_revision": "1",
+          "device_id": "00000000-0000-4000-8000-000000000008"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000000030",
+          "command_scope_id": "00000000-0000-4000-8000-000000000033",
+          "preview_id": "00000000-0000-4000-8000-000000000032",
+          "content_version": "1",
+          "expected_state_revision": "1"
+        }
+      ]
+    },
+    "cancelOperation": {
+      "params": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_scope_id": "00000000-0000-4000-8000-000000000033",
+        "expected_state_revision": "1"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_id": "00000000-0000-4000-8000-000000000031",
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "state_revision": "2",
+        "status": "accepted",
+        "committed_state_revision": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000000030",
+          "command_scope_id": "00000000-0000-4000-8000-000000000033",
+          "expected_state_revision": "01"
+        }
+      ]
+    },
+    "reconcileOperation": {
+      "params": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_scope_id": "00000000-0000-4000-8000-000000000033",
+        "expected_state_revision": "1"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_id": "00000000-0000-4000-8000-000000000031",
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "state_revision": "2",
+        "status": "accepted",
+        "committed_state_revision": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000000030",
+          "command_scope_id": "00000000-0000-4000-8000-000000000033",
+          "expected_state_revision": "1",
+          "force": true
+        }
+      ]
+    },
+    "retryOperation": {
+      "params": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_scope_id": "00000000-0000-4000-8000-000000000033",
+        "expected_state_revision": "1"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_id": "00000000-0000-4000-8000-000000000031",
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "state_revision": "2",
+        "status": "accepted",
+        "committed_state_revision": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000000030",
+          "command_scope_id": "00000000-0000-4000-8000-000000000033",
+          "expected_state_revision": -1
+        }
+      ]
+    },
+    "listAutoActions": {
+      "response": {
+        "safety": {
+          "state": "running",
+          "safety_revision": "3",
+          "stop_reason": null,
+          "stopped_at": null
+        },
+        "items": [
+          {
+            "operation_id": "00000000-0000-4000-8000-000000000010",
+            "action_kind": "label_mail",
+            "policy_version": "2",
+            "state_revision": "4",
+            "completed_at": "2030-10-01T00:00:00Z",
+            "undo_state": "available",
+            "undo_deadline": "2030-10-31T00:00:00Z"
+          }
+        ]
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"]
+      ]
+    },
+    "undoAutoAction": {
+      "params": {
+        "id": "00000000-0000-4000-8000-000000000010"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_scope_id": "00000000-0000-4000-8000-000000000033",
+        "expected_state_revision": "1"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000000030",
+        "command_id": "00000000-0000-4000-8000-000000000031",
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "state_revision": "2",
+        "status": "accepted",
+        "committed_state_revision": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002"
+        }
+      ]
+    },
+    "resumeSafety": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_safety_revision": "3"
+      },
+      "response": {
+        "state": "running",
+        "safety_revision": "4",
+        "stop_reason": null,
+        "stopped_at": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002"
+        }
+      ]
+    },
+    "stopIo": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "scope": "global"
+      },
+      "response": {
+        "scope": "global",
+        "io_epoch": "8",
+        "devices": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000000007",
+            "stop_state": "confirmed"
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000000008",
+            "stop_state": "awaiting_ack"
+          }
+        ],
+        "all_confirmed": false
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "accepted_contexts": [
+        "locked",
+        "lock_unknown",
+        "voice_origin",
+        "stale_revision"
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "scope": "room"
+        }
+      ]
+    },
+    "resumeIo": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "scope": "local",
+        "expected_io_epoch": "8"
+      },
+      "response": {
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "io_epoch": "9",
+        "output_epoch": "12",
+        "lock_state": "unlocked",
+        "stop_scope": "none",
+        "input_permitted": true,
+        "voice_state": "conversation_live",
+        "output_mode": "voice",
+        "private_conversation": false,
+        "audio_lease_valid": true
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "scope": "local"
+        }
+      ]
+    },
+    "getEvents": {
+      "params": {
+        "cursor": "c-1"
+      },
+      "response": {
+        "events": [
+          {
+            "schema": "buddy.event.v1",
+            "event_id": "00000000-0000-4000-8000-000000000040",
+            "store_generation": "00000000-0000-4000-8000-000000000041",
+            "sequence": "1",
+            "event_cursor": "opaque-test-cursor",
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "state_revision": "2",
+            "event_type": "command.durable",
+            "occurred_at": "2030-01-01T00:00:01Z"
+          }
+        ],
+        "event_cursor": "opaque-test-cursor",
+        "resnapshot_required": false
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"]
+      ]
+    },
+    "streamEvents": {
+      "messages": [
+        {
+          "type": "event",
+          "event": {
+            "schema": "buddy.event.v1",
+            "event_id": "00000000-0000-4000-8000-000000000040",
+            "store_generation": "00000000-0000-4000-8000-000000000041",
+            "sequence": "1",
+            "event_cursor": "opaque-test-cursor",
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "state_revision": "2",
+            "event_type": "command.durable",
+            "occurred_at": "2030-01-01T00:00:01Z"
+          }
+        },
+        {
+          "type": "voice",
+          "event": {
+            "schema": "buddy.voice-event.v1",
+            "event_id": "00000000-0000-4000-8000-000000000094",
+            "event_type": "read_aloud_requested",
+            "device_id": "00000000-0000-4000-8000-000000000050",
+            "session_id": "00000000-0000-4000-8000-000000000011",
+            "live_session_id": null,
+            "audio_epoch": null,
+            "control_epoch": null,
+            "candidate_ids": ["00000000-0000-4000-8000-000000000081"],
+            "audio_control": null,
+            "occurred_at": "2030-01-01T00:00:20Z"
+          }
+        },
+        {
+          "type": "resnapshot_required",
+          "reason": "store_generation_changed"
+        }
+      ],
+      "invalid_messages": [
+        {
+          "type": "event",
+          "event": {
+            "schema": "buddy.event.v1",
+            "event_id": "00000000-0000-4000-8000-000000000040",
+            "store_generation": "00000000-0000-4000-8000-000000000041",
+            "sequence": "1",
+            "event_cursor": "opaque-test-cursor",
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "state_revision": "2",
+            "event_type": "command.durable",
+            "occurred_at": "2030-01-01T00:00:01Z",
+            "body": "本文"
+          }
+        },
+        {
+          "type": "resnapshot_required",
+          "reason": "unknown"
+        }
+      ],
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"]
+      ]
+    },
+    "createLiveSession": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000000092",
+        "command_scope_id": "00000000-0000-4000-8000-000000000033",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "purpose": "conversation",
+        "sdp_offer": "v=0 synthetic-offer"
+      },
+      "response": {
+        "live_session_id": "00000000-0000-4000-8000-000000000070",
+        "purpose": "conversation",
+        "sdp_answer": "v=0 synthetic-answer",
+        "audio_epoch": "7",
+        "control_epoch": "1",
+        "session_epoch": "3"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["audio_other", 409, "audio_owned_elsewhere"],
+        ["audio_none", 403, "audio_ownership_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000000092",
+          "command_scope_id": "00000000-0000-4000-8000-000000000033",
+          "session_id": "00000000-0000-4000-8000-000000000011",
+          "purpose": "conversation",
+          "sdp_offer": "v=0 synthetic-offer",
+          "openai_api_key": "x"
+        }
+      ]
+    },
+    "closeLiveSession": {
+      "params": {
+        "live_session_id": "00000000-0000-4000-8000-000000000011"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000000093",
+        "command_scope_id": "00000000-0000-4000-8000-000000000033",
+        "reason": "silence",
+        "audio_epoch": "7"
+      },
+      "response": {
+        "live_session_id": "00000000-0000-4000-8000-000000000070",
+        "control_state": "lost",
+        "control_epoch": "2",
+        "closure": "close_unconfirmed",
+        "usage_seconds": null,
+        "reservation_state": "held"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "accepted_contexts": ["stale_scope", "locked", "audio_none"],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000000093",
+          "command_scope_id": "00000000-0000-4000-8000-000000000033",
+          "reason": "whatever",
+          "audio_epoch": "7"
+        }
+      ]
+    },
+    "startPairing": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002"
+      },
+      "response": {
+        "pairing_id": "00000000-0000-4000-8000-000000000012",
+        "pairing_code": "12345678",
+        "certificate_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "expires_at": "2030-10-05T00:05:00Z",
+        "attempts_left": 5
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["remote_device", 403, "hub_screen_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "device_id": "00000000-0000-4000-8000-000000000007"
+        }
+      ]
+    },
+    "claimPairing": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "pairing_code": "12345678",
+        "device_name": "合成の端末",
+        "platform": "windows",
+        "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "response": {
+        "claim_id": "00000000-0000-4000-8000-000000000013",
+        "status": "pending",
+        "device_name": "合成の端末",
+        "platform": "windows",
+        "expires_at": "2030-10-05T00:05:00Z"
+      },
+      "rejections": [
+        ["outside_home", 403, "outside_home_network"],
+        ["preauth_too_large", 413, "payload_too_large"]
+      ],
+      "accepted_contexts": ["no_token", "locked", "stale_scope"],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "pairing_code": "1234",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "pairing_code": "12345678",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+        }
+      ]
+    },
+    "decidePairingClaim": {
+      "params": {
+        "claim_id": "00000000-0000-4000-8000-000000000013"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "decision": "approve"
+      },
+      "response": {
+        "claim_id": "00000000-0000-4000-8000-000000000013",
+        "status": "approved",
+        "device_name": "合成の端末",
+        "platform": "windows",
+        "expires_at": "2030-10-05T00:05:00Z"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["remote_device", 403, "hub_screen_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "decision": "maybe"
+        }
+      ]
+    },
+    "pickupPairingToken": {
+      "params": {
+        "claim_id": "00000000-0000-4000-8000-000000000013"
+      },
+      "request": {
+        "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+      },
+      "response": {
+        "device_id": "00000000-0000-4000-8000-000000000007",
+        "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "issued_at": "2030-10-05T00:03:00Z"
+      },
+      "rejections": [
+        ["outside_home", 403, "outside_home_network"],
+        ["bad_claim_secret", 401, "unauthenticated"],
+        ["preauth_too_large", 413, "payload_too_large"]
+      ],
+      "accepted_contexts": ["no_token"],
+      "invalid_bodies": [
+        {
+          "claim_secret": "short"
+        }
+      ]
+    },
+    "listDevices": {
+      "response": {
+        "devices": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000000007",
+            "device_name": "合成の端末",
+            "platform": "windows",
+            "hub_local": false,
+            "registered_at": "2030-10-05T00:03:00Z",
+            "last_seen_at": null,
+            "revoked_at": null
+          }
+        ]
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"]
+      ]
+    },
+    "revokeDevice": {
+      "params": {
+        "device_id": "00000000-0000-4000-8000-000000000007"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002"
+      },
+      "response": {
+        "device_id": "00000000-0000-4000-8000-000000000007",
+        "device_name": "合成の端末",
+        "platform": "windows",
+        "hub_local": false,
+        "registered_at": "2030-10-05T00:03:00Z",
+        "last_seen_at": "2030-10-05T01:00:00Z",
+        "revoked_at": "2030-10-05T02:00:00Z"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "reason": "紛失"
+        }
+      ]
+    },
+    "listConnections": {
+      "response": {
+        "connections": [
+          {
+            "connection_id": "00000000-0000-4000-8000-000000000014",
+            "provider": "google",
+            "status": "active",
+            "access": "read",
+            "granted_scopes": ["calendar.events.readonly"],
+            "targets": {
+              "calendar_ids": ["primary"],
+              "mail_container_ids": ["INBOX"],
+              "attachment_kinds": ["pdf", "text"]
+            },
+            "permission_revision": "2",
+            "scope_revision": "2"
+          }
+        ]
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"]
+      ]
+    },
+    "startOAuth": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "provider": "google",
+        "access": "read"
+      },
+      "response": {
+        "authorization_url": "https://accounts.example.invalid/authorize?state=s1",
+        "expires_at": "2030-10-05T00:10:00Z"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["remote_device", 403, "hub_screen_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "provider": "yahoo",
+          "access": "read"
+        }
+      ]
+    },
+    "updateConnectionTargets": {
+      "params": {
+        "connection_id": "00000000-0000-4000-8000-000000000014"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_permission_revision": "2",
+        "targets": {
+          "calendar_ids": ["primary"],
+          "mail_container_ids": ["INBOX", "Label_1"],
+          "attachment_kinds": ["pdf"]
+        }
+      },
+      "response": {
+        "connection_id": "00000000-0000-4000-8000-000000000014",
+        "provider": "google",
+        "status": "active",
+        "access": "read",
+        "granted_scopes": ["calendar.events.readonly"],
+        "targets": {
+          "calendar_ids": ["primary"],
+          "mail_container_ids": ["INBOX", "Label_1"],
+          "attachment_kinds": ["pdf"]
+        },
+        "permission_revision": "3",
+        "scope_revision": "3"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": [],
+            "attachment_kinds": ["exe"]
+          }
+        }
+      ]
+    },
+    "disconnectConnection": {
+      "params": {
+        "connection_id": "00000000-0000-4000-8000-000000000014"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_permission_revision": "3"
+      },
+      "response": {
+        "connection_id": "00000000-0000-4000-8000-000000000014",
+        "provider": "google",
+        "status": "disconnected",
+        "access": "read",
+        "granted_scopes": [],
+        "targets": {
+          "calendar_ids": [],
+          "mail_container_ids": [],
+          "attachment_kinds": []
+        },
+        "permission_revision": "4",
+        "scope_revision": "4"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["stale_revision", 409, "conflict"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002"
+        }
+      ]
+    }
+  }
+}

@@ -231,6 +231,19 @@ export function semanticErrors(name, value) {
     value.shadow_deployment_id === value.primary_deployment_id
   )
     errors.push('shadow_is_primary');
+  if (
+    name === 'Snapshot' &&
+    value.view === 'management_only' &&
+    (value.sessions.length > 0 ||
+      value.candidates.length > 0 ||
+      value.operations.length > 0)
+  )
+    errors.push('content_in_management_view');
+  if (name === 'IoStopResult') {
+    const confirmed = value.devices.every((d) => d.stop_state === 'confirmed');
+    if (value.all_confirmed !== confirmed)
+      errors.push('all_confirmed_mismatch');
+  }
   if (name === 'SyncBatch') {
     if (Date.parse(value.window_start) >= Date.parse(value.window_end))
       errors.push('window_order');

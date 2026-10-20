@@ -177,6 +177,96 @@
     },
     {
       "$ref": "#/$defs/IntentEvalCase"
+    },
+    {
+      "$ref": "#/$defs/Bootstrap"
+    },
+    {
+      "$ref": "#/$defs/Snapshot"
+    },
+    {
+      "$ref": "#/$defs/SessionCreateRequest"
+    },
+    {
+      "$ref": "#/$defs/SessionReceipt"
+    },
+    {
+      "$ref": "#/$defs/TurnRequest"
+    },
+    {
+      "$ref": "#/$defs/TurnResponse"
+    },
+    {
+      "$ref": "#/$defs/HandoffRequest"
+    },
+    {
+      "$ref": "#/$defs/HandoffState"
+    },
+    {
+      "$ref": "#/$defs/AutoActionList"
+    },
+    {
+      "$ref": "#/$defs/SafetyResumeRequest"
+    },
+    {
+      "$ref": "#/$defs/SafetyState"
+    },
+    {
+      "$ref": "#/$defs/IoStopRequest"
+    },
+    {
+      "$ref": "#/$defs/IoStopResult"
+    },
+    {
+      "$ref": "#/$defs/IoResumeRequest"
+    },
+    {
+      "$ref": "#/$defs/EventStreamMessage"
+    },
+    {
+      "$ref": "#/$defs/PairingStartRequest"
+    },
+    {
+      "$ref": "#/$defs/PairingSession"
+    },
+    {
+      "$ref": "#/$defs/PairingClaimRequest"
+    },
+    {
+      "$ref": "#/$defs/PairingClaim"
+    },
+    {
+      "$ref": "#/$defs/PairingDecisionRequest"
+    },
+    {
+      "$ref": "#/$defs/PairingTokenRequest"
+    },
+    {
+      "$ref": "#/$defs/DeviceCredential"
+    },
+    {
+      "$ref": "#/$defs/DeviceList"
+    },
+    {
+      "$ref": "#/$defs/DeviceRevokeRequest"
+    },
+    {
+      "$ref": "#/$defs/ConnectionList"
+    },
+    {
+      "$ref": "#/$defs/ConnectionSummary"
+    },
+    {
+      "$ref": "#/$defs/OAuthStartRequest"
+    },
+    {
+      "$ref": "#/$defs/OAuthStart"
+    },
+    {
+      "$ref": "#/$defs/ConnectionTargetsRequest"
+    },
+    {
+      "$ref": "#/$defs/ConnectionDisconnectRequest"
     }
   ],
   "$defs": {
@@ -4189,7 +4279,19 @@
             "invalid_input",
             "budget_held",
             "rate_limited",
-            "dependency_unavailable"
+            "dependency_unavailable",
+            "device_locked",
+            "screen_operation_required",
+            "hub_screen_required",
+            "outside_home_network",
+            "audio_owned_elsewhere",
+            "audio_ownership_required",
+            "payload_too_large",
+            "private_conversation",
+            "target_changed",
+            "undo_expired",
+            "pairing_failed",
+            "unsupported_api_version"
           ]
         },
         "message": {
@@ -4208,7 +4310,8 @@
         }
       },
       "required": ["code", "message", "request_id"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。"
     },
     "BudgetReservation": {
       "type": "object",
@@ -6017,6 +6120,1041 @@
       ],
       "additionalProperties": false,
       "description": "意図判定の評価の 1 例（tests/eval の書き出し形式。設計 10 §10、05 評価の進め方）。採否の集計に使えるのは review_status が confirmed で split が judgment の例だけ。同じ元例の言い換えは同じ group_id にし、調整用と判定用へまたがらせない。"
+    },
+    "RouteRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "会話の表示先の版（設計 07 §2 handoff の expected_route_revision）。"
+    },
+    "SafetyRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "自動実行の安全停止の状態の版（設計 03 取り消しと安全停止、07 §2）。"
+    },
+    "StorageMode": {
+      "type": "string",
+      "enum": ["normal", "extended", "private"],
+      "description": "保存モード（設計 03 保存期限）。normal は発言から 7 日、extended は本人指定の継続相談で 30 日、private は記録しない会話。"
+    },
+    "Bootstrap": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        },
+        "core_instance_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "store_generation": {
+          "$ref": "#/$defs/StoreGeneration"
+        },
+        "device_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "io_state": {
+          "$ref": "#/$defs/DeviceIOState"
+        }
+      },
+      "required": [
+        "api_version",
+        "core_instance_id",
+        "store_generation",
+        "device_id",
+        "command_scope_id",
+        "command_scope_expires_at",
+        "capabilities",
+        "io_state"
+      ],
+      "additionalProperties": false,
+      "description": "認証後の接続情報（設計 07 §2）。本文を含めない。device_id は認証結果から中枢が決める。command_scope_id は再接続・失効・中枢の再起動で無効になり、最長 24 時間。api_version は major が一致する端末だけが使う。"
+    },
+    "SnapshotTurn": {
+      "type": "object",
+      "properties": {
+        "turn_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "buddy"]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "input_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InputKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["turn_id", "role", "text", "at", "input_kind"],
+      "additionalProperties": false,
+      "description": "表示用の発言。保存期限を過ぎた発言と記録しない会話の発言は返さない。"
+    },
+    "Snapshot": {
+      "type": "object",
+      "properties": {
+        "store_generation": {
+          "$ref": "#/$defs/StoreGeneration"
+        },
+        "core_instance_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "event_cursor": {
+          "$ref": "#/$defs/EventCursor"
+        },
+        "view": {
+          "type": "string",
+          "enum": ["full", "management_only"]
+        },
+        "io_state": {
+          "$ref": "#/$defs/DeviceIOState"
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "$ref": "#/$defs/Id"
+              },
+              "storage_mode": {
+                "$ref": "#/$defs/StorageMode"
+              },
+              "display_device_id": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Id"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "route_revision": {
+                "$ref": "#/$defs/RouteRevision"
+              },
+              "turns": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SnapshotTurn"
+                }
+              }
+            },
+            "required": [
+              "session_id",
+              "storage_mode",
+              "display_device_id",
+              "route_revision",
+              "turns"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CandidateSnapshot"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationSnapshot"
+          }
+        }
+      },
+      "required": [
+        "store_generation",
+        "core_instance_id",
+        "event_cursor",
+        "view",
+        "io_state",
+        "sessions",
+        "candidates",
+        "operations"
+      ],
+      "additionalProperties": false,
+      "description": "一つの整合した DB 読取りで得た現在の表示状態と、その境界のイベント位置（設計 07 §4）。表示権限に応じて返し、ロック中・停止中は再開用の管理情報だけ（management_only）にする。"
+    },
+    "SessionCreateRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "storage_mode": {
+          "$ref": "#/$defs/StorageMode"
+        }
+      },
+      "required": ["request_id", "command_scope_id", "storage_mode"],
+      "additionalProperties": false
+    },
+    "SessionReceipt": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "session_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "storage_mode": {
+          "$ref": "#/$defs/StorageMode"
+        },
+        "route_revision": {
+          "$ref": "#/$defs/RouteRevision"
+        }
+      },
+      "required": [
+        "request_id",
+        "session_id",
+        "storage_mode",
+        "route_revision"
+      ],
+      "additionalProperties": false
+    },
+    "TurnRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "input_kind": {
+          "type": "string",
+          "enum": ["text", "voice_local"]
+        }
+      },
+      "required": ["request_id", "command_scope_id", "text", "input_kind"],
+      "additionalProperties": false,
+      "description": "画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。"
+    },
+    "TurnResponse": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "session_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "turn_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "input_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["answered", "clarification", "background", "session_control"]
+        },
+        "result_view": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResultView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reply_text": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_id",
+        "session_id",
+        "turn_id",
+        "input_id",
+        "workflow_id",
+        "status",
+        "result_view",
+        "reply_text"
+      ],
+      "additionalProperties": false,
+      "description": "文字で返す結果（設計 10 §6A）。結果は構造化した事実の表示で、文章は雑談・相談・調査のまとめだけ。外部変更の完了は操作の状態で別に示す。"
+    },
+    "HandoffRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target_device_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_route_revision": {
+          "$ref": "#/$defs/RouteRevision"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "target_device_id",
+        "expected_route_revision"
+      ],
+      "additionalProperties": false,
+      "description": "表示の移動（設計 07 §2・§5、01 流れ C）。呼び出した端末の画面操作だけ。音声の移動は次の呼びかけで別に行う。承認は取り直さない。"
+    },
+    "HandoffState": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "route_revision": {
+          "$ref": "#/$defs/RouteRevision"
+        },
+        "display_device_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "state": {
+          "type": "string",
+          "enum": ["moving", "completed"]
+        }
+      },
+      "required": [
+        "session_id",
+        "route_revision",
+        "display_device_id",
+        "state"
+      ],
+      "additionalProperties": false,
+      "description": "旧端末の表示退避か期限切れを確認するまで moving のまま。"
+    },
+    "SafetyState": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["running", "stopped"]
+        },
+        "safety_revision": {
+          "$ref": "#/$defs/SafetyRevision"
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "rate_exceeded",
+                "same_target_repeated",
+                "compensation_failures"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stopped_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["state", "safety_revision", "stop_reason", "stopped_at"],
+      "additionalProperties": false,
+      "description": "安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。"
+    },
+    "AutoActionItem": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "action_kind": {
+          "type": "string",
+          "enum": [
+            "create_task",
+            "create_note",
+            "label_mail",
+            "draft_reply",
+            "create_event"
+          ]
+        },
+        "policy_version": {
+          "$ref": "#/$defs/PolicyVersion"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/StateRevision"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "undo_state": {
+          "type": "string",
+          "enum": [
+            "available",
+            "target_changed",
+            "expired",
+            "in_progress",
+            "undone",
+            "unavailable"
+          ]
+        },
+        "undo_deadline": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "operation_id",
+        "action_kind",
+        "policy_version",
+        "state_revision",
+        "completed_at",
+        "undo_state",
+        "undo_deadline"
+      ],
+      "additionalProperties": false,
+      "description": "自動実行した操作（設計 03 auto_actions / undo_records、J12）。本文を含めない。取り消しは完了から 30 日まで。"
+    },
+    "AutoActionList": {
+      "type": "object",
+      "properties": {
+        "safety": {
+          "$ref": "#/$defs/SafetyState"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AutoActionItem"
+          }
+        }
+      },
+      "required": ["safety", "items"],
+      "additionalProperties": false
+    },
+    "SafetyResumeRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_safety_revision": {
+          "$ref": "#/$defs/SafetyRevision"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_safety_revision"
+      ],
+      "additionalProperties": false
+    },
+    "IoStopRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["local", "guest", "global"]
+        }
+      },
+      "required": ["request_id", "command_scope_id", "scope"],
+      "additionalProperties": false,
+      "description": "端末単位・来客・全体の入出力停止（設計 07 §2）。停止は版の一致を求めず常に受け付ける。外部操作の取消とは別。"
+    },
+    "IoStopResult": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": ["local", "guest", "global"]
+        },
+        "io_epoch": {
+          "$ref": "#/$defs/IoEpoch"
+        },
+        "devices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "device_id": {
+                "$ref": "#/$defs/Id"
+              },
+              "stop_state": {
+                "type": "string",
+                "enum": ["confirmed", "awaiting_ack", "lease_expired"]
+              }
+            },
+            "required": ["device_id", "stop_state"],
+            "additionalProperties": false
+          }
+        },
+        "all_confirmed": {
+          "type": "boolean"
+        }
+      },
+      "required": ["scope", "io_epoch", "devices", "all_confirmed"],
+      "additionalProperties": false,
+      "description": "停止の到達状況（設計 07 §5）。停止確認済みと端末の応答待ちを分ける。リースの失効は端末が自分で止まる期限で、停止の確認ではない。"
+    },
+    "IoResumeRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["local", "guest", "global"]
+        },
+        "expected_io_epoch": {
+          "$ref": "#/$defs/IoEpoch"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "scope",
+        "expected_io_epoch"
+      ],
+      "additionalProperties": false,
+      "description": "入出力の再開（設計 07 §2、10 §1A）。登録済み・ロック解除済み端末の画面操作だけ。接続復帰・ロック解除・呼びかけだけでは再開しない。"
+    },
+    "EventStreamMessage": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "event"
+            },
+            "event": {
+              "$ref": "#/$defs/EventEnvelope"
+            }
+          },
+          "required": ["type", "event"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "voice"
+            },
+            "event": {
+              "$ref": "#/$defs/VoiceEvent"
+            }
+          },
+          "required": ["type", "event"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "resnapshot_required"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "store_generation_changed",
+                "history_expired",
+                "scope_expired"
+              ]
+            }
+          },
+          "required": ["type", "reason"],
+          "additionalProperties": false
+        }
+      ],
+      "description": "WSS /v1/events/stream で流れるメッセージ（設計 07 §2・§4、ADR 0009）。本文・宛先・認証情報を含めない。秘密を URL クエリーに入れない。"
+    },
+    "DevicePlatform": {
+      "type": "string",
+      "enum": ["windows", "macos", "linux"]
+    },
+    "PairingStartRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["request_id", "command_scope_id"],
+      "additionalProperties": false
+    },
+    "PairingSession": {
+      "type": "object",
+      "properties": {
+        "pairing_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "pairing_code": {
+          "type": "string",
+          "pattern": "^[0-9]{8}$"
+        },
+        "certificate_fingerprint": {
+          "$ref": "#/$defs/Hash"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "attempts_left": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        }
+      },
+      "required": [
+        "pairing_id",
+        "pairing_code",
+        "certificate_fingerprint",
+        "expires_at",
+        "attempts_left"
+      ],
+      "additionalProperties": false,
+      "description": "中枢の画面に出すワンタイムコードと中枢の証明書の指紋（設計 02 端末登録と接続）。有効 5 分・連続 5 回失敗で無効は設計初期値。中枢の画面の端末だけが受け取る。"
+    },
+    "PairingClaimRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "pairing_code": {
+          "type": "string",
+          "pattern": "^[0-9]{8}$"
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "platform": {
+          "$ref": "#/$defs/DevicePlatform"
+        },
+        "claim_secret_hash": {
+          "$ref": "#/$defs/Hash"
+        }
+      },
+      "required": [
+        "request_id",
+        "pairing_code",
+        "device_name",
+        "platform",
+        "claim_secret_hash"
+      ],
+      "additionalProperties": false,
+      "description": "登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。"
+    },
+    "PairingClaim": {
+      "type": "object",
+      "properties": {
+        "claim_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected", "expired", "consumed"]
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "platform": {
+          "$ref": "#/$defs/DevicePlatform"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "claim_id",
+        "status",
+        "device_name",
+        "platform",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "PairingDecisionRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["approve", "reject"]
+        }
+      },
+      "required": ["request_id", "command_scope_id", "decision"],
+      "additionalProperties": false,
+      "description": "中枢の画面での承認・拒否。"
+    },
+    "PairingTokenRequest": {
+      "type": "object",
+      "properties": {
+        "claim_secret": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        }
+      },
+      "required": ["claim_secret"],
+      "additionalProperties": false,
+      "description": "申請用の秘密（256 ビット、base64url）。承認後に 1 回だけトークンと交換できる。URL に入れない。"
+    },
+    "DeviceCredential": {
+      "type": "object",
+      "properties": {
+        "device_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "device_token": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": ["device_id", "device_token", "issued_at"],
+      "additionalProperties": false,
+      "description": "端末別トークン（256 ビット）。端末は OS の保護領域に保存し、中枢は照合用の hash と失効状態だけを持つ。この応答は 1 回だけ返す。"
+    },
+    "DeviceSummary": {
+      "type": "object",
+      "properties": {
+        "device_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "platform": {
+          "$ref": "#/$defs/DevicePlatform"
+        },
+        "hub_local": {
+          "type": "boolean"
+        },
+        "registered_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "last_seen_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "device_id",
+        "device_name",
+        "platform",
+        "hub_local",
+        "registered_at",
+        "last_seen_at",
+        "revoked_at"
+      ],
+      "additionalProperties": false,
+      "description": "登録済みの端末。hub_local は中枢と同じマシンのクライアント（自宅判定だけ免除）。"
+    },
+    "DeviceList": {
+      "type": "object",
+      "properties": {
+        "devices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DeviceSummary"
+          }
+        }
+      },
+      "required": ["devices"],
+      "additionalProperties": false
+    },
+    "DeviceRevokeRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["request_id", "command_scope_id"],
+      "additionalProperties": false
+    },
+    "ConnectionTargets": {
+      "type": "object",
+      "properties": {
+        "calendar_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "mail_container_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "attachment_kinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["pdf", "text"]
+          }
+        }
+      },
+      "required": ["calendar_ids", "mail_container_ids", "attachment_kinds"],
+      "additionalProperties": false,
+      "description": "本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。"
+    },
+    "ConnectionSummary": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["google", "microsoft"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "needs_reauth", "needs_attention", "disconnected"]
+        },
+        "access": {
+          "type": "string",
+          "enum": ["read", "read_write"]
+        },
+        "granted_scopes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "targets": {
+          "$ref": "#/$defs/ConnectionTargets"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "scope_revision": {
+          "$ref": "#/$defs/ScopeRevision"
+        }
+      },
+      "required": [
+        "connection_id",
+        "provider",
+        "status",
+        "access",
+        "granted_scopes",
+        "targets",
+        "permission_revision",
+        "scope_revision"
+      ],
+      "additionalProperties": false,
+      "description": "連携の接続（設計 04 接続・権限）。OAuth トークンは返さない。"
+    },
+    "ConnectionList": {
+      "type": "object",
+      "properties": {
+        "connections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConnectionSummary"
+          }
+        }
+      },
+      "required": ["connections"],
+      "additionalProperties": false
+    },
+    "OAuthStartRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["google", "microsoft"]
+        },
+        "access": {
+          "type": "string",
+          "enum": ["read", "read_write"]
+        }
+      },
+      "required": ["request_id", "command_scope_id", "provider", "access"],
+      "additionalProperties": false,
+      "description": "OAuth の開始（設計 04 接続・権限）。中枢の画面だけ。PKCE と loopback の戻り先は中枢内で処理し、/v1 の経路にしない。"
+    },
+    "OAuthStart": {
+      "type": "object",
+      "properties": {
+        "authorization_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": ["authorization_url", "expires_at"],
+      "additionalProperties": false,
+      "description": "システムブラウザーで開く認可 URL。PKCE の challenge と state だけを含み、秘密を含めない。"
+    },
+    "ConnectionTargetsRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "targets": {
+          "$ref": "#/$defs/ConnectionTargets"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_permission_revision",
+        "targets"
+      ],
+      "additionalProperties": false,
+      "description": "取得対象の変更。許可版と取得範囲の版を上げ、旧範囲の走査を無効にする（設計 11 §1A）。"
+    },
+    "ConnectionDisconnectRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_permission_revision"
+      ],
+      "additionalProperties": false,
+      "description": "接続解除。進行中の操作の照合に必要な最小情報は残し、取得と自動処理を止める。"
     }
   }
 }

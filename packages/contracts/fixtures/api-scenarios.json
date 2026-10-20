@@ -1,0 +1,362 @@
+{
+  "status": "specification_only",
+  "description": "再送・イベントの反映・リース・停止の到達・ペアリング・API 版の期待値（設計 07 §2〜§5、02 端末登録と接続、X04・X11・X13・X14）。手で書いたもので、domain の実装から生成していない。",
+  "replay": {
+    "receipts": [
+      {
+        "command_scope_id": "scope-1",
+        "request_id": "req-1",
+        "request_hash": "hash-a"
+      }
+    ],
+    "cases": [
+      {
+        "id": "same-request-same-content",
+        "request": {
+          "command_scope_id": "scope-1",
+          "request_id": "req-1",
+          "request_hash": "hash-a"
+        },
+        "expected": "replay"
+      },
+      {
+        "id": "x04-same-request-different-content",
+        "request": {
+          "command_scope_id": "scope-1",
+          "request_id": "req-1",
+          "request_hash": "hash-b"
+        },
+        "expected": "conflict"
+      },
+      {
+        "id": "new-request",
+        "request": {
+          "command_scope_id": "scope-1",
+          "request_id": "req-2",
+          "request_hash": "hash-a"
+        },
+        "expected": "new"
+      },
+      {
+        "id": "same-id-in-new-scope",
+        "title": "新しい接続範囲では別の命令。古い接続範囲の命令は経路の検査で 410 になる",
+        "request": {
+          "command_scope_id": "scope-2",
+          "request_id": "req-1",
+          "request_hash": "hash-b"
+        },
+        "expected": "new"
+      }
+    ]
+  },
+  "events": {
+    "snapshot": {
+      "store_generation": "gen-1",
+      "revisions": { "op-1": "3" },
+      "seen_event_ids": ["e3"]
+    },
+    "x11-duplicate-and-out-of-order": {
+      "events": [
+        {
+          "event_id": "e2",
+          "store_generation": "gen-1",
+          "operation_id": "op-1",
+          "state_revision": "2"
+        },
+        {
+          "event_id": "e3",
+          "store_generation": "gen-1",
+          "operation_id": "op-1",
+          "state_revision": "3"
+        },
+        {
+          "event_id": "e4",
+          "store_generation": "gen-1",
+          "operation_id": "op-1",
+          "state_revision": "4"
+        },
+        {
+          "event_id": "e4",
+          "store_generation": "gen-1",
+          "operation_id": "op-1",
+          "state_revision": "4"
+        },
+        {
+          "event_id": "e6",
+          "store_generation": "gen-1",
+          "operation_id": "op-1",
+          "state_revision": "6"
+        },
+        {
+          "event_id": "e5",
+          "store_generation": "gen-1",
+          "operation_id": "op-1",
+          "state_revision": "5"
+        },
+        {
+          "event_id": "e9",
+          "store_generation": "gen-1",
+          "operation_id": "op-2",
+          "state_revision": "1"
+        }
+      ],
+      "expected": {
+        "applied": ["e4", "e6", "e9"],
+        "ignored": [
+          { "event_id": "e2", "reason": "stale" },
+          { "event_id": "e3", "reason": "duplicate" },
+          { "event_id": "e4", "reason": "duplicate" },
+          { "event_id": "e5", "reason": "stale" }
+        ],
+        "revisions": { "op-1": "6", "op-2": "1" },
+        "resnapshot": false
+      }
+    },
+    "x11-store-generation-changed": {
+      "events": [
+        {
+          "event_id": "e4",
+          "store_generation": "gen-1",
+          "operation_id": "op-1",
+          "state_revision": "4"
+        },
+        {
+          "event_id": "e1",
+          "store_generation": "gen-2",
+          "operation_id": "op-1",
+          "state_revision": "1"
+        }
+      ],
+      "expected": {
+        "applied": [],
+        "ignored": [],
+        "revisions": { "op-1": "3" },
+        "resnapshot": true
+      }
+    }
+  },
+  "lease": {
+    "lease": {
+      "core_instance_id": "core-1",
+      "command_scope_id": "scope-1",
+      "io_epoch": "5",
+      "ttl_ms": 6000,
+      "requested_at_mono_ms": 1000
+    },
+    "cases": [
+      {
+        "id": "valid",
+        "current": {
+          "core_instance_id": "core-1",
+          "command_scope_id": "scope-1",
+          "io_epoch": "5",
+          "now_mono_ms": 6999,
+          "clock_consistent": true
+        },
+        "expected": []
+      },
+      {
+        "id": "x13-expires-from-request-time",
+        "title": "応答が 5500ms に遅れて届いても、期限は要求を送った 1000ms から数える",
+        "current": {
+          "core_instance_id": "core-1",
+          "command_scope_id": "scope-1",
+          "io_epoch": "5",
+          "now_mono_ms": 7000,
+          "clock_consistent": true
+        },
+        "expected": ["expired"]
+      },
+      {
+        "id": "x13-stale-io-epoch",
+        "current": {
+          "core_instance_id": "core-1",
+          "command_scope_id": "scope-1",
+          "io_epoch": "6",
+          "now_mono_ms": 2000,
+          "clock_consistent": true
+        },
+        "expected": ["stale_io_epoch"]
+      },
+      {
+        "id": "core-restarted",
+        "current": {
+          "core_instance_id": "core-2",
+          "command_scope_id": "scope-2",
+          "io_epoch": "5",
+          "now_mono_ms": 2000,
+          "clock_consistent": true
+        },
+        "expected": ["core_restarted", "scope_changed"]
+      },
+      {
+        "id": "sleep-resume-clock",
+        "title": "スリープ復帰・時計の不整合ではリースを捨てる",
+        "current": {
+          "core_instance_id": "core-1",
+          "command_scope_id": "scope-1",
+          "io_epoch": "5",
+          "now_mono_ms": 2000,
+          "clock_consistent": false
+        },
+        "expected": ["clock_inconsistent"]
+      }
+    ]
+  },
+  "io_stop": [
+    {
+      "id": "x14-unreachable-device",
+      "now_mono_ms": 6000,
+      "devices": [
+        {
+          "device_id": "device-a",
+          "acknowledged": true,
+          "lease_expires_mono_ms": 7000
+        },
+        {
+          "device_id": "device-b",
+          "acknowledged": false,
+          "lease_expires_mono_ms": 7000
+        },
+        {
+          "device_id": "device-c",
+          "acknowledged": false,
+          "lease_expires_mono_ms": 5000
+        }
+      ],
+      "expected": {
+        "devices": [
+          { "device_id": "device-a", "stop_state": "confirmed" },
+          { "device_id": "device-b", "stop_state": "awaiting_ack" },
+          { "device_id": "device-c", "stop_state": "lease_expired" }
+        ],
+        "all_confirmed": false
+      }
+    },
+    {
+      "id": "all-acknowledged",
+      "now_mono_ms": 6000,
+      "devices": [
+        {
+          "device_id": "device-a",
+          "acknowledged": true,
+          "lease_expires_mono_ms": 7000
+        },
+        {
+          "device_id": "device-b",
+          "acknowledged": true,
+          "lease_expires_mono_ms": 5000
+        }
+      ],
+      "expected": {
+        "devices": [
+          { "device_id": "device-a", "stop_state": "confirmed" },
+          { "device_id": "device-b", "stop_state": "confirmed" }
+        ],
+        "all_confirmed": true
+      }
+    }
+  ],
+  "pairing": {
+    "initial": {
+      "pairing_code": "12345678",
+      "expires_at": "2030-10-05T00:05:00Z",
+      "attempts_left": 5,
+      "used": false
+    },
+    "steps": [
+      {
+        "code": "00000000",
+        "now": "2030-10-05T00:01:00Z",
+        "expected": {
+          "ok": false,
+          "reason": "code_mismatch",
+          "attempts_left": 4
+        }
+      },
+      {
+        "code": "00000001",
+        "now": "2030-10-05T00:01:10Z",
+        "expected": {
+          "ok": false,
+          "reason": "code_mismatch",
+          "attempts_left": 3
+        }
+      },
+      {
+        "code": "12345678",
+        "now": "2030-10-05T00:02:00Z",
+        "expected": { "ok": true, "reason": null, "attempts_left": 3 }
+      },
+      {
+        "code": "12345678",
+        "now": "2030-10-05T00:02:10Z",
+        "expected": { "ok": false, "reason": "used", "attempts_left": 3 }
+      }
+    ],
+    "exhaustion": {
+      "wrong_attempts": 5,
+      "then": { "code": "12345678", "now": "2030-10-05T00:03:00Z" },
+      "expected": {
+        "ok": false,
+        "reason": "attempts_exhausted",
+        "attempts_left": 0
+      }
+    },
+    "expiry": {
+      "code": "12345678",
+      "now": "2030-10-05T00:05:00Z",
+      "expected": { "ok": false, "reason": "expired", "attempts_left": 5 }
+    }
+  },
+  "token_pickup": [
+    {
+      "id": "approved",
+      "claim": { "status": "approved", "expires_at": "2030-10-05T00:05:00Z" },
+      "secret_matches": true,
+      "now": "2030-10-05T00:03:00Z",
+      "expected": { "status": 200, "code": null }
+    },
+    {
+      "id": "code-only-third-party",
+      "title": "コードを知るだけで申請用の秘密を持たない第三者",
+      "claim": { "status": "approved", "expires_at": "2030-10-05T00:05:00Z" },
+      "secret_matches": false,
+      "now": "2030-10-05T00:03:00Z",
+      "expected": { "status": 401, "code": "unauthenticated" }
+    },
+    {
+      "id": "pending",
+      "claim": { "status": "pending", "expires_at": "2030-10-05T00:05:00Z" },
+      "secret_matches": true,
+      "now": "2030-10-05T00:03:00Z",
+      "expected": { "status": 409, "code": "conflict" }
+    },
+    {
+      "id": "second-pickup",
+      "claim": { "status": "consumed", "expires_at": "2030-10-05T00:05:00Z" },
+      "secret_matches": true,
+      "now": "2030-10-05T00:03:00Z",
+      "expected": { "status": 410, "code": "pairing_failed" }
+    },
+    {
+      "id": "rejected",
+      "claim": { "status": "rejected", "expires_at": "2030-10-05T00:05:00Z" },
+      "secret_matches": true,
+      "now": "2030-10-05T00:03:00Z",
+      "expected": { "status": 410, "code": "pairing_failed" }
+    },
+    {
+      "id": "expired-by-time",
+      "claim": { "status": "approved", "expires_at": "2030-10-05T00:05:00Z" },
+      "secret_matches": true,
+      "now": "2030-10-05T00:05:00Z",
+      "expected": { "status": 410, "code": "pairing_failed" }
+    }
+  ],
+  "api_compatibility": [
+    { "server": "1.0", "client_majors": [1], "expected": "compatible" },
+    { "server": "1.3", "client_majors": [1], "expected": "compatible" },
+    { "server": "2.0", "client_majors": [1], "expected": "upgrade_required" }
+  ]
+}

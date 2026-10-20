@@ -44,6 +44,12 @@ const VERSION_FIELDS = {
   active_generation: 'PublishedGeneration',
   analysis_plan_complete_generation: 'PublishedGeneration',
   expected_reservation_revision: 'ReservationRevision',
+  route_revision: 'RouteRevision',
+  expected_route_revision: 'RouteRevision',
+  safety_revision: 'SafetyRevision',
+  expected_safety_revision: 'SafetyRevision',
+  expected_io_epoch: 'IoEpoch',
+  expected_permission_revision: 'PermissionRevision',
   sequence: 'Sequence',
   first_frame_seq: 'Sequence',
   last_frame_seq: 'Sequence',
@@ -87,6 +93,8 @@ const DECIMAL_KINDS = [
   'TemplateVersion',
   'ReservationRevision',
   'ExecutorGeneration',
+  'RouteRevision',
+  'SafetyRevision',
   'Sequence',
 ];
 

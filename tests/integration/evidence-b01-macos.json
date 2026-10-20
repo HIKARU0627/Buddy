@@ -1,0 +1,226 @@
+{
+  "status": "recorded",
+  "description": "B01 の実機確認の記録（#47）。手順は docs/b01/device-check.md。本人が手順どおりに操作し、すべて期待どおりだったという報告（2026-10-20）を、09 §8 の形式に写したもの。観測時刻は報告を受けた時刻のおおよその値。出力値（ID など）は記録していない。",
+  "records": [
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-core-start",
+      "final_state": "running（鍵保護の実検査に通過）"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-core-double-start",
+      "final_state": "refused（二重起動、終了コード 4）"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-desktop-start",
+      "final_state": "状態欄は中枢未接続、os_query の記録 1 件"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-desktop-tray",
+      "final_state": "ウィンドウを閉じてもメニューバーに残る"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-io-stop-resume",
+      "final_state": "停止→画面操作で再開"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-lock",
+      "final_state": "ロック・解除を記録し、自動では再開しない"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-sleep",
+      "final_state": "スリープ・復帰を記録し、自動では再開しない"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-client-quit-keeps-core",
+      "final_state": "クライアント終了後も Core の core_instance_id・store_generation が同じ"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-core-stop",
+      "final_state": "stopped"
+    },
+    {
+      "kind": "real_device",
+      "commit": "1ad8602",
+      "contract_version": "1.0.0",
+      "db_version": "0（B02 まで DB なし）",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "observed_at": "2026-10-20T06:40:00Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B01-mac-autostart-login",
+      "final_state": "ログイン後に Core が running（参考。中枢の Mac mini では未実施）"
+    }
+  ]
+}

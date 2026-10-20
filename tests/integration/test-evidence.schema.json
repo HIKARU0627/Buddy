@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://buddy.invalid/tests/test-evidence.v1",
   "title": "TestEvidence",
-  "description": "試験結果の記録形式（設計 09 §8、ADR 0011）。模擬・実機・実 API・実請求を分ける。メール本文・音声・鍵を載せない。結果一覧の正本は非公開の技術検証ページで、この形式はその記録の項目。",
+  "description": "試験結果の記録形式（設計 09 §8、ADR 0011）。case_id は試験 ID か、工程の受入確認（例 B01-mac-lock）。模擬・実機・実 API・実請求を分ける。メール本文・音声・鍵を載せない。結果一覧の正本は非公開の技術検証ページで、この形式はその記録の項目。",
   "type": "object",
   "properties": {
     "case_id": {
       "type": "string",
-      "pattern": "^(X(0[1-9]|[1-5][0-9]|6[0-6])|QA(0[1-9]|[1-3][0-9]|4[0-5])|MA0[1-6])(-[a-z0-9-]+)?$"
+      "pattern": "^((X(0[1-9]|[1-5][0-9]|6[0-6])|QA(0[1-9]|[1-3][0-9]|4[0-5])|MA0[1-6])(-[a-z0-9-]+)?|B(0[1-9]|1[0-5])-[a-z0-9-]+)$"
     },
     "kind": {
       "type": "string",

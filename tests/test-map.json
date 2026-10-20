@@ -151,7 +151,8 @@
         "packages/contracts/fixtures/api-scenarios.json#x13-expires-from-request-time",
         "packages/contracts/fixtures/api-scenarios.json#x13-stale-io-epoch",
         "packages/contracts/fixtures/delivery-cases.json#old-device-live-start",
-        "packages/contracts/fixtures/delivery-cases.json#voice-result-while-suspended"
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-while-suspended",
+        "packages/contracts/fixtures/desktop-ipc-cases.json#x13-resume-stale-io-epoch"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -1093,7 +1094,9 @@
       "id": "QA43",
       "phases": ["B01", "B03", "B04", "B05", "B10"],
       "contract_fixtures": [
-        "packages/contracts/fixtures/delivery-cases.json#voice-result-old-output-epoch"
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-old-output-epoch",
+        "packages/contracts/fixtures/desktop-ipc-cases.json#qa43-resume-while-locked",
+        "packages/contracts/fixtures/desktop-ipc-cases.json#qa43-unlock-does-not-resume"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

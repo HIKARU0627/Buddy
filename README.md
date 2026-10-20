@@ -2,7 +2,7 @@
 
 生活・学習・開発を支える、デバイスに依存しない個人 AI アシスタント。
 
-現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では Core の起動・状態確認・停止とローカル制御チャネルを実装しました（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)。模擬の試験のみ）。UI の実装と、製品の統合・実機・実 API・実請求の試験は未着手・未実施です。
+現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。試験は模擬のみで、実機確認（#47）と製品の統合・実 API・実請求の試験は未実施です。
 
 ## セットアップ
 
@@ -17,7 +17,7 @@ pnpm run hooks:install
 pnpm run check
 ```
 
-npm は pnpm の初回導入だけに使います。hook の準備時に公式 Gitleaks を検証付きで取得し、その後の検証は外部サービスへ接続しません。ローカルでも CI と同じ `pnpm run check` を使います。Core の起動方法は [apps/core/README.md](apps/core/README.md) を参照してください。
+npm は pnpm の初回導入だけに使います。hook の準備時に公式 Gitleaks を検証付きで取得し、その後の検証は外部サービスへ接続しません。ローカルでも CI と同じ `pnpm run check` を使います。Core の起動方法は [apps/core/README.md](apps/core/README.md)、デスクトップの開発起動は [apps/desktop/README.md](apps/desktop/README.md) を参照してください。
 
 ## 最初に読むもの
 
@@ -40,6 +40,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [Core のライフサイクルとローカル制御チャネル](docs/adr/0012-b01-core-lifecycle-and-local-control.md)
 - [OS 別の起動・監督アダプターと鍵保護不能時の停止](docs/adr/0013-b01-platform-adapters.md)
 - [デスクトップの型付き IPC の契約](docs/adr/0014-b01-desktop-ipc-contract.md)
+- [デスクトップの最小アプリ（トレイ常駐・端末状態の記録）](docs/adr/0015-b01-desktop-minimal-app.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成
@@ -51,7 +52,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 | `packages/storage`   | Core の保存アダプター。マイグレーション案は B00 で作成                    |
 | `packages/platform`  | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う         |
 | `apps/core`          | Electron から独立した Node.js 中枢。起動・停止・排他・ローカル制御（B01） |
-| `apps/desktop`       | 将来の Electron / React クライアントの配置先。B02 で実装                  |
+| `apps/desktop`       | Electron / React クライアント。B01 はトレイ常駐・端末状態の記録まで       |
 | `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                            |
 | `scripts`            | 環境確認、設計資料の整合検査、試験実行                                    |
 | `docs/design`        | 公開できる設計概要と非公開原本の参照手順                                  |

@@ -55,6 +55,107 @@ test('共有層の動的 import で依存検査を回避できない', async () 
     messages.some((message) => message.ruleId === 'no-restricted-syntax'),
   );
 });
+const restrictedImport = (messages) =>
+  messages.some((message) => message.ruleId === 'no-restricted-imports');
+
+test('デスクトップの UI レンダラーは Electron・Node・中枢・OS アダプター・main を読み込めない', async () => {
+  for (const specifier of [
+    'electron',
+    'node:fs',
+    'fs',
+    '@buddy/core',
+    '@buddy/platform',
+    '@buddy/storage',
+    '../main/device-controller.js',
+    '../preload/preload.cjs',
+    '../../../../packages/domain/src/index.js',
+  ])
+    assert.ok(
+      restrictedImport(
+        await violations(
+          `export * from '${specifier}';\n`,
+          'apps/desktop/src/renderer/probe.tsx',
+        ),
+      ),
+      specifier,
+    );
+  const dynamic = await violations(
+    "export const load = () => import('electron');\n",
+    'apps/desktop/src/renderer/probe.ts',
+  );
+  assert.ok(
+    dynamic.some((message) => message.ruleId === 'no-restricted-syntax'),
+  );
+  assert.deepEqual(
+    await violations(
+      "import { useState } from 'react';\nimport type { DesktopStatusBar } from '@buddy/contracts';\nexport const probe = (s: DesktopStatusBar) => [useState, s];\n",
+      'apps/desktop/src/renderer/probe.tsx',
+    ),
+    [],
+  );
+});
+test('デスクトップの preload は electron の contextBridge・ipcRenderer だけを読み込める', async () => {
+  assert.deepEqual(
+    await violations(
+      "import { contextBridge, ipcRenderer } from 'electron';\nexport const probe = [contextBridge, ipcRenderer];\n",
+      'apps/desktop/src/preload/probe.cts',
+    ),
+    [],
+  );
+  for (const code of [
+    "import { shell } from 'electron';\nexport const probe = shell;\n",
+    "import { readFile } from 'node:fs';\nexport const probe = readFile;\n",
+    "import { readFile } from 'fs';\nexport const probe = readFile;\n",
+    "import { DESKTOP_IPC_CHANNELS } from '@buddy/domain';\nexport const probe = DESKTOP_IPC_CHANNELS;\n",
+    "import { probe as other } from './other.cjs';\nexport const probe = other;\n",
+  ])
+    assert.ok(
+      restrictedImport(
+        await violations(code, 'apps/desktop/src/preload/probe.cts'),
+      ),
+      code,
+    );
+});
+test('デスクトップの main は中枢・OS アダプターを読み込まず、純粋なモジュールは Electron も読み込まない', async () => {
+  for (const specifier of [
+    '@buddy/core',
+    '@buddy/platform',
+    '../../renderer/App.js',
+    '../../../../../packages/domain/src/desktop.js',
+  ])
+    assert.ok(
+      restrictedImport(
+        await violations(
+          `export * from '${specifier}';\n`,
+          'apps/desktop/src/main/electron/probe.ts',
+        ),
+      ),
+      specifier,
+    );
+  // Electron のアダプターは electron と Node 組み込みを使える。
+  assert.deepEqual(
+    await violations(
+      "export { app } from 'electron';\nexport { readFile } from 'node:fs/promises';\n",
+      'apps/desktop/src/main/electron/probe.ts',
+    ),
+    [],
+  );
+  assert.ok(
+    restrictedImport(
+      await violations(
+        "export { app } from 'electron';\n",
+        'apps/desktop/src/main/probe.ts',
+      ),
+    ),
+  );
+  assert.deepEqual(
+    await violations(
+      "export { admitDesktopRequest } from '@buddy/domain';\nexport { readFileSync } from 'node:fs';\n",
+      'apps/desktop/src/main/probe.ts',
+    ),
+    [],
+  );
+});
 test('Core の Electron 依存を拒否し Node 組み込みは受け付ける', async () => {
   const forbidden = await violations(
     "export { app } from 'electron';\n",

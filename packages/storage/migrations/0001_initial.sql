@@ -8,8 +8,11 @@
 
 PRAGMA foreign_keys = ON;
 
+-- migration_sha256:NNNN は適用したマイグレーションの内容のハッシュ（ADR 0016）。
 CREATE TABLE schema_meta (
-  key TEXT PRIMARY KEY CHECK (key IN ('schema_version', 'store_generation')),
+  key TEXT PRIMARY KEY CHECK (
+    key IN ('schema_version', 'store_generation')
+    OR key GLOB 'migration_sha256:[0-9][0-9][0-9][0-9]'),
   value TEXT NOT NULL
 ) STRICT;
 

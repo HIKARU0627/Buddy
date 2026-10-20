@@ -1,4 +1,4 @@
-# マイグレーション案
+# マイグレーション
 
 | ファイル           | 内容                                                                                           |
 | ------------------ | ---------------------------------------------------------------------------------------------- |
@@ -11,4 +11,11 @@
 - 本文・要約・変更内容・宛先は `sealed_blobs` に暗号化して置き、各表は `*_blob_id` で参照する。OAuth トークンは DB に入れない。
 - 期限は起点から一度だけ計算して保存し、延長を trigger で拒否する。NULL になり得る列の CHECK は `coalesce` か `IS NOT NULL` で書く。
 
-案であり、本番 DB へ適用した記録ではありません。本番 DB を開発用の試験へ渡しません。期待値は `tests/fixtures/storage-cases.json` に手で書いています。
+適用の規則（[ADR 0016](../../../docs/adr/0016-b02-sqlite-connection-and-migrations.md)）:
+
+- ファイル名は `NNNN_名前.sql`（4 桁の版、英小文字・数字・`_`）。版は 1 から欠番なく続ける。
+- `applyMigrations` が版ごとに BEGIN IMMEDIATE の transaction を張り、`schema_meta` の `schema_version` と `migration_sha256:NNNN`（内容の SHA-256、改行は LF にそろえる）を同じ transaction で書く。ファイルに COMMIT・ROLLBACK・SAVEPOINT・BEGIN TRANSACTION・VACUUM・ATTACH・journal_mode を書かない。
+- 適用済みの版のファイルは変更しない。変更すると内容のハッシュが合わず、DB を開けなくなる。直すときは新しい版を足す。
+- DB の版がコードより新しい場合は開かない（ダウングレードしない）。
+
+本番 DB を開発用の試験へ渡しません。制約の期待値は `tests/fixtures/storage-cases.json` に手で書いています。

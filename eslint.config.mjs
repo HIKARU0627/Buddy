@@ -63,9 +63,12 @@ export default tseslint.config(
             '@buddy/storage/*',
             '@buddy/desktop',
             '@buddy/desktop/*',
+            '@buddy/platform',
+            '@buddy/platform/*',
           ],
           [
             '../**/storage/**',
+            '../**/platform/**',
             '../**/apps/**',
             '../**/core/**',
             '../**/desktop/**',
@@ -99,6 +102,7 @@ export default tseslint.config(
             '@buddy/*',
             '../**/domain/**',
             '../**/storage/**',
+            '../**/platform/**',
             '../**/apps/**',
           ],
         ],
@@ -126,6 +130,35 @@ export default tseslint.config(
           selector:
             'ImportExpression[source.value=/^(electron|@electron\\/|@buddy\\/desktop)(\\/|$)/]',
           message: 'Core / storage は Electron クライアントへ依存しません。',
+        },
+      ],
+    },
+  },
+  {
+    files: ['packages/platform/**/*.ts'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-restricted-imports': restricted([
+        [
+          'electron',
+          'electron/*',
+          '@electron/*',
+          '@buddy/desktop',
+          '@buddy/desktop/*',
+          '@buddy/core',
+          '@buddy/core/*',
+          '../**/desktop/**',
+          '../**/apps/**',
+          '../**/core/**',
+        ],
+      ]),
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/(desktop|core))(\\/|$)/]',
+          message:
+            'platform は Electron クライアントと Core へ依存しません（Core が platform を使う）。',
         },
       ],
     },

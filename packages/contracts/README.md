@@ -1,10 +1,11 @@
 # @buddy/contracts
 
-B00 の初回契約です。`schemas/buddy.schema.json`（Draft 2020-12）がデータ形式の正本、`openapi.yaml`（3.1.2）が今回対象にした HTTP 経路の正本です。`src/generated.ts` は自動生成し、Node.js / DOM / Electron へ依存しません。
+B00 の初回契約です。`schemas/buddy.schema.json`（Draft 2020-12）がデータ形式の正本、`openapi.yaml`（3.1.2）が HTTP 経路の正本です（設計 07 §2 の全経路と端末登録・連携の接続。ADR 0009）。`src/generated.ts` は自動生成し、Node.js / DOM / Electron へ依存しません。
 
 - 入力根拠、24 intent 名、ラベル変更の WireResponse / Interpretation、ActionReadiness。
 - H01 のラベル変更、プレビュー、承認・状態命令、受付／durable レシート、操作状態・本文なしイベント。
 - 予約 R / 最大負担 M と通常料金・クレジット・追加支出の記録形式。
+- 経路ごとの要求・応答・エラーと、Core が行う検査の表（`x-buddy-core-checks`）。WSS のメッセージは `EventStreamMessage`。
 - 記憶の候補・忘却台帳・本人の指示、モデルの配備（DeploymentManifest）・用途別の評価結果・影モードの記録・評価セットの書き出し形式（ADR 0008）。
 - `model-evaluation.json` は評価候補。API 呼出し・モデルの有効化・利用料の承認を行う設定ではありません。
 

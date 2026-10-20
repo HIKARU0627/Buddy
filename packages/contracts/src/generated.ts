@@ -61,7 +61,37 @@ export type BuddyContract =
   | IntentShadowRecord
   | ShadowCampaignState
   | ShadowCampaignSummary
-  | IntentEvalCase;
+  | IntentEvalCase
+  | Bootstrap
+  | Snapshot
+  | SessionCreateRequest
+  | SessionReceipt
+  | TurnRequest
+  | TurnResponse
+  | HandoffRequest
+  | HandoffState
+  | AutoActionList
+  | SafetyResumeRequest
+  | SafetyState
+  | IoStopRequest
+  | IoStopResult
+  | IoResumeRequest
+  | EventStreamMessage
+  | PairingStartRequest
+  | PairingSession
+  | PairingClaimRequest
+  | PairingClaim
+  | PairingDecisionRequest
+  | PairingTokenRequest
+  | DeviceCredential
+  | DeviceList
+  | DeviceRevokeRequest
+  | ConnectionList
+  | ConnectionSummary
+  | OAuthStartRequest
+  | OAuthStart
+  | ConnectionTargetsRequest
+  | ConnectionDisconnectRequest;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -472,6 +502,35 @@ export type EvaluationUse =
   | 'memory_extraction'
   | 'voice_conversation'
   | 'local_asr';
+/**
+ * 保存モード（設計 03 保存期限）。normal は発言から 7 日、extended は本人指定の継続相談で 30 日、private は記録しない会話。
+ */
+export type StorageMode = 'normal' | 'extended' | 'private';
+/**
+ * 会話の表示先の版（設計 07 §2 handoff の expected_route_revision）。
+ */
+export type RouteRevision = string;
+/**
+ * 自動実行の安全停止の状態の版（設計 03 取り消しと安全停止、07 §2）。
+ */
+export type SafetyRevision = string;
+/**
+ * WSS /v1/events/stream で流れるメッセージ（設計 07 §2・§4、ADR 0009）。本文・宛先・認証情報を含めない。秘密を URL クエリーに入れない。
+ */
+export type EventStreamMessage =
+  | {
+      type: 'event';
+      event: EventEnvelope;
+    }
+  | {
+      type: 'voice';
+      event: VoiceEvent;
+    }
+  | {
+      type: 'resnapshot_required';
+      reason: 'store_generation_changed' | 'history_expired' | 'scope_expired';
+    };
+export type DevicePlatform = 'windows' | 'macos' | 'linux';
 
 export interface AudioRange {
   audio_epoch: AudioEpoch;
@@ -713,6 +772,9 @@ export interface EventPage {
   event_cursor: EventCursor;
   resnapshot_required: boolean;
 }
+/**
+ * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。
+ */
 export interface ApiError {
   code:
     | 'unauthenticated'
@@ -722,7 +784,19 @@ export interface ApiError {
     | 'invalid_input'
     | 'budget_held'
     | 'rate_limited'
-    | 'dependency_unavailable';
+    | 'dependency_unavailable'
+    | 'device_locked'
+    | 'screen_operation_required'
+    | 'hub_screen_required'
+    | 'outside_home_network'
+    | 'audio_owned_elsewhere'
+    | 'audio_ownership_required'
+    | 'payload_too_large'
+    | 'private_conversation'
+    | 'target_changed'
+    | 'undo_expired'
+    | 'pairing_failed'
+    | 'unsupported_api_version';
   message: string;
   request_id: Id | null;
 }
@@ -2234,4 +2308,306 @@ export interface ExpectedIntentArgs {
     'preference' | 'goal' | 'person' | 'routine' | 'lexicon' | 'progress';
   query?: string;
   device_name?: string;
+}
+/**
+ * 認証後の接続情報（設計 07 §2）。本文を含めない。device_id は認証結果から中枢が決める。command_scope_id は再接続・失効・中枢の再起動で無効になり、最長 24 時間。api_version は major が一致する端末だけが使う。
+ */
+export interface Bootstrap {
+  api_version: string;
+  core_instance_id: Id;
+  store_generation: StoreGeneration;
+  device_id: Id;
+  command_scope_id: Id;
+  command_scope_expires_at: UtcTime;
+  capabilities: string[];
+  io_state: DeviceIOState;
+}
+/**
+ * 一つの整合した DB 読取りで得た現在の表示状態と、その境界のイベント位置（設計 07 §4）。表示権限に応じて返し、ロック中・停止中は再開用の管理情報だけ（management_only）にする。
+ */
+export interface Snapshot {
+  store_generation: StoreGeneration;
+  core_instance_id: Id;
+  event_cursor: EventCursor;
+  view: 'full' | 'management_only';
+  io_state: DeviceIOState;
+  sessions: {
+    session_id: Id;
+    storage_mode: StorageMode;
+    display_device_id: Id | null;
+    route_revision: RouteRevision;
+    turns: SnapshotTurn[];
+  }[];
+  candidates: CandidateSnapshot[];
+  operations: OperationSnapshot[];
+}
+/**
+ * 表示用の発言。保存期限を過ぎた発言と記録しない会話の発言は返さない。
+ */
+export interface SnapshotTurn {
+  turn_id: Id;
+  role: 'user' | 'buddy';
+  text: string;
+  at: UtcTime;
+  input_kind: InputKind | null;
+}
+export interface SessionCreateRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  storage_mode: StorageMode;
+}
+export interface SessionReceipt {
+  request_id: Id;
+  session_id: Id;
+  storage_mode: StorageMode;
+  route_revision: RouteRevision;
+}
+/**
+ * 画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。
+ */
+export interface TurnRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  text: string;
+  input_kind: 'text' | 'voice_local';
+}
+/**
+ * 文字で返す結果（設計 10 §6A）。結果は構造化した事実の表示で、文章は雑談・相談・調査のまとめだけ。外部変更の完了は操作の状態で別に示す。
+ */
+export interface TurnResponse {
+  request_id: Id;
+  session_id: Id;
+  turn_id: Id;
+  input_id: Id;
+  workflow_id: Id | null;
+  status: 'answered' | 'clarification' | 'background' | 'session_control';
+  result_view: ResultView | null;
+  reply_text: string | null;
+}
+/**
+ * 表示の移動（設計 07 §2・§5、01 流れ C）。呼び出した端末の画面操作だけ。音声の移動は次の呼びかけで別に行う。承認は取り直さない。
+ */
+export interface HandoffRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  target_device_id: Id;
+  expected_route_revision: RouteRevision;
+}
+/**
+ * 旧端末の表示退避か期限切れを確認するまで moving のまま。
+ */
+export interface HandoffState {
+  session_id: Id;
+  route_revision: RouteRevision;
+  display_device_id: Id;
+  state: 'moving' | 'completed';
+}
+export interface AutoActionList {
+  safety: SafetyState;
+  items: AutoActionItem[];
+}
+/**
+ * 安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。
+ */
+export interface SafetyState {
+  state: 'running' | 'stopped';
+  safety_revision: SafetyRevision;
+  stop_reason:
+    ('rate_exceeded' | 'same_target_repeated' | 'compensation_failures') | null;
+  stopped_at: UtcTime | null;
+}
+/**
+ * 自動実行した操作（設計 03 auto_actions / undo_records、J12）。本文を含めない。取り消しは完了から 30 日まで。
+ */
+export interface AutoActionItem {
+  operation_id: Id;
+  action_kind:
+    | 'create_task'
+    | 'create_note'
+    | 'label_mail'
+    | 'draft_reply'
+    | 'create_event';
+  policy_version: PolicyVersion;
+  state_revision: StateRevision;
+  completed_at: UtcTime;
+  undo_state:
+    | 'available'
+    | 'target_changed'
+    | 'expired'
+    | 'in_progress'
+    | 'undone'
+    | 'unavailable';
+  undo_deadline: UtcTime;
+}
+export interface SafetyResumeRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_safety_revision: SafetyRevision;
+}
+/**
+ * 端末単位・来客・全体の入出力停止（設計 07 §2）。停止は版の一致を求めず常に受け付ける。外部操作の取消とは別。
+ */
+export interface IoStopRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  scope: 'local' | 'guest' | 'global';
+}
+/**
+ * 停止の到達状況（設計 07 §5）。停止確認済みと端末の応答待ちを分ける。リースの失効は端末が自分で止まる期限で、停止の確認ではない。
+ */
+export interface IoStopResult {
+  scope: 'local' | 'guest' | 'global';
+  io_epoch: IoEpoch;
+  /**
+   * @minItems 1
+   */
+  devices: [
+    {
+      device_id: Id;
+      stop_state: 'confirmed' | 'awaiting_ack' | 'lease_expired';
+    },
+    ...{
+      device_id: Id;
+      stop_state: 'confirmed' | 'awaiting_ack' | 'lease_expired';
+    }[],
+  ];
+  all_confirmed: boolean;
+}
+/**
+ * 入出力の再開（設計 07 §2、10 §1A）。登録済み・ロック解除済み端末の画面操作だけ。接続復帰・ロック解除・呼びかけだけでは再開しない。
+ */
+export interface IoResumeRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  scope: 'local' | 'guest' | 'global';
+  expected_io_epoch: IoEpoch;
+}
+export interface PairingStartRequest {
+  request_id: Id;
+  command_scope_id: Id;
+}
+/**
+ * 中枢の画面に出すワンタイムコードと中枢の証明書の指紋（設計 02 端末登録と接続）。有効 5 分・連続 5 回失敗で無効は設計初期値。中枢の画面の端末だけが受け取る。
+ */
+export interface PairingSession {
+  pairing_id: Id;
+  pairing_code: string;
+  certificate_fingerprint: Hash;
+  expires_at: UtcTime;
+  attempts_left: number;
+}
+/**
+ * 登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。
+ */
+export interface PairingClaimRequest {
+  request_id: Id;
+  pairing_code: string;
+  device_name: string;
+  platform: DevicePlatform;
+  claim_secret_hash: Hash;
+}
+export interface PairingClaim {
+  claim_id: Id;
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'consumed';
+  device_name: string;
+  platform: DevicePlatform;
+  expires_at: UtcTime;
+}
+/**
+ * 中枢の画面での承認・拒否。
+ */
+export interface PairingDecisionRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  decision: 'approve' | 'reject';
+}
+/**
+ * 申請用の秘密（256 ビット、base64url）。承認後に 1 回だけトークンと交換できる。URL に入れない。
+ */
+export interface PairingTokenRequest {
+  claim_secret: string;
+}
+/**
+ * 端末別トークン（256 ビット）。端末は OS の保護領域に保存し、中枢は照合用の hash と失効状態だけを持つ。この応答は 1 回だけ返す。
+ */
+export interface DeviceCredential {
+  device_id: Id;
+  device_token: string;
+  issued_at: UtcTime;
+}
+export interface DeviceList {
+  devices: DeviceSummary[];
+}
+/**
+ * 登録済みの端末。hub_local は中枢と同じマシンのクライアント（自宅判定だけ免除）。
+ */
+export interface DeviceSummary {
+  device_id: Id;
+  device_name: string;
+  platform: DevicePlatform;
+  hub_local: boolean;
+  registered_at: UtcTime;
+  last_seen_at: UtcTime | null;
+  revoked_at: UtcTime | null;
+}
+export interface DeviceRevokeRequest {
+  request_id: Id;
+  command_scope_id: Id;
+}
+export interface ConnectionList {
+  connections: ConnectionSummary[];
+}
+/**
+ * 連携の接続（設計 04 接続・権限）。OAuth トークンは返さない。
+ */
+export interface ConnectionSummary {
+  connection_id: Id;
+  provider: 'google' | 'microsoft';
+  status: 'active' | 'needs_reauth' | 'needs_attention' | 'disconnected';
+  access: 'read' | 'read_write';
+  granted_scopes: string[];
+  targets: ConnectionTargets;
+  permission_revision: PermissionRevision;
+  scope_revision: ScopeRevision;
+}
+/**
+ * 本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。
+ */
+export interface ConnectionTargets {
+  calendar_ids: string[];
+  mail_container_ids: string[];
+  attachment_kinds: ('pdf' | 'text')[];
+}
+/**
+ * OAuth の開始（設計 04 接続・権限）。中枢の画面だけ。PKCE と loopback の戻り先は中枢内で処理し、/v1 の経路にしない。
+ */
+export interface OAuthStartRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  provider: 'google' | 'microsoft';
+  access: 'read' | 'read_write';
+}
+/**
+ * システムブラウザーで開く認可 URL。PKCE の challenge と state だけを含み、秘密を含めない。
+ */
+export interface OAuthStart {
+  authorization_url: string;
+  expires_at: UtcTime;
+}
+/**
+ * 取得対象の変更。許可版と取得範囲の版を上げ、旧範囲の走査を無効にする（設計 11 §1A）。
+ */
+export interface ConnectionTargetsRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_permission_revision: PermissionRevision;
+  targets: ConnectionTargets;
+}
+/**
+ * 接続解除。進行中の操作の照合に必要な最小情報は残し、取得と自動処理を止める。
+ */
+export interface ConnectionDisconnectRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_permission_revision: PermissionRevision;
 }

@@ -1,80 +1,213 @@
 openapi: 3.1.2
 info:
-  title: Buddy B00 — label operation slice
-  version: 0.1.0
-  description: 最初のラベル変更経路だけをファイル化。サーバー実装・認可・DB transaction・全APIの完成を表さない。
+  title: Buddy Core HTTP API (B00)
+  version: 1.0.0
+  description: 設計 07 §2 の経路と、端末の登録・失効・連携の接続（U10、ADR 0009）。形式は OpenAPI と JSON Schema が正本で、認証・自宅判定・接続範囲・ロック・画面操作・音声所有権・版の検査は x-buddy-core-checks の順に Core が行う（domain の api.ts）。対象の存在・所有・状態遷移の可否はその後に domain の各規則で判定する。サーバー実装・DB transaction は未実装。
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 security:
   - deviceToken: []
 paths:
-  /v1/operations/{id}:
-    parameters:
-      - &a1
-        name: id
-        in: path
-        required: true
-        schema:
-          $ref: ./schemas/buddy.schema.json#/$defs/Id
-        description: 操作ID。認証主体はトークンから解決する。
+  /v1/bootstrap:
     get:
-      operationId: getOperation
-      summary: 現在の操作状態を取得
+      operationId: getBootstrap
+      summary: 接続情報の取得
+      description: 認証後に API 版・端末能力・DB 世代・中枢の起動 ID・接続範囲・入出力の状態を返す。本文は含めない。端末は api_version の major が合わなければ使わない（07 §2）。
+      x-buddy-core-checks: &id001
+        - device_token
+        - home_network
       responses:
         '200':
-          description: 現在値。過去の命令受付結果とは別。
+          description: 接続情報。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/Bootstrap
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/snapshot:
+    get:
+      operationId: getSnapshot
+      summary: 現在の表示状態
+      description: 一つの整合した読取りで状態とイベント位置を返す。ロック中・停止中は再開用の管理情報だけ（07 §2・§4）。
+      x-buddy-core-checks: *id001
+      responses:
+        '200':
+          description: 表示状態と event_cursor。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/Snapshot
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/sessions:
+    post:
+      operationId: createSession
+      summary: 会話の開始
+      description: 保存モードを固定して会話を作る。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      x-buddy-core-checks: &id002
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/SessionCreateRequest
+      responses:
+        '201':
+          description: 作成した会話。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/SessionReceipt
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/sessions/{session_id}/turns:
+    post:
+      operationId: postTurn
+      summary: 画面からの発言
+      description: 文字入力と端末内で文字にした声だけ。結果は文字で返し、Live へ送らない。発言から外部変更を直接実行しない（07 §2、10 §6・§6A）。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      x-buddy-core-checks: *id002
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/TurnRequest
+      responses:
+        '200':
+          description: 文字で返す結果。外部変更の完了ではない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/TurnResponse
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/sessions/{session_id}/handoff:
+    post:
+      operationId: handoffSession
+      summary: 表示の移動
+      description: 呼び出した端末へ表示を移す。旧端末の退避か期限切れを確認するまで moving。承認は取り直さない（07 §2・§5）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HandoffRequest
+      responses:
+        '202':
+          description: 移動の状態。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HandoffState
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/operations/{id}:
+    get:
+      operationId: getOperation
+      summary: 操作の現在の状態
+      description: 現在の内容版・状態版・承認状態・結果と、表示補助の allowed_actions を返す。過去の命令の受付結果とは別（07 §2）。
+      x-buddy-core-checks: *id001
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
+      responses:
+        '200':
+          description: 現在値。
           content:
             application/json:
               schema:
                 $ref: ./schemas/buddy.schema.json#/$defs/OperationSnapshot
-        '401': &a2
-          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
-          content:
-            application/json:
-              schema:
-                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
-        '403': &a3
-          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
-          content:
-            application/json:
-              schema:
-                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
-        '409': &a4
-          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
-          content:
-            application/json:
-              schema:
-                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
-        '410': &a5
-          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
-          content:
-            application/json:
-              schema:
-                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
-        '422': &a6
-          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
-          content:
-            application/json:
-              schema:
-                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
-        '429': &a7
-          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
-          content:
-            application/json:
-              schema:
-                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
-        '503': &a8
-          description: 認証・版競合・失効・入力・予算・依存先による拒否。本文を返さない。
-          content:
-            application/json:
-              schema:
-                $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/operations/{id}/preview:
-    parameters:
-      - *a1
     post:
       operationId: previewOperation
-      summary: ラベル変更の承認表示を準備
-      description: 外部変更なし。previewは端末・接続・内容に結び付け、ロック・移動・失効時は拒否。
+      summary: 承認表示の準備
+      description: 外部変更なし。preview は端末・接続・表示内容に結び付け、接続終了・ロック・表示権の喪失・内容変更で無効にする（07 §2・§3）。
+      x-buddy-core-checks: *id002
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
       requestBody:
         required: true
         content:
@@ -83,25 +216,42 @@ paths:
               $ref: ./schemas/buddy.schema.json#/$defs/PreviewRequest
       responses:
         '200':
-          description: 確定した内容とhash。承認ではない。
+          description: 確定した内容と hash。承認ではない。
           content:
             application/json:
               schema:
                 $ref: ./schemas/buddy.schema.json#/$defs/LabelPreview
-        '401': *a2
-        '403': *a3
-        '409': *a4
-        '410': *a5
-        '422': *a6
-        '429': *a7
-        '503': *a8
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/operations/{id}/approve:
-    parameters:
-      - *a1
     post:
       operationId: approveOperation
-      summary: 操作のapprove要求
-      description: 同じscope/requestと同じ内容は同じレシート。異なる内容の再利用は409。結果不明の自動再送なし。retryは未実行確認後の本人明示操作のみ。
+      summary: 承認
+      description: 登録済み・ロック解除済み端末の画面操作だけ。preview_id・content_version・content_hash・expected_state_revision を照合する。202 は受付で、外部変更の成功ではない。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
+        - $ref: '#/components/parameters/InputOrigin'
       requestBody:
         required: true
         content:
@@ -110,25 +260,40 @@ paths:
               $ref: ./schemas/buddy.schema.json#/$defs/ApprovalRequest
       responses:
         '202':
-          description: 受付またはdurable記録。外部変更成功を意味しない。
+          description: 受付または durable の記録。
           content:
             application/json:
               schema:
                 $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
-        '401': *a2
-        '403': *a3
-        '409': *a4
-        '410': *a5
-        '422': *a6
-        '429': *a7
-        '503': *a8
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/operations/{id}/cancel:
-    parameters:
-      - *a1
     post:
       operationId: cancelOperation
-      summary: 操作のcancel要求
-      description: 同じscope/requestと同じ内容は同じレシート。異なる内容の再利用は409。結果不明の自動再送なし。retryは未実行確認後の本人明示操作のみ。
+      summary: 取消の要求
+      description: 送出前だけ取消を確定できる。送出後は照合へ回し、取消済みと表示しない（07 §2、08 §3）。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
       requestBody:
         required: true
         content:
@@ -137,25 +302,40 @@ paths:
               $ref: ./schemas/buddy.schema.json#/$defs/StateCommand
       responses:
         '202':
-          description: 受付またはdurable記録。外部変更成功を意味しない。
+          description: 受付または durable の記録。
           content:
             application/json:
               schema:
                 $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
-        '401': *a2
-        '403': *a3
-        '409': *a4
-        '410': *a5
-        '422': *a6
-        '429': *a7
-        '503': *a8
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/operations/{id}/reconcile:
-    parameters:
-      - *a1
     post:
       operationId: reconcileOperation
-      summary: 操作のreconcile要求
-      description: 同じscope/requestと同じ内容は同じレシート。異なる内容の再利用は409。結果不明の自動再送なし。retryは未実行確認後の本人明示操作のみ。
+      summary: 照合の要求
+      description: 参照による照合だけ。書込みを増やさない（07 §2）。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
       requestBody:
         required: true
         content:
@@ -164,25 +344,42 @@ paths:
               $ref: ./schemas/buddy.schema.json#/$defs/StateCommand
       responses:
         '202':
-          description: 受付またはdurable記録。外部変更成功を意味しない。
+          description: 受付または durable の記録。
           content:
             application/json:
               schema:
                 $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
-        '401': *a2
-        '403': *a3
-        '409': *a4
-        '410': *a5
-        '422': *a6
-        '429': *a7
-        '503': *a8
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/operations/{id}/retry:
-    parameters:
-      - *a1
     post:
       operationId: retryOperation
-      summary: 操作のretry要求
-      description: 同じscope/requestと同じ内容は同じレシート。異なる内容の再利用は409。結果不明の自動再送なし。retryは未実行確認後の本人明示操作のみ。
+      summary: 再試行の要求
+      description: 未実行が確定した同じ変更への本人の明示操作だけ。結果不明の自動再送はしない（07 §2）。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
+        - $ref: '#/components/parameters/InputOrigin'
       requestBody:
         required: true
         content:
@@ -191,48 +388,836 @@ paths:
               $ref: ./schemas/buddy.schema.json#/$defs/StateCommand
       responses:
         '202':
-          description: 受付またはdurable記録。外部変更成功を意味しない。
+          description: 受付または durable の記録。
           content:
             application/json:
               schema:
                 $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
-        '401': *a2
-        '403': *a3
-        '409': *a4
-        '410': *a5
-        '422': *a6
-        '429': *a7
-        '503': *a8
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/auto-actions:
+    get:
+      operationId: listAutoActions
+      summary: 自動実行の一覧
+      description: 自動実行した操作と取り消しの可否、安全停止の状態（07 §2、J12）。本文は含めない。
+      x-buddy-core-checks: *id001
+      responses:
+        '200':
+          description: 一覧。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/AutoActionList
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/auto-actions/{id}/undo:
+    post:
+      operationId: undoAutoAction
+      summary: 自動実行の取り消し
+      description: 登録済み・ロック解除済み端末の画面操作だけ。補償操作を新しい operation_id で受け付ける。対象がその後に変わっていれば 409（target_changed）で自動では戻さない。完了から 30 日を過ぎたら 410（undo_expired）（07 §2、J12）。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/StateCommand
+      responses:
+        '202':
+          description: 補償操作の受付。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CommandReceipt
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/safety/resume:
+    post:
+      operationId: resumeSafety
+      summary: 安全停止の解除
+      description: 登録済み・ロック解除済み端末の画面操作だけ。解除した本人操作を記録する（07 §2）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/SafetyResumeRequest
+      responses:
+        '200':
+          description: 解除後の状態。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/SafetyState
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/io/stop:
+    post:
+      operationId: stopIo
+      summary: 入出力の停止
+      description: 端末単位・来客・全体の停止。端末はローカルで先に止め、この要求の応答を待たない。停止と外部操作の取消は別（07 §2・§5）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/IoStopRequest
+      responses:
+        '202':
+          description: 停止の到達状況。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/IoStopResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/io/resume:
+    post:
+      operationId: resumeIo
+      summary: 入出力の再開
+      description: 登録済み・ロック解除済み端末の画面操作だけ。接続復帰・ロック解除・呼びかけだけでは再開しない（07 §2、10 §1A）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/IoResumeRequest
+      responses:
+        '200':
+          description: 再開後の入出力の状態。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/DeviceIOState
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/events:
     get:
       operationId: getEvents
-      summary: 操作イベントの再取得
-      description: 認証はヘッダー。本文なし。DB世代と再生可能範囲を検査し、期限外は再snapshotを要求。WSS購読契約は後続。
+      summary: イベントの再取得
+      description: DB 世代と再生できる範囲を検査し、範囲外は再スナップショットを求める。連番の飛びだけで欠落と判定しない（07 §4）。
+      x-buddy-core-checks: *id001
       parameters:
-        - name: cursor
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 1
-          description: 不透明カーソル。秘密や認証トークンではない。
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: 表示権でフィルターしたイベント。連番の飛びだけで欠落と判定しない。
+          description: 表示権でフィルターしたイベント。
           content:
             application/json:
               schema:
                 $ref: ./schemas/buddy.schema.json#/$defs/EventPage
-        '401': *a2
-        '403': *a3
-        '409': *a4
-        '410': *a5
-        '422': *a6
-        '429': *a7
-        '503': *a8
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/events/stream:
+    get:
+      operationId: streamEvents
+      summary: イベントの購読（WSS）
+      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。DB 世代の変化・履歴期限・接続範囲の失効では resnapshot_required を送って閉じる（07 §2・§4、ADR 0009）。
+      x-buddy-core-checks: *id001
+      responses:
+        '101':
+          description: WebSocket へ切り替えた。以降のメッセージは x-buddy-websocket-message の形式。
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-buddy-websocket-message:
+        $ref: ./schemas/buddy.schema.json#/$defs/EventStreamMessage
+  /v1/live/sessions:
+    post:
+      operationId: createLiveSession
+      summary: Live の接続
+      description: 音声所有権を持つ端末だけ。端末の SDP offer を中枢が交換し、SDP answer を返す。OpenAI の資格情報は渡さない。予算不足は 422（budget_held）、記録しない会話中は 409（private_conversation）（07 §2、10 §2）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - audio_owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/LiveSessionRequest
+      responses:
+        '201':
+          description: SDP answer。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/LiveSessionAnswer
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/live/sessions/{live_session_id}/close:
+    post:
+      operationId: closeLiveSession
+      summary: Live の終了の通知
+      description: 終了の通知はいつでも受け付ける。使用秒数が確認できるまで予約を精算済みにしない（07 §2、10 §2A）。
+      x-buddy-core-checks: *id001
+      parameters:
+        - $ref: '#/components/parameters/LiveSessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/LiveSessionClose
+      responses:
+        '202':
+          description: 制御の状態。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/LiveControlState
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/pairing/sessions:
+    post:
+      operationId: startPairing
+      summary: ペアリングの開始
+      description: 中枢のロック解除済みの画面だけ。ワンタイムコードと証明書の指紋を返す（02 端末登録と接続、ADR 0009）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - hub_screen
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/PairingStartRequest
+      responses:
+        '201':
+          description: ペアリングの情報。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/PairingSession
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/pairing/claims:
+    post:
+      operationId: claimPairing
+      summary: 登録の申請（認証前）
+      description: 端末が指紋を照合した後に送る。認証前のため上限を小さくし、メールや会話を返さない。コードの不一致は残り回数を減らし、無効になったら 410（pairing_failed）（02）。
+      x-buddy-core-checks:
+        - home_network
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/PairingClaimRequest
+      responses:
+        '202':
+          description: 中枢の承認待ち。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/PairingClaim
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/pairing/claims/{claim_id}/decision:
+    post:
+      operationId: decidePairingClaim
+      summary: 申請の承認・拒否
+      description: 中枢のロック解除済みの画面だけ（02）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - hub_screen
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/PairingDecisionRequest
+      responses:
+        '200':
+          description: 申請の状態。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/PairingClaim
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/pairing/claims/{claim_id}/token:
+    post:
+      operationId: pickupPairingToken
+      summary: 端末トークンの受取り
+      description: 承認済みの申請だけ。申請用の秘密と交換で 1 回だけ返し、2 回目以降・期限切れは 410。承認前は 409（ADR 0009）。
+      x-buddy-core-checks:
+        - home_network
+        - claim_secret
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/PairingTokenRequest
+      responses:
+        '200':
+          description: 端末別トークン。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/DeviceCredential
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/devices:
+    get:
+      operationId: listDevices
+      summary: 登録済みの端末
+      description: 端末の一覧と失効状態（01 接続・端末）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      responses:
+        '200':
+          description: 端末の一覧。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/DeviceList
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/devices/{device_id}/revoke:
+    post:
+      operationId: revokeDevice
+      summary: 端末の失効
+      description: 登録済み・ロック解除済み端末の画面操作だけ。失効した端末の接続範囲・リースを無効にする（02、01）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/DeviceRevokeRequest
+      responses:
+        '200':
+          description: 失効後の端末。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/DeviceSummary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/connections:
+    get:
+      operationId: listConnections
+      summary: 連携の接続
+      description: 接続ごとの状態・権限・取得対象・許可版。OAuth トークンは返さない（04、01）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      responses:
+        '200':
+          description: 接続の一覧。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ConnectionList
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/connections/oauth/start:
+    post:
+      operationId: startOAuth
+      summary: OAuth の開始
+      description: 中枢のロック解除済みの画面だけ。システムブラウザーで開く認可 URL を返す。戻り先（PKCE＋loopback）は中枢内で処理する（04 接続・権限、ADR 0009）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - hub_screen
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/OAuthStartRequest
+      responses:
+        '200':
+          description: 認可 URL。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/OAuthStart
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/connections/{connection_id}/targets:
+    put:
+      operationId: updateConnectionTargets
+      summary: 取得対象の変更
+      description: 本人が選んだ対象だけに変える。許可版と取得範囲の版を上げ、旧範囲の走査を無効にする（04、11 §1A）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/ConnectionTargetsRequest
+      responses:
+        '200':
+          description: 変更後の接続。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ConnectionSummary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/connections/{connection_id}/disconnect:
+    post:
+      operationId: disconnectConnection
+      summary: 接続の解除
+      description: 取得と自動処理を止める。進行中の操作の照合に必要な最小情報は残す（01、04）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/ConnectionDisconnectRequest
+      responses:
+        '200':
+          description: 解除後の接続。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ConnectionSummary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     deviceToken:
       type: http
       scheme: bearer
-      description: 登録端末トークン。scope・OS解除・明示再開・表示権はCoreで別に検査する。Rendererへ公開しない。
+      description: 登録端末トークン（256 ビット）。device_id は認証結果から中枢が決め、本文の端末 ID では処理しない。Renderer へ公開しない（07 §2、02）。
+  parameters:
+    OperationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 操作 ID。
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 会話 ID。
+    LiveSessionId:
+      name: live_session_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: Live の接続 ID。
+    ClaimId:
+      name: claim_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: ペアリングの申請 ID。
+    DeviceId:
+      name: device_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 端末 ID。
+    ConnectionId:
+      name: connection_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 連携の接続 ID。
+    Cursor:
+      name: cursor
+      in: query
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/EventCursor
+      description: 中枢が発行した不透明なイベント位置。秘密や認証情報ではない。
+    InputOrigin:
+      name: Buddy-Input-Origin
+      in: header
+      required: true
+      schema:
+        type: string
+        enum:
+          - screen
+          - voice
+          - system
+      description: 要求の起点。Electron main が限定 IPC の種類から付け、screen 以外は画面操作が必要な経路で 403。Renderer が任意に指定できない。
+  responses:
+    Unauthenticated:
+      description: 端末トークン・申請用の秘密がない、無効、または失効している（unauthenticated）。
+      content:
+        application/json:
+          schema:
+            $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+    Forbidden:
+      description: 自宅判定の不成立（outside_home_network）、ロック中・ロック状態不明（device_locked）、画面操作でない（screen_operation_required）、中枢の画面でない（hub_screen_required）、音声所有権がない（audio_ownership_required）、対象権限の不足（forbidden）。
+      content:
+        application/json:
+          schema:
+            $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+    Conflict:
+      description: 内容または状態が変わった（conflict）、同じ request_id を異なる内容で再利用した（conflict）、別の端末が音声を持つ（audio_owned_elsewhere）、記録しない会話中（private_conversation）、取り消す対象がその後に変わった（target_changed）。最新状態を読み直す。
+      content:
+        application/json:
+          schema:
+            $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+    Gone:
+      description: 古い接続範囲・表示情報（expired_scope）、取り消し期限の経過（undo_expired）、ペアリングの無効・使用済み（pairing_failed）。古い命令を自動再実行しない。
+      content:
+        application/json:
+          schema:
+            $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+    PayloadTooLarge:
+      description: 制御 JSON の上限（認証後 256 KiB、認証前 16 KiB）を超えた（payload_too_large）。切り詰めずに拒否する。
+      content:
+        application/json:
+          schema:
+            $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+    Unprocessable:
+      description: 形式の不正（invalid_input）、予算の保留（budget_held）、未対応の API 版（unsupported_api_version）。
+      content:
+        application/json:
+          schema:
+            $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+    RateLimited:
+      description: 頻度制限（rate_limited）。
+      content:
+        application/json:
+          schema:
+            $ref: ./schemas/buddy.schema.json#/$defs/ApiError
+    Unavailable:
+      description: 中枢・依存先の保留（dependency_unavailable）。
+      content:
+        application/json:
+          schema:
+            $ref: ./schemas/buddy.schema.json#/$defs/ApiError

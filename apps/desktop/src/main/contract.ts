@@ -32,13 +32,9 @@ export interface DesktopContract {
   statusBarErrors(value: DesktopStatusBar): readonly string[];
 }
 
-// @buddy/contracts は型だけを公開出口にしているため、schema の JSON はパッケージの配置から読む。
-// 解決は公開出口（dist/index.js）を起点にし、別ワークスペースの src は参照しない。
+// schema の JSON は @buddy/contracts の公開出口（./schema.json）から読む。別ワークスペースの src は参照しない。
 export function contractSchemaUrl(): URL {
-  return new URL(
-    '../schemas/buddy.schema.json',
-    import.meta.resolve('@buddy/contracts'),
-  );
+  return new URL(import.meta.resolve('@buddy/contracts/schema.json'));
 }
 
 export function loadContractSchema(): unknown {

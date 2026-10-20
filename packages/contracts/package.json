@@ -7,7 +7,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./schema.json": "./schemas/buddy.schema.json"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

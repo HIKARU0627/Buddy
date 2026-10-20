@@ -1,0 +1,1186 @@
+{
+  "status": "tracking",
+  "description": "設計 09 の X01〜X66・QA01〜QA45 と 09 冒頭の補助ケース MA01〜MA06 の対応表（B00-10 #29）。phases は担当工程（docs/b00/contract-map.md の利用の列から）、contract_fixtures は期待値を手で書いた契約 fixture（ファイル#ケースの id）、t は 06 の必須試験、targets は修正案・再検証の対象。status の contract_fixture は契約 fixture で期待値を検査したことだけを表し、製品試験の合格ではない。product_test はすべて not_run（H03 の後回しは deferred）。",
+  "statuses": {
+    "contract_fixture": "契約 fixture で期待値を検査済み。製品の統合・実機・実 API 試験は未実施",
+    "specified": "試験仕様と担当工程だけ。契約 fixture なし"
+  },
+  "product_tests": {
+    "not_run": "未実施。合格扱いにしない",
+    "deferred": "後回しの決定のため対象外。採用時に契約と試験を追加する"
+  },
+  "tests": [
+    {
+      "id": "X01",
+      "phases": ["B02", "B03", "B04", "B06"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X01",
+        "packages/contracts/fixtures/readiness-cases.json#text-label-test-policy-approval"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T01", "T02"]
+    },
+    {
+      "id": "X02",
+      "phases": ["B02", "B03", "B04", "B06", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/boundary-cases.json#x02-second-device-same-content",
+        "packages/contracts/fixtures/operation-transitions.json#X02",
+        "tests/fixtures/storage-cases.json#x02-one-effective-approval-per-content-version"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T01", "T02", "T03"]
+    },
+    {
+      "id": "X03",
+      "phases": ["B01", "B02", "B03", "B04", "B13", "B14"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X03"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T03"]
+    },
+    {
+      "id": "X04",
+      "phases": ["B01", "B02", "B03", "B04"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/api-scenarios.json#x04-same-request-different-content",
+        "packages/contracts/fixtures/operation-transitions.json#X04",
+        "tests/fixtures/storage-cases.json#x04-command-receipts-are-unique-per-scope-and-request"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T02", "T03"]
+    },
+    {
+      "id": "X05",
+      "phases": ["B02", "B03", "B04"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X05-after-dispatch",
+        "packages/contracts/fixtures/operation-transitions.json#X05-before-dispatch"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T03"]
+    },
+    {
+      "id": "X06",
+      "phases": ["B02", "B03", "B04", "B06"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X06",
+        "tests/fixtures/storage-cases.json#one-active-attempt-and-retry-after-not-executed"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T02", "T07"]
+    },
+    {
+      "id": "X07",
+      "phases": ["B02", "B03", "B04", "B08", "B09"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X07"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T02", "T07"]
+    },
+    {
+      "id": "X08",
+      "phases": ["B02", "B03", "B04", "B08", "B09"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X08"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T02", "T07"]
+    },
+    {
+      "id": "X09",
+      "phases": ["B01", "B02", "B03", "B04", "B08", "B09", "B13", "B14"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X09",
+        "packages/contracts/fixtures/readiness-cases.json#permission-changed"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T03", "T05"]
+    },
+    {
+      "id": "X10",
+      "phases": ["B02", "B04", "B06", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X10"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T02", "T07"]
+    },
+    {
+      "id": "X11",
+      "phases": ["B01", "B03", "B04"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/api-scenarios.json#x11-duplicate-and-out-of-order",
+        "packages/contracts/fixtures/api-scenarios.json#x11-store-generation-changed",
+        "packages/contracts/fixtures/operation-transitions.json#X11"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T01", "T07"]
+    },
+    {
+      "id": "X12",
+      "phases": ["B02", "B03", "B06", "B08", "B11", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/boundary-cases.json#x12-ack-lost-not-reshown",
+        "packages/contracts/fixtures/boundary-cases.json#x12-device-move",
+        "packages/contracts/fixtures/boundary-cases.json#x12-reconnect",
+        "packages/contracts/fixtures/boundary-cases.json#x12-refetch",
+        "tests/fixtures/storage-cases.json#x12-one-alert-per-key-and-user-reminder"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T02", "T05"]
+    },
+    {
+      "id": "X13",
+      "phases": ["B01", "B03", "B05"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/api-scenarios.json#x13-expires-from-request-time",
+        "packages/contracts/fixtures/api-scenarios.json#x13-stale-io-epoch",
+        "packages/contracts/fixtures/delivery-cases.json#old-device-live-start",
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-while-suspended"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T04", "T07"]
+    },
+    {
+      "id": "X14",
+      "phases": ["B01", "B03", "B05"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/api-scenarios.json#x14-unreachable-device"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T04"]
+    },
+    {
+      "id": "X15",
+      "phases": ["B02", "B06", "B08", "B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/memory-cases.json#x15-derived-memory-forgotten",
+        "packages/contracts/fixtures/memory-cases.json#x15-late-summary-after-forget",
+        "packages/contracts/fixtures/memory-cases.json#x15-revival-started-after-forget",
+        "tests/fixtures/storage-cases.json#memories-one-live-content-and-no-extension"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T06"]
+    },
+    {
+      "id": "X16",
+      "phases": ["B02", "B06", "B08"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/memory-cases.json#clock-rolled-back",
+        "packages/contracts/fixtures/memory-cases.json#turn-at-deadline",
+        "packages/contracts/fixtures/memory-cases.json#turn-within-deadline",
+        "packages/contracts/fixtures/memory-cases.json#x16-ledger-lost-everywhere",
+        "packages/contracts/fixtures/memory-cases.json#x16-only-old-or-broken-copies",
+        "tests/fixtures/storage-cases.json#turn-deadlines-are-never-extended"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T06", "T07"]
+    },
+    {
+      "id": "X17",
+      "phases": ["B02", "B05", "B06", "B08", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#x48-private-conversation",
+        "packages/contracts/fixtures/memory-cases.json#private-conversation",
+        "packages/contracts/fixtures/memory-cases.json#x17-private-conversation"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T03", "T06"]
+    },
+    {
+      "id": "X18",
+      "phases": ["B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T08"]
+    },
+    {
+      "id": "X19",
+      "phases": ["B01", "B03"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T03"]
+    },
+    {
+      "id": "X20",
+      "phases": ["B01", "B02", "B03", "B06"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T01", "T07"]
+    },
+    {
+      "id": "X21",
+      "phases": ["B02", "B10", "B11", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/operation-transitions.json#X21-auto"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T10"]
+    },
+    {
+      "id": "X22",
+      "phases": ["B10", "B11", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T10", "T03"]
+    },
+    {
+      "id": "X23",
+      "phases": ["B02", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/readiness-cases.json#safety-stopped-auto"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T10"]
+    },
+    {
+      "id": "X24",
+      "phases": ["B06", "B13"],
+      "contract_fixtures": [
+        "tests/fixtures/storage-cases.json#undo-window-and-single-undo"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T10"]
+    },
+    {
+      "id": "X25",
+      "phases": ["B03", "B05", "B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T04", "T08"]
+    },
+    {
+      "id": "X26",
+      "phases": ["B03", "B05", "B07", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T08", "T04"]
+    },
+    {
+      "id": "X27",
+      "phases": ["B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T03", "T01"]
+    },
+    {
+      "id": "X28",
+      "phases": ["B03", "B05", "B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T04", "T07", "T08"]
+    },
+    {
+      "id": "X29",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-old-session",
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-while-suspended"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T01", "T04", "T08"]
+    },
+    {
+      "id": "X30",
+      "phases": ["B05"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/delivery-cases.json#late-stop-ack-cannot-resume"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T04"]
+    },
+    {
+      "id": "X31",
+      "phases": ["B05", "B07"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/delivery-cases.json#live-start-while-suspended"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T04", "T08"]
+    },
+    {
+      "id": "X32",
+      "phases": ["B05"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T01", "T04"]
+    },
+    {
+      "id": "X33",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T01", "T08"]
+    },
+    {
+      "id": "X34",
+      "phases": ["B05", "B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T08"]
+    },
+    {
+      "id": "X35",
+      "phases": ["B05", "B11"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T04", "T08"]
+    },
+    {
+      "id": "X36",
+      "phases": ["B03", "B05", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T01", "T06"]
+    },
+    {
+      "id": "X37",
+      "phases": ["B08", "B09"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T05"]
+    },
+    {
+      "id": "X38",
+      "phases": ["B10", "B11"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/extraction-cases.json#automated-sender"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T05", "T08"]
+    },
+    {
+      "id": "X39",
+      "phases": ["B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/extraction-cases.json#deadline-quote-conflict",
+        "packages/contracts/fixtures/extraction-cases.json#quote-not-found",
+        "packages/contracts/fixtures/extraction-cases.json#quoted-request",
+        "packages/contracts/fixtures/readiness-cases.json#evidence-unverified"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T10"]
+    },
+    {
+      "id": "X40",
+      "phases": ["B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T10"]
+    },
+    {
+      "id": "X41",
+      "phases": ["B11", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/extraction-cases.json#cc-only"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T10"]
+    },
+    {
+      "id": "X42",
+      "phases": ["B03"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T03"]
+    },
+    {
+      "id": "X43",
+      "phases": ["B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T07"]
+    },
+    {
+      "id": "X44",
+      "phases": ["B06", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/memory-cases.json#duplicate",
+        "packages/contracts/fixtures/memory-cases.json#kind-not-allowed",
+        "packages/contracts/fixtures/memory-cases.json#same-target-different-content",
+        "packages/contracts/fixtures/memory-cases.json#x44-six-exchanges",
+        "packages/contracts/fixtures/memory-cases.json#x44-two-exchanges",
+        "packages/contracts/fixtures/memory-cases.json#x44-two-exchanges-with-memory-save",
+        "tests/fixtures/storage-cases.json#memories-one-live-content-and-no-extension"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T08", "T06"]
+    },
+    {
+      "id": "X45",
+      "phases": ["B03"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T01"]
+    },
+    {
+      "id": "X46",
+      "phases": ["B02", "B03", "B05", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T01", "T04"]
+    },
+    {
+      "id": "X47",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T01", "T04"]
+    },
+    {
+      "id": "X48",
+      "phases": ["B07", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#shadow-summary-cannot-be-evidence",
+        "packages/contracts/fixtures/evaluation-cases.json#x48-private-conversation",
+        "packages/contracts/fixtures/evaluation-cases.json#x48-stops-at-300"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T05", "T08"]
+    },
+    {
+      "id": "X49",
+      "phases": ["B02", "B03", "B05", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/delivery-cases.json#text-request-result-to-open-voice-session"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T01", "T08"]
+    },
+    {
+      "id": "X50",
+      "phases": ["B05"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T04", "T05"]
+    },
+    {
+      "id": "X51",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/readiness-cases.json#collecting-input"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T01", "T05"]
+    },
+    {
+      "id": "X52",
+      "phases": ["B05"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T04", "T07"]
+    },
+    {
+      "id": "X53",
+      "phases": ["B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T08"]
+    },
+    {
+      "id": "X54",
+      "phases": ["B05"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T01", "T04"]
+    },
+    {
+      "id": "X55",
+      "phases": ["B05"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T04", "T08"]
+    },
+    {
+      "id": "X56",
+      "phases": ["B05"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T05"]
+    },
+    {
+      "id": "X57",
+      "phases": ["B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#no-confirmed-samples",
+        "packages/contracts/fixtures/evaluation-cases.json#x57-intent-pass-does-not-cover-mail",
+        "packages/contracts/fixtures/evaluation-cases.json#x57-other-uses-stay-unevaluated"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T05", "T08"]
+    },
+    {
+      "id": "X58",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T04", "T01"]
+    },
+    {
+      "id": "X59",
+      "phases": ["B05", "B06", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/memory-cases.json#private-conversation",
+        "packages/contracts/fixtures/readiness-cases.json#full-audio-memory-save",
+        "packages/contracts/fixtures/readiness-cases.json#live-create-task",
+        "packages/contracts/fixtures/readiness-cases.json#live-memory-save-needs-full-text"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T06"]
+    },
+    {
+      "id": "X60",
+      "phases": ["B02", "B04", "B06"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "t": ["T02", "T07"]
+    },
+    {
+      "id": "X61",
+      "phases": ["B03", "B04", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/readiness-cases.json#text-update-task-screen"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T01", "T10"]
+    },
+    {
+      "id": "X62",
+      "phases": ["B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/extraction-cases.json#truncated-body",
+        "packages/contracts/fixtures/extraction-cases.json#unread-attachment"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T05", "T10"]
+    },
+    {
+      "id": "X63",
+      "phases": ["B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/extraction-cases.json#past-deadline",
+        "packages/contracts/fixtures/extraction-cases.json#year-unknown"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T05", "T10"]
+    },
+    {
+      "id": "X64",
+      "phases": ["B02", "B06", "B08", "B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/analysis-cases.json#same-version-reanalysis"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T05", "T10"]
+    },
+    {
+      "id": "X65",
+      "phases": ["B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/analysis-cases.json#user-undo-then-reanalysis",
+        "tests/fixtures/storage-cases.json#x65-auto-creation-once-per-entity-kind-and-target"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T02", "T10"]
+    },
+    {
+      "id": "X66",
+      "phases": ["B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#x66-mandatory-violation",
+        "packages/contracts/fixtures/evaluation-cases.json#x66-violation-in-another-run-blocks"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "t": ["T05", "T08"]
+    },
+    {
+      "id": "QA01",
+      "phases": ["B01", "B03", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P01", "P02"],
+      "related": ["X03"]
+    },
+    {
+      "id": "QA02",
+      "phases": ["B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P01", "P02"],
+      "related": []
+    },
+    {
+      "id": "QA03",
+      "phases": ["B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/readiness-cases.json#target-unresolved"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P01", "P02"],
+      "related": []
+    },
+    {
+      "id": "QA04",
+      "phases": ["B05", "B10", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P01"],
+      "related": ["X27", "X51"]
+    },
+    {
+      "id": "QA05",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/readiness-cases.json#blocked-input-known-gap"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P03"],
+      "related": ["X51"]
+    },
+    {
+      "id": "QA06",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/delivery-cases.json#late-asr-after-reconnect"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P03"],
+      "related": []
+    },
+    {
+      "id": "QA07",
+      "phases": ["B04"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P03"],
+      "related": ["X05", "X27"]
+    },
+    {
+      "id": "QA08",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P03"],
+      "related": ["X50", "X56"]
+    },
+    {
+      "id": "QA09",
+      "phases": ["B01", "B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/extraction-cases.json#date-only",
+        "packages/contracts/fixtures/extraction-cases.json#year-unknown"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P04"],
+      "related": ["X39", "X63", "X64"]
+    },
+    {
+      "id": "QA10",
+      "phases": ["B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/extraction-cases.json#truncated-body",
+        "packages/contracts/fixtures/extraction-cases.json#unread-attachment"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P04"],
+      "related": ["X39", "X62"]
+    },
+    {
+      "id": "QA11",
+      "phases": ["B02", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/extraction-cases.json#deadline-quote-conflict",
+        "packages/contracts/fixtures/extraction-cases.json#quote-not-found"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P04"],
+      "related": ["X39"]
+    },
+    {
+      "id": "QA12",
+      "phases": ["B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/analysis-cases.json#same-version-reanalysis",
+        "packages/contracts/fixtures/analysis-cases.json#user-undo-then-reanalysis"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P04", "P09"],
+      "related": ["X64", "X65"]
+    },
+    {
+      "id": "QA13",
+      "phases": ["B01", "B07", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#qa13-no-capacity-skips"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P05"],
+      "related": ["X43"]
+    },
+    {
+      "id": "QA14",
+      "phases": ["B01", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P05"],
+      "related": []
+    },
+    {
+      "id": "QA15",
+      "phases": ["B02", "B04", "B06"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P06"],
+      "related": ["X06", "X07", "X60"]
+    },
+    {
+      "id": "QA16",
+      "phases": ["B02"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P06"],
+      "related": ["X60"]
+    },
+    {
+      "id": "QA17",
+      "phases": ["B02"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P06"],
+      "related": ["X20"]
+    },
+    {
+      "id": "QA18",
+      "phases": ["B08", "B09"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P07"],
+      "related": ["X37"]
+    },
+    {
+      "id": "QA19",
+      "phases": ["B08", "B09"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P07"],
+      "related": ["X37"]
+    },
+    {
+      "id": "QA20",
+      "phases": ["B07", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#qa20-spend-limit-first"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P02", "P05", "P09"],
+      "related": ["X18", "X48"]
+    },
+    {
+      "id": "QA21",
+      "phases": ["B07", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#qa21-drift-suspends",
+        "packages/contracts/fixtures/evaluation-cases.json#qa21-response-model-changed",
+        "packages/contracts/fixtures/evaluation-cases.json#qa21-same-id-new-model-and-patch",
+        "packages/contracts/fixtures/evaluation-cases.json#qa21-schema-support-regressed"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P02", "P09"],
+      "related": []
+    },
+    {
+      "id": "QA22",
+      "phases": ["B08", "B09", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P08"],
+      "related": []
+    },
+    {
+      "id": "QA23",
+      "phases": ["B08", "B09", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P08"],
+      "related": ["X37"]
+    },
+    {
+      "id": "QA24",
+      "phases": ["B05", "B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P03"],
+      "related": ["X25", "X28"]
+    },
+    {
+      "id": "QA25",
+      "phases": ["B04", "B08", "B09", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P08", "P10"],
+      "related": ["X10"]
+    },
+    {
+      "id": "QA26",
+      "phases": ["B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#qa26-alias-is-not-rollback",
+        "packages/contracts/fixtures/evaluation-cases.json#qa26-digest-mismatch",
+        "packages/contracts/fixtures/evaluation-cases.json#qa26-incomplete-download",
+        "packages/contracts/fixtures/evaluation-cases.json#qa26-startup-failure-suspends",
+        "packages/contracts/fixtures/evaluation-cases.json#qa26-unverified-cannot-activate",
+        "tests/fixtures/storage-cases.json#live-session-and-deployment-guards"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P09"],
+      "related": []
+    },
+    {
+      "id": "QA27",
+      "phases": ["B04", "B10", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["H01", "H02"],
+      "related": ["X21"]
+    },
+    {
+      "id": "QA28",
+      "phases": ["B02", "B04", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["H02"],
+      "related": []
+    },
+    {
+      "id": "QA29",
+      "phases": [],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "deferred",
+      "targets": ["H03"],
+      "related": []
+    },
+    {
+      "id": "QA30",
+      "phases": ["B01", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["H04"],
+      "related": []
+    },
+    {
+      "id": "QA31",
+      "phases": ["B01", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["H04"],
+      "related": []
+    },
+    {
+      "id": "QA32",
+      "phases": ["B10", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["H05"],
+      "related": []
+    },
+    {
+      "id": "QA33",
+      "phases": ["B06", "B10", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["H06"],
+      "related": []
+    },
+    {
+      "id": "QA34",
+      "phases": ["B05", "B06", "B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-old-device"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["H06"],
+      "related": ["X15", "X49"]
+    },
+    {
+      "id": "QA35",
+      "phases": ["B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/readiness-cases.json#utterance-hold"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["P03", "H06"],
+      "related": ["X27"]
+    },
+    {
+      "id": "QA36",
+      "phases": ["B08", "B09"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/sync-scenarios.json#qa36-no-diff"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["H05"],
+      "related": []
+    },
+    {
+      "id": "QA37",
+      "phases": ["B01", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["H04", "P05"],
+      "related": []
+    },
+    {
+      "id": "QA38",
+      "phases": ["B02", "B04", "B06", "B13"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["H02"],
+      "related": ["X21", "X23"]
+    },
+    {
+      "id": "QA39",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P03"],
+      "related": []
+    },
+    {
+      "id": "QA40",
+      "phases": ["B05", "B10"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "targets": ["P02", "P09"],
+      "related": []
+    },
+    {
+      "id": "QA41",
+      "phases": ["B04", "B05", "B10", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/readiness-cases.json#live-create-task",
+        "packages/contracts/fixtures/readiness-cases.json#live-label-four-operations",
+        "packages/contracts/fixtures/readiness-cases.json#live-memory-save-needs-full-text",
+        "packages/contracts/fixtures/readiness-cases.json#live-send-mail-needs-full-text",
+        "tests/fixtures/storage-cases.json#qa41-input-snapshot-seal-rules"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["F01"],
+      "related": ["X51", "X59", "QA05", "QA08"]
+    },
+    {
+      "id": "QA42",
+      "phases": ["B04", "B07"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/budget-scenarios.json#qa42-scaled",
+        "tests/fixtures/storage-cases.json#budget-settlement-is-consistent-and-once"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["F02"],
+      "related": ["X18", "QA20"]
+    },
+    {
+      "id": "QA43",
+      "phases": ["B01", "B03", "B04", "B05", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-old-output-epoch"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["F03"],
+      "related": ["X13", "X30", "X58"]
+    },
+    {
+      "id": "QA44",
+      "phases": ["B02", "B04", "B06", "B08", "B09"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/sync-scenarios.json#qa44-long-full-then-incremental",
+        "tests/fixtures/storage-cases.json#qa44-one-active-scan-per-scope"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["F04"],
+      "related": ["QA18", "QA19", "QA36"]
+    },
+    {
+      "id": "QA45",
+      "phases": ["B04", "B06", "B10", "B11", "B13"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/analysis-cases.json#b-failed",
+        "packages/contracts/fixtures/analysis-cases.json#b-unread",
+        "packages/contracts/fixtures/analysis-cases.json#b-waiting-budget",
+        "packages/contracts/fixtures/analysis-cases.json#cancelled-by-later-mail",
+        "packages/contracts/fixtures/analysis-cases.json#enumeration-incomplete",
+        "packages/contracts/fixtures/analysis-cases.json#new-b-published-after-ready",
+        "packages/contracts/fixtures/analysis-cases.json#target-unknown"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "targets": ["F05"],
+      "related": ["QA32", "X64", "X65"]
+    },
+    {
+      "id": "MA01",
+      "phases": ["B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#metrics-missing"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "related": []
+    },
+    {
+      "id": "MA02",
+      "phases": ["B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/evaluation-cases.json#x57-intent-pass-does-not-cover-mail",
+        "packages/contracts/fixtures/evaluation-cases.json#x66-mandatory-violation"
+      ],
+      "status": "contract_fixture",
+      "product_test": "not_run",
+      "related": []
+    },
+    {
+      "id": "MA03",
+      "phases": ["B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "related": []
+    },
+    {
+      "id": "MA04",
+      "phases": ["B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "related": []
+    },
+    {
+      "id": "MA05",
+      "phases": ["B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "related": []
+    },
+    {
+      "id": "MA06",
+      "phases": ["B07"],
+      "contract_fixtures": [],
+      "status": "specified",
+      "product_test": "not_run",
+      "related": []
+    }
+  ]
+}

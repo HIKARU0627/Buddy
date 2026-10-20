@@ -2,7 +2,7 @@
 
 生活・学習・開発を支える、デバイスに依存しない個人 AI アシスタント。
 
-現在は **B00（契約のファイル化）の初回範囲を作成した段階** です。入力・ラベル変更・承認受付・状態通知・予算記録の JSON Schema、対象経路の OpenAPI、生成型と合成例を検査できます。製品の Core / UI、DB マイグレーション、全 API・全意図の契約は未完成です。B00 全体の完了を意味しません。
+現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。製品の Core / UI の実装と、製品の統合・実機・実 API・実請求の試験は未着手・未実施です。
 
 ## セットアップ
 
@@ -36,6 +36,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [記憶・忘却とモデル評価の交換形式](docs/adr/0008-memory-forgetting-and-model-evaluation.md)
 - [OpenAPI・認証・イベント・再接続の契約](docs/adr/0009-openapi-auth-events-and-reconnect.md)
 - [domain 境界と保存マイグレーション案](docs/adr/0010-domain-boundary-and-storage-draft.md)
+- [生成型・CI・試験対応表と B00 の完了判定](docs/adr/0011-b00-completion-review.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

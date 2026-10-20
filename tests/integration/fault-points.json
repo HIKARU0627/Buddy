@@ -1,0 +1,232 @@
+{
+  "status": "specification_only",
+  "description": "B04 の模擬サービスで X01〜X11 を実行するための故障点と期待値（設計 09 §1〜§5、08 §3・§4、ADR 0011）。手で書いたもので、実行した記録ではない。期待する状態の並びは packages/contracts/fixtures/operation-transitions.json の同じ id を正本とし、ここでは故障点・模擬サービスの記録・真の結果と中枢が観測できる結果を加える。",
+  "mock_service": {
+    "persists_across_core_restart": true,
+    "deduplicates_requests": false,
+    "records": [
+      "operation_id",
+      "attempt_id",
+      "step_id",
+      "receive_order",
+      "applied_change",
+      "responded"
+    ],
+    "rules": [
+      "模擬サービスの状態と受信記録は、中枢の再起動とは独立して保持する（中枢と一緒に初期化しない）",
+      "要求回数と状態変更回数を分けて記録する",
+      "重複要求を自動で消さない。サービス側の冪等性で中枢の二重送出を隠さない",
+      "同時承認は固定時間の sleep ではなく、両要求を同じ境界で待たせて解放する制御点で作る",
+      "試験装置だけが知る真の結果（例: 送信されていない）を中枢へ教えない"
+    ]
+  },
+  "fault_points": {
+    "before_approval_save": "承認の保存前",
+    "after_approval_save": "承認の保存後",
+    "after_target_recheck": "対象の再確認後",
+    "after_dispatch_intent_before_send": "送出意図の保存後・送信前",
+    "after_external_apply_before_response": "外部適用後・応答前",
+    "before_result_save": "結果の保存前",
+    "after_event_delivery_before_ack": "イベント配信後・ACK 前",
+    "approval_barrier": "同時承認を同じ境界で待たせる制御点",
+    "response_timeout_then_late_apply": "応答タイムアウトの後に模擬サービスが遅れて適用する",
+    "core_restart": "中枢だけを再起動する（DB 世代と操作 ID は維持、起動 ID と一時接続は更新）"
+  },
+  "clock": "2030-10-05T00:00:00Z",
+  "cases": [
+    {
+      "id": "X01",
+      "transition_case": "X01",
+      "faults": ["core_restart"],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "succeeded",
+        "provider_truth": "applied_once",
+        "core_observed": "succeeded"
+      }
+    },
+    {
+      "id": "X02",
+      "transition_case": "X02",
+      "faults": ["approval_barrier"],
+      "actions": [
+        "approve_from_device_a",
+        "approve_from_device_b",
+        "double_click_device_a"
+      ],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "succeeded",
+        "provider_truth": "applied_once",
+        "core_observed": "succeeded"
+      }
+    },
+    {
+      "id": "X03",
+      "transition_case": "X03",
+      "faults": [],
+      "actions": [
+        "reorder_json_keys",
+        "change_label_before_approval",
+        "submit_invalid_json"
+      ],
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "core_final_state": "superseded",
+        "provider_truth": "not_applied",
+        "core_observed": "superseded"
+      }
+    },
+    {
+      "id": "X04",
+      "transition_case": "X04",
+      "faults": ["core_restart"],
+      "actions": [
+        "reuse_request_id_with_other_content",
+        "send_with_old_command_scope"
+      ],
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "core_final_state": "awaiting_approval",
+        "responses": { "request_id_reused": 409, "old_scope": 410 },
+        "provider_truth": "not_applied",
+        "core_observed": "awaiting_approval"
+      }
+    },
+    {
+      "id": "X05-before-dispatch",
+      "transition_case": "X05-before-dispatch",
+      "faults": ["after_target_recheck"],
+      "actions": ["cancel_at_fault"],
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 1,
+        "core_final_state": "cancelled",
+        "provider_truth": "not_applied",
+        "core_observed": "cancelled"
+      }
+    },
+    {
+      "id": "X05-after-dispatch",
+      "transition_case": "X05-after-dispatch",
+      "faults": ["after_dispatch_intent_before_send"],
+      "actions": ["cancel_at_fault", "release_send"],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "reconciling",
+        "provider_truth": "applied_once",
+        "core_observed": "cancel_accepted_not_cancelled"
+      }
+    },
+    {
+      "id": "X06",
+      "transition_case": "X06",
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 1,
+        "core_final_state": "unknown_held",
+        "automatic_retry": false,
+        "provider_truth": "not_applied",
+        "core_observed": "unknown_held"
+      }
+    },
+    {
+      "id": "X07",
+      "transition_case": "X07",
+      "faults": ["after_external_apply_before_response"],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "succeeded",
+        "provider_truth": "applied_once",
+        "core_observed": "succeeded_after_exact_reconcile"
+      }
+    },
+    {
+      "id": "X08",
+      "transition_case": "X08",
+      "faults": ["response_timeout_then_late_apply"],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "succeeded",
+        "automatic_retry": false,
+        "provider_truth": "applied_once_late",
+        "core_observed": "unknown_held_then_succeeded"
+      }
+    },
+    {
+      "id": "X09",
+      "transition_case": "X09",
+      "faults": ["after_approval_save"],
+      "actions": ["change_target_to_r2_or_revoke_permission"],
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 1,
+        "core_final_state": "superseded",
+        "provider_truth": "not_applied",
+        "core_observed": "superseded"
+      }
+    },
+    {
+      "id": "X10-after-draft",
+      "transition_case": "X10",
+      "faults": ["after_external_apply_before_response", "core_restart"],
+      "step": "create_draft",
+      "expected": {
+        "provider_requests": 2,
+        "provider_state_changes": 2,
+        "approvals": 1,
+        "steps": { "create_draft": 1, "send": 1 },
+        "core_final_state": "succeeded",
+        "provider_truth": "draft_once_send_once",
+        "core_observed": "succeeded"
+      }
+    },
+    {
+      "id": "X10-after-send-accepted",
+      "transition_case": "X10",
+      "faults": ["after_external_apply_before_response", "core_restart"],
+      "step": "send",
+      "expected": {
+        "provider_requests": 2,
+        "provider_state_changes": 2,
+        "approvals": 1,
+        "steps": { "create_draft": 1, "send": 1 },
+        "core_final_state": "succeeded",
+        "provider_truth": "draft_once_send_once",
+        "core_observed": "succeeded"
+      }
+    },
+    {
+      "id": "X11",
+      "transition_case": null,
+      "scenario": "packages/contracts/fixtures/api-scenarios.json#x11-duplicate-and-out-of-order",
+      "faults": ["after_event_delivery_before_ack", "core_restart"],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "succeeded",
+        "provider_truth": "applied_once",
+        "core_observed": "client_converges_without_overwrite"
+      }
+    }
+  ]
+}

@@ -359,6 +359,67 @@ export function semanticErrors(name, value) {
     )
       errors.push('live_without_voice_conditions');
   }
+  // デスクトップの状態欄（ADR 0014）。ロック中・不明の内容の非表示は schema の形で拒否する。
+  if (name === 'DesktopStatusBar' && value.visibility === 'shown') {
+    if (value.input_permitted && value.stop_scope !== 'none')
+      errors.push('input_permitted_while_stopped');
+    // 来客モードも全端末の停止なので「全体停止中」と表示する（ADR 0014 の読み取り）。
+    const stopped = {
+      local: 'device_stopped',
+      guest: 'global_stopped',
+      global: 'global_stopped',
+    };
+    if (
+      value.voice_state !== null &&
+      (value.stop_scope === 'none'
+        ? Object.values(stopped).includes(value.voice_state)
+        : value.voice_state !== stopped[value.stop_scope])
+    )
+      errors.push('voice_state_conflicts_with_stop');
+    const hubValues = [
+      value.display_target,
+      value.storage_mode,
+      value.budget_held,
+      value.safety_stopped,
+    ];
+    if (
+      value.hub_connection === 'connected' &&
+      (value.hub_last_confirmed_at === null ||
+        hubValues.some((v) => v === null))
+    )
+      errors.push('connected_without_values');
+    if (
+      value.hub_connection !== 'connected' &&
+      (hubValues.some((v) => v !== null) ||
+        (value.hub_connection === 'not_connected' &&
+          value.hub_last_confirmed_at !== null))
+    )
+      errors.push('hub_values_without_connection');
+  }
+  if (name === 'DesktopIpcResponse' && value.status) {
+    errors.push(...semanticErrors('DesktopStatusBar', value.status));
+    const shown = value.status.visibility === 'shown';
+    if (
+      value.channel === 'desktop.io_stop' &&
+      shown &&
+      value.status.stop_scope === 'none'
+    )
+      errors.push('stop_not_reflected');
+    if (
+      value.channel === 'desktop.io_resume' &&
+      (!shown || value.status.stop_scope !== 'none')
+    )
+      errors.push('resume_not_reflected');
+  }
+  if (name === 'DesktopIpcNotification') {
+    if (value.status)
+      errors.push(...semanticErrors('DesktopStatusBar', value.status));
+    if (
+      value.source === 'os_query' &&
+      !['lock_screen', 'unlock_screen'].includes(value.event)
+    )
+      errors.push('query_without_lock_state');
+  }
   if (name === 'Lease' && value.heartbeat_ms >= value.ttl_ms)
     errors.push('heartbeat_not_shorter_than_ttl');
   if (

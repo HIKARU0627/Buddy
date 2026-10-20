@@ -12,6 +12,7 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `operations.ts`: 操作の内部状態と許される遷移（設計 08 §3・§4）
 - `approval.ts`: 承認の受付（同じ内容版の承認は一つ・方針の版）と DB worker の命令の再検査（[ADR 0010](../../docs/adr/0010-domain-boundary-and-storage-draft.md)）
 - `audio.ts`: 停止理由ごとの動作と再開条件、遅着した結果の受け入れ、出力先の決定（[ADR 0005](../../docs/adr/0005-conversation-and-voice-control.md)）
+- `desktop.ts`: デスクトップの限定 IPC の受付（送信元・ロック・画面操作・停止の範囲・io_epoch）、状態欄の非表示、入出力・ロックの状態遷移（[ADR 0014](../../docs/adr/0014-b01-desktop-ipc-contract.md)）
 - `conversation.ts`: 意図ごとの結果表示、会話の操作の照合
 - `retention.ts`: 削除期限の計算（起点から一度だけ）
 - `sync.ts`: 同期の走査の排他、公開前の compare-and-swap、時計の後退の保留（[ADR 0007](../../docs/adr/0007-sync-extraction-and-related-analysis.md)）
@@ -21,4 +22,4 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `memory.ts`: 記憶の保存直前の検査（忘却した由来・派生・同じ内容の再取り込み・遅着）、見直しと削除の期限、時計の巻き戻り、復元の可否、抽出の時点（[ADR 0008](../../docs/adr/0008-memory-forgetting-and-model-evaluation.md)）
 - `evaluation.ts`: 配備×用途の採否、配備の段階、成果物の照合、同じモデル ID のままの変化の検知、戻し先、影モードの停止と skip
 
-contracts の生成型は import せず、意図名・引数名の一覧が schema と一致することを `scripts/domain.test.mjs`・`scripts/voice.test.mjs`・`scripts/budget.test.mjs`・`scripts/sync-analysis.test.mjs`・`scripts/memory-evaluation.test.mjs`・`scripts/api.test.mjs`・`scripts/boundary.test.mjs` で検査します。試験はビルド後の `dist` を対象にします。DB の transaction・最終検査・外部送出は未実装です。
+contracts の生成型は import せず、意図名・引数名の一覧が schema と一致することを `scripts/domain.test.mjs`・`scripts/voice.test.mjs`・`scripts/budget.test.mjs`・`scripts/sync-analysis.test.mjs`・`scripts/memory-evaluation.test.mjs`・`scripts/api.test.mjs`・`scripts/boundary.test.mjs`・`scripts/desktop-ipc.test.mjs` で検査します。試験はビルド後の `dist` を対象にします。DB の transaction・最終検査・外部送出は未実装です。

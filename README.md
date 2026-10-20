@@ -39,6 +39,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [生成型・CI・試験対応表と B00 の完了判定](docs/adr/0011-b00-completion-review.md)
 - [Core のライフサイクルとローカル制御チャネル](docs/adr/0012-b01-core-lifecycle-and-local-control.md)
 - [OS 別の起動・監督アダプターと鍵保護不能時の停止](docs/adr/0013-b01-platform-adapters.md)
+- [デスクトップの型付き IPC の契約](docs/adr/0014-b01-desktop-ipc-contract.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

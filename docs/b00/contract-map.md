@@ -87,7 +87,7 @@ ID・時刻・金額・null・版の文字列表現と検査の層の割り当�
 | PendingClarification                                                          | S:PendingClarification                                        | 10 §5A-5                       | X27、QA04               | B10      | 形式（ADR 0005）                                    |
 | ResultView（結果の種類と画面部品）                                            | S:ResultView                                                  | 10 §6A、01 いつも見える状態    | X46、X49                | B02、B10 | 形式。全意図の対応表は domain（ADR 0005）           |
 | SessionControlPhrases（会話の操作の照合表）                                   | S:SessionControlPhrases                                       | 10 §5・§10（質問 126）         | X58、QA43               | B05、B10 | 形式と照合関数（ADR 0005）                          |
-| DeviceIOState                                                                 | S:DeviceIOState                                               | 07 §2・§5、01 いつも見える状態 | X13、X14、QA43          | B01、B05 | 形式（ADR 0005）                                    |
+| DeviceIOState                                                                 | S:DeviceIOState                                               | 07 §2・§5、01 いつも見える状態 | X13、X14、QA43          | B01、B05 | 形式（ADR 0005）。列挙は状態欄と共有（ADR 0014）    |
 | AudioControl（stop_playback / close_voice_session / suspend_io と理由・世代） | S:AudioControl                                                | 10 §1・§1A（F03）              | QA43、X13、X30、X58     | B05      | 形式。理由ごとの動作と再開条件は domain（ADR 0005） |
 | 音声・表示リース（heartbeat・nonce・期限）                                    | S:Lease                                                       | 07 §5、10 §2A                  | X13、X14、X25、X28      | B03、B05 | 形式（ADR 0005）                                    |
 | LiveSessionRequest / LiveSessionAnswer（purpose 付き）                        | S:LiveSessionRequest、S:LiveSessionAnswer、S:LiveSessionClose | 07 §2、10 §2                   | X26、X31、X32、X54、X17 | B05      | 形式。終了通知 LiveSessionClose も追加（ADR 0005）  |
@@ -180,6 +180,15 @@ ID・時刻・金額・null・版の文字列表現と検査の層の割り当�
 | 合成データと期待遷移           | F:、tests/fixtures、tests/test-map.json     | 09 §2・§6  | X01〜X11、QA41〜QA45 | B04〜    | 各工程の手書き fixture と試験対応表（ADR 0011） |
 | 故障注入点と模擬サービスの記録 | tests/integration/fault-points.json         | 09 §4・§5A | X01〜X11、X60        | B04      | 形式と期待値（ADR 0011）。実行器は未実装        |
 | 証拠の記録形式                 | tests/integration/test-evidence.schema.json | 09 §8      | 全試験               | B04〜B15 | 形式（ADR 0011）                                |
+
+### デスクトップの IPC（担当: B01-03 #45）
+
+| 契約                                                                   | 配置先                                         | 根拠                                       | 試験      | 利用     | 状態                                                                                                                                                                    |
+| ---------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------ | --------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| renderer → main の要求（チャネル名・request_id・payload の判別共用体） | S:DesktopIpcRequest、S:DesktopIpcChannel       | 10 §1、07 §2、02 停止                      | X13、QA43 | B01      | 形式と受付の規則 admitDesktopRequest（D:desktop.ts、F:desktop-ipc-cases.json。ADR 0014）。中枢の停止・端末 ID・URL のチャネルと項目はない。Electron の実装は B01-04 #46 |
+| main → renderer の応答・通知（拒否の理由、電源・ロックの記録）         | S:DesktopIpcResponse、S:DesktopIpcNotification | 10 §1、07 §2                               | QA43      | B01      | 形式と意味検査（ADR 0014）                                                                                                                                              |
+| 状態欄の値（ロック中・不明は内容を隠す）                               | S:DesktopStatusBar                             | 01 いつも見える状態、07 §2                 | QA43      | B01、B03 | 形式と意味検査。中枢の値は B03 で接続するまで null（ADR 0014）                                                                                                          |
+| 端末の入出力・ロックの状態遷移（解除・復帰で自動再開しない）           | D:desktop.ts                                   | 10 §1・§1A、07 §2・§5、01 停止・取消・終了 | QA43、X13 | B01      | 期待値（F:desktop-ipc-cases.json）。実機は未実施                                                                                                                        |
 
 ## 24 意図の台帳
 

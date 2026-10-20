@@ -1,0 +1,334 @@
+{
+  "status": "specification_only",
+  "description": "承認の受付・DB 命令の再検査・通知の配信・削除期限の期待値（設計 03 保存期限、08 §1・§3・§5・§7、11 §4・§9、J12、X02・X12、ADR 0010）。手で書いたもので、domain の実装から生成していない。",
+  "approval": {
+    "operation": {
+      "operation_id": "op-1",
+      "current_content_version": "2",
+      "content_hash": "hash-2",
+      "state_revision": "5",
+      "state": "awaiting_approval",
+      "effective_approval": null
+    },
+    "attempt": {
+      "route": "screen",
+      "content_version": "2",
+      "content_hash": "hash-2",
+      "expected_state_revision": "5",
+      "preview_valid": true,
+      "policy_version": null,
+      "current_policy_version": "3"
+    },
+    "cases": [
+      { "id": "record", "expected": { "action": "record", "reasons": [] } },
+      {
+        "id": "x02-second-device-same-content",
+        "title": "別の端末から同じ内容を承認しても、新しい承認は作らず既存の状態を返す",
+        "operation": {
+          "state": "approved",
+          "state_revision": "6",
+          "effective_approval": {
+            "content_version": "2",
+            "content_hash": "hash-2"
+          }
+        },
+        "attempt": { "expected_state_revision": "5" },
+        "expected": { "action": "existing", "reasons": [] }
+      },
+      {
+        "id": "old-content-version",
+        "attempt": { "content_version": "1", "content_hash": "hash-1" },
+        "expected": {
+          "action": "reject",
+          "reasons": ["content_version_changed", "content_hash_mismatch"]
+        }
+      },
+      {
+        "id": "approved-version-differs",
+        "operation": {
+          "effective_approval": {
+            "content_version": "2",
+            "content_hash": "hash-x"
+          }
+        },
+        "expected": { "action": "reject", "reasons": ["approval_conflict"] }
+      },
+      {
+        "id": "stale-state-and-preview",
+        "attempt": { "expected_state_revision": "4", "preview_valid": false },
+        "expected": {
+          "action": "reject",
+          "reasons": ["state_revision_changed", "preview_invalid"]
+        }
+      },
+      {
+        "id": "cancelled-operation",
+        "operation": { "state": "cancelled" },
+        "expected": { "action": "reject", "reasons": ["not_awaiting_approval"] }
+      },
+      {
+        "id": "policy-auto-current",
+        "attempt": {
+          "route": "policy_auto",
+          "preview_valid": false,
+          "policy_version": "3"
+        },
+        "expected": { "action": "record", "reasons": [] }
+      },
+      {
+        "id": "policy-auto-old-policy",
+        "attempt": {
+          "route": "policy_auto",
+          "preview_valid": false,
+          "policy_version": "2"
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": ["policy_version_changed"]
+        }
+      }
+    ]
+  },
+  "command": {
+    "command": {
+      "command_id": "cmd-1",
+      "kind": "operation.dispatch",
+      "expected_state_revision": "5",
+      "request_revision": "2",
+      "permission_revision": "4",
+      "forgetting_generation": "7"
+    },
+    "current": {
+      "state_revision": "5",
+      "request_revision": "2",
+      "permission_revision": "4",
+      "forgetting_generation": "7",
+      "applied_command_ids": [],
+      "safety_stopped": false,
+      "reservation_valid": true
+    },
+    "cases": [
+      {
+        "id": "apply",
+        "external": true,
+        "expected": { "action": "apply", "reasons": [] }
+      },
+      {
+        "id": "lost-ack-redelivery",
+        "title": "ACK を失った命令の再到着は既存の結果を返し、再度変更しない",
+        "external": true,
+        "current": { "applied_command_ids": ["cmd-1"], "state_revision": "6" },
+        "expected": { "action": "already_applied", "reasons": [] }
+      },
+      {
+        "id": "versions-changed",
+        "external": false,
+        "current": {
+          "state_revision": "6",
+          "request_revision": "3",
+          "permission_revision": "5",
+          "forgetting_generation": "8"
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": [
+            "state_revision_changed",
+            "request_revision_changed",
+            "permission_changed",
+            "forgetting_generation_changed"
+          ]
+        }
+      },
+      {
+        "id": "dispatch-while-stopped-or-unreserved",
+        "external": true,
+        "current": { "safety_stopped": true, "reservation_valid": false },
+        "expected": {
+          "action": "reject",
+          "reasons": ["safety_stopped", "reservation_invalid"]
+        }
+      },
+      {
+        "id": "local-command-ignores-dispatch-only-checks",
+        "external": false,
+        "current": { "safety_stopped": true, "reservation_valid": false },
+        "expected": { "action": "apply", "reasons": [] }
+      }
+    ]
+  },
+  "delivery": {
+    "existing": [
+      {
+        "notification_key": "key-1",
+        "reminder_id": "",
+        "status": "delivery_unknown"
+      }
+    ],
+    "cases": [
+      {
+        "id": "new-key",
+        "request": {
+          "notification_key": "key-2",
+          "trigger": "new_candidate",
+          "reminder_id": null
+        },
+        "expected": { "deliver": true, "reason": null }
+      },
+      {
+        "id": "x12-ack-lost-not-reshown",
+        "request": {
+          "notification_key": "key-1",
+          "trigger": "new_candidate",
+          "reminder_id": null
+        },
+        "expected": { "deliver": false, "reason": "already_delivered" }
+      },
+      {
+        "id": "x12-refetch",
+        "request": {
+          "notification_key": "key-2",
+          "trigger": "refetch",
+          "reminder_id": null
+        },
+        "expected": { "deliver": false, "reason": "not_a_new_alert" }
+      },
+      {
+        "id": "x12-reconnect",
+        "request": {
+          "notification_key": "key-2",
+          "trigger": "reconnect",
+          "reminder_id": null
+        },
+        "expected": { "deliver": false, "reason": "not_a_new_alert" }
+      },
+      {
+        "id": "x12-device-move",
+        "request": {
+          "notification_key": "key-2",
+          "trigger": "device_move",
+          "reminder_id": null
+        },
+        "expected": { "deliver": false, "reason": "not_a_new_alert" }
+      },
+      {
+        "id": "user-reminder",
+        "request": {
+          "notification_key": "key-1",
+          "trigger": "user_reminder",
+          "reminder_id": "reminder-1"
+        },
+        "expected": { "deliver": true, "reason": null }
+      },
+      {
+        "id": "user-reminder-without-id",
+        "request": {
+          "notification_key": "key-1",
+          "trigger": "user_reminder",
+          "reminder_id": null
+        },
+        "expected": { "deliver": false, "reason": "reminder_id_required" }
+      }
+    ],
+    "ack": [
+      {
+        "record": {
+          "notification_key": "key-3",
+          "reminder_id": "",
+          "status": "intent_saved"
+        },
+        "ack": "lost",
+        "expected": "delivery_unknown"
+      },
+      {
+        "record": {
+          "notification_key": "key-3",
+          "reminder_id": "",
+          "status": "intent_saved"
+        },
+        "ack": "received",
+        "expected": "delivered"
+      },
+      {
+        "record": {
+          "notification_key": "key-3",
+          "reminder_id": "",
+          "status": "delivery_unknown"
+        },
+        "ack": "received",
+        "expected": "delivery_unknown"
+      }
+    ]
+  },
+  "retention": [
+    {
+      "rule": "turn_normal",
+      "anchor": "2030-10-01T00:00:00Z",
+      "expected": "2030-10-08T00:00:00Z"
+    },
+    {
+      "rule": "turn_extended",
+      "anchor": "2030-10-01T00:00:00Z",
+      "expected": "2030-10-31T00:00:00Z"
+    },
+    {
+      "rule": "command_receipt",
+      "anchor": "2030-10-01T12:00:00Z",
+      "expected": "2030-10-08T12:00:00Z"
+    },
+    {
+      "rule": "event_outbox",
+      "anchor": "2030-10-01T12:00:00Z",
+      "expected": "2030-10-08T12:00:00Z"
+    },
+    {
+      "rule": "command_scope",
+      "anchor": "2030-10-01T12:00:00Z",
+      "expected": "2030-10-02T12:00:00Z"
+    },
+    {
+      "rule": "pairing_code",
+      "anchor": "2030-10-01T00:00:00Z",
+      "expected": "2030-10-01T00:05:00Z"
+    },
+    {
+      "rule": "source_body",
+      "anchor": "2030-10-01T23:30:00Z",
+      "expected": "2030-10-02T23:30:00Z"
+    },
+    {
+      "rule": "sync_batch",
+      "anchor": "2030-10-01T23:30:00Z",
+      "expected": "2030-10-02T23:30:00Z"
+    },
+    {
+      "rule": "workflow_result",
+      "anchor": "2030-10-01T00:00:00Z",
+      "expected": "2030-10-08T00:00:00Z"
+    },
+    {
+      "rule": "operation_receipt",
+      "anchor": "2030-10-01T00:00:00Z",
+      "expected": "2030-12-30T00:00:00Z"
+    },
+    {
+      "rule": "undo_window",
+      "anchor": "2030-10-01T00:00:00Z",
+      "expected": "2030-10-31T00:00:00Z"
+    },
+    {
+      "rule": "candidate_excerpt",
+      "anchor": "2030-10-01T00:00:00Z",
+      "expected": "2030-10-08T00:00:00Z"
+    },
+    {
+      "rule": "candidate_key",
+      "anchor": "2030-10-01T00:00:00Z",
+      "expected": "2031-01-06T00:00:00Z"
+    }
+  ],
+  "turn_rules": [
+    { "storage_mode": "normal", "expected": "turn_normal" },
+    { "storage_mode": "extended", "expected": "turn_extended" },
+    { "storage_mode": "private", "expected": null }
+  ]
+}

@@ -1,0 +1,635 @@
+{
+  "status": "specification_only",
+  "description": "保存案 0001 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X15・X16・X44・X65・QA41・QA44、ADR 0010）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
+  "seed": [
+    "INSERT INTO devices VALUES ('dev-1', '合成の端末', 'windows', 0, X'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000, NULL, NULL)",
+    "INSERT INTO devices VALUES ('dev-hub', '合成の中枢', 'macos', 1, X'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000, NULL, NULL)",
+    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-intent-1', 'operation_intent', 'operation_versions', 'op-1', 1, 1, 'k1', X'000000000000000000000001', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-intent-2', 'operation_intent', 'operation_versions', 'op-1', 2, 1, 'k1', X'000000000000000000000002', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+    "INSERT INTO operations VALUES ('op-1', NULL, 'mail.labels.change', 'remote_mutation', 1, 'awaiting_approval', 0, 1000, NULL)",
+    "INSERT INTO operation_versions VALUES ('op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'b-intent-1', 1000)",
+    "INSERT INTO operation_versions VALUES ('op-1', 2, '2222222222222222222222222222222222222222222222222222222222222222', 'b-intent-2', 1100)",
+    "INSERT INTO sessions VALUES ('s-1', 'normal', 'dev-1', 1, NULL, 1000, NULL)",
+    "INSERT INTO connections VALUES ('c-1', 'google', NULL, 'keystore:c-1', 'active', 'read', '[]', '{}', 1, 1)",
+    "INSERT INTO sync_scopes (scope_id, connection_id, scope_revision, active_scan_id, active_generation, committed_watermark, provider_cursor, executor_generation) VALUES ('scope-1', 'c-1', 1, NULL, 5, 2000, 'h100', 2)",
+    "INSERT INTO sync_scopes (scope_id, connection_id, scope_revision, active_scan_id, active_generation, committed_watermark, provider_cursor, executor_generation) VALUES ('scope-2', 'c-1', 1, NULL, 1, NULL, NULL, 2)"
+  ],
+  "scenarios": [
+    {
+      "id": "x02-one-effective-approval-per-content-version",
+      "refs": ["X02", "08 §5"],
+      "steps": [
+        [
+          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "ok"
+        ],
+        [
+          "INSERT INTO approvals VALUES ('ap-2', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'policy_auto', NULL, NULL, 3, 'valid', 1200)",
+          "unique"
+        ],
+        [
+          "INSERT INTO approvals VALUES ('ap-3', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'revoked', 1200)",
+          "ok"
+        ],
+        [
+          "UPDATE approvals SET status = 'consumed' WHERE approval_id = 'ap-1'",
+          "ok"
+        ],
+        [
+          "INSERT INTO approvals VALUES ('ap-4', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "unique"
+        ],
+        [
+          "INSERT INTO approvals VALUES ('ap-5', 'op-1', 2, '2222222222222222222222222222222222222222222222222222222222222222', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "id": "approval-routes-need-their-evidence",
+      "refs": ["08 §1"],
+      "steps": [
+        [
+          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', NULL, NULL, 'valid', 1200)",
+          "check"
+        ],
+        [
+          "INSERT INTO approvals VALUES ('ap-2', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'policy_auto', NULL, NULL, NULL, 'valid', 1200)",
+          "check"
+        ],
+        [
+          "INSERT INTO approvals VALUES ('ap-3', 'op-1', 9, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "foreign_key"
+        ]
+      ]
+    },
+    {
+      "id": "operation-version-is-immutable",
+      "refs": ["08 §5"],
+      "steps": [
+        [
+          "UPDATE operation_versions SET content_hash = '9999999999999999999999999999999999999999999999999999999999999999' WHERE operation_id = 'op-1' AND content_version = 1",
+          "trigger:operation_version_immutable"
+        ],
+        [
+          "INSERT INTO operation_versions VALUES ('op-1', 1, '3333333333333333333333333333333333333333333333333333333333333333', 'b-intent-2', 1200)",
+          "unique"
+        ]
+      ]
+    },
+    {
+      "id": "one-active-attempt-and-retry-after-not-executed",
+      "refs": ["08 §3・§4", "X06"],
+      "steps": [
+        [
+          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operation_attempts VALUES ('at-1', 'op-1', 1, 'ap-1', 'preparing', NULL, NULL, NULL, 1300)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operation_attempts VALUES ('at-2', 'op-1', 1, 'ap-1', 'preparing', NULL, NULL, NULL, 1300)",
+          "unique"
+        ],
+        [
+          "UPDATE operation_attempts SET status = 'dispatching' WHERE attempt_id = 'at-1'",
+          "check"
+        ],
+        [
+          "UPDATE operation_attempts SET status = 'dispatching', dispatch_intent_at = 1400 WHERE attempt_id = 'at-1'",
+          "ok"
+        ],
+        [
+          "UPDATE operation_attempts SET status = 'succeeded' WHERE attempt_id = 'at-1'",
+          "check"
+        ],
+        [
+          "UPDATE operation_attempts SET status = 'not_executed', result_status = 'confirmed_not_executed' WHERE attempt_id = 'at-1'",
+          "ok"
+        ],
+        [
+          "INSERT INTO operation_attempts VALUES ('at-3', 'op-1', 1, 'ap-1', 'preparing', NULL, NULL, NULL, 1300)",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "id": "x04-command-receipts-are-unique-per-scope-and-request",
+      "refs": ["X04", "07 §3"],
+      "steps": [
+        [
+          "INSERT INTO command_receipts VALUES ('scope-1', 'req-1', 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'cmd-scope-1-req-1', 'op-1', 'accepted', NULL, 1000, 604801000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO command_receipts VALUES ('scope-1', 'req-1', 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'cmd-scope-1-req-1', 'op-1', 'accepted', NULL, 1000, 604801000)",
+          "unique"
+        ],
+        [
+          "INSERT INTO command_receipts VALUES ('scope-2', 'req-1', 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'cmd-scope-2-req-1', 'op-1', 'accepted', NULL, 1000, 604801000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO command_receipts VALUES ('scope-1', 'req-2', 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'cmd-scope-1-req-2', 'op-1', 'accepted', NULL, 1000, 1999)",
+          "check"
+        ],
+        [
+          "INSERT INTO command_receipts VALUES ('scope-1', 'req-3', 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'cmd-scope-1-req-3', 'op-1', 'durable', NULL, 1000, 604801000)",
+          "check"
+        ],
+        [
+          "INSERT INTO command_receipts VALUES ('scope-1', 'req-4', 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'cmd-scope-1-req-4', 'op-1', 'durable', 3, 1000, 604801000)",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "id": "event-outbox-sequence-and-id",
+      "refs": ["07 §4"],
+      "steps": [
+        [
+          "INSERT INTO event_outbox VALUES ('gen-1', 1, 'e-1', 'op-1', 1, 'operation.updated', 1000, 604801000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO event_outbox VALUES ('gen-1', 1, 'e-2', 'op-1', 2, 'operation.updated', 1000, 604801000)",
+          "unique"
+        ],
+        [
+          "INSERT INTO event_outbox VALUES ('gen-1', 2, 'e-1', 'op-1', 2, 'operation.updated', 1000, 604801000)",
+          "unique"
+        ],
+        [
+          "INSERT INTO event_outbox VALUES ('gen-2', 1, 'e-3', 'op-1', 1, 'operation.updated', 1000, 604801000)",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "id": "budget-settlement-is-consistent-and-once",
+      "refs": ["ADR 0006", "QA42"],
+      "steps": [
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at) VALUES ('r-1', 'q-1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, 0, 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at) VALUES ('r-2', 'q-1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, 0, 1000)",
+          "unique"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at) VALUES ('r-3', 'q-3', 'llm', '2030-10', 'XTS', 'price-1', 300, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, 0, 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at) VALUES ('r-4', 'q-4', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, 100, NULL, NULL, NULL, NULL, 0, 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at) VALUES ('r-5', 'q-5', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 150, 100, 40, 'p-5', NULL, 0, 1000)",
+          "check"
+        ],
+        [
+          "UPDATE budget_reservations SET status = 'settled', actual_gross = 150, credit_applied = 100, additional_spend = 50, provider_reconciliation_id = 'p-1' WHERE reservation_id = 'r-1'",
+          "ok"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at) VALUES ('r-6', 'q-6', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'p-1', NULL, 0, 1000)",
+          "unique"
+        ],
+        [
+          "UPDATE budget_reservations SET budget_month = '2030-11' WHERE reservation_id = 'r-1'",
+          "trigger:budget_month_fixed"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at) VALUES ('r-7', 'q-7', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'released', 1, NULL, NULL, NULL, NULL, 'p-7', NULL, 0, 1000)",
+          "check"
+        ]
+      ]
+    },
+    {
+      "id": "qa44-one-active-scan-per-scope",
+      "refs": ["QA44", "11 §1A"],
+      "steps": [
+        [
+          "INSERT INTO sync_batches VALUES ('scan-a', 'scope-1', 1, 'incremental', 5, 2000, 'h100', 3000, 1000, 2000, 'q1', 2, 'fetching', NULL, NULL, 90000000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO sync_batches VALUES ('scan-b', 'scope-1', 1, 'incremental', 5, 2000, 'h100', 3000, 1000, 2000, 'q1', 2, 'fetching', NULL, NULL, 90000000)",
+          "unique"
+        ],
+        [
+          "INSERT INTO sync_batches VALUES ('scan-c', 'scope-2', 1, 'incremental', 5, 2000, 'h100', 3000, 1000, 2000, 'q1', 2, 'fetching', NULL, NULL, 90000000)",
+          "ok"
+        ],
+        [
+          "UPDATE sync_batches SET status = 'abandoned' WHERE scan_id = 'scan-a'",
+          "ok"
+        ],
+        [
+          "INSERT INTO sync_batches VALUES ('scan-b', 'scope-1', 1, 'incremental', 5, 2000, 'h100', 3000, 1000, 2000, 'q1', 2, 'fetching', NULL, NULL, 90000000)",
+          "ok"
+        ],
+        [
+          "UPDATE sync_batches SET status = 'published' WHERE scan_id = 'scan-b'",
+          "check"
+        ],
+        [
+          "INSERT INTO sync_batches VALUES ('scan-d', 'scope-2', 1, 'incremental', 5, 2000, 'h100', 3000, 2000, 2000, 'q1', 2, 'abandoned', NULL, NULL, 90000000)",
+          "check"
+        ],
+        [
+          "UPDATE sync_scopes SET active_scan_id = 'scan-b' WHERE scope_id = 'scope-1'",
+          "ok"
+        ],
+        [
+          "UPDATE sync_scopes SET active_scan_id = 'scan-b' WHERE scope_id = 'scope-2'",
+          "unique"
+        ]
+      ]
+    },
+    {
+      "id": "watermark-never-moves-back",
+      "refs": ["11 §1A"],
+      "steps": [
+        [
+          "UPDATE sync_scopes SET committed_watermark = 1500 WHERE scope_id = 'scope-1'",
+          "trigger:watermark_regression"
+        ],
+        [
+          "UPDATE sync_scopes SET committed_watermark = NULL WHERE scope_id = 'scope-1'",
+          "trigger:watermark_regression"
+        ],
+        [
+          "UPDATE sync_scopes SET committed_watermark = 3000 WHERE scope_id = 'scope-1'",
+          "ok"
+        ],
+        [
+          "UPDATE sync_scopes SET committed_watermark = 1000 WHERE scope_id = 'scope-2'",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "id": "turn-deadlines-are-never-extended",
+      "refs": ["03 保存期限", "X16"],
+      "steps": [
+        [
+          "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-t-1', 'turn_text', 'turns', 't-1', 0, 1, 'k1', X'00000000000000000000000a', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO turns VALUES ('t-1', 's-1', 'user', 'text', 'b-t-1', 1000, 604801000)",
+          "ok"
+        ],
+        [
+          "UPDATE turns SET expires_at = 2592001000 WHERE turn_id = 't-1'",
+          "trigger:turn_expiry_extension"
+        ],
+        ["UPDATE turns SET expires_at = 5000 WHERE turn_id = 't-1'", "ok"],
+        [
+          "INSERT INTO turns VALUES ('t-2', 's-1', 'user', NULL, NULL, 1000, 604801000)",
+          "check"
+        ],
+        [
+          "INSERT INTO sessions VALUES ('s-private', 'private', NULL, 1, NULL, 1000, NULL)",
+          "check"
+        ]
+      ]
+    },
+    {
+      "id": "memories-one-live-content-and-no-extension",
+      "refs": ["X15", "X44", "ADR 0008"],
+      "steps": [
+        [
+          "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-mt-m-1', 'memory_text', 'memories', 'm-1', 0, 1, 'k1', X'000000000000000000000064', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-mk-m-1', 'memory_target_key', 'memories', 'm-1', 0, 1, 'k1', X'0000000000000000000000c8', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO memories VALUES ('m-1', 'auto_extraction', 'preference', 'b-mt-m-1', 'b-mk-m-1', 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'active', 1000, 7776001000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO memories VALUES ('m-2', 'auto_extraction', 'preference', 'b-mt-m-1x', 'b-mk-m-2', 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'active', 1000, 7776001000, NULL)",
+          "foreign_key"
+        ],
+        [
+          "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-mt-m-3', 'memory_text', 'memories', 'm-3', 0, 1, 'k1', X'000000000000000000000066', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-mk-m-3', 'memory_target_key', 'memories', 'm-3', 0, 1, 'k1', X'0000000000000000000000ca', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO memories VALUES ('m-3', 'auto_extraction', 'preference', 'b-mt-m-3', 'b-mk-m-3', 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'active', 1000, 7776001000, NULL)",
+          "unique"
+        ],
+        [
+          "UPDATE memories SET status = 'deleted', delete_at = 7776001001 WHERE memory_id = 'm-1'",
+          "ok"
+        ],
+        [
+          "INSERT INTO memories VALUES ('m-3', 'auto_extraction', 'preference', 'b-mt-m-3', 'b-mk-m-3', 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'active', 1000, 7776001000, NULL)",
+          "ok"
+        ],
+        [
+          "UPDATE memories SET review_at = 9000000000 WHERE memory_id = 'm-3'",
+          "trigger:memory_review_extension"
+        ],
+        [
+          "UPDATE memories SET status = 'review_pending', delete_at = 10368001000 WHERE memory_id = 'm-3'",
+          "ok"
+        ],
+        [
+          "UPDATE memories SET status = 'active', delete_at = NULL, review_at = 9000000000 WHERE memory_id = 'm-3'",
+          "ok"
+        ],
+        [
+          "UPDATE memories SET delete_at = 9900000000 WHERE memory_id = 'm-3'",
+          "check"
+        ]
+      ]
+    },
+    {
+      "id": "forget-ledger-is-contiguous-and-append-only",
+      "refs": ["03 忘却と再取り込み", "ADR 0008"],
+      "steps": [
+        ["INSERT INTO forget_ledger VALUES (1, 'fl-1', 1000)", "ok"],
+        [
+          "INSERT INTO forget_ledger VALUES (3, 'fl-3', 1100)",
+          "trigger:forget_ledger_gap"
+        ],
+        ["INSERT INTO forget_ledger VALUES (2, 'fl-2', 1200)", "ok"],
+        ["INSERT INTO forget_ledger_items VALUES (2, 'turn', 't-9')", "ok"],
+        [
+          "INSERT INTO forget_ledger_items VALUES (4, 'turn', 't-9')",
+          "foreign_key"
+        ],
+        [
+          "UPDATE forget_ledger SET recorded_at = 0 WHERE forgetting_generation = 1",
+          "trigger:forget_ledger_append_only"
+        ],
+        [
+          "DELETE FROM forget_ledger WHERE forgetting_generation = 2",
+          "trigger:forget_ledger_append_only"
+        ]
+      ]
+    },
+    {
+      "id": "x12-one-alert-per-key-and-user-reminder",
+      "refs": ["X12", "08 §7"],
+      "steps": [
+        [
+          "INSERT INTO deliveries VALUES ('dl-1', 'key-1', '', 'dev-1', 'os_notification', 'intent_saved', 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO deliveries VALUES ('dl-2', 'key-1', '', 'dev-hub', 'os_notification', 'intent_saved', 1100)",
+          "unique"
+        ],
+        [
+          "INSERT INTO deliveries VALUES ('dl-3', 'key-1', 'reminder-1', 'dev-1', 'voice', 'intent_saved', 1200)",
+          "ok"
+        ],
+        [
+          "UPDATE deliveries SET status = 'delivery_unknown' WHERE delivery_id = 'dl-1'",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "id": "x65-auto-creation-once-per-entity-kind-and-target",
+      "refs": ["X65", "11 §5A"],
+      "steps": [
+        [
+          "INSERT INTO request_entities VALUES ('re-1', 'acct-1', 'thread-1', 'msg-1', 1, 'active', 0, NULL, 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operations VALUES ('op-task', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operations VALUES ('op-task-2', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operations VALUES ('op-event', NULL, 'create_event', 'remote_mutation', 1, 'approved', 0, 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO request_entity_operations VALUES ('re-1', 'create_task', 'acct-1', '', 'op-task')",
+          "ok"
+        ],
+        [
+          "INSERT INTO request_entity_operations VALUES ('re-1', 'create_task', 'acct-1', '', 'op-task-2')",
+          "unique"
+        ],
+        [
+          "INSERT INTO request_entity_operations VALUES ('re-1', 'create_event', 'acct-1', 'cal-1', 'op-event')",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "id": "qa41-input-snapshot-seal-rules",
+      "refs": ["QA41", "07 §1"],
+      "steps": [
+        [
+          "INSERT INTO input_snapshots VALUES ('in-1', 1, NULL, NULL, 'typed', 'sealed', 'submitted_text', 'submitted_text', NULL, 1, 1, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO input_snapshots VALUES ('in-2', 1, NULL, NULL, 'live_fragment', 'sealed', 'live_transcript_policy', 'unverified', 1, 1, 1, 3)",
+          "check"
+        ],
+        [
+          "INSERT INTO input_snapshots VALUES ('in-3', 1, NULL, NULL, 'live_fragment', 'sealed', 'live_transcript_policy', 'live_policy_observed', NULL, 1, 1, 3)",
+          "check"
+        ],
+        [
+          "INSERT INTO input_snapshots VALUES ('in-4', 1, NULL, NULL, 'typed', 'collecting', 'submitted_text', 'submitted_text', NULL, 1, 1, NULL)",
+          "check"
+        ],
+        [
+          "INSERT INTO input_snapshots VALUES ('in-1', 1, NULL, NULL, 'typed', 'superseded', NULL, 'submitted_text', NULL, 1, 1, NULL)",
+          "unique"
+        ]
+      ]
+    },
+    {
+      "id": "sealed-blob-nonce-is-not-reused",
+      "refs": ["02 保存と秘密情報", "08 §5"],
+      "steps": [
+        [
+          "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-x', 'proposal', 'workflows', 'w-1', 0, 1, 'k1', X'000000000000000000000001', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "unique"
+        ],
+        [
+          "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-y', 'proposal', 'workflows', 'w-1', 0, 1, 'k1', X'0000000000000000000003e7', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-z', 'proposal', 'workflows', 'w-1', 0, 1, 'k1', X'0000000000000000000003e6', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "unique"
+        ],
+        [
+          "INSERT INTO sealed_blobs VALUES ('b-w', 'proposal', 'workflows', 'w-2', 0, 1, 'k1', X'0000000000000000000003e5', X'00', X'00', 1000, NULL)",
+          "check"
+        ],
+        [
+          "INSERT INTO sealed_blobs VALUES ('b-v', 'plain_text', 'workflows', 'w-3', 0, 1, 'k1', X'0000000000000000000003e4', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+          "check"
+        ]
+      ]
+    },
+    {
+      "id": "pairing-and-command-scope-limits",
+      "refs": ["02 端末登録と接続", "07 §2"],
+      "steps": [
+        [
+          "INSERT INTO pairing_sessions VALUES ('pair-1', X'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 1000, 301000, 5, 0)",
+          "ok"
+        ],
+        [
+          "INSERT INTO pairing_sessions VALUES ('pair-2', X'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 1000, 301001, 5, 0)",
+          "check"
+        ],
+        [
+          "INSERT INTO pairing_claims VALUES ('cl-1', 'pair-1', '合成', 'windows', X'1111111111111111111111111111111111111111111111111111111111111111', 'approved', 301000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO pairing_claims VALUES ('cl-2', 'pair-1', '合成', 'macos', X'2222222222222222222222222222222222222222222222222222222222222222', 'approved', 301000, NULL)",
+          "unique"
+        ],
+        [
+          "INSERT INTO pairing_sessions VALUES ('pair-3', X'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 1000, 301000, 5, 0)",
+          "ok"
+        ],
+        [
+          "INSERT INTO pairing_claims VALUES ('cl-3', 'pair-3', '合成', 'macos', X'3333333333333333333333333333333333333333333333333333333333333333', 'consumed', 301000, NULL)",
+          "check"
+        ],
+        [
+          "INSERT INTO command_scopes VALUES ('cs-1', 'dev-1', 'core-1', 1000, 86401000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO command_scopes VALUES ('cs-2', 'dev-1', 'core-1', 1000, 86401001, NULL)",
+          "check"
+        ]
+      ]
+    },
+    {
+      "id": "undo-window-and-single-undo",
+      "refs": ["X24", "J12"],
+      "steps": [
+        [
+          "INSERT INTO operations VALUES ('op-auto', NULL, 'label_mail', 'remote_mutation', 1, 'succeeded', 3, 1000, 2000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operations VALUES ('op-comp-1', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operations VALUES ('op-comp-2', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL)",
+          "ok"
+        ],
+        [
+          "INSERT INTO auto_actions VALUES ('op-auto', 'label_mail', 2, 2000, 2000)",
+          "check"
+        ],
+        [
+          "INSERT INTO auto_actions VALUES ('op-auto', 'label_mail', 2, 2000, 2592002000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO undo_records VALUES ('u-1', 'op-auto', 'op-comp-1', 'in_progress', 3000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO undo_records VALUES ('u-2', 'op-auto', 'op-comp-2', 'in_progress', 3100)",
+          "unique"
+        ],
+        [
+          "UPDATE undo_records SET status = 'failed' WHERE undo_id = 'u-1'",
+          "ok"
+        ],
+        [
+          "INSERT INTO undo_records VALUES ('u-2', 'op-auto', 'op-comp-2', 'in_progress', 3100)",
+          "ok"
+        ]
+      ]
+    },
+    {
+      "id": "candidate-key-outlives-excerpt-by-90-days",
+      "refs": ["11 §4"],
+      "steps": [
+        [
+          "INSERT INTO notification_candidates VALUES ('cand-1', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'resolved', 1000, 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO notification_candidates VALUES ('cand-1', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'resolved', 1000, 8380801000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO notification_candidates VALUES ('cand-2', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'new', NULL, NULL)",
+          "unique"
+        ],
+        [
+          "INSERT INTO notification_candidates VALUES ('cand-3', NULL, NULL, NULL, 'research_done', 'key-b', NULL, NULL, 'resolved', NULL, NULL)",
+          "check"
+        ],
+        [
+          "INSERT INTO notification_candidates VALUES ('cand-4', NULL, NULL, NULL, 'research_done', 'key-c', NULL, NULL, 'dismissed', 1000, NULL)",
+          "check"
+        ]
+      ]
+    },
+    {
+      "id": "live-session-and-deployment-guards",
+      "refs": ["10 §2A", "QA26"],
+      "steps": [
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at) VALUES ('r-live', 'q-live', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, 0, 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'closed', 1, 'close_confirmed', NULL, 'r-live', 1000, 2000, 'silence')",
+          "check"
+        ],
+        [
+          "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'closed', 1, 'close_unconfirmed', NULL, 'r-live', 1000, 2000, 'silence')",
+          "ok"
+        ],
+        [
+          "INSERT INTO deployments VALUES ('dep-1', 'intent.luna.v1', 'active', '{}', 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO deployments VALUES ('dep-2', 'intent.luna.v1', 'active', '{}', 1100)",
+          "unique"
+        ],
+        [
+          "INSERT INTO deployments VALUES ('dep-3', 'intent.luna.v1', 'suspended', '{}', 1200)",
+          "ok"
+        ],
+        [
+          "INSERT INTO evaluation_results VALUES ('ev-1', 'dep-1', 'all', '{}', 1300)",
+          "check"
+        ]
+      ]
+    }
+  ]
+}

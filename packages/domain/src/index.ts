@@ -1,6 +1,7 @@
-// B00: 経路の検査・意図表・実行可否・操作状態・音声制御・会話・予算・同期・抽出・関連解析・記憶・モデル評価の純粋な規則。DB・Core・OS には依存しない。
+// B00: 経路の検査・意図表・実行可否・操作状態・音声制御・会話・予算・同期・抽出・関連解析・記憶・モデル評価・承認・通知・削除期限の純粋な規則。DB・Core・OS には依存しない。
 export * from './analysis.js';
 export * from './api.js';
+export * from './approval.js';
 export * from './audio.js';
 export * from './budget.js';
 export * from './conversation.js';
@@ -8,6 +9,8 @@ export * from './evaluation.js';
 export * from './extraction.js';
 export * from './intents.js';
 export * from './memory.js';
+export * from './notification.js';
 export * from './operations.js';
 export * from './readiness.js';
+export * from './retention.js';
 export * from './sync.js';

@@ -5,6 +5,10 @@
 // 標準出力には機械向けの JSON を 1 行ずつ、標準エラーには人向けの記録を書く。
 
 import { homedir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { createNodeCommandRunner } from '@buddy/platform';
+import { runAutostart } from './autostart.js';
+import type { AutostartAction } from './autostart.js';
 import { join, resolve } from 'node:path';
 import { readFile, realpath } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
@@ -27,14 +31,19 @@ const EXIT = {
   refused: 4,
   // start: 起動前の検査が理由を返した。
   preflight_failed: 5,
+  // autostart: この OS では対応しない、または登録・解除に失敗した。
+  autostart_failed: 6,
 } as const;
 
 const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
   start  フォアグラウンドで起動する
-         --mock-key-protection              模擬の鍵保護で起動する（B01 の模擬起動）
+         （既定では実行中の OS の鍵保護を確かめ、使えなければ起動しない）
+         --mock-key-protection              模擬の鍵保護で起動する（試験・模擬起動）
          --mock-key-protection-unavailable  模擬の鍵保護が使えない状態を再現する
   status 状態を JSON で表示する（動いていなければ終了コード 3）
-  stop   停止を要求し、解放まで待つ`;
+  stop   停止を要求し、解放まで待つ
+  autostart <enable|disable|status>
+         ログイン後の自動起動（macOS の LaunchAgent）。enable は次のログインから有効で、すぐには起動しない`;
 
 const out = (value: object) =>
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -66,9 +75,15 @@ async function main(argv: readonly string[]): Promise<number> {
     return EXIT.ok;
   }
   const command = positionals[0];
+  const action = positionals[1];
+  const autostartCommand =
+    command === 'autostart' &&
+    positionals.length === 2 &&
+    ['enable', 'disable', 'status'].includes(action ?? '');
   if (
-    positionals.length !== 1 ||
-    !['start', 'status', 'stop'].includes(command ?? '')
+    !autostartCommand &&
+    (positionals.length !== 1 ||
+      !['start', 'status', 'stop'].includes(command ?? ''))
   ) {
     process.stderr.write(`${USAGE}\n`);
     return EXIT.usage;
@@ -96,7 +111,24 @@ async function main(argv: readonly string[]): Promise<number> {
         : 'os';
     return start(dataDir, mode);
   }
+  if (autostartCommand) return autostart(action as AutostartAction, dataDir);
   return command === 'status' ? status(dataDir) : stop(dataDir);
+}
+
+async function autostart(
+  action: AutostartAction,
+  dataDir: string,
+): Promise<number> {
+  const outcome = await runAutostart(action, dataDir, {
+    nodePlatform: process.platform,
+    runner: createNodeCommandRunner(),
+    homeDir: homedir(),
+    uid: process.getuid?.(),
+    nodePath: process.execPath,
+    coreCliPath: fileURLToPath(import.meta.url),
+  });
+  out(outcome.output);
+  return outcome.ok ? EXIT.ok : EXIT.autostart_failed;
 }
 
 async function start(
@@ -121,7 +153,7 @@ async function start(
       : ['SIGINT', 'SIGTERM'];
   for (const name of signalNames) process.on(name, onSignal);
   try {
-    if (mode !== 'os') log('模擬の鍵保護で起動します（実検査は B01-02）。');
+    if (mode !== 'os') log('模擬の鍵保護で起動します（試験・模擬起動）。');
     try {
       handle = await startCore({
         dataDir,

@@ -70,6 +70,17 @@ test('Core の Electron 依存を拒否し Node 組み込みは受け付ける',
     ),
     [],
   );
+  // 動的 import の @electron/* も拒否する（以前の正規表現は @electron/remote を見逃していた）。
+  for (const specifier of ['electron', '@electron/remote'])
+    assert.ok(
+      (
+        await violations(
+          `export const load = () => import('${specifier}');\n`,
+          'apps/core/src/probe.ts',
+        )
+      ).some((message) => message.ruleId === 'no-restricted-syntax'),
+      specifier,
+    );
 });
 test('共有層から platform への直接依存を拒否する', async () => {
   for (const [filePath, specifiers] of [

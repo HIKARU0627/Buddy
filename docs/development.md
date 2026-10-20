@@ -10,7 +10,7 @@
 - TypeScript は 6.0.3 を固定。typescript-eslint 8.71.2 の対応範囲が `>=4.8.4 <6.1.0` のため、6.1 以上へ単独更新しない。
 - `@types/node` は実行環境の Node.js 24 系に合わせ、24.19.2 を固定する。
 - Dependabot は TypeScript 6.1 以上と `@types/node` 25 以上を更新対象から除外する。互換範囲内の更新は継続する。上限の見直し時は linter の対応範囲または Node の実行環境・型定義を揃え、lockfile と本手順を更新して全 OS の CI を確認する。
-- 共通層の tsconfig は DOM / Node の型を読み込まない。Core / storage のみ Node 型を追加する。
+- 共通層の tsconfig は DOM / Node の型を読み込まない。Core / storage / platform のみ Node 型を追加する。
 - `.env` は現段階では不要。個人の認証、データ、設定はリポジトリ外または gitignore 対象に置く。
 
 ## Codex / Claude Code

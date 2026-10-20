@@ -249,14 +249,19 @@ test(
     assert.deepEqual(lastJson(unavailable.stdout), {
       event: 'refused',
       code: 'preflight_failed',
-      reasons: ['key_protection_unavailable'],
+      reasons: ['key_protection_unavailable:mock_unavailable'],
     });
-    // 実検査（B01-02）がない間は、模擬の指定なしでは起動しない。平文への切り替えはしない。
-    const unimplemented = await run(['start', '--data-dir', dataDir]);
-    assert.equal(unimplemented.code, 5);
-    assert.deepEqual(lastJson(unimplemented.stdout)['reasons'], [
-      'key_protection_check_not_implemented',
-    ]);
+    // 模擬の指定がなければ実行中の OS の鍵保護を確かめる。Linux・Windows の中枢は初期版の対象外なので起動しない。
+    // macOS では実機のキーチェーンを確かめることになるため、この試験では実行しない。
+    if (process.platform !== 'darwin') {
+      const unsupported = await run(['start', '--data-dir', dataDir]);
+      assert.equal(unsupported.code, 5);
+      const [reason = ''] = lastJson(unsupported.stdout)['reasons'] as string[];
+      assert.match(
+        reason,
+        /^key_protection_unavailable:(linux|windows)_core_not_supported_in_initial_release$/u,
+      );
+    }
     await assert.rejects(readdir(dataDir), { code: 'ENOENT' });
   },
 );

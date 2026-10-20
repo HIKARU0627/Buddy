@@ -48,6 +48,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 | `packages/contracts` | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続         |
 | `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成               |
 | `packages/storage`   | Core の保存アダプター。マイグレーション案は B00 で作成                    |
+| `packages/platform`  | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う         |
 | `apps/core`          | Electron から独立した Node.js 中枢。起動・停止・排他・ローカル制御（B01） |
 | `apps/desktop`       | 将来の Electron / React クライアントの配置先。B02 で実装                  |
 | `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                            |

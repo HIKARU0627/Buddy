@@ -1,7 +1,7 @@
 # ADR 0013: OS 別の起動・監督アダプターと鍵保護不能時の停止
 
 - 日付: 2026-10-20
-- 状態: B01-02（#44）の判断。`packages/platform` の境界・macOS の LaunchAgent・診断・鍵保護の可否の確認を実装し、模擬の runner で試験した。実機の launchctl への登録、pmset・fdesetup・security の実機での読み取り、Core への組み込みは未実施。
+- 状態: B01-02（#44）の判断。`packages/platform` の境界・macOS の LaunchAgent・診断・鍵保護の可否の確認を実装し、模擬の runner で試験した。Core の起動前検査と `buddy-core autostart` に組み込んだ。実機の launchctl への登録、pmset・fdesetup・security の実機での読み取りは未実施（B01-05）。
 - 根拠: 設計 02（処理の配置・保存と秘密情報・マルチプラットフォーム）、06 B01・初期のコード配置、09 §7、決定事項 J01・質問129。今回の作業環境では設計 02 の本文を `.local/design/notion/` に取得できなかったため、司令塔から受け取った要約に基づく。原本との照合はレビューで行う。
 
 ## 決めたこと
@@ -35,5 +35,6 @@
 
 - macOS のキーチェーンへの保存・暗号化（KeyStore の実装）は B02。
 - 実機での LaunchAgent の登録・ログイン後の再開・pmset・fdesetup・security の読み取りの確認は B01-05。今回の試験は模擬の runner とファイル出力だけ。
-- Core への組み込み（起動前検査で起動を拒否し理由を表示する、設定で自動起動を有効にする操作）は別作業。
+- Core への組み込みは司令塔が行った。`buddy-core start` は既定で実行中の OS の鍵保護を確かめ、使えなければ `key_protection_unavailable:<理由>` で起動を拒否する（Linux・Windows の中枢は初期版の対象外）。`--mock-key-protection` は試験・模擬起動用。
+- `buddy-core autostart enable | disable | status` を追加した。enable は LaunchAgent を登録するだけで即時には起動しない（`loadNow: false`）。実行中の Core と二重に起動しないためで、次のログインから有効になる。status はスリープ設定・FileVault の警告も返す。
 - 端末能力のアダプター、Windows・Linux の中枢の正式対応、インストーラー・署名は対象外。

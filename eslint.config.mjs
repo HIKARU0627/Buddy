@@ -128,7 +128,7 @@ export default tseslint.config(
         'error',
         {
           selector:
-            'ImportExpression[source.value=/^(electron|@electron\\/|@buddy\\/desktop)(\\/|$)/]',
+            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop)(\\/|$)/]',
           message: 'Core / storage は Electron クライアントへ依存しません。',
         },
       ],

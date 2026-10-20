@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { controlEndpoint, defaultDataDir, socketPathTooLong } from './paths.js';
+import { createMockCommandRunner } from '@buddy/platform';
 import { keyProtectionCheck, runPreflight } from './preflight.js';
 
 // 期待値は手書き。パイプ名の SHA-256 は shasum -a 256 で別に求めた値。
@@ -79,15 +80,44 @@ test('unix socket paths longer than 103 bytes are refused, pipes are not limited
   );
 });
 
-test('preflight: mock key protection passes, unavailable and unimplemented checks refuse', async () => {
+test('preflight: mock key protection passes, unavailable key protection refuses without a plaintext fallback', async () => {
   assert.deepEqual(await runPreflight([keyProtectionCheck('mock')]), []);
   assert.deepEqual(
     await runPreflight([keyProtectionCheck('mock_unavailable')]),
-    ['key_protection_unavailable'],
+    ['key_protection_unavailable:mock_unavailable'],
   );
-  assert.deepEqual(await runPreflight([keyProtectionCheck('os')]), [
-    'key_protection_check_not_implemented',
-  ]);
+  // 初期版の中枢は macOS だけ。Linux・Windows の中枢は鍵保護がないので起動しない。
+  assert.deepEqual(
+    await runPreflight([keyProtectionCheck('os', { nodePlatform: 'linux' })]),
+    ['key_protection_unavailable:linux_core_not_supported_in_initial_release'],
+  );
+  assert.deepEqual(
+    await runPreflight([keyProtectionCheck('os', { nodePlatform: 'win32' })]),
+    [
+      'key_protection_unavailable:windows_core_not_supported_in_initial_release',
+    ],
+  );
+  // macOS は既定のキーチェーンを確かめる（模擬の runner。実機のコマンドは実行しない）。
+  const keychain = (exitCode: number, stdout: string) =>
+    createMockCommandRunner(() => ({ exitCode, stdout, stderr: '' }));
+  assert.deepEqual(
+    await runPreflight([
+      keyProtectionCheck('os', {
+        nodePlatform: 'darwin',
+        runner: keychain(0, '    "/synthetic/login.keychain-db"\n'),
+      }),
+    ]),
+    [],
+  );
+  assert.deepEqual(
+    await runPreflight([
+      keyProtectionCheck('os', {
+        nodePlatform: 'darwin',
+        runner: keychain(1, ''),
+      }),
+    ]),
+    ['key_protection_unavailable:default_keychain_query_failed'],
+  );
   assert.deepEqual(
     await runPreflight([() => ['a'], async () => [], async () => ['b', 'c']]),
     ['a', 'b', 'c'],

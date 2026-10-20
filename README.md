@@ -2,7 +2,7 @@
 
 生活・学習・開発を支える、デバイスに依存しない個人 AI アシスタント。
 
-現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。製品の Core / UI の実装と、製品の統合・実機・実 API・実請求の試験は未着手・未実施です。
+現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では Core の起動・状態確認・停止とローカル制御チャネルを実装しました（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)。模擬の試験のみ）。UI の実装と、製品の統合・実機・実 API・実請求の試験は未着手・未実施です。
 
 ## セットアップ
 
@@ -17,7 +17,7 @@ pnpm run hooks:install
 pnpm run check
 ```
 
-npm は pnpm の初回導入だけに使います。hook の準備時に公式 Gitleaks を検証付きで取得し、その後の検証は外部サービスへ接続しません。ローカルでも CI と同じ `pnpm run check` を使います。アプリ起動コマンドは B01 / B02 で追加します。
+npm は pnpm の初回導入だけに使います。hook の準備時に公式 Gitleaks を検証付きで取得し、その後の検証は外部サービスへ接続しません。ローカルでも CI と同じ `pnpm run check` を使います。Core の起動方法は [apps/core/README.md](apps/core/README.md) を参照してください。
 
 ## 最初に読むもの
 
@@ -37,21 +37,22 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [OpenAPI・認証・イベント・再接続の契約](docs/adr/0009-openapi-auth-events-and-reconnect.md)
 - [domain 境界と保存マイグレーション案](docs/adr/0010-domain-boundary-and-storage-draft.md)
 - [生成型・CI・試験対応表と B00 の完了判定](docs/adr/0011-b00-completion-review.md)
+- [Core のライフサイクルとローカル制御チャネル](docs/adr/0012-b01-core-lifecycle-and-local-control.md)
 - [OS 別の起動・監督アダプターと鍵保護不能時の停止](docs/adr/0013-b01-platform-adapters.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成
 
-| 場所                 | 責務・現在の状態                                                     |
-| -------------------- | -------------------------------------------------------------------- |
-| `packages/contracts` | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続    |
-| `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成          |
-| `packages/storage`   | Core の保存アダプター。マイグレーション案は B00 で作成               |
-| `apps/core`          | Electron から独立した Node.js 中枢。現在は型検査・ビルド用の空の入口 |
-| `apps/desktop`       | 将来の Electron / React クライアントの配置先。B02 で実装             |
-| `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                       |
-| `scripts`            | 環境確認、設計資料の整合検査、試験実行                               |
-| `docs/design`        | 公開できる設計概要と非公開原本の参照手順                             |
+| 場所                 | 責務・現在の状態                                                          |
+| -------------------- | ------------------------------------------------------------------------- |
+| `packages/contracts` | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続         |
+| `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成               |
+| `packages/storage`   | Core の保存アダプター。マイグレーション案は B00 で作成                    |
+| `apps/core`          | Electron から独立した Node.js 中枢。起動・停止・排他・ローカル制御（B01） |
+| `apps/desktop`       | 将来の Electron / React クライアントの配置先。B02 で実装                  |
+| `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                            |
+| `scripts`            | 環境確認、設計資料の整合検査、試験実行                                    |
+| `docs/design`        | 公開できる設計概要と非公開原本の参照手順                                  |
 
 ## コマンド
 

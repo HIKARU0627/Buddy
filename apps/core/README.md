@@ -1,7 +1,7 @@
 # @buddy/core
 
 Electron から独立した Node.js 中枢です。B01-01 で、起動・状態確認・停止、単一起動の排他、同じマシン専用のローカル制御チャネルを実装しました（[ADR 0012](../../docs/adr/0012-b01-core-lifecycle-and-local-control.md)）。
-HTTP API・端末との接続・認証・TLS は B03、DB は B02、LaunchAgent と鍵保護の実検査は B01-02 で追加します。
+HTTP API・端末との接続・認証・TLS は B03、DB は B02 で追加します。鍵保護の可否の確認と LaunchAgent は `@buddy/platform`（ADR 0013）を使います。
 
 ## 使い方
 
@@ -14,7 +14,8 @@ node apps/core/dist/cli.js stop                          # 停止を要求し、
 ```
 
 - `--data-dir <path>` でデータディレクトリを指定できます。既定は macOS `~/Library/Application Support/Buddy/core`、Windows `%APPDATA%\Buddy\core`、Linux `$XDG_DATA_HOME/buddy/core`（なければ `~/.local/share/buddy/core`）です。
-- 鍵保護の実検査（B01-02）がまだないため、`start` は `--mock-key-protection` を付けた模擬起動だけを受け付けます。`--mock-key-protection-unavailable` は鍵保護が使えない状態を再現し、起動を拒否します。平文の保存へ切り替える経路はありません。
+- `start` は既定で実行中の OS の鍵保護を確かめ、使えなければ起動を拒否します（初期版の中枢は macOS だけ）。`--mock-key-protection` は試験・模擬起動用、`--mock-key-protection-unavailable` は鍵保護が使えない状態を再現します。平文の保存へ切り替える経路はありません。
+- `autostart enable | disable | status` でログイン後の自動起動（macOS の LaunchAgent）を設定します。enable は次のログインから有効で、すぐには起動しません。
 - 標準出力には機械向けの JSON を 1 行ずつ、標準エラーには人向けの記録を書きます。
 - 終了コード: 0 正常、1 障害、2 使い方の誤り、3 動いている Core がない（status / stop）、4 排他による拒否、5 起動前の検査による拒否。
 
@@ -40,7 +41,8 @@ node apps/core/dist/cli.js stop                          # 停止を要求し、
 | `src/control-channel.ts`  | Unix socket / 名前付きパイプの送受信                   |
 | `src/data-dir.ts`         | データディレクトリの準備と状態ファイルの原子的な書込み |
 | `src/paths.ts`            | OS 別の既定値と接続先                                  |
-| `src/preflight.ts`        | 起動前の検査の入口と模擬の鍵保護                       |
+| `src/preflight.ts`        | 起動前の検査の入口と鍵保護の確認（platform の probe）  |
+| `src/autostart.ts`        | ログイン後の自動起動の設定（platform の LaunchAgent）  |
 | `src/strict-json.ts`      | 重複キーを拒否する JSON の読み取り                     |
 
 試験は `src/*.test.ts` で、ビルド後の `dist/*.test.js` を `pnpm test` が実行します。子プロセスで `dist/cli.js` を動かすヘッドレス起動の試験を含みます（模擬のみ。実機の LaunchAgent・鍵管理・電源断は未実施）。

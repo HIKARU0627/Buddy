@@ -38,6 +38,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [domain 境界と保存マイグレーション案](docs/adr/0010-domain-boundary-and-storage-draft.md)
 - [生成型・CI・試験対応表と B00 の完了判定](docs/adr/0011-b00-completion-review.md)
 - [Core のライフサイクルとローカル制御チャネル](docs/adr/0012-b01-core-lifecycle-and-local-control.md)
+- [OS 別の起動・監督アダプターと鍵保護不能時の停止](docs/adr/0013-b01-platform-adapters.md)
 - [デスクトップの型付き IPC の契約](docs/adr/0014-b01-desktop-ipc-contract.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
@@ -48,6 +49,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 | `packages/contracts` | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続         |
 | `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成               |
 | `packages/storage`   | Core の保存アダプター。マイグレーション案は B00 で作成                    |
+| `packages/platform`  | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う         |
 | `apps/core`          | Electron から独立した Node.js 中枢。起動・停止・排他・ローカル制御（B01） |
 | `apps/desktop`       | 将来の Electron / React クライアントの配置先。B02 で実装                  |
 | `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                            |

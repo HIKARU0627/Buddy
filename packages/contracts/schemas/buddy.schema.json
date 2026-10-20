@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://buddy.invalid/contracts/v1",
   "title": "BuddyContract",
-  "description": "B00初回範囲。全24意図や全APIの完成を表さない。",
+  "description": "B00 の契約（ADR 0002〜0011）。形式だけを表し、認可・状態遷移・意味の検査は domain と Core が行う。",
   "anyOf": [
     {
       "$ref": "#/$defs/InputSnapshot"

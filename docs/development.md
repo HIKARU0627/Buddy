@@ -55,7 +55,7 @@ GitHub Actions は Ubuntu / Windows / macOS で同じ `pnpm install --frozen-loc
 - `pnpm test` の前に TypeScript をビルドする。`pnpm run check` はビルドを含む。
 - 非公開資料を CI へ持ち込まない。`pnpm run design:check` はローカルに非公開 manifest がある場合だけ使う。
 - 情報管理と履歴確認は [公開前確認](public-release.md) を参照する。
-- 初回範囲のスキーマ・生成型・OpenAPI は `pnpm run contracts:check` で検査し、`pnpm run check` に含める。型の更新は `pnpm run contracts:generate`。CI 合格は全契約や製品動作の完成を意味しない。
+- スキーマ・生成型・OpenAPI は `pnpm run contracts:check` で検査し、`pnpm run check` に含める。型の更新は `pnpm run contracts:generate`。わざと壊した契約が落ちることも `scripts/contract-gate.test.mjs` で確かめる。CI 合格は製品動作の完成を意味しない。
 - 直接 import の静的検査は依存境界を守る補助であり、サードパーティーの推移的依存や実行時隔離を証明しない。
 - 実機の音声停止、OS 鍵管理、実請求は該当工程で別に検証する。
 

@@ -1,6 +1,6 @@
 # B00: 契約のファイル化
 
-状態: **一部ファイル化・全体は未完了**。初回はラベル変更の契約経路、入力根拠、予算記録、候補モデル一覧、検証ツールを作成しました。Core / UI / DB / 外部 API の実装は含みません。
+状態: **終了条件は揃った（B00-10、[ADR 0011](../adr/0011-b00-completion-review.md)）**。契約・domain の規則・保存案・試験対応表をファイル化し、B01 に着手できます。Core / UI / DB / 外部 API の実装と、製品の統合・実機・実 API・実請求の試験は含みません（すべて未実施）。
 根拠: 非公開原本の設計 06、設計 09 §6〜7（[参照方法](../design/README.md)）。
 
 ## 最初の作業
@@ -20,11 +20,12 @@
 - `packages/contracts/schemas/buddy.schema.json`: 共通表現・入力・ラベル変更・受付と状態・予算の記録形式。24 intent は名前の一覧まで、固有引数は label_mail だけ。
 - `packages/contracts/openapi.yaml`: 設計 07 §2 の全経路と、端末の登録・失効・連携の接続（U10）。経路ごとの Core の検査は `x-buddy-core-checks` と domain の `api.ts` が同じ表（[ADR 0009](../adr/0009-openapi-auth-events-and-reconnect.md)）。
 - `packages/contracts/src/generated.ts`: Schema から生成。生成差分を CI で拒否。
-- `packages/contracts/fixtures/`: 正常／拒否例と H01。`workflow-label.json` は遷移の期待結果で、実行済み試験ではない。
+- `packages/contracts/fixtures/`・`tests/fixtures/`: 正常／拒否例と H01、各工程の手書きの期待値。実行済み試験ではない。
+- `tests/test-map.json`: X01〜X66・QA01〜QA45・MA01〜MA06 の担当工程・契約 fixture・実施状態。`tests/integration/`: B04 へ渡す故障点と証拠の形式。
 - 検証ツール: 厳格な生 JSON、JCS / H01、Schema・OpenAPI、生成型、局所的な不変条件を検査。F01 / F02 の記録形式を検査したことと QA41 / QA42 の統合合格は別。
 - モデル候補: 音声・即時判断・文章解析・高度相談・端末内 ASR を役割で分離。採用前に評価が必要で、実行可能な deployment manifest は未作成。
 
-契約ファイル化はモデルの本採用より先に進めます。正解例の本人確認は並行可能です。共通表現と用途別の版の型は B00-02（[ADR 0003](../adr/0003-common-representation.md)）、意図表・実行可否・入力から結果までの契約は B00-03（[ADR 0004](../adr/0004-intent-table-and-readiness.md)）、会話・委譲・音声制御・出力先は B00-04（[ADR 0005](../adr/0005-conversation-and-voice-control.md)）、予約 R・最大負担 M と精算は B00-05（[ADR 0006](../adr/0006-budget-reservation-and-liability.md)）、同期世代・抽出 v2・関連解析は B00-06（[ADR 0007](../adr/0007-sync-extraction-and-related-analysis.md)）、記憶・忘却とモデル評価の交換形式は B00-07（[ADR 0008](../adr/0008-memory-forgetting-and-model-evaluation.md)）、OpenAPI・認証・イベント・再接続は B00-08（[ADR 0009](../adr/0009-openapi-auth-events-and-reconnect.md)）、domain 境界と保存マイグレーション案は B00-09（[ADR 0010](../adr/0010-domain-boundary-and-storage-draft.md)）で決めました。次は生成型・CI・試験対応表と B00 の完了判定（B00-10）です。全終了条件が揃うまでは B01 の着手可能と判定しません。
+契約ファイル化はモデルの本採用より先に進めます。正解例の本人確認は並行可能です。共通表現と用途別の版の型は B00-02（[ADR 0003](../adr/0003-common-representation.md)）、意図表・実行可否・入力から結果までの契約は B00-03（[ADR 0004](../adr/0004-intent-table-and-readiness.md)）、会話・委譲・音声制御・出力先は B00-04（[ADR 0005](../adr/0005-conversation-and-voice-control.md)）、予約 R・最大負担 M と精算は B00-05（[ADR 0006](../adr/0006-budget-reservation-and-liability.md)）、同期世代・抽出 v2・関連解析は B00-06（[ADR 0007](../adr/0007-sync-extraction-and-related-analysis.md)）、記憶・忘却とモデル評価の交換形式は B00-07（[ADR 0008](../adr/0008-memory-forgetting-and-model-evaluation.md)）、OpenAPI・認証・イベント・再接続は B00-08（[ADR 0009](../adr/0009-openapi-auth-events-and-reconnect.md)）、domain 境界と保存マイグレーション案は B00-09（[ADR 0010](../adr/0010-domain-boundary-and-storage-draft.md)）で決めました。生成型・CI・試験対応表と B00 の完了判定は B00-10（[ADR 0011](../adr/0011-b00-completion-review.md)）です。
 
 今回のファイル形式の選択と、未実装の実行境界は [ADR 0002](../adr/0002-contract-validation.md) と [初回の境界仕様](boundaries.md) にまとめています。
 
@@ -42,15 +43,15 @@
 
 ## 終了条件
 
-- [ ] OpenAPI と JSON Schema が構文・参照検査に通る。
-- [ ] 代表的な正常入力と拒否入力を検証できる。
-- [ ] 共通 ID・版・状態が一意で、B01〜B04 が同じ契約を使える。
-- [ ] TypeScript の型生成・生成差分検査を CI に組み込む。
-- [ ] H01 と内容差分・不正 Unicode・重複 JSON キー・時刻・順序の検証例がある。
-- [ ] QA41〜QA45 の入力・期待遷移が揃い、後続の実行工程へ対応付けられる。
-- [ ] domain の境界と storage のキー・一意制約・暗号化範囲・削除期限が整合する。
-- [ ] X01〜X66 / QA01〜QA45 の対応と実施状態を追跡できる。
-- [ ] 認可・費用・保存・再実行などの意味を実装者が推測する未決事項が残っていない。
+- [x] OpenAPI と JSON Schema が構文・参照検査に通る。（ADR 0009・0011）
+- [x] 代表的な正常入力と拒否入力を検証できる。（schema-cases・api-cases ほか）
+- [x] 共通 ID・版・状態が一意で、B01〜B04 が同じ契約を使える。（ADR 0003・0009・0010）
+- [x] TypeScript の型生成・生成差分検査を CI に組み込む。（contracts:check とゲートの試験。ADR 0011）
+- [x] H01 と内容差分・不正 Unicode・重複 JSON キー・時刻・順序の検証例がある。
+- [x] QA41〜QA45 の入力・期待遷移が揃い、後続の実行工程へ対応付けられる。（tests/test-map.json）
+- [x] domain の境界と storage のキー・一意制約・暗号化範囲・削除期限が整合する。（ADR 0010）
+- [x] X01〜X66 / QA01〜QA45 の対応と実施状態を追跡できる。（tests/test-map.json。製品試験はすべて未実施）
+- [x] 認可・費用・保存・再実行などの意味を実装者が推測する未決事項が残っていない。（U01〜U18 解決済み。ADR 0011）
 
 実機音声・外部 API・実請求の全試験合格は B00 の完了条件へ前倒ししません。
 B00 完了後は B01〜B03 の最小実装、続いて B04 の X01〜X11 へ進みます。

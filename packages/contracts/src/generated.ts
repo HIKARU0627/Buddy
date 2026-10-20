@@ -1,7 +1,7 @@
 // Generated from buddy.schema.json. Do not edit; run contracts:generate.
 
 /**
- * B00初回範囲。全24意図や全APIの完成を表さない。
+ * B00 の契約（ADR 0002〜0011）。形式だけを表し、認可・状態遷移・意味の検査は domain と Core が行う。
  */
 export type BuddyContract =
   | InputSnapshot

@@ -1,0 +1,146 @@
+// デスクトップの UI レンダラーと main の間の限定 IPC の受付と、端末の入出力・ロックの状態の規則
+// （設計 10 §1・§1A、07 §2・§5、01 いつも見える状態、02 停止、ADR 0014）。
+// 形式（JSON Schema の DesktopIpcRequest）は main が先に検査し、不正なら invalid_request にする。
+// 中枢の停止・来客モード・全体停止はこの規則の対象外（B03 以降に Core が扱う）。
+
+export const DESKTOP_IPC_CHANNELS = [
+  'desktop.get_state',
+  'desktop.io_stop',
+  'desktop.io_resume',
+  'desktop.window_hide',
+  'desktop.client_quit',
+] as const;
+
+export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
+
+export const DESKTOP_NOTIFICATION_CHANNELS = [
+  'desktop.state_changed',
+  'desktop.power_event',
+] as const;
+
+export const DESKTOP_POWER_EVENTS = [
+  'lock_screen',
+  'unlock_screen',
+  'suspend',
+  'resume',
+  'shutdown',
+] as const;
+
+export type DesktopPowerEvent = (typeof DESKTOP_POWER_EVENTS)[number];
+
+export const DESKTOP_IPC_REJECT_REASONS = [
+  'invalid_request',
+  'untrusted_sender',
+  'device_locked',
+  'screen_operation_required',
+  'not_stopped',
+  'core_required',
+  'io_epoch_mismatch',
+] as const;
+
+export type DesktopIpcRejectReason =
+  (typeof DESKTOP_IPC_REJECT_REASONS)[number];
+
+export interface DesktopIoState {
+  // ロック状態が取得できなければ unknown（07 §2）。
+  readonly lockState: 'unlocked' | 'locked' | 'unknown';
+  readonly stopScope: 'none' | 'local' | 'guest' | 'global';
+  readonly ioEpoch: string;
+}
+
+export interface DesktopIpcSender {
+  // 送信元が main の作った UI レンダラーの主フレームである（main が webContents から判定する）。
+  readonly trustedSender: boolean;
+  // ウィンドウが表示中かつ前面にある。再開を画面操作として扱う条件。
+  readonly windowFocused: boolean;
+}
+
+export type DesktopAdmission =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: DesktopIpcRejectReason };
+
+const reject = (reason: DesktopIpcRejectReason): DesktopAdmission => ({
+  ok: false,
+  reason,
+});
+
+const isChannel = (channel: string): channel is DesktopIpcChannel =>
+  (DESKTOP_IPC_CHANNELS as readonly string[]).includes(channel);
+
+// 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
+// 状態欄の取得・入出力停止・ウィンドウを閉じる・クライアント終了は、ロック中・不明・停止中でも受け付ける。
+// 再開は ロック解除済み → 画面操作 → この端末の停止 → 期待する io_epoch の一致 の順に検査する。
+export function admitDesktopRequest(
+  channel: string,
+  expectedIoEpoch: string | null,
+  state: DesktopIoState,
+  sender: DesktopIpcSender,
+): DesktopAdmission {
+  if (!isChannel(channel)) return reject('invalid_request');
+  if (!sender.trustedSender) return reject('untrusted_sender');
+  if (channel !== 'desktop.io_resume') return { ok: true };
+  if (state.lockState !== 'unlocked') return reject('device_locked');
+  if (!sender.windowFocused) return reject('screen_operation_required');
+  if (state.stopScope === 'none') return reject('not_stopped');
+  // 来客モード・全体停止の解除は中枢の操作（B03 以降）。デスクトップだけでは解除しない。
+  if (state.stopScope !== 'local') return reject('core_required');
+  if (expectedIoEpoch === null || expectedIoEpoch !== state.ioEpoch)
+    return reject('io_epoch_mismatch');
+  return { ok: true };
+}
+
+export function desktopInputPermitted(state: DesktopIoState): boolean {
+  return state.lockState === 'unlocked' && state.stopScope === 'none';
+}
+
+// ロック中・ロック状態不明では状態欄の内容を隠す（01 いつも見える状態）。
+export function statusBarVisibility(
+  lockState: DesktopIoState['lockState'],
+): 'shown' | 'hidden' {
+  return lockState === 'unlocked' ? 'shown' : 'hidden';
+}
+
+export type DesktopIoEvent =
+  | { readonly kind: 'io_stop' }
+  | { readonly kind: 'io_resume' }
+  | { readonly kind: 'power'; readonly event: DesktopPowerEvent };
+
+// 停止していなければこの端末の停止にして io_epoch を進める。既に停止中なら範囲も世代も変えない
+// （来客モード・全体停止を local で上書きしない）。
+function stopLocally(state: DesktopIoState): DesktopIoState {
+  if (state.stopScope !== 'none') return state;
+  return {
+    ...state,
+    stopScope: 'local',
+    ioEpoch: (BigInt(state.ioEpoch) + 1n).toString(),
+  };
+}
+
+// 端末の入出力・ロックの状態の遷移。io_resume は admitDesktopRequest で受け付けた後だけ適用する。
+// ロック解除・スリープからの復帰では自動で再開しない（01、10 §1）。
+export function nextDesktopIoState(
+  state: DesktopIoState,
+  event: DesktopIoEvent,
+): DesktopIoState {
+  if (event.kind === 'io_stop') return stopLocally(state);
+  if (event.kind === 'io_resume')
+    return state.stopScope === 'local'
+      ? { ...state, stopScope: 'none' }
+      : state;
+  switch (event.event) {
+    case 'lock_screen':
+      return { ...stopLocally(state), lockState: 'locked' };
+    case 'unlock_screen':
+      return { ...state, lockState: 'unlocked' };
+    case 'suspend':
+      // 復帰後のロック状態を確かめるまで解除済みと扱わない（07 §2・§5）。
+      return {
+        ...stopLocally(state),
+        lockState: state.lockState === 'unlocked' ? 'unknown' : state.lockState,
+      };
+    case 'resume':
+      return state;
+    case 'shutdown':
+      return stopLocally(state);
+  }
+}

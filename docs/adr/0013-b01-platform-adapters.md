@@ -1,7 +1,7 @@
 # ADR 0013: OS 別の起動・監督アダプターと鍵保護不能時の停止
 
 - 日付: 2026-10-20
-- 状態: B01-02（#44）の判断。`packages/platform` の境界・macOS の LaunchAgent・診断・鍵保護の可否の確認を実装し、模擬の runner で試験した。Core の起動前検査と `buddy-core autostart` に組み込んだ。実機の launchctl への登録、pmset・fdesetup・security の実機での読み取りは未実施（B01-05）。
+- 状態: B01-02（#44）の判断。`packages/platform` の境界・macOS の LaunchAgent・診断・鍵保護の可否の確認を実装し、模擬の runner で試験した。Core の起動前検査と `buddy-core autostart` に組み込んだ。実機の launchctl への登録、pmset・fdesetup・security の実機での読み取りは未実施（B01-05）。鍵保護の可否の確認（`security default-keychain`）は B02-02 で KeyStore に基づく確認へ置き換えた（ADR 0017）。
 - 根拠: 設計 02（処理の配置・保存と秘密情報・マルチプラットフォーム）、06 B01・初期のコード配置、09 §7、決定事項 J01・質問129。今回の作業環境では設計 02 の本文を `.local/design/notion/` に取得できなかったため、司令塔から受け取った要約に基づく。原本との照合はレビューで行う。
 
 ## 決めたこと

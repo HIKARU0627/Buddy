@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { controlEndpoint, defaultDataDir, socketPathTooLong } from './paths.js';
-import { createMockCommandRunner } from '@buddy/platform';
+import { createMacKeychainKeyStore, createMockKeyStore } from '@buddy/platform';
+import type { KeyringModule } from '@buddy/platform';
 import { keyProtectionCheck, runPreflight } from './preflight.js';
 
 // 期待値は手書き。パイプ名の SHA-256 は shasum -a 256 で別に求めた値。
@@ -97,26 +98,65 @@ test('preflight: mock key protection passes, unavailable key protection refuses 
       'key_protection_unavailable:windows_core_not_supported_in_initial_release',
     ],
   );
-  // macOS は既定のキーチェーンを確かめる（模擬の runner。実機のコマンドは実行しない）。
-  const keychain = (exitCode: number, stdout: string) =>
-    createMockCommandRunner(() => ({ exitCode, stdout, stderr: '' }));
+  // macOS はキーチェーンのデータ鍵を取得（初回は作成）できるかを確かめる。
+  // 模擬の keyring モジュールを使い、実機のキーチェーンには触れない。
+  const items = new Map<string, string>();
+  const keyring = (getFails: boolean): KeyringModule => ({
+    AsyncEntry: class {
+      getPassword() {
+        return getFails
+          ? Promise.reject(new Error('synthetic keychain locked'))
+          : Promise.resolve(items.get('data-key') ?? null);
+      }
+      setPassword(value: string) {
+        items.set('data-key', value);
+        return Promise.resolve();
+      }
+    },
+  });
   assert.deepEqual(
     await runPreflight([
       keyProtectionCheck('os', {
         nodePlatform: 'darwin',
-        runner: keychain(0, '    "/synthetic/login.keychain-db"\n'),
+        keyStore: createMacKeychainKeyStore({
+          loadModule: () => Promise.resolve(keyring(false)),
+        }),
       }),
     ]),
     [],
+  );
+  assert.equal(items.size, 1);
+  assert.deepEqual(
+    await runPreflight([
+      keyProtectionCheck('os', {
+        nodePlatform: 'darwin',
+        keyStore: createMacKeychainKeyStore({
+          loadModule: () => Promise.resolve(keyring(true)),
+        }),
+      }),
+    ]),
+    ['key_protection_unavailable:keystore_read_failed'],
   );
   assert.deepEqual(
     await runPreflight([
       keyProtectionCheck('os', {
         nodePlatform: 'darwin',
-        runner: keychain(1, ''),
+        keyStore: createMacKeychainKeyStore({
+          loadModule: () => Promise.reject(new Error('no native binding')),
+        }),
       }),
     ]),
-    ['key_protection_unavailable:default_keychain_query_failed'],
+    ['key_protection_unavailable:keystore_module_unavailable'],
+  );
+  // 実機の検査に模擬の KeyStore を渡しても受け入れない。
+  assert.deepEqual(
+    await runPreflight([
+      keyProtectionCheck('os', {
+        nodePlatform: 'darwin',
+        keyStore: createMockKeyStore(),
+      }),
+    ]),
+    ['key_protection_unavailable:mock_not_allowed'],
   );
   assert.deepEqual(
     await runPreflight([() => ['a'], async () => [], async () => ['b', 'c']]),

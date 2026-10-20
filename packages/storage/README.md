@@ -7,6 +7,9 @@ Core 側の保存アダプターを置きます。B00 で保存案（マイグ�
 - `src/policy.ts`: 表ごとの本文の置き場所・削除期限・transaction の組、平文の本文に使ってはいけない列名、PRAGMA の読み戻しの判定（`pragmaReasons`）。
 - `src/connection.ts`: `openWriteConnection(path, { platform })`。DB のディレクトリ・ファイルの権限をそろえ、`connection.sql` を実行して読み戻し、一致しなければ接続を閉じて `StorageError` を投げる。
 - `src/migrations.ts`: `applyMigrations(db)`（版の順に 1 版ずつ transaction で適用、新しい版・適用済みの版の内容の変更を拒否）、`readSchemaVersion`、`initStoreGeneration`・`readStoreGeneration`。
+- `src/sealed-blob.ts`: sealed_blobs の封筒の暗号化・復号（[ADR 0017](../../docs/adr/0017-b02-keystore-and-encryption.md)）。`sealBlob(dataKey, plaintext, owner)` は AES-256-GCM（12 バイトの乱数の nonce・16 バイトのタグ）で暗号化し、形式版・key_id・nonce・暗号文・タグを分けて返します。所有者の表・ID・版・用途・形式版・key_id を長さ付きで連結した追加認証データに結び付け、`openBlob` は別の行・版・用途への差替え・改ざん・鍵の取り違え・形式版の不一致を理由を分けて拒否します。`sealWithDataKeyProvider` / `openWithDataKeyProvider` は KeyStore から鍵を取得できなければ暗号化・復号をしません。
+- `src/aes-gcm.ts`: node:crypto の AES-256-GCM の薄い包み。nonce を呼び出し側が渡すため、公開出口には出しません。
+- `fixtures/aes-256-gcm-cavp.json`: NIST CAVP の GCM のテストベクトル（出典・取得元の SHA-256 を記載）。
 
 B02-03 で DB worker と操作・承認・受付の保存、送出の許可の境界を作りました（[ADR 0018](../../docs/adr/0018-b02-db-worker-and-operation-store.md)）。
 
@@ -15,6 +18,6 @@ B02-03 で DB worker と操作・承認・受付の保存、送出の許可の�
 - `src/db-worker.ts`: worker_threads の入口（index.ts からは export しない）。書込み接続を所有する単一 writer で、外部 HTTP を実行しない。
 - `src/db-client.ts`: Core main 側の `DbWorkerClient`（受付 ACK と結果、成否不明の扱い、計測）と `DispatchPermit`（送出意図の COMMIT の成功の後にだけ作り、一度だけ使える）。
 
-依存は better-sqlite3 13.0.3（ビルド済みバイナリを同梱。pnpm のビルドの許可は不要）と、workspace の `@buddy/domain` です。
+依存は better-sqlite3 13.0.3（ビルド済みバイナリを同梱。pnpm のビルドの許可は不要）と、workspace の `@buddy/domain` です。KeyStore は `@buddy/platform` にあります。
 
-試験は `src/*.test.ts`（一時ファイル・メモリ上の DB、worker_threads の故障注入）と、開発ツールの `node:sqlite` で同じ保存案を検査する `scripts/storage.test.mjs` です。Core への組み込みと再起動の復元（B02-04）、暗号化と OS の KeyStore（B02-02）、外部送出（B04）、削除ジョブ、電源断の耐久性（X60）は未実装・未検証です。
+試験は `src/*.test.ts`（一時ファイル・メモリ上の DB、worker_threads の故障注入、公開テストベクトルとの照合・改ざんの注入・鍵が取れないときの停止）と、開発ツールの `node:sqlite` で同じ保存案を検査する `scripts/storage.test.mjs` です。sealed_blobs への保存と Core への組み込み・再起動の復元（B02-04）、外部送出（B04）、削除ジョブ、電源断の耐久性（X60）は未実装・未検証です。

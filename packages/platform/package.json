@@ -12,5 +12,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "2.1.1"
   }
 }

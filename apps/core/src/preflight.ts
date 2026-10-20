@@ -1,13 +1,13 @@
 // 起動前の検査の入口（設計 06 B01〜B03「鍵保護不能時の停止」、ADR 0012・0013）。
 // 検査は理由の配列を返し、一つでもあれば Core は起動しない。
-// 鍵保護の可否は @buddy/platform の probe で確かめる。平文の保存へ切り替える経路は作らない。
+// 鍵保護の可否は @buddy/platform の probe で、実際の KeyStore からデータ鍵を取得（初回は作成）できるかで
+// 確かめる（ADR 0013・0017）。平文の保存へ切り替える経路は作らない。
 import {
   createKeyProtectionProbe,
   createMockKeyProtectionProbe,
-  createNodeCommandRunner,
   keyProtectionPreflight,
 } from '@buddy/platform';
-import type { CommandRunner } from '@buddy/platform';
+import type { KeyStore } from '@buddy/platform';
 
 export type PreflightCheck = () =>
   readonly string[] | Promise<readonly string[]>;
@@ -21,7 +21,7 @@ export async function runPreflight(
 }
 
 export type KeyProtectionMode =
-  // 実行中の OS の鍵保護を確かめる（macOS はキーチェーン。初期版の中枢は macOS だけ）。
+  // 実行中の OS の鍵保護を確かめる（macOS はキーチェーンのデータ鍵。初期版の中枢は macOS だけ）。
   | 'os'
   // 模擬起動。模擬の鍵保護が使えるものとして扱う。
   | 'mock'
@@ -29,9 +29,10 @@ export type KeyProtectionMode =
   | 'mock_unavailable';
 
 export interface KeyProtectionCheckOptions {
-  // 試験で差し替える。省略時は実行中の OS と、shell を通さない実行。
+  // 試験で差し替える。省略時は実行中の OS と、その OS の KeyStore（macOS はキーチェーン）。
+  // keyStore は macOS でだけ使う。模擬の KeyStore（kind: 'mock'）は 'os' の検査では拒否される。
   readonly nodePlatform?: string;
-  readonly runner?: CommandRunner;
+  readonly keyStore?: KeyStore;
 }
 
 export function keyProtectionCheck(
@@ -48,7 +49,7 @@ export function keyProtectionCheck(
     keyProtectionPreflight(
       createKeyProtectionProbe(
         options.nodePlatform ?? process.platform,
-        options.runner ?? createNodeCommandRunner(),
+        options.keyStore === undefined ? {} : { keyStore: options.keyStore },
       ),
     );
 }

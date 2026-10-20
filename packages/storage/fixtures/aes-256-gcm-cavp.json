@@ -1,0 +1,93 @@
+{
+  "description": "AES-256-GCM の独立した期待値。NIST CAVP（Cryptographic Algorithm Validation Program）の GCM のテストベクトルから、鍵 256 ビット・IV 96 ビット・タグ 128 ビットの組を選び、値を .rsp ファイルからそのまま写した。検査対象の実装で生成していない。欄の名前は NIST SP 800-38D の記号（K: 鍵、IV: 初期化ベクトル、P: 平文、A: 追加認証データ、C: 暗号文、T: 認証タグ）で、.rsp の Key・IV・PT・AAD・CT・Tag に対応する。",
+  "source": {
+    "publisher": "NIST Cryptographic Algorithm Validation Program (CAVP)",
+    "page": "https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/cavp-testing-block-cipher-modes",
+    "archive": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/mac/gcmtestvectors.zip",
+    "archive_sha256": "f9fc479e134cde2980b3bb7cddbcb567b2cd96fd753835243ed067699f26a023",
+    "generator": "CAVS 14.0 (Generated on Fri Aug 31 2012)",
+    "retrieved": "2026-10-20"
+  },
+  "encrypt": {
+    "file": "gcmEncryptExtIV256.rsp",
+    "cases": [
+      {
+        "section": "[Keylen = 256] [IVlen = 96] [PTlen = 0] [AADlen = 0] [Taglen = 128] Count = 0",
+        "K": "b52c505a37d78eda5dd34f20c22540ea1b58963cf8e5bf8ffa85f9f2492505b4",
+        "IV": "516c33929df5a3284ff463d7",
+        "P": "",
+        "A": "",
+        "C": "",
+        "T": "bdc1ac884d332457a1d2664f168c76f0"
+      },
+      {
+        "section": "[Keylen = 256] [IVlen = 96] [PTlen = 0] [AADlen = 128] [Taglen = 128] Count = 0",
+        "K": "78dc4e0aaf52d935c3c01eea57428f00ca1fd475f5da86a49c8dd73d68c8e223",
+        "IV": "d79cf22d504cc793c3fb6c8a",
+        "P": "",
+        "A": "b96baa8c1c75a671bfb2d08d06be5f36",
+        "C": "",
+        "T": "3e5d486aa2e30b22e040b85723a06e76"
+      },
+      {
+        "section": "[Keylen = 256] [IVlen = 96] [PTlen = 128] [AADlen = 0] [Taglen = 128] Count = 0",
+        "K": "31bdadd96698c204aa9ce1448ea94ae1fb4a9a0b3c9d773b51bb1822666b8f22",
+        "IV": "0d18e06c7c725ac9e362e1ce",
+        "P": "2db5168e932556f8089a0622981d017d",
+        "A": "",
+        "C": "fa4362189661d163fcd6a56d8bf0405a",
+        "T": "d636ac1bbedd5cc3ee727dc2ab4a9489"
+      },
+      {
+        "section": "[Keylen = 256] [IVlen = 96] [PTlen = 104] [AADlen = 160] [Taglen = 128] Count = 0",
+        "K": "69b458f2644af9020463b40ee503cdf083d693815e2659051ae0d039e606a970",
+        "IV": "8d1da8ab5f91ccd09205944b",
+        "P": "f3e0e09224256bf21a83a5de8d",
+        "A": "036ad5e5494ef817a8af2f5828784a4bfedd1653",
+        "C": "c0a62d77e6031bfdc6b13ae217",
+        "T": "a794a9aaee48cd92e47761bf1baff0af"
+      },
+      {
+        "section": "[Keylen = 256] [IVlen = 96] [PTlen = 256] [AADlen = 384] [Taglen = 128] Count = 0",
+        "K": "dc776f0156c15d032623854b625c61868e5db84b7b6f9fbd3672f12f0025e0f6",
+        "IV": "67130951c4a57f6ae7f13241",
+        "P": "9378a727a5119595ad631b12a5a6bc8a91756ef09c8d6eaa2b718fe86876da20",
+        "A": "fd0920faeb7b212932280a009bac969145e5c316cf3922622c3705c3457c4e9f124b2076994323fbcfb523f8ed16d241",
+        "C": "6d958c20870d401a3c1f7a0ac092c97774d451c09f7aae992a8841ff0ab9d60d",
+        "T": "b876831b4ecd7242963b040aa45c4114"
+      },
+      {
+        "section": "[Keylen = 256] [IVlen = 96] [PTlen = 408] [AADlen = 720] [Taglen = 128] Count = 0",
+        "K": "148579a3cbca86d5520d66c0ec71ca5f7e41ba78e56dc6eebd566fed547fe691",
+        "IV": "b08a5ea1927499c6ecbfd4e0",
+        "P": "9d0b15fdf1bd595f91f8b3abc0f7dec927dfd4799935a1795d9ce00c9b879434420fe42c275a7cd7b39d638fb81ca52b49dc41",
+        "A": "e4f963f015ffbb99ee3349bbaf7e8e8e6c2a71c230a48f9d59860a29091d2747e01a5ca572347e247d25f56ba7ae8e05cde2be3c97931292c02370208ecd097ef692687fecf2f419d3200162a6480a57dad408a0dfeb492e2c5d",
+        "C": "2097e372950a5e9383c675e89eea1c314f999159f5611344b298cda45e62843716f215f82ee663919c64002a5c198d7878fd3f",
+        "T": "adbecdb0d5c2224d804d2886ff9a5760"
+      }
+    ]
+  },
+  "decrypt": {
+    "file": "gcmDecrypt256.rsp",
+    "cases": [
+      {
+        "section": "[Keylen = 256] [IVlen = 96] [PTlen = 128] [AADlen = 128] [Taglen = 128] Count = 0",
+        "K": "54e352ea1d84bfe64a1011096111fbe7668ad2203d902a01458c3bbd85bfce14",
+        "IV": "df7c3bca00396d0c018495d9",
+        "C": "426e0efc693b7be1f3018db7ddbb7e4d",
+        "A": "7e968d71b50c1f11fd001f3fef49d045",
+        "T": "ee8257795be6a1164d7e1d2d6cac77a7",
+        "P": "85fc3dfad9b5a8d3258e4fc44571bd3b"
+      },
+      {
+        "section": "[Keylen = 256] [IVlen = 96] [PTlen = 128] [AADlen = 128] [Taglen = 128] Count = 2",
+        "K": "9a0343f850a6427120f764789ffec6d237447b898fbf51d2182f065d3861497d",
+        "IV": "3deef6f453dd70d92143adcd",
+        "C": "e93165935ac18e3a2845d15fe31a9286",
+        "A": "dbb8226a624520863db6897017b2a4f8",
+        "T": "f5fc50d18766bc3d9e16dd136d45816b",
+        "fail": true
+      }
+    ]
+  }
+}

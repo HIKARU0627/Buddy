@@ -16,6 +16,8 @@ export const DB_COMMAND_KINDS = [
   'operation.dispatch_intent',
   'operation.record_result',
   'operation.cancel',
+  // 起動時の回復（08 §4、ADR 0019）。送出意図の記録の後に中枢が止まった試行を unknown_held へ回す。
+  'operation.recover_after_restart',
 ] as const;
 
 export type DbCommandKind = (typeof DB_COMMAND_KINDS)[number];
@@ -109,13 +111,21 @@ export interface RecordResultCommand extends DbCommandBase<'operation.record_res
 
 export type CancelOperationCommand = DbCommandBase<'operation.cancel'>;
 
+// 起動時の回復（08 §4、ADR 0019）。dispatching のまま残った試行（送出意図の COMMIT の後に中枢が止まったもの）を
+// unknown_held へ回す。送っていない可能性があっても自動で再送しない。Core が起動時に、制御チャネルを開く前に送る。
+// 依頼・許可・忘却の版では拒否しない（送出済みかもしれない結果を失わないため。record_result と同じ）。
+export interface RecoverAfterRestartCommand extends DbCommandBase<'operation.recover_after_restart'> {
+  readonly attempt_id: string;
+}
+
 export type DbCommand =
   | CreateOperationCommand
   | ApproveOperationCommand
   | PrepareOperationCommand
   | DispatchIntentCommand
   | RecordResultCommand
-  | CancelOperationCommand;
+  | CancelOperationCommand
+  | RecoverAfterRestartCommand;
 
 // 送出意図をコミットした試行。DispatchPermit の材料。
 export interface DispatchedAttempt {
@@ -326,6 +336,9 @@ export function commandShapeReasons(command: DbCommand): string[] {
         reasons.push('external_id_invalid');
       break;
     case 'operation.cancel':
+      break;
+    case 'operation.recover_after_restart':
+      if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');
       break;
   }
   return [...new Set(reasons)];

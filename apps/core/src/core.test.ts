@@ -12,14 +12,20 @@ import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { createMockKeyStore } from '@buddy/platform';
 import { CoreStartError, startCore } from './core.js';
 import type { CoreHandle } from './core.js';
 
 // 同じプロセス内で startCore を動かし、排他・制御チャネル・起動前の検査を確かめる。
-// 期待値（理由コード・応答の形）は手書き。
+// 期待値（理由コード・応答の形）は手書き。鍵は模擬の KeyStore（実機のキーチェーンに触れない）。
 
 const ID = '0b6f7f1e-2c3d-4e5f-8a9b-0c1d2e3f4a5b';
 const POSIX = process.platform !== 'win32';
+// 合成の鍵（32 バイト、値に意味はない）。再起動の試験で同じ鍵になるよう固定する。
+const keyStore = () =>
+  createMockKeyStore({ stored: Buffer.alloc(32, 0x5c).toString('base64') });
+// 停止の後に残るのは DB（buddy.sqlite。閉じると -wal・-shm は消える）だけ。
+const afterStop = ['buddy.sqlite'];
 
 async function tempDataDir(t: test.TestContext): Promise<string> {
   const base = await mkdtemp(join(tmpdir(), 'buddy-core-'));
@@ -37,6 +43,7 @@ async function started(
 ): Promise<CoreHandle> {
   const handle = await startCore({
     dataDir,
+    keyStore: keyStore(),
     shutdownGraceMs: 200,
     probeTimeoutMs: 300,
   });
@@ -77,7 +84,11 @@ const exitedPid = () => {
 test('preflight reasons refuse startup before touching the data directory', async (t) => {
   const dataDir = await tempDataDir(t);
   await assert.rejects(
-    startCore({ dataDir, preflight: [() => ['key_protection_unavailable']] }),
+    startCore({
+      dataDir,
+      keyStore: keyStore(),
+      preflight: [() => ['key_protection_unavailable']],
+    }),
     (error: unknown) =>
       error instanceof CoreStartError &&
       error.code === 'preflight_failed' &&
@@ -144,7 +155,8 @@ test('stop over the control channel answers first, then releases socket and lock
   assert.equal(reply['state'], 'stopping');
   await core.closed;
   assert.equal(core.state, 'stopped');
-  assert.deepEqual((await readdir(core.dataDir)).sort(), ['core-state.json']);
+  assert.equal(core.store.state, 'closed');
+  assert.deepEqual((await readdir(core.dataDir)).sort(), afterStop);
 });
 
 test(
@@ -156,7 +168,7 @@ test(
     const mode = async (path: string) => (await stat(path)).mode & 0o777;
     assert.equal(await mode(core.dataDir), 0o700);
     assert.equal(await mode(join(core.dataDir, 'core.lock')), 0o600);
-    assert.equal(await mode(join(core.dataDir, 'core-state.json')), 0o600);
+    assert.equal(await mode(join(core.dataDir, 'buddy.sqlite')), 0o600);
     assert.equal(await mode(core.endpoint), 0o600);
   },
 );
@@ -202,6 +214,7 @@ test('a live pid without a control response is refused as unconfirmed', async (t
   await assert.rejects(
     startCore({
       dataDir,
+      keyStore: keyStore(),
       probeTimeoutMs: 300,
       isPidAlive: (pid) => (probed.push(pid), true),
     }),
@@ -223,7 +236,12 @@ test('an unreadable lock or state file refuses startup instead of regenerating',
   await first.stop('test');
   await writeFile(join(first.dataDir, 'core.lock'), '{"pid":1,"pid":2}');
   await assert.rejects(
-    startCore({ dataDir, probeTimeoutMs: 300, isPidAlive: () => false }),
+    startCore({
+      dataDir,
+      keyStore: keyStore(),
+      probeTimeoutMs: 300,
+      isPidAlive: () => false,
+    }),
     (error: unknown) =>
       error instanceof CoreStartError && error.code === 'lock_unreadable',
   );
@@ -232,14 +250,17 @@ test('an unreadable lock or state file refuses startup instead of regenerating',
     '{"store_generation":"not-a-uuid","created_at":"2026-10-20T00:00:00Z"}';
   await writeFile(join(first.dataDir, 'core-state.json'), stateText);
   await assert.rejects(
-    startCore({ dataDir, probeTimeoutMs: 300 }),
+    startCore({ dataDir, keyStore: keyStore(), probeTimeoutMs: 300 }),
     (error: unknown) =>
       error instanceof CoreStartError && error.code === 'state_file_invalid',
   );
-  // 状態ファイルは書き換えず、取ったロックは返している。
+  // 状態ファイルは書き換えず、DB も開かず、取ったロックは返している。
   assert.equal(
     await readFile(join(first.dataDir, 'core-state.json'), 'utf8'),
     stateText,
   );
-  assert.deepEqual(await readdir(first.dataDir), ['core-state.json']);
+  assert.deepEqual((await readdir(first.dataDir)).sort(), [
+    'buddy.sqlite',
+    'core-state.json',
+  ]);
 });

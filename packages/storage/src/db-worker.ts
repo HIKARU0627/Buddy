@@ -8,10 +8,11 @@
 //
 // このファイルは index.ts から export しない（読み込むと worker として動き始めるため）。
 
+import { writeSync } from 'node:fs';
 import { parentPort, workerData } from 'node:worker_threads';
 import { openWriteConnection } from './connection.js';
 import type { SqliteDatabase } from './connection.js';
-import { timestamp } from './db-protocol.js';
+import { DB_WORKER_STALL_MARKER, timestamp } from './db-protocol.js';
 import type {
   DbQueryValue,
   DbWorkerData,
@@ -24,10 +25,13 @@ import { applyMigrations, initStoreGeneration } from './migrations.js';
 import type { DbCommand } from './operation-commands.js';
 import {
   executeCommand,
+  listInterruptedOperations,
   listOutboxEvents,
   readCommandReceipt,
   readOperation,
 } from './operation-store.js';
+import { bindStore } from './store-binding.js';
+import type { StoreBindingResult } from './store-binding.js';
 
 function main(): void {
   const port = parentPort;
@@ -41,6 +45,7 @@ function main(): void {
   let db: SqliteDatabase | null = null;
   let storeGeneration: string;
   let schemaVersion: number;
+  let binding: StoreBindingResult | null = null;
   try {
     db = openWriteConnection(data.path, {
       platform: data.platform,
@@ -49,10 +54,15 @@ function main(): void {
         : { connectionSql: data.connectionSql }),
     });
     schemaVersion = applyMigrations(db).to;
-    storeGeneration = initStoreGeneration(
-      db,
-      ...(data.storeGeneration === null ? [] : [data.storeGeneration]),
-    ).storeGeneration;
+    if (data.binding !== null) {
+      // Core の起動（ADR 0019）: 健全性・鍵の照合値・store_generation を確かめてから受付を始める。
+      binding = bindStore(db, data.binding);
+      storeGeneration = binding.storeGeneration;
+    } else
+      storeGeneration = initStoreGeneration(
+        db,
+        ...(data.storeGeneration === null ? [] : [data.storeGeneration]),
+      ).storeGeneration;
   } catch (error) {
     db?.close();
     const storage = error instanceof StorageError ? error : null;
@@ -84,6 +94,11 @@ function main(): void {
     if (takeFault('throwBeforeCommit', command))
       throw new Error('注入した失敗（COMMIT の前）');
     if (takeFault('exitBeforeCommit', command)) process.exit(70);
+    if (takeFault('stallBeforeCommit', command)) {
+      // 標準出力へ同期で印を書き、COMMIT せずに止まり続ける。親がプロセスごと強制終了する。
+      writeSync(1, `${DB_WORKER_STALL_MARKER}\n`);
+      for (;;) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+    }
     if (takeFault('failCommit', command)) {
       // 遅延の外部キー違反は COMMIT の時に検出される。
       connection.pragma('defer_foreign_keys = ON');
@@ -157,6 +172,8 @@ function main(): void {
         value = readOperation(connection, query.operation_id);
       else if (query.kind === 'command')
         value = readCommandReceipt(connection, query.command_id);
+      else if (query.kind === 'interrupted')
+        value = listInterruptedOperations(connection);
       else
         value = listOutboxEvents(
           connection,
@@ -185,6 +202,7 @@ function main(): void {
     worker_generation: data.workerGeneration,
     store_generation: storeGeneration,
     schema_version: schemaVersion,
+    binding,
   });
 }
 

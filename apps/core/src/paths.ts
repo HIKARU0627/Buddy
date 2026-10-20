@@ -40,7 +40,10 @@ export function defaultDataDir({
 }
 
 export const LOCK_FILE = 'core.lock';
+// B01 の状態ファイル。B02-04 から DB（schema_meta）へ移して消す（ADR 0019）。新しくは作らない。
 export const STATE_FILE = 'core-state.json';
+// 中枢の DB（SQLite。-wal・-shm が並ぶ）。ADR 0016・0019。
+export const DB_FILE = 'buddy.sqlite';
 export const SOCKET_FILE = 'control.sock';
 // sockaddr_un の sun_path は macOS で 104 バイト・Linux で 108 バイト（終端を含む）。
 // 小さい方に合わせて 103 バイトまでを許す。

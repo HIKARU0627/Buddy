@@ -200,8 +200,8 @@ test(
       ok: true,
       core_instance_id: instance,
     });
-    // ソケット・ロックは消え、状態ファイルだけが残る。
-    assert.deepEqual(await readdir(dataDir), ['core-state.json']);
+    // ソケット・ロックは消え、DB だけが残る。
+    assert.deepEqual(await readdir(dataDir), ['buddy.sqlite']);
 
     const notRunning = await run(['status', '--data-dir', dataDir]);
     assert.equal(notRunning.code, 3);
@@ -230,7 +230,7 @@ test(
     const exited = await core.exited;
     assert.equal(exited.code, 0);
     assert.match(exited.stderr, /SIGTERM/u);
-    assert.deepEqual(await readdir(dataDir), ['core-state.json']);
+    assert.deepEqual(await readdir(dataDir), ['buddy.sqlite']);
   },
 );
 

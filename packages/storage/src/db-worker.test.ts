@@ -243,7 +243,7 @@ test('the client sees the received ACK before the durable result and records tim
   await withClient(
     async (_path, client) => {
       assert.equal(client.storeGeneration, STORE_GENERATION);
-      assert.equal(client.schemaVersion, 1);
+      assert.equal(client.schemaVersion, 2);
       const order: string[] = [];
       const submission = client.submit(createCommand('op-1'));
       const received = submission.received.then((value) => {

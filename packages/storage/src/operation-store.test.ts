@@ -8,6 +8,7 @@ import {
   BULK_WRITE_LIMITS,
   INTERNAL_COMMAND_SCOPE,
   executeCommand,
+  listInterruptedOperations,
   readOperation,
   runImmediate,
   writeBulkSlice,
@@ -29,6 +30,7 @@ import {
   operationState,
   prepareCommand,
   receiptRows,
+  recoverCommand,
   resultCommand,
   sealedIntent,
   storeContext,
@@ -708,6 +710,94 @@ test('bulk writes are split into transactions of at most 50 items or 20 ms', asy
     assert.equal(
       (db.prepare('SELECT count(*) AS n FROM bulk').get() as { n: number }).n,
       130,
+    );
+  });
+});
+
+test('recovery after a restart moves only dispatching attempts to unknown_held and records it (08 §4)', async () => {
+  await withStore((db) => {
+    // op-p: preparing のまま。op-d: 送出意図の記録の後（dispatching）。op-a: 承認済み。
+    const preparingAttempt = toPreparing(db, 'op-p');
+    const dispatchingAttempt = toPreparing(db, 'op-d');
+    committed(run(db, dispatchCommand('op-d', '3', dispatchingAttempt)));
+    committed(run(db, createCommand('op-a')));
+    committed(run(db, approveCommand('op-a', '1')));
+    assert.deepEqual(listInterruptedOperations(db), [
+      {
+        operation_id: 'op-p',
+        state: 'preparing',
+        state_revision: '3',
+        current_content_version: '1',
+        attempt_id: preparingAttempt,
+      },
+      {
+        operation_id: 'op-d',
+        state: 'dispatching',
+        state_revision: '4',
+        current_content_version: '1',
+        attempt_id: dispatchingAttempt,
+      },
+    ]);
+    const eventsBefore = eventRows(db).length;
+    const receiptsBefore = receiptRows(db).length;
+    // preparing・承認済みの操作・試行の違い・版の違いは回復しない（何も書かない）。
+    assert.deepEqual(
+      reasons(run(db, recoverCommand('op-p', '3', preparingAttempt))),
+      ['operation_not_dispatching'],
+    );
+    assert.deepEqual(
+      reasons(run(db, recoverCommand('op-a', '2', preparingAttempt))),
+      ['operation_not_dispatching'],
+    );
+    assert.deepEqual(
+      reasons(run(db, recoverCommand('op-d', '4', preparingAttempt))),
+      ['attempt_not_dispatched'],
+    );
+    assert.deepEqual(
+      reasons(run(db, recoverCommand('op-d', '3', dispatchingAttempt))),
+      ['state_revision_changed'],
+    );
+    assert.equal(eventRows(db).length, eventsBefore);
+    assert.equal(receiptRows(db).length, receiptsBefore);
+    // 許可・忘却の版が変わっていても、送出済みかもしれない試行の保留は拒否しない。
+    const recover = recoverCommand('op-d', '4', dispatchingAttempt, {
+      permission_revision: '9',
+      forgetting_generation: '9',
+    });
+    assert.equal(committed(run(db, recover)), '5');
+    assert.deepEqual(operationState(db, 'op-d'), {
+      state: 'unknown_held',
+      state_revision: 5,
+    });
+    const record = readOperation(db, 'op-d');
+    assert.equal(record?.attempts.length, 1);
+    assert.equal(record?.attempts[0]?.status, 'unknown_held');
+    assert.equal(record?.attempts[0]?.result_status, 'unknown');
+    assert.notEqual(record?.attempts[0]?.dispatch_intent_at, null);
+    // 承認は使い終えない（送ったか分からない）。有効な承認は 1 件のまま。
+    assert.equal(record?.approvals[0]?.status, 'valid');
+    assert.equal(effectiveApprovals(db, 'op-d'), 1);
+    // 回復はイベントと内部の受付を同じ transaction で書く。
+    const event = eventRows(db).at(-1);
+    assert.equal(event?.target_id, 'op-d');
+    assert.equal(event?.state_revision, 5);
+    const receipt = receiptRows(db).at(-1);
+    assert.equal(receipt?.command_scope_id, INTERNAL_COMMAND_SCOPE);
+    assert.equal(receipt?.command_id, recover.command_id);
+    assert.equal(receipt?.status, 'durable');
+    assert.equal(receipt?.committed_state_revision, 5);
+    // 同じ命令の再到着は保存済みの結果を返し、二度適用しない。
+    const replay = run(db, recover);
+    assert.equal(committed(replay), '5');
+    assert.equal(replay.outcome === 'durable' && replay.replayed, true);
+    assert.deepEqual(
+      listInterruptedOperations(db).map((entry) => entry.operation_id),
+      ['op-p'],
+    );
+    // unknown_held からは自動で送出意図に戻れない（照合・本人の判断は B04 以降）。
+    assert.deepEqual(
+      reasons(run(db, dispatchCommand('op-d', '5', dispatchingAttempt))),
+      ['transition_not_allowed'],
     );
   });
 });

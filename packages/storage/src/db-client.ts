@@ -30,9 +30,11 @@ import type {
 } from './operation-commands.js';
 import type {
   CommandReceiptRecord,
+  InterruptedOperation,
   OperationRecord,
   OutboxEventRecord,
 } from './operation-store.js';
+import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
 
 const MINT = Symbol('DispatchPermit');
 
@@ -106,8 +108,11 @@ export interface DbWorkerOptions {
   // DB ファイルの絶対パス。
   readonly path: string;
   readonly platform?: StoragePlatform;
-  // 初回の store_generation（B02-04 で Core の状態ファイルの値を渡す）。既存の値は書き換えない。
+  // 初回の store_generation（試験用）。既存の値は書き換えない。binding を渡したときは使わない。
   readonly storeGeneration?: string;
+  // Core の起動で、命令の受付の前に DB と鍵・世代を結び付ける（ADR 0019）。
+  // 健全性・鍵の照合値・store_generation のどれかが合わなければ起動に失敗する。
+  readonly binding?: StoreBindingInput;
   // 応答を待つ上限。超えたら成否不明として扱う。
   readonly responseTimeoutMs?: number;
   readonly startTimeoutMs?: number;
@@ -143,6 +148,8 @@ export class DbWorkerClient {
   readonly workerGeneration: string;
   readonly storeGeneration: string;
   readonly schemaVersion: number;
+  // binding を渡して起動したときの結果。渡していなければ null。
+  readonly binding: StoreBindingResult | null;
   #worker: Worker;
   #state: DbWorkerState = 'running';
   #brokenReason: string | null = null;
@@ -164,6 +171,7 @@ export class DbWorkerClient {
     this.workerGeneration = ready.worker_generation;
     this.storeGeneration = ready.store_generation;
     this.schemaVersion = ready.schema_version;
+    this.binding = ready.binding;
     this.#exited = exited;
     this.#responseTimeoutMs =
       options.responseTimeoutMs ?? DEFAULT_RESPONSE_TIMEOUT_MS;
@@ -186,6 +194,7 @@ export class DbWorkerClient {
       storeGeneration: options.storeGeneration ?? null,
       connectionSql: options.connectionSql ?? null,
       faults: options.faults ?? {},
+      binding: options.binding ?? null,
     };
     const worker = new Worker(WORKER_URL, { workerData: data });
     const exited = new Promise<number>((resolve) =>
@@ -326,6 +335,9 @@ export class DbWorkerClient {
     after_sequence: number;
     limit: number;
   }): Promise<readonly OutboxEventRecord[]>;
+  query(query: {
+    kind: 'interrupted';
+  }): Promise<readonly InterruptedOperation[]>;
   query(query: DbQuery): Promise<DbQueryValue> {
     return new Promise<DbQueryValue>((resolve, reject) => {
       if (this.#state !== 'running') {

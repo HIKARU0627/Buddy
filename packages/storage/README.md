@@ -18,6 +18,14 @@ B02-03 で DB worker と操作・承認・受付の保存、送出の許可の�
 - `src/db-worker.ts`: worker_threads の入口（index.ts からは export しない）。書込み接続を所有する単一 writer で、外部 HTTP を実行しない。
 - `src/db-client.ts`: Core main 側の `DbWorkerClient`（受付 ACK と結果、成否不明の扱い、計測）と `DispatchPermit`（送出意図の COMMIT の成功の後にだけ作り、一度だけ使える）。
 
-依存は better-sqlite3 13.0.3（ビルド済みバイナリを同梱。pnpm のビルドの許可は不要）と、workspace の `@buddy/domain` です。KeyStore は `@buddy/platform` にあります。
+B02-04 で内容 hash と、DB と鍵・世代の結び付け、起動時の回復の命令を作りました（[ADR 0019](../../docs/adr/0019-b02-core-storage-integration.md)）。
 
-試験は `src/*.test.ts`（一時ファイル・メモリ上の DB、worker_threads の故障注入、公開テストベクトルとの照合・改ざんの注入・鍵が取れないときの停止）と、開発ツールの `node:sqlite` で同じ保存案を検査する `scripts/storage.test.mjs` です。sealed_blobs への保存と Core への組み込み・再起動の復元（B02-04）、外部送出（B04）、削除ジョブ、電源断の耐久性（X60）は未実装・未検証です。
+- `migrations/0002_data_key_check.sql`: `schema_meta` を作り直し、鍵の照合値（`data_key_check:<key_id>`）を置けるようにした。
+- `src/content-hash.ts`: 確定 intent の JCS（RFC 8785、canonicalize 5.1.0）の UTF-8 の SHA-256（`intentContentHash`）。JSON として表せない値は拒否する。`sealOperationIntent` は同じ正規形から content_hash と暗号文を作り、`operation.create` にそのまま渡せる。`openOperationIntent` は復号した平文が正規形で hash と一致するときだけ返す。
+- `src/store-binding.ts`: `dataKeyCheckValue`（HMAC-SHA256(鍵, 固定の文脈＋key_id)）と `bindStore`（`quick_check`・鍵の照合値の保存／照合・store_generation の移行／照合を一つの transaction で）。DB worker は `binding` を渡されると受付の前にこれを行う。
+- `operation.recover_after_restart`: 起動時に dispatching の試行を unknown_held へ回す命令（自動では再送しない）。照会 `interrupted` で preparing・dispatching の操作を読む。
+- `src/crash-child.ts`: X60 相当の故障注入の子プロセス（試験専用、export しない）。
+
+依存は better-sqlite3 13.0.3（ビルド済みバイナリを同梱。pnpm のビルドの許可は不要）、canonicalize 5.1.0（開発ツールと同じ版）と、workspace の `@buddy/domain` です。KeyStore は `@buddy/platform` にあります。
+
+試験は `src/*.test.ts`（一時ファイル・メモリ上の DB、worker_threads の故障注入、公開テストベクトルとの照合・改ざんの注入・鍵が取れないときの停止）と、開発ツールの `node:sqlite` で同じ保存案を検査する `scripts/storage.test.mjs` です。X60 相当（書込み中のプロセスの強制終了の後の整合）は `crash-recovery.test.ts` で確かめています。外部送出（B04）、削除ジョブ、電源断の耐久性（X60 の本体・T07）は未実装・未検証です。

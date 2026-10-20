@@ -239,6 +239,9 @@ importers:
       '@buddy/platform':
         specifier: workspace:*
         version: link:../../packages/platform
+      '@buddy/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
 
   apps/desktop:
     dependencies:
@@ -295,6 +298,9 @@ importers:
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3
+      canonicalize:
+        specifier: 5.1.0
+        version: 5.1.0
     devDependencies:
       '@types/better-sqlite3':
         specifier: 9.6.0

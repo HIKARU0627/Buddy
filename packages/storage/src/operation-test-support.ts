@@ -17,6 +17,7 @@ import type {
   DispatchIntentCommand,
   PrepareOperationCommand,
   RecordResultCommand,
+  RecoverAfterRestartCommand,
   ResultState,
   SealedBlobInput,
 } from './operation-commands.js';
@@ -250,6 +251,20 @@ export function cancelCommand(
   options: BaseOptions = {},
 ): CancelOperationCommand {
   return { ...base(operationId, expected, options), kind: 'operation.cancel' };
+}
+
+// 起動時の回復（ADR 0019）。Core と同じく、依頼・許可・忘却の版は照合しない値を入れる。
+export function recoverCommand(
+  operationId: string,
+  expected: string,
+  attemptId: string,
+  options: BaseOptions = {},
+): RecoverAfterRestartCommand {
+  return {
+    ...base(operationId, expected, { connection_id: null, ...options }),
+    kind: 'operation.recover_after_restart',
+    attempt_id: attemptId,
+  };
 }
 
 export interface ReceiptRowView {

@@ -37,6 +37,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [OpenAPI・認証・イベント・再接続の契約](docs/adr/0009-openapi-auth-events-and-reconnect.md)
 - [domain 境界と保存マイグレーション案](docs/adr/0010-domain-boundary-and-storage-draft.md)
 - [生成型・CI・試験対応表と B00 の完了判定](docs/adr/0011-b00-completion-review.md)
+- [デスクトップの型付き IPC の契約](docs/adr/0014-b01-desktop-ipc-contract.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

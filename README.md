@@ -32,6 +32,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [意図表・実行可否と入力から結果までの契約](docs/adr/0004-intent-table-and-readiness.md)
 - [会話・委譲・音声制御・出力先の契約](docs/adr/0005-conversation-and-voice-control.md)
 - [予約 R・最大負担 M と精算の契約](docs/adr/0006-budget-reservation-and-liability.md)
+- [同期世代・抽出 v2・関連解析の契約](docs/adr/0007-sync-extraction-and-related-analysis.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

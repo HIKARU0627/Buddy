@@ -1,0 +1,251 @@
+{
+  "status": "specification_only",
+  "description": "関連集合の解析完了と、依頼・取消の順序に依存しない状態の期待値（設計 11 §5A・§5B F05、08 §3 F05、QA45・QA32・X64・X65・QA12）。手で書いたもので、domain の実装から生成していない。",
+  "current_published_generation": "6",
+  "base_analysis": {
+    "group_id": "group-thread-1",
+    "analysis_revision": "3",
+    "source_set_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "published_generation": "6",
+    "plan_complete": true,
+    "sources": [
+      {
+        "source_id": "mail-A",
+        "source_revision": "r1",
+        "state": "analyzed",
+        "rule_id": null
+      },
+      {
+        "source_id": "mail-B",
+        "source_revision": "r1",
+        "state": "analyzed",
+        "rule_id": null
+      },
+      {
+        "source_id": "mail-ad",
+        "source_revision": "r1",
+        "state": "excluded",
+        "rule_id": "filter.automated-no-deadline"
+      }
+    ],
+    "unresolved_change_count": 0
+  },
+  "readiness": [
+    {
+      "id": "complete",
+      "changes": {},
+      "expected": { "ready": true, "reasons": [] }
+    },
+    {
+      "id": "enumeration-incomplete",
+      "refs": ["QA45 列挙途中"],
+      "changes": { "plan_complete": false },
+      "expected": { "ready": false, "reasons": ["plan_incomplete"] }
+    },
+    {
+      "id": "b-unread",
+      "refs": ["QA45 B 未読"],
+      "source": { "index": 1, "state": "unread" },
+      "expected": { "ready": false, "reasons": ["source_unread"] }
+    },
+    {
+      "id": "b-failed",
+      "refs": ["QA45 B 失敗"],
+      "source": { "index": 1, "state": "failed" },
+      "expected": { "ready": false, "reasons": ["source_failed"] }
+    },
+    {
+      "id": "b-waiting-budget",
+      "refs": ["QA45 解析予算待ち"],
+      "source": { "index": 1, "state": "pending" },
+      "expected": { "ready": false, "reasons": ["source_pending"] }
+    },
+    {
+      "id": "target-unknown",
+      "refs": ["QA45 取消対象不明"],
+      "changes": { "unresolved_change_count": 1 },
+      "expected": { "ready": false, "reasons": ["unresolved_changes"] }
+    },
+    {
+      "id": "new-b-published-after-ready",
+      "refs": ["QA45 ready 後の新たな B 公開"],
+      "changes": { "published_generation": "5" },
+      "expected": { "ready": false, "reasons": ["generation_changed"] }
+    },
+    {
+      "id": "excluded-without-rule",
+      "refs": ["11 §5B-2"],
+      "source": { "index": 2, "rule_id": null },
+      "expected": { "ready": false, "reasons": ["excluded_without_rule"] }
+    }
+  ],
+  "order_independence": {
+    "entity_id": "entity-A",
+    "change_sets": [
+      {
+        "id": "a-first-then-b-cancel",
+        "changes": [
+          {
+            "relation": "new",
+            "target_request_entity_id": null,
+            "resolution": "resolved"
+          },
+          {
+            "relation": "cancel",
+            "target_request_entity_id": "entity-A",
+            "resolution": "resolved"
+          }
+        ],
+        "expected": "cancelled"
+      },
+      {
+        "id": "b-cancel-first-then-a",
+        "changes": [
+          {
+            "relation": "cancel",
+            "target_request_entity_id": "entity-A",
+            "resolution": "resolved"
+          },
+          {
+            "relation": "new",
+            "target_request_entity_id": null,
+            "resolution": "resolved"
+          }
+        ],
+        "expected": "cancelled"
+      },
+      {
+        "id": "b-complete",
+        "changes": [
+          {
+            "relation": "complete",
+            "target_request_entity_id": "entity-A",
+            "resolution": "resolved"
+          }
+        ],
+        "expected": "completed"
+      },
+      {
+        "id": "b-cancel-ambiguous",
+        "changes": [
+          {
+            "relation": "cancel",
+            "target_request_entity_id": null,
+            "resolution": "ambiguous"
+          }
+        ],
+        "expected": "active"
+      },
+      {
+        "id": "other-entity-cancelled",
+        "changes": [
+          {
+            "relation": "cancel",
+            "target_request_entity_id": "entity-other",
+            "resolution": "resolved"
+          }
+        ],
+        "expected": "active"
+      }
+    ]
+  },
+  "auto_creation": [
+    {
+      "id": "active-first-time",
+      "entity": {
+        "state": "active",
+        "recreation_suppressed": false,
+        "created": []
+      },
+      "changes": [],
+      "operation": {
+        "kind": "create_task",
+        "accountId": "acct-1",
+        "calendarId": null
+      },
+      "expected": []
+    },
+    {
+      "id": "cancelled-by-later-mail",
+      "refs": ["QA45 取消確定の未作成 A"],
+      "entity": {
+        "state": "active",
+        "recreation_suppressed": false,
+        "created": []
+      },
+      "changes": [
+        {
+          "relation": "cancel",
+          "target_request_entity_id": "entity-A",
+          "resolution": "resolved"
+        }
+      ],
+      "operation": {
+        "kind": "create_task",
+        "accountId": "acct-1",
+        "calendarId": null
+      },
+      "expected": ["entity_cancelled"]
+    },
+    {
+      "id": "user-undo-then-reanalysis",
+      "refs": ["X65", "QA12"],
+      "entity": {
+        "state": "active",
+        "recreation_suppressed": true,
+        "created": []
+      },
+      "changes": [],
+      "operation": {
+        "kind": "create_task",
+        "accountId": "acct-1",
+        "calendarId": null
+      },
+      "expected": ["recreation_suppressed"]
+    },
+    {
+      "id": "same-version-reanalysis",
+      "refs": ["X64", "QA12"],
+      "entity": {
+        "state": "active",
+        "recreation_suppressed": false,
+        "created": [
+          {
+            "operation_kind": "create_task",
+            "account_id": "acct-1",
+            "calendar_id": null
+          }
+        ]
+      },
+      "changes": [],
+      "operation": {
+        "kind": "create_task",
+        "accountId": "acct-1",
+        "calendarId": null
+      },
+      "expected": ["already_created"]
+    },
+    {
+      "id": "event-on-other-calendar",
+      "refs": ["11 §5 重複キー"],
+      "entity": {
+        "state": "active",
+        "recreation_suppressed": false,
+        "created": [
+          {
+            "operation_kind": "create_event",
+            "account_id": "acct-1",
+            "calendar_id": "cal-1"
+          }
+        ]
+      },
+      "changes": [],
+      "operation": {
+        "kind": "create_event",
+        "accountId": "acct-1",
+        "calendarId": "cal-2"
+      },
+      "expected": []
+    }
+  ]
+}

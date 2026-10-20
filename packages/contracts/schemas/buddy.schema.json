@@ -123,6 +123,27 @@
     },
     {
       "$ref": "#/$defs/BudgetSettlement"
+    },
+    {
+      "$ref": "#/$defs/ExtractionWire"
+    },
+    {
+      "$ref": "#/$defs/ExtractionResult"
+    },
+    {
+      "$ref": "#/$defs/RequestEntity"
+    },
+    {
+      "$ref": "#/$defs/RelatedAnalysis"
+    },
+    {
+      "$ref": "#/$defs/CandidateSnapshot"
+    },
+    {
+      "$ref": "#/$defs/SyncBatch"
+    },
+    {
+      "$ref": "#/$defs/SyncScopeState"
     }
   ],
   "$defs": {
@@ -1609,6 +1630,11 @@
       "pattern": "^(0|[1-9][0-9]*)$",
       "description": "予約行の版。追加予約（top-up）ごとに上がる（ADR 0006）。"
     },
+    "ExecutorGeneration": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "同期の実行担当の世代（設計 11 §1A）。再起動で新しい担当になると上がり、旧担当の遅着ページ・公開要求を拒否する。"
+    },
     "ResultFact": {
       "type": "object",
       "properties": {
@@ -2396,6 +2422,1120 @@
       "required": ["version", "phrases"],
       "additionalProperties": false,
       "description": "会話そのものの操作の照合表（設計 10 §5 v0.6、質問 126）。意図判定（LLM）に入れず、画面のボタンと同じ処理をする。版を管理する。"
+    },
+    "SourceQuote": {
+      "type": "object",
+      "properties": {
+        "part": {
+          "type": "string",
+          "enum": ["subject", "body", "attachment"]
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_revision": {
+          "$ref": "#/$defs/SourceRevision"
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["part", "source_id", "source_revision", "quote"],
+      "additionalProperties": false,
+      "description": "モデルが返す根拠の引用（設計 11 §3）。位置はモデルに返させず、コードが該当版の抽出テキストで検索して付ける。"
+    },
+    "SourceRef": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_revision": {
+          "$ref": "#/$defs/SourceRevision"
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["source_id", "source_revision", "quote", "start", "end"],
+      "additionalProperties": false,
+      "description": "Core が一意に照合できた根拠の位置。Unicode コードポイント単位で end は含まない（設計 11 §3、QA11）。位置を一意に決められない引用は照合未確定とし、ここには入れない。"
+    },
+    "FieldEvidence": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": ["summary", "kind", "target", "deadline", "change"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["explicit", "derived", "missing", "conflicting", "unread"]
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          }
+        },
+        "rule_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["field", "status", "refs", "rule_id"],
+      "additionalProperties": false,
+      "description": "抽出の項目ごとの根拠（設計 03 データ表、11 §3 D15、ADR 0007）。入力引数の根拠 InputFieldEvidence とは別の型。モデルの自己申告 confidence を正答確率や承認権限に変換しない。"
+    },
+    "Deadline": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "instant"
+            },
+            "local_datetime": {
+              "$ref": "#/$defs/LocalDateTime"
+            },
+            "zone": {
+              "$ref": "#/$defs/TimeZone"
+            },
+            "original_text": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["kind", "local_datetime", "zone", "original_text"],
+          "additionalProperties": false,
+          "description": "日時が一意。タイムゾーンは本人の設定から Core が付ける。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "date"
+            },
+            "date": {
+              "$ref": "#/$defs/LocalDate"
+            },
+            "original_text": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["kind", "date", "original_text"],
+          "additionalProperties": false,
+          "description": "日付だけ。23:59 などの時刻に変換せず、通知の時刻は別に導出する。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unresolved"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "missing_year",
+                "missing_date",
+                "relative",
+                "conflict",
+                "missing_zone"
+              ]
+            },
+            "original_text": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["kind", "reason", "original_text"],
+          "additionalProperties": false,
+          "description": "一意に決まらない。基準日から推測した年や日付を確定値にしない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": false,
+          "description": "期限なし。"
+        }
+      ],
+      "description": "期限（設計 11 §3 D15、§5 D15、修正案 R03）。"
+    },
+    "SourceCompleteness": {
+      "type": "object",
+      "properties": {
+        "source_revisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source_revision": {
+                "$ref": "#/$defs/SourceRevision"
+              }
+            },
+            "required": ["source_id", "source_revision"],
+            "additionalProperties": false,
+            "description": "入力に使った根拠の版。"
+          }
+        },
+        "unread_source_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "truncated_source_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "source_revisions",
+        "unread_source_ids",
+        "truncated_source_ids"
+      ],
+      "additionalProperties": false,
+      "description": "入力の完全性。モデルではなく入力を組み立てるコードが確定し、モデルに変更させない（設計 11 §3 D15）。"
+    },
+    "ExtractionWire": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": ["ja", "en", "other"]
+        },
+        "requests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["reply_required", "action_required", "fyi"]
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1
+              },
+              "deadline": {
+                "type": "object",
+                "properties": {
+                  "resolution": {
+                    "type": "string",
+                    "enum": [
+                      "exact_datetime",
+                      "date_only",
+                      "relative_unresolved",
+                      "none"
+                    ]
+                  },
+                  "local_datetime": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/LocalDateTime"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "local_date": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/LocalDate"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "original_text": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "unresolved_reason": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "missing_year",
+                          "missing_date",
+                          "relative",
+                          "conflict",
+                          "missing_zone"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "resolution",
+                  "local_datetime",
+                  "local_date",
+                  "original_text",
+                  "unresolved_reason"
+                ],
+                "additionalProperties": false,
+                "description": "モデルが返す期限。年が書かれていない日付は relative_unresolved とし、日時は null にする。"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SourceQuote"
+                }
+              },
+              "in_quoted_text": {
+                "type": "boolean"
+              },
+              "confidence": {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              }
+            },
+            "required": [
+              "kind",
+              "summary",
+              "deadline",
+              "evidence",
+              "in_quoted_text",
+              "confidence"
+            ],
+            "additionalProperties": false,
+            "description": "依頼の候補。"
+          }
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "relation": {
+                "type": "string",
+                "enum": ["new", "correction", "cancel", "complete", "uncertain"]
+              },
+              "target_evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SourceQuote"
+                }
+              },
+              "change_evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SourceQuote"
+                }
+              },
+              "new_deadline": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "resolution": {
+                        "type": "string",
+                        "enum": [
+                          "exact_datetime",
+                          "date_only",
+                          "relative_unresolved",
+                          "none"
+                        ]
+                      },
+                      "local_datetime": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/LocalDateTime"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "local_date": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/LocalDate"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "original_text": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "unresolved_reason": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "missing_year",
+                              "missing_date",
+                              "relative",
+                              "conflict",
+                              "missing_zone"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "resolution",
+                      "local_datetime",
+                      "local_date",
+                      "original_text",
+                      "unresolved_reason"
+                    ],
+                    "additionalProperties": false,
+                    "description": "モデルが返す期限。年が書かれていない日付は relative_unresolved とし、日時は null にする。"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "relation",
+              "target_evidence",
+              "change_evidence",
+              "new_deadline"
+            ],
+            "additionalProperties": false,
+            "description": "既存の依頼への変更の候補。request_entity_id をモデルに作らせない。"
+          }
+        }
+      },
+      "required": ["language", "requests", "changes"],
+      "additionalProperties": false,
+      "description": "メール 1 通の抽出でモデルが返す生の出力（設計 11 §3・§5B）。未読・切り詰め・位置・依頼 ID を持たない。依頼 0 件だけで取消・完了の解析を省かない。"
+    },
+    "ExtractedRequest": {
+      "type": "object",
+      "properties": {
+        "request_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["reply_required", "action_required", "fyi"]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deadline": {
+          "$ref": "#/$defs/Deadline"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldEvidence"
+          }
+        },
+        "in_quoted_text": {
+          "type": "boolean"
+        },
+        "confidence_observed": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "addressed_to_me": {
+          "type": "boolean"
+        },
+        "from_automated_sender": {
+          "type": "boolean"
+        },
+        "request_entity_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestEntityRevision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_index",
+        "kind",
+        "summary",
+        "deadline",
+        "fields",
+        "in_quoted_text",
+        "confidence_observed",
+        "addressed_to_me",
+        "from_automated_sender",
+        "request_entity_id",
+        "request_revision"
+      ],
+      "additionalProperties": false,
+      "description": "Core が検証した依頼。宛先と自動配信の判定はヘッダーからコードが決め、モデルに判定させない（設計 11 §3）。request_entity_id は 5A 節の規則で Core が解決し、一意に対応しなければ null。"
+    },
+    "RequestChange": {
+      "type": "object",
+      "properties": {
+        "relation": {
+          "type": "string",
+          "enum": ["new", "correction", "cancel", "complete", "uncertain"]
+        },
+        "target_request_entity_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resolution": {
+          "type": "string",
+          "enum": ["resolved", "ambiguous", "unresolved"]
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldEvidence"
+          }
+        },
+        "new_deadline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Deadline"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "relation",
+        "target_request_entity_id",
+        "resolution",
+        "fields",
+        "new_deadline"
+      ],
+      "additionalProperties": false,
+      "description": "既存の依頼への変更（設計 11 §5B F05）。取消・完了は期限なしでも表現できる。対象は根拠と一意性で Core が解決し、類似度だけで結び付けない。"
+    },
+    "ExtractionResult": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.extraction.v2"
+        },
+        "source_account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "thread_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_revision": {
+          "$ref": "#/$defs/SourceRevision"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "prompt_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "schema_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtractedRequest"
+          }
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RequestChange"
+          }
+        },
+        "completeness": {
+          "$ref": "#/$defs/SourceCompleteness"
+        }
+      },
+      "required": [
+        "schema",
+        "source_account_id",
+        "thread_id",
+        "message_id",
+        "source_revision",
+        "profile_id",
+        "prompt_hash",
+        "schema_hash",
+        "requests",
+        "changes",
+        "completeness"
+      ],
+      "additionalProperties": false,
+      "description": "Core が検証した抽出結果 v2（設計 11 §3 D15・§5B、ADR 0007）。同じ source_revision・profile・prompt・schema の結果は再利用できる。v1 の例を現行契約にしない。"
+    },
+    "RequestEntity": {
+      "type": "object",
+      "properties": {
+        "request_entity_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/RequestEntityRevision"
+        },
+        "source_account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "thread_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin_message_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anchor": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "state": {
+          "type": "string",
+          "enum": ["active", "cancelled", "completed"]
+        },
+        "recreation_suppressed": {
+          "type": "boolean"
+        },
+        "created_operations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "operation_kind": {
+                "type": "string",
+                "enum": [
+                  "create_task",
+                  "create_event",
+                  "label_mail",
+                  "draft_reply"
+                ]
+              },
+              "operation_id": {
+                "$ref": "#/$defs/Id"
+              },
+              "account_id": {
+                "$ref": "#/$defs/Id"
+              },
+              "calendar_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "operation_kind",
+              "operation_id",
+              "account_id",
+              "calendar_id"
+            ],
+            "additionalProperties": false,
+            "description": "自動作成した操作。同じ依頼・操作種別・対象につき一度だけ。"
+          }
+        }
+      },
+      "required": [
+        "request_entity_id",
+        "request_revision",
+        "source_account_id",
+        "thread_id",
+        "origin_message_id",
+        "anchor",
+        "state",
+        "recreation_suppressed",
+        "created_operations"
+      ],
+      "additionalProperties": false,
+      "description": "抽出した依頼の固定 ID と版（設計 11 §5A）。期限の変更は同じ ID で版を上げる。本人が取消を選んだ時点で再作成を抑止し、補償操作の結果不明中も再解析から作り直さない。"
+    },
+    "RelatedAnalysis": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "analysis_revision": {
+          "$ref": "#/$defs/AnalysisRevision"
+        },
+        "source_set_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "published_generation": {
+          "$ref": "#/$defs/PublishedGeneration"
+        },
+        "plan_complete": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ready", "pending", "blocked"]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source_revision": {
+                "$ref": "#/$defs/SourceRevision"
+              },
+              "state": {
+                "type": "string",
+                "enum": ["analyzed", "pending", "unread", "failed", "excluded"]
+              },
+              "rule_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["source_id", "source_revision", "state", "rule_id"],
+            "additionalProperties": false,
+            "description": "関連集合の必要ソース。除外は規則 ID 付きのときだけ。"
+          }
+        },
+        "unresolved_change_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "group_id",
+        "analysis_revision",
+        "source_set_hash",
+        "published_generation",
+        "plan_complete",
+        "status",
+        "sources",
+        "unresolved_change_count"
+      ],
+      "additionalProperties": false,
+      "description": "関連集合（同じ provider・アカウント・thread）の解析状態（設計 11 §5B F05）。列挙と必要な解析と関係の解決が揃うまで ready にしない。"
+    },
+    "CandidateSnapshot": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "schedule_overlap",
+            "mail_deadline",
+            "mail_reply",
+            "research_done"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["new", "seen", "acted", "dismissed", "snoozed", "resolved"]
+        },
+        "request_entity_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestEntityRevision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRevision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "notification_key": {
+          "$ref": "#/$defs/Hash"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "deadline": {
+          "$ref": "#/$defs/Deadline"
+        },
+        "initial_import": {
+          "type": "boolean"
+        },
+        "unread_partial": {
+          "type": "boolean"
+        },
+        "related_analysis": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "group_id": {
+                  "$ref": "#/$defs/Id"
+                },
+                "analysis_revision": {
+                  "$ref": "#/$defs/AnalysisRevision"
+                },
+                "source_set_hash": {
+                  "$ref": "#/$defs/Hash"
+                },
+                "published_generation": {
+                  "$ref": "#/$defs/PublishedGeneration"
+                }
+              },
+              "required": [
+                "group_id",
+                "analysis_revision",
+                "source_set_hash",
+                "published_generation"
+              ],
+              "additionalProperties": false,
+              "description": "判定に使った関連解析の版。最終 transaction で現在値と照合する。"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          }
+        }
+      },
+      "required": [
+        "candidate_id",
+        "kind",
+        "state",
+        "request_entity_id",
+        "request_revision",
+        "source_revision",
+        "notification_key",
+        "title",
+        "deadline",
+        "initial_import",
+        "unread_partial",
+        "related_analysis",
+        "operation_ids"
+      ],
+      "additionalProperties": false,
+      "description": "気づきの候補（設計 11 §4・§5B）。メールの候補は対応済みかを断定しない。本文は持たず、抄録は暗号化した別の保存に置く。"
+    },
+    "SyncBatch": {
+      "type": "object",
+      "properties": {
+        "scan_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "scope_revision": {
+          "$ref": "#/$defs/ScopeRevision"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["incremental", "full"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["fetching", "staged", "validated", "published", "abandoned"]
+        },
+        "scan_started_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "window_start": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "window_end": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "query_fingerprint": {
+          "$ref": "#/$defs/Hash"
+        },
+        "base_generation": {
+          "$ref": "#/$defs/PublishedGeneration"
+        },
+        "base_watermark": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base_provider_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executor_generation": {
+          "$ref": "#/$defs/ExecutorGeneration"
+        },
+        "page_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diff_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "scan_id",
+        "scope_id",
+        "scope_revision",
+        "kind",
+        "status",
+        "scan_started_at",
+        "window_start",
+        "window_end",
+        "query_fingerprint",
+        "base_generation",
+        "base_watermark",
+        "base_provider_cursor",
+        "executor_generation",
+        "page_cursor",
+        "diff_count"
+      ],
+      "additionalProperties": false,
+      "description": "同期の 1 回の走査（設計 11 §1・§1A F04、03 データ表）。最初のページ取得から公開または abandoned まで、同じ取得集合で有効な走査は 1 件だけ。開始時の世代・watermark・cursor・担当世代を公開時に照合する。"
+    },
+    "SyncScopeState": {
+      "type": "object",
+      "properties": {
+        "scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "scope_revision": {
+          "$ref": "#/$defs/ScopeRevision"
+        },
+        "active_scan_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "active_generation": {
+          "$ref": "#/$defs/PublishedGeneration"
+        },
+        "committed_watermark": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executor_generation": {
+          "$ref": "#/$defs/ExecutorGeneration"
+        },
+        "last_incremental_completed_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_full_reconciled_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pending_incremental": {
+          "type": "boolean"
+        },
+        "pending_full": {
+          "type": "boolean"
+        },
+        "analysis_plan_complete_generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishedGeneration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "scope_id",
+        "scope_revision",
+        "active_scan_id",
+        "active_generation",
+        "committed_watermark",
+        "provider_cursor",
+        "executor_generation",
+        "last_incremental_completed_at",
+        "last_full_reconciled_at",
+        "pending_incremental",
+        "pending_full",
+        "analysis_plan_complete_generation"
+      ],
+      "additionalProperties": false,
+      "description": "取得集合（scope）ごとの同期状態（設計 11 §1・§1A）。watermark は走査の開始時刻で、後退させない。差分ゼロの公開では active_generation を進めない。"
     },
     "WorkContext": {
       "type": "object",

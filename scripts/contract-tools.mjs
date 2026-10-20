@@ -111,6 +111,52 @@ export function semanticErrors(name, value) {
         errors.push('child_limit_exceeds_parent');
     }
   }
+  if (name === 'SourceRef' && value.start >= value.end)
+    errors.push('quote_range');
+  if (name === 'FieldEvidence') {
+    if (value.status === 'explicit' && value.refs.length === 0)
+      errors.push('explicit_without_ref');
+    if (value.status === 'derived' && value.rule_id === null)
+      errors.push('derived_without_rule');
+    for (const item of value.refs)
+      errors.push(...semanticErrors('SourceRef', item));
+  }
+  if (name === 'ExtractionResult') {
+    const ids = new Set(
+      value.completeness.source_revisions.map((item) => item.source_id),
+    );
+    for (const id of [
+      ...value.completeness.unread_source_ids,
+      ...value.completeness.truncated_source_ids,
+    ])
+      if (!ids.has(id)) errors.push('completeness_unknown_source');
+    for (const request of value.requests) {
+      if (
+        (request.request_entity_id === null) !==
+        (request.request_revision === null)
+      )
+        errors.push('entity_revision_pair');
+      for (const field of request.fields)
+        errors.push(...semanticErrors('FieldEvidence', field));
+    }
+  }
+  if (name === 'RelatedAnalysis') {
+    if (value.sources.some((s) => s.state === 'excluded' && s.rule_id === null))
+      errors.push('excluded_without_rule');
+    if (
+      value.status === 'ready' &&
+      (!value.plan_complete ||
+        value.unresolved_change_count > 0 ||
+        value.sources.some((s) => !['analyzed', 'excluded'].includes(s.state)))
+    )
+      errors.push('ready_before_analysis_complete');
+  }
+  if (name === 'SyncBatch') {
+    if (Date.parse(value.window_start) >= Date.parse(value.window_end))
+      errors.push('window_order');
+    if (value.status === 'published' && value.diff_count === null)
+      errors.push('published_without_diff_count');
+  }
   if (name === 'TimeZone') {
     try {
       new Intl.DateTimeFormat('en', { timeZone: value });

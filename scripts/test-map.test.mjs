@@ -157,3 +157,27 @@ test('test evidence records separate mock, device, real API and billing runs', a
   assert.equal(deviation, null);
   assert(!validate(missing));
 });
+
+test('recorded device evidence follows the evidence format and stays separate from mock runs', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const schema = await read('tests/integration/test-evidence.schema.json');
+  const ajv = new Ajv2020({ strict: true, allErrors: true });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+  const files = (await readdir(new URL('tests/integration/', root))).filter(
+    (name) => /^evidence-.+\.json$/u.test(name),
+  );
+  assert(files.length > 0);
+  for (const name of files) {
+    const doc = await read(`tests/integration/${name}`);
+    assert(doc.records.length > 0, name);
+    const ids = new Set();
+    for (const record of doc.records) {
+      assert(validate(record), `${name}: ${JSON.stringify(validate.errors)}`);
+      assert(!ids.has(record.case_id), `${name}: ${record.case_id}`);
+      ids.add(record.case_id);
+      // 実機の記録の名前の付いたファイルに、模擬の結果を混ぜない。
+      assert.equal(record.kind, 'real_device', `${name}: ${record.case_id}`);
+    }
+  }
+});

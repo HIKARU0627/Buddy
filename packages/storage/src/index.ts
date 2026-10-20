@@ -4,3 +4,5 @@ export * from './policy.js';
 export * from './errors.js';
 export * from './connection.js';
 export * from './migrations.js';
+// B02-02: sealed_blobs の封筒の暗号化・復号（AES-256-GCM、ADR 0017）。nonce を渡す低水準の関数は出さない。
+export * from './sealed-blob.js';

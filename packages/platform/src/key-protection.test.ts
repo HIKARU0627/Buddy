@@ -1,68 +1,95 @@
-// 鍵保護の可否の確認と起動前検査。実機の security コマンドは呼ばない（模擬の runner）。
+// 鍵保護の可否の確認と起動前検査。実機のキーチェーンには触れない（模擬の KeyStore と模擬の keyring モジュール）。
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { KeyProtectionProbe } from './key-protection.js';
 import {
   createKeyProtectionProbe,
-  createMacKeychainProbe,
+  createKeyStoreProbe,
   createMockKeyProtectionProbe,
-  createUnsupportedKeyProtectionProbe,
   keyProtectionPreflight,
 } from './key-protection.js';
-import type { CommandResult } from './runner.js';
-import { createMockCommandRunner } from './runner.js';
+import type { KeyringModule } from './key-store.js';
+import { createMockKeyStore } from './key-store.js';
 
-const keychain = (result: CommandResult) =>
-  createMacKeychainProbe(createMockCommandRunner(() => result));
+// 模擬の keyring モジュール。メモリ上に保存し、呼び出しを記録する（実機のキーチェーンには触れない）。
+function fakeKeyring(options: { getFails?: boolean } = {}) {
+  const items = new Map<string, string>();
+  const entries: string[] = [];
+  const module: KeyringModule = {
+    AsyncEntry: class {
+      readonly #name: string;
+      constructor(service: string, username: string) {
+        this.#name = `${service}/${username}`;
+        entries.push(this.#name);
+      }
+      getPassword() {
+        if (options.getFails === true)
+          return Promise.reject(new Error('User interaction is not allowed.'));
+        return Promise.resolve(items.get(this.#name) ?? null);
+      }
+      setPassword(password: string) {
+        items.set(this.#name, password);
+        return Promise.resolve();
+      }
+    },
+  };
+  return { module, items, entries };
+}
 
-test('macOS: 既定のキーチェーンがあれば使える。パスは結果に含めない', async () => {
-  const runner = createMockCommandRunner(() => ({
-    exitCode: 0,
-    stdout: '    "/Users/synthetic/Library/Keychains/login.keychain-db"\n',
-    stderr: '',
-  }));
-  const probe = createMacKeychainProbe(runner);
+test('macOS: キーチェーンでデータ鍵を取得（初回は作成）できれば使える。鍵の値は結果に含めない', async () => {
+  const keyring = fakeKeyring();
+  let loads = 0;
+  const probe = createKeyProtectionProbe('darwin', {
+    loadModule: () => {
+      loads += 1;
+      return Promise.resolve(keyring.module);
+    },
+  });
   assert.equal(probe.kind, 'os');
+  // probe を作っただけではネイティブモジュールを読み込まない。
+  assert.equal(loads, 0);
   const status = await probe.check();
   assert.deepEqual(status, {
     available: true,
     backend: 'macos_keychain',
     reason: null,
   });
-  assert.ok(!JSON.stringify(status).includes('synthetic'));
-  assert.deepEqual(runner.calls, [
-    { command: '/usr/bin/security', args: ['default-keychain'] },
-  ]);
+  assert.deepEqual(keyring.entries, ['dev.buddy.core/data-key-v1']);
+  const stored = keyring.items.get('dev.buddy.core/data-key-v1');
+  assert.equal(typeof stored, 'string');
+  assert.ok(!JSON.stringify(status).includes(stored ?? '-'));
+  // 起動前検査（2 回目の確認）は既存の鍵を読むだけで、上書きしない。
   assert.deepEqual(await keyProtectionPreflight(probe), []);
+  assert.equal(keyring.items.get('dev.buddy.core/data-key-v1'), stored);
+  assert.equal(loads, 1);
 });
 
-test('macOS: 既定のキーチェーンを確かめられなければ使えない', async () => {
-  const cases: [CommandResult, string][] = [
+test('macOS: キーチェーンを使えない・鍵が不正なら起動前検査で拒否する', async () => {
+  const cases: [KeyProtectionProbe, string][] = [
     [
-      { exitCode: null, stdout: '', stderr: '' },
-      'security_command_unavailable',
+      createKeyProtectionProbe('darwin', {
+        loadModule: () =>
+          Promise.reject(new Error('Cannot find native binding')),
+      }),
+      'keystore_module_unavailable',
     ],
     [
-      {
-        exitCode: 50,
-        stdout: '',
-        stderr:
-          'security: SecKeychainCopyDefault: A default keychain could not be found.',
-      },
-      'default_keychain_query_failed',
-    ],
-    [{ exitCode: 0, stdout: '', stderr: '' }, 'default_keychain_missing'],
-    [
-      { exitCode: 0, stdout: '"a"\n"b"\n', stderr: '' },
-      'default_keychain_missing',
-    ],
-    [
-      { exitCode: 0, stdout: 'login.keychain\n', stderr: '' },
-      'default_keychain_missing',
+      createKeyProtectionProbe('darwin', {
+        loadModule: () =>
+          Promise.resolve(fakeKeyring({ getFails: true }).module),
+      }),
+      'keystore_read_failed',
     ],
   ];
-  for (const [result, reason] of cases) {
-    const probe = keychain(result);
+  const corrupt = fakeKeyring();
+  corrupt.items.set('dev.buddy.core/data-key-v1', 'not base64!');
+  cases.push([
+    createKeyProtectionProbe('darwin', {
+      loadModule: () => Promise.resolve(corrupt.module),
+    }),
+    'data_key_format_invalid',
+  ]);
+  for (const [probe, reason] of cases) {
     assert.deepEqual(await probe.check(), {
       available: false,
       backend: 'macos_keychain',
@@ -72,21 +99,28 @@ test('macOS: 既定のキーチェーンを確かめられなければ使えな�
       `key_protection_unavailable:${reason}`,
     ]);
   }
+  // 不正な値は上書きしない（既存の暗号文を読めなくしないため）。
+  assert.equal(corrupt.items.get('dev.buddy.core/data-key-v1'), 'not base64!');
 });
 
 test('Windows・Linux の中枢は初期版の対象外として使えない', async () => {
-  const runner = createMockCommandRunner(() => ({
-    exitCode: 0,
-    stdout: '"synthetic"\n',
-    stderr: '',
-  }));
+  let loads = 0;
+  const loadModule = () => {
+    loads += 1;
+    return Promise.resolve(fakeKeyring().module);
+  };
   const cases: [string, string][] = [
     ['win32', 'windows_core_not_supported_in_initial_release'],
     ['linux', 'linux_core_not_supported_in_initial_release'],
     ['freebsd', 'platform_not_supported'],
   ];
   for (const [platform, reason] of cases) {
-    const probe = createKeyProtectionProbe(platform, runner);
+    // 差し替えの KeyStore を渡しても、対象外の OS では使わない。
+    const probe = createKeyProtectionProbe(platform, {
+      loadModule,
+      keyStore: createMockKeyStore(),
+    });
+    assert.equal(probe.kind, 'os');
     assert.deepEqual(await probe.check(), {
       available: false,
       backend: 'none',
@@ -95,13 +129,42 @@ test('Windows・Linux の中枢は初期版の対象外として使えない', a
     assert.deepEqual(await keyProtectionPreflight(probe), [
       `key_protection_unavailable:${reason}`,
     ]);
-    assert.deepEqual(
-      await createUnsupportedKeyProtectionProbe(platform).check(),
-      { available: false, backend: 'none', reason },
-    );
   }
-  assert.deepEqual(runner.calls, []);
-  assert.equal(createKeyProtectionProbe('darwin', runner).kind, 'os');
+  // 対象外の OS ではネイティブモジュールを読み込まない。
+  assert.equal(loads, 0);
+});
+
+test('KeyStore に基づく probe: 模擬の KeyStore は kind が mock で、既定では起動前検査で拒否する', async () => {
+  const store = createMockKeyStore();
+  const probe = createKeyStoreProbe(store);
+  assert.equal(probe.kind, 'mock');
+  assert.deepEqual(await keyProtectionPreflight(probe), [
+    'key_protection_unavailable:mock_not_allowed',
+  ]);
+  // 模擬を許さない検査は KeyStore に触れない。
+  assert.equal(store.writes, 0);
+  assert.deepEqual(
+    await keyProtectionPreflight(probe, { allowMock: true }),
+    [],
+  );
+  assert.equal(store.writes, 1);
+  assert.ok(store.hasStoredValue);
+
+  const cases: [Parameters<typeof createMockKeyStore>[0], string][] = [
+    [{ available: false }, 'mock_unavailable'],
+    [{ readFails: true }, 'keystore_read_failed'],
+    [{ writeFails: true }, 'keystore_write_failed'],
+    [{ readBackDiffers: true }, 'data_key_verify_failed'],
+    [{ stored: 'AAAA' }, 'data_key_length_invalid'],
+  ];
+  for (const [options, reason] of cases)
+    assert.deepEqual(
+      await keyProtectionPreflight(
+        createKeyStoreProbe(createMockKeyStore(options)),
+        { allowMock: true },
+      ),
+      [`key_protection_unavailable:${reason}`],
+    );
 });
 
 test('模擬の probe は名前・kind・backend で模擬と分かり、既定では起動前検査で拒否する', async () => {

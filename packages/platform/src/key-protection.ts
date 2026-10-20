@@ -1,11 +1,13 @@
-// 中枢の鍵保護の可否の確認（設計 02 の KeyStore アダプター、ADR 0013）。
+// 中枢の鍵保護の可否の確認（設計 02 の KeyStore アダプター、ADR 0013・0017）。
 // 保護手段が使えない場合は秘密情報を平文で保存せず、対象処理を停止して理由を表示する。
-// この境界は可否の確認だけを行い、保存・暗号化はしない（キーチェーンの実装は B02）。
-// 平文の保存へ切り替える経路・設定は作らない。
-import type { CommandRunner } from './runner.js';
+// B02-02 から、確認は実際の KeyStore でデータ鍵を取得（初回は作成）できるかに基づく（ADR 0017）。
+// 取得した鍵は確認の結果に含めず、保持もしない。平文の保存へ切り替える経路・設定は作らない。
+import type { KeyStore, MacKeychainKeyStoreOptions } from './key-store.js';
+import {
+  createMacKeychainKeyStore,
+  createUnsupportedKeyStore,
+} from './key-store.js';
 import { corePlatformOf } from './supervisor.js';
-
-export const SECURITY_PATH = '/usr/bin/security';
 
 export type KeyProtectionBackend = 'macos_keychain' | 'none' | 'mock';
 
@@ -18,7 +20,7 @@ export type KeyProtectionStatus =
   | {
       readonly available: false;
       readonly backend: KeyProtectionBackend;
-      /** 表示用の理由コード。コマンドの出力（キーチェーンのパスなど）は入れない。 */
+      /** 表示用の理由コード。保護領域の出力・例外のメッセージ・鍵の値は入れない。 */
       readonly reason: string;
     };
 
@@ -29,67 +31,44 @@ export interface KeyProtectionProbe {
 }
 
 /**
- * macOS: `security default-keychain` で既定のキーチェーンがあることだけを確かめる。
- * キーチェーンへの書込み・読み出しはしない。
+ * KeyStore に基づく確認。データ鍵を読み、なければ作成して読み戻す（loadOrCreateDataKey）。
+ * 鍵を取得できたときだけ使えるとし、鍵の値は捨てる。kind は KeyStore の kind をそのまま使う。
  */
-export function createMacKeychainProbe(
-  runner: CommandRunner,
-): KeyProtectionProbe {
+export function createKeyStoreProbe(keyStore: KeyStore): KeyProtectionProbe {
   return {
-    kind: 'os',
+    kind: keyStore.kind,
     async check() {
-      const result = await runner.run(SECURITY_PATH, ['default-keychain']);
-      if (result.exitCode === null)
-        return {
-          available: false,
-          backend: 'macos_keychain',
-          reason: 'security_command_unavailable',
-        };
-      if (result.exitCode !== 0)
-        return {
-          available: false,
-          backend: 'macos_keychain',
-          reason: 'default_keychain_query_failed',
-        };
-      // 出力は `    "<パス>"` の 1 行。パスの値は理由に含めない。
-      const lines = result.stdout
-        .split(/\r?\n/u)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      if (lines.length !== 1 || !/^"[^"]+"$/u.test(lines[0] ?? ''))
-        return {
-          available: false,
-          backend: 'macos_keychain',
-          reason: 'default_keychain_missing',
-        };
-      return { available: true, backend: 'macos_keychain', reason: null };
+      const result = await keyStore.loadOrCreateDataKey();
+      if (result.ok)
+        return { available: true, backend: result.backend, reason: null };
+      return {
+        available: false,
+        backend: result.backend,
+        reason: result.reason,
+      };
     },
   };
 }
 
-/** 初期版で中枢の鍵保護に対応しない OS の probe。 */
-export function createUnsupportedKeyProtectionProbe(
-  nodePlatform: string,
-): KeyProtectionProbe {
-  const platform = corePlatformOf(nodePlatform);
-  const reason =
-    platform === 'windows' || platform === 'linux'
-      ? `${platform}_core_not_supported_in_initial_release`
-      : 'platform_not_supported';
-  return {
-    kind: 'os',
-    check: () => Promise.resolve({ available: false, backend: 'none', reason }),
-  };
+export interface KeyProtectionProbeOptions extends MacKeychainKeyStoreOptions {
+  /** macOS で確認に使う KeyStore（試験で差し替える）。省略時はキーチェーン。他の OS では使わない。 */
+  readonly keyStore?: KeyStore;
 }
 
-/** 実行中の OS に合う probe（Core では process.platform を渡す）。 */
+/**
+ * 実行中の OS に合う probe（Core では process.platform を渡す）。
+ * Windows・Linux の中枢は初期版の対象外として使えない（KeyStore も作らない）。
+ */
 export function createKeyProtectionProbe(
   nodePlatform: string,
-  runner: CommandRunner,
+  options: KeyProtectionProbeOptions = {},
 ): KeyProtectionProbe {
-  return corePlatformOf(nodePlatform) === 'macos'
-    ? createMacKeychainProbe(runner)
-    : createUnsupportedKeyProtectionProbe(nodePlatform);
+  if (corePlatformOf(nodePlatform) !== 'macos')
+    return createKeyStoreProbe(createUnsupportedKeyStore(nodePlatform));
+  const { keyStore, ...keyStoreOptions } = options;
+  return createKeyStoreProbe(
+    keyStore ?? createMacKeychainKeyStore(keyStoreOptions),
+  );
 }
 
 export interface MockKeyProtectionOptions {

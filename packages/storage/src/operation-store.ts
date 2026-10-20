@@ -35,6 +35,7 @@ import type {
   DispatchedAttempt,
   PrepareOperationCommand,
   RecordResultCommand,
+  RecoverAfterRestartCommand,
   StoreOutcome,
 } from './operation-commands.js';
 
@@ -391,6 +392,39 @@ export function readCommandReceipt(
     .prepare('SELECT * FROM command_receipts WHERE command_id = ?')
     .get(commandId) as ReceiptRow | undefined;
   return row === undefined ? null : receiptToRecord(row);
+}
+
+// 起動時に回復の対象になる操作（08 §4、ADR 0019）。送出境界の手前（preparing）と、送出意図の記録の後（dispatching）。
+export interface InterruptedOperation {
+  readonly operation_id: string;
+  readonly state: 'preparing' | 'dispatching';
+  readonly state_revision: string;
+  readonly current_content_version: string;
+  // 操作と同じ状態の実行中の試行。見つからなければ null（0001 の制約上は起きない）。
+  readonly attempt_id: string | null;
+}
+
+export function listInterruptedOperations(
+  db: SqliteDatabase,
+): InterruptedOperation[] {
+  const rows = db
+    .prepare(
+      "SELECT o.operation_id, o.state, o.state_revision, o.current_content_version, a.attempt_id FROM operations o LEFT JOIN operation_attempts a ON a.operation_id = o.operation_id AND a.status = o.state WHERE o.state IN ('preparing', 'dispatching') ORDER BY o.created_at, o.operation_id",
+    )
+    .all() as {
+    operation_id: string;
+    state: 'preparing' | 'dispatching';
+    state_revision: number;
+    current_content_version: number;
+    attempt_id: string | null;
+  }[];
+  return rows.map((row) => ({
+    operation_id: row.operation_id,
+    state: row.state,
+    state_revision: toText(row.state_revision),
+    current_content_version: toText(row.current_content_version),
+    attempt_id: row.attempt_id,
+  }));
 }
 
 export function listOutboxEvents(
@@ -962,6 +996,39 @@ function cancelOperation(
   );
 }
 
+// 起動時の回復（08 §4、ADR 0019）。dispatching の試行を unknown_held へ回し、自動では送らない。
+// 送ったかどうかは分からない（送出意図の COMMIT の後、送信の前後のどこで止まったか記録にない）ため、
+// 未実行（not_executed）にも成功にもしない。照合（reconciling）と本人の判断は B04 以降。
+function recoverAfterRestart(
+  db: SqliteDatabase,
+  context: StoreContext,
+  command: RecoverAfterRestartCommand,
+): StoreOutcome {
+  const operation = requireOperation(db, command);
+  requireStateRevision(command, operation);
+  if (operation.state !== 'dispatching')
+    throw new CommandRejection(['operation_not_dispatching']);
+  const attempt = attemptRow(db, command.attempt_id);
+  if (
+    attempt === undefined ||
+    attempt.operation_id !== operation.operation_id ||
+    attempt.status !== 'dispatching' ||
+    attempt.dispatch_intent_at === null
+  )
+    throw new CommandRejection(['attempt_not_dispatched']);
+  const updated = db
+    .prepare(
+      "UPDATE operation_attempts SET status = 'unknown_held', result_status = 'unknown' WHERE attempt_id = ? AND status = 'dispatching'",
+    )
+    .run(attempt.attempt_id);
+  if (updated.changes !== 1)
+    throw new CommandRejection(['attempt_not_dispatched']);
+  return durable(
+    command,
+    advance(db, context, command, operation, 'unknown_held'),
+  );
+}
+
 function applyCommand(
   db: SqliteDatabase,
   context: StoreContext,
@@ -980,6 +1047,8 @@ function applyCommand(
       return recordResult(db, context, command);
     case 'operation.cancel':
       return cancelOperation(db, context, command);
+    case 'operation.recover_after_restart':
+      return recoverAfterRestart(db, context, command);
   }
 }
 

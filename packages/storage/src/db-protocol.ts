@@ -9,10 +9,12 @@ import type {
 } from './operation-commands.js';
 import type {
   CommandReceiptRecord,
+  InterruptedOperation,
   OperationRecord,
   OutboxEventRecord,
   StoreTimings,
 } from './operation-store.js';
+import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -28,7 +30,13 @@ export interface DbWorkerFaults {
   readonly ignore?: DbCommandKind;
   // 命令の前に synchronous を NORMAL へ下げる（耐久設定の不一致）。
   readonly weakenDurability?: DbCommandKind;
+  // transaction の本体の後・COMMIT の前で止まり続ける（プロセスの強制終了の試験用、ADR 0019）。
+  // 止まる直前に標準出力へ DB_WORKER_STALL_MARKER の 1 行を同期で書く。
+  readonly stallBeforeCommit?: DbCommandKind;
 }
+
+// stallBeforeCommit で止まったことを知らせる標準出力の 1 行。
+export const DB_WORKER_STALL_MARKER = 'buddy-db-worker-stalled-before-commit';
 
 export interface DbWorkerData {
   readonly path: string;
@@ -37,6 +45,8 @@ export interface DbWorkerData {
   readonly storeGeneration: string | null;
   readonly connectionSql: string | null;
   readonly faults: DbWorkerFaults;
+  // Core の起動で DB と鍵・世代を結び付ける（ADR 0019）。null なら storeGeneration で初期化するだけ。
+  readonly binding: StoreBindingInput | null;
 }
 
 export type DbQuery =
@@ -46,10 +56,16 @@ export type DbQuery =
       readonly kind: 'events';
       readonly after_sequence: number;
       readonly limit: number;
-    };
+    }
+  // 起動時の回復の対象（preparing・dispatching の操作）。
+  | { readonly kind: 'interrupted' };
 
 export type DbQueryValue =
-  OperationRecord | CommandReceiptRecord | readonly OutboxEventRecord[] | null;
+  | OperationRecord
+  | CommandReceiptRecord
+  | readonly OutboxEventRecord[]
+  | readonly InterruptedOperation[]
+  | null;
 
 export type MainToWorker =
   | {
@@ -73,6 +89,7 @@ export type WorkerToMain =
       readonly worker_generation: string;
       readonly store_generation: string;
       readonly schema_version: number;
+      readonly binding: StoreBindingResult | null;
     }
   | {
       readonly type: 'start_failed';

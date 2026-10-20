@@ -18,7 +18,7 @@ import { CoreStartError, startCore } from './core.js';
 import type { CoreHandle } from './core.js';
 import { parseLockRecord } from './lock.js';
 import { LOCK_FILE, controlEndpoint, defaultDataDir } from './paths.js';
-import { keyProtectionCheck } from './preflight.js';
+import { createCoreKeyStore, keyProtectionCheck } from './preflight.js';
 import type { KeyProtectionMode } from './preflight.js';
 
 const EXIT = {
@@ -27,13 +27,20 @@ const EXIT = {
   usage: 2,
   // status / stop: 動いている Core がない。
   not_running: 3,
-  // start: 排他により拒否（二重起動・旧担当の終了を確認できない）。
+  // start: 排他・保存の検査により拒否（二重起動・旧担当の終了を確認できない・状態ファイル・DB）。
   refused: 4,
-  // start: 起動前の検査が理由を返した。
+  // start: 起動前の検査（鍵保護）が理由を返した、またはロックの後のデータ鍵の読み直し・照合で拒否した。
   preflight_failed: 5,
   // autostart: この OS では対応しない、または登録・解除に失敗した。
   autostart_failed: 6,
 } as const;
+
+// 鍵保護・データ鍵の照合による拒否（終了コード 5）。それ以外の起動の拒否は 4。
+const KEY_REFUSALS: ReadonlySet<string> = new Set([
+  'preflight_failed',
+  'data_key_unavailable',
+  'data_key_mismatch',
+]);
 
 const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
   start  フォアグラウンドで起動する
@@ -153,21 +160,37 @@ async function start(
       : ['SIGINT', 'SIGTERM'];
   for (const name of signalNames) process.on(name, onSignal);
   try {
-    if (mode !== 'os') log('模擬の鍵保護で起動します（試験・模擬起動）。');
+    if (mode !== 'os')
+      log(
+        '模擬の鍵保護で起動します（試験・模擬起動。模擬の鍵は公開の値で、DB は保護されません）。',
+      );
+    // 起動前の検査とロックの後の読み直しに同じ KeyStore を使う（ADR 0019）。
+    const keyStore = createCoreKeyStore(mode);
     try {
       handle = await startCore({
         dataDir,
-        preflight: [keyProtectionCheck(mode)],
+        preflight: [keyProtectionCheck(mode, { keyStore })],
+        keyStore,
         log,
       });
     } catch (error) {
       if (!(error instanceof CoreStartError)) throw error;
       log(`起動を拒否しました: ${error.reasons.join(', ')}`);
       out({ event: 'refused', code: error.code, reasons: error.reasons });
-      return error.code === 'preflight_failed'
+      return KEY_REFUSALS.has(error.code)
         ? EXIT.preflight_failed
         : EXIT.refused;
     }
+    // DB の状態（機械向け）。操作 ID は個人情報ではない。鍵の値・照合値・パスは出さない。
+    out({
+      event: 'store_opened',
+      schema_version: handle.schemaVersion,
+      store_generation: handle.storeGeneration,
+      store_generation_source: handle.storeGenerationSource,
+      data_key_check: handle.dataKeyCheck,
+      held_after_restart: handle.recovery.held,
+      resumable_preparing: handle.recovery.resumable,
+    });
     out({ event: 'running', ...handle.status() });
     log('起動しました。');
     // 起動中に受け取ったシグナルは、起動完了後に停止として扱う。

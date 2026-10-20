@@ -1,8 +1,8 @@
-// データディレクトリの準備と、最小の状態ファイル（設計 07 §1・§4、ADR 0012）。
+// データディレクトリの準備と、B01 の状態ファイルの読み取り・片付け（設計 07 §1・§4、ADR 0012・0019）。
 //
-// core-state.json は B02 で DB に置き換えるまでの仮置き。store_generation（DB の世代）と
-// 作成時刻だけを持ち、通常の再起動では維持する。バックアップ復元・新規 DB 作成で世代を
-// 更新する処理は B02 / B06 の担当で、ここでは作らない。
+// core-state.json は B01 の仮置きで、store_generation（DB の世代）と作成時刻だけを持つ。
+// B02-04 から store_generation の正本は DB の schema_meta で、状態ファイルは新しく作らない。
+// 残っている状態ファイルは起動時に一度だけ読み、DB へ移した（または DB の値と一致した）後に消す。
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -113,14 +113,13 @@ export function parseCoreState(text: string): CoreState | null {
   return { store_generation: generation, created_at: createdAt };
 }
 
-// 状態ファイルを読み、なければ作る。壊れたファイルを黙って作り直すと世代が変わり、
+// B01 の状態ファイルを読む（作らない）。なければ null。壊れたファイルを無視すると世代が変わり、
 // 復元・新規作成と区別できなくなるため、読めなければ起動を拒否する。
-export async function loadOrCreateCoreState(
+export async function readLegacyCoreState(
   dataDir: string,
-  now: Date,
-): Promise<{ readonly state: CoreState; readonly created: boolean }> {
+): Promise<CoreState | null> {
   const path = join(dataDir, STATE_FILE);
-  let text: string | null = null;
+  let text: string;
   try {
     const handle = await open(path, 'r');
     try {
@@ -129,25 +128,21 @@ export async function loadOrCreateCoreState(
       await handle.close();
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
   }
-  if (text !== null) {
-    const state = parseCoreState(text);
-    if (!state)
-      throw new DataDirError(
-        'state_file_invalid',
-        `${STATE_FILE} を読めません。世代を作り直さずに起動を中止します。`,
-      );
-    return { state, created: false };
-  }
-  const state: CoreState = {
-    store_generation: randomUUID(),
-    created_at: now.toISOString(),
-  };
-  await writeFileAtomic(
-    dataDir,
-    STATE_FILE,
-    `${JSON.stringify(state, null, 2)}\n`,
-  );
-  return { state, created: true };
+  const state = parseCoreState(text);
+  if (!state)
+    throw new DataDirError(
+      'state_file_invalid',
+      `${STATE_FILE} を読めません。世代を作り直さずに起動を中止します。`,
+    );
+  return state;
+}
+
+// DB へ移した後の状態ファイルを消す。消した後にディレクトリを fsync する。
+// 残すと、DB を消して作り直したときに古い世代を新しい DB へ移してしまうため（新規 DB は新しい世代）。
+export async function removeLegacyCoreState(dataDir: string): Promise<void> {
+  await rm(join(dataDir, STATE_FILE), { force: true });
+  await syncDirectory(dataDir);
 }

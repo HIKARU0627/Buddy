@@ -2397,5 +2397,956 @@
       "pending_full": false,
       "analysis_plan_complete_generation": "5"
     }
+  },
+  {
+    "id": "memory-candidate-explicit",
+    "schema": "MemoryCandidate",
+    "valid": true,
+    "value": {
+      "schema": "buddy.memory-candidate.v1",
+      "memory_candidate_id": "00000000-0000-4000-8000-000000000701",
+      "origin": "explicit_request",
+      "session_id": "00000000-0000-4000-8000-000000000702",
+      "kind": "person",
+      "text": "合成の人物はサークルの会計担当",
+      "target_key": "合成の人物",
+      "sources": [
+        {
+          "source_kind": "turn",
+          "source_id": "00000000-0000-4000-8000-000000000703"
+        }
+      ],
+      "dedupe_key": "1111111111111111111111111111111111111111111111111111111111111111",
+      "forgetting_generation": "3",
+      "permission_revision": "2",
+      "created_at": "2030-10-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "memory-candidate-81-chars",
+    "schema": "MemoryCandidate",
+    "valid": false,
+    "value": {
+      "schema": "buddy.memory-candidate.v1",
+      "memory_candidate_id": "00000000-0000-4000-8000-000000000701",
+      "origin": "explicit_request",
+      "session_id": "00000000-0000-4000-8000-000000000702",
+      "kind": "person",
+      "text": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ",
+      "target_key": "合成の人物",
+      "sources": [
+        {
+          "source_kind": "turn",
+          "source_id": "00000000-0000-4000-8000-000000000703"
+        }
+      ],
+      "dedupe_key": "1111111111111111111111111111111111111111111111111111111111111111",
+      "forgetting_generation": "3",
+      "permission_revision": "2",
+      "created_at": "2030-10-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "memory-candidate-no-source",
+    "schema": "MemoryCandidate",
+    "valid": false,
+    "value": {
+      "schema": "buddy.memory-candidate.v1",
+      "memory_candidate_id": "00000000-0000-4000-8000-000000000701",
+      "origin": "explicit_request",
+      "session_id": "00000000-0000-4000-8000-000000000702",
+      "kind": "person",
+      "text": "合成の人物はサークルの会計担当",
+      "target_key": "合成の人物",
+      "sources": [],
+      "dedupe_key": "1111111111111111111111111111111111111111111111111111111111111111",
+      "forgetting_generation": "3",
+      "permission_revision": "2",
+      "created_at": "2030-10-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "memory-candidate-sensitive-kind",
+    "schema": "MemoryCandidate",
+    "valid": false,
+    "value": {
+      "schema": "buddy.memory-candidate.v1",
+      "memory_candidate_id": "00000000-0000-4000-8000-000000000701",
+      "origin": "explicit_request",
+      "session_id": "00000000-0000-4000-8000-000000000702",
+      "kind": "health",
+      "text": "合成の人物はサークルの会計担当",
+      "target_key": "合成の人物",
+      "sources": [
+        {
+          "source_kind": "turn",
+          "source_id": "00000000-0000-4000-8000-000000000703"
+        }
+      ],
+      "dedupe_key": "1111111111111111111111111111111111111111111111111111111111111111",
+      "forgetting_generation": "3",
+      "permission_revision": "2",
+      "created_at": "2030-10-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "memory-record-review-pending",
+    "schema": "MemoryRecord",
+    "valid": true,
+    "value": {
+      "memory_id": "00000000-0000-4000-8000-000000000711",
+      "origin": "auto_extraction",
+      "kind": "preference",
+      "text": "返信は短めがよい",
+      "target_key": "返信の長さ",
+      "sources": [
+        {
+          "source_kind": "turn",
+          "source_id": "00000000-0000-4000-8000-000000000712"
+        },
+        {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-000000000713"
+        }
+      ],
+      "dedupe_key": "2222222222222222222222222222222222222222222222222222222222222222",
+      "status": "review_pending",
+      "created_at": "2030-10-01T00:00:00Z",
+      "review_at": "2030-12-30T00:00:00Z",
+      "delete_at": "2031-01-29T00:00:00Z"
+    }
+  },
+  {
+    "id": "memory-record-active",
+    "schema": "MemoryRecord",
+    "valid": true,
+    "value": {
+      "memory_id": "00000000-0000-4000-8000-000000000711",
+      "origin": "auto_extraction",
+      "kind": "preference",
+      "text": "返信は短めがよい",
+      "target_key": "返信の長さ",
+      "sources": [
+        {
+          "source_kind": "turn",
+          "source_id": "00000000-0000-4000-8000-000000000712"
+        },
+        {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-000000000713"
+        }
+      ],
+      "dedupe_key": "2222222222222222222222222222222222222222222222222222222222222222",
+      "status": "active",
+      "created_at": "2030-10-01T00:00:00Z",
+      "review_at": "2030-12-30T00:00:00Z",
+      "delete_at": null
+    }
+  },
+  {
+    "id": "memory-record-no-delete-at",
+    "schema": "MemoryRecord",
+    "valid": false,
+    "value": {
+      "memory_id": "00000000-0000-4000-8000-000000000711",
+      "origin": "auto_extraction",
+      "kind": "preference",
+      "text": "返信は短めがよい",
+      "target_key": "返信の長さ",
+      "sources": [
+        {
+          "source_kind": "turn",
+          "source_id": "00000000-0000-4000-8000-000000000712"
+        },
+        {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-000000000713"
+        }
+      ],
+      "dedupe_key": "2222222222222222222222222222222222222222222222222222222222222222",
+      "status": "review_pending",
+      "created_at": "2030-10-01T00:00:00Z",
+      "review_at": "2030-12-30T00:00:00Z",
+      "delete_at": "never"
+    }
+  },
+  {
+    "id": "forget-ledger-entry",
+    "schema": "ForgetLedgerEntry",
+    "valid": true,
+    "value": {
+      "schema": "buddy.forget-ledger.v1",
+      "entry_id": "00000000-0000-4000-8000-000000000721",
+      "forgetting_generation": "4",
+      "recorded_at": "2030-10-02T00:00:00Z",
+      "forgotten": [
+        {
+          "source_kind": "turn",
+          "source_id": "00000000-0000-4000-8000-000000000722"
+        },
+        {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-000000000723"
+        }
+      ],
+      "blocked_source_ids": ["00000000-0000-4000-8000-000000000722"],
+      "blocked_content_keys": [
+        "3333333333333333333333333333333333333333333333333333333333333333"
+      ]
+    }
+  },
+  {
+    "id": "forget-ledger-with-body",
+    "schema": "ForgetLedgerEntry",
+    "valid": false,
+    "value": {
+      "schema": "buddy.forget-ledger.v1",
+      "entry_id": "00000000-0000-4000-8000-000000000721",
+      "forgetting_generation": "4",
+      "recorded_at": "2030-10-02T00:00:00Z",
+      "forgotten": [
+        {
+          "source_kind": "turn",
+          "source_id": "00000000-0000-4000-8000-000000000722"
+        },
+        {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-000000000723"
+        }
+      ],
+      "blocked_source_ids": ["00000000-0000-4000-8000-000000000722"],
+      "blocked_content_keys": [
+        "3333333333333333333333333333333333333333333333333333333333333333"
+      ],
+      "text": "忘れた内容"
+    }
+  },
+  {
+    "id": "forget-ledger-empty",
+    "schema": "ForgetLedgerEntry",
+    "valid": false,
+    "value": {
+      "schema": "buddy.forget-ledger.v1",
+      "entry_id": "00000000-0000-4000-8000-000000000721",
+      "forgetting_generation": "4",
+      "recorded_at": "2030-10-02T00:00:00Z",
+      "forgotten": [],
+      "blocked_source_ids": ["00000000-0000-4000-8000-000000000722"],
+      "blocked_content_keys": [
+        "3333333333333333333333333333333333333333333333333333333333333333"
+      ]
+    }
+  },
+  {
+    "id": "user-directive",
+    "schema": "UserDirective",
+    "valid": true,
+    "value": {
+      "directive_id": "00000000-0000-4000-8000-000000000731",
+      "text": "今後は予定の重複を朝に知らせる",
+      "scope": "from_now_on",
+      "session_id": "00000000-0000-4000-8000-000000000732",
+      "turn_id": "00000000-0000-4000-8000-000000000733",
+      "active": true,
+      "created_at": "2030-10-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "user-directive-this-time",
+    "schema": "UserDirective",
+    "valid": true,
+    "value": {
+      "directive_id": "00000000-0000-4000-8000-000000000731",
+      "text": "今後は予定の重複を朝に知らせる",
+      "scope": "this_time",
+      "session_id": "00000000-0000-4000-8000-000000000732",
+      "turn_id": "00000000-0000-4000-8000-000000000733",
+      "active": true,
+      "created_at": "2030-10-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "user-directive-unknown-scope",
+    "schema": "UserDirective",
+    "valid": false,
+    "value": {
+      "directive_id": "00000000-0000-4000-8000-000000000731",
+      "text": "今後は予定の重複を朝に知らせる",
+      "scope": "forever",
+      "session_id": "00000000-0000-4000-8000-000000000732",
+      "turn_id": "00000000-0000-4000-8000-000000000733",
+      "active": true,
+      "created_at": "2030-10-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "deployment-active",
+    "schema": "DeploymentManifest",
+    "valid": true,
+    "value": {
+      "schema": "buddy.deployment.v1",
+      "deployment_id": "00000000-0000-4000-8000-000000000741",
+      "profile": {
+        "profile_id": "intent.luna.v1",
+        "role": "intent",
+        "provider": "openai",
+        "endpoint": "responses",
+        "api_version": "v1",
+        "sdk_version": null,
+        "model_request_id": "gpt-6-luna",
+        "reasoning": "none",
+        "structured_output": "json_schema_strict",
+        "output_limit_tokens": 1024,
+        "timeout_ms": 2000,
+        "max_concurrency": 1,
+        "price_version": "price-1",
+        "reservation_method": "measured_p95",
+        "verified_capabilities": ["json_schema_strict"]
+      },
+      "version_kind": "immutable_snapshot",
+      "response_model_id": "gpt-6-luna-snapshot-1",
+      "artifacts": [],
+      "quantization": null,
+      "tokenizer_hash": null,
+      "chat_template_hash": null,
+      "runtime_version": null,
+      "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stage": "active",
+      "adoptions": [
+        {
+          "use": "intent_args",
+          "decision": "adopted",
+          "evaluation_ids": ["00000000-0000-4000-8000-000000000751"],
+          "decided_by": "user",
+          "decided_at": "2030-10-10T00:00:00Z"
+        }
+      ],
+      "rollback_deployment_id": null,
+      "recorded_at": "2030-10-10T00:00:00Z"
+    }
+  },
+  {
+    "id": "deployment-local",
+    "schema": "DeploymentManifest",
+    "valid": true,
+    "value": {
+      "schema": "buddy.deployment.v1",
+      "deployment_id": "00000000-0000-4000-8000-000000000742",
+      "profile": {
+        "profile_id": "intent.local.v1",
+        "role": "intent",
+        "provider": "local",
+        "endpoint": "local",
+        "api_version": null,
+        "sdk_version": null,
+        "model_request_id": "local-small",
+        "reasoning": "none",
+        "structured_output": "json_schema_strict",
+        "output_limit_tokens": 1024,
+        "timeout_ms": 2000,
+        "max_concurrency": 1,
+        "price_version": null,
+        "reservation_method": "max_liability",
+        "verified_capabilities": ["json_schema_strict"]
+      },
+      "version_kind": "local_digest",
+      "response_model_id": null,
+      "artifacts": [
+        {
+          "path": "model.gguf",
+          "bytes": 1000,
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "quantization": "q4_k_m",
+      "tokenizer_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "chat_template_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "runtime_version": "0.1.0",
+      "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stage": "integrity_checked",
+      "adoptions": [],
+      "rollback_deployment_id": null,
+      "recorded_at": "2030-10-10T00:00:00Z"
+    }
+  },
+  {
+    "id": "deployment-adopted-by-model",
+    "schema": "DeploymentManifest",
+    "valid": false,
+    "value": {
+      "schema": "buddy.deployment.v1",
+      "deployment_id": "00000000-0000-4000-8000-000000000741",
+      "profile": {
+        "profile_id": "intent.luna.v1",
+        "role": "intent",
+        "provider": "openai",
+        "endpoint": "responses",
+        "api_version": "v1",
+        "sdk_version": null,
+        "model_request_id": "gpt-6-luna",
+        "reasoning": "none",
+        "structured_output": "json_schema_strict",
+        "output_limit_tokens": 1024,
+        "timeout_ms": 2000,
+        "max_concurrency": 1,
+        "price_version": "price-1",
+        "reservation_method": "measured_p95",
+        "verified_capabilities": ["json_schema_strict"]
+      },
+      "version_kind": "immutable_snapshot",
+      "response_model_id": "gpt-6-luna-snapshot-1",
+      "artifacts": [],
+      "quantization": null,
+      "tokenizer_hash": null,
+      "chat_template_hash": null,
+      "runtime_version": null,
+      "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stage": "active",
+      "adoptions": [
+        {
+          "use": "intent_args",
+          "decision": "adopted",
+          "evaluation_ids": ["00000000-0000-4000-8000-000000000751"],
+          "decided_by": "model",
+          "decided_at": "2030-10-10T00:00:00Z"
+        }
+      ],
+      "rollback_deployment_id": null,
+      "recorded_at": "2030-10-10T00:00:00Z"
+    }
+  },
+  {
+    "id": "deployment-adopt-all-uses",
+    "schema": "DeploymentManifest",
+    "valid": false,
+    "value": {
+      "schema": "buddy.deployment.v1",
+      "deployment_id": "00000000-0000-4000-8000-000000000741",
+      "profile": {
+        "profile_id": "intent.luna.v1",
+        "role": "intent",
+        "provider": "openai",
+        "endpoint": "responses",
+        "api_version": "v1",
+        "sdk_version": null,
+        "model_request_id": "gpt-6-luna",
+        "reasoning": "none",
+        "structured_output": "json_schema_strict",
+        "output_limit_tokens": 1024,
+        "timeout_ms": 2000,
+        "max_concurrency": 1,
+        "price_version": "price-1",
+        "reservation_method": "measured_p95",
+        "verified_capabilities": ["json_schema_strict"]
+      },
+      "version_kind": "immutable_snapshot",
+      "response_model_id": "gpt-6-luna-snapshot-1",
+      "artifacts": [],
+      "quantization": null,
+      "tokenizer_hash": null,
+      "chat_template_hash": null,
+      "runtime_version": null,
+      "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stage": "active",
+      "adoptions": [
+        {
+          "use": "all",
+          "decision": "adopted",
+          "evaluation_ids": ["00000000-0000-4000-8000-000000000751"],
+          "decided_by": "user",
+          "decided_at": "2030-10-10T00:00:00Z"
+        }
+      ],
+      "rollback_deployment_id": null,
+      "recorded_at": "2030-10-10T00:00:00Z"
+    }
+  },
+  {
+    "id": "deployment-shadow-stage",
+    "schema": "DeploymentManifest",
+    "valid": false,
+    "value": {
+      "schema": "buddy.deployment.v1",
+      "deployment_id": "00000000-0000-4000-8000-000000000741",
+      "profile": {
+        "profile_id": "intent.luna.v1",
+        "role": "intent",
+        "provider": "openai",
+        "endpoint": "responses",
+        "api_version": "v1",
+        "sdk_version": null,
+        "model_request_id": "gpt-6-luna",
+        "reasoning": "none",
+        "structured_output": "json_schema_strict",
+        "output_limit_tokens": 1024,
+        "timeout_ms": 2000,
+        "max_concurrency": 1,
+        "price_version": "price-1",
+        "reservation_method": "measured_p95",
+        "verified_capabilities": ["json_schema_strict"]
+      },
+      "version_kind": "immutable_snapshot",
+      "response_model_id": "gpt-6-luna-snapshot-1",
+      "artifacts": [],
+      "quantization": null,
+      "tokenizer_hash": null,
+      "chat_template_hash": null,
+      "runtime_version": null,
+      "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stage": "shadow",
+      "adoptions": [
+        {
+          "use": "intent_args",
+          "decision": "adopted",
+          "evaluation_ids": ["00000000-0000-4000-8000-000000000751"],
+          "decided_by": "user",
+          "decided_at": "2030-10-10T00:00:00Z"
+        }
+      ],
+      "rollback_deployment_id": null,
+      "recorded_at": "2030-10-10T00:00:00Z"
+    }
+  },
+  {
+    "id": "evaluation-result",
+    "schema": "EvaluationResult",
+    "valid": true,
+    "value": {
+      "schema": "buddy.evaluation-result.v1",
+      "evaluation_id": "00000000-0000-4000-8000-000000000751",
+      "deployment_id": "00000000-0000-4000-8000-000000000741",
+      "use": "intent_args",
+      "suite": {
+        "suite_id": "intent-set",
+        "suite_version": "v1",
+        "split": "judgment"
+      },
+      "conditions": {
+        "base_time": "2030-10-08T00:00:00Z",
+        "model_request_id": "gpt-6-luna",
+        "response_model_id": "gpt-6-luna-snapshot-1",
+        "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "artifact_digest": null,
+        "reasoning": "none",
+        "output_limit_tokens": 1024,
+        "warm_state": "not_applicable"
+      },
+      "evidence": {
+        "kind": "real_api",
+        "run_id": "run-1",
+        "commit": "abcdef1",
+        "executed_at": "2030-10-09T00:00:00Z"
+      },
+      "samples": {
+        "confirmed": 120,
+        "excluded_unconfirmed": 30,
+        "excluded_out_of_scope": 4
+      },
+      "latency_ms": {
+        "p50": 900,
+        "p95": 2100
+      },
+      "cost_per_case": {
+        "currency": "XTS",
+        "amount": "1200"
+      },
+      "metrics": [
+        {
+          "name": "intent_accuracy",
+          "value": "0.95"
+        },
+        {
+          "name": "false_auto_execution",
+          "value": "0"
+        }
+      ],
+      "mandatory_violations": 0,
+      "verdict": "pass"
+    }
+  },
+  {
+    "id": "evaluation-result-shadow-evidence",
+    "schema": "EvaluationResult",
+    "valid": false,
+    "value": {
+      "schema": "buddy.evaluation-result.v1",
+      "evaluation_id": "00000000-0000-4000-8000-000000000751",
+      "deployment_id": "00000000-0000-4000-8000-000000000741",
+      "use": "intent_args",
+      "suite": {
+        "suite_id": "intent-set",
+        "suite_version": "v1",
+        "split": "judgment"
+      },
+      "conditions": {
+        "base_time": "2030-10-08T00:00:00Z",
+        "model_request_id": "gpt-6-luna",
+        "response_model_id": "gpt-6-luna-snapshot-1",
+        "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "artifact_digest": null,
+        "reasoning": "none",
+        "output_limit_tokens": 1024,
+        "warm_state": "not_applicable"
+      },
+      "evidence": {
+        "kind": "shadow_comparison",
+        "run_id": "run-1",
+        "commit": "abcdef1",
+        "executed_at": "2030-10-09T00:00:00Z"
+      },
+      "samples": {
+        "confirmed": 120,
+        "excluded_unconfirmed": 30,
+        "excluded_out_of_scope": 4
+      },
+      "latency_ms": {
+        "p50": 900,
+        "p95": 2100
+      },
+      "cost_per_case": {
+        "currency": "XTS",
+        "amount": "1200"
+      },
+      "metrics": [
+        {
+          "name": "intent_accuracy",
+          "value": "0.95"
+        },
+        {
+          "name": "false_auto_execution",
+          "value": "0"
+        }
+      ],
+      "mandatory_violations": 0,
+      "verdict": "pass"
+    }
+  },
+  {
+    "id": "evaluation-result-without-conditions",
+    "schema": "EvaluationResult",
+    "valid": false,
+    "value": {
+      "schema": "buddy.evaluation-result.v1",
+      "evaluation_id": "00000000-0000-4000-8000-000000000751",
+      "deployment_id": "00000000-0000-4000-8000-000000000741",
+      "use": "intent_args",
+      "suite": {
+        "suite_id": "intent-set",
+        "suite_version": "v1",
+        "split": "judgment"
+      },
+      "evidence": {
+        "kind": "real_api",
+        "run_id": "run-1",
+        "commit": "abcdef1",
+        "executed_at": "2030-10-09T00:00:00Z"
+      },
+      "samples": {
+        "confirmed": 120,
+        "excluded_unconfirmed": 30,
+        "excluded_out_of_scope": 4
+      },
+      "latency_ms": {
+        "p50": 900,
+        "p95": 2100
+      },
+      "cost_per_case": {
+        "currency": "XTS",
+        "amount": "1200"
+      },
+      "metrics": [
+        {
+          "name": "intent_accuracy",
+          "value": "0.95"
+        },
+        {
+          "name": "false_auto_execution",
+          "value": "0"
+        }
+      ],
+      "mandatory_violations": 0,
+      "verdict": "pass"
+    }
+  },
+  {
+    "id": "intent-shadow-record",
+    "schema": "IntentShadowRecord",
+    "valid": true,
+    "value": {
+      "schema": "buddy.intent-shadow.v1",
+      "record_id": "00000000-0000-4000-8000-000000000761",
+      "campaign_id": "00000000-0000-4000-8000-000000000762",
+      "input_id": "00000000-0000-4000-8000-000000000763",
+      "request_revision": "1",
+      "primary": {
+        "deployment_id": "00000000-0000-4000-8000-000000000741",
+        "outcome": "ok",
+        "intent": "query_schedule",
+        "args": {
+          "target_candidate_id": null,
+          "start": "2030-10-09T12:00",
+          "end": "2030-10-09T18:00",
+          "due": null,
+          "title": null,
+          "body": null,
+          "subject": null,
+          "add_labels": null,
+          "remove_labels": null,
+          "task_change": null,
+          "memory_kind": null,
+          "query": null,
+          "device_name": null
+        },
+        "probability": null,
+        "latency_ms": 800
+      },
+      "shadows": [
+        {
+          "deployment_id": "00000000-0000-4000-8000-000000000764",
+          "outcome": "ok",
+          "intent": "query_tasks",
+          "args": null,
+          "probability": "0.62",
+          "latency_ms": 5000
+        },
+        {
+          "deployment_id": "00000000-0000-4000-8000-000000000765",
+          "outcome": "timeout",
+          "intent": null,
+          "args": null,
+          "probability": null,
+          "latency_ms": null
+        }
+      ],
+      "recorded_at": "2030-10-08T00:00:00Z",
+      "expires_at": "2030-10-15T00:00:00Z",
+      "used_for_execution": false
+    }
+  },
+  {
+    "id": "intent-shadow-used-for-execution",
+    "schema": "IntentShadowRecord",
+    "valid": false,
+    "value": {
+      "schema": "buddy.intent-shadow.v1",
+      "record_id": "00000000-0000-4000-8000-000000000761",
+      "campaign_id": "00000000-0000-4000-8000-000000000762",
+      "input_id": "00000000-0000-4000-8000-000000000763",
+      "request_revision": "1",
+      "primary": {
+        "deployment_id": "00000000-0000-4000-8000-000000000741",
+        "outcome": "ok",
+        "intent": "query_schedule",
+        "args": {
+          "target_candidate_id": null,
+          "start": "2030-10-09T12:00",
+          "end": "2030-10-09T18:00",
+          "due": null,
+          "title": null,
+          "body": null,
+          "subject": null,
+          "add_labels": null,
+          "remove_labels": null,
+          "task_change": null,
+          "memory_kind": null,
+          "query": null,
+          "device_name": null
+        },
+        "probability": null,
+        "latency_ms": 800
+      },
+      "shadows": [
+        {
+          "deployment_id": "00000000-0000-4000-8000-000000000764",
+          "outcome": "ok",
+          "intent": "query_tasks",
+          "args": null,
+          "probability": "0.62",
+          "latency_ms": 5000
+        },
+        {
+          "deployment_id": "00000000-0000-4000-8000-000000000765",
+          "outcome": "timeout",
+          "intent": null,
+          "args": null,
+          "probability": null,
+          "latency_ms": null
+        }
+      ],
+      "recorded_at": "2030-10-08T00:00:00Z",
+      "expires_at": "2030-10-15T00:00:00Z",
+      "used_for_execution": true
+    }
+  },
+  {
+    "id": "intent-shadow-with-utterance",
+    "schema": "IntentShadowRecord",
+    "valid": false,
+    "value": {
+      "schema": "buddy.intent-shadow.v1",
+      "record_id": "00000000-0000-4000-8000-000000000761",
+      "campaign_id": "00000000-0000-4000-8000-000000000762",
+      "input_id": "00000000-0000-4000-8000-000000000763",
+      "request_revision": "1",
+      "primary": {
+        "deployment_id": "00000000-0000-4000-8000-000000000741",
+        "outcome": "ok",
+        "intent": "query_schedule",
+        "args": {
+          "target_candidate_id": null,
+          "start": "2030-10-09T12:00",
+          "end": "2030-10-09T18:00",
+          "due": null,
+          "title": null,
+          "body": null,
+          "subject": null,
+          "add_labels": null,
+          "remove_labels": null,
+          "task_change": null,
+          "memory_kind": null,
+          "query": null,
+          "device_name": null
+        },
+        "probability": null,
+        "latency_ms": 800
+      },
+      "shadows": [
+        {
+          "deployment_id": "00000000-0000-4000-8000-000000000764",
+          "outcome": "ok",
+          "intent": "query_tasks",
+          "args": null,
+          "probability": "0.62",
+          "latency_ms": 5000
+        },
+        {
+          "deployment_id": "00000000-0000-4000-8000-000000000765",
+          "outcome": "timeout",
+          "intent": null,
+          "args": null,
+          "probability": null,
+          "latency_ms": null
+        }
+      ],
+      "recorded_at": "2030-10-08T00:00:00Z",
+      "expires_at": "2030-10-15T00:00:00Z",
+      "used_for_execution": false,
+      "utterance": "合成の発話"
+    }
+  },
+  {
+    "id": "shadow-campaign-stopped",
+    "schema": "ShadowCampaignState",
+    "valid": true,
+    "value": {
+      "campaign_id": "00000000-0000-4000-8000-000000000762",
+      "budget_pool_id": "llm.background.campaign",
+      "started_at": "2030-10-01T00:00:00Z",
+      "confirmed_inputs": 300,
+      "spent": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "limits": {
+        "max_inputs": 300,
+        "max_spend": {
+          "currency": "XTS",
+          "amount": "100000000"
+        },
+        "max_days": 7
+      },
+      "status": "stopped",
+      "stop_reason": "max_inputs"
+    }
+  },
+  {
+    "id": "intent-eval-case",
+    "schema": "IntentEvalCase",
+    "valid": true,
+    "value": {
+      "schema": "buddy.eval-case.v1",
+      "case_id": "E901",
+      "use": "intent_args",
+      "split": "judgment",
+      "group_id": "group-1",
+      "review_status": "confirmed",
+      "input": {
+        "text": "合成の発話",
+        "input_kind": "text",
+        "base_time": "2030-10-08T00:00:00Z",
+        "zone": "Asia/Tokyo",
+        "context": null
+      },
+      "categories": ["basic"],
+      "expected": {
+        "intent": "create_task",
+        "args": {
+          "title": "合成の用事",
+          "due": "2030-10-10"
+        }
+      }
+    }
+  },
+  {
+    "id": "intent-eval-case-null-arg",
+    "schema": "IntentEvalCase",
+    "valid": false,
+    "value": {
+      "schema": "buddy.eval-case.v1",
+      "case_id": "E901",
+      "use": "intent_args",
+      "split": "judgment",
+      "group_id": "group-1",
+      "review_status": "confirmed",
+      "input": {
+        "text": "合成の発話",
+        "input_kind": "text",
+        "base_time": "2030-10-08T00:00:00Z",
+        "zone": "Asia/Tokyo",
+        "context": null
+      },
+      "categories": ["basic"],
+      "expected": {
+        "intent": "create_task",
+        "args": {
+          "title": null
+        }
+      }
+    }
+  },
+  {
+    "id": "intent-eval-case-other-use",
+    "schema": "IntentEvalCase",
+    "valid": false,
+    "value": {
+      "schema": "buddy.eval-case.v1",
+      "case_id": "E901",
+      "use": "mail_extraction",
+      "split": "judgment",
+      "group_id": "group-1",
+      "review_status": "confirmed",
+      "input": {
+        "text": "合成の発話",
+        "input_kind": "text",
+        "base_time": "2030-10-08T00:00:00Z",
+        "zone": "Asia/Tokyo",
+        "context": null
+      },
+      "categories": ["basic"],
+      "expected": {
+        "intent": "create_task",
+        "args": {
+          "title": "合成の用事",
+          "due": "2030-10-10"
+        }
+      }
+    }
   }
 ]

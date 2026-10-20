@@ -151,6 +151,86 @@ export function semanticErrors(name, value) {
     )
       errors.push('ready_before_analysis_complete');
   }
+  if (
+    name === 'MemoryCandidate' &&
+    value.origin === 'explicit_request' &&
+    !value.sources.some((s) => s.source_kind === 'turn')
+  )
+    errors.push('explicit_without_turn');
+  if (name === 'MemoryRecord') {
+    if (Date.parse(value.review_at) <= Date.parse(value.created_at))
+      errors.push('review_before_created');
+    if (value.status === 'active' && value.delete_at !== null)
+      errors.push('active_with_delete_at');
+    if (value.status !== 'active' && value.delete_at === null)
+      errors.push('missing_delete_at');
+    if (
+      value.delete_at !== null &&
+      Date.parse(value.delete_at) <= Date.parse(value.review_at)
+    )
+      errors.push('delete_before_review');
+  }
+  if (name === 'ForgetLedgerEntry') {
+    const keys = value.forgotten.map((s) => `${s.source_kind}:${s.source_id}`);
+    if (new Set(keys).size !== keys.length) errors.push('duplicate_forgotten');
+  }
+  if (name === 'DeploymentManifest') {
+    const uses = value.adoptions.map((a) => a.use);
+    if (new Set(uses).size !== uses.length)
+      errors.push('duplicate_adoption_use');
+    if (
+      value.stage === 'active' &&
+      !value.adoptions.some((a) => a.decision === 'adopted')
+    )
+      errors.push('active_without_adoption');
+    if (value.version_kind === 'local_digest' && value.artifacts.length === 0)
+      errors.push('local_without_artifacts');
+    // p95 予約は意図判定の比較 profile だけ。他用途へ広げない（05 質問132）。
+    if (
+      value.profile.reservation_method === 'measured_p95' &&
+      value.profile.role !== 'intent'
+    )
+      errors.push('p95_reservation_outside_intent');
+  }
+  if (name === 'EvaluationResult') {
+    if (value.verdict === 'pass') {
+      if (value.mandatory_violations > 0) errors.push('pass_with_violation');
+      if (value.samples.confirmed === 0) errors.push('pass_without_confirmed');
+      if (value.suite.split === 'tuning') errors.push('pass_on_tuning_split');
+    }
+    if (value.latency_ms && value.latency_ms.p50 > value.latency_ms.p95)
+      errors.push('latency_order');
+    const names = value.metrics.map((m) => m.name);
+    if (new Set(names).size !== names.length) errors.push('duplicate_metric');
+  }
+  if (name === 'ShadowJudgment') {
+    const answered = ['ok', 'needs_clarification'].includes(value.outcome);
+    if (answered && value.intent === null) errors.push('missing_intent');
+    if (!answered && (value.intent !== null || value.args !== null))
+      errors.push('judgment_without_result');
+  }
+  if (name === 'IntentShadowRecord') {
+    if (value.primary.outcome === 'skipped') errors.push('primary_skipped');
+    if (Date.parse(value.expires_at) <= Date.parse(value.recorded_at))
+      errors.push('expires_before_recorded');
+    for (const judgment of [value.primary, ...value.shadows])
+      errors.push(...semanticErrors('ShadowJudgment', judgment));
+    if (
+      value.shadows.some((s) => s.deployment_id === value.primary.deployment_id)
+    )
+      errors.push('shadow_is_primary');
+  }
+  if (name === 'ShadowCampaignState') {
+    if ((value.status === 'stopped') !== (value.stop_reason !== null))
+      errors.push('stop_reason_mismatch');
+    if (value.spent.currency !== value.limits.max_spend.currency)
+      errors.push('currency_mismatch');
+  }
+  if (
+    name === 'ShadowCampaignSummary' &&
+    value.shadow_deployment_id === value.primary_deployment_id
+  )
+    errors.push('shadow_is_primary');
   if (name === 'SyncBatch') {
     if (Date.parse(value.window_start) >= Date.parse(value.window_end))
       errors.push('window_order');

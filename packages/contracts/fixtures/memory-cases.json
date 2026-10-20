@@ -1,0 +1,608 @@
+{
+  "status": "specification_only",
+  "description": "記憶の保存直前の検査・期限・復元・抽出の時点の期待値（設計 03 忘却と再取り込み・保存期限・バックアップ、08 §6、11 §7、X15・X16・X17・X44・X59）。手で書いたもので、domain の実装から生成していない。ID・HMAC は合成値。",
+  "admission": {
+    "base_candidate": {
+      "origin": "auto_extraction",
+      "kind": "preference",
+      "target_key": "返信の長さ",
+      "sources": [{ "source_kind": "turn", "source_id": "turn-20" }],
+      "dedupe_key": "1111111111111111111111111111111111111111111111111111111111111111",
+      "forgetting_generation": "3",
+      "permission_revision": "2"
+    },
+    "base_context": {
+      "privateConversation": false,
+      "allowedKinds": ["preference", "person", "routine", "lexicon"],
+      "currentForgettingGeneration": "3",
+      "currentPermissionRevision": "2",
+      "ledger": [
+        {
+          "forgetting_generation": "1",
+          "forgotten": [{ "source_kind": "memory", "source_id": "memory-1" }],
+          "blocked_source_ids": ["mail-9"],
+          "blocked_content_keys": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "forgetting_generation": "2",
+          "forgotten": [
+            { "source_kind": "turn", "source_id": "turn-10" },
+            { "source_kind": "memory", "source_id": "memory-10" }
+          ],
+          "blocked_source_ids": [],
+          "blocked_content_keys": []
+        },
+        {
+          "forgetting_generation": "3",
+          "forgotten": [
+            { "source_kind": "source_item", "source_id": "mail-5" }
+          ],
+          "blocked_source_ids": ["mail-5"],
+          "blocked_content_keys": []
+        }
+      ],
+      "expiredSourceIds": [],
+      "existing": []
+    },
+    "cases": [
+      {
+        "id": "normal",
+        "expected": {
+          "action": "save",
+          "reasons": [],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "x15-late-summary-after-forget",
+        "title": "世代 1 で始めた要約が、由来の発言を世代 2 で忘却した後に返る",
+        "refs": ["X15", "08 §6"],
+        "candidate": {
+          "forgetting_generation": "1",
+          "sources": [{ "source_kind": "turn", "source_id": "turn-10" }]
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": ["source_forgotten"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "x15-derived-memory-forgotten",
+        "title": "忘却した発言から作った記憶 memory-10 を由来にする再要約",
+        "refs": ["X15", "03 忘却と再取り込み"],
+        "candidate": {
+          "forgetting_generation": "1",
+          "sources": [{ "source_kind": "memory", "source_id": "memory-10" }]
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": ["source_forgotten"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "x15-revival-started-after-forget",
+        "title": "忘却の後に始めた抽出でも、忘却した由来からは作らない（台帳の世代の新旧によらない）",
+        "refs": ["X15"],
+        "candidate": {
+          "sources": [{ "source_kind": "turn", "source_id": "turn-10" }]
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": ["source_forgotten"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "blocked-source-id",
+        "title": "再登録を禁止した元のメール全体からは自動記憶化しない",
+        "refs": ["03 忘却と再取り込み"],
+        "candidate": {
+          "sources": [{ "source_kind": "source_item", "source_id": "mail-9" }]
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": ["source_forgotten"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "content-forgotten-auto",
+        "title": "忘れた記憶と同じ内容を、別の発言から自動抽出しても保存しない",
+        "refs": ["03 忘却と再取り込み"],
+        "candidate": {
+          "dedupe_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": ["content_forgotten"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "content-forgotten-explicit-request",
+        "title": "本人が新しい発言ではっきり頼んだ保存は、内容の禁止だけでは止めない",
+        "refs": ["ADR 0008"],
+        "candidate": {
+          "origin": "explicit_request",
+          "dedupe_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sources": [{ "source_kind": "turn", "source_id": "turn-30" }]
+        },
+        "expected": {
+          "action": "save",
+          "reasons": [],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "ledger-gap",
+        "title": "開始後の世代 2 が台帳にない。忘却済みかを判定できないので保存しない",
+        "refs": ["03 バックアップ・復元"],
+        "candidate": { "forgetting_generation": "1" },
+        "context": {
+          "ledger": [
+            {
+              "forgetting_generation": "1",
+              "forgotten": [
+                { "source_kind": "memory", "source_id": "memory-1" }
+              ],
+              "blocked_source_ids": [],
+              "blocked_content_keys": []
+            },
+            {
+              "forgetting_generation": "3",
+              "forgotten": [
+                { "source_kind": "source_item", "source_id": "mail-5" }
+              ],
+              "blocked_source_ids": [],
+              "blocked_content_keys": []
+            }
+          ]
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": ["forget_ledger_gap"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "generation-ahead",
+        "candidate": { "forgetting_generation": "4" },
+        "expected": {
+          "action": "reject",
+          "reasons": ["generation_ahead"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "permission-changed",
+        "refs": ["08 §6 権限喪失後の遅着"],
+        "candidate": { "permission_revision": "1" },
+        "expected": {
+          "action": "reject",
+          "reasons": ["permission_changed"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "source-expired",
+        "title": "期限切れの発言を由来にする遅着結果",
+        "refs": ["08 §6 期限切れ後の遅着"],
+        "context": { "expiredSourceIds": ["turn-20"] },
+        "expected": {
+          "action": "reject",
+          "reasons": ["source_expired"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "private-conversation",
+        "refs": ["X17", "X59", "D04"],
+        "candidate": { "origin": "explicit_request" },
+        "context": { "privateConversation": true },
+        "expected": {
+          "action": "reject",
+          "reasons": ["private_conversation"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "kind-not-allowed",
+        "refs": ["X44"],
+        "candidate": { "kind": "goal" },
+        "expected": {
+          "action": "reject",
+          "reasons": ["kind_not_allowed"],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "duplicate",
+        "title": "同じ内容の再抽出は二重に保存せず、期限も更新しない",
+        "refs": ["X44", "11 §7"],
+        "context": {
+          "existing": [
+            {
+              "memory_id": "memory-2",
+              "kind": "preference",
+              "target_key": "返信の長さ",
+              "dedupe_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "status": "active"
+            }
+          ]
+        },
+        "expected": {
+          "action": "duplicate",
+          "reasons": [],
+          "conflictingMemoryIds": []
+        }
+      },
+      {
+        "id": "same-target-different-content",
+        "refs": ["X44", "J15"],
+        "context": {
+          "existing": [
+            {
+              "memory_id": "memory-3",
+              "kind": "preference",
+              "target_key": "返信の長さ",
+              "dedupe_key": "2222222222222222222222222222222222222222222222222222222222222222",
+              "status": "review_pending"
+            },
+            {
+              "memory_id": "memory-4",
+              "kind": "person",
+              "target_key": "返信の長さ",
+              "dedupe_key": "3333333333333333333333333333333333333333333333333333333333333333",
+              "status": "active"
+            }
+          ]
+        },
+        "expected": {
+          "action": "review",
+          "reasons": [],
+          "conflictingMemoryIds": ["memory-3"]
+        }
+      },
+      {
+        "id": "deleted-is-not-duplicate",
+        "context": {
+          "existing": [
+            {
+              "memory_id": "memory-5",
+              "kind": "preference",
+              "target_key": "返信の長さ",
+              "dedupe_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "status": "deleted"
+            }
+          ]
+        },
+        "expected": {
+          "action": "save",
+          "reasons": [],
+          "conflictingMemoryIds": []
+        }
+      }
+    ]
+  },
+  "initial_review": [
+    {
+      "id": "new-memory",
+      "created_at": "2030-10-01T00:00:00Z",
+      "source_review_ats": [],
+      "expected": "2030-12-30T00:00:00Z"
+    },
+    {
+      "id": "resummary-keeps-source-deadline",
+      "title": "既存の記憶から作った記憶は、由来の見直し日を延ばさない",
+      "created_at": "2030-10-20T00:00:00Z",
+      "source_review_ats": ["2030-11-15T00:00:00Z", "2031-01-05T00:00:00Z"],
+      "expected": "2030-11-15T00:00:00Z"
+    }
+  ],
+  "lifecycle": {
+    "initial": {
+      "status": "active",
+      "review_at": "2030-12-30T00:00:00Z",
+      "delete_at": null
+    },
+    "steps": [
+      {
+        "event": "used",
+        "now": "2030-12-01T00:00:00Z",
+        "rejected": null,
+        "expected": {
+          "status": "active",
+          "review_at": "2030-12-30T00:00:00Z",
+          "delete_at": null
+        }
+      },
+      {
+        "event": "resummarized",
+        "now": "2030-12-02T00:00:00Z",
+        "rejected": null,
+        "expected": {
+          "status": "active",
+          "review_at": "2030-12-30T00:00:00Z",
+          "delete_at": null
+        }
+      },
+      {
+        "event": "duplicate_extracted",
+        "now": "2030-12-03T00:00:00Z",
+        "rejected": null,
+        "expected": {
+          "status": "active",
+          "review_at": "2030-12-30T00:00:00Z",
+          "delete_at": null
+        }
+      },
+      {
+        "event": "explicit_continue",
+        "now": "2030-12-04T00:00:00Z",
+        "rejected": "not_review_pending",
+        "expected": {
+          "status": "active",
+          "review_at": "2030-12-30T00:00:00Z",
+          "delete_at": null
+        }
+      },
+      {
+        "event": "review_due",
+        "now": "2030-12-29T23:59:59Z",
+        "rejected": "not_due",
+        "expected": {
+          "status": "active",
+          "review_at": "2030-12-30T00:00:00Z",
+          "delete_at": null
+        }
+      },
+      {
+        "event": "review_due",
+        "now": "2030-12-30T00:00:00Z",
+        "rejected": null,
+        "expected": {
+          "status": "review_pending",
+          "review_at": "2030-12-30T00:00:00Z",
+          "delete_at": "2031-01-29T00:00:00Z"
+        }
+      },
+      {
+        "event": "used",
+        "now": "2031-01-02T00:00:00Z",
+        "rejected": null,
+        "expected": {
+          "status": "review_pending",
+          "review_at": "2030-12-30T00:00:00Z",
+          "delete_at": "2031-01-29T00:00:00Z"
+        }
+      },
+      {
+        "event": "delete_due",
+        "now": "2031-01-28T00:00:00Z",
+        "rejected": "not_due",
+        "expected": {
+          "status": "review_pending",
+          "review_at": "2030-12-30T00:00:00Z",
+          "delete_at": "2031-01-29T00:00:00Z"
+        }
+      },
+      {
+        "event": "explicit_continue",
+        "now": "2031-01-10T09:00:00Z",
+        "rejected": null,
+        "expected": {
+          "status": "active",
+          "review_at": "2031-04-10T09:00:00Z",
+          "delete_at": null
+        }
+      }
+    ],
+    "unanswered": {
+      "title": "見直し待ちのまま 30 日応答がなければ削除する",
+      "initial": {
+        "status": "review_pending",
+        "review_at": "2030-12-30T00:00:00Z",
+        "delete_at": "2031-01-29T00:00:00Z"
+      },
+      "event": "delete_due",
+      "now": "2031-01-29T00:00:00Z",
+      "expected": {
+        "status": "deleted",
+        "review_at": "2030-12-30T00:00:00Z",
+        "delete_at": "2031-01-29T00:00:00Z"
+      }
+    }
+  },
+  "usable": [
+    {
+      "id": "turn-within-deadline",
+      "refs": ["X16"],
+      "expires_at": "2030-10-08T00:00:00Z",
+      "now": "2030-10-07T23:00:00Z",
+      "last_checked_at": "2030-10-07T22:00:00Z",
+      "expected": []
+    },
+    {
+      "id": "turn-at-deadline",
+      "refs": ["X16"],
+      "expires_at": "2030-10-08T00:00:00Z",
+      "now": "2030-10-08T00:00:00Z",
+      "last_checked_at": "2030-10-07T23:00:00Z",
+      "expected": ["expired"]
+    },
+    {
+      "id": "clock-rolled-back",
+      "title": "時計が巻き戻ると期限内に見えても使わない",
+      "refs": ["X16", "03 保存期限"],
+      "expires_at": "2030-10-08T00:00:00Z",
+      "now": "2030-10-06T10:00:00Z",
+      "last_checked_at": "2030-10-07T12:00:00Z",
+      "expected": ["clock_regression"]
+    },
+    {
+      "id": "memory-review-pending",
+      "memory": {
+        "status": "review_pending",
+        "review_at": "2030-12-30T00:00:00Z",
+        "delete_at": "2031-01-29T00:00:00Z"
+      },
+      "now": "2031-01-02T00:00:00Z",
+      "last_checked_at": "2031-01-01T00:00:00Z",
+      "expected": ["review_pending", "review_due"]
+    },
+    {
+      "id": "memory-active-past-review",
+      "title": "見直し日の処理がまだでも、見直し日を過ぎた記憶は使わない",
+      "memory": {
+        "status": "active",
+        "review_at": "2030-12-30T00:00:00Z",
+        "delete_at": null
+      },
+      "now": "2030-12-30T00:00:01Z",
+      "last_checked_at": "2030-12-29T00:00:00Z",
+      "expected": ["review_due"]
+    }
+  ],
+  "restore": [
+    {
+      "id": "latest-ledger-present",
+      "input": {
+        "backupForgettingGeneration": "3",
+        "latestKnownGeneration": "5",
+        "copies": [
+          { "holder": "hub", "forgetting_generation": "5", "complete": true },
+          {
+            "holder": "device-a",
+            "forgetting_generation": "4",
+            "complete": true
+          }
+        ]
+      },
+      "expected": { "restoreMemories": true, "reasons": [] }
+    },
+    {
+      "id": "x16-ledger-lost-everywhere",
+      "refs": ["X16", "03 バックアップ・復元"],
+      "input": {
+        "backupForgettingGeneration": "3",
+        "latestKnownGeneration": null,
+        "copies": []
+      },
+      "expected": {
+        "restoreMemories": false,
+        "reasons": ["latest_ledger_unconfirmed"]
+      }
+    },
+    {
+      "id": "x16-only-old-or-broken-copies",
+      "refs": ["X16"],
+      "input": {
+        "backupForgettingGeneration": "3",
+        "latestKnownGeneration": "5",
+        "copies": [
+          { "holder": "hub", "forgetting_generation": "5", "complete": false },
+          {
+            "holder": "device-a",
+            "forgetting_generation": "4",
+            "complete": true
+          }
+        ]
+      },
+      "expected": {
+        "restoreMemories": false,
+        "reasons": ["latest_ledger_missing"]
+      }
+    },
+    {
+      "id": "backup-newer-than-ledger",
+      "input": {
+        "backupForgettingGeneration": "6",
+        "latestKnownGeneration": "5",
+        "copies": [
+          { "holder": "hub", "forgetting_generation": "5", "complete": true }
+        ]
+      },
+      "expected": {
+        "restoreMemories": false,
+        "reasons": ["backup_newer_than_ledger"]
+      }
+    }
+  ],
+  "extraction_trigger": [
+    {
+      "id": "x44-two-exchanges",
+      "input": {
+        "trigger": "conversation_end",
+        "privateConversation": false,
+        "userExchanges": 2,
+        "explicitSaveExchanges": 0
+      },
+      "expected": false
+    },
+    {
+      "id": "x44-six-exchanges",
+      "input": {
+        "trigger": "conversation_end",
+        "privateConversation": false,
+        "userExchanges": 6,
+        "explicitSaveExchanges": 0
+      },
+      "expected": true
+    },
+    {
+      "id": "x44-two-exchanges-with-memory-save",
+      "title": "「覚えて」は memory_save で依頼時に保存し、終了時に再抽出しない",
+      "input": {
+        "trigger": "conversation_end",
+        "privateConversation": false,
+        "userExchanges": 2,
+        "explicitSaveExchanges": 1
+      },
+      "expected": false
+    },
+    {
+      "id": "memory-save-turns-excluded",
+      "input": {
+        "trigger": "idle_30min",
+        "privateConversation": false,
+        "userExchanges": 5,
+        "explicitSaveExchanges": 2
+      },
+      "expected": false
+    },
+    {
+      "id": "idle-four-exchanges",
+      "input": {
+        "trigger": "idle_30min",
+        "privateConversation": false,
+        "userExchanges": 4,
+        "explicitSaveExchanges": 0
+      },
+      "expected": true
+    },
+    {
+      "id": "x17-private-conversation",
+      "input": {
+        "trigger": "conversation_end",
+        "privateConversation": true,
+        "userExchanges": 6,
+        "explicitSaveExchanges": 0
+      },
+      "expected": false
+    },
+    {
+      "id": "conversation-continues",
+      "input": {
+        "trigger": "none",
+        "privateConversation": false,
+        "userExchanges": 6,
+        "explicitSaveExchanges": 0
+      },
+      "expected": false
+    }
+  ]
+}

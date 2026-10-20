@@ -52,7 +52,15 @@ const VERSION_FIELDS = {
 };
 // 型の決定を後続 Issue に残す版。決めたら VERSION_FIELDS へ移す。
 // price_version は不透明な単価の版の ID（設定で決める）で、順序比較しない（ADR 0006）。
-const OPAQUE_VERSION_FIELDS = new Set(['price_version']);
+// api_version・sdk_version・runtime_version は provider・runtime の版の文字列、suite_version は評価セットの版で、
+// どれも一致だけを見る（ADR 0008）。
+const OPAQUE_VERSION_FIELDS = new Set([
+  'price_version',
+  'api_version',
+  'sdk_version',
+  'runtime_version',
+  'suite_version',
+]);
 // 抽出した依頼の版を使う定義。RequestEntity 等を追加した時点で登録する（U04）。
 const REQUEST_ENTITY_DEFS = new Set([
   'ExtractedRequest',

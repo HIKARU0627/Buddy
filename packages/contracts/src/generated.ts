@@ -50,7 +50,18 @@ export type BuddyContract =
   | RelatedAnalysis
   | CandidateSnapshot
   | SyncBatch
-  | SyncScopeState;
+  | SyncScopeState
+  | MemoryCandidateWire
+  | MemoryCandidate
+  | MemoryRecord
+  | ForgetLedgerEntry
+  | UserDirective
+  | DeploymentManifest
+  | EvaluationResult
+  | IntentShadowRecord
+  | ShadowCampaignState
+  | ShadowCampaignSummary
+  | IntentEvalCase;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -444,6 +455,23 @@ export type RequestEntityRevision = string;
  * 同期の実行担当の世代（設計 11 §1A）。再起動で新しい担当になると上がり、旧担当の遅着ページ・公開要求を拒否する。
  */
 export type ExecutorGeneration = string;
+/**
+ * 要約記憶の種類（設計 11 §7）。保存できるのは本人が初期設定で許可した種類だけ。
+ */
+export type MemoryKind =
+  'preference' | 'goal' | 'person' | 'routine' | 'lexicon' | 'progress';
+/**
+ * 採否を決める用途（設計 05 評価の進め方）。全用途をまとめた値は置かない。memory_extraction は独立した用途で、正解付きセットができるまで未評価（ADR 0008）。
+ */
+export type EvaluationUse =
+  | 'intent_args'
+  | 'mail_extraction'
+  | 'reply_draft'
+  | 'research_summary'
+  | 'consult_summary'
+  | 'memory_extraction'
+  | 'voice_conversation'
+  | 'local_asr';
 
 export interface AudioRange {
   audio_epoch: AudioEpoch;
@@ -1869,4 +1897,341 @@ export interface SyncScopeState {
   pending_incremental: boolean;
   pending_full: boolean;
   analysis_plan_complete_generation: PublishedGeneration | null;
+}
+/**
+ * モデルが返す記憶の候補（設計 11 §7）。文は 80 文字以内（コードポイント）。忘却世代・許可・重複の判定はモデルに返させず Core が付ける。
+ */
+export interface MemoryCandidateWire {
+  kind: MemoryKind;
+  text: string;
+  /**
+   * @minItems 1
+   */
+  source_turn_ids: [string, ...string[]];
+  target_key: string;
+}
+/**
+ * Core が検証した記憶の候補（設計 11 §7、03 memories / memory_sources）。forgetting_generation と permission_revision は処理開始時の値で、保存直前に現在値と照合する（08 §6）。dedupe_key は種類と正規化した文の HMAC で、Core が計算する。explicit_request は本人がはっきり頼んだ保存（memory_save）。
+ */
+export interface MemoryCandidate {
+  schema: 'buddy.memory-candidate.v1';
+  memory_candidate_id: Id;
+  origin: 'auto_extraction' | 'explicit_request';
+  session_id: Id;
+  kind: MemoryKind;
+  text: string;
+  target_key: string;
+  /**
+   * @minItems 1
+   */
+  sources: [MemorySourceRef, ...MemorySourceRef[]];
+  dedupe_key: Hash;
+  forgetting_generation: ForgettingGeneration;
+  permission_revision: PermissionRevision;
+  created_at: UtcTime;
+}
+/**
+ * 記憶の由来（発言・元情報・別の記憶）。本文は持たない（設計 03 忘却と再取り込み）。
+ */
+export interface MemorySourceRef {
+  source_kind: 'turn' | 'source_item' | 'memory';
+  source_id: string;
+}
+/**
+ * 保存した要約記憶（設計 03 保存期限）。保存から 90 日で見直し待ち、見直し待ちは自動提案の根拠から外し 30 日未応答で削除する。利用・再要約・重複の再抽出で期限を延ばさない。
+ */
+export interface MemoryRecord {
+  memory_id: Id;
+  origin: 'auto_extraction' | 'explicit_request';
+  kind: MemoryKind;
+  text: string;
+  target_key: string;
+  /**
+   * @minItems 1
+   */
+  sources: [MemorySourceRef, ...MemorySourceRef[]];
+  dedupe_key: Hash;
+  status: 'active' | 'review_pending' | 'deleted';
+  created_at: UtcTime;
+  review_at: UtcTime;
+  delete_at: UtcTime | null;
+}
+/**
+ * 忘却台帳の 1 件（設計 03 forget_ledger、忘却と再取り込み・バックアップ）。本文を持たず、忘れた対象と派生した記憶、再登録を禁止する元の由来 ID、同じ内容の自動記憶化を止める HMAC だけを記録する。世代は 1 件ごとに 1 つ進む。
+ */
+export interface ForgetLedgerEntry {
+  schema: 'buddy.forget-ledger.v1';
+  entry_id: Id;
+  forgetting_generation: ForgettingGeneration;
+  recorded_at: UtcTime;
+  /**
+   * @minItems 1
+   */
+  forgotten: [MemorySourceRef, ...MemorySourceRef[]];
+  blocked_source_ids: string[];
+  blocked_content_keys: Hash[];
+}
+/**
+ * 本人の指示（設計 03 user_directives、10 §4）。this_time（今回は）は会話の明示終了で破棄し、from_now_on（今後は）は設定として保存して設定画面で確認・取り消しできる。
+ */
+export interface UserDirective {
+  directive_id: Id;
+  text: string;
+  scope: 'this_time' | 'from_now_on';
+  session_id: Id;
+  turn_id: Id;
+  active: boolean;
+  created_at: UtcTime;
+}
+/**
+ * モデル配備の記録（設計 05 再選定する条件 P09、03 データ表）。downloaded→integrity_checked→contract_tested→evaluated→active の順に進め、可変名の変化を検知したら suspended にして新規の自動処理を止める。モデルの思考全文や元本文は持たない。
+ */
+export interface DeploymentManifest {
+  schema: 'buddy.deployment.v1';
+  deployment_id: Id;
+  profile: ModelProfile;
+  version_kind: 'immutable_snapshot' | 'mutable_alias' | 'local_digest';
+  response_model_id: string | null;
+  artifacts: ModelArtifact[];
+  quantization: string | null;
+  tokenizer_hash: Hash | null;
+  chat_template_hash: Hash | null;
+  runtime_version: string | null;
+  schema_hash: Hash | null;
+  prompt_hash: Hash | null;
+  stage:
+    | 'downloaded'
+    | 'integrity_checked'
+    | 'contract_tested'
+    | 'evaluated'
+    | 'active'
+    | 'suspended'
+    | 'retired';
+  adoptions: DeploymentAdoption[];
+  rollback_deployment_id: Id | null;
+  recorded_at: UtcTime;
+}
+/**
+ * モデル・endpoint 別の profile（設計 05 P02）。変更の単位はモデル名ではなく profile。verified_capabilities は endpoint ごとに試験で確かめた能力だけで、schema の記載から登録しない。measured_p95 は意図判定の比較 profile だけに使う（05 質問132）。
+ */
+export interface ModelProfile {
+  profile_id: string;
+  role:
+    'voice' | 'intent' | 'background_text' | 'advanced_consult' | 'local_asr';
+  provider: string;
+  endpoint: string;
+  api_version: string | null;
+  sdk_version: string | null;
+  model_request_id: string;
+  reasoning: string | null;
+  structured_output: 'json_schema_strict' | 'json_mode' | 'none';
+  output_limit_tokens: number | null;
+  timeout_ms: number;
+  max_concurrency: number;
+  price_version: string | null;
+  reservation_method: 'max_liability' | 'measured_p95';
+  verified_capabilities: string[];
+}
+/**
+ * ローカル一式の成果物（設計 05 P09）。
+ */
+export interface ModelArtifact {
+  path: string;
+  bytes: number;
+  sha256: Hash;
+}
+/**
+ * 用途ごとの採否（設計 05 評価の進め方）。結果を本人に示して決める。判断のない用途は未評価として扱い、ここに書かない。根拠にできるのは同じ配備・同じ用途の EvaluationResult だけで、影モードの集計は参照できない。
+ */
+export interface DeploymentAdoption {
+  use: EvaluationUse;
+  decision: 'adopted' | 'rejected';
+  /**
+   * @minItems 1
+   */
+  evaluation_ids: [Id, ...Id[]];
+  decided_by: 'user';
+  decided_at: UtcTime;
+}
+/**
+ * 用途別の評価結果（設計 05 評価の進め方、09 X57・X66・MA01・MA02）。1 件は 1 つの配備・1 つの用途だけを表す。必須境界例の違反が 1 件でもあれば pass にできない。
+ */
+export interface EvaluationResult {
+  schema: 'buddy.evaluation-result.v1';
+  evaluation_id: Id;
+  deployment_id: Id;
+  use: EvaluationUse;
+  suite: {
+    suite_id: string;
+    suite_version: string;
+    split: 'tuning' | 'judgment';
+  };
+  /**
+   * 評価したときの条件。配備の現在値と一つでも違えば、その配備の評価として使わない。
+   */
+  conditions: {
+    base_time: UtcTime;
+    model_request_id: string;
+    response_model_id: string | null;
+    schema_hash: Hash | null;
+    prompt_hash: Hash | null;
+    artifact_digest: Hash | null;
+    reasoning: string | null;
+    output_limit_tokens: number | null;
+    warm_state: 'cold' | 'warm' | 'not_applicable';
+  };
+  /**
+   * 証拠の種類。模擬・実 API・実機を分ける（設計 09 §8）。
+   */
+  evidence: {
+    kind: 'mock_provider' | 'real_api' | 'real_device';
+    run_id: string;
+    commit: string;
+    executed_at: UtcTime;
+  };
+  /**
+   * 本人が確認済みの例だけを集計する。未確認・保留・対象外は除外数として残す。
+   */
+  samples: {
+    confirmed: number;
+    excluded_unconfirmed: number;
+    excluded_out_of_scope: number;
+  };
+  latency_ms: {
+    p50: number;
+    p95: number;
+  } | null;
+  cost_per_case: Money | null;
+  metrics: {
+    name: string;
+    value: string;
+  }[];
+  mandatory_violations: number;
+  verdict: 'pass' | 'fail' | 'incomplete';
+}
+/**
+ * 影モードの比較記録（設計 03 intent_shadow、10 §5）。発話の本文は持たず input_id で参照し、会話全文と同じ期限で削除する。記録しない会話では作らない。影の判定は実行に使わない。
+ */
+export interface IntentShadowRecord {
+  schema: 'buddy.intent-shadow.v1';
+  record_id: Id;
+  campaign_id: Id;
+  input_id: Id;
+  request_revision: RequestRevision;
+  primary: ShadowJudgment;
+  /**
+   * @minItems 1
+   */
+  shadows: [ShadowJudgment, ...ShadowJudgment[]];
+  recorded_at: UtcTime;
+  expires_at: UtcTime;
+  used_for_execution: false;
+}
+/**
+ * 1 つのモデルの判定。空・途中・拒否の出力を「意図なし」と読み替えず outcome で分ける。
+ */
+export interface ShadowJudgment {
+  deployment_id: Id;
+  outcome:
+    | 'ok'
+    | 'needs_clarification'
+    | 'refused'
+    | 'truncated'
+    | 'invalid_output'
+    | 'timeout'
+    | 'unavailable'
+    | 'skipped';
+  intent: IntentName | null;
+  args: IntentArgs | null;
+  probability: string | null;
+  latency_ms: number | null;
+}
+/**
+ * 比較 campaign の状態（設計 05・11 §9 P05）。確定した入力の件数・比較実費・開始からの日数の最初の到達で止める。費用の受付は予算の枠（ADR 0006）でも検査する。
+ */
+export interface ShadowCampaignState {
+  campaign_id: Id;
+  budget_pool_id: BudgetPoolId;
+  started_at: UtcTime;
+  confirmed_inputs: number;
+  spent: Money;
+  /**
+   * 停止条件。金額は設定の値で、契約に本人の金額を含めない。
+   */
+  limits: {
+    max_inputs: number;
+    max_spend: Money;
+    max_days: number;
+  };
+  status: 'running' | 'stopped';
+  stop_reason:
+    ('max_inputs' | 'max_spend' | 'max_days' | 'user_stopped') | null;
+}
+/**
+ * 影モードの集計（ADR 0008）。本番モデルとの一致率と遅延だけで、正答率・合否・採用の欄を持たない。採否の根拠（DeploymentAdoption）にできない。
+ */
+export interface ShadowCampaignSummary {
+  campaign_id: Id;
+  primary_deployment_id: Id;
+  shadow_deployment_id: Id;
+  compared: number;
+  intent_agreement: string | null;
+  args_agreement: string | null;
+  latency_ms: {
+    p50: number;
+    p95: number;
+  } | null;
+  cost_total: Money;
+}
+/**
+ * 意図判定の評価の 1 例（tests/eval の書き出し形式。設計 10 §10、05 評価の進め方）。採否の集計に使えるのは review_status が confirmed で split が judgment の例だけ。同じ元例の言い換えは同じ group_id にし、調整用と判定用へまたがらせない。
+ */
+export interface IntentEvalCase {
+  schema: 'buddy.eval-case.v1';
+  case_id: string;
+  use: 'intent_args';
+  split: 'tuning' | 'judgment';
+  group_id: string;
+  review_status: 'confirmed' | 'unconfirmed' | 'needs_fix' | 'on_hold';
+  input: {
+    text: string;
+    input_kind: InputKind;
+    base_time: UtcTime;
+    zone: TimeZone;
+    context: string | null;
+  };
+  categories: (
+    | 'basic'
+    | 'datetime'
+    | 'deixis'
+    | 'clarification'
+    | 'boundary'
+    | 'recognition_error'
+    | 'casual'
+    | 'multiple_requests'
+    | 'honorific'
+  )[];
+  expected: {
+    intent: IntentName;
+    args: ExpectedIntentArgs;
+  };
+}
+/**
+ * 評価の正解の引数。IntentArgs の項目名だけを使い、書いた項目だけを比べる。評価セットの「キー=値」は対応表で変換し、表にないキーは変換の失敗にする（ADR 0008）。
+ */
+export interface ExpectedIntentArgs {
+  target_candidate_id?: Id;
+  start?: DateOrDateTime;
+  end?: DateOrDateTime;
+  due?: DateOrDateTime;
+  title?: string;
+  body?: string;
+  subject?: string;
+  add_labels?: string[];
+  remove_labels?: string[];
+  task_change?: 'complete' | 'reschedule' | 'delete';
+  memory_kind?:
+    'preference' | 'goal' | 'person' | 'routine' | 'lexicon' | 'progress';
+  query?: string;
+  device_name?: string;
 }

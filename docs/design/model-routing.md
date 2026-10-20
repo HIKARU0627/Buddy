@@ -12,7 +12,7 @@
 
 通常の調査要約は Haiku / Luna、深い相談は Sonnet を比較します。Gemini 3.8 Flash は比較基準、DeepSeek と小型ローカルモデルは主要候補の不足が残る場合の第二段階。Decisions API は分類の影モード候補で、任意引数生成や実行承認の代わりにはしません。
 
-`packages/contracts/model-evaluation.json` はこの候補一覧の機械可読版です。価格・endpoint の能力・SDK 版・実測結果を登録していないため、実行可能な deployment manifest として読み込んではいけません。採用時は別の manifest で価格版、schema / prompt hash、上限、同時数、固定版または可変名、戻し先、用途別評価を記録します。
+`packages/contracts/model-evaluation.json` はこの候補一覧の機械可読版です。価格・endpoint の能力・SDK 版・実測結果を登録していないため、実行可能な deployment manifest として読み込んではいけません。採用時は別の manifest（`DeploymentManifest`）で価格版、schema / prompt hash、上限、同時数、固定版または可変名、戻し先を記録し、用途別評価（`EvaluationResult`）と本人の採否を配備×用途ごとに残します（[ADR 0008](../adr/0008-memory-forgetting-and-model-evaluation.md)）。
 
 ## 付帯 API クレジット
 

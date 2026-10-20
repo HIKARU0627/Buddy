@@ -144,6 +144,39 @@
     },
     {
       "$ref": "#/$defs/SyncScopeState"
+    },
+    {
+      "$ref": "#/$defs/MemoryCandidateWire"
+    },
+    {
+      "$ref": "#/$defs/MemoryCandidate"
+    },
+    {
+      "$ref": "#/$defs/MemoryRecord"
+    },
+    {
+      "$ref": "#/$defs/ForgetLedgerEntry"
+    },
+    {
+      "$ref": "#/$defs/UserDirective"
+    },
+    {
+      "$ref": "#/$defs/DeploymentManifest"
+    },
+    {
+      "$ref": "#/$defs/EvaluationResult"
+    },
+    {
+      "$ref": "#/$defs/IntentShadowRecord"
+    },
+    {
+      "$ref": "#/$defs/ShadowCampaignState"
+    },
+    {
+      "$ref": "#/$defs/ShadowCampaignSummary"
+    },
+    {
+      "$ref": "#/$defs/IntentEvalCase"
     }
   ],
   "$defs": {
@@ -4654,6 +4687,1336 @@
         "prices_verified_at"
       ],
       "additionalProperties": false
+    },
+    "MemoryKind": {
+      "type": "string",
+      "enum": [
+        "preference",
+        "goal",
+        "person",
+        "routine",
+        "lexicon",
+        "progress"
+      ],
+      "description": "要約記憶の種類（設計 11 §7）。保存できるのは本人が初期設定で許可した種類だけ。"
+    },
+    "MemorySourceRef": {
+      "type": "object",
+      "properties": {
+        "source_kind": {
+          "type": "string",
+          "enum": ["turn", "source_item", "memory"]
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["source_kind", "source_id"],
+      "additionalProperties": false,
+      "description": "記憶の由来（発言・元情報・別の記憶）。本文は持たない（設計 03 忘却と再取り込み）。"
+    },
+    "MemoryCandidateWire": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/MemoryKind"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "source_turn_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "target_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      },
+      "required": ["kind", "text", "source_turn_ids", "target_key"],
+      "additionalProperties": false,
+      "description": "モデルが返す記憶の候補（設計 11 §7）。文は 80 文字以内（コードポイント）。忘却世代・許可・重複の判定はモデルに返させず Core が付ける。"
+    },
+    "MemoryCandidate": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.memory-candidate.v1"
+        },
+        "memory_candidate_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["auto_extraction", "explicit_request"]
+        },
+        "session_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "$ref": "#/$defs/MemoryKind"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "target_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/MemorySourceRef"
+          }
+        },
+        "dedupe_key": {
+          "$ref": "#/$defs/Hash"
+        },
+        "forgetting_generation": {
+          "$ref": "#/$defs/ForgettingGeneration"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "schema",
+        "memory_candidate_id",
+        "origin",
+        "session_id",
+        "kind",
+        "text",
+        "target_key",
+        "sources",
+        "dedupe_key",
+        "forgetting_generation",
+        "permission_revision",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "description": "Core が検証した記憶の候補（設計 11 §7、03 memories / memory_sources）。forgetting_generation と permission_revision は処理開始時の値で、保存直前に現在値と照合する（08 §6）。dedupe_key は種類と正規化した文の HMAC で、Core が計算する。explicit_request は本人がはっきり頼んだ保存（memory_save）。"
+    },
+    "MemoryRecord": {
+      "type": "object",
+      "properties": {
+        "memory_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["auto_extraction", "explicit_request"]
+        },
+        "kind": {
+          "$ref": "#/$defs/MemoryKind"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "target_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/MemorySourceRef"
+          }
+        },
+        "dedupe_key": {
+          "$ref": "#/$defs/Hash"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "review_pending", "deleted"]
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "review_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "delete_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "memory_id",
+        "origin",
+        "kind",
+        "text",
+        "target_key",
+        "sources",
+        "dedupe_key",
+        "status",
+        "created_at",
+        "review_at",
+        "delete_at"
+      ],
+      "additionalProperties": false,
+      "description": "保存した要約記憶（設計 03 保存期限）。保存から 90 日で見直し待ち、見直し待ちは自動提案の根拠から外し 30 日未応答で削除する。利用・再要約・重複の再抽出で期限を延ばさない。"
+    },
+    "ForgetLedgerEntry": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.forget-ledger.v1"
+        },
+        "entry_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "forgetting_generation": {
+          "$ref": "#/$defs/ForgettingGeneration"
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "forgotten": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/MemorySourceRef"
+          }
+        },
+        "blocked_source_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "blocked_content_keys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Hash"
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "entry_id",
+        "forgetting_generation",
+        "recorded_at",
+        "forgotten",
+        "blocked_source_ids",
+        "blocked_content_keys"
+      ],
+      "additionalProperties": false,
+      "description": "忘却台帳の 1 件（設計 03 forget_ledger、忘却と再取り込み・バックアップ）。本文を持たず、忘れた対象と派生した記憶、再登録を禁止する元の由来 ID、同じ内容の自動記憶化を止める HMAC だけを記録する。世代は 1 件ごとに 1 つ進む。"
+    },
+    "UserDirective": {
+      "type": "object",
+      "properties": {
+        "directive_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["this_time", "from_now_on"]
+        },
+        "session_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "turn_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "directive_id",
+        "text",
+        "scope",
+        "session_id",
+        "turn_id",
+        "active",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "description": "本人の指示（設計 03 user_directives、10 §4）。this_time（今回は）は会話の明示終了で破棄し、from_now_on（今後は）は設定として保存して設定画面で確認・取り消しできる。"
+    },
+    "EvaluationUse": {
+      "type": "string",
+      "enum": [
+        "intent_args",
+        "mail_extraction",
+        "reply_draft",
+        "research_summary",
+        "consult_summary",
+        "memory_extraction",
+        "voice_conversation",
+        "local_asr"
+      ],
+      "description": "採否を決める用途（設計 05 評価の進め方）。全用途をまとめた値は置かない。memory_extraction は独立した用途で、正解付きセットができるまで未評価（ADR 0008）。"
+    },
+    "ModelProfile": {
+      "type": "object",
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "voice",
+            "intent",
+            "background_text",
+            "advanced_consult",
+            "local_asr"
+          ]
+        },
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "endpoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "api_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sdk_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "structured_output": {
+          "type": "string",
+          "enum": ["json_schema_strict", "json_mode", "none"]
+        },
+        "output_limit_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_concurrency": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "price_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reservation_method": {
+          "type": "string",
+          "enum": ["max_liability", "measured_p95"]
+        },
+        "verified_capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "profile_id",
+        "role",
+        "provider",
+        "endpoint",
+        "api_version",
+        "sdk_version",
+        "model_request_id",
+        "reasoning",
+        "structured_output",
+        "output_limit_tokens",
+        "timeout_ms",
+        "max_concurrency",
+        "price_version",
+        "reservation_method",
+        "verified_capabilities"
+      ],
+      "additionalProperties": false,
+      "description": "モデル・endpoint 別の profile（設計 05 P02）。変更の単位はモデル名ではなく profile。verified_capabilities は endpoint ごとに試験で確かめた能力だけで、schema の記載から登録しない。measured_p95 は意図判定の比較 profile だけに使う（05 質問132）。"
+    },
+    "ModelArtifact": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/Hash"
+        }
+      },
+      "required": ["path", "bytes", "sha256"],
+      "additionalProperties": false,
+      "description": "ローカル一式の成果物（設計 05 P09）。"
+    },
+    "DeploymentAdoption": {
+      "type": "object",
+      "properties": {
+        "use": {
+          "$ref": "#/$defs/EvaluationUse"
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["adopted", "rejected"]
+        },
+        "evaluation_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Id"
+          }
+        },
+        "decided_by": {
+          "type": "string",
+          "const": "user"
+        },
+        "decided_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "use",
+        "decision",
+        "evaluation_ids",
+        "decided_by",
+        "decided_at"
+      ],
+      "additionalProperties": false,
+      "description": "用途ごとの採否（設計 05 評価の進め方）。結果を本人に示して決める。判断のない用途は未評価として扱い、ここに書かない。根拠にできるのは同じ配備・同じ用途の EvaluationResult だけで、影モードの集計は参照できない。"
+    },
+    "DeploymentManifest": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.deployment.v1"
+        },
+        "deployment_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "profile": {
+          "$ref": "#/$defs/ModelProfile"
+        },
+        "version_kind": {
+          "type": "string",
+          "enum": ["immutable_snapshot", "mutable_alias", "local_digest"]
+        },
+        "response_model_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModelArtifact"
+          }
+        },
+        "quantization": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tokenizer_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chat_template_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schema_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prompt_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "downloaded",
+            "integrity_checked",
+            "contract_tested",
+            "evaluated",
+            "active",
+            "suspended",
+            "retired"
+          ]
+        },
+        "adoptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DeploymentAdoption"
+          }
+        },
+        "rollback_deployment_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "schema",
+        "deployment_id",
+        "profile",
+        "version_kind",
+        "response_model_id",
+        "artifacts",
+        "quantization",
+        "tokenizer_hash",
+        "chat_template_hash",
+        "runtime_version",
+        "schema_hash",
+        "prompt_hash",
+        "stage",
+        "adoptions",
+        "rollback_deployment_id",
+        "recorded_at"
+      ],
+      "additionalProperties": false,
+      "description": "モデル配備の記録（設計 05 再選定する条件 P09、03 データ表）。downloaded→integrity_checked→contract_tested→evaluated→active の順に進め、可変名の変化を検知したら suspended にして新規の自動処理を止める。モデルの思考全文や元本文は持たない。"
+    },
+    "EvaluationResult": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.evaluation-result.v1"
+        },
+        "evaluation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "deployment_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "use": {
+          "$ref": "#/$defs/EvaluationUse"
+        },
+        "suite": {
+          "type": "object",
+          "properties": {
+            "suite_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "suite_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "split": {
+              "type": "string",
+              "enum": ["tuning", "judgment"]
+            }
+          },
+          "required": ["suite_id", "suite_version", "split"],
+          "additionalProperties": false
+        },
+        "conditions": {
+          "type": "object",
+          "properties": {
+            "base_time": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "model_request_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "response_model_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "schema_hash": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Hash"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "prompt_hash": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Hash"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "artifact_digest": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Hash"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reasoning": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "output_limit_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "warm_state": {
+              "type": "string",
+              "enum": ["cold", "warm", "not_applicable"]
+            }
+          },
+          "required": [
+            "base_time",
+            "model_request_id",
+            "response_model_id",
+            "schema_hash",
+            "prompt_hash",
+            "artifact_digest",
+            "reasoning",
+            "output_limit_tokens",
+            "warm_state"
+          ],
+          "additionalProperties": false,
+          "description": "評価したときの条件。配備の現在値と一つでも違えば、その配備の評価として使わない。"
+        },
+        "evidence": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["mock_provider", "real_api", "real_device"]
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{7,40}$"
+            },
+            "executed_at": {
+              "$ref": "#/$defs/UtcTime"
+            }
+          },
+          "required": ["kind", "run_id", "commit", "executed_at"],
+          "additionalProperties": false,
+          "description": "証拠の種類。模擬・実 API・実機を分ける（設計 09 §8）。"
+        },
+        "samples": {
+          "type": "object",
+          "properties": {
+            "confirmed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "excluded_unconfirmed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "excluded_out_of_scope": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "confirmed",
+            "excluded_unconfirmed",
+            "excluded_out_of_scope"
+          ],
+          "additionalProperties": false,
+          "description": "本人が確認済みの例だけを集計する。未確認・保留・対象外は除外数として残す。"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "p50": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "p95": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": ["p50", "p95"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cost_per_case": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "value": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+              }
+            },
+            "required": ["name", "value"],
+            "additionalProperties": false
+          }
+        },
+        "mandatory_violations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verdict": {
+          "type": "string",
+          "enum": ["pass", "fail", "incomplete"]
+        }
+      },
+      "required": [
+        "schema",
+        "evaluation_id",
+        "deployment_id",
+        "use",
+        "suite",
+        "conditions",
+        "evidence",
+        "samples",
+        "latency_ms",
+        "cost_per_case",
+        "metrics",
+        "mandatory_violations",
+        "verdict"
+      ],
+      "additionalProperties": false,
+      "description": "用途別の評価結果（設計 05 評価の進め方、09 X57・X66・MA01・MA02）。1 件は 1 つの配備・1 つの用途だけを表す。必須境界例の違反が 1 件でもあれば pass にできない。"
+    },
+    "ShadowJudgment": {
+      "type": "object",
+      "properties": {
+        "deployment_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "needs_clarification",
+            "refused",
+            "truncated",
+            "invalid_output",
+            "timeout",
+            "unavailable",
+            "skipped"
+          ]
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IntentName"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "args": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IntentArgs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "probability": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "deployment_id",
+        "outcome",
+        "intent",
+        "args",
+        "probability",
+        "latency_ms"
+      ],
+      "additionalProperties": false,
+      "description": "1 つのモデルの判定。空・途中・拒否の出力を「意図なし」と読み替えず outcome で分ける。"
+    },
+    "IntentShadowRecord": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.intent-shadow.v1"
+        },
+        "record_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "campaign_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "input_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/RequestRevision"
+        },
+        "primary": {
+          "$ref": "#/$defs/ShadowJudgment"
+        },
+        "shadows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/ShadowJudgment"
+          }
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "used_for_execution": {
+          "type": "boolean",
+          "const": false
+        }
+      },
+      "required": [
+        "schema",
+        "record_id",
+        "campaign_id",
+        "input_id",
+        "request_revision",
+        "primary",
+        "shadows",
+        "recorded_at",
+        "expires_at",
+        "used_for_execution"
+      ],
+      "additionalProperties": false,
+      "description": "影モードの比較記録（設計 03 intent_shadow、10 §5）。発話の本文は持たず input_id で参照し、会話全文と同じ期限で削除する。記録しない会話では作らない。影の判定は実行に使わない。"
+    },
+    "ShadowCampaignState": {
+      "type": "object",
+      "properties": {
+        "campaign_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "budget_pool_id": {
+          "$ref": "#/$defs/BudgetPoolId"
+        },
+        "started_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "confirmed_inputs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "spent": {
+          "$ref": "#/$defs/Money"
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "max_inputs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_spend": {
+              "$ref": "#/$defs/Money"
+            },
+            "max_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": ["max_inputs", "max_spend", "max_days"],
+          "additionalProperties": false,
+          "description": "停止条件。金額は設定の値で、契約に本人の金額を含めない。"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["running", "stopped"]
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["max_inputs", "max_spend", "max_days", "user_stopped"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "campaign_id",
+        "budget_pool_id",
+        "started_at",
+        "confirmed_inputs",
+        "spent",
+        "limits",
+        "status",
+        "stop_reason"
+      ],
+      "additionalProperties": false,
+      "description": "比較 campaign の状態（設計 05・11 §9 P05）。確定した入力の件数・比較実費・開始からの日数の最初の到達で止める。費用の受付は予算の枠（ADR 0006）でも検査する。"
+    },
+    "ShadowCampaignSummary": {
+      "type": "object",
+      "properties": {
+        "campaign_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "primary_deployment_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "shadow_deployment_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "compared": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "intent_agreement": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "args_agreement": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "p50": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "p95": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": ["p50", "p95"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cost_total": {
+          "$ref": "#/$defs/Money"
+        }
+      },
+      "required": [
+        "campaign_id",
+        "primary_deployment_id",
+        "shadow_deployment_id",
+        "compared",
+        "intent_agreement",
+        "args_agreement",
+        "latency_ms",
+        "cost_total"
+      ],
+      "additionalProperties": false,
+      "description": "影モードの集計（ADR 0008）。本番モデルとの一致率と遅延だけで、正答率・合否・採用の欄を持たない。採否の根拠（DeploymentAdoption）にできない。"
+    },
+    "ExpectedIntentArgs": {
+      "type": "object",
+      "properties": {
+        "target_candidate_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "start": {
+          "$ref": "#/$defs/DateOrDateTime"
+        },
+        "end": {
+          "$ref": "#/$defs/DateOrDateTime"
+        },
+        "due": {
+          "$ref": "#/$defs/DateOrDateTime"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1
+        },
+        "add_labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "remove_labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "task_change": {
+          "type": "string",
+          "enum": ["complete", "reschedule", "delete"]
+        },
+        "memory_kind": {
+          "type": "string",
+          "enum": [
+            "preference",
+            "goal",
+            "person",
+            "routine",
+            "lexicon",
+            "progress"
+          ]
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "description": "評価の正解の引数。IntentArgs の項目名だけを使い、書いた項目だけを比べる。評価セットの「キー=値」は対応表で変換し、表にないキーは変換の失敗にする（ADR 0008）。"
+    },
+    "IntentEvalCase": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.eval-case.v1"
+        },
+        "case_id": {
+          "type": "string",
+          "pattern": "^[A-Z][0-9]{3,}$"
+        },
+        "use": {
+          "type": "string",
+          "const": "intent_args"
+        },
+        "split": {
+          "type": "string",
+          "enum": ["tuning", "judgment"]
+        },
+        "group_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_status": {
+          "type": "string",
+          "enum": ["confirmed", "unconfirmed", "needs_fix", "on_hold"]
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "input_kind": {
+              "$ref": "#/$defs/InputKind"
+            },
+            "base_time": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "zone": {
+              "$ref": "#/$defs/TimeZone"
+            },
+            "context": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["text", "input_kind", "base_time", "zone", "context"],
+          "additionalProperties": false
+        },
+        "categories": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "basic",
+              "datetime",
+              "deixis",
+              "clarification",
+              "boundary",
+              "recognition_error",
+              "casual",
+              "multiple_requests",
+              "honorific"
+            ]
+          }
+        },
+        "expected": {
+          "type": "object",
+          "properties": {
+            "intent": {
+              "$ref": "#/$defs/IntentName"
+            },
+            "args": {
+              "$ref": "#/$defs/ExpectedIntentArgs"
+            }
+          },
+          "required": ["intent", "args"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "case_id",
+        "use",
+        "split",
+        "group_id",
+        "review_status",
+        "input",
+        "categories",
+        "expected"
+      ],
+      "additionalProperties": false,
+      "description": "意図判定の評価の 1 例（tests/eval の書き出し形式。設計 10 §10、05 評価の進め方）。採否の集計に使えるのは review_status が confirmed で split が judgment の例だけ。同じ元例の言い換えは同じ group_id にし、調整用と判定用へまたがらせない。"
     }
   }
 }

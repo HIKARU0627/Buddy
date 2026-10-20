@@ -1,0 +1,674 @@
+{
+  "status": "specification_only",
+  "description": "モデル配備の用途別の採否・段階・成果物の照合・変化の検知・戻し先・影モードの期待値（設計 05 評価の進め方・再選定する条件 P09・影モードの運用 P05、09 X48・X57・X66・QA13・QA20・QA21・QA26・MA01・MA02）。手で書いたもので、domain の実装から生成していない。実測値・実 API の結果ではない。",
+  "base_deployment": {
+    "deployment_id": "dep-intent",
+    "role": "intent",
+    "provider": "openai",
+    "price_version": "price-1",
+    "stage": "evaluated",
+    "model_request_id": "gpt-6-luna",
+    "response_model_id": "gpt-6-luna-snapshot-1",
+    "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "artifact_digest": null,
+    "reasoning": "none",
+    "output_limit_tokens": 1024,
+    "adoptions": [
+      {
+        "use": "intent_args",
+        "decision": "adopted",
+        "evaluation_ids": ["eval-intent"]
+      }
+    ]
+  },
+  "base_evaluation": {
+    "evaluation_id": "eval-intent",
+    "deployment_id": "dep-intent",
+    "use": "intent_args",
+    "split": "judgment",
+    "evidence_kind": "real_api",
+    "conditions": {
+      "model_request_id": "gpt-6-luna",
+      "response_model_id": "gpt-6-luna-snapshot-1",
+      "schema_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "prompt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "artifact_digest": null,
+      "reasoning": "none",
+      "output_limit_tokens": 1024
+    },
+    "confirmed": 120,
+    "metric_names": [
+      "intent_accuracy",
+      "args_match",
+      "clarification_correct",
+      "format_valid",
+      "false_auto_execution"
+    ],
+    "mandatory_violations": 0,
+    "verdict": "pass"
+  },
+  "adoption": [
+    {
+      "id": "intent-pass",
+      "use": "intent_args",
+      "expected": { "ok": true, "reasons": [] }
+    },
+    {
+      "id": "x57-intent-pass-does-not-cover-mail",
+      "title": "意図判定だけ合格した文章用の候補を、その評価でメール抽出に採用しようとする",
+      "refs": ["X57", "MA02", "05 評価の進め方"],
+      "deployment": {
+        "deployment_id": "dep-text",
+        "role": "background_text",
+        "adoptions": [
+          {
+            "use": "mail_extraction",
+            "decision": "adopted",
+            "evaluation_ids": ["eval-intent"]
+          }
+        ]
+      },
+      "evaluations": [{ "deployment_id": "dep-text" }],
+      "use": "mail_extraction",
+      "expected": {
+        "ok": false,
+        "reasons": ["not_evaluated", "adoption_evidence_mismatch"]
+      }
+    },
+    {
+      "id": "x57-other-uses-stay-unevaluated",
+      "refs": ["X57"],
+      "deployment": {
+        "deployment_id": "dep-text",
+        "role": "background_text",
+        "adoptions": []
+      },
+      "evaluations": [{ "deployment_id": "dep-text" }],
+      "use": "reply_draft",
+      "expected": {
+        "ok": false,
+        "reasons": ["not_evaluated", "no_user_decision"]
+      }
+    },
+    {
+      "id": "shadow-summary-cannot-be-evidence",
+      "title": "影モードの集計の ID を採否の根拠に書いても、評価として数えない",
+      "refs": ["X48", "ADR 0008"],
+      "deployment": {
+        "adoptions": [
+          {
+            "use": "intent_args",
+            "decision": "adopted",
+            "evaluation_ids": ["shadow-campaign-1"]
+          }
+        ]
+      },
+      "evaluations": [],
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": ["not_evaluated", "adoption_evidence_mismatch"]
+      }
+    },
+    {
+      "id": "x66-mandatory-violation",
+      "refs": ["X66", "MA02"],
+      "evaluations": [{ "mandatory_violations": 1, "verdict": "fail" }],
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": [
+          "not_passed",
+          "mandatory_violation",
+          "adoption_evidence_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "x66-violation-in-another-run-blocks",
+      "title": "合格した評価があっても、同じ用途の別の評価で必須境界例の違反があれば不採用",
+      "refs": ["X66"],
+      "evaluations": [
+        {},
+        {
+          "evaluation_id": "eval-intent-rerun",
+          "mandatory_violations": 1,
+          "verdict": "fail"
+        }
+      ],
+      "use": "intent_args",
+      "expected": { "ok": false, "reasons": ["mandatory_violation"] }
+    },
+    {
+      "id": "mock-provider-only",
+      "refs": ["09 §8"],
+      "evaluations": [{ "evidence_kind": "mock_provider" }],
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": ["mock_evidence_only", "adoption_evidence_mismatch"]
+      }
+    },
+    {
+      "id": "tuning-split",
+      "refs": ["05 評価の進め方"],
+      "evaluations": [{ "split": "tuning" }],
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": ["tuning_split", "adoption_evidence_mismatch"]
+      }
+    },
+    {
+      "id": "no-confirmed-samples",
+      "title": "本人の確認済みが 0 件（未確認・保留は集計から除く）",
+      "refs": ["X57", "05 評価の進め方"],
+      "evaluations": [{ "confirmed": 0, "verdict": "incomplete" }],
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": [
+          "no_confirmed_samples",
+          "not_passed",
+          "adoption_evidence_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "metrics-missing",
+      "title": "誤った自動実行への通過を記録していない",
+      "refs": ["MA01"],
+      "evaluations": [
+        {
+          "metric_names": [
+            "intent_accuracy",
+            "args_match",
+            "clarification_correct",
+            "format_valid"
+          ]
+        }
+      ],
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": ["metrics_missing", "adoption_evidence_mismatch"]
+      }
+    },
+    {
+      "id": "prompt-changed-after-evaluation",
+      "title": "評価後に prompt を変えた配備には、旧条件の評価を使わない",
+      "refs": ["05 P09"],
+      "deployment": {
+        "prompt_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": ["conditions_mismatch", "adoption_evidence_mismatch"]
+      }
+    },
+    {
+      "id": "qa21-response-model-changed",
+      "refs": ["QA21"],
+      "deployment": { "response_model_id": "gpt-6-luna-snapshot-2" },
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": ["conditions_mismatch", "adoption_evidence_mismatch"]
+      }
+    },
+    {
+      "id": "price-unverified",
+      "refs": ["05 単価の管理"],
+      "deployment": { "price_version": null },
+      "use": "intent_args",
+      "expected": { "ok": false, "reasons": ["price_unverified"] }
+    },
+    {
+      "id": "no-user-decision",
+      "refs": ["05 評価の進め方"],
+      "deployment": { "adoptions": [] },
+      "use": "intent_args",
+      "expected": { "ok": false, "reasons": ["no_user_decision"] }
+    },
+    {
+      "id": "rejected-by-user",
+      "deployment": {
+        "adoptions": [
+          {
+            "use": "intent_args",
+            "decision": "rejected",
+            "evaluation_ids": ["eval-intent"]
+          }
+        ]
+      },
+      "use": "intent_args",
+      "expected": { "ok": false, "reasons": ["rejected_by_user"] }
+    },
+    {
+      "id": "stage-not-evaluated",
+      "deployment": { "stage": "contract_tested" },
+      "use": "intent_args",
+      "expected": { "ok": false, "reasons": ["stage_not_evaluated"] }
+    },
+    {
+      "id": "use-outside-role",
+      "deployment": {
+        "adoptions": [
+          {
+            "use": "mail_extraction",
+            "decision": "adopted",
+            "evaluation_ids": ["eval-mail"]
+          }
+        ]
+      },
+      "evaluations": [
+        {
+          "evaluation_id": "eval-mail",
+          "use": "mail_extraction",
+          "metric_names": [
+            "request_match",
+            "deadline_match",
+            "evidence_position_match",
+            "missed",
+            "false_detection",
+            "appropriate_abstention",
+            "false_auto_execution"
+          ]
+        }
+      ],
+      "use": "mail_extraction",
+      "expected": { "ok": false, "reasons": ["use_not_in_role"] }
+    },
+    {
+      "id": "local-needs-device-evidence",
+      "title": "ローカル profile は実機の測定だけを証拠にする",
+      "refs": ["05 ローカル profile の採用条件"],
+      "deployment": {
+        "deployment_id": "dep-local",
+        "provider": "local",
+        "price_version": null,
+        "artifact_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "adoptions": [
+          {
+            "use": "intent_args",
+            "decision": "adopted",
+            "evaluation_ids": ["eval-intent"]
+          }
+        ]
+      },
+      "evaluations": [
+        {
+          "deployment_id": "dep-local",
+          "conditions": {
+            "artifact_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          }
+        }
+      ],
+      "use": "intent_args",
+      "expected": {
+        "ok": false,
+        "reasons": ["device_evidence_missing", "adoption_evidence_mismatch"]
+      }
+    },
+    {
+      "id": "voice-metrics-not-defined",
+      "title": "音声の指標は B05 の実機試験で決めるまで採用しない",
+      "deployment": {
+        "deployment_id": "dep-voice",
+        "role": "voice",
+        "adoptions": []
+      },
+      "evaluations": [],
+      "use": "voice_conversation",
+      "expected": {
+        "ok": false,
+        "reasons": ["metrics_not_defined", "not_evaluated", "no_user_decision"]
+      }
+    }
+  ],
+  "transitions": [
+    {
+      "stage": "downloaded",
+      "event": "integrity_passed",
+      "adoption_ok": false,
+      "expected": { "stage": "integrity_checked", "rejected": null }
+    },
+    {
+      "id": "qa26-unverified-cannot-activate",
+      "stage": "downloaded",
+      "event": "activate",
+      "adoption_ok": true,
+      "expected": { "stage": "downloaded", "rejected": "invalid_transition" }
+    },
+    {
+      "stage": "integrity_checked",
+      "event": "contract_passed",
+      "adoption_ok": false,
+      "expected": { "stage": "contract_tested", "rejected": null }
+    },
+    {
+      "stage": "integrity_checked",
+      "event": "evaluation_recorded",
+      "adoption_ok": false,
+      "expected": {
+        "stage": "integrity_checked",
+        "rejected": "invalid_transition"
+      }
+    },
+    {
+      "stage": "contract_tested",
+      "event": "evaluation_recorded",
+      "adoption_ok": false,
+      "expected": { "stage": "evaluated", "rejected": null }
+    },
+    {
+      "stage": "evaluated",
+      "event": "activate",
+      "adoption_ok": false,
+      "expected": { "stage": "evaluated", "rejected": "adoption_not_ready" }
+    },
+    {
+      "stage": "evaluated",
+      "event": "activate",
+      "adoption_ok": true,
+      "expected": { "stage": "active", "rejected": null }
+    },
+    {
+      "id": "qa21-drift-suspends",
+      "stage": "active",
+      "event": "drift_detected",
+      "adoption_ok": true,
+      "expected": { "stage": "suspended", "rejected": null }
+    },
+    {
+      "id": "qa26-startup-failure-suspends",
+      "stage": "active",
+      "event": "startup_failed",
+      "adoption_ok": true,
+      "expected": { "stage": "suspended", "rejected": null }
+    },
+    {
+      "id": "suspended-needs-regression",
+      "stage": "suspended",
+      "event": "activate",
+      "adoption_ok": true,
+      "expected": { "stage": "suspended", "rejected": "invalid_transition" }
+    },
+    {
+      "stage": "suspended",
+      "event": "regression_passed",
+      "adoption_ok": false,
+      "expected": { "stage": "evaluated", "rejected": null }
+    },
+    {
+      "stage": "retired",
+      "event": "integrity_passed",
+      "adoption_ok": false,
+      "expected": { "stage": "retired", "rejected": "invalid_transition" }
+    }
+  ],
+  "artifacts": {
+    "expected": [
+      {
+        "path": "model.gguf",
+        "bytes": 1000,
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "path": "tokenizer.json",
+        "bytes": 10,
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ],
+    "cases": [
+      {
+        "id": "complete",
+        "observed": [
+          {
+            "path": "model.gguf",
+            "bytes": 1000,
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          {
+            "path": "tokenizer.json",
+            "bytes": 10,
+            "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        ],
+        "expected": []
+      },
+      {
+        "id": "qa26-incomplete-download",
+        "observed": [
+          {
+            "path": "model.gguf",
+            "bytes": 400,
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        ],
+        "expected": ["incomplete:model.gguf", "incomplete:tokenizer.json"]
+      },
+      {
+        "id": "qa26-digest-mismatch",
+        "observed": [
+          {
+            "path": "model.gguf",
+            "bytes": 1000,
+            "sha256": "9999999999999999999999999999999999999999999999999999999999999999"
+          },
+          {
+            "path": "tokenizer.json",
+            "bytes": 10,
+            "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        ],
+        "expected": ["digest_mismatch:model.gguf"]
+      }
+    ]
+  },
+  "drift": {
+    "manifest": {
+      "response_model_id": "gpt-6-luna-snapshot-1",
+      "api_version": "v1",
+      "verified_capabilities": ["json_schema_strict", "usage_reasoning_tokens"]
+    },
+    "cases": [
+      {
+        "id": "unchanged",
+        "observed": {
+          "response_model_id": "gpt-6-luna-snapshot-1",
+          "api_version": "v1",
+          "capabilities": ["json_schema_strict", "usage_reasoning_tokens"]
+        },
+        "expected": []
+      },
+      {
+        "id": "qa21-same-id-new-model-and-patch",
+        "observed": {
+          "response_model_id": "gpt-6-luna-snapshot-2",
+          "api_version": "v1.1",
+          "capabilities": ["json_schema_strict", "usage_reasoning_tokens"]
+        },
+        "expected": ["response_model_changed", "api_version_changed"]
+      },
+      {
+        "id": "qa21-schema-support-regressed",
+        "observed": {
+          "response_model_id": "gpt-6-luna-snapshot-1",
+          "api_version": "v1",
+          "capabilities": ["usage_reasoning_tokens"]
+        },
+        "expected": ["capability_regressed"]
+      }
+    ]
+  },
+  "rollback": [
+    {
+      "id": "qa26-alias-is-not-rollback",
+      "target": {
+        "version_kind": "mutable_alias",
+        "stage": "suspended",
+        "adoptedUses": ["intent_args"]
+      },
+      "use": "intent_args",
+      "expected": ["alias_not_rollback"]
+    },
+    {
+      "id": "known-pass-snapshot",
+      "target": {
+        "version_kind": "immutable_snapshot",
+        "stage": "evaluated",
+        "adoptedUses": ["intent_args"]
+      },
+      "use": "intent_args",
+      "expected": []
+    },
+    {
+      "id": "unverified-target",
+      "target": {
+        "version_kind": "local_digest",
+        "stage": "integrity_checked",
+        "adoptedUses": []
+      },
+      "use": "intent_args",
+      "expected": ["rollback_target_unverified", "not_adopted_for_use"]
+    }
+  ],
+  "shadow_campaign": {
+    "initial": {
+      "started_at": "2030-10-01T00:00:00Z",
+      "confirmed_inputs": 0,
+      "spent": "0",
+      "max_inputs": 300,
+      "max_spend": "100000000",
+      "max_days": 7,
+      "status": "running",
+      "stop_reason": null
+    },
+    "scenarios": [
+      {
+        "id": "x48-stops-at-300",
+        "refs": ["X48", "11 §9"],
+        "steps": [
+          {
+            "addedInputs": 299,
+            "addedCost": "50000000",
+            "now": "2030-10-03T00:00:00Z",
+            "expected": { "status": "running", "stop_reason": null }
+          },
+          {
+            "addedInputs": 1,
+            "addedCost": "100000",
+            "now": "2030-10-03T00:01:00Z",
+            "expected": { "status": "stopped", "stop_reason": "max_inputs" }
+          },
+          {
+            "addedInputs": 1,
+            "addedCost": "100000",
+            "now": "2030-10-03T00:02:00Z",
+            "expected": { "status": "stopped", "stop_reason": "max_inputs" },
+            "confirmed_inputs": 300
+          }
+        ]
+      },
+      {
+        "id": "qa20-spend-limit-first",
+        "refs": ["QA20"],
+        "steps": [
+          {
+            "addedInputs": 10,
+            "addedCost": "100000000",
+            "now": "2030-10-02T00:00:00Z",
+            "expected": { "status": "stopped", "stop_reason": "max_spend" }
+          }
+        ]
+      },
+      {
+        "id": "seven-days",
+        "steps": [
+          {
+            "addedInputs": 5,
+            "addedCost": "1000",
+            "now": "2030-10-07T23:59:59Z",
+            "expected": { "status": "running", "stop_reason": null }
+          },
+          {
+            "addedInputs": 0,
+            "addedCost": "0",
+            "now": "2030-10-08T00:00:00Z",
+            "expected": { "status": "stopped", "stop_reason": "max_days" }
+          }
+        ]
+      }
+    ]
+  },
+  "shadow_admission": [
+    {
+      "id": "idle-slot",
+      "input": {
+        "privateConversation": false,
+        "liveSessionOpen": false,
+        "slotAvailable": true,
+        "campaign": { "status": "running" }
+      },
+      "expected": { "run": true, "record": true, "reasons": [] }
+    },
+    {
+      "id": "x48-private-conversation",
+      "refs": ["X48", "X17"],
+      "input": {
+        "privateConversation": true,
+        "liveSessionOpen": false,
+        "slotAvailable": true,
+        "campaign": { "status": "running" }
+      },
+      "expected": {
+        "run": false,
+        "record": false,
+        "reasons": ["private_conversation"]
+      }
+    },
+    {
+      "id": "qa13-no-capacity-skips",
+      "refs": ["QA13"],
+      "input": {
+        "privateConversation": false,
+        "liveSessionOpen": false,
+        "slotAvailable": false,
+        "campaign": { "status": "running" }
+      },
+      "expected": { "run": false, "record": true, "reasons": ["no_capacity"] }
+    },
+    {
+      "id": "live-session-open",
+      "refs": ["11 §9"],
+      "input": {
+        "privateConversation": false,
+        "liveSessionOpen": true,
+        "slotAvailable": true,
+        "campaign": { "status": "running" }
+      },
+      "expected": {
+        "run": false,
+        "record": true,
+        "reasons": ["live_session_open"]
+      }
+    },
+    {
+      "id": "campaign-stopped",
+      "input": {
+        "privateConversation": false,
+        "liveSessionOpen": false,
+        "slotAvailable": true,
+        "campaign": { "status": "stopped" }
+      },
+      "expected": {
+        "run": false,
+        "record": true,
+        "reasons": ["campaign_stopped"]
+      }
+    }
+  ]
+}

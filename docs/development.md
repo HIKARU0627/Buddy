@@ -52,7 +52,7 @@ GitHub Actions は Ubuntu / Windows / macOS で同じ `pnpm install --frozen-loc
 - `scripts/*.test.mjs`: lint 設定が禁止した直接 import を実際に拒否するかを検証。
 - 製品の TypeScript 試験: 対象 workspace の `src/**/*.test.ts` に追加し、ビルド後の `dist/**/*.test.js` を実行。
 - `tests/integration/**/*.test.mjs`: モックや故障注入の試験を後続で追加。
-- `pnpm test` の前に TypeScript をビルドする。`pnpm run check` はビルドを含む。
+- `pnpm test` の前に TypeScript をビルドする。`pnpm run check` はビルドを含む。workspace 間の import は依存先の `dist` の型定義を読むため、`pnpm run check` はビルド（依存順）を型検査より先に行う。クリーンな状態（`node scripts/clean.mjs` の後）でも通ることを確かめる。
 - 非公開資料を CI へ持ち込まない。`pnpm run design:check` はローカルに非公開 manifest がある場合だけ使う。
 - 情報管理と履歴確認は [公開前確認](public-release.md) を参照する。
 - スキーマ・生成型・OpenAPI は `pnpm run contracts:check` で検査し、`pnpm run check` に含める。型の更新は `pnpm run contracts:generate`。わざと壊した契約が落ちることも `scripts/contract-gate.test.mjs` で確かめる。CI 合格は製品動作の完成を意味しない。

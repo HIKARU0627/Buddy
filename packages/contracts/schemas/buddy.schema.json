@@ -267,6 +267,18 @@
     },
     {
       "$ref": "#/$defs/ConnectionDisconnectRequest"
+    },
+    {
+      "$ref": "#/$defs/DesktopIpcRequest"
+    },
+    {
+      "$ref": "#/$defs/DesktopIpcResponse"
+    },
+    {
+      "$ref": "#/$defs/DesktopIpcNotification"
+    },
+    {
+      "$ref": "#/$defs/DesktopStatusBar"
     }
   ],
   "$defs": {
@@ -2347,6 +2359,30 @@
       "additionalProperties": false,
       "description": "Live のサイドバンド制御の状態（設計 10 §2A）。lost では新規委譲・読み上げ・送出前の変更を止める。終了や使用量が確認できなければ予約を保持する。"
     },
+    "LockState": {
+      "type": "string",
+      "enum": ["unlocked", "locked", "unknown"],
+      "description": "OS のロック状態（設計 07 §2）。取得できなければ unknown とし、解除済みと扱わない。"
+    },
+    "IoStopScope": {
+      "type": "string",
+      "enum": ["none", "local", "guest", "global"],
+      "description": "入出力停止の範囲（設計 02 停止、07 §2・§5）。none は停止していない、local はこの端末、guest は来客モード、global は全体停止。来客モードと全体停止は全端末の入出力許可を止めるが、外部へ送った処理の取消ではない。"
+    },
+    "VoiceState": {
+      "type": "string",
+      "enum": [
+        "waiting_wake_word",
+        "conversation_live",
+        "reading_aloud",
+        "device_stopped",
+        "global_stopped",
+        "budget_voice_stopped",
+        "private_voice_off",
+        "listening_text_reply"
+      ],
+      "description": "状態欄の音声状態（設計 01 いつも見える状態）。呼びかけ待ち・会話中・読み上げ中・この端末では停止中・全体停止中・会話予算の上限で音声停止中・記録しない会話のため音声OFF・聞き取り中（文字で返す）。"
+    },
     "DeviceIOState": {
       "type": "object",
       "properties": {
@@ -2360,28 +2396,16 @@
           "$ref": "#/$defs/OutputEpoch"
         },
         "lock_state": {
-          "type": "string",
-          "enum": ["unlocked", "locked", "unknown"]
+          "$ref": "#/$defs/LockState"
         },
         "stop_scope": {
-          "type": "string",
-          "enum": ["none", "local", "guest", "global"]
+          "$ref": "#/$defs/IoStopScope"
         },
         "input_permitted": {
           "type": "boolean"
         },
         "voice_state": {
-          "type": "string",
-          "enum": [
-            "waiting_wake_word",
-            "conversation_live",
-            "reading_aloud",
-            "device_stopped",
-            "global_stopped",
-            "budget_voice_stopped",
-            "private_voice_off",
-            "listening_text_reply"
-          ]
+          "$ref": "#/$defs/VoiceState"
         },
         "output_mode": {
           "type": "string",
@@ -7155,6 +7179,386 @@
       ],
       "additionalProperties": false,
       "description": "接続解除。進行中の操作の照合に必要な最小情報は残し、取得と自動処理を止める。"
+    },
+    "DesktopIpcChannel": {
+      "type": "string",
+      "enum": [
+        "desktop.get_state",
+        "desktop.io_stop",
+        "desktop.io_resume",
+        "desktop.window_hide",
+        "desktop.client_quit"
+      ],
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。音声レンダラーの IPC（B05）は別に定める。"
+    },
+    "DesktopIpcRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.get_state"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "状態欄の値を取得する。ロック中・ロック状態不明でも受け付け、内容を隠した値を返す。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.io_stop"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "この端末の入出力を止める（停止の範囲は local だけ）。いつでも受け付け、DB・AI・ネットワークの応答を待たずに端末で止める。来客モード・全体停止・中枢の停止はこのチャネルで送らない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.io_resume"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "expected_io_epoch": {
+                  "$ref": "#/$defs/IoEpoch"
+                }
+              },
+              "required": ["expected_io_epoch"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "この端末の入出力を画面操作で再開する。ロック解除済み・画面操作・この端末の停止・期待する io_epoch の一致を main が検査する。ロック解除・再接続・呼びかけだけでは再開しない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.window_hide"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "ウィンドウを閉じる。クライアントはトレイに残り、入出力の状態は変えない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.client_quit"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "クライアントを終了する。端末の入出力停止・中枢の停止とは別の操作で、中枢は止めない。"
+        }
+      ],
+      "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
+    },
+    "DesktopStatusBar": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "const": "hidden"
+            },
+            "lock_state": {
+              "type": "string",
+              "enum": ["locked", "unknown"]
+            }
+          },
+          "required": ["visibility", "lock_state"],
+          "additionalProperties": false,
+          "description": "ロック中・ロック状態不明。中枢・表示先・音声・保存モード・予算・安全停止の内容を出さない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "const": "shown"
+            },
+            "lock_state": {
+              "type": "string",
+              "const": "unlocked"
+            },
+            "stop_scope": {
+              "$ref": "#/$defs/IoStopScope"
+            },
+            "input_permitted": {
+              "type": "boolean"
+            },
+            "io_epoch": {
+              "$ref": "#/$defs/IoEpoch"
+            },
+            "voice_state": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VoiceState"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "hub_connection": {
+              "type": "string",
+              "enum": ["not_connected", "connected", "unreachable"]
+            },
+            "hub_last_confirmed_at": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/UtcTime"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "display_target": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": ["this_device", "other_device"]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "storage_mode": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/StorageMode"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "budget_held": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "safety_stopped": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "visibility",
+            "lock_state",
+            "stop_scope",
+            "input_permitted",
+            "io_epoch",
+            "voice_state",
+            "hub_connection",
+            "hub_last_confirmed_at",
+            "display_target",
+            "storage_mode",
+            "budget_held",
+            "safety_stopped"
+          ],
+          "additionalProperties": false,
+          "description": "ロック解除済み。hub_connection の not_connected は中枢と接続しない（B01 の既定）、unreachable は接続できない。中枢が正本の値（表示先・保存モード・予算保留・安全停止）は接続中だけ値を持ち、それ以外は null（不明）。voice_state の null は音声機能がまだない（B05 まで）。"
+        }
+      ],
+      "description": "上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。"
+    },
+    "DesktopIpcResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "desktop.get_state",
+                "desktop.io_stop",
+                "desktop.io_resume"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "status": {
+              "$ref": "#/$defs/DesktopStatusBar"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "status"],
+          "additionalProperties": false,
+          "description": "受け付けた。処理後の状態欄の値を返す。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.window_hide", "desktop.client_quit"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            }
+          },
+          "required": ["request_id", "channel", "outcome"],
+          "additionalProperties": false,
+          "description": "受け付けた。ウィンドウを閉じる・クライアントを終了する。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "channel": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DesktopIpcChannel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "rejected"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "invalid_request",
+                "untrusted_sender",
+                "device_locked",
+                "screen_operation_required",
+                "not_stopped",
+                "core_required",
+                "io_epoch_mismatch"
+              ]
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "reason"],
+          "additionalProperties": false,
+          "description": "拒否した。理由コードだけを返し、本文・詳細な文言を含めない。形式の不正で request_id・channel を確かめられないときは null。"
+        }
+      ],
+      "description": "main から UI レンダラーへの応答（ADR 0014）。どの拒否を返すかは domain の desktop.ts の規則が決める。"
+    },
+    "DesktopIpcNotification": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.state_changed"
+            },
+            "status": {
+              "$ref": "#/$defs/DesktopStatusBar"
+            }
+          },
+          "required": ["channel", "status"],
+          "additionalProperties": false,
+          "description": "端末状態（ロック・停止・入出力の許可など）が変わった。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.power_event"
+            },
+            "event": {
+              "type": "string",
+              "enum": [
+                "lock_screen",
+                "unlock_screen",
+                "suspend",
+                "resume",
+                "shutdown"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "enum": ["os_event", "os_query"]
+            },
+            "observed_at": {
+              "$ref": "#/$defs/UtcTime"
+            }
+          },
+          "required": ["channel", "event", "source", "observed_at"],
+          "additionalProperties": false,
+          "description": "main が記録した電源・ロックのイベント。os_event は OS からの通知、os_query は main が OS へ問い合わせた結果。記録の通知で、入出力の停止・再開の命令ではない。"
+        }
+      ],
+      "description": "main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。"
     }
   }
 }

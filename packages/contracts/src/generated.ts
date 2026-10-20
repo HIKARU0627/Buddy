@@ -91,7 +91,11 @@ export type BuddyContract =
   | OAuthStartRequest
   | OAuthStart
   | ConnectionTargetsRequest
-  | ConnectionDisconnectRequest;
+  | ConnectionDisconnectRequest
+  | DesktopIpcRequest
+  | DesktopIpcResponse
+  | DesktopIpcNotification
+  | DesktopStatusBar;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -446,6 +450,26 @@ export type IoEpoch = string;
  */
 export type OutputEpoch = string;
 /**
+ * OS のロック状態（設計 07 §2）。取得できなければ unknown とし、解除済みと扱わない。
+ */
+export type LockState = 'unlocked' | 'locked' | 'unknown';
+/**
+ * 入出力停止の範囲（設計 02 停止、07 §2・§5）。none は停止していない、local はこの端末、guest は来客モード、global は全体停止。来客モードと全体停止は全端末の入出力許可を止めるが、外部へ送った処理の取消ではない。
+ */
+export type IoStopScope = 'none' | 'local' | 'guest' | 'global';
+/**
+ * 状態欄の音声状態（設計 01 いつも見える状態）。呼びかけ待ち・会話中・読み上げ中・この端末では停止中・全体停止中・会話予算の上限で音声停止中・記録しない会話のため音声OFF・聞き取り中（文字で返す）。
+ */
+export type VoiceState =
+  | 'waiting_wake_word'
+  | 'conversation_live'
+  | 'reading_aloud'
+  | 'device_stopped'
+  | 'global_stopped'
+  | 'budget_voice_stopped'
+  | 'private_voice_off'
+  | 'listening_text_reply';
+/**
  * 期限（設計 11 §3 D15、§5 D15、修正案 R03）。
  */
 export type Deadline =
@@ -531,6 +555,111 @@ export type EventStreamMessage =
       reason: 'store_generation_changed' | 'history_expired' | 'scope_expired';
     };
 export type DevicePlatform = 'windows' | 'macos' | 'linux';
+/**
+ * UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。
+ */
+export type DesktopIpcRequest =
+  | {
+      channel: 'desktop.get_state';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.io_stop';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.io_resume';
+      request_id: Id;
+      payload: {
+        expected_io_epoch: IoEpoch;
+      };
+    }
+  | {
+      channel: 'desktop.window_hide';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.client_quit';
+      request_id: Id;
+      payload: null;
+    };
+/**
+ * main から UI レンダラーへの応答（ADR 0014）。どの拒否を返すかは domain の desktop.ts の規則が決める。
+ */
+export type DesktopIpcResponse =
+  | {
+      request_id: Id;
+      channel: 'desktop.get_state' | 'desktop.io_stop' | 'desktop.io_resume';
+      outcome: 'ok';
+      status: DesktopStatusBar;
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.window_hide' | 'desktop.client_quit';
+      outcome: 'ok';
+    }
+  | {
+      request_id: Id | null;
+      channel: DesktopIpcChannel | null;
+      outcome: 'rejected';
+      reason:
+        | 'invalid_request'
+        | 'untrusted_sender'
+        | 'device_locked'
+        | 'screen_operation_required'
+        | 'not_stopped'
+        | 'core_required'
+        | 'io_epoch_mismatch';
+    };
+/**
+ * 上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。
+ */
+export type DesktopStatusBar =
+  | {
+      visibility: 'hidden';
+      lock_state: 'locked' | 'unknown';
+    }
+  | {
+      visibility: 'shown';
+      lock_state: 'unlocked';
+      stop_scope: IoStopScope;
+      input_permitted: boolean;
+      io_epoch: IoEpoch;
+      voice_state: VoiceState | null;
+      hub_connection: 'not_connected' | 'connected' | 'unreachable';
+      hub_last_confirmed_at: UtcTime | null;
+      display_target: ('this_device' | 'other_device') | null;
+      storage_mode: StorageMode | null;
+      budget_held: boolean | null;
+      safety_stopped: boolean | null;
+    };
+/**
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。音声レンダラーの IPC（B05）は別に定める。
+ */
+export type DesktopIpcChannel =
+  | 'desktop.get_state'
+  | 'desktop.io_stop'
+  | 'desktop.io_resume'
+  | 'desktop.window_hide'
+  | 'desktop.client_quit';
+/**
+ * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
+ */
+export type DesktopIpcNotification =
+  | {
+      channel: 'desktop.state_changed';
+      status: DesktopStatusBar;
+    }
+  | {
+      channel: 'desktop.power_event';
+      event:
+        'lock_screen' | 'unlock_screen' | 'suspend' | 'resume' | 'shutdown';
+      source: 'os_event' | 'os_query';
+      observed_at: UtcTime;
+    };
 
 export interface AudioRange {
   audio_epoch: AudioEpoch;
@@ -1584,18 +1713,10 @@ export interface DeviceIOState {
   device_id: Id;
   io_epoch: IoEpoch;
   output_epoch: OutputEpoch;
-  lock_state: 'unlocked' | 'locked' | 'unknown';
-  stop_scope: 'none' | 'local' | 'guest' | 'global';
+  lock_state: LockState;
+  stop_scope: IoStopScope;
   input_permitted: boolean;
-  voice_state:
-    | 'waiting_wake_word'
-    | 'conversation_live'
-    | 'reading_aloud'
-    | 'device_stopped'
-    | 'global_stopped'
-    | 'budget_voice_stopped'
-    | 'private_voice_off'
-    | 'listening_text_reply';
+  voice_state: VoiceState;
   output_mode: 'voice' | 'text';
   private_conversation: boolean;
   audio_lease_valid: boolean;

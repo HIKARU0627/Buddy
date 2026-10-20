@@ -3348,5 +3348,541 @@
         }
       }
     }
+  },
+  {
+    "id": "desktop-ipc-get-state",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.get_state",
+      "request_id": "00000000-0000-4000-8000-000000000a01",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-io-stop",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.io_stop",
+      "request_id": "00000000-0000-4000-8000-000000000a02",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-io-resume",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.io_resume",
+      "request_id": "00000000-0000-4000-8000-000000000a03",
+      "payload": {
+        "expected_io_epoch": "5"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-window-hide",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.window_hide",
+      "request_id": "00000000-0000-4000-8000-000000000a04",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-client-quit",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.client_quit",
+      "request_id": "00000000-0000-4000-8000-000000000a05",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-unknown-channel",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.open_settings",
+      "request_id": "00000000-0000-4000-8000-000000000a06",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-hub-stop-channel",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.hub_stop",
+      "request_id": "00000000-0000-4000-8000-000000000a07",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-http-channel",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.http_request",
+      "request_id": "00000000-0000-4000-8000-000000000a08",
+      "payload": {
+        "method": "POST",
+        "url": "https://core.example.invalid/v1/io/stop"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-url-in-payload",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.get_state",
+      "request_id": "00000000-0000-4000-8000-000000000a09",
+      "payload": {
+        "url": "https://core.example.invalid/v1/snapshot"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-device-id-claim",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.io_stop",
+      "request_id": "00000000-0000-4000-8000-000000000a0a",
+      "payload": {
+        "device_id": "00000000-0000-4000-8000-000000000050"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-device-id-top-level",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.get_state",
+      "request_id": "00000000-0000-4000-8000-000000000a0b",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-token-in-resume",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.io_resume",
+      "request_id": "00000000-0000-4000-8000-000000000a0c",
+      "payload": {
+        "expected_io_epoch": "5",
+        "device_token": "synthetic-token"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-global-stop-scope",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.io_stop",
+      "request_id": "00000000-0000-4000-8000-000000000a0d",
+      "payload": {
+        "scope": "global"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-quit-stops-hub",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.client_quit",
+      "request_id": "00000000-0000-4000-8000-000000000a0e",
+      "payload": {
+        "stop_hub": true
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-resume-epoch-number",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.io_resume",
+      "request_id": "00000000-0000-4000-8000-000000000a0f",
+      "payload": {
+        "expected_io_epoch": 5
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-resume-epoch-leading-zero",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.io_resume",
+      "request_id": "00000000-0000-4000-8000-000000000a10",
+      "payload": {
+        "expected_io_epoch": "05"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-resume-without-epoch",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.io_resume",
+      "request_id": "00000000-0000-4000-8000-000000000a11",
+      "payload": {}
+    }
+  },
+  {
+    "id": "desktop-ipc-request-id-not-uuid",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.get_state",
+      "request_id": "req-1",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-missing-payload",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.get_state",
+      "request_id": "00000000-0000-4000-8000-000000000a12"
+    }
+  },
+  {
+    "id": "desktop-ipc-object-payload-without-args",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.window_hide",
+      "request_id": "00000000-0000-4000-8000-000000000a13",
+      "payload": {}
+    }
+  },
+  {
+    "id": "desktop-status-b01-stopped",
+    "schema": "DesktopStatusBar",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "lock_state": "unlocked",
+      "stop_scope": "local",
+      "input_permitted": false,
+      "io_epoch": "6",
+      "voice_state": null,
+      "hub_connection": "not_connected",
+      "hub_last_confirmed_at": null,
+      "display_target": null,
+      "storage_mode": null,
+      "budget_held": null,
+      "safety_stopped": null
+    }
+  },
+  {
+    "id": "desktop-status-connected",
+    "schema": "DesktopStatusBar",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "lock_state": "unlocked",
+      "stop_scope": "none",
+      "input_permitted": true,
+      "io_epoch": "4",
+      "voice_state": "waiting_wake_word",
+      "hub_connection": "connected",
+      "hub_last_confirmed_at": "2030-01-01T00:00:00Z",
+      "display_target": "this_device",
+      "storage_mode": "normal",
+      "budget_held": false,
+      "safety_stopped": false
+    }
+  },
+  {
+    "id": "desktop-status-locked",
+    "schema": "DesktopStatusBar",
+    "valid": true,
+    "value": {
+      "visibility": "hidden",
+      "lock_state": "locked"
+    }
+  },
+  {
+    "id": "desktop-status-lock-unknown",
+    "schema": "DesktopStatusBar",
+    "valid": true,
+    "value": {
+      "visibility": "hidden",
+      "lock_state": "unknown"
+    }
+  },
+  {
+    "id": "desktop-status-hidden-with-content",
+    "schema": "DesktopStatusBar",
+    "valid": false,
+    "value": {
+      "visibility": "hidden",
+      "lock_state": "locked",
+      "storage_mode": "normal"
+    }
+  },
+  {
+    "id": "desktop-status-hidden-permits-input",
+    "schema": "DesktopStatusBar",
+    "valid": false,
+    "value": {
+      "visibility": "hidden",
+      "lock_state": "unknown",
+      "input_permitted": true
+    }
+  },
+  {
+    "id": "desktop-status-hidden-while-unlocked",
+    "schema": "DesktopStatusBar",
+    "valid": false,
+    "value": {
+      "visibility": "hidden",
+      "lock_state": "unlocked"
+    }
+  },
+  {
+    "id": "desktop-status-shown-lock-unknown",
+    "schema": "DesktopStatusBar",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "lock_state": "unknown",
+      "stop_scope": "none",
+      "input_permitted": false,
+      "io_epoch": "4",
+      "voice_state": null,
+      "hub_connection": "not_connected",
+      "hub_last_confirmed_at": null,
+      "display_target": null,
+      "storage_mode": null,
+      "budget_held": null,
+      "safety_stopped": null
+    }
+  },
+  {
+    "id": "desktop-status-device-id",
+    "schema": "DesktopStatusBar",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "lock_state": "unlocked",
+      "stop_scope": "none",
+      "input_permitted": true,
+      "io_epoch": "4",
+      "voice_state": null,
+      "hub_connection": "not_connected",
+      "hub_last_confirmed_at": null,
+      "display_target": null,
+      "storage_mode": null,
+      "budget_held": null,
+      "safety_stopped": null,
+      "device_id": "00000000-0000-4000-8000-000000000050"
+    }
+  },
+  {
+    "id": "desktop-status-missing-null-field",
+    "schema": "DesktopStatusBar",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "lock_state": "unlocked",
+      "stop_scope": "none",
+      "input_permitted": true,
+      "io_epoch": "4",
+      "voice_state": null,
+      "hub_connection": "not_connected",
+      "hub_last_confirmed_at": null,
+      "display_target": null,
+      "storage_mode": null,
+      "budget_held": null
+    }
+  },
+  {
+    "id": "desktop-response-state",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000a02",
+      "channel": "desktop.io_stop",
+      "outcome": "ok",
+      "status": {
+        "visibility": "shown",
+        "lock_state": "unlocked",
+        "stop_scope": "local",
+        "input_permitted": false,
+        "io_epoch": "6",
+        "voice_state": null,
+        "hub_connection": "not_connected",
+        "hub_last_confirmed_at": null,
+        "display_target": null,
+        "storage_mode": null,
+        "budget_held": null,
+        "safety_stopped": null
+      }
+    }
+  },
+  {
+    "id": "desktop-response-stop-while-locked",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000a02",
+      "channel": "desktop.io_stop",
+      "outcome": "ok",
+      "status": {
+        "visibility": "hidden",
+        "lock_state": "locked"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-quit",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000a05",
+      "channel": "desktop.client_quit",
+      "outcome": "ok"
+    }
+  },
+  {
+    "id": "desktop-response-rejected",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000a03",
+      "channel": "desktop.io_resume",
+      "outcome": "rejected",
+      "reason": "io_epoch_mismatch"
+    }
+  },
+  {
+    "id": "desktop-response-rejected-unparsed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": null,
+      "channel": null,
+      "outcome": "rejected",
+      "reason": "invalid_request"
+    }
+  },
+  {
+    "id": "desktop-response-rejected-with-message",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000a03",
+      "channel": "desktop.io_resume",
+      "outcome": "rejected",
+      "reason": "device_locked",
+      "message": "ロック中です"
+    }
+  },
+  {
+    "id": "desktop-response-unknown-reason",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000a03",
+      "channel": "desktop.io_resume",
+      "outcome": "rejected",
+      "reason": "hub_stopped"
+    }
+  },
+  {
+    "id": "desktop-response-state-without-status",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000a01",
+      "channel": "desktop.get_state",
+      "outcome": "ok"
+    }
+  },
+  {
+    "id": "desktop-response-quit-with-status",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000a05",
+      "channel": "desktop.client_quit",
+      "outcome": "ok",
+      "status": {
+        "visibility": "hidden",
+        "lock_state": "locked"
+      }
+    }
+  },
+  {
+    "id": "desktop-notify-state",
+    "schema": "DesktopIpcNotification",
+    "valid": true,
+    "value": {
+      "channel": "desktop.state_changed",
+      "status": {
+        "visibility": "hidden",
+        "lock_state": "locked"
+      }
+    }
+  },
+  {
+    "id": "desktop-notify-lock",
+    "schema": "DesktopIpcNotification",
+    "valid": true,
+    "value": {
+      "channel": "desktop.power_event",
+      "event": "lock_screen",
+      "source": "os_event",
+      "observed_at": "2030-01-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "desktop-notify-unknown-event",
+    "schema": "DesktopIpcNotification",
+    "valid": false,
+    "value": {
+      "channel": "desktop.power_event",
+      "event": "hibernate",
+      "source": "os_event",
+      "observed_at": "2030-01-01T00:00:00Z"
+    }
+  },
+  {
+    "id": "desktop-notify-local-time",
+    "schema": "DesktopIpcNotification",
+    "valid": false,
+    "value": {
+      "channel": "desktop.power_event",
+      "event": "suspend",
+      "source": "os_event",
+      "observed_at": "2030-01-01T09:00:00+09:00"
+    }
+  },
+  {
+    "id": "desktop-notify-request-channel",
+    "schema": "DesktopIpcNotification",
+    "valid": false,
+    "value": {
+      "channel": "desktop.io_stop",
+      "status": {
+        "visibility": "hidden",
+        "lock_state": "locked"
+      }
+    }
   }
 ]

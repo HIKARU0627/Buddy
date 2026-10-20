@@ -35,6 +35,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [同期世代・抽出 v2・関連解析の契約](docs/adr/0007-sync-extraction-and-related-analysis.md)
 - [記憶・忘却とモデル評価の交換形式](docs/adr/0008-memory-forgetting-and-model-evaluation.md)
 - [OpenAPI・認証・イベント・再接続の契約](docs/adr/0009-openapi-auth-events-and-reconnect.md)
+- [domain 境界と保存マイグレーション案](docs/adr/0010-domain-boundary-and-storage-draft.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

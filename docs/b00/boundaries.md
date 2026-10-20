@@ -1,6 +1,6 @@
 # 初回の実行・保存境界
 
-状態: 境界仕様。コード・SQL マイグレーション・統合試験は未実装。
+状態: 境界仕様。保存案（`packages/storage/migrations/0001_initial.sql`）と domain の境界の規則は [ADR 0010](../adr/0010-domain-boundary-and-storage-draft.md) で作成。DB worker・本番 DB への適用・統合試験は未実装。
 
 ## 入力から結果まで
 
@@ -16,7 +16,7 @@
 
 ## 保存の必須制約
 
-| 対象                       | 後続のマイグレーションで固定すること                                               |
+| 対象                       | 保存案 0001 で固定したこと（ADR 0010）                                             |
 | -------------------------- | ---------------------------------------------------------------------------------- |
 | operation_versions         | operation_id + content_version の一意性と intent / hash の不変性                   |
 | approvals                  | 内容版ごとの有効承認1件。本人承認と方針による自動承認を区別                        |
@@ -26,7 +26,7 @@
 | budget_reservations        | R / M と元の予算月・scope。精算キーで一度だけ更新。usage不明を月替わりで解放しない |
 | async_context_guards       | 入力版・取得世代・許可・忘却・期限・出力先。最終境界で再検査                       |
 
-SQL は後続の全契約との整合後に作成します。接続の WAL / FULL と対象 OS の同期要件、単一 writer、commit 成否不明時の停止を保ちます。機密本文は既定の暗号化・期限・忘却を通し、平文 fallback を作りません。
+SQL は保存案 0001 として作成し、一意制約・CHECK・trigger を `tests/fixtures/storage-cases.json` で検査します。接続の WAL / FULL と対象 OS の同期要件、単一 writer、commit 成否不明時の停止を保ちます。機密本文は既定の暗号化・期限・忘却を通し、平文 fallback を作りません。
 
 ## 検証の区別
 

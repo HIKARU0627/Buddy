@@ -17,6 +17,7 @@
 - `eval-conversion-cases.json`: 評価セットの行を書き出し形式へ変換する期待値。行はすべて合成。
 - `api-cases.json`: 経路ごとの正常な要求・応答と、認証不足・古い接続範囲・旧版などの拒否の期待値（X04・X42 ほか）。
 - `api-scenarios.json`: 再送・イベントの反映・リース・停止の到達・ペアリングの期待値（X04・X11・X13・X14）。
+- `boundary-cases.json`: 承認の受付・DB 命令の再検査・通知の配信・削除期限の期待値（X02・X12 ほか）。
 - `workflow-label.json`: 実行境界の期待結果。`specification_only` で、DB・外部処理の実行済み記録ではありません。
 
 追加の生JSON・JCS・入力根拠・局所的な費用不変条件は `scripts/contracts.test.mjs` で確認します。実データ・認証情報・個人予算を置きません。

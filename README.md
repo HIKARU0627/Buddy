@@ -41,6 +41,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [OS 別の起動・監督アダプターと鍵保護不能時の停止](docs/adr/0013-b01-platform-adapters.md)
 - [デスクトップの型付き IPC の契約](docs/adr/0014-b01-desktop-ipc-contract.md)
 - [デスクトップの最小アプリ（トレイ常駐・端末状態の記録）](docs/adr/0015-b01-desktop-minimal-app.md)
+- [SQLite の接続・マイグレーション・耐久設定の検査](docs/adr/0016-b02-sqlite-connection-and-migrations.md)
 - [中枢の KeyStore と sealed_blobs の暗号化（AES-256-GCM）](docs/adr/0017-b02-keystore-and-encryption.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 

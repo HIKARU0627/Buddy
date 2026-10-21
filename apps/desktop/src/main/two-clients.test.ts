@@ -328,6 +328,26 @@ async function pairTwoClients(
   return { a, b };
 }
 
+// 接続している（live）ときの管理の入口の応答。接続した直後は、届いたイベントで取り直し（resnapshot）が
+// 起きて一時的に live でなくなることがあり、その間の要求は not_connected になる（負荷の高い CI で見た）。
+// 試験は live に戻るのを待って送り直す（main は送っていないので、送り直しで中枢に二重に届くことはない）。
+async function adminWhenLive(
+  client: Client,
+  channel: string,
+  payload: unknown,
+): Promise<DesktopIpcResponse> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await waitUntil(
+      () => client.link.linkState?.phase === 'live',
+      `${client.name} live`,
+    );
+    const response = await client.admin(channel, payload);
+    if ((response as { reason?: string }).reason !== 'not_connected')
+      return response;
+  }
+  throw new Error(`${client.name} did not stay live for ${channel}`);
+}
+
 const opsOf = (client: Client) =>
   client
     .view()
@@ -724,7 +744,7 @@ test(
 
     // B は中枢の画面ではない: 画面を出さず、経路は 403（hub_screen_required）。
     await waitUntil(() => b.link.linkState?.phase === 'live', 'B live');
-    const refused = await b.admin('desktop.claims_list', null);
+    const refused = await adminWhenLive(b, 'desktop.claims_list', null);
     assert.equal(
       (refused as { reason?: string }).reason,
       'hub_screen_required',
@@ -739,10 +759,7 @@ test(
       ['desktop.pairing_open', null],
     ];
     for (const [channel, payload] of refusedOperations) {
-      const refusedOperation = await b.admin(
-        channel as never,
-        payload as never,
-      );
+      const refusedOperation = await adminWhenLive(b, channel, payload);
       assert.equal(
         (refusedOperation as { reason?: string }).reason,
         'hub_screen_required',

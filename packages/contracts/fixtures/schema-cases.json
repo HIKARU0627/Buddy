@@ -3370,7 +3370,9 @@
     "id": "pairing-claim-list-empty",
     "schema": "PairingClaimList",
     "valid": true,
-    "value": { "claims": [] }
+    "value": {
+      "claims": []
+    }
   },
   {
     "id": "pairing-claim-list-with-code",
@@ -3908,7 +3910,8 @@
       "retry_at": null,
       "pairing": null,
       "home_network": null,
-      "operations": []
+      "operations": [],
+      "hub_screen": false
     }
   },
   {
@@ -3928,10 +3931,12 @@
         "port": 47443,
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
         "claim_expires_at": null,
-        "failure": null
+        "failure": null,
+        "claim_check": null
       },
       "home_network": null,
-      "operations": []
+      "operations": [],
+      "hub_screen": false
     }
   },
   {
@@ -3951,10 +3956,12 @@
         "port": 47443,
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
         "claim_expires_at": null,
-        "failure": "pickup_unknown"
+        "failure": "pickup_unknown",
+        "claim_check": null
       },
       "home_network": null,
-      "operations": []
+      "operations": [],
+      "hub_screen": false
     }
   },
   {
@@ -3986,7 +3993,8 @@
           "allowed_actions": ["cancel"],
           "result": null
         }
-      ]
+      ],
+      "hub_screen": false
     }
   },
   {
@@ -4007,7 +4015,8 @@
         "reasons": ["tailscale_derp"],
         "reported_at": "2030-10-05T00:00:00Z"
       },
-      "operations": []
+      "operations": [],
+      "hub_screen": false
     }
   },
   {
@@ -4023,7 +4032,8 @@
       "retry_at": null,
       "pairing": null,
       "home_network": null,
-      "operations": []
+      "operations": [],
+      "hub_screen": false
     }
   },
   {
@@ -4039,7 +4049,8 @@
       "retry_at": null,
       "pairing": null,
       "home_network": null,
-      "operations": []
+      "operations": [],
+      "hub_screen": false
     }
   },
   {
@@ -4072,7 +4083,8 @@
           "result": null
         }
       ],
-      "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "hub_screen": false
     }
   },
   {
@@ -4105,7 +4117,8 @@
           "result": null
         }
       ],
-      "device_id": "00000000-0000-4000-8000-000000000b15"
+      "device_id": "00000000-0000-4000-8000-000000000b15",
+      "hub_screen": false
     }
   },
   {
@@ -4138,7 +4151,8 @@
           "allowed_actions": ["cancel"],
           "result": null
         }
-      ]
+      ],
+      "hub_screen": false
     }
   },
   {
@@ -4159,10 +4173,12 @@
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
         "claim_expires_at": null,
         "failure": null,
-        "certificate_pem": "-----BEGIN CERTIFICATE-----"
+        "certificate_pem": "-----BEGIN CERTIFICATE-----",
+        "claim_check": null
       },
       "home_network": null,
-      "operations": []
+      "operations": [],
+      "hub_screen": false
     }
   },
   {
@@ -4186,10 +4202,12 @@
           "port": 47443,
           "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
           "claim_expires_at": null,
-          "failure": null
+          "failure": null,
+          "claim_check": null
         },
         "home_network": null,
-        "operations": []
+        "operations": [],
+        "hub_screen": false
       }
     }
   },
@@ -4214,10 +4232,12 @@
           "port": 47443,
           "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
           "claim_expires_at": null,
-          "failure": null
+          "failure": null,
+          "claim_check": null
         },
         "home_network": null,
-        "operations": []
+        "operations": [],
+        "hub_screen": false
       }
     }
   },
@@ -4263,7 +4283,8 @@
             "allowed_actions": ["cancel"],
             "result": null
           }
-        ]
+        ],
+        "hub_screen": false
       }
     }
   },
@@ -4284,6 +4305,261 @@
       "storage_mode": null,
       "budget_held": null,
       "safety_stopped": null
+    }
+  },
+  {
+    "id": "desktop-ipc-claims-list",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.claims_list",
+      "request_id": "00000000-0000-4000-8000-000000000c01",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-claim-decide",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.claim_decide",
+      "request_id": "00000000-0000-4000-8000-000000000c02",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c21",
+        "decision": "approve"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-claim-decide-with-claim-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.claim_decide",
+      "request_id": "00000000-0000-4000-8000-000000000c03",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c21",
+        "decision": "approve",
+        "claim_id": "00000000-0000-4000-8000-000000000c30"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-claim-decide-unknown-decision",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.claim_decide",
+      "request_id": "00000000-0000-4000-8000-000000000c04",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c21",
+        "decision": "maybe"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-devices-list",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.devices_list",
+      "request_id": "00000000-0000-4000-8000-000000000c05",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-device-revoke",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.device_revoke",
+      "request_id": "00000000-0000-4000-8000-000000000c06",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c22"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-device-revoke-by-device-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.device_revoke",
+      "request_id": "00000000-0000-4000-8000-000000000c07",
+      "payload": {
+        "device_id": "00000000-0000-4000-8000-000000000c22"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-claims",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c08",
+      "channel": "desktop.claims_list",
+      "outcome": "ok",
+      "claims": [
+        {
+          "ref": "00000000-0000-4000-8000-000000000c21",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0a1b2c3d"
+        }
+      ]
+    }
+  },
+  {
+    "id": "desktop-response-claims-with-code",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c09",
+      "channel": "desktop.claims_list",
+      "outcome": "ok",
+      "claims": [
+        {
+          "ref": "00000000-0000-4000-8000-000000000c21",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0a1b2c3d",
+          "pairing_code": "12345678"
+        }
+      ]
+    }
+  },
+  {
+    "id": "desktop-response-devices",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c10",
+      "channel": "desktop.devices_list",
+      "outcome": "ok",
+      "devices": [
+        {
+          "ref": null,
+          "device_name": "中枢の端末",
+          "platform": "macos",
+          "hub_local": true,
+          "this_device": true,
+          "registered_at": "2030-10-05T00:00:00Z",
+          "last_seen_at": "2030-10-05T00:10:00Z",
+          "revoked_at": null
+        },
+        {
+          "ref": "00000000-0000-4000-8000-000000000c22",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "hub_local": false,
+          "this_device": false,
+          "registered_at": "2030-10-05T00:00:00Z",
+          "last_seen_at": "2030-10-05T00:10:00Z",
+          "revoked_at": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "desktop-response-devices-with-token",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c11",
+      "channel": "desktop.devices_list",
+      "outcome": "ok",
+      "devices": [
+        {
+          "ref": "00000000-0000-4000-8000-000000000c22",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "hub_local": false,
+          "this_device": false,
+          "registered_at": "2030-10-05T00:00:00Z",
+          "last_seen_at": "2030-10-05T00:10:00Z",
+          "revoked_at": null,
+          "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      ]
+    }
+  },
+  {
+    "id": "desktop-response-devices-with-device-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c12",
+      "channel": "desktop.device_revoke",
+      "outcome": "ok",
+      "devices": [
+        {
+          "ref": "00000000-0000-4000-8000-000000000c22",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "hub_local": false,
+          "this_device": false,
+          "registered_at": "2030-10-05T00:00:00Z",
+          "last_seen_at": "2030-10-05T00:10:00Z",
+          "revoked_at": null,
+          "device_id": "00000000-0000-4000-8000-000000000c22"
+        }
+      ]
+    }
+  },
+  {
+    "id": "desktop-response-hub-screen-required",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c13",
+      "channel": "desktop.claims_list",
+      "outcome": "rejected",
+      "reason": "hub_screen_required"
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-open",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.pairing_open",
+      "request_id": "00000000-0000-4000-8000-000000000c31",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-response-pairing-session",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c32",
+      "channel": "desktop.pairing_open",
+      "outcome": "ok",
+      "session": {
+        "pairing_code": "12345678",
+        "certificate_fingerprint": "abababababababababababababababababababababababababababababababab",
+        "expires_at": "2030-10-05T00:05:00Z"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-pairing-session-with-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c33",
+      "channel": "desktop.pairing_open",
+      "outcome": "ok",
+      "session": {
+        "pairing_code": "12345678",
+        "certificate_fingerprint": "abababababababababababababababababababababababababababababababab",
+        "expires_at": "2030-10-05T00:05:00Z",
+        "pairing_id": "00000000-0000-4000-8000-000000000c34"
+      }
     }
   },
   {

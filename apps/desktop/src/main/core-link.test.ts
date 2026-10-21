@@ -355,3 +355,79 @@ test(
     assert.equal(existsSync(join(dir, CREDENTIAL_FILE)), false);
   },
 );
+
+test(
+  'hub screen channels need an unlocked device, a screen operation for decisions, a live connection and the hub screen (B03-06)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link } = await setup(t);
+    link.start('unlocked');
+    const admin = async (
+      channel: string,
+      payload: unknown,
+      state: DesktopIoState = UNLOCKED,
+      sender = SCREEN,
+    ) =>
+      (
+        await link.handleAdminIpc(
+          channel,
+          { channel, request_id: randomUUID(), payload },
+          sender,
+          state,
+        )
+      ).response as Record<string, unknown>;
+    const ref = randomUUID();
+    assert.equal(
+      (
+        await admin('desktop.claims_list', null, {
+          ...UNLOCKED,
+          lockState: 'locked',
+        })
+      )['reason'],
+      'device_locked',
+    );
+    assert.equal(
+      (
+        await admin('desktop.device_revoke', { ref }, UNLOCKED, {
+          trustedSender: true,
+          windowFocused: false,
+        })
+      )['reason'],
+      'screen_operation_required',
+    );
+    assert.equal(
+      (
+        await admin(
+          'desktop.claim_decide',
+          { ref, decision: 'approve' },
+          UNLOCKED,
+          {
+            trustedSender: false,
+            windowFocused: true,
+          },
+        )
+      )['reason'],
+      'untrusted_sender',
+    );
+    // 申請 ID・端末 ID を直接渡す形は契約にない（形式で拒否）。
+    assert.equal(
+      (await admin('desktop.device_revoke', { device_id: ref }))['reason'],
+      'invalid_request',
+    );
+    // 未登録（接続していない）では中枢へ送らない。
+    for (const channel of [
+      'desktop.claims_list',
+      'desktop.devices_list',
+      'desktop.pairing_open',
+    ])
+      assert.equal((await admin(channel, null))['reason'], 'not_connected');
+    // 接続・ペアリングのチャネルを管理の入口へ送っても受け付けない。
+    assert.equal(
+      (await admin('desktop.get_connection', null))['reason'],
+      'invalid_request',
+    );
+    const view = link.view('unlocked');
+    assert(view.visibility === 'shown');
+    assert.equal(view.hub_screen, false);
+  },
+);

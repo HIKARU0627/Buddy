@@ -16,6 +16,11 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.pairing_confirm',
   'desktop.pairing_submit',
   'desktop.pairing_cancel',
+  'desktop.claims_list',
+  'desktop.claim_decide',
+  'desktop.devices_list',
+  'desktop.device_revoke',
+  'desktop.pairing_open',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

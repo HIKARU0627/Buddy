@@ -7446,7 +7446,12 @@
         "desktop.pairing_begin",
         "desktop.pairing_confirm",
         "desktop.pairing_submit",
-        "desktop.pairing_cancel"
+        "desktop.pairing_cancel",
+        "desktop.claims_list",
+        "desktop.claim_decide",
+        "desktop.devices_list",
+        "desktop.device_revoke",
+        "desktop.pairing_open"
       ],
       "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。"
     },
@@ -7670,6 +7675,114 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "ペアリングをやめる。いつでも受け付ける。中枢へ取消は送らない（申請は期限で無効になる）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.claims_list"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "承認待ちの申請の一覧を取得する（中枢の画面の端末だけ。B03-06、ADR 0026）。ロック解除済みのときだけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.claim_decide"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                },
+                "decision": {
+                  "type": "string",
+                  "enum": ["approve", "reject"]
+                }
+              },
+              "required": ["ref", "decision"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "承認待ちの申請を承認・拒否する。ref は直前の一覧で main が渡した参照（申請 ID ではない）。ロック解除済みの画面操作だけ。画面で確認を挟んでから送る。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.devices_list"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "登録済みの端末の一覧を取得する（中枢の画面の端末だけ）。ロック解除済みのときだけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.device_revoke"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "端末を失効する。ref は直前の一覧で main が渡した参照（端末 ID ではない）。この端末と失効済みの端末には参照がない。ロック解除済みの画面操作だけ。画面で確認を挟んでから送る。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.pairing_open"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "中枢の画面の端末で、新しい端末のペアリングを始める（ワンタイムコードを出す。B03-06、ADR 0026）。ロック解除済みの画面操作だけ。前のコードは使えなくなる。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -7984,6 +8097,16 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "claim_check": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/PairingClaimCheck"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -7992,7 +8115,8 @@
                     "port",
                     "fingerprint",
                     "claim_expires_at",
-                    "failure"
+                    "failure",
+                    "claim_check"
                   ],
                   "additionalProperties": false
                 },
@@ -8036,6 +8160,9 @@
               "items": {
                 "$ref": "#/$defs/OperationSnapshot"
               }
+            },
+            "hub_screen": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -8047,13 +8174,131 @@
             "retry_at",
             "pairing",
             "home_network",
-            "operations"
+            "operations",
+            "hub_screen"
           ],
           "additionalProperties": false,
-          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（ロック解除済みで接続しているときだけ）。"
+          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（ロック解除済みで接続しているときだけ）。 hub_screen は中枢の画面の端末（中枢と同じマシンの hub_local の端末）として中枢が認めたとき（承認待ちの申請の一覧が 200）だけ true で、申請の承認・端末の管理の画面を出す（B03-06）。"
         }
       ],
       "description": "中枢との接続・登録・ペアリングの状態（設計 02 端末登録と接続、07 §2〜§4、ADR 0025）。main が作り、UI レンダラーは表示するだけ。端末トークン・申請用の秘密・端末 ID・中枢の証明書の本体・自宅の指紋の値を含めない。"
+    },
+    "DesktopClaimEntry": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "platform": {
+          "$ref": "#/$defs/DevicePlatform"
+        },
+        "claimed_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "claim_check": {
+          "$ref": "#/$defs/PairingClaimCheck"
+        }
+      },
+      "required": [
+        "ref",
+        "device_name",
+        "platform",
+        "claimed_at",
+        "expires_at",
+        "claim_check"
+      ],
+      "additionalProperties": false,
+      "description": "画面に出す承認待ちの申請（B03-06、ADR 0026）。ref は main が一覧ごとに作る参照で、申請 ID・コード・秘密を含めない。"
+    },
+    "DesktopDeviceEntry": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "platform": {
+          "$ref": "#/$defs/DevicePlatform"
+        },
+        "hub_local": {
+          "type": "boolean"
+        },
+        "this_device": {
+          "type": "boolean"
+        },
+        "registered_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "last_seen_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "device_name",
+        "platform",
+        "hub_local",
+        "this_device",
+        "registered_at",
+        "last_seen_at",
+        "revoked_at"
+      ],
+      "additionalProperties": false,
+      "description": "画面に出す登録済みの端末（B03-06、ADR 0026）。ref は失効できる端末（この端末・失効済みでない）だけにある main の参照で、端末 ID・トークンを含めない。"
+    },
+    "DesktopPairingSession": {
+      "type": "object",
+      "properties": {
+        "pairing_code": {
+          "type": "string",
+          "pattern": "^[0-9]{8}$"
+        },
+        "certificate_fingerprint": {
+          "$ref": "#/$defs/Hash"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": ["pairing_code", "certificate_fingerprint", "expires_at"],
+      "additionalProperties": false,
+      "description": "中枢の画面に出すワンタイムコードと中枢の証明書の指紋（B03-06、ADR 0026）。コードは本人が登録する端末に入力するための表示で、中枢の画面の端末の画面にだけ返す（申請の一覧・端末の一覧・ログには出さない）。"
     },
     "DesktopIpcResponse": {
       "oneOf": [
@@ -8134,6 +8379,78 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.claims_list", "desktop.claim_decide"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "claims": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DesktopClaimEntry"
+              }
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "claims"],
+          "additionalProperties": false,
+          "description": "受け付けた。承認待ちの申請の一覧（承認・拒否の後は取り直した一覧）を返す。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.devices_list", "desktop.device_revoke"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "devices": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DesktopDeviceEntry"
+              }
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "devices"],
+          "additionalProperties": false,
+          "description": "受け付けた。登録済みの端末の一覧（失効の後は取り直した一覧）を返す。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.pairing_open"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "session": {
+              "$ref": "#/$defs/DesktopPairingSession"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "session"],
+          "additionalProperties": false,
+          "description": "受け付けた。新しいペアリングのコードと指紋を返す。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -8168,7 +8485,12 @@
                 "core_required",
                 "io_epoch_mismatch",
                 "pairing_step_mismatch",
-                "secure_storage_unavailable"
+                "secure_storage_unavailable",
+                "hub_screen_required",
+                "not_connected",
+                "entry_not_found",
+                "core_rejected",
+                "outcome_unknown"
               ]
             }
           },

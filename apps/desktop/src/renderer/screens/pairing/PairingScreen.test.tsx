@@ -34,6 +34,7 @@ const base: ShownConnection = {
   last_confirmed_at: null,
   retry_at: null,
   pairing: null,
+  hub_screen: false,
   home_network: null,
   operations: [],
 };
@@ -48,6 +49,7 @@ const pairingAt = (
   fingerprint: step === 'fetching_certificate' ? null : FP,
   claim_expires_at: null,
   failure: null,
+  claim_check: null,
   ...extra,
 });
 

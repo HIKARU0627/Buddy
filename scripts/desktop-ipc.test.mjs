@@ -78,6 +78,8 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     'DesktopIpcNotification',
     'DesktopStatusBar',
     'DesktopConnectionView',
+    'DesktopClaimEntry',
+    'DesktopDeviceEntry',
   ])
     walk(defs[name], name);
   // 入出力停止は local だけで、範囲を指定できない。
@@ -270,6 +272,26 @@ test('the connection view hides everything while locked and keeps pairing, link 
   ]);
   check('desktop-connection-storage-unavailable', { link: 'connecting' }, [
     'link_conflicts_with_registration',
+  ]);
+  check(
+    'desktop-connection-fingerprint-check',
+    { pairing: { ...pairing, claim_check: '0a1b2c3d' } },
+    ['claim_check_outside_waiting'],
+  );
+  check(
+    'desktop-connection-fingerprint-check',
+    {
+      pairing: {
+        ...pairing,
+        step: 'waiting_approval',
+        claim_check: '0a1b2c3d',
+      },
+    },
+    [],
+  );
+  check('desktop-connection-connected', { hub_screen: true }, []);
+  check('desktop-connection-waiting-retry', { hub_screen: true }, [
+    'hub_screen_without_connection',
   ]);
   // 応答・通知の中でも同じ検査をする。
   assert.deepEqual(

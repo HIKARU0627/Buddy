@@ -24,6 +24,14 @@ export const REJECT_MESSAGES: Readonly<Record<Rejected['reason'], string>> = {
     'ペアリングの手順と合わないため受け付けませんでした。画面の表示を確かめてください。',
   secure_storage_unavailable:
     'この端末では安全な保存が使えないため、登録できません。',
+  hub_screen_required: 'この操作は中枢と同じマシンの画面でだけ行えます。',
+  not_connected: '中枢に接続していないため、操作できません。',
+  entry_not_found:
+    '一覧が古くなっています。一覧を取り直してから、もう一度操作してください。',
+  core_rejected:
+    '中枢が受け付けませんでした（期限切れ・決め済みなど）。一覧を取り直してください。',
+  outcome_unknown:
+    '結果が分かりません。自動では送り直しません。一覧を取り直して確かめてください。',
 };
 
 export const POWER_EVENT_LABELS: Readonly<Record<PowerEvent['event'], string>> =
@@ -146,6 +154,17 @@ export const OPERATION_STATE_LABELS: Readonly<Record<string, string>> = {
   cancelled: '取消済み',
   superseded: '置き換え済み',
 };
+
+export const PLATFORM_LABELS: Readonly<Record<string, string>> = {
+  macos: 'macOS',
+  windows: 'Windows',
+  linux: 'Linux',
+};
+
+// 申請の確認コード（8 桁の 16 進）を 4 桁ずつに区切る。
+export function formatClaimCheck(check: string): string {
+  return `${check.slice(0, 4)} ${check.slice(4)}`;
+}
 
 // 指紋（64 桁の 16 進）を 4 桁ずつに区切って読み比べやすくする。
 export function formatFingerprint(fingerprint: string): string {

@@ -17,6 +17,7 @@ import { PanelTitle } from '../../components/PanelTitle.js';
 import {
   PAIRING_FAILURE_LABELS,
   PAIRING_STEP_LABELS,
+  formatClaimCheck,
   formatFingerprint,
   formatObservedAt,
 } from '../../labels.js';
@@ -162,6 +163,19 @@ function Progress({
       <p role="status" className="text-sm">
         {PAIRING_STEP_LABELS[pairing.step]}
       </p>
+      {pairing.claim_check !== null ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm">
+            中枢の画面の「承認待ちの申請」に、同じ確認コードの申請があることを確かめてから承認してください。
+          </p>
+          <p
+            aria-label="申請の確認コード"
+            className="font-mono text-2xl tracking-wider"
+          >
+            {formatClaimCheck(pairing.claim_check)}
+          </p>
+        </div>
+      ) : null}
       {pairing.claim_expires_at !== null ? (
         <p className="text-sm text-muted">
           申請の期限: {formatObservedAt(pairing.claim_expires_at)}

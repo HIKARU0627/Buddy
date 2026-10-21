@@ -55,6 +55,8 @@ export interface PairingView {
   readonly fingerprint: string | null;
   readonly claim_expires_at: string | null;
   readonly failure: PairingFailure | null;
+  // 申請の確認コード（承認待ちのときだけ。中枢の画面の一覧と同じ値。B03-06）。
+  readonly claim_check: string | null;
 }
 
 export interface PairingFlowOptions {
@@ -84,6 +86,15 @@ export interface PairingFlowOptions {
 
 export const PAIRING_POLL_INTERVAL_MS = 2_000;
 
+// 申請の確認コード（ADR 0026）: SHA-256("buddy/pairing-claim-check/v1" NUL 申請用の秘密の SHA-256 の 16 進) の
+// 先頭 4 バイト。中枢（storage）も同じ定義で求め、本人が両方の画面で見比べる。
+export function claimCheckOf(claimSecretHashHex: string): string {
+  return createHash('sha256')
+    .update(`buddy/pairing-claim-check/v1\u0000${claimSecretHashHex}`, 'utf8')
+    .digest('hex')
+    .slice(0, 8);
+}
+
 export type PairingCommandResult = 'ok' | 'step_mismatch';
 
 interface Attempt {
@@ -94,6 +105,7 @@ interface Attempt {
   fingerprint: string | null;
   claimId: string | null;
   claimExpiresAt: number | null;
+  claimCheck: string | null;
   // 申請用の秘密（受取りの時だけ送る）。
   secret: SecretText | null;
   failure: PairingFailure | null;
@@ -137,6 +149,8 @@ export class PairingFlow {
           ? null
           : new Date(attempt.claimExpiresAt).toISOString(),
       failure: attempt.failure,
+      claim_check:
+        attempt.step === 'waiting_approval' ? attempt.claimCheck : null,
     };
   }
 
@@ -152,6 +166,7 @@ export class PairingFlow {
       fingerprint: null,
       claimId: null,
       claimExpiresAt: null,
+      claimCheck: null,
       secret: null,
       failure: null,
       cancelTimer: null,
@@ -237,6 +252,9 @@ export class PairingFlow {
   ): Promise<void> {
     const secret = randomBytes(32).toString('base64url');
     attempt.secret = new SecretText(secret);
+    const secretHash = createHash('sha256')
+      .update(secret, 'ascii')
+      .digest('hex');
     const home = await this.#collectHome();
     if (this.#attempt !== attempt) return;
     const outcome = await this.#options.request(this.#hub(attempt), {
@@ -247,9 +265,7 @@ export class PairingFlow {
         pairing_code: code,
         device_name: deviceName,
         platform: this.#options.platform,
-        claim_secret_hash: createHash('sha256')
-          .update(secret, 'ascii')
-          .digest('hex'),
+        claim_secret_hash: secretHash,
         home_fingerprint: home,
       },
     });
@@ -265,6 +281,7 @@ export class PairingFlow {
       const claim = outcome.body as PairingClaim;
       attempt.claimId = claim.claim_id;
       attempt.claimExpiresAt = Date.parse(claim.expires_at);
+      attempt.claimCheck = claimCheckOf(secretHash);
       attempt.step = 'waiting_approval';
       this.#changed();
       this.#schedulePickup(attempt, 0);

@@ -172,6 +172,10 @@ export async function startHub(
     readonly dataDir: string;
     readonly port: number;
     readonly tlsKeyStore?: MockTlsKeyStore;
+    // 接続元が中枢と同じマシンか（試験で切り替える。既定は Core の判定）。
+    readonly sameMachine?: () => boolean;
+    // 自宅判定を満たす環境を注入する（中枢と同じマシンでない端末を試すとき）。
+    readonly homeNetwork?: boolean;
   },
 ): Promise<TestHub> {
   const tlsKeyStore = options.tlsKeyStore ?? createMockTlsKeyStore();
@@ -185,6 +189,12 @@ export async function startHub(
       port: options.port,
       tlsKeyStore,
       eventStream: { pingIntervalMs: 200 },
+      ...(options.sameMachine === undefined
+        ? {}
+        : { sameMachine: options.sameMachine }),
+      ...(options.homeNetwork === true
+        ? { environment: { homeNetwork: () => true } }
+        : {}),
     },
     events: { pollIntervalMs: 100 },
   });

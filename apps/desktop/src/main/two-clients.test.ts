@@ -64,6 +64,12 @@ interface Client {
   readonly requests: string[];
   view(): Extract<DesktopConnectionView, { visibility: 'shown' }>;
   invoke(channel: string, payload: unknown): DesktopIpcResponse;
+  // 中枢の画面の端末の申請の承認・端末の管理の IPC（B03-06）。
+  admin(
+    channel: string,
+    payload: unknown,
+    options?: { readonly sender?: typeof SCREEN },
+  ): Promise<DesktopIpcResponse>;
   // 試験だけが保存したトークンを読む（模擬の safeStorage の復号）。
   token(): string;
 }
@@ -71,7 +77,13 @@ interface Client {
 async function createClient(
   t: test.TestContext,
   name: string,
-  options: { readonly dir?: string; readonly protector?: MockProtector } = {},
+  options: {
+    readonly dir?: string;
+    readonly protector?: MockProtector;
+    readonly pollIntervalMs?: number;
+    // 受取り（トークンの要求）を送る前に待つ（試験で受取りの時点を決める）。
+    readonly beforePickup?: () => Promise<void>;
+  } = {},
 ): Promise<Client> {
   const dir = options.dir ?? (await tempDir(t, `bd${name}-`));
   const credentialPath = join(dir, CREDENTIAL_FILE);
@@ -95,7 +107,7 @@ async function createClient(
     log: (code) => logs.push(code),
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     aliveTimeoutMs: 3_000,
-    pairingPollIntervalMs: 50,
+    pairingPollIntervalMs: options.pollIntervalMs ?? 50,
     transportFor: (hub, token) => {
       const transport = createHubTransport({ hub, token });
       return {
@@ -111,6 +123,8 @@ async function createClient(
     },
     // 申請の応答から claim_id を記録する（中枢の画面の承認で使う。端末の画面には出さない値）。
     pairingRequest: async (hub: PinnedHub, request) => {
+      if (request.path.endsWith('/token') && options.beforePickup)
+        await options.beforePickup();
       const outcome = await hubRequest(hub, request);
       if (
         request.path === '/v1/pairing/claims' &&
@@ -146,6 +160,16 @@ async function createClient(
         SCREEN,
         UNLOCKED,
       ).response;
+      ipc.push(response);
+      return response;
+    },
+    async admin(channel, payload, adminOptions = {}) {
+      const { response } = await created.handleAdminIpc(
+        channel,
+        { channel, request_id: randomUUID(), payload },
+        adminOptions.sender ?? SCREEN,
+        UNLOCKED,
+      );
       ipc.push(response);
       return response;
     },
@@ -574,5 +598,170 @@ test(
     assert.equal(receipt?.state, 'awaiting_approval');
     assert.equal(receipt?.state_revision, '1');
     assertNoSecrets([a, b], [a.token(), b.token()]);
+  },
+);
+
+test(
+  'the hub screen opens pairing, approves the claim with the matching claim check and revokes a device through the IPC; other devices get neither (B03-06)',
+  { timeout: 60_000 },
+  async (t) => {
+    const dir = await tempDir(t, 'bdh-');
+    const machine = { same: true };
+    const hub = await startHub(t, {
+      dataDir: join(dir, 'd'),
+      port: await freePort(),
+      sameMachine: () => machine.same,
+      homeNetwork: true,
+    });
+    const a = await createClient(t, 'A');
+    // B の受取りは、A が承認して「中枢と別のマシン」に切り替えるまで送らせない（hub_local でない端末にする）。
+    let openGate: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    const b = await createClient(t, 'B', { beforePickup: () => gate });
+    a.link.start('unlocked');
+    b.link.start('unlocked');
+    const pairing = hub.handle.pairing;
+    assert(pairing !== null);
+    const first = await pairing.startFirstDevice();
+    assert(first.ok);
+    await pair(a, hub, first.pairing_code, async () => {
+      await waitUntil(() => a.claims.length === 1, 'A claim');
+      const approved = await pairing.approveFirstDevice(first.pairing_id);
+      assert(approved.ok);
+    });
+    await waitUntil(() => a.view().hub_screen, 'A is the hub screen');
+
+    const empty = await a.admin('desktop.claims_list', null);
+    assert.deepEqual(empty, {
+      request_id: (empty as { request_id: string }).request_id,
+      channel: 'desktop.claims_list',
+      outcome: 'ok',
+      claims: [],
+    });
+    // 中枢の画面でペアリングを始める（コードは本人が端末へ入力するための表示で、この応答にだけ入る）。
+    const opened = await a.admin('desktop.pairing_open', null);
+    assert.equal(opened.outcome, 'ok');
+    const session = (
+      opened as {
+        session: {
+          pairing_code: string;
+          certificate_fingerprint: string;
+          expires_at: string;
+        };
+      }
+    ).session;
+    assert.equal(session.certificate_fingerprint, fingerprintOf(hub));
+    let decided: DesktopIpcResponse | null = null;
+    await pair(b, hub, session.pairing_code, async () => {
+      // 端末の画面の確認コードと、中枢の画面の一覧の確認コードが同じ申請を承認する。
+      const check = b.view().pairing?.claim_check;
+      assert.match(String(check), /^[0-9a-f]{8}$/u);
+      const listed = await a.admin('desktop.claims_list', null);
+      const claims = (
+        listed as unknown as { claims: Record<string, unknown>[] }
+      ).claims;
+      assert.equal(claims.length, 1);
+      assert.equal(claims[0]?.['claim_check'], check);
+      assert.equal(claims[0]?.['device_name'], '合成の端末 B');
+      assert.deepEqual(Object.keys(claims[0] ?? {}).sort(), [
+        'claim_check',
+        'claimed_at',
+        'device_name',
+        'expires_at',
+        'platform',
+        'ref',
+      ]);
+      // 古い参照・画面操作でない・ロック中は送らない。
+      const stale = await a.admin('desktop.claim_decide', {
+        ref: randomUUID(),
+        decision: 'approve',
+      });
+      assert.equal((stale as { reason?: string }).reason, 'entry_not_found');
+      const unfocused = await a.admin(
+        'desktop.claim_decide',
+        { ref: claims[0]?.['ref'], decision: 'approve' },
+        { sender: { trustedSender: true, windowFocused: false } },
+      );
+      assert.equal(
+        (unfocused as { reason?: string }).reason,
+        'screen_operation_required',
+      );
+      decided = await a.admin('desktop.claim_decide', {
+        ref: claims[0]?.['ref'],
+        decision: 'approve',
+      });
+      // 受取りの前に「中枢と別のマシン」へ切り替え、B を hub_local でない端末として登録させる。
+      machine.same = false;
+      openGate();
+    });
+    assert.equal(decided?.['outcome' as never], 'ok');
+    assert.deepEqual((decided as unknown as { claims: unknown[] }).claims, []);
+    machine.same = true;
+
+    // B は中枢の画面ではない: 画面を出さず、経路は 403（hub_screen_required）。
+    await waitUntil(() => b.link.linkState?.phase === 'live', 'B live');
+    const refused = await b.admin('desktop.claims_list', null);
+    assert.equal(
+      (refused as { reason?: string }).reason,
+      'hub_screen_required',
+    );
+    assert.equal(b.view().hub_screen, false);
+    const refusedRevoke = await b.admin('desktop.devices_list', null);
+    assert.equal(
+      (refusedRevoke as { reason?: string }).reason,
+      'hub_screen_required',
+    );
+
+    // 端末の一覧: この端末（参照なし）と B（参照あり）。
+    const devices = (
+      (await a.admin('desktop.devices_list', null)) as unknown as {
+        devices: Record<string, unknown>[];
+      }
+    ).devices;
+    assert.deepEqual(
+      devices.map((device) => [
+        device['device_name'],
+        device['this_device'],
+        device['hub_local'],
+        device['ref'] === null,
+        device['revoked_at'],
+      ]),
+      [
+        ['合成の端末 A', true, true, true, null],
+        ['合成の端末 B', false, false, false, null],
+      ],
+    );
+    // 失効: B はすぐに 4401 で切断されて再登録が必要、A は接続したまま。
+    const revoked = await a.admin('desktop.device_revoke', {
+      ref: devices[1]?.['ref'],
+    });
+    assert.equal(revoked.outcome, 'ok');
+    const after = (revoked as unknown as { devices: Record<string, unknown>[] })
+      .devices;
+    assert.equal(after[1]?.['ref'], null);
+    assert.equal(typeof after[1]?.['revoked_at'], 'string');
+    await waitUntil(
+      () => b.view().link === 'reregistration_required',
+      'B revoked',
+    );
+    assert.equal(b.view().link_reason, 'device_revoked');
+    assert.equal(a.view().link, 'connected');
+    assert.equal(a.view().hub_screen, true);
+
+    // 一覧・応答・ログにトークン・コードが出ない（コードはペアリングを始めた応答にだけある）。
+    const secrets = [a.token(), session.pairing_code];
+    const shown = a.ipc.filter(
+      (entry) =>
+        (entry as { channel?: string }).channel !== 'desktop.pairing_open',
+    );
+    for (const secret of secrets) {
+      assert.equal(JSON.stringify(shown).includes(secret), false);
+      assert.equal(a.logs.join('\n').includes(secret), false);
+      assert.equal(b.logs.join('\n').includes(secret), false);
+      assert.equal(JSON.stringify(b.ipc).includes(secret), false);
+    }
+    assertNoSecrets([a], [a.token()]);
   },
 );

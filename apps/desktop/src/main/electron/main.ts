@@ -27,7 +27,11 @@ import {
 import { fileURLToPath } from 'node:url';
 import { DESKTOP_IPC_CHANNELS, type DesktopPowerEvent } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from '../contract.js';
-import { CONNECTION_CHANNELS, DesktopCoreLink } from '../core-link.js';
+import {
+  ADMIN_CHANNELS,
+  CONNECTION_CHANNELS,
+  DesktopCoreLink,
+} from '../core-link.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
 import type { SecretProtector } from '../credential-store.js';
 import { DesktopDeviceController } from '../device-controller.js';
@@ -266,6 +270,11 @@ function registerIpc(): void {
       };
       if (CONNECTION_CHANNELS.includes(channel))
         return link.handleIpc(channel, raw, sender, controller.state).response;
+      // 中枢の画面の端末の申請の承認・端末の管理（B03-06）。中枢へ要求を送るので非同期。
+      if (ADMIN_CHANNELS.includes(channel))
+        return link
+          .handleAdminIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
       const outcome = controller.handleIpc(channel, raw, sender);
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window')

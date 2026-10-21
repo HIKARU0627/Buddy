@@ -417,7 +417,13 @@ export function semanticErrors(name, value) {
         pairing.fingerprint !== null
       )
         errors.push('fingerprint_before_certificate');
+      // 確認コードは申請を受け付けた後の承認待ちのときだけ（B03-06）。
+      if (pairing.claim_check !== null && pairing.step !== 'waiting_approval')
+        errors.push('claim_check_outside_waiting');
     }
+    // 中枢の画面の判定は接続している間だけ（B03-06）。
+    if (value.hub_screen && value.link !== 'connected')
+      errors.push('hub_screen_without_connection');
     if (value.link !== 'connected' && value.operations.length > 0)
       errors.push('operations_without_connection');
     if (value.link === 'connected' && value.last_confirmed_at === null)

@@ -9,6 +9,9 @@
 // Electron に依存しない。safeStorage・指紋の収集・接続口の一覧は Electron の層が注入する。
 
 import type {
+  DeviceList,
+  PairingClaimList,
+  PairingSession,
   DesktopConnectionView,
   DesktopIpcChannel,
   DesktopIpcResponse,
@@ -60,6 +63,15 @@ export const CONNECTION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.pairing_confirm',
   'desktop.pairing_submit',
   'desktop.pairing_cancel',
+];
+
+// 中枢の画面の端末だけのチャネル（B03-06、ADR 0026）。
+export const ADMIN_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.claims_list',
+  'desktop.claim_decide',
+  'desktop.devices_list',
+  'desktop.device_revoke',
+  'desktop.pairing_open',
 ];
 
 export type Registration =
@@ -119,6 +131,11 @@ export class DesktopCoreLink {
   #home: HomeReportResult | null = null;
   #lockState: ClientLockState = 'unknown';
   #started = false;
+  // 中枢の画面の端末として中枢が認めたか（承認待ちの申請の一覧が 200）。null は未確認（B03-06）。
+  #hubScreen: boolean | null = null;
+  // 一覧ごとに作る参照 → 申請 ID・端末 ID。参照だけを画面へ渡す（ID を画面に持たせない）。
+  #claimRefs = new Map<string, string>();
+  #deviceRefs = new Map<string, string>();
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -189,6 +206,7 @@ export class DesktopCoreLink {
     if (lockState === this.#lockState) return;
     this.#lockState = lockState;
     this.#connection?.setLockState(lockState);
+    if (lockState === 'unlocked') void this.#probeHubScreen();
     this.#options.onChange();
   }
 
@@ -250,6 +268,7 @@ export class DesktopCoreLink {
           : iso(state?.lastConfirmedAt ?? null),
       retry_at: link === 'waiting_retry' ? iso(state?.retryAt ?? null) : null,
       pairing: this.#pairing.view,
+      hub_screen: link === 'connected' && this.#hubScreen === true,
       home_network:
         home === null || registration !== 'registered'
           ? null
@@ -402,8 +421,12 @@ export class DesktopCoreLink {
         this.#registration === 'registered'
       ) {
         this.#registration = 'reregistration_required';
+        this.#hubScreen = null;
         this.#reporter?.stop();
       }
+      // 接続するたびに中枢の画面の端末かを確かめる（B03-06）。
+      if (state.phase === 'live' && previous.phase !== 'live')
+        void this.#probeHubScreen();
       // 自宅の外で拒否されたら、すぐに指紋を報告し直す（通れば次の接続で使える）。
       if (
         state.reason === 'outside_home_network' &&
@@ -452,7 +475,251 @@ export class DesktopCoreLink {
     connection.start();
   }
 
+  // 中枢の画面の端末か（承認待ちの申請の一覧の経路が 200 か、403 hub_screen_required か）。
+  async #probeHubScreen(): Promise<void> {
+    const connection = this.#connection;
+    if (connection === null || connection.state.phase !== 'live') return;
+    if (this.#lockState !== 'unlocked') return;
+    const outcome = await connection.request({
+      method: 'GET',
+      path: '/v1/pairing/claims',
+    });
+    if (connection !== this.#connection || outcome.kind !== 'response') return;
+    const before = this.#hubScreen;
+    if (
+      outcome.status === 200 &&
+      this.#options.contract.valid('PairingClaimList', outcome.body)
+    )
+      this.#hubScreen = true;
+    else if (
+      outcome.status === 403 &&
+      errorCodeOf(outcome.body) === 'hub_screen_required'
+    )
+      this.#hubScreen = false;
+    if (before !== this.#hubScreen) {
+      this.#log(`hub_screen:${String(this.#hubScreen)}`);
+      this.#options.onChange();
+    }
+  }
+
+  // 中枢の画面の端末の申請の承認・端末の管理（B03-06、ADR 0026）。中枢へ要求を送るので非同期。
+  async handleAdminIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      !ADMIN_CHANNELS.includes(raw.channel)
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    if (this.#hubScreen === null) await this.#probeHubScreen();
+    if (this.#hubScreen !== true)
+      return this.#reject(raw.request_id, raw.channel, 'hub_screen_required');
+    const requestId = raw.request_id;
+    switch (raw.channel) {
+      case 'desktop.claims_list':
+        return this.#listClaims(requestId, raw.channel);
+      case 'desktop.devices_list':
+        return this.#listDevices(requestId, raw.channel);
+      case 'desktop.claim_decide': {
+        const claimId = this.#claimRefs.get(raw.payload.ref);
+        if (claimId === undefined)
+          return this.#reject(requestId, raw.channel, 'entry_not_found');
+        const outcome = await connection.request({
+          method: 'POST',
+          path: `/v1/pairing/claims/${encodeURIComponent(claimId)}/decision`,
+          body: { decision: raw.payload.decision },
+          screenOperation: true,
+          scoped: true,
+        });
+        const failed = this.#adminFailure(outcome, 200);
+        if (failed !== null) {
+          if (failed !== 'outcome_unknown')
+            this.#claimRefs.delete(raw.payload.ref);
+          return this.#reject(requestId, raw.channel, failed);
+        }
+        this.#log(`hub_claim_decided:${raw.payload.decision}`);
+        return this.#listClaims(requestId, raw.channel);
+      }
+      case 'desktop.device_revoke': {
+        const deviceId = this.#deviceRefs.get(raw.payload.ref);
+        if (deviceId === undefined)
+          return this.#reject(requestId, raw.channel, 'entry_not_found');
+        const outcome = await connection.request({
+          method: 'POST',
+          path: `/v1/devices/${encodeURIComponent(deviceId)}/revoke`,
+          body: {},
+          screenOperation: true,
+          scoped: true,
+        });
+        const failed = this.#adminFailure(outcome, 200);
+        if (failed !== null)
+          return this.#reject(requestId, raw.channel, failed);
+        this.#deviceRefs.delete(raw.payload.ref);
+        this.#log('hub_device_revoked');
+        return this.#listDevices(requestId, raw.channel);
+      }
+      case 'desktop.pairing_open': {
+        // 新しい端末のペアリングを始める。コードは本人が登録する端末に入力するための表示で、この応答にだけ入れる。
+        const outcome = await connection.request({
+          method: 'POST',
+          path: '/v1/pairing/sessions',
+          body: {},
+          screenOperation: true,
+          scoped: true,
+        });
+        const failed = this.#adminFailure(outcome, 201);
+        if (failed !== null || outcome.kind !== 'response')
+          return this.#reject(
+            requestId,
+            raw.channel,
+            failed ?? 'not_connected',
+          );
+        if (!this.#options.contract.valid('PairingSession', outcome.body))
+          return this.#reject(requestId, raw.channel, 'core_rejected');
+        const session = outcome.body as PairingSession;
+        this.#log('hub_pairing_opened');
+        return this.#respond({
+          request_id: requestId,
+          channel: raw.channel,
+          outcome: 'ok',
+          session: {
+            pairing_code: session.pairing_code,
+            certificate_fingerprint: session.certificate_fingerprint,
+            expires_at: session.expires_at,
+          },
+        });
+      }
+      default:
+        return this.#reject(requestId, raw.channel, 'invalid_request');
+    }
+  }
+
+  async #listClaims(
+    requestId: string,
+    channel: 'desktop.claims_list' | 'desktop.claim_decide',
+  ): Promise<ConnectionIpcOutcome> {
+    const connection = this.#connection;
+    if (connection === null)
+      return this.#reject(requestId, channel, 'not_connected');
+    const outcome = await connection.request({
+      method: 'GET',
+      path: '/v1/pairing/claims',
+    });
+    const failed = this.#adminFailure(outcome, 200, true);
+    if (failed !== null || outcome.kind !== 'response')
+      return this.#reject(requestId, channel, failed ?? 'not_connected');
+    if (!this.#options.contract.valid('PairingClaimList', outcome.body))
+      return this.#reject(requestId, channel, 'core_rejected');
+    this.#claimRefs = new Map();
+    const claims = (outcome.body as PairingClaimList).claims.map((claim) => {
+      const ref = this.#options.clock.newRequestId();
+      this.#claimRefs.set(ref, claim.claim_id);
+      return {
+        ref,
+        device_name: claim.device_name,
+        platform: claim.platform,
+        claimed_at: claim.claimed_at,
+        expires_at: claim.expires_at,
+        claim_check: claim.claim_check,
+      };
+    });
+    return this.#respond({
+      request_id: requestId,
+      channel,
+      outcome: 'ok',
+      claims,
+    });
+  }
+
+  async #listDevices(
+    requestId: string,
+    channel: 'desktop.devices_list' | 'desktop.device_revoke',
+  ): Promise<ConnectionIpcOutcome> {
+    const connection = this.#connection;
+    if (connection === null)
+      return this.#reject(requestId, channel, 'not_connected');
+    const outcome = await connection.request({
+      method: 'GET',
+      path: '/v1/devices',
+    });
+    const failed = this.#adminFailure(outcome, 200, true);
+    if (failed !== null || outcome.kind !== 'response')
+      return this.#reject(requestId, channel, failed ?? 'not_connected');
+    if (!this.#options.contract.valid('DeviceList', outcome.body))
+      return this.#reject(requestId, channel, 'core_rejected');
+    const self = connection.state.deviceId;
+    this.#deviceRefs = new Map();
+    const devices = (outcome.body as DeviceList).devices.map((device) => {
+      const thisDevice = device.device_id === self;
+      // この端末と失効済みの端末には参照を作らない（画面から失効できない）。
+      let ref: string | null = null;
+      if (!thisDevice && device.revoked_at === null) {
+        ref = this.#options.clock.newRequestId();
+        this.#deviceRefs.set(ref, device.device_id);
+      }
+      return {
+        ref,
+        device_name: device.device_name,
+        platform: device.platform,
+        hub_local: device.hub_local,
+        this_device: thisDevice,
+        registered_at: device.registered_at,
+        last_seen_at: device.last_seen_at,
+        revoked_at: device.revoked_at,
+      };
+    });
+    return this.#respond({
+      request_id: requestId,
+      channel,
+      outcome: 'ok',
+      devices,
+    });
+  }
+
+  // 中枢の画面の操作の結果の分類。null は成功。read は一覧（送れなかった・分からないは未接続として扱う）。
+  #adminFailure(
+    outcome: Awaited<ReturnType<ClientConnection['request']>>,
+    okStatus: number,
+    read = false,
+  ): DesktopIpcRejectReason | null {
+    if (outcome.kind === 'not_sent') return 'not_connected';
+    if (outcome.kind === 'unknown')
+      return read ? 'not_connected' : 'outcome_unknown';
+    if (outcome.status === okStatus) return null;
+    if (
+      outcome.status === 403 &&
+      errorCodeOf(outcome.body) === 'hub_screen_required'
+    ) {
+      this.#hubScreen = false;
+      this.#options.onChange();
+      return 'hub_screen_required';
+    }
+    return 'core_rejected';
+  }
+
   #disconnect(): void {
+    this.#hubScreen = null;
+    this.#claimRefs.clear();
+    this.#deviceRefs.clear();
     this.#reporter?.stop();
     this.#reporter = null;
     this.#connection?.stop();
@@ -503,6 +770,14 @@ export class DesktopCoreLink {
   #log(code: string): void {
     this.#options.log?.(code);
   }
+}
+
+function errorCodeOf(body: unknown): string | null {
+  return typeof body === 'object' &&
+    body !== null &&
+    typeof (body as Record<string, unknown>)['code'] === 'string'
+    ? ((body as Record<string, unknown>)['code'] as string)
+    : null;
 }
 
 function echoRequestId(raw: unknown): string | null {

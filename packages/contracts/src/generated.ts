@@ -663,6 +663,36 @@ export type DesktopIpcRequest =
       channel: 'desktop.pairing_cancel';
       request_id: Id;
       payload: null;
+    }
+  | {
+      channel: 'desktop.claims_list';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.claim_decide';
+      request_id: Id;
+      payload: {
+        ref: Id;
+        decision: 'approve' | 'reject';
+      };
+    }
+  | {
+      channel: 'desktop.devices_list';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.device_revoke';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.pairing_open';
+      request_id: Id;
+      payload: null;
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -693,6 +723,24 @@ export type DesktopIpcResponse =
       connection: DesktopConnectionView;
     }
   | {
+      request_id: Id;
+      channel: 'desktop.claims_list' | 'desktop.claim_decide';
+      outcome: 'ok';
+      claims: DesktopClaimEntry[];
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.devices_list' | 'desktop.device_revoke';
+      outcome: 'ok';
+      devices: DesktopDeviceEntry[];
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.pairing_open';
+      outcome: 'ok';
+      session: DesktopPairingSession;
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -705,7 +753,12 @@ export type DesktopIpcResponse =
         | 'core_required'
         | 'io_epoch_mismatch'
         | 'pairing_step_mismatch'
-        | 'secure_storage_unavailable';
+        | 'secure_storage_unavailable'
+        | 'hub_screen_required'
+        | 'not_connected'
+        | 'entry_not_found'
+        | 'core_rejected'
+        | 'outcome_unknown';
     };
 /**
  * 上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。
@@ -770,6 +823,7 @@ export type DesktopConnectionView =
         fingerprint: Hash | null;
         claim_expires_at: UtcTime | null;
         failure: DesktopPairingFailure | null;
+        claim_check: PairingClaimCheck | null;
       } | null;
       home_network: {
         allowed: boolean;
@@ -778,6 +832,7 @@ export type DesktopConnectionView =
         reported_at: UtcTime;
       } | null;
       operations: OperationSnapshot[];
+      hub_screen: boolean;
     };
 /**
  * 中枢との接続が切れた・使えない理由（packages/client の LinkReason、ADR 0025）。値・宛先を含めない。
@@ -826,7 +881,12 @@ export type DesktopIpcChannel =
   | 'desktop.pairing_begin'
   | 'desktop.pairing_confirm'
   | 'desktop.pairing_submit'
-  | 'desktop.pairing_cancel';
+  | 'desktop.pairing_cancel'
+  | 'desktop.claims_list'
+  | 'desktop.claim_decide'
+  | 'desktop.devices_list'
+  | 'desktop.device_revoke'
+  | 'desktop.pairing_open';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -2981,4 +3041,36 @@ export interface ConnectionDisconnectRequest {
   request_id: Id;
   command_scope_id: Id;
   expected_permission_revision: PermissionRevision;
+}
+/**
+ * 画面に出す承認待ちの申請（B03-06、ADR 0026）。ref は main が一覧ごとに作る参照で、申請 ID・コード・秘密を含めない。
+ */
+export interface DesktopClaimEntry {
+  ref: Id;
+  device_name: string;
+  platform: DevicePlatform;
+  claimed_at: UtcTime;
+  expires_at: UtcTime;
+  claim_check: PairingClaimCheck;
+}
+/**
+ * 画面に出す登録済みの端末（B03-06、ADR 0026）。ref は失効できる端末（この端末・失効済みでない）だけにある main の参照で、端末 ID・トークンを含めない。
+ */
+export interface DesktopDeviceEntry {
+  ref: Id | null;
+  device_name: string;
+  platform: DevicePlatform;
+  hub_local: boolean;
+  this_device: boolean;
+  registered_at: UtcTime;
+  last_seen_at: UtcTime | null;
+  revoked_at: UtcTime | null;
+}
+/**
+ * 中枢の画面に出すワンタイムコードと中枢の証明書の指紋（B03-06、ADR 0026）。コードは本人が登録する端末に入力するための表示で、中枢の画面の端末の画面にだけ返す（申請の一覧・端末の一覧・ログには出さない）。
+ */
+export interface DesktopPairingSession {
+  pairing_code: string;
+  certificate_fingerprint: Hash;
+  expires_at: UtcTime;
 }

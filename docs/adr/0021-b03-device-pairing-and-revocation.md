@@ -52,13 +52,13 @@ ADR 0012 は制御チャネルで「本文・秘密は扱わない」として�
 
 ### 端末の一覧と失効
 
-| 対象       | 決定                                                                                                                                                                                                                                                                            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 一覧       | 失効した端末も含め、登録の時刻・端末 ID の順に返す（`DeviceList`）                                                                                                                                                                                                              |
-| 失効       | `device.revoke`（ADR 0020）で端末と有効な接続範囲を同じ transaction で無効にした後、Core の `DeviceConnections.closeDevice(端末 ID, 'device_revoked')` でその端末の開いている接続を閉じる。応答は失効後の `DeviceSummary`                                                       |
-| 失効済み   | もう一度失効しても失効の時刻を変えずに 200。存在しない端末は 409 `conflict`                                                                                                                                                                                                     |
-| 失効の直後 | 同じトークンは端末トークンの照合で 401。失効した端末の接続範囲は DB で無効になり、使えば 410。他の端末の接続範囲は変えない                                                                                                                                                      |
-| 差し込み口 | `apps/core/src/device-connections.ts` の `DeviceConnections`（`register(端末 ID, close(reason))`・`closeDevice(端末 ID, reason)`、reason は `device_revoked`・`outside_home_network`）。WSS の配信（B03-04）が接続を開いたときに登録する。`CoreHandle.deviceConnections` に出す |
+| 対象       | 決定                                                                                                                                                                                                                                                                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 一覧       | 失効した端末も含め、登録の時刻・端末 ID の順に返す（`DeviceList`）                                                                                                                                                                                                                                                                      |
+| 失効       | `device.revoke`（ADR 0020）で端末と有効な接続範囲を同じ transaction で無効にした後、Core の `DeviceConnections.closeDevice(端末 ID, 'device_revoked')` でその端末の開いている接続を閉じる。応答は失効後の `DeviceSummary`                                                                                                               |
+| 失効済み   | もう一度失効しても失効の時刻を変えずに 200。存在しない端末は 409 `conflict`                                                                                                                                                                                                                                                             |
+| 失効の直後 | 同じトークンは端末トークンの照合で 401。失効した端末の接続範囲は DB で無効になり、使えば 410。他の端末の接続範囲は変えない                                                                                                                                                                                                              |
+| 差し込み口 | `apps/core/src/device-connections.ts` の `DeviceConnections`（`register(端末 ID, close(reason))`・`closeDevice(端末 ID, reason)`、reason は `device_revoked`・`outside_home_network`）。WSS の配信（B03-04）が購読を開いたときに登録し、失効では閉じるコード 4401 で閉じる（統合後の試験で確認）。`CoreHandle.deviceConnections` に出す |
 
 ### 証明書の変更
 
@@ -89,7 +89,7 @@ ADR 0012 は制御チャネルで「本文・秘密は扱わない」として�
 
 ## api-server の変更
 
-`ApiServerOptions.handlers`（operationId → 経路の処理）を足し、検査を通った要求は `ApiHandlerRequest`（経路・認証した端末・本文・パスの値・クエリー・接続元）で処理へ渡す。処理がない経路は今までどおり 503。`apiErrorBody` を公開し、`ApiErrorCode` に `pairing_failed` を足した。経路の検査の順（ROUTE_CHECKS）は変えていない。
+経路の処理は B03-04（ADR 0023）と同じ `ApiServerOptions.handlers`（operationId → 処理、`ApiHandlerRequest` は経路・認証した端末・本文・パスの値・クエリー・接続元）で渡し、拒否は `apiErrorResponse` で作る。Core はペアリングの処理と B03-04 の経路の処理を一つの handlers にまとめ、環境は「安全側の既定 → ペアリングの判定 → 注入した環境（試験）」の順に重ねる（WSS の検査も同じ環境を使う）。この Issue では `ApiErrorCode` に `pairing_failed` を足しただけで、経路の検査の順（ROUTE_CHECKS）は変えていない。
 
 ## 契約の変更
 

@@ -2,6 +2,7 @@
 //
 // node:https（TLS 1.3 以上）で、注入されたアドレス（製品は Tailscale のアドレス、試験は 127.0.0.1）を待ち受ける。
 // アドレスは正規化してから、ループバックと Tailscale の範囲だけを受け付ける（domain の listenAddressDecision）。
+// TLS の確立から最初の要求のヘッダーがそろうまでに headersTimeoutMs を過ぎた接続は、応答せずに切る（B03-07 M1）。
 // 一つの要求は次の順に処理し、最初に満たさないものの拒否を返す。
 //   1. 接続数の上限（超えた接続の要求は 429 rate_limited）。Core が受付中（running）でなければ 503
 //   2. Origin ヘッダーのある要求（ブラウザーからの要求）は 403 forbidden
@@ -129,6 +130,7 @@ export interface ApiLimits {
   readonly preAuthWindowMs: number;
   readonly preAuthMaxRequests: number;
   readonly handshakeTimeoutMs: number;
+  // ヘッダーの期限。TLS の確立から最初の要求のヘッダーがそろうまでの期限（接続ごと、B03-07 M1）にも使う。
   readonly headersTimeoutMs: number;
   readonly requestTimeoutMs: number;
   readonly keepAliveTimeoutMs: number;
@@ -423,11 +425,28 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     connections.add(socket);
     socket.on('close', () => connections.delete(socket));
   });
+  // TLS の確立から最初の要求（ヘッダーがそろう）までの期限（B03-07 M1）。何も送らない接続・ヘッダーを少しずつ
+  // 送る接続が接続の枠を占め続けないよう、headersTimeoutMs を過ぎたら切る。Node の headersTimeout は確認の
+  // 間隔（既定 30 秒）ごとにしか効かないため、接続ごとの時計で切る。最初の要求・切り替えが届いたら外し、その後は
+  // keep-alive の時間切れ（keepAliveTimeoutMs）と WSS の ping に任せる。
+  const firstRequestTimers = new WeakMap<object, NodeJS.Timeout>();
+  const clearFirstRequestTimer = (socket: object) => {
+    const timer = firstRequestTimers.get(socket);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    firstRequestTimers.delete(socket);
+  };
   server.on('secureConnection', (socket: TLSSocket) => {
     tlsConnections += 1;
     sockets.add(socket);
     if (sockets.size > limits.maxConnections) overLimit.add(socket);
-    socket.on('close', () => sockets.delete(socket));
+    const timer = setTimeout(() => socket.destroy(), limits.headersTimeoutMs);
+    timer.unref();
+    firstRequestTimers.set(socket, timer);
+    socket.on('close', () => {
+      sockets.delete(socket);
+      clearFirstRequestTimer(socket);
+    });
   });
   // TLS 1.2 以下・証明書なしの接続などの失敗。応答はしない（TLS の警告だけ）。
   server.on('tlsClientError', (_error, socket) => socket.destroy());
@@ -765,6 +784,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   server.on('request', (request: IncomingMessage, response: ServerResponse) => {
     requestsReceived += 1;
     const socket = request.socket as TLSSocket;
+    clearFirstRequestTimer(socket);
     void (async () => {
       let outcome: Evaluation;
       try {
@@ -816,6 +836,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     'upgrade',
     (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       requestsReceived += 1;
+      clearFirstRequestTimer(socket);
       socket.on('error', () => undefined);
       void (async () => {
         let outcome: Evaluation;

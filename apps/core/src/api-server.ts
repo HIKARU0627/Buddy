@@ -12,7 +12,8 @@
 //   8. 本文を上限まで読む（超えたら 413）
 //   9. 形式の検査（パスの値・クエリー・ヘッダー・厳格な JSON（重複キー）・JSON Schema）。不正は 422 invalid_input
 //  10. 経路の検査（domain の admitRequest。ROUTE_CHECKS の順）
-//  11. 経路の処理。B03-01 で作るのは getBootstrap だけで、他の経路は検査の後に 503 で閉じる
+//  11. 経路の処理。B03-01 で作るのは getBootstrap だけ。他の経路は注入された処理（handlers。B03-02 の
+//      ペアリング・端末など）があればそれを呼び、なければ検査の後に 503 で閉じる
 // WebSocket（/v1/events/stream）は ws で受け、同じ検査の後に切り替える。配信は B03-04 で、今は 1013 で閉じる。
 // 拒否の本文は ApiError（code・message・request_id）だけで、対象の本文・トークン・hash を返さない。
 
@@ -84,7 +85,8 @@ export type ApiErrorCode =
   | 'outside_home_network'
   | 'audio_owned_elsewhere'
   | 'audio_ownership_required'
-  | 'payload_too_large';
+  | 'payload_too_large'
+  | 'pairing_failed';
 
 const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unauthenticated: '端末トークンがない、無効、または失効しています。',
@@ -101,7 +103,37 @@ const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   audio_owned_elsewhere: '別の端末が音声を使っています。',
   audio_ownership_required: '音声の所有権がありません。',
   payload_too_large: '要求が大きすぎます。',
+  pairing_failed: 'ペアリングは無効です。最初からやり直してください。',
 };
+
+// 拒否の本文（ApiError）。経路の処理（handlers）から使う。
+export function apiErrorBody(
+  code: ApiErrorCode,
+  requestId: string | null,
+): {
+  readonly code: ApiErrorCode;
+  readonly message: string;
+  readonly request_id: string | null;
+} {
+  return { code, message: MESSAGES[code], request_id: requestId };
+}
+
+// 検査を通った要求（経路の処理に渡す）。device は認証した端末（認証前の経路では null）。
+export interface ApiHandlerRequest {
+  readonly route: ApiRoute;
+  readonly device: DeviceRecord | null;
+  readonly body: JsonObject | null;
+  readonly params: Readonly<Record<string, string>>;
+  // 形式の検査を通ったクエリー。
+  readonly query: Readonly<Record<string, string>>;
+  // 接続元の IP アドレス（TLS の接続の相手）。
+  readonly remoteAddress: string;
+}
+
+// 経路の処理。応答の状態と本文（契約の応答、または apiErrorBody）を返す。
+export type ApiRouteHandler = (
+  request: ApiHandlerRequest,
+) => Promise<{ readonly status: number; readonly body: object }>;
 
 export interface ApiLimits {
   // 同時の TLS 接続の数。超えた接続の要求は 429。
@@ -149,6 +181,8 @@ export interface ApiServerOptions {
   // 単調時計のミリ秒（頻度の窓）。
   readonly monotonicNow?: () => number;
   readonly contract?: ApiContract;
+  // operationId → 経路の処理。ないものは検査の後に 503（getBootstrap は組み込み）。
+  readonly handlers?: Readonly<Partial<Record<string, ApiRouteHandler>>>;
 }
 
 export class ApiListenError extends Error {
@@ -227,11 +261,8 @@ interface Rejection {
   readonly close: boolean;
 }
 
-interface Admitted {
+interface Admitted extends ApiHandlerRequest {
   readonly kind: 'admitted';
-  readonly route: ApiRoute;
-  readonly device: DeviceRecord | null;
-  readonly body: JsonObject | null;
 }
 
 type Evaluation = Rejection | Admitted | { readonly kind: 'aborted' };
@@ -605,7 +636,15 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
       return reject(admission.status, admission.code as ApiErrorCode, {
         requestId,
       });
-    return { kind: 'admitted', route, device, body: form.body };
+    return {
+      kind: 'admitted',
+      route,
+      device,
+      body: form.body,
+      params: match.params,
+      query: Object.fromEntries(new URLSearchParams(search)),
+      remoteAddress: address,
+    };
   };
 
   const headersFor = (
@@ -649,6 +688,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   const handle = async (
     admitted: Admitted,
   ): Promise<{ status: number; body: object }> => {
+    const handler = options.handlers?.[admitted.route.operationId];
+    if (handler !== undefined) return handler(admitted);
     if (
       admitted.route.operationId !== 'getBootstrap' ||
       admitted.device === null

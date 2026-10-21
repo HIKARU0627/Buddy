@@ -29,6 +29,9 @@ import type { TlsKeyStore } from '@buddy/platform';
 import { ApiListenError, createApiServer } from './api-server.js';
 import type { ApiLimits, ApiServer } from './api-server.js';
 import type { RequestEnvironment } from './api-environment.js';
+import { PairingStoreError, createPairingService } from './api-pairing.js';
+import type { PairingService } from './api-pairing.js';
+import { DeviceConnections } from './device-connections.js';
 import { callControl, listenControlServer } from './control-channel.js';
 import type { ControlServer } from './control-channel.js';
 import type {
@@ -105,6 +108,8 @@ export interface CoreHttpsOptions {
   // 判定の元がまだない文脈（自宅判定など）。試験で差し替える。省略したものは安全側。
   readonly environment?: Partial<RequestEnvironment>;
   readonly limits?: Partial<ApiLimits>;
+  // 接続元が中枢と同じマシンか（試験で差し替える。既定はループバックか待ち受けのアドレスと同じ IP）。
+  readonly sameMachine?: (remoteAddress: string) => boolean;
 }
 
 export interface CoreHttpsInfo {
@@ -155,6 +160,10 @@ export interface CoreHandle {
   readonly store: DbWorkerClient;
   // HTTPS の受付。設定しなければ null。
   readonly https: CoreHttpsInfo | null;
+  // 端末ごとの開いている接続を閉じる差し込み口（失効・自宅判定の不成立で使う。ADR 0021）。
+  readonly deviceConnections: DeviceConnections;
+  // ペアリング（最初の端末の CLI の承認を含む）。HTTPS を設定しなければ null。
+  readonly pairing: PairingService | null;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -332,6 +341,8 @@ export async function startCore(
   let opened: OpenedStore | null = null;
   let api: ApiServer | null = null;
   let httpsInfo: CoreHttpsInfo | null = null;
+  let pairing: PairingService | null = null;
+  const deviceConnections = new DeviceConnections();
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
   let closedResolve: () => void = () => undefined;
@@ -396,9 +407,12 @@ export async function startCore(
         coreInstanceId,
         () => lifecycle.state === 'running',
         now,
+        deviceConnections,
+        log,
       );
       api = started.api;
       httpsInfo = started.info;
+      pairing = started.pairing;
       log(
         `HTTPS を待ち受けました（${httpsInfo.host}:${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`,
       );
@@ -408,6 +422,11 @@ export async function startCore(
         );
     }
     const handle = (request: ControlRequest) => {
+      if (
+        request.op === 'pairing_first_start' ||
+        request.op === 'pairing_first_approve'
+      )
+        return firstDeviceControl(request, lifecycle.state, pairing);
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
         return { response: { ok: false, error: 'unavailable' } as const };
@@ -456,6 +475,8 @@ export async function startCore(
     recovery,
     store,
     https: httpsInfo,
+    deviceConnections,
+    pairing,
     get state() {
       return lifecycle.state;
     },
@@ -473,7 +494,13 @@ async function startHttps(
   coreInstanceId: string,
   accepting: () => boolean,
   now: () => Date,
-): Promise<{ readonly api: ApiServer; readonly info: CoreHttpsInfo }> {
+  deviceConnections: DeviceConnections,
+  log: (message: string) => void,
+): Promise<{
+  readonly api: ApiServer;
+  readonly info: CoreHttpsInfo;
+  readonly pairing: PairingService;
+}> {
   let identity;
   try {
     identity = await loadOrCreateTlsIdentity({
@@ -486,6 +513,28 @@ async function startHttps(
       throw new CoreStartError('tls_unavailable', error.reasons);
     throw error;
   }
+  const pairing = createPairingService({
+    store,
+    fingerprint: identity.fingerprint,
+    host: https.host,
+    now: () => now().getTime(),
+    deviceConnections,
+    log,
+    ...(https.sameMachine === undefined
+      ? {}
+      : { sameMachine: https.sameMachine }),
+  });
+  // 証明書が変わっていれば、前の証明書で登録した端末を受付の前に失効する（自動で承認せず、再登録にする）。
+  try {
+    await pairing.revokeCertificateMismatch();
+  } catch (error) {
+    if (error instanceof PairingStoreError)
+      throw new CoreStartError('store_recovery_failed', [
+        'certificate_device_revocation_failed',
+        ...error.reasons,
+      ]);
+    throw error;
+  }
   let api: ApiServer;
   try {
     api = createApiServer({
@@ -496,9 +545,9 @@ async function startHttps(
       coreInstanceId,
       accepting,
       now: () => now().getTime(),
-      ...(https.environment === undefined
-        ? {}
-        : { environment: https.environment }),
+      handlers: pairing.handlers,
+      // 注入した環境（試験）がペアリングの判定より優先する。
+      environment: { ...pairing.environment, ...https.environment },
       ...(https.limits === undefined ? {} : { limits: https.limits }),
     });
   } catch (error) {
@@ -516,6 +565,7 @@ async function startHttps(
   }
   return {
     api,
+    pairing,
     info: {
       host: api.host,
       port: api.port,
@@ -523,6 +573,31 @@ async function startHttps(
       certificateCreation: identity.creation,
     },
   };
+}
+
+// 制御チャネルの最初の端末の命令（ADR 0021）。running のときだけ、HTTPS を設定したときだけ受け付ける。
+// 応答に載るペアリングのコードは CLI の画面に出す値で、Core のログには出さない。
+async function firstDeviceControl(
+  request: Extract<
+    ControlRequest,
+    { op: 'pairing_first_start' | 'pairing_first_approve' }
+  >,
+  state: LifecycleState,
+  pairing: PairingService | null,
+): Promise<{ readonly response: ControlResponse }> {
+  if (state !== 'running')
+    return { response: { ok: false, error: 'unavailable' } };
+  if (pairing === null)
+    return {
+      response: { ok: false, error: 'refused', reason: 'https_not_configured' },
+    };
+  const result =
+    request.op === 'pairing_first_start'
+      ? await pairing.startFirstDevice()
+      : await pairing.approveFirstDevice(request.pairing_id);
+  if (!result.ok)
+    return { response: { ok: false, error: 'refused', reason: result.reason } };
+  return { response: { ...result, request_id: request.request_id } };
 }
 
 // 接続先が使用中なら、動いている Core か、残ったソケットファイルかを見分ける。

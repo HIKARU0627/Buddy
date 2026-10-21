@@ -2,372 +2,225 @@
   "status": "specification_only",
   "description": "デスクトップの限定 IPC の受付と、端末の入出力・ロックの状態遷移の期待値（設計 10 §1・§1A、07 §2・§5、01 いつも見える状態、02 停止、QA43・X13、ADR 0014・0025）。手で書いたもので、domain の実装から生成していない。Electron の実機での試験ではない。",
   "admission": {
-    "state": {
-      "lockState": "unlocked",
-      "stopScope": "local",
-      "ioEpoch": "5"
-    },
-    "sender": {
-      "trustedSender": true,
-      "windowFocused": true
-    },
+    "state": { "lockState": "unlocked", "stopScope": "local", "ioEpoch": "5" },
+    "sender": { "trustedSender": true, "windowFocused": true },
     "cases": [
       {
         "id": "get-state-while-locked",
         "channel": "desktop.get_state",
         "expected_io_epoch": null,
-        "state": {
-          "lockState": "locked"
-        },
-        "expected": {
-          "ok": true
-        }
+        "state": { "lockState": "locked" },
+        "expected": { "ok": true }
       },
       {
         "id": "stop-while-lock-unknown",
         "channel": "desktop.io_stop",
         "expected_io_epoch": null,
-        "state": {
-          "lockState": "unknown",
-          "stopScope": "none"
-        },
-        "sender": {
-          "windowFocused": false
-        },
-        "expected": {
-          "ok": true
-        }
+        "state": { "lockState": "unknown", "stopScope": "none" },
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
       },
       {
         "id": "stop-while-global-stop",
         "channel": "desktop.io_stop",
         "expected_io_epoch": null,
-        "state": {
-          "stopScope": "global"
-        },
-        "expected": {
-          "ok": true
-        }
+        "state": { "stopScope": "global" },
+        "expected": { "ok": true }
       },
       {
         "id": "hide-window-while-hidden",
         "channel": "desktop.window_hide",
         "expected_io_epoch": null,
-        "sender": {
-          "windowFocused": false
-        },
-        "expected": {
-          "ok": true
-        }
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
       },
       {
         "id": "quit-while-locked",
         "channel": "desktop.client_quit",
         "expected_io_epoch": null,
-        "state": {
-          "lockState": "locked"
-        },
-        "expected": {
-          "ok": true
-        }
+        "state": { "lockState": "locked" },
+        "expected": { "ok": true }
       },
       {
         "id": "resume-by-screen",
         "refs": ["10 §1A suspend_io", "07 §2"],
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "expected": {
-          "ok": true
-        }
+        "expected": { "ok": true }
       },
       {
         "id": "qa43-resume-while-locked",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "state": {
-          "lockState": "locked"
-        },
-        "expected": {
-          "ok": false,
-          "reason": "device_locked"
-        }
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
       },
       {
         "id": "resume-while-lock-unknown",
         "refs": ["07 §2 ロック状態が取得不能なら解除済みと扱わない"],
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "state": {
-          "lockState": "unknown"
-        },
-        "expected": {
-          "ok": false,
-          "reason": "device_locked"
-        }
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
       },
       {
         "id": "resume-locked-and-unfocused",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "state": {
-          "lockState": "locked"
-        },
-        "sender": {
-          "windowFocused": false
-        },
-        "expected": {
-          "ok": false,
-          "reason": "device_locked"
-        }
+        "state": { "lockState": "locked" },
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "device_locked" }
       },
       {
         "id": "resume-from-hidden-window",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "sender": {
-          "windowFocused": false
-        },
-        "expected": {
-          "ok": false,
-          "reason": "screen_operation_required"
-        }
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
       },
       {
         "id": "resume-when-not-stopped",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "state": {
-          "stopScope": "none"
-        },
-        "expected": {
-          "ok": false,
-          "reason": "not_stopped"
-        }
+        "state": { "stopScope": "none" },
+        "expected": { "ok": false, "reason": "not_stopped" }
       },
       {
         "id": "resume-guest-mode",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "state": {
-          "stopScope": "guest"
-        },
-        "expected": {
-          "ok": false,
-          "reason": "core_required"
-        }
+        "state": { "stopScope": "guest" },
+        "expected": { "ok": false, "reason": "core_required" }
       },
       {
         "id": "resume-global-stop",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "state": {
-          "stopScope": "global"
-        },
-        "expected": {
-          "ok": false,
-          "reason": "core_required"
-        }
+        "state": { "stopScope": "global" },
+        "expected": { "ok": false, "reason": "core_required" }
       },
       {
         "id": "x13-resume-stale-io-epoch",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "4",
-        "expected": {
-          "ok": false,
-          "reason": "io_epoch_mismatch"
-        }
+        "expected": { "ok": false, "reason": "io_epoch_mismatch" }
       },
       {
         "id": "resume-future-io-epoch",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "6",
-        "expected": {
-          "ok": false,
-          "reason": "io_epoch_mismatch"
-        }
+        "expected": { "ok": false, "reason": "io_epoch_mismatch" }
       },
       {
         "id": "resume-without-io-epoch",
         "channel": "desktop.io_resume",
         "expected_io_epoch": null,
-        "expected": {
-          "ok": false,
-          "reason": "io_epoch_mismatch"
-        }
+        "expected": { "ok": false, "reason": "io_epoch_mismatch" }
       },
       {
         "id": "untrusted-sender-state",
         "channel": "desktop.get_state",
         "expected_io_epoch": null,
-        "sender": {
-          "trustedSender": false
-        },
-        "expected": {
-          "ok": false,
-          "reason": "untrusted_sender"
-        }
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
       },
       {
         "id": "untrusted-sender-resume",
         "channel": "desktop.io_resume",
         "expected_io_epoch": "5",
-        "sender": {
-          "trustedSender": false
-        },
-        "expected": {
-          "ok": false,
-          "reason": "untrusted_sender"
-        }
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
       },
       {
         "id": "hub-stop-channel",
         "channel": "desktop.hub_stop",
         "expected_io_epoch": null,
-        "expected": {
-          "ok": false,
-          "reason": "invalid_request"
-        }
+        "expected": { "ok": false, "reason": "invalid_request" }
       },
       {
         "id": "http-channel-untrusted",
         "channel": "desktop.http_request",
         "expected_io_epoch": null,
-        "sender": {
-          "trustedSender": false
-        },
-        "expected": {
-          "ok": false,
-          "reason": "invalid_request"
-        }
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "invalid_request" }
       },
       {
         "id": "get-connection-while-locked",
         "refs": ["ADR 0025"],
         "channel": "desktop.get_connection",
         "expected_io_epoch": null,
-        "state": {
-          "lockState": "locked"
-        },
-        "sender": {
-          "windowFocused": false
-        },
-        "expected": {
-          "ok": true
-        }
+        "state": { "lockState": "locked" },
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
       },
       {
         "id": "pairing-cancel-while-lock-unknown",
         "refs": ["ADR 0025"],
         "channel": "desktop.pairing_cancel",
         "expected_io_epoch": null,
-        "state": {
-          "lockState": "unknown"
-        },
-        "sender": {
-          "windowFocused": false
-        },
-        "expected": {
-          "ok": true
-        }
+        "state": { "lockState": "unknown" },
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
       },
       {
         "id": "pairing-begin-by-screen",
         "refs": ["02 端末登録と接続", "ADR 0025"],
         "channel": "desktop.pairing_begin",
         "expected_io_epoch": null,
-        "expected": {
-          "ok": true
-        }
+        "expected": { "ok": true }
       },
       {
         "id": "pairing-begin-while-locked",
         "channel": "desktop.pairing_begin",
         "expected_io_epoch": null,
-        "state": {
-          "lockState": "locked"
-        },
-        "expected": {
-          "ok": false,
-          "reason": "device_locked"
-        }
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
       },
       {
         "id": "pairing-confirm-while-lock-unknown",
         "refs": ["07 §2 ロック状態が取得不能なら解除済みと扱わない"],
         "channel": "desktop.pairing_confirm",
         "expected_io_epoch": null,
-        "state": {
-          "lockState": "unknown"
-        },
-        "expected": {
-          "ok": false,
-          "reason": "device_locked"
-        }
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
       },
       {
         "id": "pairing-confirm-from-hidden-window",
         "channel": "desktop.pairing_confirm",
         "expected_io_epoch": null,
-        "sender": {
-          "windowFocused": false
-        },
-        "expected": {
-          "ok": false,
-          "reason": "screen_operation_required"
-        }
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
       },
       {
         "id": "pairing-submit-locked-and-unfocused",
         "channel": "desktop.pairing_submit",
         "expected_io_epoch": null,
-        "state": {
-          "lockState": "locked"
-        },
-        "sender": {
-          "windowFocused": false
-        },
-        "expected": {
-          "ok": false,
-          "reason": "device_locked"
-        }
+        "state": { "lockState": "locked" },
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "device_locked" }
       },
       {
         "id": "pairing-submit-untrusted",
         "channel": "desktop.pairing_submit",
         "expected_io_epoch": null,
-        "sender": {
-          "trustedSender": false
-        },
-        "expected": {
-          "ok": false,
-          "reason": "untrusted_sender"
-        }
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
       },
       {
         "id": "pairing-submit-while-io-stopped",
         "refs": ["ペアリングは入出力ではない"],
         "channel": "desktop.pairing_submit",
         "expected_io_epoch": null,
-        "state": {
-          "stopScope": "global"
-        },
-        "expected": {
-          "ok": true
-        }
+        "state": { "stopScope": "global" },
+        "expected": { "ok": true }
       }
     ]
   },
   "transitions": [
     {
       "id": "stop-advances-epoch",
-      "state": {
-        "lockState": "unlocked",
-        "stopScope": "none",
-        "ioEpoch": "5"
-      },
-      "event": {
-        "kind": "io_stop"
-      },
+      "state": { "lockState": "unlocked", "stopScope": "none", "ioEpoch": "5" },
+      "event": { "kind": "io_stop" },
       "expected": {
         "lockState": "unlocked",
         "stopScope": "local",
@@ -381,9 +234,7 @@
         "stopScope": "local",
         "ioEpoch": "6"
       },
-      "event": {
-        "kind": "io_stop"
-      },
+      "event": { "kind": "io_stop" },
       "expected": {
         "lockState": "unlocked",
         "stopScope": "local",
@@ -397,9 +248,7 @@
         "stopScope": "global",
         "ioEpoch": "6"
       },
-      "event": {
-        "kind": "io_stop"
-      },
+      "event": { "kind": "io_stop" },
       "expected": {
         "lockState": "unlocked",
         "stopScope": "global",
@@ -413,9 +262,7 @@
         "stopScope": "none",
         "ioEpoch": "9007199254740993"
       },
-      "event": {
-        "kind": "io_stop"
-      },
+      "event": { "kind": "io_stop" },
       "expected": {
         "lockState": "unlocked",
         "stopScope": "local",
@@ -429,9 +276,7 @@
         "stopScope": "local",
         "ioEpoch": "6"
       },
-      "event": {
-        "kind": "io_resume"
-      },
+      "event": { "kind": "io_resume" },
       "expected": {
         "lockState": "unlocked",
         "stopScope": "none",
@@ -441,15 +286,8 @@
     {
       "id": "lock-stops-io",
       "refs": ["10 §1 powerMonitor の lock-screen"],
-      "state": {
-        "lockState": "unlocked",
-        "stopScope": "none",
-        "ioEpoch": "5"
-      },
-      "event": {
-        "kind": "power",
-        "event": "lock_screen"
-      },
+      "state": { "lockState": "unlocked", "stopScope": "none", "ioEpoch": "5" },
+      "event": { "kind": "power", "event": "lock_screen" },
       "expected": {
         "lockState": "locked",
         "stopScope": "local",
@@ -463,10 +301,7 @@
         "stopScope": "local",
         "ioEpoch": "6"
       },
-      "event": {
-        "kind": "power",
-        "event": "lock_screen"
-      },
+      "event": { "kind": "power", "event": "lock_screen" },
       "expected": {
         "lockState": "locked",
         "stopScope": "local",
@@ -476,15 +311,8 @@
     {
       "id": "qa43-unlock-does-not-resume",
       "refs": ["01 いつも見える状態", "10 §1 解除後も自動再開しない", "QA43"],
-      "state": {
-        "lockState": "locked",
-        "stopScope": "local",
-        "ioEpoch": "6"
-      },
-      "event": {
-        "kind": "power",
-        "event": "unlock_screen"
-      },
+      "state": { "lockState": "locked", "stopScope": "local", "ioEpoch": "6" },
+      "event": { "kind": "power", "event": "unlock_screen" },
       "expected": {
         "lockState": "unlocked",
         "stopScope": "local",
@@ -493,15 +321,8 @@
     },
     {
       "id": "suspend-makes-lock-unknown",
-      "state": {
-        "lockState": "unlocked",
-        "stopScope": "none",
-        "ioEpoch": "5"
-      },
-      "event": {
-        "kind": "power",
-        "event": "suspend"
-      },
+      "state": { "lockState": "unlocked", "stopScope": "none", "ioEpoch": "5" },
+      "event": { "kind": "power", "event": "suspend" },
       "expected": {
         "lockState": "unknown",
         "stopScope": "local",
@@ -510,15 +331,8 @@
     },
     {
       "id": "suspend-while-locked",
-      "state": {
-        "lockState": "locked",
-        "stopScope": "local",
-        "ioEpoch": "6"
-      },
-      "event": {
-        "kind": "power",
-        "event": "suspend"
-      },
+      "state": { "lockState": "locked", "stopScope": "local", "ioEpoch": "6" },
+      "event": { "kind": "power", "event": "suspend" },
       "expected": {
         "lockState": "locked",
         "stopScope": "local",
@@ -527,15 +341,8 @@
     },
     {
       "id": "wake-does-not-unlock",
-      "state": {
-        "lockState": "unknown",
-        "stopScope": "local",
-        "ioEpoch": "6"
-      },
-      "event": {
-        "kind": "power",
-        "event": "resume"
-      },
+      "state": { "lockState": "unknown", "stopScope": "local", "ioEpoch": "6" },
+      "event": { "kind": "power", "event": "resume" },
       "expected": {
         "lockState": "unknown",
         "stopScope": "local",
@@ -544,15 +351,8 @@
     },
     {
       "id": "shutdown-stops-io",
-      "state": {
-        "lockState": "unlocked",
-        "stopScope": "none",
-        "ioEpoch": "5"
-      },
-      "event": {
-        "kind": "power",
-        "event": "shutdown"
-      },
+      "state": { "lockState": "unlocked", "stopScope": "none", "ioEpoch": "5" },
+      "event": { "kind": "power", "event": "shutdown" },
       "expected": {
         "lockState": "unlocked",
         "stopScope": "local",
@@ -562,11 +362,7 @@
   ],
   "views": [
     {
-      "state": {
-        "lockState": "unlocked",
-        "stopScope": "none",
-        "ioEpoch": "5"
-      },
+      "state": { "lockState": "unlocked", "stopScope": "none", "ioEpoch": "5" },
       "visibility": "shown",
       "input_permitted": true
     },
@@ -580,20 +376,12 @@
       "input_permitted": false
     },
     {
-      "state": {
-        "lockState": "locked",
-        "stopScope": "local",
-        "ioEpoch": "6"
-      },
+      "state": { "lockState": "locked", "stopScope": "local", "ioEpoch": "6" },
       "visibility": "hidden",
       "input_permitted": false
     },
     {
-      "state": {
-        "lockState": "unknown",
-        "stopScope": "none",
-        "ioEpoch": "5"
-      },
+      "state": { "lockState": "unknown", "stopScope": "none", "ioEpoch": "5" },
       "visibility": "hidden",
       "input_permitted": false
     }

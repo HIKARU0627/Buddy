@@ -31,6 +31,10 @@ B03-01 で端末と接続範囲（command_scope）の命令と照会を作りま
 - `src/device-store.ts`: `executeDeviceOp`（worker の中で実行する同期関数）。`device.insert`（ペアリングと試験で端末を入れる）・`device.revoke`（端末と有効な接続範囲を同じ transaction で無効化）・`device.find_by_token_hash`（端末トークンの SHA-256 で引く。結果に hash を含めない）・`scope.issue`（最長 24 時間、同じ端末の有効な接続範囲を無効化）・`scope.find`。書込みは命令ごとに耐久設定を読み戻し、halted の worker は書かない。
 - `DbWorkerClient.device(op)`: 操作の命令とは別のメッセージ（`type: 'device'`）で worker へ送る。書込みの応答を失えば成否不明（unknown）。マイグレーションは足していない（0001 の `devices`・`command_scopes`）。
 
+B03-03 で自宅の登録値と端末ごとの最新の報告を足しました（[ADR 0022](../../docs/adr/0022-b03-home-network-check.md)、マイグレーション 0003）。
+
+- `src/home-network-store.ts`: `executeHomeNetworkOp`。`home.register`（家ごとに 1 つ、置き換え）・`home.get`・`home.report`（端末ごとに最新の 1 件）・`home.find_report`・`home.revoke_scopes`（自宅判定の不成立で端末の有効な接続範囲を失効）。MAC・SSID は Core が HMAC にした 16 進 64 桁だけを受け取り、32 バイトの BLOB で置く。`DbWorkerClient.home(op)`（`type: 'home'` のメッセージ）。
+
 依存は better-sqlite3 13.0.3（ビルド済みバイナリを同梱。pnpm のビルドの許可は不要）、canonicalize 5.1.0（開発ツールと同じ版）と、workspace の `@buddy/domain` です。KeyStore は `@buddy/platform` にあります。
 
 試験は `src/*.test.ts`（一時ファイル・メモリ上の DB、worker_threads の故障注入、公開テストベクトルとの照合・改ざんの注入・鍵が取れないときの停止）と、開発ツールの `node:sqlite` で同じ保存案を検査する `scripts/storage.test.mjs` です。X60 相当（書込み中のプロセスの強制終了の後の整合）は `crash-recovery.test.ts` で確かめています。外部送出（B04）、削除ジョブ、電源断の耐久性（X60 の本体・T07）は未実装・未検証です。

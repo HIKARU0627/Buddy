@@ -12,12 +12,17 @@ import {
 } from '../packages/storage/dist/index.js';
 import { parseStrictJson, root } from './contract-tools.mjs';
 
-// 保存案 0001 を Node 組み込みの SQLite（開発ツールの試験だけ）で適用し、手書きの期待値と照合する。
+// 保存案（0001 から順の全版）を Node 組み込みの SQLite（開発ツールの試験だけ）で適用し、手書きの期待値と照合する。
 // 製品の better-sqlite3 とは SQLite の版が違い得る。電源断の耐久性（X60）はここでは検証しない。
-const migration = await readFile(
-  new URL('packages/storage/migrations/0001_initial.sql', root),
-  'utf8',
+const migrationsDir = new URL('packages/storage/migrations/', root);
+const migrationFiles = (await readdir(migrationsDir))
+  .filter((name) => /^[0-9]{4}_[a-z0-9_]+\.sql$/u.test(name))
+  .sort();
+const migrations = await Promise.all(
+  migrationFiles.map((name) => readFile(new URL(name, migrationsDir), 'utf8')),
 );
+// 期限の定数の照合は 0001 の本文で行う。
+const migration = migrations[0];
 const connectionSql = await readFile(
   new URL('packages/storage/migrations/connection.sql', root),
   'utf8',
@@ -28,7 +33,7 @@ const cases = parseStrictJson(
 
 function openMigrated() {
   const db = new DatabaseSync(':memory:');
-  db.exec(migration);
+  for (const sql of migrations) db.exec(sql);
   return db;
 }
 

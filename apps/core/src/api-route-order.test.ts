@@ -21,6 +21,8 @@ import { API_ROUTES } from './api-routes.js';
 import type { ApiRoute } from './api-routes.js';
 import {
   insertDevice,
+  onCleanup,
+  withTimeout,
   pinnedCheck,
   pinnedRequest,
   startTestStore,
@@ -102,7 +104,7 @@ test(
       },
     });
     await api.listen();
-    t.after(() => api.close(0));
+    onCleanup(t, () => api.close(0));
     const target: PinnedTarget = {
       host: '127.0.0.1',
       port: api.port,
@@ -130,40 +132,44 @@ test(
           ? 'voice'
           : 'screen';
       if (route.websocket) {
-        return new Promise<Outcome>((resolve, reject) => {
-          const socket = new WebSocket(`wss://127.0.0.1:${api.port}${path}`, {
-            headers,
-            ca: [identity.certificatePem],
-            // ws は tls.connect へそのまま渡す（Node の checkServerIdentity は Error か undefined を返す）。
-            checkServerIdentity: pinnedCheck(
-              identity.fingerprint,
-            ) as unknown as ClientOptions['checkServerIdentity'],
-            minVersion: 'TLSv1.3',
-          });
-          socket.on('unexpected-response', (request, response) => {
-            const chunks: Buffer[] = [];
-            response.on('data', (chunk: Buffer) => chunks.push(chunk));
-            response.on('end', () => {
-              const body = JSON.parse(
-                Buffer.concat(chunks).toString('utf8'),
-              ) as {
-                code?: string;
-              };
-              resolve({
-                kind: 'http',
-                status: response.statusCode ?? 0,
-                code: body.code ?? null,
-              });
-              request.destroy();
+        return withTimeout(
+          new Promise<Outcome>((resolve, reject) => {
+            const socket = new WebSocket(`wss://127.0.0.1:${api.port}${path}`, {
+              headers,
+              ca: [identity.certificatePem],
+              // ws は tls.connect へそのまま渡す（Node の checkServerIdentity は Error か undefined を返す）。
+              checkServerIdentity: pinnedCheck(
+                identity.fingerprint,
+              ) as unknown as ClientOptions['checkServerIdentity'],
+              minVersion: 'TLSv1.3',
             });
-          });
-          socket.on('close', (code) =>
-            resolve({ kind: 'upgraded', closeCode: code }),
-          );
-          socket.on('error', (error) => {
-            if (socket.readyState !== WebSocket.CLOSED) reject(error);
-          });
-        });
+            socket.on('unexpected-response', (request, response) => {
+              const chunks: Buffer[] = [];
+              response.on('data', (chunk: Buffer) => chunks.push(chunk));
+              response.on('end', () => {
+                const body = JSON.parse(
+                  Buffer.concat(chunks).toString('utf8'),
+                ) as {
+                  code?: string;
+                };
+                resolve({
+                  kind: 'http',
+                  status: response.statusCode ?? 0,
+                  code: body.code ?? null,
+                });
+                request.destroy();
+              });
+            });
+            socket.on('close', (code) =>
+              resolve({ kind: 'upgraded', closeCode: code }),
+            );
+            socket.on('error', (error) => {
+              if (socket.readyState !== WebSocket.CLOSED) reject(error);
+            });
+          }),
+          10_000,
+          `${route.operationId} upgrade`,
+        );
       }
       let body: string | undefined;
       if (route.body !== null) {

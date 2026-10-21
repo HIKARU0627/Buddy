@@ -353,6 +353,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     limits.preAuthMaxRequests,
   );
   const sockets = new Set<TLSSocket>();
+  // TLS の確立の前の接続も含めた TCP の接続（停止の時に切るため。closeAllConnections は HTTP の接続しか切らない）。
+  const connections = new Set<Duplex>();
   const overLimit = new WeakSet<object>();
   let closing = false;
   let port = options.port;
@@ -379,6 +381,10 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     maxPayload: MAX_PREAUTH_JSON_BYTES,
   });
 
+  server.on('connection', (socket: Duplex) => {
+    connections.add(socket);
+    socket.on('close', () => connections.delete(socket));
+  });
   server.on('secureConnection', (socket: TLSSocket) => {
     tlsConnections += 1;
     sockets.add(socket);
@@ -832,13 +838,24 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         server.close(() => resolve());
       });
       server.closeIdleConnections();
-      const timer = setTimeout(() => {
+      // 猶予を過ぎたら、HTTP の接続・切り替えた接続・TLS の確立の途中の接続をすべて切る。
+      const destroyAll = () => {
         server.closeAllConnections();
         for (const socket of sockets) socket.destroy();
-      }, graceMs);
-      await closed;
+        for (const socket of connections) socket.destroy();
+      };
+      const timer = setTimeout(destroyAll, graceMs);
+      // 切った後も close の通知が来ない場合に止まり続けないよう、上限を置く。
+      let fallback: NodeJS.Timeout | undefined;
+      await Promise.race([
+        closed,
+        new Promise<void>((resolve) => {
+          fallback = setTimeout(resolve, graceMs + CLOSE_FALLBACK_MS);
+        }),
+      ]);
       clearTimeout(timer);
-      for (const socket of sockets) socket.destroy();
+      clearTimeout(fallback);
+      destroyAll();
       wss.close();
     },
   };

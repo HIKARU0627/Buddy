@@ -21,12 +21,38 @@ import { createDeviceToken, deviceTokenHash } from './api-auth.js';
 
 export const STORE_GENERATION = '00000000-0000-4000-8000-0000000000aa';
 
+// 試験の後始末を「後に登録したものから先に」行う（LIFO）。
+// node:test の t.after は登録した順（FIFO）に動くため、一時ディレクトリの削除を先に登録すると、
+// DB・Core を閉じる前に削除が走る。Windows では開いているファイルを消せず、fs.rm の再試行
+// （maxRetries がディレクトリの階層ごとに重なる）で 1 件あたり数十秒〜2 分かかっていた（ADR 0020）。
+const cleanups = new WeakMap<object, (() => unknown)[]>();
+
+export function onCleanup(t: test.TestContext, cleanup: () => unknown): void {
+  let stack = cleanups.get(t);
+  if (stack === undefined) {
+    const created: (() => unknown)[] = [];
+    stack = created;
+    cleanups.set(t, created);
+    t.after(async () => {
+      for (const run of created.reverse()) {
+        try {
+          await run();
+        } catch {
+          // 後始末の失敗で他の後始末を止めない。
+        }
+      }
+    });
+  }
+  stack.push(cleanup);
+}
+
 export async function tempDir(
   t: test.TestContext,
   prefix: string,
 ): Promise<string> {
   const base = await mkdtemp(join(tmpdir(), prefix));
-  t.after(() =>
+  // 先に登録するので、後から登録した DB・サーバー・Core を閉じた後に消す。
+  onCleanup(t, () =>
     rm(base, {
       recursive: true,
       force: true,
@@ -35,6 +61,19 @@ export async function tempDir(
     }).catch(() => undefined),
   );
   return base;
+}
+
+// 待ちが終わらないときに、名前つきの失敗にする（Windows で止まった箇所を CI のログで分かるようにする）。
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`timeout: ${label}`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 export async function startTestStore(
@@ -46,7 +85,7 @@ export async function startTestStore(
     storeGeneration: STORE_GENERATION,
     responseTimeoutMs: 10_000,
   });
-  t.after(() => store.close());
+  onCleanup(t, () => store.close());
   return store;
 }
 
@@ -130,6 +169,11 @@ export function pinnedConnect(target: PinnedTarget): Promise<TLSSocket> {
       socket.destroy();
       reject(error);
     });
+    // 警告も例外もなく閉じられた場合（相手の切断）も待ちを終える。確立の後の close では何もしない。
+    socket.once('close', () => {
+      clearTimeout(timer);
+      reject(new Error('tls_closed_before_secure'));
+    });
   });
 }
 
@@ -185,29 +229,37 @@ export async function pinnedRequest(
         ...request.headers,
       },
     });
+    // 応答の終わり・要求の失敗・応答の途中の切断・時間切れのどれかで必ず終える。
+    let settled = false;
+    const finish = (result: ApiResponse | Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    };
     const timer = setTimeout(() => {
-      req.destroy(new Error('request_timeout'));
+      req.destroy();
+      finish(new Error('request_timeout'));
     }, 10_000);
     req.on('response', (response) => {
       const chunks: Buffer[] = [];
       response.on('data', (chunk: Buffer) => chunks.push(chunk));
       response.on('end', () => {
-        clearTimeout(timer);
         const text = Buffer.concat(chunks).toString('utf8');
-        resolve({
+        finish({
           status: response.statusCode ?? 0,
           headers: response.headers,
           text,
           json: parseJson(text),
         });
-        socket.destroy();
       });
+      response.on('error', (error) => finish(error));
+      response.on('close', () => finish(new Error('response_closed')));
     });
-    req.on('error', (error) => {
-      clearTimeout(timer);
-      socket.destroy();
-      reject(error);
-    });
+    req.on('error', (error) => finish(error));
+    req.on('close', () => finish(new Error('request_closed')));
     req.end(body);
   });
 }
@@ -230,29 +282,55 @@ export async function rawExchange(
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let sent = 0;
-    let timer: NodeJS.Timeout | null = null;
+    let settled = false;
+    let drip: NodeJS.Timeout | null = null;
+    let afterResponse: NodeJS.Timeout | null = null;
+    // 切断（ECONNRESET を含む）・応答の後の待ちの終わり・時間切れのどれかで必ず終える。
     const finish = (closed: boolean) => {
-      if (timer) clearInterval(timer);
+      if (settled) return;
+      settled = true;
+      if (drip) clearInterval(drip);
+      if (afterResponse) clearTimeout(afterResponse);
       clearTimeout(deadline);
       socket.destroy();
       resolve({ text: Buffer.concat(chunks).toString('utf8'), closed });
     };
     const deadline = setTimeout(() => finish(false), 10_000);
-    socket.on('data', (chunk: Buffer) => chunks.push(chunk));
+    socket.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      // 応答を全部受け取ったら、中枢が接続を閉じるのを最大 3 秒だけ待つ（閉じなければ closed: false）。
+      if (afterResponse === null && completeResponse(Buffer.concat(chunks)))
+        afterResponse = setTimeout(() => finish(false), 3_000);
+    });
     socket.on('error', () => undefined);
     socket.on('close', () => finish(true));
     socket.write(head);
-    const drip = options.drip;
-    if (drip !== undefined)
-      timer = setInterval(() => {
-        if (chunks.length > 0 || sent >= drip.max || socket.destroyed) {
-          if (timer) clearInterval(timer);
+    const dripOptions = options.drip;
+    if (dripOptions !== undefined)
+      drip = setInterval(() => {
+        if (
+          chunks.length > 0 ||
+          sent >= dripOptions.max ||
+          socket.destroyed ||
+          settled
+        ) {
+          if (drip) clearInterval(drip);
           return;
         }
         sent += 1;
-        socket.write(drip.chunk);
-      }, drip.intervalMs);
+        socket.write(dripOptions.chunk);
+      }, dripOptions.intervalMs);
   });
+}
+
+// ヘッダーと Content-Length の分の本文がそろったか。
+function completeResponse(bytes: Buffer): boolean {
+  const at = bytes.indexOf('\r\n\r\n');
+  if (at === -1) return false;
+  const length = /\r\ncontent-length: (\d+)\r\n/iu.exec(
+    bytes.subarray(0, at + 2).toString('latin1'),
+  );
+  return length !== null && bytes.length >= at + 4 + Number(length[1]);
 }
 
 export function statusOf(rawText: string): number {

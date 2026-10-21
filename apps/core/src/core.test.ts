@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createMockKeyStore } from '@buddy/platform';
+import { onCleanup } from './api-test-support.js';
 import { CoreStartError, startCore } from './core.js';
 import type { CoreHandle } from './core.js';
 
@@ -29,7 +30,9 @@ const afterStop = ['buddy.sqlite'];
 
 async function tempDataDir(t: test.TestContext): Promise<string> {
   const base = await mkdtemp(join(tmpdir(), 'buddy-core-'));
-  t.after(() =>
+  // 後始末は後に登録したもの（Core の停止）から先に行う。削除が先だと、Windows では開いている
+  // DB を消せずに fs.rm の再試行が重なり、1 件あたり 1 分以上かかっていた。
+  onCleanup(t, () =>
     rm(base, { recursive: true, force: true, maxRetries: 5 }).catch(
       () => undefined,
     ),
@@ -47,7 +50,7 @@ async function started(
     shutdownGraceMs: 200,
     probeTimeoutMs: 300,
   });
-  t.after(async () => {
+  onCleanup(t, async () => {
     await handle.stop('test').catch(() => undefined);
   });
   return handle;

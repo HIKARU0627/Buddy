@@ -2,7 +2,7 @@
 
 生活・学習・開発を支える、デバイスに依存しない個人 AI アシスタント。
 
-現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。B02 では SQLite の保存・鍵保護（キーチェーン）・暗号化・DB worker を作り、Core に組み込んで再起動の後の復元と内容 hash の照合を行いました（ADR 0016〜0019、完了判定の下書きは [docs/b02/README.md](docs/b02/README.md)）。B02 の試験は模擬のみで、macOS 実機の確認・電源断と、製品の統合・実 API・実請求の試験は未実施です。B03-01 では中枢の自己署名証明書（秘密鍵はキーチェーン）・HTTPS の受付・経路検査・接続範囲の発行を作りました（[ADR 0020](docs/adr/0020-b03-https-tls-and-route-checks.md)。127.0.0.1 の模擬のみ）。
+現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。B02 では SQLite の保存・鍵保護（キーチェーン）・暗号化・DB worker を作り、Core に組み込んで再起動の後の復元と内容 hash の照合を行いました（ADR 0016〜0019、完了判定の下書きは [docs/b02/README.md](docs/b02/README.md)）。B02 の試験は模擬のみで、macOS 実機の確認・電源断と、製品の統合・実 API・実請求の試験は未実施です。B03-01 では中枢の自己署名証明書（秘密鍵はキーチェーン）・HTTPS の受付・経路検査・接続範囲の発行を作りました（[ADR 0020](docs/adr/0020-b03-https-tls-and-route-checks.md)。127.0.0.1 の模擬のみ）。デスクトップの画面は本人の指示で HeroUI に作り直し、以後の画面も HeroUI で作ります（[ADR 0024](docs/adr/0024-ui-heroui-desktop-renderer.md)）。
 
 ## セットアップ
 
@@ -49,6 +49,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [端末のペアリング・端末の一覧と失効・最初の端末の CLI の承認](docs/adr/0021-b03-device-pairing-and-revocation.md)
 - [自宅ネットワークの判定（指紋と Tailscale の直接経路）](docs/adr/0022-b03-home-network-check.md)
 - [スナップショット・イベント配信（WSS）・再接続後の復元と操作の経路](docs/adr/0023-b03-snapshot-events-and-operation-routes.md)
+- [デスクトップの UI を HeroUI で作る](docs/adr/0024-ui-heroui-desktop-renderer.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

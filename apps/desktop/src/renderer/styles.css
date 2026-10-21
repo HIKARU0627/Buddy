@@ -1,135 +1,28 @@
-/* 状態は色だけでなく文言と記号でも示す（設計 01）。 */
-:root {
-  color-scheme: light dark;
-  --bg: #f7f7f8;
-  --fg: #1d1d1f;
-  --muted: #5b5b66;
-  --line: #d5d5dc;
-  --open: #1f6f43;
-  --stopped: #9a3412;
-  --hidden: #3f3f46;
-  font-family: system-ui, sans-serif;
-  font-size: 15px;
-}
+/*
+ * UI レンダラーのスタイル（ADR 0024）。Tailwind CSS v4 と HeroUI のスタイルを、ビルド時に一つの CSS ファイルへ出す。
+ * 読み込みの順は HeroUI の指定どおり tailwindcss が先。色は HeroUI のテーマの変数を使い、ここで独自の色を定義しない。
+ * 状態は色だけでなく文言と記号でも示す（設計 01）。
+ */
+@import 'tailwindcss' source(none);
+@import '@heroui/styles';
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #18181b;
-    --fg: #f4f4f5;
-    --muted: #a1a1aa;
-    --line: #3f3f46;
-    --open: #4ade80;
-    --stopped: #fb923c;
-    --hidden: #d4d4d8;
+/* Tailwind のクラスを探す範囲を画面のソースだけにする（main・preload・試験・dist を見ない）。 */
+@source './**/*.tsx';
+@source not './**/*.test.tsx';
+
+/*
+ * React Aria が実行時に style 要素で差し込む規則（ダブルタップの拡大による押下の遅れを避ける）を、ビルド時の CSS に置く。
+ * 差し込みは index.html の <template id="react-aria-pressable-style"> で省かせる（CSP の style-src 'self' のまま。ADR 0024）。
+ */
+@layer base {
+  [data-react-aria-pressable] {
+    touch-action: pan-x pan-y pinch-zoom;
   }
 }
 
+html,
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-}
-
-.status-bar {
-  border-bottom: 3px solid var(--line);
-  padding: 6px 16px;
-  font-size: 13px;
-}
-
-.status-bar p {
-  margin: 0;
-}
-
-.status-open {
-  border-bottom-color: var(--open);
-}
-
-.status-stopped {
-  border-bottom-color: var(--stopped);
-}
-
-.status-hidden {
-  border-bottom-color: var(--hidden);
-  border-bottom-style: dashed;
-}
-
-.epoch {
-  color: var(--muted);
-  margin-left: 4px;
-}
-
-.status-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  margin: 4px 0 0;
-}
-
-.status-item {
-  display: flex;
-  gap: 4px;
-}
-
-.status-item dt {
-  color: var(--muted);
-}
-
-.status-item dd {
-  margin: 0;
-}
-
-main {
-  padding: 16px;
-}
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-button {
-  font: inherit;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-button.primary {
-  border-width: 2px;
-  border-color: var(--open);
-  font-weight: 600;
-}
-
-button.danger {
-  border-width: 2px;
-  border-color: var(--stopped);
-  font-weight: 600;
-}
-
-.message {
-  margin: 12px 0 0;
-  font-weight: 600;
-}
-
-h2 {
-  font-size: 15px;
-  margin: 20px 0 8px;
-}
-
-.power-log ol {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.power-log li {
-  display: flex;
-  gap: 12px;
-}
-
-.source {
-  color: var(--muted);
+  background: var(--background);
+  color: var(--foreground);
 }

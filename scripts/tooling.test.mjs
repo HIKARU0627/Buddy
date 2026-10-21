@@ -94,6 +94,41 @@ test('デスクトップの UI レンダラーは Electron・Node・中枢・OS 
     [],
   );
 });
+test('UI レンダラーの試験は node:test・node:assert だけを足せて、Electron・Node の他の API・main は読み込めない', async () => {
+  assert.deepEqual(
+    await violations(
+      "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { Button } from '@heroui/react';\nexport const probe = [assert, test, Button];\n",
+      'apps/desktop/src/renderer/probe.test.tsx',
+    ),
+    [],
+  );
+  for (const specifier of [
+    'electron',
+    'node:fs',
+    'fs',
+    'assert',
+    '@buddy/core',
+    '../main/device-controller.js',
+  ])
+    assert.ok(
+      restrictedImport(
+        await violations(
+          `export * from '${specifier}';\n`,
+          'apps/desktop/src/renderer/probe.test.ts',
+        ),
+      ),
+      specifier,
+    );
+  // 試験でない画面のファイルは node:test も読み込めない。
+  assert.ok(
+    restrictedImport(
+      await violations(
+        "export { test } from 'node:test';\n",
+        'apps/desktop/src/renderer/probe.tsx',
+      ),
+    ),
+  );
+});
 test('デスクトップの preload は electron の contextBridge・ipcRenderer だけを読み込める', async () => {
   assert.deepEqual(
     await violations(

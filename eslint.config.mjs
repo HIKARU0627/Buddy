@@ -408,6 +408,27 @@ export default tseslint.config(
     },
   },
   {
+    // UI レンダラーの試験（ADR 0024）: node:test・node:assert だけを足す。Electron・main・中枢は引き続き読み込まない。
+    files: [
+      'apps/desktop/src/renderer/**/*.test.ts',
+      'apps/desktop/src/renderer/**/*.test.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': restricted(
+        [
+          ['electron', 'electron/*', '@electron/*'],
+          desktopMainForbidden,
+          desktopWorkspaceRelative,
+          ['../**/main/**', '../**/preload/**'],
+        ],
+        nodeImports.filter(
+          (name) =>
+            !['node:test', 'node:assert', 'node:assert/strict'].includes(name),
+        ),
+      ),
+    },
+  },
+  {
     files: ['packages/platform/**/*.ts'],
     languageOptions: { globals: globals.node },
     rules: {

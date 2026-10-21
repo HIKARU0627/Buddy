@@ -62,3 +62,17 @@ node apps/core/dist/cli.js stop                          # 停止を要求し、
 | `src/tls-identity.ts`                  | TLS の秘密鍵（KeyStore）と証明書（データディレクトリ）の読み込み・初回作成     |
 
 試験は `src/*.test.ts` で、ビルド後の `dist/*.test.js` を `pnpm test` が実行します。HTTPS の試験は 127.0.0.1 の模擬で、ピン留めする試験用のクライアント（`src/api-test-support.ts`、信頼の起点は中枢の証明書 1 枚・指紋の照合の後にだけ要求を書く）を使います。子プロセスで `dist/cli.js` を動かすヘッドレス起動の試験と、再起動の後の復元・強制終了の後の再起動の試験（`restore.test.ts`）を含みます（模擬のみ。実機の LaunchAgent・鍵管理・電源断は未実施。実機の手順は [docs/b02/device-check.md](../../docs/b02/device-check.md)）。
+
+## スナップショット・イベント・操作の経路（B03-04）
+
+[ADR 0023](../../docs/adr/0023-b03-snapshot-events-and-operation-routes.md) で、`getSnapshot`・`getEvents`・`getOperation`・`approveOperation`・`cancelOperation` の経路と、WSS `/v1/events/stream` の配信を作りました（127.0.0.1 の模擬のみ）。
+
+| ファイル                    | 責務                                                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `src/api-operations.ts`     | スナップショット・イベントの再取得・操作の取得・承認・取消の経路（DB worker の命令と command_receipts の再送の規則へつなぐ） |
+| `src/event-cursor.ts`       | event_cursor（DB 世代・連番・発行の時刻の不透明な値）の符号化と、再生できるかの判定（7 日・世代違い・欠け）                  |
+| `src/event-feed.ts`         | イベントの配信の元。DB worker の照会で COMMIT 済みの行を読み、購読ごとに位置を進める（命令の後の通知と一定の間隔の読み直し） |
+| `src/event-stream.ts`       | WSS の配信（開始位置のクエリー cursor・接続範囲への結び付け・ping・理由つきで閉じる）                                        |
+| `src/device-connections.ts` | 端末の接続を閉じる差し込み口（失効 B03-02・自宅判定 B03-03 が `closeDevice` を呼ぶ）                                         |
+
+`CoreHandle.events`（`EventFeed`）と `CoreHandle.deviceConnections` を出しています。操作の命令を HTTP の経路の外から送るときは `events.notify()` を呼ぶか `events.watchStore(store)` を通すと、すぐに配られます（呼ばなくても 1 秒ごとに読み直します）。

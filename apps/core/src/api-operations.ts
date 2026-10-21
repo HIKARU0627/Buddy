@@ -148,7 +148,7 @@ function stableJson(value: JsonValue): string {
 }
 
 // 要求の照合値（07 §3）。経路・対象・本文（キー順の JSON）の SHA-256。同じ request_id で経路・対象・本文の
-// どれかが違えば別の値になり、DB worker が 409（request_conflict）で拒否する。
+// どれかが違えば別の値になり、DB worker が 409（command_id_reused・request_conflict）で拒否する。
 export function requestHash(
   operationId: string,
   targetId: string,
@@ -159,9 +159,28 @@ export function requestHash(
     .digest('hex');
 }
 
+// 端末の要求の命令 ID。接続範囲と request_id から決まる値（UUID v4 の形）にする。同じ要求の再送は同じ command_id に
+// なり、DB worker が command_receipts の保存済みの結果を返す（DbWorkerClient は結果の command_id が送った命令と
+// 同じことを確かめるため、再送ごとに新しい ID を作ると保存済みの結果を受け取れない）。同じ接続範囲・request_id で
+// 経路・対象・本文が違えば、DB worker は command_id_reused で拒否する（409）。
+export function deviceCommandId(
+  commandScopeId: string,
+  requestId: string,
+): string {
+  const bytes = createHash('sha256')
+    .update(`buddy/device-command/v1\0${commandScopeId}\0${requestId}`, 'utf8')
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = ((bytes[6] as number) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] as number) & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 // DB worker の拒否の理由のうち、内容・状態が変わった（最新を読み直す）もの。他は中枢側の保留（503）。
 const CONFLICT_REASONS = new Set([
   'request_conflict',
+  'command_id_reused',
   'state_revision_changed',
   'content_version_changed',
   'content_hash_mismatch',
@@ -315,8 +334,10 @@ export function createOperationRoutes(
   const commandBase = (request: ApiHandlerRequest, view: OperationView) => {
     const body = request.body as JsonObject;
     const operationId = request.params['id'] ?? '';
+    const scopeId = stringOf(body, 'command_scope_id');
+    const requestId = stringOf(body, 'request_id');
     return {
-      command_id: randomUUID(),
+      command_id: deviceCommandId(scopeId, requestId),
       operation_id: operationId,
       expected_state_revision: stringOf(body, 'expected_state_revision'),
       request_revision: view.request_revision,
@@ -325,8 +346,8 @@ export function createOperationRoutes(
       forgetting_generation: view.forgetting_generation,
       connection_id: null,
       request: {
-        command_scope_id: stringOf(body, 'command_scope_id'),
-        request_id: stringOf(body, 'request_id'),
+        command_scope_id: scopeId,
+        request_id: requestId,
         request_hash: requestHash(request.route.operationId, operationId, body),
       },
     };

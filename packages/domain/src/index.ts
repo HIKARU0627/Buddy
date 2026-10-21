@@ -11,6 +11,8 @@ export * from './extraction.js';
 // B03-03: 自宅ネットワークの判定（ADR 0022）。
 export * from './home-network.js';
 export * from './intents.js';
+// B03-07: 中枢の待ち受けのアドレスの判定（ADR 0020）。
+export * from './listen-address.js';
 export * from './memory.js';
 export * from './notification.js';
 export * from './operations.js';

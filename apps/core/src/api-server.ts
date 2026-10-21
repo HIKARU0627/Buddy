@@ -1,6 +1,7 @@
 // 中枢の HTTPS の受付（設計 02 端末登録と接続・主な通信契約、07 §2・§3、ADR 0009・0020）。
 //
 // node:https（TLS 1.3 以上）で、注入されたアドレス（製品は Tailscale のアドレス、試験は 127.0.0.1）を待ち受ける。
+// アドレスは正規化してから、ループバックと Tailscale の範囲だけを受け付ける（domain の listenAddressDecision）。
 // 一つの要求は次の順に処理し、最初に満たさないものの拒否を返す。
 //   1. 接続数の上限（超えた接続の要求は 429 rate_limited）。Core が受付中（running）でなければ 503
 //   2. Origin ヘッダーのある要求（ブラウザーからの要求）は 403 forbidden
@@ -26,7 +27,6 @@ import type {
 } from 'node:http';
 import { createServer } from 'node:https';
 import type { Server } from 'node:https';
-import { isIP } from 'node:net';
 import type { Duplex } from 'node:stream';
 import type { TLSSocket } from 'node:tls';
 import {
@@ -34,6 +34,7 @@ import {
   MAX_PREAUTH_JSON_BYTES,
   ROUTE_CHECKS,
   admitRequest,
+  listenAddressDecision,
 } from '@buddy/domain';
 import type { CoreCheck, RequestContext } from '@buddy/domain';
 import { COMMAND_SCOPE_MAX_TTL_MS } from '@buddy/storage';
@@ -203,18 +204,12 @@ export class ApiListenError extends Error {
   }
 }
 
-// 待ち受けるアドレスの検査。IP アドレスの文字列だけを受け付け、全アドレス（0.0.0.0・::）は拒否する
-// （Tailscale 以外の経路へ開かないため。ADR 0020）。理由コードを返し、問題がなければ null。
+// 待ち受けるアドレスの検査。IP アドレスの文字列を正規化してから、許可する範囲（ループバック・Tailscale）だけを
+// 受け付ける（Tailscale 以外の経路へ開かないため。domain の listenAddressDecision、ADR 0020・B03-07）。
+// 理由コード（https_host_not_ip_address・https_host_unspecified・https_host_not_allowed）を返し、問題がなければ null。
 export function listenHostReason(host: string): string | null {
-  const family = isIP(host);
-  if (family === 0) return 'https_host_not_ip_address';
-  if (family === 4 && host === '0.0.0.0') return 'https_host_unspecified';
-  if (family === 6) {
-    const lower = host.toLowerCase();
-    if (/^[0:]+$/u.test(lower) || lower.endsWith(':0.0.0.0'))
-      return 'https_host_unspecified';
-  }
-  return null;
+  const decision = listenAddressDecision(host);
+  return decision.ok ? null : `https_host_${decision.reason}`;
 }
 
 export function listenPortReason(port: number): string | null {
@@ -375,8 +370,11 @@ export interface ApiServer {
 }
 
 export function createApiServer(options: ApiServerOptions): ApiServer {
-  const hostReason = listenHostReason(options.host);
-  if (hostReason !== null) throw new ApiListenError(hostReason);
+  const listenAddress = listenAddressDecision(options.host);
+  if (!listenAddress.ok)
+    throw new ApiListenError(`https_host_${listenAddress.reason}`);
+  // 正規化したアドレスで待ち受ける（IPv4-mapped の表記は IPv4 に直す）。
+  const host = listenAddress.address;
   const portReason = listenPortReason(options.port);
   if (portReason !== null) throw new ApiListenError(portReason);
   const limits: ApiLimits = { ...DEFAULT_API_LIMITS, ...options.limits };
@@ -867,7 +865,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   );
 
   return {
-    host: options.host,
+    host,
     get port() {
       return port;
     },
@@ -898,7 +896,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         server.once('error', onError);
         server.once('listening', onListening);
         server.listen({
-          host: options.host,
+          host,
           port: options.port,
           exclusive: true,
         });

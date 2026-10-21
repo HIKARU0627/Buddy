@@ -6,6 +6,7 @@ storage / Core / Electron / OS 固有 API に依存しません。
 B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.md)）:
 
 - `home-network.ts`: 自宅判定（指紋の一致と Tailscale の直接経路の両方、報告の鮮度 6 分、中枢と同じマシンの免除）と IPv4 のサブネットの読み取り（[ADR 0022](../../docs/adr/0022-b03-home-network-check.md)）
+- `listen-address.ts`: 中枢の HTTPS の待ち受けのアドレスの正規化（IPv4-mapped は IPv4 に直す）と、許可する範囲（ループバック・Tailscale）の判定（[ADR 0020](../../docs/adr/0020-b03-https-tls-and-route-checks.md)、B03-07）
 - `api.ts`: 経路ごとの検査（認証・自宅判定・接続範囲・ロック・画面操作・音声所有権・版）、再送、イベントの反映、リース、停止の到達、ペアリング（[ADR 0009](../../docs/adr/0009-openapi-auth-events-and-reconnect.md)）
 - `intents.ts`: 24 意図ごとの経路（Read / LocalCommand / RemoteMutation）・承認・方式 C の可否・必須と許可の引数
 - `readiness.ts`: 変更を伴う意図の実行可否（blocked / needs_approval / auto_eligible）を決める純粋関数

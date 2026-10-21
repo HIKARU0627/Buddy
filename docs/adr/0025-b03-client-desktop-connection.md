@@ -57,6 +57,7 @@ idle → bootstrapping → snapshotting → subscribing → live
 - 登録した中枢へは、TLS 1.3 の確立の後に、中枢が示した証明書が保存した証明書と **DER で完全に同じ**で、DER 全体の SHA-256 が指紋と同じときだけ要求を書く。照合の前には何も書かない（WSS も照合を終えた TLS の接続の上で切り替える）。TLS の確立で中枢がその証明書の秘密鍵を持つこと（CertificateVerify）は TLS が確かめる。
 - 信頼の起点（`ca`）による連鎖の検証は使わない。**Electron の BoringSSL は、CA でない自己署名の証明書（ADR 0020 の中枢の証明書。基本制約 CA:FALSE）を信頼の起点として受け付けず、ピン留めした中枢でも `UNABLE_TO_VERIFY_LEAF_SIGNATURE` になる**（Node の OpenSSL では通るため node:test では見えず、ローカルの Electron で見つけた）。完全一致は連鎖の検証より狭い（その 1 枚だけを受け付ける）。この扱いはこのモジュールの接続だけで、アプリ全体の検証（`NODE_TLS_REJECT_UNAUTHORIZED`・既定のエージェント）は変えない。
 - ペアリングの最初の接続（`fetchPeerCertificate`）は ADR 0021 と同じく、証明書を受け取ったら何も書かずに閉じる（この接続だけ `rejectUnauthorized: false`）。
+- 証明書の不一致（再登録が必要）とするのは、この完全一致の照合で合わなかったときだけ。名前に CERT・SIGNATURE などを含む TLS・OpenSSL のエラーは、連鎖の検証をしないこの接続では中枢の証明書が変わった証拠にならないので、接続できない（待つ）として扱う（レビューの指摘 L6）。
 
 ### ペアリング
 

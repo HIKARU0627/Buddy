@@ -13,9 +13,11 @@ import type { Server, TLSSocket } from 'node:tls';
 import { loadOrCreateTlsIdentity } from '@buddy/core';
 import { createMockTlsKeyStore } from '@buddy/platform';
 import {
+  CertificateMismatchError,
   fetchPeerCertificate,
   hubRequest,
   createHubTransport,
+  isCertificateMismatch,
 } from './hub-transport.js';
 import { freePort, onCleanup, tempDir } from './hub-test-support.js';
 
@@ -213,3 +215,27 @@ test(
     assert.equal(fetch.ok, false);
   },
 );
+
+// レビューの指摘 L6: 再登録が必要（certificate_mismatch）にするのは、ピン留めの照合で合わなかったときだけ。
+// 名前に CERT・SIGNATURE などを含む TLS・OpenSSL のエラー（通信の途中の不調・中継機器の干渉など）は
+// 接続できない（unreachable）として待つ。
+test('only a failed pin check counts as a certificate mismatch', () => {
+  assert.equal(isCertificateMismatch(new CertificateMismatchError()), true);
+  for (const code of [
+    'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+    'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+    'DEPTH_ZERO_SELF_SIGNED_CERT',
+    'SELF_SIGNED_CERT_IN_CHAIN',
+    'CERT_HAS_EXPIRED',
+    'ERR_TLS_CERT_ALTNAME_INVALID',
+    'ERR_SSL_SSLV3_ALERT_BAD_CERTIFICATE',
+    'ERR_SSL_TLSV13_ALERT_CERTIFICATE_REQUIRED',
+    'ERR_SSL_BAD_SIGNATURE',
+    'ECONNRESET',
+  ]) {
+    const error = Object.assign(new Error('synthetic'), { code });
+    assert.equal(isCertificateMismatch(error), false, code);
+  }
+  assert.equal(isCertificateMismatch(null), false);
+  assert.equal(isCertificateMismatch({ code: 'CERT_REVOKED' }), false);
+});

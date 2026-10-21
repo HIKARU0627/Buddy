@@ -56,12 +56,12 @@ export class CertificateMismatchError extends Error {
   }
 }
 
-const CERTIFICATE_ERROR = /CERT|SELF_SIGNED|UNABLE_TO_(GET|VERIFY)|SIGNATURE/u;
-
-function isCertificateError(error: unknown): boolean {
-  if (error instanceof CertificateMismatchError) return true;
-  const code = (error as { code?: unknown } | null)?.code;
-  return typeof code === 'string' && CERTIFICATE_ERROR.test(code);
+// 証明書の不一致（再登録が必要）として扱うか。ピン留めの照合（matchesPin）で合わなかったときだけ。
+// 連鎖の検証はしない（rejectUnauthorized: false）ので、名前に CERT・SIGNATURE などを含む TLS・OpenSSL の
+// エラーは通信の途中の不調・中継機器の干渉などで、中枢の証明書が変わった証拠にならない。それらは接続できない
+// （unreachable）として待つ（レビューの指摘 L6）。
+export function isCertificateMismatch(error: unknown): boolean {
+  return error instanceof CertificateMismatchError;
 }
 
 // 失敗の理由のコード（宛先・トークンを含めない）。
@@ -168,7 +168,7 @@ export function pinnedConnect(
       clearTimeout(timer);
       socket.destroy();
       reject(
-        isCertificateError(error)
+        isCertificateMismatch(error)
           ? new CertificateMismatchError()
           : error instanceof Error
             ? error

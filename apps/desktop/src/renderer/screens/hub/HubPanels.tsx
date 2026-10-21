@@ -1,5 +1,5 @@
 // 中枢の画面の端末だけに出す本体（設計 02 端末登録と接続、ADR 0024・0026）。Tabs で「承認待ちの申請」
-// 「登録済みの端末」「この端末」を分ける（状態帯は全画面で共通）。承認・拒否・失効は重い操作として、
+// 「登録済みの端末」「自宅のネットワーク」（B03-08）「この端末」を分ける（状態帯は全画面で共通）。承認・拒否・失効は重い操作として、
 // 確認（ConfirmDialog）を挟んでから送る。状態と操作は引数で受け取り、限定 API を直接呼ばない。
 // 画面に来るのは main の参照（ref）と表示用の値だけで、申請 ID・端末 ID・申請用の秘密・トークンはない。
 import { useState } from 'react';
@@ -22,6 +22,7 @@ import type { ConfirmRequest } from './ConfirmDialog.js';
 
 export const HUB_LABELS = {
   thisDevice: 'この端末',
+  homeTitle: '自宅のネットワーク',
   claimsTitle: '承認待ちの申請',
   devicesTitle: '登録済みの端末',
   noClaims: '承認待ちの申請はありません。',
@@ -306,13 +307,14 @@ export function DevicesPanel({
   );
 }
 
-export type HubTab = 'device' | 'claims' | 'devices';
+export type HubTab = 'device' | 'claims' | 'devices' | 'home';
 
 export function HubTabs({
   state,
   actions,
   now,
   thisDevice,
+  home,
   initialTab = 'claims',
 }: {
   readonly state: HubViewState;
@@ -320,6 +322,8 @@ export function HubTabs({
   readonly now: number;
   // 「この端末」のタブの中身（中枢との接続の欄）。
   readonly thisDevice: ReactNode;
+  // 「自宅のネットワーク」のタブの中身（B03-08。HomeNetworkPanel）。渡さなければタブを出さない。
+  readonly home?: ReactNode;
   readonly initialTab?: HubTab;
 }) {
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
@@ -342,6 +346,12 @@ export function HubTabs({
               {HUB_LABELS.devicesTitle}
               <Tabs.Indicator />
             </Tabs.Tab>
+            {home === undefined ? null : (
+              <Tabs.Tab id="home">
+                {HUB_LABELS.homeTitle}
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            )}
             <Tabs.Tab id="device">
               {HUB_LABELS.thisDevice}
               <Tabs.Indicator />
@@ -374,6 +384,11 @@ export function HubTabs({
             actions={actions}
           />
         </Tabs.Panel>
+        {home === undefined ? null : (
+          <Tabs.Panel id="home" className="flex flex-col gap-6 pt-4">
+            {home}
+          </Tabs.Panel>
+        )}
         <Tabs.Panel id="device" className="flex flex-col gap-6 pt-4">
           {thisDevice}
         </Tabs.Panel>

@@ -10,6 +10,8 @@ OS 別の鍵保護・起動・端末能力のアダプターを置きます（[A
 - `src/tls-key-store.ts`: 中枢の TLS の秘密鍵の `TlsKeyStore`（`loadTlsKey`・`loadOrCreateTlsKey`、[ADR 0020](../../docs/adr/0020-b03-https-tls-and-route-checks.md)）。ECDSA P-256 の鍵を作り、キーチェーンのデータ鍵と同じサービス名の別の項目（アカウント名 `tls-key-v1`）に PKCS#8 の DER を正準の base64 で保存し、読み出し時に P-256 の EC 秘密鍵であることを検査します。平文の鍵をディスクに置きません。試験用の `createMockTlsKeyStore`。鍵の値は JSON・inspect・文字列化に出しません（`TlsPrivateKey`）。
 - `src/key-protection.ts`: 鍵保護の可否の確認 `KeyProtectionProbe` と、起動前検査 `keyProtectionPreflight`。macOS の確認は KeyStore でデータ鍵を取得（初回は作成）できるかで判定します（`createKeyStoreProbe`）。使えなければ `key_protection_unavailable:<理由>` を返します。平文の保存へ切り替える経路はありません。
 - `src/startup.ts`: 実行中の OS に合う起動・監督アダプターの選択。
+- `src/home-fingerprint.ts`: 端末側の自宅の指紋（既定のゲートウェイの MAC・サブネット・SSID）の収集（[ADR 0022](../../docs/adr/0022-b03-home-network-check.md)）。macOS は `route -n get default`・`arp -n`・接続口のアドレス・`ipconfig getsummary`（SSID が `<redacted>` なら `networksetup -getairportnetwork`）、Windows は PowerShell の `Get-NetRoute`・`Get-NetNeighbor`・`Get-NetIPAddress` と `netsh wlan show interfaces`。取れない要素は null。試験用の `createMockHomeFingerprintCollector`。
+- `src/tailscale-status.ts`: 中枢側の Tailscale の状態の取得（`tailscale status --json`、既定 5 秒だけ保持して取り直す）。接続元のアドレスからピアを特定し、CurAddr・Relay・PeerRelay を返す。取得できない・Running でないは unavailable。試験用の `createMockTailscaleStatusSource`。
 
 試験は `src/*.test.ts`（ビルド後の `dist/*.test.js`）で、模擬の runner・模擬の KeyStore・模擬の keyring モジュールと一時ディレクトリを使います。実機のキーチェーンには書き込みません。実機の launchctl への登録、pmset・fdesetup の実機での読み取り（B01-05）、キーチェーンへの鍵の作成・読み出し（下の手順）は試験の対象外です。
 

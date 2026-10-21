@@ -46,6 +46,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [DB worker と操作・承認・受付の保存](docs/adr/0018-b02-db-worker-and-operation-store.md)
 - [Core への DB の組み込みと再起動の復元・内容 hash の照合](docs/adr/0019-b02-core-storage-integration.md)
 - [中枢の TLS 証明書・HTTPS の受付・経路検査の基盤](docs/adr/0020-b03-https-tls-and-route-checks.md)
+- [自宅ネットワークの判定（指紋と Tailscale の直接経路）](docs/adr/0022-b03-home-network-check.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

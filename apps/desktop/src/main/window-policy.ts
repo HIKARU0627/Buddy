@@ -126,7 +126,7 @@ export function isTrustedSender(facts: SenderFacts): boolean {
 }
 
 // ウィンドウを閉じる操作とクライアントの終了を区別する（02）。
-// 終了の操作（トレイの「クライアントを終了」・desktop.client_quit・OS の終了要求）の後だけウィンドウを本当に閉じる。
+// 終了の操作（トレイの「Buddy を終了」・desktop.client_quit・OS の終了要求）の後だけウィンドウを本当に閉じる。
 // それ以外はウィンドウを隠してトレイに残る。どちらも端末の入出力の状態と中枢を変えない。
 export class ClientLifecycle {
   #quitting = false;
@@ -160,7 +160,7 @@ export interface TrayMenuItem {
 export const TRAY_MENU: readonly TrayMenuItem[] = [
   { action: 'show_window', label: 'Buddy を表示' },
   { action: 'io_stop', label: 'この端末の入出力を停止' },
-  { action: 'client_quit', label: 'クライアントを終了（中枢は止めません）' },
+  { action: 'client_quit', label: 'Buddy を終了（中枢は止めません）' },
 ];
 
 // トレイの説明文。ロック中・不明では内容を出さない。

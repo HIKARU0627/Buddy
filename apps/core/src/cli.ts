@@ -15,6 +15,7 @@ import {
 import type { TlsKeyStore } from '@buddy/platform';
 import { DEFAULT_HTTPS_PORT } from './api-server.js';
 import { runAutostart } from './autostart.js';
+import { fingerprintLines } from './tls-certificate.js';
 import type { AutostartAction } from './autostart.js';
 import { join, resolve } from 'node:path';
 import { readFile, realpath } from 'node:fs/promises';
@@ -354,9 +355,17 @@ async function firstDevice(
   }
   out(result.body);
   if (result.body['ok'] === true) {
+    const fingerprint = result.body['certificate_fingerprint'];
+    if (pairingId === null && typeof fingerprint === 'string')
+      log(
+        [
+          '中枢の証明書の指紋（SHA-256・64 桁）:',
+          ...fingerprintLines(fingerprint).map((line) => `  ${line}`),
+        ].join('\n'),
+      );
     log(
       pairingId === null
-        ? '端末で中枢の証明書の指紋を確かめてから、ワンタイムコードを入力してください（有効 5 分）。'
+        ? '端末の画面の指紋と 1 行ずつ見比べ、最後の 4 桁を端末に入力してから、ワンタイムコードを入力してください（有効 5 分）。'
         : '申請を承認しました。端末がトークンを受け取ると登録が終わります。',
     );
     return EXIT.ok;

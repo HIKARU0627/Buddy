@@ -22,10 +22,11 @@ pnpm --filter @buddy/desktop dev
 
 ## 確かめられること
 
-- ウィンドウを閉じてもトレイ（macOS はメニューバー）に残ります。終了はトレイの「クライアントを終了」か画面のボタンです。どちらも中枢を止めません。
+- ウィンドウを閉じてもトレイ（macOS はメニューバー）に残ります。終了はトレイの「Buddy を終了」か画面のボタンです。どちらも中枢を止めません。
 - 起動直後はロック状態が不明として内容を隠し、OS へ問い合わせて解除を確かめてから表示します。ロック・スリープの後は「この端末で再開する」を押すまで入出力を再開しません。
 - 状態欄・電源とロックの記録（OS からの通知・OS への問い合わせ）を画面に表示します。
-- 未登録ならペアリングの画面（宛先 → 中枢の証明書の指紋を本人が中枢の表示と比べて「一致」→ ワンタイムコードと端末名 → 承認待ち）を出し、登録後は中枢との接続の欄（接続・最終確認・理由・自宅の判定・中枢の操作の ID・版・状態）を出します。
+- 未登録なら登録の画面（手順 1 / 4 宛先 → 2 指紋の確認: 4 桁ずつ 4 行の指紋を中枢の表示と見比べ、中枢の画面の指紋の最後の 4 桁を入力（main が合うときだけ進める）→ 3 ワンタイムコードと端末名 → 4 承認待ち: 確認コードと期限）を出し、登録後は中枢との接続の欄（理由・自宅の判定・中枢の操作）を出します。
+- 中枢の画面の端末（中枢と同じマシン）では、本体を「承認待ちの申請」「登録済みの端末」「この端末」のタブにし、ペアリングの開始・申請の承認と拒否・端末の失効を、確認のダイアログを経て行います（ADR 0026）。
 
 ## 構成
 
@@ -34,7 +35,7 @@ pnpm --filter @buddy/desktop dev
 | `src/main/*.ts`             | Electron に依存しない純粋なモジュール（IPC の受付・端末状態・保存・ウィンドウとトレイの判断、中枢との接続: `hub-transport`・`pairing-flow`・`credential-store`・`home-reporter`・`core-link`）と試験（2 クライアントの統合試験 `two-clients.test.ts` を含む） |
 | `src/main/electron/main.ts` | Electron のアダプター（BrowserWindow・Tray・ipcMain・powerMonitor・protocol・safeStorage・app のライフサイクル）                                                                                                                                              |
 | `src/preload/preload.cts`   | sandbox の preload。contextBridge で限定 API（invoke・onNotification）だけを公開する                                                                                                                                                                          |
-| `src/renderer`              | React と HeroUI の画面。状態欄・停止と再開のボタン・電源とロックの記録。Electron・Node.js の API を使わない                                                                                                                                                   |
+| `src/renderer`              | React と HeroUI の画面。状態帯・停止と再開・登録・中枢の画面・電源とロックの記録。Electron・Node.js の API を使わない                                                                                                                                         |
 
 試験は `pnpm test` がビルド後の `dist/main/*.test.js`・`dist/renderer-test/**/*.test.js` を実行します（Electron は起動しません）。実機でのロック・スリープの確認は B01-05 で行います。
 
@@ -42,13 +43,13 @@ pnpm --filter @buddy/desktop dev
 
 画面の部品は HeroUI（`@heroui/react`）を使い、並べ方・余白だけを Tailwind CSS のクラスで書きます。スタイルはビルド時に CSS ファイルへ出し、CSP（`style-src 'self'`）を変えません。ライト・ダークは OS の設定に従います。
 
-| 場所                           | 役割                                                                                                              |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `src/renderer/App.tsx`         | 画面の切り替え。限定 API を読めなければその旨だけを出す                                                           |
-| `src/renderer/app/`            | 共通の Provider（`AppProviders`）・配色の追従（`theme`）・画面の枠（`AppShell`）                                  |
-| `src/renderer/components/`     | 画面をまたいで使う小さな部品                                                                                      |
-| `src/renderer/state/`          | 画面の状態と要求の組み立て（純粋な関数）と、限定 API とつなぐフック                                               |
-| `src/renderer/screens/<名前>/` | 画面ごとの部品（`device`: 状態欄・操作・内容・電源とロックの記録、`pairing`: ペアリングの画面と中枢との接続の欄） |
-| `src/renderer/styles.css`      | `tailwindcss` → `@heroui/styles` の順で読み込む。独自の色は定義しない                                             |
+| 場所                           | 役割                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `src/renderer/App.tsx`         | 画面の切り替え。限定 API を読めなければその旨だけを出す                                                            |
+| `src/renderer/app/`            | 共通の Provider（`AppProviders`）・配色の追従（`theme`）・画面の骨格（`AppShell`）                                 |
+| `src/renderer/components/`     | 画面をまたいで使う部品（状態帯・記号＋文言・見出しの欄・指紋の格子・フッター）                                     |
+| `src/renderer/state/`          | 画面の状態と要求の組み立て（純粋な関数）と、限定 API とつなぐフック                                                |
+| `src/renderer/screens/<名前>/` | 画面ごとの部品（`device`: 停止中の帯・中枢との接続・電源とロックの記録、`pairing`: 登録の画面、`hub`: 中枢の画面） |
+| `src/renderer/styles.css`      | `tailwindcss` → `@heroui/styles` の順で読み込む。テーマの変数の上書き（コントラスト）はここの 1 か所だけ           |
 
-画面を足すときは `screens/<名前>/` に置いて `App.tsx` で切り替え、状態と操作は引数で受け取ります（限定 API とつなぐのは `state/` のフックだけ）。Provider は `app/AppProviders.tsx` に足します。色は HeroUI のテーマの変数だけを使い、ライト・ダーク・キーボード操作・読み上げのラベルと、Electron のコンソールに CSP の違反が出ないことを確かめます（ADR 0024 の「以後の画面の約束」）。
+画面を足すときは `screens/<名前>/` に置いて `App.tsx` で切り替え、状態と操作は引数で受け取ります（限定 API とつなぐのは `state/` のフックだけ）。Provider は `app/AppProviders.tsx` に足します。色は HeroUI のテーマの変数だけを使い、ライト・ダーク・キーボード操作・読み上げのラベルと、Electron のコンソールに CSP の違反が出ないことを確かめます（ADR 0024 の「以後の画面の約束」と「画面の骨格とデザインの約束」。コントラストは `scripts/contrast.test.mjs`）。

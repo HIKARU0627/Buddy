@@ -170,7 +170,10 @@ test(
     });
 
     assert.equal(
-      invoke('desktop.pairing_confirm', { fingerprint: FP })['reason'],
+      invoke('desktop.pairing_confirm', {
+        fingerprint: FP,
+        fingerprint_tail: 'cdcd',
+      })['reason'],
       'pairing_step_mismatch',
     );
     assert.equal(invoke('desktop.pairing_begin', begin)['outcome'], 'ok');
@@ -192,11 +195,52 @@ test(
       'pairing_step_mismatch',
     );
     assert.equal(
-      invoke('desktop.pairing_confirm', { fingerprint: 'ce'.repeat(32) })[
-        'reason'
-      ],
+      invoke('desktop.pairing_confirm', {
+        fingerprint: 'ce'.repeat(32),
+        fingerprint_tail: 'cece',
+      })['reason'],
       'pairing_step_mismatch',
     );
+    // 本人が入力した最後の 4 桁が受け取った証明書の指紋と合わなければ、進めず申請も送らない（ADR 0025）。
+    for (const tail of ['dcdc', '0000', 'cdce'])
+      assert.equal(
+        invoke('desktop.pairing_confirm', {
+          fingerprint: FP,
+          fingerprint_tail: tail,
+        })['reason'],
+        'fingerprint_tail_mismatch',
+      );
+    assert.equal(view().pairing?.['step'], 'fingerprint_check');
+    // 4 桁でない入力は形式で拒否する（main の契約の検査）。
+    for (const tail of ['cdc', 'cdcdc', 'cdcg', ''])
+      assert.equal(
+        invoke('desktop.pairing_confirm', {
+          fingerprint: FP,
+          fingerprint_tail: tail,
+        })['reason'],
+        'invalid_request',
+      );
+    assert.equal(
+      invoke('desktop.pairing_confirm', { fingerprint: FP })['reason'],
+      'invalid_request',
+    );
+    assert.equal(requests.length, 0);
+    assert.equal(
+      invoke('desktop.pairing_submit', {
+        pairing_code: '12345678',
+        device_name: '合成の端末',
+      })['reason'],
+      'pairing_step_mismatch',
+    );
+    // 大文字で入力しても同じ 4 桁として受け付け、コードの入力へ進む。
+    assert.equal(
+      invoke('desktop.pairing_confirm', {
+        fingerprint: FP,
+        fingerprint_tail: 'CDCD',
+      })['outcome'],
+      'ok',
+    );
+    assert.equal(view().pairing?.['step'], 'code_entry');
     assert.equal(requests.length, 0);
     // やめるはロック中でも受け付ける。
     assert.equal(
@@ -232,7 +276,10 @@ test(
         () => view().pairing?.['step'] === 'fingerprint_check',
         'fingerprint',
       );
-      invoke('desktop.pairing_confirm', { fingerprint: FP });
+      invoke('desktop.pairing_confirm', {
+        fingerprint: FP,
+        fingerprint_tail: 'cdcd',
+      });
       invoke('desktop.pairing_submit', {
         pairing_code: '00000000',
         device_name: '合成の端末',
@@ -266,7 +313,10 @@ test(
         () => view().pairing?.['step'] === 'fingerprint_check',
         'fingerprint',
       );
-      invoke('desktop.pairing_confirm', { fingerprint: FP });
+      invoke('desktop.pairing_confirm', {
+        fingerprint: FP,
+        fingerprint_tail: 'cdcd',
+      });
       invoke('desktop.pairing_submit', {
         pairing_code: '00000000',
         device_name: '合成の端末',
@@ -315,7 +365,10 @@ test(
       () => view().pairing?.['step'] === 'fingerprint_check',
       'fingerprint',
     );
-    invoke('desktop.pairing_confirm', { fingerprint: FP });
+    invoke('desktop.pairing_confirm', {
+      fingerprint: FP,
+      fingerprint_tail: 'cdcd',
+    });
     invoke('desktop.pairing_submit', {
       pairing_code: '00000000',
       device_name: '合成の端末',

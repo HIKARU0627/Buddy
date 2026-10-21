@@ -19,6 +19,7 @@ import {
   certificateReasons,
   certificateToPem,
   createSelfSignedCertificate,
+  fingerprintLines,
 } from './tls-certificate.js';
 
 const hex = (bytes: Uint8Array) => Buffer.from(bytes).toString('hex');
@@ -161,5 +162,24 @@ test(
         new Date(now.getTime() - 2 * 86_400_000),
       ).includes('certificate_not_yet_valid'),
     );
+  },
+);
+
+test(
+  'the human-readable fingerprint is four lines of four groups of four digits',
+  { timeout: 30_000 },
+  () => {
+    assert.deepEqual(
+      fingerprintLines(
+        'c006dee35079e5e206508453c86d4a260eccf47bb944759799ed7b56fb0dc7a6',
+      ),
+      [
+        'c006 dee3 5079 e5e2',
+        '0650 8453 c86d 4a26',
+        '0ecc f47b b944 7597',
+        '99ed 7b56 fb0d c7a6',
+      ],
+    );
+    assert.deepEqual(fingerprintLines(''), []);
   },
 );

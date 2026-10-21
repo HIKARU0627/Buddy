@@ -131,6 +131,8 @@ export class DesktopCoreLink {
   #home: HomeReportResult | null = null;
   #lockState: ClientLockState = 'unknown';
   #started = false;
+  // 登録した中枢の宛先（再登録の宛先の初期値。秘密ではない）。
+  #hubTarget: { readonly host: string; readonly port: number } | null = null;
   // 中枢の画面の端末として中枢が認めたか（承認待ちの申請の一覧が 200）。null は未確認（B03-06）。
   #hubScreen: boolean | null = null;
   // 一覧ごとに作る参照 → 申請 ID・端末 ID。参照だけを画面へ渡す（ID を画面に持たせない）。
@@ -269,6 +271,11 @@ export class DesktopCoreLink {
       retry_at: link === 'waiting_retry' ? iso(state?.retryAt ?? null) : null,
       pairing: this.#pairing.view,
       hub_screen: link === 'connected' && this.#hubScreen === true,
+      hub_target:
+        registration === 'registered' ||
+        registration === 'reregistration_required'
+          ? this.#hubTarget
+          : null,
       home_network:
         home === null || registration !== 'registered'
           ? null
@@ -341,14 +348,21 @@ export class DesktopCoreLink {
           );
         break;
       }
-      case 'desktop.pairing_confirm':
-        if (this.#pairing.confirm(raw.payload.fingerprint) !== 'ok')
+      case 'desktop.pairing_confirm': {
+        const confirmed = this.#pairing.confirm(
+          raw.payload.fingerprint,
+          raw.payload.fingerprint_tail,
+        );
+        if (confirmed !== 'ok')
           return this.#reject(
             raw.request_id,
             raw.channel,
-            'pairing_step_mismatch',
+            confirmed === 'tail_mismatch'
+              ? 'fingerprint_tail_mismatch'
+              : 'pairing_step_mismatch',
           );
         break;
+      }
       case 'desktop.pairing_submit':
         if (
           this.#pairing.submit(
@@ -390,6 +404,7 @@ export class DesktopCoreLink {
 
   #connect(credential: StoredCredential): void {
     this.#registration = 'registered';
+    this.#hubTarget = { host: credential.hub.host, port: credential.hub.port };
     const hub: PinnedHub = credential.hub;
     const token = () => credential.token.reveal();
     const transport = (
@@ -629,9 +644,13 @@ export class DesktopCoreLink {
       return this.#reject(requestId, channel, failed ?? 'not_connected');
     if (!this.#options.contract.valid('PairingClaimList', outcome.body))
       return this.#reject(requestId, channel, 'core_rejected');
+    // 同じ申請には同じ参照を使う（取り直しの間に確認を開いていても参照が古くならない）。一覧から消えたものは捨てる。
+    const previousClaims = this.#claimRefs;
     this.#claimRefs = new Map();
     const claims = (outcome.body as PairingClaimList).claims.map((claim) => {
-      const ref = this.#options.clock.newRequestId();
+      const ref =
+        refFor(previousClaims, claim.claim_id) ??
+        this.#options.clock.newRequestId();
       this.#claimRefs.set(ref, claim.claim_id);
       return {
         ref,
@@ -667,13 +686,16 @@ export class DesktopCoreLink {
     if (!this.#options.contract.valid('DeviceList', outcome.body))
       return this.#reject(requestId, channel, 'core_rejected');
     const self = connection.state.deviceId;
+    const previousDevices = this.#deviceRefs;
     this.#deviceRefs = new Map();
     const devices = (outcome.body as DeviceList).devices.map((device) => {
       const thisDevice = device.device_id === self;
       // この端末と失効済みの端末には参照を作らない（画面から失効できない）。
       let ref: string | null = null;
       if (!thisDevice && device.revoked_at === null) {
-        ref = this.#options.clock.newRequestId();
+        ref =
+          refFor(previousDevices, device.device_id) ??
+          this.#options.clock.newRequestId();
         this.#deviceRefs.set(ref, device.device_id);
       }
       return {
@@ -770,6 +792,12 @@ export class DesktopCoreLink {
   #log(code: string): void {
     this.#options.log?.(code);
   }
+}
+
+// 前の一覧で同じ ID に渡した参照。
+function refFor(refs: ReadonlyMap<string, string>, id: string): string | null {
+  for (const [ref, value] of refs) if (value === id) return ref;
+  return null;
 }
 
 function errorCodeOf(body: unknown): string | null {

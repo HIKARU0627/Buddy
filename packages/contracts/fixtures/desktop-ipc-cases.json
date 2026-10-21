@@ -266,6 +266,71 @@
       }
     ]
   },
+  "fingerprint_tail": {
+    "description": "指紋の最後の 4 桁の入力の照合（本人の判断 2026-10-21、ADR 0025）。手で書いた例で、domain の実装から生成していない。",
+    "cases": [
+      {
+        "id": "tail-exact",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "cd3f",
+        "expected": true
+      },
+      {
+        "id": "tail-uppercase",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "CD3F",
+        "expected": true
+      },
+      {
+        "id": "tail-with-space",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "cd 3f",
+        "expected": true
+      },
+      {
+        "id": "tail-other",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "cd3e",
+        "expected": false
+      },
+      {
+        "id": "tail-first-four",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "0123",
+        "expected": false
+      },
+      {
+        "id": "tail-three",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "d3f",
+        "expected": false
+      },
+      {
+        "id": "tail-five",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "bcd3f",
+        "expected": false
+      },
+      {
+        "id": "tail-not-hex",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "cd3g",
+        "expected": false
+      },
+      {
+        "id": "tail-empty",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "",
+        "expected": false
+      },
+      {
+        "id": "tail-bad-fingerprint",
+        "fingerprint": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCD3F",
+        "typed": "cd3f",
+        "expected": false
+      }
+    ]
+  },
   "transitions": [
     {
       "id": "stop-advances-epoch",

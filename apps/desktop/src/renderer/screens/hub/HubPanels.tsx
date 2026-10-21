@@ -1,25 +1,27 @@
-// 中枢の画面の端末だけに出す「承認待ちの申請」「登録済みの端末」の欄（設計 02 端末登録と接続、ADR 0024・0026）。
-// 承認・拒否・失効は重い操作として、確認（ConfirmDialog）を挟んでから送る。状態と操作は引数で受け取り、
-// 限定 API を直接呼ばない。画面に来るのは main の参照（ref）と表示用の値だけで、ID・コード・秘密・トークンはない。
+// 中枢の画面の端末だけに出す本体（設計 02 端末登録と接続、ADR 0024・0026）。Tabs で「承認待ちの申請」
+// 「登録済みの端末」「この端末」を分ける（状態帯は全画面で共通）。承認・拒否・失効は重い操作として、
+// 確認（ConfirmDialog）を挟んでから送る。状態と操作は引数で受け取り、限定 API を直接呼ばない。
+// 画面に来るのは main の参照（ref）と表示用の値だけで、申請 ID・端末 ID・申請用の秘密・トークンはない。
 import { useState } from 'react';
-import { Alert, Button, Card, Chip } from '@heroui/react';
+import type { ReactNode } from 'react';
+import { Button, Tabs } from '@heroui/react';
 import type {
   DesktopClaimEntry,
   DesktopDeviceEntry,
   DesktopPairingSession,
 } from '@buddy/contracts';
-import { PanelTitle } from '../../components/PanelTitle.js';
-import {
-  PLATFORM_LABELS,
-  formatClaimCheck,
-  formatFingerprint,
-  formatObservedAt,
-} from '../../labels.js';
+import { FingerprintGrid } from '../../components/FingerprintGrid.js';
+import { Section } from '../../components/Section.js';
+import { StatusText } from '../../components/StatusText.js';
+import { clockOf, remainingOf, splitInFour } from '../../format.js';
+import { PLATFORM_LABELS } from '../../labels.js';
 import type { HubActions, HubViewState } from '../../state/hub-state.js';
+import type { StatusLine } from '../../tones.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import type { ConfirmRequest } from './ConfirmDialog.js';
 
 export const HUB_LABELS = {
+  thisDevice: 'この端末',
   claimsTitle: '承認待ちの申請',
   devicesTitle: '登録済みの端末',
   noClaims: '承認待ちの申請はありません。',
@@ -27,319 +29,355 @@ export const HUB_LABELS = {
   approve: '承認する',
   reject: '拒否する',
   revoke: '失効する',
-  refresh: '一覧を取り直す',
+  refresh: '取り直す',
   openTitle: '新しい端末を登録する',
   open: 'ペアリングを始める（コードを出す）',
   reopen: 'コードを出し直す',
 } as const;
 
+function platformOf(platform: string): string {
+  return PLATFORM_LABELS[platform] ?? platform;
+}
+
+function InlineMessage({ text }: { readonly text: string | null }) {
+  if (text === null) return null;
+  return (
+    <p role="alert" className="text-sm leading-6 text-warning-soft-foreground">
+      {text}
+    </p>
+  );
+}
+
 export function PairingOpenPanel({
   session,
   busy,
+  now,
   actions,
 }: {
   readonly session: DesktopPairingSession | null;
   readonly busy: boolean;
+  readonly now: number;
   readonly actions: HubActions;
 }) {
   return (
-    <section aria-label={HUB_LABELS.openTitle}>
-      <Card>
-        <Card.Header>
-          <PanelTitle>{HUB_LABELS.openTitle}</PanelTitle>
-        </Card.Header>
-        <Card.Content className="flex flex-col gap-3">
-          {session === null ? (
-            <p className="text-sm">
-              登録する端末でペアリングを始める前に、ここでワンタイムコードを出します（有効
-              5 分・5 回まで）。
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm">
-                登録する端末に、このコードを入力してもらいます。端末の画面の指紋が下の指紋と同じことも確かめてもらってください。
-              </p>
-              <p
-                aria-label="ワンタイムコード"
-                className="font-mono text-3xl tracking-widest"
-              >
-                {session.pairing_code.slice(0, 4)}{' '}
-                {session.pairing_code.slice(4)}
-              </p>
-              <p className="text-sm text-muted">
-                期限 {formatObservedAt(session.expires_at)}
-              </p>
-              <p
-                aria-label="中枢の証明書の指紋（SHA-256）"
-                className="break-all rounded-md border border-border p-3 font-mono text-sm"
-              >
-                {formatFingerprint(session.certificate_fingerprint)}
-              </p>
-            </div>
-          )}
-          <div>
-            <Button
-              variant={session === null ? 'primary' : 'secondary'}
-              isDisabled={busy}
-              onPress={actions.openPairing}
+    <Section id="hub-open-heading" title={HUB_LABELS.openTitle}>
+      {session === null ? (
+        <p className="max-w-prose text-sm leading-6">
+          登録する端末でペアリングを始める前に、ここでワンタイムコードを出します（有効
+          5 分・入力は 5 回まで）。
+        </p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <p className="max-w-prose text-sm leading-6">
+            登録する端末にこのコードを入力してもらいます。端末の画面の指紋が下の指紋と同じことを確かめ、最後の
+            4 桁を端末に入力してもらってください。
+          </p>
+          <dl className="flex flex-col gap-1">
+            <dt className="text-sm font-medium">ワンタイムコード</dt>
+            <dd
+              id="hub-open-code"
+              className="font-mono text-3xl tracking-widest tabular-nums"
             >
-              {session === null ? HUB_LABELS.open : HUB_LABELS.reopen}
-            </Button>
-          </div>
-        </Card.Content>
-      </Card>
-    </section>
+              {splitInFour(session.pairing_code)}
+            </dd>
+            <dd className="text-xs text-muted tabular-nums">
+              {clockOf(session.expires_at, now, { seconds: false })} まで（
+              {remainingOf(session.expires_at, now)}）
+            </dd>
+          </dl>
+          <FingerprintGrid
+            fingerprint={session.certificate_fingerprint}
+            id="hub-open-fingerprint"
+          />
+        </div>
+      )}
+      <div>
+        <Button
+          variant={session === null ? 'primary' : 'secondary'}
+          isDisabled={busy}
+          onPress={actions.openPairing}
+        >
+          {session === null ? HUB_LABELS.open : HUB_LABELS.reopen}
+        </Button>
+      </div>
+    </Section>
   );
-}
-
-function platformOf(platform: string): string {
-  return PLATFORM_LABELS[platform] ?? platform;
 }
 
 export function ClaimsPanel({
   claims,
   busy,
+  now,
   onAsk,
   actions,
 }: {
   readonly claims: readonly DesktopClaimEntry[] | null;
   readonly busy: boolean;
+  readonly now: number;
   readonly onAsk: (request: ConfirmRequest) => void;
   readonly actions: HubActions;
 }) {
   return (
-    <section aria-label={HUB_LABELS.claimsTitle}>
-      <Card>
-        <Card.Header className="flex flex-row flex-wrap items-center justify-between gap-2">
-          <PanelTitle>{HUB_LABELS.claimsTitle}</PanelTitle>
-          <Button size="sm" variant="tertiary" onPress={actions.refreshClaims}>
-            {HUB_LABELS.refresh}
-          </Button>
-        </Card.Header>
-        <Card.Content className="flex flex-col gap-3">
-          <p className="text-sm text-muted">
-            申請した端末の画面に出ている確認コードと同じか確かめてから承認してください。
-          </p>
-          {claims === null ? (
-            <p className="text-sm text-muted">{HUB_LABELS.loading}</p>
-          ) : claims.length === 0 ? (
-            <p className="text-sm text-muted">{HUB_LABELS.noClaims}</p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-border">
-              {claims.map((claim) => (
-                <li
-                  key={claim.ref}
-                  className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+    <Section
+      id="hub-claims-heading"
+      title={HUB_LABELS.claimsTitle}
+      action={
+        <Button size="sm" variant="ghost" onPress={actions.refreshClaims}>
+          {HUB_LABELS.refresh}
+        </Button>
+      }
+    >
+      <p className="max-w-prose text-sm leading-6 text-muted">
+        申請した端末の画面に出ている確認コードと同じか確かめてから承認してください。
+      </p>
+      {claims === null ? (
+        <p className="text-sm text-muted">{HUB_LABELS.loading}</p>
+      ) : claims.length === 0 ? (
+        <p className="text-sm text-muted">{HUB_LABELS.noClaims}</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-separator">
+          {claims.map((claim) => (
+            <li
+              key={claim.ref}
+              className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="text-sm font-semibold break-words">
+                  {claim.device_name}
+                  <span className="ml-2 text-xs font-normal text-muted">
+                    {platformOf(claim.platform)}
+                  </span>
+                </p>
+                <p className="text-sm">
+                  確認コード{' '}
+                  <span className="font-mono text-base tracking-wider tabular-nums">
+                    {splitInFour(claim.claim_check)}
+                  </span>
+                </p>
+                <p className="text-xs text-muted tabular-nums">
+                  申請 {clockOf(claim.claimed_at, now)}・
+                  {clockOf(claim.expires_at, now, { seconds: false })} まで（
+                  {remainingOf(claim.expires_at, now)}）
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  isDisabled={busy}
+                  onPress={() =>
+                    onAsk({
+                      title: `「${claim.device_name}」を承認しますか`,
+                      body: (
+                        <p className="text-sm leading-6">
+                          確認コード{' '}
+                          <span className="font-mono">
+                            {splitInFour(claim.claim_check)}
+                          </span>{' '}
+                          が、申請した端末の画面と同じときだけ承認してください。承認すると、その端末はこの中枢に接続できるようになります。
+                        </p>
+                      ),
+                      confirmLabel: HUB_LABELS.approve,
+                      tone: 'accent',
+                      onConfirm: () => actions.decide(claim.ref, 'approve'),
+                    })
+                  }
                 >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="font-medium break-words">
-                      {claim.device_name}
-                      <span className="ml-2 text-sm text-muted">
-                        {platformOf(claim.platform)}
-                      </span>
-                    </p>
-                    <p className="text-sm">
-                      確認コード{' '}
-                      <span className="font-mono text-base tracking-wider">
-                        {formatClaimCheck(claim.claim_check)}
-                      </span>
-                    </p>
-                    <p className="text-sm text-muted">
-                      申請 {formatObservedAt(claim.claimed_at)}・期限{' '}
-                      {formatObservedAt(claim.expires_at)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Button
-                      variant="primary"
-                      isDisabled={busy}
-                      onPress={() =>
-                        onAsk({
-                          title: `「${claim.device_name}」を承認しますか`,
-                          body: (
-                            <p>
-                              確認コード{' '}
-                              <span className="font-mono">
-                                {formatClaimCheck(claim.claim_check)}
-                              </span>{' '}
-                              が申請した端末の画面と同じときだけ承認してください。承認すると、その端末はこの中枢に接続できるようになります。
-                            </p>
-                          ),
-                          confirmLabel: HUB_LABELS.approve,
-                          tone: 'accent',
-                          onConfirm: () => actions.decide(claim.ref, 'approve'),
-                        })
-                      }
-                    >
-                      {HUB_LABELS.approve}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      isDisabled={busy}
-                      onPress={() =>
-                        onAsk({
-                          title: `「${claim.device_name}」の申請を拒否しますか`,
-                          body: (
-                            <p>
-                              拒否した申請は使えなくなります。登録するには、端末側でペアリングを最初からやり直します。
-                            </p>
-                          ),
-                          confirmLabel: HUB_LABELS.reject,
-                          tone: 'danger',
-                          onConfirm: () => actions.decide(claim.ref, 'reject'),
-                        })
-                      }
-                    >
-                      {HUB_LABELS.reject}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card.Content>
-      </Card>
-    </section>
+                  {HUB_LABELS.approve}
+                </Button>
+                <Button
+                  variant="danger-soft"
+                  size="sm"
+                  isDisabled={busy}
+                  onPress={() =>
+                    onAsk({
+                      title: `「${claim.device_name}」の申請を拒否しますか`,
+                      body: (
+                        <p className="text-sm leading-6">
+                          拒否した申請は使えなくなります。登録するには、端末側でペアリングを最初からやり直します。
+                        </p>
+                      ),
+                      confirmLabel: HUB_LABELS.reject,
+                      tone: 'danger',
+                      onConfirm: () => actions.decide(claim.ref, 'reject'),
+                    })
+                  }
+                >
+                  {HUB_LABELS.reject}
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
 
-function deviceStatus(device: DesktopDeviceEntry) {
+function deviceLine(device: DesktopDeviceEntry): StatusLine {
   if (device.revoked_at !== null)
-    return (
-      <Chip color="danger" variant="soft">
-        × 失効済み
-      </Chip>
-    );
+    return { tone: 'danger', mark: 'warning', text: '失効済み' };
   if (device.this_device)
-    return (
-      <Chip color="accent" variant="soft">
-        この端末
-      </Chip>
-    );
-  return (
-    <Chip color="success" variant="soft">
-      ● 有効
-    </Chip>
-  );
+    return { tone: 'success', mark: 'dot', text: 'この端末' };
+  return { tone: 'success', mark: 'dot', text: '有効' };
 }
 
 export function DevicesPanel({
   devices,
   busy,
+  now,
   onAsk,
   actions,
 }: {
   readonly devices: readonly DesktopDeviceEntry[] | null;
   readonly busy: boolean;
+  readonly now: number;
   readonly onAsk: (request: ConfirmRequest) => void;
   readonly actions: HubActions;
 }) {
   return (
-    <section aria-label={HUB_LABELS.devicesTitle}>
-      <Card>
-        <Card.Header className="flex flex-row flex-wrap items-center justify-between gap-2">
-          <PanelTitle>{HUB_LABELS.devicesTitle}</PanelTitle>
-          <Button size="sm" variant="tertiary" onPress={actions.refreshDevices}>
-            {HUB_LABELS.refresh}
-          </Button>
-        </Card.Header>
-        <Card.Content>
-          {devices === null ? (
-            <p className="text-sm text-muted">{HUB_LABELS.loading}</p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-border">
-              {devices.map((device, index) => (
-                <li
-                  key={device.ref ?? `fixed-${index}`}
-                  className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="flex flex-wrap items-center gap-2 font-medium">
-                      <span className="break-words">{device.device_name}</span>
-                      {deviceStatus(device)}
-                    </p>
-                    <p className="text-sm text-muted">
-                      {platformOf(device.platform)}
-                      {device.hub_local ? '・中枢と同じマシン' : ''}・登録{' '}
-                      {formatObservedAt(device.registered_at)}
-                    </p>
-                    <p className="text-sm text-muted">
-                      {device.revoked_at !== null
-                        ? `失効 ${formatObservedAt(device.revoked_at)}`
-                        : device.last_seen_at !== null
-                          ? `最終接続 ${formatObservedAt(device.last_seen_at)}`
-                          : '最終接続 なし'}
-                    </p>
-                  </div>
-                  {device.ref !== null ? (
-                    <div className="shrink-0">
-                      <Button
-                        variant="danger-soft"
-                        isDisabled={busy}
-                        onPress={() => {
-                          const ref = device.ref;
-                          if (ref === null) return;
-                          onAsk({
-                            title: `「${device.device_name}」を失効しますか`,
-                            body: (
-                              <p>
-                                失効すると、その端末はすぐに切断され、元に戻せません。もう一度使うには、端末側でペアリングをやり直します。他の端末には影響しません。
-                              </p>
-                            ),
-                            confirmLabel: HUB_LABELS.revoke,
-                            tone: 'danger',
-                            onConfirm: () => actions.revoke(ref),
-                          });
-                        }}
-                      >
-                        {HUB_LABELS.revoke}
-                      </Button>
-                    </div>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card.Content>
-      </Card>
-    </section>
+    <Section
+      id="hub-devices-heading"
+      title={HUB_LABELS.devicesTitle}
+      action={
+        <Button size="sm" variant="ghost" onPress={actions.refreshDevices}>
+          {HUB_LABELS.refresh}
+        </Button>
+      }
+    >
+      {devices === null ? (
+        <p className="text-sm text-muted">{HUB_LABELS.loading}</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-separator">
+          {devices.map((device, index) => (
+            <li
+              key={device.ref ?? `fixed-${index}`}
+              className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                  <span className="font-semibold break-words">
+                    {device.device_name}
+                  </span>
+                  <StatusText line={deviceLine(device)} className="text-xs" />
+                </p>
+                <p className="text-xs text-muted tabular-nums">
+                  {platformOf(device.platform)}
+                  {device.hub_local ? '・中枢と同じマシン' : ''}・登録{' '}
+                  {clockOf(device.registered_at, now)}・
+                  {device.revoked_at !== null
+                    ? `失効 ${clockOf(device.revoked_at, now)}`
+                    : device.last_seen_at !== null
+                      ? `最終接続 ${clockOf(device.last_seen_at, now)}`
+                      : '最終接続 なし'}
+                </p>
+              </div>
+              {device.ref !== null ? (
+                <div className="shrink-0">
+                  <Button
+                    variant="danger-soft"
+                    size="sm"
+                    isDisabled={busy}
+                    onPress={() => {
+                      const ref = device.ref;
+                      if (ref === null) return;
+                      onAsk({
+                        title: `「${device.device_name}」を失効しますか`,
+                        body: (
+                          <p className="text-sm leading-6">
+                            失効すると、その端末はすぐに切断され、元に戻せません。もう一度使うには、端末側で登録し直します。他の端末には影響しません。
+                          </p>
+                        ),
+                        confirmLabel: HUB_LABELS.revoke,
+                        tone: 'danger',
+                        onConfirm: () => actions.revoke(ref),
+                      });
+                    }}
+                  >
+                    {HUB_LABELS.revoke}
+                  </Button>
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
 
-export function HubPanels({
+export type HubTab = 'device' | 'claims' | 'devices';
+
+export function HubTabs({
   state,
   actions,
+  now,
+  thisDevice,
+  initialTab = 'claims',
 }: {
   readonly state: HubViewState;
   readonly actions: HubActions;
+  readonly now: number;
+  // 「この端末」のタブの中身（中枢との接続の欄）。
+  readonly thisDevice: ReactNode;
+  readonly initialTab?: HubTab;
 }) {
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [tab, setTab] = useState<HubTab>(initialTab);
+  const claimCount = state.claims?.length ?? 0;
   return (
     <>
-      {state.message !== null ? (
-        <Alert status="warning" role="alert">
-          <Alert.Content>
-            <Alert.Title>⚠ {state.message}</Alert.Title>
-          </Alert.Content>
-        </Alert>
-      ) : null}
-      <PairingOpenPanel
-        session={state.session}
-        busy={state.busy}
-        actions={actions}
-      />
-      <ClaimsPanel
-        claims={state.claims}
-        busy={state.busy}
-        onAsk={setConfirm}
-        actions={actions}
-      />
-      <DevicesPanel
-        devices={state.devices}
-        busy={state.busy}
-        onAsk={setConfirm}
-        actions={actions}
-      />
+      <Tabs
+        selectedKey={tab}
+        onSelectionChange={(key) => setTab(key as HubTab)}
+      >
+        <Tabs.ListContainer>
+          <Tabs.List aria-label="中枢の画面">
+            <Tabs.Tab id="claims">
+              {HUB_LABELS.claimsTitle}
+              {claimCount > 0 ? `（${claimCount}）` : ''}
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="devices">
+              {HUB_LABELS.devicesTitle}
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="device">
+              {HUB_LABELS.thisDevice}
+              <Tabs.Indicator />
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs.ListContainer>
+        <Tabs.Panel id="claims" className="flex flex-col gap-6 pt-4">
+          <InlineMessage text={state.message} />
+          <PairingOpenPanel
+            session={state.session}
+            busy={state.busy}
+            now={now}
+            actions={actions}
+          />
+          <ClaimsPanel
+            claims={state.claims}
+            busy={state.busy}
+            now={now}
+            onAsk={setConfirm}
+            actions={actions}
+          />
+        </Tabs.Panel>
+        <Tabs.Panel id="devices" className="flex flex-col gap-6 pt-4">
+          <InlineMessage text={state.message} />
+          <DevicesPanel
+            devices={state.devices}
+            busy={state.busy}
+            now={now}
+            onAsk={setConfirm}
+            actions={actions}
+          />
+        </Tabs.Panel>
+        <Tabs.Panel id="device" className="flex flex-col gap-6 pt-4">
+          {thisDevice}
+        </Tabs.Panel>
+      </Tabs>
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </>
   );

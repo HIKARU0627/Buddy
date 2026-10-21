@@ -3786,7 +3786,8 @@
       "channel": "desktop.pairing_confirm",
       "request_id": "00000000-0000-4000-8000-000000000b07",
       "payload": {
-        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f"
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "fingerprint_tail": "3F3F"
       }
     }
   },
@@ -3798,7 +3799,8 @@
       "channel": "desktop.pairing_confirm",
       "request_id": "00000000-0000-4000-8000-000000000b08",
       "payload": {
-        "fingerprint": "3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F"
+        "fingerprint": "3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F",
+        "fingerprint_tail": "3f3f"
       }
     }
   },
@@ -3811,7 +3813,8 @@
       "request_id": "00000000-0000-4000-8000-000000000b09",
       "payload": {
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
-        "certificate_pem": "-----BEGIN CERTIFICATE-----"
+        "certificate_pem": "-----BEGIN CERTIFICATE-----",
+        "fingerprint_tail": "3f3f"
       }
     }
   },
@@ -3911,7 +3914,8 @@
       "pairing": null,
       "home_network": null,
       "operations": [],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": null
     }
   },
   {
@@ -3936,7 +3940,8 @@
       },
       "home_network": null,
       "operations": [],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": null
     }
   },
   {
@@ -3961,7 +3966,8 @@
       },
       "home_network": null,
       "operations": [],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": null
     }
   },
   {
@@ -3994,7 +4000,11 @@
           "result": null
         }
       ],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": {
+        "host": "100.64.0.10",
+        "port": 47443
+      }
     }
   },
   {
@@ -4016,7 +4026,11 @@
         "reported_at": "2030-10-05T00:00:00Z"
       },
       "operations": [],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": {
+        "host": "100.64.0.10",
+        "port": 47443
+      }
     }
   },
   {
@@ -4033,7 +4047,11 @@
       "pairing": null,
       "home_network": null,
       "operations": [],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": {
+        "host": "100.64.0.10",
+        "port": 47443
+      }
     }
   },
   {
@@ -4050,7 +4068,8 @@
       "pairing": null,
       "home_network": null,
       "operations": [],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": null
     }
   },
   {
@@ -4084,7 +4103,11 @@
         }
       ],
       "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": {
+        "host": "100.64.0.10",
+        "port": 47443
+      }
     }
   },
   {
@@ -4118,7 +4141,11 @@
         }
       ],
       "device_id": "00000000-0000-4000-8000-000000000b15",
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": {
+        "host": "100.64.0.10",
+        "port": 47443
+      }
     }
   },
   {
@@ -4152,7 +4179,11 @@
           "result": null
         }
       ],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": {
+        "host": "100.64.0.10",
+        "port": 47443
+      }
     }
   },
   {
@@ -4178,7 +4209,8 @@
       },
       "home_network": null,
       "operations": [],
-      "hub_screen": false
+      "hub_screen": false,
+      "hub_target": null
     }
   },
   {
@@ -4207,7 +4239,8 @@
         },
         "home_network": null,
         "operations": [],
-        "hub_screen": false
+        "hub_screen": false,
+        "hub_target": null
       }
     }
   },
@@ -4237,7 +4270,8 @@
         },
         "home_network": null,
         "operations": [],
-        "hub_screen": false
+        "hub_screen": false,
+        "hub_target": null
       }
     }
   },
@@ -4284,7 +4318,11 @@
             "result": null
           }
         ],
-        "hub_screen": false
+        "hub_screen": false,
+        "hub_target": {
+          "host": "100.64.0.10",
+          "port": 47443
+        }
       }
     }
   },
@@ -4560,6 +4598,42 @@
         "expires_at": "2030-10-05T00:05:00Z",
         "pairing_id": "00000000-0000-4000-8000-000000000c34"
       }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-confirm-tail-five",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_confirm",
+      "request_id": "00000000-0000-4000-8000-000000000c41",
+      "payload": {
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "fingerprint_tail": "3f3f3"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-confirm-without-tail",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_confirm",
+      "request_id": "00000000-0000-4000-8000-000000000c42",
+      "payload": {
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-fingerprint-tail-mismatch",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c43",
+      "channel": "desktop.pairing_confirm",
+      "outcome": "rejected",
+      "reason": "fingerprint_tail_mismatch"
     }
   },
   {

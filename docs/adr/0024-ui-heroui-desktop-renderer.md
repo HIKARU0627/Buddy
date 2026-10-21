@@ -2,20 +2,21 @@
 
 - 日付: 2026-10-21
 - 状態: UI-01（#71）の判断と実装。`apps/desktop` の UI レンダラーに HeroUI v3 と Tailwind CSS v4 を入れ、B01 の画面（状態欄・入出力の停止と再開・ウィンドウを閉じる・クライアントの終了・電源とロックの記録）を HeroUI の部品で作り直した。試験は renderer の純粋なモジュールとサーバー描画（react-dom/server）の node:test、ビルド後の CSP・読み込みの検査（CI の 3 OS）。macOS のローカルで Electron を起動し、CDP で画面・配色・キーボード操作・CSP の違反を確かめた（模擬。Windows の実機・実際の読み上げソフト・タッチ操作は未実施）。
+- 追記（2026-10-21、#74）: 独立した 2 人の見た目のレビュー（UI レビュー 1 回目）を受け、画面の骨格・色・文言・読み上げを作り直した。決めたことは下の「画面の骨格とデザインの約束」「コントラスト」。B01 の画面（#71）・登録の画面（#66）・中枢の画面（#74、ADR 0026）に同じ約束を当てる。
 - 根拠: 本人の指示（2026-10-21）「UI は HeroUI を使用する。すでにある UI は作り直す」。以後の画面もすべて HeroUI で作る。画面の内容・IPC は ADR 0014・0015 のまま変えない。CSP・sandbox・contextIsolation は ADR 0015 のまま弱めない。
 
 ## 決めたこと
 
-| 対象             | 決定                                                                                                                                                                                                                             |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 部品             | 画面の部品は HeroUI（`@heroui/react`）を使う。HeroUI にない見た目だけの配置（並べ方・余白）は Tailwind CSS のクラスで書く。独自のボタン・カード・警告の部品を作らない                                                            |
-| 入れる場所       | UI レンダラー（`src/renderer`）だけ。main・preload は HeroUI・Tailwind CSS・React Aria を読み込まない（main の Ajv などはそのまま）                                                                                              |
-| スタイル         | Tailwind CSS v4 の Vite プラグイン（`@tailwindcss/vite`）で、HeroUI のスタイルと画面のクラスをビルド時に一つの CSS ファイル（`dist/renderer/assets/*.css`）へ出す。実行時に CSS を作らない                                       |
-| ライト・ダーク   | OS の設定（`prefers-color-scheme`）に従う。HeroUI のテーマは html の `class="dark"` と `data-theme` で切り替わるため、`app/theme.ts` が `matchMedia` を読み、変わったら追従する。手動の切り替えは置かない                        |
-| 共通の Provider  | HeroUI v3 は Provider を要求しない。`app/AppProviders.tsx` に React Aria の `I18nProvider`（`ja-JP`）だけを置き、部品の内部の読み上げの文言・日付の書式を日本語にする                                                            |
-| 画面の内容と IPC | 文言（`labels.ts`）・表示する項目・操作・preload の `invoke`／`onNotification`・5 つのチャネル・`DesktopStatusBar` は変えない。再開は「この端末の停止」のときだけ出し、画面が表示している io_epoch を `expected_io_epoch` で送る |
-| CSP・sandbox     | 変えない（`default-src 'none'; script-src 'self'; style-src 'self'; …`、sandbox、contextIsolation、nodeIntegration 無効）。下の「CSP との関係」                                                                                  |
-| 開発用のサーバー | 使わない（ADR 0015 のまま）。画面を変えたら `pnpm --filter @buddy/desktop dev` で起動し直す                                                                                                                                      |
+| 対象             | 決定                                                                                                                                                                                                                                                                          |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 部品             | 画面の部品は HeroUI（`@heroui/react`）を使う。HeroUI にない見た目だけの配置（並べ方・余白）は Tailwind CSS のクラスで書く。独自のボタン・カード・警告の部品を作らない                                                                                                         |
+| 入れる場所       | UI レンダラー（`src/renderer`）だけ。main・preload は HeroUI・Tailwind CSS・React Aria を読み込まない（main の Ajv などはそのまま）                                                                                                                                           |
+| スタイル         | Tailwind CSS v4 の Vite プラグイン（`@tailwindcss/vite`）で、HeroUI のスタイルと画面のクラスをビルド時に一つの CSS ファイル（`dist/renderer/assets/*.css`）へ出す。実行時に CSS を作らない                                                                                    |
+| ライト・ダーク   | OS の設定（`prefers-color-scheme`）に従う。HeroUI のテーマは html の `class="dark"` と `data-theme` で切り替わるため、`app/theme.ts` が `matchMedia` を読み、変わったら追従する。手動の切り替えは置かない                                                                     |
+| 共通の Provider  | HeroUI v3 は Provider を要求しない。`app/AppProviders.tsx` に React Aria の `I18nProvider`（`ja-JP`）だけを置き、部品の内部の読み上げの文言・日付の書式を日本語にする                                                                                                         |
+| 画面の内容と IPC | 表示する項目・操作・preload の `invoke`／`onNotification`・`DesktopStatusBar` は ADR 0014・0015 のまま。再開は「この端末の停止」のときだけ出し、画面が表示している io_epoch を `expected_io_epoch` で送る。文言（`labels.ts`）は UI レビュー 1 回目で書き直した（下の約束 7） |
+| CSP・sandbox     | 変えない（`default-src 'none'; script-src 'self'; style-src 'self'; …`、sandbox、contextIsolation、nodeIntegration 無効）。下の「CSP との関係」                                                                                                                               |
+| 開発用のサーバー | 使わない（ADR 0015 のまま）。画面を変えたら `pnpm --filter @buddy/desktop dev` で起動し直す                                                                                                                                                                                   |
 
 ## 版の一覧
 
@@ -42,16 +43,21 @@
 
 ```text
 src/renderer/
-  index.html              CSP の meta と、React Aria の style の差し込みを省かせる空の template
+  index.html              CSP の meta と、React Aria・input-otp の style の差し込みを省かせる空の template
   main.tsx                入口（配色の追従を始め、AppProviders で包む）
-  App.tsx                 画面の切り替え（限定 API がなければその旨だけ。今は端末の画面だけ）
-  styles.css              tailwindcss → @heroui/styles の順で読み込む。独自の色は定義しない
-  labels.ts               画面の文言（変えていない）
-  desktop-api.ts          preload の限定 API の型と要求の組み立て（変えていない）
-  app/                    画面全体の共通: AppProviders（Provider）・theme（配色）・AppShell（枠）
-  components/             画面をまたいで使う小さな部品（PanelTitle: Card.Title を h2 で出す）
-  state/                  desktop-state（状態の反映と要求の組み立て。純粋な関数）・use-desktop-state（限定 API とつなぐフック）
-  screens/device/         端末の画面: DeviceScreen・StatusPanel・IoControls・ContentPanel・PowerLogPanel
+  App.tsx                 画面の切り替え（登録の画面・端末の画面。中枢の画面の端末なら本体を Tabs にする）
+  styles.css              tailwindcss → @heroui/styles の順で読み込む。テーマの変数の上書きはここの 1 か所だけ
+  labels.ts               画面の文言（拒否・失敗の文言は「何が起きたか」と「次に何をするか」）
+  tones.ts                状態の色と記号の対応表（全画面で共有）
+  format.ts               時刻・期限・指紋の書き方（純粋な関数）
+  desktop-api.ts          preload の限定 API の型と要求の組み立て
+  app/                    画面全体の共通: AppProviders（Provider）・theme（配色）・AppShell（骨格）
+  components/             画面をまたぐ部品: StatusBand（状態帯）・StatusText（記号＋文言）・Section（見出しと区切り線の欄）・
+                          FingerprintGrid（指紋の 4 × 4 の格子）・AppFooter（閉じる・終了）
+  state/                  純粋な関数（desktop-state・connection-state・hub-state・status-lines）と、限定 API とつなぐフック
+  screens/device/         端末の画面: DeviceScreen・StopBanner（停止中の帯）・ConnectionSection・PowerLogDetails
+  screens/pairing/        登録の画面: PairingScreen・PairingPanel（手順 1〜4）
+  screens/hub/            中枢の画面の本体: HubPanels（Tabs・申請・端末）・ConfirmDialog（ADR 0026）
 ```
 
 - 画面の部品は状態と操作を引数で受け取り、限定 API を直接呼ばない。限定 API とつなぐのは `state/` のフックだけ。
@@ -68,7 +74,9 @@ CSP は変えていません。HeroUI・React Aria・Tailwind CSS がインラ�
 - **アニメーション**: HeroUI v3 は framer-motion などの JavaScript のアニメーションのライブラリを使わず、CSS（`tw-animate-css`）で動かす。
 - **eval**: ビルド結果の JavaScript に `eval(`・`new Function(` はない（ビルド後の検査で確かめる）。
 - **data: URI**: Vite が小さな画像・フォントを data: URI に埋め込むと `img-src`・`font-src 'self'` に掛かるため、`build.assetsInlineLimit: 0` にした（今は該当する資源はない）。
-- **ビルド後の検査**（`src/main/renderer-build.test.ts`）: `dist/renderer/index.html` の CSP の meta、インラインのスクリプト・style 要素・style 属性・イベント属性がないこと、参照するファイルと出力したすべてのファイルが `buddy://app/` で返せる種類であること、上の template と touch-action の規則がビルドに入っていること、CSS の外部の読み込み・JavaScript の eval がないことを確かめる。
+- **input-otp が差し込む style 要素**（UI レビュー 1 回目で足したコードの入力）: HeroUI の `InputOTP` が使う input-otp は、`id="input-otp-style"` の要素がなければ `<style>`（選択・自動入力の色を透明にする規則など）を差し込む。React Aria と同じく、規則を `styles.css` に置き、`index.html` に空の `<template id="input-otp-style">` を置いて省かせた。JavaScript を切ったとき用の `<noscript>` の style も `noScriptCSSFallback={null}` で出さない。
+- **AlertDialog・Tabs・Disclosure**: 確認の AlertDialog（React Aria の Modal）、中枢の画面の Tabs、電源とロックの記録の Disclosure は、style 要素を差し込まず、要素の `style` プロパティ（CSSOM）だけを書く。Electron で開閉・切り替えを行い、`securitypolicyviolation` が 0 件であることを確かめた（下の「検証」）。
+- **ビルド後の検査**（`src/main/renderer-build.test.ts`）: `dist/renderer/index.html` の CSP の meta、インラインのスクリプト・style 要素・style 属性・イベント属性がないこと、参照するファイルと出力したすべてのファイルが `buddy://app/` で返せる種類であること、上の 2 つの template と、touch-action・input-otp の規則がビルドに入っていること、CSS の外部の読み込み・JavaScript の eval がないことを確かめる。
 
 ## 以後の画面の約束
 
@@ -79,6 +87,86 @@ CSP は変えていません。HeroUI・React Aria・Tailwind CSS がインラ�
 5. CSP・sandbox・contextIsolation を弱めない。新しい部品（Modal・Toast・Tooltip など）を使う画面では、Electron で `securitypolicyviolation`（コンソールの CSP 違反）が 0 件であることを確かめる。違反が出たら、まず弱めずに済む方法（ビルド時の CSS に移す・差し込みを省かせる）を探し、CSP の変更が要るなら実装せずに本人の判断に回す。
 6. 依存は正確な版で足し、公開からの経過期間の方針を満たす版を選ぶ（除外の設定を足さない）。install 時にビルドが要る依存は、`allowBuilds` に足す前に報告する。
 
+## 画面の骨格とデザインの約束（UI レビュー 1 回目、#74）
+
+独立した 2 人のレビュー（使いやすさ・情報設計、日本語の組版・色・アクセシビリティ）の指摘を、司令塔がまとめた決定どおりに直した。以後の画面もこの約束で作る。
+
+### 骨格
+
+すべての画面を `AppShell` の次の順に並べる。
+
+1. 上端の細い帯: 「Buddy」と画面の役割（「この端末」「この端末（未登録）」「中枢の画面」）。
+2. 状態帯（`StatusBand`、全画面で共通）: 1 行目にこの端末の入出力（`text-base font-semibold` の記号＋文言）と、右に停止のボタン（`danger-soft`・1 回で効く。確認を挟まない）。2 行目に中枢との接続（最終確認の時刻・次の接続の時刻）。下に区切り線を引き、中枢が正本の項目（表示先・音声・保存モード・予算保留・安全停止）を小さく並べる。
+3. 今やること（必要なときだけ）: 停止中の帯（`StopBanner`）・再登録が必要な理由の警告・登録の知らせ。
+4. 本体: 登録のフォーム、中枢との接続の欄、中枢の画面なら Tabs（承認待ちの申請・登録済みの端末・この端末）。
+5. 詳細: 電源とロックの記録（Disclosure に畳み、件数を出す。開くと直近の 5 件）。
+6. フッター: 「ウィンドウを閉じる」「Buddy を終了」（`ghost`・`sm`）と「閉じてもトレイに残ります。終了しても中枢は止まりません。」
+
+ロック中・ロック状態不明では、状態帯（内容を隠した旨と停止）とフッターだけを出す。
+
+### 状態帯の項目（ADR 0014 の「いつも見える状態」）
+
+ADR 0014 は状態欄（DesktopStatusBar）を設計 01「いつも見える状態」の表示とし、入出力・中枢との接続・最終確認に加えて、表示先・音声・保存モード・予算保留・安全停止を項目として定めている（中枢が正本で、受け取るまでは null）。常に見せる項目と判断し、Disclosure に畳まずに状態帯の下に小さく並べた。値のないものは「—」（muted）にし、その下に「— は中枢からまだ受け取っていない項目です。」を 1 行出す（すべて受け取ったら出さない）。「世代」（io_epoch）は画面に出さない（再開の要求には使う）。
+
+### 約束
+
+1. **書体**: `--font-sans` に日本語の書体（-apple-system・Segoe UI・Hiragino Sans・Yu Gothic Medium・Meiryo など）を明示する。16 進・コード・宛先は `font-mono`、時刻と桁数は `tabular-nums`。html・body に `word-break: auto-phrase; line-break: strict;`。説明は `leading-6`、行の長さは `max-w-prose` 程度。
+2. **文字の段階**（4 段）: 見出し `text-base font-semibold`（h2）／本文 `text-sm leading-6`／補足 `text-xs text-muted`／強調する状態 `text-base font-semibold`＋状態の色。指紋とコードは `font-mono` の `text-lg` 以上。
+3. **余白**（3 段）: `gap-2`（同じ行の並び・ボタンの並び）／`gap-4`（欄の中の要素の間）／`gap-6`（欄と欄の間）。部品の内側（ラベルと補足、記号と文言）だけ `gap-1`〜`gap-1.5` を使う。ページは `px-4 py-5`。
+4. **色と記号の対応表**（`tones.ts`、`labels.ts` と組で使う）: success＝受付中・接続中（●）／warning＝要対応（再登録・前面に出す・接続し直し待ち。⚠・○）／danger＝失敗・取り消せない操作（⚠）／中立（既定の文字色・muted）＝未登録・未受信・本人が意図した停止（■・—）／進行中＝Spinner。状態は必ず「記号＋文言」で示し、色だけに頼らない。⚠ は HeroUI の `WarningIcon`、補足の印は `InfoIcon`（単色の SVG）。色絵文字（🔒 など）と「？」は使わない。accent は「その画面で前に進む操作 1 つ」だけに使う。
+5. **コントラスト**: 文字 4.5:1・文字でないもの（境界・フォーカスの枠・記号）3:1 を `scripts/contrast.test.mjs` で測り、下の「コントラスト」に残す。テーマの変数の上書きは `styles.css` の 1 か所だけ。
+6. **部品の使い分け**: Card は状態帯と入力フォーム（登録）だけ。一覧・記録・接続の欄は見出しと区切り線の `Section`。Alert は「結果」と「要対応」に限り、本文は `text-foreground`（登録の知らせは停止の帯と同時に出さない）。ボタンの重さは 3 段階: primary（その画面の主操作 1 つ）・danger-soft（停止・拒否・失効）／secondary（確かめて進む・やめる・取り直す）／ghost（閉じる・終了・一覧の取り直し）。指紋の確認の「最後の 4 桁を確かめて次へ」と「一致しない（やめる）」は同じ重さ（secondary）にする。Chip は主状態に使わない。角丸は `--radius: 0.375rem`（ボタンの錠剤型をやめる）、影と左の色の縁は使わない。
+7. **文言**: 開発の段階名（B0x）・内部の理由のコード・「世代」の語を画面に出さない（理由は対応表で文言にする）。拒否・失敗は「何が起きたか」と「次に何をするか」を 2 文以内で書き、押したボタンのすぐ下に出す。状態が変わる・次の操作を始めると消す。敬体、ラベルは名詞止め、ボタンは動詞で終える。押せないボタンは置かず（無効にせず）、押したら欄の下（FieldError）に理由を出す。
+8. **読み上げ**: ライブ領域（`role="status"`）は状態帯の入出力の 1 行と、進行中の 1 行（受け取っている・申請している・承認を待っている）だけ。時刻が変わる値はライブ領域に入れない。拒否・失敗は `role="alert"`。section は `aria-labelledby` で見出しと結ぶ。`p` に `aria-label`・`aria-labelledby` を付けない。
+9. **時刻**: 今日の分は時刻だけ（`16:15:55`）、それ以外は月日を付ける。次の接続は「次は 16:16:10（4 秒後）」、期限は「16:20 まで（残り 4 分）」。
+
+## コントラスト
+
+`scripts/contrast.test.mjs` が HeroUI 3.2.6 の `variables.css` と `styles.css` の上書きを読み、oklch・`color-mix(in oklab)` を解いて WCAG 2.2 のコントラスト比を測る（`pnpm test` に含む）。色の計算（OKLab ⇔ sRGB・相対輝度）は試験の中で書き、白と黒の 21:1・#767676 と白の 4.54:1 などの既知の値で計算そのものも確かめる。
+
+上書きした値（HeroUI の既定では足りなかったもの）:
+
+| 変数             | ライト                      | ダーク                    | 理由                                                                    |
+| ---------------- | --------------------------- | ------------------------- | ----------------------------------------------------------------------- |
+| `--accent`       | `oklch(0.54 0.15 253.83)`   | `oklch(0.56 0.16 253.83)` | 白文字の primary ボタン（既定はライト 3.59:1）。フォーカスの枠にも効く  |
+| `--danger`       | `oklch(0.56 0.19 25.74)`    | `oklch(0.56 0.19 25.74)`  | danger の文字・danger-soft の文字（既定はライト 3.48:1 の白文字）       |
+| `--muted`        | `oklch(0.51 0.0138 285.94)` | （既定のまま）            | 地・入力欄・選ばれていないタブの上の補足（既定は地で 4.43:1）           |
+| `--field-border` | `oklch(0.64 0.006 286)`     | `oklch(0.56 0.006 286)`   | 入力欄の境界（既定は境界なし）                                          |
+| `--border`       | （既定のまま）              | `oklch(0.4 0.006 286)`    | ダークでカード・Alert の縁が見えるように（既定は面に対して 1.2:1 前後） |
+| `--separator`    | （既定のまま）              | `oklch(0.36 0.006 286)`   | ダークの区切り線                                                        |
+
+測った値（2026-10-21、`node --test scripts/contrast.test.mjs` の出力。前景が半透明のときは背景に重ねた色で測る）:
+
+| 組み合わせ                                             | 下限  | ライト                           | ダーク                           |
+| ------------------------------------------------------ | ----- | -------------------------------- | -------------------------------- |
+| 本文 / カード                                          | 4.5:1 | 17.72:1（`#18181b` / `#ffffff`） | 17.27:1（`#fcfcfc` / `#18181b`） |
+| 本文 / 地                                              | 4.5:1 | 16.25:1（`#18181b` / `#f5f5f5`） | 19.79:1（`#fcfcfc` / `#060607`） |
+| 補足（muted）/ カード                                  | 4.5:1 | 5.77:1（`#65656e` / `#ffffff`）  | 6.74:1（`#9f9fa9` / `#18181b`）  |
+| 補足（muted）/ 地                                      | 4.5:1 | 5.29:1（`#65656e` / `#f5f5f5`）  | 7.72:1（`#9f9fa9` / `#060607`）  |
+| primary ボタンの文字 / accent                          | 4.5:1 | 4.97:1（`#fcfcfc` / `#216fc3`）  | 4.57:1（`#fcfcfc` / `#1e74cf`）  |
+| secondary ボタンの文字 / default（地）                 | 4.5:1 | 6.50:1（`#24548c` / `#ebebec`）  | 5.13:1（`#639ade` / `#27272a`）  |
+| secondary ボタンの文字 / default（カード）             | 4.5:1 | 6.50:1（`#24548c` / `#ebebec`）  | 5.13:1（`#639ade` / `#27272a`）  |
+| tertiary ボタンの文字 / default                        | 4.5:1 | 14.86:1（`#18181b` / `#ebebec`） | 14.52:1（`#fcfcfc` / `#27272a`） |
+| danger-soft ボタンの文字 / danger-soft（カード）       | 4.5:1 | 6.80:1（`#862f2d` / `#f7e0e0`）  | 5.12:1（`#e0726a` / `#331c1f`）  |
+| danger-soft ボタンの文字 / danger-soft（地）           | 4.5:1 | 6.28:1（`#862f2d` / `#efd8d8`）  | 5.99:1（`#e0726a` / `#230c0e`）  |
+| success の文字・記号 / カード                          | 4.5:1 | 5.48:1（`#2b7745` / `#ffffff`）  | 10.11:1（`#74d88f` / `#18181b`） |
+| success の文字・記号 / 地                              | 4.5:1 | 5.03:1（`#2b7745` / `#f5f5f5`）  | 11.59:1（`#74d88f` / `#060607`） |
+| warning の文字 / カード                                | 4.5:1 | 5.71:1（`#855f2e` / `#ffffff`）  | 11.72:1（`#f9cb86` / `#18181b`） |
+| warning の文字 / 地                                    | 4.5:1 | 5.24:1（`#855f2e` / `#f5f5f5`）  | 13.43:1（`#f9cb86` / `#060607`） |
+| danger の文字 / カード                                 | 4.5:1 | 8.52:1（`#862f2d` / `#ffffff`）  | 5.73:1（`#e0726a` / `#18181b`）  |
+| danger の文字 / 地                                     | 4.5:1 | 7.81:1（`#862f2d` / `#f5f5f5`）  | 6.57:1（`#e0726a` / `#060607`）  |
+| 選ばれていないタブの文字（muted）/ タブの面（default） | 4.5:1 | 4.83:1（`#65656e` / `#ebebec`）  | 5.66:1（`#9f9fa9` / `#27272a`）  |
+| 確認のダイアログの本文 / overlay                       | 4.5:1 | 17.72:1（`#18181b` / `#ffffff`） | 17.27:1（`#fcfcfc` / `#18181b`） |
+| 確認のダイアログの accent のアイコン / accent-soft     | 3:1   | 6.33:1（`#24548c` / `#dee9f6`）  | 5.45:1（`#639ade` / `#192331`）  |
+| 確認のダイアログの danger のアイコン / danger-soft     | 3:1   | 6.80:1（`#862f2d` / `#f7e0e0`）  | 5.12:1（`#e0726a` / `#331c1f`）  |
+| 入力欄の文字 / 入力欄（secondary）                     | 4.5:1 | 14.86:1（`#18181b` / `#ebebec`） | 14.52:1（`#fcfcfc` / `#27272a`） |
+| 入力欄の placeholder / 入力欄（secondary）             | 4.5:1 | 4.83:1（`#65656e` / `#ebebec`）  | 5.66:1（`#9f9fa9` / `#27272a`）  |
+| 入力欄の境界 / カード                                  | 3:1   | 3.37:1（`#8c8c90` / `#ffffff`）  | 3.80:1（`#747478` / `#18181b`）  |
+| フォーカスの枠（focus）/ カード                        | 3:1   | 5.10:1（`#216fc3` / `#ffffff`）  | 3.78:1（`#1e74cf` / `#18181b`）  |
+| フォーカスの枠（focus）/ 地                            | 3:1   | 4.68:1（`#216fc3` / `#f5f5f5`）  | 4.33:1（`#1e74cf` / `#060607`）  |
+
+- 未測定: 画面の画素（表示環境の色管理で小さな差が出うる）、ハイコントラストの設定、文字の拡大（200%）。
+
 ## 読み取り（レビュー対象）
 
 原本・本人の指示に明記がなく、実装で決めた点です。
@@ -86,12 +174,16 @@ CSP は変えていません。HeroUI・React Aria・Tailwind CSS がインラ�
 - **peer の版**: react-aria・react-aria-components は最新（3.53.1・1.22.1）ではなく、HeroUI 3.2.6 の公開時点の版（3.52.1・1.21.1）にした。HeroUI が試した組み合わせに近づけるため。HeroUI を上げるときに合わせて上げる。
 - **skipLibCheck**: リポジトリの既定は `skipLibCheck: false` だが、HeroUI 3.2.6・react-aria-components 1.21.1 の型定義は `exactOptionalPropertyTypes` の下で型定義の中の衝突（TS2320）を出すため、renderer の二つの tsconfig だけ `true` にした。自分のコードの型検査（strict・exactOptionalPropertyTypes など）は変わらない。main・preload・他のワークスペースは `false` のまま。
 - **CSS の大きさ**: `@heroui/styles` を丸ごと読み込むため、使わない部品のスタイルも含めて CSS は約 430 KB（gzip 約 40 KB）。ローカルのファイルなので今は許容し、部品ごとの読み込みは画面が揃ってから判断する。
-- **差し込みを省かせる template**: React Aria の内部の実装（id で既存の要素を探す）に依る。React Aria が変われば違反が再び出るが、止められるだけで動作は変わらない（規則は styles.css にある）。ビルド後の検査と、上の約束 5 の確認で気づける。
+- **差し込みを省かせる template**: React Aria の内部の実装（id で既存の要素を探す）に依る。React Aria が変われば違反が再び出るが、止められるだけで動作は変わらない（規則は styles.css にある）。ビルド後の検査と、「以後の画面の約束」の 5 の確認で気づける。
 - **試験の範囲**: DOM の試験のライブラリ（jsdom・Testing Library など）は足していない（HeroUI が求めるものだけを入れる原則）。表示・読み上げのラベル・ボタンの要素はサーバー描画の HTML で、押したときの要求はボタンの `onPress` を呼んで確かめる。実際のクリック・キーボード操作は Electron の画面で確かめる。DOM の試験を足すかは後続で判断する。
-- **見出し**: Card.Title の既定は h3 だが、文書の構造を B01 と同じ h2 にするため `render` で h2 を出す。
-- **状態欄の縁の色**: B01 の画面の下線の色（受付中は緑・停止中は橙）の代わりに、カードの左の縁と Chip の色（success・warning）で示す。文言と記号（● ■ 🔒 ？）は B01 と同じ。
+- **見出し**: 欄の見出しは h2（`Section`・登録のフォーム）。Card.Title は使わない。
+- **状態の色**: UI レビュー 1 回目で、カードの左の縁と Chip をやめ、記号＋文言と soft-foreground の色（上の約束 4）にした。🔒・？ もやめた。
+- **Alert の数**: 停止中の帯と再登録が必要な警告は、どちらも「要対応」として同時に出ることがある（ロックを解いた直後に再登録が必要と分かったときなど）。止まっている入出力と、中枢との登録は別の対処のため、片方を隠さない。
+- **余白の段階**: 2 人の提案（gap-2・4・6 と、カード内 gap-3・欄の間 gap-4）が分かれたため、段階の少ない gap-2・4・6 にした。
 
 ## 検証
+
+- UI レビュー 1 回目の後（#74）: 模擬の Core（`--mock-key-protection`・127.0.0.1）と Electron（`--use-mock-keychain`・一時の userData）を CDP で操作し、全状態をライト・ダークで撮り直した（幅 640px・キーボードのフォーカスを含む。スクリーンショットはリポジトリに入れていない）。確認の AlertDialog・Tabs・Disclosure・InputOTP を開閉・入力した後も `securitypolicyviolation` は 0 件。
 
 - 模擬: `pnpm run check`（renderer の試験・ビルド後の検査を含む）。CI の 3 OS で同じものを実行する。
 - ローカルの起動（macOS、模擬の端末状態）: `--user-data-dir` を一時ディレクトリにして Electron を起動し、CDP で次を確かめた。スクリーンショットはリポジトリに入れていない。
@@ -104,6 +196,6 @@ CSP は変えていません。HeroUI・React Aria・Tailwind CSS がインラ�
 
 ## 残ること
 
-- ペアリング画面（#66）と B04 以降の画面を、この土台と約束で作る。
+- B04 以降の画面を、この土台と約束で作る。
 - DOM の試験のライブラリを足すか、部品ごとの CSS の読み込みにするかの判断。
 - Windows の実機での表示・キーボード操作・読み上げの確認（B01-05 の実機確認とまとめてよい）。

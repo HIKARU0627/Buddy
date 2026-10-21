@@ -2,7 +2,7 @@
 
 生活・学習・開発を支える、デバイスに依存しない個人 AI アシスタント。
 
-現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。B02 では SQLite の保存・鍵保護（キーチェーン）・暗号化・DB worker を作り、Core に組み込んで再起動の後の復元と内容 hash の照合を行いました（ADR 0016〜0019、完了判定の下書きは [docs/b02/README.md](docs/b02/README.md)）。B02 の試験は模擬のみで、macOS 実機の確認・電源断と、製品の統合・実 API・実請求の試験は未実施です。B03 では中枢の自己署名証明書（秘密鍵はキーチェーン）・HTTPS の受付・経路検査・接続範囲、ペアリングと失効、自宅の判定、スナップショットと WSS の配信、端末側の接続（`packages/client`）とデスクトップの中枢への接続（ピン留め・safeStorage）を作りました（ADR 0020〜0023・0025、完了判定の下書きは [docs/b03/README.md](docs/b03/README.md)）。B03 の試験は同じマシンの模擬のみで、Mac mini・Tailscale・別のマシンの実機の確認は未実施です（[docs/b03/device-check.md](docs/b03/device-check.md)）。デスクトップの画面は本人の指示で HeroUI に作り直し、以後の画面も HeroUI で作ります（[ADR 0024](docs/adr/0024-ui-heroui-desktop-renderer.md)）。
+現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。B02 では SQLite の保存・鍵保護（キーチェーン）・暗号化・DB worker を作り、Core に組み込んで再起動の後の復元と内容 hash の照合を行いました（ADR 0016〜0019、完了判定の下書きは [docs/b02/README.md](docs/b02/README.md)）。B02 の試験は模擬のみで、macOS 実機の確認・電源断と、製品の統合・実 API・実請求の試験は未実施です。B03 では中枢の自己署名証明書（秘密鍵はキーチェーン）・HTTPS の受付・経路検査・接続範囲、ペアリングと失効、自宅の判定、スナップショットと WSS の配信、端末側の接続（`packages/client`）とデスクトップの中枢への接続（ピン留め・safeStorage）、中枢の画面の端末での申請の承認と端末の失効を作りました（ADR 0020〜0023・0025・0026、完了判定の下書きは [docs/b03/README.md](docs/b03/README.md)）。B03 の試験は同じマシンの模擬のみで、Mac mini・Tailscale・別のマシンの実機の確認は未実施です（[docs/b03/device-check.md](docs/b03/device-check.md)）。デスクトップの画面は本人の指示で HeroUI に作り直し、以後の画面も HeroUI で作ります（[ADR 0024](docs/adr/0024-ui-heroui-desktop-renderer.md)）。
 
 ## セットアップ
 
@@ -51,6 +51,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [スナップショット・イベント配信（WSS）・再接続後の復元と操作の経路](docs/adr/0023-b03-snapshot-events-and-operation-routes.md)
 - [デスクトップの UI を HeroUI で作る](docs/adr/0024-ui-heroui-desktop-renderer.md)
 - [端末側の接続とデスクトップの中枢への接続・2 クライアントの試験](docs/adr/0025-b03-client-desktop-connection.md)
+- [中枢の画面の端末で申請の承認と端末の失効を行う](docs/adr/0026-b03-hub-screen-approval.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

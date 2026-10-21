@@ -152,6 +152,15 @@ test(
     );
     const code = String(session['pairing_code']);
     assert.match(code, /^[0-9]{8}$/u);
+    // 人が見比べる指紋は、端末の画面と同じ 4 桁区切り・4 行で stderr に出る（最後の 4 桁は端末に入力する）。
+    const fingerprint = String(session['certificate_fingerprint']);
+    const humanLines = started.stderr
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => /^([0-9a-f]{4} ){3}[0-9a-f]{4}$/u.test(line));
+    assert.equal(humanLines.length, 4);
+    assert.equal(humanLines.join('').replaceAll(' ', ''), fingerprint);
+    assert.match(started.stderr, /最後の 4 桁を端末に入力/u);
     const pairingId = String(session['pairing_id']);
 
     // 承認の前（申請がない）は拒否する。

@@ -18,6 +18,7 @@ import type {
   PairingClaim,
 } from '@buddy/contracts';
 import type { ClientApiOutcome } from '@buddy/client';
+import { fingerprintTailMatches } from '@buddy/domain';
 import { SecretText } from './credential-store.js';
 import type { StoredCredential } from './credential-store.js';
 import type {
@@ -95,7 +96,7 @@ export function claimCheckOf(claimSecretHashHex: string): string {
     .slice(0, 8);
 }
 
-export type PairingCommandResult = 'ok' | 'step_mismatch';
+export type PairingCommandResult = 'ok' | 'step_mismatch' | 'tail_mismatch';
 
 interface Attempt {
   readonly host: string;
@@ -177,15 +178,22 @@ export class PairingFlow {
     return 'ok';
   }
 
-  // 本人が「一致」を押した。表示した指紋が受け取った証明書の指紋と同じときだけ進む。
-  confirm(fingerprint: string): PairingCommandResult {
+  // 本人が中枢の画面の指紋と見比べ、その最後の 4 桁を入力した（本人の判断 2026-10-21、ADR 0025）。
+  // 表示した指紋が受け取った証明書の指紋と同じで、入力した 4 桁がその最後の 4 桁と同じときだけ進む。
+  // 合わなければ手順を進めず（申請を送らない）、もう一度入力できる。
+  confirm(fingerprint: string, typedTail: string): PairingCommandResult {
     const attempt = this.#attempt;
     if (
       attempt === null ||
       attempt.step !== 'fingerprint_check' ||
+      attempt.fingerprint === null ||
       attempt.fingerprint !== fingerprint
     )
       return 'step_mismatch';
+    if (!fingerprintTailMatches(attempt.fingerprint, typedTail)) {
+      this.#options.log?.('pairing_fingerprint_tail_mismatch');
+      return 'tail_mismatch';
+    }
     attempt.step = 'code_entry';
     this.#changed();
     return 'ok';

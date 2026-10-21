@@ -20,7 +20,12 @@ import {
   markSending,
 } from '../../state/hub-state.js';
 import type { ConfirmRequest } from './ConfirmDialog.js';
-import { ClaimsPanel, DevicesPanel, PairingOpenPanel } from './HubPanels.js';
+import {
+  ClaimsPanel,
+  DevicesPanel,
+  HubTabs,
+  PairingOpenPanel,
+} from './HubPanels.js';
 
 const CLAIM: DesktopClaimEntry = {
   ref: '00000000-0000-4000-8000-000000000d01',
@@ -54,6 +59,9 @@ const REVOKED: DesktopDeviceEntry = {
   device_name: '失効した端末',
   revoked_at: '2030-10-05T00:20:00Z',
 };
+
+// 地域時間の 2030-10-05 の昼を「今」にする（申請・登録の時刻は今日でない日付として出る）。
+const NOW = new Date(2030, 9, 5, 12, 0, 0).getTime();
 
 const html = (node: ReactNode) =>
   renderToStaticMarkup(<AppProviders>{node}</AppProviders>);
@@ -93,13 +101,20 @@ test('claims: empty, loading and listed claims show the claim check and ask befo
   const { sent, asked, actions, onAsk } = capture();
   assert.match(
     html(
-      <ClaimsPanel claims={[]} busy={false} onAsk={onAsk} actions={actions} />,
+      <ClaimsPanel
+        now={NOW}
+        claims={[]}
+        busy={false}
+        onAsk={onAsk}
+        actions={actions}
+      />,
     ),
     /承認待ちの申請はありません。/u,
   );
   assert.match(
     html(
       <ClaimsPanel
+        now={NOW}
         claims={null}
         busy={false}
         onAsk={onAsk}
@@ -110,18 +125,19 @@ test('claims: empty, loading and listed claims show the claim check and ask befo
   );
   const listed = html(
     <ClaimsPanel
+      now={NOW}
       claims={[CLAIM]}
       busy={false}
       onAsk={onAsk}
       actions={actions}
     />,
   );
-  assert.match(listed, /<section aria-label="承認待ちの申請">/u);
+  assert.match(listed, /<section aria-labelledby="hub-claims-heading"/u);
   assert.match(listed, /合成の申請/u);
   assert.match(listed, /0a1b 2c3d/u);
   assert.doesNotMatch(listed, /00000000-0000-4000-8000-000000000d01/u);
   const buttons = pressables(
-    ClaimsPanel({ claims: [CLAIM], busy: false, onAsk, actions }),
+    ClaimsPanel({ now: NOW, claims: [CLAIM], busy: false, onAsk, actions }),
   );
   buttons.get('承認する')?.();
   buttons.get('拒否する')?.();
@@ -144,7 +160,15 @@ test('claims: empty, loading and listed claims show the claim check and ask befo
   );
   // 送っている間はボタンを押せない。
   assert.match(
-    html(<ClaimsPanel claims={[CLAIM]} busy onAsk={onAsk} actions={actions} />),
+    html(
+      <ClaimsPanel
+        now={NOW}
+        claims={[CLAIM]}
+        busy
+        onAsk={onAsk}
+        actions={actions}
+      />,
+    ),
     /<button[^>]*disabled[^>]*>承認する/u,
   );
 });
@@ -153,21 +177,23 @@ test('devices: this device and revoked devices cannot be revoked; revoking asks 
   const { sent, asked, actions, onAsk } = capture();
   const listed = html(
     <DevicesPanel
+      now={NOW}
       devices={[SELF, OTHER, REVOKED]}
       busy={false}
       onAsk={onAsk}
       actions={actions}
     />,
   );
-  assert.match(listed, /<section aria-label="登録済みの端末">/u);
+  assert.match(listed, /<section aria-labelledby="hub-devices-heading"/u);
   assert.match(listed, /この端末/u);
-  assert.match(listed, /● 有効/u);
-  assert.match(listed, /× 失効済み/u);
+  assert.match(listed, /<span>有効<\/span>/u);
+  assert.match(listed, /<span>失効済み<\/span>/u);
   assert.match(listed, /中枢と同じマシン/u);
   // 失効のボタンは他の有効な端末の 1 つだけ。
   assert.equal(listed.match(/>失効する</gu)?.length, 1);
   const buttons = pressables(
     DevicesPanel({
+      now: NOW,
       devices: [SELF, OTHER, REVOKED],
       busy: false,
       onAsk,
@@ -188,12 +214,18 @@ test('devices: this device and revoked devices cannot be revoked; revoking asks 
 test('pairing open shows the one-time code and fingerprint only after it is started', () => {
   const { sent, actions } = capture();
   const before = html(
-    <PairingOpenPanel session={null} busy={false} actions={actions} />,
+    <PairingOpenPanel
+      now={NOW}
+      session={null}
+      busy={false}
+      actions={actions}
+    />,
   );
   assert.match(before, /ペアリングを始める（コードを出す）/u);
-  assert.doesNotMatch(before, /aria-label="ワンタイムコード"/u);
+  assert.doesNotMatch(before, /hub-open-code|ワンタイムコード<\/dt>/u);
   const after = html(
     <PairingOpenPanel
+      now={NOW}
       session={{
         pairing_code: '12345678',
         certificate_fingerprint: 'ab'.repeat(32),
@@ -203,12 +235,18 @@ test('pairing open shows the one-time code and fingerprint only after it is star
       actions={actions}
     />,
   );
-  assert.match(after, /aria-label="ワンタイムコード"[^>]*>1234 5678/u);
-  assert.match(after, /abab abab/u);
+  assert.match(
+    after,
+    /<dt[^>]*>ワンタイムコード<\/dt><dd id="hub-open-code"[^>]*>1234 5678/u,
+  );
+  assert.equal(after.match(/<li[^>]*>abab<\/li>/gu)?.length, 16);
+  assert.match(after, /aria-labelledby="hub-open-fingerprint"/u);
+  // p 要素に aria-label・aria-labelledby を付けない（名前を付けられない役割のため）。
+  assert.doesNotMatch(after, /<p[^>]*aria-label/u);
   assert.match(after, /コードを出し直す/u);
-  pressables(PairingOpenPanel({ session: null, busy: false, actions })).get(
-    'ペアリングを始める（コードを出す）',
-  )?.();
+  pressables(
+    PairingOpenPanel({ now: NOW, session: null, busy: false, actions }),
+  ).get('ペアリングを始める（コードを出す）')?.();
   assert.deepEqual(
     sent.map((request) => request.channel),
     ['desktop.pairing_open'],
@@ -253,4 +291,51 @@ test('hub state: lists replace, rejections only set a message, heavy operations 
     },
   );
   assert.equal(refreshed.message, '前の文言');
+});
+
+test('hub tabs: the claims tab shows its count and opens first; tabs have a label', () => {
+  const { actions } = capture();
+  const tabs = html(
+    <HubTabs
+      state={{ ...INITIAL_HUB_STATE, claims: [CLAIM], devices: [SELF] }}
+      actions={actions}
+      now={NOW}
+      thisDevice={<p>この端末の中身</p>}
+    />,
+  );
+  assert.match(
+    tabs,
+    /role="tablist"[^>]*aria-label="中枢の画面"|aria-label="中枢の画面"[^>]*role="tablist"/u,
+  );
+  assert.match(tabs, /承認待ちの申請（1）/u);
+  assert.match(tabs, /登録済みの端末/u);
+  assert.match(
+    tabs,
+    /aria-selected="true"[^>]*>承認待ちの申請（1）|承認待ちの申請（1）/u,
+  );
+  assert.match(tabs, /合成の申請/u);
+  // 申請がなければ件数を出さない。
+  assert.doesNotMatch(
+    html(
+      <HubTabs
+        state={{ ...INITIAL_HUB_STATE, claims: [] }}
+        actions={actions}
+        now={NOW}
+        thisDevice={null}
+      />,
+    ),
+    /承認待ちの申請（/u,
+  );
+  // 操作の結果の文言は一覧の上に alert として出す。
+  assert.match(
+    html(
+      <HubTabs
+        state={{ ...INITIAL_HUB_STATE, claims: [], message: '結果の文言' }}
+        actions={actions}
+        now={NOW}
+        thisDevice={null}
+      />,
+    ),
+    /role="alert"[^>]*>結果の文言/u,
+  );
 });

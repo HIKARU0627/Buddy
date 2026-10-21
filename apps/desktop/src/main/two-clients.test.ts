@@ -246,12 +246,27 @@ async function pair(
   assert.equal(early.outcome, 'rejected');
   assert.equal((early as { reason: string }).reason, 'pairing_step_mismatch');
   assert.equal(client.claims.length, 0);
+  const hubFingerprint = fingerprintOf(hub);
   const wrong = client.invoke('desktop.pairing_confirm', {
     fingerprint: '0'.repeat(64),
+    fingerprint_tail: '0000',
   });
   assert.equal((wrong as { reason?: string }).reason, 'pairing_step_mismatch');
+  // 中枢の画面の指紋と違う 4 桁では申請へ進まない（main が受け取った証明書の指紋と比べる）。
+  const otherTail = hubFingerprint.endsWith('0000') ? '1111' : '0000';
+  const wrongTail = client.invoke('desktop.pairing_confirm', {
+    fingerprint: hubFingerprint,
+    fingerprint_tail: otherTail,
+  });
+  assert.equal(
+    (wrongTail as { reason?: string }).reason,
+    'fingerprint_tail_mismatch',
+  );
+  assert.equal(client.claims.length, 0);
+  // 本人が中枢の画面（別の実装で求めた指紋）から読んだ最後の 4 桁を入力する。
   const confirm = client.invoke('desktop.pairing_confirm', {
-    fingerprint: fingerprintOf(hub),
+    fingerprint: hubFingerprint,
+    fingerprint_tail: hubFingerprint.slice(-4),
   });
   assert.equal(confirm.outcome, 'ok');
   const submit = client.invoke('desktop.pairing_submit', {
@@ -673,6 +688,13 @@ test(
         'platform',
         'ref',
       ]);
+      // 画面は一覧を定期的に取り直す。確認を開いている間に取り直しても、同じ申請の参照は変わらない。
+      const relisted = (
+        (await a.admin('desktop.claims_list', null)) as unknown as {
+          claims: Record<string, unknown>[];
+        }
+      ).claims;
+      assert.equal(relisted[0]?.['ref'], claims[0]?.['ref']);
       // 古い参照・画面操作でない・ロック中は送らない。
       const stale = await a.admin('desktop.claim_decide', {
         ref: randomUUID(),
@@ -733,6 +755,12 @@ test(
         ['合成の端末 B', false, false, false, null],
       ],
     );
+    const devicesAgain = (
+      (await a.admin('desktop.devices_list', null)) as unknown as {
+        devices: Record<string, unknown>[];
+      }
+    ).devices;
+    assert.equal(devicesAgain[1]?.['ref'], devices[1]?.['ref']);
     // 失効: B はすぐに 4401 で切断されて再登録が必要、A は接続したまま。
     const revoked = await a.admin('desktop.device_revoke', {
       ref: devices[1]?.['ref'],

@@ -1,24 +1,24 @@
-// UI レンダラーの画面の切り替え（ADR 0014・0015・0024・0025）。
+// UI レンダラーの画面の切り替え（ADR 0014・0015・0024・0025・0026）。
 // 限定 API（preload の invoke・onNotification）を読めなければ、その旨だけを出す。
-// 未登録・再登録が必要・ペアリングの途中ならペアリングの画面、それ以外は端末の画面（中枢との接続の欄つき）。
-// 中枢の画面の端末なら、端末の画面に「承認待ちの申請」「登録済みの端末」の欄（screens/hub）を足す（ADR 0026）。
-// ロック中・ロック状態不明では main が接続の内容を隠すので、端末の画面（内容を隠した状態欄）になる。
+// 未登録・再登録が必要・登録の途中なら登録の画面、それ以外は端末の画面。中枢の画面の端末（main が中枢に確かめた
+// hub_screen）なら、端末の画面の本体を「承認待ちの申請」「登録済みの端末」「この端末」の Tabs にする。
+// ロック中・ロック状態不明では main が接続の内容を隠すので、端末の画面（内容を隠した状態帯）になる。
 // 画面を足すときは screens/<名前>/ に置き、ここで切り替える。
 import { Alert } from '@heroui/react';
 import { AppShell } from './app/AppShell.js';
 import { desktopApi } from './desktop-api.js';
 import type { BuddyDesktopApi } from './desktop-api.js';
+import { ConnectionSection } from './screens/device/ConnectionSection.js';
 import { DeviceScreen } from './screens/device/DeviceScreen.js';
-import { ConnectionPanel } from './screens/pairing/ConnectionPanel.js';
-import { HubPanels } from './screens/hub/HubPanels.js';
+import { HubTabs } from './screens/hub/HubPanels.js';
 import { PairingScreen } from './screens/pairing/PairingScreen.js';
 import { needsPairing, shownConnection } from './state/connection-state.js';
-import { useDesktopState } from './state/use-desktop-state.js';
+import { useDesktopState, useNow } from './state/use-desktop-state.js';
 import { useHubState } from './state/use-hub-state.js';
 
 function ApiUnavailable() {
   return (
-    <AppShell>
+    <AppShell role="この端末">
       <Alert status="danger" role="alert">
         <Alert.Content>
           <Alert.Title>限定 API を読み込めませんでした。</Alert.Title>
@@ -29,9 +29,9 @@ function ApiUnavailable() {
 }
 
 function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
-  const { state, actions, pairing } = useDesktopState(api);
+  const { state, actions, pairing, dismissRegistered } = useDesktopState(api);
+  const now = useNow();
   const connection = shownConnection(state.connection);
-  // 中枢の画面の端末（main が中枢に確かめた hub_screen）だけ、申請の承認・端末の管理を出す（B03-06）。
   const hubScreen = connection?.hub_screen === true;
   const hub = useHubState(api, hubScreen);
   if (connection !== null && needsPairing(connection))
@@ -41,21 +41,25 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
         connection={connection}
         actions={actions}
         pairing={pairing}
+        now={now}
       />
     );
   return (
     <DeviceScreen
       state={state}
       actions={actions}
-      connectionPanel={
-        connection === null ? null : (
-          <>
-            <ConnectionPanel connection={connection} />
-            {hubScreen ? (
-              <HubPanels state={hub.state} actions={hub.actions} />
-            ) : null}
-          </>
-        )
+      now={now}
+      role={hubScreen ? '中枢の画面' : 'この端末'}
+      onDismissRegistered={dismissRegistered}
+      hub={
+        hubScreen && connection !== null ? (
+          <HubTabs
+            state={hub.state}
+            actions={hub.actions}
+            now={now}
+            thisDevice={<ConnectionSection connection={connection} />}
+          />
+        ) : undefined
       }
     />
   );

@@ -59,6 +59,8 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'entry_not_found',
   'core_rejected',
   'outcome_unknown',
+  // 入力した指紋の最後の 4 桁が、受け取った証明書の指紋と合わない（本人の判断 2026-10-21、ADR 0025）。
+  'fingerprint_tail_mismatch',
 ] as const;
 
 export type DesktopIpcRejectReason =
@@ -195,4 +197,16 @@ export function nextDesktopIoState(
     case 'shutdown':
       return stopLocally(state);
   }
+}
+
+// 本人が中枢の画面の指紋から入力した最後の 4 桁が、端末が受け取った証明書の指紋（DER 全体の SHA-256 の
+// 小文字の 16 進 64 桁）の最後の 4 桁と同じか（本人の判断 2026-10-21、ADR 0025）。大文字・小文字と空白は区別しない。
+// 指紋の形が正しくないとき・4 桁の 16 進でないときは一致としない。
+export function fingerprintTailMatches(
+  fingerprint: string,
+  typedTail: string,
+): boolean {
+  if (!/^[0-9a-f]{64}$/u.test(fingerprint)) return false;
+  const tail = typedTail.replace(/\s/gu, '').toLowerCase();
+  return /^[0-9a-f]{4}$/u.test(tail) && fingerprint.endsWith(tail);
 }

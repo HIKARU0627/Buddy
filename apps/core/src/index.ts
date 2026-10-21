@@ -91,6 +91,7 @@ export type {
 export {
   CERTIFICATE_NOT_AFTER,
   certificateFingerprint,
+  fingerprintLines,
   isCertificateFingerprint,
 } from './tls-certificate.js';
 export {

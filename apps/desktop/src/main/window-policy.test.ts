@@ -34,7 +34,7 @@ test('the tray menu has show, local stop and client quit, but no resume or hub s
     [
       ['show_window', 'Buddy を表示'],
       ['io_stop', 'この端末の入出力を停止'],
-      ['client_quit', 'クライアントを終了（中枢は止めません）'],
+      ['client_quit', 'Buddy を終了（中枢は止めません）'],
     ],
   );
 });

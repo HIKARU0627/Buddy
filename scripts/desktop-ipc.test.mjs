@@ -8,6 +8,7 @@ import {
   DESKTOP_POWER_EVENTS,
   admitDesktopRequest,
   desktopInputPermitted,
+  fingerprintTailMatches,
   nextDesktopIoState,
   statusBarVisibility,
 } from '../packages/domain/dist/index.js';
@@ -363,4 +364,14 @@ test('power event records name their source; a query only reports the lock state
       'query_without_lock_state',
     ]);
   }
+});
+
+test('the typed last four digits must match the received fingerprint (ADR 0025)', () => {
+  assert(spec.fingerprint_tail.cases.length >= 8);
+  for (const entry of spec.fingerprint_tail.cases)
+    assert.equal(
+      fingerprintTailMatches(entry.fingerprint, entry.typed),
+      entry.expected,
+      entry.id,
+    );
 });

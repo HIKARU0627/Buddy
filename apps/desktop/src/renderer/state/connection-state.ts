@@ -46,6 +46,12 @@ export function normalizeHost(text: string): string | null {
   return /^[A-Za-z0-9.:-]+$/u.test(host) ? host : null;
 }
 
+// 指紋の最後の 4 桁の入力（空白を除き、4 桁の 16 進だけ。照合は main が行う）。
+export function normalizeTail(text: string): string | null {
+  const tail = text.replace(/\s/gu, '').toLowerCase();
+  return /^[0-9a-f]{4}$/u.test(tail) ? tail : null;
+}
+
 export function normalizeCode(text: string): string | null {
   const code = text.replace(/[\s-]/gu, '');
   return /^[0-9]{8}$/u.test(code) ? code : null;
@@ -58,8 +64,9 @@ export function normalizeDeviceName(text: string): string | null {
 
 export interface PairingActions {
   readonly begin: (host: string, port: number) => void;
-  // 画面に表示している指紋をそのまま送る（main が受け取った証明書の指紋と比べる）。
-  readonly confirm: (fingerprint: string) => void;
+  // 画面に表示している指紋と、本人が中枢の画面から入力した最後の 4 桁を送る
+  // （main が受け取った証明書の指紋と比べ、4 桁が合うときだけ進む。ADR 0025）。
+  readonly confirm: (fingerprint: string, tail: string) => void;
   readonly submit: (code: string, deviceName: string) => void;
   readonly cancel: () => void;
 }
@@ -70,8 +77,13 @@ export function pairingActions(
   return {
     begin: (host, port) =>
       send(request('desktop.pairing_begin', { host, port })),
-    confirm: (fingerprint) =>
-      send(request('desktop.pairing_confirm', { fingerprint })),
+    confirm: (fingerprint, tail) =>
+      send(
+        request('desktop.pairing_confirm', {
+          fingerprint,
+          fingerprint_tail: tail,
+        }),
+      ),
     submit: (code, deviceName) =>
       send(
         request('desktop.pairing_submit', {

@@ -649,6 +649,7 @@ export type DesktopIpcRequest =
       request_id: Id;
       payload: {
         fingerprint: Hash;
+        fingerprint_tail: string;
       };
     }
   | {
@@ -758,7 +759,8 @@ export type DesktopIpcResponse =
         | 'not_connected'
         | 'entry_not_found'
         | 'core_rejected'
-        | 'outcome_unknown';
+        | 'outcome_unknown'
+        | 'fingerprint_tail_mismatch';
     };
 /**
  * 上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。
@@ -833,6 +835,13 @@ export type DesktopConnectionView =
       } | null;
       operations: OperationSnapshot[];
       hub_screen: boolean;
+      hub_target: {
+        /**
+         * 中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。
+         */
+        host: DesktopHubHost & DesktopHubHost1;
+        port: number;
+      } | null;
     };
 /**
  * 中枢との接続が切れた・使えない理由（packages/client の LinkReason、ADR 0025）。値・宛先を含めない。

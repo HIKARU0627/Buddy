@@ -7617,15 +7617,19 @@
               "properties": {
                 "fingerprint": {
                   "$ref": "#/$defs/Hash"
+                },
+                "fingerprint_tail": {
+                  "type": "string",
+                  "pattern": "^[0-9A-Fa-f]{4}$"
                 }
               },
-              "required": ["fingerprint"],
+              "required": ["fingerprint", "fingerprint_tail"],
               "additionalProperties": false
             }
           },
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
-          "description": "本人が中枢の画面・CLI の指紋と表示の指紋が一致すると確かめた（「一致」を押した）。表示した指紋をそのまま返し、main は受け取った証明書の指紋と同じときだけ次へ進む。ロック解除済みの画面操作だけ。"
+          "description": "本人が中枢の画面・CLI の指紋と表示の指紋を見比べ、中枢の画面に出ている指紋の最後の 4 桁を入力した（本人の判断 2026-10-21、ADR 0025）。表示した指紋と入力した 4 桁を送り、main は受け取った証明書の指紋と同じで、かつ 4 桁がその最後の 4 桁と一致する（大文字・小文字は区別しない）ときだけ次へ進む。合わなければ fingerprint_tail_mismatch で拒否し、申請を送らない。ロック解除済みの画面操作だけ。"
         },
         {
           "type": "object",
@@ -8163,6 +8167,28 @@
             },
             "hub_screen": {
               "type": "boolean"
+            },
+            "hub_target": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "host": {
+                      "$ref": "#/$defs/DesktopHubHost"
+                    },
+                    "port": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65535
+                    }
+                  },
+                  "required": ["host", "port"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -8175,10 +8201,11 @@
             "pairing",
             "home_network",
             "operations",
-            "hub_screen"
+            "hub_screen",
+            "hub_target"
           ],
           "additionalProperties": false,
-          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（ロック解除済みで接続しているときだけ）。 hub_screen は中枢の画面の端末（中枢と同じマシンの hub_local の端末）として中枢が認めたとき（承認待ちの申請の一覧が 200）だけ true で、申請の承認・端末の管理の画面を出す（B03-06）。"
+          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（ロック解除済みで接続しているときだけ）。 hub_screen は中枢の画面の端末（中枢と同じマシンの hub_local の端末）として中枢が認めたとき（承認待ちの申請の一覧が 200）だけ true で、申請の承認・端末の管理の画面を出す（B03-06）。 hub_target は登録した中枢の宛先（登録済み・再登録が必要のとき。再登録の宛先の初期値に使う。秘密ではない）。"
         }
       ],
       "description": "中枢との接続・登録・ペアリングの状態（設計 02 端末登録と接続、07 §2〜§4、ADR 0025）。main が作り、UI レンダラーは表示するだけ。端末トークン・申請用の秘密・端末 ID・中枢の証明書の本体・自宅の指紋の値を含めない。"
@@ -8490,7 +8517,8 @@
                 "not_connected",
                 "entry_not_found",
                 "core_rejected",
-                "outcome_unknown"
+                "outcome_unknown",
+                "fingerprint_tail_mismatch"
               ]
             }
           },

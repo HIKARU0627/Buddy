@@ -13,6 +13,8 @@
       CSP の style-src 'self' はそれを止めるため、同じ規則を styles.css に置き、この空の要素で差し込みを省かせる（ADR 0024）。
     -->
     <template id="react-aria-pressable-style"></template>
+    <!-- InputOTP（input-otp）も、この id の要素がなければ <style> を差し込む。規則は styles.css にある（ADR 0024）。 -->
+    <template id="input-otp-style"></template>
   </head>
   <body>
     <div id="root"></div>

@@ -8,8 +8,14 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "skipLibCheck": true
   },
   "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/renderer/**/*.test.ts",
+    "src/renderer/**/*.test.tsx"
+  ]
 }

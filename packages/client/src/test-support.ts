@@ -193,6 +193,8 @@ export class FakeTransport implements ClientTransport {
   #fallback: Responder = () => ({ kind: 'unreachable', reason: 'no_response' });
   // 次の購読の結果（省略は open）。
   nextStream: (() => ClientStreamOpen | null) | null = null;
+  // 次の購読の結果を、この Promise が解決するまで返さない（購読の途中の出来事を試験する）。
+  nextStreamGate: Promise<void> | null = null;
 
   // 次の要求から順に使う応答。使い切ったら fallback。
   respond(...responders: Responder[]): void {
@@ -209,11 +211,14 @@ export class FakeTransport implements ClientTransport {
     return Promise.resolve(responder(request));
   }
 
-  openStream(
+  async openStream(
     cursor: string,
     lockState: ClientLockState,
     listener: (event: ClientStreamEvent) => void,
   ): Promise<ClientStreamOpen> {
+    const gate = this.nextStreamGate;
+    this.nextStreamGate = null;
+    if (gate !== null) await gate;
     const decided = this.nextStream?.() ?? null;
     this.nextStream = null;
     if (decided !== null && decided.kind !== 'open')

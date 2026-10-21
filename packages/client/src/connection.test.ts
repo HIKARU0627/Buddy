@@ -512,6 +512,165 @@ test('locking hides operations at once and takes a management-only snapshot; unl
   connection.stop();
 });
 
+// レビューの指摘 M1: 購読の途中（subscribing）にロック・解除が変わっても、live になった後の表示の範囲が
+// 今のロック状態に合うこと。
+test('locking while subscribing and unlocking after live shows the full view again', async () => {
+  const { transport, connection } = setup();
+  let open = () => undefined as void;
+  transport.nextStreamGate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  transport.respond(
+    () => ok(bootstrapBody()),
+    () =>
+      ok(
+        snapshotBody({
+          operations: [operation(IDS.op1, '1', 'awaiting_approval')],
+          cursor: 'cursor-5',
+        }),
+      ),
+  );
+  connection.start();
+  await settle();
+  const now = (): typeof connection.state => connection.state;
+  assert.equal(now().phase, 'subscribing');
+  connection.setLockState('locked');
+  assert.equal(now().view, 'management_only');
+  assert.deepEqual(now().operations, []);
+  open();
+  await settle();
+  assert.equal(now().phase, 'live');
+  // ロック中は操作を出さない（表示はすでに management_only）。
+  assert.equal(now().view, 'management_only');
+  assert.deepEqual(now().operations, []);
+  transport.respond(() =>
+    ok(snapshotBody({ operations: [operation(IDS.op1, '2', 'approved')] })),
+  );
+  connection.setLockState('unlocked');
+  await settle();
+  // 解除でスナップショットを取り直す（購読の後に 1 回だけ）。
+  assert.deepEqual(transport.paths(), [
+    'GET /v1/bootstrap',
+    'GET /v1/snapshot',
+    'GET /v1/snapshot',
+  ]);
+  assert.equal(transport.requests.at(-1)?.lockState, 'unlocked');
+  assert.equal(now().view, 'full');
+  assert.deepEqual(
+    now().operations.map((op) => [op.state_revision, op.state]),
+    [['2', 'approved']],
+  );
+  assert.equal(transport.streams.length, 1);
+  connection.stop();
+});
+
+test('locking and unlocking both while subscribing take a full snapshot once live', async () => {
+  const { transport, connection } = setup();
+  let open = () => undefined as void;
+  transport.nextStreamGate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  transport.respond(
+    () => ok(bootstrapBody()),
+    () =>
+      ok(
+        snapshotBody({
+          operations: [operation(IDS.op1, '1', 'awaiting_approval')],
+          cursor: 'cursor-5',
+        }),
+      ),
+  );
+  connection.start();
+  await settle();
+  const now = (): typeof connection.state => connection.state;
+  assert.equal(now().phase, 'subscribing');
+  connection.setLockState('locked');
+  connection.setLockState('unlocked');
+  assert.equal(now().view, 'management_only');
+  transport.respond(() =>
+    ok(snapshotBody({ operations: [operation(IDS.op1, '3', 'approved')] })),
+  );
+  open();
+  await settle();
+  assert.equal(now().phase, 'live');
+  assert.deepEqual(transport.paths(), [
+    'GET /v1/bootstrap',
+    'GET /v1/snapshot',
+    'GET /v1/snapshot',
+  ]);
+  assert.equal(now().view, 'full');
+  assert.deepEqual(
+    now().operations.map((op) => [op.state_revision, op.state]),
+    [['3', 'approved']],
+  );
+  connection.stop();
+});
+
+test('a snapshot taken while locked is replaced by a full one when unlocked during subscribing', async () => {
+  const { transport, connection } = setup({ extra: { lockState: 'locked' } });
+  let open = () => undefined as void;
+  transport.nextStreamGate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  transport.respond(
+    () => ok(bootstrapBody()),
+    () => ok(snapshotBody({ lock: 'locked', cursor: 'cursor-5' })),
+  );
+  connection.start();
+  await settle();
+  const now = (): typeof connection.state => connection.state;
+  assert.equal(now().phase, 'subscribing');
+  assert.equal(now().view, 'management_only');
+  connection.setLockState('unlocked');
+  transport.respond(() =>
+    ok(snapshotBody({ operations: [operation(IDS.op1, '1', 'approved')] })),
+  );
+  open();
+  await settle();
+  assert.equal(now().phase, 'live');
+  assert.equal(now().view, 'full');
+  assert.deepEqual(
+    now().operations.map((op) => op.operation_id),
+    [IDS.op1],
+  );
+  connection.stop();
+});
+
+// レビューの指摘 L7: 再スナップショットの数は、購読が動いていると確かめられたら数え直す。
+// 続けて求められたとき（購読を開いた直後にまた求められる）は、2 回目から間隔を空ける。
+test('the resnapshot count resets once the stream is confirmed alive; back-to-back requests still wait', async () => {
+  const { transport, clock, connection } = setup();
+  await connectLive(transport, connection);
+  const resnapshot = { type: 'resnapshot_required', reason: 'history_expired' };
+  transport.respond(
+    () => ok(bootstrapBody({ scope: IDS.scope2 })),
+    () => ok(snapshotBody({ cursor: 'cursor-9' })),
+  );
+  transport.streams[0]?.send(resnapshot);
+  await settle();
+  assert.equal(connection.state.phase, 'live');
+  assert.equal(transport.streams.length, 2);
+  // 購読が動いている（中枢の ping を受け取った）後の再スナップショットは、また 1 回目としてすぐに行う。
+  await clock.advance(15_000);
+  transport.streams[1]?.ping();
+  transport.respond(
+    () => ok(bootstrapBody({ scope: IDS.scope3 })),
+    () => ok(snapshotBody({ cursor: 'cursor-10' })),
+  );
+  transport.streams[1]?.send(resnapshot);
+  await settle();
+  assert.equal(connection.state.phase, 'live');
+  assert.equal(transport.streams.length, 3);
+  assert.deepEqual(clock.pendingTimers, [45_000]);
+  // 開いた直後にまた求められたら（ping も イベントもまだない）、間隔を空ける（すぐに繰り返さない）。
+  transport.streams[2]?.send(resnapshot);
+  await settle();
+  assert.equal(connection.state.phase, 'waiting_retry');
+  assert.equal(connection.state.reason, 'resnapshot');
+  assert.deepEqual(clock.pendingTimers, [1_000]);
+  connection.stop();
+});
+
 test('a silent stream is treated as dead after the alive timeout; pings keep it alive', async () => {
   const { transport, clock, connection } = setup();
   await connectLive(transport, connection);

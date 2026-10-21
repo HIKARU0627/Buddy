@@ -3,6 +3,7 @@
 // - 切り替えの前（admit）: 経路の検査（端末トークン・自宅判定）は api-server.ts が済ませている。ここでは
 //   開始位置のクエリー `cursor` が中枢の発行した形かを確かめ、違えば 422 invalid_input（切り替えない）。
 //   配信の元（EventFeed）を止めた後（中枢の停止の途中）は 503 dependency_unavailable（B03-07 M3）。
+//   同じ端末の開いている購読が上限（DEFAULT_MAX_STREAMS_PER_DEVICE）に達していれば 429 rate_limited（B03-07 L3）。
 // - 切り替えの後（open）: 接続を端末の今の接続範囲（今回の起動で発行し、失効・期限切れでないもの）に結び付ける。
 //   なければ resnapshot_required（scope_expired）を送って閉じる。cursor の DB 世代違い・期限切れも同じく閉じる。
 // - 配信: EventFeed の購読で、cursor の後の COMMIT 済みのイベントを `{type:"event"}` で順に送る。
@@ -19,6 +20,7 @@
 //   1003 端末からのメッセージ（unsupported_data）
 //   1011 DB の照会の失敗（dependency_unavailable）
 //   1013 送り先の詰まり（slow_consumer）
+//   4429 同じ端末の購読の数の上限（too_many_streams。同時の切り替えで後から開いたもの。B03-07 L3）
 //   pong のない接続は閉じる手順を踏まずに切る（端末からは 1006）。
 
 import type { DbWorkerClient } from '@buddy/storage';
@@ -47,9 +49,12 @@ export const STREAM_CLOSE_CODES = {
   unsupported_data: 1003,
   dependency_unavailable: 1011,
   slow_consumer: 1013,
+  too_many_streams: 4429,
 } as const;
 
 export const DEFAULT_PING_INTERVAL_MS = 15_000;
+// 端末ごとに同時に開ける購読の数（B03-07 L3）。設計に数値がないため仮の値（理由は ADR 0023）。
+export const DEFAULT_MAX_STREAMS_PER_DEVICE = 4;
 // 送り先に溜めてよい量。超えたら閉じ、端末に cursor から再開させる。
 export const DEFAULT_MAX_BUFFERED_BYTES = 1_048_576;
 // 閉じる手順（close フレームのやり取り）を待つ上限。過ぎたら切る。
@@ -64,6 +69,7 @@ export interface EventStreamOptions {
   readonly now?: () => number;
   readonly pingIntervalMs?: number;
   readonly maxBufferedBytes?: number;
+  readonly maxStreamsPerDevice?: number;
 }
 
 export interface EventStreamManager extends ApiEventStream {
@@ -82,6 +88,11 @@ export function createEventStream(
   const pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
   const maxBuffered = options.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_BYTES;
   const sessions = new Set<(reason: CloseReason) => void>();
+  const maxPerDevice =
+    options.maxStreamsPerDevice ?? DEFAULT_MAX_STREAMS_PER_DEVICE;
+  // 端末ごとの開いている購読の数。切り替えた直後（open）に同期で数え、閉じたら（cleanup）減らす。
+  const perDevice = new Map<string, number>();
+  const streamsOf = (deviceId: string) => perDevice.get(deviceId) ?? 0;
 
   const admit = (
     request: ApiHandlerRequest,
@@ -91,6 +102,9 @@ export function createEventStream(
     // 配信の元を止めた後（中枢の停止の途中）は切り替えない（B03-07 M3）。
     if (options.feed.closed)
       return Promise.resolve(apiErrorResponse(503, 'dependency_unavailable'));
+    // 同じ端末の購読が上限に達していれば切り替えない（B03-07 L3）。
+    if (streamsOf(request.device.device_id) >= maxPerDevice)
+      return Promise.resolve(apiErrorResponse(429, 'rate_limited'));
     const cursor = decodeEventCursor(request.query['cursor'] ?? '');
     return Promise.resolve(
       cursor === null ? apiErrorResponse(422, 'invalid_input') : null,
@@ -107,6 +121,13 @@ export function createEventStream(
       );
       return;
     }
+    if (streamsOf(device.device_id) >= maxPerDevice) {
+      // 受け付けの判定の後に、同じ端末の購読が先に開いた（同時の切り替え）。理由つきで閉じる（B03-07 L3）。
+      client.close(STREAM_CLOSE_CODES.too_many_streams, 'too_many_streams');
+      return;
+    }
+    perDevice.set(device.device_id, streamsOf(device.device_id) + 1);
+    let counted = true;
     let closed = false;
     let alive = true;
     let scopeId: string | null = null;
@@ -123,6 +144,12 @@ export function createEventStream(
       unregister?.();
       unregister = null;
       sessions.delete(finish);
+      if (counted) {
+        counted = false;
+        const left = streamsOf(device.device_id) - 1;
+        if (left > 0) perDevice.set(device.device_id, left);
+        else perDevice.delete(device.device_id);
+      }
     };
 
     // 理由つきで閉じる。再スナップショットの理由なら resnapshot_required を送ってから閉じる。

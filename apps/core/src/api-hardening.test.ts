@@ -3,12 +3,14 @@
 // 期待値（HTTP の状態・コード・閉じるコード・件数）は手書き。端末トークンは試験の中で作る合成の値で、出力に出さない。
 
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import type { TLSSocket } from 'node:tls';
 import { createMockTlsKeyStore } from '@buddy/platform';
 import type { DbWorkerClient } from '@buddy/storage';
 import { WebSocket } from 'ws';
 import type { ClientOptions } from 'ws';
+import { parse } from 'yaml';
 import type { RequestEnvironment } from './api-environment.js';
 import { createApiServer } from './api-server.js';
 import type {
@@ -36,7 +38,7 @@ import type {
 import { DeviceConnections } from './device-connections.js';
 import { encodeEventCursor } from './event-cursor.js';
 import { EventFeed } from './event-feed.js';
-import { createEventStream } from './event-stream.js';
+import { STREAM_CLOSE_CODES, createEventStream } from './event-stream.js';
 import type { EventStreamManager } from './event-stream.js';
 import { loadOrCreateTlsIdentity } from './tls-identity.js';
 
@@ -209,11 +211,18 @@ function keepAliveClient(socket: TLSSocket) {
   };
 }
 
+type Opened =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly status: number;
+      readonly code: string | null;
+    };
+
 interface StreamClient {
   readonly socket: WebSocket;
-  readonly opened: Promise<
-    { readonly ok: true } | { readonly ok: false; readonly status: number }
-  >;
+  // 切り替えの結果（open か、HTTP の拒否の状態と ApiError のコード）。
+  readonly opened: Promise<Opened>;
   readonly closed: Promise<{ readonly code: number; readonly reason: string }>;
 }
 
@@ -240,15 +249,26 @@ function openStream(
   onCleanup(t, () => socket.terminate());
   socket.on('error', () => undefined);
   const opened = withTimeout(
-    new Promise<
-      { readonly ok: true } | { readonly ok: false; readonly status: number }
-    >((resolve) => {
+    new Promise<Opened>((resolve) => {
       socket.once('open', () => resolve({ ok: true }));
       socket.once('unexpected-response', (request, response) => {
-        resolve({ ok: false, status: response.statusCode ?? 0 });
-        request.destroy();
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => {
+          let code: string | null;
+          try {
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+              code?: unknown;
+            };
+            code = typeof body.code === 'string' ? body.code : null;
+          } catch {
+            code = null;
+          }
+          resolve({ ok: false, status: response.statusCode ?? 0, code });
+          request.destroy();
+        });
       });
-      socket.once('close', () => resolve({ ok: false, status: 0 }));
+      socket.once('close', () => resolve({ ok: false, status: 0, code: null }));
     }),
     10_000,
     'stream opened',
@@ -390,7 +410,11 @@ test(
     assert.equal((await bootstrap(stopped, device)).status, 200);
     stopped.feed.close();
     const refused = openStream(t, stopped, device);
-    assert.deepEqual(await refused.opened, { ok: false, status: 503 });
+    assert.deepEqual(await refused.opened, {
+      ok: false,
+      status: 503,
+      code: 'dependency_unavailable',
+    });
 
     // 2) 受け付けの判定の後・購読の前に止まった場合は、購読の失敗として 1011 で閉じる。
     const racing = await startApi(t, {
@@ -416,5 +440,106 @@ test(
     // 未処理の拒否が通知される猶予を置いてから確かめる。
     await sleep(100);
     assert.equal(rejections.length, 0);
+  },
+);
+
+// --- L3: 端末ごとの同時の購読の数 ---
+
+test(
+  'L3: one device cannot open more than four streams at once and the slots come back when streams close',
+  { timeout: 30_000 },
+  async (t) => {
+    // 同時の切り替えを揃えるための関門（受け付けの判定を通った 2 件を、そろってから先へ進める）。
+    const barrier = { active: false, waiting: [] as (() => void)[] };
+    const started = await startApi(t, {
+      wrapStream: (streams) => ({
+        admit: async (request) => {
+          const result = await streams.admit(request);
+          if (barrier.active && result === null)
+            await new Promise<void>((resolve) => {
+              barrier.waiting.push(resolve);
+              if (barrier.waiting.length === 2)
+                for (const release of barrier.waiting.splice(0)) release();
+            });
+          return result;
+        },
+        open: (client, request) => streams.open(client, request),
+      }),
+    });
+    const device = await insertDevice(started.store);
+    const other = await insertDevice(started.store);
+    assert.equal((await bootstrap(started, device)).status, 200);
+    assert.equal((await bootstrap(started, other)).status, 200);
+
+    // 上限（手書きの値 4）までは開ける。
+    const open: StreamClient[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const stream = openStream(t, started, device);
+      assert.deepEqual(await stream.opened, { ok: true }, `stream ${i + 1}`);
+      open.push(stream);
+    }
+    await registered(started, device, 4);
+    // 5 本目は切り替えずに 429 rate_limited。
+    const fifth = openStream(t, started, device);
+    assert.deepEqual(await fifth.opened, {
+      ok: false,
+      status: 429,
+      code: 'rate_limited',
+    });
+    // 他の端末は影響を受けない。
+    const others = openStream(t, started, other);
+    assert.deepEqual(await others.opened, { ok: true });
+    await registered(started, other, 1);
+
+    // 1 本を閉じれば、また開ける。
+    const first = open.shift() as StreamClient;
+    first.socket.close();
+    await first.closed;
+    await registered(started, device, 3);
+
+    // 残りの枠が 1 つのときに 2 本を同時に切り替えると、受け付けの判定は両方通るが、切り替えた後に
+    // 後の 1 本を理由つき（4429 too_many_streams）で閉じる。
+    barrier.active = true;
+    const racing = [
+      openStream(t, started, device),
+      openStream(t, started, device),
+    ];
+    for (const stream of racing)
+      assert.deepEqual(await stream.opened, { ok: true });
+    const refused = await Promise.race(
+      racing.map((stream, index) =>
+        stream.closed.then((closed) => ({ index, closed })),
+      ),
+    );
+    barrier.active = false;
+    assert.deepEqual(refused.closed, {
+      code: 4429,
+      reason: 'too_many_streams',
+    });
+    await registered(started, device, 4);
+    // 先に開いた 1 本は開いたまま。
+    await sleep(300);
+    const survivor = racing[1 - refused.index] as StreamClient;
+    assert.equal(survivor.socket.readyState, WebSocket.OPEN);
+    assert.equal(started.deviceConnections.count(device.device.device_id), 4);
+    assert.equal(started.streams.openCount, 5);
+
+    // 閉じるコードは契約（OpenAPI の x-buddy-websocket-close-codes）と同じ。
+    const openapi = parse(
+      await readFile(
+        new URL('../../../packages/contracts/openapi.yaml', import.meta.url),
+        'utf8',
+      ),
+    ) as {
+      paths: Record<
+        string,
+        { get: { 'x-buddy-websocket-close-codes': Record<string, string> } }
+      >;
+    };
+    const codes =
+      openapi.paths['/v1/events/stream']?.get['x-buddy-websocket-close-codes'];
+    assert(codes !== undefined);
+    assert.match(String(codes['4429']), /too_many_streams/u);
+    assert.equal(STREAM_CLOSE_CODES.too_many_streams, 4429);
   },
 );

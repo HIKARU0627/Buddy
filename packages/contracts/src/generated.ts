@@ -765,6 +765,10 @@ export type DesktopConnectionView =
         fingerprint: Hash | null;
         claim_expires_at: UtcTime | null;
         failure: DesktopPairingFailure | null;
+        /**
+         * 今「やめる」をすぐに受け付けるか。受取りの要求が進んでいる間は false で、画面は「やめる」を押せなくする（main は受取りの結果を捨てず、トークンが届けば保存する。ADR 0025）。
+         */
+        cancelable: boolean;
       } | null;
       home_network: {
         allowed: boolean;

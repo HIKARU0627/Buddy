@@ -3835,7 +3835,8 @@
         "port": 47443,
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
         "claim_expires_at": null,
-        "failure": null
+        "failure": null,
+        "cancelable": true
       },
       "home_network": null,
       "operations": []
@@ -3858,7 +3859,8 @@
         "port": 47443,
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
         "claim_expires_at": null,
-        "failure": "pickup_unknown"
+        "failure": "pickup_unknown",
+        "cancelable": true
       },
       "home_network": null,
       "operations": []
@@ -4049,6 +4051,53 @@
     }
   },
   {
+    "id": "desktop-connection-pairing-pickup-in-flight",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "unregistered",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": {
+        "step": "waiting_approval",
+        "host": "100.64.0.10",
+        "port": 47443,
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "claim_expires_at": "2030-10-01T00:05:00Z",
+        "failure": null,
+        "cancelable": false
+      },
+      "home_network": null,
+      "operations": []
+    }
+  },
+  {
+    "id": "desktop-connection-pairing-without-cancelable",
+    "schema": "DesktopConnectionView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "registration": "unregistered",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": {
+        "step": "waiting_approval",
+        "host": "100.64.0.10",
+        "port": 47443,
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "claim_expires_at": "2030-10-01T00:05:00Z",
+        "failure": null
+      },
+      "home_network": null,
+      "operations": []
+    }
+  },
+  {
     "id": "desktop-connection-pairing-certificate",
     "schema": "DesktopConnectionView",
     "valid": false,
@@ -4066,6 +4115,7 @@
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
         "claim_expires_at": null,
         "failure": null,
+        "cancelable": true,
         "certificate_pem": "-----BEGIN CERTIFICATE-----"
       },
       "home_network": null,
@@ -4093,7 +4143,8 @@
           "port": 47443,
           "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
           "claim_expires_at": null,
-          "failure": null
+          "failure": null,
+          "cancelable": true
         },
         "home_network": null,
         "operations": []
@@ -4121,7 +4172,8 @@
           "port": 47443,
           "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
           "claim_expires_at": null,
-          "failure": null
+          "failure": null,
+          "cancelable": true
         },
         "home_network": null,
         "operations": []

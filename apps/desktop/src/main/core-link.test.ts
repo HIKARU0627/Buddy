@@ -34,13 +34,16 @@ const UNLOCKED: DesktopIoState = {
 const SCREEN = { trustedSender: true, windowFocused: true };
 const TOKEN = 'P'.repeat(43);
 
-type Responder = (request: HubHttpRequest) => ClientApiOutcome;
+type Responder = (
+  request: HubHttpRequest,
+) => ClientApiOutcome | Promise<ClientApiOutcome>;
 
 async function setup(
   t: test.TestContext,
   options: {
     readonly protector?: MockProtector;
     readonly responders?: Responder[];
+    readonly pollIntervalMs?: number;
   } = {},
 ) {
   const dir = await tempDir(t, 'bdl-');
@@ -60,7 +63,7 @@ async function setup(
     networkSignature: () => 'x',
     onChange: () => shown.push(link.view('unlocked')),
     log: (code) => logs.push(code),
-    pairingPollIntervalMs: 20,
+    pairingPollIntervalMs: options.pollIntervalMs ?? 20,
     fetchCertificate: () => {
       fetches += 1;
       return Promise.resolve({
@@ -353,5 +356,123 @@ test(
     assert.equal(response['reason'], 'secure_storage_unavailable');
     assert.equal(fetches(), 0);
     assert.equal(existsSync(join(dir, CREDENTIAL_FILE)), false);
+  },
+);
+
+// 受取りの要求を試験が決めた時に返す（受取りの最中の操作を試験する）。
+function deferred(): {
+  readonly responder: Responder;
+  readonly resolve: (outcome: ClientApiOutcome) => void;
+} {
+  let resolve: (outcome: ClientApiOutcome) => void = () => undefined;
+  const promise = new Promise<ClientApiOutcome>((done) => {
+    resolve = done;
+  });
+  return { responder: () => promise, resolve: (outcome) => resolve(outcome) };
+}
+
+const issued: ClientApiOutcome = {
+  kind: 'response',
+  status: 200,
+  body: {
+    device_id: '00000000-0000-4000-8000-000000000402',
+    device_token: TOKEN,
+    issued_at: '2030-10-01T00:00:00Z',
+  },
+};
+
+const notYet: ClientApiOutcome = {
+  kind: 'response',
+  status: 409,
+  body: { code: 'conflict', message: 'x', request_id: null },
+};
+
+async function untilWaitingApproval(
+  invoke: (channel: string, payload: unknown) => Record<string, unknown>,
+  view: () => { pairing: Record<string, unknown> | null },
+) {
+  invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
+  await waitUntil(
+    () => view().pairing?.['step'] === 'fingerprint_check',
+    'fingerprint',
+  );
+  assert.equal(view().pairing?.['cancelable'], true);
+  invoke('desktop.pairing_confirm', { fingerprint: FP });
+  invoke('desktop.pairing_submit', {
+    pairing_code: '00000000',
+    device_name: '合成の端末',
+  });
+}
+
+// レビューの指摘 M2（端末側）: 受取りの要求が進んでいる間に「やめる」を押しても、届いたトークンを捨てない。
+test(
+  'cancel while a pickup is in flight does not discard the token: a late 200 is stored and registered',
+  { timeout: 30_000 },
+  async (t) => {
+    const protector = mockProtector();
+    const pickup = deferred();
+    const { link, invoke, view, requests, shown, dir } = await setup(t, {
+      protector,
+      responders: [claimAccepted, pickup.responder],
+    });
+    link.start('unlocked');
+    await untilWaitingApproval(invoke, view);
+    await waitUntil(() => requests.length === 2, 'pickup in flight');
+    // 受取りの間は「やめる」を押せない（画面は cancelable を見てボタンを無効にする）。
+    assert.equal(view().pairing?.['step'], 'waiting_approval');
+    assert.equal(view().pairing?.['cancelable'], false);
+    // 画面の無効化をすり抜けた「やめる」も、受取りの結果を捨てない。
+    const cancelled = invoke('desktop.pairing_cancel', null);
+    assert.equal(cancelled['outcome'], 'ok');
+    assert.equal(view().pairing?.['step'], 'waiting_approval');
+    assert.equal(view().pairing?.['cancelable'], false);
+    pickup.resolve(issued);
+    await waitUntil(() => link.registration === 'registered', 'registered');
+    assert.equal(view().pairing, null);
+    const stored = protector.reveal(readFileSync(join(dir, CREDENTIAL_FILE)));
+    assert(stored.includes(TOKEN));
+    assert.equal(JSON.stringify(shown).includes(TOKEN), false);
+  },
+);
+
+test(
+  'a cancel during an in-flight pickup takes effect when the pickup ends without a token; between polls it is immediate',
+  { timeout: 30_000 },
+  async (t) => {
+    {
+      const pickup = deferred();
+      const { link, invoke, view, requests, dir } = await setup(t, {
+        responders: [claimAccepted, pickup.responder],
+      });
+      link.start('unlocked');
+      await untilWaitingApproval(invoke, view);
+      await waitUntil(() => requests.length === 2, 'pickup in flight');
+      invoke('desktop.pairing_cancel', null);
+      pickup.resolve(notYet);
+      await waitUntil(() => view().pairing === null, 'cancelled');
+      // 承認前（409）の後は、やめた手順として次の受取りを送らない。
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.equal(requests.length, 2);
+      assert.equal(link.registration, 'unregistered');
+      assert.equal(existsSync(join(dir, CREDENTIAL_FILE)), false);
+    }
+    {
+      // 受取りの間隔の待ちの間（要求を送っていない）は、すぐにやめられる。
+      const { link, invoke, view, requests } = await setup(t, {
+        pollIntervalMs: 60_000,
+        responders: [claimAccepted, () => notYet],
+      });
+      link.start('unlocked');
+      await untilWaitingApproval(invoke, view);
+      await waitUntil(() => requests.length === 2, 'first pickup');
+      await waitUntil(
+        () => view().pairing?.['cancelable'] === true,
+        'cancelable between polls',
+      );
+      assert.equal(view().pairing?.['step'], 'waiting_approval');
+      invoke('desktop.pairing_cancel', null);
+      assert.equal(view().pairing, null);
+      assert.equal(requests.length, 2);
+    }
   },
 );

@@ -7927,6 +7927,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "cancelable": {
+                      "type": "boolean",
+                      "description": "今「やめる」をすぐに受け付けるか。受取りの要求が進んでいる間は false で、画面は「やめる」を押せなくする（main は受取りの結果を捨てず、トークンが届けば保存する。ADR 0025）。"
                     }
                   },
                   "required": [
@@ -7935,7 +7939,8 @@
                     "port",
                     "fingerprint",
                     "claim_expires_at",
-                    "failure"
+                    "failure",
+                    "cancelable"
                   ],
                   "additionalProperties": false
                 },

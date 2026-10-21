@@ -21,7 +21,7 @@ import type {
 } from '../../state/connection-state.js';
 import { deviceActions } from '../../state/desktop-state.js';
 import { ConnectionPanel } from './ConnectionPanel.js';
-import { Failed, FingerprintCheck } from './PairingPanel.js';
+import { Failed, FingerprintCheck, PAIRING_LABELS } from './PairingPanel.js';
 import { PairingScreen } from './PairingScreen.js';
 
 const FP = '0123456789abcdef'.repeat(4);
@@ -48,6 +48,7 @@ const pairingAt = (
   fingerprint: step === 'fetching_certificate' ? null : FP,
   claim_expires_at: null,
   failure: null,
+  cancelable: true,
   ...extra,
 });
 
@@ -159,6 +160,24 @@ test('code entry, waiting and failure steps show their own texts', () => {
     /安全な保存（OS の鍵束）が使えないため、登録できません。/u,
   );
   assert.doesNotMatch(storage, /中枢の証明書を受け取る/u);
+});
+
+// レビューの指摘 M2: 受取りの要求の最中（cancelable が false）は「やめる」を押せない。
+test('the cancel button is disabled while the pickup is in flight', () => {
+  const cancelButton = (markup: string) =>
+    [...markup.matchAll(/<button\b[^>]*>(?:(?!<\/button>).)*<\/button>/gsu)]
+      .map((match) => match[0])
+      .find((button) => button.includes(PAIRING_LABELS.cancel));
+  const waiting = (cancelable: boolean) =>
+    render({
+      ...base,
+      pairing: pairingAt('waiting_approval', { cancelable }),
+    });
+  const enabled = cancelButton(waiting(true));
+  const disabled = cancelButton(waiting(false));
+  assert(enabled !== undefined && disabled !== undefined);
+  assert.doesNotMatch(enabled, /\sdisabled=""/u);
+  assert.match(disabled, /\sdisabled=""/u);
 });
 
 test('the connection panel shows link, reason, home check and operations without secrets', () => {

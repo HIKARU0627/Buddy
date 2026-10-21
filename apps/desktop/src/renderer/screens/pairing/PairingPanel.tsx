@@ -168,7 +168,12 @@ function Progress({
         </p>
       ) : null}
       <div>
-        <Button variant="secondary" onPress={actions.cancel}>
+        {/* 受取りの要求の最中は押せない（main は受取りの結果を捨てない。ADR 0025）。 */}
+        <Button
+          variant="secondary"
+          isDisabled={!pairing.cancelable}
+          onPress={actions.cancel}
+        >
           {PAIRING_LABELS.cancel}
         </Button>
       </div>

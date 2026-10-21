@@ -181,7 +181,8 @@ export class DesktopCoreLink {
 
   stop(): void {
     this.#started = false;
-    this.#pairing.cancel();
+    // 終了では受取りの結果を待たない（受取りの最中なら、中枢で失効してやり直す）。
+    this.#pairing.dispose();
     this.#disconnect();
   }
 
@@ -363,6 +364,8 @@ export class DesktopCoreLink {
   // --- 内部 ---
 
   #registered(credential: StoredCredential): void {
+    // 止めた後には接続を始めない（保存した記録は次の start で読む）。
+    if (!this.#started) return;
     this.#disconnect();
     this.#home = null;
     this.#connect(credential);

@@ -6,7 +6,13 @@
 
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createNodeCommandRunner } from '@buddy/platform';
+import {
+  createMockTlsKeyStore,
+  createNodeCommandRunner,
+  createTlsKeyStore,
+} from '@buddy/platform';
+import type { TlsKeyStore } from '@buddy/platform';
+import { DEFAULT_HTTPS_PORT } from './api-server.js';
 import { runAutostart } from './autostart.js';
 import type { AutostartAction } from './autostart.js';
 import { join, resolve } from 'node:path';
@@ -15,7 +21,7 @@ import { parseArgs } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { callControl } from './control-channel.js';
 import { CoreStartError, startCore } from './core.js';
-import type { CoreHandle } from './core.js';
+import type { CoreHandle, CoreHttpsOptions } from './core.js';
 import { parseLockRecord } from './lock.js';
 import { LOCK_FILE, controlEndpoint, defaultDataDir } from './paths.js';
 import { createCoreKeyStore, keyProtectionCheck } from './preflight.js';
@@ -40,6 +46,8 @@ const KEY_REFUSALS: ReadonlySet<string> = new Set([
   'preflight_failed',
   'data_key_unavailable',
   'data_key_mismatch',
+  // TLS の秘密鍵を鍵保護から取得できない（HTTPS を開かない）。
+  'tls_unavailable',
 ]);
 
 const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
@@ -47,6 +55,9 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
          （既定では実行中の OS の鍵保護を確かめ、使えなければ起動しない）
          --mock-key-protection              模擬の鍵保護で起動する（試験・模擬起動）
          --mock-key-protection-unavailable  模擬の鍵保護が使えない状態を再現する
+         --https-host <ip>                  HTTPS を待ち受ける IP アドレス（製品は Tailscale のアドレス）。
+                                            省略すれば HTTPS を開かない
+         --https-port <port>                HTTPS のポート（既定 ${DEFAULT_HTTPS_PORT}。0 は OS が選ぶ）
   status 状態を JSON で表示する（動いていなければ終了コード 3）
   stop   停止を要求し、解放まで待つ
   autostart <enable|disable|status>
@@ -68,6 +79,8 @@ async function main(argv: readonly string[]): Promise<number> {
         'data-dir': { type: 'string' },
         'mock-key-protection': { type: 'boolean' },
         'mock-key-protection-unavailable': { type: 'boolean' },
+        'https-host': { type: 'string' },
+        'https-port': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -102,6 +115,29 @@ async function main(argv: readonly string[]): Promise<number> {
     log('鍵保護の指定は start だけで使えます。');
     return EXIT.usage;
   }
+  if (
+    command !== 'start' &&
+    (values['https-host'] !== undefined || values['https-port'] !== undefined)
+  ) {
+    log('HTTPS の指定は start だけで使えます。');
+    return EXIT.usage;
+  }
+  let httpsPort = DEFAULT_HTTPS_PORT;
+  if (values['https-port'] !== undefined) {
+    if (values['https-host'] === undefined) {
+      log('--https-port には --https-host が必要です。');
+      return EXIT.usage;
+    }
+    if (!/^(?:0|[1-9][0-9]{0,4})$/u.test(values['https-port'])) {
+      log('--https-port は 0 から 65535 までの整数です。');
+      return EXIT.usage;
+    }
+    httpsPort = Number(values['https-port']);
+    if (httpsPort > 65_535) {
+      log('--https-port は 0 から 65535 までの整数です。');
+      return EXIT.usage;
+    }
+  }
   const dataDir = resolve(
     values['data-dir'] ??
       defaultDataDir({
@@ -116,7 +152,11 @@ async function main(argv: readonly string[]): Promise<number> {
       : values['mock-key-protection']
         ? 'mock'
         : 'os';
-    return start(dataDir, mode);
+    const https =
+      values['https-host'] === undefined
+        ? null
+        : { host: values['https-host'], port: httpsPort };
+    return start(dataDir, mode, https);
   }
   if (autostartCommand) return autostart(action as AutostartAction, dataDir);
   return command === 'status' ? status(dataDir) : stop(dataDir);
@@ -138,9 +178,18 @@ async function autostart(
   return outcome.ok ? EXIT.ok : EXIT.autostart_failed;
 }
 
+// 起動の種類に合う TLS の秘密鍵の KeyStore。模擬は実機の保護領域に触れない（メモリ上で、起動ごとに作り直す）。
+function createCoreTlsKeyStore(mode: KeyProtectionMode): TlsKeyStore {
+  if (mode === 'mock') return createMockTlsKeyStore();
+  if (mode === 'mock_unavailable')
+    return createMockTlsKeyStore({ available: false });
+  return createTlsKeyStore(process.platform);
+}
+
 async function start(
   dataDir: string,
   mode: KeyProtectionMode,
+  https: { readonly host: string; readonly port: number } | null,
 ): Promise<number> {
   let handle: CoreHandle | null = null;
   let stopReason: string | null = null;
@@ -166,12 +215,17 @@ async function start(
       );
     // 起動前の検査とロックの後の読み直しに同じ KeyStore を使う（ADR 0019）。
     const keyStore = createCoreKeyStore(mode);
+    const httpsOptions: CoreHttpsOptions | undefined =
+      https === null
+        ? undefined
+        : { ...https, tlsKeyStore: createCoreTlsKeyStore(mode) };
     try {
       handle = await startCore({
         dataDir,
         preflight: [keyProtectionCheck(mode, { keyStore })],
         keyStore,
         log,
+        ...(httpsOptions === undefined ? {} : { https: httpsOptions }),
       });
     } catch (error) {
       if (!(error instanceof CoreStartError)) throw error;
@@ -191,6 +245,15 @@ async function start(
       held_after_restart: handle.recovery.held,
       resumable_preparing: handle.recovery.resumable,
     });
+    if (handle.https !== null)
+      // 証明書の指紋は秘密ではない（端末が中枢の画面の表示と比べる値）。
+      out({
+        event: 'https_listening',
+        host: handle.https.host,
+        port: handle.https.port,
+        certificate_fingerprint: handle.https.certificateFingerprint,
+        certificate_creation: handle.https.certificateCreation,
+      });
     out({ event: 'running', ...handle.status() });
     log('起動しました。');
     // 起動中に受け取ったシグナルは、起動完了後に停止として扱う。

@@ -15,3 +15,5 @@ export { DB_WORKER_STALL_MARKER } from './db-protocol.js';
 export * from './db-client.js';
 export * from './content-hash.js';
 export * from './store-binding.js';
+// B03-01: 端末と接続範囲（command_scope）の保存（ADR 0020）。
+export * from './device-store.js';

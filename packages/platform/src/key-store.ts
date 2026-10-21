@@ -113,18 +113,22 @@ const BASE64 =
  * 保存値（base64）を検査して鍵のバイト列にする。正準の base64（空白・改行・URL 用の文字・余分な桁を含まない）だけを受け入れる。
  * 理由だけを返し、値は返さない。
  */
+/** 正準の base64（空白・改行・URL 用の文字・未使用ビット・パディングの欠落を含まない）を復号する。違えば null。 */
+export function decodeCanonicalBase64(stored: string): Buffer | null {
+  if (stored.length === 0 || !BASE64.test(stored)) return null;
+  const bytes = Buffer.from(stored, 'base64');
+  // 末尾の桁の未使用ビットが 0 でない値は、同じバイト列の別表記なので拒否する。
+  return bytes.toString('base64') === stored ? bytes : null;
+}
+
 export function decodeStoredDataKey(stored: string):
   | { readonly ok: true; readonly bytes: Buffer }
   | {
       readonly ok: false;
       readonly reason: 'data_key_format_invalid' | 'data_key_length_invalid';
     } {
-  if (stored.length === 0 || !BASE64.test(stored))
-    return { ok: false, reason: 'data_key_format_invalid' };
-  const bytes = Buffer.from(stored, 'base64');
-  // 末尾の桁の未使用ビットが 0 でない値は、同じバイト列の別表記なので拒否する。
-  if (bytes.toString('base64') !== stored)
-    return { ok: false, reason: 'data_key_format_invalid' };
+  const bytes = decodeCanonicalBase64(stored);
+  if (bytes === null) return { ok: false, reason: 'data_key_format_invalid' };
   if (bytes.length !== DATA_KEY_BYTES)
     return { ok: false, reason: 'data_key_length_invalid' };
   return { ok: true, bytes };
@@ -242,32 +246,44 @@ async function importKeyring(): Promise<KeyringModule> {
 export function createMacKeychainKeyStore(
   options: MacKeychainKeyStoreOptions = {},
 ): KeyStore {
-  const loadModule = options.loadModule ?? importKeyring;
-  let modulePromise: Promise<KeyringModule> | undefined;
   return createSlotKeyStore({
     kind: 'os',
     backend: 'macos_keychain',
     unavailableReason: 'keystore_module_unavailable',
-    async openSlot() {
-      modulePromise ??= loadModule();
-      let keyring: KeyringModule;
-      try {
-        keyring = await modulePromise;
-      } catch (error) {
-        // 一時的な失敗のあとで読み込み直せるように、失敗した読み込みは保持しない。
-        modulePromise = undefined;
-        throw error;
-      }
-      const entry = new keyring.AsyncEntry(KEY_STORE_SERVICE, DATA_KEY_ACCOUNT);
-      return {
-        async read() {
-          const value = await entry.getPassword();
-          return value ?? null;
-        },
-        write: (value) => entry.setPassword(value),
-      };
-    },
+    openSlot: keychainSlotOpener(DATA_KEY_ACCOUNT, options),
   });
+}
+
+/**
+ * キーチェーンの 1 項目（サービス名 `dev.buddy.core`・指定のアカウント名）を開く関数を作る。
+ * データ鍵（`data-key-v1`）と TLS の秘密鍵（`tls-key-v1`、ADR 0020）で使う。
+ * ネイティブモジュールは初めて開くときに読み込み、失敗した読み込みは保持しない。
+ */
+export function keychainSlotOpener(
+  account: string,
+  options: MacKeychainKeyStoreOptions = {},
+): () => Promise<SecretSlot> {
+  const loadModule = options.loadModule ?? importKeyring;
+  let modulePromise: Promise<KeyringModule> | undefined;
+  return async () => {
+    modulePromise ??= loadModule();
+    let keyring: KeyringModule;
+    try {
+      keyring = await modulePromise;
+    } catch (error) {
+      // 一時的な失敗のあとで読み込み直せるように、失敗した読み込みは保持しない。
+      modulePromise = undefined;
+      throw error;
+    }
+    const entry = new keyring.AsyncEntry(KEY_STORE_SERVICE, account);
+    return {
+      async read() {
+        const value = await entry.getPassword();
+        return value ?? null;
+      },
+      write: (value) => entry.setPassword(value),
+    };
+  };
 }
 
 /** 初期版で中枢の鍵保護に対応しない OS の KeyStore。鍵を返さない。 */

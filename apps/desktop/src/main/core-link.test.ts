@@ -8,11 +8,15 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import type { ClientApiOutcome } from '@buddy/client';
+import type { ClientApiOutcome, ClientTransport } from '@buddy/client';
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
-import { CREDENTIAL_FILE } from './credential-store.js';
+import {
+  CREDENTIAL_FILE,
+  SecretText,
+  saveCredential,
+} from './credential-store.js';
 import type { HubHttpRequest } from './hub-transport.js';
 import {
   mockProtector,
@@ -47,6 +51,9 @@ async function setup(
     readonly protector?: MockProtector;
     readonly responders?: Responder[];
     readonly pollIntervalMs?: number;
+    // 登録後の接続の通信（省略は接続できない宛先）。
+    readonly transport?: ClientTransport;
+    readonly homeReportIntervalMs?: number;
   } = {},
 ) {
   const dir = await tempDir(t, 'bdl-');
@@ -82,12 +89,16 @@ async function setup(
         next ? next(request) : { kind: 'unreachable', reason: 'none' },
       );
     },
-    // 登録後の接続は試験しない（接続できない宛先として扱う）。
-    transportFor: () => ({
-      request: () => Promise.resolve({ kind: 'unreachable', reason: 'test' }),
-      openStream: () =>
-        Promise.resolve({ kind: 'unreachable', reason: 'test' }),
-    }),
+    // 登録後の接続は、指定がなければ試験しない（接続できない宛先として扱う）。
+    transportFor: () =>
+      options.transport ?? {
+        request: () => Promise.resolve({ kind: 'unreachable', reason: 'test' }),
+        openStream: () =>
+          Promise.resolve({ kind: 'unreachable', reason: 'test' }),
+      },
+    ...(options.homeReportIntervalMs === undefined
+      ? {}
+      : { homeReportIntervalMs: options.homeReportIntervalMs }),
   });
   onCleanup(t, () => link.stop());
   const invoke = (
@@ -564,5 +575,82 @@ test(
       assert.equal(view().pairing, null);
       assert.equal(requests.length, 2);
     }
+  },
+);
+
+// レビューの指摘 L4: 中枢の API の major が違えば（upgrade_required）、自宅の指紋の報告も止める。
+test(
+  'upgrade_required stops the home network reports',
+  { timeout: 30_000 },
+  async (t) => {
+    const protector = mockProtector();
+    const sent: string[] = [];
+    const transport: ClientTransport = {
+      request: (request) => {
+        sent.push(`${request.method} ${request.path}`);
+        if (request.path === '/v1/bootstrap')
+          return Promise.resolve({
+            kind: 'response',
+            status: 200,
+            body: {
+              api_version: '2.0',
+              core_instance_id: '00000000-0000-4000-8000-000000000501',
+              store_generation: '00000000-0000-4000-8000-000000000502',
+              device_id: '00000000-0000-4000-8000-000000000401',
+              command_scope_id: '00000000-0000-4000-8000-000000000503',
+              command_scope_expires_at: '2030-10-02T00:00:00Z',
+              capabilities: [],
+              io_state: {
+                device_id: '00000000-0000-4000-8000-000000000401',
+                io_epoch: '0',
+                output_epoch: '0',
+                lock_state: 'unlocked',
+                stop_scope: 'none',
+                input_permitted: true,
+                voice_state: 'waiting_wake_word',
+                output_mode: 'text',
+                private_conversation: false,
+                audio_lease_valid: false,
+              },
+            },
+          });
+        return Promise.resolve({ kind: 'unreachable', reason: 'test' });
+      },
+      openStream: () =>
+        Promise.resolve({ kind: 'unreachable', reason: 'test' }),
+    };
+    const { link, dir, logs } = await setup(t, {
+      protector,
+      transport,
+      homeReportIntervalMs: 20,
+    });
+    saveCredential(join(dir, CREDENTIAL_FILE), protector, {
+      deviceId: '00000000-0000-4000-8000-000000000401',
+      token: new SecretText(TOKEN),
+      issuedAt: '2030-10-01T00:00:00Z',
+      hub: {
+        host: '127.0.0.1',
+        port: 47443,
+        certificatePem: PEM,
+        fingerprint: FP,
+      },
+    });
+    link.start('unlocked');
+    await waitUntil(
+      () => link.linkState?.phase === 'upgrade_required',
+      'upgrade_required',
+    );
+    assert(logs.includes('link:upgrade_required:api_major_mismatch'));
+    await link.homeReportIdle();
+    const reports = () =>
+      sent.filter((entry) => entry === 'POST /v1/home-network/reports').length;
+    const before = reports();
+    // 報告の間隔（20 ms）を何度も過ぎても、新しい報告を送らない。
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(reports(), before);
+    assert.equal(
+      sent.filter((entry) => entry === 'GET /v1/bootstrap').length,
+      1,
+    );
   },
 );

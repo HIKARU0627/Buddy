@@ -413,6 +413,8 @@ export class DesktopCoreLink {
         this.#registration = 'reregistration_required';
         this.#reporter?.stop();
       }
+      // 中枢の API の major が違えば、以後は要求を送らない。自宅の指紋の報告も止める（レビューの指摘 L4）。
+      if (state.phase === 'upgrade_required') this.#reporter?.stop();
       // 自宅の外で拒否されたら、すぐに指紋を報告し直す（通れば次の接続で使える）。
       if (
         state.reason === 'outside_home_network' &&

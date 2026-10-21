@@ -17,6 +17,8 @@ import type {
 import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
 import type { DeviceOp, DeviceOpResult } from './device-store.js';
 import type { PairingOp, PairingOpResult } from './pairing-store.js';
+// B03-04: スナップショット・イベント・操作の表示用の照会（ADR 0023）。
+import type { EventQuery, EventQueryValue } from './event-store.js';
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -60,13 +62,15 @@ export type DbQuery =
       readonly limit: number;
     }
   // 起動時の回復の対象（preparing・dispatching の操作）。
-  | { readonly kind: 'interrupted' };
+  | { readonly kind: 'interrupted' }
+  | EventQuery;
 
 export type DbQueryValue =
   | OperationRecord
   | CommandReceiptRecord
   | readonly OutboxEventRecord[]
   | readonly InterruptedOperation[]
+  | EventQueryValue
   | null;
 
 export type MainToWorker =

@@ -32,6 +32,7 @@ import {
 } from './operation-store.js';
 import { executeDeviceOp } from './device-store.js';
 import { executePairingOp } from './pairing-store.js';
+import { executeEventQuery, isEventQuery } from './event-store.js';
 import { bindStore } from './store-binding.js';
 import type { StoreBindingResult } from './store-binding.js';
 
@@ -176,6 +177,8 @@ function main(): void {
         value = readCommandReceipt(connection, query.command_id);
       else if (query.kind === 'interrupted')
         value = listInterruptedOperations(connection);
+      else if (isEventQuery(query))
+        value = executeEventQuery(connection, storeGeneration, query);
       else
         value = listOutboxEvents(
           connection,

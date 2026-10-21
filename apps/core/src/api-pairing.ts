@@ -35,7 +35,7 @@ import type {
   EnvironmentInput,
   RequestEnvironment,
 } from './api-environment.js';
-import { apiErrorBody } from './api-server.js';
+import { apiErrorResponse } from './api-server.js';
 import type {
   ApiErrorCode,
   ApiHandlerRequest,
@@ -163,14 +163,8 @@ function requestIdOf(request: ApiHandlerRequest): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-const fail = (
-  status: number,
-  code: ApiErrorCode,
-  requestId: string | null,
-): { readonly status: number; readonly body: object } => ({
-  status,
-  body: apiErrorBody(code, requestId),
-});
+// 拒否の応答（ApiError）。B03-04 の apiErrorResponse を使う。
+const fail = apiErrorResponse;
 
 export function deviceSummary(device: DeviceRecord): object {
   return {

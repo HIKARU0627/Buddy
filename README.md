@@ -47,6 +47,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [Core への DB の組み込みと再起動の復元・内容 hash の照合](docs/adr/0019-b02-core-storage-integration.md)
 - [中枢の TLS 証明書・HTTPS の受付・経路検査の基盤](docs/adr/0020-b03-https-tls-and-route-checks.md)
 - [端末のペアリング・端末の一覧と失効・最初の端末の CLI の承認](docs/adr/0021-b03-device-pairing-and-revocation.md)
+- [スナップショット・イベント配信（WSS）・再接続後の復元と操作の経路](docs/adr/0023-b03-snapshot-events-and-operation-routes.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

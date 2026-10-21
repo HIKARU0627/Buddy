@@ -21,7 +21,13 @@ import {
   createPairingCode,
   isSameMachine,
 } from './api-pairing.js';
-import { onCleanup, pinnedRequest, tempDir } from './api-test-support.js';
+import {
+  onCleanup,
+  pinnedCheck,
+  pinnedRequest,
+  tempDir,
+  withTimeout,
+} from './api-test-support.js';
 import type { ApiResponse, PinnedTarget } from './api-test-support.js';
 import { startCore } from './core.js';
 import type { CoreHandle } from './core.js';
@@ -38,6 +44,8 @@ import {
 } from './pairing-test-support.js';
 import type { ClaimSecret } from './pairing-test-support.js';
 import { TLS_CERTIFICATE_FILE } from './tls-identity.js';
+import { WebSocket } from 'ws';
+import type { ClientOptions } from 'ws';
 
 const MINUTE = 60_000;
 
@@ -859,6 +867,94 @@ test(
   },
 );
 
+// 端末の WSS の購読を開き、Core が端末の接続として登録するまで待つ（B03-04 の配信）。
+async function openEventStream(
+  t: test.TestContext,
+  hub: Hub,
+  device: Paired,
+): Promise<{
+  readonly socket: WebSocket;
+  readonly closed: Promise<{ code: number; reason: string }>;
+}> {
+  const snapshot = await pinnedRequest(hub.target, {
+    method: 'GET',
+    path: '/v1/snapshot',
+    headers: { authorization: `Bearer ${device.token}` },
+  });
+  assert.equal(snapshot.status, 200);
+  const cursor = String(snapshot.json?.['event_cursor']);
+  const socket = new WebSocket(
+    `wss://127.0.0.1:${hub.target.port}/v1/events/stream?cursor=${encodeURIComponent(cursor)}`,
+    {
+      headers: { authorization: `Bearer ${device.token}` },
+      ca: [hub.target.certificatePem],
+      checkServerIdentity: pinnedCheck(
+        hub.target.fingerprint,
+      ) as unknown as ClientOptions['checkServerIdentity'],
+    },
+  );
+  onCleanup(t, () => socket.terminate());
+  socket.on('error', () => undefined);
+  const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+    socket.once('close', (code, reason) =>
+      resolve({ code, reason: reason.toString('utf8') }),
+    );
+  });
+  await withTimeout(
+    new Promise<void>((resolve, reject) => {
+      socket.once('open', () => resolve());
+      socket.once('close', () => reject(new Error('stream closed')));
+    }),
+    10_000,
+    'stream open',
+  );
+  const deadline = Date.now() + 5_000;
+  while (hub.handle.deviceConnections.count(device.deviceId) === 0) {
+    assert(Date.now() < deadline, 'stream registered');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return { socket, closed };
+}
+
+test(
+  'revoking a device closes its event stream with 4401 and leaves other streams open',
+  { timeout: 60_000 },
+  async (t) => {
+    const dataDir = join(await tempDir(t, 'buddy-pairing-wss-'), 'data');
+    const hub = await startHub(t, dataDir);
+    const first = await pairFirstDevice(hub);
+    const firstScope = await bootstrapScope(hub, first.token);
+    const second = await pairDevice(hub, first.token, firstScope);
+    await bootstrapScope(hub, second.token);
+    const secondStream = await openEventStream(t, hub, second);
+    const firstStream = await openEventStream(t, hub, first);
+
+    const revoked = await screenRequest(
+      hub.target,
+      first.token,
+      'POST',
+      `/v1/devices/${second.deviceId}/revoke`,
+      { request_id: randomUUID(), command_scope_id: firstScope },
+    );
+    assert.equal(revoked.status, 200);
+    assert.deepEqual(
+      await withTimeout(secondStream.closed, 10_000, 'revoked stream closed'),
+      { code: 4401, reason: 'device_revoked' },
+    );
+    assert.equal(hub.handle.deviceConnections.count(second.deviceId), 0);
+    // 他の端末の購読は開いたまま。
+    assert.equal(hub.handle.deviceConnections.count(first.deviceId), 1);
+    assert.equal(firstStream.socket.readyState, WebSocket.OPEN);
+    // 失効した端末は新しく購読できない（401）。
+    const again = await pinnedRequest(hub.target, {
+      method: 'GET',
+      path: '/v1/snapshot',
+      headers: { authorization: `Bearer ${second.token}` },
+    });
+    assert.equal(again.status, 401);
+  },
+);
+
 test(
   'a regenerated certificate is refused by existing devices and nothing is re-registered automatically',
   { timeout: 60_000 },
@@ -1074,7 +1170,8 @@ test('device connections close only the given device and can be unregistered', (
   offA();
   offA();
   assert.equal(connections.count('a'), 2);
-  assert.equal(connections.closeDevice('a', 'outside_home_network'), 2);
+  // 閉じた数は閉じる処理が成功した接続の数（失敗した接続も登録からは外す）。
+  assert.equal(connections.closeDevice('a', 'outside_home_network'), 1);
   assert.deepEqual(seen, ['a3:outside_home_network']);
   assert.equal(connections.count('a'), 0);
   assert.equal(connections.closeDevice('a', 'device_revoked'), 0);

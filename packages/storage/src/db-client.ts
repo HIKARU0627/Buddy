@@ -36,6 +36,7 @@ import type {
 } from './operation-store.js';
 import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
 import { DEVICE_WRITE_OPS } from './device-store.js';
+import type { EventQuery, EventQueryValues } from './event-store.js';
 import type {
   CommandScopeRecord,
   DeviceOp,
@@ -379,6 +380,8 @@ export class DbWorkerClient {
   query(query: {
     kind: 'interrupted';
   }): Promise<readonly InterruptedOperation[]>;
+  // スナップショット・イベント・操作の表示用の照会（ADR 0023）。
+  query<Q extends EventQuery>(query: Q): Promise<EventQueryValues[Q['kind']]>;
   query(query: DbQuery): Promise<DbQueryValue> {
     return new Promise<DbQueryValue>((resolve, reject) => {
       if (this.#state !== 'running') {

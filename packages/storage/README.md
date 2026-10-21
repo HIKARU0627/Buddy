@@ -36,6 +36,11 @@ B03-02 でペアリング・端末の一覧・証明書の変更による失効�
 - `src/pairing-store.ts`: `executePairingOp`。`pairing.start`（有効なペアリングは一つだけ）・`pairing.claim`（コードの照合値を transaction の中で `timingSafeEqual` で比べ、不一致は残り回数を減らして commit する）・`pairing.decide`・`pairing.pickup`（端末の登録と申請の consumed を同じ transaction で。DB にはトークンの hash だけ）・`pairing.claim_secret_matches`・`devices.list`・`devices.count_active`・`devices.revoke_certificate_mismatch` など。
 - `DbWorkerClient.pairing(op)`: `type: 'pairing'` のメッセージ。扱いは `device` と同じ。マイグレーションは足していない（0001 の `pairing_sessions`・`pairing_claims`・`devices`）。
 
+B03-04 でスナップショット・イベント・操作の表示用の照会を作りました（[ADR 0023](../../docs/adr/0023-b03-snapshot-events-and-operation-routes.md)）。
+
+- `src/snapshot-store.ts`: `readSnapshot`（操作の状態とイベントの最大の連番を一つの読み取り transaction で）・`readOperationView`（本文を含めない表示用の値と、承認・取消の命令に入れる依頼・忘却の版）・`hasReceiptForRequest`・`readCurrentScope`（端末の今の接続範囲）。
+- `src/event-store.ts`: `readEventsSince`（連番の後のイベントと、残っている最小・最大の連番）と、照会の入口 `executeEventQuery`。DB worker の照会（`DbQuery`）に `snapshot`・`events_since`・`operation_view`・`receipt_exists`・`current_scope` を足した。書込み・マイグレーションは足していない。
+
 依存は better-sqlite3 13.0.3（ビルド済みバイナリを同梱。pnpm のビルドの許可は不要）、canonicalize 5.1.0（開発ツールと同じ版）と、workspace の `@buddy/domain` です。KeyStore は `@buddy/platform` にあります。
 
 試験は `src/*.test.ts`（一時ファイル・メモリ上の DB、worker_threads の故障注入、公開テストベクトルとの照合・改ざんの注入・鍵が取れないときの停止）と、開発ツールの `node:sqlite` で同じ保存案を検査する `scripts/storage.test.mjs` です。X60 相当（書込み中のプロセスの強制終了の後の整合）は `crash-recovery.test.ts` で確かめています。外部送出（B04）、削除ジョブ、電源断の耐久性（X60 の本体・T07）は未実装・未検証です。

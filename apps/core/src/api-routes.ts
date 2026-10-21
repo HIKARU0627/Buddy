@@ -95,7 +95,10 @@ export const API_ROUTES: readonly ApiRoute[] = [
     ...SCREEN,
   }),
   route('getEvents', 'GET', '/v1/events', { query: { cursor: 'EventCursor' } }),
-  route('streamEvents', 'GET', '/v1/events/stream', { websocket: true }),
+  route('streamEvents', 'GET', '/v1/events/stream', {
+    query: { cursor: 'EventCursor' },
+    websocket: true,
+  }),
   route('createLiveSession', 'POST', '/v1/live/sessions', {
     body: 'LiveSessionRequest',
   }),

@@ -1,57 +1,58 @@
-// 端末ごとの開いている接続（WSS など）を閉じる差し込み口（ADR 0021）。
+// 端末ごとの開いている接続（WSS の購読）と、それを閉じる差し込み口（ADR 0023）。
 //
-// 端末の失効（B03-02）・自宅判定の不成立（B03-03）で、その端末の接続を閉じる。接続を開く側（WSS の配信、
-// B03-04）は開いたときに register し、閉じたら戻り値の関数で外す。閉じる処理は理由を受け取り、
-// WebSocket の閉じるコードなどへ写す。閉じる処理の失敗で他の接続の処理を止めない。
+// 端末の失効（B03-02）・自宅判定の不成立（B03-03）が closeDevice を呼び、その端末の接続を理由つきで閉じる。
+// 接続の側（WSS の購読）は開いたときに register し、閉じたら戻り値の関数で外す。
+// 形は B03-02・B03-03 と合わせた（同じ名前・同じ引数）。
 
 export type DeviceCloseReason = 'device_revoked' | 'outside_home_network';
 
 export class DeviceConnections {
-  readonly #byDevice = new Map<
+  readonly #closers = new Map<
     string,
     Set<(reason: DeviceCloseReason) => void>
   >();
 
-  // 端末の接続を登録する。戻り値を呼ぶと登録を外す（何度呼んでもよい）。
+  // 端末の接続を登録する。戻り値の関数で外す（二度呼んでもよい）。
   register(
     deviceId: string,
     close: (reason: DeviceCloseReason) => void,
   ): () => void {
-    let closers = this.#byDevice.get(deviceId);
-    if (closers === undefined) {
-      closers = new Set();
-      this.#byDevice.set(deviceId, closers);
+    let set = this.#closers.get(deviceId);
+    if (set === undefined) {
+      set = new Set();
+      this.#closers.set(deviceId, set);
     }
-    // 同じ関数を二度登録しても一つとして扱うため、登録ごとに包む。
-    const entry = (reason: DeviceCloseReason) => close(reason);
-    closers.add(entry);
+    set.add(close);
     return () => {
-      const current = this.#byDevice.get(deviceId);
+      const current = this.#closers.get(deviceId);
       if (current === undefined) return;
-      current.delete(entry);
-      if (current.size === 0) this.#byDevice.delete(deviceId);
+      current.delete(close);
+      if (current.size === 0) this.#closers.delete(deviceId);
     };
   }
 
-  // 端末の接続をすべて閉じ、登録を外す。閉じた数を返す。
+  // 端末の接続をすべて閉じ、閉じた数を返す。閉じる処理の失敗で他の接続を閉じ残さない。
   closeDevice(deviceId: string, reason: DeviceCloseReason): number {
-    const closers = this.#byDevice.get(deviceId);
-    if (closers === undefined) return 0;
-    this.#byDevice.delete(deviceId);
+    const set = this.#closers.get(deviceId);
+    if (set === undefined) return 0;
+    this.#closers.delete(deviceId);
     let closed = 0;
-    for (const close of closers) {
-      closed += 1;
+    for (const close of set) {
       try {
         close(reason);
+        closed += 1;
       } catch {
-        // 閉じる処理の失敗で他の接続を残さない。
+        // 次の接続へ進む。
       }
     }
     return closed;
   }
 
-  // 登録している接続の数（試験・診断用）。
-  count(deviceId: string): number {
-    return this.#byDevice.get(deviceId)?.size ?? 0;
+  // 開いている接続の数（診断・試験用）。
+  count(deviceId?: string): number {
+    if (deviceId !== undefined) return this.#closers.get(deviceId)?.size ?? 0;
+    let total = 0;
+    for (const set of this.#closers.values()) total += set.size;
+    return total;
   }
 }

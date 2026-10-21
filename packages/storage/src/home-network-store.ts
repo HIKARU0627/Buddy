@@ -218,10 +218,7 @@ function requireActiveDevice(db: SqliteDatabase, deviceId: string): void {
     throw new HomeNetworkRejection(['device_revoked']);
 }
 
-function applyWrite(
-  db: SqliteDatabase,
-  op: HomeNetworkOp,
-): HomeNetworkOpValue {
+function applyWrite(db: SqliteDatabase, op: HomeNetworkOp): HomeNetworkOpValue {
   if (op.kind === 'home.register') {
     requireActiveDevice(db, op.device_id);
     db.prepare(

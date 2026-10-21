@@ -9,3 +9,6 @@ export * from './key-store.js';
 export * from './tls-key-store.js';
 export * from './key-protection.js';
 export * from './startup.js';
+// B03-03: 自宅の指紋の収集（端末側）と Tailscale の状態の取得（中枢側）（ADR 0022）。
+export * from './home-fingerprint.js';
+export * from './tailscale-status.js';

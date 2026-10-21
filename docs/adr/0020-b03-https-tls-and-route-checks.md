@@ -178,7 +178,7 @@ DB worker には、操作の命令とは別のメッセージ（`type: 'device'`
 
 ## B03-07 の変更（独立したセキュリティレビューの指摘、#75）
 
-試験は 127.0.0.1 の模擬だけで、実機・Tailscale 上の接続は未実施。
+試験は `apps/core/src/api-hardening.test.ts`（M1・L1）・`api-server.test.ts`・`scripts/listen-address.test.mjs`（M2）で、どれも直す前に失敗することを確かめた。127.0.0.1 の模擬だけで、実機・Tailscale 上の接続は未実施。WSS の変更（M3・L3）は [ADR 0023](0023-b03-snapshot-events-and-operation-routes.md)、自宅判定の失効の間引き（L1）は [ADR 0022](0022-b03-home-network-check.md)、失効の経路（L2）は [ADR 0021](0021-b03-device-pairing-and-revocation.md) に書いた。
 
 - **M1 最初の要求までの期限**: 何も送らない TLS の接続が、Node の `headersTimeout` の確認の間隔（既定 30 秒）まで切れず、接続の枠（32 本）を約 30 秒占められた。TLS の確立（`secureConnection`）から最初の要求のヘッダーがそろうまでに `headersTimeoutMs`（10 秒）を過ぎた接続を、接続ごとの時計で応答せずに切るようにした。アイドルの時間切れ（`socket.setTimeout`）ではなく確立からの期限にしたのは、ヘッダーを少しずつ送り続ける接続も同じ時間で切るため。最初の要求・WSS の切り替えが届いたら時計を外し、その後は keep-alive の時間切れ（5 秒）と WSS の ping に任せる。TLS の確立までは従来どおり `handshakeTimeout`（10 秒）。認証前の要求は応答の後に接続を閉じるので、2 件目以降のヘッダーの遅延は認証した端末だけが起こせる（Node の確認の間隔は変えていない）
 - **M2 待ち受けのアドレス**: 16 進の IPv4-mapped（`::ffff:0:0`・`0:0:0:0:0:ffff:0:0`）が全アドレスの拒否をすり抜けていた。domain の `listenAddressDecision`（`packages/domain/src/listen-address.ts`、Node の API を使わない）でアドレスを正規化してから、許可する範囲（ループバック 127.0.0.0/8・::1、Tailscale 100.64.0.0/10・fd7a:115c:a1e0::/48）を列挙して判定する形に変えた。zone（`%`）つきは拒否する。理由コードは `https_host_not_ip_address`・`https_host_unspecified`・`https_host_not_allowed`。待ち受けは正規化した形（IPv4-mapped は IPv4、IPv6 は RFC 5952 の形。`ApiServer.host` も同じ）

@@ -389,12 +389,14 @@ function createLink(
     protector: secretProtector(),
     clock: systemClock(),
     platform: devicePlatformOf(process.platform),
+    // 指紋の値は main の中だけで使う（中枢への報告・登録の本文）。画面へは伏せた表示だけを渡す（B03-08）。
     collectHome: async () => {
       const observation = await collector.collect();
       return {
         gateway_mac: observation.gateway_mac,
         subnet: observation.subnet,
         ssid: observation.ssid,
+        unavailable: observation.unavailable,
       };
     },
     networkSignature: () => networkSignatureOf(networkInterfaces()),

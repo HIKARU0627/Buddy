@@ -5,6 +5,7 @@
 // - 限定 IPC のうち接続・ペアリングのチャネルを受け付ける。受付の順は ADR 0014 と同じ（形式 → 規則 → 処理 →
 //   送る前の検査）。手順に合わない要求は pairing_step_mismatch、安全な保存がなければ secure_storage_unavailable。
 // - トークン・申請用の秘密・端末 ID・自宅の指紋の値は画面・IPC・ログに出さない（ログは理由のコードだけ）。
+//   中枢の画面の自宅の登録（B03-08）も、画面へは伏せた表示（home-registration.ts）と参照だけを渡す。
 // - ロック状態は端末の状態（device-controller）から受け取り、要求の Buddy-Lock-State と表示の範囲に使う。
 // Electron に依存しない。safeStorage・指紋の収集・接続口の一覧は Electron の層が注入する。
 
@@ -17,6 +18,8 @@ import type {
   DesktopIpcResponse,
   DevicePlatform,
   HomeFingerprint,
+  HomeRegistration,
+  HomeRegistrationState,
 } from '@buddy/contracts';
 import {
   ClientConnection,
@@ -44,6 +47,12 @@ import {
 } from './credential-store.js';
 import type { SecretProtector, StoredCredential } from './credential-store.js';
 import { DesktopContractError } from './device-controller.js';
+import {
+  HOME_COLLECT_TIMEOUT_MS,
+  maskHomeObservation,
+  registrable,
+  sameFingerprint,
+} from './home-registration.js';
 import { HomeReporter, sanitizeFingerprint } from './home-reporter.js';
 import type { HomeObservation, HomeReportResult } from './home-reporter.js';
 import {
@@ -73,7 +82,17 @@ export const ADMIN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.devices_list',
   'desktop.device_revoke',
   'desktop.pairing_open',
+  // B03-08: 自宅のネットワークの登録（ADR 0022）。
+  'desktop.home_status',
+  'desktop.home_register',
 ];
+
+// 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
+interface HubHomeReading {
+  readonly fingerprint: HomeFingerprint;
+  readonly unavailable: readonly string[];
+  readonly collectedAt: number;
+}
 
 export type Registration =
   | 'unregistered'
@@ -111,6 +130,8 @@ export interface DesktopCoreLinkOptions {
   readonly pairingPollIntervalMs?: number;
   readonly homeReportIntervalMs?: number;
   readonly networkWatchIntervalMs?: number;
+  // 中枢の画面の自宅の登録で、このマシンの指紋を読み取る上限（既定 HOME_COLLECT_TIMEOUT_MS）。
+  readonly homeCollectTimeoutMs?: number;
 }
 
 export interface ConnectionIpcOutcome {
@@ -155,6 +176,11 @@ export class DesktopCoreLink {
   // 一覧ごとに作る参照 → 申請 ID・端末 ID。参照だけを画面へ渡す（ID を画面に持たせない）。
   #claimRefs = new Map<string, string>();
   #deviceRefs = new Map<string, string>();
+  // 自宅の登録の参照 → 画面に伏せて見せた指紋（B03-08）。最後に見せた 1 つだけを持つ。
+  #homeRef: {
+    readonly ref: string;
+    readonly fingerprint: HomeFingerprint;
+  } | null = null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -659,6 +685,10 @@ export class DesktopCoreLink {
           },
         });
       }
+      case 'desktop.home_status':
+        return this.#homeStatus(requestId, raw.channel);
+      case 'desktop.home_register':
+        return this.#homeRegister(requestId, raw.channel, raw.payload.ref);
       default:
         return this.#reject(requestId, raw.channel, 'invalid_request');
     }
@@ -753,6 +783,161 @@ export class DesktopCoreLink {
     });
   }
 
+  // 自宅の登録の状態とこのマシンのネットワークの伏せた表示（B03-08）。中枢の登録の読み取りと指紋の読み取りを
+  // 同時に行う。登録できる指紋なら参照を作る（前に見せた指紋と同じなら同じ参照。確認を開いている間に読み取り
+  // 直しても参照が古くならない）。
+  async #homeStatus(
+    requestId: string,
+    channel: 'desktop.home_status',
+  ): Promise<ConnectionIpcOutcome> {
+    const connection = this.#connection;
+    if (connection === null)
+      return this.#reject(requestId, channel, 'not_connected');
+    const [outcome, reading] = await Promise.all([
+      connection.request({
+        method: 'GET',
+        path: '/v1/home-network/registration',
+      }),
+      this.#readHubHome(),
+    ]);
+    const failed = this.#adminFailure(outcome, 200, true);
+    if (failed !== null || outcome.kind !== 'response')
+      return this.#reject(requestId, channel, failed ?? 'not_connected');
+    if (!this.#options.contract.valid('HomeRegistrationState', outcome.body))
+      return this.#reject(requestId, channel, 'core_rejected');
+    const registration = (outcome.body as HomeRegistrationState).registration;
+    let ref: string | null = null;
+    if (reading !== null && registrable(reading.fingerprint)) {
+      const previous = this.#homeRef;
+      ref =
+        previous !== null &&
+        sameFingerprint(previous.fingerprint, reading.fingerprint)
+          ? previous.ref
+          : this.#options.clock.newRequestId();
+      this.#homeRef = { ref, fingerprint: reading.fingerprint };
+    } else this.#homeRef = null;
+    return this.#homeResponse(requestId, channel, registration, reading, ref);
+  }
+
+  // 画面で確かめた指紋を自宅として登録する（B03-08）。参照の指紋と、送る直前に読み取り直した指紋が同じときだけ
+  // 中枢へ送る（違えば home_network_changed）。結果が分からなければ outcome_unknown で、自動では送り直さない。
+  async #homeRegister(
+    requestId: string,
+    channel: 'desktop.home_register',
+    ref: string,
+  ): Promise<ConnectionIpcOutcome> {
+    const connection = this.#connection;
+    if (connection === null)
+      return this.#reject(requestId, channel, 'not_connected');
+    const pending = this.#homeRef;
+    if (pending === null || pending.ref !== ref)
+      return this.#reject(requestId, channel, 'entry_not_found');
+    const reading = await this.#readHubHome();
+    if (
+      reading === null ||
+      !sameFingerprint(reading.fingerprint, pending.fingerprint)
+    ) {
+      // 画面は読み取り直してから、もう一度確かめる（古い参照では送らない）。
+      if (this.#homeRef === pending) this.#homeRef = null;
+      this.#log('hub_home_changed');
+      return this.#reject(requestId, channel, 'home_network_changed');
+    }
+    const outcome = await connection.request({
+      method: 'PUT',
+      path: '/v1/home-network/registration',
+      body: {
+        gateway_mac: pending.fingerprint.gateway_mac,
+        subnet: pending.fingerprint.subnet,
+        ssid: pending.fingerprint.ssid,
+      },
+      screenOperation: true,
+      scoped: true,
+    });
+    const failed = this.#adminFailure(outcome, 200);
+    if (failed !== null || outcome.kind !== 'response') {
+      this.#log(`hub_home_register_failed:${failed ?? 'not_connected'}`);
+      return this.#reject(requestId, channel, failed ?? 'not_connected');
+    }
+    if (!this.#options.contract.valid('HomeRegistration', outcome.body))
+      return this.#reject(requestId, channel, 'core_rejected');
+    this.#log('hub_home_registered');
+    return this.#homeResponse(
+      requestId,
+      channel,
+      outcome.body as HomeRegistration,
+      reading,
+      pending.ref,
+    );
+  }
+
+  #homeResponse(
+    requestId: string,
+    channel: 'desktop.home_status' | 'desktop.home_register',
+    registration: HomeRegistration | null,
+    reading: HubHomeReading | null,
+    ref: string | null,
+  ): ConnectionIpcOutcome {
+    return this.#respond({
+      request_id: requestId,
+      channel,
+      outcome: 'ok',
+      home: {
+        registration,
+        observation:
+          reading === null
+            ? null
+            : maskHomeObservation(
+                reading.fingerprint,
+                reading.unavailable,
+                ref,
+                new Date(reading.collectedAt).toISOString(),
+              ),
+      },
+    });
+  }
+
+  // このマシンの指紋を読み取る。失敗・時間切れ・どの要素も取れないときは null（値は記録しない）。
+  async #readHubHome(): Promise<HubHomeReading | null> {
+    let cancel: () => void = () => undefined;
+    const timeout = new Promise<'timeout'>((resolve) => {
+      cancel = this.#options.clock.setTimer(
+        this.#options.homeCollectTimeoutMs ?? HOME_COLLECT_TIMEOUT_MS,
+        () => resolve('timeout'),
+      );
+    });
+    let observation: HomeObservation | 'timeout' | 'failed';
+    try {
+      observation = await Promise.race([
+        this.#options.collectHome().catch(() => 'failed' as const),
+        timeout,
+      ]);
+    } catch {
+      observation = 'failed';
+    } finally {
+      cancel();
+    }
+    if (observation === 'timeout' || observation === 'failed') {
+      this.#log(`hub_home_read_${observation}`);
+      return null;
+    }
+    const fingerprint = sanitizeFingerprint(observation, (name, value) =>
+      this.#options.contract.valid(name, value),
+    );
+    if (
+      fingerprint.gateway_mac === null &&
+      fingerprint.subnet === null &&
+      fingerprint.ssid === null
+    ) {
+      this.#log('hub_home_read_empty');
+      return null;
+    }
+    return {
+      fingerprint,
+      unavailable: observation.unavailable ?? [],
+      collectedAt: this.#options.clock.now(),
+    };
+  }
+
   // 中枢の画面の操作の結果の分類。null は成功。read は一覧（送れなかった・分からないは未接続として扱う）。
   #adminFailure(
     outcome: Awaited<ReturnType<ClientConnection['request']>>,
@@ -778,6 +963,7 @@ export class DesktopCoreLink {
     this.#hubScreen = null;
     this.#claimRefs.clear();
     this.#deviceRefs.clear();
+    this.#homeRef = null;
     this.#reporter?.stop();
     this.#reporter = null;
     this.#connection?.stop();

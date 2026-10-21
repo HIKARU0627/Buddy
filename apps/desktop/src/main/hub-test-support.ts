@@ -20,7 +20,7 @@ import type test from 'node:test';
 import { startCore } from '@buddy/core';
 import type { CoreHandle } from '@buddy/core';
 import { createMockKeyStore, createMockTlsKeyStore } from '@buddy/platform';
-import type { MockTlsKeyStore } from '@buddy/platform';
+import type { MockTlsKeyStore, TailscaleStatusSource } from '@buddy/platform';
 import { sealOperationIntent } from '@buddy/storage';
 import type {
   CreateOperationCommand,
@@ -176,6 +176,8 @@ export async function startHub(
     readonly sameMachine?: () => boolean;
     // 自宅判定を満たす環境を注入する（中枢と同じマシンでない端末を試すとき）。
     readonly homeNetwork?: boolean;
+    // 中枢の Tailscale の状態（模擬。自宅判定を Core の実装のまま試すとき。B03-08）。
+    readonly tailscale?: TailscaleStatusSource;
   },
 ): Promise<TestHub> {
   const tlsKeyStore = options.tlsKeyStore ?? createMockTlsKeyStore();
@@ -195,6 +197,9 @@ export async function startHub(
       ...(options.homeNetwork === true
         ? { environment: { homeNetwork: () => true } }
         : {}),
+      ...(options.tailscale === undefined
+        ? {}
+        : { tailscale: options.tailscale }),
     },
     events: { pollIntervalMs: 100 },
   });

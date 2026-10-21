@@ -200,7 +200,7 @@ export function pinnedConnect(
 }
 
 export interface HubHttpRequest {
-  readonly method: 'GET' | 'POST';
+  readonly method: 'GET' | 'POST' | 'PUT';
   readonly path: string;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: Readonly<Record<string, unknown>>;

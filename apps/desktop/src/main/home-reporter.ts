@@ -17,6 +17,9 @@ export interface HomeObservation {
   readonly gateway_mac: string | null;
   readonly subnet: string | null;
   readonly ssid: string | null;
+  // 取れなかった理由（@buddy/platform の診断用のコード。値を含めない）。中枢の画面の自宅の登録で、SSID が
+  // 取れない理由の表示に使う（B03-08）。報告の本文には入れない。
+  readonly unavailable?: readonly string[];
 }
 
 export interface HomeReportResult {

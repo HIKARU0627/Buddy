@@ -6,7 +6,8 @@
 export type ClientLockState = 'unlocked' | 'locked' | 'unknown';
 
 export interface ClientApiRequest {
-  readonly method: 'GET' | 'POST';
+  // PUT は置き換える要求（自宅の登録。B03-08）。
+  readonly method: 'GET' | 'POST' | 'PUT';
   // /v1/... のパス（クエリーを含む）。
   readonly path: string;
   readonly body?: Readonly<Record<string, unknown>>;

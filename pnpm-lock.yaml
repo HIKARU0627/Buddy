@@ -267,12 +267,18 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@buddy/client':
+        specifier: workspace:*
+        version: link:../../packages/client
       '@buddy/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@buddy/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@buddy/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
       ajv:
         specifier: 8.20.0
         version: 8.20.0
@@ -285,13 +291,25 @@ importers:
       react-dom:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
     devDependencies:
+      '@buddy/core':
+        specifier: workspace:*
+        version: link:../core
+      '@buddy/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
       '@types/react-dom':
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      '@types/ws':
+        specifier: 8.18.2
+        version: 8.18.2
       '@vitejs/plugin-react':
         specifier: 6.1.2
         version: 6.1.2(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))

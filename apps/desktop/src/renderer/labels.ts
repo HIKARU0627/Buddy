@@ -19,6 +19,10 @@ export const REJECT_MESSAGES: Readonly<Record<Rejected['reason'], string>> = {
   core_required: '来客モード・全体停止の解除には中枢での操作が必要です。',
   io_epoch_mismatch:
     '画面の情報が古いため再開しませんでした。最新の状態を確かめてから、もう一度押してください。',
+  pairing_step_mismatch:
+    'ペアリングの手順と合わないため受け付けませんでした。画面の表示を確かめてください。',
+  secure_storage_unavailable:
+    'この端末では安全な保存が使えないため、登録できません。',
 };
 
 export const POWER_EVENT_LABELS: Readonly<Record<PowerEvent['event'], string>> =

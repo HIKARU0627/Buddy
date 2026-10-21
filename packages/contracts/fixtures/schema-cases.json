@@ -3608,6 +3608,592 @@
     }
   },
   {
+    "id": "desktop-ipc-get-connection",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.get_connection",
+      "request_id": "00000000-0000-4000-8000-000000000b01",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b02",
+      "payload": {
+        "host": "100.64.0.10",
+        "port": 47443
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin-name",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b03",
+      "payload": {
+        "host": "buddy-hub.example",
+        "port": 47443
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin-url",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b04",
+      "payload": {
+        "host": "https://100.64.0.10:47443/v1",
+        "port": 47443
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin-port-zero",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b05",
+      "payload": {
+        "host": "100.64.0.10",
+        "port": 0
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin-skip-verify",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b06",
+      "payload": {
+        "host": "100.64.0.10",
+        "port": 47443,
+        "reject_unauthorized": false
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-confirm",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.pairing_confirm",
+      "request_id": "00000000-0000-4000-8000-000000000b07",
+      "payload": {
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-confirm-uppercase",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_confirm",
+      "request_id": "00000000-0000-4000-8000-000000000b08",
+      "payload": {
+        "fingerprint": "3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-confirm-with-certificate",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_confirm",
+      "request_id": "00000000-0000-4000-8000-000000000b09",
+      "payload": {
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "certificate_pem": "-----BEGIN CERTIFICATE-----"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-submit",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.pairing_submit",
+      "request_id": "00000000-0000-4000-8000-000000000b10",
+      "payload": {
+        "pairing_code": "01234567",
+        "device_name": "合成の端末"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-submit-short-code",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_submit",
+      "request_id": "00000000-0000-4000-8000-000000000b11",
+      "payload": {
+        "pairing_code": "1234567",
+        "device_name": "合成の端末"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-submit-claim-secret",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_submit",
+      "request_id": "00000000-0000-4000-8000-000000000b12",
+      "payload": {
+        "pairing_code": "01234567",
+        "device_name": "合成の端末",
+        "claim_secret": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-submit-long-name",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_submit",
+      "request_id": "00000000-0000-4000-8000-000000000b13",
+      "payload": {
+        "pairing_code": "01234567",
+        "device_name": "あああああああああああああああああああああああああああああああああああああああああ"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-cancel",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.pairing_cancel",
+      "request_id": "00000000-0000-4000-8000-000000000b14",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-connection-hidden",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "hidden",
+      "lock_state": "locked"
+    }
+  },
+  {
+    "id": "desktop-connection-hidden-with-pairing",
+    "schema": "DesktopConnectionView",
+    "valid": false,
+    "value": {
+      "visibility": "hidden",
+      "lock_state": "unknown",
+      "pairing": null
+    }
+  },
+  {
+    "id": "desktop-connection-unregistered",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "unregistered",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": null,
+      "home_network": null,
+      "operations": []
+    }
+  },
+  {
+    "id": "desktop-connection-fingerprint-check",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "unregistered",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": {
+        "step": "fingerprint_check",
+        "host": "100.64.0.10",
+        "port": 47443,
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "claim_expires_at": null,
+        "failure": null
+      },
+      "home_network": null,
+      "operations": []
+    }
+  },
+  {
+    "id": "desktop-connection-pairing-failed",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "unregistered",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": {
+        "step": "failed",
+        "host": "100.64.0.10",
+        "port": 47443,
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "claim_expires_at": null,
+        "failure": "pickup_unknown"
+      },
+      "home_network": null,
+      "operations": []
+    }
+  },
+  {
+    "id": "desktop-connection-connected",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "registered",
+      "link": "connected",
+      "link_reason": null,
+      "last_confirmed_at": "2030-10-05T00:00:00Z",
+      "retry_at": null,
+      "pairing": null,
+      "home_network": {
+        "allowed": true,
+        "exempt": false,
+        "reasons": [],
+        "reported_at": "2030-10-05T00:00:00Z"
+      },
+      "operations": [
+        {
+          "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "content_version": "1",
+          "content_hash": "abababababababababababababababababababababababababababababababab",
+          "state_revision": "2",
+          "state": "approved",
+          "approval_state": "valid",
+          "allowed_actions": ["cancel"],
+          "result": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "desktop-connection-waiting-retry",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "registered",
+      "link": "waiting_retry",
+      "link_reason": "outside_home_network",
+      "last_confirmed_at": "2030-10-05T00:00:00Z",
+      "retry_at": "2030-10-05T00:00:02Z",
+      "pairing": null,
+      "home_network": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["tailscale_derp"],
+        "reported_at": "2030-10-05T00:00:00Z"
+      },
+      "operations": []
+    }
+  },
+  {
+    "id": "desktop-connection-reregistration",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "reregistration_required",
+      "link": "reregistration_required",
+      "link_reason": "certificate_mismatch",
+      "last_confirmed_at": "2030-10-05T00:00:00Z",
+      "retry_at": null,
+      "pairing": null,
+      "home_network": null,
+      "operations": []
+    }
+  },
+  {
+    "id": "desktop-connection-storage-unavailable",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "secure_storage_unavailable",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": null,
+      "home_network": null,
+      "operations": []
+    }
+  },
+  {
+    "id": "desktop-connection-token",
+    "schema": "DesktopConnectionView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "registration": "registered",
+      "link": "connected",
+      "link_reason": null,
+      "last_confirmed_at": "2030-10-05T00:00:00Z",
+      "retry_at": null,
+      "pairing": null,
+      "home_network": {
+        "allowed": true,
+        "exempt": false,
+        "reasons": [],
+        "reported_at": "2030-10-05T00:00:00Z"
+      },
+      "operations": [
+        {
+          "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "content_version": "1",
+          "content_hash": "abababababababababababababababababababababababababababababababab",
+          "state_revision": "2",
+          "state": "approved",
+          "approval_state": "valid",
+          "allowed_actions": ["cancel"],
+          "result": null
+        }
+      ],
+      "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+  },
+  {
+    "id": "desktop-connection-device-id",
+    "schema": "DesktopConnectionView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "registration": "registered",
+      "link": "connected",
+      "link_reason": null,
+      "last_confirmed_at": "2030-10-05T00:00:00Z",
+      "retry_at": null,
+      "pairing": null,
+      "home_network": {
+        "allowed": true,
+        "exempt": false,
+        "reasons": [],
+        "reported_at": "2030-10-05T00:00:00Z"
+      },
+      "operations": [
+        {
+          "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "content_version": "1",
+          "content_hash": "abababababababababababababababababababababababababababababababab",
+          "state_revision": "2",
+          "state": "approved",
+          "approval_state": "valid",
+          "allowed_actions": ["cancel"],
+          "result": null
+        }
+      ],
+      "device_id": "00000000-0000-4000-8000-000000000b15"
+    }
+  },
+  {
+    "id": "desktop-connection-home-values",
+    "schema": "DesktopConnectionView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "registration": "registered",
+      "link": "connected",
+      "link_reason": null,
+      "last_confirmed_at": "2030-10-05T00:00:00Z",
+      "retry_at": null,
+      "pairing": null,
+      "home_network": {
+        "allowed": true,
+        "exempt": false,
+        "reasons": [],
+        "reported_at": "2030-10-05T00:00:00Z",
+        "gateway_mac": "00:00:5e:00:53:01"
+      },
+      "operations": [
+        {
+          "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "content_version": "1",
+          "content_hash": "abababababababababababababababababababababababababababababababab",
+          "state_revision": "2",
+          "state": "approved",
+          "approval_state": "valid",
+          "allowed_actions": ["cancel"],
+          "result": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "desktop-connection-pairing-certificate",
+    "schema": "DesktopConnectionView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "registration": "unregistered",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": {
+        "step": "fingerprint_check",
+        "host": "100.64.0.10",
+        "port": 47443,
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "claim_expires_at": null,
+        "failure": null,
+        "certificate_pem": "-----BEGIN CERTIFICATE-----"
+      },
+      "home_network": null,
+      "operations": []
+    }
+  },
+  {
+    "id": "desktop-response-connection",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000b16",
+      "channel": "desktop.pairing_begin",
+      "outcome": "ok",
+      "connection": {
+        "visibility": "shown",
+        "registration": "unregistered",
+        "link": "not_connected",
+        "link_reason": null,
+        "last_confirmed_at": null,
+        "retry_at": null,
+        "pairing": {
+          "step": "fingerprint_check",
+          "host": "100.64.0.10",
+          "port": 47443,
+          "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+          "claim_expires_at": null,
+          "failure": null
+        },
+        "home_network": null,
+        "operations": []
+      }
+    }
+  },
+  {
+    "id": "desktop-response-connection-with-status-channel",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000b17",
+      "channel": "desktop.get_state",
+      "outcome": "ok",
+      "connection": {
+        "visibility": "shown",
+        "registration": "unregistered",
+        "link": "not_connected",
+        "link_reason": null,
+        "last_confirmed_at": null,
+        "retry_at": null,
+        "pairing": {
+          "step": "fingerprint_check",
+          "host": "100.64.0.10",
+          "port": 47443,
+          "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+          "claim_expires_at": null,
+          "failure": null
+        },
+        "home_network": null,
+        "operations": []
+      }
+    }
+  },
+  {
+    "id": "desktop-response-pairing-step",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000b18",
+      "channel": "desktop.pairing_submit",
+      "outcome": "rejected",
+      "reason": "pairing_step_mismatch"
+    }
+  },
+  {
+    "id": "desktop-notify-connection",
+    "schema": "DesktopIpcNotification",
+    "valid": true,
+    "value": {
+      "channel": "desktop.connection_changed",
+      "connection": {
+        "visibility": "shown",
+        "registration": "registered",
+        "link": "connected",
+        "link_reason": null,
+        "last_confirmed_at": "2030-10-05T00:00:00Z",
+        "retry_at": null,
+        "pairing": null,
+        "home_network": {
+          "allowed": true,
+          "exempt": false,
+          "reasons": [],
+          "reported_at": "2030-10-05T00:00:00Z"
+        },
+        "operations": [
+          {
+            "operation_id": "00000000-0000-4000-8000-000000000c01",
+            "content_version": "1",
+            "content_hash": "abababababababababababababababababababababababababababababababab",
+            "state_revision": "2",
+            "state": "approved",
+            "approval_state": "valid",
+            "allowed_actions": ["cancel"],
+            "result": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "desktop-status-connected-hub-unknown",
+    "schema": "DesktopStatusBar",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "lock_state": "unlocked",
+      "stop_scope": "none",
+      "input_permitted": true,
+      "io_epoch": "4",
+      "voice_state": null,
+      "hub_connection": "connected",
+      "hub_last_confirmed_at": "2030-10-05T00:00:00Z",
+      "display_target": null,
+      "storage_mode": null,
+      "budget_held": null,
+      "safety_stopped": null
+    }
+  },
+  {
     "id": "desktop-status-locked",
     "schema": "DesktopStatusBar",
     "valid": true,

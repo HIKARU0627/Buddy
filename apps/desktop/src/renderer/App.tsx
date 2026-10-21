@@ -122,7 +122,7 @@ export function App() {
     const unsubscribe = api.onNotification((notification) => {
       if (notification.channel === 'desktop.state_changed')
         setStatus(notification.status);
-      else
+      else if (notification.channel === 'desktop.power_event')
         setPowerLog((log) => [notification, ...log].slice(0, POWER_LOG_LIMIT));
     });
     send(request('desktop.get_state', null));

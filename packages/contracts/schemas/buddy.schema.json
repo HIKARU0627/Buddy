@@ -7384,9 +7384,14 @@
         "desktop.io_stop",
         "desktop.io_resume",
         "desktop.window_hide",
-        "desktop.client_quit"
+        "desktop.client_quit",
+        "desktop.get_connection",
+        "desktop.pairing_begin",
+        "desktop.pairing_confirm",
+        "desktop.pairing_submit",
+        "desktop.pairing_cancel"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。音声レンダラーの IPC（B05）は別に定める。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -7486,6 +7491,128 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "クライアントを終了する。端末の入出力停止・中枢の停止とは別の操作で、中枢は止めない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.get_connection"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "中枢との接続・登録・ペアリングの状態を取得する。ロック中・ロック状態不明でも受け付け、内容を隠した値を返す。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.pairing_begin"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "host": {
+                  "$ref": "#/$defs/DesktopHubHost"
+                },
+                "port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              },
+              "required": ["host", "port"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "ペアリングを始める。main は最初の接続で中枢の証明書を受け取り（要求を 1 バイトも送らない）、指紋を表示用に返す。ロック解除済みの画面操作だけ。安全な保存（safeStorage）が使えなければ拒否する。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.pairing_confirm"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "fingerprint": {
+                  "$ref": "#/$defs/Hash"
+                }
+              },
+              "required": ["fingerprint"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "本人が中枢の画面・CLI の指紋と表示の指紋が一致すると確かめた（「一致」を押した）。表示した指紋をそのまま返し、main は受け取った証明書の指紋と同じときだけ次へ進む。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.pairing_submit"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "pairing_code": {
+                  "type": "string",
+                  "pattern": "^[0-9]{8}$"
+                },
+                "device_name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                }
+              },
+              "required": ["pairing_code", "device_name"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "ワンタイムコードと端末名で申請する。main は確かめた指紋でピン留めした新しい接続で申請し、承認を待ってトークンを受け取り、safeStorage で暗号化して保存する。トークンは Renderer へ返さない。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.pairing_cancel"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "ペアリングをやめる。いつでも受け付ける。中枢へ取消は送らない（申請は期限で無効になる）。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -7609,10 +7736,267 @@
             "safety_stopped"
           ],
           "additionalProperties": false,
-          "description": "ロック解除済み。hub_connection の not_connected は中枢と接続しない（B01 の既定）、unreachable は接続できない。中枢が正本の値（表示先・保存モード・予算保留・安全停止）は接続中だけ値を持ち、それ以外は null（不明）。voice_state の null は音声機能がまだない（B05 まで）。"
+          "description": "ロック解除済み。hub_connection の not_connected は中枢と接続していない（未登録・再登録が必要を含む）、unreachable は接続できない。中枢が正本の値（表示先・保存モード・予算保留・安全停止）は接続中だけ値を持てる。接続中でも中枢がまだ正本を持たない値は null（不明。ADR 0025）で、接続していなければ必ず null。接続中は最終確認時刻を必ず持つ。voice_state の null は音声機能がまだない（B05 まで）。"
         }
       ],
       "description": "上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。"
+    },
+    "DesktopHubHost": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 253,
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "ipv4"
+        },
+        {
+          "type": "string",
+          "format": "ipv6"
+        },
+        {
+          "type": "string",
+          "format": "hostname"
+        }
+      ],
+      "description": "中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。"
+    },
+    "DesktopLinkReason": {
+      "type": "string",
+      "enum": [
+        "unreachable",
+        "outside_home_network",
+        "rate_limited",
+        "dependency_unavailable",
+        "protocol_error",
+        "core_stopping",
+        "slow_consumer",
+        "stream_closed",
+        "alive_timeout",
+        "resnapshot",
+        "unauthenticated",
+        "device_revoked",
+        "certificate_mismatch",
+        "api_major_mismatch"
+      ],
+      "description": "中枢との接続が切れた・使えない理由（packages/client の LinkReason、ADR 0025）。値・宛先を含めない。"
+    },
+    "DesktopPairingFailure": {
+      "type": "string",
+      "enum": [
+        "certificate_unavailable",
+        "certificate_changed",
+        "unreachable",
+        "pairing_failed",
+        "outside_home_network",
+        "rate_limited",
+        "claim_expired",
+        "pickup_refused",
+        "pickup_unknown",
+        "secure_storage_unavailable",
+        "storage_failed",
+        "protocol_error"
+      ],
+      "description": "ペアリングが失敗した理由（ADR 0025）。pickup_unknown は受取りの結果が分からない（自動で再送しない。中枢で失効してやり直す）。"
+    },
+    "DesktopConnectionView": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "const": "hidden"
+            },
+            "lock_state": {
+              "type": "string",
+              "enum": ["locked", "unknown"]
+            }
+          },
+          "required": ["visibility", "lock_state"],
+          "additionalProperties": false,
+          "description": "ロック中・ロック状態不明。登録・ペアリング・操作の内容を出さない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "const": "shown"
+            },
+            "registration": {
+              "type": "string",
+              "enum": [
+                "unregistered",
+                "registered",
+                "reregistration_required",
+                "secure_storage_unavailable"
+              ]
+            },
+            "link": {
+              "type": "string",
+              "enum": [
+                "not_connected",
+                "connecting",
+                "connected",
+                "waiting_retry",
+                "upgrade_required",
+                "reregistration_required"
+              ]
+            },
+            "link_reason": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DesktopLinkReason"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "last_confirmed_at": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/UtcTime"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "retry_at": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/UtcTime"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "pairing": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": "string",
+                      "enum": [
+                        "fetching_certificate",
+                        "fingerprint_check",
+                        "code_entry",
+                        "claiming",
+                        "waiting_approval",
+                        "failed"
+                      ]
+                    },
+                    "host": {
+                      "$ref": "#/$defs/DesktopHubHost"
+                    },
+                    "port": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65535
+                    },
+                    "fingerprint": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/Hash"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "claim_expires_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/UtcTime"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "failure": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/DesktopPairingFailure"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "host",
+                    "port",
+                    "fingerprint",
+                    "claim_expires_at",
+                    "failure"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "home_network": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "allowed": {
+                      "type": "boolean"
+                    },
+                    "exempt": {
+                      "type": "boolean"
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "$ref": "#/$defs/HomeNetworkReason"
+                      }
+                    },
+                    "reported_at": {
+                      "$ref": "#/$defs/UtcTime"
+                    }
+                  },
+                  "required": ["allowed", "exempt", "reasons", "reported_at"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "operations": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/OperationSnapshot"
+              }
+            }
+          },
+          "required": [
+            "visibility",
+            "registration",
+            "link",
+            "link_reason",
+            "last_confirmed_at",
+            "retry_at",
+            "pairing",
+            "home_network",
+            "operations"
+          ],
+          "additionalProperties": false,
+          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（ロック解除済みで接続しているときだけ）。"
+        }
+      ],
+      "description": "中枢との接続・登録・ペアリングの状態（設計 02 端末登録と接続、07 §2〜§4、ADR 0025）。main が作り、UI レンダラーは表示するだけ。端末トークン・申請用の秘密・端末 ID・中枢の証明書の本体・自宅の指紋の値を含めない。"
     },
     "DesktopIpcResponse": {
       "oneOf": [
@@ -7665,6 +8049,34 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "desktop.get_connection",
+                "desktop.pairing_begin",
+                "desktop.pairing_confirm",
+                "desktop.pairing_submit",
+                "desktop.pairing_cancel"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "connection": {
+              "$ref": "#/$defs/DesktopConnectionView"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "connection"],
+          "additionalProperties": false,
+          "description": "受け付けた。処理後の接続の状態を返す（ペアリングの進み具合は desktop.connection_changed で知らせる）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -7697,7 +8109,9 @@
                 "screen_operation_required",
                 "not_stopped",
                 "core_required",
-                "io_epoch_mismatch"
+                "io_epoch_mismatch",
+                "pairing_step_mismatch",
+                "secure_storage_unavailable"
               ]
             }
           },
@@ -7706,7 +8120,7 @@
           "description": "拒否した。理由コードだけを返し、本文・詳細な文言を含めない。形式の不正で request_id・channel を確かめられないときは null。"
         }
       ],
-      "description": "main から UI レンダラーへの応答（ADR 0014）。どの拒否を返すかは domain の desktop.ts の規則が決める。"
+      "description": "main から UI レンダラーへの応答（ADR 0014・0025）。どの拒否を返すかは domain の desktop.ts の規則と main のペアリングの手順が決める。"
     },
     "DesktopIpcNotification": {
       "oneOf": [
@@ -7753,6 +8167,21 @@
           "required": ["channel", "event", "source", "observed_at"],
           "additionalProperties": false,
           "description": "main が記録した電源・ロックのイベント。os_event は OS からの通知、os_query は main が OS へ問い合わせた結果。記録の通知で、入出力の停止・再開の命令ではない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.connection_changed"
+            },
+            "connection": {
+              "$ref": "#/$defs/DesktopConnectionView"
+            }
+          },
+          "required": ["channel", "connection"],
+          "additionalProperties": false,
+          "description": "中枢との接続・登録・ペアリングの状態が変わった（ADR 0025）。"
         }
       ],
       "description": "main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。"

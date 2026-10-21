@@ -14,10 +14,14 @@ const nodeImports = [
 const restricted = (groups, paths = []) => [
   'error',
   {
-    paths: paths.map((name) => ({
-      name,
-      message: '共有層へ Node.js / OS 固有依存を持ち込まないでください。',
-    })),
+    paths: paths.map((entry) =>
+      typeof entry === 'string'
+        ? {
+            name: entry,
+            message: '共有層へ Node.js / OS 固有依存を持ち込まないでください。',
+          }
+        : entry,
+    ),
     patterns: groups.map((group) => ({
       group,
       message: 'ワークスペースの依存方向を確認してください。',
@@ -25,8 +29,30 @@ const restricted = (groups, paths = []) => [
   },
 ];
 
-// デスクトップから読み込まない別ワークスペース（B01 は中枢に接続しない。ADR 0012・0015）。
+// デスクトップの main から読み込まない別ワークスペース（ADR 0012・0015）。中枢（Core）・保存には HTTPS / WSS
+// でだけ接続し、コードを読み込まない。OS アダプターは自宅の指紋の収集の出口
+// （@buddy/platform/home-fingerprint）だけを読み込める（B03-05、ADR 0025）。
+// gitignore の形式では親（@buddy/platform）を除外すると子を戻せないため、パッケージの入口そのものは
+// desktopMainForbiddenPaths で拒否する。
+const desktopMainForbiddenPaths = [
+  {
+    name: '@buddy/platform',
+    message:
+      'デスクトップの main は @buddy/platform/home-fingerprint だけを読み込めます。',
+  },
+];
 const desktopMainForbidden = [
+  '@buddy/core',
+  '@buddy/core/*',
+  '@buddy/platform/*',
+  '!@buddy/platform/home-fingerprint',
+  '@buddy/storage',
+  '@buddy/storage/*',
+  '@buddy/desktop',
+  '@buddy/desktop/*',
+];
+// UI レンダラーは画面だけ。中枢・OS アダプター・接続の状態機械（@buddy/client）・ws を読み込まない。
+const desktopRendererForbidden = [
   '@buddy/core',
   '@buddy/core/*',
   '@buddy/platform',
@@ -35,6 +61,16 @@ const desktopMainForbidden = [
   '@buddy/storage/*',
   '@buddy/desktop',
   '@buddy/desktop/*',
+  '@buddy/client',
+  '@buddy/client/*',
+  'ws',
+  'ws/*',
+];
+// main の試験と試験の道具だけは、同じプロセスで中枢（startCore）・保存（操作の命令）・OS アダプターの模擬
+// （模擬の KeyStore）を起動して 2 クライアントの統合試験を行う（B03-05、ADR 0025）。製品のコードからは読み込めない。
+const desktopMainTestFiles = [
+  'apps/desktop/src/main/*.test.ts',
+  'apps/desktop/src/main/hub-test-support.ts',
 ];
 // 別ワークスペースの src を相対パスで読み込まない（公開出口の @buddy/contracts・@buddy/domain を使う）。
 const desktopWorkspaceRelative = [
@@ -251,11 +287,14 @@ export default tseslint.config(
     files: ['apps/desktop/src/main/**/*.ts'],
     languageOptions: { globals: globals.node },
     rules: {
-      'no-restricted-imports': restricted([
-        desktopMainForbidden,
-        desktopWorkspaceRelative,
-        ['../**/renderer/**', '../**/preload/**'],
-      ]),
+      'no-restricted-imports': restricted(
+        [
+          desktopMainForbidden,
+          desktopWorkspaceRelative,
+          ['../**/renderer/**', '../**/preload/**'],
+        ],
+        desktopMainForbiddenPaths,
+      ),
       'no-restricted-syntax': [
         'error',
         {
@@ -270,8 +309,31 @@ export default tseslint.config(
     // main の純粋なモジュール（electron/ 以外）: Electron を読み込まず、node:test で試験する。
     files: ['apps/desktop/src/main/*.ts'],
     rules: {
+      'no-restricted-imports': restricted(
+        [
+          desktopMainForbidden,
+          desktopWorkspaceRelative,
+          ['../**/renderer/**', '../**/preload/**'],
+          ['electron', 'electron/*', '@electron/*'],
+        ],
+        desktopMainForbiddenPaths,
+      ),
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/(core|platform|storage|desktop))(\\/|$)/]',
+          message:
+            'main の純粋なモジュールは Electron・中枢・OS アダプターへ依存しません。',
+        },
+      ],
+    },
+  },
+  {
+    files: desktopMainTestFiles,
+    rules: {
       'no-restricted-imports': restricted([
-        desktopMainForbidden,
+        ['@buddy/desktop', '@buddy/desktop/*'],
         desktopWorkspaceRelative,
         ['../**/renderer/**', '../**/preload/**'],
         ['electron', 'electron/*', '@electron/*'],
@@ -280,9 +342,8 @@ export default tseslint.config(
         'error',
         {
           selector:
-            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/(core|platform|storage|desktop))(\\/|$)/]',
-          message:
-            'main の純粋なモジュールは Electron・中枢・OS アダプターへ依存しません。',
+            'ImportExpression[source.value=/^(electron|@electron)(\\/|$)/]',
+          message: 'main の試験は Electron へ依存しません。',
         },
       ],
     },
@@ -331,7 +392,7 @@ export default tseslint.config(
       'no-restricted-imports': restricted(
         [
           ['node:*', 'electron', 'electron/*', '@electron/*'],
-          desktopMainForbidden,
+          desktopRendererForbidden,
           desktopWorkspaceRelative,
           ['../**/main/**', '../**/preload/**'],
         ],

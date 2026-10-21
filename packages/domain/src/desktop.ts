@@ -9,6 +9,12 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.io_resume',
   'desktop.window_hide',
   'desktop.client_quit',
+  // B03-05: 中枢との接続・ペアリング（ADR 0025）。
+  'desktop.get_connection',
+  'desktop.pairing_begin',
+  'desktop.pairing_confirm',
+  'desktop.pairing_submit',
+  'desktop.pairing_cancel',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -16,6 +22,7 @@ export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
 export const DESKTOP_NOTIFICATION_CHANNELS = [
   'desktop.state_changed',
   'desktop.power_event',
+  'desktop.connection_changed',
 ] as const;
 
 export const DESKTOP_POWER_EVENTS = [
@@ -36,6 +43,10 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'not_stopped',
   'core_required',
   'io_epoch_mismatch',
+  // ペアリングの手順と合わない要求（指紋の確認の前の申請など。ADR 0025）。
+  'pairing_step_mismatch',
+  // 保護の弱い方式しか使えずトークンを保存できない（ADR 0025）。
+  'secure_storage_unavailable',
 ] as const;
 
 export type DesktopIpcRejectReason =
@@ -67,8 +78,18 @@ const reject = (reason: DesktopIpcRejectReason): DesktopAdmission => ({
 const isChannel = (channel: string): channel is DesktopIpcChannel =>
   (DESKTOP_IPC_CHANNELS as readonly string[]).includes(channel);
 
+// 本人の画面操作として受け付けるペアリングの手順（ADR 0025）。指紋の確認・コードの入力は本人の操作なので、
+// ロック解除済みで、ウィンドウが表示中かつ前面のときだけ受け付ける。やめる（pairing_cancel）はいつでも。
+export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.pairing_begin',
+  'desktop.pairing_confirm',
+  'desktop.pairing_submit',
+];
+
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
-// 状態欄の取得・入出力停止・ウィンドウを閉じる・クライアント終了は、ロック中・不明・停止中でも受け付ける。
+// 状態欄・接続の状態の取得・入出力停止・ウィンドウを閉じる・クライアント終了・ペアリングをやめるは、
+// ロック中・不明・停止中でも受け付ける。ペアリングの手順は ロック解除済み → 画面操作 の順に検査する
+// （手順の順序は main が検査する）。
 // 再開は ロック解除済み → 画面操作 → この端末の停止 → 期待する io_epoch の一致 の順に検査する。
 export function admitDesktopRequest(
   channel: string,
@@ -78,6 +99,11 @@ export function admitDesktopRequest(
 ): DesktopAdmission {
   if (!isChannel(channel)) return reject('invalid_request');
   if (!sender.trustedSender) return reject('untrusted_sender');
+  if (DESKTOP_PAIRING_SCREEN_CHANNELS.includes(channel)) {
+    if (state.lockState !== 'unlocked') return reject('device_locked');
+    if (!sender.windowFocused) return reject('screen_operation_required');
+    return { ok: true };
+  }
   if (channel !== 'desktop.io_resume') return { ok: true };
   if (state.lockState !== 'unlocked') return reject('device_locked');
   if (!sender.windowFocused) return reject('screen_operation_required');

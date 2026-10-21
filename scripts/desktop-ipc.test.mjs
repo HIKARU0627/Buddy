@@ -77,6 +77,7 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     'DesktopIpcResponse',
     'DesktopIpcNotification',
     'DesktopStatusBar',
+    'DesktopConnectionView',
   ])
     walk(defs[name], name);
   // 入出力停止は local だけで、範囲を指定できない。
@@ -202,9 +203,84 @@ test('the status bar hides content while locked or unknown and keeps hub-owned v
   check({ hub_connection: 'connected' }, ['connected_without_values']);
   const connected = fixture('desktop-status-connected');
   assert.deepEqual(semanticErrors('DesktopStatusBar', connected), []);
+  // 接続中でも中枢がまだ正本を持たない値は null（不明）にできる。最終確認時刻は必須（ADR 0025 で ADR 0014 を変更）。
   assert.deepEqual(
     semanticErrors('DesktopStatusBar', { ...connected, budget_held: null }),
+    [],
+  );
+  assert.deepEqual(
+    semanticErrors('DesktopStatusBar', {
+      ...connected,
+      hub_last_confirmed_at: null,
+    }),
     ['connected_without_values'],
+  );
+});
+
+test('the connection view hides everything while locked and keeps pairing, link and registration consistent (ADR 0025)', () => {
+  const hidden = fixture('desktop-connection-hidden');
+  assert.deepEqual(Object.keys(hidden).sort(), ['lock_state', 'visibility']);
+  const check = (id, change, expected) => {
+    const value = { ...fixture(id), ...change };
+    assert(validators.DesktopConnectionView(value), JSON.stringify(change));
+    assert.deepEqual(
+      semanticErrors('DesktopConnectionView', value),
+      expected,
+      `${id} ${JSON.stringify(change)}`,
+    );
+  };
+  const pairing = fixture('desktop-connection-fingerprint-check').pairing;
+  check('desktop-connection-fingerprint-check', {}, []);
+  check(
+    'desktop-connection-fingerprint-check',
+    { pairing: { ...pairing, fingerprint: null } },
+    ['pairing_without_fingerprint'],
+  );
+  check(
+    'desktop-connection-fingerprint-check',
+    { pairing: { ...pairing, step: 'fetching_certificate' } },
+    ['fingerprint_before_certificate'],
+  );
+  check(
+    'desktop-connection-fingerprint-check',
+    { pairing: { ...pairing, step: 'failed' } },
+    ['pairing_failure_mismatch'],
+  );
+  check(
+    'desktop-connection-fingerprint-check',
+    { pairing: { ...pairing, failure: 'unreachable' } },
+    ['pairing_failure_mismatch'],
+  );
+  check('desktop-connection-connected', {}, []);
+  check('desktop-connection-connected', { link: 'waiting_retry' }, [
+    'operations_without_connection',
+    'retry_at_mismatch',
+  ]);
+  check('desktop-connection-connected', { last_confirmed_at: null }, [
+    'connected_without_confirmation',
+  ]);
+  check('desktop-connection-connected', { retry_at: '2030-10-05T00:00:00Z' }, [
+    'retry_at_mismatch',
+  ]);
+  check('desktop-connection-connected', { registration: 'unregistered' }, [
+    'link_conflicts_with_registration',
+  ]);
+  check('desktop-connection-reregistration', { link: 'connected' }, [
+    'link_conflicts_with_registration',
+  ]);
+  check('desktop-connection-storage-unavailable', { link: 'connecting' }, [
+    'link_conflicts_with_registration',
+  ]);
+  // 応答・通知の中でも同じ検査をする。
+  assert.deepEqual(
+    semanticErrors('DesktopIpcNotification', {
+      channel: 'desktop.connection_changed',
+      connection: {
+        ...fixture('desktop-connection-connected'),
+        link: 'connecting',
+      },
+    }),
+    ['operations_without_connection'],
   );
 });
 

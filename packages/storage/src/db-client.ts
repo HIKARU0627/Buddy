@@ -42,6 +42,13 @@ import type {
   DeviceOpResult,
   DeviceRecord,
 } from './device-store.js';
+import { PAIRING_WRITE_OPS } from './pairing-store.js';
+import type {
+  PairingOp,
+  PairingOpKind,
+  PairingOpResult,
+  PairingOpValues,
+} from './pairing-store.js';
 
 const MINT = Symbol('DispatchPermit');
 
@@ -154,6 +161,18 @@ interface PendingDevice {
   readonly resolve: (result: DeviceOpResult) => void;
 }
 
+interface PendingPairing {
+  readonly kind: 'pairing';
+  readonly op: PairingOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: PairingOpResult) => void;
+}
+
+// ペアリング・端末の一覧の命令と照会の結果の型（ADR 0021）。
+export type PairingOpOutcome<K extends PairingOpKind> =
+  | { readonly ok: true; readonly value: PairingOpValues[K] }
+  | Extract<PairingOpResult, { ok: false }>;
+
 // 端末・接続範囲の命令と照会の結果の型（ADR 0020）。
 export type DeviceOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
@@ -173,7 +192,10 @@ export class DbWorkerClient {
   #state: DbWorkerState = 'running';
   #brokenReason: string | null = null;
   #nextId = 1;
-  #pending = new Map<number, PendingCommand | PendingQuery | PendingDevice>();
+  #pending = new Map<
+    number,
+    PendingCommand | PendingQuery | PendingDevice | PendingPairing
+  >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
   #responseTimeoutMs: number;
@@ -419,6 +441,33 @@ export class DbWorkerClient {
     });
   }
 
+  // ペアリング・端末の一覧の命令と照会（ADR 0021）。扱いは device と同じで、worker が使えなければ
+  // 送らずに rejected、書込みの応答を失ったときは成否不明（unknown）にして以後の命令を送らない。
+  pairing<K extends PairingOpKind>(
+    op: Extract<PairingOp, { kind: K }>,
+  ): Promise<PairingOpOutcome<K>> {
+    return new Promise<PairingOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'pairing', op, timer, resolve });
+      const message: MainToWorker = { type: 'pairing', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<PairingOpOutcome<K>>;
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -479,6 +528,16 @@ export class DbWorkerClient {
         pending.reject(
           new StorageError(reason, 'DB worker から応答がありませんでした。'),
         );
+        continue;
+      }
+      if (pending.kind === 'pairing') {
+        pending.resolve({
+          ok: false,
+          outcome: PAIRING_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
         continue;
       }
       if (pending.kind === 'device') {
@@ -546,6 +605,18 @@ export class DbWorkerClient {
     if (message.type === 'device_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'device') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'pairing_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'pairing') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

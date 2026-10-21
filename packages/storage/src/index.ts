@@ -17,3 +17,5 @@ export * from './content-hash.js';
 export * from './store-binding.js';
 // B03-01: 端末と接続範囲（command_scope）の保存（ADR 0020）。
 export * from './device-store.js';
+// B03-02: ペアリング・端末の一覧・証明書の変更による失効（ADR 0021）。
+export * from './pairing-store.js';

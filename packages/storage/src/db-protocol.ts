@@ -16,6 +16,7 @@ import type {
 } from './operation-store.js';
 import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
 import type { DeviceOp, DeviceOpResult } from './device-store.js';
+import type { PairingOp, PairingOpResult } from './pairing-store.js';
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -79,7 +80,9 @@ export type MainToWorker =
   | { readonly type: 'query'; readonly id: number; readonly query: DbQuery }
   // 端末・接続範囲の命令と照会（ADR 0020）。
   | { readonly type: 'device'; readonly id: number; readonly op: DeviceOp }
-  | { readonly type: 'close'; readonly id: number };
+  | { readonly type: 'close'; readonly id: number }
+  // ペアリング・端末の一覧の命令と照会（ADR 0021）。
+  | { readonly type: 'pairing'; readonly id: number; readonly op: PairingOp };
 
 export interface WorkerTimings extends StoreTimings {
   // Core main が送ってから worker が処理を始めるまで（IPC と待ち行列の待ち）。
@@ -125,7 +128,13 @@ export type WorkerToMain =
       readonly result: DeviceOpResult;
       readonly halted: boolean;
     }
-  | { readonly type: 'closed'; readonly id: number };
+  | { readonly type: 'closed'; readonly id: number }
+  | {
+      readonly type: 'pairing_result';
+      readonly id: number;
+      readonly result: PairingOpResult;
+      readonly halted: boolean;
+    };
 
 export function timestamp(): number {
   return performance.timeOrigin + performance.now();

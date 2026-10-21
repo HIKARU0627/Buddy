@@ -438,7 +438,7 @@ export function createPairingService(
     // 自宅判定の B03-03 までの既定（安全側）。認証した端末は B03-01 の既定（hub_local の端末だけ免除）のまま。
     // 登録前の申請・受取り（端末なし）は、中枢と同じマシンからの接続だけを免除で通す（最初の端末の登録の
     // ため。中枢と同じマシンのクライアントは自宅判定を免除する、という RequestContext の注記に合わせる）。
-    // B03-03 の自宅判定で置き換える。
+    // Core では B03-03 の自宅判定（api-home-network.ts、ADR 0022）がこの homeNetwork を置き換える。
     homeNetwork: (input: EnvironmentInput) =>
       input.device === null
         ? sameMachine(input.remoteAddress)

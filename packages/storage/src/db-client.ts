@@ -50,6 +50,13 @@ import type {
   PairingOpResult,
   PairingOpValues,
 } from './pairing-store.js';
+import { HOME_NETWORK_WRITE_OPS } from './home-network-store.js';
+import type {
+  HomeNetworkOp,
+  HomeNetworkOpResult,
+  HomeRegistrationRecord,
+  HomeReportRecord,
+} from './home-network-store.js';
 
 const MINT = Symbol('DispatchPermit');
 
@@ -174,6 +181,18 @@ export type PairingOpOutcome<K extends PairingOpKind> =
   | { readonly ok: true; readonly value: PairingOpValues[K] }
   | Extract<PairingOpResult, { ok: false }>;
 
+// 自宅の命令と照会（ADR 0022）。
+interface PendingHome {
+  readonly kind: 'home';
+  readonly op: HomeNetworkOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: HomeNetworkOpResult) => void;
+}
+
+export type HomeNetworkOpOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | Extract<HomeNetworkOpResult, { ok: false }>;
+
 // 端末・接続範囲の命令と照会の結果の型（ADR 0020）。
 export type DeviceOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
@@ -195,7 +214,7 @@ export class DbWorkerClient {
   #nextId = 1;
   #pending = new Map<
     number,
-    PendingCommand | PendingQuery | PendingDevice | PendingPairing
+    PendingCommand | PendingQuery | PendingDevice | PendingPairing | PendingHome
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -471,6 +490,46 @@ export class DbWorkerClient {
     }) as Promise<PairingOpOutcome<K>>;
   }
 
+  // 自宅の命令と照会（ADR 0022）。扱いは device と同じ（使えなければ送らずに rejected、
+  // 書込みの応答を失えば成否不明で broken）。
+  home(
+    op: Extract<HomeNetworkOp, { kind: 'home.register' }>,
+  ): Promise<HomeNetworkOpOutcome<HomeRegistrationRecord>>;
+  home(
+    op: Extract<HomeNetworkOp, { kind: 'home.get' }>,
+  ): Promise<HomeNetworkOpOutcome<HomeRegistrationRecord | null>>;
+  home(
+    op: Extract<HomeNetworkOp, { kind: 'home.report' }>,
+  ): Promise<HomeNetworkOpOutcome<HomeReportRecord>>;
+  home(
+    op: Extract<HomeNetworkOp, { kind: 'home.find_report' }>,
+  ): Promise<HomeNetworkOpOutcome<HomeReportRecord | null>>;
+  home(
+    op: Extract<HomeNetworkOp, { kind: 'home.revoke_scopes' }>,
+  ): Promise<HomeNetworkOpOutcome<{ readonly revoked_scopes: number }>>;
+  home(op: HomeNetworkOp): Promise<HomeNetworkOpResult> {
+    return new Promise<HomeNetworkOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'home', op, timer, resolve });
+      const message: MainToWorker = { type: 'home', id, op };
+      this.#worker.postMessage(message);
+    });
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -554,6 +613,16 @@ export class DbWorkerClient {
         });
         continue;
       }
+      if (pending.kind === 'home') {
+        pending.resolve({
+          ok: false,
+          outcome: HOME_NETWORK_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
       pending.resolveReceived(false);
       const outcome: DbCommandOutcome = {
         outcome: 'unknown',
@@ -620,6 +689,18 @@ export class DbWorkerClient {
     if (message.type === 'pairing_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'pairing') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'home_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'home') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

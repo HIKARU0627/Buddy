@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "保存案 0001 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X15・X16・X44・X65・QA41・QA44、ADR 0010）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
+  "description": "保存案 0001〜0003 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
   "seed": [
     "INSERT INTO devices VALUES ('dev-1', '合成の端末', 'windows', 0, X'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000, NULL, NULL)",
     "INSERT INTO devices VALUES ('dev-hub', '合成の中枢', 'macos', 1, X'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000, NULL, NULL)",
@@ -628,6 +628,65 @@
         [
           "INSERT INTO evaluation_results VALUES ('ev-1', 'dep-1', 'all', '{}', 1300)",
           "check"
+        ]
+      ]
+    },
+    {
+      "id": "x42-home-registration-is-single-and-reports-are-hashed",
+      "refs": ["X42", "11 §10"],
+      "steps": [
+        [
+          "INSERT INTO home_networks VALUES (1, X'abababababababababababababababababababababababababababababababab', '192.0.2.0/24', NULL, 1000, 'dev-hub')",
+          "ok"
+        ],
+        [
+          "INSERT INTO home_networks VALUES (1, X'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd', '198.51.100.0/24', NULL, 2000, 'dev-hub')",
+          "unique"
+        ],
+        [
+          "INSERT INTO home_networks VALUES (2, X'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd', '198.51.100.0/24', NULL, 2000, 'dev-hub')",
+          "check"
+        ],
+        [
+          "UPDATE home_networks SET gateway_mac_hmac = X'00005e005301' WHERE home_id = 1",
+          "check"
+        ],
+        [
+          "UPDATE home_networks SET ssid_hmac = X'0011' WHERE home_id = 1",
+          "check"
+        ],
+        [
+          "UPDATE home_networks SET subnet = '192.0.2.0' WHERE home_id = 1",
+          "check"
+        ],
+        [
+          "UPDATE home_networks SET registered_by_device_id = 'dev-missing' WHERE home_id = 1",
+          "foreign_key"
+        ],
+        [
+          "INSERT INTO home_network_reports VALUES ('dev-1', NULL, NULL, NULL, 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO home_network_reports VALUES ('dev-1', X'abababababababababababababababababababababababababababababababab', '192.0.2.0/24', NULL, 2000)",
+          "unique"
+        ],
+        [
+          "INSERT INTO home_network_reports VALUES ('dev-hub', X'00005e005301', '192.0.2.0/24', NULL, 2000)",
+          "check"
+        ],
+        [
+          "INSERT INTO home_network_reports VALUES ('dev-hub', X'abababababababababababababababababababababababababababababababab', '192.0.2.0/24', X'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd', 2000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO home_network_reports VALUES ('dev-missing', X'abababababababababababababababababababababababababababababababab', '192.0.2.0/24', NULL, 2000)",
+          "foreign_key"
+        ],
+        ["DELETE FROM home_network_reports WHERE device_id = 'dev-1'", "ok"],
+        [
+          "INSERT INTO home_network_reports VALUES ('dev-1', X'abababababababababababababababababababababababababababababababab', '192.0.2.0/24', NULL, NULL)",
+          "not_null"
         ]
       ]
     }

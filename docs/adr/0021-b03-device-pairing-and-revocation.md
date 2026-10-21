@@ -87,6 +87,8 @@ ADR 0012 は制御チャネルで「本文・秘密は扱わない」として�
 
 自宅判定は B03-03 で作る。それまでの既定は安全側で、認証した端末は B03-01 の既定（hub_local の端末だけ免除）のまま、登録前の申請・受取り（端末なし）は中枢と同じマシンからの接続だけを免除で通す（最初の端末の登録のため）。他のマシンからの申請は 403 `outside_home_network`。試験は B03-01 の注入できる環境（`RequestEnvironment`）で自宅判定を満たして通す。
 
+B03-03 の統合後は、Core の環境で `pairing.environment.homeNetwork` の上に B03-03 の自宅判定（[ADR 0022](0022-b03-home-network-check.md)）を重ねる。登録前の同じマシンからの申請・受取りの免除はそのまま残し、別のマシンからの申請・受取りは本文の `home_fingerprint` と Tailscale の直接経路で判定する。
+
 ## api-server の変更
 
 経路の処理は B03-04（ADR 0023）と同じ `ApiServerOptions.handlers`（operationId → 処理、`ApiHandlerRequest` は経路・認証した端末・本文・パスの値・クエリー・接続元）で渡し、拒否は `apiErrorResponse` で作る。Core はペアリングの処理と B03-04 の経路の処理を一つの handlers にまとめ、環境は「安全側の既定 → ペアリングの判定 → 注入した環境（試験）」の順に重ねる（WSS の検査も同じ環境を使う）。この Issue では `ApiErrorCode` に `pairing_failed` を足しただけで、経路の検査の順（ROUTE_CHECKS）は変えていない。

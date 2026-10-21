@@ -1,4 +1,4 @@
-// 保存案 0001 の表ごとの方針（ADR 0010）。migrations/0001_initial.sql と一致することを scripts/storage.test.mjs で検査する。
+// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
 // retention は domain の RETENTION_RULES の ID、または期限の持ち方の説明。body は本文の置き場所。
 // transaction は同じ短い transaction で書く表の組（08 §3・§5、11 §1A・§9）。
 
@@ -40,6 +40,17 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     body: 'none',
     retention: 'command_scope',
     transaction: 'connection',
+  },
+  // 0003（B03-03、ADR 0022）。MAC・SSID は HMAC だけ。登録は家ごとに 1 つ、報告は端末ごとに最新の 1 件。
+  home_networks: {
+    body: 'none',
+    retention: 'until_replaced',
+    transaction: 'home_network',
+  },
+  home_network_reports: {
+    body: 'none',
+    retention: 'latest_per_device',
+    transaction: 'home_network',
   },
   connections: {
     body: 'sealed_refs',

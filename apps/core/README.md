@@ -1,7 +1,7 @@
 # @buddy/core
 
 Electron から独立した Node.js 中枢です。B01-01 で、起動・状態確認・停止、単一起動の排他、同じマシン専用のローカル制御チャネルを実装しました（[ADR 0012](../../docs/adr/0012-b01-core-lifecycle-and-local-control.md)）。
-B02-04 で DB（`@buddy/storage` の DB worker）を起動に組み込み、鍵の照合値・store_generation の状態ファイルからの移行・起動時の回復を作りました（[ADR 0019](../../docs/adr/0019-b02-core-storage-integration.md)）。B03-01 で自己署名証明書（秘密鍵はキーチェーン）と `node:https`（TLS 1.3 以上）の受付、端末トークンの照合、上限・形式・Origin・接続数・頻度の拒否、ROUTE_CHECKS の順の経路検査、`getBootstrap` と接続範囲の発行を作りました（[ADR 0020](../../docs/adr/0020-b03-https-tls-and-route-checks.md)）。B03-02 で端末のペアリング・端末の一覧と失効・最初の端末の CLI の承認を作りました（[ADR 0021](../../docs/adr/0021-b03-device-pairing-and-revocation.md)）。スナップショット・イベント・操作の経路は B03-04（下の節）、自宅判定は B03-03 です。鍵保護の可否の確認・KeyStore と LaunchAgent は `@buddy/platform`（ADR 0013・0017）を使います。
+B02-04 で DB（`@buddy/storage` の DB worker）を起動に組み込み、鍵の照合値・store_generation の状態ファイルからの移行・起動時の回復を作りました（[ADR 0019](../../docs/adr/0019-b02-core-storage-integration.md)）。B03-01 で自己署名証明書（秘密鍵はキーチェーン）と `node:https`（TLS 1.3 以上）の受付、端末トークンの照合、上限・形式・Origin・接続数・頻度の拒否、ROUTE_CHECKS の順の経路検査、`getBootstrap` と接続範囲の発行を作りました（[ADR 0020](../../docs/adr/0020-b03-https-tls-and-route-checks.md)）。B03-02 で端末のペアリング・端末の一覧と失効・最初の端末の CLI の承認を作りました（[ADR 0021](../../docs/adr/0021-b03-device-pairing-and-revocation.md)）。B03-03 で自宅判定（自宅の指紋の一致と Tailscale の直接経路の両方。不成立は 403・接続範囲の失効・WSS の切断）と、自宅の指紋の報告・自宅の登録の経路を作りました（[ADR 0022](../../docs/adr/0022-b03-home-network-check.md)）。スナップショット・イベント・操作の経路は B03-04（下の節）です。鍵保護の可否の確認・KeyStore と LaunchAgent は `@buddy/platform`（ADR 0013・0017）を使います。
 
 ## 起動の順序
 
@@ -60,6 +60,7 @@ node apps/core/dist/cli.js stop                          # 停止を要求し、
 | `src/api-environment.ts`               | 判定の元がまだない文脈（自宅判定など）の注入と安全側の既定                     |
 | `src/api-contract.ts`                  | 要求の JSON Schema の検査（Ajv）                                               |
 | `src/api-pairing.ts`                   | ペアリング・端末の一覧と失効の経路、中枢の画面の判定、最初の端末の CLI の承認  |
+| `src/api-home-network.ts`              | 自宅判定（指紋と Tailscale の直接経路、ADR 0022）・報告と登録の経路・HMAC の鍵 |
 | `src/tls-certificate.ts`・`src/der.ts` | 自己署名証明書の組み立て・検査・指紋                                           |
 | `src/tls-identity.ts`                  | TLS の秘密鍵（KeyStore）と証明書（データディレクトリ）の読み込み・初回作成     |
 

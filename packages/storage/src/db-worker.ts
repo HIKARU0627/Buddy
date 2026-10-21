@@ -33,6 +33,7 @@ import {
 import { executeDeviceOp } from './device-store.js';
 import { executePairingOp } from './pairing-store.js';
 import { executeEventQuery, isEventQuery } from './event-store.js';
+import { executeHomeNetworkOp } from './home-network-store.js';
 import { bindStore } from './store-binding.js';
 import type { StoreBindingResult } from './store-binding.js';
 
@@ -236,11 +237,34 @@ function main(): void {
     post({ type: 'pairing_result', id: message.id, result, halted });
   };
 
+  const handleHome = (
+    message: Extract<MainToWorker, { type: 'home' }>,
+  ): void => {
+    let result;
+    try {
+      const run = executeHomeNetworkOp(connection, message.op, {
+        platform: data.platform,
+        halted,
+      });
+      if (run.halt) halted = true;
+      result = run.result;
+    } catch {
+      // 照会の想定外の失敗。書込みは executeHomeNetworkOp の中で巻き戻している。
+      result = {
+        ok: false as const,
+        outcome: 'rejected' as const,
+        reasons: ['home_op_failed'],
+      };
+    }
+    post({ type: 'home_result', id: message.id, result, halted });
+  };
+
   port.on('message', (message: MainToWorker) => {
     if (message.type === 'command') handleCommand(message);
     else if (message.type === 'query') handleQuery(message);
     else if (message.type === 'device') handleDevice(message);
     else if (message.type === 'pairing') handlePairing(message);
+    else if (message.type === 'home') handleHome(message);
     else if (message.type === 'close') {
       halted = true;
       connection.close();

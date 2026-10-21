@@ -40,6 +40,9 @@ B03-04 でスナップショット・イベント・操作の表示用の照会�
 
 - `src/snapshot-store.ts`: `readSnapshot`（操作の状態とイベントの最大の連番を一つの読み取り transaction で）・`readOperationView`（本文を含めない表示用の値と、承認・取消の命令に入れる依頼・忘却の版）・`hasReceiptForRequest`・`readCurrentScope`（端末の今の接続範囲）。
 - `src/event-store.ts`: `readEventsSince`（連番の後のイベントと、残っている最小・最大の連番）と、照会の入口 `executeEventQuery`。DB worker の照会（`DbQuery`）に `snapshot`・`events_since`・`operation_view`・`receipt_exists`・`current_scope` を足した。書込み・マイグレーションは足していない。
+  B03-03 で自宅の登録値と端末ごとの最新の報告を足しました（[ADR 0022](../../docs/adr/0022-b03-home-network-check.md)、マイグレーション 0003）。
+
+- `src/home-network-store.ts`: `executeHomeNetworkOp`。`home.register`（家ごとに 1 つ、置き換え）・`home.get`・`home.report`（端末ごとに最新の 1 件）・`home.find_report`・`home.revoke_scopes`（自宅判定の不成立で端末の有効な接続範囲を失効）。MAC・SSID は Core が HMAC にした 16 進 64 桁だけを受け取り、32 バイトの BLOB で置く。`DbWorkerClient.home(op)`（`type: 'home'` のメッセージ）。
 
 依存は better-sqlite3 13.0.3（ビルド済みバイナリを同梱。pnpm のビルドの許可は不要）、canonicalize 5.1.0（開発ツールと同じ版）と、workspace の `@buddy/domain` です。KeyStore は `@buddy/platform` にあります。
 

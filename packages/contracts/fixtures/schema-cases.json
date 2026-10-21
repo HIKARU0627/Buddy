@@ -3884,5 +3884,321 @@
         "lock_state": "locked"
       }
     }
+  },
+  {
+    "id": "x42-home-fingerprint-complete",
+    "schema": "HomeFingerprint",
+    "valid": true,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.2.0/24",
+      "ssid": "合成の自宅"
+    }
+  },
+  {
+    "id": "x42-home-fingerprint-unavailable-elements",
+    "schema": "HomeFingerprint",
+    "valid": true,
+    "value": {
+      "gateway_mac": null,
+      "subnet": null,
+      "ssid": null
+    }
+  },
+  {
+    "id": "home-fingerprint-missing-element",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.2.0/24"
+    }
+  },
+  {
+    "id": "home-fingerprint-uppercase-mac",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5E:00:53:01",
+      "subnet": "192.0.2.0/24",
+      "ssid": "合成の自宅"
+    }
+  },
+  {
+    "id": "home-fingerprint-dash-mac",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00-00-5e-00-53-01",
+      "subnet": "192.0.2.0/24",
+      "ssid": "合成の自宅"
+    }
+  },
+  {
+    "id": "home-fingerprint-short-octet-mac",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "0:0:5e:0:53:1",
+      "subnet": "192.0.2.0/24",
+      "ssid": "合成の自宅"
+    }
+  },
+  {
+    "id": "home-fingerprint-prefix-too-long",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.2.0/31",
+      "ssid": "合成の自宅"
+    }
+  },
+  {
+    "id": "home-fingerprint-prefix-too-short",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "10.0.0.0/7",
+      "ssid": "合成の自宅"
+    }
+  },
+  {
+    "id": "home-fingerprint-ipv6-subnet",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "2001:db8::/64",
+      "ssid": "合成の自宅"
+    }
+  },
+  {
+    "id": "home-fingerprint-octet-out-of-range",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.256.0/24",
+      "ssid": "合成の自宅"
+    }
+  },
+  {
+    "id": "home-fingerprint-empty-ssid",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.2.0/24",
+      "ssid": ""
+    }
+  },
+  {
+    "id": "home-fingerprint-long-ssid",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.2.0/24",
+      "ssid": "sssssssssssssssssssssssssssssssss"
+    }
+  },
+  {
+    "id": "home-fingerprint-extra-field",
+    "schema": "HomeFingerprint",
+    "valid": false,
+    "value": {
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.2.0/24",
+      "ssid": "合成の自宅",
+      "bssid": "00:00:5e:00:53:02"
+    }
+  },
+  {
+    "id": "x42-home-report",
+    "schema": "HomeFingerprintReport",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009003",
+      "fingerprint": {
+        "gateway_mac": "00:00:5e:00:53:01",
+        "subnet": "192.0.2.0/24",
+        "ssid": "合成の自宅"
+      }
+    }
+  },
+  {
+    "id": "home-report-without-fingerprint",
+    "schema": "HomeFingerprintReport",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009003"
+    }
+  },
+  {
+    "id": "home-report-names-device",
+    "schema": "HomeFingerprintReport",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009003",
+      "fingerprint": {
+        "gateway_mac": "00:00:5e:00:53:01",
+        "subnet": "192.0.2.0/24",
+        "ssid": "合成の自宅"
+      },
+      "device_id": "00000000-0000-4000-8000-000000000007"
+    }
+  },
+  {
+    "id": "x42-home-status-denied-derp",
+    "schema": "HomeNetworkStatus",
+    "valid": true,
+    "value": {
+      "allowed": false,
+      "exempt": false,
+      "reasons": ["tailscale_derp"],
+      "report_expires_at": "2030-10-05T00:06:00Z"
+    }
+  },
+  {
+    "id": "home-status-exempt",
+    "schema": "HomeNetworkStatus",
+    "valid": true,
+    "value": {
+      "allowed": true,
+      "exempt": true,
+      "reasons": [],
+      "report_expires_at": null
+    }
+  },
+  {
+    "id": "home-status-unknown-reason",
+    "schema": "HomeNetworkStatus",
+    "valid": false,
+    "value": {
+      "allowed": false,
+      "exempt": false,
+      "reasons": ["fingerprint_only_allowed"],
+      "report_expires_at": null
+    }
+  },
+  {
+    "id": "home-status-duplicate-reason",
+    "schema": "HomeNetworkStatus",
+    "valid": false,
+    "value": {
+      "allowed": false,
+      "exempt": false,
+      "reasons": ["tailscale_derp", "tailscale_derp"],
+      "report_expires_at": null
+    }
+  },
+  {
+    "id": "home-registration-request",
+    "schema": "HomeRegistrationRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009004",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.2.0/24",
+      "ssid": null
+    }
+  },
+  {
+    "id": "home-registration-requires-mac",
+    "schema": "HomeRegistrationRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009004",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "gateway_mac": null,
+      "subnet": "192.0.2.0/24",
+      "ssid": null
+    }
+  },
+  {
+    "id": "home-registration-requires-subnet",
+    "schema": "HomeRegistrationRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009004",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": null,
+      "ssid": null
+    }
+  },
+  {
+    "id": "home-registration-has-no-outside-switch",
+    "schema": "HomeRegistrationRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009004",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "gateway_mac": "00:00:5e:00:53:01",
+      "subnet": "192.0.2.0/24",
+      "ssid": null,
+      "allow_outside": true
+    }
+  },
+  {
+    "id": "home-registration-response",
+    "schema": "HomeRegistration",
+    "valid": true,
+    "value": {
+      "subnet": "192.0.2.0/24",
+      "ssid_registered": false,
+      "registered_at": "2030-10-05T00:00:00Z"
+    }
+  },
+  {
+    "id": "home-registration-response-hides-mac",
+    "schema": "HomeRegistration",
+    "valid": false,
+    "value": {
+      "subnet": "192.0.2.0/24",
+      "ssid_registered": false,
+      "registered_at": "2030-10-05T00:00:00Z",
+      "gateway_mac": "00:00:5e:00:53:01"
+    }
+  },
+  {
+    "id": "pairing-claim-requires-home-fingerprint",
+    "schema": "PairingClaimRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009001",
+      "pairing_code": "12345678",
+      "device_name": "合成の端末",
+      "platform": "windows",
+      "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  {
+    "id": "pairing-claim-with-home-fingerprint",
+    "schema": "PairingClaimRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009001",
+      "pairing_code": "12345678",
+      "device_name": "合成の端末",
+      "platform": "windows",
+      "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "home_fingerprint": {
+        "gateway_mac": "00:00:5e:00:53:01",
+        "subnet": "192.0.2.0/24",
+        "ssid": "合成の自宅"
+      }
+    }
+  },
+  {
+    "id": "pairing-token-requires-home-fingerprint",
+    "schema": "PairingTokenRequest",
+    "valid": false,
+    "value": {
+      "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    }
   }
 ]

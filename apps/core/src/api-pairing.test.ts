@@ -1083,7 +1083,9 @@ test(
 );
 
 test(
-  'until home detection exists, only same-machine connections may claim before registration',
+  // B03-03 の統合後: 別のマシンからの申請・受取りは自宅判定（Tailscale の状態の取得元なし＝取得できない）で拒否し、
+  // 同じマシンからの登録前の申請・受取りは免除する（ADR 0022）。
+  'without a confirmed home network only same-machine connections may claim before registration',
   { timeout: 60_000 },
   async (t) => {
     const hub = await startHub(

@@ -19,6 +19,10 @@ import type { DeviceOp, DeviceOpResult } from './device-store.js';
 import type { PairingOp, PairingOpResult } from './pairing-store.js';
 // B03-04: スナップショット・イベント・操作の表示用の照会（ADR 0023）。
 import type { EventQuery, EventQueryValue } from './event-store.js';
+import type {
+  HomeNetworkOp,
+  HomeNetworkOpResult,
+} from './home-network-store.js';
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -86,7 +90,9 @@ export type MainToWorker =
   | { readonly type: 'device'; readonly id: number; readonly op: DeviceOp }
   | { readonly type: 'close'; readonly id: number }
   // ペアリング・端末の一覧の命令と照会（ADR 0021）。
-  | { readonly type: 'pairing'; readonly id: number; readonly op: PairingOp };
+  | { readonly type: 'pairing'; readonly id: number; readonly op: PairingOp }
+  // 自宅の登録・報告と、自宅判定の不成立による接続範囲の失効（ADR 0022）。
+  | { readonly type: 'home'; readonly id: number; readonly op: HomeNetworkOp };
 
 export interface WorkerTimings extends StoreTimings {
   // Core main が送ってから worker が処理を始めるまで（IPC と待ち行列の待ち）。
@@ -137,6 +143,12 @@ export type WorkerToMain =
       readonly type: 'pairing_result';
       readonly id: number;
       readonly result: PairingOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'home_result';
+      readonly id: number;
+      readonly result: HomeNetworkOpResult;
       readonly halted: boolean;
     };
 

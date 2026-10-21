@@ -96,6 +96,14 @@ export function createClaimSecret(): ClaimSecret {
 
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
+// 申請・受取りの本文に入れる自宅の指紋（B03-03、ADR 0022。文書用の合成値）。中枢と同じマシンからの
+// 申請・受取りは自宅判定を免除するので、値は判定に使われない。
+export const SYNTHETIC_HOME_FINGERPRINT = {
+  gateway_mac: '00:00:5e:00:53:01',
+  subnet: '192.0.2.0/24',
+  ssid: null,
+} as const;
+
 export function claimPairing(
   target: PinnedTarget,
   code: string,
@@ -112,6 +120,7 @@ export function claimPairing(
       device_name: options.name ?? '合成の端末',
       platform: options.platform ?? 'windows',
       claim_secret_hash: secret.hash,
+      home_fingerprint: SYNTHETIC_HOME_FINGERPRINT,
     }),
   });
 }
@@ -125,7 +134,10 @@ export function pickupToken(
     method: 'POST',
     path: `/v1/pairing/claims/${claimId}/token`,
     headers: JSON_HEADERS,
-    body: JSON.stringify({ claim_secret: secret }),
+    body: JSON.stringify({
+      claim_secret: secret,
+      home_fingerprint: SYNTHETIC_HOME_FINGERPRINT,
+    }),
   });
 }
 

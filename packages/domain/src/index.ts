@@ -8,6 +8,8 @@ export * from './conversation.js';
 export * from './desktop.js';
 export * from './evaluation.js';
 export * from './extraction.js';
+// B03-03: 自宅ネットワークの判定（ADR 0022）。
+export * from './home-network.js';
 export * from './intents.js';
 export * from './memory.js';
 export * from './notification.js';

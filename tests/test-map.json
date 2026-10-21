@@ -425,8 +425,22 @@
     {
       "id": "X42",
       "phases": ["B03"],
-      "contract_fixtures": [],
-      "status": "specified",
+      "contract_fixtures": [
+        "packages/contracts/fixtures/home-network-cases.json#x42-direct-and-fingerprint-match",
+        "packages/contracts/fixtures/home-network-cases.json#x42-fingerprint-mismatch",
+        "packages/contracts/fixtures/home-network-cases.json#x42-derp",
+        "packages/contracts/fixtures/home-network-cases.json#x42-route-unknown",
+        "packages/contracts/fixtures/home-network-cases.json#x42-tailscale-unavailable",
+        "packages/contracts/fixtures/home-network-cases.json#x42-fingerprint-only-is-not-enough",
+        "packages/contracts/fixtures/home-network-cases.json#x42-direct-only-is-not-enough",
+        "packages/contracts/fixtures/home-network-cases.json#x42-report-stale-at-6-minutes",
+        "packages/contracts/fixtures/home-network-cases.json#x42-hub-client-is-exempt",
+        "packages/contracts/fixtures/api-cases.json#reportHomeFingerprint",
+        "packages/contracts/fixtures/api-cases.json#registerHome",
+        "packages/contracts/fixtures/schema-cases.json#x42-home-fingerprint-unavailable-elements",
+        "tests/fixtures/storage-cases.json#x42-home-registration-is-single-and-reports-are-hashed"
+      ],
+      "status": "contract_fixture",
       "product_test": "not_run",
       "t": ["T03"]
     },

@@ -86,7 +86,8 @@ export type ApiErrorCode =
   | 'outside_home_network'
   | 'audio_owned_elsewhere'
   | 'audio_ownership_required'
-  | 'payload_too_large';
+  | 'payload_too_large'
+  | 'pairing_failed';
 
 const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unauthenticated: '端末トークンがない、無効、または失効しています。',
@@ -103,6 +104,7 @@ const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   audio_owned_elsewhere: '別の端末が音声を使っています。',
   audio_ownership_required: '音声の所有権がありません。',
   payload_too_large: '要求が大きすぎます。',
+  pairing_failed: 'ペアリングは無効です。最初からやり直してください。',
 };
 
 // 経路の処理（handlers）が返す拒否の応答。本文は ApiError（code・message・request_id）だけ。

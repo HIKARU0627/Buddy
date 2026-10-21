@@ -32,6 +32,8 @@ import { ApiListenError, createApiServer } from './api-server.js';
 import type { ApiLimits, ApiServer } from './api-server.js';
 import { SAFE_REQUEST_ENVIRONMENT } from './api-environment.js';
 import type { RequestEnvironment } from './api-environment.js';
+import { PairingStoreError, createPairingService } from './api-pairing.js';
+import type { PairingService } from './api-pairing.js';
 import {
   REVISION_CHECKED_ROUTES,
   createOperationRoutes,
@@ -118,6 +120,8 @@ export interface CoreHttpsOptions {
   // 判定の元がまだない文脈（自宅判定など）。試験で差し替える。省略したものは安全側。
   readonly environment?: Partial<RequestEnvironment>;
   readonly limits?: Partial<ApiLimits>;
+  // 接続元が中枢と同じマシンか（試験で差し替える。既定はループバックか待ち受けのアドレスと同じ IP）。
+  readonly sameMachine?: (remoteAddress: string) => boolean;
   // preview の有効性（ADR 0023）。preview の発行は後の Issue で、省略すると有効な preview はない（承認は 409）。
   readonly previewValid?: PreviewCheck;
   // WSS の配信の設定（試験用。ping の間隔・送り先に溜めてよい量）。
@@ -182,8 +186,10 @@ export interface CoreHandle {
   readonly https: CoreHttpsInfo | null;
   // イベントの配信の元（ADR 0023）。操作の命令を別の経路で送ったら notify() を呼ぶ（呼ばなくても一定の間隔で読み直す）。
   readonly events: EventFeed;
-  // 端末の接続（WSS の購読）を閉じる差し込み口。失効（B03-02）・自宅判定の不成立（B03-03）が呼ぶ。
+  // 端末の接続（WSS の購読）を閉じる差し込み口。失効（B03-02、ADR 0021）・自宅判定の不成立（B03-03）が呼ぶ。
   readonly deviceConnections: DeviceConnections;
+  // ペアリング（最初の端末の CLI の承認を含む。ADR 0021）。HTTPS を設定しなければ null。
+  readonly pairing: PairingService | null;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -364,6 +370,7 @@ export async function startCore(
   let feed: EventFeed | null = null;
   const deviceConnections = new DeviceConnections();
   let httpsInfo: CoreHttpsInfo | null = null;
+  let pairing: PairingService | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
   let closedResolve: () => void = () => undefined;
@@ -440,10 +447,12 @@ export async function startCore(
         now,
         feed,
         deviceConnections,
+        log,
       );
       api = started.api;
       streams = started.streams;
       httpsInfo = started.info;
+      pairing = started.pairing;
       log(
         `HTTPS を待ち受けました（${httpsInfo.host}:${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`,
       );
@@ -453,6 +462,11 @@ export async function startCore(
         );
     }
     const handle = (request: ControlRequest) => {
+      if (
+        request.op === 'pairing_first_start' ||
+        request.op === 'pairing_first_approve'
+      )
+        return firstDeviceControl(request, lifecycle.state, pairing);
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
         return { response: { ok: false, error: 'unavailable' } as const };
@@ -505,6 +519,7 @@ export async function startCore(
     https: httpsInfo,
     events,
     deviceConnections,
+    pairing,
     get state() {
       return lifecycle.state;
     },
@@ -524,10 +539,12 @@ async function startHttps(
   now: () => Date,
   feed: EventFeed,
   deviceConnections: DeviceConnections,
+  log: (message: string) => void,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
   readonly streams: EventStreamManager;
+  readonly pairing: PairingService;
 }> {
   let identity;
   try {
@@ -541,10 +558,34 @@ async function startHttps(
       throw new CoreStartError('tls_unavailable', error.reasons);
     throw error;
   }
+  const pairing = createPairingService({
+    store,
+    fingerprint: identity.fingerprint,
+    host: https.host,
+    now: () => now().getTime(),
+    deviceConnections,
+    log,
+    ...(https.sameMachine === undefined
+      ? {}
+      : { sameMachine: https.sameMachine }),
+  });
+  // 証明書が変わっていれば、前の証明書で登録した端末を受付の前に失効する（自動で承認せず、再登録にする）。
+  try {
+    await pairing.revokeCertificateMismatch();
+  } catch (error) {
+    if (error instanceof PairingStoreError)
+      throw new CoreStartError('store_recovery_failed', [
+        'certificate_device_revocation_failed',
+        ...error.reasons,
+      ]);
+    throw error;
+  }
   // 操作の命令の後にイベントを配るよう、命令を送る store を通知つきにする（ADR 0023）。
   const watched = feed.watchStore(store);
+  // 注入した環境（試験）が、ペアリングの判定（中枢の画面・申請用の秘密・B03-03 までの自宅判定）より優先する。
   const base: RequestEnvironment = {
     ...SAFE_REQUEST_ENVIRONMENT,
+    ...pairing.environment,
     ...https.environment,
   };
   let routes: ReturnType<typeof createOperationRoutes> | null = null;
@@ -586,7 +627,7 @@ async function startHttps(
       accepting,
       now: () => now().getTime(),
       environment,
-      handlers: routes.handlers,
+      handlers: { ...pairing.handlers, ...routes.handlers },
       eventStream: streams,
       ...(https.limits === undefined ? {} : { limits: https.limits }),
     });
@@ -605,6 +646,7 @@ async function startHttps(
   }
   return {
     api,
+    pairing,
     streams,
     info: {
       host: api.host,
@@ -613,6 +655,31 @@ async function startHttps(
       certificateCreation: identity.creation,
     },
   };
+}
+
+// 制御チャネルの最初の端末の命令（ADR 0021）。running のときだけ、HTTPS を設定したときだけ受け付ける。
+// 応答に載るペアリングのコードは CLI の画面に出す値で、Core のログには出さない。
+async function firstDeviceControl(
+  request: Extract<
+    ControlRequest,
+    { op: 'pairing_first_start' | 'pairing_first_approve' }
+  >,
+  state: LifecycleState,
+  pairing: PairingService | null,
+): Promise<{ readonly response: ControlResponse }> {
+  if (state !== 'running')
+    return { response: { ok: false, error: 'unavailable' } };
+  if (pairing === null)
+    return {
+      response: { ok: false, error: 'refused', reason: 'https_not_configured' },
+    };
+  const result =
+    request.op === 'pairing_first_start'
+      ? await pairing.startFirstDevice()
+      : await pairing.approveFirstDevice(request.pairing_id);
+  if (!result.ok)
+    return { response: { ok: false, error: 'refused', reason: result.reason } };
+  return { response: { ...result, request_id: request.request_id } };
 }
 
 // 接続先が使用中なら、動いている Core か、残ったソケットファイルかを見分ける。

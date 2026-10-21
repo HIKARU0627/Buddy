@@ -31,6 +31,11 @@ B03-01 で端末と接続範囲（command_scope）の命令と照会を作りま
 - `src/device-store.ts`: `executeDeviceOp`（worker の中で実行する同期関数）。`device.insert`（ペアリングと試験で端末を入れる）・`device.revoke`（端末と有効な接続範囲を同じ transaction で無効化）・`device.find_by_token_hash`（端末トークンの SHA-256 で引く。結果に hash を含めない）・`scope.issue`（最長 24 時間、同じ端末の有効な接続範囲を無効化）・`scope.find`。書込みは命令ごとに耐久設定を読み戻し、halted の worker は書かない。
 - `DbWorkerClient.device(op)`: 操作の命令とは別のメッセージ（`type: 'device'`）で worker へ送る。書込みの応答を失えば成否不明（unknown）。マイグレーションは足していない（0001 の `devices`・`command_scopes`）。
 
+B03-02 でペアリング・端末の一覧・証明書の変更による失効の命令と照会を作りました（[ADR 0021](../../docs/adr/0021-b03-device-pairing-and-revocation.md)）。
+
+- `src/pairing-store.ts`: `executePairingOp`。`pairing.start`（有効なペアリングは一つだけ）・`pairing.claim`（コードの照合値を transaction の中で `timingSafeEqual` で比べ、不一致は残り回数を減らして commit する）・`pairing.decide`・`pairing.pickup`（端末の登録と申請の consumed を同じ transaction で。DB にはトークンの hash だけ）・`pairing.claim_secret_matches`・`devices.list`・`devices.count_active`・`devices.revoke_certificate_mismatch` など。
+- `DbWorkerClient.pairing(op)`: `type: 'pairing'` のメッセージ。扱いは `device` と同じ。マイグレーションは足していない（0001 の `pairing_sessions`・`pairing_claims`・`devices`）。
+
 B03-04 でスナップショット・イベント・操作の表示用の照会を作りました（[ADR 0023](../../docs/adr/0023-b03-snapshot-events-and-operation-routes.md)）。
 
 - `src/snapshot-store.ts`: `readSnapshot`（操作の状態とイベントの最大の連番を一つの読み取り transaction で）・`readOperationView`（本文を含めない表示用の値と、承認・取消の命令に入れる依頼・忘却の版）・`hasReceiptForRequest`・`readCurrentScope`（端末の今の接続範囲）。

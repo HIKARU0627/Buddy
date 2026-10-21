@@ -6842,7 +6842,7 @@
         "claim_secret_hash"
       ],
       "additionalProperties": false,
-      "description": "登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。"
+      "description": "登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。claim_secret_hash は PairingTokenRequest.claim_secret の ASCII の 43 文字の SHA-256 を小文字の 16 進 64 桁にした値（ADR 0021）。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。"
     },
     "PairingClaim": {
       "type": "object",
@@ -6873,7 +6873,8 @@
         "platform",
         "expires_at"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "登録の申請。expires_at は申請の期限（申請を受け付けた時刻から 5 分、ADR 0021）で、承認とトークンの受取りはこの前だけ。"
     },
     "PairingDecisionRequest": {
       "type": "object",

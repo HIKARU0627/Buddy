@@ -733,7 +733,7 @@ paths:
     post:
       operationId: startPairing
       summary: ペアリングの開始
-      description: 中枢のロック解除済みの画面だけ。ワンタイムコードと証明書の指紋（証明書の DER 全体の SHA-256 の小文字の 16 進、ADR 0020）を返す（02 端末登録と接続、ADR 0009）。
+      description: 中枢のロック解除済みの画面だけ。ワンタイムコードと証明書の指紋（証明書の DER 全体の SHA-256 の小文字の 16 進、ADR 0020）を返す（02 端末登録と接続、ADR 0009）。有効なペアリングは一つだけで、開始するとまだ使っていない前のペアリングは無効になる（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -776,7 +776,7 @@ paths:
     post:
       operationId: claimPairing
       summary: 登録の申請（認証前）
-      description: 端末が指紋を照合した後に送る。認証前のため上限を小さくし、メールや会話を返さない。コードの不一致は残り回数を減らし、無効になったら 410（pairing_failed）（02）。
+      description: 端末が指紋を照合した後に送る。認証前のため上限を小さくし、メールや会話を返さない。コードの不一致は残り回数を減らし、無効になったら 410（pairing_failed）（02）。不一致・期限切れ・回数の上限・使用済みの区別は外へ出さず、どれも 410（pairing_failed）にする（ADR 0009・0021）。
       x-buddy-core-checks:
         - home_network
       security: []
@@ -809,7 +809,7 @@ paths:
     post:
       operationId: decidePairingClaim
       summary: 申請の承認・拒否
-      description: 中枢のロック解除済みの画面だけ（02）。
+      description: 中枢のロック解除済みの画面だけ（02）。承認・拒否済みの申請は 409。存在しない・期限切れ・ペアリングの開始後に中枢の証明書が変わった申請は 410（pairing_failed）（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -853,7 +853,7 @@ paths:
     post:
       operationId: pickupPairingToken
       summary: 端末トークンの受取り
-      description: 承認済みの申請だけ。申請用の秘密と交換で 1 回だけ返し、2 回目以降・期限切れは 410。承認前は 409（ADR 0009）。
+      description: 承認済みの申請だけ。申請用の秘密と交換で 1 回だけ返し、2 回目以降・期限切れ・拒否・中枢の証明書の変更は 410。承認前は 409。秘密が合わない（コードだけを知る第三者）は 401（ADR 0009・0021）。
       x-buddy-core-checks:
         - home_network
         - claim_secret
@@ -893,7 +893,7 @@ paths:
     get:
       operationId: listDevices
       summary: 登録済みの端末
-      description: 端末の一覧と失効状態（01 接続・端末）。
+      description: 端末の一覧と失効状態（01 接続・端末）。失効した端末も含め、登録の時刻の順に返す（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -919,7 +919,7 @@ paths:
     post:
       operationId: revokeDevice
       summary: 端末の失効
-      description: 登録済み・ロック解除済み端末の画面操作だけ。失効した端末の接続範囲・リースを無効にする（02、01）。
+      description: 登録済み・ロック解除済み端末の画面操作だけ。失効した端末の接続範囲・リースを無効にし、開いている接続（WSS）を閉じる（02、01）。存在しない端末は 409。失効済みの端末は失効の時刻を変えずに返す（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network

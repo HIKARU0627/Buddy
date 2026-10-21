@@ -130,7 +130,10 @@ test('an accepted response clears the message and shows the returned status', ()
 test('a failed invoke shows the communication failure', () => {
   assert.deepEqual(
     applyIpcFailure(INITIAL_VIEW_STATE, 'desktop.io_stop').message,
-    { channel: 'desktop.io_stop', text: 'main と通信できませんでした。' },
+    {
+      channel: 'desktop.io_stop',
+      text: '画面と Buddy の本体の間で通信できませんでした。Buddy を終了して、開き直してください。',
+    },
   );
 });
 

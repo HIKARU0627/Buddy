@@ -154,16 +154,16 @@ test('while locked or unknown the status, content and log are not drawn', () => 
 
 test('when accepting, the band shows the state and the five items with dashes', () => {
   const html = render(view(shown('none')));
-  assert.match(html, /<span class="sr-only">この端末の入出力: <\/span>/u);
+  assert.match(html, /role="status"[^>]*><span[^>]*>入出力:<\/span>/u);
   assert.match(html, /受付中/u);
-  assert.match(html, /中枢: /u);
+  assert.match(html, /中枢:<\/span>/u);
   assert.match(html, /未接続/u);
   for (const label of ['表示先', '音声', '保存モード', '予算保留', '安全停止'])
     assert.match(
       html,
       new RegExp(`<dt[^>]*>${label}</dt><dd[^>]*>—</dd>`, 'u'),
     );
-  assert.match(html, /— は中枢からまだ受け取っていない項目です。/u);
+  assert.match(html, /（— は中枢から未受信）/u);
   assert.doesNotMatch(html, /この端末の入出力を止めています/u);
   assert.doesNotMatch(html, /世代|B0\d/u);
   assert.deepEqual(buttonLabels(html), [STOP, HIDE, QUIT]);
@@ -182,7 +182,7 @@ test('received items are shown with their labels and the note disappears', () =>
   assert.match(html, /<dt[^>]*>保存モード<\/dt><dd[^>]*>記録しない<\/dd>/u);
   assert.match(html, /<dt[^>]*>予算保留<\/dt><dd[^>]*>なし<\/dd>/u);
   assert.match(html, /<dt[^>]*>安全停止<\/dt><dd[^>]*>安全停止中<\/dd>/u);
-  assert.match(html, /— は中枢からまだ受け取っていない項目です。/u);
+  assert.match(html, /（— は中枢から未受信）/u);
   const all = render(
     view(
       shown('none', {
@@ -194,7 +194,7 @@ test('received items are shown with their labels and the note disappears', () =>
       }),
     ),
   );
-  assert.doesNotMatch(all, /— は中枢からまだ受け取っていない項目です。/u);
+  assert.doesNotMatch(all, /（— は中枢から未受信）/u);
 });
 
 test('when this device is stopped, the banner gives the cause, time and resume', () => {
@@ -207,7 +207,8 @@ test('when this device is stopped, the banner gives the cause, time and resume',
   assert.match(html, /この端末の入出力を止めています/u);
   assert.match(html, /10:02:03 に画面のロックで止まりました。/u);
   assert.match(html, /ウィンドウが前面にあるときだけ再開できます。/u);
-  assert.deepEqual(buttonLabels(html), [STOP, RESUME, HIDE, QUIT]);
+  // main が止まっていることを確かめた後は、状態帯の停止のボタンを出さない（再開は帯の中）。
+  assert.deepEqual(buttonLabels(html), [RESUME, HIDE, QUIT]);
   assert.match(html, /電源とロックの記録（1 件）/u);
   const button = render(
     view(shown('local'), { stopCause: { kind: 'button', at: AT } }),
@@ -223,7 +224,9 @@ test('guest and global stops are shown as needing the hub, without resume', () =
     const html = render(view(shown(scope)));
     assert.match(html, new RegExp(label, 'u'));
     assert.match(html, new RegExp(`${reason}解除は中枢で行います。`, 'u'));
-    assert.deepEqual(buttonLabels(html), [STOP, HIDE, QUIT]);
+    assert.deepEqual(buttonLabels(html), [HIDE, QUIT]);
+    // 要対応の帯には ⚠ の記号を付ける。
+    assert.match(html, /alert--warning.*alert__indicator/su);
   }
 });
 

@@ -49,9 +49,22 @@ test('channel, event and reason lists in the schema and domain are the same', ()
   assert.deepEqual(rejected.properties.reason.enum, [
     ...DESKTOP_IPC_REJECT_REASONS,
   ]);
-  // 成功応答の分岐は全チャネルを一度ずつ受け持つ。
-  const okChannels = defs.DesktopIpcResponse.oneOf
-    .filter((branch) => branch.properties.outcome.const === 'ok')
+  // 成功応答の分岐は全チャネルを一度ずつ受け持つ。例外は「適用したが一覧を取り直せなかった」（list_refreshed: false）の
+  // 分岐だけで、承認・拒否と失効の 2 つのチャネルだけを重ねて受け持つ（ADR 0026、CR-L2）。
+  const okBranches = defs.DesktopIpcResponse.oneOf.filter(
+    (branch) => branch.properties.outcome.const === 'ok',
+  );
+  const stale = okBranches.filter(
+    (branch) => 'list_refreshed' in branch.properties,
+  );
+  assert.equal(stale.length, 1);
+  assert.deepEqual(stale[0].properties.channel.enum, [
+    'desktop.claim_decide',
+    'desktop.device_revoke',
+  ]);
+  assert.equal(stale[0].properties.list_refreshed.const, false);
+  const okChannels = okBranches
+    .filter((branch) => !('list_refreshed' in branch.properties))
     .flatMap((branch) => branch.properties.channel.enum);
   assert.deepEqual([...okChannels].sort(), [...DESKTOP_IPC_CHANNELS].sort());
 });

@@ -1,8 +1,10 @@
 // 状態帯（設計 01 いつも見える状態、ADR 0014・0024）。全画面で共通。
 // 1 行目: この端末の入出力（ライブ領域はこの 1 行だけ）と、右に「停止」（1 回で効く。確認を挟まない）。
-// 2 行目: 中枢との接続。下に、中枢が正本の項目（表示先・音声・保存モード・予算保留・安全停止）を小さく並べ、
+// 2 行目: 中枢との接続。下に、中枢が正本の項目（表示先・音声・保存モード・予算保留・安全停止）を 1 行に小さく並べ、
 // 値がないものは「—」にする（ADR 0014 が常に見せる項目として定めているため畳まない）。
-// ロック中・ロック状態不明では、内容を出さずにその旨だけを出す（停止は押せる）。
+// 停止のボタンは、main が止まっていることを確かめた後（停止の範囲が none でない）は出さない。止まっている端末で押しても
+// 何も変わらず（domain の stopLocally）、主状態の「■ 停止中」と取り違えるため（UI レビュー 2 回目 R1-M3）。
+// ロック中・ロック状態不明・未受信では、内容を出さずにその旨だけを出し、停止は押せるままにする（ADR 0014）。
 import type { DesktopConnectionView, DesktopStatusBar } from '@buddy/contracts';
 import { Button, Card, InfoIcon, WarningIcon } from '@heroui/react';
 import { NOT_RECEIVED_NOTE } from '../labels.js';
@@ -10,6 +12,7 @@ import { detailItems, hubLine, ioLine } from '../state/status-lines.js';
 import { StatusText } from './StatusText.js';
 
 export const STOP_LABEL = '■ 入出力を停止';
+export const IO_LINE_LABEL = '入出力:';
 
 export function StopButton({ onStop }: { readonly onStop: () => void }) {
   return (
@@ -66,30 +69,37 @@ export function StatusBand({
       <Card.Content className="flex flex-col gap-4">
         <div className="flex flex-row flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-1">
-            <p role="status" className="text-base font-semibold">
-              <span className="sr-only">この端末の入出力: </span>
+            <p
+              role="status"
+              className="flex items-center gap-2 text-base font-semibold"
+            >
+              <span className="text-sm font-normal text-muted">
+                {IO_LINE_LABEL}
+              </span>
               <StatusText line={io} />
             </p>
-            <p className="text-sm">
-              <span className="text-muted">中枢: </span>
+            <p className="flex items-center gap-2 text-sm">
+              <span className="text-muted">中枢:</span>
               <StatusText line={hub} className="tabular-nums" />
             </p>
           </div>
-          <StopButton onStop={onStop} />
+          {status.stop_scope === 'none' ? <StopButton onStop={onStop} /> : null}
         </div>
-        <dl className="flex flex-wrap gap-x-4 gap-y-1 border-t border-separator pt-4 text-xs">
-          {items.map((entry) => (
-            <div key={entry.label} className="flex gap-1.5">
-              <dt className="text-muted">{entry.label}</dt>
-              <dd className={entry.missing ? 'text-muted' : ''}>
-                {entry.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        {items.some((entry) => entry.missing) ? (
-          <p className="text-xs text-muted">{NOT_RECEIVED_NOTE}</p>
-        ) : null}
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-separator pt-3 text-xs">
+          <dl className="contents">
+            {items.map((entry) => (
+              <div key={entry.label} className="flex gap-1.5">
+                <dt className="text-muted">{entry.label}</dt>
+                <dd className={entry.missing ? 'text-muted' : ''}>
+                  {entry.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {items.some((entry) => entry.missing) ? (
+            <p className="text-muted">{NOT_RECEIVED_NOTE}</p>
+          ) : null}
+        </div>
       </Card.Content>
     </Card>
   );

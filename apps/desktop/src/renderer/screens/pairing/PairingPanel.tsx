@@ -1,5 +1,5 @@
 // 登録のフォーム（設計 02 端末登録と接続、ADR 0021・0024・0025）。今の段階を「手順 n / 4」で示す。
-//   1 宛先 → 2 指紋の確認（4 桁ずつ 4 行の指紋を見比べ、中枢の画面の指紋の最後の 4 桁を入力する。合うときだけ次へ）
+//   1 宛先 → 2 指紋の確認（4 桁ずつ 4 行の指紋を見比べ、この画面では伏せた最後の 4 桁を中枢の画面から読んで入力する。合うときだけ次へ）
 //   → 3 コードの入力（8 桁）→ 4 承認待ち（中枢の画面で承認する。確認コードを見比べる）→ 登録（main が safeStorage に保存）
 // 4 桁が合うかは main が受け取った証明書の指紋と比べて決め、合わなければ申請を送らない。画面はトークン・申請用の秘密を持たない。
 // 押せないボタンは置かず、押したときに理由を欄の下に出す。状態と操作は引数で受け取り、限定 API を直接呼ばない。
@@ -18,10 +18,11 @@ import {
 } from '@heroui/react';
 import { FingerprintGrid } from '../../components/FingerprintGrid.js';
 import { clockOf, remainingOf, splitInFour } from '../../format.js';
+import { AlertIcon } from '../../components/AlertIcon.js';
 import {
-  PAIRING_FAILURES,
   PAIRING_STEPS,
   PAIRING_STEP_COUNT,
+  pairingFailureCopy,
 } from '../../labels.js';
 import {
   DEFAULT_HUB_PORT,
@@ -48,13 +49,15 @@ export const PAIRING_LABELS = {
   portInvalid: '1〜65535 の数字にしてください。',
   begin: '中枢の証明書を受け取る',
   fetching: '中枢の証明書を受け取っています',
-  compare:
-    '中枢の画面に出ている指紋と、1 行ずつ見比べてください。64 桁すべてが同じときだけ次へ進みます。',
+  compare: '中枢の画面に出ている指紋と、1 行ずつ見比べてください。',
+  masked:
+    '最後の 4 桁はこの画面では伏せています。中枢の画面から読んで入力してください。',
   cliNote:
     'buddy-core first-device start の出力にも、同じ 4 桁区切り・4 行の指紋が出ます。',
   tail: '中枢の画面の指紋の最後の 4 桁',
   tailInvalid: '指紋の最後の 4 桁（0〜9・a〜f）を入れてください。',
-  tailNote: '一致しないときは申請を送りません。',
+  tailNote:
+    '中枢の画面の指紋の最後の組です。一致しないときは申請を送りません。',
   confirm: '最後の 4 桁を確かめて次へ',
   mismatch: '一致しない（やめる）',
   code: 'ワンタイムコード',
@@ -201,26 +204,42 @@ export function FingerprintStep({
           {pairing.host}:{pairing.port}
         </span>
       </p>
-      <FingerprintGrid fingerprint={fingerprint} id="pairing-fingerprint" />
+      <FingerprintGrid
+        fingerprint={fingerprint}
+        id="pairing-fingerprint"
+        maskLast
+        note={PAIRING_LABELS.masked}
+      />
       <p className="text-xs text-muted">{PAIRING_LABELS.cliNote}</p>
-      <TextField
-        className="w-56"
-        value={tail}
-        onChange={setTail}
-        isRequired
-        isInvalid={error !== null}
-      >
-        <Label>{PAIRING_LABELS.tail}</Label>
-        <Input
-          variant="secondary"
-          className="font-mono text-lg tracking-widest"
-          maxLength={5}
+      <div className="flex flex-col gap-1">
+        <Label id="pairing-tail-label">{PAIRING_LABELS.tail}</Label>
+        <InputOTP
+          maxLength={4}
+          value={tail}
+          onChange={(value) => setTail(value.toLowerCase())}
           autoComplete="off"
-          spellCheck={false}
-        />
-        <Description>{PAIRING_LABELS.tailNote}</Description>
-        <FieldError>{error}</FieldError>
-      </TextField>
+          pattern="^[0-9a-fA-F]*$"
+          aria-labelledby="pairing-tail-label"
+          aria-describedby="pairing-tail-help"
+          aria-required="true"
+          isInvalid={error !== null}
+          noScriptCSSFallback={null}
+        >
+          <InputOTP.Group>
+            {[0, 1, 2, 3].map((index) => (
+              <InputOTP.Slot key={index} index={index} className="font-mono" />
+            ))}
+          </InputOTP.Group>
+        </InputOTP>
+        <p id="pairing-tail-help" className="text-xs leading-5 text-muted">
+          {PAIRING_LABELS.tailNote}
+        </p>
+        {error === null ? null : (
+          <p role="alert" className="text-xs text-danger-soft-foreground">
+            {error}
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap gap-2">
         <Button
           variant="secondary"
@@ -388,17 +407,23 @@ export function WaitingStep({
 
 export function FailedStep({
   pairing,
+  deviceName,
   actions,
 }: {
   readonly pairing: PairingView;
+  readonly deviceName: string | null;
   readonly actions: PairingActions;
 }) {
-  const copy =
-    PAIRING_FAILURES[pairing.failure ?? 'protocol_error'] ??
-    PAIRING_FAILURES.protocol_error;
+  const copy = pairingFailureCopy(pairing.failure ?? 'protocol_error', {
+    target: `${pairing.host}:${pairing.port}`,
+    deviceName,
+  });
   return (
     <div className="flex flex-col gap-4">
-      <Alert status="danger" role="alert">
+      <Alert status={copy.severity} role="alert">
+        <Alert.Indicator>
+          <AlertIcon />
+        </Alert.Indicator>
         <Alert.Content>
           <Alert.Title>{copy.title}</Alert.Title>
           <Alert.Description className="text-sm leading-6 text-foreground">
@@ -416,6 +441,11 @@ export function FailedStep({
 }
 
 function stepOf(pairing: PairingView | null): keyof typeof PAIRING_STEPS {
+  if (pairing?.step === 'failed')
+    return pairingFailureCopy(pairing.failure ?? 'protocol_error', {
+      target: null,
+      deviceName: null,
+    }).step;
   switch (pairing?.step) {
     case 'fingerprint_check':
       return 'fingerprint';
@@ -453,20 +483,25 @@ export function PairingPanel({
 }) {
   const pairing = connection.pairing;
   let body;
-  if (connection.registration === 'secure_storage_unavailable')
+  if (connection.registration === 'secure_storage_unavailable') {
+    const copy = pairingFailureCopy('secure_storage_unavailable', {
+      target: null,
+      deviceName: null,
+    });
     body = (
-      <Alert status="danger">
+      <Alert status={copy.severity} role="alert">
+        <Alert.Indicator>
+          <AlertIcon />
+        </Alert.Indicator>
         <Alert.Content>
-          <Alert.Title>
-            {PAIRING_FAILURES.secure_storage_unavailable.title}
-          </Alert.Title>
+          <Alert.Title>{copy.title}</Alert.Title>
           <Alert.Description className="text-sm leading-6 text-foreground">
-            {PAIRING_FAILURES.secure_storage_unavailable.body}
+            {copy.body}
           </Alert.Description>
         </Alert.Content>
       </Alert>
     );
-  else if (pairing === null || pairing.step === 'fetching_certificate')
+  } else if (pairing === null || pairing.step === 'fetching_certificate')
     body = (
       <AddressStep
         initialHost={initialHost}
@@ -503,15 +538,17 @@ export function PairingPanel({
         actions={actions}
       />
     );
-  else body = <FailedStep pairing={pairing} actions={actions} />;
+  else
+    body = (
+      <FailedStep pairing={pairing} deviceName={deviceName} actions={actions} />
+    );
   return (
     <Card>
       <Card.Header className="flex flex-col gap-1">
         <h2 id="pairing-heading" className="text-base font-semibold">
           {PAIRING_LABELS.title}
         </h2>
-        {connection.registration === 'secure_storage_unavailable' ||
-        pairing?.step === 'failed' ? null : (
+        {connection.registration === 'secure_storage_unavailable' ? null : (
           <StepLabel step={stepOf(pairing)} />
         )}
       </Card.Header>

@@ -737,6 +737,15 @@ export type DesktopIpcResponse =
     }
   | {
       request_id: Id;
+      channel: 'desktop.claim_decide' | 'desktop.device_revoke';
+      outcome: 'ok';
+      /**
+       * 承認・拒否・失効は中枢に適用されたが、その後の一覧の取り直しだけが失敗した。画面は前の一覧からその行を除き、一覧の更新を促す（失敗として扱わない）。
+       */
+      list_refreshed: false;
+    }
+  | {
+      request_id: Id;
       channel: 'desktop.pairing_open';
       outcome: 'ok';
       session: DesktopPairingSession;

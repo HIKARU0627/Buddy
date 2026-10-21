@@ -62,7 +62,8 @@ export const INITIAL_VIEW_STATE: DesktopViewState = {
   submittedName: null,
 };
 
-export const IPC_FAILURE_MESSAGE = 'main と通信できませんでした。';
+export const IPC_FAILURE_MESSAGE =
+  '画面と Buddy の本体の間で通信できませんでした。Buddy を終了して、開き直してください。';
 
 const IO_CHANNELS: ReadonlySet<Channel> = new Set([
   'desktop.io_stop',

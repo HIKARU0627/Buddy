@@ -58,6 +58,7 @@ async function setup(
     // 登録後の接続の通信（省略は接続できない宛先）。
     readonly transport?: ClientTransport;
     readonly homeReportIntervalMs?: number;
+    readonly hubScreenProbeRetryMs?: number;
   } = {},
 ) {
   const dir = await tempDir(t, 'bdl-');
@@ -103,6 +104,9 @@ async function setup(
     ...(options.homeReportIntervalMs === undefined
       ? {}
       : { homeReportIntervalMs: options.homeReportIntervalMs }),
+    ...(options.hubScreenProbeRetryMs === undefined
+      ? {}
+      : { hubScreenProbeRetryMs: options.hubScreenProbeRetryMs }),
   });
   onCleanup(t, () => link.stop());
   const invoke = (
@@ -887,5 +891,284 @@ test(
     const view = link.view('unlocked');
     assert(view.visibility === 'shown');
     assert.equal(view.hub_screen, false);
+  },
+);
+
+// 登録済みで接続した（live）状態を作る。中枢の画面の経路（申請・端末の一覧と操作）の応答は試験が決める。
+async function liveHub(
+  t: test.TestContext,
+  hub: (request: {
+    readonly method: string;
+    readonly path: string;
+  }) => ClientApiOutcome | null,
+  extra: { readonly hubScreenProbeRetryMs?: number } = {},
+) {
+  const protector = mockProtector();
+  const sent: string[] = [];
+  const ioState = {
+    device_id: '00000000-0000-4000-8000-000000000401',
+    io_epoch: '0',
+    output_epoch: '0',
+    lock_state: 'unlocked',
+    stop_scope: 'none',
+    input_permitted: true,
+    voice_state: 'waiting_wake_word',
+    output_mode: 'text',
+    private_conversation: false,
+    audio_lease_valid: false,
+  };
+  const transport: ClientTransport = {
+    request: (request) => {
+      sent.push(`${request.method} ${request.path}`);
+      if (request.path === '/v1/bootstrap')
+        return Promise.resolve({
+          kind: 'response',
+          status: 200,
+          body: {
+            api_version: '1.0',
+            core_instance_id: '00000000-0000-4000-8000-000000000501',
+            store_generation: '00000000-0000-4000-8000-000000000502',
+            device_id: '00000000-0000-4000-8000-000000000401',
+            command_scope_id: '00000000-0000-4000-8000-000000000503',
+            command_scope_expires_at: '2030-10-02T00:00:00Z',
+            capabilities: [],
+            io_state: ioState,
+          },
+        });
+      if (request.path === '/v1/snapshot')
+        return Promise.resolve({
+          kind: 'response',
+          status: 200,
+          body: {
+            store_generation: '00000000-0000-4000-8000-000000000502',
+            core_instance_id: '00000000-0000-4000-8000-000000000501',
+            event_cursor: 'cursor-1',
+            view: 'full',
+            io_state: ioState,
+            sessions: [],
+            candidates: [],
+            operations: [],
+          },
+        });
+      return Promise.resolve(
+        hub(request) ?? { kind: 'unreachable', reason: 'test' },
+      );
+    },
+    openStream: () =>
+      Promise.resolve({ kind: 'open', stream: { close: () => {} } }),
+  };
+  const context = await setup(t, {
+    protector,
+    transport,
+    homeReportIntervalMs: 600_000,
+    ...extra,
+  });
+  saveCredential(join(context.dir, CREDENTIAL_FILE), protector, {
+    deviceId: '00000000-0000-4000-8000-000000000401',
+    token: new SecretText(TOKEN),
+    issuedAt: '2030-10-01T00:00:00Z',
+    hub: {
+      host: '127.0.0.1',
+      port: 47443,
+      certificatePem: PEM,
+      fingerprint: FP,
+    },
+  });
+  context.link.start('unlocked');
+  await waitUntil(() => context.link.linkState?.phase === 'live', 'live');
+  const admin = async (channel: string, payload: unknown) =>
+    (
+      await context.link.handleAdminIpc(
+        channel,
+        { channel, request_id: randomUUID(), payload },
+        SCREEN,
+        UNLOCKED,
+      )
+    ).response as Record<string, unknown>;
+  return { ...context, sent, admin };
+}
+
+const CLAIM_LIST = {
+  claims: [
+    {
+      claim_id: '00000000-0000-4000-8000-000000000601',
+      device_name: '合成の申請',
+      platform: 'windows',
+      claimed_at: '2030-10-01T00:00:00Z',
+      expires_at: '2030-10-01T00:05:00Z',
+      claim_check: '0a1b2c3d',
+    },
+  ],
+};
+const ok = (body: unknown): ClientApiOutcome => ({
+  kind: 'response',
+  status: 200,
+  body,
+});
+const unavailable: ClientApiOutcome = {
+  kind: 'response',
+  status: 503,
+  body: { code: 'unavailable', message: 'x', request_id: null },
+};
+const hubScreen = (link: DesktopCoreLink) => {
+  const view = link.view('unlocked');
+  return view.visibility === 'shown' ? view.hub_screen : null;
+};
+
+// CR-L1: 中枢の画面かの判定が一時的な失敗（503 など）で決まらなかったら、間隔を空けて問い合わせ直す（上限つき）。
+test(
+  'an undecided hub-screen probe is retried with a growing interval, up to a limit',
+  { timeout: 30_000 },
+  async (t) => {
+    {
+      let probes = 0;
+      const { link, logs } = await liveHub(
+        t,
+        (request) => {
+          if (request.path !== '/v1/pairing/claims') return null;
+          probes += 1;
+          return probes <= 2 ? unavailable : ok({ claims: [] });
+        },
+        { hubScreenProbeRetryMs: 10 },
+      );
+      await waitUntil(() => hubScreen(link) === true, 'hub screen');
+      assert.equal(probes, 3);
+      assert.deepEqual(
+        logs.filter((code) => code.startsWith('hub_screen')),
+        [
+          'hub_screen_probe_retry:1',
+          'hub_screen_probe_retry:2',
+          'hub_screen:true',
+        ],
+      );
+    }
+    {
+      let probes = 0;
+      const { link } = await liveHub(
+        t,
+        (request) => {
+          if (request.path !== '/v1/pairing/claims') return null;
+          probes += 1;
+          return unavailable;
+        },
+        { hubScreenProbeRetryMs: 10 },
+      );
+      await waitUntil(() => probes === 4, 'probes');
+      // 上限（最初の 1 回と再試行 3 回）の後は問い合わせない。判定は決まらないまま（画面を出さない）。
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      assert.equal(probes, 4);
+      assert.equal(hubScreen(link), false);
+    }
+  },
+);
+
+// CR-L7: 承認の要求を送った後に結果が分からなければ outcome_unknown にし、自動で送り直さず、参照も残す。
+test(
+  'a decision whose result is unknown is reported as outcome_unknown, sent once, and keeps the reference',
+  { timeout: 30_000 },
+  async (t) => {
+    const { admin, sent } = await liveHub(t, (request) => {
+      if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+        return ok(CLAIM_LIST);
+      return null; // 決定の POST は応答の前に切れる（unreachable）。
+    });
+    const listed = await admin('desktop.claims_list', null);
+    const ref = String(
+      (listed['claims'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    const decide = () =>
+      admin('desktop.claim_decide', { ref, decision: 'approve' });
+    assert.equal((await decide())['reason'], 'outcome_unknown');
+    const posts = () =>
+      sent.filter((entry) => entry.startsWith('POST /v1/pairing/claims/'));
+    assert.equal(posts().length, 1);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(posts().length, 1);
+    // 参照は残る（本人が一覧を更新して確かめてから、もう一度押せる）。
+    assert.equal((await decide())['reason'], 'outcome_unknown');
+    assert.equal(posts().length, 2);
+  },
+);
+
+// CR-L2: 承認・失効は適用できたが、その後の一覧の取り直しだけが失敗したときは、拒否ではなく list_refreshed: false。
+test(
+  'an applied decision or revocation whose list could not be refreshed is ok with list_refreshed false',
+  { timeout: 30_000 },
+  async (t) => {
+    let claimLists = 0;
+    let deviceLists = 0;
+    const { admin } = await liveHub(t, (request) => {
+      if (request.method === 'GET' && request.path === '/v1/pairing/claims') {
+        claimLists += 1;
+        // 1 回目は判定、2 回目は画面の一覧、3 回目（決定の後の取り直し）は 503。
+        return claimLists <= 2 ? ok(CLAIM_LIST) : unavailable;
+      }
+      if (request.method === 'POST' && request.path.endsWith('/decision'))
+        return ok({
+          claim_id: CLAIM_LIST.claims[0]?.claim_id,
+          status: 'approved',
+        });
+      if (request.method === 'GET' && request.path === '/v1/devices') {
+        deviceLists += 1;
+        return deviceLists === 1
+          ? ok({
+              devices: [
+                {
+                  device_id: '00000000-0000-4000-8000-000000000402',
+                  device_name: '合成の端末',
+                  platform: 'windows',
+                  hub_local: false,
+                  registered_at: '2030-10-01T00:00:00Z',
+                  last_seen_at: null,
+                  revoked_at: null,
+                },
+              ],
+            })
+          : { kind: 'unreachable', reason: 'test' };
+      }
+      if (request.method === 'POST' && request.path.endsWith('/revoke'))
+        return ok({
+          device_id: '00000000-0000-4000-8000-000000000402',
+          revoked_at: '2030-10-01T00:01:00Z',
+        });
+      return null;
+    });
+    const listed = await admin('desktop.claims_list', null);
+    const claimRef = String(
+      (listed['claims'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    const decided = await admin('desktop.claim_decide', {
+      ref: claimRef,
+      decision: 'approve',
+    });
+    assert.deepEqual(
+      {
+        outcome: decided['outcome'],
+        list_refreshed: decided['list_refreshed'],
+      },
+      { outcome: 'ok', list_refreshed: false },
+    );
+    // 適用した申請の参照は捨てる（もう一度押しても送らない）。
+    assert.equal(
+      (
+        await admin('desktop.claim_decide', {
+          ref: claimRef,
+          decision: 'approve',
+        })
+      )['reason'],
+      'entry_not_found',
+    );
+    const devices = await admin('desktop.devices_list', null);
+    const deviceRef = String(
+      (devices['devices'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    const revoked = await admin('desktop.device_revoke', { ref: deviceRef });
+    assert.deepEqual(
+      {
+        outcome: revoked['outcome'],
+        list_refreshed: revoked['list_refreshed'],
+      },
+      { outcome: 'ok', list_refreshed: false },
+    );
   },
 );

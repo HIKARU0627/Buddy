@@ -4657,6 +4657,50 @@
     }
   },
   {
+    "id": "desktop-response-decide-applied-list-stale",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e71",
+      "channel": "desktop.claim_decide",
+      "outcome": "ok",
+      "list_refreshed": false
+    }
+  },
+  {
+    "id": "desktop-response-revoke-applied-list-stale",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e71",
+      "channel": "desktop.device_revoke",
+      "outcome": "ok",
+      "list_refreshed": false
+    }
+  },
+  {
+    "id": "desktop-response-list-stale-on-list-channel",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e71",
+      "channel": "desktop.claims_list",
+      "outcome": "ok",
+      "list_refreshed": false
+    }
+  },
+  {
+    "id": "desktop-response-list-stale-true",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e71",
+      "channel": "desktop.claim_decide",
+      "outcome": "ok",
+      "list_refreshed": true
+    }
+  },
+  {
     "id": "desktop-response-hub-screen-required",
     "schema": "DesktopIpcResponse",
     "valid": true,

@@ -60,6 +60,11 @@ export function DeviceScreen({
             {/* 登録の知らせは、停止の帯と同時には出さない（Alert は 1 画面に 1 つ。ADR 0024 の約束 6）。 */}
             {state.justRegistered && shown.stop_scope === 'none' ? (
               <Alert status="success">
+                <Alert.Indicator>
+                  <span aria-hidden="true" className="text-sm leading-none">
+                    ●
+                  </span>
+                </Alert.Indicator>
                 <Alert.Content>
                   <Alert.Title>この端末を中枢に登録しました。</Alert.Title>
                 </Alert.Content>

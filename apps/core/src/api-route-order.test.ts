@@ -92,8 +92,8 @@ test(
       identity,
       store,
       coreInstanceId: '00000000-0000-4000-8000-0000000000c1',
-      // 認証前の要求も多く送るので、頻度の上限を試験の間だけ上げる。
-      limits: { preAuthMaxRequests: 100_000 },
+      // 認証前の要求も同じ端末の要求も多く送るので、頻度の上限を試験の間だけ上げる。
+      limits: { preAuthMaxRequests: 100_000, deviceMaxRequests: 100_000 },
       environment: {
         homeNetwork: () => !failing.has('home_network'),
         lockState: () => (failing.has('unlocked') ? 'locked' : 'unlocked'),

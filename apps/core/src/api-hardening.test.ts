@@ -543,3 +543,106 @@ test(
     assert.equal(STREAM_CLOSE_CODES.too_many_streams, 4429);
   },
 );
+
+// --- L1: 認証した端末ごとの頻度 ---
+
+test(
+  'L1: an authenticated device over its request rate is refused with 429 and other devices are unaffected',
+  { timeout: 30_000 },
+  async (t) => {
+    const started = await startApi(t, {
+      limits: { deviceWindowMs: 1_000, deviceMaxRequests: 3 },
+    });
+    const device = await insertDevice(started.store);
+    const other = await insertDevice(started.store);
+    for (let i = 0; i < 3; i += 1)
+      assert.equal(
+        (await bootstrap(started, device)).status,
+        200,
+        `request ${i + 1}`,
+      );
+    const over = await bootstrap(started, device);
+    assert.equal(over.status, 429);
+    assert.equal(over.json?.['code'], 'rate_limited');
+    assert.deepEqual(Object.keys(over.json ?? {}).sort(), [
+      'code',
+      'message',
+      'request_id',
+    ]);
+    // WSS の切り替えも同じ端末の数に入る。
+    const stream = openStream(t, started, device);
+    assert.deepEqual(await stream.opened, {
+      ok: false,
+      status: 429,
+      code: 'rate_limited',
+    });
+    // 他の端末は自分の窓で数える。
+    assert.equal((await bootstrap(started, other)).status, 200);
+    // 窓を過ぎれば数え直す。
+    started.clock.mono += 1_000;
+    assert.equal((await bootstrap(started, device)).status, 200);
+  },
+);
+
+test(
+  'L1: the default device rate leaves room for normal use (reconnects, reports and streams)',
+  { timeout: 60_000 },
+  async (t) => {
+    // 手書きの既定値（ADR 0020 の B03-07 の変更）: 端末ごとに 60 秒で 300 件。
+    const started = await startApi(t);
+    const device = await insertDevice(started.store);
+    const cursor = encodeURIComponent(
+      encodeEventCursor({
+        storeGeneration: started.store.storeGeneration,
+        sequence: 0,
+        issuedAt: Date.now(),
+      }),
+    );
+    // 同じ窓の中で 10 回の再接続（bootstrap・スナップショット・イベント・自宅の報告・購読の開閉）。
+    // 経路の処理を渡していない経路は 503 になるが、頻度の上限（429）には掛からない。
+    const statuses: number[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      statuses.push((await bootstrap(started, device)).status);
+      for (const path of ['/v1/snapshot', `/v1/events?cursor=${cursor}`])
+        statuses.push(
+          (
+            await pinnedRequest(started.target, {
+              method: 'GET',
+              path,
+              headers: bearer(device.token),
+            })
+          ).status,
+        );
+      statuses.push(
+        (
+          await pinnedRequest(started.target, {
+            method: 'POST',
+            path: '/v1/home-network/reports',
+            headers: {
+              ...bearer(device.token),
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              request_id: '00000000-0000-4000-8000-000000009001',
+              fingerprint: {
+                gateway_mac: '00:00:5e:00:53:01',
+                subnet: '192.0.2.0/24',
+                ssid: null,
+              },
+            }),
+          })
+        ).status,
+      );
+      const stream = openStream(t, started, device);
+      assert.deepEqual(await stream.opened, { ok: true }, `stream ${i + 1}`);
+      stream.socket.close();
+      await stream.closed;
+    }
+    assert.equal(statuses.length, 40);
+    assert.equal(
+      statuses.filter((status) => status === 429).length,
+      0,
+      statuses.join(','),
+    );
+  },
+);

@@ -8,7 +8,8 @@
 //   2. Origin ヘッダーのある要求（ブラウザーからの要求）は 403 forbidden
 //   3. 認証前の頻度の上限（接続元ごと。超えたら 429 rate_limited）
 //   4. 経路（なければ 404・方法違いは 405、どちらも invalid_input）
-//   5. 端末トークンの照合（SHA-256 で devices を引く。失効・未登録・形式違いは未認証）
+//   5. 端末トークンの照合（SHA-256 で devices を引く。失効・未登録・形式違いは未認証）。認証できた端末ごとの
+//      頻度の上限（超えたら 429 rate_limited、B03-07 L1）
 //   6. 本文の上限（宣言の長さで先に判定。認証後 256 KiB・認証前の経路 16 KiB、超えたら切り詰めずに 413）
 //   7. 端末トークンを求める経路で未認証なら、本文を読まずに経路の検査の結果（401）を返す
 //   8. 本文を上限まで読む（超えたら 413）
@@ -129,6 +130,9 @@ export interface ApiLimits {
   // 認証前の頻度（接続元ごとの固定の窓）。端末トークンで認証できなかった要求を数える。
   readonly preAuthWindowMs: number;
   readonly preAuthMaxRequests: number;
+  // 認証した端末ごとの頻度（端末ごとの固定の窓、B03-07 L1）。端末トークンで認証できた要求（WSS の切り替えを含む）を数える。
+  readonly deviceWindowMs: number;
+  readonly deviceMaxRequests: number;
   readonly handshakeTimeoutMs: number;
   // ヘッダーの期限。TLS の確立から最初の要求のヘッダーがそろうまでの期限（接続ごと、B03-07 M1）にも使う。
   readonly headersTimeoutMs: number;
@@ -143,6 +147,9 @@ export const DEFAULT_API_LIMITS: ApiLimits = {
   hardMaxConnections: 64,
   preAuthWindowMs: 60_000,
   preAuthMaxRequests: 30,
+  // 仮の値（理由は ADR 0020 の B03-07 の変更）。
+  deviceWindowMs: 60_000,
+  deviceMaxRequests: 300,
   handshakeTimeoutMs: 10_000,
   headersTimeoutMs: 10_000,
   requestTimeoutMs: 15_000,
@@ -220,8 +227,8 @@ export function listenPortReason(port: number): string | null {
     : 'https_port_invalid';
 }
 
-// 接続元ごとの固定の窓の数え上げ。窓を過ぎた記録は数え直す。
-class PreAuthLimiter {
+// 鍵（接続元の IP アドレス・認証した端末の ID）ごとの固定の窓の数え上げ。窓を過ぎた記録は数え直す。
+class WindowLimiter {
   readonly #entries = new Map<string, { start: number; count: number }>();
   readonly #windowMs: number;
   readonly #max: number;
@@ -231,17 +238,17 @@ class PreAuthLimiter {
     this.#max = max;
   }
 
-  #entry(address: string, now: number): { start: number; count: number } {
-    let entry = this.#entries.get(address);
+  #entry(key: string, now: number): { start: number; count: number } {
+    let entry = this.#entries.get(key);
     if (entry === undefined || now - entry.start >= this.#windowMs) {
       entry = { start: now, count: 0 };
-      this.#entries.set(address, entry);
+      this.#entries.set(key, entry);
     }
     return entry;
   }
 
-  exhausted(address: string, now: number): boolean {
-    const entry = this.#entries.get(address);
+  exhausted(key: string, now: number): boolean {
+    const entry = this.#entries.get(key);
     return (
       entry !== undefined &&
       now - entry.start < this.#windowMs &&
@@ -249,9 +256,9 @@ class PreAuthLimiter {
     );
   }
 
-  record(address: string, now: number): void {
-    this.#entry(address, now).count += 1;
-    // 古い記録を片付ける（接続元の数を際限なく増やさない）。
+  record(key: string, now: number): void {
+    this.#entry(key, now).count += 1;
+    // 古い記録を片付ける（鍵の数を際限なく増やさない）。
     if (this.#entries.size > 4096)
       for (const [key, value] of this.#entries)
         if (now - value.start >= this.#windowMs) this.#entries.delete(key);
@@ -388,9 +395,13 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   const now = options.now ?? (() => Date.now());
   const monotonicNow = options.monotonicNow ?? (() => performance.now());
   const accepting = options.accepting ?? (() => true);
-  const limiter = new PreAuthLimiter(
+  const limiter = new WindowLimiter(
     limits.preAuthWindowMs,
     limits.preAuthMaxRequests,
+  );
+  const deviceLimiter = new WindowLimiter(
+    limits.deviceWindowMs,
+    limits.deviceMaxRequests,
   );
   const sockets = new Set<TLSSocket>();
   // TLS の確立の前の接続も含めた TCP の接続（停止の時に切るため。closeAllConnections は HTTP の接続しか切らない）。
@@ -592,6 +603,12 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         device = found.value;
     }
     if (device === null) limiter.record(address, started);
+    else {
+      // 認証した端末ごとの頻度（B03-07 L1）。上限に達した端末は、正しいトークンでも窓が過ぎるまで 429。
+      if (deviceLimiter.exhausted(device.device_id, started))
+        return reject(429, 'rate_limited', close);
+      deviceLimiter.record(device.device_id, started);
+    }
 
     if (!match.ok)
       return reject(match.status, 'invalid_input', { close: device === null });

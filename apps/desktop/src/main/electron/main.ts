@@ -26,6 +26,7 @@ import {
 } from '@buddy/platform/home-fingerprint';
 import { fileURLToPath } from 'node:url';
 import { DESKTOP_IPC_CHANNELS, type DesktopPowerEvent } from '@buddy/domain';
+import { ConnectionPublisher } from '../connection-publisher.js';
 import { createDesktopContract, loadContractSchema } from '../contract.js';
 import { CONNECTION_CHANNELS, DesktopCoreLink } from '../core-link.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
@@ -202,6 +203,8 @@ function createWindow(): BrowserWindow {
       channel: 'desktop.state_changed',
       status: controller.statusBar,
     });
+    // 読み込み直した画面は前回の接続の状態を持っていないので、同じ内容でも送る。
+    connectionPublisher.reset();
     pushConnection();
   });
   void window.loadURL(APP_ENTRY_URL);
@@ -240,20 +243,30 @@ function createTray(): Tray {
   return created;
 }
 
-// 中枢との接続の状態を状態欄と画面へ送る（ロック中は内容を隠した値）。
+// 中枢との接続の状態を状態欄と画面へ送る（ロック中は内容を隠した値）。状態欄の更新が状態欄の通知を出し、
+// その処理からもう一度呼ばれても二重に送らない。前回と同じ内容は送らない（connection-publisher.ts）。
+const connectionPublisher = new ConnectionPublisher({
+  refreshHub: () => {
+    if (controller && link) controller.setHub(link.hubStatus());
+  },
+  build: () => {
+    if (!controller || !link || !contractRef) return null;
+    const notification = {
+      channel: 'desktop.connection_changed' as const,
+      connection: link.view(controller.state.lockState),
+    };
+    const errors = contractRef.notificationErrors(notification);
+    if (errors.length > 0) {
+      log(`connection_notification_invalid:${errors.join(',')}`);
+      return null;
+    }
+    return notification;
+  },
+  send: (notification) => sendToRenderer(notification.channel, notification),
+});
+
 function pushConnection(): void {
-  if (!controller || !link || !contractRef) return;
-  controller.setHub(link.hubStatus());
-  const notification = {
-    channel: 'desktop.connection_changed' as const,
-    connection: link.view(controller.state.lockState),
-  };
-  const errors = contractRef.notificationErrors(notification);
-  if (errors.length > 0) {
-    log(`connection_notification_invalid:${errors.join(',')}`);
-    return;
-  }
-  sendToRenderer(notification.channel, notification);
+  connectionPublisher.publish();
 }
 
 function registerIpc(): void {

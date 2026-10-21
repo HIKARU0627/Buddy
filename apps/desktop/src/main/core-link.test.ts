@@ -8,7 +8,11 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import type { ClientApiOutcome, ClientTransport } from '@buddy/client';
+import type {
+  ClientApiOutcome,
+  ClientStreamEvent,
+  ClientTransport,
+} from '@buddy/client';
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
@@ -652,5 +656,101 @@ test(
       sent.filter((entry) => entry === 'GET /v1/bootstrap').length,
       1,
     );
+  },
+);
+
+// レビューの指摘 L8: 最終確認時刻だけが変わった（中枢の ping・画面に出ない値の変化）ときは、画面への通知を間引く。
+test(
+  'changes of only the last confirmation time are thinned; visible changes are notified at once',
+  { timeout: 30_000 },
+  async (t) => {
+    const protector = mockProtector();
+    // 購読の通知を試験から送る（閉じた関数の中で代入するので、入れ物に置く）。
+    const stream: { listener: ((event: ClientStreamEvent) => void) | null } = {
+      listener: null,
+    };
+    const ioState = {
+      device_id: '00000000-0000-4000-8000-000000000401',
+      io_epoch: '0',
+      output_epoch: '0',
+      lock_state: 'unlocked',
+      stop_scope: 'none',
+      input_permitted: true,
+      voice_state: 'waiting_wake_word',
+      output_mode: 'text',
+      private_conversation: false,
+      audio_lease_valid: false,
+    };
+    const transport: ClientTransport = {
+      request: (request) => {
+        if (request.path === '/v1/bootstrap')
+          return Promise.resolve({
+            kind: 'response',
+            status: 200,
+            body: {
+              api_version: '1.0',
+              core_instance_id: '00000000-0000-4000-8000-000000000501',
+              store_generation: '00000000-0000-4000-8000-000000000502',
+              device_id: '00000000-0000-4000-8000-000000000401',
+              command_scope_id: '00000000-0000-4000-8000-000000000503',
+              command_scope_expires_at: '2030-10-02T00:00:00Z',
+              capabilities: [],
+              io_state: ioState,
+            },
+          });
+        if (request.path === '/v1/snapshot')
+          return Promise.resolve({
+            kind: 'response',
+            status: 200,
+            body: {
+              store_generation: '00000000-0000-4000-8000-000000000502',
+              core_instance_id: '00000000-0000-4000-8000-000000000501',
+              event_cursor: 'cursor-1',
+              view: 'full',
+              io_state: ioState,
+              sessions: [],
+              candidates: [],
+              operations: [],
+            },
+          });
+        return Promise.resolve({ kind: 'unreachable', reason: 'test' });
+      },
+      openStream: (_cursor, _lock, onEvent) => {
+        stream.listener = onEvent;
+        return Promise.resolve({ kind: 'open', stream: { close: () => {} } });
+      },
+    };
+    const { link, dir, shown } = await setup(t, {
+      protector,
+      transport,
+      homeReportIntervalMs: 600_000,
+    });
+    saveCredential(join(dir, CREDENTIAL_FILE), protector, {
+      deviceId: '00000000-0000-4000-8000-000000000401',
+      token: new SecretText(TOKEN),
+      issuedAt: '2030-10-01T00:00:00Z',
+      hub: {
+        host: '127.0.0.1',
+        port: 47443,
+        certificatePem: PEM,
+        fingerprint: FP,
+      },
+    });
+    link.start('unlocked');
+    await waitUntil(() => link.linkState?.phase === 'live', 'live');
+    await link.homeReportIdle();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const before = shown.length;
+    // 中枢の ping を続けて受け取る（最終確認時刻だけが変わる）。
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      stream.listener?.({ type: 'alive' });
+    }
+    assert.equal(shown.length, before);
+    // 画面に出る変化（切断して待つ）はすぐに知らせる。
+    stream.listener?.({ type: 'closed', code: 1001, reason: 'core_stopping' });
+    assert.equal(link.linkState?.phase, 'waiting_retry');
+    assert(shown.length > before);
+    link.stop();
   },
 );

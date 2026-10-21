@@ -108,6 +108,22 @@ export interface ConnectionIpcOutcome {
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
+// 最終確認時刻だけが変わったときに画面へ知らせる最短の間隔（レビューの指摘 L8）。中枢の ping（15 秒）の
+// たびには知らせるが、イベントの取り直しなどで続けて変わるときは間引く。
+export const CONFIRMED_ONLY_NOTIFY_INTERVAL_MS = 10_000;
+
+// 画面（接続の欄・状態欄）に出る接続の状態か。cursor・接続範囲・ID などの変化だけでは画面へ知らせない。
+function visibleChange(previous: LinkState, state: LinkState): boolean {
+  return (
+    state.phase !== previous.phase ||
+    state.reason !== previous.reason ||
+    state.retryAt !== previous.retryAt ||
+    state.view !== previous.view ||
+    state.operations !== previous.operations ||
+    (state.lastConfirmedAt === null) !== (previous.lastConfirmedAt === null)
+  );
+}
+
 const iso = (ms: number | null): string | null =>
   ms === null ? null : new Date(ms).toISOString();
 
@@ -401,6 +417,7 @@ export class DesktopCoreLink {
         : { aliveTimeoutMs: this.#options.aliveTimeoutMs }),
     });
     let previous: LinkState = connection.state;
+    let notifiedAt = Number.NEGATIVE_INFINITY;
     connection.onChange((state) => {
       if (state.phase !== previous.phase || state.reason !== previous.reason)
         this.#log(
@@ -421,7 +438,15 @@ export class DesktopCoreLink {
         previous.reason !== 'outside_home_network'
       )
         this.#reporter?.reportNow('outside_home_network');
+      const visible = visibleChange(previous, state);
+      const confirmedOnly =
+        !visible && state.lastConfirmedAt !== previous.lastConfirmedAt;
       previous = state;
+      if (!visible && !confirmedOnly) return;
+      const now = this.#options.clock.now();
+      if (confirmedOnly && now - notifiedAt < CONFIRMED_ONLY_NOTIFY_INTERVAL_MS)
+        return;
+      notifiedAt = now;
       this.#options.onChange();
     });
     this.#connection = connection;

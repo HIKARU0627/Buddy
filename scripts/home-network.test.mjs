@@ -55,6 +55,13 @@ test('the reason codes and the report freshness match the contract and the decis
     'screen_operation',
     'hub_screen',
   ]);
+  // 登録の状態は中枢の画面だけが読める（B03-08）。
+  assert.deepEqual(ROUTE_CHECKS.getHomeRegistration, [
+    'device_token',
+    'home_network',
+    'unlocked',
+    'hub_screen',
+  ]);
   // 外出先からの接続を有効にする経路はない（初期版は OFF に固定）。
   for (const id of Object.keys(ROUTE_CHECKS))
     assert(!/outside|away|remote_?access/iu.test(id), id);

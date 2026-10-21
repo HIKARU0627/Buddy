@@ -81,6 +81,9 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     'DesktopConnectionView',
     'DesktopClaimEntry',
     'DesktopDeviceEntry',
+    'DesktopHomeView',
+    'DesktopHomeObservation',
+    'DesktopSsidHint',
   ])
     walk(defs[name], name);
   // 入出力停止は local だけで、範囲を指定できない。
@@ -305,6 +308,59 @@ test('the connection view hides everything while locked and keeps pairing, link 
     }),
     ['operations_without_connection'],
   );
+});
+
+test('the home network view masks the values and keeps the reference, SSID hint and reason consistent (B03-08)', () => {
+  const response = fixture('desktop-response-home-unregistered');
+  const observation = response.home.observation;
+  assert.deepEqual(semanticErrors('DesktopIpcResponse', response), []);
+  const check = (patch, expected) =>
+    assert.deepEqual(
+      semanticErrors('DesktopIpcResponse', {
+        ...response,
+        home: { ...response.home, observation: { ...observation, ...patch } },
+      }),
+      expected,
+      JSON.stringify(patch),
+    );
+  // 登録の参照は、ゲートウェイの MAC とサブネットが取れたときだけ。
+  check({ gateway_mac_tail: null }, ['home_ref_without_fingerprint']);
+  check({ subnet: null }, ['home_ref_without_fingerprint']);
+  check({ ref: null, gateway_mac_tail: null }, []);
+  // SSID は伏せた表示か取れない理由のどちらか一方。
+  check({ ssid_unavailable_reason: 'redacted' }, ['ssid_hint_reason_mismatch']);
+  check({ ssid_hint: null }, ['ssid_hint_reason_mismatch']);
+  check({ ssid_hint: null, ssid_unavailable_reason: 'ambiguous' }, []);
+  // 3 文字以下の SSID は先頭の文字を出さない（4 文字なら出してよい）。
+  check({ ssid_hint: { first: '合', length: 3 } }, ['ssid_hint_too_revealing']);
+  check({ ssid_hint: { first: '合', length: 4 } }, []);
+  check({ ssid_hint: { first: null, length: 1 } }, []);
+  // どの要素も取れないときは observation を null にする。
+  check(
+    {
+      ref: null,
+      gateway_mac_tail: null,
+      subnet: null,
+      ssid_hint: null,
+      ssid_unavailable_reason: 'unavailable',
+    },
+    ['empty_home_observation'],
+  );
+  assert.deepEqual(
+    semanticErrors('DesktopIpcResponse', {
+      ...response,
+      home: { ...response.home, observation: null },
+    }),
+    [],
+  );
+  // 生の値を入れる形は schema にない（MAC の全体・SSID の値・2 文字の先頭）。
+  for (const id of [
+    'desktop-response-home-full-mac',
+    'desktop-response-home-raw-ssid',
+    'desktop-response-home-ssid-two-characters',
+    'desktop-ipc-home-register-with-raw-values',
+  ])
+    assert.equal(cases.find((entry) => entry.id === id).valid, false, id);
 });
 
 test('responses reflect the stop or resume they acknowledge', () => {

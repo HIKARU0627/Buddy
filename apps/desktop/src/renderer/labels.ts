@@ -45,6 +45,8 @@ export const REJECT_MESSAGES: Readonly<Record<RejectReason, string>> = {
     '中枢の画面の指紋と違います。宛先が正しいか確かめてください。',
   pairing_host_not_allowed:
     'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。',
+  home_network_changed:
+    '確かめている間に、このマシンのネットワークが変わりました。読み取り直した内容を確かめてから、もう一度登録してください。',
 };
 
 // 操作ごとに言い方を変える拒否（何が拒否されたかと、次の行動）。

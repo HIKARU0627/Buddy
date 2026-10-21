@@ -96,6 +96,37 @@ const STOPPED_VOICE: Readonly<Record<string, string>> = {
   global: 'global_stopped',
 };
 
+// 中枢の画面の自宅のネットワーク（B03-08、ADR 0022）。scripts/contract-tools.mjs の DesktopHomeObservation と同じ意味。
+// 登録の参照はゲートウェイの MAC とサブネットが取れたときだけ。SSID は伏せた表示か取れない理由のどちらか一方。
+// 先頭の文字は 4 文字以上の SSID だけ。どの要素も取れないときは observation を null にする。
+function homeViewErrors(home: Record<string, unknown>): string[] {
+  const observation = home['observation'];
+  if (!isRecord(observation)) return [];
+  const errors: string[] = [];
+  const hint = observation['ssid_hint'];
+  if (
+    observation['ref'] !== null &&
+    (observation['gateway_mac_tail'] === null || observation['subnet'] === null)
+  )
+    errors.push('home_ref_without_fingerprint');
+  if ((hint === null) === (observation['ssid_unavailable_reason'] === null))
+    errors.push('ssid_hint_reason_mismatch');
+  if (
+    isRecord(hint) &&
+    hint['first'] !== null &&
+    typeof hint['length'] === 'number' &&
+    hint['length'] < 4
+  )
+    errors.push('ssid_hint_too_revealing');
+  if (
+    observation['gateway_mac_tail'] === null &&
+    observation['subnet'] === null &&
+    hint === null
+  )
+    errors.push('empty_home_observation');
+  return errors;
+}
+
 // 形式検査に通った値だけを受け取る。文書に明記した局所的な不変条件だけを見る（ADR 0014 の意味検査）。
 export function desktopSemanticErrors(
   name: ContractName,
@@ -179,6 +210,8 @@ export function desktopSemanticErrors(
     )
       errors.push('link_conflicts_with_registration');
   }
+  if (name === 'DesktopIpcResponse' && isRecord(value['home']))
+    errors.push(...homeViewErrors(value['home']));
   if (name === 'DesktopIpcResponse' && isRecord(value['connection']))
     errors.push(
       ...desktopSemanticErrors('DesktopConnectionView', value['connection']),

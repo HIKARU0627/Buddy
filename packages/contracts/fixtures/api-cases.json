@@ -1322,6 +1322,23 @@
         }
       ]
     },
+    "getHomeRegistration": {
+      "response": {
+        "registration": {
+          "subnet": "192.0.2.0/24",
+          "ssid_registered": false,
+          "registered_at": "2030-10-05T00:00:00Z"
+        }
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["remote_device", 403, "hub_screen_required"]
+      ]
+    },
     "registerHome": {
       "request": {
         "request_id": "00000000-0000-4000-8000-000000009004",

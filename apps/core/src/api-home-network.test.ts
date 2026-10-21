@@ -78,7 +78,12 @@ const validRegistration = ajv.getSchema(
   `${schema.$id}#/$defs/HomeRegistration`,
 );
 const validApiError = ajv.getSchema(`${schema.$id}#/$defs/ApiError`);
-assert(validStatus && validRegistration && validApiError);
+const validRegistrationState = ajv.getSchema(
+  `${schema.$id}#/$defs/HomeRegistrationState`,
+);
+assert(
+  validStatus && validRegistration && validApiError && validRegistrationState,
+);
 
 // 合成の Tailscale の状態。peer が null なら接続元のピアはない。exit が 0 でなければ取得できない。
 interface TailscaleState {
@@ -542,6 +547,83 @@ test(
     const reported = await report(started, started.remote.token, HOME);
     assert.equal(reported.json?.['allowed'], true);
     assert.equal((await bootstrap(started, started.remote.token)).status, 200);
+  },
+);
+
+test(
+  'the hub screen reads whether the home is registered and when it was last updated, without MAC, SSID, their HMAC or the device (B03-08)',
+  { timeout: 30_000 },
+  async (t) => {
+    const started = await start(t);
+    const read = (token: string | null) =>
+      pinnedRequest(started.target, {
+        method: 'GET',
+        path: '/v1/home-network/registration',
+        headers: token === null ? {} : bearer(token),
+      });
+    const before = await read(started.hub.token);
+    assert.equal(before.status, 200);
+    assert(validRegistrationState?.(before.json), before.text);
+    assert.deepEqual(before.json, { registration: null });
+    assert.equal((await register(started)).status, 200);
+    const after = await read(started.hub.token);
+    assert(validRegistrationState?.(after.json), after.text);
+    assert.deepEqual(after.json, {
+      registration: {
+        subnet: '192.0.2.0/24',
+        ssid_registered: true,
+        registered_at: '2030-10-05T00:00:00.000Z',
+      },
+    });
+    // 登録し直すと置き換わり、最終更新の時刻も変わる。
+    started.clock.now = T0 + 90_000;
+    assert.equal(
+      (await register(started, { ...HOME, ssid: null })).status,
+      200,
+    );
+    const replaced = await read(started.hub.token);
+    assert.deepEqual(replaced.json, {
+      registration: {
+        subnet: '192.0.2.0/24',
+        ssid_registered: false,
+        registered_at: '2030-10-05T00:01:30.000Z',
+      },
+    });
+    // 応答・記録に MAC・SSID・その HMAC・登録した端末を出さない。
+    for (const text of [
+      before.text,
+      after.text,
+      replaced.text,
+      ...started.logs,
+    ])
+      for (const secret of [
+        HOME.gateway_mac,
+        HOME.ssid,
+        MAC_HMAC,
+        SSID_HMAC,
+        started.hub.device.device_id,
+      ])
+        assert(!text.includes(secret), 'leaked a home value');
+    // トークンなしは 401。自宅で許可された端末でも、中枢の画面でなければ 403（hub_screen_required）。
+    assertRejected(await read(null), 401, 'unauthenticated', 'no token', []);
+    const reported = await report(started, started.remote.token, HOME);
+    assert.equal(reported.json?.['allowed'], true);
+    assertRejected(
+      await read(started.remote.token),
+      403,
+      'hub_screen_required',
+      'remote device reads the registration',
+      [HOME.gateway_mac, MAC_HMAC],
+    );
+    // 自宅の外の端末は自宅判定で先に 403。
+    started.tailscale.peer = { Relay: 'tok' };
+    assertRejected(
+      await read(started.remote.token),
+      403,
+      'outside_home_network',
+      'remote device outside the home',
+      [],
+    );
   },
 );
 

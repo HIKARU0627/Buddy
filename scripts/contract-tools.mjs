@@ -439,6 +439,34 @@ export function semanticErrors(name, value) {
     )
       errors.push('link_conflicts_with_registration');
   }
+  // 中枢の画面の自宅のネットワーク（B03-08、ADR 0022）。登録の参照はゲートウェイの MAC とサブネットが取れたとき
+  // だけ。SSID は伏せた表示か取れない理由のどちらか一方。先頭の文字は 4 文字以上の SSID だけ。どの要素も
+  // 取れないときは observation を null にする（読み取りの失敗と同じ扱い）。
+  if (name === 'DesktopHomeObservation') {
+    if (
+      value.ref !== null &&
+      (value.gateway_mac_tail === null || value.subnet === null)
+    )
+      errors.push('home_ref_without_fingerprint');
+    if ((value.ssid_hint === null) === (value.ssid_unavailable_reason === null))
+      errors.push('ssid_hint_reason_mismatch');
+    if (
+      value.ssid_hint !== null &&
+      value.ssid_hint.first !== null &&
+      value.ssid_hint.length < 4
+    )
+      errors.push('ssid_hint_too_revealing');
+    if (
+      value.gateway_mac_tail === null &&
+      value.subnet === null &&
+      value.ssid_hint === null
+    )
+      errors.push('empty_home_observation');
+  }
+  if (name === 'DesktopHomeView' && value.observation)
+    errors.push(...semanticErrors('DesktopHomeObservation', value.observation));
+  if (name === 'DesktopIpcResponse' && value.home)
+    errors.push(...semanticErrors('DesktopHomeView', value.home));
   if (name === 'DesktopIpcResponse' && value.connection)
     errors.push(...semanticErrors('DesktopConnectionView', value.connection));
   if (name === 'DesktopIpcResponse' && value.status) {

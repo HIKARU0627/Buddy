@@ -117,6 +117,7 @@ export interface HomeNetworkGate {
   homeNetwork(input: EnvironmentInput): Promise<boolean>;
   readonly handlers: {
     readonly reportHomeFingerprint: ApiRouteHandler;
+    readonly getHomeRegistration: ApiRouteHandler;
     readonly registerHome: ApiRouteHandler;
   };
   // 認証済みの端末が自宅判定で不成立になったときの通知（接続範囲を失効させた後）。WSS を閉じるのに使う。
@@ -349,6 +350,28 @@ export function createHomeNetworkGate(
     };
   };
 
+  // 登録の状態（B03-08）。経路の検査（hub_screen）を通った中枢の画面だけが来る。サブネット・SSID を登録したか・
+  // 最終更新の時刻だけを返し、MAC・SSID の HMAC・登録した端末は返さない。
+  const getHomeRegistration: ApiRouteHandler = async () => {
+    const found = await options.store.home({ kind: 'home.get' });
+    if (!found.ok) return rejectWith(503, 'dependency_unavailable', null);
+    return {
+      status: 200,
+      body: {
+        registration:
+          found.value === null
+            ? null
+            : {
+                subnet: found.value.subnet,
+                ssid_registered: found.value.ssid_hmac !== null,
+                registered_at: new Date(
+                  found.value.registered_at,
+                ).toISOString(),
+              },
+      },
+    };
+  };
+
   const registerHome: ApiRouteHandler = async (request) => {
     const requestId = requestIdOf(request.body);
     const device = request.device;
@@ -395,7 +418,7 @@ export function createHomeNetworkGate(
 
   return {
     homeNetwork,
-    handlers: { reportHomeFingerprint, registerHome },
+    handlers: { reportHomeFingerprint, getHomeRegistration, registerHome },
     onDenied(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

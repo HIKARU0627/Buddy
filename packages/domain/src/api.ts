@@ -59,6 +59,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   disconnectConnection: [...SCREEN, 'expected_revision'],
   // 自宅の指紋の報告（B03-03、ADR 0022）。報告そのものが自宅判定の材料なので home_network を求めない。
   reportHomeFingerprint: ['device_token'],
+  // 自宅の登録の状態は中枢の画面だけ（B03-08）。読み取りなので接続範囲・画面操作は求めない。
+  getHomeRegistration: [...READ, 'unlocked', 'hub_screen'],
   // 自宅の登録は中枢の画面からだけ（家ごとに 1 つ）。
   registerHome: [...SCREEN, 'hub_screen'],
 };

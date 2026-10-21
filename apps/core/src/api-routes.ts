@@ -135,6 +135,8 @@ export const API_ROUTES: readonly ApiRoute[] = [
   route('reportHomeFingerprint', 'POST', '/v1/home-network/reports', {
     body: 'HomeFingerprintReport',
   }),
+  // B03-08: 自宅の登録の状態（中枢の画面だけ）。
+  route('getHomeRegistration', 'GET', '/v1/home-network/registration'),
   route('registerHome', 'PUT', '/v1/home-network/registration', {
     body: 'HomeRegistrationRequest',
     ...SCREEN,

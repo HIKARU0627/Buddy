@@ -76,6 +76,15 @@ test(
       API_ROUTES.map((route) => route.operationId).sort(),
       Object.keys(ROUTE_CHECKS).sort(),
     );
+    // 失効は中枢の画面だけ（本人の判断 2026-10-21、B03-07）。手書きの期待値で表を確かめた上で、下で実行時の順を確かめる。
+    assert.deepEqual(ROUTE_CHECKS['revokeDevice'], [
+      'device_token',
+      'home_network',
+      'command_scope',
+      'unlocked',
+      'screen_operation',
+      'hub_screen',
+    ]);
 
     const dir = await tempDir(t, 'buddy-route-order-');
     const identity = await loadOrCreateTlsIdentity({

@@ -920,13 +920,14 @@ paths:
     post:
       operationId: revokeDevice
       summary: 端末の失効
-      description: 登録済み・ロック解除済み端末の画面操作だけ。失効した端末の接続範囲・リースを無効にし、開いている接続（WSS）を閉じる（02、01）。存在しない端末は 409。失効済みの端末は失効の時刻を変えずに返す（ADR 0021）。
+      description: 中枢のロック解除済みの画面だけ（乗っ取られた端末に他の端末を締め出させないため。中枢の画面が使えないときは中枢のマシンの CLI で失効する）。失効した端末の接続範囲・リースを無効にし、開いている接続（WSS）を閉じる（02、01）。存在しない端末は 409。失効済みの端末は失効の時刻を変えずに返す（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network
         - command_scope
         - unlocked
         - screen_operation
+        - hub_screen
       parameters:
         - $ref: '#/components/parameters/DeviceId'
         - $ref: '#/components/parameters/InputOrigin'

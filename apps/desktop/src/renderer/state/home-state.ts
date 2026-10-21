@@ -25,6 +25,8 @@ export interface HomeViewState {
   readonly message: string | null;
   // 登録が終わった知らせ（一度だけ出す）。
   readonly registered: boolean;
+  // main が参照を捨てた（ネットワークが変わった・参照が古い・ロックした）。読み取り直すまで登録のボタンを出さない。
+  readonly stale: boolean;
 }
 
 export const INITIAL_HOME_STATE: HomeViewState = {
@@ -33,13 +35,21 @@ export const INITIAL_HOME_STATE: HomeViewState = {
   busy: false,
   message: null,
   registered: false,
+  stale: false,
 };
 
 export const HOME_IPC_FAILURE_MESSAGE =
   'main と通信できませんでした。「読み取り直す」を押してください。';
 
-// 自宅の登録で言い方を変える拒否（何が起きたかと、次の行動）。それ以外は共通の文言。
-const HOME_REJECT_MESSAGES: Partial<Record<RejectReason, string>> = {
+// 自宅のネットワークで言い方を変える拒否（何が起きたかと、次の行動）。操作（読み取り・登録）ごとに分ける。
+// それ以外は共通の文言。
+const STATUS_REJECT_MESSAGES: Partial<Record<RejectReason, string>> = {
+  core_rejected:
+    '中枢から自宅の登録の状態を受け取れませんでした。少し待ってから「読み取り直す」を押してください。',
+  not_connected:
+    '中枢に接続していないため、自宅のネットワークを確かめられません。接続してから「読み取り直す」を押してください。',
+};
+const REGISTER_REJECT_MESSAGES: Partial<Record<RejectReason, string>> = {
   entry_not_found:
     '読み取った内容が古くなっています。「読み取り直す」を押してから、もう一度登録してください。',
   outcome_unknown:
@@ -47,12 +57,28 @@ const HOME_REJECT_MESSAGES: Partial<Record<RejectReason, string>> = {
   core_rejected:
     '中枢が登録を受け付けませんでした。「読み取り直す」を押してから、もう一度登録してください。',
   not_connected:
-    '中枢に接続していないため、自宅のネットワークを確かめられません。接続してから「読み取り直す」を押してください。',
+    '中枢に接続していないため、登録しませんでした。接続してから「読み取り直す」を押してください。',
+  device_locked:
+    'ロックされたため、登録しませんでした。ロックを解除してから「読み取り直す」を押してください。',
 };
 
-export function homeRejectMessage(reason: RejectReason): string {
-  return HOME_REJECT_MESSAGES[reason] ?? REJECT_MESSAGES[reason];
+export function homeRejectMessage(
+  channel: DesktopIpcRequest['channel'],
+  reason: RejectReason,
+): string {
+  const table =
+    channel === 'desktop.home_register'
+      ? REGISTER_REJECT_MESSAGES
+      : STATUS_REJECT_MESSAGES;
+  return table[reason] ?? REJECT_MESSAGES[reason];
 }
+
+// main が参照を捨てた拒否（読み取り直すまで登録できない）。
+const STALE_REASONS: ReadonlySet<RejectReason> = new Set([
+  'home_network_changed',
+  'entry_not_found',
+  'device_locked',
+]);
 
 // main の応答を反映する。読み取り・登録の応答は表示を置き換え、拒否は文言だけを出して表示を変えない。
 export function applyHomeResponse(
@@ -67,8 +93,12 @@ export function applyHomeResponse(
       ...state,
       busy,
       reading,
-      message: homeRejectMessage(response.reason),
+      message: homeRejectMessage(sent, response.reason),
       registered: false,
+      stale:
+        state.stale ||
+        (sent === 'desktop.home_register' &&
+          STALE_REASONS.has(response.reason)),
     };
   if (!('home' in response)) return { ...state, busy, reading };
   return {
@@ -77,6 +107,7 @@ export function applyHomeResponse(
     reading,
     home: response.home,
     registered: sent === 'desktop.home_register',
+    stale: false,
   };
 }
 

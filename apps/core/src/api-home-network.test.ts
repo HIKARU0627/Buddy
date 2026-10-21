@@ -835,43 +835,51 @@ test(
     started.sameMachine.value = false;
     // 時計を読むたびに 1 ms 進める（判定の中で DB を読む間に時計が進む実機の状況）。
     started.clock.step = 1;
-    const claimed = await pinnedRequest(started.target, {
-      method: 'POST',
-      path: '/v1/pairing/claims',
-      headers: json,
-      body: JSON.stringify({
-        request_id: randomUUID(),
-        pairing_code: '12345678',
-        device_name: '合成の端末',
-        platform: 'windows',
-        claim_secret_hash: 'c'.repeat(64),
-        home_fingerprint: HOME,
-      }),
-    });
-    // 自宅判定を通った後の処理は B03-02（この試験の中枢では 503）。403 なら自宅判定で止まっている。
-    assertRejected(
-      claimed,
-      503,
-      'dependency_unavailable',
-      'claim at home with a moving clock',
-      [],
-    );
-    const picked = await pinnedRequest(started.target, {
-      method: 'POST',
-      path: `/v1/pairing/claims/${randomUUID()}/token`,
-      headers: json,
-      body: JSON.stringify({
-        claim_secret: 'B'.repeat(43),
-        home_fingerprint: HOME,
-      }),
-    });
-    assertRejected(
-      picked,
-      503,
-      'dependency_unavailable',
-      'pickup at home with a moving clock',
-      [],
-    );
+    const claim = (fingerprint: Record<string, unknown>) =>
+      pinnedRequest(started.target, {
+        method: 'POST',
+        path: '/v1/pairing/claims',
+        headers: json,
+        body: JSON.stringify({
+          request_id: randomUUID(),
+          pairing_code: '12345678',
+          device_name: '合成の端末',
+          platform: 'windows',
+          claim_secret_hash: 'c'.repeat(64),
+          home_fingerprint: fingerprint,
+        }),
+      });
+    const pickup = (fingerprint: Record<string, unknown>) =>
+      pinnedRequest(started.target, {
+        method: 'POST',
+        path: `/v1/pairing/claims/${randomUUID()}/token`,
+        headers: json,
+        body: JSON.stringify({
+          claim_secret: 'B'.repeat(43),
+          home_fingerprint: fingerprint,
+        }),
+      });
+    for (const [send, label] of [
+      [claim, 'claim'],
+      [pickup, 'pickup'],
+    ] as const) {
+      // 自宅判定を通った後の処理は B03-02（この試験の中枢では 503）。403 なら自宅判定で止まっている。
+      assertRejected(
+        await send(HOME),
+        503,
+        'dependency_unavailable',
+        `${label} at home with a moving clock`,
+        [],
+      );
+      // 同じ進む時計で、指紋の違う要求は自宅判定で 403 になる（判定そのものは動いている）。
+      assertRejected(
+        await send({ ...HOME, gateway_mac: '00:00:5e:00:53:02' }),
+        403,
+        'outside_home_network',
+        `${label} with another fingerprint and a moving clock`,
+        [],
+      );
+    }
   },
 );
 

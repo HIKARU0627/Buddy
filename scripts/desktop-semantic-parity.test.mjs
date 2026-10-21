@@ -44,8 +44,32 @@ function variants(base) {
   return out;
 }
 
+// 中枢の画面の自宅のネットワークの伏せた表示（B03-08）。意味検査で誤りになる形も含めて組み合わせる。
+const HOME_VARIANTS = {
+  ref: [null, '00000000-0000-4000-8000-000000000e61'],
+  gateway_mac_tail: [null, '53:01'],
+  subnet: [null, '192.0.2.0/24'],
+  ssid_hint: [
+    null,
+    { first: null, length: 3 },
+    { first: '合', length: 3 },
+    { first: '合', length: 5 },
+  ],
+  ssid_unavailable_reason: [null, 'redacted', 'unavailable'],
+};
+
+function homeVariants(observation) {
+  let out = [observation];
+  for (const [key, values] of Object.entries(HOME_VARIANTS))
+    out = out.flatMap((value) =>
+      values.map((choice) => ({ ...value, [key]: choice })),
+    );
+  return out;
+}
+
 test('desktop main and the contract tools agree on every semantic check', () => {
   let compared = 0;
+  let homeErrors = 0;
   for (const entry of cases) {
     if (!entry.valid || !entry.schema.startsWith('Desktop')) continue;
     const name = entry.schema;
@@ -57,7 +81,15 @@ test('desktop main and the contract tools agree on every semantic check', () => 
               ...entry.value,
               status,
             }))
-          : [entry.value];
+          : entry.value.home?.observation
+            ? homeVariants(entry.value.home.observation).flatMap(
+                (observation) =>
+                  [entry.value.home.registration, null].map((registration) => ({
+                    ...entry.value,
+                    home: { registration, observation },
+                  })),
+              )
+            : [entry.value];
     for (const value of candidates) {
       if (!validators[name](value)) continue;
       assert.deepEqual(
@@ -66,8 +98,11 @@ test('desktop main and the contract tools agree on every semantic check', () => 
         `${entry.id}: ${JSON.stringify(value)}`,
       );
       compared += 1;
+      if (value.home && semanticErrors(name, value).length > 0) homeErrors += 1;
     }
   }
   // 比較した値が少なすぎれば、組み合わせの作り方が壊れている。
   assert(compared > 200, `compared only ${compared}`);
+  // 自宅のネットワークは、意味検査で誤りになる形も比べている。
+  assert(homeErrors > 0, 'no failing home network variants compared');
 });

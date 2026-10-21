@@ -210,8 +210,19 @@ export function desktopSemanticErrors(
     )
       errors.push('link_conflicts_with_registration');
   }
-  if (name === 'DesktopIpcResponse' && isRecord(value['home']))
-    errors.push(...homeViewErrors(value['home']));
+  if (name === 'DesktopIpcResponse' && isRecord(value['home'])) {
+    const home = value['home'];
+    errors.push(...homeViewErrors(home));
+    // 登録の応答は、登録した後の状態と登録に使った参照を持つ。
+    const observation = home['observation'];
+    if (
+      value['channel'] === 'desktop.home_register' &&
+      (home['registration'] === null ||
+        !isRecord(observation) ||
+        observation['ref'] === null)
+    )
+      errors.push('home_register_without_registration');
+  }
   if (name === 'DesktopIpcResponse' && isRecord(value['connection']))
     errors.push(
       ...desktopSemanticErrors('DesktopConnectionView', value['connection']),

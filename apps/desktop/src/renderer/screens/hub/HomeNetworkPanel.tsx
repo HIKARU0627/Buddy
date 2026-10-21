@@ -264,7 +264,8 @@ export function CurrentNetworkSection({
               </span>
               <span>{HOME_LABELS.notRegistrable}</span>
             </p>
-          ) : (
+          ) : state.stale ? null : (
+            // main が参照を捨てた後は、読み取り直すまで登録のボタンを置かない（押せないボタンを置かない）。
             <div className="flex flex-col gap-2">
               {observation.ssid_hint === null ? (
                 <p className="max-w-prose text-xs leading-5 text-muted">

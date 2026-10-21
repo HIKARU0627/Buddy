@@ -53,82 +53,86 @@ const HOME = {
 // 生の値（画面・IPC・ログに出てはいけないもの）。
 const RAW = [HOME.gateway_mac, HOME.ssid, '00:00:5e:00:53:02', '合成の別の家'];
 
-test('the masked view keeps only the last two MAC octets, the subnet and the SSID length with its first character', () => {
-  assert.equal(macTailOf('00:00:5e:00:53:01'), '53:01');
-  assert.deepEqual(ssidHintOf('合成の自宅'), { first: '合', length: 5 });
-  assert.deepEqual(ssidHintOf('abcd'), { first: 'a', length: 4 });
-  // 3 文字以下は先頭の文字も出さない。
-  assert.deepEqual(ssidHintOf('abc'), { first: null, length: 3 });
-  assert.deepEqual(ssidHintOf('a'), { first: null, length: 1 });
-  // 文字数はコードポイントで数える（サロゲートペアは 1 文字）。
-  assert.deepEqual(ssidHintOf('🏠Home'), { first: '🏠', length: 5 });
-  const ref = '00000000-0000-4000-8000-000000000e61';
-  assert.deepEqual(maskHomeObservation(HOME, [], ref, AT), {
-    ref,
-    collected_at: AT,
-    gateway_mac_tail: '53:01',
-    subnet: '192.0.2.0/24',
-    ssid_hint: { first: '合', length: 5 },
-    ssid_unavailable_reason: null,
-  });
-  // SSID が取れない理由（@buddy/platform のコード）を画面の理由にまとめる。
-  const noSsid = { ...HOME, ssid: null };
-  assert.equal(
-    maskHomeObservation(noSsid, ['ssid_redacted'], ref, AT)
-      ?.ssid_unavailable_reason,
-    'redacted',
-  );
-  assert.equal(
-    maskHomeObservation(noSsid, ['ssid_ambiguous'], ref, AT)
-      ?.ssid_unavailable_reason,
-    'ambiguous',
-  );
-  assert.equal(
-    maskHomeObservation(noSsid, [], ref, AT)?.ssid_unavailable_reason,
-    'unavailable',
-  );
-  // MAC かサブネットが取れなければ参照を渡さない（登録できない）。
-  assert.equal(
-    maskHomeObservation({ ...HOME, gateway_mac: null }, [], ref, AT)?.ref,
-    null,
-  );
-  assert.equal(
-    maskHomeObservation({ ...HOME, subnet: null }, [], ref, AT)?.ref,
-    null,
-  );
-  // どの要素も取れなければ読み取れなかった扱い。
-  assert.equal(
-    maskHomeObservation(
-      { gateway_mac: null, subnet: null, ssid: null },
-      ['platform_unsupported'],
+test(
+  'the masked view keeps only the last two MAC octets, the subnet and the SSID length with its first character',
+  { timeout: 10_000 },
+  () => {
+    assert.equal(macTailOf('00:00:5e:00:53:01'), '53:01');
+    assert.deepEqual(ssidHintOf('合成の自宅'), { first: '合', length: 5 });
+    assert.deepEqual(ssidHintOf('abcd'), { first: 'a', length: 4 });
+    // 3 文字以下は先頭の文字も出さない。
+    assert.deepEqual(ssidHintOf('abc'), { first: null, length: 3 });
+    assert.deepEqual(ssidHintOf('a'), { first: null, length: 1 });
+    // 文字数はコードポイントで数える（サロゲートペアは 1 文字）。
+    assert.deepEqual(ssidHintOf('🏠Home'), { first: '🏠', length: 5 });
+    const ref = '00000000-0000-4000-8000-000000000e61';
+    assert.deepEqual(maskHomeObservation(HOME, [], ref, AT), {
       ref,
-      AT,
-    ),
-    null,
-  );
-  assert.equal(sameFingerprint(HOME, { ...HOME }), true);
-  assert.equal(sameFingerprint(HOME, { ...HOME, ssid: null }), false);
-  // 伏せた表示は契約の形と意味の検査に通る。
-  for (const observation of [
-    maskHomeObservation(HOME, [], ref, AT),
-    maskHomeObservation({ ...HOME, ssid: 'abc' }, [], ref, AT),
-    maskHomeObservation(
-      { ...HOME, gateway_mac: null, ssid: null },
-      ['ssid_redacted'],
-      ref,
-      AT,
-    ),
-  ])
-    assert.deepEqual(
-      contract.responseErrors({
-        request_id: randomUUID(),
-        channel: 'desktop.home_status',
-        outcome: 'ok',
-        home: { registration: null, observation },
-      }),
-      [],
+      collected_at: AT,
+      gateway_mac_tail: '53:01',
+      subnet: '192.0.2.0/24',
+      ssid_hint: { first: '合', length: 5 },
+      ssid_unavailable_reason: null,
+    });
+    // SSID が取れない理由（@buddy/platform のコード）を画面の理由にまとめる。
+    const noSsid = { ...HOME, ssid: null };
+    assert.equal(
+      maskHomeObservation(noSsid, ['ssid_redacted'], ref, AT)
+        ?.ssid_unavailable_reason,
+      'redacted',
     );
-});
+    assert.equal(
+      maskHomeObservation(noSsid, ['ssid_ambiguous'], ref, AT)
+        ?.ssid_unavailable_reason,
+      'ambiguous',
+    );
+    assert.equal(
+      maskHomeObservation(noSsid, [], ref, AT)?.ssid_unavailable_reason,
+      'unavailable',
+    );
+    // MAC かサブネットが取れなければ参照を渡さない（登録できない）。
+    assert.equal(
+      maskHomeObservation({ ...HOME, gateway_mac: null }, [], ref, AT)?.ref,
+      null,
+    );
+    assert.equal(
+      maskHomeObservation({ ...HOME, subnet: null }, [], ref, AT)?.ref,
+      null,
+    );
+    // どの要素も取れなければ読み取れなかった扱い。
+    assert.equal(
+      maskHomeObservation(
+        { gateway_mac: null, subnet: null, ssid: null },
+        ['platform_unsupported'],
+        ref,
+        AT,
+      ),
+      null,
+    );
+    assert.equal(sameFingerprint(HOME, { ...HOME }), true);
+    assert.equal(sameFingerprint(HOME, { ...HOME, ssid: null }), false);
+    // 伏せた表示は契約の形と意味の検査に通る。
+    for (const observation of [
+      maskHomeObservation(HOME, [], ref, AT),
+      maskHomeObservation({ ...HOME, ssid: 'abc' }, [], ref, AT),
+      maskHomeObservation(
+        { ...HOME, gateway_mac: null, ssid: null },
+        ['ssid_redacted'],
+        ref,
+        AT,
+      ),
+    ])
+      assert.deepEqual(
+        contract.responseErrors({
+          request_id: randomUUID(),
+          channel: 'desktop.home_status',
+          outcome: 'ok',
+          home: { registration: null, observation },
+        }),
+        [],
+      );
+  },
+);
 
 interface HubState {
   // 中枢の登録（GET の応答）。PUT で置き換える。
@@ -137,6 +141,8 @@ interface HubState {
   hubScreen: boolean;
   // PUT の応答を返さない（送った後に切れた）。
   dropPut: boolean;
+  // PUT に 200 で契約に合わない本文を返す。
+  badPutBody: boolean;
 }
 
 async function liveLink(
@@ -145,13 +151,24 @@ async function liveLink(
 ) {
   const dir = await tempDir(t, 'bdhr-');
   const protector = mockProtector();
-  const hub: HubState = { registration: null, hubScreen: true, dropPut: false };
+  const hub: HubState = {
+    registration: null,
+    hubScreen: true,
+    dropPut: false,
+    badPutBody: false,
+  };
   const sent: ClientApiRequest[] = [];
   const shown: unknown[] = [];
   const logs: string[] = [];
-  // 試験が決めるこのマシンの指紋（'throw' は読み取りの失敗、'hang' は応答しない）。
-  const network: { value: HomeObservation | 'throw' | 'hang' } = {
+  // 試験が決めるこのマシンの指紋（'throw' は読み取りの失敗、'hang' は応答しない、'gate' は release まで待つ）。
+  const network: {
+    value: HomeObservation | 'throw' | 'hang' | 'gate';
+    collects: number;
+    release: () => void;
+  } = {
     value: { ...HOME, unavailable: [] },
+    collects: 0,
+    release: () => undefined,
   };
   const ioState = {
     device_id: DEVICE,
@@ -218,6 +235,7 @@ async function liveLink(
       if (request.method === 'GET')
         return ok({ registration: hub.registration });
       if (hub.dropPut) return { kind: 'unreachable', reason: 'test' };
+      if (hub.badPutBody) return ok({ accepted: true });
       hub.registration = {
         subnet: request.body?.['subnet'],
         ssid_registered: request.body?.['ssid'] !== null,
@@ -234,9 +252,17 @@ async function liveLink(
     clock: systemClock(),
     platform: 'macos',
     collectHome: () => {
+      network.collects += 1;
       const value = network.value;
       if (value === 'throw') return Promise.reject(new Error('synthetic'));
       if (value === 'hang') return new Promise<HomeObservation>(() => {});
+      if (value === 'gate')
+        return new Promise<HomeObservation>((resolve) => {
+          network.release = () => {
+            network.value = { ...HOME, unavailable: [] };
+            resolve({ ...HOME, unavailable: [] });
+          };
+        });
       return Promise.resolve(value);
     },
     networkSignature: () => 'x',
@@ -512,5 +538,76 @@ test(
       'hub_screen_required',
     );
     assertNoRawValues(shown, logs);
+  },
+);
+
+test(
+  'concurrent reads share one collection; a lock, a disconnect or an unreadable network before sending sends nothing; a 2xx with an unexpected body is unknown (B03-08)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, hub, network, logs, admin, puts } = await liveLink(t);
+    // 同時の読み取りは 1 回の収集にまとめる（コマンドを並行に何組も動かさない）。
+    network.value = 'gate';
+    const before = network.collects;
+    const first = admin('desktop.home_status', null);
+    const second = admin('desktop.home_status', null);
+    await waitUntil(() => network.collects > before, 'collect started');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    network.release();
+    const [one, two] = await Promise.all([first, second]);
+    assert.equal(network.collects - before, 1);
+    const ref = one.home?.observation?.['ref'];
+    assert.equal(typeof ref, 'string');
+    assert.equal(two.home?.observation?.['ref'], ref);
+
+    // 送る直前の読み取りの間にロックした: 送らず、参照も捨てる。
+    network.value = 'gate';
+    const gated = network.collects;
+    const locked = admin('desktop.home_register', { ref });
+    await waitUntil(() => network.collects > gated, 'register read started');
+    link.setLockState('locked');
+    network.release();
+    assert.equal((await locked).reason, 'device_locked');
+    link.setLockState('unlocked');
+    assert.equal(
+      (await admin('desktop.home_register', { ref })).reason,
+      'entry_not_found',
+    );
+
+    // 送る直前に読み取れなくなった: ネットワークが変わったときと同じく送らない（ログは理由のコードだけ）。
+    const ref2 = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
+    network.value = 'throw';
+    assert.equal(
+      (await admin('desktop.home_register', { ref: ref2 })).reason,
+      'home_network_changed',
+    );
+    assert(logs.includes('hub_home_unreadable'));
+    assert.equal(puts().length, 0);
+
+    // 2xx でも本文が契約に合わなければ、登録されたかもしれないので結果不明（自動では送り直さない）。
+    network.value = { ...HOME, unavailable: [] };
+    const ref3 = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
+    hub.badPutBody = true;
+    assert.equal(
+      (await admin('desktop.home_register', { ref: ref3 })).reason,
+      'outcome_unknown',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(puts().length, 1);
+
+    // 送る直前の読み取りの間に切断した: 送らない。
+    hub.badPutBody = false;
+    network.value = 'gate';
+    const beforeCut = network.collects;
+    const cut = admin('desktop.home_register', { ref: ref3 });
+    await waitUntil(() => network.collects > beforeCut, 'read before cut');
+    link.stop();
+    network.release();
+    assert.equal((await cut).reason, 'not_connected');
+    assert.equal(puts().length, 1);
   },
 );

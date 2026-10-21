@@ -181,6 +181,8 @@ export class DesktopCoreLink {
     readonly ref: string;
     readonly fingerprint: HomeFingerprint;
   } | null = null;
+  // 進行中のこのマシンの指紋の読み取り（同時の要求は一度の読み取りにまとめる）。
+  #homeReading: Promise<HubHomeReading | null> | null = null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -253,6 +255,8 @@ export class DesktopCoreLink {
     this.#lockState = lockState;
     this.#connection?.setLockState(lockState);
     if (lockState === 'unlocked') void this.#probeHubScreen();
+    // ロックした・不明になったら、自宅の登録の参照を捨てる（解除の後に読み取り直して確かめ直す。B03-08）。
+    else this.#homeRef = null;
     this.#options.onChange();
   }
 
@@ -800,6 +804,9 @@ export class DesktopCoreLink {
       }),
       this.#readHubHome(),
     ]);
+    // 読み取りの間に切断・登録し直しがあれば、前の接続の参照を作らない。
+    if (connection !== this.#connection)
+      return this.#reject(requestId, channel, 'not_connected');
     const failed = this.#adminFailure(outcome, 200, true);
     if (failed !== null || outcome.kind !== 'response')
       return this.#reject(requestId, channel, failed ?? 'not_connected');
@@ -820,7 +827,8 @@ export class DesktopCoreLink {
   }
 
   // 画面で確かめた指紋を自宅として登録する（B03-08）。参照の指紋と、送る直前に読み取り直した指紋が同じときだけ
-  // 中枢へ送る（違えば home_network_changed）。結果が分からなければ outcome_unknown で、自動では送り直さない。
+  // 中枢へ送る（違う・読み取れなければ home_network_changed）。読み取りの間に切断・ロックがあれば送らない。
+  // 結果が分からない（2xx で本文が契約に合わないときを含む）なら outcome_unknown で、自動では送り直さない。
   async #homeRegister(
     requestId: string,
     channel: 'desktop.home_register',
@@ -833,13 +841,19 @@ export class DesktopCoreLink {
     if (pending === null || pending.ref !== ref)
       return this.#reject(requestId, channel, 'entry_not_found');
     const reading = await this.#readHubHome();
+    if (connection !== this.#connection)
+      return this.#reject(requestId, channel, 'not_connected');
+    if (this.#lockState !== 'unlocked') {
+      this.#homeRef = null;
+      return this.#reject(requestId, channel, 'device_locked');
+    }
     if (
       reading === null ||
       !sameFingerprint(reading.fingerprint, pending.fingerprint)
     ) {
       // 画面は読み取り直してから、もう一度確かめる（古い参照では送らない）。
       if (this.#homeRef === pending) this.#homeRef = null;
-      this.#log('hub_home_changed');
+      this.#log(reading === null ? 'hub_home_unreadable' : 'hub_home_changed');
       return this.#reject(requestId, channel, 'home_network_changed');
     }
     const outcome = await connection.request({
@@ -858,8 +872,11 @@ export class DesktopCoreLink {
       this.#log(`hub_home_register_failed:${failed ?? 'not_connected'}`);
       return this.#reject(requestId, channel, failed ?? 'not_connected');
     }
-    if (!this.#options.contract.valid('HomeRegistration', outcome.body))
-      return this.#reject(requestId, channel, 'core_rejected');
+    // 2xx で本文が契約に合わなければ、登録は反映されたかもしれない（外部の変更）。結果不明として扱う。
+    if (!this.#options.contract.valid('HomeRegistration', outcome.body)) {
+      this.#log('hub_home_register_failed:outcome_unknown');
+      return this.#reject(requestId, channel, 'outcome_unknown');
+    }
     this.#log('hub_home_registered');
     return this.#homeResponse(
       requestId,
@@ -896,8 +913,16 @@ export class DesktopCoreLink {
     });
   }
 
-  // このマシンの指紋を読み取る。失敗・時間切れ・どの要素も取れないときは null（値は記録しない）。
-  async #readHubHome(): Promise<HubHomeReading | null> {
+  // このマシンの指紋を読み取る。同時の要求は進行中の読み取りにまとめる（コマンドを並行に何組も動かさない）。
+  #readHubHome(): Promise<HubHomeReading | null> {
+    this.#homeReading ??= this.#collectHubHome().finally(() => {
+      this.#homeReading = null;
+    });
+    return this.#homeReading;
+  }
+
+  // 失敗・時間切れ・どの要素も取れないときは null（値は記録しない）。
+  async #collectHubHome(): Promise<HubHomeReading | null> {
     let cancel: () => void = () => undefined;
     const timeout = new Promise<'timeout'>((resolve) => {
       cancel = this.#options.clock.setTimer(

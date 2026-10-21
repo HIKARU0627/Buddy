@@ -465,8 +465,15 @@ export function semanticErrors(name, value) {
   }
   if (name === 'DesktopHomeView' && value.observation)
     errors.push(...semanticErrors('DesktopHomeObservation', value.observation));
-  if (name === 'DesktopIpcResponse' && value.home)
+  if (name === 'DesktopIpcResponse' && value.home) {
     errors.push(...semanticErrors('DesktopHomeView', value.home));
+    // 登録の応答は、登録した後の状態と登録に使った参照を持つ。
+    if (
+      value.channel === 'desktop.home_register' &&
+      (value.home.registration === null || !value.home.observation?.ref)
+    )
+      errors.push('home_register_without_registration');
+  }
   if (name === 'DesktopIpcResponse' && value.connection)
     errors.push(...semanticErrors('DesktopConnectionView', value.connection));
   if (name === 'DesktopIpcResponse' && value.status) {

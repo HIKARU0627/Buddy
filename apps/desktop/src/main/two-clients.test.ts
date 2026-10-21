@@ -844,9 +844,6 @@ function homeOf(response: DesktopIpcResponse): DesktopHomeView {
   return response.home;
 }
 
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 // 申請までの画面の流れ（指紋の確認 → コード）を進め、申請が拒否されたときの失敗を返す。
 async function claimRefused(
   client: Client,
@@ -922,6 +919,31 @@ test(
         'A is the hub screen',
       );
     await hubScreenReady();
+    // A が落ち着くまで待つ: 接続中・中枢の画面で、自宅判定による切断（outside_home_network のログ）が
+    // 600 ms（中枢の ping の 3 回分）新しく起きていない。固定の待ち時間に頼らず、「別のマシン」の間に始まった
+    // 判定の失効が後から来ても、その後の再接続（新しい接続範囲）まで待つ。
+    const hubScreenSettled = async () => {
+      const denials = () =>
+        a.logs.filter((code) => code.includes('outside_home_network')).length;
+      let seen = denials();
+      let quietSince = Date.now();
+      await waitUntil(
+        () => {
+          const count = denials();
+          if (count !== seen) {
+            seen = count;
+            quietSince = Date.now();
+          }
+          return (
+            Date.now() - quietSince >= 600 &&
+            a.view().link === 'connected' &&
+            a.view().hub_screen
+          );
+        },
+        'A settled as the hub screen',
+        20_000,
+      );
+    };
 
     // 登録の前: 中枢の画面は未登録。このマシンのネットワークは伏せて見せる（生の値は main だけが持つ）。
     const before = homeOf(await a.admin('desktop.home_status', null));
@@ -945,8 +967,7 @@ test(
     assert.equal(refused, 'outside_home_network');
     assert.equal(b.claims.length, 0);
     // 「別のマシン」の間に A の購読が自宅判定で閉じられていても、同じマシンに戻れば接続し直す。
-    await sleep(400);
-    await hubScreenReady();
+    await hubScreenSettled();
     const noClaims = await a.admin('desktop.claims_list', null);
     assert.deepEqual((noClaims as unknown as { claims: unknown[] }).claims, []);
 

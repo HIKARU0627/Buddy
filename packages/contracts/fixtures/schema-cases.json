@@ -3350,6 +3350,99 @@
     }
   },
   {
+    "id": "pairing-claim-list",
+    "schema": "PairingClaimList",
+    "valid": true,
+    "value": {
+      "claims": [
+        {
+          "claim_id": "00000000-0000-4000-8000-000000000013",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0a1b2c3d"
+        }
+      ]
+    }
+  },
+  {
+    "id": "pairing-claim-list-empty",
+    "schema": "PairingClaimList",
+    "valid": true,
+    "value": { "claims": [] }
+  },
+  {
+    "id": "pairing-claim-list-with-code",
+    "schema": "PairingClaimList",
+    "valid": false,
+    "value": {
+      "claims": [
+        {
+          "claim_id": "00000000-0000-4000-8000-000000000013",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0a1b2c3d",
+          "pairing_code": "12345678"
+        }
+      ]
+    }
+  },
+  {
+    "id": "pairing-claim-list-with-secret-hash",
+    "schema": "PairingClaimList",
+    "valid": false,
+    "value": {
+      "claims": [
+        {
+          "claim_id": "00000000-0000-4000-8000-000000000013",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0a1b2c3d",
+          "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ]
+    }
+  },
+  {
+    "id": "pairing-claim-list-long-check",
+    "schema": "PairingClaimList",
+    "valid": false,
+    "value": {
+      "claims": [
+        {
+          "claim_id": "00000000-0000-4000-8000-000000000013",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0a1b2c3d4e"
+        }
+      ]
+    }
+  },
+  {
+    "id": "pairing-claim-list-uppercase-check",
+    "schema": "PairingClaimList",
+    "valid": false,
+    "value": {
+      "claims": [
+        {
+          "claim_id": "00000000-0000-4000-8000-000000000013",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0A1B2C3D"
+        }
+      ]
+    }
+  },
+  {
     "id": "desktop-ipc-get-state",
     "schema": "DesktopIpcRequest",
     "valid": true,

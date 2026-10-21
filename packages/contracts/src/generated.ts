@@ -84,6 +84,7 @@ export type BuddyContract =
   | PairingDecisionRequest
   | PairingTokenRequest
   | DeviceCredential
+  | PairingClaimList
   | DeviceList
   | DeviceRevokeRequest
   | HomeFingerprint
@@ -572,6 +573,10 @@ export type HomeSubnet = string;
  * Wi-Fi の SSID。中枢は HMAC にしてから保存する（ADR 0022）。
  */
 export type WifiSsid = string;
+/**
+ * 申請の確認コード（B03-06、ADR 0026）。申請用の秘密の SHA-256（claim_secret_hash の小文字の 16 進）から、SHA-256("buddy/pairing-claim-check/v1" NUL claim_secret_hash) の先頭 4 バイトの小文字の 16 進として求める。端末の画面と中枢の画面に同じ値を出し、本人が承認する申請を見分ける。認証情報ではない（受取りには申請用の秘密が要る）。
+ */
+export type PairingClaimCheck = string;
 /**
  * 自宅判定が成り立たない理由（診断用、domain の homeNetworkDecision）。MAC・SSID・アドレスの値を含めない。
  */
@@ -2849,6 +2854,23 @@ export interface DeviceCredential {
   device_id: Id;
   device_token: string;
   issued_at: UtcTime;
+}
+/**
+ * 承認待ちの申請の一覧（B03-06、ADR 0026）。今の中枢の証明書で始めたペアリングの、期限の前の pending の申請だけを、申請の時刻の順に返す。
+ */
+export interface PairingClaimList {
+  claims: PendingPairingClaim[];
+}
+/**
+ * 承認待ちの申請（B03-06、ADR 0026）。中枢の画面で承認・拒否するための最小限の値で、コード・申請用の秘密・その hash・トークンを含めない。claimed_at は申請を受け付けた時刻（期限の 5 分前）。
+ */
+export interface PendingPairingClaim {
+  claim_id: Id;
+  device_name: string;
+  platform: DevicePlatform;
+  claimed_at: UtcTime;
+  expires_at: UtcTime;
+  claim_check: PairingClaimCheck;
 }
 export interface DeviceList {
   devices: DeviceSummary[];

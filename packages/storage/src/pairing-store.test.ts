@@ -700,3 +700,110 @@ test(
     });
   },
 );
+
+test(
+  'pending claims are listed without secrets, with the claim check, only for the current certificate and before expiry',
+  { timeout: 30_000 },
+  async () => {
+    // 確認コードの期待値は Python の hashlib で別に求めた値（手で写した）。
+    const SECRET_HASH_1 = 'c'.repeat(64);
+    const SECRET_HASH_2 =
+      '0f007385b6f9d4b7eeb2748605afe1a984a0a3bfa3f014d09e2a784ce9e5cd1a';
+    await withTempDir((dir) => {
+      const db = openSeededDatabase(databasePath(dir));
+      try {
+        const withHash = (
+          code: string,
+          now: number,
+          secretHash: string,
+        ): Extract<PairingOp, { kind: 'pairing.claim' }> => ({
+          ...claim(code, now),
+          claim_secret_hash: secretHash,
+        });
+        value(run(db, start('11111111', T0)));
+        const first = value<PairingClaimOutcome>(
+          run(db, withHash('11111111', T0 + MINUTE, SECRET_HASH_1)),
+        );
+        value(run(db, start('22222222', T0 + 2 * MINUTE)));
+        const second = value<PairingClaimOutcome>(
+          run(db, withHash('22222222', T0 + 3 * MINUTE, SECRET_HASH_2)),
+        );
+        // 別の証明書のペアリングの申請は出さない。
+        value(run(db, start('33333333', T0 + 3 * MINUTE, OTHER_FINGERPRINT)));
+        value(run(db, claim('33333333', T0 + 4 * MINUTE)));
+        assert(first.ok && second.ok);
+        const list = (now: number) =>
+          value<
+            readonly {
+              claim_id: string;
+              claimed_at: number;
+              expires_at: number;
+              claim_check: string;
+            }[]
+          >(
+            run(db, {
+              kind: 'pairing.list_pending',
+              now,
+              certificate_fingerprint: FINGERPRINT,
+            }),
+          );
+        const listed = list(T0 + 4 * MINUTE);
+        assert.deepEqual(
+          listed.map((entry) => [
+            entry.claim_id,
+            entry.claimed_at,
+            entry.expires_at,
+            entry.claim_check,
+          ]),
+          [
+            [first.claim.claim_id, T0 + MINUTE, T0 + 6 * MINUTE, 'e1d0086d'],
+            [
+              second.claim.claim_id,
+              T0 + 3 * MINUTE,
+              T0 + 8 * MINUTE,
+              'd0f066b5',
+            ],
+          ],
+        );
+        for (const entry of listed)
+          assert.deepEqual(Object.keys(entry).sort(), [
+            'claim_check',
+            'claim_id',
+            'claimed_at',
+            'device_name',
+            'expires_at',
+            'platform',
+          ]);
+        assert.equal(JSON.stringify(listed).includes(SECRET_HASH_2), false);
+        // 期限ちょうどで消え、決めた申請も消える。
+        assert.equal(list(T0 + 6 * MINUTE).length, 1);
+        value(
+          run(db, {
+            kind: 'pairing.decide',
+            claim_id: second.claim.claim_id,
+            decision: 'reject',
+            now: T0 + 5 * MINUTE,
+            certificate_fingerprint: FINGERPRINT,
+            require_no_active_devices: false,
+          }),
+        );
+        assert.deepEqual(
+          list(T0 + 5 * MINUTE).map((entry) => entry.claim_id),
+          [first.claim.claim_id],
+        );
+        assert.deepEqual(
+          reasonsOf(
+            run(db, {
+              kind: 'pairing.list_pending',
+              now: -1,
+              certificate_fingerprint: 'x',
+            }),
+          ),
+          ['now_invalid', 'certificate_fingerprint_invalid'],
+        );
+      } finally {
+        db.close();
+      }
+    });
+  },
+);

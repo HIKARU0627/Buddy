@@ -112,6 +112,8 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'PairingStartRequest',
     ...SCREEN,
   }),
+  // B03-06: 承認待ちの申請の一覧（中枢の画面だけ。ADR 0026）。
+  route('listPairingClaims', 'GET', '/v1/pairing/claims'),
   route('claimPairing', 'POST', '/v1/pairing/claims', {
     body: 'PairingClaimRequest',
   }),

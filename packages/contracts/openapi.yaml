@@ -790,6 +790,34 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
   /v1/pairing/claims:
+    get:
+      operationId: listPairingClaims
+      summary: 承認待ちの申請の一覧
+      description: 中枢の画面（ロック解除済み・hub_local の端末・中枢と同じマシン）だけ。今の中枢の証明書で始めたペアリングの、期限の前の pending の申請を申請の時刻の順に返す。コード・申請用の秘密・その hash を返さない。claim_check は端末の画面に出る確認コードと同じ値（B03-06、ADR 0026）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+        - hub_screen
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 承認待ちの申請。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/PairingClaimList
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
     post:
       operationId: claimPairing
       summary: 登録の申請（認証前）

@@ -890,6 +890,28 @@
         }
       ]
     },
+    "listPairingClaims": {
+      "response": {
+        "claims": [
+          {
+            "claim_id": "00000000-0000-4000-8000-000000000013",
+            "device_name": "合成の端末",
+            "platform": "windows",
+            "claimed_at": "2030-10-05T00:01:00Z",
+            "expires_at": "2030-10-05T00:06:00Z",
+            "claim_check": "0a1b2c3d"
+          }
+        ]
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["remote_device", 403, "hub_screen_required"]
+      ]
+    },
     "claimPairing": {
       "request": {
         "request_id": "00000000-0000-4000-8000-000000009001",

@@ -11,7 +11,7 @@
 //   ことを同じ transaction で行う。
 // 結果の理由にはコードだけを入れ、SQL・パス・hash の値を入れない。
 
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { writeConnectionReasons } from './connection.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
@@ -27,6 +27,27 @@ export const PAIRING_CLAIM_TTL_MS = 300_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const HASH = /^[0-9a-f]{64}$/u;
 const PLATFORMS = new Set(['windows', 'macos', 'linux']);
+
+// 申請の確認コード（B03-06、ADR 0026）。申請用の秘密の SHA-256（小文字の 16 進）から
+// SHA-256("buddy/pairing-claim-check/v1" NUL claim_secret_hash) の先頭 4 バイトの小文字の 16 進。
+// 端末の画面と中枢の画面に同じ値を出し、承認する申請を見分ける。認証情報ではない。
+export function pairingClaimCheck(claimSecretHashHex: string): string {
+  return createHash('sha256')
+    .update(`buddy/pairing-claim-check/v1\u0000${claimSecretHashHex}`, 'utf8')
+    .digest('hex')
+    .slice(0, 8);
+}
+
+// 承認待ちの申請（中枢の画面の一覧）。コード・申請用の秘密・その hash を含めない。
+export interface PendingClaimRecord {
+  readonly claim_id: string;
+  readonly device_name: string;
+  readonly platform: DevicePlatform;
+  // 申請を受け付けた時刻（期限の 5 分前）と期限（UTC の Unix ミリ秒）。
+  readonly claimed_at: number;
+  readonly expires_at: number;
+  readonly claim_check: string;
+}
 
 export type PairingClaimStatus =
   'pending' | 'approved' | 'rejected' | 'expired' | 'consumed';
@@ -90,6 +111,12 @@ export type PairingOp =
       readonly claim_expires_at: number;
     }
   | { readonly kind: 'pairing.find_claim'; readonly claim_id: string }
+  // 承認待ちの申請の一覧（B03-06）。今の証明書で始めたペアリングの、期限の前の pending だけ。
+  | {
+      readonly kind: 'pairing.list_pending';
+      readonly now: number;
+      readonly certificate_fingerprint: string;
+    }
   // ペアリングの申請（最初の端末の CLI の承認で、ペアリング ID から申請を引く）。
   | { readonly kind: 'pairing.find_session_claim'; readonly pairing_id: string }
   | { readonly kind: 'pairing.find_session'; readonly pairing_id: string }
@@ -138,6 +165,7 @@ export interface PairingOpValues {
   'pairing.start': PairingSessionRecord;
   'pairing.claim': PairingClaimOutcome;
   'pairing.find_claim': PairingClaimRecord | null;
+  'pairing.list_pending': readonly PendingClaimRecord[];
   'pairing.find_session_claim': PairingClaimRecord | null;
   'pairing.find_session': PairingSessionRecord | null;
   'pairing.claim_secret_matches': { readonly matches: boolean };
@@ -238,6 +266,10 @@ export function pairingOpShapeReasons(op: PairingOp): string[] {
       break;
     case 'pairing.find_claim':
       id(op.claim_id, 'claim_id');
+      break;
+    case 'pairing.list_pending':
+      time(op.now, 'now');
+      hash(op.certificate_fingerprint, 'certificate_fingerprint');
       break;
     case 'pairing.find_session_claim':
     case 'pairing.find_session':
@@ -566,6 +598,27 @@ function applyRead(db: SqliteDatabase, op: PairingOp): PairingOpValue {
     case 'pairing.find_claim': {
       const row = readClaim(db, op.claim_id);
       return row === null ? null : toClaim(row);
+    }
+    case 'pairing.list_pending': {
+      const rows = db
+        .prepare(
+          `SELECT c.claim_id, c.device_name, c.platform, c.expires_at, c.claim_secret_hash FROM pairing_claims c JOIN pairing_sessions s ON s.pairing_id = c.pairing_id WHERE c.status = 'pending' AND c.expires_at > ? AND s.certificate_fingerprint = ? ORDER BY c.expires_at, c.claim_id`,
+        )
+        .all(op.now, op.certificate_fingerprint) as {
+        claim_id: string;
+        device_name: string;
+        platform: string;
+        expires_at: number;
+        claim_secret_hash: Buffer;
+      }[];
+      return rows.map((row) => ({
+        claim_id: row.claim_id,
+        device_name: row.device_name,
+        platform: row.platform as DevicePlatform,
+        claimed_at: row.expires_at - PAIRING_CLAIM_TTL_MS,
+        expires_at: row.expires_at,
+        claim_check: pairingClaimCheck(row.claim_secret_hash.toString('hex')),
+      }));
     }
     case 'pairing.find_session_claim': {
       const row = db

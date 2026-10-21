@@ -395,6 +395,30 @@ export function createPairingService(
     };
   };
 
+  // 承認待ちの申請の一覧（B03-06、ADR 0026）。経路の検査（hub_screen）を通った中枢の画面だけが来る。
+  // 今の証明書で始めたペアリングの、期限の前の pending だけ。コード・秘密・その hash は返さない。
+  const listPairingClaims: ApiRouteHandler = async () => {
+    const listed = await store.pairing({
+      kind: 'pairing.list_pending',
+      now: now(),
+      certificate_fingerprint: fingerprint,
+    });
+    if (!listed.ok) return fail(503, 'dependency_unavailable', null);
+    return {
+      status: 200,
+      body: {
+        claims: listed.value.map((claim) => ({
+          claim_id: claim.claim_id,
+          device_name: claim.device_name,
+          platform: claim.platform,
+          claimed_at: iso(claim.claimed_at),
+          expires_at: iso(claim.expires_at),
+          claim_check: claim.claim_check,
+        })),
+      },
+    };
+  };
+
   const listDevices: ApiRouteHandler = async () => {
     const listed = await store.pairing({ kind: 'devices.list' });
     if (!listed.ok) return fail(503, 'dependency_unavailable', null);
@@ -468,6 +492,7 @@ export function createPairingService(
       claimPairing,
       decidePairingClaim,
       pickupPairingToken,
+      listPairingClaims,
       listDevices,
       revokeDevice,
     },

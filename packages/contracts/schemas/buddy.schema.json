@@ -245,6 +245,9 @@
       "$ref": "#/$defs/DeviceCredential"
     },
     {
+      "$ref": "#/$defs/PairingClaimList"
+    },
+    {
       "$ref": "#/$defs/DeviceList"
     },
     {
@@ -6894,6 +6897,60 @@
       ],
       "additionalProperties": false,
       "description": "登録の申請。expires_at は申請の期限（申請を受け付けた時刻から 5 分、ADR 0021）で、承認とトークンの受取りはこの前だけ。"
+    },
+    "PairingClaimCheck": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "申請の確認コード（B03-06、ADR 0026）。申請用の秘密の SHA-256（claim_secret_hash の小文字の 16 進）から、SHA-256(\"buddy/pairing-claim-check/v1\" NUL claim_secret_hash) の先頭 4 バイトの小文字の 16 進として求める。端末の画面と中枢の画面に同じ値を出し、本人が承認する申請を見分ける。認証情報ではない（受取りには申請用の秘密が要る）。"
+    },
+    "PendingPairingClaim": {
+      "type": "object",
+      "properties": {
+        "claim_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "platform": {
+          "$ref": "#/$defs/DevicePlatform"
+        },
+        "claimed_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "claim_check": {
+          "$ref": "#/$defs/PairingClaimCheck"
+        }
+      },
+      "required": [
+        "claim_id",
+        "device_name",
+        "platform",
+        "claimed_at",
+        "expires_at",
+        "claim_check"
+      ],
+      "additionalProperties": false,
+      "description": "承認待ちの申請（B03-06、ADR 0026）。中枢の画面で承認・拒否するための最小限の値で、コード・申請用の秘密・その hash・トークンを含めない。claimed_at は申請を受け付けた時刻（期限の 5 分前）。"
+    },
+    "PairingClaimList": {
+      "type": "object",
+      "properties": {
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PendingPairingClaim"
+          }
+        }
+      },
+      "required": ["claims"],
+      "additionalProperties": false,
+      "description": "承認待ちの申請の一覧（B03-06、ADR 0026）。今の中枢の証明書で始めたペアリングの、期限の前の pending の申請だけを、申請の時刻の順に返す。"
     },
     "PairingDecisionRequest": {
       "type": "object",

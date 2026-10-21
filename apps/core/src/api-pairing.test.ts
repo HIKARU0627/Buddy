@@ -74,6 +74,7 @@ const valid = {
   list: validator('DeviceList'),
   summary: validator('DeviceSummary'),
   error: validator('ApiError'),
+  claims: validator('PairingClaimList'),
 };
 
 interface FixtureStep {
@@ -663,6 +664,118 @@ test(
       'pairing_failed',
       'expired claim',
     );
+  },
+);
+
+test(
+  'the hub screen lists pending claims with the claim check and nothing secret; other devices get 403 (B03-06)',
+  { timeout: 60_000 },
+  async (t) => {
+    const dataDir = join(await tempDir(t, 'buddy-pairing-list-'), 'data');
+    const logs: string[] = [];
+    const hub = await startHub(t, dataDir, { logs });
+    const first = await pairFirstDevice(hub);
+    const firstScope = await bootstrapScope(hub, first.token);
+    const other = await pairDevice(hub, first.token, firstScope, {
+      remote: true,
+    });
+    const list = (token: string) =>
+      pinnedRequest(hub.target, {
+        method: 'GET',
+        path: '/v1/pairing/claims',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'buddy-lock-state': 'unlocked',
+        },
+      });
+    const empty = await list(first.token);
+    assert.equal(empty.status, 200, empty.text);
+    assert.deepEqual(empty.json, { claims: [] });
+    // 秘密 'A'×43 の hash と確認コードは Python の hashlib で別に求めた値。
+    const secret = {
+      secret: 'A'.repeat(43),
+      hash: '0f007385b6f9d4b7eeb2748605afe1a984a0a3bfa3f014d09e2a784ce9e5cd1a',
+    };
+    const session = await startPairing(hub, first.token, firstScope);
+    const code = String(session.json?.['pairing_code']);
+    const target = await claimTarget(hub, hub.target.fingerprint);
+    const claim = await claimPairing(target, code, secret, {
+      name: '合成の申請',
+    });
+    assert.equal(claim.status, 202, claim.text);
+    const listed = await list(first.token);
+    assert.equal(listed.status, 200, listed.text);
+    assert(valid.claims(listed.json), 'PairingClaimList');
+    const claims = listed.json?.['claims'] as Record<string, unknown>[];
+    assert.equal(claims.length, 1);
+    assert.deepEqual(
+      [
+        claims[0]?.['claim_id'],
+        claims[0]?.['device_name'],
+        claims[0]?.['claim_check'],
+        Date.parse(String(claims[0]?.['expires_at'])) -
+          Date.parse(String(claims[0]?.['claimed_at'])),
+      ],
+      [claim.json?.['claim_id'], '合成の申請', 'd0f066b5', 300_000],
+    );
+    assert.equal(claims[0]?.['expires_at'], claim.json?.['expires_at']);
+    // コード・申請用の秘密・その hash・トークンは一覧にもログにも出ない。
+    const secrets = [
+      code,
+      secret.secret,
+      secret.hash,
+      first.token,
+      other.token,
+    ];
+    assert.equal(containsAny(listed.text, secrets), false);
+    assert.equal(containsAny(logs.join('\n'), secrets), false);
+    // 中枢の画面でない端末・中枢の外からの hub_local のトークン・ロック中は拒否する。
+    assertRejected(
+      await list(other.token),
+      403,
+      'hub_screen_required',
+      'remote',
+    );
+    hub.machine.same = false;
+    assertRejected(
+      await list(first.token),
+      403,
+      'hub_screen_required',
+      'hub token from outside',
+    );
+    hub.machine.same = true;
+    assertRejected(
+      await pinnedRequest(hub.target, {
+        method: 'GET',
+        path: '/v1/pairing/claims',
+        headers: { 'buddy-lock-state': 'unlocked' },
+      }),
+      401,
+      'unauthenticated',
+      'no token',
+    );
+    // 決めた申請・期限の過ぎた申請は一覧から消える。
+    const decided = await decide(
+      hub,
+      first.token,
+      firstScope,
+      String(claim.json?.['claim_id']),
+      'reject',
+    );
+    assert.equal(decided.status, 200, decided.text);
+    assert.deepEqual((await list(first.token)).json, { claims: [] });
+    const late = await startPairing(hub, first.token, firstScope);
+    const lateClaim = await claimPairing(
+      target,
+      String(late.json?.['pairing_code']),
+      createClaimSecret(),
+    );
+    assert.equal(
+      ((await list(first.token)).json?.['claims'] as unknown[]).length,
+      1,
+    );
+    hub.clock.now = Date.parse(String(lateClaim.json?.['expires_at']));
+    assert.deepEqual((await list(first.token)).json, { claims: [] });
   },
 );
 

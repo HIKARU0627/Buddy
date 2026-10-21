@@ -28,7 +28,18 @@ import type {
 import type { TlsKeyStore } from '@buddy/platform';
 import { ApiListenError, createApiServer } from './api-server.js';
 import type { ApiLimits, ApiServer } from './api-server.js';
+import { SAFE_REQUEST_ENVIRONMENT } from './api-environment.js';
 import type { RequestEnvironment } from './api-environment.js';
+import {
+  REVISION_CHECKED_ROUTES,
+  createOperationRoutes,
+} from './api-operations.js';
+import type { PreviewCheck } from './api-operations.js';
+import { DeviceConnections } from './device-connections.js';
+import { EventFeed } from './event-feed.js';
+import type { EventFeedOptions } from './event-feed.js';
+import { createEventStream } from './event-stream.js';
+import type { EventStreamManager, EventStreamOptions } from './event-stream.js';
 import { callControl, listenControlServer } from './control-channel.js';
 import type { ControlServer } from './control-channel.js';
 import type {
@@ -105,6 +116,13 @@ export interface CoreHttpsOptions {
   // 判定の元がまだない文脈（自宅判定など）。試験で差し替える。省略したものは安全側。
   readonly environment?: Partial<RequestEnvironment>;
   readonly limits?: Partial<ApiLimits>;
+  // preview の有効性（ADR 0023）。preview の発行は後の Issue で、省略すると有効な preview はない（承認は 409）。
+  readonly previewValid?: PreviewCheck;
+  // WSS の配信の設定（試験用。ping の間隔・送り先に溜めてよい量）。
+  readonly eventStream?: Pick<
+    EventStreamOptions,
+    'pingIntervalMs' | 'maxBufferedBytes'
+  >;
 }
 
 export interface CoreHttpsInfo {
@@ -136,6 +154,11 @@ export interface StartCoreOptions {
   readonly log?: (message: string) => void;
   // HTTPS の受付。省略すれば開かない。
   readonly https?: CoreHttpsOptions;
+  // イベントの配信の元の設定（試験用。読み直しの間隔・1 ページの件数・故障点）。
+  readonly events?: Pick<
+    EventFeedOptions,
+    'pollIntervalMs' | 'pageSize' | 'afterRead'
+  >;
 }
 
 export interface CoreHandle {
@@ -155,6 +178,10 @@ export interface CoreHandle {
   readonly store: DbWorkerClient;
   // HTTPS の受付。設定しなければ null。
   readonly https: CoreHttpsInfo | null;
+  // イベントの配信の元（ADR 0023）。操作の命令を別の経路で送ったら notify() を呼ぶ（呼ばなくても一定の間隔で読み直す）。
+  readonly events: EventFeed;
+  // 端末の接続（WSS の購読）を閉じる差し込み口。失効（B03-02）・自宅判定の不成立（B03-03）が呼ぶ。
+  readonly deviceConnections: DeviceConnections;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -331,6 +358,9 @@ export async function startCore(
   // ここから先の失敗では、取ったロックを必ず返す（DB worker を起動していれば先に閉じる）。
   let opened: OpenedStore | null = null;
   let api: ApiServer | null = null;
+  let streams: EventStreamManager | null = null;
+  let feed: EventFeed | null = null;
+  const deviceConnections = new DeviceConnections();
   let httpsInfo: CoreHttpsInfo | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
@@ -366,6 +396,11 @@ export async function startCore(
         errors.push(error);
       }
     };
+    // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
+    await step(async () => {
+      streams?.closeAll();
+      feed?.close();
+    });
     await step(async () => api?.close(options.shutdownGraceMs ?? 2000));
     await step(() => control.close(options.shutdownGraceMs ?? 2000));
     // 処理中の命令を終えてから DB を閉じる。ロックはその後に返す。
@@ -388,6 +423,11 @@ export async function startCore(
 
   try {
     opened = await openStore(dataDir, options, log);
+    feed = new EventFeed({
+      store: opened.store,
+      now: () => now().getTime(),
+      ...options.events,
+    });
     if (options.https !== undefined) {
       const started = await startHttps(
         dataDir,
@@ -396,8 +436,11 @@ export async function startCore(
         coreInstanceId,
         () => lifecycle.state === 'running',
         now,
+        feed,
+        deviceConnections,
       );
       api = started.api;
+      streams = started.streams;
       httpsInfo = started.info;
       log(
         `HTTPS を待ち受けました（${httpsInfo.host}:${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`,
@@ -429,6 +472,7 @@ export async function startCore(
       removeSocketFile,
     );
   } catch (error) {
+    feed?.close();
     await api?.close(0).catch(() => undefined);
     await opened?.store.close().catch(() => undefined);
     await releaseLock(dataDir, coreInstanceId).catch(() => undefined);
@@ -443,6 +487,7 @@ export async function startCore(
 
   lifecycle.apply('started');
   const { store, binding, recovery } = opened;
+  const events = feed;
 
   return {
     dataDir,
@@ -456,6 +501,8 @@ export async function startCore(
     recovery,
     store,
     https: httpsInfo,
+    events,
+    deviceConnections,
     get state() {
       return lifecycle.state;
     },
@@ -473,7 +520,13 @@ async function startHttps(
   coreInstanceId: string,
   accepting: () => boolean,
   now: () => Date,
-): Promise<{ readonly api: ApiServer; readonly info: CoreHttpsInfo }> {
+  feed: EventFeed,
+  deviceConnections: DeviceConnections,
+): Promise<{
+  readonly api: ApiServer;
+  readonly info: CoreHttpsInfo;
+  readonly streams: EventStreamManager;
+}> {
   let identity;
   try {
     identity = await loadOrCreateTlsIdentity({
@@ -486,6 +539,40 @@ async function startHttps(
       throw new CoreStartError('tls_unavailable', error.reasons);
     throw error;
   }
+  // 操作の命令の後にイベントを配るよう、命令を送る store を通知つきにする（ADR 0023）。
+  const watched = feed.watchStore(store);
+  const base: RequestEnvironment = {
+    ...SAFE_REQUEST_ENVIRONMENT,
+    ...https.environment,
+  };
+  let routes: ReturnType<typeof createOperationRoutes> | null = null;
+  // 承認・取消の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。
+  const environment: RequestEnvironment = {
+    ...base,
+    revisionMatches: (input) =>
+      routes !== null && REVISION_CHECKED_ROUTES.has(input.operationId)
+        ? routes.revisionMatches(input)
+        : base.revisionMatches(input),
+  };
+  routes = createOperationRoutes({
+    store: watched,
+    feed,
+    coreInstanceId,
+    environment,
+    now: () => now().getTime(),
+    ...(https.previewValid === undefined
+      ? {}
+      : { previewValid: https.previewValid }),
+  });
+  const streams = createEventStream({
+    feed,
+    store,
+    coreInstanceId,
+    environment,
+    deviceConnections,
+    now: () => now().getTime(),
+    ...https.eventStream,
+  });
   let api: ApiServer;
   try {
     api = createApiServer({
@@ -496,9 +583,9 @@ async function startHttps(
       coreInstanceId,
       accepting,
       now: () => now().getTime(),
-      ...(https.environment === undefined
-        ? {}
-        : { environment: https.environment }),
+      environment,
+      handlers: routes.handlers,
+      eventStream: streams,
       ...(https.limits === undefined ? {} : { limits: https.limits }),
     });
   } catch (error) {
@@ -516,6 +603,7 @@ async function startHttps(
   }
   return {
     api,
+    streams,
     info: {
       host: api.host,
       port: api.port,

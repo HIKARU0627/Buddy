@@ -24,6 +24,8 @@ export const REJECT_MESSAGES: Readonly<Record<Rejected['reason'], string>> = {
     'ペアリングの手順と合わないため受け付けませんでした。画面の表示を確かめてください。',
   secure_storage_unavailable:
     'この端末では安全な保存が使えないため、登録できません。',
+  pairing_host_not_allowed:
+    'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。',
 };
 
 export const POWER_EVENT_LABELS: Readonly<Record<PowerEvent['event'], string>> =

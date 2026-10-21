@@ -73,6 +73,7 @@ idle → bootstrapping → snapshotting → subscribing → live
 ### トークンの保存
 
 - トークン・端末 ID・発行時刻と、中枢の宛先・証明書・指紋を一つの記録にし、safeStorage で暗号化して userData の `device-credential.bin`（0600、一時ファイル → fsync → rename）に置く。暗号化の結果に平文のトークンが残っていれば保存しない。
+- 保存の前に、書く記録を読み戻せる（`parseCredential(serialize())` が通る）ことを確かめ、読み戻せなければ保存しない（`not_readable`）。宛先は domain の正規化（`normalizeHubHost`）を通した値だけを受け付ける（レビューの指摘 L2: 末尾のドット付きの名前でペアリングすると、契約では通るのに保存した記録を読み戻せず、毎回「再登録が必要」になっていた）。
 - 保護の判定: macOS・Windows は `isEncryptionAvailable()`。Linux は加えて backend が `gnome_libsecret`・`kwallet`・`kwallet5`・`kwallet6` のときだけ。`basic_text`・不明・他の OS は保存せず、ペアリングも始めない（`secure_storage_unavailable`）。
 - 復号できない・形が違う記録は「再登録が必要」。401・証明書の不一致の後も記録は消さない（再登録で上書きする）。
 - トークンは `SecretText`（文字列化・JSON・inspect で `[redacted]`）に包み、Authorization ヘッダーにだけ入れる。画面・IPC・ログ（理由のコードだけ）に出さない。
@@ -98,18 +99,35 @@ ADR 0020・0023 ではロック状態の判定の元が中枢になく（既定 
 
 ## IPC の契約の追加（buddy.schema.json）
 
-| 追加                              | 内容                                                                                                               |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `desktop.get_connection`          | 接続の状態の取得（いつでも。ロック中は隠した値）                                                                   |
-| `desktop.pairing_begin`           | `{ host, port }`（`DesktopHubHost` は IPv4・IPv6・名前。URL・パスは不可）                                          |
-| `desktop.pairing_confirm`         | `{ fingerprint }`（表示した指紋）                                                                                  |
-| `desktop.pairing_submit`          | `{ pairing_code, device_name }`                                                                                    |
-| `desktop.pairing_cancel`          | いつでも                                                                                                           |
-| 通知 `desktop.connection_changed` | `{ connection: DesktopConnectionView }`                                                                            |
-| 拒否の理由                        | `pairing_step_mismatch`（手順と合わない）・`secure_storage_unavailable`                                            |
-| 受付の規則（domain）              | begin・confirm・submit はロック解除済み → 画面操作（ADR 0014 の再開と同じ判定）。get_connection・cancel はいつでも |
+| 追加                              | 内容                                                                                                                    |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `desktop.get_connection`          | 接続の状態の取得（いつでも。ロック中は隠した値）                                                                        |
+| `desktop.pairing_begin`           | `{ host, port }`（`DesktopHubHost` は IPv4・IPv6・名前。URL・パスは不可）。宛先の制限と正規化は下の「ペアリングの宛先」 |
+| `desktop.pairing_confirm`         | `{ fingerprint }`（表示した指紋）                                                                                       |
+| `desktop.pairing_submit`          | `{ pairing_code, device_name }`                                                                                         |
+| `desktop.pairing_cancel`          | いつでも                                                                                                                |
+| 通知 `desktop.connection_changed` | `{ connection: DesktopConnectionView }`                                                                                 |
+| 拒否の理由                        | `pairing_step_mismatch`（手順と合わない）・`secure_storage_unavailable`・`pairing_host_not_allowed`（宛先の制限）       |
+| 受付の規則（domain）              | begin・confirm・submit はロック解除済み → 画面操作（ADR 0014 の再開と同じ判定）。get_connection・cancel はいつでも      |
 
 トークン・申請用の秘密・端末 ID・証明書の本体・自宅の指紋の値の項目はどこにもない（`scripts/desktop-ipc.test.mjs` の禁止の名前の検査に `DesktopConnectionView` を足した）。
+
+### ペアリングの宛先（本人の判断 2026-10-21・レビューの指摘 L2・L3）
+
+`desktop.pairing_begin` で受け付ける宛先を次に限り、それ以外は受付の段階で `pairing_host_not_allowed` で拒否する（最初の接続も行わない）。判定は domain の純粋な関数 `admitPairingHost`（`packages/domain/src/hub-host.ts`）で、境界の値を手書きの期待値で試験する（`scripts/hub-host.test.mjs`）。
+
+| 宛先                                         | 理由                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 100.64.0.0/10（100.64.0.0〜100.127.255.255） | Tailscale が各端末に割り当てる IPv4（CGNAT の範囲）                                                                                                                                                                                                                                   |
+| fd7a:115c:a1e0::/48                          | Tailscale が各端末に割り当てる IPv6（Tailscale の固定の ULA の接頭辞）。100.x と同じ Tailnet の中のアドレスで、信頼の扱いは同じ。除くと、Tailscale の IPv6 で中枢を指定した本人を拒否することになるため含めた（中枢が IPv6 で待ち受けていなければ接続できないだけで、危険は増えない） |
+| 127.0.0.0/8・::1                             | 中枢と同じマシンのクライアント（最初の端末・中枢の画面）と、CI の模擬の試験                                                                                                                                                                                                           |
+| `*.ts.net` の名前                            | Tailscale の MagicDNS の名前（`<マシン>.<Tailnet>.ts.net`）。`ts.net` そのもの・似た名前（`evilts.net`・ts.net の後ろにさらにラベルが続く名前）・短い名前（`mac-mini`）・`localhost` は受け付けない                                                                                   |
+
+- 目的は、打ち間違い・誘導で Tailnet の外の宛先へ申請（ワンタイムコード・自宅の指紋を含む）を送らないこと。中枢の確かめは従来どおり、本人が比べた証明書の指紋とピン留めで行う（この制限は信頼の根拠ではない）。100.64.0.0/10 は ISP の CGNAT にも使われるため、範囲に入ることは Tailscale であることの証明にはならない。
+- IPv4 射影の IPv6（`::ffff:100.64.0.1` など）・リンクローカル・私設のアドレスは受け付けない。
+- 宛先は正規化して使う（名前は末尾のドットを一つ除いて小文字、IPv6 は小文字、IPv4 はそのまま）。画面の `pairing.host` と保存する宛先は正規化した値。
+- 名前の形の正規表現は一つ（domain の `HUB_HOSTNAME_PATTERN`）。契約の `DesktopHubHost` の名前の分岐は `format: hostname` をやめ、同じ文字列を `pattern` に置いた（一致を試験で確かめる）。端末の保存は「正規化した値と同じか」で判定する。
+- 画面の文言は「Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。」。
 
 ## lint の境界
 

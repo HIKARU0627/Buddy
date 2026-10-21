@@ -633,7 +633,7 @@ export type DesktopIpcRequest =
       request_id: Id;
       payload: {
         /**
-         * 中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。
+         * 中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。名前の形は domain の HUB_HOSTNAME_PATTERN と同じ一つの正規表現（末尾のドットを一つ許す）。main はペアリングの開始で正規化し（末尾のドットを除いて小文字にする）、ペアリングで受け付ける宛先を Tailscale のアドレス（100.64.0.0/10・fd7a:115c:a1e0::/48）・ループバック・*.ts.net の名前に限る（ADR 0025）。
          */
         host: DesktopHubHost & DesktopHubHost1;
         port: number;
@@ -700,7 +700,8 @@ export type DesktopIpcResponse =
         | 'core_required'
         | 'io_epoch_mismatch'
         | 'pairing_step_mismatch'
-        | 'secure_storage_unavailable';
+        | 'secure_storage_unavailable'
+        | 'pairing_host_not_allowed';
     };
 /**
  * 上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。
@@ -758,7 +759,7 @@ export type DesktopConnectionView =
           | 'waiting_approval'
           | 'failed';
         /**
-         * 中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。
+         * 中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。名前の形は domain の HUB_HOSTNAME_PATTERN と同じ一つの正規表現（末尾のドットを一つ許す）。main はペアリングの開始で正規化し（末尾のドットを除いて小文字にする）、ペアリングで受け付ける宛先を Tailscale のアドレス（100.64.0.0/10・fd7a:115c:a1e0::/48）・ループバック・*.ts.net の名前に限る（ADR 0025）。
          */
         host: DesktopHubHost & DesktopHubHost1;
         port: number;

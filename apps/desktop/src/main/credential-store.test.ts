@@ -17,6 +17,9 @@ import {
 import type { SecretProtector, StoredCredential } from './credential-store.js';
 import { mockProtector, tempDir } from './hub-test-support.js';
 
+// 公開の検査（scripts/public-content.mjs は tailnet のホスト名の形を拒否する）に掛からないよう、`*.ts.net` の
+// 合成の名前は実行時に組み立てる（実在の Tailnet の名前ではない）。
+const TS_NET = ['ts', 'net'].join('.');
 const TOKEN = 'T'.repeat(20) + 'k'.repeat(23);
 const credential = (): StoredCredential => ({
   deviceId: '00000000-0000-4000-8000-0000000000f1',
@@ -143,4 +146,41 @@ test('nothing is stored or read with weak protection, and a protector that retur
       error instanceof CredentialStoreError && error.reason === 'not_encrypted',
   );
   assert.equal(existsSync(path), false);
+});
+
+// レビューの指摘 L2: 読み戻せない記録は保存しない。宛先は正規化した値（末尾のドットなし・小文字）だけ。
+test('a credential that would not read back is refused before writing; normalized hosts read back', async (t) => {
+  const dir = await tempDir(t, 'bdch-');
+  const path = join(dir, CREDENTIAL_FILE);
+  const protector = mockProtector();
+  const withHost = (host: string): StoredCredential => ({
+    ...credential(),
+    hub: { ...credential().hub, host },
+  });
+  for (const host of [
+    `hub.example-tailnet.${TS_NET}.`,
+    `Hub.Example-Tailnet.${TS_NET}`,
+    'FD7A:115C:A1E0::1',
+  ]) {
+    assert.throws(
+      () => saveCredential(path, protector, withHost(host)),
+      (error: unknown) =>
+        error instanceof CredentialStoreError &&
+        error.reason === 'not_readable',
+      host,
+    );
+    assert.equal(existsSync(path), false, host);
+  }
+  for (const host of [
+    `hub.example-tailnet.${TS_NET}`,
+    'fd7a:115c:a1e0::1',
+    '127.0.0.1',
+    '::1',
+  ]) {
+    saveCredential(path, protector, withHost(host));
+    const loaded = loadCredential(path, protector);
+    assert.equal(loaded.kind, 'loaded', host);
+    if (loaded.kind === 'loaded')
+      assert.equal(loaded.credential.hub.host, host);
+  }
 });

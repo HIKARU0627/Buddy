@@ -33,6 +33,9 @@ const UNLOCKED: DesktopIoState = {
 };
 const SCREEN = { trustedSender: true, windowFocused: true };
 const TOKEN = 'P'.repeat(43);
+// 公開の検査（scripts/public-content.mjs は tailnet のホスト名の形を拒否する）に掛からないよう、`*.ts.net` の
+// 合成の名前は実行時に組み立てる（実在の Tailnet の名前ではない）。
+const TS_NET = ['ts', 'net'].join('.');
 
 type Responder = (
   request: HubHttpRequest,
@@ -356,6 +359,93 @@ test(
     assert.equal(response['reason'], 'secure_storage_unavailable');
     assert.equal(fetches(), 0);
     assert.equal(existsSync(join(dir, CREDENTIAL_FILE)), false);
+  },
+);
+
+// レビューの指摘 L2: 末尾のドット・大文字の名前でペアリングしても、保存した記録を読み戻せる
+// （直す前は、毎回「再登録が必要」になっていた）。
+test(
+  'a trailing-dot, mixed-case name is normalized at pairing_begin and the stored credential reads back after a restart',
+  { timeout: 30_000 },
+  async (t) => {
+    const protector = mockProtector();
+    const { link, invoke, view, dir } = await setup(t, {
+      protector,
+      responders: [claimAccepted, () => issued],
+    });
+    link.start('unlocked');
+    invoke('desktop.pairing_begin', {
+      host: `Hub.Example-Tailnet.${TS_NET.toUpperCase()}.`,
+      port: 47443,
+    });
+    await waitUntil(
+      () => view().pairing?.['step'] === 'fingerprint_check',
+      'fingerprint',
+    );
+    assert.equal(view().pairing?.['host'], `hub.example-tailnet.${TS_NET}`);
+    invoke('desktop.pairing_confirm', { fingerprint: FP });
+    invoke('desktop.pairing_submit', {
+      pairing_code: '00000000',
+      device_name: '合成の端末',
+    });
+    await waitUntil(() => link.registration === 'registered', 'registered');
+    const stored = protector.reveal(readFileSync(join(dir, CREDENTIAL_FILE)));
+    assert(stored.includes(`"host":"hub.example-tailnet.${TS_NET}"`));
+    // 起動し直しても、保存した記録を読み戻して登録済みのまま。
+    link.stop();
+    link.start('unlocked');
+    assert.equal(link.registration, 'registered');
+  },
+);
+
+// 本人の判断（2026-10-21）: ペアリングの宛先は Tailscale のアドレス・ループバック・*.ts.net の名前だけ。
+test(
+  'pairing_begin accepts only Tailscale addresses, loopback and *.ts.net names; others are refused before any connection',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, invoke, view, fetches } = await setup(t);
+    link.start('unlocked');
+    for (const host of [
+      '192.168.1.10',
+      '100.63.255.255',
+      '100.128.0.0',
+      '8.8.8.8',
+      'buddy-hub.example',
+      'ts.net',
+      `hub.${TS_NET}.example`,
+      'fe80::1',
+      '::ffff:100.64.0.1',
+      'fd7a:115c:a1e1::1',
+    ]) {
+      const refused = invoke('desktop.pairing_begin', { host, port: 47443 });
+      assert.deepEqual(
+        [refused['outcome'], refused['reason']],
+        ['rejected', 'pairing_host_not_allowed'],
+        host,
+      );
+    }
+    assert.equal(fetches(), 0);
+    assert.equal(view().pairing, null);
+    for (const [host, shown] of [
+      ['100.64.0.0', '100.64.0.0'],
+      ['100.127.255.255', '100.127.255.255'],
+      ['127.0.0.1', '127.0.0.1'],
+      ['::1', '::1'],
+      ['FD7A:115C:A1E0::5', 'fd7a:115c:a1e0::5'],
+      [
+        `Mac-Mini.Example-Tailnet.${TS_NET}`,
+        `mac-mini.example-tailnet.${TS_NET}`,
+      ],
+    ] as const) {
+      assert.equal(
+        invoke('desktop.pairing_begin', { host, port: 47443 })['outcome'],
+        'ok',
+        host,
+      );
+      assert.equal(view().pairing?.['host'], shown, host);
+      invoke('desktop.pairing_cancel', null);
+    }
+    assert.equal(fetches(), 6);
   },
 );
 

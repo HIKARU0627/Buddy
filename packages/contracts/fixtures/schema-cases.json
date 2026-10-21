@@ -3644,6 +3644,45 @@
     }
   },
   {
+    "id": "desktop-ipc-pairing-begin-trailing-dot",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b31",
+      "payload": {
+        "host": "Buddy-Hub.Example.",
+        "port": 47443
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin-underscore",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b32",
+      "payload": {
+        "host": "buddy_hub.example",
+        "port": 47443
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin-double-dot",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b33",
+      "payload": {
+        "host": "buddy-hub.example..",
+        "port": 47443
+      }
+    }
+  },
+  {
     "id": "desktop-ipc-pairing-begin-url",
     "schema": "DesktopIpcRequest",
     "valid": false,
@@ -4178,6 +4217,17 @@
         "home_network": null,
         "operations": []
       }
+    }
+  },
+  {
+    "id": "desktop-response-pairing-host-not-allowed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000b34",
+      "channel": "desktop.pairing_begin",
+      "outcome": "rejected",
+      "reason": "pairing_host_not_allowed"
     }
   },
   {

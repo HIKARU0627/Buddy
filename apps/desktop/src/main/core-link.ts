@@ -28,6 +28,7 @@ import {
 import {
   DESKTOP_IPC_CHANNELS,
   admitDesktopRequest,
+  admitPairingHost,
   type DesktopIoState,
   type DesktopIpcRejectReason,
   type DesktopIpcSender,
@@ -315,7 +316,12 @@ export class DesktopCoreLink {
             raw.channel,
             'pairing_step_mismatch',
           );
-        if (this.#pairing.begin(raw.payload.host, raw.payload.port) !== 'ok')
+        // 宛先は Tailscale のアドレス・ループバック・*.ts.net の名前だけを受け付け、正規化して使う
+        // （末尾のドットを除いて小文字にする。保存した宛先をそのまま読み戻せるように。ADR 0025）。
+        const host = admitPairingHost(raw.payload.host);
+        if (!host.ok)
+          return this.#reject(raw.request_id, raw.channel, host.reason);
+        if (this.#pairing.begin(host.host, raw.payload.port) !== 'ok')
           return this.#reject(
             raw.request_id,
             raw.channel,

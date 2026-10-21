@@ -47,6 +47,8 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'pairing_step_mismatch',
   // 保護の弱い方式しか使えずトークンを保存できない（ADR 0025）。
   'secure_storage_unavailable',
+  // ペアリングの宛先が Tailscale のアドレス・ループバック・*.ts.net の名前でない（ADR 0025、hub-host.ts）。
+  'pairing_host_not_allowed',
 ] as const;
 
 export type DesktopIpcRejectReason =

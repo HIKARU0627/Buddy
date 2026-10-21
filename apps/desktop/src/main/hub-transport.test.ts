@@ -130,8 +130,10 @@ test(
     const cases = [
       // 別の証明書を信頼の起点にしている（中枢の証明書が差し替わった）。
       { certificatePem: other.certificatePem, fingerprint: otherFingerprint },
-      // 信頼の起点は合うが指紋が違う。
+      // 保存した証明書は合うが指紋が違う。
       { certificatePem: hub.certificatePem, fingerprint: otherFingerprint },
+      // 指紋は中枢のものだが、保存した証明書が違う（両方が完全に一致するときだけ通す）。
+      { certificatePem: other.certificatePem, fingerprint: hub.fingerprint },
     ];
     for (const pin of cases) {
       const outcome = await hubRequest(

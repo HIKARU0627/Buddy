@@ -1,17 +1,22 @@
 // 中枢との通信（TLS のピン留め・HTTPS・WSS）（設計 02 端末登録と接続、ADR 0020・0021・0023・0025）。
 //
-// - 登録した中枢へは、信頼の起点を中枢の証明書 1 枚に限り（ca）、checkServerIdentity で証明書の DER 全体の
-//   SHA-256 を指紋と照合する。TLS の確立と照合が終わってから要求を書く。合わなければ要求を 1 バイトも送らない。
-// - 証明書の検証をアプリ全体で無効にしない。検証を使わないのは、ペアリングの最初の接続（fetchPeerCertificate）の
-//   その 1 本だけで、その接続では何も書かずに証明書を読んだら閉じる（ADR 0021）。
+// - 登録した中枢へは、TLS 1.3 の確立で中枢が示した証明書が、登録の時に本人が指紋を確かめた証明書と DER で完全に
+//   同じで、DER 全体の SHA-256 が指紋と同じときだけ要求を書く（証明書の完全一致のピン留め）。合わなければ要求を
+//   1 バイトも送らない。TLS の確立では中枢がその証明書の秘密鍵を持つこと（CertificateVerify）を TLS が確かめる。
+// - 信頼の起点（ca）による証明書の連鎖の検証は使わない。Electron の BoringSSL は、CA でない自己署名の証明書
+//   （ADR 0020 の中枢の証明書。基本制約 CA:FALSE）を信頼の起点として受け付けず、ピン留めした中枢でも
+//   UNABLE_TO_VERIFY_LEAF_SIGNATURE になるため（Node の OpenSSL では通る。ADR 0025 の読み取り）。
+//   完全一致のピン留めは連鎖の検証より狭い（その 1 枚だけを受け付ける）。この扱いはこのモジュールの接続だけで、
+//   アプリ全体（NODE_TLS_REJECT_UNAUTHORIZED・既定のエージェント）の検証は変えない。
+// - ペアリングの最初の接続（fetchPeerCertificate）は、何も書かずに証明書を読んだら閉じる（ADR 0021）。
 // - 端末トークンは Authorization ヘッダーにだけ入れ、結果・例外・ログに入れない。
 // Electron に依存しない（node:test で 127.0.0.1 の中枢・模擬のサーバーと試験する）。
 
-import { createHash } from 'node:crypto';
+import { X509Certificate, createHash } from 'node:crypto';
 import { request as httpsRequest } from 'node:https';
 import { isIPv6 } from 'node:net';
 import { connect } from 'node:tls';
-import type { PeerCertificate, TLSSocket } from 'node:tls';
+import type { TLSSocket } from 'node:tls';
 import type {
   ClientApiOutcome,
   ClientApiRequest,
@@ -124,27 +129,38 @@ export function fetchPeerCertificate(
   });
 }
 
-function pinnedCheck(fingerprint: string) {
-  return (_host: string, certificate: PeerCertificate): Error | undefined =>
-    certificateFingerprint(certificate.raw) === fingerprint
-      ? undefined
-      : new CertificateMismatchError();
+// PEM の証明書の DER（ピン留めした証明書と、中枢が示した証明書を比べる）。
+function pemDer(pem: string): Buffer | null {
+  try {
+    return new X509Certificate(pem).raw;
+  } catch {
+    return null;
+  }
 }
 
-// TLS だけを接続し、証明書の検証と指紋の照合が終わってから返す。失敗すれば例外（要求は書いていない）。
+// 中枢が示した証明書がピン留めした証明書と同じか（DER の完全一致と指紋の一致）。
+export function matchesPin(hub: PinnedHub, peerDer: Buffer): boolean {
+  const pinned = pemDer(hub.certificatePem);
+  return (
+    pinned !== null &&
+    pinned.equals(peerDer) &&
+    certificateFingerprint(peerDer) === hub.fingerprint
+  );
+}
+
+// TLS だけを接続し、ピン留めの照合が終わってから返す。失敗すれば例外（要求は書いていない）。
 export function pinnedConnect(
   hub: PinnedHub,
   timeoutMs = HUB_REQUEST_TIMEOUT_MS,
 ): Promise<TLSSocket> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    // 連鎖の検証の代わりに、確立の後に証明書の完全一致を確かめる（上の注記）。照合の前には何も書かない。
     const socket = connect({
       host: hub.host,
       port: hub.port,
-      ca: [hub.certificatePem],
-      checkServerIdentity: pinnedCheck(hub.fingerprint),
       minVersion: 'TLSv1.3',
-      rejectUnauthorized: true,
+      rejectUnauthorized: false,
     });
     const fail = (error: unknown) => {
       if (settled) return;
@@ -165,7 +181,12 @@ export function pinnedConnect(
     );
     socket.once('secureConnect', () => {
       if (settled) return;
-      if (!socket.authorized) {
+      const peer = socket.getPeerX509Certificate();
+      if (
+        socket.getProtocol() !== 'TLSv1.3' ||
+        peer === undefined ||
+        !matchesPin(hub, peer.raw)
+      ) {
         fail(new CertificateMismatchError());
         return;
       }

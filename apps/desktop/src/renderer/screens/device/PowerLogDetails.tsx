@@ -53,6 +53,12 @@ export function PowerLogDetails({
                 ))}
               </ol>
             )}
+            {entries.length > POWER_LOG_SHOWN ? (
+              <p className="pt-1 text-xs text-muted">
+                直近 {POWER_LOG_SHOWN} 件を表示しています（ほか{' '}
+                {entries.length - POWER_LOG_SHOWN} 件）。
+              </p>
+            ) : null}
           </Disclosure.Body>
         </Disclosure.Content>
       </Disclosure>

@@ -11,11 +11,11 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
-// 「16:15:55」（今日）・「10/20 16:15:55」（今日でない）。seconds が false なら秒を落とす。
+// 「16:15:55」（今日）・「10/20 16:15:55」（今日でない）。seconds が false なら秒を落とし、date が true なら今日でも月日を付ける。
 export function clockOf(
   utc: string,
   now: number,
-  options: { readonly seconds?: boolean } = {},
+  options: { readonly seconds?: boolean; readonly date?: boolean } = {},
 ): string {
   const date = new Date(utc);
   if (Number.isNaN(date.getTime())) return utc;
@@ -23,7 +23,7 @@ export function clockOf(
     options.seconds === false
       ? `${pad(date.getHours())}:${pad(date.getMinutes())}`
       : `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-  return sameDay(date, new Date(now))
+  return sameDay(date, new Date(now)) && options.date !== true
     ? time
     : `${date.getMonth() + 1}/${date.getDate()} ${time}`;
 }

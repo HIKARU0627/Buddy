@@ -1,7 +1,10 @@
 // 中枢との接続の欄（ADR 0024・0025）。接続の状態と最終確認は状態帯に出すので、ここは理由・自宅の判定・
 // 中枢の操作だけを出す（同じ情報を 2 か所に出さない）。理由は状態の言い換えになるときは出さない。
 import type { DesktopConnectionView } from '@buddy/contracts';
+import type { ReactNode } from 'react';
 import { Section } from '../../components/Section.js';
+import { StatusText } from '../../components/StatusText.js';
+import type { StatusLine } from '../../tones.js';
 import {
   HOME_REASON_LABELS,
   LINK_REASON_LABELS,
@@ -18,15 +21,26 @@ const REDUNDANT_REASONS: ReadonlySet<string> = new Set([
   'unreachable',
 ]);
 
-function homeText(connection: ShownConnection): string | null {
+// 自宅の判定（記号と色は tones.ts の対応表。記号は StatusText が付ける）。
+export function homeLine(connection: ShownConnection): StatusLine | null {
   const home = connection.home_network;
   if (home === null) return null;
-  if (home.exempt) return '中枢と同じマシンのため、判定は不要です';
-  if (home.allowed) return '● 自宅のネットワークです';
+  if (home.exempt)
+    return {
+      tone: 'neutral',
+      mark: 'none',
+      text: '中枢と同じマシンのため、判定は不要です',
+    };
+  if (home.allowed)
+    return { tone: 'success', mark: 'dot', text: '自宅のネットワークです' };
   const reasons = home.reasons.map(
     (reason) => HOME_REASON_LABELS[reason] ?? reason,
   );
-  return `○ 自宅のネットワークではありません（${reasons.join('・')}）`;
+  return {
+    tone: 'warning',
+    mark: 'circle',
+    text: `自宅のネットワークではありません（${reasons.join('・')}）`,
+  };
 }
 
 export function ConnectionSection({
@@ -34,7 +48,7 @@ export function ConnectionSection({
 }: {
   readonly connection: ShownConnection;
 }) {
-  const rows: [string, string][] = [];
+  const rows: [string, ReactNode][] = [];
   const reason = connection.link_reason;
   if (
     reason !== null &&
@@ -42,8 +56,8 @@ export function ConnectionSection({
     !REDUNDANT_REASONS.has(reason)
   )
     rows.push(['理由', LINK_REASON_LABELS[reason]]);
-  const home = homeText(connection);
-  if (home !== null) rows.push(['自宅の判定', home]);
+  const home = homeLine(connection);
+  if (home !== null) rows.push(['自宅の判定', <StatusText line={home} />]);
   return (
     <Section id="connection-heading" title="中枢との接続">
       {rows.length === 0 ? null : (

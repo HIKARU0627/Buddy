@@ -745,11 +745,25 @@ test(
       'hub_screen_required',
     );
     assert.equal(b.view().hub_screen, false);
-    const refusedRevoke = await b.admin('desktop.devices_list', null);
-    assert.equal(
-      (refusedRevoke as { reason?: string }).reason,
-      'hub_screen_required',
-    );
+    // 一覧・承認・拒否・失効・ペアリングの開始のどれも、参照の確かめ（entry_not_found）より先に hub_screen_required で拒否する。
+    const refusedOperations: [string, unknown][] = [
+      ['desktop.devices_list', null],
+      ['desktop.claim_decide', { ref: randomUUID(), decision: 'approve' }],
+      ['desktop.claim_decide', { ref: randomUUID(), decision: 'reject' }],
+      ['desktop.device_revoke', { ref: randomUUID() }],
+      ['desktop.pairing_open', null],
+    ];
+    for (const [channel, payload] of refusedOperations) {
+      const refusedOperation = await b.admin(
+        channel as never,
+        payload as never,
+      );
+      assert.equal(
+        (refusedOperation as { reason?: string }).reason,
+        'hub_screen_required',
+        channel,
+      );
+    }
 
     // 端末の一覧: この端末（参照なし）と B（参照あり）。
     const devices = (

@@ -59,15 +59,10 @@ function themes() {
   }
   return {
     light: { ...common, ...myCommon, ...heroLight, ...myLight },
-    // ダークでも HeroUI のライトの規則（:root）は当たり、.dark の規則が後から上書きする。
-    dark: {
-      ...common,
-      ...myCommon,
-      ...heroLight,
-      ...myLight,
-      ...heroDark,
-      ...myDark,
-    },
+    // ダークでも HeroUI のライトの規則（:root）は当たり、.dark の規則が後から上書きする。自分のライトの上書きは
+    // :not(.dark) に限っているので、ダークには当てない（CR-L4）。
+    dark: { ...common, ...myCommon, ...heroLight, ...heroDark, ...myDark },
+    myCommon,
     myLight,
     myDark,
   };
@@ -207,93 +202,198 @@ function resolver(vars) {
   return (name) => resolve(`var(${name})`);
 }
 
-// [説明, 文字（前景）, 背景（配列なら先頭を後ろの色に重ねる）, 下限]
+// [説明（使っている変数）, 文字（前景）, 背景（配列なら先頭を後ろの色に重ねる）, 下限]
+// 説明には、画面のどこで使うかと、実際に測っている変数を書く（UI レビュー 2 回目 R2 の指摘: 名前と変数を一致させる）。
 const PAIRS = [
-  ['本文 / カード', '--foreground', ['--surface'], 4.5],
-  ['本文 / 地', '--foreground', ['--background'], 4.5],
-  ['補足（muted）/ カード', '--muted', ['--surface'], 4.5],
-  ['補足（muted）/ 地', '--muted', ['--background'], 4.5],
-  ['primary ボタンの文字 / accent', '--accent-foreground', ['--accent'], 4.5],
+  // 文字（4.5:1）
+  ['本文 --foreground / カード --surface', '--foreground', ['--surface'], 4.5],
   [
-    'secondary ボタンの文字 / default（地）',
+    '本文 --foreground / 地 --background',
+    '--foreground',
+    ['--background'],
+    4.5,
+  ],
+  ['補足 --muted / カード', '--muted', ['--surface'], 4.5],
+  ['補足 --muted / 地', '--muted', ['--background'], 4.5],
+  [
+    'primary ボタン --accent-foreground / --accent',
+    '--accent-foreground',
+    ['--accent'],
+    4.5,
+  ],
+  [
+    'danger（塗り）ボタン（確認の「拒否する」「失効する」）--danger-foreground / --danger',
+    '--danger-foreground',
+    ['--danger'],
+    4.5,
+  ],
+  [
+    'secondary ボタン --accent-soft-foreground / --default（地）',
     '--accent-soft-foreground',
     ['--default', '--background'],
     4.5,
   ],
   [
-    'secondary ボタンの文字 / default（カード）',
+    'secondary ボタン --accent-soft-foreground / --default（カード）',
     '--accent-soft-foreground',
     ['--default', '--surface'],
     4.5,
   ],
   [
-    'tertiary ボタンの文字 / default',
+    'tertiary ボタン（確認の「やめる」）--default-foreground / --default',
     '--default-foreground',
-    ['--default', '--surface'],
+    ['--default', '--overlay'],
     4.5,
   ],
   [
-    'danger-soft ボタンの文字 / danger-soft（カード）',
+    'ghost・outline ボタン（閉じる・終了・一覧を更新）--default-foreground / 地',
+    '--default-foreground',
+    ['--background'],
+    4.5,
+  ],
+  [
+    'danger-soft ボタン（停止）--danger-soft-foreground / --danger-soft（カード）',
     '--danger-soft-foreground',
     ['--danger-soft', '--surface'],
     4.5,
   ],
   [
-    'danger-soft ボタンの文字 / danger-soft（地）',
+    'danger-soft ボタン（拒否・失効）--danger-soft-foreground / --danger-soft（地）',
     '--danger-soft-foreground',
     ['--danger-soft', '--background'],
     4.5,
   ],
   [
-    'success の文字・記号 / カード',
+    'success の文字・記号 --success-soft-foreground / カード',
     '--success-soft-foreground',
     ['--surface'],
     4.5,
   ],
   [
-    'success の文字・記号 / 地',
+    'success の文字・記号 --success-soft-foreground / 地',
     '--success-soft-foreground',
     ['--background'],
     4.5,
   ],
-  ['warning の文字 / カード', '--warning-soft-foreground', ['--surface'], 4.5],
-  ['warning の文字 / 地', '--warning-soft-foreground', ['--background'], 4.5],
-  ['danger の文字 / カード', '--danger-soft-foreground', ['--surface'], 4.5],
-  ['danger の文字 / 地', '--danger-soft-foreground', ['--background'], 4.5],
   [
-    '選ばれていないタブの文字（muted）/ タブの面（default）',
+    'warning の文字（拒否の文言）--warning-soft-foreground / カード',
+    '--warning-soft-foreground',
+    ['--surface'],
+    4.5,
+  ],
+  [
+    'warning の文字（拒否の文言）--warning-soft-foreground / 地',
+    '--warning-soft-foreground',
+    ['--background'],
+    4.5,
+  ],
+  [
+    'FieldError・無効なラベル・必須の * --danger-soft-foreground / カード',
+    '--danger-soft-foreground',
+    ['--surface'],
+    4.5,
+  ],
+  [
+    'FieldError・無効なラベル・必須の * --danger-soft-foreground / 地',
+    '--danger-soft-foreground',
+    ['--background'],
+    4.5,
+  ],
+  [
+    'Alert danger の題 --danger-soft-foreground / --danger-soft（カードの上）',
+    '--danger-soft-foreground',
+    ['--danger-soft', '--surface'],
+    4.5,
+  ],
+  [
+    'Alert danger の本文 --foreground / --danger-soft（地の上）',
+    '--foreground',
+    ['--danger-soft', '--background'],
+    4.5,
+  ],
+  [
+    'Alert warning の題 --warning-soft-foreground / --warning-soft（地の上）',
+    '--warning-soft-foreground',
+    ['--warning-soft', '--background'],
+    4.5,
+  ],
+  [
+    'Alert warning の本文 --foreground / --warning-soft（カードの上）',
+    '--foreground',
+    ['--warning-soft', '--surface'],
+    4.5,
+  ],
+  [
+    '選ばれていないタブ --muted / --default',
     '--muted',
     ['--default', '--background'],
     4.5,
   ],
-  ['確認のダイアログの本文 / overlay', '--foreground', ['--overlay'], 4.5],
   [
-    '確認のダイアログの accent のアイコン / accent-soft',
-    '--accent-soft-foreground',
-    ['--accent-soft', '--overlay'],
-    3,
+    '選ばれたタブ --segment-foreground / --segment',
+    '--segment-foreground',
+    ['--segment', '--default', '--background'],
+    4.5,
   ],
   [
-    '確認のダイアログの danger のアイコン / danger-soft',
-    '--danger-soft-foreground',
-    ['--danger-soft', '--overlay'],
-    3,
+    '確認のダイアログの本文（text-foreground）--foreground / --overlay',
+    '--foreground',
+    ['--overlay'],
+    4.5,
   ],
   [
-    '入力欄の文字 / 入力欄（secondary）',
+    '入力欄の文字 --field-foreground / --default（secondary の Input）',
     '--field-foreground',
     ['--default', '--surface'],
     4.5,
   ],
   [
-    '入力欄の placeholder / 入力欄（secondary）',
+    '入力欄の placeholder --field-placeholder / --default',
     '--field-placeholder',
     ['--default', '--surface'],
     4.5,
   ],
-  ['入力欄の境界 / カード', '--field-border', ['--surface'], 3],
-  ['フォーカスの枠（focus）/ カード', '--focus', ['--surface'], 3],
-  ['フォーカスの枠（focus）/ 地', '--focus', ['--background'], 3],
+  [
+    'InputOTP の桁 --field-foreground / --field-background',
+    '--field-foreground',
+    ['--field-background', '--surface'],
+    4.5,
+  ],
+  // 文字でないもの（3:1）
+  [
+    '確認のダイアログの accent のアイコン --accent-soft-foreground / --accent-soft',
+    '--accent-soft-foreground',
+    ['--accent-soft', '--overlay'],
+    3,
+  ],
+  [
+    '確認のダイアログの danger のアイコン --danger-soft-foreground / --danger-soft',
+    '--danger-soft-foreground',
+    ['--danger-soft', '--overlay'],
+    3,
+  ],
+  ['入力欄の境界 --field-border / カード', '--field-border', ['--surface'], 3],
+  [
+    'InputOTP の枠 --field-border / --field-background',
+    '--field-border',
+    ['--field-background', '--surface'],
+    3,
+  ],
+  ['無効な入力欄の枠 --danger / カード', '--danger', ['--surface'], 3],
+  ['フォーカスの枠 --focus / カード', '--focus', ['--surface'], 3],
+  ['フォーカスの枠 --focus / 地', '--focus', ['--background'], 3],
+  [
+    'フォーカスの枠 --focus / --default（タブの一覧・secondary の面）',
+    '--focus',
+    ['--default', '--background'],
+    3,
+  ],
+  [
+    'フォーカスの枠 --focus / --overlay（ダイアログ）',
+    '--focus',
+    ['--overlay'],
+    3,
+  ],
 ];
 
 function measure(vars) {
@@ -324,7 +424,12 @@ test('the HeroUI theme variables are available to measure', () => {
 });
 
 test('the overrides are only colors, one light block and one dark block', () => {
-  const { myLight, myDark } = themes();
+  const { myLight, myDark, myCommon } = themes();
+  // 共通の上書きは形（角丸・入力欄の枠の太さ）だけで、色を含まない。
+  assert.deepEqual(Object.keys(myCommon).sort(), [
+    '--field-border-width',
+    '--radius',
+  ]);
   assert.deepEqual(Object.keys(myLight).sort(), [
     '--accent',
     '--danger',
@@ -367,4 +472,20 @@ test('the contrast measurement itself agrees with known WCAG values', () => {
   assert.equal(hex(color('--k')), '#000000');
   // 半透明の黒を白に重ねると sRGB の値が 0.5 の灰色になる（相対輝度 0.2140、白と 3.98:1。手で計算した値）。
   assert.equal(ratio({ ...black, alpha: 0.5 }, white).toFixed(2), '3.98');
+});
+
+test('parts that HeroUI colors with --danger as text use the soft foreground', () => {
+  // --danger は塗りのボタンの面の色で、ダークの面の上の文字としては 4.5:1 に届かない（3.45:1）。
+  // FieldError・無効なラベル・必須の * の文字は、styles.css で --danger-soft-foreground に寄せる（上の表で測る）。
+  const css = readFileSync(OVERRIDES, 'utf8').replace(/\/\*[\s\S]*?\*\//gu, '');
+  const rule =
+    /\.field-error,[^{]*\.label--invalid[^{]*\{\s*color:\s*var\(--danger-soft-foreground\);\s*\}/u;
+  assert.match(css, rule);
+  assert.match(
+    css,
+    /\.label--required::after[^{]*\{\s*color:\s*var\(--danger-soft-foreground\);/u,
+  );
+  // ダークで --danger をそのまま文字に使うと AA に届かないこと（上の規則が要る理由）も測っておく。
+  const color = resolver(themes().dark);
+  assert.ok(ratio(color('--danger'), color('--surface')) < 4.5);
 });

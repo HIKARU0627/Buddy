@@ -520,7 +520,10 @@ test(
   'hub tabs: the home network tab appears only when its panel is given',
   { timeout: 10_000 },
   () => {
-    const hub = hubActions(() => undefined);
+    const hub = hubActions({
+      request: () => undefined,
+      update: () => undefined,
+    });
     const { actions } = capture();
     const withHome = html(
       <HubTabs

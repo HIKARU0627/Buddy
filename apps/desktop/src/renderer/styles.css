@@ -73,6 +73,50 @@
     box-shadow: none;
     border: 1px solid var(--border);
   }
+  /* 要対応・失敗の Alert は面に薄い色を敷き、カード（状態帯・フォーム）と区別する（R2 の低 2）。 */
+  .alert--danger {
+    background: var(--danger-soft);
+  }
+  .alert--warning {
+    background: var(--warning-soft);
+  }
+
+  /*
+   * --danger は塗りのボタンの面の色（白文字で 4.5:1）。HeroUI が --danger を文字に使う部品（FieldError・無効なラベル・
+   * 必須の *）は、ダークの面で 3.45:1 になるため、文字だけ soft-foreground（面の上で 4.5:1 以上）にする（R2 の高 1）。
+   * 必須の * は、読み上げで「必須」と読ませる（content の代替テキスト）。無効な入力欄の枠（文字でない 3:1）は --danger のまま。
+   */
+  .field-error,
+  .label--invalid,
+  [data-invalid='true'] .label,
+  [aria-invalid='true'] .label {
+    color: var(--danger-soft-foreground);
+  }
+  .label--required::after,
+  [data-required='true']:not([role='group']):not([role='radiogroup']):not(
+      [role='checkboxgroup']
+    )
+    > .label::after,
+  [data-required='true']:not([data-slot='radio']):not([data-slot='checkbox'])
+    > .label::after {
+    color: var(--danger-soft-foreground);
+    content: '*' / '必須';
+  }
+
+  /* Tabs と確認のダイアログの角丸を --radius の段にそろえ、錠剤型と影をやめる（R2 の低 1）。 */
+  .tabs__list-container,
+  .tabs__tab,
+  .tabs__indicator {
+    border-radius: var(--radius-lg);
+  }
+  .tabs__indicator {
+    box-shadow: none;
+    border: 1px solid var(--border);
+  }
+  .alert-dialog__dialog,
+  .alert-dialog__icon {
+    border-radius: var(--radius-lg);
+  }
 }
 
 /*
@@ -122,4 +166,11 @@ body {
   /* 日本語の文節で折り返し、禁則を厳しくする（Electron 44 の Chromium は対応）。 */
   word-break: auto-phrase;
   line-break: strict;
+}
+
+/* 文節で折り返すと右端が凸凹になるため、段落は行末の孤立を減らす折り返しにする（R2 の低 6）。 */
+@layer base {
+  p {
+    text-wrap: pretty;
+  }
 }

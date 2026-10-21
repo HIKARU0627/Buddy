@@ -23,6 +23,11 @@ test('times of today show only the clock; other days add the month and day', () 
     clockOf(local(23, 59, 0, 20).toISOString(), NOW),
     '10/20 23:59:00',
   );
+  // date を指定すると、今日でも月日を付ける（同じ名前の端末を登録の日時で見分ける）。
+  assert.equal(
+    clockOf(local(9, 5, 7).toISOString(), NOW, { date: true }),
+    '10/21 09:05:07',
+  );
   // 読めない値はそのまま出す（隠さない）。
   assert.equal(clockOf('not-a-time', NOW), 'not-a-time');
 });

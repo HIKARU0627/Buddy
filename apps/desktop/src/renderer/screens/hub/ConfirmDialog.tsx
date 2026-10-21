@@ -36,7 +36,9 @@ export function ConfirmDialog({
                 />
                 <AlertDialog.Heading>{request.title}</AlertDialog.Heading>
               </AlertDialog.Header>
-              <AlertDialog.Body>{request.body}</AlertDialog.Body>
+              <AlertDialog.Body className="text-foreground">
+                {request.body}
+              </AlertDialog.Body>
               <AlertDialog.Footer>
                 <Button variant="tertiary" onPress={onClose}>
                   やめる

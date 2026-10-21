@@ -75,8 +75,8 @@ export const POWER_EVENT_LABELS: Readonly<Record<PowerEvent['event'], string>> =
 export const POWER_SOURCE_LABELS: Readonly<
   Record<PowerEvent['source'], string>
 > = {
-  os_event: '通知',
-  os_query: '確認',
+  os_event: 'OS の通知',
+  os_query: 'Buddy が確かめた',
 };
 
 // 入出力の主状態（記号は tones.ts、色は状態帯が付ける）。
@@ -89,7 +89,7 @@ export const IO_STATE_LABELS = {
 
 // 値を受け取っていない項目。
 export const NOT_RECEIVED = '—';
-export const NOT_RECEIVED_NOTE = '— は中枢からまだ受け取っていない項目です。';
+export const NOT_RECEIVED_NOTE = '（— は中枢から未受信）';
 
 export const STORAGE_MODE_LABELS: Readonly<Record<string, string>> = {
   normal: '通常（7 日）',
@@ -153,82 +153,133 @@ export const HOME_REASON_LABELS: Readonly<Record<string, string>> = {
 };
 
 export const PAIRING_STEPS = {
-  address: { index: 1, name: '中枢の宛先' },
+  address: { index: 1, name: '宛先の入力' },
   fingerprint: { index: 2, name: '指紋の確認' },
   code: { index: 3, name: 'コードの入力' },
   waiting: { index: 4, name: '承認待ち' },
 } as const;
 export const PAIRING_STEP_COUNT = 4;
 
+// 失敗の重さ: 証明書が変わった（ピン留めが外れた警報）だけ danger、ほかの失敗は warning（UI レビュー 2 回目 R1-M5）。
+export type FailureSeverity = 'danger' | 'warning';
+
 export interface FailureCopy {
+  readonly severity: FailureSeverity;
+  // 失敗した手順（失敗の画面でも「手順 n / 4」を残す）。
+  readonly step: keyof typeof PAIRING_STEPS;
   readonly title: string;
   readonly body: string;
   readonly action: string;
 }
 
-// ペアリングの失敗ごとの題・本文・ボタン（R1-M5・R2-M7 の案から自然な方を選んだ）。
-export const PAIRING_FAILURES: Readonly<Record<PairingFailure, FailureCopy>> = {
-  certificate_unavailable: {
-    title: '中枢に接続できませんでした',
-    body: '宛先とポート、中枢が起動しているか、Tailscale がつながっているかを確かめてください。',
-    action: '宛先を直す',
-  },
-  certificate_changed: {
-    title: '中枢の証明書が変わったため、申請を送りませんでした',
-    body: '中枢の画面で状態を確かめてから、最初からやり直してください。',
-    action: 'もう一度登録する',
-  },
-  unreachable: {
-    title: '中枢に接続できませんでした',
-    body: '宛先とポート、中枢が起動しているかを確かめてから、もう一度登録してください。',
-    action: '宛先を直す',
-  },
-  pairing_failed: {
-    title: 'コードを受け付けませんでした',
-    body: 'コードが違うか、5 分の期限が切れたか、5 回の上限に達しました。中枢の画面で新しいコードを出してから、もう一度登録してください。',
-    action: 'もう一度登録する',
-  },
-  outside_home_network: {
-    title: '自宅のネットワークの外からは登録できません',
-    body: '自宅の Wi-Fi・有線につないでから、もう一度登録してください。',
-    action: 'もう一度登録する',
-  },
-  rate_limited: {
-    title: '要求が多すぎるため、受け付けられませんでした',
-    body: '1 分ほど待ってから、もう一度登録してください。',
-    action: 'もう一度登録する',
-  },
-  claim_expired: {
-    title: '申請の期限が切れました',
-    body: '申請から 5 分以内に中枢で承認されませんでした。中枢の画面で新しいコードを出してから、もう一度登録してください。',
-    action: 'もう一度登録する',
-  },
-  pickup_refused: {
-    title: '申請が受け付けられませんでした',
-    body: '中枢で拒否されたか、期限が切れたか、すでに受け取り済みです。もう一度登録してください。',
-    action: 'もう一度登録する',
-  },
-  pickup_unknown: {
-    title: '登録が済んだか確かめられませんでした',
-    body: '自動ではやり直しません。中枢の画面の「登録済みの端末」にこの端末があれば失効してから、もう一度登録してください。',
-    action: '失効したので、もう一度登録する',
-  },
-  secure_storage_unavailable: {
-    title: 'この端末では登録できません',
-    body: 'OS の鍵束（安全な保存）が使えないため、登録の情報を保存できません。',
-    action: '最初に戻る',
-  },
-  storage_failed: {
-    title: '登録の情報を保存できませんでした',
-    body: '中枢の画面の「登録済みの端末」にこの端末があれば失効してから、もう一度登録してください。',
-    action: 'もう一度登録する',
-  },
-  protocol_error: {
-    title: '中枢の応答を読めませんでした',
-    body: '中枢とこの端末の版を確かめてから、もう一度登録してください。',
-    action: 'もう一度登録する',
-  },
-};
+// 文言に入れる値（試した宛先・申請した端末名）。分からなければ null。
+export interface FailureContext {
+  readonly target: string | null;
+  readonly deviceName: string | null;
+}
+
+const RESTART = '最初からやり直す';
+
+// ペアリングの失敗ごとの重さ・題・本文・ボタン。失敗の後は宛先の入力（手順 1）から始め直す（ADR 0025）。
+export function pairingFailureCopy(
+  failure: PairingFailure,
+  context: FailureContext,
+): FailureCopy {
+  const at = context.target === null ? '中枢' : `${context.target}`;
+  const name =
+    context.deviceName === null ? 'この端末' : `「${context.deviceName}」`;
+  switch (failure) {
+    case 'certificate_unavailable':
+    case 'unreachable':
+      return {
+        severity: 'warning',
+        step: failure === 'unreachable' ? 'code' : 'address',
+        title: '中枢に接続できませんでした',
+        body: `${at} に接続できませんでした。宛先とポート、中枢が起動しているか、Tailscale がつながっているかを確かめてください。`,
+        action: '宛先を直す',
+      };
+    case 'certificate_changed':
+      return {
+        severity: 'danger',
+        step: 'code',
+        title: '中枢の証明書が変わったため、申請を送りませんでした',
+        body: '指紋を確かめた後に、中枢の証明書が変わりました。中枢の画面で状態を確かめてから、最初からやり直してください。',
+        action: RESTART,
+      };
+    case 'pairing_failed':
+      return {
+        severity: 'warning',
+        step: 'code',
+        title: 'コードを受け付けませんでした',
+        body: 'コードが違うか、5 分の期限が切れたか、5 回の上限に達しました。中枢の画面で新しいコードを出してから、最初からやり直してください。',
+        action: RESTART,
+      };
+    case 'outside_home_network':
+      return {
+        severity: 'warning',
+        step: 'code',
+        title: '自宅のネットワークの外からは登録できません',
+        body: '自宅の Wi-Fi・有線につないでから、最初からやり直してください。',
+        action: RESTART,
+      };
+    case 'rate_limited':
+      return {
+        severity: 'warning',
+        step: 'code',
+        title: '要求が多すぎるため、受け付けられませんでした',
+        body: '1 分ほど待ってから、最初からやり直してください。',
+        action: RESTART,
+      };
+    case 'claim_expired':
+      return {
+        severity: 'warning',
+        step: 'waiting',
+        title: '申請の期限が切れました',
+        body: '申請から 5 分以内に中枢で承認されませんでした。中枢の画面で新しいコードを出してから、最初からやり直してください。',
+        action: RESTART,
+      };
+    case 'pickup_refused':
+      return {
+        severity: 'warning',
+        step: 'waiting',
+        title: '申請が受け付けられませんでした',
+        body: '中枢で拒否されたか、期限が切れたか、すでに受け取り済みです。最初からやり直してください。',
+        action: RESTART,
+      };
+    case 'pickup_unknown':
+      return {
+        severity: 'warning',
+        step: 'waiting',
+        title: '登録が済んだか確かめられませんでした',
+        body: `自動ではやり直しません。中枢の画面の「登録済みの端末」に${name}があれば失効してから、もう一度登録してください。`,
+        action: '確かめたので、もう一度登録する',
+      };
+    case 'secure_storage_unavailable':
+      return {
+        severity: 'warning',
+        step: 'address',
+        title: 'この端末では登録できません',
+        body: 'OS の鍵束（安全な保存）が使えないため、登録の情報を保存できません。',
+        action: '最初に戻る',
+      };
+    case 'storage_failed':
+      return {
+        severity: 'warning',
+        step: 'waiting',
+        title: '登録の情報を保存できませんでした',
+        body: `中枢の画面の「登録済みの端末」に${name}があれば失効してから、もう一度登録してください。`,
+        action: '確かめたので、もう一度登録する',
+      };
+    case 'protocol_error':
+      return {
+        severity: 'warning',
+        step: 'address',
+        title: '中枢の応答を読めませんでした',
+        body: '中枢とこの端末の版を確かめてから、最初からやり直してください。',
+        action: RESTART,
+      };
+  }
+}
 
 export const OPERATION_STATE_LABELS: Readonly<Record<string, string>> = {
   awaiting_approval: '承認待ち',

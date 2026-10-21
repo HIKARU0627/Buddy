@@ -80,6 +80,9 @@ function render(
   );
 }
 
+const html = (node: ReactNode) =>
+  renderToStaticMarkup(<AppProviders>{node}</AppProviders>);
+
 function pressables(node: ReactNode): Map<string, () => void> {
   const found = new Map<string, () => void>();
   const walk = (current: ReactNode): void => {
@@ -123,7 +126,7 @@ test('an unregistered device starts at step 1 with the address and the stop butt
     /<h2 id="pairing-heading"[^>]*>この端末を中枢に登録する<\/h2>/u,
   );
   assert.match(html, /<section aria-labelledby="pairing-heading">/u);
-  assert.match(html, /手順 1 \/ 4<span[^>]*>中枢の宛先/u);
+  assert.match(html, /手順 1 \/ 4<span[^>]*>宛先の入力/u);
   assert.match(html, /中枢の宛先/u);
   assert.match(html, /https:\/\/ やパスは付けず、宛先だけを入れます。/u);
   assert.match(html, /■ 入出力を停止/u);
@@ -152,7 +155,7 @@ test('the address form is filled from the last typed target or the hub target', 
   assert.equal(inputValue(rereg, '中枢の宛先'), '100.64.0.30');
 });
 
-test('the fingerprint is a fixed 4 by 4 grid and the last four digits are asked for', () => {
+test('the fingerprint is a fixed 4 by 4 grid with the last group masked, and the last four digits are asked for', () => {
   const html = render({ ...base, pairing: pairingAt('fingerprint_check') });
   assert.match(html, /手順 2 \/ 4<span[^>]*>指紋の確認/u);
   assert.match(
@@ -182,10 +185,30 @@ test('the fingerprint is a fixed 4 by 4 grid and the last four digits are asked 
       '0123',
       '4567',
       '89ab',
-      'cdef',
+      '····',
     ],
   );
-  assert.match(html, /中枢の画面の指紋の最後の 4 桁/u);
+  // 入力させる最後の 4 桁（cdef）は、この画面のどこにも出さない（中枢の画面から読む。R1-H1）。
+  const lastRow =
+    /<li[^>]*>0123<\/li><li[^>]*>4567<\/li><li[^>]*>89ab<\/li><li[^>]*>····<\/li><\/ol>/u;
+  assert.match(html, lastRow);
+  assert.match(
+    html,
+    /<li aria-label="最後の 4 桁は伏せています（中枢の画面で読みます）"[^>]*>····<\/li>/u,
+  );
+  assert.match(
+    html,
+    /最後の 4 桁はこの画面では伏せています。中枢の画面から読んで入力してください。/u,
+  );
+  assert.doesNotMatch(html, /64 桁すべてが同じ/u);
+  // 入力は 4 桁の InputOTP（16 進）。
+  assert.match(
+    html,
+    /<label[^>]*id="pairing-tail-label"[^>]*>中枢の画面の指紋の最後の 4 桁<\/label>/u,
+  );
+  assert.match(html, /aria-labelledby="pairing-tail-label"/u);
+  assert.match(html, /maxLength="4"|maxlength="4"/u);
+  assert.match(html, /pattern="\^\[0-9a-fA-F\]\*\$"/u);
   assert.match(html, /一致しないときは申請を送りません。/u);
   assert.match(html, /最後の 4 桁を確かめて次へ/u);
   assert.match(html, /一致しない（やめる）/u);
@@ -202,11 +225,12 @@ test('a tail rejected by main is shown under the tail field', () => {
       },
     },
   );
-  assert.match(html, /data-invalid="true"/u);
   assert.match(
     html,
-    /中枢の画面の指紋の最後の 4 桁.*中枢の画面の指紋と違います。宛先が正しいか確かめてください。/u,
+    /中枢の画面の指紋の最後の 4 桁.*role="alert"[^>]*>中枢の画面の指紋と違います。宛先が正しいか確かめてください。/u,
   );
+  // 合わなかったときも、最後の組は伏せたまま。
+  assert.doesNotMatch(html, /cdef<\/li><\/ol>/u);
 });
 
 test('confirm sends the shown fingerprint and the typed tail; nothing else decides', () => {
@@ -284,16 +308,23 @@ test('a failure gives what happened and what to do, with one action', () => {
     pairing: pairingAt('failed', { failure: 'pickup_unknown' }),
   });
   assert.match(failed, /role="alert"/u);
+  assert.match(failed, /alert--warning/u);
   assert.match(failed, /登録が済んだか確かめられませんでした/u);
   assert.match(failed, /自動ではやり直しません。/u);
-  assert.doesNotMatch(failed, /手順 \d/u);
+  // 失敗の画面でも、どの手順で止まったかを残す。
+  assert.match(failed, /手順 4 \/ 4<span[^>]*>承認待ち/u);
   const sent: DesktopIpcRequest[] = [];
-  pressables(
-    FailedStep({
-      pairing: pairingAt('failed', { failure: 'pickup_unknown' }),
-      actions: pairingActions((built) => sent.push(built)),
-    }),
-  ).get('失効したので、もう一度登録する')?.();
+  const named = FailedStep({
+    pairing: pairingAt('failed', { failure: 'pickup_unknown' }),
+    deviceName: '合成の端末',
+    actions: pairingActions((built) => sent.push(built)),
+  });
+  // 案内に申請した端末名を入れる（中枢の画面の「このマシン」と取り違えない。R1-M6）。
+  assert.match(
+    html(named),
+    /「登録済みの端末」に「合成の端末」があれば失効してから/u,
+  );
+  pressables(named).get('確かめたので、もう一度登録する')?.();
   assert.deepEqual(
     sent.map((request) => request.channel),
     ['desktop.pairing_cancel'],
@@ -303,6 +334,16 @@ test('a failure gives what happened and what to do, with one action', () => {
     pairing: pairingAt('failed', { failure: 'certificate_changed' }),
   });
   assert.match(changed, /中枢の証明書が変わったため、申請を送りませんでした/u);
+  // 証明書が変わったときだけ danger、ほかの失敗は warning。記号（⚠）を付ける。
+  assert.match(changed, /alert--danger/u);
+  assert.match(changed, /alert__indicator/u);
+  // 接続できないときは、試した宛先を出す。
+  const unreachable = render({
+    ...base,
+    pairing: pairingAt('failed', { failure: 'certificate_unavailable' }),
+  });
+  assert.match(unreachable, /100\.64\.0\.10:47443 に接続できませんでした。/u);
+  assert.match(unreachable, /手順 1 \/ 4/u);
   const storage = render({
     ...base,
     registration: 'secure_storage_unavailable',
@@ -334,6 +375,33 @@ test('reregistration explains why first; a changed certificate is a danger alert
     link_reason: 'device_revoked',
   });
   assert.match(html, /この端末は中枢で失効しました.*この端末を中枢に登録する/u);
+  assert.match(html, /alert__indicator/u);
+  // 登録し直している途中は 1 行に縮め、失敗したときは上の警告を出さない（失敗の Alert だけ）。
+  const progressing = render({
+    ...base,
+    registration: 'reregistration_required',
+    link: 'reregistration_required',
+    link_reason: 'certificate_mismatch',
+    pairing: pairingAt('waiting_approval'),
+  });
+  assert.match(
+    progressing,
+    /中枢の証明書が変わったため、登録し直しています。/u,
+  );
+  assert.doesNotMatch(progressing, /覚えがなければ/u);
+  const failedAgain = render({
+    ...base,
+    registration: 'reregistration_required',
+    link: 'reregistration_required',
+    link_reason: 'certificate_mismatch',
+    pairing: pairingAt('failed', { failure: 'claim_expired' }),
+  });
+  assert.doesNotMatch(
+    failedAgain,
+    /中枢の証明書が、登録したときと変わりました/u,
+  );
+  assert.doesNotMatch(failedAgain, /登録し直しています/u);
+  assert.match(failedAgain, /申請の期限が切れました/u);
 });
 
 test('the connection section shows reason, home check and operations without secrets', () => {
@@ -367,7 +435,10 @@ test('the connection section shows reason, home check and operations without sec
     </AppProviders>,
   );
   assert.match(html, /<h2[^>]*>中枢との接続<\/h2>/u);
-  assert.match(html, /● 自宅のネットワークです/u);
+  assert.match(
+    html,
+    /text-success-soft-foreground">●<\/span><span>自宅のネットワークです<\/span>/u,
+  );
   assert.match(html, /結果不明（保留）/u);
   assert.match(html, /00000000-0000-4000-8000-000000000501/u);
   assert.match(html, /版 4・内容版 1/u);
@@ -392,7 +463,10 @@ test('the connection section shows reason, home check and operations without sec
     </AppProviders>,
   );
   assert.match(outside, /<dt[^>]*>理由<\/dt>/u);
-  assert.match(outside, /○ 自宅のネットワークではありません/u);
+  assert.match(
+    outside,
+    /text-warning-soft-foreground">○<\/span><span>自宅のネットワークではありません/u,
+  );
   assert.doesNotMatch(outside, /中枢の操作/u);
   const exempt = renderToStaticMarkup(
     <AppProviders>

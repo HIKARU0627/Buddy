@@ -8654,6 +8654,30 @@
             },
             "channel": {
               "type": "string",
+              "enum": ["desktop.claim_decide", "desktop.device_revoke"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "list_refreshed": {
+              "type": "boolean",
+              "const": false,
+              "description": "承認・拒否・失効は中枢に適用されたが、その後の一覧の取り直しだけが失敗した。画面は前の一覧からその行を除き、一覧の更新を促す（失敗として扱わない）。"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "list_refreshed"],
+          "additionalProperties": false,
+          "description": "受け付けて適用した。一覧は取り直せなかった（ADR 0026）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
               "enum": ["desktop.pairing_open"]
             },
             "outcome": {

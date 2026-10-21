@@ -132,6 +132,8 @@ export interface DesktopCoreLinkOptions {
   readonly networkWatchIntervalMs?: number;
   // 中枢の画面の自宅の登録で、このマシンの指紋を読み取る上限（既定 HOME_COLLECT_TIMEOUT_MS）。
   readonly homeCollectTimeoutMs?: number;
+  // 中枢の画面の端末かの判定の再試行の間隔の単位（試験で短くする）。
+  readonly hubScreenProbeRetryMs?: number;
 }
 
 export interface ConnectionIpcOutcome {
@@ -144,6 +146,10 @@ const UUID_V4 =
 // 最終確認時刻だけが変わったときに画面へ知らせる最短の間隔（レビューの指摘 L8）。中枢の ping（15 秒）の
 // たびには知らせるが、イベントの取り直しなどで続けて変わるときは間引く。
 export const CONFIRMED_ONLY_NOTIFY_INTERVAL_MS = 10_000;
+
+// 中枢の画面の端末かの判定が決まらなかったときの再試行（2・4・6 秒後、最大 3 回。接続し直すと数え直す）。
+export const HUB_SCREEN_PROBE_RETRY_MS = 2_000;
+export const HUB_SCREEN_PROBE_RETRIES = 3;
 
 // 画面（接続の欄・状態欄）に出る接続の状態か。cursor・接続範囲・ID などの変化だけでは画面へ知らせない。
 function visibleChange(previous: LinkState, state: LinkState): boolean {
@@ -173,6 +179,9 @@ export class DesktopCoreLink {
   #hubTarget: { readonly host: string; readonly port: number } | null = null;
   // 中枢の画面の端末として中枢が認めたか（承認待ちの申請の一覧が 200）。null は未確認（B03-06）。
   #hubScreen: boolean | null = null;
+  // 判定が決まらなかったとき（503・429・時間切れ・形の違う 200）の再試行（回数と、待っている timer）。CR-L1。
+  #probeRetries = 0;
+  #probeTimer: (() => void) | null = null;
   // 一覧ごとに作る参照 → 申請 ID・端末 ID。参照だけを画面へ渡す（ID を画面に持たせない）。
   #claimRefs = new Map<string, string>();
   #deviceRefs = new Map<string, string>();
@@ -496,8 +505,10 @@ export class DesktopCoreLink {
         this.#reporter?.stop();
       }
       // 接続するたびに中枢の画面の端末かを確かめる（B03-06）。
-      if (state.phase === 'live' && previous.phase !== 'live')
+      if (state.phase === 'live' && previous.phase !== 'live') {
+        this.#probeRetries = 0;
         void this.#probeHubScreen();
+      }
       // 中枢の API の major が違えば、以後は要求を送らない。自宅の指紋の報告も止める（レビューの指摘 L4）。
       if (state.phase === 'upgrade_required') this.#reporter?.stop();
       // 自宅の外で拒否されたら、すぐに指紋を報告し直す（通れば次の接続で使える）。
@@ -557,30 +568,54 @@ export class DesktopCoreLink {
   }
 
   // 中枢の画面の端末か（承認待ちの申請の一覧の経路が 200 か、403 hub_screen_required か）。
+  // 決まらなかったとき（送れない・結果不明・503・429・形の違う 200）は、間隔を空けて上限まで問い合わせ直す。
+  // 接続が変わったら、古い接続の結果と待っている再試行は捨てる。
   async #probeHubScreen(): Promise<void> {
     const connection = this.#connection;
     if (connection === null || connection.state.phase !== 'live') return;
     if (this.#lockState !== 'unlocked') return;
+    this.#cancelProbeRetry();
     const outcome = await connection.request({
       method: 'GET',
       path: '/v1/pairing/claims',
     });
-    if (connection !== this.#connection || outcome.kind !== 'response') return;
+    if (connection !== this.#connection) return;
     const before = this.#hubScreen;
     if (
+      outcome.kind === 'response' &&
       outcome.status === 200 &&
       this.#options.contract.valid('PairingClaimList', outcome.body)
     )
       this.#hubScreen = true;
     else if (
+      outcome.kind === 'response' &&
       outcome.status === 403 &&
       errorCodeOf(outcome.body) === 'hub_screen_required'
     )
       this.#hubScreen = false;
+    if (this.#hubScreen !== null) this.#probeRetries = 0;
+    else if (this.#probeRetries < HUB_SCREEN_PROBE_RETRIES) {
+      this.#probeRetries += 1;
+      this.#log(`hub_screen_probe_retry:${String(this.#probeRetries)}`);
+      this.#probeTimer = this.#options.clock.setTimer(
+        (this.#options.hubScreenProbeRetryMs ?? HUB_SCREEN_PROBE_RETRY_MS) *
+          this.#probeRetries,
+        () => {
+          this.#probeTimer = null;
+          if (connection === this.#connection && this.#hubScreen === null)
+            void this.#probeHubScreen();
+        },
+      );
+    }
     if (before !== this.#hubScreen) {
       this.#log(`hub_screen:${String(this.#hubScreen)}`);
       this.#options.onChange();
     }
+  }
+
+  #cancelProbeRetry(): void {
+    this.#probeTimer?.();
+    this.#probeTimer = null;
   }
 
   // 中枢の画面の端末の申請の承認・端末の管理（B03-06、ADR 0026）。中枢へ要求を送るので非同期。
@@ -638,7 +673,11 @@ export class DesktopCoreLink {
           return this.#reject(requestId, raw.channel, failed);
         }
         this.#log(`hub_claim_decided:${raw.payload.decision}`);
-        return this.#listClaims(requestId, raw.channel);
+        this.#claimRefs.delete(raw.payload.ref);
+        return this.#afterApplied(
+          requestId,
+          await this.#listClaims(requestId, raw.channel),
+        );
       }
       case 'desktop.device_revoke': {
         const deviceId = this.#deviceRefs.get(raw.payload.ref);
@@ -656,7 +695,10 @@ export class DesktopCoreLink {
           return this.#reject(requestId, raw.channel, failed);
         this.#deviceRefs.delete(raw.payload.ref);
         this.#log('hub_device_revoked');
-        return this.#listDevices(requestId, raw.channel);
+        return this.#afterApplied(
+          requestId,
+          await this.#listDevices(requestId, raw.channel),
+        );
       }
       case 'desktop.pairing_open': {
         // 新しい端末のペアリングを始める。コードは本人が登録する端末に入力するための表示で、この応答にだけ入れる。
@@ -963,6 +1005,28 @@ export class DesktopCoreLink {
     };
   }
 
+  // 承認・拒否・失効は適用できたが、その後の一覧の取り直しだけが失敗したときは、拒否ではなく
+  // 「適用した・一覧は古い」（list_refreshed: false）として返す（CR-L2）。
+  #afterApplied(
+    requestId: string,
+    outcome: ConnectionIpcOutcome,
+  ): ConnectionIpcOutcome {
+    const response = outcome.response;
+    if (
+      response.outcome !== 'rejected' ||
+      (response.channel !== 'desktop.claim_decide' &&
+        response.channel !== 'desktop.device_revoke')
+    )
+      return outcome;
+    this.#log('hub_list_refresh_failed_after_apply');
+    return this.#respond({
+      request_id: requestId,
+      channel: response.channel,
+      outcome: 'ok',
+      list_refreshed: false,
+    });
+  }
+
   // 中枢の画面の操作の結果の分類。null は成功。read は一覧（送れなかった・分からないは未接続として扱う）。
   #adminFailure(
     outcome: Awaited<ReturnType<ClientConnection['request']>>,
@@ -986,6 +1050,8 @@ export class DesktopCoreLink {
 
   #disconnect(): void {
     this.#hubScreen = null;
+    this.#cancelProbeRetry();
+    this.#probeRetries = 0;
     this.#claimRefs.clear();
     this.#deviceRefs.clear();
     this.#homeRef = null;

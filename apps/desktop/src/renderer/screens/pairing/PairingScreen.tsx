@@ -3,6 +3,7 @@
 // 再登録が必要なときは、先に理由を警告し、その下のフォームに前の宛先を入れておく。状態の表示は状態帯の 1 か所だけ。
 import { Alert } from '@heroui/react';
 import { AppShell } from '../../app/AppShell.js';
+import { AlertIcon } from '../../components/AlertIcon.js';
 import { AppFooter } from '../../components/AppFooter.js';
 import { StatusBand } from '../../components/StatusBand.js';
 import {
@@ -33,6 +34,8 @@ export function reregistrationCopy(connection: ShownConnection): {
   readonly status: 'danger' | 'warning';
   readonly title: string;
   readonly body: string;
+  // 登録し直している途中に出す短い 1 行（UI レビュー 2 回目 R2-M6）。
+  readonly short: string;
 } {
   const compare =
     '登録し直すときは、新しい指紋を中枢の画面と必ず比べてください。';
@@ -42,24 +45,28 @@ export function reregistrationCopy(connection: ShownConnection): {
         status: 'danger',
         title: '中枢の証明書が、登録したときと変わりました',
         body: `中枢を入れ直した・証明書を作り直したといった覚えがなければ、登録し直さずに、まず中枢の画面で状態を確かめてください。覚えがあるときは、下から登録し直してください。${compare}`,
+        short: '中枢の証明書が変わったため、登録し直しています。',
       };
     case 'device_revoked':
       return {
         status: 'warning',
         title: 'この端末は中枢で失効しました',
         body: `もう一度使うときは、下から登録し直してください。${compare}`,
+        short: 'この端末は中枢で失効したため、登録し直しています。',
       };
     case 'unauthenticated':
       return {
         status: 'warning',
         title: 'この端末の登録が中枢にありません',
         body: `中枢で失効したか、中枢のデータが作り直された可能性があります。下から登録し直してください。${compare}`,
+        short: 'この端末の登録が中枢にないため、登録し直しています。',
       };
     default:
       return {
         status: 'warning',
         title: '登録の情報を読めませんでした',
         body: `OS の鍵束が作り直された可能性があります。下から登録し直してください。${compare}`,
+        short: '登録の情報を読めなかったため、登録し直しています。',
       };
   }
 }
@@ -110,13 +117,21 @@ export function PairingScreen({
       }
       todo={
         <>
-          {rereg === null ? null : (
+          {/* 理由の警告: 手順を始める前は全文、登録し直している途中は 1 行、失敗したときは失敗の Alert に任せて出さない。 */}
+          {rereg === null || connection.pairing?.step === 'failed' ? null : (
             <Alert status={rereg.status}>
+              <Alert.Indicator>
+                <AlertIcon />
+              </Alert.Indicator>
               <Alert.Content>
-                <Alert.Title>{rereg.title}</Alert.Title>
-                <Alert.Description className="max-w-prose text-sm leading-6 text-foreground">
-                  {rereg.body}
-                </Alert.Description>
+                <Alert.Title>
+                  {connection.pairing === null ? rereg.title : rereg.short}
+                </Alert.Title>
+                {connection.pairing === null ? (
+                  <Alert.Description className="text-sm leading-6 text-foreground">
+                    {rereg.body}
+                  </Alert.Description>
+                ) : null}
               </Alert.Content>
             </Alert>
           )}

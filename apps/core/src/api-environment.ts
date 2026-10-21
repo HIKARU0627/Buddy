@@ -16,6 +16,25 @@ export interface EnvironmentInput {
   readonly params: Readonly<Record<string, string>>;
   // 形式の検査に通った本文。本文のない経路では null。
   readonly body: JsonObject | null;
+  // 要求ヘッダー Buddy-Lock-State で端末の main が申告したロック状態（B03-05、ADR 0025）。
+  // ヘッダーがなければ null。値の検査は形式の検査で済ませている。
+  readonly declaredLockState: DeclaredLockState | null;
+}
+
+// Buddy-Lock-State の値（OpenAPI の components.parameters.LockState）。
+export type DeclaredLockState = 'unlocked' | 'locked';
+export const DECLARED_LOCK_STATES: readonly DeclaredLockState[] = [
+  'unlocked',
+  'locked',
+];
+
+// 端末の申告したロック状態を使う判定（B03-05、ADR 0025）。端末トークンで認証した端末の申告だけを使い、
+// 認証前の要求・申告のない要求は unknown（解除済みと扱わない。07 §2）。
+export function declaredLockState(
+  input: EnvironmentInput,
+): 'unlocked' | 'locked' | 'unknown' {
+  if (input.device === null) return 'unknown';
+  return input.declaredLockState ?? 'unknown';
 }
 
 type Provided<T> = T | Promise<T>;

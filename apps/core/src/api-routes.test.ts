@@ -6,6 +6,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { parse } from 'yaml';
 import { DEVICE_TOKEN_PATTERN } from './api-auth.js';
+import { ROUTE_CHECKS } from '@buddy/domain';
+import { DECLARED_LOCK_STATES } from './api-environment.js';
 import { API_ROUTES, matchRoute } from './api-routes.js';
 import { API_VERSION, INPUT_ORIGINS } from './api-server.js';
 
@@ -130,6 +132,40 @@ test(
       DEVICE_TOKEN_PATTERN.source,
       schema.$defs['DeviceCredential']?.properties?.['device_token']?.pattern,
     );
+  },
+);
+
+test(
+  'Buddy-Lock-State is optional and declared exactly on the routes that use the lock state (ADR 0025)',
+  { timeout: 30_000 },
+  () => {
+    const lock = spec.components.parameters['LockState'];
+    assert.equal(lock?.name, 'Buddy-Lock-State');
+    assert.equal(lock?.in, 'header');
+    assert.equal(lock?.required, false);
+    assert.deepEqual(
+      [...(lock?.schema?.enum ?? [])],
+      [...DECLARED_LOCK_STATES],
+    );
+    // unknown は申告しない（送らない）値なので列挙にない。
+    assert(!(lock?.schema?.enum ?? []).includes('unknown'));
+    const declared = Object.values(spec.paths)
+      .flatMap((item) => Object.values(item))
+      .filter((operation) =>
+        (operation.parameters ?? []).some(
+          (parameter) => parameter.$ref === '#/components/parameters/LockState',
+        ),
+      )
+      .map((operation) => operation.operationId)
+      .sort();
+    const expected = Object.entries(ROUTE_CHECKS)
+      .filter(
+        ([id, checks]) => checks.includes('unlocked') || id === 'getSnapshot',
+      )
+      .map(([id]) => id)
+      .sort();
+    assert.deepEqual(declared, expected);
+    assert.equal(declared.length, 22);
   },
 );
 

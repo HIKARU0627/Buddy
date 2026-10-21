@@ -33,7 +33,10 @@ import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
 import type { HomeNetworkGate } from './api-home-network.js';
 import { ApiListenError, createApiServer } from './api-server.js';
 import type { ApiLimits, ApiServer } from './api-server.js';
-import { SAFE_REQUEST_ENVIRONMENT } from './api-environment.js';
+import {
+  SAFE_REQUEST_ENVIRONMENT,
+  declaredLockState,
+} from './api-environment.js';
 import type { RequestEnvironment } from './api-environment.js';
 import {
   PairingStoreError,
@@ -618,8 +621,10 @@ async function startHttps(
   // 操作の命令の後にイベントを配るよう、命令を送る store を通知つきにする（ADR 0023）。
   const watched = feed.watchStore(store);
   // 注入した環境（試験）が、ペアリングの判定（中枢の画面・申請用の秘密）と自宅判定（B03-03）より優先する。
+  // ロック状態は端末の main が Buddy-Lock-State で申告した値（認証した端末だけ。B03-05、ADR 0025）。
   const base: RequestEnvironment = {
     ...SAFE_REQUEST_ENVIRONMENT,
+    lockState: declaredLockState,
     ...pairing.environment,
     homeNetwork: homeNetwork.homeNetwork,
     ...https.environment,

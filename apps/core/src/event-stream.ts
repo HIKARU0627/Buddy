@@ -166,6 +166,7 @@ export function createEventStream(
       remoteAddress: request.remoteAddress,
       params: request.params,
       body: null,
+      declaredLockState: request.declaredLockState,
     };
 
     const deliver = (events: readonly EventEnvelope[]): boolean => {

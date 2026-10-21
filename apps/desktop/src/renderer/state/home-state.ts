@@ -21,8 +21,10 @@ export interface HomeViewState {
   readonly reading: boolean;
   // 登録を送って結果を待っている（二重に押させない）。
   readonly busy: boolean;
-  // 操作の拒否・失敗の文言（押したボタンのすぐ下に出す）。null なら出さない。
+  // 操作の拒否・失敗の文言。null なら出さない。
   readonly message: string | null;
+  // 文言を出す場所（押したボタンのすぐ下）。status は欄の見出しの「読み取り直す」、register は登録のボタン。
+  readonly messageFrom: 'status' | 'register' | null;
   // 登録が終わった知らせ（一度だけ出す）。
   readonly registered: boolean;
   // main が参照を捨てた（ネットワークが変わった・参照が古い・ロックした）。読み取り直すまで登録のボタンを出さない。
@@ -34,12 +36,19 @@ export const INITIAL_HOME_STATE: HomeViewState = {
   reading: false,
   busy: false,
   message: null,
+  messageFrom: null,
   registered: false,
   stale: false,
 };
 
+// 開発の語（main）を出さない（ADR 0024 の UI レビュー 2 回目の追記 8。中枢の画面と同じ文言）。
 export const HOME_IPC_FAILURE_MESSAGE =
-  'main と通信できませんでした。「読み取り直す」を押してください。';
+  '画面と Buddy の本体の間で通信できませんでした。Buddy を終了して、開き直してください。';
+
+const messageFromOf = (
+  sent: DesktopIpcRequest['channel'],
+): HomeViewState['messageFrom'] =>
+  sent === 'desktop.home_register' ? 'register' : 'status';
 
 // 自宅のネットワークで言い方を変える拒否（何が起きたかと、次の行動）。操作（読み取り・登録）ごとに分ける。
 // それ以外は共通の文言。
@@ -94,6 +103,7 @@ export function applyHomeResponse(
       busy,
       reading,
       message: homeRejectMessage(sent, response.reason),
+      messageFrom: messageFromOf(sent),
       registered: false,
       stale:
         state.stale ||
@@ -120,6 +130,7 @@ export function applyHomeFailure(
     busy: sent === 'desktop.home_register' ? false : state.busy,
     reading: sent === 'desktop.home_status' ? false : state.reading,
     message: HOME_IPC_FAILURE_MESSAGE,
+    messageFrom: messageFromOf(sent),
   };
 }
 
@@ -149,8 +160,20 @@ export function markHomeSending(
   built: DesktopIpcRequest,
 ): HomeViewState {
   if (built.channel === 'desktop.home_register')
-    return { ...state, busy: true, message: null, registered: false };
+    return {
+      ...state,
+      busy: true,
+      message: null,
+      messageFrom: null,
+      registered: false,
+    };
   if (built.channel === 'desktop.home_status')
-    return { ...state, reading: true, message: null, registered: false };
+    return {
+      ...state,
+      reading: true,
+      message: null,
+      messageFrom: null,
+      registered: false,
+    };
   return state;
 }

@@ -163,6 +163,15 @@ test(
     const body = html(request.body);
     assert.match(body, /••:••:••:••:53:01/u);
     assert.match(body, /Tailscale\s*で直接つながっているときだけ/u);
+    // 確かめる値は、値ごとに別の段の大きな等幅で出す。
+    assert.match(
+      body,
+      /ルーターの MAC（最後の 2 組）<\/p><p><span aria-hidden="true" class="font-mono tabular-nums text-2xl[^"]*">••:••:••:••:53:01/u,
+    );
+    assert.match(
+      body,
+      /class="font-mono tabular-nums text-2xl[^"]*">192\.0\.2\.0\/24/u,
+    );
     assert.doesNotMatch(body, /置き換わり/u);
     request.onConfirm();
     assert.deepEqual(
@@ -316,6 +325,10 @@ test(
       failed,
       /role="alert"[\s\S]*このマシンのネットワークを読み取れませんでした/u,
     );
+    // 失敗の Alert は warning（danger は証明書の変化だけ）で、記号を付ける。
+    assert.match(failed, /alert--warning/u);
+    assert.doesNotMatch(failed, /alert--danger/u);
+    assert.match(failed, /alert__indicator/u);
     assert.match(failed, /<span>登録済み<\/span>/u);
     assert.equal(buttonTag(failed, HOME_LABELS.reregister), null);
     // 受け取る前と読み取りの最中。
@@ -346,6 +359,7 @@ test(
         state={state({
           stale: true,
           message: '読み取り直してください',
+          messageFrom: 'register',
           home: { registration: null, observation: OBSERVATION },
         })}
         actions={actions}
@@ -354,19 +368,47 @@ test(
     );
     assert.equal(buttonTag(stale, HOME_LABELS.register), null);
     assert.match(stale, /role="alert"[^>]*>読み取り直してください/u);
-    // 拒否はボタンの下に alert で出す。
+    // 拒否は押したボタンのすぐ下に alert で出す（登録のボタンの下・欄の見出しの「読み取り直す」の下）。
+    const registerRejected = html(
+      <HomeNetworkPanel
+        state={state({
+          message: '拒否の文言',
+          messageFrom: 'register',
+          home: { registration: null, observation: OBSERVATION },
+        })}
+        actions={actions}
+        now={NOW}
+      />,
+    );
     assert.match(
-      html(
-        <HomeNetworkPanel
-          state={state({
-            message: '拒否の文言',
-            home: { registration: null, observation: OBSERVATION },
-          })}
-          actions={actions}
-          now={NOW}
-        />,
+      registerRejected,
+      new RegExp(
+        `>${HOME_LABELS.register}</button></div><p role="alert"[^>]*>拒否の文言`,
+        'u',
       ),
-      /role="alert"[^>]*>拒否の文言/u,
+    );
+    const statusRejected = html(
+      <HomeNetworkPanel
+        state={state({
+          message: '読み取りの拒否',
+          messageFrom: 'status',
+          home: { registration: null, observation: OBSERVATION },
+        })}
+        actions={actions}
+        now={NOW}
+      />,
+    );
+    assert.match(
+      statusRejected,
+      new RegExp(
+        `>${HOME_LABELS.reread}</button></div><p role="alert"[^>]*>読み取りの拒否`,
+        'u',
+      ),
+    );
+    // 「読み取り直す」は outline の小さなボタン（中枢の画面の「一覧を更新」と同じ重さ）。
+    assert.match(
+      String(buttonTag(statusRejected, HOME_LABELS.reread)),
+      /button--outline/u,
     );
     // 登録の知らせ（一度だけ。閉じられる）。
     const done = html(

@@ -463,7 +463,9 @@ export function HubTabs({
         }}
       >
         <Tabs.ListContainer>
-          <Tabs.List aria-label="中枢の画面">
+          {/* タブは高さが 1 行分（h-8）なので折り返さない。4 つのタブが幅 640px でも 1 行に収まり、狭いときは
+              HeroUI の一覧の横送りに任せる（B03-08 で「自宅のネットワーク」を足した）。 */}
+          <Tabs.List aria-label="中枢の画面" className="whitespace-nowrap">
             <Tabs.Tab id="claims">
               {HUB_LABELS.claimsTitle}
               {claimCount > 0 ? `（${claimCount}）` : ''}
@@ -474,7 +476,7 @@ export function HubTabs({
               <Tabs.Indicator />
             </Tabs.Tab>
             {home === undefined ? null : (
-              <Tabs.Tab id="home" className="whitespace-nowrap">
+              <Tabs.Tab id="home">
                 {HUB_LABELS.homeTitle}
                 <Tabs.Indicator />
               </Tabs.Tab>

@@ -2,6 +2,8 @@
 // 上から「説明 → 登録している自宅 → このマシンが今つながっているネットワーク（伏せた表示・登録のボタン）」。
 // 登録・登録し直しは確認（ConfirmDialog）を挟んでから送る。画面に来るのは伏せた表示と main の参照だけで、
 // MAC・SSID の値はない。タブを開いたときに main へ読み取りを頼む。状態と操作は引数で受け取り、限定 API を直接呼ばない。
+// UI レビュー 2 回目の約束（ADR 0024 の追記）: 失敗の Alert は warning（danger は証明書の変化だけ）で記号を付ける。
+// 操作の結果の文言は押したボタンのすぐ下に出す。確認のダイアログでは、確かめる値を大きな等幅で別の段に出す。
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Alert, Button, CloseButton, Spinner } from '@heroui/react';
@@ -9,6 +11,7 @@ import type {
   DesktopHomeObservation,
   HomeRegistration,
 } from '@buddy/contracts';
+import { AlertIcon } from '../../components/AlertIcon.js';
 import { Section } from '../../components/Section.js';
 import { StatusMark, StatusText } from '../../components/StatusText.js';
 import { clockOf } from '../../format.js';
@@ -82,10 +85,19 @@ function Rows({
 }
 
 // ゲートウェイの MAC の伏せた表示（最後の 2 組だけ）。読み上げでは伏せたことを言う。
-function MaskedMac({ tail }: { readonly tail: string }) {
+function MaskedMac({
+  tail,
+  className = '',
+}: {
+  readonly tail: string;
+  readonly className?: string;
+}) {
   return (
     <>
-      <span aria-hidden="true" className="font-mono tabular-nums">
+      <span
+        aria-hidden="true"
+        className={`font-mono tabular-nums ${className}`}
+      >
         ••:••:••:••:{tail}
       </span>
       <span className="sr-only">
@@ -98,8 +110,10 @@ function MaskedMac({ tail }: { readonly tail: string }) {
 // SSID の伏せた表示（先頭の 1 文字と文字数。3 文字以下は文字数だけ）。
 function MaskedSsid({
   hint,
+  className = '',
 }: {
   readonly hint: NonNullable<DesktopHomeObservation['ssid_hint']>;
+  readonly className?: string;
 }) {
   const masked =
     hint.first === null
@@ -107,7 +121,7 @@ function MaskedSsid({
       : `${hint.first}${'•'.repeat(hint.length - 1)}`;
   return (
     <>
-      <span aria-hidden="true" className="font-mono break-all">
+      <span aria-hidden="true" className={`font-mono break-all ${className}`}>
         {masked}
       </span>{' '}
       <span className="text-muted tabular-nums">（{hint.length} 文字）</span>
@@ -195,7 +209,9 @@ export function RegistrationSection({
                   [
                     '最終更新',
                     <span key="at" className="tabular-nums">
-                      {clockOf(registration.registered_at, now)}
+                      {clockOf(registration.registered_at, now, {
+                        date: true,
+                      })}
                     </span>,
                   ],
                 ]}
@@ -231,11 +247,14 @@ export function CurrentNetworkSection({
       id="home-current-heading"
       title={HOME_LABELS.currentTitle}
       action={
-        <Button size="sm" variant="ghost" onPress={actions.refresh}>
+        <Button size="sm" variant="outline" onPress={actions.refresh}>
           {HOME_LABELS.reread}
         </Button>
       }
     >
+      {state.messageFrom === 'status' ? (
+        <MessageText text={state.message} />
+      ) : null}
       {state.reading ? (
         <p role="status" className="flex items-center gap-2 text-sm text-muted">
           <Spinner size="sm" color="current" aria-hidden="true" />
@@ -243,7 +262,10 @@ export function CurrentNetworkSection({
         </p>
       ) : null}
       {home === null ? null : observation === null ? (
-        <Alert status="danger" role="alert">
+        <Alert status="warning" role="alert">
+          <Alert.Indicator>
+            <AlertIcon />
+          </Alert.Indicator>
           <Alert.Content>
             <Alert.Title>{HOME_LABELS.readFailedTitle}</Alert.Title>
             <Alert.Description className="text-sm leading-6 text-foreground">
@@ -264,8 +286,13 @@ export function CurrentNetworkSection({
               </span>
               <span>{HOME_LABELS.notRegistrable}</span>
             </p>
-          ) : state.stale ? null : (
+          ) : state.stale ? (
             // main が参照を捨てた後は、読み取り直すまで登録のボタンを置かない（押せないボタンを置かない）。
+            // 理由と次の行動は、ボタンがあった場所に出す。
+            <MessageText
+              text={state.messageFrom === 'register' ? state.message : null}
+            />
+          ) : (
             <div className="flex flex-col gap-2">
               {observation.ssid_hint === null ? (
                 <p className="max-w-prose text-xs leading-5 text-muted">
@@ -293,19 +320,74 @@ export function CurrentNetworkSection({
                     : HOME_LABELS.reregister}
                 </Button>
               </div>
+              {state.messageFrom === 'register' ? (
+                <MessageText text={state.message} />
+              ) : null}
             </div>
           )}
         </>
       )}
-      {state.message === null ? null : (
-        <p
-          role="alert"
-          className="max-w-prose text-sm leading-6 text-warning-soft-foreground"
-        >
-          {state.message}
-        </p>
-      )}
     </Section>
+  );
+}
+
+// 操作の拒否・失敗の文言（押したボタンのすぐ下。warning の文字色）。
+function MessageText({ text }: { readonly text: string | null }) {
+  if (text === null) return null;
+  return (
+    <p
+      role="alert"
+      className="max-w-prose text-sm leading-6 text-warning-soft-foreground"
+    >
+      {text}
+    </p>
+  );
+}
+
+// 確認のダイアログで確かめる値（大きな等幅で、値ごとに別の段に出す。ADR 0024 の UI レビュー 2 回目の追記 6）。
+function ConfirmValues({
+  observation,
+}: {
+  readonly observation: DesktopHomeObservation;
+}) {
+  const value = 'text-2xl font-semibold tracking-wider';
+  const items: [string, ReactNode][] = [
+    [
+      'ルーターの MAC（最後の 2 組）',
+      observation.gateway_mac_tail === null ? null : (
+        <MaskedMac tail={observation.gateway_mac_tail} className={value} />
+      ),
+    ],
+    [
+      'サブネット',
+      <span key="subnet" className={`font-mono tabular-nums ${value}`}>
+        {observation.subnet}
+      </span>,
+    ],
+    [
+      'Wi-Fi の名前（SSID）',
+      observation.ssid_hint !== null ? (
+        <MaskedSsid hint={observation.ssid_hint} className={value} />
+      ) : (
+        <span className="text-sm">
+          {
+            SSID_REASON_LABELS[
+              observation.ssid_unavailable_reason ?? 'unavailable'
+            ]
+          }
+        </span>
+      ),
+    ],
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      {items.map(([label, shown]) => (
+        <div key={label} className="flex flex-col gap-1">
+          <p className="text-sm font-medium">{label}</p>
+          <p>{shown}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -324,7 +406,7 @@ export function confirmRequest(
         : '自宅の登録を今のネットワークで置き換えますか',
     body: (
       <div className="flex flex-col gap-4">
-        <Rows rows={observationRows(observation)} />
+        <ConfirmValues observation={observation} />
         <p className="text-sm leading-6">
           登録すると、中枢と別のマシンの端末は、このネットワークにつながっていて
           Tailscale で直接つながっているときだけ中枢に接続できます。
@@ -334,7 +416,7 @@ export function confirmRequest(
             今の登録（
             <span className="font-mono">{registration.subnet}</span>・
             <span className="tabular-nums">
-              {clockOf(registration.registered_at, now)}
+              {clockOf(registration.registered_at, now, { date: true })}
             </span>
             ）は置き換わり、元に戻せません。前のネットワークにいる端末は接続できなくなります。
           </p>
@@ -365,6 +447,11 @@ export function HomeNetworkPanel({
     <div className="flex flex-col gap-6">
       {state.registered ? (
         <Alert status="success">
+          <Alert.Indicator>
+            <span aria-hidden="true" className="text-sm leading-none">
+              ●
+            </span>
+          </Alert.Indicator>
           <Alert.Content>
             <Alert.Title>{HOME_LABELS.doneTitle}</Alert.Title>
           </Alert.Content>

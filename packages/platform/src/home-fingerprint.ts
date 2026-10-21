@@ -14,7 +14,10 @@
 //   1〜3. PowerShell の Get-NetRoute（0.0.0.0/0 の経路の中で経路と接続口の metric の和が最小）・
 //         Get-NetNeighbor（ゲートウェイの LinkLayerAddress）・Get-NetIPAddress（IPv4 と PrefixLength）を JSON で出す
 //   4. `netsh wlan show interfaces` の SSID の行（BSSID の行は除く。複数の無線の接続口があれば取得できない扱い）
+//   PowerShell・netsh は %SystemRoot% からの絶対パスで呼ぶ（PATH の先に置かれた同じ名前の実行ファイルを使わない。
+//   レビューの指摘 L9）。SystemRoot が取れない・形が違うときは PATH から探さず、すべて取得できない扱い。
 // Linux は対象外（すべて取得できない）。
+import { win32 } from 'node:path';
 import type { CommandRunner } from './runner.js';
 
 export interface HomeFingerprintObservation {
@@ -46,8 +49,36 @@ export const ROUTE_PATH = '/sbin/route';
 export const ARP_PATH = '/usr/sbin/arp';
 export const IPCONFIG_PATH = '/usr/sbin/ipconfig';
 export const NETWORKSETUP_PATH = '/usr/sbin/networksetup';
-export const POWERSHELL_COMMAND = 'powershell.exe';
-export const NETSH_COMMAND = 'netsh.exe';
+
+// SystemRoot として受け付ける形: ドライブ文字と絶対パス（例 C:\Windows）。相対・UNC・`.`・`..`・不正な文字は不可。
+const SYSTEM_ROOT = /^[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\?)*$/u;
+
+export interface WindowsCommandPaths {
+  readonly powershell: string;
+  readonly netsh: string;
+}
+
+// %SystemRoot% から PowerShell（Windows PowerShell 5.1）と netsh の絶対パスを作る。使えない値なら null。
+export function windowsCommandPaths(
+  systemRoot: string | undefined,
+): WindowsCommandPaths | null {
+  if (
+    systemRoot === undefined ||
+    !SYSTEM_ROOT.test(systemRoot) ||
+    systemRoot.split('\\').some((part) => part === '..' || part === '.')
+  )
+    return null;
+  const system32 = win32.join(systemRoot, 'System32');
+  return {
+    powershell: win32.join(
+      system32,
+      'WindowsPowerShell',
+      'v1.0',
+      'powershell.exe',
+    ),
+    netsh: win32.join(system32, 'netsh.exe'),
+  };
+}
 
 // Windows で既定のゲートウェイ・その MAC・接続口の IPv4 を JSON で出す PowerShell のスクリプト。
 export const WINDOWS_ROUTE_SCRIPT = [
@@ -224,6 +255,8 @@ export interface HomeFingerprintCollectorOptions {
   readonly runner: CommandRunner;
   // 接続口のアドレス（既定は os.networkInterfaces を渡す。試験では合成の値）。
   readonly networkInterfaces: NetworkInterfacesSource;
+  // Windows の %SystemRoot%（省略すれば環境変数 SystemRoot）。コマンドの絶対パスに使う。
+  readonly systemRoot?: string | undefined;
 }
 
 async function runText(
@@ -297,8 +330,18 @@ async function collectMac(
 async function collectWindows(
   options: HomeFingerprintCollectorOptions,
 ): Promise<HomeFingerprintObservation> {
+  const commands = windowsCommandPaths(
+    'systemRoot' in options ? options.systemRoot : process.env['SystemRoot'],
+  );
+  if (commands === null)
+    return {
+      gateway_mac: null,
+      subnet: null,
+      ssid: null,
+      unavailable: ['system_root_unavailable'],
+    };
   const unavailable: string[] = [];
-  const routeText = await runText(options.runner, POWERSHELL_COMMAND, [
+  const routeText = await runText(options.runner, commands.powershell, [
     '-NoProfile',
     '-NonInteractive',
     '-Command',
@@ -311,7 +354,7 @@ async function collectWindows(
   if (gatewayMac === null) unavailable.push('gateway_mac_unavailable');
   const subnet = route?.subnet ?? null;
   if (subnet === null) unavailable.push('subnet_unavailable');
-  const wlan = await runText(options.runner, NETSH_COMMAND, [
+  const wlan = await runText(options.runner, commands.netsh, [
     'wlan',
     'show',
     'interfaces',

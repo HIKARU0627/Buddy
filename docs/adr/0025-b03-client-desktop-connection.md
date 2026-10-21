@@ -97,6 +97,7 @@ ADR 0020・0023 ではロック状態の判定の元が中枢になく（既定 
 ### 自宅の指紋の報告
 
 - 5 分ごと（中枢は 6 分の間だけ使う）、接続口の変化（`os.networkInterfaces()` の値の変化を 15 秒ごとに確かめる）、スリープからの復帰、自宅の外で拒否されたときに、`@buddy/platform/home-fingerprint` で集めて `POST /v1/home-network/reports` で送る。契約の形に合わない要素は null にする。
+- Windows の収集のコマンド（ADR 0022 の PowerShell・netsh）は、`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`・`%SystemRoot%\System32\netsh.exe` の絶対パスで呼ぶ（PATH の先に置かれた同じ名前の実行ファイルを使わない。レビューの指摘 L9）。SystemRoot が取れない・ドライブ文字からの絶対パスでない（相対・UNC・`..`）ときは PATH から探さず、すべて取得できない（`system_root_unavailable`）。
 - 判定が通れば、自宅の外で待っていた接続をすぐに接続し直す。指紋の値は報告の本文にだけ入れ、画面・ログに出さない。
 - 再登録が必要・版違い（upgrade_required）になれば報告を止める（以後は中枢へ要求を送らない。版違いはレビューの指摘 L4 で足した）。
 

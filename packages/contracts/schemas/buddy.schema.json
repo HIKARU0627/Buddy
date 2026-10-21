@@ -251,6 +251,21 @@
       "$ref": "#/$defs/DeviceRevokeRequest"
     },
     {
+      "$ref": "#/$defs/HomeFingerprint"
+    },
+    {
+      "$ref": "#/$defs/HomeFingerprintReport"
+    },
+    {
+      "$ref": "#/$defs/HomeNetworkStatus"
+    },
+    {
+      "$ref": "#/$defs/HomeRegistrationRequest"
+    },
+    {
+      "$ref": "#/$defs/HomeRegistration"
+    },
+    {
       "$ref": "#/$defs/ConnectionList"
     },
     {
@@ -6832,6 +6847,9 @@
         },
         "claim_secret_hash": {
           "$ref": "#/$defs/Hash"
+        },
+        "home_fingerprint": {
+          "$ref": "#/$defs/HomeFingerprint"
         }
       },
       "required": [
@@ -6839,10 +6857,11 @@
         "pairing_code",
         "device_name",
         "platform",
-        "claim_secret_hash"
+        "claim_secret_hash",
+        "home_fingerprint"
       ],
       "additionalProperties": false,
-      "description": "登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。"
+      "description": "登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。 home_fingerprint は申請する端末が見た自宅の指紋で、中枢は申請の自宅判定（home_network）に使う（ADR 0022）。"
     },
     "PairingClaim": {
       "type": "object",
@@ -6899,11 +6918,14 @@
         "claim_secret": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "home_fingerprint": {
+          "$ref": "#/$defs/HomeFingerprint"
         }
       },
-      "required": ["claim_secret"],
+      "required": ["claim_secret", "home_fingerprint"],
       "additionalProperties": false,
-      "description": "申請用の秘密（256 ビット、base64url）。承認後に 1 回だけトークンと交換できる。URL に入れない。"
+      "description": "申請用の秘密（256 ビット、base64url）。承認後に 1 回だけトークンと交換できる。URL に入れない。 home_fingerprint は受取りの時点の自宅の指紋（登録前の端末は報告を持たないため、受取りの自宅判定に使う。ADR 0022）。"
     },
     "DeviceCredential": {
       "type": "object",
@@ -7001,6 +7023,180 @@
       },
       "required": ["request_id", "command_scope_id"],
       "additionalProperties": false
+    },
+    "MacAddress": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{2}(:[0-9a-f]{2}){5}$",
+      "description": "MAC アドレス（小文字の 16 進 2 桁をコロンでつないだ 6 組）。中枢は受け取った値を HMAC にしてから保存し、平文を DB に置かない（ADR 0022）。"
+    },
+    "HomeSubnet": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/([89]|[12][0-9]|30)$",
+      "description": "自宅のサブネット（IPv4 の CIDR、接頭辞の長さは 8〜30）。ネットワークのアドレス（ホスト部が 0）でなければ中枢が 422 で拒否する（形式だけでは表せない検査、ADR 0022）。"
+    },
+    "WifiSsid": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "Wi-Fi の SSID。中枢は HMAC にしてから保存する（ADR 0022）。"
+    },
+    "HomeFingerprint": {
+      "type": "object",
+      "properties": {
+        "gateway_mac": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MacAddress"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subnet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HomeSubnet"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ssid": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WifiSsid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["gateway_mac", "subnet", "ssid"],
+      "additionalProperties": false,
+      "description": "端末が見た自宅の指紋（設計 11 §10、ADR 0022）。既定のゲートウェイの MAC・端末のサブネット・Wi-Fi の SSID。取得できない要素は null（推測で埋めない）。ゲートウェイの MAC とサブネットは自宅判定に必須で、SSID は登録値と報告の両方にあるときだけ比べる。指紋だけでは許可せず、Tailscale の直接経路が自宅 LAN の中にあることも求める。"
+    },
+    "HomeFingerprintReport": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/HomeFingerprint"
+        }
+      },
+      "required": ["request_id", "fingerprint"],
+      "additionalProperties": false,
+      "description": "端末からの自宅の指紋の報告。中枢は受け取った時刻から 6 分の間だけ使い、端末の時計は使わない（ADR 0022）。"
+    },
+    "HomeNetworkReason": {
+      "type": "string",
+      "enum": [
+        "home_not_registered",
+        "report_missing",
+        "report_stale",
+        "report_clock_inconsistent",
+        "gateway_mac_unavailable",
+        "gateway_mac_mismatch",
+        "subnet_unavailable",
+        "subnet_mismatch",
+        "ssid_mismatch",
+        "tailscale_unavailable",
+        "tailscale_peer_not_found",
+        "tailscale_derp",
+        "tailscale_peer_relay",
+        "direct_address_missing",
+        "direct_address_invalid",
+        "direct_address_outside_home"
+      ],
+      "description": "自宅判定が成り立たない理由（診断用、domain の homeNetworkDecision）。MAC・SSID・アドレスの値を含めない。"
+    },
+    "HomeNetworkStatus": {
+      "type": "object",
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "exempt": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/HomeNetworkReason"
+          }
+        },
+        "report_expires_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["allowed", "exempt", "reasons", "report_expires_at"],
+      "additionalProperties": false,
+      "description": "報告を受け取った後の自宅判定（ADR 0022）。allowed は理由が一つもないときだけ true。exempt は中枢と同じマシンのクライアントの免除。不成立のとき、中枢はその端末の接続範囲を失効させ、WSS を閉じる。report_expires_at は報告を使わなくなる時刻（免除のときは null）。"
+    },
+    "HomeRegistrationRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "gateway_mac": {
+          "$ref": "#/$defs/MacAddress"
+        },
+        "subnet": {
+          "$ref": "#/$defs/HomeSubnet"
+        },
+        "ssid": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WifiSsid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "gateway_mac",
+        "subnet",
+        "ssid"
+      ],
+      "additionalProperties": false,
+      "description": "自宅の登録（中枢の画面だけ、家ごとに 1 つで登録し直すと置き換える。ADR 0022）。ゲートウェイの MAC とサブネットは必須、SSID は取れなければ null。"
+    },
+    "HomeRegistration": {
+      "type": "object",
+      "properties": {
+        "subnet": {
+          "$ref": "#/$defs/HomeSubnet"
+        },
+        "ssid_registered": {
+          "type": "boolean"
+        },
+        "registered_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": ["subnet", "ssid_registered", "registered_at"],
+      "additionalProperties": false,
+      "description": "登録した自宅（ADR 0022）。MAC と SSID は HMAC だけを保存するので返さない。"
     },
     "ConnectionTargets": {
       "type": "object",

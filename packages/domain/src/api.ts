@@ -55,6 +55,10 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   startOAuth: [...SCREEN, 'hub_screen'],
   updateConnectionTargets: [...SCREEN, 'expected_revision'],
   disconnectConnection: [...SCREEN, 'expected_revision'],
+  // 自宅の指紋の報告（B03-03、ADR 0022）。報告そのものが自宅判定の材料なので home_network を求めない。
+  reportHomeFingerprint: ['device_token'],
+  // 自宅の登録は中枢の画面からだけ（家ごとに 1 つ）。
+  registerHome: [...SCREEN, 'hub_screen'],
 };
 
 export interface RequestContext {

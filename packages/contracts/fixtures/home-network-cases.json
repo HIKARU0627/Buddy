@@ -1,0 +1,353 @@
+{
+  "status": "specification_only",
+  "description": "自宅ネットワークの判定の期待値（設計 11 §10、02 運用上の境界、X42、ADR 0022）。手で書いたもので、domain の実装から生成していない。hash は HMAC の代わりの合成の識別子、アドレスは文書用（RFC 5737）の値。now_ms と received_at_ms は UTC の Unix ミリ秒（基準の 1917475200000 は 2030-10-06T00:00:00Z）。",
+  "base": {
+    "same_machine_hub_client": false,
+    "registration": {
+      "gateway_mac_hash": "hmac-mac-home",
+      "subnet": "192.0.2.0/24",
+      "ssid_hash": "hmac-ssid-home"
+    },
+    "report": {
+      "gateway_mac_hash": "hmac-mac-home",
+      "subnet": "192.0.2.0/24",
+      "ssid_hash": "hmac-ssid-home",
+      "received_at_ms": 1917475200000
+    },
+    "tailscale": {
+      "kind": "peer",
+      "cur_addr": "192.0.2.23:41641",
+      "relay": "tok",
+      "peer_relay": ""
+    },
+    "now_ms": 1917475260000
+  },
+  "cases": [
+    {
+      "id": "x42-direct-and-fingerprint-match",
+      "title": "指紋が一致し、直接経路が自宅のサブネットの中",
+      "change": {},
+      "expected": { "allowed": true, "exempt": false, "reasons": [] }
+    },
+    {
+      "id": "x42-fingerprint-mismatch",
+      "title": "ゲートウェイの MAC が違う（直接経路は自宅の中でも拒否）",
+      "change": {
+        "report": {
+          "gateway_mac_hash": "hmac-mac-other",
+          "subnet": "192.0.2.0/24",
+          "ssid_hash": "hmac-ssid-home",
+          "received_at_ms": 1917475200000
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["gateway_mac_mismatch"]
+      }
+    },
+    {
+      "id": "x42-derp",
+      "title": "DERP を通っている（CurAddr が空で Relay がある）。指紋は一致",
+      "change": {
+        "tailscale": {
+          "kind": "peer",
+          "cur_addr": "",
+          "relay": "tok",
+          "peer_relay": ""
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["tailscale_derp"]
+      }
+    },
+    {
+      "id": "x42-route-unknown",
+      "title": "CurAddr も中継も空で経路を確認できない",
+      "change": {
+        "tailscale": {
+          "kind": "peer",
+          "cur_addr": "",
+          "relay": "",
+          "peer_relay": ""
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["direct_address_missing"]
+      }
+    },
+    {
+      "id": "x42-tailscale-unavailable",
+      "title": "tailscale status --json を取得できない",
+      "change": { "tailscale": { "kind": "unavailable" } },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["tailscale_unavailable"]
+      }
+    },
+    {
+      "id": "x42-fingerprint-only-is-not-enough",
+      "title": "指紋は一致するが、直接のアドレスが自宅のサブネットの外（指紋だけでは許可しない）",
+      "change": {
+        "tailscale": {
+          "kind": "peer",
+          "cur_addr": "198.51.100.7:41641",
+          "relay": "tok",
+          "peer_relay": ""
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["direct_address_outside_home"]
+      }
+    },
+    {
+      "id": "x42-direct-only-is-not-enough",
+      "title": "直接経路は自宅の中だが、端末の報告がない",
+      "change": { "report": null },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["report_missing"]
+      }
+    },
+    {
+      "id": "x42-peer-not-found",
+      "title": "接続元のアドレスに合うピアがない",
+      "change": { "tailscale": { "kind": "peer_not_found" } },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["tailscale_peer_not_found"]
+      }
+    },
+    {
+      "id": "peer-relay",
+      "title": "ピアの中継を通っている（直接経路ではない）",
+      "change": {
+        "tailscale": {
+          "kind": "peer",
+          "cur_addr": "",
+          "relay": "tok",
+          "peer_relay": "198.51.100.9:7777"
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["tailscale_peer_relay"]
+      }
+    },
+    {
+      "id": "ipv6-direct-address",
+      "title": "直接のアドレスが IPv6（自宅のサブネットは IPv4 なので中と確かめられない）",
+      "change": {
+        "tailscale": {
+          "kind": "peer",
+          "cur_addr": "[2001:db8::23]:41641",
+          "relay": "tok",
+          "peer_relay": ""
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["direct_address_outside_home"]
+      }
+    },
+    {
+      "id": "invalid-direct-address",
+      "title": "CurAddr が読めない",
+      "change": {
+        "tailscale": {
+          "kind": "peer",
+          "cur_addr": "192.0.2.300:41641",
+          "relay": "tok",
+          "peer_relay": ""
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["direct_address_invalid"]
+      }
+    },
+    {
+      "id": "x42-report-fresh-just-before-6-minutes",
+      "title": "報告から 5 分 59.999 秒は使う",
+      "change": { "now_ms": 1917475559999 },
+      "expected": { "allowed": true, "exempt": false, "reasons": [] }
+    },
+    {
+      "id": "x42-report-stale-at-6-minutes",
+      "title": "報告から 6 分ちょうどで使わない",
+      "change": { "now_ms": 1917475560000 },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["report_stale"]
+      }
+    },
+    {
+      "id": "report-from-the-future",
+      "title": "中枢の時計が報告の受け取りより前に戻った",
+      "change": { "now_ms": 1917475199999 },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["report_clock_inconsistent"]
+      }
+    },
+    {
+      "id": "ssid-mismatch-when-both-present",
+      "title": "SSID は両方にあれば比べる",
+      "change": {
+        "report": {
+          "gateway_mac_hash": "hmac-mac-home",
+          "subnet": "192.0.2.0/24",
+          "ssid_hash": "hmac-ssid-other",
+          "received_at_ms": 1917475200000
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["ssid_mismatch"]
+      }
+    },
+    {
+      "id": "ssid-missing-in-report-is-not-compared",
+      "title": "報告で SSID が取れなければ比べない（有線・取得の制限）",
+      "change": {
+        "report": {
+          "gateway_mac_hash": "hmac-mac-home",
+          "subnet": "192.0.2.0/24",
+          "ssid_hash": null,
+          "received_at_ms": 1917475200000
+        }
+      },
+      "expected": { "allowed": true, "exempt": false, "reasons": [] }
+    },
+    {
+      "id": "ssid-not-registered-is-not-compared",
+      "title": "登録で SSID がなければ比べない",
+      "change": {
+        "registration": {
+          "gateway_mac_hash": "hmac-mac-home",
+          "subnet": "192.0.2.0/24",
+          "ssid_hash": null
+        }
+      },
+      "expected": { "allowed": true, "exempt": false, "reasons": [] }
+    },
+    {
+      "id": "mac-and-subnet-unavailable",
+      "title": "ゲートウェイの MAC とサブネットは必須（取れなければ拒否）",
+      "change": {
+        "report": {
+          "gateway_mac_hash": null,
+          "subnet": null,
+          "ssid_hash": "hmac-ssid-home",
+          "received_at_ms": 1917475200000
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["gateway_mac_unavailable", "subnet_unavailable"]
+      }
+    },
+    {
+      "id": "subnet-mismatch",
+      "title": "端末のサブネットが違う",
+      "change": {
+        "report": {
+          "gateway_mac_hash": "hmac-mac-home",
+          "subnet": "192.0.2.0/25",
+          "ssid_hash": "hmac-ssid-home",
+          "received_at_ms": 1917475200000
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["subnet_mismatch"]
+      }
+    },
+    {
+      "id": "home-not-registered",
+      "title": "自宅が未登録なら、指紋も経路も比べられないので拒否",
+      "change": { "registration": null },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["home_not_registered"]
+      }
+    },
+    {
+      "id": "several-reasons-are-all-reported",
+      "title": "古い報告・MAC の不一致・DERP を同時に返す（診断のため）",
+      "change": {
+        "now_ms": 1917475600000,
+        "report": {
+          "gateway_mac_hash": "hmac-mac-other",
+          "subnet": "192.0.2.0/24",
+          "ssid_hash": null,
+          "received_at_ms": 1917475200000
+        },
+        "tailscale": {
+          "kind": "peer",
+          "cur_addr": "",
+          "relay": "tok",
+          "peer_relay": ""
+        }
+      },
+      "expected": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["report_stale", "gateway_mac_mismatch", "tailscale_derp"]
+      }
+    },
+    {
+      "id": "x42-hub-client-is-exempt",
+      "title": "中枢と同じマシンのクライアントは自宅判定だけ免除（Tailscale を取得できず報告がなくても）",
+      "change": {
+        "same_machine_hub_client": true,
+        "report": null,
+        "tailscale": { "kind": "unavailable" }
+      },
+      "expected": { "allowed": true, "exempt": true, "reasons": [] }
+    }
+  ],
+  "subnets": [
+    { "text": "192.0.2.0/24", "canonical": true },
+    { "text": "10.0.0.0/8", "canonical": true },
+    { "text": "198.51.100.128/25", "canonical": true },
+    { "text": "203.0.113.4/30", "canonical": true },
+    { "text": "192.0.2.5/24", "canonical": false },
+    { "text": "192.0.2.0/31", "canonical": false },
+    { "text": "10.0.0.0/7", "canonical": false },
+    { "text": "192.0.2.0/024", "canonical": false },
+    { "text": "192.000.2.0/24", "canonical": false },
+    { "text": "192.0.2/24", "canonical": false },
+    { "text": " 192.0.2.0/24", "canonical": false }
+  ],
+  "address_subnets": [
+    { "address": "192.0.2.23", "prefix": 24, "expected": "192.0.2.0/24" },
+    {
+      "address": "198.51.100.200",
+      "prefix": 25,
+      "expected": "198.51.100.128/25"
+    },
+    { "address": "203.0.113.7", "prefix": 30, "expected": "203.0.113.4/30" },
+    { "address": "10.1.2.3", "prefix": 8, "expected": "10.0.0.0/8" },
+    { "address": "192.0.2.23", "prefix": 32, "expected": null },
+    { "address": "192.0.2.256", "prefix": 24, "expected": null }
+  ]
+}

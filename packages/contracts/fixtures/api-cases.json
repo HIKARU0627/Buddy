@@ -893,7 +893,12 @@
         "pairing_code": "12345678",
         "device_name": "合成の端末",
         "platform": "windows",
-        "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "home_fingerprint": {
+          "gateway_mac": "00:00:5e:00:53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid": "合成の自宅"
+        }
       },
       "response": {
         "claim_id": "00000000-0000-4000-8000-000000000013",
@@ -913,6 +918,30 @@
           "pairing_code": "1234",
           "device_name": "合成の端末",
           "platform": "windows",
+          "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "home_fingerprint": {
+            "gateway_mac": "00:00:5e:00:53:01",
+            "subnet": "192.0.2.0/24",
+            "ssid": "合成の自宅"
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "pairing_code": "12345678",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          "home_fingerprint": {
+            "gateway_mac": "00:00:5e:00:53:01",
+            "subnet": "192.0.2.0/24",
+            "ssid": "合成の自宅"
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "pairing_code": "12345678",
+          "device_name": "合成の端末",
+          "platform": "windows",
           "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
         },
         {
@@ -920,7 +949,12 @@
           "pairing_code": "12345678",
           "device_name": "合成の端末",
           "platform": "windows",
-          "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+          "claim_secret_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "home_fingerprint": {
+            "gateway_mac": "00-00-5E-00-53-01",
+            "subnet": "192.0.2.0/24",
+            "ssid": null
+          }
         }
       ]
     },
@@ -964,7 +998,12 @@
         "claim_id": "00000000-0000-4000-8000-000000000013"
       },
       "request": {
-        "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+        "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "home_fingerprint": {
+          "gateway_mac": "00:00:5e:00:53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid": null
+        }
       },
       "response": {
         "device_id": "00000000-0000-4000-8000-000000000007",
@@ -979,7 +1018,15 @@
       "accepted_contexts": ["no_token"],
       "invalid_bodies": [
         {
-          "claim_secret": "short"
+          "claim_secret": "short",
+          "home_fingerprint": {
+            "gateway_mac": "00:00:5e:00:53:01",
+            "subnet": "192.0.2.0/24",
+            "ssid": "合成の自宅"
+          }
+        },
+        {
+          "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
         }
       ]
     },
@@ -1186,6 +1233,122 @@
         {
           "request_id": "00000000-0000-4000-8000-000000009001",
           "command_scope_id": "00000000-0000-4000-8000-000000009002"
+        }
+      ]
+    },
+    "reportHomeFingerprint": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009003",
+        "fingerprint": {
+          "gateway_mac": "00:00:5e:00:53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid": null
+        }
+      },
+      "response": {
+        "allowed": false,
+        "exempt": false,
+        "reasons": ["tailscale_derp"],
+        "report_expires_at": "2030-10-05T00:06:00Z"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "accepted_contexts": [
+        "outside_home",
+        "stale_scope",
+        "locked",
+        "voice_origin",
+        "remote_device"
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009003",
+          "fingerprint": {
+            "gateway_mac": "00:00:5e:00:53:01",
+            "subnet": "192.0.2.0/24"
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009003",
+          "fingerprint": {
+            "gateway_mac": "00:00:5e:00:53:01",
+            "subnet": "192.0.2.0/31",
+            "ssid": null
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009003",
+          "fingerprint": {
+            "gateway_mac": "00:00:5e:00:53:01",
+            "subnet": "192.0.2.0/24",
+            "ssid": ""
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009003",
+          "fingerprint": {
+            "gateway_mac": null,
+            "subnet": null,
+            "ssid": null
+          },
+          "device_id": "00000000-0000-4000-8000-000000000007"
+        }
+      ]
+    },
+    "registerHome": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009004",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "gateway_mac": "00:00:5e:00:53:01",
+        "subnet": "192.0.2.0/24",
+        "ssid": "合成の自宅"
+      },
+      "response": {
+        "subnet": "192.0.2.0/24",
+        "ssid_registered": true,
+        "registered_at": "2030-10-05T00:00:00Z"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["remote_device", 403, "hub_screen_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009004",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "gateway_mac": null,
+          "subnet": "192.0.2.0/24",
+          "ssid": null
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009004",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "gateway_mac": "00:00:5e:00:53:01",
+          "subnet": null,
+          "ssid": null
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009004",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "gateway_mac": "00:00:5e:00:53:01",
+          "subnet": "192.0.2.0/24"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009004",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "gateway_mac": "00:00:5e:00:53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid": null,
+          "allow_outside": true
         }
       ]
     }

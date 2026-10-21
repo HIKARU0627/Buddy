@@ -86,6 +86,11 @@ export type BuddyContract =
   | DeviceCredential
   | DeviceList
   | DeviceRevokeRequest
+  | HomeFingerprint
+  | HomeFingerprintReport
+  | HomeNetworkStatus
+  | HomeRegistrationRequest
+  | HomeRegistration
   | ConnectionList
   | ConnectionSummary
   | OAuthStartRequest
@@ -555,6 +560,38 @@ export type EventStreamMessage =
       reason: 'store_generation_changed' | 'history_expired' | 'scope_expired';
     };
 export type DevicePlatform = 'windows' | 'macos' | 'linux';
+/**
+ * MAC アドレス（小文字の 16 進 2 桁をコロンでつないだ 6 組）。中枢は受け取った値を HMAC にしてから保存し、平文を DB に置かない（ADR 0022）。
+ */
+export type MacAddress = string;
+/**
+ * 自宅のサブネット（IPv4 の CIDR、接頭辞の長さは 8〜30）。ネットワークのアドレス（ホスト部が 0）でなければ中枢が 422 で拒否する（形式だけでは表せない検査、ADR 0022）。
+ */
+export type HomeSubnet = string;
+/**
+ * Wi-Fi の SSID。中枢は HMAC にしてから保存する（ADR 0022）。
+ */
+export type WifiSsid = string;
+/**
+ * 自宅判定が成り立たない理由（診断用、domain の homeNetworkDecision）。MAC・SSID・アドレスの値を含めない。
+ */
+export type HomeNetworkReason =
+  | 'home_not_registered'
+  | 'report_missing'
+  | 'report_stale'
+  | 'report_clock_inconsistent'
+  | 'gateway_mac_unavailable'
+  | 'gateway_mac_mismatch'
+  | 'subnet_unavailable'
+  | 'subnet_mismatch'
+  | 'ssid_mismatch'
+  | 'tailscale_unavailable'
+  | 'tailscale_peer_not_found'
+  | 'tailscale_derp'
+  | 'tailscale_peer_relay'
+  | 'direct_address_missing'
+  | 'direct_address_invalid'
+  | 'direct_address_outside_home';
 /**
  * UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。
  */
@@ -2618,7 +2655,7 @@ export interface PairingSession {
   attempts_left: number;
 }
 /**
- * 登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。
+ * 登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。 home_fingerprint は申請する端末が見た自宅の指紋で、中枢は申請の自宅判定（home_network）に使う（ADR 0022）。
  */
 export interface PairingClaimRequest {
   request_id: Id;
@@ -2626,6 +2663,15 @@ export interface PairingClaimRequest {
   device_name: string;
   platform: DevicePlatform;
   claim_secret_hash: Hash;
+  home_fingerprint: HomeFingerprint;
+}
+/**
+ * 端末が見た自宅の指紋（設計 11 §10、ADR 0022）。既定のゲートウェイの MAC・端末のサブネット・Wi-Fi の SSID。取得できない要素は null（推測で埋めない）。ゲートウェイの MAC とサブネットは自宅判定に必須で、SSID は登録値と報告の両方にあるときだけ比べる。指紋だけでは許可せず、Tailscale の直接経路が自宅 LAN の中にあることも求める。
+ */
+export interface HomeFingerprint {
+  gateway_mac: MacAddress | null;
+  subnet: HomeSubnet | null;
+  ssid: WifiSsid | null;
 }
 export interface PairingClaim {
   claim_id: Id;
@@ -2643,10 +2689,11 @@ export interface PairingDecisionRequest {
   decision: 'approve' | 'reject';
 }
 /**
- * 申請用の秘密（256 ビット、base64url）。承認後に 1 回だけトークンと交換できる。URL に入れない。
+ * 申請用の秘密（256 ビット、base64url）。承認後に 1 回だけトークンと交換できる。URL に入れない。 home_fingerprint は受取りの時点の自宅の指紋（登録前の端末は報告を持たないため、受取りの自宅判定に使う。ADR 0022）。
  */
 export interface PairingTokenRequest {
   claim_secret: string;
+  home_fingerprint: HomeFingerprint;
 }
 /**
  * 端末別トークン（256 ビット）。端末は OS の保護領域に保存し、中枢は照合用の hash（device_token の ASCII の 43 文字の SHA-256、ADR 0020）と失効状態だけを持つ。この応答は 1 回だけ返す。
@@ -2674,6 +2721,40 @@ export interface DeviceSummary {
 export interface DeviceRevokeRequest {
   request_id: Id;
   command_scope_id: Id;
+}
+/**
+ * 端末からの自宅の指紋の報告。中枢は受け取った時刻から 6 分の間だけ使い、端末の時計は使わない（ADR 0022）。
+ */
+export interface HomeFingerprintReport {
+  request_id: Id;
+  fingerprint: HomeFingerprint;
+}
+/**
+ * 報告を受け取った後の自宅判定（ADR 0022）。allowed は理由が一つもないときだけ true。exempt は中枢と同じマシンのクライアントの免除。不成立のとき、中枢はその端末の接続範囲を失効させ、WSS を閉じる。report_expires_at は報告を使わなくなる時刻（免除のときは null）。
+ */
+export interface HomeNetworkStatus {
+  allowed: boolean;
+  exempt: boolean;
+  reasons: HomeNetworkReason[];
+  report_expires_at: UtcTime | null;
+}
+/**
+ * 自宅の登録（中枢の画面だけ、家ごとに 1 つで登録し直すと置き換える。ADR 0022）。ゲートウェイの MAC とサブネットは必須、SSID は取れなければ null。
+ */
+export interface HomeRegistrationRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  gateway_mac: MacAddress;
+  subnet: HomeSubnet;
+  ssid: WifiSsid | null;
+}
+/**
+ * 登録した自宅（ADR 0022）。MAC と SSID は HMAC だけを保存するので返さない。
+ */
+export interface HomeRegistration {
+  subnet: HomeSubnet;
+  ssid_registered: boolean;
+  registered_at: UtcTime;
 }
 export interface ConnectionList {
   connections: ConnectionSummary[];

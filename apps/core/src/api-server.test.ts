@@ -481,6 +481,12 @@ test(
       device_name: '合成の端末',
       platform: 'windows',
       claim_secret_hash: 'c'.repeat(64),
+      // 申請の自宅の指紋（B03-03、文書用の合成値）。
+      home_fingerprint: {
+        gateway_mac: '00:00:5e:00:53:01',
+        subnet: '192.0.2.0/24',
+        ssid: null,
+      },
     });
     const claimPadded = (size: number) =>
       claim + ' '.repeat(size - Buffer.byteLength(claim));

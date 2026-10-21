@@ -766,7 +766,7 @@ paths:
     post:
       operationId: claimPairing
       summary: 登録の申請（認証前）
-      description: 端末が指紋を照合した後に送る。認証前のため上限を小さくし、メールや会話を返さない。コードの不一致は残り回数を減らし、無効になったら 410（pairing_failed）（02）。
+      description: 端末が指紋を照合した後に送る。自宅判定は本文の home_fingerprint と接続元の Tailscale の直接経路で行う（ADR 0022）。認証前のため上限を小さくし、メールや会話を返さない。コードの不一致は残り回数を減らし、無効になったら 410（pairing_failed）（02）。
       x-buddy-core-checks:
         - home_network
       security: []
@@ -843,7 +843,7 @@ paths:
     post:
       operationId: pickupPairingToken
       summary: 端末トークンの受取り
-      description: 承認済みの申請だけ。申請用の秘密と交換で 1 回だけ返し、2 回目以降・期限切れは 410。承認前は 409（ADR 0009）。
+      description: 承認済みの申請だけ。申請用の秘密と交換で 1 回だけ返し、2 回目以降・期限切れは 410。承認前は 409（ADR 0009）。自宅判定は本文の home_fingerprint と接続元の Tailscale の直接経路で行う（ADR 0022）。
       x-buddy-core-checks:
         - home_network
         - claim_secret
@@ -938,6 +938,77 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/home-network/reports:
+    post:
+      operationId: reportHomeFingerprint
+      summary: 自宅の指紋の報告
+      description: 端末が見た自宅の指紋（ゲートウェイの MAC・サブネット・SSID）を送る。報告そのものが自宅判定の材料なので home_network は求めない。中枢は受け取った時刻から 6 分の間だけ使い、MAC と SSID は HMAC にしてから保存する。応答は報告を受け取った後の自宅判定で、不成立ならその端末の接続範囲を失効させ、WSS を閉じる（11 §10、ADR 0022）。
+      x-buddy-core-checks:
+        - device_token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HomeFingerprintReport
+      responses:
+        '200':
+          description: 報告を受け取った後の自宅判定。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HomeNetworkStatus
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/home-network/registration:
+    put:
+      operationId: registerHome
+      summary: 自宅の登録
+      description: 中枢のロック解除済みの画面だけ。家ごとに 1 つで、登録し直すと置き換える。ゲートウェイの MAC とサブネットは必須、SSID は取れなければ null。MAC と SSID は HMAC にしてから保存する。外出先からの接続を有効にする経路はない（11 §10、ADR 0022）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - hub_screen
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HomeRegistrationRequest
+      responses:
+        '200':
+          description: 登録した自宅。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HomeRegistration
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '410':
           $ref: '#/components/responses/Gone'
         '413':
@@ -1180,7 +1251,7 @@ components:
           schema:
             $ref: ./schemas/buddy.schema.json#/$defs/ApiError
     Forbidden:
-      description: 自宅判定の不成立（outside_home_network）、ロック中・ロック状態不明（device_locked）、画面操作でない（screen_operation_required）、中枢の画面でない（hub_screen_required）、音声所有権がない（audio_ownership_required）、対象権限の不足（forbidden）。
+      description: 自宅判定の不成立（outside_home_network。自宅の指紋の一致と Tailscale の直接経路が自宅 LAN の中にあることの両方が要り、確認できないときも含む。認証済みの端末なら接続範囲を失効させ WSS を閉じる。ADR 0022）、ロック中・ロック状態不明（device_locked）、画面操作でない（screen_operation_required）、中枢の画面でない（hub_screen_required）、音声所有権がない（audio_ownership_required）、対象権限の不足（forbidden）。
       content:
         application/json:
           schema:

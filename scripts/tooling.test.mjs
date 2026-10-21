@@ -253,3 +253,56 @@ test('platform の Electron・Core 依存を拒否し Node 組み込みは受け
     [],
   );
 });
+
+test('端末側の接続（packages/client）は Node・Electron・中枢・OS アダプターを読み込めず、試験だけが Node を使える', async () => {
+  for (const specifier of [
+    'node:fs',
+    'fs',
+    'node:tls',
+    'electron',
+    'ws',
+    '@buddy/core',
+    '@buddy/platform',
+    '@buddy/storage',
+    '@buddy/desktop',
+    '../../domain/src/index.js',
+  ])
+    assert.ok(
+      restrictedImport(
+        await violations(
+          `export * from '${specifier}';\n`,
+          'packages/client/src/probe.ts',
+        ),
+      ),
+      specifier,
+    );
+  const dynamic = await violations(
+    "export const load = () => import('@buddy/domain');\n",
+    'packages/client/src/probe.ts',
+  );
+  assert.ok(
+    dynamic.some((message) => message.ruleId === 'no-restricted-syntax'),
+  );
+  assert.deepEqual(
+    await violations(
+      "import { applyEvents } from '@buddy/domain';\nimport type { Bootstrap } from '@buddy/contracts';\nexport const probe = (b: Bootstrap) => [applyEvents, b];\n",
+      'packages/client/src/probe.ts',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    await violations(
+      "import test from 'node:test';\nimport { readFileSync } from 'node:fs';\nexport const probe = [test, readFileSync];\n",
+      'packages/client/src/probe.test.ts',
+    ),
+    [],
+  );
+  assert.ok(
+    restrictedImport(
+      await violations(
+        "export * from '@buddy/core';\n",
+        'packages/client/src/probe.test.ts',
+      ),
+    ),
+  );
+});

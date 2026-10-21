@@ -302,6 +302,22 @@ importers:
         specifier: 8.3.4
         version: 8.3.4(@types/node@24.19.2)(yaml@2.9.1)
 
+  packages/client:
+    dependencies:
+      '@buddy/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@buddy/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: 3.0.1
+        version: 3.0.1(ajv@8.20.0)
+
   packages/contracts: {}
 
   packages/domain: {}

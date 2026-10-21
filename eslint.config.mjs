@@ -128,6 +128,86 @@ export default tseslint.config(
       ),
     },
   },
+  // 端末側の接続の純粋な部分（B03-05、ADR 0025）。Node・DOM・Electron・中枢・OS アダプターを読み込まない。
+  // 公開出口の @buddy/domain・@buddy/contracts だけを使う。
+  {
+    files: ['packages/client/**/*.ts'],
+    rules: {
+      'no-restricted-imports': restricted(
+        [
+          ['node:*', 'electron', 'electron/*', '@electron/*'],
+          [
+            '@buddy/core',
+            '@buddy/core/*',
+            '@buddy/storage',
+            '@buddy/storage/*',
+            '@buddy/desktop',
+            '@buddy/desktop/*',
+            '@buddy/platform',
+            '@buddy/platform/*',
+            '@buddy/client',
+            '@buddy/client/*',
+          ],
+          [
+            '../**/packages/**',
+            '../**/apps/**',
+            '../**/contracts/**',
+            '../**/domain/**',
+            '../**/storage/**',
+            '../**/platform/**',
+            '../**/core/**',
+            '../**/desktop/**',
+          ],
+          ['ws', 'ws/*'],
+        ],
+        nodeImports,
+      ),
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression',
+          message: '共有層の依存は静的 import で明示してください。',
+        },
+        {
+          selector: 'TSImportType',
+          message: '共有層の型依存は import type で明示してください。',
+        },
+      ],
+    },
+  },
+  {
+    // client の試験と模擬だけは Node の test runner・assert・fs と Ajv を使う（製品のコードからは読み込めない）。
+    files: [
+      'packages/client/src/**/*.test.ts',
+      'packages/client/src/test-support.ts',
+    ],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-restricted-imports': restricted([
+        ['electron', 'electron/*', '@electron/*'],
+        [
+          '@buddy/core',
+          '@buddy/core/*',
+          '@buddy/storage',
+          '@buddy/storage/*',
+          '@buddy/desktop',
+          '@buddy/desktop/*',
+          '@buddy/platform',
+          '@buddy/platform/*',
+        ],
+        [
+          '../**/packages/**',
+          '../**/apps/**',
+          '../**/contracts/**',
+          '../**/domain/**',
+          '../**/storage/**',
+          '../**/platform/**',
+          '../**/core/**',
+          '../**/desktop/**',
+        ],
+      ]),
+    },
+  },
   {
     files: ['apps/core/**/*.ts', 'packages/storage/**/*.ts'],
     languageOptions: { globals: globals.node },

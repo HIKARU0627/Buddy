@@ -2608,7 +2608,7 @@ export interface PairingStartRequest {
   command_scope_id: Id;
 }
 /**
- * 中枢の画面に出すワンタイムコードと中枢の証明書の指紋（設計 02 端末登録と接続）。有効 5 分・連続 5 回失敗で無効は設計初期値。中枢の画面の端末だけが受け取る。
+ * 中枢の画面に出すワンタイムコードと中枢の証明書の指紋（設計 02 端末登録と接続）。certificate_fingerprint は中枢の TLS 証明書の DER 全体の SHA-256 を小文字の 16 進 64 桁にした値で、端末は TLS で見えた証明書から同じ方法で求めて比べ、以後の接続でピン留めする（ADR 0020）。有効 5 分・連続 5 回失敗で無効は設計初期値。中枢の画面の端末だけが受け取る。
  */
 export interface PairingSession {
   pairing_id: Id;
@@ -2649,7 +2649,7 @@ export interface PairingTokenRequest {
   claim_secret: string;
 }
 /**
- * 端末別トークン（256 ビット）。端末は OS の保護領域に保存し、中枢は照合用の hash と失効状態だけを持つ。この応答は 1 回だけ返す。
+ * 端末別トークン（256 ビット）。端末は OS の保護領域に保存し、中枢は照合用の hash（device_token の ASCII の 43 文字の SHA-256、ADR 0020）と失効状態だけを持つ。この応答は 1 回だけ返す。
  */
 export interface DeviceCredential {
   device_id: Id;

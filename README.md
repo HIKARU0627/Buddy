@@ -2,7 +2,7 @@
 
 生活・学習・開発を支える、デバイスに依存しない個人 AI アシスタント。
 
-現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。B02 では SQLite の保存・鍵保護（キーチェーン）・暗号化・DB worker を作り、Core に組み込んで再起動の後の復元と内容 hash の照合を行いました（ADR 0016〜0019、完了判定の下書きは [docs/b02/README.md](docs/b02/README.md)）。B02 の試験は模擬のみで、macOS 実機の確認・電源断と、製品の統合・実 API・実請求の試験は未実施です。
+現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。B02 では SQLite の保存・鍵保護（キーチェーン）・暗号化・DB worker を作り、Core に組み込んで再起動の後の復元と内容 hash の照合を行いました（ADR 0016〜0019、完了判定の下書きは [docs/b02/README.md](docs/b02/README.md)）。B02 の試験は模擬のみで、macOS 実機の確認・電源断と、製品の統合・実 API・実請求の試験は未実施です。B03-01 では中枢の自己署名証明書（秘密鍵はキーチェーン）・HTTPS の受付・経路検査・接続範囲の発行を作りました（[ADR 0020](docs/adr/0020-b03-https-tls-and-route-checks.md)。127.0.0.1 の模擬のみ）。
 
 ## セットアップ
 
@@ -45,21 +45,22 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [中枢の KeyStore と sealed_blobs の暗号化（AES-256-GCM）](docs/adr/0017-b02-keystore-and-encryption.md)
 - [DB worker と操作・承認・受付の保存](docs/adr/0018-b02-db-worker-and-operation-store.md)
 - [Core への DB の組み込みと再起動の復元・内容 hash の照合](docs/adr/0019-b02-core-storage-integration.md)
+- [中枢の TLS 証明書・HTTPS の受付・経路検査の基盤](docs/adr/0020-b03-https-tls-and-route-checks.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成
 
-| 場所                 | 責務・現在の状態                                                           |
-| -------------------- | -------------------------------------------------------------------------- |
-| `packages/contracts` | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続          |
-| `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成                |
-| `packages/storage`   | Core の保存アダプター。SQLite・暗号化・DB worker・内容 hash（B02）         |
-| `packages/platform`  | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う          |
-| `apps/core`          | Electron から独立した Node.js 中枢。起動・停止・排他・制御・DB（B01・B02） |
-| `apps/desktop`       | Electron / React クライアント。B01 はトレイ常駐・端末状態の記録まで        |
-| `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                             |
-| `scripts`            | 環境確認、設計資料の整合検査、試験実行                                     |
-| `docs/design`        | 公開できる設計概要と非公開原本の参照手順                                   |
+| 場所                 | 責務・現在の状態                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `packages/contracts` | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続                               |
+| `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成                                     |
+| `packages/storage`   | Core の保存アダプター。SQLite・暗号化・DB worker・内容 hash（B02）                              |
+| `packages/platform`  | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う                               |
+| `apps/core`          | Electron から独立した Node.js 中枢。起動・停止・排他・制御・DB（B01・B02）・HTTPS の受付（B03） |
+| `apps/desktop`       | Electron / React クライアント。B01 はトレイ常駐・端末状態の記録まで                             |
+| `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                                                  |
+| `scripts`            | 環境確認、設計資料の整合検査、試験実行                                                          |
+| `docs/design`        | 公開できる設計概要と非公開原本の参照手順                                                        |
 
 ## コマンド
 

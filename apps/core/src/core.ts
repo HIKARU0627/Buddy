@@ -2,9 +2,10 @@
 //
 // 起動: 起動前の検査（鍵保護）→ データディレクトリ → 排他ロック → データ鍵の読み直し（作成しない）
 //   → B01 の状態ファイルの読み取り → DB worker（書込み接続・耐久設定の読み戻し・マイグレーション・
-//   健全性・鍵の照合値・store_generation）→ 状態ファイルの片付け → 起動時の回復 → 制御チャネル → running。
+//   健全性・鍵の照合値・store_generation）→ 状態ファイルの片付け → 起動時の回復
+//   →（HTTPS を設定したとき）TLS の身元（秘密鍵はキーチェーン）→ HTTPS の待ち受け → 制御チャネル → running。
 //   どこかで失敗したら書込みを始めず（DB worker を閉じ、ロックを返し）、理由を付けて起動を拒否する。
-// 停止: 新しい要求の受付停止（stopping）→ 制御チャネルを閉じる → DB worker を閉じる
+// 停止: 新しい要求の受付停止（stopping）→ HTTPS を閉じる → 制御チャネルを閉じる → DB worker を閉じる
 //   → ソケット・ロックの解放 → stopped。ロックは DB を閉じた後に返す（同じ DB の書き手を一つに保つ）。
 // Electron には依存せず、クライアントの終了は Core の状態に影響しない。
 
@@ -24,6 +25,10 @@ import type {
   StoreBindingResult,
   StoreGenerationSource,
 } from '@buddy/storage';
+import type { TlsKeyStore } from '@buddy/platform';
+import { ApiListenError, createApiServer } from './api-server.js';
+import type { ApiLimits, ApiServer } from './api-server.js';
+import type { RequestEnvironment } from './api-environment.js';
 import { callControl, listenControlServer } from './control-channel.js';
 import type { ControlServer } from './control-channel.js';
 import type {
@@ -51,6 +56,8 @@ import { runPreflight } from './preflight.js';
 import type { PreflightCheck } from './preflight.js';
 import { RecoveryError, recoverInterruptedOperations } from './recovery.js';
 import type { RecoveryReport } from './recovery.js';
+import { TlsIdentityError, loadOrCreateTlsIdentity } from './tls-identity.js';
+import type { TlsIdentityCreation } from './tls-identity.js';
 
 export type CoreStartRefusal =
   | 'preflight_failed'
@@ -68,7 +75,13 @@ export type CoreStartRefusal =
   // DB を書込み可能にできない（耐久設定・版・健全性・権限など）。
   | 'store_open_failed'
   // 起動時の回復を記録できない。
-  | 'store_recovery_failed';
+  | 'store_recovery_failed'
+  // HTTPS の設定（待ち受けるアドレス・ポート）が不正。
+  | 'https_config_invalid'
+  // TLS の秘密鍵を鍵保護から取得できない・証明書が使えない（HTTPS を開かない）。
+  | 'tls_unavailable'
+  // HTTPS の待ち受けに失敗した（使用中のポート・存在しないアドレスなど）。
+  | 'https_listen_failed';
 
 export class CoreStartError extends Error {
   readonly code: CoreStartRefusal;
@@ -79,6 +92,27 @@ export class CoreStartError extends Error {
     this.code = code;
     this.reasons = reasons;
   }
+}
+
+// HTTPS の受付の設定（ADR 0020）。渡さなければ HTTPS を開かない（B01・B02 の起動と同じ）。
+export interface CoreHttpsOptions {
+  // 待ち受ける IP アドレス。製品は Tailscale のアドレス、試験は 127.0.0.1。全アドレスは拒否する。
+  readonly host: string;
+  // 0 は OS が選ぶ（試験用）。
+  readonly port: number;
+  // TLS の秘密鍵の取得元（@buddy/platform の TlsKeyStore。macOS はキーチェーンの tls-key-v1）。
+  readonly tlsKeyStore: TlsKeyStore;
+  // 判定の元がまだない文脈（自宅判定など）。試験で差し替える。省略したものは安全側。
+  readonly environment?: Partial<RequestEnvironment>;
+  readonly limits?: Partial<ApiLimits>;
+}
+
+export interface CoreHttpsInfo {
+  readonly host: string;
+  readonly port: number;
+  // 証明書の DER 全体の SHA-256 の小文字の 16 進。
+  readonly certificateFingerprint: string;
+  readonly certificateCreation: TlsIdentityCreation;
 }
 
 export interface StartCoreOptions {
@@ -100,6 +134,8 @@ export interface StartCoreOptions {
   // 停止時に残りの接続を待つ時間。過ぎたら切断する。
   readonly shutdownGraceMs?: number;
   readonly log?: (message: string) => void;
+  // HTTPS の受付。省略すれば開かない。
+  readonly https?: CoreHttpsOptions;
 }
 
 export interface CoreHandle {
@@ -117,6 +153,8 @@ export interface CoreHandle {
   readonly recovery: RecoveryReport;
   // DB worker のクライアント（受付・照会は B03 以降でここを使う）。停止すると閉じる。
   readonly store: DbWorkerClient;
+  // HTTPS の受付。設定しなければ null。
+  readonly https: CoreHttpsInfo | null;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -292,6 +330,8 @@ export async function startCore(
 
   // ここから先の失敗では、取ったロックを必ず返す（DB worker を起動していれば先に閉じる）。
   let opened: OpenedStore | null = null;
+  let api: ApiServer | null = null;
+  let httpsInfo: CoreHttpsInfo | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
   let closedResolve: () => void = () => undefined;
@@ -326,6 +366,7 @@ export async function startCore(
         errors.push(error);
       }
     };
+    await step(async () => api?.close(options.shutdownGraceMs ?? 2000));
     await step(() => control.close(options.shutdownGraceMs ?? 2000));
     // 処理中の命令を終えてから DB を閉じる。ロックはその後に返す。
     await step(async () => opened?.store.close());
@@ -347,6 +388,25 @@ export async function startCore(
 
   try {
     opened = await openStore(dataDir, options, log);
+    if (options.https !== undefined) {
+      const started = await startHttps(
+        dataDir,
+        options.https,
+        opened.store,
+        coreInstanceId,
+        () => lifecycle.state === 'running',
+        now,
+      );
+      api = started.api;
+      httpsInfo = started.info;
+      log(
+        `HTTPS を待ち受けました（${httpsInfo.host}:${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`,
+      );
+      if (httpsInfo.certificateCreation !== 'existing')
+        log(
+          '証明書を新しく作りました。登録済みの端末は指紋が合わなくなるため、再登録が必要です。',
+        );
+    }
     const handle = (request: ControlRequest) => {
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
@@ -369,6 +429,7 @@ export async function startCore(
       removeSocketFile,
     );
   } catch (error) {
+    await api?.close(0).catch(() => undefined);
     await opened?.store.close().catch(() => undefined);
     await releaseLock(dataDir, coreInstanceId).catch(() => undefined);
     if (error instanceof DataDirError)
@@ -394,12 +455,73 @@ export async function startCore(
     schemaVersion: store.schemaVersion,
     recovery,
     store,
+    https: httpsInfo,
     get state() {
       return lifecycle.state;
     },
     status,
     stop: (reason) => requestStop(reason),
     closed,
+  };
+}
+
+// TLS の身元を読み込み（初回は作り）、HTTPS を待ち受ける。鍵保護が使えなければ開かない。
+async function startHttps(
+  dataDir: string,
+  https: CoreHttpsOptions,
+  store: DbWorkerClient,
+  coreInstanceId: string,
+  accepting: () => boolean,
+  now: () => Date,
+): Promise<{ readonly api: ApiServer; readonly info: CoreHttpsInfo }> {
+  let identity;
+  try {
+    identity = await loadOrCreateTlsIdentity({
+      dataDir,
+      tlsKeyStore: https.tlsKeyStore,
+      now: now(),
+    });
+  } catch (error) {
+    if (error instanceof TlsIdentityError)
+      throw new CoreStartError('tls_unavailable', error.reasons);
+    throw error;
+  }
+  let api: ApiServer;
+  try {
+    api = createApiServer({
+      host: https.host,
+      port: https.port,
+      identity,
+      store,
+      coreInstanceId,
+      accepting,
+      now: () => now().getTime(),
+      ...(https.environment === undefined
+        ? {}
+        : { environment: https.environment }),
+      ...(https.limits === undefined ? {} : { limits: https.limits }),
+    });
+  } catch (error) {
+    if (error instanceof ApiListenError)
+      throw new CoreStartError('https_config_invalid', [error.reason]);
+    throw error;
+  }
+  try {
+    await api.listen();
+  } catch (error) {
+    await api.close(0).catch(() => undefined);
+    if (error instanceof ApiListenError)
+      throw new CoreStartError('https_listen_failed', [error.reason]);
+    throw error;
+  }
+  return {
+    api,
+    info: {
+      host: api.host,
+      port: api.port,
+      certificateFingerprint: identity.fingerprint,
+      certificateCreation: identity.creation,
+    },
   };
 }
 

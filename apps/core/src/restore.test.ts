@@ -47,6 +47,7 @@ import type {
   ResultState,
   SqliteDatabase,
 } from '@buddy/storage';
+import { onCleanup } from './api-test-support.js';
 import { CoreStartError, startCore } from './core.js';
 import type { CoreHandle, StartCoreOptions } from './core.js';
 import { MOCK_DATA_KEY_SEED } from './preflight.js';
@@ -78,7 +79,8 @@ const materialOf = (key: Buffer): DataKeyMaterial => ({
 
 async function tempDataDir(t: test.TestContext): Promise<string> {
   const base = await mkdtemp(join(tmpdir(), 'buddy-restore-'));
-  t.after(() =>
+  // 後始末は後に登録したもの（Core の停止・子プロセスの終了）から先に行う（core.test.ts と同じ理由）。
+  onCleanup(t, () =>
     rm(base, {
       recursive: true,
       force: true,
@@ -101,7 +103,7 @@ async function start(
     probeTimeoutMs: 300,
     ...options,
   });
-  t.after(async () => {
+  onCleanup(t, async () => {
     await handle.stop('test').catch(() => undefined);
   });
   return handle;
@@ -583,7 +585,7 @@ async function startCli(
     [CLI, 'start', '--mock-key-protection', '--data-dir', dataDir],
     { stdio: ['ignore', 'pipe', 'pipe'] },
   );
-  t.after(() => {
+  onCleanup(t, () => {
     if (child.exitCode === null && child.signalCode === null)
       child.kill('SIGKILL');
   });

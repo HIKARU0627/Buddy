@@ -723,7 +723,7 @@ paths:
     post:
       operationId: startPairing
       summary: ペアリングの開始
-      description: 中枢のロック解除済みの画面だけ。ワンタイムコードと証明書の指紋を返す（02 端末登録と接続、ADR 0009）。
+      description: 中枢のロック解除済みの画面だけ。ワンタイムコードと証明書の指紋（証明書の DER 全体の SHA-256 の小文字の 16 進、ADR 0020）を返す（02 端末登録と接続、ADR 0009）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -1110,7 +1110,7 @@ components:
     deviceToken:
       type: http
       scheme: bearer
-      description: 登録端末トークン（256 ビット）。device_id は認証結果から中枢が決め、本文の端末 ID では処理しない。Renderer へ公開しない（07 §2、02）。
+      description: 登録端末トークン（256 ビット、base64url の 43 文字）。中枢はトークンの ASCII の SHA-256 で登録端末を引き、トークンそのものを保存しない（ADR 0020）。device_id は認証結果から中枢が決め、本文の端末 ID では処理しない。Renderer へ公開しない（07 §2、02）。
   parameters:
     OperationId:
       name: id

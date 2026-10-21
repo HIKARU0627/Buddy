@@ -15,6 +15,7 @@ import type {
   StoreTimings,
 } from './operation-store.js';
 import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
+import type { DeviceOp, DeviceOpResult } from './device-store.js';
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -76,6 +77,8 @@ export type MainToWorker =
       readonly command: DbCommand;
     }
   | { readonly type: 'query'; readonly id: number; readonly query: DbQuery }
+  // 端末・接続範囲の命令と照会（ADR 0020）。
+  | { readonly type: 'device'; readonly id: number; readonly op: DeviceOp }
   | { readonly type: 'close'; readonly id: number };
 
 export interface WorkerTimings extends StoreTimings {
@@ -115,6 +118,12 @@ export type WorkerToMain =
       readonly type: 'query_failed';
       readonly id: number;
       readonly reason: string;
+    }
+  | {
+      readonly type: 'device_result';
+      readonly id: number;
+      readonly result: DeviceOpResult;
+      readonly halted: boolean;
     }
   | { readonly type: 'closed'; readonly id: number };
 

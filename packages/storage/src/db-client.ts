@@ -35,6 +35,13 @@ import type {
   OutboxEventRecord,
 } from './operation-store.js';
 import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
+import { DEVICE_WRITE_OPS } from './device-store.js';
+import type {
+  CommandScopeRecord,
+  DeviceOp,
+  DeviceOpResult,
+  DeviceRecord,
+} from './device-store.js';
 
 const MINT = Symbol('DispatchPermit');
 
@@ -140,6 +147,18 @@ interface PendingQuery {
   readonly reject: (error: Error) => void;
 }
 
+interface PendingDevice {
+  readonly kind: 'device';
+  readonly op: DeviceOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: DeviceOpResult) => void;
+}
+
+// 端末・接続範囲の命令と照会の結果の型（ADR 0020）。
+export type DeviceOpOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | Extract<DeviceOpResult, { ok: false }>;
+
 const DEFAULT_RESPONSE_TIMEOUT_MS = 30_000;
 const DEFAULT_START_TIMEOUT_MS = 30_000;
 const WORKER_URL = new URL('./db-worker.js', import.meta.url);
@@ -154,7 +173,7 @@ export class DbWorkerClient {
   #state: DbWorkerState = 'running';
   #brokenReason: string | null = null;
   #nextId = 1;
-  #pending = new Map<number, PendingCommand | PendingQuery>();
+  #pending = new Map<number, PendingCommand | PendingQuery | PendingDevice>();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
   #responseTimeoutMs: number;
@@ -360,6 +379,46 @@ export class DbWorkerClient {
     });
   }
 
+  // 端末・接続範囲の命令と照会（ADR 0020）。worker が使えなければ送らずに rejected を返す。
+  // 書込みの応答を失ったときは成否不明（unknown）とし、以後の命令を送らない（broken）。
+  device(
+    op: Extract<DeviceOp, { kind: 'device.insert' }>,
+  ): Promise<DeviceOpOutcome<DeviceRecord>>;
+  device(
+    op: Extract<DeviceOp, { kind: 'device.revoke' }>,
+  ): Promise<DeviceOpOutcome<{ readonly revoked_scopes: number }>>;
+  device(
+    op: Extract<DeviceOp, { kind: 'device.find_by_token_hash' }>,
+  ): Promise<DeviceOpOutcome<DeviceRecord | null>>;
+  device(
+    op: Extract<DeviceOp, { kind: 'scope.issue' }>,
+  ): Promise<DeviceOpOutcome<CommandScopeRecord>>;
+  device(
+    op: Extract<DeviceOp, { kind: 'scope.find' }>,
+  ): Promise<DeviceOpOutcome<CommandScopeRecord | null>>;
+  device(op: DeviceOp): Promise<DeviceOpResult> {
+    return new Promise<DeviceOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'device', op, timer, resolve });
+      const message: MainToWorker = { type: 'device', id, op };
+      this.#worker.postMessage(message);
+    });
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -422,6 +481,17 @@ export class DbWorkerClient {
         );
         continue;
       }
+      if (pending.kind === 'device') {
+        // 照会は何も書いていない。書込みは commit したかどうか分からない。
+        pending.resolve({
+          ok: false,
+          outcome: DEVICE_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
       pending.resolveReceived(false);
       const outcome: DbCommandOutcome = {
         outcome: 'unknown',
@@ -471,6 +541,18 @@ export class DbWorkerClient {
         pending.reject(
           new StorageError(message.reason, 'DB の照会に失敗しました。'),
         );
+      return;
+    }
+    if (message.type === 'device_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'device') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
       return;
     }
     if (message.type !== 'result') return;

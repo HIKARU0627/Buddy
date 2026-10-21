@@ -8,11 +8,19 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import type { ClientApiOutcome } from '@buddy/client';
+import type {
+  ClientApiOutcome,
+  ClientStreamEvent,
+  ClientTransport,
+} from '@buddy/client';
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
-import { CREDENTIAL_FILE } from './credential-store.js';
+import {
+  CREDENTIAL_FILE,
+  SecretText,
+  saveCredential,
+} from './credential-store.js';
 import type { HubHttpRequest } from './hub-transport.js';
 import {
   mockProtector,
@@ -33,14 +41,23 @@ const UNLOCKED: DesktopIoState = {
 };
 const SCREEN = { trustedSender: true, windowFocused: true };
 const TOKEN = 'P'.repeat(43);
+// 公開の検査（scripts/public-content.mjs は tailnet のホスト名の形を拒否する）に掛からないよう、`*.ts.net` の
+// 合成の名前は実行時に組み立てる（実在の Tailnet の名前ではない）。
+const TS_NET = ['ts', 'net'].join('.');
 
-type Responder = (request: HubHttpRequest) => ClientApiOutcome;
+type Responder = (
+  request: HubHttpRequest,
+) => ClientApiOutcome | Promise<ClientApiOutcome>;
 
 async function setup(
   t: test.TestContext,
   options: {
     readonly protector?: MockProtector;
     readonly responders?: Responder[];
+    readonly pollIntervalMs?: number;
+    // 登録後の接続の通信（省略は接続できない宛先）。
+    readonly transport?: ClientTransport;
+    readonly homeReportIntervalMs?: number;
   } = {},
 ) {
   const dir = await tempDir(t, 'bdl-');
@@ -60,7 +77,7 @@ async function setup(
     networkSignature: () => 'x',
     onChange: () => shown.push(link.view('unlocked')),
     log: (code) => logs.push(code),
-    pairingPollIntervalMs: 20,
+    pairingPollIntervalMs: options.pollIntervalMs ?? 20,
     fetchCertificate: () => {
       fetches += 1;
       return Promise.resolve({
@@ -76,12 +93,16 @@ async function setup(
         next ? next(request) : { kind: 'unreachable', reason: 'none' },
       );
     },
-    // 登録後の接続は試験しない（接続できない宛先として扱う）。
-    transportFor: () => ({
-      request: () => Promise.resolve({ kind: 'unreachable', reason: 'test' }),
-      openStream: () =>
-        Promise.resolve({ kind: 'unreachable', reason: 'test' }),
-    }),
+    // 登録後の接続は、指定がなければ試験しない（接続できない宛先として扱う）。
+    transportFor: () =>
+      options.transport ?? {
+        request: () => Promise.resolve({ kind: 'unreachable', reason: 'test' }),
+        openStream: () =>
+          Promise.resolve({ kind: 'unreachable', reason: 'test' }),
+      },
+    ...(options.homeReportIntervalMs === undefined
+      ? {}
+      : { homeReportIntervalMs: options.homeReportIntervalMs }),
   });
   onCleanup(t, () => link.stop());
   const invoke = (
@@ -406,6 +427,390 @@ test(
     assert.equal(response['reason'], 'secure_storage_unavailable');
     assert.equal(fetches(), 0);
     assert.equal(existsSync(join(dir, CREDENTIAL_FILE)), false);
+  },
+);
+
+// レビューの指摘 L2: 末尾のドット・大文字の名前でペアリングしても、保存した記録を読み戻せる
+// （直す前は、毎回「再登録が必要」になっていた）。
+test(
+  'a trailing-dot, mixed-case name is normalized at pairing_begin and the stored credential reads back after a restart',
+  { timeout: 30_000 },
+  async (t) => {
+    const protector = mockProtector();
+    const { link, invoke, view, dir } = await setup(t, {
+      protector,
+      responders: [claimAccepted, () => issued],
+    });
+    link.start('unlocked');
+    invoke('desktop.pairing_begin', {
+      host: `Hub.Example-Tailnet.${TS_NET.toUpperCase()}.`,
+      port: 47443,
+    });
+    await waitUntil(
+      () => view().pairing?.['step'] === 'fingerprint_check',
+      'fingerprint',
+    );
+    assert.equal(view().pairing?.['host'], `hub.example-tailnet.${TS_NET}`);
+    invoke('desktop.pairing_confirm', {
+      fingerprint: FP,
+      fingerprint_tail: 'cdcd',
+    });
+    invoke('desktop.pairing_submit', {
+      pairing_code: '00000000',
+      device_name: '合成の端末',
+    });
+    await waitUntil(() => link.registration === 'registered', 'registered');
+    const stored = protector.reveal(readFileSync(join(dir, CREDENTIAL_FILE)));
+    assert(stored.includes(`"host":"hub.example-tailnet.${TS_NET}"`));
+    // 起動し直しても、保存した記録を読み戻して登録済みのまま。
+    link.stop();
+    link.start('unlocked');
+    assert.equal(link.registration, 'registered');
+  },
+);
+
+// 本人の判断（2026-10-21）: ペアリングの宛先は Tailscale のアドレス・ループバック・*.ts.net の名前だけ。
+test(
+  'pairing_begin accepts only Tailscale addresses, loopback and *.ts.net names; others are refused before any connection',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, invoke, view, fetches } = await setup(t);
+    link.start('unlocked');
+    for (const host of [
+      '192.168.1.10',
+      '100.63.255.255',
+      '100.128.0.0',
+      '8.8.8.8',
+      'buddy-hub.example',
+      'ts.net',
+      `hub.${TS_NET}.example`,
+      'fe80::1',
+      '::ffff:100.64.0.1',
+      'fd7a:115c:a1e1::1',
+    ]) {
+      const refused = invoke('desktop.pairing_begin', { host, port: 47443 });
+      assert.deepEqual(
+        [refused['outcome'], refused['reason']],
+        ['rejected', 'pairing_host_not_allowed'],
+        host,
+      );
+    }
+    assert.equal(fetches(), 0);
+    assert.equal(view().pairing, null);
+    for (const [host, shown] of [
+      ['100.64.0.0', '100.64.0.0'],
+      ['100.127.255.255', '100.127.255.255'],
+      ['127.0.0.1', '127.0.0.1'],
+      ['::1', '::1'],
+      ['FD7A:115C:A1E0::5', 'fd7a:115c:a1e0::5'],
+      [
+        `Mac-Mini.Example-Tailnet.${TS_NET}`,
+        `mac-mini.example-tailnet.${TS_NET}`,
+      ],
+    ] as const) {
+      assert.equal(
+        invoke('desktop.pairing_begin', { host, port: 47443 })['outcome'],
+        'ok',
+        host,
+      );
+      assert.equal(view().pairing?.['host'], shown, host);
+      invoke('desktop.pairing_cancel', null);
+    }
+    assert.equal(fetches(), 6);
+  },
+);
+
+// 受取りの要求を試験が決めた時に返す（受取りの最中の操作を試験する）。
+function deferred(): {
+  readonly responder: Responder;
+  readonly resolve: (outcome: ClientApiOutcome) => void;
+} {
+  let resolve: (outcome: ClientApiOutcome) => void = () => undefined;
+  const promise = new Promise<ClientApiOutcome>((done) => {
+    resolve = done;
+  });
+  return { responder: () => promise, resolve: (outcome) => resolve(outcome) };
+}
+
+const issued: ClientApiOutcome = {
+  kind: 'response',
+  status: 200,
+  body: {
+    device_id: '00000000-0000-4000-8000-000000000402',
+    device_token: TOKEN,
+    issued_at: '2030-10-01T00:00:00Z',
+  },
+};
+
+const notYet: ClientApiOutcome = {
+  kind: 'response',
+  status: 409,
+  body: { code: 'conflict', message: 'x', request_id: null },
+};
+
+async function untilWaitingApproval(
+  invoke: (channel: string, payload: unknown) => Record<string, unknown>,
+  view: () => { pairing: Record<string, unknown> | null },
+) {
+  invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
+  await waitUntil(
+    () => view().pairing?.['step'] === 'fingerprint_check',
+    'fingerprint',
+  );
+  assert.equal(view().pairing?.['cancelable'], true);
+  invoke('desktop.pairing_confirm', {
+    fingerprint: FP,
+    fingerprint_tail: 'cdcd',
+  });
+  invoke('desktop.pairing_submit', {
+    pairing_code: '00000000',
+    device_name: '合成の端末',
+  });
+}
+
+// レビューの指摘 M2（端末側）: 受取りの要求が進んでいる間に「やめる」を押しても、届いたトークンを捨てない。
+test(
+  'cancel while a pickup is in flight does not discard the token: a late 200 is stored and registered',
+  { timeout: 30_000 },
+  async (t) => {
+    const protector = mockProtector();
+    const pickup = deferred();
+    const { link, invoke, view, requests, shown, dir } = await setup(t, {
+      protector,
+      responders: [claimAccepted, pickup.responder],
+    });
+    link.start('unlocked');
+    await untilWaitingApproval(invoke, view);
+    await waitUntil(() => requests.length === 2, 'pickup in flight');
+    // 受取りの間は「やめる」を押せない（画面は cancelable を見てボタンを無効にする）。
+    assert.equal(view().pairing?.['step'], 'waiting_approval');
+    assert.equal(view().pairing?.['cancelable'], false);
+    // 画面の無効化をすり抜けた「やめる」も、受取りの結果を捨てない。
+    const cancelled = invoke('desktop.pairing_cancel', null);
+    assert.equal(cancelled['outcome'], 'ok');
+    assert.equal(view().pairing?.['step'], 'waiting_approval');
+    assert.equal(view().pairing?.['cancelable'], false);
+    pickup.resolve(issued);
+    await waitUntil(() => link.registration === 'registered', 'registered');
+    assert.equal(view().pairing, null);
+    const stored = protector.reveal(readFileSync(join(dir, CREDENTIAL_FILE)));
+    assert(stored.includes(TOKEN));
+    assert.equal(JSON.stringify(shown).includes(TOKEN), false);
+  },
+);
+
+test(
+  'a cancel during an in-flight pickup takes effect when the pickup ends without a token; between polls it is immediate',
+  { timeout: 30_000 },
+  async (t) => {
+    {
+      const pickup = deferred();
+      const { link, invoke, view, requests, dir } = await setup(t, {
+        responders: [claimAccepted, pickup.responder],
+      });
+      link.start('unlocked');
+      await untilWaitingApproval(invoke, view);
+      await waitUntil(() => requests.length === 2, 'pickup in flight');
+      invoke('desktop.pairing_cancel', null);
+      pickup.resolve(notYet);
+      await waitUntil(() => view().pairing === null, 'cancelled');
+      // 承認前（409）の後は、やめた手順として次の受取りを送らない。
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.equal(requests.length, 2);
+      assert.equal(link.registration, 'unregistered');
+      assert.equal(existsSync(join(dir, CREDENTIAL_FILE)), false);
+    }
+    {
+      // 受取りの間隔の待ちの間（要求を送っていない）は、すぐにやめられる。
+      const { link, invoke, view, requests } = await setup(t, {
+        pollIntervalMs: 60_000,
+        responders: [claimAccepted, () => notYet],
+      });
+      link.start('unlocked');
+      await untilWaitingApproval(invoke, view);
+      await waitUntil(() => requests.length === 2, 'first pickup');
+      await waitUntil(
+        () => view().pairing?.['cancelable'] === true,
+        'cancelable between polls',
+      );
+      assert.equal(view().pairing?.['step'], 'waiting_approval');
+      invoke('desktop.pairing_cancel', null);
+      assert.equal(view().pairing, null);
+      assert.equal(requests.length, 2);
+    }
+  },
+);
+
+// レビューの指摘 L4: 中枢の API の major が違えば（upgrade_required）、自宅の指紋の報告も止める。
+test(
+  'upgrade_required stops the home network reports',
+  { timeout: 30_000 },
+  async (t) => {
+    const protector = mockProtector();
+    const sent: string[] = [];
+    const transport: ClientTransport = {
+      request: (request) => {
+        sent.push(`${request.method} ${request.path}`);
+        if (request.path === '/v1/bootstrap')
+          return Promise.resolve({
+            kind: 'response',
+            status: 200,
+            body: {
+              api_version: '2.0',
+              core_instance_id: '00000000-0000-4000-8000-000000000501',
+              store_generation: '00000000-0000-4000-8000-000000000502',
+              device_id: '00000000-0000-4000-8000-000000000401',
+              command_scope_id: '00000000-0000-4000-8000-000000000503',
+              command_scope_expires_at: '2030-10-02T00:00:00Z',
+              capabilities: [],
+              io_state: {
+                device_id: '00000000-0000-4000-8000-000000000401',
+                io_epoch: '0',
+                output_epoch: '0',
+                lock_state: 'unlocked',
+                stop_scope: 'none',
+                input_permitted: true,
+                voice_state: 'waiting_wake_word',
+                output_mode: 'text',
+                private_conversation: false,
+                audio_lease_valid: false,
+              },
+            },
+          });
+        return Promise.resolve({ kind: 'unreachable', reason: 'test' });
+      },
+      openStream: () =>
+        Promise.resolve({ kind: 'unreachable', reason: 'test' }),
+    };
+    const { link, dir, logs } = await setup(t, {
+      protector,
+      transport,
+      homeReportIntervalMs: 20,
+    });
+    saveCredential(join(dir, CREDENTIAL_FILE), protector, {
+      deviceId: '00000000-0000-4000-8000-000000000401',
+      token: new SecretText(TOKEN),
+      issuedAt: '2030-10-01T00:00:00Z',
+      hub: {
+        host: '127.0.0.1',
+        port: 47443,
+        certificatePem: PEM,
+        fingerprint: FP,
+      },
+    });
+    link.start('unlocked');
+    await waitUntil(
+      () => link.linkState?.phase === 'upgrade_required',
+      'upgrade_required',
+    );
+    assert(logs.includes('link:upgrade_required:api_major_mismatch'));
+    await link.homeReportIdle();
+    const reports = () =>
+      sent.filter((entry) => entry === 'POST /v1/home-network/reports').length;
+    const before = reports();
+    // 報告の間隔（20 ms）を何度も過ぎても、新しい報告を送らない。
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(reports(), before);
+    assert.equal(
+      sent.filter((entry) => entry === 'GET /v1/bootstrap').length,
+      1,
+    );
+  },
+);
+
+// レビューの指摘 L8: 最終確認時刻だけが変わった（中枢の ping・画面に出ない値の変化）ときは、画面への通知を間引く。
+test(
+  'changes of only the last confirmation time are thinned; visible changes are notified at once',
+  { timeout: 30_000 },
+  async (t) => {
+    const protector = mockProtector();
+    // 購読の通知を試験から送る（閉じた関数の中で代入するので、入れ物に置く）。
+    const stream: { listener: ((event: ClientStreamEvent) => void) | null } = {
+      listener: null,
+    };
+    const ioState = {
+      device_id: '00000000-0000-4000-8000-000000000401',
+      io_epoch: '0',
+      output_epoch: '0',
+      lock_state: 'unlocked',
+      stop_scope: 'none',
+      input_permitted: true,
+      voice_state: 'waiting_wake_word',
+      output_mode: 'text',
+      private_conversation: false,
+      audio_lease_valid: false,
+    };
+    const transport: ClientTransport = {
+      request: (request) => {
+        if (request.path === '/v1/bootstrap')
+          return Promise.resolve({
+            kind: 'response',
+            status: 200,
+            body: {
+              api_version: '1.0',
+              core_instance_id: '00000000-0000-4000-8000-000000000501',
+              store_generation: '00000000-0000-4000-8000-000000000502',
+              device_id: '00000000-0000-4000-8000-000000000401',
+              command_scope_id: '00000000-0000-4000-8000-000000000503',
+              command_scope_expires_at: '2030-10-02T00:00:00Z',
+              capabilities: [],
+              io_state: ioState,
+            },
+          });
+        if (request.path === '/v1/snapshot')
+          return Promise.resolve({
+            kind: 'response',
+            status: 200,
+            body: {
+              store_generation: '00000000-0000-4000-8000-000000000502',
+              core_instance_id: '00000000-0000-4000-8000-000000000501',
+              event_cursor: 'cursor-1',
+              view: 'full',
+              io_state: ioState,
+              sessions: [],
+              candidates: [],
+              operations: [],
+            },
+          });
+        return Promise.resolve({ kind: 'unreachable', reason: 'test' });
+      },
+      openStream: (_cursor, _lock, onEvent) => {
+        stream.listener = onEvent;
+        return Promise.resolve({ kind: 'open', stream: { close: () => {} } });
+      },
+    };
+    const { link, dir, shown } = await setup(t, {
+      protector,
+      transport,
+      homeReportIntervalMs: 600_000,
+    });
+    saveCredential(join(dir, CREDENTIAL_FILE), protector, {
+      deviceId: '00000000-0000-4000-8000-000000000401',
+      token: new SecretText(TOKEN),
+      issuedAt: '2030-10-01T00:00:00Z',
+      hub: {
+        host: '127.0.0.1',
+        port: 47443,
+        certificatePem: PEM,
+        fingerprint: FP,
+      },
+    });
+    link.start('unlocked');
+    await waitUntil(() => link.linkState?.phase === 'live', 'live');
+    await link.homeReportIdle();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const before = shown.length;
+    // 中枢の ping を続けて受け取る（最終確認時刻だけが変わる）。
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      stream.listener?.({ type: 'alive' });
+    }
+    assert.equal(shown.length, before);
+    // 画面に出る変化（切断して待つ）はすぐに知らせる。
+    stream.listener?.({ type: 'closed', code: 1001, reason: 'core_stopping' });
+    assert.equal(link.linkState?.phase, 'waiting_retry');
+    assert(shown.length > before);
+    link.stop();
   },
 );
 

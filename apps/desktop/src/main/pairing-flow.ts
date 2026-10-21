@@ -7,6 +7,9 @@
 //   → 受取り（承認を待つ間は 409 の間だけ間隔を空けて受取りを試す）→ トークンを保存して終わる
 //
 // - 受取りの結果が分からない（接続できない・503）ときは自動で再送しない（pickup_unknown。中枢で失効してやり直す）。
+// - 受取りの要求が進んでいる間は「やめる」で結果を捨てない（中枢には登録が残るため。レビューの指摘 M2）。
+//   やめる操作は受取りの結果が出るまで待ち、200 ならトークンを保存して登録済みにする。トークンが出なければ
+//   そこでやめる。画面は cancelable を見て、その間の「やめる」を押せなくする。
 // - 申請用の秘密・トークンは Renderer・IPC・ログに出さない。画面へ返すのは手順・宛先・指紋・期限・失敗の理由だけ。
 // Electron に依存しない。通信・時計・保存・自宅の指紋は注入する。
 
@@ -58,6 +61,8 @@ export interface PairingView {
   readonly failure: PairingFailure | null;
   // 申請の確認コード（承認待ちのときだけ。中枢の画面の一覧と同じ値。B03-06）。
   readonly claim_check: string | null;
+  // 今「やめる」をすぐに受け付けるか。受取りの要求が進んでいる間は false。
+  readonly cancelable: boolean;
 }
 
 export interface PairingFlowOptions {
@@ -85,7 +90,9 @@ export interface PairingFlowOptions {
   readonly log?: (code: string) => void;
 }
 
-export const PAIRING_POLL_INTERVAL_MS = 2_000;
+// 受取りの間隔。中枢の認証前の頻度の制限（接続元ごとに 60 秒で 30 件）に対し、承認を待つ 5 分の間の受取りが
+// 1 分あたり 20 件になるようにする（2 秒では 30 件で境界ぎりぎりだった。レビューの指摘 L5）。
+export const PAIRING_POLL_INTERVAL_MS = 3_000;
 
 // 申請の確認コード（ADR 0026）: SHA-256("buddy/pairing-claim-check/v1" NUL 申請用の秘密の SHA-256 の 16 進) の
 // 先頭 4 バイト。中枢（storage）も同じ定義で求め、本人が両方の画面で見比べる。
@@ -111,6 +118,10 @@ interface Attempt {
   secret: SecretText | null;
   failure: PairingFailure | null;
   cancelTimer: (() => void) | null;
+  // 受取りの要求を送ってから結果を受け取るまで true。
+  pickupInFlight: boolean;
+  // 受取りの要求の最中に「やめる」が押された（結果を受け取ってから決める）。
+  cancelRequested: boolean;
 }
 
 function failureOf(
@@ -152,6 +163,7 @@ export class PairingFlow {
       failure: attempt.failure,
       claim_check:
         attempt.step === 'waiting_approval' ? attempt.claimCheck : null,
+      cancelable: !attempt.pickupInFlight,
     };
   }
 
@@ -171,6 +183,8 @@ export class PairingFlow {
       secret: null,
       failure: null,
       cancelTimer: null,
+      pickupInFlight: false,
+      cancelRequested: false,
     };
     this.#attempt = attempt;
     this.#changed();
@@ -210,12 +224,27 @@ export class PairingFlow {
   }
 
   // やめる。中枢へは何も送らない（申請は期限で無効になる）。
+  // 受取りの要求が進んでいる間は結果を捨てない。結果が出るまで待ち、200 なら登録する（上の注記）。
   cancel(): void {
     const attempt = this.#attempt;
     if (attempt === null) return;
     attempt.cancelTimer?.();
-    this.#attempt = null;
-    this.#changed();
+    attempt.cancelTimer = null;
+    if (attempt.pickupInFlight) {
+      attempt.cancelRequested = true;
+      this.#options.log?.('pairing_cancel_deferred');
+      return;
+    }
+    this.#discard(attempt);
+  }
+
+  // 止める（アプリの終了・試験の後片付け）。受取りの最中でも結果を待たずに捨てる。
+  dispose(): void {
+    const attempt = this.#attempt;
+    if (attempt === null) return;
+    attempt.cancelTimer?.();
+    attempt.cancelTimer = null;
+    this.#discard(attempt);
   }
 
   // 保存できない状態でペアリングを失敗にする（安全な保存が使えなくなった）。
@@ -329,11 +358,22 @@ export class PairingFlow {
     if (secret === null || attempt.claimId === null) return;
     const home = await this.#collectHome();
     if (this.#attempt !== attempt) return;
-    const outcome = await this.#options.request(this.#hub(attempt), {
-      method: 'POST',
-      path: `/v1/pairing/claims/${encodeURIComponent(attempt.claimId)}/token`,
-      body: { claim_secret: secret.reveal(), home_fingerprint: home },
-    });
+    // ここから結果を受け取るまでは、やめる操作で結果を捨てない（中枢がトークンを発行し得る）。
+    attempt.pickupInFlight = true;
+    this.#changed();
+    let outcome: ClientApiOutcome;
+    try {
+      outcome = await this.#options.request(this.#hub(attempt), {
+        method: 'POST',
+        path: `/v1/pairing/claims/${encodeURIComponent(attempt.claimId)}/token`,
+        body: { claim_secret: secret.reveal(), home_fingerprint: home },
+      });
+    } catch {
+      outcome = { kind: 'unreachable', reason: 'request_failed' };
+    } finally {
+      attempt.pickupInFlight = false;
+    }
+    // dispose で捨てた手順は、結果を使わない。
     if (this.#attempt !== attempt) return;
     if (outcome.kind !== 'response') {
       // 受け取れたかが分からない。自動で再送しない。
@@ -342,8 +382,16 @@ export class PairingFlow {
     }
     const interval = this.#options.pollIntervalMs ?? PAIRING_POLL_INTERVAL_MS;
     // 承認前（409）・頻度の上限（429）はトークンが出ていない確かな応答なので、間隔を空けて試す。
+    // 受取りの最中にやめる操作があれば、ここでやめる（トークンは出ていない）。
     if (outcome.status === 409 || outcome.status === 429) {
+      // 受取りの最中に失敗にした手順（安全な保存が使えなくなった）は続けない。
+      if (attempt.step !== 'waiting_approval') return;
+      if (attempt.cancelRequested) {
+        this.#discard(attempt);
+        return;
+      }
       this.#schedulePickup(attempt, interval);
+      this.#changed();
       return;
     }
     if (
@@ -378,9 +426,16 @@ export class PairingFlow {
       return;
     }
     const code = codeOf(outcome.body);
+    // 結果の分からない応答（200 で形が違う・5xx）は、やめる操作があっても失敗として残す（中枢で失効して
+    // やり直す必要があることを画面に出す）。トークンが出ていない確かな拒否なら、やめる操作どおりにやめる。
+    const unknown = outcome.status === 200 || outcome.status >= 500;
+    if (attempt.cancelRequested && !unknown) {
+      this.#discard(attempt);
+      return;
+    }
     this.#fail(
       attempt,
-      outcome.status === 200 || outcome.status >= 500
+      unknown
         ? 'pickup_unknown'
         : outcome.status === 403 && code === 'outside_home_network'
           ? 'outside_home_network'
@@ -396,10 +451,17 @@ export class PairingFlow {
     }
   }
 
+  #discard(attempt: Attempt): void {
+    attempt.secret = null;
+    if (this.#attempt === attempt) this.#attempt = null;
+    this.#changed();
+  }
+
   #fail(attempt: Attempt, failure: PairingFailure): void {
     attempt.cancelTimer?.();
     attempt.cancelTimer = null;
     attempt.secret = null;
+    attempt.cancelRequested = false;
     attempt.step = 'failed';
     attempt.failure = failure;
     this.#options.log?.(`pairing_failed:${failure}`);

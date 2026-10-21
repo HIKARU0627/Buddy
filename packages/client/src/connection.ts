@@ -326,16 +326,21 @@ export class ClientConnection {
 
   // ロック状態が変わった。ロック・不明になったら操作の表示をすぐに捨て、解除・ロックのどちらでも
   // スナップショットを取り直す（中枢にも Buddy-Lock-State で伝わる）。
+  // live でない間（購読の途中など）に変わった分は、live になった直後に取り直す（#subscribe）。
   setLockState(lockState: ClientLockState): void {
     if (lockState === this.#lockState) return;
     this.#lockState = lockState;
     const unlocked = lockState === 'unlocked';
-    if (!unlocked && this.#operations.size > 0) {
+    const shownUnlocked = this.#viewUnlocked;
+    if (!unlocked) {
+      // 表示はロック中のもの（management_only）に落とした。以後、解除されたら full を取り直す。
+      this.#viewUnlocked = false;
       this.#operations.clear();
       this.#refreshing.clear();
-      this.#update({ operations: [], view: 'management_only' });
+      if (this.#state.view !== null)
+        this.#update({ operations: [], view: 'management_only' });
     }
-    if (this.#state.phase === 'live' && unlocked !== this.#viewUnlocked) {
+    if (this.#state.phase === 'live' && unlocked !== shownUnlocked) {
       const generation = this.#generation;
       void this.#snapshot(generation, false);
     }
@@ -610,6 +615,12 @@ export class ClientConnection {
       if (generation !== this.#generation) return;
       this.#onStreamEvent(generation, event);
     }
+    // 購読の途中でロック状態が変わり、表示の範囲が今のロック状態と合わなければ取り直す（購読は開き直さない）。
+    if (
+      generation === this.#generation &&
+      (this.#lockState === 'unlocked') !== this.#viewUnlocked
+    )
+      void this.#snapshot(generation, false);
   }
 
   #onStreamEvent(generation: number, event: ClientStreamEvent): void {
@@ -620,7 +631,12 @@ export class ClientConnection {
     }
     this.#confirmed();
     this.#armAlive(generation);
-    if (event.type === 'alive') return;
+    if (event.type === 'alive') {
+      // 購読が動いていると確かめられたので、再スナップショットの数を数え直す（ADR 0025）。
+      // live になった時点では数え直さない（開いた直後にまた求められる繰り返しを、間隔なしで続けない）。
+      this.#resnapshots = 0;
+      return;
+    }
     if (!this.#options.contract.valid('EventStreamMessage', event.data)) {
       this.#fail(generation, { kind: 'retry', reason: 'protocol_error' });
       return;

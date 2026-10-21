@@ -408,7 +408,8 @@ export default tseslint.config(
     },
   },
   {
-    // UI レンダラーの試験（ADR 0024）: node:test・node:assert だけを足す。Electron・main・中枢は引き続き読み込まない。
+    // UI レンダラーの試験（ADR 0024）: node:test・node:assert だけを足す。Electron・main・中枢・OS アダプター・
+    // 接続の状態機械・ws は画面と同じく読み込まない（画面と同じ拒否の一覧を使う）。
     files: [
       'apps/desktop/src/renderer/**/*.test.ts',
       'apps/desktop/src/renderer/**/*.test.tsx',
@@ -417,7 +418,7 @@ export default tseslint.config(
       'no-restricted-imports': restricted(
         [
           ['electron', 'electron/*', '@electron/*'],
-          desktopMainForbidden,
+          desktopRendererForbidden,
           desktopWorkspaceRelative,
           ['../**/main/**', '../**/preload/**'],
         ],

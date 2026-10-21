@@ -43,6 +43,8 @@ export const REJECT_MESSAGES: Readonly<Record<RejectReason, string>> = {
     '結果を確かめられませんでした。自動では送り直しません。一覧を取り直して確かめてください。',
   fingerprint_tail_mismatch:
     '中枢の画面の指紋と違います。宛先が正しいか確かめてください。',
+  pairing_host_not_allowed:
+    'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。',
 };
 
 // 操作ごとに言い方を変える拒否（何が拒否されたかと、次の行動）。

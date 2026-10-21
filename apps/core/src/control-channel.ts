@@ -20,6 +20,8 @@ import type { JsonObject } from './strict-json.js';
 
 // 要求を送らないまま居座る接続を切るまでの時間。
 const IDLE_TIMEOUT_MS = 2000;
+// CLI が受け取る応答の上限（端末の一覧は 1 台あたり数百バイト）。
+const MAX_CONTROL_RESPONSE_BYTES = 1024 * 1024;
 const MAX_CONNECTIONS = 16;
 
 export interface ControlServerOptions {
@@ -139,7 +141,7 @@ export function callControl(
   endpoint: string,
   op: ControlOp,
   timeoutMs: number,
-  // 命令ごとの追加の項目（pairing_first_approve の pairing_id）。
+  // 命令ごとの追加の項目（pairing_first_approve の pairing_id・device_revoke の device_id）。
   fields: Readonly<Record<string, string>> = {},
 ): Promise<ControlCallResult> {
   return new Promise((resolve) => {
@@ -161,7 +163,9 @@ export function callControl(
     });
     socket.on('data', (chunk: Buffer) => {
       buffered = Buffer.concat([buffered, chunk]);
-      if (buffered.byteLength > 64 * 1024) settle({ kind: 'no_response' });
+      // 応答の上限（端末の一覧を含む。同じマシンの Core だけが相手）。
+      if (buffered.byteLength > MAX_CONTROL_RESPONSE_BYTES)
+        settle({ kind: 'no_response' });
       const newline = buffered.indexOf(0x0a);
       if (newline === -1) return;
       try {

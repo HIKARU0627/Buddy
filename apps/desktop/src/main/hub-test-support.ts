@@ -205,12 +205,10 @@ export async function startHub(
 
 // --- 操作の命令（H01 の合成の確定 intent を封じたもの） ---
 
+// 契約の合成の fixture は @buddy/contracts の公開出口から読む（別のワークスペースを相対パスで読まない）。
 const h01 = JSON.parse(
   await readFile(
-    new URL(
-      '../../../../packages/contracts/fixtures/h01.json',
-      import.meta.url,
-    ),
+    new URL(import.meta.resolve('@buddy/contracts/fixtures/h01.json')),
     'utf8',
   ),
 ) as { intent: Record<string, unknown> };

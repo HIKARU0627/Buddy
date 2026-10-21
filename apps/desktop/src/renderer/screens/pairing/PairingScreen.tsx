@@ -15,6 +15,7 @@ import type {
   DesktopViewState,
   DeviceActions,
 } from '../../state/desktop-state.js';
+import { REJECT_MESSAGES } from '../../labels.js';
 import { stopReasonText } from '../../state/status-lines.js';
 import { PowerLogDetails } from '../device/PowerLogDetails.js';
 import { StopBanner } from '../device/StopBanner.js';
@@ -80,8 +81,12 @@ export function PairingScreen({
   const message = messageFor(state, [...PAIRING_CHANNELS]);
   const tailRejected =
     state.message?.channel === 'desktop.pairing_confirm' &&
-    message !== null &&
-    message.startsWith('中枢の画面の指紋と違います')
+    message === REJECT_MESSAGES.fingerprint_tail_mismatch
+      ? message
+      : null;
+  const hostRejected =
+    state.message?.channel === 'desktop.pairing_begin' &&
+    message === REJECT_MESSAGES.pairing_host_not_allowed
       ? message
       : null;
   const target =
@@ -142,8 +147,11 @@ export function PairingScreen({
         initialPort={target?.port ?? DEFAULT_HUB_PORT}
         deviceName={state.submittedName}
         now={now}
-        message={tailRejected === null ? message : null}
+        message={
+          tailRejected === null && hostRejected === null ? message : null
+        }
         tailRejected={tailRejected}
+        hostRejected={hostRejected}
       />
     </AppShell>
   );

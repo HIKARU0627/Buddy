@@ -3739,6 +3739,45 @@
     }
   },
   {
+    "id": "desktop-ipc-pairing-begin-trailing-dot",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b31",
+      "payload": {
+        "host": "Buddy-Hub.Example.",
+        "port": 47443
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin-underscore",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b32",
+      "payload": {
+        "host": "buddy_hub.example",
+        "port": 47443
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-pairing-begin-double-dot",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.pairing_begin",
+      "request_id": "00000000-0000-4000-8000-000000000b33",
+      "payload": {
+        "host": "buddy-hub.example..",
+        "port": 47443
+      }
+    }
+  },
+  {
     "id": "desktop-ipc-pairing-begin-url",
     "schema": "DesktopIpcRequest",
     "valid": false,
@@ -3936,7 +3975,8 @@
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
         "claim_expires_at": null,
         "failure": null,
-        "claim_check": null
+        "claim_check": null,
+        "cancelable": true
       },
       "home_network": null,
       "operations": [],
@@ -3962,7 +4002,8 @@
         "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
         "claim_expires_at": null,
         "failure": "pickup_unknown",
-        "claim_check": null
+        "claim_check": null,
+        "cancelable": true
       },
       "home_network": null,
       "operations": [],
@@ -4187,6 +4228,59 @@
     }
   },
   {
+    "id": "desktop-connection-pairing-pickup-in-flight",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "registration": "unregistered",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": {
+        "step": "waiting_approval",
+        "host": "100.64.0.10",
+        "port": 47443,
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "claim_expires_at": "2030-10-01T00:05:00Z",
+        "failure": null,
+        "cancelable": false,
+        "claim_check": null
+      },
+      "home_network": null,
+      "operations": [],
+      "hub_screen": false,
+      "hub_target": null
+    }
+  },
+  {
+    "id": "desktop-connection-pairing-without-cancelable",
+    "schema": "DesktopConnectionView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "registration": "unregistered",
+      "link": "not_connected",
+      "link_reason": null,
+      "last_confirmed_at": null,
+      "retry_at": null,
+      "pairing": {
+        "step": "waiting_approval",
+        "host": "100.64.0.10",
+        "port": 47443,
+        "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+        "claim_expires_at": "2030-10-01T00:05:00Z",
+        "failure": null,
+        "claim_check": null
+      },
+      "home_network": null,
+      "operations": [],
+      "hub_screen": false,
+      "hub_target": null
+    }
+  },
+  {
     "id": "desktop-connection-pairing-certificate",
     "schema": "DesktopConnectionView",
     "valid": false,
@@ -4205,7 +4299,8 @@
         "claim_expires_at": null,
         "failure": null,
         "certificate_pem": "-----BEGIN CERTIFICATE-----",
-        "claim_check": null
+        "claim_check": null,
+        "cancelable": true
       },
       "home_network": null,
       "operations": [],
@@ -4235,7 +4330,8 @@
           "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
           "claim_expires_at": null,
           "failure": null,
-          "claim_check": null
+          "claim_check": null,
+          "cancelable": true
         },
         "home_network": null,
         "operations": [],
@@ -4266,13 +4362,25 @@
           "fingerprint": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
           "claim_expires_at": null,
           "failure": null,
-          "claim_check": null
+          "claim_check": null,
+          "cancelable": true
         },
         "home_network": null,
         "operations": [],
         "hub_screen": false,
         "hub_target": null
       }
+    }
+  },
+  {
+    "id": "desktop-response-pairing-host-not-allowed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000b34",
+      "channel": "desktop.pairing_begin",
+      "outcome": "rejected",
+      "reason": "pairing_host_not_allowed"
     }
   },
   {

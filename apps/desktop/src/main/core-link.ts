@@ -31,6 +31,7 @@ import {
 import {
   DESKTOP_IPC_CHANNELS,
   admitDesktopRequest,
+  admitPairingHost,
   type DesktopIoState,
   type DesktopIpcRejectReason,
   type DesktopIpcSender,
@@ -119,6 +120,22 @@ export interface ConnectionIpcOutcome {
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
+// 最終確認時刻だけが変わったときに画面へ知らせる最短の間隔（レビューの指摘 L8）。中枢の ping（15 秒）の
+// たびには知らせるが、イベントの取り直しなどで続けて変わるときは間引く。
+export const CONFIRMED_ONLY_NOTIFY_INTERVAL_MS = 10_000;
+
+// 画面（接続の欄・状態欄）に出る接続の状態か。cursor・接続範囲・ID などの変化だけでは画面へ知らせない。
+function visibleChange(previous: LinkState, state: LinkState): boolean {
+  return (
+    state.phase !== previous.phase ||
+    state.reason !== previous.reason ||
+    state.retryAt !== previous.retryAt ||
+    state.view !== previous.view ||
+    state.operations !== previous.operations ||
+    (state.lastConfirmedAt === null) !== (previous.lastConfirmedAt === null)
+  );
+}
+
 const iso = (ms: number | null): string | null =>
   ms === null ? null : new Date(ms).toISOString();
 
@@ -200,7 +217,8 @@ export class DesktopCoreLink {
 
   stop(): void {
     this.#started = false;
-    this.#pairing.cancel();
+    // 終了では受取りの結果を待たない（受取りの最中なら、中枢で失効してやり直す）。
+    this.#pairing.dispose();
     this.#disconnect();
   }
 
@@ -340,7 +358,12 @@ export class DesktopCoreLink {
             raw.channel,
             'pairing_step_mismatch',
           );
-        if (this.#pairing.begin(raw.payload.host, raw.payload.port) !== 'ok')
+        // 宛先は Tailscale のアドレス・ループバック・*.ts.net の名前だけを受け付け、正規化して使う
+        // （末尾のドットを除いて小文字にする。保存した宛先をそのまま読み戻せるように。ADR 0025）。
+        const host = admitPairingHost(raw.payload.host);
+        if (!host.ok)
+          return this.#reject(raw.request_id, raw.channel, host.reason);
+        if (this.#pairing.begin(host.host, raw.payload.port) !== 'ok')
           return this.#reject(
             raw.request_id,
             raw.channel,
@@ -396,6 +419,8 @@ export class DesktopCoreLink {
   // --- 内部 ---
 
   #registered(credential: StoredCredential): void {
+    // 止めた後には接続を始めない（保存した記録は次の start で読む）。
+    if (!this.#started) return;
     this.#disconnect();
     this.#home = null;
     this.#connect(credential);
@@ -426,6 +451,7 @@ export class DesktopCoreLink {
         : { aliveTimeoutMs: this.#options.aliveTimeoutMs }),
     });
     let previous: LinkState = connection.state;
+    let notifiedAt = Number.NEGATIVE_INFINITY;
     connection.onChange((state) => {
       if (state.phase !== previous.phase || state.reason !== previous.reason)
         this.#log(
@@ -442,13 +468,23 @@ export class DesktopCoreLink {
       // 接続するたびに中枢の画面の端末かを確かめる（B03-06）。
       if (state.phase === 'live' && previous.phase !== 'live')
         void this.#probeHubScreen();
+      // 中枢の API の major が違えば、以後は要求を送らない。自宅の指紋の報告も止める（レビューの指摘 L4）。
+      if (state.phase === 'upgrade_required') this.#reporter?.stop();
       // 自宅の外で拒否されたら、すぐに指紋を報告し直す（通れば次の接続で使える）。
       if (
         state.reason === 'outside_home_network' &&
         previous.reason !== 'outside_home_network'
       )
         this.#reporter?.reportNow('outside_home_network');
+      const visible = visibleChange(previous, state);
+      const confirmedOnly =
+        !visible && state.lastConfirmedAt !== previous.lastConfirmedAt;
       previous = state;
+      if (!visible && !confirmedOnly) return;
+      const now = this.#options.clock.now();
+      if (confirmedOnly && now - notifiedAt < CONFIRMED_ONLY_NOTIFY_INTERVAL_MS)
+        return;
+      notifiedAt = now;
       this.#options.onChange();
     });
     this.#connection = connection;

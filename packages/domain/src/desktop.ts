@@ -61,6 +61,8 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'outcome_unknown',
   // 入力した指紋の最後の 4 桁が、受け取った証明書の指紋と合わない（本人の判断 2026-10-21、ADR 0025）。
   'fingerprint_tail_mismatch',
+  // ペアリングの宛先が Tailscale のアドレス・ループバック・*.ts.net の名前でない（ADR 0025、hub-host.ts）。
+  'pairing_host_not_allowed',
 ] as const;
 
 export type DesktopIpcRejectReason =

@@ -59,6 +59,7 @@ const pairingAt = (
   claim_expires_at: null,
   failure: null,
   claim_check: null,
+  cancelable: true,
   ...extra,
 });
 
@@ -455,4 +456,34 @@ test('input helpers accept only well-formed values', () => {
       ],
     ],
   );
+});
+
+// 受取りの要求の最中（cancelable が false）は「申請をやめる」を押せない（PR #73 のレビューの指摘 M2）。
+test('the withdraw button is disabled while the pickup is in flight', () => {
+  const withdraw = (markup: string) =>
+    [...markup.matchAll(/<button\b[^>]*>(?:(?!<\/button>).)*<\/button>/gsu)]
+      .map((match) => match[0])
+      .find((button) => button.includes('申請をやめる'));
+  const waiting = (cancelable: boolean) =>
+    render({ ...base, pairing: pairingAt('waiting_approval', { cancelable }) });
+  const enabled = withdraw(waiting(true));
+  const disabled = withdraw(waiting(false));
+  assert(enabled !== undefined && disabled !== undefined);
+  assert.doesNotMatch(enabled, /\sdisabled=""/u);
+  assert.match(disabled, /\sdisabled=""/u);
+});
+
+test('a hub address main does not allow is shown under the address field', () => {
+  const html = render(base, {
+    message: {
+      channel: 'desktop.pairing_begin',
+      text: 'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。',
+    },
+    lastTarget: { host: '192.168.0.10', port: 47443 },
+  });
+  assert.match(
+    html,
+    /中枢の宛先.*data-invalid="true".*Tailscale のアドレス（100\.x\.x\.x）か、〜\.ts\.net の名前を入れてください。/su,
+  );
+  assert.doesNotMatch(html, /role="alert"/u);
 });

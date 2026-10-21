@@ -40,10 +40,16 @@ import {
 import type { RequestEnvironment } from './api-environment.js';
 import {
   PairingStoreError,
+  controlDevice,
   createPairingService,
   isSameMachine,
+  listDeviceRecords,
+  revokeDeviceRecord,
 } from './api-pairing.js';
-import type { PairingService } from './api-pairing.js';
+import type {
+  DeviceAdministrationOptions,
+  PairingService,
+} from './api-pairing.js';
 import {
   REVISION_CHECKED_ROUTES,
   createOperationRoutes,
@@ -488,6 +494,19 @@ export async function startCore(
         request.op === 'pairing_first_approve'
       )
         return firstDeviceControl(request, lifecycle.state, pairing);
+      if (request.op === 'device_list' || request.op === 'device_revoke')
+        return deviceControl(
+          request,
+          lifecycle.state,
+          opened === null
+            ? null
+            : {
+                store: opened.store,
+                deviceConnections,
+                now: () => now().getTime(),
+                log,
+              },
+        );
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
         return { response: { ok: false, error: 'unavailable' } as const };
@@ -734,6 +753,48 @@ async function firstDeviceControl(
   if (!result.ok)
     return { response: { ok: false, error: 'refused', reason: result.reason } };
   return { response: { ...result, request_id: request.request_id } };
+}
+
+// 制御チャネルの端末の一覧と失効（ADR 0021 の追記。中枢の画面が使えないときの保守の手段）。running のときだけ。
+// HTTPS の有無によらず DB の端末を扱う。失効は中枢の画面の経路と同じ処理（接続範囲の無効化と接続を閉じる）。
+// 承認の命令はない。応答にトークン・その hash・証明書の指紋を含めない。
+async function deviceControl(
+  request: Extract<ControlRequest, { op: 'device_list' | 'device_revoke' }>,
+  state: LifecycleState,
+  administration: DeviceAdministrationOptions | null,
+): Promise<{ readonly response: ControlResponse }> {
+  if (state !== 'running' || administration === null)
+    return { response: { ok: false, error: 'unavailable' } };
+  if (request.op === 'device_list') {
+    const listed = await listDeviceRecords(administration.store);
+    if (!listed.ok)
+      return {
+        response: { ok: false, error: 'refused', reason: listed.reason },
+      };
+    return {
+      response: {
+        ok: true,
+        request_id: request.request_id,
+        devices: listed.devices.map(controlDevice),
+      },
+    };
+  }
+  const revoked = await revokeDeviceRecord(
+    administration,
+    request.device_id,
+    'ローカルの制御チャネル',
+  );
+  if (!revoked.ok)
+    return {
+      response: { ok: false, error: 'refused', reason: revoked.reason },
+    };
+  return {
+    response: {
+      ok: true,
+      request_id: request.request_id,
+      device: controlDevice(revoked.device),
+    },
+  };
 }
 
 // 接続先が使用中なら、動いている Core か、残ったソケットファイルかを見分ける。

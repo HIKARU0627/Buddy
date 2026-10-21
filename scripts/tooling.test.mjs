@@ -102,6 +102,8 @@ test('UI レンダラーの試験は node:test・node:assert だけを足せて�
     ),
     [],
   );
+  // 画面と同じく、接続の状態機械（@buddy/client）・ws・OS アダプター（自宅の指紋の出口を含む）も読み込めない
+  // （レビューの指摘 L1: 試験の設定が main の拒否の一覧を使い、これらを通していた）。
   for (const specifier of [
     'electron',
     'node:fs',
@@ -109,6 +111,10 @@ test('UI レンダラーの試験は node:test・node:assert だけを足せて�
     'assert',
     '@buddy/core',
     '../main/device-controller.js',
+    '@buddy/client',
+    'ws',
+    '@buddy/platform',
+    '@buddy/platform/home-fingerprint',
   ])
     assert.ok(
       restrictedImport(

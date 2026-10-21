@@ -40,7 +40,8 @@ import type {
 export const PAIRING_LABELS = {
   title: 'この端末を中枢に登録する',
   host: '中枢の宛先',
-  hostHelp: 'https:// やパスは付けず、宛先だけを入れます。',
+  hostHelp:
+    'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前です。https:// やパスは付けず、宛先だけを入れます。',
   hostPlaceholder: '例: 100.64.0.1',
   hostInvalid: '宛先を入れてください（例: 100.64.0.1）。',
   port: 'ポート',
@@ -93,12 +94,15 @@ export function AddressStep({
   initialPort,
   fetching,
   message,
+  hostRejected,
   actions,
 }: {
   readonly initialHost: string;
   readonly initialPort: number;
   readonly fetching: boolean;
   readonly message: string | null;
+  // main が宛先を受け付けなかった（Tailscale のアドレス・名前でない）。
+  readonly hostRejected: string | null;
   readonly actions: PairingActions;
 }) {
   const [host, setHost] = useState(initialHost);
@@ -106,6 +110,8 @@ export function AddressStep({
   const [tried, setTried] = useState(false);
   const parsedHost = normalizeHost(host);
   const parsedPort = parsePort(port);
+  const hostError =
+    tried && parsedHost === null ? PAIRING_LABELS.hostInvalid : hostRejected;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start gap-4">
@@ -114,7 +120,7 @@ export function AddressStep({
           value={host}
           onChange={setHost}
           isRequired
-          isInvalid={tried && parsedHost === null}
+          isInvalid={hostError !== null}
         >
           <Label>{PAIRING_LABELS.host}</Label>
           <Input
@@ -123,7 +129,7 @@ export function AddressStep({
             placeholder={PAIRING_LABELS.hostPlaceholder}
           />
           <Description>{PAIRING_LABELS.hostHelp}</Description>
-          <FieldError>{PAIRING_LABELS.hostInvalid}</FieldError>
+          <FieldError>{hostError}</FieldError>
         </TextField>
         <TextField
           className="w-28"
@@ -367,7 +373,12 @@ export function WaitingStep({
         </p>
       )}
       <div>
-        <Button variant="secondary" onPress={actions.cancel}>
+        {/* 受取りの要求の最中は押せない（main は受取りの結果を捨てない。ADR 0025）。 */}
+        <Button
+          variant="secondary"
+          isDisabled={!pairing.cancelable}
+          onPress={actions.cancel}
+        >
           {PAIRING_LABELS.withdraw}
         </Button>
       </div>
@@ -427,6 +438,7 @@ export function PairingPanel({
   now,
   message,
   tailRejected,
+  hostRejected,
 }: {
   readonly connection: ShownConnection;
   readonly actions: PairingActions;
@@ -437,6 +449,7 @@ export function PairingPanel({
   // 登録の操作の拒否の文言（押したボタンのすぐ下に出す）。
   readonly message: string | null;
   readonly tailRejected: string | null;
+  readonly hostRejected: string | null;
 }) {
   const pairing = connection.pairing;
   let body;
@@ -460,6 +473,7 @@ export function PairingPanel({
         initialPort={initialPort}
         fetching={pairing !== null}
         message={message}
+        hostRejected={hostRejected}
         actions={actions}
       />
     );

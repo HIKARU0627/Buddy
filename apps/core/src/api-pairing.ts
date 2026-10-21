@@ -41,6 +41,7 @@ import type {
   ApiHandlerRequest,
   ApiRouteHandler,
 } from './api-server.js';
+import type { ControlDevice } from './control-protocol.js';
 import type { DeviceConnections } from './device-connections.js';
 
 const CODE_LABEL = 'buddy/pairing-code/v1';
@@ -177,6 +178,87 @@ export function deviceSummary(device: DeviceRecord): object {
       device.last_seen_at === null ? null : iso(device.last_seen_at),
     revoked_at: device.revoked_at === null ? null : iso(device.revoked_at),
   };
+}
+
+// ローカルの制御チャネルの端末の一覧・失効の 1 台分（ADR 0021 の追記）。トークン・その hash・指紋は持たない
+// （DeviceRecord にもない）。
+export function controlDevice(device: DeviceRecord): ControlDevice {
+  return {
+    device_id: device.device_id,
+    device_name: device.device_name,
+    hub_local: device.hub_local,
+    registered_at: iso(device.registered_at),
+    last_seen_at:
+      device.last_seen_at === null ? null : iso(device.last_seen_at),
+    revoked_at: device.revoked_at === null ? null : iso(device.revoked_at),
+  };
+}
+
+export interface DeviceAdministrationOptions {
+  readonly store: PairingStore;
+  readonly deviceConnections: DeviceConnections;
+  // UTC の Unix ミリ秒。
+  readonly now: () => number;
+  readonly log?: (message: string) => void;
+}
+
+export type DeviceListResult =
+  | { readonly ok: true; readonly devices: readonly DeviceRecord[] }
+  | { readonly ok: false; readonly reason: 'store_failed' };
+
+// 端末の一覧（失効した端末も含め、登録の時刻・端末 ID の順）。中枢の画面の経路と制御チャネルで同じ処理を使う。
+export async function listDeviceRecords(
+  store: PairingStore,
+): Promise<DeviceListResult> {
+  const listed = await store.pairing({ kind: 'devices.list' });
+  return listed.ok
+    ? { ok: true, devices: listed.value }
+    : { ok: false, reason: 'store_failed' };
+}
+
+export type DeviceRevocation =
+  | { readonly ok: true; readonly device: DeviceRecord }
+  | {
+      readonly ok: false;
+      readonly reason: 'device_not_found' | 'store_failed';
+    };
+
+// 端末の失効（ADR 0021）。端末と有効な接続範囲を同じ transaction で無効にした後、その端末の開いている接続
+// （WSS など）を閉じる。失効済みはもう一度失効しても時刻を変えない。中枢の画面の経路（revokeDevice）と
+// ローカルの制御チャネル（buddy-core device revoke）で同じ処理を使う。
+export async function revokeDeviceRecord(
+  options: DeviceAdministrationOptions,
+  deviceId: string,
+  via: string,
+): Promise<DeviceRevocation> {
+  const revoked = await options.store.device({
+    kind: 'device.revoke',
+    device_id: deviceId,
+    revoked_at: options.now(),
+  });
+  if (!revoked.ok)
+    return {
+      ok: false,
+      reason:
+        revoked.outcome === 'rejected' &&
+        revoked.reasons.includes('device_not_found')
+          ? 'device_not_found'
+          : 'store_failed',
+    };
+  const closed = options.deviceConnections.closeDevice(
+    deviceId,
+    'device_revoked',
+  );
+  options.log?.(
+    `端末を失効しました（${via}、device_id ${deviceId}、無効にした接続範囲 ${revoked.value.revoked_scopes}、閉じた接続 ${closed}）。`,
+  );
+  const found = await options.store.pairing({
+    kind: 'devices.find',
+    device_id: deviceId,
+  });
+  if (!found.ok || found.value === null)
+    return { ok: false, reason: 'store_failed' };
+  return { ok: true, device: found.value };
 }
 
 function claimBody(claim: PairingClaimRecord): object {
@@ -420,42 +502,27 @@ export function createPairingService(
   };
 
   const listDevices: ApiRouteHandler = async () => {
-    const listed = await store.pairing({ kind: 'devices.list' });
+    const listed = await listDeviceRecords(store);
     if (!listed.ok) return fail(503, 'dependency_unavailable', null);
-    return { status: 200, body: { devices: listed.value.map(deviceSummary) } };
+    return {
+      status: 200,
+      body: { devices: listed.devices.map(deviceSummary) },
+    };
   };
 
   const revokeDevice: ApiRouteHandler = async (request) => {
     const requestId = requestIdOf(request);
     const deviceId = request.params['device_id'] ?? '';
-    const revoked = await store.device({
-      kind: 'device.revoke',
-      device_id: deviceId,
-      revoked_at: now(),
-    });
-    if (!revoked.ok) {
-      if (
-        revoked.outcome === 'rejected' &&
-        revoked.reasons.includes('device_not_found')
-      )
-        return fail(409, 'conflict', requestId);
-      return fail(503, 'dependency_unavailable', requestId);
-    }
-    // 失効を記録した後に、その端末の開いている接続（WSS など）を閉じる。
-    const closed = options.deviceConnections.closeDevice(
+    const revoked = await revokeDeviceRecord(
+      { store, deviceConnections: options.deviceConnections, now, log },
       deviceId,
-      'device_revoked',
+      '中枢の画面',
     );
-    log(
-      `端末を失効しました（device_id ${deviceId}、無効にした接続範囲 ${revoked.value.revoked_scopes}、閉じた接続 ${closed}）。`,
-    );
-    const found = await store.pairing({
-      kind: 'devices.find',
-      device_id: deviceId,
-    });
-    if (!found.ok || found.value === null)
-      return fail(503, 'dependency_unavailable', requestId);
-    return { status: 200, body: deviceSummary(found.value) };
+    if (!revoked.ok)
+      return revoked.reason === 'device_not_found'
+        ? fail(409, 'conflict', requestId)
+        : fail(503, 'dependency_unavailable', requestId);
+    return { status: 200, body: deviceSummary(revoked.device) };
   };
 
   const environment: PairingService['environment'] = {

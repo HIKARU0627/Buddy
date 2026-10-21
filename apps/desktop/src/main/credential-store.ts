@@ -20,9 +20,9 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { isIP } from 'node:net';
 import { dirname } from 'node:path';
 import { inspect } from 'node:util';
+import { isNormalizedHubHost } from '@buddy/domain';
 
 export const CREDENTIAL_FILE = 'device-credential.bin';
 const MAX_FILE_BYTES = 64 * 1024;
@@ -130,8 +130,6 @@ const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/u;
 const FINGERPRINT = /^[0-9a-f]{64}$/u;
-const HOSTNAME =
-  /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/u;
 const UTC =
   /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9](\.[0-9]+)?Z$/u;
 
@@ -174,7 +172,8 @@ export function parseCredential(text: string): StoredCredential | null {
     typeof issuedAt !== 'string' ||
     !UTC.test(issuedAt) ||
     typeof host !== 'string' ||
-    (isIP(host) === 0 && !HOSTNAME.test(host)) ||
+    // 宛先は domain の正規化（契約の DesktopHubHost と同じ一つの正規表現）を通した値だけ（レビューの指摘 L2）。
+    !isNormalizedHubHost(host) ||
     typeof port !== 'number' ||
     !Number.isInteger(port) ||
     port < 1 ||
@@ -246,9 +245,13 @@ export function saveCredential(
 ): void {
   const check = protectionCheck(protector);
   if (!check.ok) throw new CredentialStoreError(check.reason);
+  const text = serialize(credential);
+  // 保存する前に、読み戻せる形であることを確かめる（読み戻せない記録を置くと、毎回「再登録が必要」になる）。
+  if (parseCredential(text) === null)
+    throw new CredentialStoreError('not_readable');
   let cipher: Buffer;
   try {
-    cipher = protector.encryptString(serialize(credential));
+    cipher = protector.encryptString(text);
   } catch {
     throw new CredentialStoreError('encrypt_failed');
   }

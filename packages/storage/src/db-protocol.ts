@@ -16,6 +16,9 @@ import type {
 } from './operation-store.js';
 import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
 import type { DeviceOp, DeviceOpResult } from './device-store.js';
+import type { PairingOp, PairingOpResult } from './pairing-store.js';
+// B03-04: スナップショット・イベント・操作の表示用の照会（ADR 0023）。
+import type { EventQuery, EventQueryValue } from './event-store.js';
 import type {
   HomeNetworkOp,
   HomeNetworkOpResult,
@@ -63,13 +66,15 @@ export type DbQuery =
       readonly limit: number;
     }
   // 起動時の回復の対象（preparing・dispatching の操作）。
-  | { readonly kind: 'interrupted' };
+  | { readonly kind: 'interrupted' }
+  | EventQuery;
 
 export type DbQueryValue =
   | OperationRecord
   | CommandReceiptRecord
   | readonly OutboxEventRecord[]
   | readonly InterruptedOperation[]
+  | EventQueryValue
   | null;
 
 export type MainToWorker =
@@ -84,6 +89,8 @@ export type MainToWorker =
   // 端末・接続範囲の命令と照会（ADR 0020）。
   | { readonly type: 'device'; readonly id: number; readonly op: DeviceOp }
   | { readonly type: 'close'; readonly id: number }
+  // ペアリング・端末の一覧の命令と照会（ADR 0021）。
+  | { readonly type: 'pairing'; readonly id: number; readonly op: PairingOp }
   // 自宅の登録・報告と、自宅判定の不成立による接続範囲の失効（ADR 0022）。
   | { readonly type: 'home'; readonly id: number; readonly op: HomeNetworkOp };
 
@@ -132,6 +139,12 @@ export type WorkerToMain =
       readonly halted: boolean;
     }
   | { readonly type: 'closed'; readonly id: number }
+  | {
+      readonly type: 'pairing_result';
+      readonly id: number;
+      readonly result: PairingOpResult;
+      readonly halted: boolean;
+    }
   | {
       readonly type: 'home_result';
       readonly id: number;

@@ -19,11 +19,8 @@ import ajvModule from 'ajv/dist/2020.js';
 import formatsModule from 'ajv-formats';
 import { WebSocket } from 'ws';
 import type { ClientOptions } from 'ws';
-import {
-  HomeNetworkKey,
-  createHomeNetworkGate,
-  isSameMachineAddress,
-} from './api-home-network.js';
+import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
+import { isSameMachine } from './api-pairing.js';
 import type { HomeNetworkGate } from './api-home-network.js';
 import { createApiServer } from './api-server.js';
 import { API_ROUTES } from './api-routes.js';
@@ -157,7 +154,7 @@ async function start(t: test.TestContext): Promise<Started> {
       ttlMs: 0,
     }),
     sameMachine: (remote) =>
-      sameMachine.value && isSameMachineAddress(remote, '127.0.0.1'),
+      sameMachine.value && isSameMachine(remote, '127.0.0.1'),
     now: () => clock.now,
     log: (message) => logs.push(message),
   });
@@ -660,10 +657,10 @@ test(
         !/outside|away|remote_?access/iu.test(route.operationId),
         route.operationId,
       );
-    assert.equal(isSameMachineAddress('::ffff:127.0.0.1', '100.64.0.1'), true);
-    assert.equal(isSameMachineAddress('100.64.0.1', '100.64.0.1'), true);
-    assert.equal(isSameMachineAddress('100.64.0.2', '100.64.0.1'), false);
-    assert.equal(isSameMachineAddress('', '100.64.0.1'), false);
+    assert.equal(isSameMachine('::ffff:127.0.0.1', '100.64.0.1'), true);
+    assert.equal(isSameMachine('100.64.0.1', '100.64.0.1'), true);
+    assert.equal(isSameMachine('100.64.0.2', '100.64.0.1'), false);
+    assert.equal(isSameMachine('', '100.64.0.1'), false);
   },
 );
 
@@ -749,7 +746,7 @@ test(
     const outcome = await withTimeout(
       new Promise<{ status: number; code: unknown }>((resolve, reject) => {
         const socket = new WebSocket(
-          `wss://127.0.0.1:${started.port}/v1/events/stream`,
+          `wss://127.0.0.1:${started.port}/v1/events/stream?cursor=c-1`,
           {
             headers: bearer(started.remote.token),
             ca: [started.certificatePem],

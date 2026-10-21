@@ -57,7 +57,7 @@
 
 - 経路の検査で 403 `outside_home_network`（ApiError だけ。診断の理由は報告の応答と Core の記録に出す）。
 - 認証済みの端末なら、その端末の有効な接続範囲（command_scope）を失効させる（`home.revoke_scopes`）。音声・機密表示のリース（`Lease`）は接続範囲に結び付いており、接続範囲が変われば無効（`leaseReasons` の `scope_changed`）なので、リースの表はまだないが同時に失効する。
-- 失効の後に `HomeNetworkGate.onDenied(deviceId, reasons)` で知らせる。WSS を閉じる差し込み口で、Core は `CoreHandle.homeNetwork` として出す。B03-04 の `DeviceConnections.closeDevice(deviceId, 'outside_home_network')` へは統合のときに 1 行でつなぐ（B03-04 は ping ごとに `RequestEnvironment.homeNetwork` を引き直す）。
+- 失効の後に `HomeNetworkGate.onDenied(deviceId, reasons)` で知らせる。WSS を閉じる差し込み口で、Core は `CoreHandle.homeNetwork` として出す。Core は `onDenied` を B03-04 の `DeviceConnections.closeDevice(deviceId, 'outside_home_network')` につなぎ、その端末の WSS の購読を 4403（`outside_home_network`）で閉じる。B03-04 の WSS は ping ごとに同じ環境の `homeNetwork` を引き直すので、報告の経路を通らない変化（Tailscale の経路・報告の鮮度）も購読中に拾う。
 - 判定の元（自宅の登録値・報告）を DB から読めないときは例外にし、経路の検査は 503（許可にしない）。
 
 ### HMAC の鍵の置き場所
@@ -80,7 +80,7 @@ DB worker に `type: 'home'` のメッセージで `home.register`・`home.get`�
 
 - 認証した端末は、`hub_local` で、かつ接続元が同じマシン（ループバック、または待ち受けのアドレスと同じ IP）のときだけ自宅判定を免除する。トークンは必要（device_token の検査が先）。hub_local の端末のトークンを別のマシンから使っても免除しない。
 - 端末のない申請・受取り（`claimPairing`・`pickupPairingToken`）は、接続元が同じマシンなら免除する。最初の端末（中枢の画面）を登録するためで、登録前なので hub_local を確かめられない（B03-02 と合わせた読み取り）。
-- 同じマシンの判定は B03-02 の `isSameMachine(remoteAddress, listenHost)` と同じ意味で、このブランチでは `isSameMachineAddress` として置いた。統合で一つにまとめる。
+- 同じマシンの判定は B03-02 の `isSameMachine(remoteAddress, listenHost)`（`api-pairing.ts`）に一つにまとめ、Core がペアリングと自宅判定へ同じ関数を注入する（`CoreHttpsOptions.sameMachine` で差し替えられる）。
 - 外出先からの接続を有効にする経路・設定・CLI の引数は作らない（初期版は OFF に固定）。試験で経路の表・schema にそれらしい名前がないことを確かめる。
 
 ### platform のアダプター
@@ -101,7 +101,7 @@ DB worker に `type: 'home'` のメッセージで `home.register`・`home.get`�
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `scripts/home-network.test.mjs`                   | `home-network-cases.json`（手書き）の 22 例と判定の一致、理由のコードと schema の一致、鮮度 6 分、報告・登録の経路の検査、外出の経路がない、サブネットの正準の表記                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `apps/core/src/api-home-network.test.ts`          | HTTPS で X42: 一致と直接経路で許可（トークンなし・失効は 401）、指紋の不一致・DERP・経路不明・Tailscale を取得できない・止まっている・ピアなし・指紋だけ（直接のアドレスが自宅の外）はいずれも 403 で接続範囲を失効させ通知し、古い接続範囲の命令も 403。鮮度（5:59.999 は許可・6:00 で拒否・時計の巻き戻り）、SSID の比較の条件、未登録、サブネットのホスト部の 422、同じマシンの免除（トークンなしは 401・hub_local でない端末・別のマシンからの hub のトークンは免除しない）、申請・受取りの本文の指紋、WSS の切り替えの 403、DB を読めないときに許可しない、HMAC の値（openssl で別に求めた値）と鍵を出さないこと |
-| `apps/core/src/home-network-core.test.ts`         | startCore への組み込み（取得元なしは同じマシンの hub だけ、模擬の状態で登録・報告・判定・通知）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `apps/core/src/home-network-core.test.ts`         | startCore への組み込み（取得元なしは同じマシンの hub だけ、模擬の状態で登録・報告・判定・通知）。統合後: 報告で不成立になった端末の WSS の購読が 4403 で閉じ、他の端末の購読は開いたまま。Tailscale が DERP に変わると ping ごとの判定で購読が 4403 で閉じ、同じマシンの hub の購読は開いたまま                                                                                                                                                                                                                                                                                                                       |
 | `packages/storage/src/home-network-store.test.ts` | 登録の置き換え・報告の最新 1 件・BLOB で保存、失効・未登録の端末の拒否、接続範囲の失効（他の端末に触れない）、平文らしい値・形の不正・halted・耐久設定の不一致、DB worker のクライアント経由                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `packages/platform/src/home-fingerprint.test.ts`  | macOS・Windows の合成の出力からの収集、`<redacted>` の SSID と代わりのコマンド、経路なし・不完全な ARP・接続口なし、有線・権限なしの SSID、複数の無線の接続口、MAC・ネットマスク・サブネットの正規化、Linux は対象外                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `packages/platform/src/tailscale-status.test.ts`  | 接続元のアドレスからのピアの特定（IPv4 射影・IPv6・大文字）と直接・DERP・ピアの中継・不明の区別、読めない・止まっている・同じアドレスのピアが複数、候補の順・終了コード・例外、5 秒の保持と取り直し・同時の要求のまとめ・単調時計の巻き戻り                                                                                                                                                                                                                                                                                                                                                                           |
@@ -143,6 +143,5 @@ DB worker に `type: 'home'` のメッセージで `home.register`・`home.get`�
 ## 残ること
 
 - 端末側の定期報告の組み込み（B03-05）と、デスクトップの main から指紋の収集を使うための境界の見直し。
-- WSS の切断の配信（B03-04 の `DeviceConnections` へ `onDenied` をつなぐ）。
 - 中枢の画面の自宅の登録の UI（登録の経路は作った）。
 - 上の実機での確認。

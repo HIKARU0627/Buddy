@@ -629,8 +629,10 @@ paths:
     get:
       operationId: streamEvents
       summary: イベントの購読（WSS）
-      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。DB 世代の変化・履歴期限・接続範囲の失効では resnapshot_required を送って閉じる（07 §2・§4、ADR 0009）。
+      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
       x-buddy-core-checks: *id001
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '101':
           description: WebSocket へ切り替えた。以降のメッセージは x-buddy-websocket-message の形式。
@@ -646,6 +648,14 @@ paths:
           $ref: '#/components/responses/Unavailable'
       x-buddy-websocket-message:
         $ref: ./schemas/buddy.schema.json#/$defs/EventStreamMessage
+      x-buddy-websocket-close-codes:
+        '4410': resnapshot_required を送った後（理由は store_generation_changed・history_expired・scope_expired）。スナップショットを取り直して接続し直す
+        '4401': 端末の失効（device_revoked）。再登録が必要
+        '4403': 自宅判定の不成立（outside_home_network）
+        '1001': 中枢の停止（core_stopping）。cursor から接続し直す
+        '1003': 端末からメッセージを受け取った（unsupported_data）。端末から送るメッセージは定義していない
+        '1011': 中枢の DB を読めない（dependency_unavailable）
+        '1013': 送り先の詰まり（slow_consumer）。cursor から接続し直す
   /v1/live/sessions:
     post:
       operationId: createLiveSession
@@ -723,7 +733,7 @@ paths:
     post:
       operationId: startPairing
       summary: ペアリングの開始
-      description: 中枢のロック解除済みの画面だけ。ワンタイムコードと証明書の指紋（証明書の DER 全体の SHA-256 の小文字の 16 進、ADR 0020）を返す（02 端末登録と接続、ADR 0009）。
+      description: 中枢のロック解除済みの画面だけ。ワンタイムコードと証明書の指紋（証明書の DER 全体の SHA-256 の小文字の 16 進、ADR 0020）を返す（02 端末登録と接続、ADR 0009）。有効なペアリングは一つだけで、開始するとまだ使っていない前のペアリングは無効になる（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -766,7 +776,7 @@ paths:
     post:
       operationId: claimPairing
       summary: 登録の申請（認証前）
-      description: 端末が指紋を照合した後に送る。自宅判定は本文の home_fingerprint と接続元の Tailscale の直接経路で行う（ADR 0022）。認証前のため上限を小さくし、メールや会話を返さない。コードの不一致は残り回数を減らし、無効になったら 410（pairing_failed）（02）。
+      description: 端末が指紋を照合した後に送る。認証前のため上限を小さくし、メールや会話を返さない。コードの不一致は残り回数を減らし、無効になったら 410（pairing_failed）（02）。不一致・期限切れ・回数の上限・使用済みの区別は外へ出さず、どれも 410（pairing_failed）にする（ADR 0009・0021）。自宅判定は本文の home_fingerprint と接続元の Tailscale の直接経路で行う（ADR 0022）。
       x-buddy-core-checks:
         - home_network
       security: []
@@ -799,7 +809,7 @@ paths:
     post:
       operationId: decidePairingClaim
       summary: 申請の承認・拒否
-      description: 中枢のロック解除済みの画面だけ（02）。
+      description: 中枢のロック解除済みの画面だけ（02）。承認・拒否済みの申請は 409。存在しない・期限切れ・ペアリングの開始後に中枢の証明書が変わった申請は 410（pairing_failed）（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -843,7 +853,7 @@ paths:
     post:
       operationId: pickupPairingToken
       summary: 端末トークンの受取り
-      description: 承認済みの申請だけ。申請用の秘密と交換で 1 回だけ返し、2 回目以降・期限切れは 410。承認前は 409（ADR 0009）。自宅判定は本文の home_fingerprint と接続元の Tailscale の直接経路で行う（ADR 0022）。
+      description: 承認済みの申請だけ。申請用の秘密と交換で 1 回だけ返し、2 回目以降・期限切れ・拒否・中枢の証明書の変更は 410。承認前は 409。秘密が合わない（コードだけを知る第三者）は 401（ADR 0009・0021）。自宅判定は本文の home_fingerprint と接続元の Tailscale の直接経路で行う（ADR 0022）。
       x-buddy-core-checks:
         - home_network
         - claim_secret
@@ -883,7 +893,7 @@ paths:
     get:
       operationId: listDevices
       summary: 登録済みの端末
-      description: 端末の一覧と失効状態（01 接続・端末）。
+      description: 端末の一覧と失効状態（01 接続・端末）。失効した端末も含め、登録の時刻の順に返す（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -909,7 +919,7 @@ paths:
     post:
       operationId: revokeDevice
       summary: 端末の失効
-      description: 登録済み・ロック解除済み端末の画面操作だけ。失効した端末の接続範囲・リースを無効にする（02、01）。
+      description: 登録済み・ロック解除済み端末の画面操作だけ。失効した端末の接続範囲・リースを無効にし、開いている接続（WSS）を閉じる（02、01）。存在しない端末は 409。失効済みの端末は失効の時刻を変えずに返す（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network

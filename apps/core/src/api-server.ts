@@ -12,8 +12,9 @@
 //   8. 本文を上限まで読む（超えたら 413）
 //   9. 形式の検査（パスの値・クエリー・ヘッダー・厳格な JSON（重複キー）・JSON Schema）。不正は 422 invalid_input
 //  10. 経路の検査（domain の admitRequest。ROUTE_CHECKS の順）
-//  11. 経路の処理。B03-01 で作るのは getBootstrap だけで、他の経路は検査の後に 503 で閉じる
-// WebSocket（/v1/events/stream）は ws で受け、同じ検査の後に切り替える。配信は B03-04 で、今は 1013 で閉じる。
+//  11. 経路の処理。getBootstrap と、handlers に渡された経路（B03-02・B03-04 など）。他の経路は検査の後に 503 で閉じる
+// WebSocket（/v1/events/stream）は ws で受け、同じ検査の後に切り替える。配信は eventStream（B03-04、ADR 0023）が行い、
+// 渡されなければ切り替えた後に 1013 で閉じる。
 // 拒否の本文は ApiError（code・message・request_id）だけで、対象の本文・トークン・hash を返さない。
 
 import { randomUUID } from 'node:crypto';
@@ -38,6 +39,7 @@ import type { CoreCheck, RequestContext } from '@buddy/domain';
 import { COMMAND_SCOPE_MAX_TTL_MS } from '@buddy/storage';
 import type { DbWorkerClient, DeviceRecord } from '@buddy/storage';
 import { WebSocketServer } from 'ws';
+import type { WebSocket } from 'ws';
 import {
   commandScopeState,
   deviceTokenHash,
@@ -84,7 +86,8 @@ export type ApiErrorCode =
   | 'outside_home_network'
   | 'audio_owned_elsewhere'
   | 'audio_ownership_required'
-  | 'payload_too_large';
+  | 'payload_too_large'
+  | 'pairing_failed';
 
 const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unauthenticated: '端末トークンがない、無効、または失効しています。',
@@ -101,18 +104,19 @@ const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   audio_owned_elsewhere: '別の端末が音声を使っています。',
   audio_ownership_required: '音声の所有権がありません。',
   payload_too_large: '要求が大きすぎます。',
+  pairing_failed: 'ペアリングは無効です。最初からやり直してください。',
 };
 
-// 拒否の本文（ApiError）。対象の本文・トークン・hash を入れない。
-export function apiErrorBody(
+// 経路の処理（handlers）が返す拒否の応答。本文は ApiError（code・message・request_id）だけ。
+export function apiErrorResponse(
+  status: number,
   code: ApiErrorCode,
-  requestId: string | null,
-): {
-  readonly code: ApiErrorCode;
-  readonly message: string;
-  readonly request_id: string | null;
-} {
-  return { code, message: MESSAGES[code], request_id: requestId };
+  requestId: string | null = null,
+): { status: number; body: object } {
+  return {
+    status,
+    body: { code, message: MESSAGES[code], request_id: requestId },
+  };
 }
 
 export interface ApiLimits {
@@ -145,21 +149,28 @@ export const DEFAULT_API_LIMITS: ApiLimits = {
 
 export type ApiStore = Pick<DbWorkerClient, 'device' | 'storeGeneration'>;
 
-// 経路の検査を通った要求（経路の処理へ渡す）。
+// 検査を通った要求（経路の処理へ渡す）。本文・パスの値・クエリーは形式の検査に通った値。
 export interface ApiHandlerRequest {
   readonly route: ApiRoute;
   readonly device: DeviceRecord | null;
   readonly body: JsonObject | null;
   readonly params: Readonly<Record<string, string>>;
-  // 形式の検査を通ったクエリー。
-  readonly query: Readonly<Record<string, string>>;
   readonly remoteAddress: string;
+  readonly query: Readonly<Record<string, string>>;
 }
 
-// 経路の処理。応答の状態と本文を返す。
 export type ApiRouteHandler = (
   request: ApiHandlerRequest,
-) => Promise<{ readonly status: number; readonly body: object }>;
+) => Promise<{ status: number; body: object }>;
+
+// WSS の配信（B03-04、ADR 0023）。admit は切り替えの前に呼び、拒否なら HTTP の応答（ApiError）を返す。
+// open は切り替えた後に呼ぶ。
+export interface ApiEventStream {
+  admit(
+    request: ApiHandlerRequest,
+  ): Promise<{ status: number; body: object } | null>;
+  open(client: WebSocket, request: ApiHandlerRequest): void;
+}
 
 export interface ApiServerOptions {
   readonly host: string;
@@ -177,8 +188,10 @@ export interface ApiServerOptions {
   // 単調時計のミリ秒（頻度の窓）。
   readonly monotonicNow?: () => number;
   readonly contract?: ApiContract;
-  // operationId ごとの経路の処理（B03-02 以降）。ないものは今までどおり（getBootstrap か 503）。
+  // operationId → 経路の処理。getBootstrap 以外の実装した経路をここで渡す。
   readonly handlers?: Readonly<Partial<Record<string, ApiRouteHandler>>>;
+  // WSS の配信。渡さなければ切り替えた後に 1013 で閉じる。
+  readonly eventStream?: ApiEventStream;
 }
 
 export class ApiListenError extends Error {
@@ -257,14 +270,8 @@ interface Rejection {
   readonly close: boolean;
 }
 
-interface Admitted {
+interface Admitted extends ApiHandlerRequest {
   readonly kind: 'admitted';
-  readonly route: ApiRoute;
-  readonly device: DeviceRecord | null;
-  readonly body: JsonObject | null;
-  readonly params: Readonly<Record<string, string>>;
-  readonly query: Readonly<Record<string, string>>;
-  readonly remoteAddress: string;
 }
 
 type Evaluation = Rejection | Admitted | { readonly kind: 'aborted' };
@@ -644,8 +651,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
       device,
       body: form.body,
       params: match.params,
-      query: Object.fromEntries(new URLSearchParams(search)),
       remoteAddress: address,
+      query: Object.fromEntries(new URLSearchParams(search)),
     };
   };
 
@@ -680,23 +687,18 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     response.end(body);
   };
 
-  const errorBody = (rejection: Rejection) =>
-    apiErrorBody(rejection.code, rejection.requestId);
+  const errorBody = (rejection: Rejection) => ({
+    code: rejection.code,
+    message: MESSAGES[rejection.code],
+    request_id: rejection.requestId,
+  });
 
-  // 実装した経路の処理。B03-01 は getBootstrap だけ。
+  // 実装した経路の処理。getBootstrap と handlers に渡された経路。
   const handle = async (
     admitted: Admitted,
   ): Promise<{ status: number; body: object }> => {
     const handler = options.handlers?.[admitted.route.operationId];
-    if (handler !== undefined)
-      return handler({
-        route: admitted.route,
-        device: admitted.device,
-        body: admitted.body,
-        params: admitted.params,
-        query: admitted.query,
-        remoteAddress: admitted.remoteAddress,
-      });
+    if (handler !== undefined) return handler(admitted);
     if (
       admitted.route.operationId !== 'getBootstrap' ||
       admitted.device === null
@@ -798,11 +800,14 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     })();
   });
 
-  const writeRaw = (socket: Duplex, rejection: Rejection) => {
-    const body = JSON.stringify(errorBody(rejection));
+  const writeRaw = (socket: Duplex, rejection: Rejection) =>
+    writeRawJson(socket, rejection.status, errorBody(rejection));
+
+  const writeRawJson = (socket: Duplex, status: number, value: object) => {
+    const body = JSON.stringify(value);
     const headers = headersFor(body, true);
     const lines = [
-      `HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}`,
+      `HTTP/1.1 ${status} ${STATUS_CODES[status] ?? ''}`,
       ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
     ];
     socket.write(`${lines.join('\r\n')}\r\n\r\n${body}`);
@@ -829,9 +834,33 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
           writeRaw(socket, outcome);
           return;
         }
+        const stream = options.eventStream;
+        if (stream === undefined) {
+          wss.handleUpgrade(request, socket, head, (client) => {
+            // 配信を渡されていない（受付の土台だけ）。切り替えた後に閉じる。
+            client.close(1013, 'not_implemented');
+          });
+          return;
+        }
+        let refusal: { status: number; body: object } | null;
+        try {
+          refusal = await stream.admit(outcome);
+        } catch {
+          refusal = {
+            status: 503,
+            body: errorBody(reject(503, 'dependency_unavailable')),
+          };
+        }
+        if (refusal !== null) {
+          writeRawJson(socket, refusal.status, refusal.body);
+          return;
+        }
+        if (closing || socket.destroyed) {
+          socket.destroy();
+          return;
+        }
         wss.handleUpgrade(request, socket, head, (client) => {
-          // 配信（EventStreamMessage）は B03-04。受付の土台だけなので、切り替えた後に閉じる。
-          client.close(1013, 'not_implemented');
+          stream.open(client, outcome);
         });
       })();
     },

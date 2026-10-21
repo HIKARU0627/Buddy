@@ -1,0 +1,116 @@
+{
+  "status": "recorded",
+  "description": "B02 の実機確認の記録（#54・#56）。手順は docs/b02/device-check.md。本人の依頼で、司令塔（Claude）が本人の Mac（開発機）で手順 A〜C と任意の強制終了の確認を実行し、出力を観測したもの（2026-10-21 JST）。store_generation・core_instance_id・パス・鍵の値は記録していない。電源断の試験ではない。",
+  "records": [
+    {
+      "kind": "real_device",
+      "commit": "8bc1a22",
+      "contract_version": "1.0.0",
+      "db_version": "2",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B02-mac-keychain-create",
+      "observed_at": "2026-10-20T23:16:30Z",
+      "final_state": "created（キーチェーンにデータ鍵。事前は missing）"
+    },
+    {
+      "kind": "real_device",
+      "commit": "8bc1a22",
+      "contract_version": "1.0.0",
+      "db_version": "2",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B02-mac-keychain-read",
+      "observed_at": "2026-10-20T23:16:31Z",
+      "final_state": "read（created: false、長さ 32、項目は exists）"
+    },
+    {
+      "kind": "real_device",
+      "commit": "8bc1a22",
+      "contract_version": "1.0.0",
+      "db_version": "2",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B02-mac-core-start-db",
+      "observed_at": "2026-10-20T23:17:30Z",
+      "final_state": "running（鍵保護・耐久設定の検査に通過、schema_version 2、data_key_check stored、store_generation は B01 の状態ファイルから移行して同じ値、DB は 0600、core-state.json は削除、stop で停止）"
+    },
+    {
+      "kind": "real_device",
+      "commit": "8bc1a22",
+      "contract_version": "1.0.0",
+      "db_version": "2",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B02-mac-core-restart",
+      "observed_at": "2026-10-20T23:17:40Z",
+      "final_state": "running（同じ store_generation、出どころ database、data_key_check matched、core_instance_id は新しい値）"
+    },
+    {
+      "kind": "real_device",
+      "commit": "8bc1a22",
+      "contract_version": "1.0.0",
+      "db_version": "2",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["MacBook Air（同じ機）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B02-mac-core-kill-restart",
+      "observed_at": "2026-10-20T23:18:10Z",
+      "final_state": "running（kill -9 の後に古いロックとソケットを片付けて起動、同じ store_generation、停止後の integrity_check ok・外部キーの違反 0）"
+    }
+  ]
+}

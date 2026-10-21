@@ -36,12 +36,20 @@ import type {
 } from './operation-store.js';
 import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
 import { DEVICE_WRITE_OPS } from './device-store.js';
+import type { EventQuery, EventQueryValues } from './event-store.js';
 import type {
   CommandScopeRecord,
   DeviceOp,
   DeviceOpResult,
   DeviceRecord,
 } from './device-store.js';
+import { PAIRING_WRITE_OPS } from './pairing-store.js';
+import type {
+  PairingOp,
+  PairingOpKind,
+  PairingOpResult,
+  PairingOpValues,
+} from './pairing-store.js';
 import { HOME_NETWORK_WRITE_OPS } from './home-network-store.js';
 import type {
   HomeNetworkOp,
@@ -161,6 +169,18 @@ interface PendingDevice {
   readonly resolve: (result: DeviceOpResult) => void;
 }
 
+interface PendingPairing {
+  readonly kind: 'pairing';
+  readonly op: PairingOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: PairingOpResult) => void;
+}
+
+// ペアリング・端末の一覧の命令と照会の結果の型（ADR 0021）。
+export type PairingOpOutcome<K extends PairingOpKind> =
+  | { readonly ok: true; readonly value: PairingOpValues[K] }
+  | Extract<PairingOpResult, { ok: false }>;
+
 // 自宅の命令と照会（ADR 0022）。
 interface PendingHome {
   readonly kind: 'home';
@@ -194,7 +214,7 @@ export class DbWorkerClient {
   #nextId = 1;
   #pending = new Map<
     number,
-    PendingCommand | PendingQuery | PendingDevice | PendingHome
+    PendingCommand | PendingQuery | PendingDevice | PendingPairing | PendingHome
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -379,6 +399,8 @@ export class DbWorkerClient {
   query(query: {
     kind: 'interrupted';
   }): Promise<readonly InterruptedOperation[]>;
+  // スナップショット・イベント・操作の表示用の照会（ADR 0023）。
+  query<Q extends EventQuery>(query: Q): Promise<EventQueryValues[Q['kind']]>;
   query(query: DbQuery): Promise<DbQueryValue> {
     return new Promise<DbQueryValue>((resolve, reject) => {
       if (this.#state !== 'running') {
@@ -439,6 +461,33 @@ export class DbWorkerClient {
       const message: MainToWorker = { type: 'device', id, op };
       this.#worker.postMessage(message);
     });
+  }
+
+  // ペアリング・端末の一覧の命令と照会（ADR 0021）。扱いは device と同じで、worker が使えなければ
+  // 送らずに rejected、書込みの応答を失ったときは成否不明（unknown）にして以後の命令を送らない。
+  pairing<K extends PairingOpKind>(
+    op: Extract<PairingOp, { kind: K }>,
+  ): Promise<PairingOpOutcome<K>> {
+    return new Promise<PairingOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'pairing', op, timer, resolve });
+      const message: MainToWorker = { type: 'pairing', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<PairingOpOutcome<K>>;
   }
 
   // 自宅の命令と照会（ADR 0022）。扱いは device と同じ（使えなければ送らずに rejected、
@@ -543,6 +592,16 @@ export class DbWorkerClient {
         );
         continue;
       }
+      if (pending.kind === 'pairing') {
+        pending.resolve({
+          ok: false,
+          outcome: PAIRING_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
       if (pending.kind === 'device') {
         // 照会は何も書いていない。書込みは commit したかどうか分からない。
         pending.resolve({
@@ -618,6 +677,18 @@ export class DbWorkerClient {
     if (message.type === 'device_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'device') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'pairing_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'pairing') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

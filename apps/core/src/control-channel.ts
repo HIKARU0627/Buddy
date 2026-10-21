@@ -1,5 +1,6 @@
 // ローカル制御チャネルの送受信（ADR 0012）。node:net の Unix domain socket / 名前付きパイプ。
 // 接続できるのは同じマシンの、OS の権限で許された利用者だけ。HTTP・TLS・認証は B03 で決める。
+// 応答は同期でも Promise でも作れる（最初の端末の命令は DB を引く。ADR 0021）。
 
 import { randomUUID } from 'node:crypto';
 import { connect, createServer } from 'node:net';
@@ -24,10 +25,14 @@ const MAX_CONNECTIONS = 16;
 export interface ControlServerOptions {
   readonly endpoint: string;
   // 正しい要求への応答を作る。応答を書き終えたあとに afterWrite を呼ぶ。
-  readonly handle: (request: ControlRequest) => {
-    readonly response: ControlResponse;
-    readonly afterWrite?: () => void;
-  };
+  readonly handle: (
+    request: ControlRequest,
+  ) => ControlHandled | Promise<ControlHandled>;
+}
+
+export interface ControlHandled {
+  readonly response: ControlResponse;
+  readonly afterWrite?: () => void;
 }
 
 export interface ControlServer {
@@ -98,8 +103,27 @@ function serveConnection(
       return;
     }
     // 1 接続 1 要求。改行より後ろのデータは読まずに閉じる。
-    const { response, afterWrite } = handle(parsed.request);
-    finish(response, afterWrite);
+    done = true;
+    socket.removeAllListeners('data');
+    let handled: ControlHandled | Promise<ControlHandled>;
+    try {
+      handled = handle(parsed.request);
+    } catch {
+      finish({ ok: false, error: 'unavailable' });
+      return;
+    }
+    if (!(handled instanceof Promise)) {
+      finish(handled.response, handled.afterWrite);
+      return;
+    }
+    handled.then(
+      ({ response, afterWrite }) => {
+        if (!socket.destroyed) finish(response, afterWrite);
+      },
+      () => {
+        if (!socket.destroyed) finish({ ok: false, error: 'unavailable' });
+      },
+    );
   });
 }
 
@@ -115,6 +139,8 @@ export function callControl(
   endpoint: string,
   op: ControlOp,
   timeoutMs: number,
+  // 命令ごとの追加の項目（pairing_first_approve の pairing_id）。
+  fields: Readonly<Record<string, string>> = {},
 ): Promise<ControlCallResult> {
   return new Promise((resolve) => {
     let settled = false;
@@ -129,7 +155,9 @@ export function callControl(
     };
     const timer = setTimeout(() => settle({ kind: 'no_response' }), timeoutMs);
     socket.on('connect', () => {
-      socket.write(encodeControlMessage({ op, request_id: randomUUID() }));
+      socket.write(
+        encodeControlMessage({ ...fields, op, request_id: randomUUID() }),
+      );
     });
     socket.on('data', (chunk: Buffer) => {
       buffered = Buffer.concat([buffered, chunk]);

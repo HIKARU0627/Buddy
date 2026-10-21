@@ -40,6 +40,8 @@ const EXIT = {
   preflight_failed: 5,
   // autostart: この OS では対応しない、または登録・解除に失敗した。
   autostart_failed: 6,
+  // first-device: Core が拒否した（有効な端末がある・HTTPS がない・申請がないなど）。
+  first_device_refused: 7,
 } as const;
 
 // 鍵保護・データ鍵の照合による拒否（終了コード 5）。それ以外の起動の拒否は 4。
@@ -62,7 +64,12 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
   status 状態を JSON で表示する（動いていなければ終了コード 3）
   stop   停止を要求し、解放まで待つ
   autostart <enable|disable|status>
-         ログイン後の自動起動（macOS の LaunchAgent）。enable は次のログインから有効で、すぐには起動しない`;
+         ログイン後の自動起動（macOS の LaunchAgent）。enable は次のログインから有効で、すぐには起動しない
+  first-device start
+         登録済みの端末が 0 台のときだけ、最初の端末のペアリングを始める（動いている Core に頼む）。
+         ワンタイムコード（有効 5 分）と証明書の指紋を表示する。端末で指紋を確かめてからコードを入力する
+  first-device approve --pairing-id <id>
+         start で始めたペアリングの、同じマシンからの申請を承認する（登録済みの端末があれば拒否）`;
 
 const out = (value: object) =>
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -82,6 +89,7 @@ async function main(argv: readonly string[]): Promise<number> {
         'mock-key-protection-unavailable': { type: 'boolean' },
         'https-host': { type: 'string' },
         'https-port': { type: 'string' },
+        'pairing-id': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -101,8 +109,13 @@ async function main(argv: readonly string[]): Promise<number> {
     command === 'autostart' &&
     positionals.length === 2 &&
     ['enable', 'disable', 'status'].includes(action ?? '');
+  const firstDeviceCommand =
+    command === 'first-device' &&
+    positionals.length === 2 &&
+    ['start', 'approve'].includes(action ?? '');
   if (
     !autostartCommand &&
+    !firstDeviceCommand &&
     (positionals.length !== 1 ||
       !['start', 'status', 'stop'].includes(command ?? ''))
   ) {
@@ -121,6 +134,15 @@ async function main(argv: readonly string[]): Promise<number> {
     (values['https-host'] !== undefined || values['https-port'] !== undefined)
   ) {
     log('HTTPS の指定は start だけで使えます。');
+    return EXIT.usage;
+  }
+  if (
+    (values['pairing-id'] !== undefined) !==
+    (firstDeviceCommand && action === 'approve')
+  ) {
+    log(
+      '--pairing-id は first-device approve で必ず指定し、他では使えません。',
+    );
     return EXIT.usage;
   }
   let httpsPort = DEFAULT_HTTPS_PORT;
@@ -160,6 +182,8 @@ async function main(argv: readonly string[]): Promise<number> {
     return start(dataDir, mode, https);
   }
   if (autostartCommand) return autostart(action as AutostartAction, dataDir);
+  if (firstDeviceCommand)
+    return firstDevice(dataDir, values['pairing-id'] ?? null);
   return command === 'status' ? status(dataDir) : stop(dataDir);
 }
 
@@ -308,6 +332,38 @@ async function status(dataDir: string): Promise<number> {
   }
   out(result.body);
   return EXIT.ok;
+}
+
+// 最初の端末のペアリング（ADR 0021）。動いている Core の制御チャネルへ頼む（DB を直接開かない）。
+// 開始の応答のワンタイムコードは、本人が端末に入力するために標準出力へ出す（Core のログには出さない）。
+async function firstDevice(
+  dataDir: string,
+  pairingId: string | null,
+): Promise<number> {
+  const endpoint = await endpointFor(dataDir);
+  const result = endpoint
+    ? pairingId === null
+      ? await callControl(endpoint, 'pairing_first_start', 5000)
+      : await callControl(endpoint, 'pairing_first_approve', 5000, {
+          pairing_id: pairingId,
+        })
+    : { kind: 'absent' as const };
+  if (result.kind !== 'response') {
+    out({ ok: false, state: 'not_running' });
+    return EXIT.not_running;
+  }
+  out(result.body);
+  if (result.body['ok'] === true) {
+    log(
+      pairingId === null
+        ? '端末で中枢の証明書の指紋を確かめてから、ワンタイムコードを入力してください（有効 5 分）。'
+        : '申請を承認しました。端末がトークンを受け取ると登録が終わります。',
+    );
+    return EXIT.ok;
+  }
+  if (result.body['error'] === 'unavailable') return EXIT.not_running;
+  if (result.body['error'] === 'invalid_request') return EXIT.usage;
+  return EXIT.first_device_refused;
 }
 
 async function stop(dataDir: string): Promise<number> {

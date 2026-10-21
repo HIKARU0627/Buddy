@@ -751,11 +751,12 @@ test(
   async (t) => {
     const started = await startApi(t);
     const { token } = await insertDevice(started.store);
-    const open = (headers: Record<string, string>) =>
+    // 開始位置のクエリー cursor は必須（ADR 0023）。形の検査だけで、配信を渡していないので切り替えた後に 1013。
+    const open = (headers: Record<string, string>, query = '?cursor=c-1') =>
       withTimeout(
         new Promise<{ upgraded: boolean; code: number }>((resolve) => {
           const socket = new WebSocket(
-            `wss://127.0.0.1:${started.api.port}/v1/events/stream`,
+            `wss://127.0.0.1:${started.api.port}/v1/events/stream${query}`,
             {
               headers,
               ca: [started.identity.certificatePem],
@@ -778,6 +779,10 @@ test(
       );
     assert.deepEqual(await open(bearer(token)), { upgraded: true, code: 1013 });
     assert.deepEqual(await open({}), { upgraded: false, code: 401 });
+    assert.deepEqual(await open(bearer(token), ''), {
+      upgraded: false,
+      code: 422,
+    });
     // 通常の GET（切り替えの要求でない）は形式の不正。
     assertRejected(
       await pinnedRequest(started.target, {

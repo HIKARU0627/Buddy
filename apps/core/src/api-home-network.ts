@@ -10,7 +10,8 @@
 //   home_fingerprint をその時点の報告として使う（登録前の端末は報告を持たない）。
 // - 中枢と同じマシンのクライアント（hub_local の端末で、接続元がループバックか待ち受けのアドレス）は自宅判定だけを
 //   免除する。トークンは必要（経路の検査の device_token が先）。端末のない申請・受取りは、同じマシンからなら免除する
-//   （最初の端末の登録。登録前なので hub_local を確かめられない）。
+//   （最初の端末の登録。登録前なので hub_local を確かめられない）。同じマシンの判定は api-pairing.ts の isSameMachine を
+//   Core が注入する（ペアリングと同じ判定）。
 // - MAC と SSID はデータ鍵から導いた鍵の HMAC-SHA256 にしてから保存する。鍵の値・MAC・SSID をログ・例外・応答に出さない。
 // - 外出先からの接続を有効にする経路・設定は作らない（初期版は OFF に固定）。
 
@@ -27,7 +28,6 @@ import type {
   HomeReportView,
   TailscalePeerPath,
 } from '@buddy/domain';
-import { normalizeRemoteAddress } from '@buddy/platform';
 import type { TailscaleStatusSource } from '@buddy/platform';
 import type {
   DataKeyMaterial,
@@ -36,7 +36,7 @@ import type {
   HomeReportRecord,
 } from '@buddy/storage';
 import type { EnvironmentInput } from './api-environment.js';
-import { apiErrorBody } from './api-server.js';
+import { apiErrorResponse } from './api-server.js';
 import type { ApiErrorCode, ApiRouteHandler } from './api-server.js';
 import type { JsonObject } from './strict-json.js';
 
@@ -92,22 +92,6 @@ export class HomeNetworkKey {
   [inspect.custom](): string {
     return 'HomeNetworkKey [redacted]';
   }
-}
-
-// 接続元が中枢と同じマシンか（ループバック、または待ち受けのアドレスと同じ IP）。
-// B03-02 の isSameMachine と同じ判定で、統合で一つにまとめる（ADR 0022 の読み取り）。
-export function isSameMachineAddress(
-  remoteAddress: string,
-  listenHost: string,
-): boolean {
-  const remote = normalizeRemoteAddress(remoteAddress);
-  if (remote === '') return false;
-  if (
-    remote === '::1' ||
-    /^127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/u.test(remote)
-  )
-    return true;
-  return remote === normalizeRemoteAddress(listenHost);
 }
 
 export type HomeNetworkStore = Pick<DbWorkerClient, 'home'>;
@@ -187,7 +171,7 @@ const rejectWith = (
   status: number,
   code: ApiErrorCode,
   requestId: string | null,
-) => ({ status, body: apiErrorBody(code, requestId) });
+) => apiErrorResponse(status, code, requestId);
 
 export function createHomeNetworkGate(
   options: HomeNetworkGateOptions,

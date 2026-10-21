@@ -2,10 +2,12 @@
 //
 // 起動: 起動前の検査（鍵保護）→ データディレクトリ → 排他ロック → データ鍵の読み直し（作成しない）
 //   → B01 の状態ファイルの読み取り → DB worker（書込み接続・耐久設定の読み戻し・マイグレーション・
-//   健全性・鍵の照合値・store_generation）→ 状態ファイルの片付け → 起動時の回復
-//   →（HTTPS を設定したとき）TLS の身元（秘密鍵はキーチェーン）→ HTTPS の待ち受け → 制御チャネル → running。
+//   健全性・鍵の照合値・store_generation）→ 状態ファイルの片付け → 起動時の回復 → イベントの配信の元
+//   →（HTTPS を設定したとき）TLS の身元（秘密鍵はキーチェーン）→ HTTPS の待ち受け（スナップショット・イベント・
+//   操作の経路と WSS の配信、ADR 0023）→ 制御チャネル → running。
 //   どこかで失敗したら書込みを始めず（DB worker を閉じ、ロックを返し）、理由を付けて起動を拒否する。
-// 停止: 新しい要求の受付停止（stopping）→ HTTPS を閉じる → 制御チャネルを閉じる → DB worker を閉じる
+// 停止: 新しい要求の受付停止（stopping）→ WSS の購読を 1001 で閉じる → HTTPS を閉じる → 制御チャネルを閉じる
+//   → DB worker を閉じる
 //   → ソケット・ロックの解放 → stopped。ロックは DB を閉じた後に返す（同じ DB の書き手を一つに保つ）。
 // Electron には依存せず、クライアントの終了は Core の状態に影響しない。
 
@@ -27,15 +29,28 @@ import type {
 } from '@buddy/storage';
 import { UNAVAILABLE_TAILSCALE_STATUS } from '@buddy/platform';
 import type { TailscaleStatusSource, TlsKeyStore } from '@buddy/platform';
-import {
-  HomeNetworkKey,
-  createHomeNetworkGate,
-  isSameMachineAddress,
-} from './api-home-network.js';
+import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
 import type { HomeNetworkGate } from './api-home-network.js';
 import { ApiListenError, createApiServer } from './api-server.js';
 import type { ApiLimits, ApiServer } from './api-server.js';
+import { SAFE_REQUEST_ENVIRONMENT } from './api-environment.js';
 import type { RequestEnvironment } from './api-environment.js';
+import {
+  PairingStoreError,
+  createPairingService,
+  isSameMachine,
+} from './api-pairing.js';
+import type { PairingService } from './api-pairing.js';
+import {
+  REVISION_CHECKED_ROUTES,
+  createOperationRoutes,
+} from './api-operations.js';
+import type { PreviewCheck } from './api-operations.js';
+import { DeviceConnections } from './device-connections.js';
+import { EventFeed } from './event-feed.js';
+import type { EventFeedOptions } from './event-feed.js';
+import { createEventStream } from './event-stream.js';
+import type { EventStreamManager, EventStreamOptions } from './event-stream.js';
 import { callControl, listenControlServer } from './control-channel.js';
 import type { ControlServer } from './control-channel.js';
 import type {
@@ -116,6 +131,15 @@ export interface CoreHttpsOptions {
   // 中枢の Tailscale の状態（ADR 0022。製品は `tailscale status --json`）。省略すると取得できない扱いで、
   // 中枢と同じマシンのクライアント以外は自宅判定が成り立たない（安全側）。
   readonly tailscale?: TailscaleStatusSource;
+  // 接続元が中枢と同じマシンか（試験で差し替える。既定はループバックか待ち受けのアドレスと同じ IP）。
+  readonly sameMachine?: (remoteAddress: string) => boolean;
+  // preview の有効性（ADR 0023）。preview の発行は後の Issue で、省略すると有効な preview はない（承認は 409）。
+  readonly previewValid?: PreviewCheck;
+  // WSS の配信の設定（試験用。ping の間隔・送り先に溜めてよい量）。
+  readonly eventStream?: Pick<
+    EventStreamOptions,
+    'pingIntervalMs' | 'maxBufferedBytes'
+  >;
 }
 
 export interface CoreHttpsInfo {
@@ -147,6 +171,11 @@ export interface StartCoreOptions {
   readonly log?: (message: string) => void;
   // HTTPS の受付。省略すれば開かない。
   readonly https?: CoreHttpsOptions;
+  // イベントの配信の元の設定（試験用。読み直しの間隔・1 ページの件数・故障点）。
+  readonly events?: Pick<
+    EventFeedOptions,
+    'pollIntervalMs' | 'pageSize' | 'afterRead'
+  >;
 }
 
 export interface CoreHandle {
@@ -166,6 +195,12 @@ export interface CoreHandle {
   readonly store: DbWorkerClient;
   // HTTPS の受付。設定しなければ null。
   readonly https: CoreHttpsInfo | null;
+  // イベントの配信の元（ADR 0023）。操作の命令を別の経路で送ったら notify() を呼ぶ（呼ばなくても一定の間隔で読み直す）。
+  readonly events: EventFeed;
+  // 端末の接続（WSS の購読）を閉じる差し込み口。失効（B03-02、ADR 0021）・自宅判定の不成立（B03-03）が呼ぶ。
+  readonly deviceConnections: DeviceConnections;
+  // ペアリング（最初の端末の CLI の承認を含む。ADR 0021）。HTTPS を設定しなければ null。
+  readonly pairing: PairingService | null;
   // 自宅判定（ADR 0022）。HTTPS を設定しなければ null。onDenied で WSS を閉じる（配信は B03-04）。
   readonly homeNetwork: HomeNetworkGate | null;
   readonly state: LifecycleState;
@@ -347,8 +382,12 @@ export async function startCore(
   // ここから先の失敗では、取ったロックを必ず返す（DB worker を起動していれば先に閉じる）。
   let opened: OpenedStore | null = null;
   let api: ApiServer | null = null;
+  let streams: EventStreamManager | null = null;
+  let feed: EventFeed | null = null;
+  const deviceConnections = new DeviceConnections();
   let httpsInfo: CoreHttpsInfo | null = null;
   let homeNetwork: HomeNetworkGate | null = null;
+  let pairing: PairingService | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
   let closedResolve: () => void = () => undefined;
@@ -383,6 +422,11 @@ export async function startCore(
         errors.push(error);
       }
     };
+    // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
+    await step(async () => {
+      streams?.closeAll();
+      feed?.close();
+    });
     await step(async () => api?.close(options.shutdownGraceMs ?? 2000));
     await step(() => control.close(options.shutdownGraceMs ?? 2000));
     // 処理中の命令を終えてから DB を閉じる。ロックはその後に返す。
@@ -405,6 +449,11 @@ export async function startCore(
 
   try {
     opened = await openStore(dataDir, options, log);
+    feed = new EventFeed({
+      store: opened.store,
+      now: () => now().getTime(),
+      ...options.events,
+    });
     if (options.https !== undefined) {
       const started = await startHttps(
         dataDir,
@@ -413,11 +462,15 @@ export async function startCore(
         coreInstanceId,
         () => lifecycle.state === 'running',
         now,
+        feed,
+        deviceConnections,
         log,
       );
       api = started.api;
+      streams = started.streams;
       httpsInfo = started.info;
       homeNetwork = started.homeNetwork;
+      pairing = started.pairing;
       log(
         `HTTPS を待ち受けました（${httpsInfo.host}:${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`,
       );
@@ -427,6 +480,11 @@ export async function startCore(
         );
     }
     const handle = (request: ControlRequest) => {
+      if (
+        request.op === 'pairing_first_start' ||
+        request.op === 'pairing_first_approve'
+      )
+        return firstDeviceControl(request, lifecycle.state, pairing);
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
         return { response: { ok: false, error: 'unavailable' } as const };
@@ -448,6 +506,7 @@ export async function startCore(
       removeSocketFile,
     );
   } catch (error) {
+    feed?.close();
     await api?.close(0).catch(() => undefined);
     await opened?.store.close().catch(() => undefined);
     await releaseLock(dataDir, coreInstanceId).catch(() => undefined);
@@ -462,6 +521,7 @@ export async function startCore(
 
   lifecycle.apply('started');
   const { store, binding, recovery } = opened;
+  const events = feed;
 
   return {
     dataDir,
@@ -476,6 +536,9 @@ export async function startCore(
     store,
     https: httpsInfo,
     homeNetwork,
+    events,
+    deviceConnections,
+    pairing,
     get state() {
       return lifecycle.state;
     },
@@ -493,10 +556,14 @@ async function startHttps(
   coreInstanceId: string,
   accepting: () => boolean,
   now: () => Date,
+  feed: EventFeed,
+  deviceConnections: DeviceConnections,
   log: (message: string) => void,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
+  readonly streams: EventStreamManager;
+  readonly pairing: PairingService;
   readonly homeNetwork: HomeNetworkGate;
 }> {
   const store = opened.store;
@@ -512,15 +579,87 @@ async function startHttps(
       throw new CoreStartError('tls_unavailable', error.reasons);
     throw error;
   }
-  // 自宅判定（ADR 0022）。中枢と同じマシンの判定は待ち受けのアドレスとループバックで行う。
+  // 接続元が中枢と同じマシンか。ペアリング（中枢の画面・登録前の申請）と自宅判定（免除）で同じ判定を使う。
+  const sameMachine =
+    https.sameMachine ??
+    ((remote: string) => isSameMachine(remote, https.host));
+  const pairing = createPairingService({
+    store,
+    fingerprint: identity.fingerprint,
+    host: https.host,
+    now: () => now().getTime(),
+    deviceConnections,
+    log,
+    sameMachine,
+  });
+  // 自宅判定（ADR 0022）。不成立なら接続範囲を失効させ、その端末の WSS の購読を閉じる（4403）。
   const homeNetwork = createHomeNetworkGate({
     store,
     key: opened.homeNetworkKey,
     tailscale: https.tailscale ?? UNAVAILABLE_TAILSCALE_STATUS,
-    sameMachine: (remote) => isSameMachineAddress(remote, https.host),
+    sameMachine,
     now: () => now().getTime(),
     log,
   });
+  homeNetwork.onDenied((deviceId) => {
+    deviceConnections.closeDevice(deviceId, 'outside_home_network');
+  });
+  // 証明書が変わっていれば、前の証明書で登録した端末を受付の前に失効する（自動で承認せず、再登録にする）。
+  try {
+    await pairing.revokeCertificateMismatch();
+  } catch (error) {
+    if (error instanceof PairingStoreError)
+      throw new CoreStartError('store_recovery_failed', [
+        'certificate_device_revocation_failed',
+        ...error.reasons,
+      ]);
+    throw error;
+  }
+  // 操作の命令の後にイベントを配るよう、命令を送る store を通知つきにする（ADR 0023）。
+  const watched = feed.watchStore(store);
+  // 注入した環境（試験）が、ペアリングの判定（中枢の画面・申請用の秘密）と自宅判定（B03-03）より優先する。
+  const base: RequestEnvironment = {
+    ...SAFE_REQUEST_ENVIRONMENT,
+    ...pairing.environment,
+    homeNetwork: homeNetwork.homeNetwork,
+    ...https.environment,
+  };
+  let routes: ReturnType<typeof createOperationRoutes> | null = null;
+  // 承認・取消の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。
+  const environment: RequestEnvironment = {
+    ...base,
+    revisionMatches: (input) =>
+      routes !== null && REVISION_CHECKED_ROUTES.has(input.operationId)
+        ? routes.revisionMatches(input)
+        : base.revisionMatches(input),
+  };
+  routes = createOperationRoutes({
+    store: watched,
+    feed,
+    coreInstanceId,
+    environment,
+    now: () => now().getTime(),
+    ...(https.previewValid === undefined
+      ? {}
+      : { previewValid: https.previewValid }),
+  });
+  const streams = createEventStream({
+    feed,
+    store,
+    coreInstanceId,
+    environment,
+    deviceConnections,
+    now: () => now().getTime(),
+    ...https.eventStream,
+  });
+  // 経路の処理の表は重ならない（同じ operationId を二つの処理が持たない）。重なれば起動しない。
+  const handlerKeys = [
+    pairing.handlers,
+    routes.handlers,
+    homeNetwork.handlers,
+  ].flatMap((handlers) => Object.keys(handlers));
+  if (new Set(handlerKeys).size !== handlerKeys.length)
+    throw new Error('route_handlers_overlap');
   let api: ApiServer;
   try {
     api = createApiServer({
@@ -531,11 +670,13 @@ async function startHttps(
       coreInstanceId,
       accepting,
       now: () => now().getTime(),
-      environment: {
-        homeNetwork: homeNetwork.homeNetwork,
-        ...https.environment,
+      environment,
+      handlers: {
+        ...pairing.handlers,
+        ...routes.handlers,
+        ...homeNetwork.handlers,
       },
-      handlers: homeNetwork.handlers,
+      eventStream: streams,
       ...(https.limits === undefined ? {} : { limits: https.limits }),
     });
   } catch (error) {
@@ -554,6 +695,8 @@ async function startHttps(
   return {
     api,
     homeNetwork,
+    pairing,
+    streams,
     info: {
       host: api.host,
       port: api.port,
@@ -561,6 +704,31 @@ async function startHttps(
       certificateCreation: identity.creation,
     },
   };
+}
+
+// 制御チャネルの最初の端末の命令（ADR 0021）。running のときだけ、HTTPS を設定したときだけ受け付ける。
+// 応答に載るペアリングのコードは CLI の画面に出す値で、Core のログには出さない。
+async function firstDeviceControl(
+  request: Extract<
+    ControlRequest,
+    { op: 'pairing_first_start' | 'pairing_first_approve' }
+  >,
+  state: LifecycleState,
+  pairing: PairingService | null,
+): Promise<{ readonly response: ControlResponse }> {
+  if (state !== 'running')
+    return { response: { ok: false, error: 'unavailable' } };
+  if (pairing === null)
+    return {
+      response: { ok: false, error: 'refused', reason: 'https_not_configured' },
+    };
+  const result =
+    request.op === 'pairing_first_start'
+      ? await pairing.startFirstDevice()
+      : await pairing.approveFirstDevice(request.pairing_id);
+  if (!result.ok)
+    return { response: { ok: false, error: 'refused', reason: result.reason } };
+  return { response: { ...result, request_id: request.request_id } };
 }
 
 // 接続先が使用中なら、動いている Core か、残ったソケットファイルかを見分ける。

@@ -96,3 +96,32 @@ export {
 export type { TlsIdentity, TlsIdentityCreation } from './tls-identity.js';
 export { RecoveryError, recoverInterruptedOperations } from './recovery.js';
 export type { RecoveryReport } from './recovery.js';
+// B03-04: スナップショット・イベントの配信（WSS）・操作の経路（ADR 0023）。
+export {
+  EVENT_CURSOR_TTL_MS,
+  cursorReplayDecision,
+  decodeEventCursor,
+  encodeEventCursor,
+} from './event-cursor.js';
+export type {
+  EventCursorValue,
+  ReplayRange,
+  ResnapshotReason,
+} from './event-cursor.js';
+export { EventFeed } from './event-feed.js';
+export type {
+  EventEnvelope,
+  EventFeedOptions,
+  EventQueryStore,
+} from './event-feed.js';
+export { STREAM_CLOSE_CODES, createEventStream } from './event-stream.js';
+export type { EventStreamManager, EventStreamOptions } from './event-stream.js';
+export {
+  REVISION_CHECKED_ROUTES,
+  createOperationRoutes,
+  deviceCommandId,
+  requestHash,
+} from './api-operations.js';
+export type { OperationRoutes, PreviewCheck } from './api-operations.js';
+export { DeviceConnections } from './device-connections.js';
+export type { DeviceCloseReason } from './device-connections.js';

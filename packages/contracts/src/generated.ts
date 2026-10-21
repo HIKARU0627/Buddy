@@ -2655,7 +2655,7 @@ export interface PairingSession {
   attempts_left: number;
 }
 /**
- * 登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。 home_fingerprint は申請する端末が見た自宅の指紋で、中枢は申請の自宅判定（home_network）に使う（ADR 0022）。
+ * 登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。claim_secret_hash は PairingTokenRequest.claim_secret の ASCII の 43 文字の SHA-256 を小文字の 16 進 64 桁にした値（ADR 0021）。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。 home_fingerprint は申請する端末が見た自宅の指紋で、中枢は申請の自宅判定（home_network）に使う（ADR 0022）。
  */
 export interface PairingClaimRequest {
   request_id: Id;
@@ -2673,6 +2673,9 @@ export interface HomeFingerprint {
   subnet: HomeSubnet | null;
   ssid: WifiSsid | null;
 }
+/**
+ * 登録の申請。expires_at は申請の期限（申請を受け付けた時刻から 5 分、ADR 0021）で、承認とトークンの受取りはこの前だけ。
+ */
 export interface PairingClaim {
   claim_id: Id;
   status: 'pending' | 'approved' | 'rejected' | 'expired' | 'consumed';

@@ -2,6 +2,7 @@
 //
 // - 切り替えの前（admit）: 経路の検査（端末トークン・自宅判定）は api-server.ts が済ませている。ここでは
 //   開始位置のクエリー `cursor` が中枢の発行した形かを確かめ、違えば 422 invalid_input（切り替えない）。
+//   配信の元（EventFeed）を止めた後（中枢の停止の途中）は 503 dependency_unavailable（B03-07 M3）。
 // - 切り替えの後（open）: 接続を端末の今の接続範囲（今回の起動で発行し、失効・期限切れでないもの）に結び付ける。
 //   なければ resnapshot_required（scope_expired）を送って閉じる。cursor の DB 世代違い・期限切れも同じく閉じる。
 // - 配信: EventFeed の購読で、cursor の後の COMMIT 済みのイベントを `{type:"event"}` で順に送る。
@@ -87,6 +88,9 @@ export function createEventStream(
   ): Promise<{ status: number; body: object } | null> => {
     if (request.device === null)
       return Promise.resolve(apiErrorResponse(401, 'unauthenticated'));
+    // 配信の元を止めた後（中枢の停止の途中）は切り替えない（B03-07 M3）。
+    if (options.feed.closed)
+      return Promise.resolve(apiErrorResponse(503, 'dependency_unavailable'));
     const cursor = decodeEventCursor(request.query['cursor'] ?? '');
     return Promise.resolve(
       cursor === null ? apiErrorResponse(422, 'invalid_input') : null,
@@ -264,7 +268,9 @@ export function createEventStream(
       }, pingIntervalMs);
       pingTimer.unref();
     };
-    void start();
+    // 開始の失敗（受け付けの判定の後に配信の元が止まり、subscribe が event_feed_closed を投げるなど）は、
+    // 購読の失敗として閉じる。未処理の拒否にしない（B03-07 M3）。
+    start().catch(() => finish('dependency_unavailable'));
   };
 
   return {

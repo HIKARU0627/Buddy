@@ -103,6 +103,12 @@ ping は 15 秒ごと。同じ間隔で接続範囲（`scope.find` と `commandS
 - **数値**: ping 15 秒、送り先に溜めてよい量 1 MiB、1 ページ 100 件（照会の上限 500 件）は設計に数値がないため仮に決めた。
 - **tests/test-map.json**: X04・X11 の中枢の部分（HTTP・WSS・再起動）を模擬で確かめたが、fault-points.json の期待値は B04 の模擬サービス（外部への要求の回数）を含むため、`product_test` は not_run のまま。
 
+## B03-07 の変更（独立したセキュリティレビューの指摘、#75）
+
+試験は 127.0.0.1 の模擬（`apps/core/src/api-hardening.test.ts`）だけで、実際の端末・実機は未実施。
+
+- **M3 停止の途中の購読**: Core の停止は配信の元（`EventFeed`）を HTTPS より先に止めるため、その間に届いた切り替えで `subscribe` が `event_feed_closed` を投げ、`void start()` が未処理の拒否になっていた（停止中のクラッシュ）。切り替えの前（`admit`）に配信の元が止まっていれば 503 `dependency_unavailable` で切り替えない。受け付けの判定の後に止まった場合を含め、開始の失敗はすべて購読の失敗として 1011 `dependency_unavailable` で閉じる（`start().catch(...)`）。停止の途中の 503・1011 は、端末が時間をおいて接続し直す既存の扱いと同じ。
+
 ## 残ること
 
 - preview の発行（previewOperation）、照合・再試行の経路、表示の切替・リースの更新（B04・B05）。

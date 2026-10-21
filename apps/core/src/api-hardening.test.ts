@@ -368,3 +368,53 @@ test(
     await stream.closed;
   },
 );
+
+// --- M3: 配信の元を止めた後に届いた購読 ---
+
+test(
+  'M3: a stream that arrives after the event feed has stopped is refused or closed without an unhandled rejection',
+  { timeout: 30_000 },
+  async (t) => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => {
+      rejections.push(reason);
+    };
+    process.on('unhandledRejection', onRejection);
+    onCleanup(t, () => {
+      process.off('unhandledRejection', onRejection);
+    });
+
+    // 1) 配信の元を止めた後の切り替えは、切り替えずに 503（中枢の停止の途中）。
+    const stopped = await startApi(t);
+    const device = await insertDevice(stopped.store);
+    assert.equal((await bootstrap(stopped, device)).status, 200);
+    stopped.feed.close();
+    const refused = openStream(t, stopped, device);
+    assert.deepEqual(await refused.opened, { ok: false, status: 503 });
+
+    // 2) 受け付けの判定の後・購読の前に止まった場合は、購読の失敗として 1011 で閉じる。
+    const racing = await startApi(t, {
+      wrapStream: (streams, feed) => ({
+        admit: async (request) => {
+          const result = await streams.admit(request);
+          feed.close();
+          return result;
+        },
+        open: (client, request) => streams.open(client, request),
+      }),
+    });
+    const other = await insertDevice(racing.store);
+    assert.equal((await bootstrap(racing, other)).status, 200);
+    const raced = openStream(t, racing, other);
+    assert.deepEqual(await raced.opened, { ok: true });
+    assert.deepEqual(await raced.closed, {
+      code: 1011,
+      reason: 'dependency_unavailable',
+    });
+    assert.equal(racing.deviceConnections.count(), 0);
+    assert.equal(racing.streams.openCount, 0);
+    // 未処理の拒否が通知される猶予を置いてから確かめる。
+    await sleep(100);
+    assert.equal(rejections.length, 0);
+  },
+);

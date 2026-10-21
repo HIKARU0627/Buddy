@@ -103,7 +103,8 @@ interface Started {
   readonly port: number;
   readonly certificatePem: string;
   readonly fingerprint: string;
-  readonly clock: { now: number };
+  // step は読むたびに進める量（ミリ秒。既定 0 は止まった時計）。中枢の時計が判定の途中で進む場合を試す。
+  readonly clock: { now: number; step: number };
   readonly tailscale: TailscaleState;
   readonly sameMachine: { value: boolean };
   readonly denied: { deviceId: string; reasons: readonly string[] }[];
@@ -121,7 +122,12 @@ async function start(t: test.TestContext): Promise<Started> {
     now: new Date(),
   });
   const store = await startTestStore(t);
-  const clock = { now: T0 };
+  const clock = { now: T0, step: 0 };
+  const readClock = () => {
+    const value = clock.now;
+    clock.now += clock.step;
+    return value;
+  };
   const tailscale: TailscaleState = {
     exit: 0,
     backend: 'Running',
@@ -160,7 +166,7 @@ async function start(t: test.TestContext): Promise<Started> {
     }),
     sameMachine: (remote) =>
       sameMachine.value && isSameMachine(remote, '127.0.0.1'),
-    now: () => clock.now,
+    now: readClock,
     log: (message) => logs.push(message),
   });
   const denied: { deviceId: string; reasons: readonly string[] }[] = [];
@@ -181,7 +187,7 @@ async function start(t: test.TestContext): Promise<Started> {
     },
     handlers: gate.handlers,
     limits: { preAuthMaxRequests: 1000 },
-    now: () => clock.now,
+    now: readClock,
   });
   await api.listen();
   onCleanup(t, () => api.close(0));
@@ -815,6 +821,57 @@ test(
     );
     // 端末がないので失効・通知はない。
     assert.deepEqual(started.denied, []);
+  },
+);
+
+// B03-08 の 2 クライアントの試験（実際の時計）で見つかった不具合の再発防止: 認証前の経路の本文の指紋は、要求を
+// 受け取った時刻の報告として扱う。判定の途中で時計が進んでも「中枢の時計が受け取りより前」にならない。
+test(
+  'the fingerprint in a pre-auth body counts as received when the request arrives, so a clock that moves during the check still allows it',
+  { timeout: 30_000 },
+  async (t) => {
+    const started = await start(t);
+    assert.equal((await register(started)).status, 200);
+    started.sameMachine.value = false;
+    // 時計を読むたびに 1 ms 進める（判定の中で DB を読む間に時計が進む実機の状況）。
+    started.clock.step = 1;
+    const claimed = await pinnedRequest(started.target, {
+      method: 'POST',
+      path: '/v1/pairing/claims',
+      headers: json,
+      body: JSON.stringify({
+        request_id: randomUUID(),
+        pairing_code: '12345678',
+        device_name: '合成の端末',
+        platform: 'windows',
+        claim_secret_hash: 'c'.repeat(64),
+        home_fingerprint: HOME,
+      }),
+    });
+    // 自宅判定を通った後の処理は B03-02（この試験の中枢では 503）。403 なら自宅判定で止まっている。
+    assertRejected(
+      claimed,
+      503,
+      'dependency_unavailable',
+      'claim at home with a moving clock',
+      [],
+    );
+    const picked = await pinnedRequest(started.target, {
+      method: 'POST',
+      path: `/v1/pairing/claims/${randomUUID()}/token`,
+      headers: json,
+      body: JSON.stringify({
+        claim_secret: 'B'.repeat(43),
+        home_fingerprint: HOME,
+      }),
+    });
+    assertRejected(
+      picked,
+      503,
+      'dependency_unavailable',
+      'pickup at home with a moving clock',
+      [],
+    );
   },
 );
 

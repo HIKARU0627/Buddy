@@ -347,7 +347,7 @@ export function HubTabs({
               <Tabs.Indicator />
             </Tabs.Tab>
             {home === undefined ? null : (
-              <Tabs.Tab id="home">
+              <Tabs.Tab id="home" className="whitespace-nowrap">
                 {HUB_LABELS.homeTitle}
                 <Tabs.Indicator />
               </Tabs.Tab>

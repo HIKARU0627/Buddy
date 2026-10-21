@@ -388,7 +388,10 @@ test('home state: reads and registrations replace the view, rejections only set 
   const rejected = applyHomeResponse(sending, 'desktop.home_register', changed);
   assert.equal(rejected.busy, false);
   assert.deepEqual(rejected.home, home);
-  assert.match(String(rejected.message), /ネットワークが変わりました/u);
+  assert.match(
+    String(rejected.message),
+    /ネットワークが変わったため登録しませんでした/u,
+  );
   // 自宅の登録で言い方を変える拒否。
   assert.match(
     String(

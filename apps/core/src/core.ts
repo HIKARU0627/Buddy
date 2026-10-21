@@ -25,7 +25,14 @@ import type {
   StoreBindingResult,
   StoreGenerationSource,
 } from '@buddy/storage';
-import type { TlsKeyStore } from '@buddy/platform';
+import { UNAVAILABLE_TAILSCALE_STATUS } from '@buddy/platform';
+import type { TailscaleStatusSource, TlsKeyStore } from '@buddy/platform';
+import {
+  HomeNetworkKey,
+  createHomeNetworkGate,
+  isSameMachineAddress,
+} from './api-home-network.js';
+import type { HomeNetworkGate } from './api-home-network.js';
 import { ApiListenError, createApiServer } from './api-server.js';
 import type { ApiLimits, ApiServer } from './api-server.js';
 import type { RequestEnvironment } from './api-environment.js';
@@ -102,9 +109,13 @@ export interface CoreHttpsOptions {
   readonly port: number;
   // TLS の秘密鍵の取得元（@buddy/platform の TlsKeyStore。macOS はキーチェーンの tls-key-v1）。
   readonly tlsKeyStore: TlsKeyStore;
-  // 判定の元がまだない文脈（自宅判定など）。試験で差し替える。省略したものは安全側。
+  // 判定の元がまだない文脈（ロック状態など）。試験で差し替える。省略したものは安全側。
+  // homeNetwork を渡すと自宅判定（B03-03）を置き換える（試験用）。
   readonly environment?: Partial<RequestEnvironment>;
   readonly limits?: Partial<ApiLimits>;
+  // 中枢の Tailscale の状態（ADR 0022。製品は `tailscale status --json`）。省略すると取得できない扱いで、
+  // 中枢と同じマシンのクライアント以外は自宅判定が成り立たない（安全側）。
+  readonly tailscale?: TailscaleStatusSource;
 }
 
 export interface CoreHttpsInfo {
@@ -155,6 +166,8 @@ export interface CoreHandle {
   readonly store: DbWorkerClient;
   // HTTPS の受付。設定しなければ null。
   readonly https: CoreHttpsInfo | null;
+  // 自宅判定（ADR 0022）。HTTPS を設定しなければ null。onDenied で WSS を閉じる（配信は B03-04）。
+  readonly homeNetwork: HomeNetworkGate | null;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -211,6 +224,8 @@ interface OpenedStore {
   readonly store: DbWorkerClient;
   readonly binding: StoreBindingResult;
   readonly recovery: RecoveryReport;
+  // データ鍵から導いた自宅の HMAC の鍵（ADR 0022）。データ鍵そのものは保持しない。
+  readonly homeNetworkKey: HomeNetworkKey;
 }
 
 // DB を書込み可能にし、起動時の回復まで済ませる。失敗すれば起動した DB worker を閉じてから投げる。
@@ -223,6 +238,7 @@ async function openStore(
   // 上書きされていても、この時点の鍵と DB の照合値を比べれば食い違いを検出できる（ADR 0019）。
   const dataKey = await loadDataKeyAfterLock(options.keyStore);
   const dataKeyCheck = dataKeyCheckValue(dataKey);
+  const homeNetworkKey = HomeNetworkKey.fromDataKey(dataKey);
   const legacy = await readLegacyCoreState(dataDir);
   let store: DbWorkerClient;
   try {
@@ -272,7 +288,7 @@ async function openStore(
       log(
         `起動時の回復: 結果不明として保留（unknown_held）${recovery.held.length} 件、送出前（preparing）のまま ${recovery.resumable.length} 件。自動では送りません。`,
       );
-    return { store, binding, recovery };
+    return { store, binding, recovery, homeNetworkKey };
   } catch (error) {
     await store.close().catch(() => undefined);
     throw error;
@@ -332,6 +348,7 @@ export async function startCore(
   let opened: OpenedStore | null = null;
   let api: ApiServer | null = null;
   let httpsInfo: CoreHttpsInfo | null = null;
+  let homeNetwork: HomeNetworkGate | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
   let closedResolve: () => void = () => undefined;
@@ -392,13 +409,15 @@ export async function startCore(
       const started = await startHttps(
         dataDir,
         options.https,
-        opened.store,
+        opened,
         coreInstanceId,
         () => lifecycle.state === 'running',
         now,
+        log,
       );
       api = started.api;
       httpsInfo = started.info;
+      homeNetwork = started.homeNetwork;
       log(
         `HTTPS を待ち受けました（${httpsInfo.host}:${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`,
       );
@@ -456,6 +475,7 @@ export async function startCore(
     recovery,
     store,
     https: httpsInfo,
+    homeNetwork,
     get state() {
       return lifecycle.state;
     },
@@ -469,11 +489,17 @@ export async function startCore(
 async function startHttps(
   dataDir: string,
   https: CoreHttpsOptions,
-  store: DbWorkerClient,
+  opened: OpenedStore,
   coreInstanceId: string,
   accepting: () => boolean,
   now: () => Date,
-): Promise<{ readonly api: ApiServer; readonly info: CoreHttpsInfo }> {
+  log: (message: string) => void,
+): Promise<{
+  readonly api: ApiServer;
+  readonly info: CoreHttpsInfo;
+  readonly homeNetwork: HomeNetworkGate;
+}> {
+  const store = opened.store;
   let identity;
   try {
     identity = await loadOrCreateTlsIdentity({
@@ -486,6 +512,15 @@ async function startHttps(
       throw new CoreStartError('tls_unavailable', error.reasons);
     throw error;
   }
+  // 自宅判定（ADR 0022）。中枢と同じマシンの判定は待ち受けのアドレスとループバックで行う。
+  const homeNetwork = createHomeNetworkGate({
+    store,
+    key: opened.homeNetworkKey,
+    tailscale: https.tailscale ?? UNAVAILABLE_TAILSCALE_STATUS,
+    sameMachine: (remote) => isSameMachineAddress(remote, https.host),
+    now: () => now().getTime(),
+    log,
+  });
   let api: ApiServer;
   try {
     api = createApiServer({
@@ -496,9 +531,11 @@ async function startHttps(
       coreInstanceId,
       accepting,
       now: () => now().getTime(),
-      ...(https.environment === undefined
-        ? {}
-        : { environment: https.environment }),
+      environment: {
+        homeNetwork: homeNetwork.homeNetwork,
+        ...https.environment,
+      },
+      handlers: homeNetwork.handlers,
       ...(https.limits === undefined ? {} : { limits: https.limits }),
     });
   } catch (error) {
@@ -516,6 +553,7 @@ async function startHttps(
   }
   return {
     api,
+    homeNetwork,
     info: {
       host: api.host,
       port: api.port,

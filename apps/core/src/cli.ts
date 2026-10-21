@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createMockTlsKeyStore,
   createNodeCommandRunner,
+  createTailscaleStatusSource,
   createTlsKeyStore,
 } from '@buddy/platform';
 import type { TlsKeyStore } from '@buddy/platform';
@@ -218,7 +219,19 @@ async function start(
     const httpsOptions: CoreHttpsOptions | undefined =
       https === null
         ? undefined
-        : { ...https, tlsKeyStore: createCoreTlsKeyStore(mode) };
+        : {
+            ...https,
+            tlsKeyStore: createCoreTlsKeyStore(mode),
+            // 自宅判定の Tailscale の状態（ADR 0022）。模擬の起動では実機の tailscale を呼ばない
+            // （取得できない扱いで、中枢と同じマシンのクライアントだけが通る）。
+            ...(mode === 'os'
+              ? {
+                  tailscale: createTailscaleStatusSource({
+                    runner: createNodeCommandRunner(),
+                  }),
+                }
+              : {}),
+          };
     try {
       handle = await startCore({
         dataDir,

@@ -103,6 +103,18 @@ const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   payload_too_large: '要求が大きすぎます。',
 };
 
+// 拒否の本文（ApiError）。対象の本文・トークン・hash を入れない。
+export function apiErrorBody(
+  code: ApiErrorCode,
+  requestId: string | null,
+): {
+  readonly code: ApiErrorCode;
+  readonly message: string;
+  readonly request_id: string | null;
+} {
+  return { code, message: MESSAGES[code], request_id: requestId };
+}
+
 export interface ApiLimits {
   // 同時の TLS 接続の数。超えた接続の要求は 429。
   readonly maxConnections: number;
@@ -133,6 +145,22 @@ export const DEFAULT_API_LIMITS: ApiLimits = {
 
 export type ApiStore = Pick<DbWorkerClient, 'device' | 'storeGeneration'>;
 
+// 経路の検査を通った要求（経路の処理へ渡す）。
+export interface ApiHandlerRequest {
+  readonly route: ApiRoute;
+  readonly device: DeviceRecord | null;
+  readonly body: JsonObject | null;
+  readonly params: Readonly<Record<string, string>>;
+  // 形式の検査を通ったクエリー。
+  readonly query: Readonly<Record<string, string>>;
+  readonly remoteAddress: string;
+}
+
+// 経路の処理。応答の状態と本文を返す。
+export type ApiRouteHandler = (
+  request: ApiHandlerRequest,
+) => Promise<{ readonly status: number; readonly body: object }>;
+
 export interface ApiServerOptions {
   readonly host: string;
   readonly port: number;
@@ -149,6 +177,8 @@ export interface ApiServerOptions {
   // 単調時計のミリ秒（頻度の窓）。
   readonly monotonicNow?: () => number;
   readonly contract?: ApiContract;
+  // operationId ごとの経路の処理（B03-02 以降）。ないものは今までどおり（getBootstrap か 503）。
+  readonly handlers?: Readonly<Partial<Record<string, ApiRouteHandler>>>;
 }
 
 export class ApiListenError extends Error {
@@ -232,6 +262,9 @@ interface Admitted {
   readonly route: ApiRoute;
   readonly device: DeviceRecord | null;
   readonly body: JsonObject | null;
+  readonly params: Readonly<Record<string, string>>;
+  readonly query: Readonly<Record<string, string>>;
+  readonly remoteAddress: string;
 }
 
 type Evaluation = Rejection | Admitted | { readonly kind: 'aborted' };
@@ -605,7 +638,15 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
       return reject(admission.status, admission.code as ApiErrorCode, {
         requestId,
       });
-    return { kind: 'admitted', route, device, body: form.body };
+    return {
+      kind: 'admitted',
+      route,
+      device,
+      body: form.body,
+      params: match.params,
+      query: Object.fromEntries(new URLSearchParams(search)),
+      remoteAddress: address,
+    };
   };
 
   const headersFor = (
@@ -639,16 +680,23 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     response.end(body);
   };
 
-  const errorBody = (rejection: Rejection) => ({
-    code: rejection.code,
-    message: MESSAGES[rejection.code],
-    request_id: rejection.requestId,
-  });
+  const errorBody = (rejection: Rejection) =>
+    apiErrorBody(rejection.code, rejection.requestId);
 
   // 実装した経路の処理。B03-01 は getBootstrap だけ。
   const handle = async (
     admitted: Admitted,
   ): Promise<{ status: number; body: object }> => {
+    const handler = options.handlers?.[admitted.route.operationId];
+    if (handler !== undefined)
+      return handler({
+        route: admitted.route,
+        device: admitted.device,
+        body: admitted.body,
+        params: admitted.params,
+        query: admitted.query,
+        remoteAddress: admitted.remoteAddress,
+      });
     if (
       admitted.route.operationId !== 'getBootstrap' ||
       admitted.device === null

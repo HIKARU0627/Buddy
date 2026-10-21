@@ -126,6 +126,14 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'DeviceRevokeRequest',
     ...SCREEN,
   }),
+  // 自宅の指紋の報告と自宅の登録（B03-03、ADR 0022）。
+  route('reportHomeFingerprint', 'POST', '/v1/home-network/reports', {
+    body: 'HomeFingerprintReport',
+  }),
+  route('registerHome', 'PUT', '/v1/home-network/registration', {
+    body: 'HomeRegistrationRequest',
+    ...SCREEN,
+  }),
   route('listConnections', 'GET', '/v1/connections'),
   route('startOAuth', 'POST', '/v1/connections/oauth/start', {
     body: 'OAuthStartRequest',

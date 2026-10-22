@@ -622,9 +622,47 @@ export type DesktopIpcRequest =
       channel: 'desktop.client_quit';
       request_id: Id;
       payload: null;
+    }
+  | {
+      channel: 'desktop.get_connection';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.pairing_begin';
+      request_id: Id;
+      payload: {
+        /**
+         * 中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。名前の形は domain の HUB_HOSTNAME_PATTERN と同じ一つの正規表現（末尾のドットを一つ許す）。main はペアリングの開始で正規化し（末尾のドットを除いて小文字にする）、ペアリングで受け付ける宛先を Tailscale のアドレス（100.64.0.0/10・fd7a:115c:a1e0::/48）・ループバック・*.ts.net の名前に限る（ADR 0025）。
+         */
+        host: DesktopHubHost & DesktopHubHost1;
+        port: number;
+      };
+    }
+  | {
+      channel: 'desktop.pairing_confirm';
+      request_id: Id;
+      payload: {
+        fingerprint: Hash;
+      };
+    }
+  | {
+      channel: 'desktop.pairing_submit';
+      request_id: Id;
+      payload: {
+        pairing_code: string;
+        device_name: string;
+      };
+    }
+  | {
+      channel: 'desktop.pairing_cancel';
+      request_id: Id;
+      payload: null;
     };
+export type DesktopHubHost = string;
+export type DesktopHubHost1 = string;
 /**
- * main から UI レンダラーへの応答（ADR 0014）。どの拒否を返すかは domain の desktop.ts の規則が決める。
+ * main から UI レンダラーへの応答（ADR 0014・0025）。どの拒否を返すかは domain の desktop.ts の規則と main のペアリングの手順が決める。
  */
 export type DesktopIpcResponse =
   | {
@@ -639,6 +677,17 @@ export type DesktopIpcResponse =
       outcome: 'ok';
     }
   | {
+      request_id: Id;
+      channel:
+        | 'desktop.get_connection'
+        | 'desktop.pairing_begin'
+        | 'desktop.pairing_confirm'
+        | 'desktop.pairing_submit'
+        | 'desktop.pairing_cancel';
+      outcome: 'ok';
+      connection: DesktopConnectionView;
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -649,7 +698,10 @@ export type DesktopIpcResponse =
         | 'screen_operation_required'
         | 'not_stopped'
         | 'core_required'
-        | 'io_epoch_mismatch';
+        | 'io_epoch_mismatch'
+        | 'pairing_step_mismatch'
+        | 'secure_storage_unavailable'
+        | 'pairing_host_not_allowed';
     };
 /**
  * 上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。
@@ -674,14 +726,107 @@ export type DesktopStatusBar =
       safety_stopped: boolean | null;
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。音声レンダラーの IPC（B05）は別に定める。
+ * 中枢との接続・登録・ペアリングの状態（設計 02 端末登録と接続、07 §2〜§4、ADR 0025）。main が作り、UI レンダラーは表示するだけ。端末トークン・申請用の秘密・端末 ID・中枢の証明書の本体・自宅の指紋の値を含めない。
+ */
+export type DesktopConnectionView =
+  | {
+      visibility: 'hidden';
+      lock_state: 'locked' | 'unknown';
+    }
+  | {
+      visibility: 'shown';
+      registration:
+        | 'unregistered'
+        | 'registered'
+        | 'reregistration_required'
+        | 'secure_storage_unavailable';
+      link:
+        | 'not_connected'
+        | 'connecting'
+        | 'connected'
+        | 'waiting_retry'
+        | 'upgrade_required'
+        | 'reregistration_required';
+      link_reason: DesktopLinkReason | null;
+      last_confirmed_at: UtcTime | null;
+      retry_at: UtcTime | null;
+      pairing: {
+        step:
+          | 'fetching_certificate'
+          | 'fingerprint_check'
+          | 'code_entry'
+          | 'claiming'
+          | 'waiting_approval'
+          | 'failed';
+        /**
+         * 中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。名前の形は domain の HUB_HOSTNAME_PATTERN と同じ一つの正規表現（末尾のドットを一つ許す）。main はペアリングの開始で正規化し（末尾のドットを除いて小文字にする）、ペアリングで受け付ける宛先を Tailscale のアドレス（100.64.0.0/10・fd7a:115c:a1e0::/48）・ループバック・*.ts.net の名前に限る（ADR 0025）。
+         */
+        host: DesktopHubHost & DesktopHubHost1;
+        port: number;
+        fingerprint: Hash | null;
+        claim_expires_at: UtcTime | null;
+        failure: DesktopPairingFailure | null;
+        /**
+         * 今「やめる」をすぐに受け付けるか。受取りの要求が進んでいる間は false で、画面は「やめる」を押せなくする（main は受取りの結果を捨てず、トークンが届けば保存する。ADR 0025）。
+         */
+        cancelable: boolean;
+      } | null;
+      home_network: {
+        allowed: boolean;
+        exempt: boolean;
+        reasons: HomeNetworkReason[];
+        reported_at: UtcTime;
+      } | null;
+      operations: OperationSnapshot[];
+    };
+/**
+ * 中枢との接続が切れた・使えない理由（packages/client の LinkReason、ADR 0025）。値・宛先を含めない。
+ */
+export type DesktopLinkReason =
+  | 'unreachable'
+  | 'outside_home_network'
+  | 'rate_limited'
+  | 'dependency_unavailable'
+  | 'protocol_error'
+  | 'core_stopping'
+  | 'slow_consumer'
+  | 'stream_closed'
+  | 'alive_timeout'
+  | 'resnapshot'
+  | 'unauthenticated'
+  | 'device_revoked'
+  | 'certificate_mismatch'
+  | 'api_major_mismatch';
+/**
+ * ペアリングが失敗した理由（ADR 0025）。pickup_unknown は受取りの結果が分からない（自動で再送しない。中枢で失効してやり直す）。
+ */
+export type DesktopPairingFailure =
+  | 'certificate_unavailable'
+  | 'certificate_changed'
+  | 'unreachable'
+  | 'pairing_failed'
+  | 'outside_home_network'
+  | 'rate_limited'
+  | 'claim_expired'
+  | 'pickup_refused'
+  | 'pickup_unknown'
+  | 'secure_storage_unavailable'
+  | 'storage_failed'
+  | 'protocol_error';
+/**
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
   | 'desktop.io_stop'
   | 'desktop.io_resume'
   | 'desktop.window_hide'
-  | 'desktop.client_quit';
+  | 'desktop.client_quit'
+  | 'desktop.get_connection'
+  | 'desktop.pairing_begin'
+  | 'desktop.pairing_confirm'
+  | 'desktop.pairing_submit'
+  | 'desktop.pairing_cancel';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -696,6 +841,10 @@ export type DesktopIpcNotification =
         'lock_screen' | 'unlock_screen' | 'suspend' | 'resume' | 'shutdown';
       source: 'os_event' | 'os_query';
       observed_at: UtcTime;
+    }
+  | {
+      channel: 'desktop.connection_changed';
+      connection: DesktopConnectionView;
     };
 
 export interface AudioRange {

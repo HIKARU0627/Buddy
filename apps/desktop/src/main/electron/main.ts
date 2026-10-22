@@ -1,7 +1,8 @@
-// Electron の main の薄いアダプター（設計 02・10 §1、ADR 0014・0015）。
-// ここは BrowserWindow・Tray・ipcMain・powerMonitor・protocol・app のライフサイクルの接続だけを持ち、
-// 判断は Electron に依存しない純粋なモジュール（device-controller・window-policy・lock-query・device-io-store）に任せる。
-// B01 は中枢に接続しない（ADR 0012）。端末トークンも持たない（B03 で main だけが持つ）。
+// Electron の main の薄いアダプター（設計 02・10 §1、ADR 0014・0015・0025）。
+// ここは BrowserWindow・Tray・ipcMain・powerMonitor・protocol・safeStorage・app のライフサイクルの接続だけを持ち、
+// 判断は Electron に依存しない純粋なモジュール（device-controller・core-link・window-policy・lock-query・
+// device-io-store・credential-store など）に任せる。
+// 中枢との接続（B03-05）: 端末トークンは main だけが持ち、safeStorage で暗号化して保存する。Renderer・IPC・ログに出さない。
 import {
   BrowserWindow,
   Menu,
@@ -11,16 +12,28 @@ import {
   nativeImage,
   powerMonitor,
   protocol,
+  safeStorage,
   session,
   shell,
   type IpcMainInvokeEvent,
 } from 'electron';
 import { readFile } from 'node:fs/promises';
+import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
+import {
+  createHomeFingerprintCollector,
+  createNodeCommandRunner,
+} from '@buddy/platform/home-fingerprint';
 import { fileURLToPath } from 'node:url';
 import { DESKTOP_IPC_CHANNELS, type DesktopPowerEvent } from '@buddy/domain';
+import { ConnectionPublisher } from '../connection-publisher.js';
 import { createDesktopContract, loadContractSchema } from '../contract.js';
+import { CONNECTION_CHANNELS, DesktopCoreLink } from '../core-link.js';
+import { CREDENTIAL_FILE } from '../credential-store.js';
+import type { SecretProtector } from '../credential-store.js';
 import { DesktopDeviceController } from '../device-controller.js';
+import { networkSignatureOf } from '../home-reporter.js';
+import { devicePlatformOf, systemClock } from '../system-clock.js';
 import {
   DEVICE_IO_STATE_FILE,
   loadDeviceIoRecord,
@@ -66,14 +79,13 @@ const lifecycle = new ClientLifecycle();
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let controller: DesktopDeviceController | null = null;
+let link: DesktopCoreLink | null = null;
+let contractRef: ReturnType<typeof createDesktopContract> | null = null;
 // 画面の読み込みが終わるまでの通知は送らず、読み込み後に記録をまとめて送る。
 let rendererReady = false;
 
-const log = (code: string, error?: unknown) =>
-  console.error(
-    `[buddy-desktop] ${code}`,
-    error instanceof Error ? error.message : '',
-  );
+// ログは理由のコードだけ（トークン・宛先・指紋の値・自宅の指紋を出さない）。例外の本文も出さない。
+const log = (code: string) => console.error(`[buddy-desktop] ${code}`);
 
 function sendToRenderer(channel: string, payload: unknown): void {
   const contents = mainWindow?.webContents;
@@ -104,9 +116,9 @@ function queryLockState(): void {
       LOCK_QUERY_IDLE_THRESHOLD_SECONDS,
     );
     controller.applyLockQuery(lockQueryEvent(process.platform, idle));
-  } catch (error) {
+  } catch {
     // 取得できなければ unknown のまま（解除済みと扱わない）。
-    log('lock_query_failed', error);
+    log('lock_query_failed');
   }
 }
 
@@ -191,6 +203,9 @@ function createWindow(): BrowserWindow {
       channel: 'desktop.state_changed',
       status: controller.statusBar,
     });
+    // 読み込み直した画面は前回の接続の状態を持っていないので、同じ内容でも送る。
+    connectionPublisher.reset();
+    pushConnection();
   });
   void window.loadURL(APP_ENTRY_URL);
   return window;
@@ -228,14 +243,43 @@ function createTray(): Tray {
   return created;
 }
 
+// 中枢との接続の状態を状態欄と画面へ送る（ロック中は内容を隠した値）。状態欄の更新が状態欄の通知を出し、
+// その処理からもう一度呼ばれても二重に送らない。前回と同じ内容は送らない（connection-publisher.ts）。
+const connectionPublisher = new ConnectionPublisher({
+  refreshHub: () => {
+    if (controller && link) controller.setHub(link.hubStatus());
+  },
+  build: () => {
+    if (!controller || !link || !contractRef) return null;
+    const notification = {
+      channel: 'desktop.connection_changed' as const,
+      connection: link.view(controller.state.lockState),
+    };
+    const errors = contractRef.notificationErrors(notification);
+    if (errors.length > 0) {
+      log(`connection_notification_invalid:${errors.join(',')}`);
+      return null;
+    }
+    return notification;
+  },
+  send: (notification) => sendToRenderer(notification.channel, notification),
+});
+
+function pushConnection(): void {
+  connectionPublisher.publish();
+}
+
 function registerIpc(): void {
   for (const channel of DESKTOP_IPC_CHANNELS) {
     ipcMain.handle(channel, (event, raw: unknown) => {
-      if (!controller) throw new Error('desktop_not_ready');
-      const outcome = controller.handleIpc(channel, raw, {
+      if (!controller || !link) throw new Error('desktop_not_ready');
+      const sender = {
         trustedSender: isTrustedSender(senderFacts(event)),
         windowFocused: windowFocused(),
-      });
+      };
+      if (CONNECTION_CHANNELS.includes(channel))
+        return link.handleIpc(channel, raw, sender, controller.state).response;
+      const outcome = controller.handleIpc(channel, raw, sender);
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window')
         setImmediate(() => mainWindow?.hide());
@@ -249,7 +293,11 @@ function registerPowerMonitor(): void {
   const forward = (event: DesktopPowerEvent) => () => {
     controller?.recordOsEvent(event);
     // スリープからの復帰では解除済みに戻さず、OS へ問い合わせて確かめる（07 §2・§5）。
-    if (event === 'resume') queryLockState();
+    // ネットワークも変わり得るので、自宅の指紋を報告し直して接続し直す。
+    if (event === 'resume') {
+      queryLockState();
+      link?.networkMayHaveChanged('resume');
+    }
   };
   powerMonitor.on('lock-screen', forward('lock_screen'));
   powerMonitor.on('unlock-screen', forward('unlock_screen'));
@@ -273,7 +321,7 @@ function hardenWebContents(): void {
       if (target !== null)
         void shell
           .openExternal(target)
-          .catch((error: unknown) => log('open_external_failed', error));
+          .catch(() => log('open_external_failed'));
       return { action: 'deny' };
     });
   });
@@ -304,8 +352,51 @@ function registerAppProtocol(): void {
   });
 }
 
+// safeStorage の呼び出しはここだけ（credential-store は注入された SecretProtector を使う）。
+function secretProtector(): SecretProtector {
+  return {
+    platform: process.platform,
+    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+    selectedBackend: () =>
+      process.platform === 'linux'
+        ? safeStorage.getSelectedStorageBackend()
+        : null,
+    encryptString: (plain) => safeStorage.encryptString(plain),
+    decryptString: (cipher) => safeStorage.decryptString(cipher),
+  };
+}
+
+function createLink(
+  contract: ReturnType<typeof createDesktopContract>,
+): DesktopCoreLink {
+  const collector = createHomeFingerprintCollector({
+    platform: process.platform,
+    runner: createNodeCommandRunner(),
+    networkInterfaces: () => networkInterfaces(),
+  });
+  return new DesktopCoreLink({
+    contract,
+    credentialPath: join(app.getPath('userData'), CREDENTIAL_FILE),
+    protector: secretProtector(),
+    clock: systemClock(),
+    platform: devicePlatformOf(process.platform),
+    collectHome: async () => {
+      const observation = await collector.collect();
+      return {
+        gateway_mac: observation.gateway_mac,
+        subnet: observation.subnet,
+        ssid: observation.ssid,
+      };
+    },
+    networkSignature: () => networkSignatureOf(networkInterfaces()),
+    onChange: pushConnection,
+    log,
+  });
+}
+
 function start(): void {
   const contract = createDesktopContract(loadContractSchema());
+  contractRef = contract;
   const storePath = join(app.getPath('userData'), DEVICE_IO_STATE_FILE);
   const loaded = loadDeviceIoRecord(storePath, new Date());
   const persist = (record: typeof loaded.record) =>
@@ -315,8 +406,8 @@ function start(): void {
     log('device_io_state_corrupt');
     try {
       persist(loaded.record);
-    } catch (error) {
-      log('device_io_state_save_failed', error);
+    } catch {
+      log('device_io_state_save_failed');
     }
   }
   controller = new DesktopDeviceController({
@@ -324,12 +415,20 @@ function start(): void {
     initial: loaded.record,
     now: () => new Date(),
     persist,
-    onPersistError: (error) => log('device_io_state_save_failed', error),
+    onPersistError: () => log('device_io_state_save_failed'),
     onNotification: (notification) => {
       sendToRenderer(notification.channel, notification);
-      if (notification.channel === 'desktop.state_changed') updateTray();
+      if (notification.channel === 'desktop.state_changed') {
+        updateTray();
+        // ロック状態は要求の Buddy-Lock-State と接続の表示の範囲に使う。
+        if (link && controller) {
+          link.setLockState(controller.state.lockState);
+          pushConnection();
+        }
+      }
     },
   });
+  link = createLink(contract);
   hardenWebContents();
   registerAppProtocol();
   registerIpc();
@@ -338,6 +437,7 @@ function start(): void {
   updateTray();
   // 起動直後のロック状態は unknown。OS へ問い合わせて確かめる。
   queryLockState();
+  link.start(controller.state.lockState);
   mainWindow = createWindow();
 }
 
@@ -347,7 +447,10 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', showWindow);
   // OS の終了要求・メニューの終了もクライアントの終了として扱う（中枢は止めない）。
-  app.on('before-quit', () => lifecycle.requestQuit());
+  app.on('before-quit', () => {
+    lifecycle.requestQuit();
+    link?.stop();
+  });
   app.on('window-all-closed', () => {
     if (lifecycle.onAllWindowsClosed() === 'quit') app.quit();
   });
@@ -355,8 +458,8 @@ if (!app.requestSingleInstanceLock()) {
   app
     .whenReady()
     .then(start)
-    .catch((error: unknown) => {
-      log('start_failed', error);
+    .catch(() => {
+      log('start_failed');
       app.exit(1);
     });
 }

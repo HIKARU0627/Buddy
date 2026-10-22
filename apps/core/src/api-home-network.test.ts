@@ -822,6 +822,7 @@ test(
           remoteAddress: '127.0.0.1',
           params: {},
           body: null,
+          declaredLockState: null,
         }),
       ),
       { name: 'HomeNetworkStoreError' },

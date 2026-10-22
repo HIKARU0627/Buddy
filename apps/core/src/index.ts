@@ -78,8 +78,13 @@ export {
   parseBearerToken,
 } from './api-auth.js';
 export type { CommandScopeState } from './api-auth.js';
-export { SAFE_REQUEST_ENVIRONMENT } from './api-environment.js';
+export {
+  DECLARED_LOCK_STATES,
+  SAFE_REQUEST_ENVIRONMENT,
+  declaredLockState,
+} from './api-environment.js';
 export type {
+  DeclaredLockState,
   EnvironmentInput,
   RequestEnvironment,
 } from './api-environment.js';

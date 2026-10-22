@@ -10,6 +10,8 @@ export * from './evaluation.js';
 export * from './extraction.js';
 // B03-03: 自宅ネットワークの判定（ADR 0022）。
 export * from './home-network.js';
+// B03-05: 中枢の宛先の正規化とペアリングで受け付ける宛先（ADR 0025）。
+export * from './hub-host.js';
 export * from './intents.js';
 // B03-07: 中枢の待ち受けのアドレスの判定（ADR 0020）。
 export * from './listen-address.js';

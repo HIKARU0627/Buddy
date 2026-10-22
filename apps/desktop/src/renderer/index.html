@@ -8,6 +8,11 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Buddy</title>
+    <!--
+      React Aria（HeroUI の Button など）は、この id の要素がなければ <style> を head に差し込む。
+      CSP の style-src 'self' はそれを止めるため、同じ規則を styles.css に置き、この空の要素で差し込みを省かせる（ADR 0024）。
+    -->
+    <template id="react-aria-pressable-style"></template>
   </head>
   <body>
     <div id="root"></div>

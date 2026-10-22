@@ -50,8 +50,12 @@ import {
 } from './api-auth.js';
 import { createApiContract } from './api-contract.js';
 import type { ApiContract } from './api-contract.js';
-import { SAFE_REQUEST_ENVIRONMENT } from './api-environment.js';
+import {
+  DECLARED_LOCK_STATES,
+  SAFE_REQUEST_ENVIRONMENT,
+} from './api-environment.js';
 import type {
+  DeclaredLockState,
   EnvironmentInput,
   RequestEnvironment,
 } from './api-environment.js';
@@ -167,6 +171,8 @@ export interface ApiHandlerRequest {
   readonly params: Readonly<Record<string, string>>;
   readonly remoteAddress: string;
   readonly query: Readonly<Record<string, string>>;
+  // Buddy-Lock-State の申告（なければ null。B03-05、ADR 0025）。
+  readonly declaredLockState: DeclaredLockState | null;
 }
 
 export type ApiRouteHandler = (
@@ -301,6 +307,12 @@ const ID =
 function requestIdOf(body: JsonObject | null): string | null {
   const value = body?.['request_id'];
   return typeof value === 'string' && ID.test(value) ? value : null;
+}
+
+// 形式の検査に通った Buddy-Lock-State（なければ null）。
+function lockHeader(headers: IncomingHttpHeaders): DeclaredLockState | null {
+  const value = headers['buddy-lock-state'];
+  return value === 'unlocked' || value === 'locked' ? value : null;
 }
 
 function contentLength(headers: IncomingHttpHeaders): number | null {
@@ -515,6 +527,14 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
       if (typeof origin !== 'string' || !INPUT_ORIGINS.includes(origin))
         return formReject(body);
     }
+    // ロック状態の申告は任意。あれば値を検査する（どの経路でも同じ。B03-05、ADR 0025）。
+    const lock = headers['buddy-lock-state'];
+    if (
+      lock !== undefined &&
+      (typeof lock !== 'string' ||
+        !(DECLARED_LOCK_STATES as readonly string[]).includes(lock))
+    )
+      return formReject(body);
     return { kind: 'ok', body };
   };
 
@@ -653,12 +673,14 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
       raw,
     );
     if (form.kind === 'reject') return form;
+    const declaredLock = lockHeader(request.headers);
     const input: EnvironmentInput = {
       operationId: route.operationId,
       device,
       remoteAddress: address,
       params: match.params,
       body: form.body,
+      declaredLockState: declaredLock,
     };
     let context: RequestContext | null;
     try {
@@ -687,6 +709,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
       params: match.params,
       remoteAddress: address,
       query: Object.fromEntries(new URLSearchParams(search)),
+      declaredLockState: declaredLock,
     };
   };
 

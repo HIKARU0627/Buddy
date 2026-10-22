@@ -6,24 +6,39 @@
   "type": "module",
   "main": "dist/main/electron/main.js",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.pure.json && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json",
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json && vite build --logLevel warn",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.pure.json && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json && tsc -p tsconfig.renderer-test.json --noEmit",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json && vite build --logLevel warn && tsc -p tsconfig.renderer-test.json",
     "dev": "pnpm --filter \"@buddy/desktop...\" --workspace-concurrency=1 run build && electron .",
     "start": "electron ."
   },
   "dependencies": {
+    "@buddy/client": "workspace:*",
     "@buddy/contracts": "workspace:*",
     "@buddy/domain": "workspace:*",
+    "@buddy/platform": "workspace:*",
+    "@heroui/react": "3.2.6",
+    "@heroui/styles": "3.2.6",
+    "@internationalized/date": "3.12.4",
+    "@react-aria/ssr": "3.10.1",
+    "@react-aria/utils": "3.34.1",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-aria": "3.52.1",
+    "react-aria-components": "1.21.1",
+    "react-dom": "19.3.1",
+    "ws": "8.22.0"
   },
   "devDependencies": {
+    "@buddy/core": "workspace:*",
+    "@buddy/storage": "workspace:*",
+    "@tailwindcss/vite": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/ws": "8.18.2",
     "@vitejs/plugin-react": "6.1.2",
     "electron": "44.9.0",
+    "tailwindcss": "4.3.3",
     "vite": "8.3.4"
   }
 }

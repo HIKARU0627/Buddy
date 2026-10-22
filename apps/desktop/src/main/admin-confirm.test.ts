@@ -138,3 +138,45 @@ test('re-registering warns about the replacement and a change of the Wi-Fi check
     /登録し直すと、Wi-Fi 名も確かめるようになります（Wi-Fi 名の違う端末は接続できなくなります）。/u,
   );
 });
+
+test(
+  "the operation confirmation shows the target and change from main's values, cleans control characters, and defaults to cancel",
+  { timeout: 10_000 },
+  () => {
+    const text = adminConfirmText({
+      action: 'approve_operation',
+      operationKind: 'mail.draft.create',
+      service: 'mock',
+      target: 'mail-001',
+      fields: [
+        { field: 'draft_to', values: ['a@example.com', 'b@example.com'] },
+        { field: 'draft_subject', values: ['件名‮と\u0000制御'] },
+        { field: 'draft_body', values: ['あ'.repeat(300)] },
+      ],
+    });
+    assert.equal(text.title, '変更の承認');
+    assert.equal(text.message, '「返信の下書きの作成」を承認しますか');
+    assert.deepEqual(text.buttons, ['やめる', '承認する']);
+    const lines = text.detail.split('\n');
+    assert.deepEqual(lines.slice(0, 4), [
+      '変更先: 模擬のメール',
+      '対象: mail-001',
+      '宛先: a@example.com、b@example.com',
+      '件名: 件名 と 制御',
+    ]);
+    // 本文は先頭の 200 文字だけ（末尾に「…」）。
+    assert.equal(lines[4], `本文: ${'あ'.repeat(200)}…`);
+    assert.match(text.detail, /メールを送ることはありません。/u);
+    assert.match(text.detail, /取り消せるのは、実行の前だけです。$/u);
+    const task = adminConfirmText({
+      action: 'approve_operation',
+      operationKind: 'task.create',
+      service: 'buddy',
+      target: 'inbox',
+      fields: [{ field: 'task_title', values: ['牛乳を買う'] }],
+    });
+    assert.equal(task.message, '「用事の登録」を承認しますか');
+    assert.match(task.detail, /題名: 牛乳を買う/u);
+    assert.match(task.detail, /Buddy の用事に登録します。/u);
+  },
+);

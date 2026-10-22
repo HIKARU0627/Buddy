@@ -80,6 +80,8 @@ interface Client {
   readonly requests: string[];
   view(): Extract<DesktopConnectionView, { visibility: 'shown' }>;
   invoke(channel: string, payload: unknown): DesktopIpcResponse;
+  // 発言・承認表示の準備・承認・取消・照合の IPC（B04-05）。
+  work(channel: string, payload: unknown): Promise<DesktopIpcResponse>;
   // 中枢の画面の端末の申請の承認・端末の管理の IPC（B03-06）。
   admin(
     channel: string,
@@ -102,6 +104,10 @@ async function createClient(
     // このマシンのネットワークの指紋（模擬の読み取り。既定は SSID なしの HOME）。関数なら読み取りのたびに呼ぶ
     // （試験の途中で端末のネットワークを変える）。
     readonly home?: HomeObservation | (() => HomeObservation);
+    // 本人の確認の答え（既定は確定）。B04-05 の承認の確認を試験で決める。
+    readonly confirm?: (request: AdminConfirmRequest) => boolean;
+    // 中枢へ送らずに「届いたか分からない」を返す要求（試験で結果不明を作る）。
+    readonly dropRequest?: (method: string, path: string) => boolean;
   } = {},
 ): Promise<Client> {
   const dir = options.dir ?? (await tempDir(t, `bd${name}-`));
@@ -132,7 +138,7 @@ async function createClient(
     log: (code) => logs.push(code),
     confirmAdmin: (request) => {
       confirms.push(request);
-      return Promise.resolve(true);
+      return Promise.resolve(options.confirm?.(request) ?? true);
     },
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     aliveTimeoutMs: 3_000,
@@ -142,6 +148,11 @@ async function createClient(
       return {
         request: (request) => {
           requests.push(`${request.method} ${request.path}`);
+          if (options.dropRequest?.(request.method, request.path) === true)
+            return Promise.resolve({
+              kind: 'unreachable' as const,
+              reason: 'test_dropped',
+            });
           return transport.request(request);
         },
         openStream: (cursor, lockState, listener) => {
@@ -190,6 +201,16 @@ async function createClient(
         SCREEN,
         UNLOCKED,
       ).response;
+      ipc.push(response);
+      return response;
+    },
+    async work(channel, payload) {
+      const { response } = await created.handleOperationIpc(
+        channel,
+        { channel, request_id: randomUUID(), payload },
+        SCREEN,
+        UNLOCKED,
+      );
       ipc.push(response);
       return response;
     },
@@ -1209,5 +1230,344 @@ test(
       }
     }
     assertNoSecrets([a, b], [a.token(), b.token()]);
+  },
+);
+
+// --- B04-05: 発言・承認・取消・照合（ADR 0031） ---
+
+const TASK_TEXT = '「牛乳を買う」を用事に登録して';
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+const field = (response: DesktopIpcResponse, key: string): unknown =>
+  (response as unknown as Record<string, unknown>)[key];
+
+// 画面へ出した IPC・ログに、操作 ID・hash・preview_id のような中枢の値がない（参照だけ）。
+function assertNoOperationValues(
+  clients: readonly Client[],
+  hidden: readonly string[],
+) {
+  for (const client of clients) {
+    const shown = JSON.stringify(client.ipc);
+    const logs = client.logs.join('\n');
+    for (const value of hidden) {
+      assert.equal(shown.includes(value), false, `${client.name} IPC`);
+      assert.equal(logs.includes(value), false, `${client.name} log`);
+    }
+  }
+}
+
+test(
+  "an operation made from A's message appears on B and one approval on B (confirmed by main) completes it",
+  { timeout: 60_000 },
+  async (t) => {
+    const dir = await tempDir(t, 'bdw-');
+    const hub = await startHub(t, {
+      dataDir: join(dir, 'd'),
+      port: await freePort(),
+    });
+    const { a, b } = await pairTwoClients(t, hub);
+    // A の発言（文字入力）から、承認待ちの操作ができる。外部変更の完了ではなく、まだ何も実行していない。
+    const turn = await a.work('desktop.turn_submit', { text: TASK_TEXT });
+    assert.equal(turn.outcome, 'ok');
+    const result = (
+      field(turn, 'turn') as {
+        status: string;
+        result: { kind: string; status: string; operation_ref: string };
+      }
+    ).result;
+    assert.equal(result.kind, 'approval_link');
+    assert.equal(result.status, 'needs_review');
+    assert.match(result.operation_ref, UUID);
+    // 同じ操作が A にも B にも出る。参照は端末ごとに別で、承認待ち。
+    await waitUntil(
+      () =>
+        a.view().operations.length === 1 && b.view().operations.length === 1,
+      'both see the operation',
+    );
+    const entryA = a.view().operations[0];
+    const entryB = b.view().operations[0];
+    assert(entryA !== undefined && entryB !== undefined);
+    assert.equal(entryA.ref, result.operation_ref);
+    assert.notEqual(entryB.ref, entryA.ref);
+    assert.equal(entryB.state, 'awaiting_approval');
+    assert.equal(entryB.operation_kind, 'task.create');
+    assert.equal(entryB.delivery_unknown, false);
+    // 承認の準備: 確定した内容（題名・登録先）を中枢の値で見せる。確認を出す前は承認していない。
+    const prepared = await b.work('desktop.operation_preview', {
+      ref: entryB.ref,
+    });
+    assert.equal(prepared.outcome, 'ok');
+    const preview = field(prepared, 'preview') as {
+      preview_ref: string;
+      operation_kind: string;
+      service: string;
+      target: string;
+      fields: unknown[];
+    };
+    assert.deepEqual(
+      {
+        kind: preview.operation_kind,
+        service: preview.service,
+        target: preview.target,
+        fields: preview.fields,
+      },
+      {
+        kind: 'task.create',
+        service: 'buddy',
+        target: 'inbox',
+        fields: [{ field: 'task_title', values: ['牛乳を買う'] }],
+      },
+    );
+    assert.equal(b.confirms.length, 0);
+    assert.equal(b.view().operations[0]?.state, 'awaiting_approval');
+    // 承認: main の確認（模擬の confirmAdmin）が 1 回だけ出て、確定したときだけ中枢へ送る。
+    const approved = await b.work('desktop.operation_approve', {
+      ref: preview.preview_ref,
+    });
+    assert.equal(approved.outcome, 'ok');
+    assert.match(String(field(approved, 'receipt')), /^(accepted|durable)$/u);
+    assert.equal(b.confirms.length, 1);
+    assert.deepEqual(b.confirms[0], {
+      action: 'approve_operation',
+      operationKind: 'task.create',
+      service: 'buddy',
+      target: 'inbox',
+      fields: [{ field: 'task_title', values: ['牛乳を買う'] }],
+    });
+    await waitUntil(
+      () =>
+        a.view().operations[0]?.state === 'succeeded' &&
+        b.view().operations[0]?.state === 'succeeded',
+      'both see it succeeded',
+    );
+    assert.equal(
+      b.requests.filter((line) => line.endsWith('/approve')).length,
+      1,
+    );
+    // 同じ確認では、もう一度承認できない（確認は 1 回で使い切る。確認も増えない）。
+    const again = await b.work('desktop.operation_approve', {
+      ref: preview.preview_ref,
+    });
+    assert.equal(field(again, 'reason'), 'entry_not_found');
+    assert.equal(b.confirms.length, 1);
+    // 中枢の値（別の実装）と同じ状態で、画面へは操作 ID・hash・preview_id を出していない。
+    const stored = a.link.linkState?.operations[0];
+    assert(stored !== undefined);
+    const record = await hub.handle.store.query({
+      kind: 'operation',
+      operation_id: stored.operation_id,
+    });
+    assert.equal(record?.state, 'succeeded');
+    assertNoOperationValues([a, b], [stored.operation_id, stored.content_hash]);
+    assertNoSecrets([a, b], [a.token(), b.token()]);
+  },
+);
+
+test(
+  'declining the confirmation sends nothing; an unknown outcome is shown, never resent, and cleared only when the operation moves',
+  { timeout: 60_000 },
+  async (t) => {
+    const dir = await tempDir(t, 'bdu-');
+    const hub = await startHub(t, {
+      dataDir: join(dir, 'd'),
+      port: await freePort(),
+    });
+    const answers: boolean[] = [];
+    const drop = { on: false };
+    const a = await createClient(t, 'A');
+    const b = await createClient(t, 'B', {
+      confirm: () => answers.shift() ?? true,
+      dropRequest: (method, path) =>
+        method === 'POST' && path.endsWith('/approve') && drop.on,
+    });
+    // pairTwoClients と同じ手順で A・B を登録する（B にだけ試験用の差し込みを渡すため）。
+    a.link.start('unlocked');
+    b.link.start('unlocked');
+    const pairing = hub.handle.pairing;
+    assert(pairing !== null);
+    const first = await pairing.startFirstDevice();
+    assert(first.ok);
+    await pair(a, hub, first.pairing_code, async () => {
+      await waitUntil(() => a.claims.length === 1, 'A claim');
+      const approved = await pairing.approveFirstDevice(first.pairing_id);
+      assert(approved.ok);
+    });
+    const started = await hubScreen(hub, a, '/v1/pairing/sessions', {});
+    const session = (started as { body: Record<string, unknown> }).body;
+    await pair(b, hub, String(session['pairing_code']), async () => {
+      await waitUntil(() => b.claims.length === 1, 'B claim');
+      const decided = await hubScreen(
+        hub,
+        a,
+        `/v1/pairing/claims/${b.claims[0] ?? ''}/decision`,
+        { decision: 'approve' },
+      );
+      assert.equal(decided.kind === 'response' && decided.status, 200);
+    });
+    const turn = await a.work('desktop.turn_submit', { text: TASK_TEXT });
+    assert.equal(turn.outcome, 'ok');
+    await waitUntil(() => b.view().operations.length === 1, 'B sees it');
+    const ref = b.view().operations[0]?.ref ?? '';
+    const preview = async () =>
+      field(await b.work('desktop.operation_preview', { ref }), 'preview') as {
+        preview_ref: string;
+      };
+    const approveCount = () =>
+      b.requests.filter((line) => line.endsWith('/approve')).length;
+
+    // 確認で「やめる」: 送らず、承認していない。
+    answers.push(false);
+    const declined = await b.work('desktop.operation_approve', {
+      ref: (await preview()).preview_ref,
+    });
+    assert.equal(field(declined, 'reason'), 'confirmation_declined');
+    assert.equal(approveCount(), 0);
+    assert.equal(b.view().operations[0]?.state, 'awaiting_approval');
+
+    // 確認の後、中枢へ送ったが届いたか分からない: 結果不明（自動では送り直さない）。
+    drop.on = true;
+    const unknown = await b.work('desktop.operation_approve', {
+      ref: (await preview()).preview_ref,
+    });
+    assert.equal(field(unknown, 'reason'), 'outcome_unknown');
+    assert.equal(b.view().operations[0]?.delivery_unknown, true);
+    assert.equal(b.view().operations[0]?.state, 'awaiting_approval');
+    drop.on = false;
+    // 時間が経っても送り直さない。同じ操作の承認・取消・照合・確認は、画面からも送らせない。
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.equal(approveCount(), 1);
+    for (const channel of [
+      'desktop.operation_preview',
+      'desktop.operation_cancel',
+      'desktop.operation_reconcile',
+    ]) {
+      const held = await b.work(channel, { ref });
+      assert.equal(field(held, 'reason'), 'entry_not_found', channel);
+    }
+    assert.equal(b.confirms.length, 2);
+    assert.equal(approveCount(), 1);
+
+    // 操作が進む（A が取り消す）と、結果不明の保留は解け、実際の状態が出る。
+    const cancelled = await a.work('desktop.operation_cancel', {
+      ref: a.view().operations[0]?.ref ?? '',
+    });
+    assert.equal(cancelled.outcome, 'ok');
+    await waitUntil(
+      () =>
+        b.view().operations[0]?.state === 'cancelled' &&
+        b.view().operations[0]?.delivery_unknown === false,
+      'B sees the real state',
+    );
+    // 取り消された操作の承認は、確認を出さずに拒む（確かめた内容が今の状態と違う）。
+    const stale = await b.work('desktop.operation_approve', { ref });
+    assert.equal(field(stale, 'reason'), 'entry_not_found');
+    assert.equal(b.confirms.length, 2);
+  },
+);
+
+test(
+  'while the input is stopped or the window is hidden, messages and approvals are refused and nothing is sent',
+  { timeout: 60_000 },
+  async (t) => {
+    const dir = await tempDir(t, 'bds-');
+    const hub = await startHub(t, {
+      dataDir: join(dir, 'd'),
+      port: await freePort(),
+    });
+    const { a } = await pairTwoClients(t, hub);
+    const before = a.requests.length;
+    const stopped = await a.link.handleOperationIpc(
+      'desktop.turn_submit',
+      {
+        channel: 'desktop.turn_submit',
+        request_id: randomUUID(),
+        payload: { text: TASK_TEXT },
+      },
+      SCREEN,
+      { ...UNLOCKED, stopScope: 'local' },
+    );
+    assert.equal(field(stopped.response, 'reason'), 'input_stopped');
+    const cases: [typeof SCREEN, DesktopIoState, string][] = [
+      [
+        { ...SCREEN, windowFocused: false },
+        UNLOCKED,
+        'screen_operation_required',
+      ],
+      [SCREEN, { ...UNLOCKED, lockState: 'locked' }, 'device_locked'],
+      [{ ...SCREEN, trustedSender: false }, UNLOCKED, 'untrusted_sender'],
+    ];
+    for (const [sender, state, reason] of cases) {
+      const refused = await a.link.handleOperationIpc(
+        'desktop.operation_approve',
+        {
+          channel: 'desktop.operation_approve',
+          request_id: randomUUID(),
+          payload: { ref: randomUUID() },
+        },
+        sender,
+        state,
+      );
+      assert.equal(field(refused.response, 'reason'), reason);
+    }
+    // 形式の不正（未知の項目）は中枢へ行かない。
+    const invalid = await a.link.handleOperationIpc(
+      'desktop.operation_cancel',
+      {
+        channel: 'desktop.operation_cancel',
+        request_id: randomUUID(),
+        payload: { operation_id: randomUUID() },
+      },
+      SCREEN,
+      UNLOCKED,
+    );
+    assert.equal(field(invalid.response, 'reason'), 'invalid_request');
+    assert.equal(a.requests.length, before);
+    assert.equal(a.confirms.length, 0);
+  },
+);
+
+test(
+  'after a hub restart a held result is shown as unknown on both clients and the manual reconcile request is sent once, as a reference-only request',
+  { timeout: 60_000 },
+  async (t) => {
+    const dir = await tempDir(t, 'bdk-');
+    const port = await freePort();
+    const hub = await startHub(t, { dataDir: join(dir, 'd'), port });
+    const held = '00000000-0000-4000-8000-0000000000e2';
+    await submitDurable(hub, createCommand(held, { auto: true }));
+    const prepare = prepareCommand(held, '1');
+    await submitDurable(hub, prepare);
+    await submitDurable(hub, dispatchCommand(held, '2', prepare.attempt_id));
+    const { a, b } = await pairTwoClients(t, hub);
+    await hub.handle.stop('restart');
+    const restarted = await startHub(t, {
+      dataDir: hub.dataDir,
+      port,
+      tlsKeyStore: hub.tlsKeyStore,
+    });
+    assert.deepEqual(restarted.handle.recovery.held, [held]);
+    for (const client of [a, b]) client.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        a.view().operations[0]?.state === 'unknown_held' &&
+        b.view().operations[0]?.state === 'unknown_held',
+      'both see the unknown result',
+    );
+    const entry = b.view().operations[0];
+    assert(entry !== undefined);
+    // 結果不明は照合だけを出す。再試行・再承認の操作は出さない。
+    assert.deepEqual(entry.allowed_actions, ['reconcile']);
+    assert.equal(entry.delivery_unknown, false);
+    // 自動では送っていない（再接続の後に POST /v1/operations/... がない）。本人の「照合」で 1 回だけ送る。
+    const posts = () =>
+      b.requests.filter((line) => line.startsWith('POST /v1/operations/'));
+    assert.deepEqual(posts(), []);
+    const reconciled = await b.work('desktop.operation_reconcile', {
+      ref: entry.ref,
+    });
+    assert.match(String(reconciled.outcome), /^(ok|rejected)$/u);
+    assert.deepEqual(posts(), [`POST /v1/operations/${held}/reconcile`]);
+    assertNoOperationValues([a, b], [held]);
   },
 );

@@ -249,7 +249,8 @@ export class OperationBridge {
     const scope = connection?.state.commandScopeId ?? null;
     if (connection === null || scope === null) return fail('not_connected');
     const target = this.#operationOf(ref, connection);
-    if (target === null) return fail('entry_not_found');
+    if (target === null || this.#held.has(target.id))
+      return fail('entry_not_found');
     if (target.snapshot.state !== 'awaiting_approval')
       return fail('preview_stale');
     const outcome = await connection.request({

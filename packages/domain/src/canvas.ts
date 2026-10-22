@@ -108,14 +108,40 @@ const FORBIDDEN_HEADING =
   /[\u0000-\u001F\u007F-\u009F\u061C\u200E\u200F\u2028-\u202E\u2066-\u2069]/u;
 /* eslint-enable no-control-regex */
 
-// マークアップ・URL らしい見出し（Schema の CanvasHeading の not と同じ集合。ADR 0032）。描画はプレーンテキスト
-// だけだが、見出しに HTML・スクリプト・リンクを紛れ込ませない。「A < B の比較」「3/5 の予定」は通す。
-const HEADING_MARKUP: readonly RegExp[] = [
-  /<[A-Za-z!/?]/u,
-  /<[^>]*>/u,
-  /(^|[^A-Za-z0-9+.-])(https|http|javascript|vbscript|data|file|ftp|blob|mailto)\s*:/iu,
-  /(^|[^A-Za-z0-9])www\./iu,
+// マークアップ・URL らしい見出し（ADR 0032）。Schema の CanvasHeading の not.anyOf と同じパターンの文字列を
+// 同じ u フラグで使い、判定をそろえる（一致は試験で確かめる）。大文字・小文字は /i を使わず ASCII の文字集合で
+// 明示する（/iu は ſ・K などの Unicode の大文字・小文字の対応まで含めるため）。描画はプレーンテキストだけだが、
+// 見出しに HTML・スクリプト・リンクを紛れ込ませない。「A<B の比較」「A < B」「3/5 の予定」は通す。
+const ci = (word: string): string =>
+  [...word].map((c) => `[${c.toUpperCase()}${c}]`).join('');
+const TAG_NAME = '[A-Za-z][A-Za-z0-9:-]*';
+const URL_SCHEMES = [
+  `${ci('http')}[Ss]?`,
+  ci('javascript'),
+  ci('vbscript'),
+  ci('data'),
+  ci('file'),
+  ci('ftp'),
+  ci('blob'),
+  ci('mailto'),
+].join('|');
+export const CANVAS_HEADING_MARKUP_PATTERNS: readonly string[] = [
+  // 閉じたタグ（属性は任意）。
+  String.raw`<${TAG_NAME}(\s[^<>]*)?>`,
+  // 終わりのタグ。
+  String.raw`</${TAG_NAME}\s*>`,
+  // コメント・宣言・処理命令。
+  '<[!?]',
+  // 属性の形（> がなくても拒否）。
+  String.raw`<${TAG_NAME}\s+[A-Za-z_:][A-Za-z0-9_.:-]*\s*=`,
+  // URL のスキーム。直前が ASCII の英数字でない（または先頭）。
+  String.raw`(^|[^A-Za-z0-9])(${URL_SCHEMES})\s*:`,
+  // www. で始まる表現。
+  String.raw`(^|[^A-Za-z0-9])${ci('www')}\.`,
 ];
+const HEADING_MARKUP: readonly RegExp[] = CANVAS_HEADING_MARKUP_PATTERNS.map(
+  (pattern) => new RegExp(pattern, 'u'),
+);
 
 const sorted = (errors: Set<CanvasSemanticError>): CanvasSemanticError[] =>
   [...errors].sort();

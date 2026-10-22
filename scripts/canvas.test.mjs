@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   CANVAS_HEADING_LIMIT,
+  CANVAS_HEADING_MARKUP_PATTERNS,
   CANVAS_ITEM_LIMIT,
   CANVAS_OPS_LIMIT,
   CANVAS_REFS_LIMIT,
@@ -88,6 +89,8 @@ test('the issue #93 rejections are present: limits, bidi overrides, unknown kind
     // PR #102 のレビュー: 見出しのマークアップ・URL（add と update）と、要約の期限。
     'canvas-heading-script',
     'canvas-heading-javascript',
+    'canvas-heading-dash-https',
+    'canvas-heading-kelvin-http',
     'canvas-add-heading-script',
     'canvas-add-heading-javascript',
     'canvas-update-heading-url',
@@ -358,7 +361,9 @@ test('headings with markup or URLs are refused by both the schema and the domain
     '<img src=x onerror=x>',
     '予定</b>',
     '<!--x',
-    'A < B > C',
+    '<?xml',
+    'A<B>C',
+    '<img src=x onerror=x',
     'https://example.invalid',
     'HTTP://EXAMPLE.INVALID',
     'javascript:alert(1)',
@@ -369,6 +374,14 @@ test('headings with markup or URLs are refused by both the schema and the domain
     'mailto:a@example.invalid',
     'www.example.invalid',
     '詳細は WWW.example',
+    // 記号を前に付けた URL（PR #102 の再確認）。
+    '-https://example.invalid',
+    '+https://example.invalid',
+    '.https://example.invalid',
+    '-www.example.invalid',
+    'https ://x',
+    // ケルビンの記号（U+212A）は ASCII の英数字でないので、その後の http: を拒否する。
+    '\u212Ahttp://x',
   ]) {
     assert.equal(validators.CanvasHeading(heading), false, heading);
     const document = structuredClone(base);
@@ -388,12 +401,28 @@ test('headings with markup or URLs are refused by both the schema and the domain
     'www の話',
     'metadata:2 件',
     '＜予定＞の確認',
+    'A<B の比較',
+    'A < B > C',
+    '2<3 と 5>4',
+    // ſ（U+017F）は [Ss] に含めない。/iu の大文字・小文字の対応を使わない。
+    'http\u017F://x',
+    // プレーンテキストで描くので通してよい（ADR 0032）。
+    '＜script＞x＜/script＞',
+    'https%3A%2F%2Fx',
+    'java script:x',
   ]) {
     assert.equal(validators.CanvasHeading(heading), true, heading);
     const document = structuredClone(base);
     document.items[0].heading = heading;
     assert.deepEqual(canvasDocumentErrors(document), [], heading);
   }
+  // Schema と domain は同じパターンの文字列を同じ u フラグで使う（判定の食い違いをなくす）。
+  assert.deepEqual(
+    schema.$defs.CanvasHeading.not.anyOf.map((entry) => entry.pattern),
+    [...CANVAS_HEADING_MARKUP_PATTERNS],
+  );
+  for (const pattern of CANVAS_HEADING_MARKUP_PATTERNS)
+    assert.equal(/[^\x20-\x7e]/u.test(pattern), false, pattern);
   // update の見出しも domain が拒否する。
   const batch = fixture('canvas-batch-valid');
   batch.ops = [

@@ -5091,9 +5091,9 @@
     "value": "<!--x"
   },
   {
-    "id": "canvas-heading-pair",
+    "id": "canvas-heading-spaced-comparison",
     "schema": "CanvasHeading",
-    "valid": false,
+    "valid": true,
     "value": "A < B > C"
   },
   {
@@ -5327,5 +5327,95 @@
       "reading_order": ["tasks-today"]
     },
     "semantic_errors": []
+  },
+  {
+    "id": "canvas-heading-dash-https",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "-https://example.invalid"
+  },
+  {
+    "id": "canvas-heading-plus-https",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "+https://example.invalid"
+  },
+  {
+    "id": "canvas-heading-dot-https",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": ".https://example.invalid"
+  },
+  {
+    "id": "canvas-heading-dash-www",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "-www.example.invalid"
+  },
+  {
+    "id": "canvas-heading-space-before-colon",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "https ://x"
+  },
+  {
+    "id": "canvas-heading-kelvin-http",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "\u212Ahttp://x"
+  },
+  {
+    "id": "canvas-heading-tag-without-space",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "A<B>C"
+  },
+  {
+    "id": "canvas-heading-attribute-unclosed",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "<img src=x onerror=x"
+  },
+  {
+    "id": "canvas-heading-processing",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "<?xml"
+  },
+  {
+    "id": "canvas-heading-comparison-no-space",
+    "schema": "CanvasHeading",
+    "valid": true,
+    "value": "A<B の比較"
+  },
+  {
+    "id": "canvas-heading-digits-compare",
+    "schema": "CanvasHeading",
+    "valid": true,
+    "value": "2<3 と 5>4"
+  },
+  {
+    "id": "canvas-heading-long-s",
+    "schema": "CanvasHeading",
+    "valid": true,
+    "value": "http\u017F://x"
+  },
+  {
+    "id": "canvas-heading-fullwidth-script",
+    "schema": "CanvasHeading",
+    "valid": true,
+    "value": "＜script＞x＜/script＞"
+  },
+  {
+    "id": "canvas-heading-encoded-url",
+    "schema": "CanvasHeading",
+    "valid": true,
+    "value": "https%3A%2F%2Fx"
+  },
+  {
+    "id": "canvas-heading-split-scheme",
+    "schema": "CanvasHeading",
+    "valid": true,
+    "value": "java script:x"
   }
 ]

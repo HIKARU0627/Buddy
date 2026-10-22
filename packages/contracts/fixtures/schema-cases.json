@@ -4032,15 +4032,16 @@
       },
       "operations": [
         {
-          "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "ref": "00000000-0000-4000-8000-000000000c11",
           "operation_kind": "mail.labels.change",
-          "content_version": "1",
-          "content_hash": "abababababababababababababababababababababababababababababababab",
-          "state_revision": "2",
           "state": "approved",
           "approval_state": "valid",
           "allowed_actions": ["cancel"],
-          "result": null
+          "result": null,
+          "state_revision": "2",
+          "delivery_unknown": false,
+          "headline": null,
+          "detail": null
         }
       ],
       "hub_screen": false,
@@ -4135,15 +4136,16 @@
       },
       "operations": [
         {
-          "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "ref": "00000000-0000-4000-8000-000000000c11",
           "operation_kind": "mail.labels.change",
-          "content_version": "1",
-          "content_hash": "abababababababababababababababababababababababababababababababab",
-          "state_revision": "2",
           "state": "approved",
           "approval_state": "valid",
           "allowed_actions": ["cancel"],
-          "result": null
+          "result": null,
+          "state_revision": "2",
+          "delivery_unknown": false,
+          "headline": null,
+          "detail": null
         }
       ],
       "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -4174,15 +4176,16 @@
       },
       "operations": [
         {
-          "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "ref": "00000000-0000-4000-8000-000000000c11",
           "operation_kind": "mail.labels.change",
-          "content_version": "1",
-          "content_hash": "abababababababababababababababababababababababababababababababab",
-          "state_revision": "2",
           "state": "approved",
           "approval_state": "valid",
           "allowed_actions": ["cancel"],
-          "result": null
+          "result": null,
+          "state_revision": "2",
+          "delivery_unknown": false,
+          "headline": null,
+          "detail": null
         }
       ],
       "device_id": "00000000-0000-4000-8000-000000000b15",
@@ -4214,15 +4217,16 @@
       },
       "operations": [
         {
-          "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "ref": "00000000-0000-4000-8000-000000000c11",
           "operation_kind": "mail.labels.change",
-          "content_version": "1",
-          "content_hash": "abababababababababababababababababababababababababababababababab",
-          "state_revision": "2",
           "state": "approved",
           "approval_state": "valid",
           "allowed_actions": ["cancel"],
-          "result": null
+          "result": null,
+          "state_revision": "2",
+          "delivery_unknown": false,
+          "headline": null,
+          "detail": null
         }
       ],
       "hub_screen": false,
@@ -4421,15 +4425,16 @@
         },
         "operations": [
           {
-            "operation_id": "00000000-0000-4000-8000-000000000c01",
+            "ref": "00000000-0000-4000-8000-000000000c11",
             "operation_kind": "mail.labels.change",
-            "content_version": "1",
-            "content_hash": "abababababababababababababababababababababababababababababababab",
-            "state_revision": "2",
             "state": "approved",
             "approval_state": "valid",
             "allowed_actions": ["cancel"],
-            "result": null
+            "result": null,
+            "state_revision": "2",
+            "delivery_unknown": false,
+            "headline": null,
+            "detail": null
           }
         ],
         "hub_screen": false,
@@ -6487,6 +6492,579 @@
       },
       "content_hash": "dbd43e0637bfbdbd2e03ec4063f4e476c1c287434724bb8919707866d859b5a3",
       "state_revision": "1"
+    }
+  },
+  {
+    "id": "desktop-ipc-turn-submit",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.turn_submit",
+      "request_id": "00000000-0000-4000-8000-000000000d01",
+      "payload": {
+        "text": "今日の予定を見せて"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-turn-submit-empty",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.turn_submit",
+      "request_id": "00000000-0000-4000-8000-000000000d02",
+      "payload": {
+        "text": ""
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-turn-submit-with-session",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.turn_submit",
+      "request_id": "00000000-0000-4000-8000-000000000d03",
+      "payload": {
+        "text": "今日の予定を見せて",
+        "session_id": "00000000-0000-4000-8000-000000000d90"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-turn-submit-too-long",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.turn_submit",
+      "request_id": "00000000-0000-4000-8000-000000000d04",
+      "payload": {
+        "text": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-preview",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.operation_preview",
+      "request_id": "00000000-0000-4000-8000-000000000d05",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d91"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-preview-by-operation-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.operation_preview",
+      "request_id": "00000000-0000-4000-8000-000000000d06",
+      "payload": {
+        "operation_id": "00000000-0000-4000-8000-000000000d92"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-approve",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.operation_approve",
+      "request_id": "00000000-0000-4000-8000-000000000d07",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d93"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-approve-with-hash",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.operation_approve",
+      "request_id": "00000000-0000-4000-8000-000000000d08",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d93",
+        "content_hash": "abababababababababababababababababababababababababababababababab"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-cancel",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.operation_cancel",
+      "request_id": "00000000-0000-4000-8000-000000000d09",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d94"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-reconcile",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.operation_reconcile",
+      "request_id": "00000000-0000-4000-8000-000000000d0a",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d95"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-reconcile-without-ref",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.operation_reconcile",
+      "request_id": "00000000-0000-4000-8000-000000000d0b",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-response-turn-submit-schedule",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d01",
+      "channel": "desktop.turn_submit",
+      "outcome": "ok",
+      "turn": {
+        "status": "answered",
+        "reply_text": null,
+        "result": {
+          "kind": "schedule_cards",
+          "status": "needs_review",
+          "intent": "query_schedule",
+          "event_count": 3,
+          "overlap_count": 2,
+          "more_count": 0,
+          "operation_ref": null
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-response-turn-submit-clarification",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d02",
+      "channel": "desktop.turn_submit",
+      "outcome": "ok",
+      "turn": {
+        "status": "clarification",
+        "reply_text": "用事の題名を教えてください。",
+        "result": null
+      }
+    }
+  },
+  {
+    "id": "desktop-response-turn-submit-with-item-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d03",
+      "channel": "desktop.turn_submit",
+      "outcome": "ok",
+      "turn": {
+        "status": "answered",
+        "reply_text": null,
+        "result": {
+          "kind": "approval_link",
+          "status": "needs_review",
+          "intent": "create_task",
+          "event_count": 0,
+          "overlap_count": 0,
+          "more_count": 0,
+          "operation_ref": "00000000-0000-4000-8000-000000000d96",
+          "operation_id": "00000000-0000-4000-8000-000000000d97"
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-response-operation-preview-task",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d04",
+      "channel": "desktop.operation_preview",
+      "outcome": "ok",
+      "preview": {
+        "preview_ref": "00000000-0000-4000-8000-000000000d98",
+        "operation_kind": "task.create",
+        "service": "buddy",
+        "target": "inbox",
+        "fields": [
+          {
+            "field": "task_title",
+            "values": ["牛乳を買う"]
+          }
+        ],
+        "account_label": null,
+        "target_detail": null,
+        "approvable": true
+      }
+    }
+  },
+  {
+    "id": "desktop-response-operation-preview-with-hash",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d05",
+      "channel": "desktop.operation_preview",
+      "outcome": "ok",
+      "preview": {
+        "preview_ref": "00000000-0000-4000-8000-000000000d98",
+        "operation_kind": "task.create",
+        "service": "buddy",
+        "target": "inbox",
+        "content_hash": "abababababababababababababababababababababababababababababababab",
+        "fields": [
+          {
+            "field": "task_title",
+            "values": ["牛乳を買う"]
+          }
+        ],
+        "account_label": null,
+        "target_detail": null,
+        "approvable": true
+      }
+    }
+  },
+  {
+    "id": "desktop-response-operation-approve-accepted",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d06",
+      "channel": "desktop.operation_approve",
+      "outcome": "ok",
+      "receipt": "accepted"
+    }
+  },
+  {
+    "id": "desktop-response-operation-approve-succeeded",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d07",
+      "channel": "desktop.operation_approve",
+      "outcome": "ok",
+      "receipt": "succeeded"
+    }
+  },
+  {
+    "id": "desktop-response-operation-approve-unknown",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d08",
+      "channel": "desktop.operation_approve",
+      "outcome": "rejected",
+      "reason": "outcome_unknown"
+    }
+  },
+  {
+    "id": "desktop-response-operation-approve-stale",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d09",
+      "channel": "desktop.operation_approve",
+      "outcome": "rejected",
+      "reason": "preview_stale"
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-retry",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.operation_retry",
+      "request_id": "00000000-0000-4000-8000-000000000d10",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d96"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-retry-with-attempt-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.operation_retry",
+      "request_id": "00000000-0000-4000-8000-000000000d11",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d96",
+        "attempt_id": "00000000-0000-4000-8000-000000000d97"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-operation-retry-accepted",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d12",
+      "channel": "desktop.operation_retry",
+      "outcome": "ok",
+      "receipt": "accepted"
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-check",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.operation_check",
+      "request_id": "00000000-0000-4000-8000-000000000d20",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d96"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-operation-check-not-delivered",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d21",
+      "channel": "desktop.operation_check",
+      "outcome": "ok",
+      "resolved": "state_unchanged"
+    }
+  },
+  {
+    "id": "desktop-response-operation-check-unknown-resolution",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d22",
+      "channel": "desktop.operation_check",
+      "outcome": "ok",
+      "resolved": "resent"
+    }
+  },
+  {
+    "id": "desktop-response-operation-preview-mail-with-target",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d23",
+      "channel": "desktop.operation_preview",
+      "outcome": "ok",
+      "preview": {
+        "preview_ref": "00000000-0000-4000-8000-000000000d98",
+        "operation_kind": "mail.labels.change",
+        "service": "mock",
+        "target": "mail-001",
+        "fields": [
+          {
+            "field": "labels_add",
+            "values": ["follow-up"]
+          }
+        ],
+        "account_label": "synthetic-user@example.com",
+        "target_detail": {
+          "subject": "（合成）件名",
+          "sender": "synthetic-sender@example.com",
+          "received_at": "2026-10-04T18:30:00+09:00"
+        },
+        "approvable": true
+      }
+    }
+  },
+  {
+    "id": "operation-preview-with-display",
+    "schema": "OperationPreview",
+    "valid": true,
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000032",
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "display": {
+        "account_label": "synthetic-user@example.com",
+        "target": {
+          "subject": "（合成）件名",
+          "sender": "synthetic-sender@example.com",
+          "received_at": "2026-10-04T18:30:00+09:00"
+        }
+      }
+    }
+  },
+  {
+    "id": "operation-preview-display-with-account-id",
+    "schema": "OperationPreview",
+    "valid": false,
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000032",
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "display": {
+        "account_label": null,
+        "target": null,
+        "account_id": "00000000-0000-4000-8000-0000000000a1"
+      }
+    }
+  },
+  {
+    "id": "operation-display",
+    "schema": "OperationDisplay",
+    "valid": true,
+    "value": {
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "content_version": "1",
+      "display": {
+        "account_label": "synthetic-user@example.com",
+        "target": {
+          "subject": "（合成）件名",
+          "sender": "synthetic-sender@example.com",
+          "received_at": "2026-10-04T18:30:00+09:00"
+        }
+      }
+    }
+  },
+  {
+    "id": "operation-display-with-preview-id",
+    "schema": "OperationDisplay",
+    "valid": false,
+    "value": {
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "content_version": "1",
+      "display": {
+        "account_label": "synthetic-user@example.com",
+        "target": {
+          "subject": "（合成）件名",
+          "sender": "synthetic-sender@example.com",
+          "received_at": "2026-10-04T18:30:00+09:00"
+        }
+      },
+      "preview_id": "00000000-0000-4000-8000-000000000032"
+    }
+  },
+  {
+    "id": "operation-display-without-display",
+    "schema": "OperationDisplay",
+    "valid": false,
+    "value": {
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "content_version": "1"
     }
   }
 ]

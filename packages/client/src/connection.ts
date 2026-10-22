@@ -113,7 +113,9 @@ export function hubConnectionOf(state: LinkState): HubConnection {
 
 export type ClientCommand =
   | {
-      readonly kind: 'cancel';
+      // cancel は取消の要求、reconcile は照合の要求（参照だけ。書込みを増やさない。再送ではない）。
+      // retry は、実行されなかったと確定した操作の本人の明示の再試行（画面操作）。
+      readonly kind: 'cancel' | 'reconcile' | 'retry';
       readonly operationId: string;
       readonly expectedStateRevision: string;
       // 本人が操作したときに見ていた接続範囲。今の接続範囲と違えば送らない。
@@ -379,7 +381,14 @@ export class ClientConnection {
               content_hash: command.contentHash,
             },
           }
-        : { method: 'POST', path, lockState: this.#lockState, body: base },
+        : {
+            method: 'POST',
+            path,
+            lockState: this.#lockState,
+            // 再試行は本人の画面操作（中枢が画面操作の印を検査する）。取消・照合は印を付けない。
+            ...(command.kind === 'retry' ? { screenOperation: true } : {}),
+            body: base,
+          },
     );
     if (outcome.kind === 'certificate_mismatch') {
       this.#fail(this.#generation, outcomeFailure(outcome));

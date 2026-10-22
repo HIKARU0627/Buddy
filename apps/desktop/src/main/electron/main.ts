@@ -33,6 +33,7 @@ import { createDesktopContract, loadContractSchema } from '../contract.js';
 import {
   ADMIN_CHANNELS,
   CONNECTION_CHANNELS,
+  OPERATION_CHANNELS,
   DesktopCoreLink,
   type AdminConfirmRequest,
 } from '../core-link.js';
@@ -294,6 +295,11 @@ function registerIpc(): void {
         return link
           .handleAdminIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
+      // 発言・承認・取消・照合（B04-05、ADR 0031）。承認は main の OS の確認ダイアログで 1 回だけ。
+      if (OPERATION_CHANNELS.includes(channel))
+        return link
+          .handleOperationIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
       const outcome = controller.handleIpc(channel, raw, sender);
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window')
@@ -408,6 +414,13 @@ function createLink(
     networkSignature: () => networkSignatureOf(networkInterfaces()),
     // 自宅の登録の送る直前に、前面かを確かめ直す（受付の判定と同じ条件）。
     windowFocused,
+    // 送る直前に、最新の停止状態と io_epoch を確かめる（確認の最中に停止したら送らない。B04-05）。
+    ioState: () =>
+      controller?.state ?? {
+        lockState: 'unknown',
+        stopScope: 'local',
+        ioEpoch: '0',
+      },
     onChange: pushConnection,
     log,
     confirmAdmin: confirmAdminWithDialog,
@@ -469,6 +482,8 @@ function start(): void {
         updateTray();
         // ロック状態は要求の Buddy-Lock-State と接続の表示の範囲に使う。
         if (link && controller) {
+          // 停止した（トレイ・画面・電源の事象のどれでも）: 表示している承認・取消・再試行の確認を閉じて送らない。
+          if (controller.state.stopScope !== 'none') link.closeConfirm();
           link.setLockState(controller.state.lockState);
           pushConnection();
         }

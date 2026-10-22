@@ -306,12 +306,34 @@ const CANVAS_FORBIDDEN = [
   'desktop.pairing_open',
   'desktop.home_status',
   'desktop.home_register',
+  'desktop.operation_preview',
+  'desktop.operation_approve',
+  'desktop.operation_cancel',
+  'desktop.operation_reconcile',
+  'desktop.operation_retry',
+  'desktop.operation_check',
 ];
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
   assert.deepEqual([...DESKTOP_WINDOW_ROLES], ['canvas', 'status', 'input']);
   assert.deepEqual([...DESKTOP_ROLE_CHANNELS.canvas], ['desktop.get_state']);
-  assert.deepEqual([...DESKTOP_ROLE_CHANNELS.input], ['desktop.get_state']);
+  assert.deepEqual(
+    [...DESKTOP_ROLE_CHANNELS.input],
+    ['desktop.get_state', 'desktop.turn_submit'],
+  );
+  // 発言は入力バーだけ（キャンバスと状態の層は使えない）。
+  assert.equal(
+    desktopChannelAllowedForRole('input', 'desktop.turn_submit'),
+    true,
+  );
+  assert.equal(
+    desktopChannelAllowedForRole('canvas', 'desktop.turn_submit'),
+    false,
+  );
+  assert.equal(
+    desktopChannelAllowedForRole('status', 'desktop.turn_submit'),
+    false,
+  );
   for (const channel of CANVAS_FORBIDDEN) {
     assert.equal(desktopChannelAllowedForRole('canvas', channel), false);
     assert.equal(desktopChannelAllowedForRole('input', channel), false);
@@ -347,9 +369,9 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 17 個）。
-  assert.equal(channels.size, 17);
-  assert.equal(CANVAS_FORBIDDEN.length + 1, 17);
+  // 手で数えた数（現在の DesktopIpcChannel は 24 個。B04-05 の 7 個を含む）。
+  assert.equal(channels.size, 24);
+  assert.equal(CANVAS_FORBIDDEN.length + 2, 24);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

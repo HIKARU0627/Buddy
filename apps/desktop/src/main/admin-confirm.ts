@@ -2,6 +2,7 @@
 // 値は main が中枢から受け取った一覧の値だけを使う。端末名・OS は申請者の自己申告なので、制御文字・書字方向の制御文字を
 // 取り除き、長さを切る。確認コードの見比べを求める文を必ず入れる。
 import type { AdminConfirmRequest, HomeConfirmRequest } from './core-link.js';
+import type { OperationConfirmRequest } from './operation-bridge.js';
 
 const PLATFORMS: Readonly<Record<string, string>> = {
   macos: 'macOS',
@@ -93,10 +94,115 @@ export function homeConfirmText(request: HomeConfirmRequest): AdminConfirmText {
   };
 }
 
+const OPERATION_TITLES: Readonly<Record<string, string>> = {
+  'mail.labels.change': 'メールのラベルの変更',
+  'mail.draft.create': '返信の下書きの作成',
+  'task.create': '用事の登録',
+};
+
+const SERVICE_NAMES: Readonly<Record<string, string>> = {
+  mock: '模擬のメール',
+  gmail: 'Gmail',
+  microsoft_graph: 'Microsoft のメール',
+  buddy: 'Buddy の用事',
+};
+
+const FIELD_NAMES: Readonly<Record<string, string>> = {
+  labels_add: '付けるラベル',
+  labels_remove: '外すラベル',
+  draft_to: '宛先',
+  draft_cc: 'Cc',
+  draft_subject: '件名',
+  draft_body: '本文',
+  task_title: '題名',
+  task_due: '期限',
+  task_body: 'メモ',
+};
+
+const STATE_NAMES: Readonly<Record<string, string>> = {
+  awaiting_approval: '承認待ち',
+  approved: '承認済み（実行を待っています）',
+  preparing: '実行を準備しています',
+  dispatching: '実行しています',
+  reconciling: '結果を確認しています',
+  succeeded: '完了',
+  unknown_held: '結果を確認できていません',
+  not_executed: '実行されませんでした',
+  cancelled: '取り消し済み',
+  superseded: '内容が更新されたため使われません',
+};
+
+// 変更の承認・取消・再試行の確認（B04-05、D2 と、取消・再試行への適用）。値は main が中枢から読んだもので、画面から
+// 受け取らない。受け取った文字列は制御文字・書字方向の制御文字を除き、長さを切って出す（本文は先頭だけ）。
+export function operationConfirmText(
+  request: OperationConfirmRequest,
+): AdminConfirmText {
+  const title = OPERATION_TITLES[request.operationKind] ?? '変更';
+  if (request.action !== 'approve_operation') {
+    const cancel = request.action === 'cancel_operation';
+    const lines = [`操作: ${title}`];
+    if (request.headline !== null)
+      lines.push(`内容: ${displayText(request.headline, 80)}`);
+    if (request.detail !== null)
+      lines.push(`補足: ${displayText(request.detail, 100)}`);
+    lines.push(
+      `今の状態: ${STATE_NAMES[request.state] ?? displayText(request.state, 30)}`,
+      '',
+      cancel
+        ? '取り消せるのは、実行の前だけです。実行に進んでいる場合は、取り消さずに結果の確認へ回ります。'
+        : '同じ内容・同じ承認で、もう一度実行します。実行されなかったと確かめた操作だけに使えます。',
+    );
+    return {
+      title: cancel ? '操作の取消' : '操作の再試行',
+      message: cancel
+        ? `「${title}」を取り消しますか`
+        : `「${title}」をもう一度実行しますか`,
+      detail: lines.join('\n'),
+      buttons: ['やめる', cancel ? '取り消す' : '再試行する'],
+    };
+  }
+  const lines = [
+    `変更先: ${SERVICE_NAMES[request.service] ?? displayText(request.service, 20)}`,
+  ];
+  if (request.accountLabel !== null)
+    lines.push(`アカウント: ${displayText(request.accountLabel, 60)}`);
+  const mail = request.targetDetail;
+  if (mail !== null) {
+    if (mail.subject !== null)
+      lines.push(`対象の件名: ${displayText(mail.subject, 80)}`);
+    if (mail.sender !== null)
+      lines.push(`差出人: ${displayText(mail.sender, 60)}`);
+    if (mail.received_at !== null)
+      lines.push(`受信: ${displayText(mail.received_at, 40)}`);
+  } else if (request.target !== null) {
+    lines.push(`対象: ${displayText(request.target, 60)}`);
+  }
+  for (const field of request.fields) {
+    const max = field.field === 'draft_body' ? 200 : 80;
+    lines.push(
+      `${FIELD_NAMES[field.field] ?? displayText(field.field, 20)}: ${field.values.map((value) => displayText(value, max)).join('、')}`,
+    );
+  }
+  lines.push(
+    '',
+    request.operationKind === 'task.create'
+      ? '承認すると、Buddy の用事に登録します。'
+      : '承認すると、中枢がこの内容で実行します。メールを送ることはありません。',
+    '取り消せるのは、実行の前だけです。',
+  );
+  return {
+    title: '変更の承認',
+    message: `「${title}」を承認しますか`,
+    detail: lines.join('\n'),
+    buttons: ['やめる', '承認する'],
+  };
+}
+
 export function adminConfirmText(
   request: AdminConfirmRequest,
 ): AdminConfirmText {
   if (request.action === 'register_home') return homeConfirmText(request);
+  if ('operationKind' in request) return operationConfirmText(request);
   const name = displayText(request.deviceName) || '（名前なし）';
   const platform =
     PLATFORMS[request.platform] ?? displayText(request.platform, 20);

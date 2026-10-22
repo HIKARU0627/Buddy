@@ -32,6 +32,7 @@ export function mockMailPorts(options: {
       return {
         provider: 'mock',
         account_id: permission.account_id,
+        account_label: permission.account_label,
         status: 'active',
         access: permission.scopes.includes(MOCK_LABEL_WRITE_SCOPE)
           ? 'read_write'

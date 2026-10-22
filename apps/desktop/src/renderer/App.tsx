@@ -6,6 +6,7 @@
 // 画面を足すときは screens/<名前>/ に置き、ここで切り替える。
 import { useEffect, useState } from 'react';
 import { Alert } from '@heroui/react';
+import type { DesktopOperationEntry } from '@buddy/contracts';
 import { AlertIcon } from './components/AlertIcon.js';
 import { AppShell } from './app/AppShell.js';
 import { desktopApi } from './desktop-api.js';
@@ -24,6 +25,11 @@ import {
 import { useDesktopState, useNow } from './state/use-desktop-state.js';
 import { useHomeState } from './state/use-home-state.js';
 import { useHubState } from './state/use-hub-state.js';
+import { useWorkState } from './state/use-work-state.js';
+import { WorkPanel } from './screens/work/WorkPanel.js';
+
+// 操作がないときの空の配列（描画のたびに新しい配列を作らない）。
+const NO_OPERATIONS: readonly DesktopOperationEntry[] = [];
 
 function ApiUnavailable() {
   return (
@@ -60,6 +66,17 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   const home = useHomeState(api, hubScreen);
   const stopped =
     state.status?.visibility === 'shown' && state.status.stop_scope !== 'none';
+  // 会話・変更の確認・処理状況（B04-05）。ロック中・未登録では内容を持たない（ロックで捨てる）。
+  const workShown =
+    !locked && connection !== null && connection.registration === 'registered';
+  // 中枢に接続している間だけ会話の内容を持つ。切断（接続の待ちを含む）で世代を進めて内容を捨て、切断をまたいだ応答を
+  // 反映しない（main も切断で参照・preview・会話を捨てる。ADR 0031）。
+  const workLive = workShown && connection?.link === 'connected';
+  const work = useWorkState(
+    api,
+    workLive,
+    connection?.operations ?? NO_OPERATIONS,
+  );
   if (connection !== null && needsPairing(connection))
     return (
       <PairingScreen
@@ -83,6 +100,17 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
             : 'この端末'
       }
       onDismissRegistered={dismissRegistered}
+      work={
+        workShown && connection !== null ? (
+          <WorkPanel
+            state={work.state}
+            actions={work.actions}
+            operations={connection.operations}
+            link={connection.link === 'connected' ? 'connected' : 'other'}
+            stopped={stopped}
+          />
+        ) : undefined
+      }
       hub={
         hubScreen && connection !== null ? (
           <HubTabs

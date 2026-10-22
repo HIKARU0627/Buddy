@@ -281,6 +281,44 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/operations/{id}/display:
+    post:
+      operationId: displayOperation
+      summary: 操作の内容の表示用の読み取り
+      description: 読み取りだけ。確定した内容と表示用の値を、preview_id なしで返す（preview は発行せず、承認にも使えない）。取消・再試行の確認に出す見出しを、承認待ち以外の状態でも取り直すために使う。認可は preview と同じ（07 §2）。内容はこの応答だけで、イベント・スナップショットには入れない。
+      x-buddy-core-checks: *id002
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/PreviewRequest
+      responses:
+        '200':
+          description: 確定した内容と表示用の値。承認ではない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/OperationDisplay
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/operations/{id}/approve:
     post:
       operationId: approveOperation

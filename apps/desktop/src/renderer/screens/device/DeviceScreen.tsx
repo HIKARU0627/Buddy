@@ -29,6 +29,7 @@ export function DeviceScreen({
   now,
   role = 'この端末',
   hub,
+  work,
   onDismissRegistered,
 }: {
   readonly state: DesktopViewState;
@@ -37,6 +38,8 @@ export function DeviceScreen({
   readonly role?: string;
   // 中枢の画面の端末だけに出す本体（申請・端末の管理の Tabs。B03-06）。null なら中枢との接続の欄だけ。
   readonly hub?: ReactNode;
+  // 会話・変更の確認・処理状況（登録済みの端末。B04-05）。本体の先頭に置く。
+  readonly work?: ReactNode;
   readonly onDismissRegistered?: () => void;
 }) {
   const shown = shownStatus(state.status);
@@ -101,12 +104,15 @@ export function DeviceScreen({
         </>
       }
     >
-      {shown === null
-        ? undefined
-        : (hub ??
-          (connection === null ? null : (
-            <ConnectionSection connection={connection} />
-          )))}
+      {shown === null ? undefined : (
+        <>
+          {work}
+          {hub ??
+            (connection === null ? null : (
+              <ConnectionSection connection={connection} />
+            ))}
+        </>
+      )}
     </AppShell>
   );
 }

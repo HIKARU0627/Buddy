@@ -51,6 +51,12 @@ export const REJECT_MESSAGES: Readonly<Record<RejectReason, string>> = {
     'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。',
   home_network_changed:
     '確かめている間に、このマシンのネットワークが変わった（または読み取れなくなった）ため、登録しませんでした。「読み取り直す」を押して内容を確かめてから、もう一度登録してください。',
+  preview_stale:
+    '確かめた後に、内容か状態が変わりました。承認していません。内容をもう一度確かめてください。',
+  content_unavailable:
+    '操作の内容を中枢から読めなかったため、確認へ進めません。中枢との接続を確かめて、少し待ってから、もう一度押してください。',
+  input_stopped:
+    'この端末の入出力が止まっているため、受け付けませんでした。再開してから、もう一度お願いします。',
 };
 
 // 操作ごとに言い方を変える拒否（何が拒否されたかと、次の行動）。
@@ -296,19 +302,6 @@ export function pairingFailureCopy(
       };
   }
 }
-
-export const OPERATION_STATE_LABELS: Readonly<Record<string, string>> = {
-  awaiting_approval: '承認待ち',
-  approved: '承認済み',
-  preparing: '準備中',
-  dispatching: '送出中',
-  reconciling: '照合中',
-  succeeded: '成功',
-  unknown_held: '結果不明（保留）',
-  not_executed: '未実行',
-  cancelled: '取消済み',
-  superseded: '置き換え済み',
-};
 
 export const PLATFORM_LABELS: Readonly<Record<string, string>> = {
   macos: 'macOS',

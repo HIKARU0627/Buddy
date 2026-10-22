@@ -53,7 +53,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   claimPairing: ['home_network'],
   decidePairingClaim: [...SCREEN, 'hub_screen'],
   pickupPairingToken: ['home_network', 'claim_secret'],
-  revokeDevice: SCREEN,
+  // 失効も中枢の画面だけ（本人の判断 2026-10-21、B03-07、ADR 0021）。乗っ取られた端末に他の端末を締め出させない。
+  revokeDevice: [...SCREEN, 'hub_screen'],
   startOAuth: [...SCREEN, 'hub_screen'],
   updateConnectionTargets: [...SCREEN, 'expected_revision'],
   disconnectConnection: [...SCREEN, 'expected_revision'],

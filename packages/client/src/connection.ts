@@ -417,6 +417,8 @@ export class ClientConnection {
     readonly body?: Readonly<Record<string, unknown>>;
     readonly screenOperation?: boolean;
     readonly scoped?: boolean;
+    // 本人が確かめたときの接続範囲。今の接続範囲と違えば（bootstrap をやり直した）送らない。
+    readonly expectedScopeId?: string;
   }): Promise<
     | { readonly kind: 'not_sent'; readonly reason: 'not_connected' }
     | {
@@ -428,6 +430,11 @@ export class ClientConnection {
   > {
     const state = this.#state;
     if (state.phase !== 'live' || state.commandScopeId === null)
+      return { kind: 'not_sent', reason: 'not_connected' };
+    if (
+      request.expectedScopeId !== undefined &&
+      request.expectedScopeId !== state.commandScopeId
+    )
       return { kind: 'not_sent', reason: 'not_connected' };
     const body =
       request.scoped === true

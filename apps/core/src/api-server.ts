@@ -1,12 +1,15 @@
 // 中枢の HTTPS の受付（設計 02 端末登録と接続・主な通信契約、07 §2・§3、ADR 0009・0020）。
 //
 // node:https（TLS 1.3 以上）で、注入されたアドレス（製品は Tailscale のアドレス、試験は 127.0.0.1）を待ち受ける。
+// アドレスは正規化してから、ループバックと Tailscale の範囲だけを受け付ける（domain の listenAddressDecision）。
+// TLS の確立から最初の要求のヘッダーがそろうまでに headersTimeoutMs を過ぎた接続は、応答せずに切る（B03-07 M1）。
 // 一つの要求は次の順に処理し、最初に満たさないものの拒否を返す。
 //   1. 接続数の上限（超えた接続の要求は 429 rate_limited）。Core が受付中（running）でなければ 503
 //   2. Origin ヘッダーのある要求（ブラウザーからの要求）は 403 forbidden
 //   3. 認証前の頻度の上限（接続元ごと。超えたら 429 rate_limited）
 //   4. 経路（なければ 404・方法違いは 405、どちらも invalid_input）
-//   5. 端末トークンの照合（SHA-256 で devices を引く。失効・未登録・形式違いは未認証）
+//   5. 端末トークンの照合（SHA-256 で devices を引く。失効・未登録・形式違いは未認証）。認証できた端末ごとの
+//      頻度の上限（超えたら 429 rate_limited、B03-07 L1）
 //   6. 本文の上限（宣言の長さで先に判定。認証後 256 KiB・認証前の経路 16 KiB、超えたら切り詰めずに 413）
 //   7. 端末トークンを求める経路で未認証なら、本文を読まずに経路の検査の結果（401）を返す
 //   8. 本文を上限まで読む（超えたら 413）
@@ -26,7 +29,6 @@ import type {
 } from 'node:http';
 import { createServer } from 'node:https';
 import type { Server } from 'node:https';
-import { isIP } from 'node:net';
 import type { Duplex } from 'node:stream';
 import type { TLSSocket } from 'node:tls';
 import {
@@ -34,6 +36,7 @@ import {
   MAX_PREAUTH_JSON_BYTES,
   ROUTE_CHECKS,
   admitRequest,
+  listenAddressDecision,
 } from '@buddy/domain';
 import type { CoreCheck, RequestContext } from '@buddy/domain';
 import { COMMAND_SCOPE_MAX_TTL_MS } from '@buddy/storage';
@@ -131,7 +134,11 @@ export interface ApiLimits {
   // 認証前の頻度（接続元ごとの固定の窓）。端末トークンで認証できなかった要求を数える。
   readonly preAuthWindowMs: number;
   readonly preAuthMaxRequests: number;
+  // 認証した端末ごとの頻度（端末ごとの固定の窓、B03-07 L1）。端末トークンで認証できた要求（WSS の切り替えを含む）を数える。
+  readonly deviceWindowMs: number;
+  readonly deviceMaxRequests: number;
   readonly handshakeTimeoutMs: number;
+  // ヘッダーの期限。TLS の確立から最初の要求のヘッダーがそろうまでの期限（接続ごと、B03-07 M1）にも使う。
   readonly headersTimeoutMs: number;
   readonly requestTimeoutMs: number;
   readonly keepAliveTimeoutMs: number;
@@ -144,6 +151,9 @@ export const DEFAULT_API_LIMITS: ApiLimits = {
   hardMaxConnections: 64,
   preAuthWindowMs: 60_000,
   preAuthMaxRequests: 30,
+  // 仮の値（理由は ADR 0020 の B03-07 の変更）。
+  deviceWindowMs: 60_000,
+  deviceMaxRequests: 300,
   handshakeTimeoutMs: 10_000,
   headersTimeoutMs: 10_000,
   requestTimeoutMs: 15_000,
@@ -209,18 +219,12 @@ export class ApiListenError extends Error {
   }
 }
 
-// 待ち受けるアドレスの検査。IP アドレスの文字列だけを受け付け、全アドレス（0.0.0.0・::）は拒否する
-// （Tailscale 以外の経路へ開かないため。ADR 0020）。理由コードを返し、問題がなければ null。
+// 待ち受けるアドレスの検査。IP アドレスの文字列を正規化してから、許可する範囲（ループバック・Tailscale）だけを
+// 受け付ける（Tailscale 以外の経路へ開かないため。domain の listenAddressDecision、ADR 0020・B03-07）。
+// 理由コード（https_host_not_ip_address・https_host_unspecified・https_host_not_allowed）を返し、問題がなければ null。
 export function listenHostReason(host: string): string | null {
-  const family = isIP(host);
-  if (family === 0) return 'https_host_not_ip_address';
-  if (family === 4 && host === '0.0.0.0') return 'https_host_unspecified';
-  if (family === 6) {
-    const lower = host.toLowerCase();
-    if (/^[0:]+$/u.test(lower) || lower.endsWith(':0.0.0.0'))
-      return 'https_host_unspecified';
-  }
-  return null;
+  const decision = listenAddressDecision(host);
+  return decision.ok ? null : `https_host_${decision.reason}`;
 }
 
 export function listenPortReason(port: number): string | null {
@@ -229,8 +233,8 @@ export function listenPortReason(port: number): string | null {
     : 'https_port_invalid';
 }
 
-// 接続元ごとの固定の窓の数え上げ。窓を過ぎた記録は数え直す。
-class PreAuthLimiter {
+// 鍵（接続元の IP アドレス・認証した端末の ID）ごとの固定の窓の数え上げ。窓を過ぎた記録は数え直す。
+class WindowLimiter {
   readonly #entries = new Map<string, { start: number; count: number }>();
   readonly #windowMs: number;
   readonly #max: number;
@@ -240,17 +244,17 @@ class PreAuthLimiter {
     this.#max = max;
   }
 
-  #entry(address: string, now: number): { start: number; count: number } {
-    let entry = this.#entries.get(address);
+  #entry(key: string, now: number): { start: number; count: number } {
+    let entry = this.#entries.get(key);
     if (entry === undefined || now - entry.start >= this.#windowMs) {
       entry = { start: now, count: 0 };
-      this.#entries.set(address, entry);
+      this.#entries.set(key, entry);
     }
     return entry;
   }
 
-  exhausted(address: string, now: number): boolean {
-    const entry = this.#entries.get(address);
+  exhausted(key: string, now: number): boolean {
+    const entry = this.#entries.get(key);
     return (
       entry !== undefined &&
       now - entry.start < this.#windowMs &&
@@ -258,9 +262,9 @@ class PreAuthLimiter {
     );
   }
 
-  record(address: string, now: number): void {
-    this.#entry(address, now).count += 1;
-    // 古い記録を片付ける（接続元の数を際限なく増やさない）。
+  record(key: string, now: number): void {
+    this.#entry(key, now).count += 1;
+    // 古い記録を片付ける（鍵の数を際限なく増やさない）。
     if (this.#entries.size > 4096)
       for (const [key, value] of this.#entries)
         if (now - value.start >= this.#windowMs) this.#entries.delete(key);
@@ -387,8 +391,11 @@ export interface ApiServer {
 }
 
 export function createApiServer(options: ApiServerOptions): ApiServer {
-  const hostReason = listenHostReason(options.host);
-  if (hostReason !== null) throw new ApiListenError(hostReason);
+  const listenAddress = listenAddressDecision(options.host);
+  if (!listenAddress.ok)
+    throw new ApiListenError(`https_host_${listenAddress.reason}`);
+  // 正規化したアドレスで待ち受ける（IPv4-mapped の表記は IPv4 に直す）。
+  const host = listenAddress.address;
   const portReason = listenPortReason(options.port);
   if (portReason !== null) throw new ApiListenError(portReason);
   const limits: ApiLimits = { ...DEFAULT_API_LIMITS, ...options.limits };
@@ -400,9 +407,13 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   const now = options.now ?? (() => Date.now());
   const monotonicNow = options.monotonicNow ?? (() => performance.now());
   const accepting = options.accepting ?? (() => true);
-  const limiter = new PreAuthLimiter(
+  const limiter = new WindowLimiter(
     limits.preAuthWindowMs,
     limits.preAuthMaxRequests,
+  );
+  const deviceLimiter = new WindowLimiter(
+    limits.deviceWindowMs,
+    limits.deviceMaxRequests,
   );
   const sockets = new Set<TLSSocket>();
   // TLS の確立の前の接続も含めた TCP の接続（停止の時に切るため。closeAllConnections は HTTP の接続しか切らない）。
@@ -437,11 +448,28 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     connections.add(socket);
     socket.on('close', () => connections.delete(socket));
   });
+  // TLS の確立から最初の要求（ヘッダーがそろう）までの期限（B03-07 M1）。何も送らない接続・ヘッダーを少しずつ
+  // 送る接続が接続の枠を占め続けないよう、headersTimeoutMs を過ぎたら切る。Node の headersTimeout は確認の
+  // 間隔（既定 30 秒）ごとにしか効かないため、接続ごとの時計で切る。最初の要求・切り替えが届いたら外し、その後は
+  // keep-alive の時間切れ（keepAliveTimeoutMs）と WSS の ping に任せる。
+  const firstRequestTimers = new WeakMap<object, NodeJS.Timeout>();
+  const clearFirstRequestTimer = (socket: object) => {
+    const timer = firstRequestTimers.get(socket);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    firstRequestTimers.delete(socket);
+  };
   server.on('secureConnection', (socket: TLSSocket) => {
     tlsConnections += 1;
     sockets.add(socket);
     if (sockets.size > limits.maxConnections) overLimit.add(socket);
-    socket.on('close', () => sockets.delete(socket));
+    const timer = setTimeout(() => socket.destroy(), limits.headersTimeoutMs);
+    timer.unref();
+    firstRequestTimers.set(socket, timer);
+    socket.on('close', () => {
+      sockets.delete(socket);
+      clearFirstRequestTimer(socket);
+    });
   });
   // TLS 1.2 以下・証明書なしの接続などの失敗。応答はしない（TLS の警告だけ）。
   server.on('tlsClientError', (_error, socket) => socket.destroy());
@@ -595,6 +623,12 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         device = found.value;
     }
     if (device === null) limiter.record(address, started);
+    else {
+      // 認証した端末ごとの頻度（B03-07 L1）。上限に達した端末は、正しいトークンでも窓が過ぎるまで 429。
+      if (deviceLimiter.exhausted(device.device_id, started))
+        return reject(429, 'rate_limited', close);
+      deviceLimiter.record(device.device_id, started);
+    }
 
     if (!match.ok)
       return reject(match.status, 'invalid_input', { close: device === null });
@@ -790,6 +824,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   server.on('request', (request: IncomingMessage, response: ServerResponse) => {
     requestsReceived += 1;
     const socket = request.socket as TLSSocket;
+    clearFirstRequestTimer(socket);
     void (async () => {
       let outcome: Evaluation;
       try {
@@ -841,6 +876,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     'upgrade',
     (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       requestsReceived += 1;
+      clearFirstRequestTimer(socket);
       socket.on('error', () => undefined);
       void (async () => {
         let outcome: Evaluation;
@@ -890,7 +926,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   );
 
   return {
-    host: options.host,
+    host,
     get port() {
       return port;
     },
@@ -921,7 +957,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         server.once('error', onError);
         server.once('listening', onListening);
         server.listen({
-          host: options.host,
+          host,
           port: options.port,
           exclusive: true,
         });

@@ -43,7 +43,7 @@
 | 対象              | 決定                                                                                                                                                                                                                                       |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 既定              | `--https-host` を渡さなければ HTTPS を開かない（B01・B02 の CLI と試験の動きを変えない）。ポートの既定は 47443（`--https-port`、0 は OS が選ぶ）                                                                                           |
-| アドレス          | IP アドレスの文字列だけを受け付け、全アドレス（`0.0.0.0`・`::`）と名前（`localhost` など）は拒否する（`https_config_invalid`）。製品は Tailscale のアドレス（100.x.y.z など）を設定で渡す。Tailscale のアドレスを見つける処理は後の Issue  |
+| アドレス          | IP アドレスを正規化し、ループバックと Tailscale の範囲だけを受け付ける（他は `https_config_invalid`。B03-07 で変更、下の「B03-07 の変更」）。製品は Tailscale のアドレスを渡す（見つける処理は後の Issue）                                 |
 | Core への組み込み | `startCore({ https: { host, port, tlsKeyStore, environment?, limits? } })`。起動の順は「起動時の回復 → TLS の身元 → HTTPS の待ち受け → 制御チャネル → running」、停止は「受付停止 → HTTPS → 制御チャネル → DB worker → ロック」            |
 | 受付の開始        | Core が running の間だけ要求を処理し、それ以外（起動中・停止中）は 503 `dependency_unavailable`                                                                                                                                            |
 | 待ち受けの失敗    | 使用中のポートなど（`https_listen_failed:<コード>`、終了コード 4）。DB worker を閉じ、ロックを返す                                                                                                                                         |
@@ -175,6 +175,16 @@ DB worker には、操作の命令とは別のメッセージ（`type: 'device'`
 - **中枢の画面の判定**: 端末の hub_local（登録時に決まる）だけで判定した。中枢のマシンの外から hub_local の端末のトークンで接続された場合を区別していない（B03-02 で見直す）。
 - **TLS のセッションの再開**: TLS 1.3 のセッションチケットは既定のまま。再開した接続ではクライアントの `checkServerIdentity` が呼ばれないが、再開には中枢のチケットの鍵が要るため、別の中枢へは再開できない。
 - **tests/test-map.json**: X04 の一部（古い接続範囲の 410・端末 ID の偽装）を模擬で確かめたが、X04 全体（同じ request_id の再送・内容違いの 409 を HTTP で）ではないので `product_test` は not_run のまま。
+
+## B03-07 の変更（独立したセキュリティレビューの指摘、#75）
+
+試験は `apps/core/src/api-hardening.test.ts`（M1・L1）・`api-server.test.ts`・`scripts/listen-address.test.mjs`（M2）で、どれも直す前に失敗することを確かめた。127.0.0.1 の模擬だけで、実機・Tailscale 上の接続は未実施。WSS の変更（M3・L3）は [ADR 0023](0023-b03-snapshot-events-and-operation-routes.md)、自宅判定の失効の間引き（L1）は [ADR 0022](0022-b03-home-network-check.md)、失効の経路（L2）は [ADR 0021](0021-b03-device-pairing-and-revocation.md) に書いた。
+
+- **M1 最初の要求までの期限**: 何も送らない TLS の接続が、Node の `headersTimeout` の確認の間隔（既定 30 秒）まで切れず、接続の枠（32 本）を約 30 秒占められた。TLS の確立（`secureConnection`）から最初の要求のヘッダーがそろうまでに `headersTimeoutMs`（10 秒）を過ぎた接続を、接続ごとの時計で応答せずに切るようにした。アイドルの時間切れ（`socket.setTimeout`）ではなく確立からの期限にしたのは、ヘッダーを少しずつ送り続ける接続も同じ時間で切るため。最初の要求・WSS の切り替えが届いたら時計を外し、その後は keep-alive の時間切れ（5 秒）と WSS の ping に任せる。TLS の確立までは従来どおり `handshakeTimeout`（10 秒）。認証前の要求は応答の後に接続を閉じるので、2 件目以降のヘッダーの遅延は認証した端末だけが起こせる（Node の確認の間隔は変えていない）
+- **M2 待ち受けのアドレス**: 16 進の IPv4-mapped（`::ffff:0:0`・`0:0:0:0:0:ffff:0:0`）が全アドレスの拒否をすり抜けていた。domain の `listenAddressDecision`（`packages/domain/src/listen-address.ts`、Node の API を使わない）でアドレスを正規化してから、許可する範囲（ループバック 127.0.0.0/8・::1、Tailscale 100.64.0.0/10・fd7a:115c:a1e0::/48）を列挙して判定する形に変えた。zone（`%`）つきは拒否する。理由コードは `https_host_not_ip_address`・`https_host_unspecified`・`https_host_not_allowed`。待ち受けは正規化した形（IPv4-mapped は IPv4、IPv6 は RFC 5952 の形。`ApiServer.host` も同じ）
+- **L1 認証した端末の頻度**: 認証前の要求だけを数えていたため、正しいトークンを持つ端末（乗っ取られた端末を含む）は bootstrap（接続範囲の発行で DB に書く）などを際限なく送れた。端末トークンで認証できた要求（WSS の切り替えを含む）を端末（device_id）ごとの固定の窓で数え、上限に達した端末は窓が過ぎるまで 429 `rate_limited`（接続を閉じる）にした。認証前の頻度（接続元ごと）とは別に数え、互いに影響しない。
+  - **仮の値: 60 秒で 300 件（`deviceWindowMs`・`deviceMaxRequests`）**。設計に数値がない。正しい端末の通常の使い方は、再接続 1 回で bootstrap・スナップショット・イベントの数ページ・購読の切り替えの数件、自宅の指紋の報告は数分に 1 件、WSS の ping は HTTP の要求ではないので数えない。起動直後のまとまった読み込みや短い間の再接続の繰り返し（1 分に 10 回の再接続で約 50 件）にも十分な余裕を残し、DB へ書く要求を 1 台あたり平均で毎秒 5 件までに抑える。実際の端末（B03-05）の要求の数を見て見直す。
+  - 経路の検査順の試験（`api-route-order.test.ts`）は同じ端末で約 400 件を送るので、試験の間だけ上限を上げた（認証前の頻度と同じ扱い）。
 
 ## 残ること
 

@@ -664,19 +664,26 @@ test('hub state: a declined confirmation shows nothing; a held row cannot be pre
   );
   assert.equal(declined.notice, null);
   assert.equal(declined.pending, null);
+  // 送ったのが通し番号 5、結果（不明）が届いたのが 7。
   const unknown = applyHubResponse(
     sending,
     'desktop.claim_decide',
     rejected('desktop.claim_decide', 'outcome_unknown'),
+    NOW,
+    5,
+    7,
   );
-  assert.deepEqual(unknown.held, [CLAIM.ref]);
+  assert.deepEqual(unknown.held, {
+    claims: [{ ref: CLAIM.ref, after: 7 }],
+    devices: [],
+  });
   const { actions } = capture();
   assert.match(
     html(
       <ClaimsPanel
         claims={[CLAIM]}
         busy={false}
-        held={unknown.held}
+        held={unknown.held.claims.map((held) => held.ref)}
         now={NOW}
         notice={null}
         actions={actions}
@@ -684,13 +691,93 @@ test('hub state: a declined confirmation shows nothing; a held row cannot be pre
     ),
     /<button[^>]*disabled[^>]*>承認する/u,
   );
-  const refreshed = applyHubResponse(unknown, 'desktop.claims_list', {
+  const claimsList: DesktopIpcResponse = {
     request_id: decide.request_id,
     channel: 'desktop.claims_list',
     outcome: 'ok',
     claims: [CLAIM],
-  });
-  assert.deepEqual(refreshed.held, []);
+  };
+  // 別の種類（端末）の一覧では解かない。
+  const otherPane = applyHubResponse(
+    unknown,
+    'desktop.devices_list',
+    {
+      request_id: decide.request_id,
+      channel: 'desktop.devices_list',
+      outcome: 'ok',
+      devices: [],
+    },
+    NOW,
+    8,
+  );
+  assert.deepEqual(otherPane.held.claims, [{ ref: CLAIM.ref, after: 7 }]);
+  // 結果が分かる前（通し番号 6）に始めた申請の一覧でも解かない。
+  const early = applyHubResponse(
+    otherPane,
+    'desktop.claims_list',
+    claimsList,
+    NOW,
+    6,
+  );
+  assert.deepEqual(early.held.claims, [{ ref: CLAIM.ref, after: 7 }]);
+  // 結果が分かった後（通し番号 9）に始めた申請の一覧で解く。
+  const refreshed = applyHubResponse(
+    otherPane,
+    'desktop.claims_list',
+    claimsList,
+    NOW,
+    9,
+  );
+  assert.deepEqual(refreshed.held, { claims: [], devices: [] });
+});
+
+test('hub state: a list started during a change is dropped even when the refresh after the change failed', () => {
+  const device = OTHER;
+  const revoke: DesktopIpcRequest = {
+    channel: 'desktop.device_revoke',
+    request_id: '00000000-0000-4000-8000-000000000d09',
+    payload: { ref: OTHER.ref ?? '' },
+  };
+  // 失効を通し番号 1 で送る → その最中に端末の一覧を 2 で始める → 失効は適用（取り直しは失敗）、3 で届く。
+  const sending = markSending(
+    { ...INITIAL_HUB_STATE, devices: [device] },
+    revoke,
+    {
+      channel: 'desktop.device_revoke',
+      ref: device.ref,
+      name: '合成の端末',
+      verb: '失効',
+    },
+    1,
+  );
+  const applied = applyHubResponse(
+    sending,
+    'desktop.device_revoke',
+    {
+      request_id: revoke.request_id,
+      channel: 'desktop.device_revoke',
+      outcome: 'ok',
+      list_refreshed: false,
+    },
+    NOW,
+    1,
+    3,
+  );
+  assert.equal(applied.devices?.[0]?.ref, null);
+  // 失効の前の内容を取った一覧（2）が遅れて届いても、操作できる行を戻さない。
+  const late = applyHubResponse(
+    applied,
+    'desktop.devices_list',
+    {
+      request_id: revoke.request_id,
+      channel: 'desktop.devices_list',
+      outcome: 'ok',
+      devices: [device],
+    },
+    NOW,
+    2,
+  );
+  assert.equal(late.devices?.[0]?.ref, null);
 });
 
 test('hub state: a list started before a later list or a change does not overwrite the newer result', () => {

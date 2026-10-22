@@ -465,7 +465,7 @@ export function HubTabs({
       refreshDisabled={paused !== null}
       now={now}
       notice={state.notice}
-      held={state.held}
+      held={state.held.claims.map((held) => held.ref)}
       actions={actions}
     />
   );
@@ -522,7 +522,7 @@ export function HubTabs({
             refreshDisabled={paused !== null}
             now={now}
             notice={state.notice}
-            held={state.held}
+            held={state.held.devices.map((held) => held.ref)}
             actions={actions}
           />
         </Tabs.Panel>

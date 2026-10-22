@@ -76,6 +76,15 @@ test(
       API_ROUTES.map((route) => route.operationId).sort(),
       Object.keys(ROUTE_CHECKS).sort(),
     );
+    // 失効は中枢の画面だけ（本人の判断 2026-10-21、B03-07）。手書きの期待値で表を確かめた上で、下で実行時の順を確かめる。
+    assert.deepEqual(ROUTE_CHECKS['revokeDevice'], [
+      'device_token',
+      'home_network',
+      'command_scope',
+      'unlocked',
+      'screen_operation',
+      'hub_screen',
+    ]);
 
     const dir = await tempDir(t, 'buddy-route-order-');
     const identity = await loadOrCreateTlsIdentity({
@@ -92,8 +101,8 @@ test(
       identity,
       store,
       coreInstanceId: '00000000-0000-4000-8000-0000000000c1',
-      // 認証前の要求も多く送るので、頻度の上限を試験の間だけ上げる。
-      limits: { preAuthMaxRequests: 100_000 },
+      // 認証前の要求も同じ端末の要求も多く送るので、頻度の上限を試験の間だけ上げる。
+      limits: { preAuthMaxRequests: 100_000, deviceMaxRequests: 100_000 },
       environment: {
         homeNetwork: () => !failing.has('home_network'),
         lockState: () => (failing.has('unlocked') ? 'locked' : 'unlocked'),

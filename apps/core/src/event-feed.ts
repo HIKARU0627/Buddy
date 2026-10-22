@@ -123,6 +123,11 @@ export class EventFeed {
     return this.#subscribers.size;
   }
 
+  // 止めた後か（新しい購読は subscribe で event_feed_closed になる）。WSS の受け付けの判定で見る（B03-07 M3）。
+  get closed(): boolean {
+    return this.#closed;
+  }
+
   // 位置 sequence の後を 1 ページ読む（getEvents と購読で使う）。cursor の発行の時刻の検査は呼び出し側。
   async read(sequence: number, limit = this.#pageSize): Promise<EventBatch> {
     const page = await this.#store.query({

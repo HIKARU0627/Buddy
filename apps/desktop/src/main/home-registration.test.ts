@@ -144,6 +144,13 @@ interface HubState {
   dropPut: boolean;
   // PUT に 200 で契約に合わない本文を返す。
   badPutBody: boolean;
+  // 設定すると、PUT の応答を releasePut まで止める（送った後の競合を作る）。
+  gatePut: boolean;
+  releasePut: () => void;
+  // bootstrap の回数（bootstrap ごとに新しい接続範囲を返す）。
+  bootstraps: number;
+  // WSS のイベントの受け口（4410 などを試験から送る）。
+  stream: ((event: unknown) => void) | null;
 }
 
 async function liveLink(
@@ -157,6 +164,10 @@ async function liveLink(
     hubScreen: true,
     dropPut: false,
     badPutBody: false,
+    gatePut: false,
+    releasePut: () => {},
+    bootstraps: 0,
+    stream: null,
   };
   const sent: ClientApiRequest[] = [];
   const shown: unknown[] = [];
@@ -200,17 +211,23 @@ async function liveLink(
       status,
       body,
     });
-    if (request.path === '/v1/bootstrap')
+    if (request.path === '/v1/bootstrap') {
+      hub.bootstraps += 1;
       return ok({
         api_version: '1.0',
         core_instance_id: '00000000-0000-4000-8000-000000000e04',
         store_generation: '00000000-0000-4000-8000-000000000e05',
         device_id: DEVICE,
-        command_scope_id: SCOPE,
+        // 最初の bootstrap は SCOPE、やり直すたびに新しい接続範囲。
+        command_scope_id:
+          hub.bootstraps === 1
+            ? SCOPE
+            : `00000000-0000-4000-8000-${String(0xe10 + hub.bootstraps).padStart(12, '0')}`,
         command_scope_expires_at: '2030-10-06T00:00:00Z',
         capabilities: [],
         io_state: ioState,
       });
+    }
     if (request.path === '/v1/snapshot')
       return ok({
         store_generation: '00000000-0000-4000-8000-000000000e05',
@@ -244,14 +261,20 @@ async function liveLink(
       if (!hub.hubScreen) return notHubScreen;
       if (request.method === 'GET')
         return ok({ registration: hub.registration });
-      if (hub.dropPut) return { kind: 'unreachable', reason: 'test' };
-      if (hub.badPutBody) return ok({ accepted: true });
-      hub.registration = {
-        subnet: request.body?.['subnet'],
-        ssid_registered: request.body?.['ssid'] !== null,
-        registered_at: '2030-10-05T00:10:00Z',
+      const put = (): ClientApiOutcome => {
+        if (hub.dropPut) return { kind: 'unreachable', reason: 'test' };
+        if (hub.badPutBody) return ok({ accepted: true });
+        hub.registration = {
+          subnet: request.body?.['subnet'],
+          ssid_registered: request.body?.['ssid'] !== null,
+          registered_at: '2030-10-05T00:10:00Z',
+        };
+        return ok(hub.registration);
       };
-      return ok(hub.registration);
+      if (!hub.gatePut) return put();
+      return new Promise<ClientApiOutcome>((resolve) => {
+        hub.releasePut = () => resolve(put());
+      });
     }
     return { kind: 'unreachable', reason: 'test' };
   };
@@ -297,8 +320,10 @@ async function liveLink(
         sent.push(request);
         return Promise.resolve(respond(request));
       },
-      openStream: () =>
-        Promise.resolve({ kind: 'open', stream: { close: () => {} } }),
+      openStream: (_cursor, _lock, onEvent) => {
+        hub.stream = onEvent as (event: unknown) => void;
+        return Promise.resolve({ kind: 'open', stream: { close: () => {} } });
+      },
     }),
   });
   onCleanup(t, () => link.stop());
@@ -602,10 +627,9 @@ test(
     network.release();
     const [one, two] = await Promise.all([first, second]);
     assert.equal(network.collects - before, 1);
-    // 先の読み取りは後の読み取りに追い越されたので返さず、後の読み取りが参照を返す。
-    assert.equal(one.reason, 'list_superseded');
-    const ref = two.home?.observation?.['ref'];
+    const ref = one.home?.observation?.['ref'];
     assert.equal(typeof ref, 'string');
+    assert.equal(two.home?.observation?.['ref'], ref);
 
     // 送る直前の読み取りの間にロックした: 送らず、参照も捨てる。
     network.value = 'gate';
@@ -651,10 +675,19 @@ test(
 
     // 送る直前の読み取りの間に切断した: 送らない。
     hub.badPutBody = false;
+    // 結果が分からなかった登録は、読み取り直すまで保留（同じ参照では送らない）。
+    assert.equal(
+      (await admin('desktop.home_register', { ref: ref3, include_ssid: true }))
+        .reason,
+      'entry_not_found',
+    );
+    const ref4 = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
     network.value = 'gate';
     const beforeCut = network.collects;
     const cut = admin('desktop.home_register', {
-      ref: ref3,
+      ref: ref4,
       include_ssid: true,
     });
     await waitUntil(() => network.collects > beforeCut, 'read before cut');
@@ -869,24 +902,14 @@ test(
 );
 
 test(
-  'a read that a later request overtook is not returned; a lock during a read returns no masked view or reference (B03-08)',
+  'a lock during a read returns no masked view or reference (B03-08)',
   { timeout: 30_000 },
   async (t) => {
     const { link, network, admin } = await liveLink(t);
-    // 後から始めた読み取りに追い越された読み取りは、古いとして返さない。
-    network.value = 'gate';
-    const before = network.collects;
-    const older = admin('desktop.home_status', null);
-    await waitUntil(() => network.collects > before, 'collect started');
-    const newer = admin('desktop.home_status', null);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    network.release();
-    const [first, second] = await Promise.all([older, newer]);
-    assert.equal(first.reason, 'list_superseded');
-    assert.equal(first.home, undefined);
-    const ref = second.home?.observation?.['ref'];
+    const ref = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
     assert.equal(typeof ref, 'string');
-
     // 読み取りの間にロックした: 伏せた表示も参照も返さない（ロックをまたいだ内容を返さない）。
     network.value = 'gate';
     const gated = network.collects;
@@ -903,5 +926,132 @@ test(
         .reason,
       'entry_not_found',
     );
+  },
+);
+
+test(
+  'races: a read started during a registration is superseded; an unknown result holds until a read started after it; a stale generation changes nothing; a new bootstrap closes the confirmation (B03-08)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, hub, network, confirm, admin, puts } = await liveLink(t);
+    const readRef = async () =>
+      (await admin('desktop.home_status', null)).home?.observation?.['ref'];
+    // 1) 登録の最中に始めた読み取り（登録が成功した後に返る）は list_superseded（登録の前の状態を戻さない）。
+    const ref = await readRef();
+    hub.gatePut = true;
+    const registering = admin('desktop.home_register', {
+      ref,
+      include_ssid: true,
+    });
+    await waitUntil(() => puts().length === 1, 'put sent');
+    network.value = 'gate';
+    const beforeRead = network.collects;
+    const during = admin('desktop.home_status', null);
+    await waitUntil(() => network.collects > beforeRead, 'read during put');
+    hub.releasePut();
+    assert.equal((await registering)['outcome'], 'ok');
+    network.release();
+    const superseded = await during;
+    assert.equal(superseded.reason, 'list_superseded');
+    assert.equal(superseded.home, undefined);
+
+    // 2) 結果が分からなかった登録は保留にする。結果が分かる前に始めた読み取りでは解かず、後に始めた読み取りで解く。
+    network.value = { ...HOME, unavailable: [] };
+    const ref2 = await readRef();
+    hub.badPutBody = true;
+    const unknown = admin('desktop.home_register', {
+      ref: ref2,
+      include_ssid: true,
+    });
+    await waitUntil(() => puts().length === 2, 'second put sent');
+    network.value = 'gate';
+    const beforeHeld = network.collects;
+    const startedBefore = admin('desktop.home_status', null);
+    await waitUntil(() => network.collects > beforeHeld, 'read before result');
+    hub.releasePut();
+    assert.equal((await unknown).reason, 'outcome_unknown');
+    network.release();
+    const early = await startedBefore;
+    assert.equal(early['outcome'], 'ok');
+    const earlyRef = early.home?.observation?.['ref'];
+    assert.equal(
+      (
+        await admin('desktop.home_register', {
+          ref: earlyRef,
+          include_ssid: true,
+        })
+      ).reason,
+      'entry_not_found',
+    );
+    hub.badPutBody = false;
+    hub.gatePut = false;
+    const ref3 = await readRef();
+    assert.equal(
+      (await admin('desktop.home_register', { ref: ref3, include_ssid: true }))[
+        'outcome'
+      ],
+      'ok',
+    );
+    assert.equal(puts().length, 3);
+
+    // 3) PUT の最中にロックした（古い世代）: 結果が分からなくても保留を作らず、応答も返さない。
+    const ref4 = await readRef();
+    hub.gatePut = true;
+    hub.badPutBody = true;
+    const lockedPut = admin('desktop.home_register', {
+      ref: ref4,
+      include_ssid: true,
+    });
+    await waitUntil(() => puts().length === 4, 'fourth put sent');
+    link.setLockState('locked');
+    hub.releasePut();
+    const lockedOutcome = await lockedPut;
+    assert.equal(lockedOutcome.reason, 'device_locked');
+    assert.equal(lockedOutcome.home, undefined);
+    link.setLockState('unlocked');
+    hub.gatePut = false;
+    hub.badPutBody = false;
+    // 保留はないので、読み取り直せばすぐ登録できる。
+    const ref5 = await readRef();
+    assert.equal(
+      (await admin('desktop.home_register', { ref: ref5, include_ssid: true }))[
+        'outcome'
+      ],
+      'ok',
+    );
+    assert.equal(puts().length, 5);
+
+    // 4) 確認を開いている間に 4410 で bootstrap をやり直した（接続範囲が変わる）: 確認を閉じ、送らない。
+    const ref6 = await readRef();
+    confirm.answer = 'hold';
+    const shownBefore = confirm.signals.length;
+    const rescoped = admin('desktop.home_register', {
+      ref: ref6,
+      include_ssid: true,
+    });
+    await waitUntil(
+      () => confirm.signals.length === shownBefore + 1,
+      'confirm before 4410',
+    );
+    const bootstrapsBefore = hub.bootstraps;
+    hub.stream?.({ type: 'closed', code: 4410, reason: 'resnapshot' });
+    assert.equal(confirm.signals.at(-1)?.aborted, true);
+    assert.notEqual((await rescoped)['outcome'], 'ok');
+    await waitUntil(
+      () =>
+        hub.bootstraps > bootstrapsBefore && link.linkState?.phase === 'live',
+      'live again',
+    );
+    assert.equal(puts().length, 5);
+    // 新しい接続範囲で読み取り直せば、その接続範囲で送る。
+    confirm.answer = true;
+    const ref7 = await readRef();
+    assert.equal(
+      (await admin('desktop.home_register', { ref: ref7, include_ssid: true }))[
+        'outcome'
+      ],
+      'ok',
+    );
+    assert.equal(puts().length, 6);
   },
 );

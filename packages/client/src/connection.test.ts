@@ -742,6 +742,19 @@ test('request sends only while live, adds the scope when asked, and never retrie
   const count = transport.requests.length;
   await settle();
   assert.equal(transport.requests.length, count);
+  // 本人が確かめたときの接続範囲と今の接続範囲が違えば（bootstrap をやり直した）、送らない。
+  assert.deepEqual(
+    await connection.request({
+      method: 'POST',
+      path: '/v1/devices/x/revoke',
+      body: {},
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: 'scope-from-before-bootstrap',
+    }),
+    { kind: 'not_sent', reason: 'not_connected' },
+  );
+  assert.equal(transport.requests.length, count);
   // 401 は再登録が必要（以後は送らない）。
   transport.respond(() => apiError(401, 'unauthenticated'));
   await connection.request({ method: 'GET', path: '/v1/devices' });

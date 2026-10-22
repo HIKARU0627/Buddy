@@ -913,6 +913,10 @@ async function liveHub(
 ) {
   const protector = mockProtector();
   const sent: string[] = [];
+  const stream: { listener: ((event: ClientStreamEvent) => void) | null } = {
+    listener: null,
+  };
+  let bootstraps = 0;
   const ioState = {
     device_id: '00000000-0000-4000-8000-000000000401',
     io_epoch: '0',
@@ -928,7 +932,8 @@ async function liveHub(
   const transport: ClientTransport = {
     request: (request) => {
       sent.push(`${request.method} ${request.path}`);
-      if (request.path === '/v1/bootstrap')
+      if (request.path === '/v1/bootstrap') {
+        bootstraps += 1;
         return Promise.resolve({
           kind: 'response',
           status: 200,
@@ -937,12 +942,14 @@ async function liveHub(
             core_instance_id: '00000000-0000-4000-8000-000000000501',
             store_generation: '00000000-0000-4000-8000-000000000502',
             device_id: '00000000-0000-4000-8000-000000000401',
-            command_scope_id: '00000000-0000-4000-8000-000000000503',
+            // bootstrap ごとに新しい接続範囲。
+            command_scope_id: `00000000-0000-4000-8000-${String(502 + bootstraps).padStart(12, '0')}`,
             command_scope_expires_at: '2030-10-02T00:00:00Z',
             capabilities: [],
             io_state: ioState,
           },
         });
+      }
       if (request.path === '/v1/snapshot')
         return Promise.resolve({
           kind: 'response',
@@ -962,8 +969,10 @@ async function liveHub(
         hub(request) ?? { kind: 'unreachable', reason: 'test' },
       );
     },
-    openStream: () =>
-      Promise.resolve({ kind: 'open', stream: { close: () => {} } }),
+    openStream: (_cursor, _lock, onEvent) => {
+      stream.listener = onEvent;
+      return Promise.resolve({ kind: 'open', stream: { close: () => {} } });
+    },
   };
   const context = await setup(t, {
     protector,
@@ -993,8 +1002,46 @@ async function liveHub(
         UNLOCKED,
       )
     ).response as Record<string, unknown>;
-  return { ...context, sent, admin };
+  return { ...context, sent, admin, stream, bootstraps: () => bootstraps };
 }
+
+// 接続の要求を試験が止める: match に合う要求は、中枢の応答を受け取った後、gates の関数を呼ぶまで返さない。
+function stallRequests(
+  link: DesktopCoreLink,
+  match: (request: {
+    readonly method: string;
+    readonly path: string;
+  }) => boolean,
+): (() => void)[] {
+  const gates: (() => void)[] = [];
+  const connection = link.connection;
+  assert(connection !== null);
+  const original = connection.request.bind(connection);
+  (connection as unknown as { request: typeof original }).request = async (
+    request,
+  ) => {
+    const outcome = await original(request);
+    if (match(request))
+      await new Promise<void>((resolve) => gates.push(resolve));
+    return outcome;
+  };
+  return gates;
+}
+
+const DEVICE_ID = '00000000-0000-4000-8000-000000000402';
+const deviceList = (revoked: boolean) => ({
+  devices: [
+    {
+      device_id: DEVICE_ID,
+      device_name: '合成の端末',
+      platform: 'windows',
+      hub_local: false,
+      registered_at: '2030-10-01T00:00:00Z',
+      last_seen_at: null,
+      revoked_at: revoked ? '2030-10-01T00:01:00Z' : null,
+    },
+  ],
+});
 
 const CLAIM_LIST = {
   claims: [
@@ -1227,7 +1274,7 @@ test(
     const asked: AdminConfirmRequest[] = [];
     let answer: (value: boolean) => void = () => undefined;
     const signals: AbortSignal[] = [];
-    const { link, admin, sent } = await liveHub(
+    const { link, admin, sent, stream, bootstraps } = await liveHub(
       t,
       (request) => {
         if (request.method === 'GET' && request.path === '/v1/pairing/claims')
@@ -1292,6 +1339,27 @@ test(
     answer(true);
     assert.equal((await confirmed)['outcome'], 'ok');
     assert.equal(posts().length, 1);
+    // 4410（取り直しの要求）で bootstrap をやり直すと（接続範囲が変わる）、確認を閉じ、送らない。
+    const scoped = await admin('desktop.claims_list', null);
+    const scopedRef = String(
+      (scoped['claims'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    const rescoped = admin('desktop.claim_decide', {
+      ref: scopedRef,
+      decision: 'reject',
+    });
+    await waitUntil(() => asked.length === 4, 'asked before 4410');
+    const before = bootstraps();
+    stream.listener?.({ type: 'closed', code: 4410, reason: 'resnapshot' });
+    assert.equal(signals[3]?.aborted, true);
+    // 確認に答えても（閉じた後）、送らない。
+    answer(true);
+    assert.notEqual((await rescoped)['outcome'], 'ok');
+    await waitUntil(
+      () => bootstraps() > before && link.linkState?.phase === 'live',
+      'live again',
+    );
+    assert.equal(posts().length, 1);
     // 切断でも確認を閉じ、送らない（模擬の中枢は同じ申請を返し続けるので、新しい参照で試す）。
     const again = await admin('desktop.claims_list', null);
     const nextRef = String(
@@ -1301,9 +1369,9 @@ test(
       ref: nextRef,
       decision: 'reject',
     });
-    await waitUntil(() => asked.length === 4, 'asked fourth');
+    await waitUntil(() => asked.length === 5, 'asked fifth');
     link.stop();
-    assert.equal(signals[3]?.aborted, true);
+    assert.equal(signals[4]?.aborted, true);
     assert.notEqual((await cut)['outcome'], 'ok');
     assert.equal(posts().length, 1);
   },
@@ -1338,38 +1406,53 @@ test(
 
 // ロックをまたいだ一覧・ワンタイムコードは返さない（Codex のレビュー Medium 1）。
 test(
-  'a list or one-time code whose response arrives after the screen locked is not returned',
+  'a claims list, a device list or a one-time code whose response arrives after the screen locked is not returned',
   { timeout: 30_000 },
   async (t) => {
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let hold = false;
     const { link, admin } = await liveHub(t, (request) => {
       if (request.method === 'GET' && request.path === '/v1/pairing/claims')
         return ok(CLAIM_LIST);
+      if (request.method === 'GET' && request.path === '/v1/devices')
+        return ok(deviceList(false));
+      if (request.method === 'POST' && request.path === '/v1/pairing/sessions')
+        return {
+          kind: 'response',
+          status: 201,
+          body: {
+            pairing_id: '00000000-0000-4000-8000-000000000601',
+            pairing_code: '12345678',
+            certificate_fingerprint: FP,
+            expires_at: '2030-10-01T00:05:00Z',
+            attempts_left: 5,
+            hub_endpoint: { host: '127.0.0.1', port: 47443 },
+          },
+        };
       return null;
     });
-    // 一覧の応答を試験が止める（判定の後から）。
-    const connection = link.connection;
-    assert(connection !== null);
-    const original = connection.request.bind(connection);
-    (connection as unknown as { request: typeof original }).request = async (
-      request,
-    ) => {
-      const outcome = await original(request);
-      if (hold) await held;
-      return outcome;
-    };
-    hold = true;
-    const pending = admin('desktop.claims_list', null);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    link.setLockState('locked');
-    release();
-    const response = await pending;
-    assert.equal(response['reason'], 'device_locked');
-    assert.equal('claims' in response, false);
+    // 中枢の画面の端末と確かめてから止める。
+    assert.equal((await admin('desktop.claims_list', null))['outcome'], 'ok');
+    // 止めるのは試す要求だけ（ロック解除の後の、中枢の画面の端末かの確認は止めない）。
+    let target: string | null = null;
+    const gates = stallRequests(link, (request) => {
+      if (request.path !== target) return false;
+      target = null;
+      return true;
+    });
+    for (const [channel, field, path] of [
+      ['desktop.claims_list', 'claims', '/v1/pairing/claims'],
+      ['desktop.devices_list', 'devices', '/v1/devices'],
+      ['desktop.pairing_open', 'session', '/v1/pairing/sessions'],
+    ] as const) {
+      target = path;
+      const pending = admin(channel, null);
+      await waitUntil(() => gates.length === 1, `stalled ${channel}`);
+      link.setLockState('locked');
+      gates.shift()?.();
+      const response = await pending;
+      assert.equal(response['reason'], 'device_locked', channel);
+      assert.equal(field in response, false, channel);
+      link.setLockState('unlocked');
+    }
   },
 );
 
@@ -1444,5 +1527,170 @@ test(
       'entry_not_found',
     );
     assert.equal(sent.filter((entry) => entry.endsWith('/revoke')).length, 1);
+  },
+);
+
+// Codex の確認 Medium 1: POST の最中に始めた一覧は、取り直しが失敗しても古い（失効した端末の参照を戻さない）。
+test(
+  'a list started while a revocation is being sent is superseded even when the refresh after it fails',
+  { timeout: 30_000 },
+  async (t) => {
+    let lists = 0;
+    const { link, admin, sent } = await liveHub(
+      t,
+      (request) => {
+        if (request.method === 'GET' && request.path === '/v1/devices') {
+          lists += 1;
+          // 1 回目・2 回目（失効の最中に始めた一覧）は失効の前。3 回目（失効の後の取り直し）は 503。
+          return lists >= 3 ? unavailable : ok(deviceList(false));
+        }
+        if (request.method === 'POST' && request.path.endsWith('/revoke'))
+          return ok({});
+        // 中枢の画面の端末かの確認（申請の一覧が読める）。
+        if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+          return ok(CLAIM_LIST);
+        return null;
+      },
+      { confirmAdmin: confirmYes },
+    );
+    const first = await admin('desktop.devices_list', null);
+    const ref = String(
+      (first['devices'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    let listsStalled = 0;
+    const gates = stallRequests(
+      link,
+      (request) =>
+        request.path.endsWith('/revoke') ||
+        (request.path === '/v1/devices' && ++listsStalled === 1),
+    );
+    const revoking = admin('desktop.device_revoke', { ref });
+    await waitUntil(() => gates.length === 1, 'revoke stalled');
+    const during = admin('desktop.devices_list', null);
+    await waitUntil(() => gates.length === 2, 'list stalled');
+    // 失効が先に終わる（取り直しは 503）。
+    gates[0]?.();
+    const revoked = await revoking;
+    assert.equal(revoked['outcome'], 'ok');
+    assert.equal(revoked['list_refreshed'], false);
+    // 失効の前の内容を取った一覧が遅れて届いても、返さず、参照も戻さない。
+    gates[1]?.();
+    assert.equal((await during)['reason'], 'list_superseded');
+    assert.equal(
+      (await admin('desktop.device_revoke', { ref }))['reason'],
+      'entry_not_found',
+    );
+    assert.equal(sent.filter((entry) => entry.endsWith('/revoke')).length, 1);
+  },
+);
+
+// Codex の確認 Medium 3: 結果不明の保留は申請・端末ごと。別の種類の一覧・結果が分かる前に始めた一覧では解かない。
+test(
+  'a revocation whose result is unknown stays held through a claims list and a device list started before the result',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, admin, sent } = await liveHub(
+      t,
+      (request) => {
+        if (request.method === 'GET' && request.path === '/v1/devices')
+          return ok(deviceList(false));
+        if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+          return ok(CLAIM_LIST);
+        return null; // 失効の POST は応答の前に切れる（結果不明）。
+      },
+      { confirmAdmin: confirmYes },
+    );
+    const revokes = () => sent.filter((entry) => entry.endsWith('/revoke'));
+    const first = await admin('desktop.devices_list', null);
+    const ref = String(
+      (first['devices'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    // 止めるのは 1 回目の失効と、その最中に始めた一覧だけ。
+    let revokesStalled = 0;
+    let listsStalled = 0;
+    const gates = stallRequests(
+      link,
+      (request) =>
+        (request.path.endsWith('/revoke') && ++revokesStalled === 1) ||
+        (request.path === '/v1/devices' && ++listsStalled === 1),
+    );
+    const revoking = admin('desktop.device_revoke', { ref });
+    await waitUntil(() => gates.length === 1, 'revoke stalled');
+    const early = admin('desktop.devices_list', null);
+    await waitUntil(() => gates.length === 2, 'list stalled');
+    gates[0]?.();
+    assert.equal((await revoking)['reason'], 'outcome_unknown');
+    // 結果が分かる前に始めた端末の一覧が届いても、保留は解かない。
+    gates[1]?.();
+    assert.equal((await early)['outcome'], 'ok');
+    assert.equal(
+      (await admin('desktop.device_revoke', { ref }))['reason'],
+      'entry_not_found',
+    );
+    // 申請の一覧（定期の取り直し）でも解かない。
+    assert.equal((await admin('desktop.claims_list', null))['outcome'], 'ok');
+    assert.equal(
+      (await admin('desktop.device_revoke', { ref }))['reason'],
+      'entry_not_found',
+    );
+    assert.equal(revokes().length, 1);
+    // 結果が分かった後に始めた端末の一覧で照合できたら、本人が押し直せる。
+    assert.equal((await admin('desktop.devices_list', null))['outcome'], 'ok');
+    assert.equal(
+      (await admin('desktop.device_revoke', { ref }))['reason'],
+      'outcome_unknown',
+    );
+    assert.equal(revokes().length, 2);
+  },
+);
+
+// Codex の確認 Medium 4: ロックの前の失効が遅れて終わっても、ロック解除の後の一覧を捨てさせない。
+test(
+  'a revocation from before a lock that finishes late does not supersede the list of the current generation',
+  { timeout: 30_000 },
+  async (t) => {
+    let revokedOnHub = false;
+    const { link, admin } = await liveHub(
+      t,
+      (request) => {
+        if (request.method === 'GET' && request.path === '/v1/devices')
+          return ok(deviceList(revokedOnHub));
+        if (request.method === 'POST' && request.path.endsWith('/revoke')) {
+          revokedOnHub = true;
+          return ok({});
+        }
+        if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+          return ok(CLAIM_LIST);
+        return null;
+      },
+      { confirmAdmin: confirmYes },
+    );
+    const first = await admin('desktop.devices_list', null);
+    const ref = String(
+      (first['devices'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    let listsStalled = 0;
+    const gates = stallRequests(
+      link,
+      (request) =>
+        request.path.endsWith('/revoke') ||
+        (request.path === '/v1/devices' && ++listsStalled === 1),
+    );
+    const revoking = admin('desktop.device_revoke', { ref });
+    await waitUntil(() => gates.length === 1, 'revoke stalled');
+    link.setLockState('locked');
+    link.setLockState('unlocked');
+    const current = admin('desktop.devices_list', null);
+    await waitUntil(() => gates.length === 2, 'list stalled');
+    // ロックの前の失効が終わる（古い世代の応答は返さず、取り直しもしない）。
+    gates[0]?.();
+    assert.equal((await revoking)['reason'], 'not_connected');
+    gates[1]?.();
+    const listed = await current;
+    assert.equal(listed['outcome'], 'ok');
+    assert.equal(
+      (listed['devices'] as Record<string, unknown>[])[0]?.['revoked_at'],
+      '2030-10-01T00:01:00Z',
+    );
   },
 );

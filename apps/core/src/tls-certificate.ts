@@ -190,3 +190,13 @@ export function certificateFromPem(text: string): Buffer | null {
     return null;
   }
 }
+
+// 人が読み比べる指紋（DER 全体の SHA-256 の 64 桁）。4 桁ずつ区切り、4 組ずつ 4 行に分ける。
+// 端末の画面・中枢の画面と同じ形（ADR 0026）。JSON の出力はそのまま残し、標準エラーへ足す。
+export function fingerprintLines(fingerprint: string): string[] {
+  const groups = fingerprint.match(/.{1,4}/gu) ?? [];
+  const lines: string[] = [];
+  for (let index = 0; index < groups.length; index += 4)
+    lines.push(groups.slice(index, index + 4).join(' '));
+  return lines;
+}

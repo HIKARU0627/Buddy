@@ -70,6 +70,24 @@ test('the React Aria press style is built into CSS instead of injected at run ti
   );
 });
 
+test('the InputOTP style is built into CSS instead of injected at run time', () => {
+  // input-otp は id="input-otp-style" の要素がないと <style> を差し込み、CSP に止められる。
+  const html = readPage();
+  assert.match(html, /<template id="input-otp-style"><\/template>/u);
+  const css = files(rendererDir)
+    .filter((path) => path.endsWith('.css'))
+    .map((path) => readFileSync(path, 'utf8'))
+    .join('\n');
+  assert.match(
+    css,
+    /\[data-input-otp\]::selection\s*\{[^}]*background:[^;}]*!important/u,
+  );
+  assert.match(
+    css,
+    /\[data-input-otp\]\s*\+\s*\*\s*\{\s*pointer-events:\s*all\s*!important/u,
+  );
+});
+
 test('every file the page refers to is served by the app scheme', () => {
   const html = readPage();
   const refs = [...html.matchAll(/\b(?:src|href)="([^"]+)"/gu)].map(

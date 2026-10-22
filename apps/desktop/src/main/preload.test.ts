@@ -83,6 +83,12 @@ test('requests go only to the contract channels', async () => {
     'desktop.pairing_confirm',
     'desktop.pairing_submit',
     'desktop.pairing_cancel',
+    // B03-06: 中枢の画面の端末の申請の承認・端末の管理（ADR 0026）。
+    'desktop.claims_list',
+    'desktop.claim_decide',
+    'desktop.devices_list',
+    'desktop.device_revoke',
+    'desktop.pairing_open',
   ];
   // preload の一覧は domain の一覧と同じ。
   assert.deepEqual([...DESKTOP_IPC_CHANNELS], channels);

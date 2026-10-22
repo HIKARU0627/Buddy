@@ -8,6 +8,7 @@ import {
   Menu,
   Tray,
   app,
+  dialog,
   ipcMain,
   nativeImage,
   powerMonitor,
@@ -26,9 +27,15 @@ import {
 } from '@buddy/platform/home-fingerprint';
 import { fileURLToPath } from 'node:url';
 import { DESKTOP_IPC_CHANNELS, type DesktopPowerEvent } from '@buddy/domain';
+import { adminConfirmText } from '../admin-confirm.js';
 import { ConnectionPublisher } from '../connection-publisher.js';
 import { createDesktopContract, loadContractSchema } from '../contract.js';
-import { CONNECTION_CHANNELS, DesktopCoreLink } from '../core-link.js';
+import {
+  ADMIN_CHANNELS,
+  CONNECTION_CHANNELS,
+  DesktopCoreLink,
+  type AdminConfirmRequest,
+} from '../core-link.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
 import type { SecretProtector } from '../credential-store.js';
 import { DesktopDeviceController } from '../device-controller.js';
@@ -279,6 +286,11 @@ function registerIpc(): void {
       };
       if (CONNECTION_CHANNELS.includes(channel))
         return link.handleIpc(channel, raw, sender, controller.state).response;
+      // 中枢の画面の端末の申請の承認・端末の管理（B03-06）。中枢へ要求を送るので非同期。
+      if (ADMIN_CHANNELS.includes(channel))
+        return link
+          .handleAdminIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
       const outcome = controller.handleIpc(channel, raw, sender);
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window')
@@ -391,7 +403,31 @@ function createLink(
     networkSignature: () => networkSignatureOf(networkInterfaces()),
     onChange: pushConnection,
     log,
+    confirmAdmin: confirmAdminWithDialog,
   });
+}
+
+// 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。親付きのモーダルな OS の確認ダイアログで、
+// 「やめる」を既定・取り消しにする。ロック・切断で signal が閉じられたら閉じる。ウィンドウがなければ確認できないので送らない。
+async function confirmAdminWithDialog(
+  request: AdminConfirmRequest,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const window = mainWindow;
+  if (window === null || window.isDestroyed() || signal.aborted) return false;
+  const text = adminConfirmText(request);
+  const result = await dialog.showMessageBox(window, {
+    type: request.action === 'approve' ? 'question' : 'warning',
+    title: text.title,
+    message: text.message,
+    detail: text.detail,
+    buttons: [...text.buttons],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    signal,
+  });
+  return !signal.aborted && result.response === 1;
 }
 
 function start(): void {

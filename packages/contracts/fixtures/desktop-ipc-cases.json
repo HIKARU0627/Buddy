@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "デスクトップの限定 IPC の受付と、端末の入出力・ロックの状態遷移の期待値（設計 10 §1・§1A、07 §2・§5、01 いつも見える状態、02 停止、QA43・X13、ADR 0014・0025）。手で書いたもので、domain の実装から生成していない。Electron の実機での試験ではない。",
+  "description": "デスクトップの限定 IPC の受付と、端末の入出力・ロックの状態遷移の期待値（設計 10 §1・§1A、07 §2・§5、01 いつも見える状態、02 停止、QA43・X13、ADR 0014・0025・0026）。手で書いたもので、domain の実装から生成していない。Electron の実機での試験ではない。",
   "admission": {
     "state": { "lockState": "unlocked", "stopScope": "local", "ioEpoch": "5" },
     "sender": { "trustedSender": true, "windowFocused": true },
@@ -213,6 +213,121 @@
         "expected_io_epoch": null,
         "state": { "stopScope": "global" },
         "expected": { "ok": true }
+      },
+      {
+        "id": "claims-list-unlocked-unfocused",
+        "refs": ["ADR 0026"],
+        "channel": "desktop.claims_list",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "claims-list-while-locked",
+        "channel": "desktop.claims_list",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "devices-list-while-lock-unknown",
+        "channel": "desktop.devices_list",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "claim-decide-by-screen",
+        "refs": ["ADR 0026"],
+        "channel": "desktop.claim_decide",
+        "expected_io_epoch": null,
+        "expected": { "ok": true }
+      },
+      {
+        "id": "claim-decide-from-hidden-window",
+        "channel": "desktop.claim_decide",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "device-revoke-while-locked",
+        "channel": "desktop.device_revoke",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "pairing-open-untrusted",
+        "channel": "desktop.pairing_open",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
+      }
+    ]
+  },
+  "fingerprint_tail": {
+    "description": "指紋の最後の 4 桁の入力の照合（本人の判断 2026-10-21、ADR 0025）。手で書いた例で、domain の実装から生成していない。",
+    "cases": [
+      {
+        "id": "tail-exact",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "cd3f",
+        "expected": true
+      },
+      {
+        "id": "tail-uppercase",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "CD3F",
+        "expected": true
+      },
+      {
+        "id": "tail-with-space",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "cd 3f",
+        "expected": true
+      },
+      {
+        "id": "tail-other",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "cd3e",
+        "expected": false
+      },
+      {
+        "id": "tail-first-four",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "0123",
+        "expected": false
+      },
+      {
+        "id": "tail-three",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "d3f",
+        "expected": false
+      },
+      {
+        "id": "tail-five",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "bcd3f",
+        "expected": false
+      },
+      {
+        "id": "tail-not-hex",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "cd3g",
+        "expected": false
+      },
+      {
+        "id": "tail-empty",
+        "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd3f",
+        "typed": "",
+        "expected": false
+      },
+      {
+        "id": "tail-bad-fingerprint",
+        "fingerprint": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCD3F",
+        "typed": "cd3f",
+        "expected": false
       }
     ]
   },

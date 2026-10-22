@@ -150,7 +150,13 @@ export function desktopSemanticErrors(
         errors.push('pairing_without_fingerprint');
       if (step === 'fetching_certificate' && pairing['fingerprint'] !== null)
         errors.push('fingerprint_before_certificate');
+      // 確認コードは申請を受け付けた後の承認待ちのときだけ（B03-06）。
+      if (pairing['claim_check'] !== null && step !== 'waiting_approval')
+        errors.push('claim_check_outside_waiting');
     }
+    // 中枢の画面の判定は接続している間だけ（B03-06）。
+    if (value['hub_screen'] === true && value['link'] !== 'connected')
+      errors.push('hub_screen_without_connection');
     const link = value['link'];
     const operations = value['operations'];
     if (

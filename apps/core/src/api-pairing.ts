@@ -136,6 +136,11 @@ export interface PairingServiceOptions {
   readonly log?: (message: string) => void;
   // 接続元が中枢と同じマシンか（試験で差し替える）。既定は isSameMachine(remote, host)。
   readonly sameMachine?: (remoteAddress: string) => boolean;
+  // 待ち受けのアドレスとポート（待ち受けを始めた後の値。ペアリングの応答に、端末で入力する宛先として載せる）。
+  readonly endpoint: () => {
+    readonly host: string;
+    readonly port: number;
+  } | null;
 }
 
 export interface PairingService {
@@ -329,6 +334,10 @@ export function createPairingService(
 
   const startPairing: ApiRouteHandler = async (request) => {
     const requestId = requestIdOf(request);
+    // 待ち受けを始める前は宛先が決まらない（要求も届かないが、念のため 503 にする）。
+    const endpoint = options.endpoint();
+    if (endpoint === null)
+      return fail(503, 'dependency_unavailable', requestId);
     const started = await startSession();
     if (!started.ok) return fail(503, 'dependency_unavailable', requestId);
     log(
@@ -342,6 +351,7 @@ export function createPairingService(
         certificate_fingerprint: fingerprint,
         expires_at: iso(started.expiresAt),
         attempts_left: PAIRING_MAX_ATTEMPTS,
+        hub_endpoint: { host: endpoint.host, port: endpoint.port },
       },
     };
   };
@@ -482,6 +492,30 @@ export function createPairingService(
     };
   };
 
+  // 承認待ちの申請の一覧（B03-06、ADR 0026）。経路の検査（hub_screen）を通った中枢の画面だけが来る。
+  // 今の証明書で始めたペアリングの、期限の前の pending だけ。コード・秘密・その hash は返さない。
+  const listPairingClaims: ApiRouteHandler = async () => {
+    const listed = await store.pairing({
+      kind: 'pairing.list_pending',
+      now: now(),
+      certificate_fingerprint: fingerprint,
+    });
+    if (!listed.ok) return fail(503, 'dependency_unavailable', null);
+    return {
+      status: 200,
+      body: {
+        claims: listed.value.map((claim) => ({
+          claim_id: claim.claim_id,
+          device_name: claim.device_name,
+          platform: claim.platform,
+          claimed_at: iso(claim.claimed_at),
+          expires_at: iso(claim.expires_at),
+          claim_check: claim.claim_check,
+        })),
+      },
+    };
+  };
+
   const listDevices: ApiRouteHandler = async () => {
     const listed = await listDeviceRecords(store);
     if (!listed.ok) return fail(503, 'dependency_unavailable', null);
@@ -540,6 +574,7 @@ export function createPairingService(
       claimPairing,
       decidePairingClaim,
       pickupPairingToken,
+      listPairingClaims,
       listDevices,
       revokeDevice,
     },

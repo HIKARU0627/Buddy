@@ -409,6 +409,59 @@ export class ClientConnection {
     };
   }
 
+  // 中枢の画面の操作など、live のときだけ送る要求（B03-06）。scoped なら request_id と今の接続範囲を本文に入れる。
+  // live でなければ送らずに返し、ためない。送った後に結果が分からなければ unknown（自動で再送しない）。
+  async request(request: {
+    readonly method: 'GET' | 'POST';
+    readonly path: string;
+    readonly body?: Readonly<Record<string, unknown>>;
+    readonly screenOperation?: boolean;
+    readonly scoped?: boolean;
+    // 本人が確かめたときの接続範囲。今の接続範囲と違えば（bootstrap をやり直した）送らない。
+    readonly expectedScopeId?: string;
+  }): Promise<
+    | { readonly kind: 'not_sent'; readonly reason: 'not_connected' }
+    | {
+        readonly kind: 'response';
+        readonly status: number;
+        readonly body: unknown;
+      }
+    | { readonly kind: 'unknown' }
+  > {
+    const state = this.#state;
+    if (state.phase !== 'live' || state.commandScopeId === null)
+      return { kind: 'not_sent', reason: 'not_connected' };
+    if (
+      request.expectedScopeId !== undefined &&
+      request.expectedScopeId !== state.commandScopeId
+    )
+      return { kind: 'not_sent', reason: 'not_connected' };
+    const body =
+      request.scoped === true
+        ? {
+            ...request.body,
+            request_id: this.#options.clock.newRequestId(),
+            command_scope_id: state.commandScopeId,
+          }
+        : request.body;
+    const outcome = await this.#options.transport.request({
+      method: request.method,
+      path: request.path,
+      lockState: this.#lockState,
+      ...(request.screenOperation === true ? { screenOperation: true } : {}),
+      ...(body === undefined ? {} : { body }),
+    });
+    if (outcome.kind === 'certificate_mismatch') {
+      this.#fail(this.#generation, outcomeFailure(outcome));
+      return { kind: 'not_sent', reason: 'not_connected' };
+    }
+    if (outcome.kind === 'unreachable') return { kind: 'unknown' };
+    this.#confirmed();
+    if (outcome.status === 401)
+      this.#fail(this.#generation, httpFailure(401, outcome.body));
+    return { kind: 'response', status: outcome.status, body: outcome.body };
+  }
+
   // --- 接続の流れ ---
 
   async #connect(): Promise<void> {

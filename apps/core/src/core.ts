@@ -605,10 +605,13 @@ async function startHttps(
   const sameMachine =
     https.sameMachine ??
     ((remote: string) => isSameMachine(remote, https.host));
+  // 待ち受けのアドレスとポート（listen の後に決まる。ポート 0 の試験では実際のポート）。
+  let listening: { readonly host: string; readonly port: number } | null = null;
   const pairing = createPairingService({
     store,
     fingerprint: identity.fingerprint,
     host: https.host,
+    endpoint: () => listening,
     now: () => now().getTime(),
     deviceConnections,
     log,
@@ -716,6 +719,7 @@ async function startHttps(
       throw new CoreStartError('https_listen_failed', [error.reason]);
     throw error;
   }
+  listening = { host: api.host, port: api.port };
   return {
     api,
     homeNetwork,

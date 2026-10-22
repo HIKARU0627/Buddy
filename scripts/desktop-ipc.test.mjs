@@ -8,6 +8,7 @@ import {
   DESKTOP_POWER_EVENTS,
   admitDesktopRequest,
   desktopInputPermitted,
+  fingerprintTailMatches,
   nextDesktopIoState,
   statusBarVisibility,
 } from '../packages/domain/dist/index.js';
@@ -48,9 +49,22 @@ test('channel, event and reason lists in the schema and domain are the same', ()
   assert.deepEqual(rejected.properties.reason.enum, [
     ...DESKTOP_IPC_REJECT_REASONS,
   ]);
-  // 成功応答の分岐は全チャネルを一度ずつ受け持つ。
-  const okChannels = defs.DesktopIpcResponse.oneOf
-    .filter((branch) => branch.properties.outcome.const === 'ok')
+  // 成功応答の分岐は全チャネルを一度ずつ受け持つ。例外は「適用したが一覧を取り直せなかった」（list_refreshed: false）の
+  // 分岐だけで、承認・拒否と失効の 2 つのチャネルだけを重ねて受け持つ（ADR 0026、CR-L2）。
+  const okBranches = defs.DesktopIpcResponse.oneOf.filter(
+    (branch) => branch.properties.outcome.const === 'ok',
+  );
+  const stale = okBranches.filter(
+    (branch) => 'list_refreshed' in branch.properties,
+  );
+  assert.equal(stale.length, 1);
+  assert.deepEqual(stale[0].properties.channel.enum, [
+    'desktop.claim_decide',
+    'desktop.device_revoke',
+  ]);
+  assert.equal(stale[0].properties.list_refreshed.const, false);
+  const okChannels = okBranches
+    .filter((branch) => !('list_refreshed' in branch.properties))
     .flatMap((branch) => branch.properties.channel.enum);
   assert.deepEqual([...okChannels].sort(), [...DESKTOP_IPC_CHANNELS].sort());
 });
@@ -78,6 +92,8 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     'DesktopIpcNotification',
     'DesktopStatusBar',
     'DesktopConnectionView',
+    'DesktopClaimEntry',
+    'DesktopDeviceEntry',
   ])
     walk(defs[name], name);
   // 入出力停止は local だけで、範囲を指定できない。
@@ -271,6 +287,26 @@ test('the connection view hides everything while locked and keeps pairing, link 
   check('desktop-connection-storage-unavailable', { link: 'connecting' }, [
     'link_conflicts_with_registration',
   ]);
+  check(
+    'desktop-connection-fingerprint-check',
+    { pairing: { ...pairing, claim_check: '0a1b2c3d' } },
+    ['claim_check_outside_waiting'],
+  );
+  check(
+    'desktop-connection-fingerprint-check',
+    {
+      pairing: {
+        ...pairing,
+        step: 'waiting_approval',
+        claim_check: '0a1b2c3d',
+      },
+    },
+    [],
+  );
+  check('desktop-connection-connected', { hub_screen: true }, []);
+  check('desktop-connection-waiting-retry', { hub_screen: true }, [
+    'hub_screen_without_connection',
+  ]);
   // 応答・通知の中でも同じ検査をする。
   assert.deepEqual(
     semanticErrors('DesktopIpcNotification', {
@@ -341,4 +377,14 @@ test('power event records name their source; a query only reports the lock state
       'query_without_lock_state',
     ]);
   }
+});
+
+test('the typed last four digits must match the received fingerprint (ADR 0025)', () => {
+  assert(spec.fingerprint_tail.cases.length >= 8);
+  for (const entry of spec.fingerprint_tail.cases)
+    assert.equal(
+      fingerprintTailMatches(entry.fingerprint, entry.typed),
+      entry.expected,
+      entry.id,
+    );
 });

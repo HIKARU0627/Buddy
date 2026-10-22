@@ -84,6 +84,7 @@ export type BuddyContract =
   | PairingDecisionRequest
   | PairingTokenRequest
   | DeviceCredential
+  | PairingClaimList
   | DeviceList
   | DeviceRevokeRequest
   | HomeFingerprint
@@ -573,6 +574,10 @@ export type HomeSubnet = string;
  */
 export type WifiSsid = string;
 /**
+ * 申請の確認コード（B03-06、ADR 0026）。申請用の秘密の SHA-256（claim_secret_hash の小文字の 16 進）から、SHA-256("buddy/pairing-claim-check/v1" NUL claim_secret_hash) の先頭 4 バイトの小文字の 16 進として求める。端末の画面と中枢の画面に同じ値を出し、本人が承認する申請を見分ける。認証情報ではない（受取りには申請用の秘密が要る）。
+ */
+export type PairingClaimCheck = string;
+/**
  * 自宅判定が成り立たない理由（診断用、domain の homeNetworkDecision）。MAC・SSID・アドレスの値を含めない。
  */
 export type HomeNetworkReason =
@@ -644,6 +649,7 @@ export type DesktopIpcRequest =
       request_id: Id;
       payload: {
         fingerprint: Hash;
+        fingerprint_tail: string;
       };
     }
   | {
@@ -656,6 +662,36 @@ export type DesktopIpcRequest =
     }
   | {
       channel: 'desktop.pairing_cancel';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.claims_list';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.claim_decide';
+      request_id: Id;
+      payload: {
+        ref: Id;
+        decision: 'approve' | 'reject';
+      };
+    }
+  | {
+      channel: 'desktop.devices_list';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.device_revoke';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.pairing_open';
       request_id: Id;
       payload: null;
     };
@@ -688,6 +724,45 @@ export type DesktopIpcResponse =
       connection: DesktopConnectionView;
     }
   | {
+      request_id: Id;
+      channel: 'desktop.claims_list' | 'desktop.claim_decide';
+      outcome: 'ok';
+      claims: DesktopClaimEntry[];
+      /**
+       * main が付ける一覧の通し番号（申請・端末ごとに増える）。画面は同じ種類の一覧でこれより小さい番号の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0026）。
+       */
+      list_seq: number;
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.devices_list' | 'desktop.device_revoke';
+      outcome: 'ok';
+      devices: DesktopDeviceEntry[];
+      /**
+       * main が付ける一覧の通し番号（申請・端末ごとに増える）。画面は同じ種類の一覧でこれより小さい番号の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0026）。
+       */
+      list_seq: number;
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.claim_decide' | 'desktop.device_revoke';
+      outcome: 'ok';
+      /**
+       * 承認・拒否・失効は中枢に適用されたが、その後の一覧の取り直しだけが失敗した。画面は前の一覧からその行を除き、一覧の更新を促す（失敗として扱わない）。
+       */
+      list_refreshed: false;
+      /**
+       * 変更の結果が分かった時点の一覧の境目（main の通し番号）。画面はこれより小さい番号の一覧を反映しない（ADR 0026）。
+       */
+      list_seq: number;
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.pairing_open';
+      outcome: 'ok';
+      session: DesktopPairingSession;
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -701,7 +776,20 @@ export type DesktopIpcResponse =
         | 'io_epoch_mismatch'
         | 'pairing_step_mismatch'
         | 'secure_storage_unavailable'
-        | 'pairing_host_not_allowed';
+        | 'hub_screen_required'
+        | 'not_connected'
+        | 'entry_not_found'
+        | 'core_rejected'
+        | 'outcome_unknown'
+        | 'fingerprint_tail_mismatch'
+        | 'pairing_host_not_allowed'
+        | 'confirmation_declined'
+        | 'confirmation_pending'
+        | 'list_superseded';
+      /**
+       * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号。画面はこれより大きい番号の同じ種類の一覧を受け取るまで、その行を操作させない（ADR 0026）。
+       */
+      list_seq?: number;
     };
 /**
  * 上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。
@@ -766,6 +854,7 @@ export type DesktopConnectionView =
         fingerprint: Hash | null;
         claim_expires_at: UtcTime | null;
         failure: DesktopPairingFailure | null;
+        claim_check: PairingClaimCheck | null;
         /**
          * 今「やめる」をすぐに受け付けるか。受取りの要求が進んでいる間は false で、画面は「やめる」を押せなくする（main は受取りの結果を捨てず、トークンが届けば保存する。ADR 0025）。
          */
@@ -778,6 +867,14 @@ export type DesktopConnectionView =
         reported_at: UtcTime;
       } | null;
       operations: OperationSnapshot[];
+      hub_screen: boolean;
+      hub_target: {
+        /**
+         * 中枢の宛先（Tailscale の IP アドレスか名前）。端末は名前ではなく証明書の指紋で中枢を確かめる（ADR 0020）。URL・パス・ポートを含めない。名前の形は domain の HUB_HOSTNAME_PATTERN と同じ一つの正規表現（末尾のドットを一つ許す）。main はペアリングの開始で正規化し（末尾のドットを除いて小文字にする）、ペアリングで受け付ける宛先を Tailscale のアドレス（100.64.0.0/10・fd7a:115c:a1e0::/48）・ループバック・*.ts.net の名前に限る（ADR 0025）。
+         */
+        host: DesktopHubHost & DesktopHubHost1;
+        port: number;
+      } | null;
     };
 /**
  * 中枢との接続が切れた・使えない理由（packages/client の LinkReason、ADR 0025）。値・宛先を含めない。
@@ -826,7 +923,12 @@ export type DesktopIpcChannel =
   | 'desktop.pairing_begin'
   | 'desktop.pairing_confirm'
   | 'desktop.pairing_submit'
-  | 'desktop.pairing_cancel';
+  | 'desktop.pairing_cancel'
+  | 'desktop.claims_list'
+  | 'desktop.claim_decide'
+  | 'desktop.devices_list'
+  | 'desktop.device_revoke'
+  | 'desktop.pairing_open';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -2802,6 +2904,14 @@ export interface PairingSession {
   certificate_fingerprint: Hash;
   expires_at: UtcTime;
   attempts_left: number;
+  hub_endpoint: HubEndpoint;
+}
+/**
+ * 中枢の HTTPS の待ち受けのアドレスとポート（Core の設定の値。待ち受けは具体的な IP アドレスで、0.0.0.0 などは使わない。ADR 0020）。登録する端末で入力する宛先として、中枢の画面に表示する（ADR 0026）。秘密ではない。
+ */
+export interface HubEndpoint {
+  host: string;
+  port: number;
 }
 /**
  * 登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。claim_secret_hash は PairingTokenRequest.claim_secret の ASCII の 43 文字の SHA-256 を小文字の 16 進 64 桁にした値（ADR 0021）。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。 home_fingerprint は申請する端末が見た自宅の指紋で、中枢は申請の自宅判定（home_network）に使う（ADR 0022）。
@@ -2854,6 +2964,23 @@ export interface DeviceCredential {
   device_id: Id;
   device_token: string;
   issued_at: UtcTime;
+}
+/**
+ * 承認待ちの申請の一覧（B03-06、ADR 0026）。今の中枢の証明書で始めたペアリングの、期限の前の pending の申請だけを、申請の時刻の順に返す。
+ */
+export interface PairingClaimList {
+  claims: PendingPairingClaim[];
+}
+/**
+ * 承認待ちの申請（B03-06、ADR 0026）。中枢の画面で承認・拒否するための最小限の値で、コード・申請用の秘密・その hash・トークンを含めない。claimed_at は申請を受け付けた時刻（期限の 5 分前）。
+ */
+export interface PendingPairingClaim {
+  claim_id: Id;
+  device_name: string;
+  platform: DevicePlatform;
+  claimed_at: UtcTime;
+  expires_at: UtcTime;
+  claim_check: PairingClaimCheck;
 }
 export interface DeviceList {
   devices: DeviceSummary[];
@@ -2964,4 +3091,37 @@ export interface ConnectionDisconnectRequest {
   request_id: Id;
   command_scope_id: Id;
   expected_permission_revision: PermissionRevision;
+}
+/**
+ * 画面に出す承認待ちの申請（B03-06、ADR 0026）。ref は main が一覧ごとに作る参照で、申請 ID・コード・秘密を含めない。
+ */
+export interface DesktopClaimEntry {
+  ref: Id;
+  device_name: string;
+  platform: DevicePlatform;
+  claimed_at: UtcTime;
+  expires_at: UtcTime;
+  claim_check: PairingClaimCheck;
+}
+/**
+ * 画面に出す登録済みの端末（B03-06、ADR 0026）。ref は失効できる端末（この端末・失効済みでない）だけにある main の参照で、端末 ID・トークンを含めない。
+ */
+export interface DesktopDeviceEntry {
+  ref: Id | null;
+  device_name: string;
+  platform: DevicePlatform;
+  hub_local: boolean;
+  this_device: boolean;
+  registered_at: UtcTime;
+  last_seen_at: UtcTime | null;
+  revoked_at: UtcTime | null;
+}
+/**
+ * 中枢の画面に出すワンタイムコードと中枢の証明書の指紋（B03-06、ADR 0026）。コードは本人が登録する端末に入力するための表示で、中枢の画面の端末の画面にだけ返す（申請の一覧・端末の一覧・ログには出さない）。hub_endpoint は端末で入力する中枢の宛先（表示用）。
+ */
+export interface DesktopPairingSession {
+  pairing_code: string;
+  certificate_fingerprint: Hash;
+  expires_at: UtcTime;
+  hub_endpoint: HubEndpoint;
 }

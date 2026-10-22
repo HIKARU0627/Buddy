@@ -1,24 +1,39 @@
-// UI レンダラーの画面の切り替え（ADR 0014・0015・0024・0025）。
+// UI レンダラーの画面の切り替え（ADR 0014・0015・0024・0025・0026）。
 // 限定 API（preload の invoke・onNotification）を読めなければ、その旨だけを出す。
-// 未登録・再登録が必要・ペアリングの途中ならペアリングの画面、それ以外は端末の画面（中枢との接続の欄つき）。
-// ロック中・ロック状態不明では main が接続の内容を隠すので、端末の画面（内容を隠した状態欄）になる。
+// 未登録・再登録が必要・登録の途中なら登録の画面、それ以外は端末の画面。中枢の画面の端末（main が中枢に確かめた
+// hub_screen）なら、端末の画面の本体を「承認待ちの申請」「登録済みの端末」「この端末」の Tabs にする。
+// ロック中・ロック状態不明では main が接続の内容を隠すので、端末の画面（内容を隠した状態帯）になる。
 // 画面を足すときは screens/<名前>/ に置き、ここで切り替える。
+import { useEffect, useState } from 'react';
 import { Alert } from '@heroui/react';
+import { AlertIcon } from './components/AlertIcon.js';
 import { AppShell } from './app/AppShell.js';
 import { desktopApi } from './desktop-api.js';
 import type { BuddyDesktopApi } from './desktop-api.js';
+import { ConnectionSection } from './screens/device/ConnectionSection.js';
 import { DeviceScreen } from './screens/device/DeviceScreen.js';
-import { ConnectionPanel } from './screens/pairing/ConnectionPanel.js';
+import { HubTabs } from './screens/hub/HubPanels.js';
 import { PairingScreen } from './screens/pairing/PairingScreen.js';
-import { needsPairing, shownConnection } from './state/connection-state.js';
-import { useDesktopState } from './state/use-desktop-state.js';
+import {
+  hubScreenMode,
+  needsPairing,
+  nextHubSeen,
+  shownConnection,
+} from './state/connection-state.js';
+import { useDesktopState, useNow } from './state/use-desktop-state.js';
+import { useHubState } from './state/use-hub-state.js';
 
 function ApiUnavailable() {
   return (
-    <AppShell>
+    <AppShell role="この端末">
       <Alert status="danger" role="alert">
+        <Alert.Indicator>
+          <AlertIcon />
+        </Alert.Indicator>
         <Alert.Content>
-          <Alert.Title>限定 API を読み込めませんでした。</Alert.Title>
+          <Alert.Title>
+            画面を開けませんでした。Buddy を終了して、開き直してください。
+          </Alert.Title>
         </Alert.Content>
       </Alert>
     </AppShell>
@@ -26,8 +41,19 @@ function ApiUnavailable() {
 }
 
 function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
-  const { state, actions, pairing } = useDesktopState(api);
+  const { state, actions, pairing, dismissRegistered } = useDesktopState(api);
+  const now = useNow();
   const connection = shownConnection(state.connection);
+  // 前に中枢の画面と確かめたか（接続を待つ間も中枢の画面の枠を残す。判定の正本は main）。
+  const [hubSeen, setHubSeen] = useState(false);
+  const seen = nextHubSeen(hubSeen, connection);
+  useEffect(() => {
+    if (seen !== hubSeen) setHubSeen(seen);
+  }, [seen, hubSeen]);
+  const mode = hubScreenMode(seen, connection);
+  const hubScreen = mode !== 'off';
+  const locked = state.status?.visibility !== 'shown';
+  const hub = useHubState(api, mode, locked);
   if (connection !== null && needsPairing(connection))
     return (
       <PairingScreen
@@ -35,14 +61,48 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
         connection={connection}
         actions={actions}
         pairing={pairing}
+        now={now}
       />
     );
   return (
     <DeviceScreen
       state={state}
       actions={actions}
-      connectionPanel={
-        connection === null ? null : <ConnectionPanel connection={connection} />
+      now={now}
+      role={
+        mode === 'live'
+          ? '中枢の画面'
+          : mode === 'paused'
+            ? '中枢の画面（接続を待っています）'
+            : 'この端末'
+      }
+      onDismissRegistered={dismissRegistered}
+      hub={
+        hubScreen && connection !== null ? (
+          <HubTabs
+            state={hub.state}
+            actions={hub.actions}
+            now={now}
+            paused={
+              mode === 'paused'
+                ? {
+                    linked: connection.link === 'connected',
+                    lastConfirmedAt: connection.last_confirmed_at,
+                  }
+                : null
+            }
+            stopped={
+              state.status?.visibility === 'shown' &&
+              state.status.stop_scope !== 'none'
+            }
+            thisDevice={
+              <ConnectionSection
+                connection={connection}
+                title="このマシンと中枢の接続"
+              />
+            }
+          />
+        ) : undefined
       }
     />
   );

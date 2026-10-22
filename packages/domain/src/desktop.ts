@@ -15,6 +15,12 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.pairing_confirm',
   'desktop.pairing_submit',
   'desktop.pairing_cancel',
+  // B03-06: 中枢の画面の端末の申請の承認・端末の管理（ADR 0026）。
+  'desktop.claims_list',
+  'desktop.claim_decide',
+  'desktop.devices_list',
+  'desktop.device_revoke',
+  'desktop.pairing_open',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -47,8 +53,21 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'pairing_step_mismatch',
   // 保護の弱い方式しか使えずトークンを保存できない（ADR 0025）。
   'secure_storage_unavailable',
+  // B03-06: 中枢の画面でない・接続していない・一覧にない参照・中枢が拒否した・結果が分からない（ADR 0026）。
+  'hub_screen_required',
+  'not_connected',
+  'entry_not_found',
+  'core_rejected',
+  'outcome_unknown',
+  // 入力した指紋の最後の 4 桁が、受け取った証明書の指紋と合わない（本人の判断 2026-10-21、ADR 0025）。
+  'fingerprint_tail_mismatch',
   // ペアリングの宛先が Tailscale のアドレス・ループバック・*.ts.net の名前でない（ADR 0025、hub-host.ts）。
   'pairing_host_not_allowed',
+  // 承認・拒否・失効の OS の確認で「やめる」を選んだ・別の確認を表示している（本人の判断 2026-10-22、ADR 0026）。
+  'confirmation_declined',
+  'confirmation_pending',
+  // 一覧の要求が、後から始めた一覧・変更の操作に追い越された（古い一覧で表示と参照を戻さない）。
+  'list_superseded',
 ] as const;
 
 export type DesktopIpcRejectReason =
@@ -86,6 +105,16 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.pairing_begin',
   'desktop.pairing_confirm',
   'desktop.pairing_submit',
+  // 申請の承認・拒否と端末の失効も本人の画面操作（B03-06）。
+  'desktop.claim_decide',
+  'desktop.device_revoke',
+  'desktop.pairing_open',
+];
+
+// ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
+export const DESKTOP_UNLOCKED_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.claims_list',
+  'desktop.devices_list',
 ];
 
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
@@ -101,6 +130,10 @@ export function admitDesktopRequest(
 ): DesktopAdmission {
   if (!isChannel(channel)) return reject('invalid_request');
   if (!sender.trustedSender) return reject('untrusted_sender');
+  if (DESKTOP_UNLOCKED_CHANNELS.includes(channel))
+    return state.lockState === 'unlocked'
+      ? { ok: true }
+      : reject('device_locked');
   if (DESKTOP_PAIRING_SCREEN_CHANNELS.includes(channel)) {
     if (state.lockState !== 'unlocked') return reject('device_locked');
     if (!sender.windowFocused) return reject('screen_operation_required');
@@ -171,4 +204,16 @@ export function nextDesktopIoState(
     case 'shutdown':
       return stopLocally(state);
   }
+}
+
+// 本人が中枢の画面の指紋から入力した最後の 4 桁が、端末が受け取った証明書の指紋（DER 全体の SHA-256 の
+// 小文字の 16 進 64 桁）の最後の 4 桁と同じか（本人の判断 2026-10-21、ADR 0025）。大文字・小文字と空白は区別しない。
+// 指紋の形が正しくないとき・4 桁の 16 進でないときは一致としない。
+export function fingerprintTailMatches(
+  fingerprint: string,
+  typedTail: string,
+): boolean {
+  if (!/^[0-9a-f]{64}$/u.test(fingerprint)) return false;
+  const tail = typedTail.replace(/\s/gu, '').toLowerCase();
+  return /^[0-9a-f]{4}$/u.test(tail) && fingerprint.endsWith(tail);
 }

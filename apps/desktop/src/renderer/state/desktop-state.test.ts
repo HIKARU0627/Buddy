@@ -12,7 +12,9 @@ import {
   applyIpcFailure,
   applyNotification,
   applyResponse,
+  applySending,
   deviceActions,
+  messageFor,
   shownStatus,
 } from './desktop-state.js';
 import type { DesktopViewState } from './desktop-state.js';
@@ -54,10 +56,9 @@ function capture(status: DesktopStatusBar | null) {
 
 test('the state notification replaces the status bar and keeps the log', () => {
   const before: DesktopViewState = {
+    ...INITIAL_VIEW_STATE,
     status: { visibility: 'hidden', lock_state: 'unknown' },
     powerLog: [powerEvent('2026-10-21T01:00:00.000Z')],
-    message: null,
-    connection: null,
   };
   const after = applyNotification(before, {
     channel: 'desktop.state_changed',
@@ -92,10 +93,10 @@ test('a rejection shows its message and leaves the status bar unchanged', () => 
     outcome: 'rejected',
     reason: 'io_epoch_mismatch',
   });
-  assert.equal(
-    after.message,
-    '画面の情報が古いため再開しませんでした。最新の状態を確かめてから、もう一度押してください。',
-  );
+  assert.deepEqual(after.message, {
+    channel: 'desktop.io_resume',
+    text: '画面の状態が古いため再開しませんでした。表示が更新されたら、もう一度押してください。',
+  });
   assert.deepEqual(after.status, shown('local', '8'));
 });
 
@@ -103,7 +104,10 @@ test('an accepted response clears the message and shows the returned status', ()
   const before: DesktopViewState = {
     ...INITIAL_VIEW_STATE,
     status: shown('local'),
-    message: 'この端末の入出力は停止していません。',
+    message: {
+      channel: 'desktop.io_resume',
+      text: 'この端末の入出力は止まっていません。',
+    },
   };
   const resumed = applyResponse(before, {
     request_id: '00000000-0000-4000-8000-000000000002',
@@ -124,9 +128,12 @@ test('an accepted response clears the message and shows the returned status', ()
 });
 
 test('a failed invoke shows the communication failure', () => {
-  assert.equal(
-    applyIpcFailure(INITIAL_VIEW_STATE).message,
-    'main と通信できませんでした。',
+  assert.deepEqual(
+    applyIpcFailure(INITIAL_VIEW_STATE, 'desktop.io_stop').message,
+    {
+      channel: 'desktop.io_stop',
+      text: '画面と Buddy の本体の間で通信できませんでした。Buddy を終了して、開き直してください。',
+    },
   );
 });
 
@@ -200,4 +207,169 @@ test('window hide and client quit send their own channels', () => {
       ['desktop.client_quit', null],
     ],
   );
+});
+
+test('a message is shown only under the operation that caused it', () => {
+  const state: DesktopViewState = {
+    ...INITIAL_VIEW_STATE,
+    message: { channel: 'desktop.io_resume', text: '再開の拒否' },
+  };
+  assert.equal(messageFor(state, ['desktop.io_resume']), '再開の拒否');
+  assert.equal(messageFor(state, ['desktop.pairing_begin']), null);
+  // どの操作か分からない文言（channel が null）はどこにでも出す。
+  const unknown: DesktopViewState = {
+    ...INITIAL_VIEW_STATE,
+    message: { channel: null, text: '通信の失敗' },
+  };
+  assert.equal(messageFor(unknown, ['desktop.pairing_begin']), '通信の失敗');
+  assert.equal(messageFor(INITIAL_VIEW_STATE, ['desktop.io_resume']), null);
+});
+
+test('pressing stop while accepting records the button as the stop cause', () => {
+  const stop: DesktopIpcRequest = {
+    request_id: '00000000-0000-4000-8000-000000000010',
+    channel: 'desktop.io_stop',
+    payload: null,
+  };
+  const accepting: DesktopViewState = {
+    ...INITIAL_VIEW_STATE,
+    status: shown('none'),
+    message: { channel: 'desktop.io_resume', text: '前の拒否' },
+  };
+  const sent = applySending(accepting, stop, () => '2026-10-21T02:00:00.000Z');
+  assert.deepEqual(sent.stopCause, {
+    kind: 'button',
+    at: '2026-10-21T02:00:00.000Z',
+  });
+  assert.equal(sent.message, null);
+  // 既に止まっているときは、止まった理由を上書きしない。
+  const already: DesktopViewState = {
+    ...INITIAL_VIEW_STATE,
+    status: shown('local'),
+    stopCause: {
+      kind: 'power',
+      event: 'suspend',
+      at: '2026-10-21T01:00:00.000Z',
+    },
+  };
+  assert.deepEqual(
+    applySending(already, stop, () => '2026-10-21T02:00:00.000Z').stopCause,
+    already.stopCause,
+  );
+});
+
+test('a stopping power event becomes the stop cause and resuming clears it', () => {
+  const stopped = applyNotification(
+    { ...INITIAL_VIEW_STATE, status: shown('none') },
+    {
+      channel: 'desktop.power_event',
+      event: 'suspend',
+      source: 'os_event',
+      observed_at: '2026-10-21T01:30:00.000Z',
+    },
+  );
+  assert.deepEqual(stopped.stopCause, {
+    kind: 'power',
+    event: 'suspend',
+    at: '2026-10-21T01:30:00.000Z',
+  });
+  // ロックの解除は止まった理由を変えない。
+  const unlocked = applyNotification(stopped, {
+    channel: 'desktop.power_event',
+    event: 'unlock_screen',
+    source: 'os_event',
+    observed_at: '2026-10-21T01:31:00.000Z',
+  });
+  assert.deepEqual(unlocked.stopCause, stopped.stopCause);
+  const resumed = applyNotification(unlocked, {
+    channel: 'desktop.state_changed',
+    status: shown('none'),
+  });
+  assert.equal(resumed.stopCause, null);
+});
+
+test('a change of the io state clears an io rejection but keeps other messages', () => {
+  const rejected: DesktopViewState = {
+    ...INITIAL_VIEW_STATE,
+    status: shown('local'),
+    message: { channel: 'desktop.io_resume', text: '再開の拒否' },
+  };
+  const same = applyNotification(rejected, {
+    channel: 'desktop.state_changed',
+    status: shown('local', '8'),
+  });
+  assert.deepEqual(same.message, rejected.message);
+  const changed = applyNotification(rejected, {
+    channel: 'desktop.state_changed',
+    status: shown('none'),
+  });
+  assert.equal(changed.message, null);
+  const pairing: DesktopViewState = {
+    ...rejected,
+    message: { channel: 'desktop.pairing_begin', text: '登録の拒否' },
+  };
+  assert.deepEqual(
+    applyNotification(pairing, {
+      channel: 'desktop.state_changed',
+      status: shown('none'),
+    }).message,
+    pairing.message,
+  );
+});
+
+const connectionView = (
+  registration: 'unregistered' | 'registered',
+): NonNullable<DesktopViewState['connection']> => ({
+  visibility: 'shown',
+  registration,
+  link: 'not_connected',
+  link_reason: null,
+  last_confirmed_at: null,
+  retry_at: null,
+  pairing: null,
+  hub_screen: false,
+  hub_target: null,
+  home_network: null,
+  operations: [],
+});
+
+test('the one-time success notice appears only on the change to registered', () => {
+  const first = applyNotification(INITIAL_VIEW_STATE, {
+    channel: 'desktop.connection_changed',
+    connection: connectionView('registered'),
+  });
+  // 起動して最初に受け取った状態が登録済みなら、知らせは出さない。
+  assert.equal(first.justRegistered, false);
+  const unregistered = applyNotification(INITIAL_VIEW_STATE, {
+    channel: 'desktop.connection_changed',
+    connection: connectionView('unregistered'),
+  });
+  const registered = applyNotification(unregistered, {
+    channel: 'desktop.connection_changed',
+    connection: connectionView('registered'),
+  });
+  assert.equal(registered.justRegistered, true);
+  // 次の操作を始めたら消す。
+  const next = applySending(registered, {
+    request_id: '00000000-0000-4000-8000-000000000011',
+    channel: 'desktop.window_hide',
+    payload: null,
+  });
+  assert.equal(next.justRegistered, false);
+});
+
+test('the typed address and device name are kept for the form', () => {
+  const begun = applySending(INITIAL_VIEW_STATE, {
+    request_id: '00000000-0000-4000-8000-000000000012',
+    channel: 'desktop.pairing_begin',
+    payload: { host: '100.64.0.10', port: 47823 },
+  });
+  assert.deepEqual(begun.lastTarget, { host: '100.64.0.10', port: 47823 });
+  const submitted = applySending(begun, {
+    request_id: '00000000-0000-4000-8000-000000000013',
+    channel: 'desktop.pairing_submit',
+    payload: { pairing_code: '12345678', device_name: '合成の端末' },
+  });
+  assert.equal(submitted.submittedName, '合成の端末');
+  assert.deepEqual(submitted.lastTarget, begun.lastTarget);
 });

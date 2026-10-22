@@ -9,6 +9,7 @@ import {
   applyIpcFailure,
   applyNotification,
   applyResponse,
+  applySending,
   deviceActions,
 } from './desktop-state.js';
 import type { DesktopViewState, DeviceActions } from './desktop-state.js';
@@ -20,6 +21,8 @@ export interface DesktopStateHandle {
   readonly actions: DeviceActions;
   // 中枢との接続・ペアリングの操作（ADR 0025）。
   readonly pairing: PairingActions;
+  // 登録の知らせを閉じる。
+  readonly dismissRegistered: () => void;
 }
 
 export function useDesktopState(api: BuddyDesktopApi): DesktopStateHandle {
@@ -27,10 +30,13 @@ export function useDesktopState(api: BuddyDesktopApi): DesktopStateHandle {
 
   const send = useCallback(
     (built: DesktopIpcRequest) => {
+      setState((prev) => applySending(prev, built));
       api
         .invoke(built)
-        .then((response) => setState((prev) => applyResponse(prev, response)))
-        .catch(() => setState(applyIpcFailure));
+        .then((response) =>
+          setState((prev) => applyResponse(prev, response, built.channel)),
+        )
+        .catch(() => setState((prev) => applyIpcFailure(prev, built.channel)));
     },
     [api],
   );
@@ -49,5 +55,19 @@ export function useDesktopState(api: BuddyDesktopApi): DesktopStateHandle {
     [state.status, send],
   );
   const pairing = useMemo(() => pairingActions(send), [send]);
-  return { state, actions, pairing };
+  const dismissRegistered = useCallback(
+    () => setState((prev) => ({ ...prev, justRegistered: false })),
+    [],
+  );
+  return { state, actions, pairing, dismissRegistered };
+}
+
+// 期限・相対時刻の表示を更新するための今の時刻（既定は 1 秒ごと）。
+export function useNow(intervalMs = 1_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(timer);
+  }, [intervalMs]);
+  return now;
 }

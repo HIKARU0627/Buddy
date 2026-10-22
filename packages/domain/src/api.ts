@@ -48,6 +48,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 終了の通知はいつでも受け付ける。中枢はリース切れでも自分から閉じる。
   closeLiveSession: READ,
   startPairing: [...SCREEN, 'hub_screen'],
+  // 承認待ちの申請の一覧は中枢の画面だけ（B03-06、ADR 0026）。読み取りなので接続範囲・画面操作は求めない。
+  listPairingClaims: [...READ, 'unlocked', 'hub_screen'],
   claimPairing: ['home_network'],
   decidePairingClaim: [...SCREEN, 'hub_screen'],
   pickupPairingToken: ['home_network', 'claim_secret'],

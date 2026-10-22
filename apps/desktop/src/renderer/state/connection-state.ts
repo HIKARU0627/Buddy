@@ -31,6 +31,28 @@ export function needsPairing(connection: ShownConnection): boolean {
   );
 }
 
+// 前に中枢の画面と確かめたか（UI レビュー 3 回目 R1-M5）。判定の正本は main（中枢）で、接続が切れている間の
+// hub_screen は false になる。画面は、登録済みのまま一度でも true を見ていれば、接続を待つ間も中枢の画面の
+// 枠（タブ・最後の一覧）を残し、操作だけを止める。ロック中など接続の状態が隠れているときは前のままにする。
+export function nextHubSeen(
+  seen: boolean,
+  connection: ShownConnection | null,
+): boolean {
+  if (connection === null) return seen;
+  if (connection.registration !== 'registered') return false;
+  return seen || connection.hub_screen;
+}
+
+export type HubScreenMode = 'live' | 'paused' | 'off';
+
+export function hubScreenMode(
+  seen: boolean,
+  connection: ShownConnection | null,
+): HubScreenMode {
+  if (connection?.hub_screen === true) return 'live';
+  return seen ? 'paused' : 'off';
+}
+
 // 入力の形の確認（最終の検査は main の契約の検査）。
 export function parsePort(text: string): number | null {
   if (!/^[0-9]{1,5}$/u.test(text.trim())) return null;
@@ -46,6 +68,12 @@ export function normalizeHost(text: string): string | null {
   return /^[A-Za-z0-9.:-]+$/u.test(host) ? host : null;
 }
 
+// 指紋の最後の 4 桁の入力（空白を除き、4 桁の 16 進だけ。照合は main が行う）。
+export function normalizeTail(text: string): string | null {
+  const tail = text.replace(/\s/gu, '').toLowerCase();
+  return /^[0-9a-f]{4}$/u.test(tail) ? tail : null;
+}
+
 export function normalizeCode(text: string): string | null {
   const code = text.replace(/[\s-]/gu, '');
   return /^[0-9]{8}$/u.test(code) ? code : null;
@@ -58,8 +86,9 @@ export function normalizeDeviceName(text: string): string | null {
 
 export interface PairingActions {
   readonly begin: (host: string, port: number) => void;
-  // 画面に表示している指紋をそのまま送る（main が受け取った証明書の指紋と比べる）。
-  readonly confirm: (fingerprint: string) => void;
+  // 画面に表示している指紋と、本人が中枢の画面から入力した最後の 4 桁を送る
+  // （main が受け取った証明書の指紋と比べ、4 桁が合うときだけ進む。ADR 0025）。
+  readonly confirm: (fingerprint: string, tail: string) => void;
   readonly submit: (code: string, deviceName: string) => void;
   readonly cancel: () => void;
 }
@@ -70,8 +99,13 @@ export function pairingActions(
   return {
     begin: (host, port) =>
       send(request('desktop.pairing_begin', { host, port })),
-    confirm: (fingerprint) =>
-      send(request('desktop.pairing_confirm', { fingerprint })),
+    confirm: (fingerprint, tail) =>
+      send(
+        request('desktop.pairing_confirm', {
+          fingerprint,
+          fingerprint_tail: tail,
+        }),
+      ),
     submit: (code, deviceName) =>
       send(
         request('desktop.pairing_submit', {

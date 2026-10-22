@@ -21,6 +21,7 @@ import type {
   PairingClaim,
 } from '@buddy/contracts';
 import type { ClientApiOutcome } from '@buddy/client';
+import { fingerprintTailMatches } from '@buddy/domain';
 import { SecretText } from './credential-store.js';
 import type { StoredCredential } from './credential-store.js';
 import type {
@@ -58,6 +59,8 @@ export interface PairingView {
   readonly fingerprint: string | null;
   readonly claim_expires_at: string | null;
   readonly failure: PairingFailure | null;
+  // 申請の確認コード（承認待ちのときだけ。中枢の画面の一覧と同じ値。B03-06）。
+  readonly claim_check: string | null;
   // 今「やめる」をすぐに受け付けるか。受取りの要求が進んでいる間は false。
   readonly cancelable: boolean;
 }
@@ -91,7 +94,16 @@ export interface PairingFlowOptions {
 // 1 分あたり 20 件になるようにする（2 秒では 30 件で境界ぎりぎりだった。レビューの指摘 L5）。
 export const PAIRING_POLL_INTERVAL_MS = 3_000;
 
-export type PairingCommandResult = 'ok' | 'step_mismatch';
+// 申請の確認コード（ADR 0026）: SHA-256("buddy/pairing-claim-check/v1" NUL 申請用の秘密の SHA-256 の 16 進) の
+// 先頭 4 バイト。中枢（storage）も同じ定義で求め、本人が両方の画面で見比べる。
+export function claimCheckOf(claimSecretHashHex: string): string {
+  return createHash('sha256')
+    .update(`buddy/pairing-claim-check/v1\u0000${claimSecretHashHex}`, 'utf8')
+    .digest('hex')
+    .slice(0, 8);
+}
+
+export type PairingCommandResult = 'ok' | 'step_mismatch' | 'tail_mismatch';
 
 interface Attempt {
   readonly host: string;
@@ -101,6 +113,7 @@ interface Attempt {
   fingerprint: string | null;
   claimId: string | null;
   claimExpiresAt: number | null;
+  claimCheck: string | null;
   // 申請用の秘密（受取りの時だけ送る）。
   secret: SecretText | null;
   failure: PairingFailure | null;
@@ -148,6 +161,8 @@ export class PairingFlow {
           ? null
           : new Date(attempt.claimExpiresAt).toISOString(),
       failure: attempt.failure,
+      claim_check:
+        attempt.step === 'waiting_approval' ? attempt.claimCheck : null,
       cancelable: !attempt.pickupInFlight,
     };
   }
@@ -164,6 +179,7 @@ export class PairingFlow {
       fingerprint: null,
       claimId: null,
       claimExpiresAt: null,
+      claimCheck: null,
       secret: null,
       failure: null,
       cancelTimer: null,
@@ -176,15 +192,22 @@ export class PairingFlow {
     return 'ok';
   }
 
-  // 本人が「一致」を押した。表示した指紋が受け取った証明書の指紋と同じときだけ進む。
-  confirm(fingerprint: string): PairingCommandResult {
+  // 本人が中枢の画面の指紋と見比べ、その最後の 4 桁を入力した（本人の判断 2026-10-21、ADR 0025）。
+  // 表示した指紋が受け取った証明書の指紋と同じで、入力した 4 桁がその最後の 4 桁と同じときだけ進む。
+  // 合わなければ手順を進めず（申請を送らない）、もう一度入力できる。
+  confirm(fingerprint: string, typedTail: string): PairingCommandResult {
     const attempt = this.#attempt;
     if (
       attempt === null ||
       attempt.step !== 'fingerprint_check' ||
+      attempt.fingerprint === null ||
       attempt.fingerprint !== fingerprint
     )
       return 'step_mismatch';
+    if (!fingerprintTailMatches(attempt.fingerprint, typedTail)) {
+      this.#options.log?.('pairing_fingerprint_tail_mismatch');
+      return 'tail_mismatch';
+    }
     attempt.step = 'code_entry';
     this.#changed();
     return 'ok';
@@ -266,6 +289,9 @@ export class PairingFlow {
   ): Promise<void> {
     const secret = randomBytes(32).toString('base64url');
     attempt.secret = new SecretText(secret);
+    const secretHash = createHash('sha256')
+      .update(secret, 'ascii')
+      .digest('hex');
     const home = await this.#collectHome();
     if (this.#attempt !== attempt) return;
     const outcome = await this.#options.request(this.#hub(attempt), {
@@ -276,9 +302,7 @@ export class PairingFlow {
         pairing_code: code,
         device_name: deviceName,
         platform: this.#options.platform,
-        claim_secret_hash: createHash('sha256')
-          .update(secret, 'ascii')
-          .digest('hex'),
+        claim_secret_hash: secretHash,
         home_fingerprint: home,
       },
     });
@@ -294,6 +318,7 @@ export class PairingFlow {
       const claim = outcome.body as PairingClaim;
       attempt.claimId = claim.claim_id;
       attempt.claimExpiresAt = Date.parse(claim.expires_at);
+      attempt.claimCheck = claimCheckOf(secretHash);
       attempt.step = 'waiting_approval';
       this.#changed();
       this.#schedulePickup(attempt, 0);

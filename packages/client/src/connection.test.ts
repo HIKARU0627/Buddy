@@ -706,3 +706,58 @@ test('invalid stream messages are protocol errors and old streams cannot change 
   assert.equal(connection.state.phase, 'live');
   connection.stop();
 });
+
+test('request sends only while live, adds the scope when asked, and never retries an unknown outcome (B03-06)', async () => {
+  const clock = new FakeClock(undefined, 0.5, [IDS.request1, IDS.request2]);
+  const { transport, connection } = setup({ clock });
+  assert.deepEqual(
+    await connection.request({ method: 'GET', path: '/v1/pairing/claims' }),
+    { kind: 'not_sent', reason: 'not_connected' },
+  );
+  assert.equal(transport.requests.length, 0);
+  await connectLive(transport, connection);
+  transport.respond(() => ok({ claims: [] }));
+  assert.deepEqual(
+    await connection.request({ method: 'GET', path: '/v1/pairing/claims' }),
+    { kind: 'response', status: 200, body: { claims: [] } },
+  );
+  assert.equal(transport.requests.at(-1)?.body, undefined);
+  transport.respond(() => ({ kind: 'unreachable', reason: 'reset' }));
+  assert.deepEqual(
+    await connection.request({
+      method: 'POST',
+      path: '/v1/devices/x/revoke',
+      body: {},
+      scoped: true,
+      screenOperation: true,
+    }),
+    { kind: 'unknown' },
+  );
+  const sent = transport.requests.at(-1);
+  assert.equal(sent?.screenOperation, true);
+  assert.deepEqual(sent?.body, {
+    request_id: IDS.request1,
+    command_scope_id: IDS.scope1,
+  });
+  const count = transport.requests.length;
+  await settle();
+  assert.equal(transport.requests.length, count);
+  // 本人が確かめたときの接続範囲と今の接続範囲が違えば（bootstrap をやり直した）、送らない。
+  assert.deepEqual(
+    await connection.request({
+      method: 'POST',
+      path: '/v1/devices/x/revoke',
+      body: {},
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: 'scope-from-before-bootstrap',
+    }),
+    { kind: 'not_sent', reason: 'not_connected' },
+  );
+  assert.equal(transport.requests.length, count);
+  // 401 は再登録が必要（以後は送らない）。
+  transport.respond(() => apiError(401, 'unauthenticated'));
+  await connection.request({ method: 'GET', path: '/v1/devices' });
+  assert.equal(connection.state.phase, 'reregistration_required');
+  connection.stop();
+});

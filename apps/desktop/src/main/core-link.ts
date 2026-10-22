@@ -36,6 +36,7 @@ import {
   DESKTOP_IPC_CHANNELS,
   admitDesktopRequest,
   admitPairingHost,
+  desktopInputPermitted,
   type DesktopIoState,
   type DesktopIpcRejectReason,
   type DesktopIpcSender,
@@ -68,6 +69,11 @@ import type {
   PeerCertificateResult,
   PinnedHub,
 } from './hub-transport.js';
+import { OperationBridge } from './operation-bridge.js';
+import type {
+  BridgeOutcome,
+  OperationConfirmRequest,
+} from './operation-bridge.js';
 import { PairingFlow } from './pairing-flow.js';
 
 export const CONNECTION_CHANNELS: readonly DesktopIpcChannel[] = [
@@ -88,6 +94,15 @@ export const ADMIN_CHANNELS: readonly DesktopIpcChannel[] = [
   // B03-08: 自宅のネットワークの登録（ADR 0022）。
   'desktop.home_status',
   'desktop.home_register',
+];
+
+// 発言・承認・取消・照合のチャネル（B04-05、ADR 0031）。登録済みでロック解除済みの端末なら、中枢の画面の端末でなくても使える。
+export const OPERATION_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.turn_submit',
+  'desktop.operation_preview',
+  'desktop.operation_approve',
+  'desktop.operation_cancel',
+  'desktop.operation_reconcile',
 ];
 
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
@@ -147,7 +162,8 @@ export interface DesktopCoreLinkOptions {
 // 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。main が OS の確認ダイアログで行う。
 // 表示する値（端末名・OS・確認コード）は main が中枢から受け取った一覧の値で、画面からは受け取らない。
 // 「やめる」を既定にし、signal で閉じられたら false を返す。Electron の層が dialog.showMessageBox で実装し、試験は注入する。
-export type AdminConfirmRequest = DeviceConfirmRequest | HomeConfirmRequest;
+export type AdminConfirmRequest =
+  DeviceConfirmRequest | HomeConfirmRequest | OperationConfirmRequest;
 
 export interface DeviceConfirmRequest {
   readonly action: 'approve' | 'reject' | 'revoke';
@@ -276,8 +292,19 @@ export class DesktopCoreLink {
   // 最後に読んだ中枢の登録（登録し直しの確認に、置き換えと Wi-Fi 名の確認の変化を出すため）。
   #homeRegistration: HomeRegistration | null = null;
 
+  // 発言・承認・取消・照合（参照だけを画面へ渡す。B04-05）。
+  readonly #operations: OperationBridge;
+
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
+    this.#operations = new OperationBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      confirm: (request) => this.#confirm(request),
+      changed: () => options.onChange(),
+      log: (code) => this.#log(code),
+    });
     this.#pairing = new PairingFlow({
       fetchCertificate: options.fetchCertificate ?? fetchPeerCertificate,
       request: (hub: PinnedHub, request: HubHttpRequest) =>
@@ -428,7 +455,7 @@ export class DesktopCoreLink {
             },
       operations:
         link === 'connected' && state?.view === 'full'
-          ? [...state.operations]
+          ? this.#operations.entries(state.operations)
           : [],
     };
     const errors = this.#options.contract.connectionErrors(view);
@@ -750,6 +777,121 @@ export class DesktopCoreLink {
       return this.#reject(raw.request_id, raw.channel, 'hub_screen_required');
     const outcome = await this.#admin(raw, connection, generation);
     return this.#withinGeneration(generation, outcome);
+  }
+
+  // 発言・承認表示の準備・承認・取消・照合（B04-05、ADR 0031）。中枢へ要求を送るので非同期。受付の規則は
+  // ロック解除済み・前面・画面操作。承認は main の OS の確認ダイアログで 1 回だけ（本人の判断 D2）。
+  async handleOperationIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      !OPERATION_CHANNELS.includes(raw.channel)
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    // 入出力が止まっている（この端末の停止・来客・全体停止）間は、発言も承認も受け付けない（01 いつも見える状態）。
+    // 内容の確認・取消・照合は止まっていても使える（実行を増やさない）。
+    if (
+      (raw.channel === 'desktop.turn_submit' ||
+        raw.channel === 'desktop.operation_approve') &&
+      !desktopInputPermitted(ioState)
+    )
+      return this.#reject(raw.request_id, raw.channel, 'input_stopped');
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
+    const requestId = raw.request_id;
+    let outcome: ConnectionIpcOutcome;
+    switch (raw.channel) {
+      case 'desktop.turn_submit': {
+        const result = await this.#operations.submitTurn(raw.payload.text);
+        outcome = this.#operationOutcome(
+          requestId,
+          raw.channel,
+          result,
+          (turn) => ({
+            turn,
+          }),
+        );
+        break;
+      }
+      case 'desktop.operation_preview': {
+        const result = await this.#operations.preview(raw.payload.ref);
+        outcome = this.#operationOutcome(
+          requestId,
+          raw.channel,
+          result,
+          (preview) => ({
+            preview,
+          }),
+        );
+        break;
+      }
+      case 'desktop.operation_approve': {
+        const result = await this.#operations.approve(raw.payload.ref);
+        outcome = this.#operationOutcome(
+          requestId,
+          raw.channel,
+          result,
+          (receipt) => ({
+            receipt,
+          }),
+        );
+        break;
+      }
+      case 'desktop.operation_cancel':
+      case 'desktop.operation_reconcile': {
+        const result = await this.#operations.command(
+          raw.channel === 'desktop.operation_cancel' ? 'cancel' : 'reconcile',
+          raw.payload.ref,
+        );
+        outcome = this.#operationOutcome(
+          requestId,
+          raw.channel,
+          result,
+          (receipt) => ({
+            receipt,
+          }),
+        );
+        break;
+      }
+      default:
+        return this.#reject(requestId, raw.channel, 'invalid_request');
+    }
+    return this.#withinGeneration(generation, outcome);
+  }
+
+  // 操作の結果を応答にする。結果が分からない（outcome_unknown）はそのまま返す（自動では送り直さない）。
+  #operationOutcome<T>(
+    requestId: string,
+    channel: DesktopIpcChannel,
+    result: BridgeOutcome<T>,
+    body: (value: T) => Record<string, unknown>,
+  ): ConnectionIpcOutcome {
+    if (!result.ok) return this.#reject(requestId, channel, result.reason);
+    return this.#respond({
+      request_id: requestId,
+      channel,
+      outcome: 'ok',
+      ...body(result.value),
+    } as DesktopIpcResponse);
   }
 
   // ロック・切断をまたいだ一覧・コードは返さない（またいだ変更の操作の結果も、表示の内容は渡さない）。
@@ -1450,6 +1592,7 @@ export class DesktopCoreLink {
   // 表示の権限の世代を進め、表示している確認を閉じる。
   #bumpGeneration(): void {
     this.#viewGeneration += 1;
+    this.#operations.reset();
     this.#confirmAbort?.abort();
     this.#confirmAbort = null;
   }

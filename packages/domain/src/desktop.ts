@@ -24,6 +24,12 @@ export const DESKTOP_IPC_CHANNELS = [
   // B03-08: 中枢の画面の端末の自宅のネットワークの登録（ADR 0022）。
   'desktop.home_status',
   'desktop.home_register',
+  // B04-05: 発言・承認表示の準備・承認・取消・照合（ADR 0031）。
+  'desktop.turn_submit',
+  'desktop.operation_preview',
+  'desktop.operation_approve',
+  'desktop.operation_cancel',
+  'desktop.operation_reconcile',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -73,6 +79,10 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'list_superseded',
   // 自宅の登録の確認を出した後に、このマシンのネットワークの指紋が変わった・読み取れなくなった（B03-08）。
   'home_network_changed',
+  // 承認の確認に出した内容・状態が、確認の後に変わった（承認しない。内容を確かめ直す。B04-05、ADR 0031）。
+  'preview_stale',
+  // 入出力が止まっている間は、発言と承認を受け付けない（B04-05、ADR 0031）。
+  'input_stopped',
 ] as const;
 
 export type DesktopIpcRejectReason =
@@ -116,6 +126,12 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.pairing_open',
   // 自宅の登録（登録し直しを含む）も本人の画面操作（B03-08）。
   'desktop.home_register',
+  // 発言・承認表示の準備・承認・取消・照合も本人の画面操作（B04-05）。
+  'desktop.turn_submit',
+  'desktop.operation_preview',
+  'desktop.operation_approve',
+  'desktop.operation_cancel',
+  'desktop.operation_reconcile',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。

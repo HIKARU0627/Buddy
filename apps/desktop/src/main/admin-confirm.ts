@@ -2,6 +2,7 @@
 // 値は main が中枢から受け取った一覧の値だけを使う。端末名・OS は申請者の自己申告なので、制御文字・書字方向の制御文字を
 // 取り除き、長さを切る。確認コードの見比べを求める文を必ず入れる。
 import type { AdminConfirmRequest, HomeConfirmRequest } from './core-link.js';
+import type { OperationConfirmRequest } from './operation-bridge.js';
 
 const PLATFORMS: Readonly<Record<string, string>> = {
   macos: 'macOS',
@@ -93,10 +94,69 @@ export function homeConfirmText(request: HomeConfirmRequest): AdminConfirmText {
   };
 }
 
+const OPERATION_TITLES: Readonly<Record<string, string>> = {
+  'mail.labels.change': 'メールのラベルの変更',
+  'mail.draft.create': '返信の下書きの作成',
+  'task.create': '用事の登録',
+};
+
+const SERVICE_NAMES: Readonly<Record<string, string>> = {
+  mock: '模擬のメール',
+  gmail: 'Gmail',
+  microsoft_graph: 'Microsoft のメール',
+  buddy: 'Buddy の用事',
+};
+
+const FIELD_NAMES: Readonly<Record<string, string>> = {
+  labels_add: '付けるラベル',
+  labels_remove: '外すラベル',
+  draft_to: '宛先',
+  draft_cc: 'Cc',
+  draft_subject: '件名',
+  draft_body: '本文',
+  task_title: '題名',
+  task_due: '期限',
+  task_body: 'メモ',
+};
+
+// 変更の承認の確認（B04-05、D2）。値は main が中枢の確定した内容から作ったもので、画面から受け取らない。
+// 受け取った文字列は制御文字・書字方向の制御文字を除き、長さを切って出す（本文は先頭だけ）。
+export function operationConfirmText(
+  request: OperationConfirmRequest,
+): AdminConfirmText {
+  const title = OPERATION_TITLES[request.operationKind] ?? '変更';
+  const lines = [
+    `変更先: ${SERVICE_NAMES[request.service] ?? displayText(request.service, 20)}`,
+  ];
+  if (request.target !== null)
+    lines.push(`対象: ${displayText(request.target, 60)}`);
+  for (const field of request.fields) {
+    const max = field.field === 'draft_body' ? 200 : 80;
+    lines.push(
+      `${FIELD_NAMES[field.field] ?? displayText(field.field, 20)}: ${field.values.map((value) => displayText(value, max)).join('、')}`,
+    );
+  }
+  lines.push(
+    '',
+    request.operationKind === 'task.create'
+      ? '承認すると、Buddy の用事に登録します。'
+      : '承認すると、中枢がこの内容で実行します。メールを送ることはありません。',
+    '取り消せるのは、実行の前だけです。',
+  );
+  return {
+    title: '変更の承認',
+    message: `「${title}」を承認しますか`,
+    detail: lines.join('\n'),
+    buttons: ['やめる', '承認する'],
+  };
+}
+
 export function adminConfirmText(
   request: AdminConfirmRequest,
 ): AdminConfirmText {
   if (request.action === 'register_home') return homeConfirmText(request);
+  if (request.action === 'approve_operation')
+    return operationConfirmText(request);
   const name = displayText(request.deviceName) || '（名前なし）';
   const platform =
     PLATFORMS[request.platform] ?? displayText(request.platform, 20);

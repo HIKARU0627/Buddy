@@ -113,7 +113,8 @@ export function hubConnectionOf(state: LinkState): HubConnection {
 
 export type ClientCommand =
   | {
-      readonly kind: 'cancel';
+      // cancel は取消の要求、reconcile は照合の要求（参照だけ。書込みを増やさない。再送ではない）。
+      readonly kind: 'cancel' | 'reconcile';
       readonly operationId: string;
       readonly expectedStateRevision: string;
       // 本人が操作したときに見ていた接続範囲。今の接続範囲と違えば送らない。

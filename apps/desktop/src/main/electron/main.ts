@@ -33,6 +33,7 @@ import { createDesktopContract, loadContractSchema } from '../contract.js';
 import {
   ADMIN_CHANNELS,
   CONNECTION_CHANNELS,
+  OPERATION_CHANNELS,
   DesktopCoreLink,
   type AdminConfirmRequest,
 } from '../core-link.js';
@@ -293,6 +294,11 @@ function registerIpc(): void {
       if (ADMIN_CHANNELS.includes(channel))
         return link
           .handleAdminIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
+      // 発言・承認・取消・照合（B04-05、ADR 0031）。承認は main の OS の確認ダイアログで 1 回だけ。
+      if (OPERATION_CHANNELS.includes(channel))
+        return link
+          .handleOperationIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
       const outcome = controller.handleIpc(channel, raw, sender);
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。

@@ -265,6 +265,42 @@
         "expected": { "ok": false, "reason": "untrusted_sender" }
       },
       {
+        "id": "turn-submit-by-screen",
+        "refs": ["ADR 0031"],
+        "channel": "desktop.turn_submit",
+        "expected_io_epoch": null,
+        "expected": { "ok": true }
+      },
+      {
+        "id": "turn-submit-while-locked",
+        "channel": "desktop.turn_submit",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "operation-approve-from-hidden-window",
+        "refs": ["ADR 0031"],
+        "channel": "desktop.operation_approve",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "operation-reconcile-from-untrusted-sender",
+        "channel": "desktop.operation_reconcile",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
+        "id": "operation-preview-while-lock-unknown",
+        "channel": "desktop.operation_preview",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
         "id": "home-status-unlocked-unfocused",
         "refs": ["ADR 0022", "B03-08"],
         "channel": "desktop.home_status",

@@ -379,9 +379,11 @@ async function adminWhenLive(
 }
 
 const opsOf = (client: Client) =>
-  client
-    .view()
-    .operations.map((op) => [op.operation_id, op.state_revision, op.state]);
+  (client.link.linkState?.operations ?? []).map((op) => [
+    op.operation_id,
+    op.state_revision,
+    op.state,
+  ]);
 
 function assertNoSecrets(
   clients: readonly Client[],
@@ -775,7 +777,8 @@ test(
       // main は確認に、中枢から受け取った端末名と確認コード（端末の画面と同じ値）を出した。
       assert.deepEqual(
         a.confirms.flatMap((entry) =>
-          entry.action === 'register_home'
+          entry.action === 'register_home' ||
+          entry.action === 'approve_operation'
             ? []
             : [[entry.action, entry.deviceName, entry.claimCheck]],
         ),

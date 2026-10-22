@@ -55,6 +55,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [下書き・用事の intent、内容版の更新、LocalCommand の遷移、connector の能力と工程の型](docs/adr/0027-b04-operation-kinds-and-transitions.md)
 - [模擬 provider・故障注入・Core 側のアダプター（B04-02）](docs/adr/0028-b04-mock-provider.md)
 - [発言から操作の作成までの経路と、preview の発行・無効化](docs/adr/0029-b04-turns-interpretation-and-preview.md)
+- [実行担当（一度だけの送出・照合・LocalCommand・再起動からの再開）](docs/adr/0030-b04-runner-dispatch-reconcile-local-command.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

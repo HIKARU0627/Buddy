@@ -7720,7 +7720,8 @@
         "desktop.operation_preview",
         "desktop.operation_approve",
         "desktop.operation_cancel",
-        "desktop.operation_reconcile"
+        "desktop.operation_reconcile",
+        "desktop.operation_retry"
       ],
       "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。"
     },
@@ -8229,6 +8230,31 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "結果が分からない操作の照合を要求する（参照だけ。書込みを増やさない。再送ではない。07 §2、ADR 0030）。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.operation_retry"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "実行されなかったと確定した操作（not_executed）だけを、本人の明示の操作でもう一度実行する（同じ内容・同じ承認の新しい試行。結果不明の操作は対象外で、照合を使う。07 §2、ADR 0030・0031）。ロック解除済みの画面操作だけ。入出力が止まっている間は受け付けない。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -9191,7 +9217,8 @@
               "enum": [
                 "desktop.operation_approve",
                 "desktop.operation_cancel",
-                "desktop.operation_reconcile"
+                "desktop.operation_reconcile",
+                "desktop.operation_retry"
               ]
             },
             "outcome": {

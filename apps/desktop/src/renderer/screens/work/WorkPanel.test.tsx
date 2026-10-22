@@ -27,6 +27,7 @@ const NO_ACTIONS: WorkActions = {
   approve: () => undefined,
   cancel: () => undefined,
   reconcile: () => undefined,
+  retry: () => undefined,
 };
 
 const entry = (
@@ -255,4 +256,22 @@ test('a notice of the operation whose confirmation is open is shown once, in the
     state,
   });
   assert.equal(html.split(text).length - 1, 1);
+});
+
+test('a not-executed operation offers retry; an unknown one never does', () => {
+  const html = render([
+    entry({ ref: id(2), state: 'not_executed', allowed_actions: ['retry'] }),
+    entry({
+      ref: id(3),
+      state: 'unknown_held',
+      allowed_actions: ['reconcile'],
+    }),
+  ]);
+  assert.deepEqual(buttons(html), ['送る', '照合', '再試行']);
+  assert.match(html, /変更は行われていません。「再試行」を押すと/u);
+  const stopped = render(
+    [entry({ ref: id(2), state: 'not_executed', allowed_actions: ['retry'] })],
+    { stopped: true },
+  );
+  assert.deepEqual(buttons(stopped), []);
 });

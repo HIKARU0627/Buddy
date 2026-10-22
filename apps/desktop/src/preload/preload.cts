@@ -28,6 +28,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.operation_approve',
   'desktop.operation_cancel',
   'desktop.operation_reconcile',
+  'desktop.operation_retry',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

@@ -551,3 +551,53 @@ test('a preview is refused for an operation that is not waiting for approval, an
   });
   assert.equal(h.confirms.length, 0);
 });
+
+test('retry is sent only for an operation known not to have run, as a screen command, and a lost reply is held', async () => {
+  const h = harness();
+  // 実行されなかった（not_executed）以外は送らない（結果不明は照合を使う）。
+  for (const state of [
+    'unknown_held',
+    'succeeded',
+    'awaiting_approval',
+  ] as const) {
+    h.operations = [snapshot({ state, allowed_actions: [] })];
+    const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+    assert.deepEqual(await h.bridge.command('retry', ref), {
+      ok: false,
+      reason: 'core_rejected',
+    });
+  }
+  assert.equal(h.sent.length, 0);
+  h.operations = [
+    snapshot({
+      state: 'not_executed',
+      state_revision: '5',
+      allowed_actions: ['retry'],
+    }),
+  ];
+  const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+  assert.deepEqual(await h.bridge.command('retry', ref), {
+    ok: true,
+    value: 'accepted',
+  });
+  assert.deepEqual(h.sent, [
+    {
+      kind: 'retry',
+      operationId: OP,
+      expectedStateRevision: '5',
+      commandScopeId: SCOPE,
+    },
+  ]);
+  // 返事が分からなければ、操作が進むまで保留（再試行は外部変更をもう一度行うので、自動でも画面からも送り直さない）。
+  h.sendOutcome = { kind: 'unknown', requestId: id(7) };
+  assert.deepEqual(await h.bridge.command('retry', ref), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  assert.equal(h.bridge.entries(h.operations)[0]?.delivery_unknown, true);
+  assert.deepEqual(await h.bridge.command('retry', ref), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.equal(h.sent.length, 2);
+});

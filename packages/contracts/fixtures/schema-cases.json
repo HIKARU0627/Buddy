@@ -6766,5 +6766,41 @@
       "outcome": "rejected",
       "reason": "preview_stale"
     }
+  },
+  {
+    "id": "desktop-ipc-operation-retry",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.operation_retry",
+      "request_id": "00000000-0000-4000-8000-000000000d10",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d96"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-retry-with-attempt-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.operation_retry",
+      "request_id": "00000000-0000-4000-8000-000000000d11",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d96",
+        "attempt_id": "00000000-0000-4000-8000-000000000d97"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-operation-retry-accepted",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d12",
+      "channel": "desktop.operation_retry",
+      "outcome": "ok",
+      "receipt": "accepted"
+    }
   }
 ]

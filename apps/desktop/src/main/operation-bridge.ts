@@ -379,7 +379,7 @@ export class OperationBridge {
   // --- 取消・照合 ---
 
   async command(
-    kind: 'cancel' | 'reconcile',
+    kind: 'cancel' | 'reconcile' | 'retry',
     ref: string,
   ): Promise<BridgeOutcome<'accepted' | 'durable'>> {
     const connection = this.#host.connection();
@@ -388,6 +388,9 @@ export class OperationBridge {
     const target = this.#operationOf(ref, connection);
     if (target === null || this.#held.has(target.id))
       return fail('entry_not_found');
+    // 再試行は、実行されなかったと確定した（not_executed）操作だけ。結果不明の操作は照合を使う（中枢も 409 で拒む）。
+    if (kind === 'retry' && target.snapshot.state !== 'not_executed')
+      return fail('core_rejected');
     const outcome = await connection.send({
       kind,
       operationId: target.id,

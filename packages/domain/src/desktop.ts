@@ -30,6 +30,7 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.operation_approve',
   'desktop.operation_cancel',
   'desktop.operation_reconcile',
+  'desktop.operation_retry',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -132,6 +133,7 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.operation_approve',
   'desktop.operation_cancel',
   'desktop.operation_reconcile',
+  'desktop.operation_retry',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。

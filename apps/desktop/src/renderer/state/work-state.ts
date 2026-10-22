@@ -28,6 +28,7 @@ export const WORK_CHANNELS: readonly Channel[] = [
   'desktop.operation_approve',
   'desktop.operation_cancel',
   'desktop.operation_reconcile',
+  'desktop.operation_retry',
 ];
 
 export const WORK_IPC_FAILURE_MESSAGE =
@@ -198,7 +199,9 @@ export function operationNote(entry: DesktopOperationEntry): string | null {
     case 'unknown_held':
       return '実行されたかどうか分かりません。自動では送り直しません。「照合」を押すと、相手の状態を読み取って確かめます（変更は増えません）。';
     case 'not_executed':
-      return '変更は行われていません。';
+      return entry.allowed_actions.includes('retry')
+        ? '変更は行われていません。「再試行」を押すと、同じ内容をもう一度実行します。'
+        : '変更は行われていません。';
     case 'succeeded':
       return null;
     default:
@@ -211,11 +214,13 @@ export interface EntryActions {
   readonly preview: boolean;
   readonly cancel: boolean;
   readonly reconcile: boolean;
+  // 再試行は、実行されなかったと確定した（not_executed）ときだけ。結果不明には出さない（照合を使う）。
+  readonly retry: boolean;
 }
 
 export function entryActions(entry: DesktopOperationEntry): EntryActions {
   if (entry.delivery_unknown)
-    return { preview: false, cancel: false, reconcile: false };
+    return { preview: false, cancel: false, reconcile: false, retry: false };
   const allowed = new Set<string>(entry.allowed_actions);
   return {
     preview:
@@ -223,6 +228,7 @@ export function entryActions(entry: DesktopOperationEntry): EntryActions {
       (allowed.has('preview') || allowed.has('approve')),
     cancel: allowed.has('cancel'),
     reconcile: allowed.has('reconcile'),
+    retry: entry.state === 'not_executed' && allowed.has('retry'),
   };
 }
 
@@ -409,9 +415,17 @@ export function operationFailureText(
       if (reason === 'outcome_unknown')
         return '照合の結果を確かめられませんでした。もう一度「照合」を押してください（照合は参照だけで、変更は増えません）。';
       if (reason === 'core_rejected')
-        return '照合を受け付けられませんでした。状態が変わった可能性があります。表示が更新されるまで、お待ちください。';
+        return '今は確かめられません。少し待ってから、もう一度「照合」を押してください。';
       if (reason === 'not_connected')
         return '中枢に接続していないため、照合できませんでした。接続が戻ってから、もう一度押してください。';
+      break;
+    case 'desktop.operation_retry':
+      if (reason === 'outcome_unknown')
+        return '再試行が中枢に届いたか確かめられませんでした。自動では送り直しません。この操作の状態が更新されるまで、お待ちください。';
+      if (reason === 'core_rejected')
+        return '再試行できませんでした。状態が変わった可能性があります。表示が更新されるまで、お待ちください。';
+      if (reason === 'not_connected')
+        return '中枢に接続していないため、再試行できませんでした。接続が戻ってから、もう一度押してください。';
       break;
     default:
       break;
@@ -605,7 +619,9 @@ export function applyCommandResponse(
         text:
           channel === 'desktop.operation_reconcile'
             ? '照合を依頼しました。結果が分かると、この行の状態が変わります。'
-            : '取消を依頼しました。結果が分かると、この行の状態が変わります。',
+            : channel === 'desktop.operation_retry'
+              ? '再試行を依頼しました。結果が分かると、この行の状態が変わります。'
+              : '取消を依頼しました。結果が分かると、この行の状態が変わります。',
       },
     },
   };
@@ -658,6 +674,7 @@ export interface WorkActions {
   readonly approve: () => void;
   readonly cancel: (ref: string) => void;
   readonly reconcile: (ref: string) => void;
+  readonly retry: (ref: string) => void;
 }
 
 export interface WorkSink {
@@ -729,12 +746,16 @@ export function workActions(sink: WorkSink): WorkActions {
     },
     cancel: (ref) => command(sink, 'desktop.operation_cancel', ref),
     reconcile: (ref) => command(sink, 'desktop.operation_reconcile', ref),
+    retry: (ref) => command(sink, 'desktop.operation_retry', ref),
   };
 }
 
 function command(
   sink: WorkSink,
-  channel: 'desktop.operation_cancel' | 'desktop.operation_reconcile',
+  channel:
+    | 'desktop.operation_cancel'
+    | 'desktop.operation_reconcile'
+    | 'desktop.operation_retry',
   ref: string,
 ): void {
   if (sink.state().busy.includes(ref)) return;

@@ -103,6 +103,7 @@ export const OPERATION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.operation_approve',
   'desktop.operation_cancel',
   'desktop.operation_reconcile',
+  'desktop.operation_retry',
 ];
 
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
@@ -805,7 +806,8 @@ export class DesktopCoreLink {
     // 内容の確認・取消・照合は止まっていても使える（実行を増やさない）。
     if (
       (raw.channel === 'desktop.turn_submit' ||
-        raw.channel === 'desktop.operation_approve') &&
+        raw.channel === 'desktop.operation_approve' ||
+        raw.channel === 'desktop.operation_retry') &&
       !desktopInputPermitted(ioState)
     )
       return this.#reject(raw.request_id, raw.channel, 'input_stopped');
@@ -857,9 +859,14 @@ export class DesktopCoreLink {
         break;
       }
       case 'desktop.operation_cancel':
-      case 'desktop.operation_reconcile': {
+      case 'desktop.operation_reconcile':
+      case 'desktop.operation_retry': {
         const result = await this.#operations.command(
-          raw.channel === 'desktop.operation_cancel' ? 'cancel' : 'reconcile',
+          raw.channel === 'desktop.operation_cancel'
+            ? 'cancel'
+            : raw.channel === 'desktop.operation_retry'
+              ? 'retry'
+              : 'reconcile',
           raw.payload.ref,
         );
         outcome = this.#operationOutcome(

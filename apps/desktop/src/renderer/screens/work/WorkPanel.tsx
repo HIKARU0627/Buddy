@@ -66,6 +66,7 @@ export const WORK_LABELS = {
   openPreview: '内容を確認',
   cancel: '取り消す',
   reconcile: '照合',
+  retry: '再試行',
   busy: '送っています…',
   headColumn: '項目',
   beforeColumn: '変更前',
@@ -324,6 +325,8 @@ function OperationRow({
     !stopped && available.preview && state.preview?.ref !== entry.ref;
   const showCancel = available.cancel;
   const showReconcile = available.reconcile;
+  // 再試行は、実行されなかったと確定した操作だけ（停止中は出さない）。
+  const showRetry = !stopped && available.retry;
   return (
     <li className="flex flex-col gap-1.5 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -334,7 +337,7 @@ function OperationRow({
           </span>
           <StatusText className="text-sm" line={operationStatus(entry)} />
         </div>
-        {showPreview || showCancel || showReconcile ? (
+        {showPreview || showCancel || showReconcile || showRetry ? (
           <div className="flex flex-wrap items-center gap-2">
             {showPreview ? (
               <Button
@@ -353,6 +356,16 @@ function OperationRow({
                 onPress={() => actions.reconcile(entry.ref)}
               >
                 {busy ? WORK_LABELS.busy : WORK_LABELS.reconcile}
+              </Button>
+            ) : null}
+            {showRetry ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                isDisabled={busy}
+                onPress={() => actions.retry(entry.ref)}
+              >
+                {busy ? WORK_LABELS.busy : WORK_LABELS.retry}
               </Button>
             ) : null}
             {showCancel ? (

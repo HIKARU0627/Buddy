@@ -749,6 +749,13 @@ export type DesktopIpcRequest =
       payload: {
         ref: Id;
       };
+    }
+  | {
+      channel: 'desktop.operation_retry';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -844,7 +851,8 @@ export type DesktopIpcResponse =
       channel:
         | 'desktop.operation_approve'
         | 'desktop.operation_cancel'
-        | 'desktop.operation_reconcile';
+        | 'desktop.operation_reconcile'
+        | 'desktop.operation_retry';
       outcome: 'ok';
       receipt: 'accepted' | 'durable';
     }
@@ -1024,7 +1032,8 @@ export type DesktopIpcChannel =
   | 'desktop.operation_preview'
   | 'desktop.operation_approve'
   | 'desktop.operation_cancel'
-  | 'desktop.operation_reconcile';
+  | 'desktop.operation_reconcile'
+  | 'desktop.operation_retry';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */

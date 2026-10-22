@@ -119,29 +119,30 @@ test('an unknown result offers reconcile, never a resend; a held command offers 
     preview: false,
     cancel: false,
     reconcile: true,
+    retry: false,
   });
   assert.match(
     operationNote(unknown) ?? '',
     /自動では送り直しません。「照合」/u,
   );
-  // retry を許可していても、画面には再送・再試行の操作がない。
-  assert.deepEqual(
-    Object.keys(
-      entryActions(
-        entry({ state: 'not_executed', allowed_actions: ['retry'] }),
-      ),
-    ).sort(),
-    ['cancel', 'preview', 'reconcile'],
+  // 結果不明の操作には、retry を許可していても再試行を出さない（再試行は、実行されなかったと確定したときだけ）。
+  assert.equal(
+    entryActions(
+      entry({ state: 'unknown_held', allowed_actions: ['reconcile', 'retry'] }),
+    ).retry,
+    false,
   );
   assert.deepEqual(entryActions(entry({ delivery_unknown: true })), {
     preview: false,
     cancel: false,
     reconcile: false,
+    retry: false,
   });
   assert.deepEqual(entryActions(entry()), {
     preview: true,
     cancel: true,
     reconcile: false,
+    retry: false,
   });
   assert.match(
     operationNote(entry({ delivery_unknown: true })) ?? '',
@@ -474,4 +475,46 @@ test('actions send only references and text; an empty or long draft is refused b
   );
   actions.approve();
   assert.equal(sent.length, 5);
+});
+
+test('retry is offered only when the operation is known not to have run; reconcile 409 says to wait', () => {
+  const notRun = entry({ state: 'not_executed', allowed_actions: ['retry'] });
+  assert.deepEqual(entryActions(notRun), {
+    preview: false,
+    cancel: false,
+    reconcile: false,
+    retry: true,
+  });
+  assert.match(
+    operationNote(notRun) ?? '',
+    /「再試行」を押すと、同じ内容をもう一度実行します。/u,
+  );
+  // 結果不明・命令の結果不明・成功には出さない（allowed_actions に retry があっても、状態が違えば出さない）。
+  for (const other of [
+    entry({ state: 'unknown_held', allowed_actions: ['reconcile', 'retry'] }),
+    entry({ state: 'succeeded', allowed_actions: ['retry'] }),
+    entry({
+      state: 'not_executed',
+      allowed_actions: ['retry'],
+      delivery_unknown: true,
+    }),
+  ])
+    assert.equal(entryActions(other).retry, false, other.state);
+  assert.equal(
+    operationFailureText('desktop.operation_reconcile', 'core_rejected'),
+    '今は確かめられません。少し待ってから、もう一度「照合」を押してください。',
+  );
+  const sent: DesktopIpcRequest[] = [];
+  const actions = workActions({
+    state: () => INITIAL_WORK_STATE,
+    update: () => undefined,
+    send: (built) => {
+      sent.push(built);
+    },
+  });
+  actions.retry(id(3));
+  assert.deepEqual(
+    [sent[0]?.channel, sent[0]?.payload],
+    ['desktop.operation_retry', { ref: id(3) }],
+  );
 });

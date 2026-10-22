@@ -28,8 +28,14 @@ for (const entry of cases) {
     entry.valid,
     `${entry.id}: ${JSON.stringify(validate.errors)}`,
   );
+  // 形は正しいが意味検査で拒否する例は semantic_errors に期待する理由を手で書く（ADR 0027）。
   if (valid)
-    assert.deepEqual(semanticErrors(entry.schema, entry.value), [], entry.id);
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
 }
 const plan = parseStrictJson(
   await readFile(

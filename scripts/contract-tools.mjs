@@ -296,6 +296,13 @@ export function semanticErrors(name, value) {
     value.action.cc.some((address) => value.action.to.includes(address))
   )
     errors.push('duplicate_recipient');
+  // 用事の期限が地域日時なら、実在の日時かを確かめる（日付だけの値は format: date が確かめる、ADR 0027）。
+  if (
+    name === 'TaskOperationIntent' &&
+    typeof value.action.due === 'string' &&
+    value.action.due.includes('T')
+  )
+    errors.push(...semanticErrors('LocalDateTime', value.action.due));
   // 一般化した intent と preview は、action.kind で種類ごとの意味検査へ回す（ADR 0027）。
   if (name === 'OperationIntent') {
     const byKind = {

@@ -12,6 +12,7 @@ import {
   checkConnectorCapability,
   nextStepDecision,
   operationMarker,
+  preconditionReads,
   planContentRevision,
   reconcileOutcome,
   stepId,
@@ -280,6 +281,60 @@ test('connector capabilities must follow the per-kind rules', () => {
       expected.join(),
     );
   }
+});
+
+test('re-checking before dispatch needs the target and permission reads', () => {
+  assert.deepEqual(
+    preconditionReads(
+      OPERATION_KIND_RULES['mail.draft.create'],
+      'recheck_before_dispatch',
+    ),
+    ['mail.message', 'permission'],
+  );
+  assert.deepEqual(
+    preconditionReads(
+      OPERATION_KIND_RULES['mail.labels.change'],
+      'recheck_before_dispatch',
+    ),
+    ['mail.message', 'permission'],
+  );
+  assert.deepEqual(
+    preconditionReads(
+      OPERATION_KIND_RULES['mail.draft.create'],
+      'conditional_request',
+    ),
+    [],
+  );
+  // 下書きを送出の直前に読み直すのに、返信元（mail.message）や許可を読めない構成は拒否する。
+  const draftOnly = (reads) => {
+    const capability = mockCapability();
+    capability.writes = [
+      { ...capability.writes[1], precondition: 'recheck_before_dispatch' },
+    ];
+    capability.reads = reads.map((kind) => ({ kind, effect_kind: 'Read' }));
+    return checkConnectorCapability(capability);
+  };
+  assert.deepEqual(draftOnly(['mail.draft']), [
+    'mail.draft.create:precondition_read_missing',
+  ]);
+  assert.deepEqual(draftOnly(['mail.draft', 'mail.message']), [
+    'mail.draft.create:precondition_read_missing',
+  ]);
+  assert.deepEqual(draftOnly(['mail.draft', 'permission']), [
+    'mail.draft.create:precondition_read_missing',
+  ]);
+  assert.deepEqual(draftOnly(['mail.draft', 'mail.message', 'permission']), []);
+  // 条件付き要求なら、照合の読み取り（mail.draft）だけで足りる。
+  const conditional = mockCapability();
+  conditional.writes = [conditional.writes[1]];
+  conditional.reads = [{ kind: 'mail.draft', effect_kind: 'Read' }];
+  assert.deepEqual(checkConnectorCapability(conditional), []);
+  // ラベル変更の読み直しも、許可の読み取りがなければ拒否する。
+  const labels = mockCapability();
+  labels.reads = labels.reads.filter((read) => read.kind !== 'permission');
+  assert.deepEqual(checkConnectorCapability(labels), [
+    'mail.labels.change:precondition_read_missing',
+  ]);
 });
 
 test('reconciliation is read-only: only found means success, and auto reconcile runs once (D4)', () => {

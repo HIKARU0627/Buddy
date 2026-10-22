@@ -42,6 +42,8 @@ export interface OperationKindRule {
   readonly lookup: LookupMethod;
   // lookup に要る読み取り。LocalCommand は null。
   readonly lookup_read: ConnectorReadKind | null;
+  // 送出の直前に読み直す前提の対象（ラベル変更は対象のメール、下書きは返信元）。外部の前提がなければ null。
+  readonly precondition_target_read: ConnectorReadKind | null;
   // connector が宣言してよい前提の確かめ方。
   readonly preconditions: readonly PreconditionMethod[];
   // 工程の並び。この順にだけ進める。
@@ -56,6 +58,7 @@ export const OPERATION_KIND_RULES: Readonly<
     reconcile_scope: 'exact_target',
     lookup: 'by_remote_id',
     lookup_read: 'mail.message',
+    precondition_target_read: 'mail.message',
     preconditions: ['conditional_request', 'recheck_before_dispatch'],
     steps: ['apply_labels'],
   },
@@ -65,6 +68,7 @@ export const OPERATION_KIND_RULES: Readonly<
     reconcile_scope: 'operation_marker',
     lookup: 'by_operation_marker',
     lookup_read: 'mail.draft',
+    precondition_target_read: 'mail.message',
     preconditions: ['conditional_request', 'recheck_before_dispatch'],
     steps: ['create_draft'],
   },
@@ -74,6 +78,7 @@ export const OPERATION_KIND_RULES: Readonly<
     reconcile_scope: 'local_transaction',
     lookup: 'none',
     lookup_read: null,
+    precondition_target_read: null,
     preconditions: ['not_required'],
     steps: ['create_task'],
   },
@@ -84,6 +89,18 @@ export function isOperationKind(value: unknown): value is OperationKind {
     typeof value === 'string' &&
     (OPERATION_KINDS as readonly string[]).includes(value)
   );
+}
+
+// precondition ごとに要る読み取り。送出の直前の読み直しは、前提の対象（版）と許可を読めなければ確かめられない。
+// 条件付き要求は元サービスが版の一致を原子的に確かめるので、追加の読み取りを要さない。
+export function preconditionReads(
+  rule: OperationKindRule,
+  precondition: PreconditionMethod,
+): ConnectorReadKind[] {
+  if (precondition !== 'recheck_before_dispatch') return [];
+  return rule.precondition_target_read === null
+    ? ['permission']
+    : [rule.precondition_target_read, 'permission'];
 }
 
 export interface ConnectorReadCapability {
@@ -145,6 +162,12 @@ export function checkConnectorCapability(
     if (write.lookup !== rule.lookup) add('lookup_mismatch');
     if (rule.lookup_read !== null && !reads.has(rule.lookup_read))
       add('lookup_read_missing');
+    if (
+      preconditionReads(rule, write.precondition).some(
+        (kind) => !reads.has(kind),
+      )
+    )
+      add('precondition_read_missing');
     if (write.reconcile_scope !== rule.reconcile_scope)
       add('reconcile_scope_mismatch');
     if (

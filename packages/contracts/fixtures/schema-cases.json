@@ -6408,5 +6408,85 @@
       "content_hash": "dbd43e0637bfbdbd2e03ec4063f4e476c1c287434724bb8919707866d859b5a3",
       "state_revision": "1"
     }
+  },
+  {
+    "id": "intent-task-create-impossible-due",
+    "schema": "TaskOperationIntent",
+    "valid": true,
+    "semantic_errors": ["invalid_local_datetime"],
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-02-31T25:61",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "intent-task-create-impossible-due-as-operation",
+    "schema": "OperationIntent",
+    "valid": true,
+    "semantic_errors": ["invalid_local_datetime"],
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-02-31T25:61",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "preview-task-create-impossible-due",
+    "schema": "OperationPreview",
+    "valid": true,
+    "semantic_errors": ["invalid_local_datetime"],
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000232",
+      "intent": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000201",
+        "content_version": "1",
+        "permission_revision": "1",
+        "target": {
+          "list_id": "default"
+        },
+        "action": {
+          "kind": "task.create",
+          "title": "請求書を送る",
+          "due": "2030-02-31T25:61",
+          "body": null
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "local_transaction"
+        }
+      },
+      "content_hash": "dbd43e0637bfbdbd2e03ec4063f4e476c1c287434724bb8919707866d859b5a3",
+      "state_revision": "1"
+    }
   }
 ]

@@ -4,6 +4,8 @@
 
 現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。B02 では SQLite の保存・鍵保護（キーチェーン）・暗号化・DB worker を作り、Core に組み込んで再起動の後の復元と内容 hash の照合を行いました（ADR 0016〜0019、完了判定の下書きは [docs/b02/README.md](docs/b02/README.md)）。B02 の試験は模擬のみで、macOS 実機の確認・電源断と、製品の統合・実 API・実請求の試験は未実施です。B03 では中枢の自己署名証明書（秘密鍵はキーチェーン）・HTTPS の受付・経路検査・接続範囲、ペアリングと失効、自宅の判定、スナップショットと WSS の配信、端末側の接続（`packages/client`）とデスクトップの中枢への接続（ピン留め・safeStorage）、中枢の画面の端末での申請の承認と端末の失効を作りました（ADR 0020〜0023・0025・0026、完了判定の下書きは [docs/b03/README.md](docs/b03/README.md)）。B03 の試験は同じマシンの模擬のみで、Mac mini・Tailscale・別のマシンの実機の確認は未実施です（[docs/b03/device-check.md](docs/b03/device-check.md)）。デスクトップの画面は本人の指示で HeroUI に作り直し、以後の画面も HeroUI で作ります（[ADR 0024](docs/adr/0024-ui-heroui-desktop-renderer.md)）。
 
+B04-06 では文字入力から模擬 provider の変更までの統合実行器を追加し、X01〜X09・X11 と QA28 を固定 seed で確認しました。X10 は工程の仕組みだけ（合格は B14）、QA27 は予定・用事・ラベルの経路分離まで（外部下書き保存は未実装）です。[B04 の完了判定](docs/b04/README.md)と[実機手順（未実施）](docs/b04/device-check.md)を参照してください。表示の移動は B05 です。
+
 ## セットアップ
 
 Node.js **24.19.0** と pnpm **12.11.2** を基準にします。`.node-version` / `.nvmrc` を利用するか、対応する Node.js をインストールしてください。macOS / Windows / Linux 共通で、Docker や外部 API キーは不要です。
@@ -71,24 +73,24 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 | `packages/platform`   | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う                                          |
 | `apps/core`           | Electron から独立した Node.js 中枢。起動・停止・排他・制御・DB（B01・B02）・HTTPS の受付（B03）            |
 | `apps/desktop`        | Electron / React（HeroUI）クライアント。トレイ常駐・端末状態の記録（B01）、中枢への接続・ペアリング（B03） |
-| `tests`               | 合成データ・統合試験の配置先。製品試験は未実装                                                             |
+| `tests`               | 合成データ・模擬統合実行器・証拠と実施範囲の対応表                                                         |
 | `scripts`             | 環境確認、設計資料の整合検査、試験実行                                                                     |
 | `docs/design`         | 公開できる設計概要と非公開原本の参照手順                                                                   |
 
 ## コマンド
 
-| コマンド                      | 用途                                                   |
-| ----------------------------- | ------------------------------------------------------ |
-| `pnpm run doctor`             | Node / pnpm とワークスペース確認                       |
-| `pnpm run check`              | 書式・lint・型・ビルド・試験・資料の整合を一括検証     |
-| `pnpm run format`             | ソースと開発資料の書式修正                             |
-| `pnpm run lint`               | 静的解析と直接 import の依存方向検査                   |
-| `pnpm run typecheck`          | 全ワークスペースの厳格な型検査                         |
-| `pnpm run build`              | 全ワークスペースを `dist/` へビルド                    |
-| `pnpm test`                   | 開発基盤と契約境界の合成検査。実 API・製品統合は未実施 |
-| `pnpm run contracts:generate` | JSON Schema から TypeScript 型を再生成                 |
-| `pnpm run contracts:check`    | 生成差分、Schema、OpenAPI、合成例を検証                |
-| `pnpm run security:check`     | 公開対象に非公開情報が混入していないか確認             |
+| コマンド                      | 用途                                               |
+| ----------------------------- | -------------------------------------------------- |
+| `pnpm run doctor`             | Node / pnpm とワークスペース確認                   |
+| `pnpm run check`              | 書式・lint・型・ビルド・試験・資料の整合を一括検証 |
+| `pnpm run format`             | ソースと開発資料の書式修正                         |
+| `pnpm run lint`               | 静的解析と直接 import の依存方向検査               |
+| `pnpm run typecheck`          | 全ワークスペースの厳格な型検査                     |
+| `pnpm run build`              | 全ワークスペースを `dist/` へビルド                |
+| `pnpm test`                   | 開発基盤・契約・模擬統合の検査。実 API は未実施    |
+| `pnpm run contracts:generate` | JSON Schema から TypeScript 型を再生成             |
+| `pnpm run contracts:check`    | 生成差分、Schema、OpenAPI、合成例を検証            |
+| `pnpm run security:check`     | 公開対象に非公開情報が混入していないか確認         |
 
 Codex は [AGENTS.md](AGENTS.md)、Claude Code は [CLAUDE.md](CLAUDE.md) から同じ共通指示を読みます。
 

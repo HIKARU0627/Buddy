@@ -1,0 +1,6035 @@
+{
+  "status": "recorded",
+  "description": "B04-06 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。X10 は工程の仕組みだけ（B14 で縦断合格）、QA27 は部分検証。実機・実 API・実請求・handoff は未実施。",
+  "command": "node --test tests/integration/b04.test.mjs",
+  "source_sha256": [
+    {
+      "path": "apps/core/package.json",
+      "sha256": "8e121f04810fd80f569258d12d6e93cebc2888ab070dbea7f00253af2abe1353"
+    },
+    {
+      "path": "apps/core/src/api-auth.ts",
+      "sha256": "b1a025ca398e6e1eaa82c66fa47437d31aff32f439dfe9cc89185c79f7325d1f"
+    },
+    {
+      "path": "apps/core/src/api-contract.ts",
+      "sha256": "046688206cad9267c905a0c2f292be5ff92ebab1fea94ad13caea20af4992c16"
+    },
+    {
+      "path": "apps/core/src/api-environment.ts",
+      "sha256": "87d3834173609b51efbd6d0e4d1a9a10de99e040c2fd006d41d501938924bc0f"
+    },
+    {
+      "path": "apps/core/src/api-events.test.ts",
+      "sha256": "c9f34898a678e08729de10619693faf19ea6d92b8c1c7b468dbb54c0238c8c75"
+    },
+    {
+      "path": "apps/core/src/api-hardening.test.ts",
+      "sha256": "74383626fa917bde6220640e0b2034d8e2cf8aeda3855a4992b0e793527c5880"
+    },
+    {
+      "path": "apps/core/src/api-home-network.test.ts",
+      "sha256": "06428f94ce4228c996a40d10e8b849c06757307d54129259eed7550ac4324d87"
+    },
+    {
+      "path": "apps/core/src/api-home-network.ts",
+      "sha256": "daf27374655e62baf6aa77dddd26c9be5cd88afe2eb3dbec48c5375faf464e7f"
+    },
+    {
+      "path": "apps/core/src/api-lock-state.test.ts",
+      "sha256": "c44d16bcc2cfb1facbee5f5dbdb74c76afe59d4b9d1e3d0188fc0a1660e53118"
+    },
+    {
+      "path": "apps/core/src/api-operations.test.ts",
+      "sha256": "b5d8bae1875b2259a611c45c4e252dfb136f888acc29352f17df08300b8af6ff"
+    },
+    {
+      "path": "apps/core/src/api-operations.ts",
+      "sha256": "9a661a8a0264d41004752925d1055228b0efddcea5489cc3d29ecdda1a6c8645"
+    },
+    {
+      "path": "apps/core/src/api-pairing.test.ts",
+      "sha256": "5c1076adbc02f024460de0464ddd5c61ea5226f7488711ae370b769cb152742a"
+    },
+    {
+      "path": "apps/core/src/api-pairing.ts",
+      "sha256": "a108e0df965c2a3f67a7de32bbc258272a783349387632cd8524a666e36d4e05"
+    },
+    {
+      "path": "apps/core/src/api-route-order.test.ts",
+      "sha256": "4142634b459749964cb9cd344058db831af8172e83f17502a6ce4a24c453118a"
+    },
+    {
+      "path": "apps/core/src/api-routes.test.ts",
+      "sha256": "a722b0b874c4f155b890a83368f6578c6bbd9525437f44811232c839c6025c1c"
+    },
+    {
+      "path": "apps/core/src/api-routes.ts",
+      "sha256": "6a060f61a1c633fcbf557f6b60c028f28558aff6de92218b98f0f2c886756f3c"
+    },
+    {
+      "path": "apps/core/src/api-server.test.ts",
+      "sha256": "2446c503bbafe46ab69e61badb521e256284e87a5bcca14fbe834a9f1572bcc1"
+    },
+    {
+      "path": "apps/core/src/api-server.ts",
+      "sha256": "01d9529647a719555dff0178ff75798e4909b553c05cbb5aefaee163468c9c0a"
+    },
+    {
+      "path": "apps/core/src/api-test-support.ts",
+      "sha256": "425dc2e92b9816e6fbda3d55660e7e6d66387246d20f8984f2f39130f1c3b35d"
+    },
+    {
+      "path": "apps/core/src/api-turns.test.ts",
+      "sha256": "393c5c4a9bde06b23a3836f6e8ef92f42d19b641a1b4c5c6e9783f848b3fb0cd"
+    },
+    {
+      "path": "apps/core/src/api-turns.ts",
+      "sha256": "6d5ef3f5a1349883ae73fb04b1f53e1b38b67ef34aa9cd26bff9e1c76d13220c"
+    },
+    {
+      "path": "apps/core/src/autostart.test.ts",
+      "sha256": "b31c5c7d17096972f9cf0a45ccfae422a6baeeca3de8e103a6a07c7e69d8301d"
+    },
+    {
+      "path": "apps/core/src/autostart.ts",
+      "sha256": "45ab6ad0dc6fecbfa8b92a88639fc7e6e5b69ad467b7358a612eaf91dcc693a5"
+    },
+    {
+      "path": "apps/core/src/cli.test.ts",
+      "sha256": "6626bceedb1450d5ee1b2c1c49c2fe3bcf84e4d33b8cf262f2243ec7045c46eb"
+    },
+    {
+      "path": "apps/core/src/cli.ts",
+      "sha256": "1ef2cb993ce2468a6fe8ebda811d70120c818cd2e41928ba91157c3a91478af9"
+    },
+    {
+      "path": "apps/core/src/control-channel.ts",
+      "sha256": "29ca8b80e4e901326914505c35e525ed89f13df5d0893ecd033c3da0905e77b2"
+    },
+    {
+      "path": "apps/core/src/control-protocol.test.ts",
+      "sha256": "41682c87dab1020aec843d5ff475311dc7e380602f37a7d3697a50f85dd76d7d"
+    },
+    {
+      "path": "apps/core/src/control-protocol.ts",
+      "sha256": "7a503ed40dd9bbb89b8086fbe618fb1e925049a1d48a85a75c9ca2d6ef897757"
+    },
+    {
+      "path": "apps/core/src/core.test.ts",
+      "sha256": "217b04d5a7bfb5b8becf2ab2e6b2ace6e053bea158b4e691b1b45ad37e3fb817"
+    },
+    {
+      "path": "apps/core/src/core.ts",
+      "sha256": "7d9f0e75a961796d49aef22440acbdaddd6ef657d05f4d97798dcb9908670ea4"
+    },
+    {
+      "path": "apps/core/src/data-dir.ts",
+      "sha256": "aabacc20892b1c62046cd919b3899086d0bfca8cd9354b98e33e2032d9ddabff"
+    },
+    {
+      "path": "apps/core/src/der.ts",
+      "sha256": "43d74199f7bed8a1226ba421bd4c0f5a806af2d0bf05fc387baefe726df389c6"
+    },
+    {
+      "path": "apps/core/src/device-cli.test.ts",
+      "sha256": "292e2ed3e1505d36b95bc0bea3eccff4f619c5edeb7283729450b0c85490ac51"
+    },
+    {
+      "path": "apps/core/src/device-connections.ts",
+      "sha256": "4b5f8fc7fce7ff5dc8574f8437fb6af73666751496a5f12a7fdcc6a14b2da6e2"
+    },
+    {
+      "path": "apps/core/src/event-cursor.test.ts",
+      "sha256": "08f3bd38589160326aa421ec6bf59c118e6295d07e96e508b7ebd215958fb7d3"
+    },
+    {
+      "path": "apps/core/src/event-cursor.ts",
+      "sha256": "8ba5c2e6963dca8ea3c7b5d173f5f245f8ecb04ceec1d48b2281903e8fabe4fc"
+    },
+    {
+      "path": "apps/core/src/event-feed.test.ts",
+      "sha256": "84d36a28c239041f78189e52a6befb631bb35ab15ddf93ccdc47d1494b544f72"
+    },
+    {
+      "path": "apps/core/src/event-feed.ts",
+      "sha256": "ebff8d8591e8252946eea73edbe28b21e780644232fde095b7bacd353c3b1c93"
+    },
+    {
+      "path": "apps/core/src/event-stream.ts",
+      "sha256": "9d3e3999d869cd62c9fcba61c480b63943b9910f877900afc974421fe92e03dc"
+    },
+    {
+      "path": "apps/core/src/event-test-support.ts",
+      "sha256": "41ca339d6e3526dda3eca43a3463e6e245e55fa66e45761e839a45888e099861"
+    },
+    {
+      "path": "apps/core/src/first-device-cli.test.ts",
+      "sha256": "34cc00e84d9b7ddaedc4d94e5a50aa7e94af086f13246b365479033dd8d6dfa9"
+    },
+    {
+      "path": "apps/core/src/home-network-core.test.ts",
+      "sha256": "f6efa8f8ee089a2f62478bb9bbabac074a77ebde0634fc20b73e58c2e0981188"
+    },
+    {
+      "path": "apps/core/src/https-core.test.ts",
+      "sha256": "f2c2ef9de3a7b6eefc5c58d0303eca71848d17303b66057d1765b1508f2c117b"
+    },
+    {
+      "path": "apps/core/src/index.ts",
+      "sha256": "f3d6139949164d240ded0a411d2211c75fe9ca310b60a301312a7df5c7b9f1a1"
+    },
+    {
+      "path": "apps/core/src/lifecycle.test.ts",
+      "sha256": "1a3c1d2ae84f958d1da3fb8ffc536ee2e7721e0c28c06cd24da01e90b9bff2fc"
+    },
+    {
+      "path": "apps/core/src/lifecycle.ts",
+      "sha256": "2f91ab3dc3d35859f93c66de0011c16c482b0405d0344e8a26f082ecd61ac3f6"
+    },
+    {
+      "path": "apps/core/src/lock.ts",
+      "sha256": "897e47eeea4fb93ae7d12dffb95bd93d259733a27d58b5c1f44f42b0ebc0696f"
+    },
+    {
+      "path": "apps/core/src/mock-mail-ports.ts",
+      "sha256": "ce300c314af538b66d4794fca16771ccd282c07fdfe03270fcac0b7819428b23"
+    },
+    {
+      "path": "apps/core/src/operation-runner-test-support.ts",
+      "sha256": "fbce1804f182d508e51ea605f590a6e53188114ffaaa499b5d4a3cb3294e1310"
+    },
+    {
+      "path": "apps/core/src/operation-runner.test.ts",
+      "sha256": "edbbba6614ae8833eaf36a6b0fe0b7cc371ca2d4465b3a6c1f50ef4e3348813b"
+    },
+    {
+      "path": "apps/core/src/operation-runner.ts",
+      "sha256": "7ca0eec81e6cbc9830cd5353f655a78ba57685529a9ad4319b62f519de81443c"
+    },
+    {
+      "path": "apps/core/src/pairing-test-support.ts",
+      "sha256": "0373ee6ceca1e9d3a0882a399ebe83da79502608f8deee5570e26fb8fa2a254a"
+    },
+    {
+      "path": "apps/core/src/paths.test.ts",
+      "sha256": "c5be05a9baab0e0a364b9bb2656a404012a57fc55a161f6f997f8ee92f37cd79"
+    },
+    {
+      "path": "apps/core/src/paths.ts",
+      "sha256": "7e762f1a7fb2c75e4c91a28544e7ff6e4f8d772f0e39762c6c9ef59d86ed5ed3"
+    },
+    {
+      "path": "apps/core/src/preflight.ts",
+      "sha256": "9b1578ed2b120a97b8ae6f1a14c45b3941b4c0e9108965af03b6a22a155fa8aa"
+    },
+    {
+      "path": "apps/core/src/previews.ts",
+      "sha256": "2d24432d459561460cd3060426ad985f2197e7b36f31586b6c3266bdb71331db"
+    },
+    {
+      "path": "apps/core/src/recovery.ts",
+      "sha256": "b670c324ca04f699c404b34ae4fd0a6bc1872e6eabebc0ce40e6c960160fb78d"
+    },
+    {
+      "path": "apps/core/src/restore.test.ts",
+      "sha256": "b696761131e59f3152c92922b419f848d42f7c62c81d4136ba8c04c249697c88"
+    },
+    {
+      "path": "apps/core/src/strict-json.ts",
+      "sha256": "ab2c3e93d58bb1cfc2bdeed018da16406f87f8046757679b864dfcb399de9514"
+    },
+    {
+      "path": "apps/core/src/tls-certificate.test.ts",
+      "sha256": "1f48dbf20d5a17353eaa7644db877be723a4dd43b77330354f40505a67e02761"
+    },
+    {
+      "path": "apps/core/src/tls-certificate.ts",
+      "sha256": "467c8416cfd85a73f848a981828672961937c0be924f189707483848a55848fc"
+    },
+    {
+      "path": "apps/core/src/tls-identity.test.ts",
+      "sha256": "a02ad239a387d1c64e47469f5a53f5facd0b8f65d72fccc47ec98c1a706e3982"
+    },
+    {
+      "path": "apps/core/src/tls-identity.ts",
+      "sha256": "8b665a6f6b7fc2ac14b333c436bb4e299c1992e32aeb9cb429e72fbb8c4f90a1"
+    },
+    {
+      "path": "apps/core/src/turn-ports.ts",
+      "sha256": "f63ed9fa0c494ca431422916e4375e32c25a5d2162bedd2890dc77c118edc5d8"
+    },
+    {
+      "path": "apps/core/tsconfig.json",
+      "sha256": "eb282c463c3c927e3af91a82949e0ce4f9bc9c492a331b90ed538b4b9ae8758a"
+    },
+    {
+      "path": "apps/desktop/package.json",
+      "sha256": "fee70c661bb0691f9b3f81c31ac7ed836e831ca84fb1cba9ebce918d891b1271"
+    },
+    {
+      "path": "apps/desktop/src/main/admin-confirm.test.ts",
+      "sha256": "8cc25c70830366672706b863bf7e9f38c77c00425229a0c91c3dbb069bf25b79"
+    },
+    {
+      "path": "apps/desktop/src/main/admin-confirm.ts",
+      "sha256": "462e34df008687513bebe600f637744c043919ab27b7a6281f45d04d5ee66d8f"
+    },
+    {
+      "path": "apps/desktop/src/main/connection-publisher.test.ts",
+      "sha256": "91db90552ab0bfbc371e9c10641dc2b11fa2d25a63925807b1d1652c535bbf58"
+    },
+    {
+      "path": "apps/desktop/src/main/connection-publisher.ts",
+      "sha256": "3636a8a99b06e02d38ccdc3af67c04d35f04f132e0190fab8ac7bad15d65d3a3"
+    },
+    {
+      "path": "apps/desktop/src/main/contract.test.ts",
+      "sha256": "2b1356b56883349634d04eeca837851fa0cee8642a3bd7f76ba41789cf42c8a1"
+    },
+    {
+      "path": "apps/desktop/src/main/contract.ts",
+      "sha256": "d2c9c69ba1b88f874cf35349c6c954250146a0fe9d31b999e673b79a62b9710b"
+    },
+    {
+      "path": "apps/desktop/src/main/core-link.test.ts",
+      "sha256": "cc4f899d66ffd1e833f1407c91b7734ea1225b39316cf2ea74dc24be64ddc609"
+    },
+    {
+      "path": "apps/desktop/src/main/core-link.ts",
+      "sha256": "00ea2c35b4798555a61159a1311af56a78de0dcac360dea87f66202b4b3dc9d0"
+    },
+    {
+      "path": "apps/desktop/src/main/credential-store.test.ts",
+      "sha256": "3e87dcba4e9788b92cc7cc402027f1d3e30630cfe6a7a4046b7e1529bbc5591a"
+    },
+    {
+      "path": "apps/desktop/src/main/credential-store.ts",
+      "sha256": "4a8f12b50440a0797e4bed5969ac1d5980c57248dc80ebd499c255e66d414938"
+    },
+    {
+      "path": "apps/desktop/src/main/device-controller.test.ts",
+      "sha256": "e3e257123016984d34b889fe45f8d03db89a7439eba681b1dcb25f8e138253af"
+    },
+    {
+      "path": "apps/desktop/src/main/device-controller.ts",
+      "sha256": "cedc76fac4b591ca09f01e4f4a5ccfcfdc70460cdb22204ffc0c8eba14da2b0f"
+    },
+    {
+      "path": "apps/desktop/src/main/device-io-store.test.ts",
+      "sha256": "077a7fcda90322831ac423d16f9acc43959669d4a0ee9616f2072dc0089d37bf"
+    },
+    {
+      "path": "apps/desktop/src/main/device-io-store.ts",
+      "sha256": "b28e08a72ba2d32063e45437e8ab67aa5f916bdc169e9ac9adba89d3897e2423"
+    },
+    {
+      "path": "apps/desktop/src/main/electron/main.ts",
+      "sha256": "3a44c3d9d189c5dcd0a9b8080f7e3dc1eec93aa062e8292a3005ea9ec273b553"
+    },
+    {
+      "path": "apps/desktop/src/main/home-registration.test.ts",
+      "sha256": "5a4c92cadfae6a96aeffb04754dadbae7ebd8fb7b240b5ef31a83db22873cbcf"
+    },
+    {
+      "path": "apps/desktop/src/main/home-registration.ts",
+      "sha256": "20c6ca89cfa5c0f23d7330328fef5b4ec0c3b97fe5a71c6db2f977b710ef08e9"
+    },
+    {
+      "path": "apps/desktop/src/main/home-reporter.test.ts",
+      "sha256": "58d99670ee26c0cfa952de55e10c7d8cb6e554b856c79a63b3d8902989cf3a1d"
+    },
+    {
+      "path": "apps/desktop/src/main/home-reporter.ts",
+      "sha256": "7d96fb52c14308346c378f5bcf4d04c595c5c6da18f40399086dd2900d3dda39"
+    },
+    {
+      "path": "apps/desktop/src/main/hub-test-support.ts",
+      "sha256": "4c49ef97544f94ad9c98c46a8a849026829881000762c7465d8fe4d94553dcb9"
+    },
+    {
+      "path": "apps/desktop/src/main/hub-transport.test.ts",
+      "sha256": "549bd5d91744777f11d0edf6bf615043199c4cbbfa8fbc64ae3bc40df0cf4104"
+    },
+    {
+      "path": "apps/desktop/src/main/hub-transport.ts",
+      "sha256": "cf401f06ad68f8ceffad120944a5b5447df873567c7e09138c6b333a389a1955"
+    },
+    {
+      "path": "apps/desktop/src/main/lock-query.test.ts",
+      "sha256": "91f13576f471892c1f6c70102cfcff44811bca5343c2646f685d402f95a6d9d2"
+    },
+    {
+      "path": "apps/desktop/src/main/lock-query.ts",
+      "sha256": "4368afd4f7daefd32f7a2fd2ef4836cc17cf91914fa15528bb128f5ba16418b8"
+    },
+    {
+      "path": "apps/desktop/src/main/operation-bridge.test.ts",
+      "sha256": "a860c1992b0626c4612046d1bc822f5bb4c61b061d6bf0b1618bce1dcf52d0cb"
+    },
+    {
+      "path": "apps/desktop/src/main/operation-bridge.ts",
+      "sha256": "7ab9f18664dd4d6719696001f9235fa551e3378d35003941f9f86244ae5bcc71"
+    },
+    {
+      "path": "apps/desktop/src/main/pairing-flow.ts",
+      "sha256": "dc8078324052a25cfa5cc5fb60996b702a74bd862019c508f6ecfc0f7c2ba1c7"
+    },
+    {
+      "path": "apps/desktop/src/main/preload.test.ts",
+      "sha256": "e39ab5f61eeacffa02081aaa0315d881e4dbf03c60b3947632266e7d89dd7930"
+    },
+    {
+      "path": "apps/desktop/src/main/renderer-build.test.ts",
+      "sha256": "2b0d68f2ce96f271ce4468c1adfcb5176e31ccac8e275e37f512f1b258d61a61"
+    },
+    {
+      "path": "apps/desktop/src/main/status-bar.ts",
+      "sha256": "0bf9a1d3ad80e1a81ffa0fd5143a45e22a550fa14ff95e15f5d8f2d35e0c0826"
+    },
+    {
+      "path": "apps/desktop/src/main/system-clock.ts",
+      "sha256": "877cdd6a359b25208df02358d936216aeb37b0a2403ad770c03465c75045fc8e"
+    },
+    {
+      "path": "apps/desktop/src/main/two-clients.test.ts",
+      "sha256": "40b2522672afb53a5e7169a0c7e01347d4a8fb1a07da303ec776b68bb520d86e"
+    },
+    {
+      "path": "apps/desktop/src/main/window-policy.test.ts",
+      "sha256": "ec7f3fe089dbd020d728b51a379296f2a6d7c6fb4ba851ebd3058a35113a47f6"
+    },
+    {
+      "path": "apps/desktop/src/main/window-policy.ts",
+      "sha256": "49a6ea748d80cbff0b5a1882c093b33727941d4307b0545a7a58a0b4c6aa9423"
+    },
+    {
+      "path": "apps/desktop/src/preload/preload.cts",
+      "sha256": "712c4edda2ec75b7d1352fe74f2e2a2926e904be594019a5ea6a2272e8635200"
+    },
+    {
+      "path": "apps/desktop/src/renderer/App.tsx",
+      "sha256": "f63a54495bdcc9a6bb9cbb072f4a159729fa3fb570ff9bae4d55a4e329cb3cc2"
+    },
+    {
+      "path": "apps/desktop/src/renderer/app/AppProviders.tsx",
+      "sha256": "bcd45f46450c0bd257895e05ab4ca0554a1ce539ecfec6b5767b63648fd82a4c"
+    },
+    {
+      "path": "apps/desktop/src/renderer/app/AppShell.tsx",
+      "sha256": "1ef547273735cfdfb26879abef9d2c9b0c02f9a15417bcc5a28cae554981fae9"
+    },
+    {
+      "path": "apps/desktop/src/renderer/app/theme.test.ts",
+      "sha256": "dddf112235aa0e4e4cf3e2939fe2729dcd2fb5704c91fffbd926b7465974c9aa"
+    },
+    {
+      "path": "apps/desktop/src/renderer/app/theme.ts",
+      "sha256": "53f87b897c2e1681121efb13f2b1a2d484c971298a3d4c4ad71bc3989f1f93f2"
+    },
+    {
+      "path": "apps/desktop/src/renderer/assets.d.ts",
+      "sha256": "022a9e41be9c90bf4fb07b52bfac8b8c55f4b63a6ae03899365ef03ebb1a0b3c"
+    },
+    {
+      "path": "apps/desktop/src/renderer/components/AlertIcon.tsx",
+      "sha256": "683df226e907beef9fb55d8ef003f339fddcfaf547afcb52c3badca3c526a1d6"
+    },
+    {
+      "path": "apps/desktop/src/renderer/components/AppFooter.tsx",
+      "sha256": "567940d54414316447db2c7498c5f461a1d5a9207bb9182be525235815283620"
+    },
+    {
+      "path": "apps/desktop/src/renderer/components/FingerprintGrid.tsx",
+      "sha256": "4699bb8960e8a7de1252d40566888df4bac4e8d11d5519dc5159233339b5fe67"
+    },
+    {
+      "path": "apps/desktop/src/renderer/components/InlineNotice.tsx",
+      "sha256": "505edbf76056c3fbe6054761a1c338b635caf5b212fdba754ec8ef7880cd0a9c"
+    },
+    {
+      "path": "apps/desktop/src/renderer/components/Section.tsx",
+      "sha256": "70fe8fec029cd59719801cdd7502bba19147cc04e4c16ed7073e4b37568232d9"
+    },
+    {
+      "path": "apps/desktop/src/renderer/components/StatusBand.tsx",
+      "sha256": "49a9e9ffad1ee39d0ceea3f49e1f9338e6841fe6a6bfb28216962f2b1820a4ce"
+    },
+    {
+      "path": "apps/desktop/src/renderer/components/StatusText.tsx",
+      "sha256": "1e9c7b907dd201df196d91c7e8cc7bd490a2580580a9edda01ae68d1d0c0741f"
+    },
+    {
+      "path": "apps/desktop/src/renderer/desktop-api.ts",
+      "sha256": "cfec83e64f90d5011ff6b44c4e15a0529d3d8c50aa23589e3335ed8e0a9a2f5a"
+    },
+    {
+      "path": "apps/desktop/src/renderer/format.test.ts",
+      "sha256": "1645f00e132eb78ecbe6775a9de79a6bfefbf75deee93f0e384e4d769c122b80"
+    },
+    {
+      "path": "apps/desktop/src/renderer/format.ts",
+      "sha256": "e29553022a37a10c154db50982c2bae38de49328bc44e20f75025df922abe23d"
+    },
+    {
+      "path": "apps/desktop/src/renderer/index.html",
+      "sha256": "ee428bfc88e2f5f2ae85c2a0ff77bc8458958792da415a8b4f69152ffb72ab87"
+    },
+    {
+      "path": "apps/desktop/src/renderer/labels.ts",
+      "sha256": "7cdb3db6b2bb6d0e5f95884e45ca05baf5d89bd8f2152c655f40449dc24df2a5"
+    },
+    {
+      "path": "apps/desktop/src/renderer/main.tsx",
+      "sha256": "03016ac0245b0ca4a5c0f1903b8dc7043285c6cccb8507bcb4392a5f12196604"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/device/ConnectionSection.tsx",
+      "sha256": "12863fe6a1bc1c6eea996ed6b7a69c0e639794afaf9251dfc5fa19881a40115e"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/device/DeviceScreen.test.tsx",
+      "sha256": "81188473d6c41c93784c26c3ce6feaf201473d51327eccf1f5b83db385c651e2"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/device/DeviceScreen.tsx",
+      "sha256": "27cde6d311405345d488d966e39541d7edac87f3c36c67226d2532e4549ee539"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/device/PowerLogDetails.tsx",
+      "sha256": "20b11c32a5f232be17595a199de9dceb6b0cf64ebbfe8a73d7ba2f057764ea4f"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/device/StopBanner.tsx",
+      "sha256": "eb0185a3e378398ab79817d6a8fe63b6c1092ce6c41ab3ab060be6190c5f63d2"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/hub/HomeNetworkPanel.test.tsx",
+      "sha256": "dd772bf457ab6d6911f01f74b9c10813f23a3f08661255c25c9ba2e116702d4a"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/hub/HomeNetworkPanel.tsx",
+      "sha256": "a10da7ef3c84e7add3f947bc362fddfa30fc5d7629add62277a9b3078b8ba292"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/hub/HubPanels.test.tsx",
+      "sha256": "d550a7c2fd44a61b8ee3bf21369607411c6ca3d79d8b977480c947461aaba361"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/hub/HubPanels.tsx",
+      "sha256": "329455d814fe048f83874ac1caf8ca50e0cef17e05b3db15436e2df9c8168614"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/pairing/PairingPanel.tsx",
+      "sha256": "9e554111546561a5bd90042723afc7f6e5d3287db7aed4fd5de5ef697ee5185a"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/pairing/PairingScreen.test.tsx",
+      "sha256": "2417d8fd56f4bbc30e3bd1a87a46d89dfeaff951e4843e8fae2d3cd3a4adce0e"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/pairing/PairingScreen.tsx",
+      "sha256": "7c49d5b22d6b60f13c1f631a3237f59167915dc60a29899e82ae535387e4bc3d"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/work/WorkPanel.test.tsx",
+      "sha256": "c36e03ff630fc4ba2bc9482d3dbb92449f8da3a33dd72577b756e371a10e042e"
+    },
+    {
+      "path": "apps/desktop/src/renderer/screens/work/WorkPanel.tsx",
+      "sha256": "f44196eb82403aba784cbe13a1a09089f970156589879bf8edb3b5f724d86ac1"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/connection-state.ts",
+      "sha256": "c6533ba7c54fc38171ba150c5f7e23aca842ad734e0135a3a9fd545eff3d0aa0"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/desktop-state.test.ts",
+      "sha256": "6ddf331969d5535842133ad1c9de0db9f963ed96ac020392ba4b28265cd928ef"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/desktop-state.ts",
+      "sha256": "46583b3f0460b668af6f8274c48ff404e003ef48918e9b50259719882dcf1330"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/home-state.ts",
+      "sha256": "27fa7c7934fbb873a439a8378357a3db3c7586f571685ffb6e9688e3f39f639b"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/hub-operation-text.test.ts",
+      "sha256": "efb4ab9a0f26000324a9435cb60a919c386e5d3e308605381134357801d5055b"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/hub-state.ts",
+      "sha256": "38505792ba41fb2a386b130adedc526e86c974eb05b1791a2fad461de2949946"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/status-lines.test.ts",
+      "sha256": "df0ecb51c542f76eab4c8f433c1a86a2465a7713810ec21bebd16e64ccaf1bc9"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/status-lines.ts",
+      "sha256": "009cedd965fd4be8fbd92ccb087e518036f61af9d328dfa9a2b82bd6c0fbb405"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/use-desktop-state.ts",
+      "sha256": "b00603ec5ad075333413b6006447284628b07928af68687ef48cbb3824560154"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/use-home-state.ts",
+      "sha256": "cd6e0f35f52d0be9c46749440e39b040527450874e54683f7225479926f37727"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/use-hub-state.ts",
+      "sha256": "2dc6fad17e104ddb361b0e65be3f6779af3bb6ebb7b1e3f692b96b653d3f02fc"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/use-work-state.ts",
+      "sha256": "7b86fadcce0af42d82cdc92672cafe1598b6eb19b34028d05052c4608af57ece"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/work-state.test.ts",
+      "sha256": "862eefeaf2f748d08a45c0eb994561226162eba6ed9004dcdd8ad978c65b9a74"
+    },
+    {
+      "path": "apps/desktop/src/renderer/state/work-state.ts",
+      "sha256": "44d0e1bc60fd9be720555f609eece6ba457f2b37f3e472534b2eeb5f846a480d"
+    },
+    {
+      "path": "apps/desktop/src/renderer/styles.css",
+      "sha256": "df5648baeaa272157c0a88f566e444f74bdd8b6c27c8379128c8afeaf9856a13"
+    },
+    {
+      "path": "apps/desktop/src/renderer/tones.ts",
+      "sha256": "355f783efd5f52df2ce706fb2e9b4e28b1a7875abb70aa5636367d8b62f54092"
+    },
+    {
+      "path": "apps/desktop/tsconfig.json",
+      "sha256": "44610223070c400aadd5e960ba4aad5b6761cd181db2ce674aa7f2a89c68a4c2"
+    },
+    {
+      "path": "apps/desktop/tsconfig.preload.json",
+      "sha256": "606e9070bccff273b76453ef9754ee2ab6cbcaaba793fd5fbb4ed833e9530f6d"
+    },
+    {
+      "path": "apps/desktop/tsconfig.pure.json",
+      "sha256": "ad9404bfc9e4e526fdedf5db316353f379f8adc4d20787dcf6438cb132efb03e"
+    },
+    {
+      "path": "apps/desktop/tsconfig.renderer-test.json",
+      "sha256": "918f10eedcdb712c6494b132c8c47d693f4d3d9fed687d466059c196f924c876"
+    },
+    {
+      "path": "apps/desktop/tsconfig.renderer.json",
+      "sha256": "b913cc64ad7ce919c5b02e6037a601c0d817a8f873bf2dd26b5baa34bd1e8fed"
+    },
+    {
+      "path": "apps/desktop/vite.config.mjs",
+      "sha256": "a54aa30054c1ecad9e015fc772659248b9f8f617f8f4cfeea1b7064f165f1168"
+    },
+    {
+      "path": "packages/client/package.json",
+      "sha256": "511d304fa6f51f2d82e4303e1161d8ecf7e34d58fb5c557ff446ecc7eb4d402c"
+    },
+    {
+      "path": "packages/client/src/api-version.ts",
+      "sha256": "80c57828bb69418900f1ec933af7cd55ab287474900050d2b2a99314c1bc1b2b"
+    },
+    {
+      "path": "packages/client/src/backoff.ts",
+      "sha256": "e9b2342bc6c752db6fa6d2742d125b53c00c4be5c2aeac799d42547f96692ed5"
+    },
+    {
+      "path": "packages/client/src/connection.test.ts",
+      "sha256": "ea956c2e95dc2b4dbfe9b08f195ba076ee129b02f969854ba5b3a666bbda74ba"
+    },
+    {
+      "path": "packages/client/src/connection.ts",
+      "sha256": "a27632c56bf1f702ea34e914c1b5dc151a3a0afe349c59f832935c394362b3ad"
+    },
+    {
+      "path": "packages/client/src/index.ts",
+      "sha256": "5e390f1b227f40f6b7fce37d923b8e4d4e409a3ea6c8bee8d5a090a890b27b4c"
+    },
+    {
+      "path": "packages/client/src/test-support.ts",
+      "sha256": "87a1dd37e6df36fe1e8ce8e4df5c6ced577e4402c4179d0d5a72c07695beee3f"
+    },
+    {
+      "path": "packages/client/src/transport.ts",
+      "sha256": "0d68bb09f12376ddc7ec3bb1326516e4b669d28eb96ec9f80cfac0832650b2ea"
+    },
+    {
+      "path": "packages/client/tsconfig.json",
+      "sha256": "0e411e4b7589adc206c34d233d2b750965596a9e91ba790d01b681a13dfa91e9"
+    },
+    {
+      "path": "packages/client/tsconfig.test.json",
+      "sha256": "42be07bbe16794da5722d5959bf7207c1a365481541beff033e486e7c7c31f79"
+    },
+    {
+      "path": "packages/connectors/package.json",
+      "sha256": "d41c48192f816c0dcf1ec3bafc8f83d6f1d8ea69a0c52f935c755d30626e46f7"
+    },
+    {
+      "path": "packages/connectors/src/adapter/capability.ts",
+      "sha256": "11d3c7701288613b6ed9f711a028464959c1a0bcd9887efe8adeb4c2e4f02abb"
+    },
+    {
+      "path": "packages/connectors/src/adapter/http.ts",
+      "sha256": "033e50d3bffe4a681d2d1f7c57020cda52277387e72363cd037fca1d9c01df4d"
+    },
+    {
+      "path": "packages/connectors/src/adapter/mock-mail-connector.ts",
+      "sha256": "5adcb9b5d440867ceb77159f165c80558b3f87f319b2446915232d102f59aab8"
+    },
+    {
+      "path": "packages/connectors/src/fault-injector.ts",
+      "sha256": "762249cb004922cb4617362d4edb560c21c6fa4d6c0c9f12db7141c0d19872cf"
+    },
+    {
+      "path": "packages/connectors/src/fault-points.test.ts",
+      "sha256": "448c3f36d64568b3d3ac7895ad2fb63d61823a1d88e925dd05fedb9479d90c89"
+    },
+    {
+      "path": "packages/connectors/src/index.ts",
+      "sha256": "db25a44b42d8b553098dc883d63da6e993d8daf47485fdc15949975001c89dbb"
+    },
+    {
+      "path": "packages/connectors/src/mock-provider.test.ts",
+      "sha256": "9a97416a5d45187231dabe13d9c81d514537e485de7322a3f2ffc92a13131a48"
+    },
+    {
+      "path": "packages/connectors/src/provider/data.ts",
+      "sha256": "6460c0221c90f1b9edef0a22de8934fb6f8eb1898edd4e28edbc4ee464bc4797"
+    },
+    {
+      "path": "packages/connectors/src/provider/server.ts",
+      "sha256": "54f80aefb7da4be81d157a19ea3a3c3046ae8e38a5106e0f8286a265fee9b107"
+    },
+    {
+      "path": "packages/connectors/src/test-support.ts",
+      "sha256": "136f0922016d0dfee7199541b4a08be190e63e88e73ae7b122f5a73c926149a5"
+    },
+    {
+      "path": "packages/connectors/src/testing.ts",
+      "sha256": "83975ddcaadffeb433f18f3f5e8d9fd208e8c486338cc8b56c80143007e64ec7"
+    },
+    {
+      "path": "packages/connectors/tsconfig.json",
+      "sha256": "eb282c463c3c927e3af91a82949e0ce4f9bc9c492a331b90ed538b4b9ae8758a"
+    },
+    {
+      "path": "packages/contracts/fixtures/analysis-cases.json",
+      "sha256": "e4cf233020b32d1e15b04834f937e1c79956c8edeea4eef5056bf5f2b6b2383d"
+    },
+    {
+      "path": "packages/contracts/fixtures/api-cases.json",
+      "sha256": "0ae6ddae72091d56b4d6a0c22068fd14d363e1c930553ac428757473c8ad4848"
+    },
+    {
+      "path": "packages/contracts/fixtures/api-scenarios.json",
+      "sha256": "c99db8e36076fd89cc63e55dbc7754f3b8dd3116385cc1cd0543f69454d5c418"
+    },
+    {
+      "path": "packages/contracts/fixtures/audio-control-cases.json",
+      "sha256": "facc224b0755fb29c84965ad3cfd384b761ab6735c464ad6f9870526091bf6ad"
+    },
+    {
+      "path": "packages/contracts/fixtures/boundary-cases.json",
+      "sha256": "a6e79c6269fbc98a9b349104d8326c73cde7c205464c502f8e36cdc904fa88bd"
+    },
+    {
+      "path": "packages/contracts/fixtures/budget-scenarios.json",
+      "sha256": "5519c725b3b7f8379e24f3539acbe3c494858f9567a11e2ff9e3e0a7df41c956"
+    },
+    {
+      "path": "packages/contracts/fixtures/content-hash-cases.json",
+      "sha256": "794f67977450082f9992cca981ea1b93569903b7b90cf2d7efcff1815dfb3226"
+    },
+    {
+      "path": "packages/contracts/fixtures/delivery-cases.json",
+      "sha256": "c1c6d8cec326b9c3771abe560f1ec8f6f3c02423b5bea34e11fdd926586153fa"
+    },
+    {
+      "path": "packages/contracts/fixtures/desktop-ipc-cases.json",
+      "sha256": "b0290feded5018e6071b8bd13b1c209ea4595044da87fc136d71e3184e2bc324"
+    },
+    {
+      "path": "packages/contracts/fixtures/eval-conversion-cases.json",
+      "sha256": "10d6a72732becac14ed9a4e3f780d4936a4e60e32275b12a27257684369fdb2d"
+    },
+    {
+      "path": "packages/contracts/fixtures/evaluation-cases.json",
+      "sha256": "e7969ac502735c428264666defbe905452c04d84ee280a148d36771dca28961f"
+    },
+    {
+      "path": "packages/contracts/fixtures/extraction-cases.json",
+      "sha256": "5cbf76f0cff85bf9c210179462ffe5e1f82868100c5275ae1eb21774169a1cef"
+    },
+    {
+      "path": "packages/contracts/fixtures/h01.json",
+      "sha256": "d8cacb2a496a13d5f908ac0f375829d2ff918a3b947a2c8b0c37249aa0a48824"
+    },
+    {
+      "path": "packages/contracts/fixtures/home-network-cases.json",
+      "sha256": "650213fc85a68401983e4662fb500c13df3afc55d2b6a17f312856325cfd9f63"
+    },
+    {
+      "path": "packages/contracts/fixtures/memory-cases.json",
+      "sha256": "e04ec677bd3cd71b225c2b18d9977082f3797c28d89add43cf1d9f79b7d813c4"
+    },
+    {
+      "path": "packages/contracts/fixtures/operation-transitions.json",
+      "sha256": "a88ab83421d0be3b0dc4777de45ad36e3daff2af0fbb38b063664f083ba52d3e"
+    },
+    {
+      "path": "packages/contracts/fixtures/readiness-cases.json",
+      "sha256": "2a062f8a5ec48a4a5556c40606ef33cfb8c547968bcc4f23a50c2dc5956b5e7b"
+    },
+    {
+      "path": "packages/contracts/fixtures/schema-cases.json",
+      "sha256": "1bc0e1767ab0ba5c2d17001a271faf73ce79f5ee507fe90d4ee51ade77065f60"
+    },
+    {
+      "path": "packages/contracts/fixtures/session-control-phrases.json",
+      "sha256": "62c2f7507a4fd2c375ed353247113de4c2716f797f7c37198c2d727ea3e0412c"
+    },
+    {
+      "path": "packages/contracts/fixtures/sync-scenarios.json",
+      "sha256": "a1904096ac9d81a273467aed6b65ad73fb26937ea27eca7469d45b356798a93f"
+    },
+    {
+      "path": "packages/contracts/fixtures/workflow-label.json",
+      "sha256": "1a7f3d95ead533eb59f8777576092d4fe9f5a5f6c3bf455f35d673ee06ce081e"
+    },
+    {
+      "path": "packages/contracts/model-evaluation.json",
+      "sha256": "b3afa629cbee72648ff1cb9a175e60aba45670c2fb92647e48f0c0c89e11cd39"
+    },
+    {
+      "path": "packages/contracts/openapi.yaml",
+      "sha256": "ef16704c70ac9c263f1387fedd67b77e5efad5a242f7828d9d2bb92d865c1adc"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "6cd27a9ea0611df4311f9b8ad4cda55b5506260e06fcef0849f57829e004ad0f"
+    },
+    {
+      "path": "packages/contracts/schemas/buddy.schema.json",
+      "sha256": "65989399484a3fc2d81f74c90aa350aefd64789c1a91b2215350266b77c46831"
+    },
+    {
+      "path": "packages/contracts/src/generated.ts",
+      "sha256": "95d9d3b1c0e46d4c8666a6e829f5ae23ab8ad76f5a8a653080218bb2977fcf51"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "7292af047fd49300998ff2b0617a69f0f53aec170fbeb0ffbfd97457077dfdf2"
+    },
+    {
+      "path": "packages/contracts/tsconfig.json",
+      "sha256": "a17b9965ebd80a0effacd1e24eb7325ec437a7160524de9a5344c7ff2154ed71"
+    },
+    {
+      "path": "packages/domain/package.json",
+      "sha256": "f7fbd22f2e3805de1a05abd8e85a748a1443ae55fea009442660aac5418dc135"
+    },
+    {
+      "path": "packages/domain/src/analysis.ts",
+      "sha256": "2a784a9338efe01b3053fc8fc69996def2e79e876bf4076caa335dd706071bd2"
+    },
+    {
+      "path": "packages/domain/src/api.ts",
+      "sha256": "6d3ffef7e3cc298f3f6cfefbfe1926480ca394d524ff3f0e851296d31ea8caa4"
+    },
+    {
+      "path": "packages/domain/src/approval.ts",
+      "sha256": "8add9da34bb21710da67c67480af0e3c6ce91d9471179b6eca73d2f1dbc1b6e0"
+    },
+    {
+      "path": "packages/domain/src/audio.ts",
+      "sha256": "45f639f43facdb86f20c4519f6584fcd1879c2d3858ca4be1b985eb9ba9cadc0"
+    },
+    {
+      "path": "packages/domain/src/budget.ts",
+      "sha256": "ad17ae90bc223408e0b5fb18879b440b6f5fce3f0871742f71fb33c8541ad12b"
+    },
+    {
+      "path": "packages/domain/src/connectors.ts",
+      "sha256": "0e4a8a52888f24490a30a917cf6e74e70ed8935684ae5f0bdc5b37dc28203d9e"
+    },
+    {
+      "path": "packages/domain/src/conversation.ts",
+      "sha256": "79d9c176d40e073312f6841e245e1bea8aa039d6eab2a4cfd091d5ae7043d912"
+    },
+    {
+      "path": "packages/domain/src/desktop.ts",
+      "sha256": "52fe0ecb25dbaa536c36acda4295b8cb4ef0f8a869d2dff50ded995ae06b15dc"
+    },
+    {
+      "path": "packages/domain/src/evaluation.ts",
+      "sha256": "acaf00285dfe320483a122950009531df69a52395f16d4e373719c8ef4be1077"
+    },
+    {
+      "path": "packages/domain/src/extraction.ts",
+      "sha256": "ab7d8dd153c04c3ca3eccd92553c1f924e897e22a779d4f1831256b4edc57121"
+    },
+    {
+      "path": "packages/domain/src/home-network.ts",
+      "sha256": "9e430879d139690a007c721207f3f07e1bfdb029ab66ce21e399d2baeb3633c7"
+    },
+    {
+      "path": "packages/domain/src/hub-host.ts",
+      "sha256": "5aa40a1ccdaf90e7d90dc914be62076cea36a1b2c1e4f7bd21f826e7c5dbec61"
+    },
+    {
+      "path": "packages/domain/src/index.ts",
+      "sha256": "44fc7e88d261dda07dddc10a0a28464afa58fe4be48c9cefb8b1e17398c94797"
+    },
+    {
+      "path": "packages/domain/src/intents.ts",
+      "sha256": "c863aff91af74c0caf76a348e583b7df8eb298a1fa0654909d97056ddafc65a2"
+    },
+    {
+      "path": "packages/domain/src/listen-address.ts",
+      "sha256": "b952327462a660a2afba81b4fa2e45e75eb45ea85267a9657ed7d2c434515ebe"
+    },
+    {
+      "path": "packages/domain/src/local-time.ts",
+      "sha256": "99d729c3374a6a94470f1a6822f2fc4037f49195f95fba895884917dc13a4285"
+    },
+    {
+      "path": "packages/domain/src/memory.ts",
+      "sha256": "acbce14e8cb6aa8152b70de2c6845fc8ed826109dacfa5dfaf701a0a68fc1d63"
+    },
+    {
+      "path": "packages/domain/src/notification.ts",
+      "sha256": "4ac8e2f9803a860c417aa3c605631b32ad77f0487cc2cb6bc734fbe9106b39c0"
+    },
+    {
+      "path": "packages/domain/src/operation-steps.ts",
+      "sha256": "48492f5666047ad736fc2dc2f5cd86b6799eb267401a4d73da9e8c11bf6953e0"
+    },
+    {
+      "path": "packages/domain/src/operations.ts",
+      "sha256": "21f93fb3098cceb239c4fd4732908a4fbc5f4480b8b4e6646e3234fa3a48e659"
+    },
+    {
+      "path": "packages/domain/src/readiness.ts",
+      "sha256": "f61ff1b9737ab29db8197efebd047cbdecce1bde88794d523a0071f0285e844c"
+    },
+    {
+      "path": "packages/domain/src/retention.ts",
+      "sha256": "bf73cb7b8e60603d09c26aca9a7407fd553b13d27431d48d949483dae05949b0"
+    },
+    {
+      "path": "packages/domain/src/sync.ts",
+      "sha256": "2891b339d9b2493d4ec12e677b54f41abb279b71a4d2a54b7c04317a9afdae3f"
+    },
+    {
+      "path": "packages/domain/tsconfig.json",
+      "sha256": "a17b9965ebd80a0effacd1e24eb7325ec437a7160524de9a5344c7ff2154ed71"
+    },
+    {
+      "path": "packages/platform/package.json",
+      "sha256": "0bcaf4d037f9fc48d8b1757aeb8abcada203fadd47cab696b81d94c2432fce9a"
+    },
+    {
+      "path": "packages/platform/src/home-fingerprint-entry.ts",
+      "sha256": "4e088d1b551e147edd683849407aa38c6e3618c7d828ea4f935cf54bace63924"
+    },
+    {
+      "path": "packages/platform/src/home-fingerprint.test.ts",
+      "sha256": "d9e0c681ca06c83305dd333d06a2321d6b39b36fc6fa052441d4ef85fb61fbff"
+    },
+    {
+      "path": "packages/platform/src/home-fingerprint.ts",
+      "sha256": "17cbcaf730471f830a687e8466901cee98897b3139b8b41a6db6b222b58e8a87"
+    },
+    {
+      "path": "packages/platform/src/index.ts",
+      "sha256": "98e4aea83d1f9bfc63da29041464c57ce53cf3a4792a05abfb4482244c530f02"
+    },
+    {
+      "path": "packages/platform/src/key-protection.test.ts",
+      "sha256": "e188111f8b05d76c0ac9235f33dcbd85209b18ff7315d23ef245571767c03c34"
+    },
+    {
+      "path": "packages/platform/src/key-protection.ts",
+      "sha256": "18a6abe9fe83a85c9e9acd8bec940f592f42c2b55c1119b2cd6b61753a3c8b81"
+    },
+    {
+      "path": "packages/platform/src/key-store.test.ts",
+      "sha256": "13d05040745d6f64c9ea05af244b12852fde58196b95f9ab4fc69fa3455db7d6"
+    },
+    {
+      "path": "packages/platform/src/key-store.ts",
+      "sha256": "45901824a52c9f14ca75f2e547959c38efc0c7a7cb85ccc620b8d2bbae27b067"
+    },
+    {
+      "path": "packages/platform/src/macos-diagnostics.test.ts",
+      "sha256": "00899e21a242833a973e8f232a296e778ba6078092f09ae07dc52b80fdbabf7e"
+    },
+    {
+      "path": "packages/platform/src/macos-diagnostics.ts",
+      "sha256": "8e512ae6786f6c54cae8ce0580f4886f812d06d6382a6fd525c96f0ef87a0018"
+    },
+    {
+      "path": "packages/platform/src/macos-launch-agent.test.ts",
+      "sha256": "91f4ea167e96eab7bd5ddb3dc6e688757baf4b1f4c9be9d193e3a97a9c915f1a"
+    },
+    {
+      "path": "packages/platform/src/macos-launch-agent.ts",
+      "sha256": "befe69f4c09a30dc685eefb6795473eeb4dba08a4dbdf6020872a1e6e28f8734"
+    },
+    {
+      "path": "packages/platform/src/runner.test.ts",
+      "sha256": "1495420b3ffe3c5476e38a752cd671d92603e7d13e5f001ea63fc6407e94d00e"
+    },
+    {
+      "path": "packages/platform/src/runner.ts",
+      "sha256": "8b4d03b373310a4d7f0ff6db21f0d1353cd2f859831d41209193c0dffc249f7a"
+    },
+    {
+      "path": "packages/platform/src/startup.test.ts",
+      "sha256": "2bd400ffca39f63d00104e98c216982de31e54f81f3bf5d913ac6a731910a5c7"
+    },
+    {
+      "path": "packages/platform/src/startup.ts",
+      "sha256": "50a31b95809d78e08765a91e19ad3f9a449d1002ab729f02c688e7e758e51d14"
+    },
+    {
+      "path": "packages/platform/src/supervisor.ts",
+      "sha256": "f49b530c5d50ac95f04d3bcaa3c383f05ab579649c7d38a577fcf2dbfc305b9a"
+    },
+    {
+      "path": "packages/platform/src/tailscale-status.test.ts",
+      "sha256": "fcce0b304e3f9258a127d7bd6e48f547daa39f099d90cb7a950cc3079a374327"
+    },
+    {
+      "path": "packages/platform/src/tailscale-status.ts",
+      "sha256": "5d19929f8a2d7dc79388bc4ccadaecf12f51d37eebbf863a0340484f9a76ab18"
+    },
+    {
+      "path": "packages/platform/src/tls-key-store.test.ts",
+      "sha256": "d7a2d0b79c3f70a71079192ea8c1516be5921318d7adeaacb0a9812285ce228c"
+    },
+    {
+      "path": "packages/platform/src/tls-key-store.ts",
+      "sha256": "700dd8157306b56f63a9a111dc3063d22abc48ca145bcb32b1d7d865914bb3a2"
+    },
+    {
+      "path": "packages/platform/tsconfig.json",
+      "sha256": "eb282c463c3c927e3af91a82949e0ce4f9bc9c492a331b90ed538b4b9ae8758a"
+    },
+    {
+      "path": "packages/storage/fixtures/aes-256-gcm-cavp.json",
+      "sha256": "12ee03762fba3608a008fe2d8f0b64c27bc9ccd7004d8b38cc44671490a88474"
+    },
+    {
+      "path": "packages/storage/migrations/0001_initial.sql",
+      "sha256": "377e182bc1f449d1b8a4a3e027ffce7f56e534d74c8e590a7fdcd68a6f1b38e9"
+    },
+    {
+      "path": "packages/storage/migrations/0002_data_key_check.sql",
+      "sha256": "5a202b968cf07127b1990daefdf2fe6a70a8697705d61d3da212d9c6dcbbaeaf"
+    },
+    {
+      "path": "packages/storage/migrations/0003_home_network.sql",
+      "sha256": "e4eba2e6add83f2239b4322691a25d2733efe2fbacb6d4da122c84007d7d5878"
+    },
+    {
+      "path": "packages/storage/migrations/0004_turn_responses.sql",
+      "sha256": "1e15f26b0e151c45d1bf7be9131a600fac9385677adca293a4012bed45173bc1"
+    },
+    {
+      "path": "packages/storage/migrations/0005_runner.sql",
+      "sha256": "870de21e43ba91dd701c8cc28d3b87fa4478b9c2932afab70c4a73f514576ad2"
+    },
+    {
+      "path": "packages/storage/migrations/connection.sql",
+      "sha256": "f0ed88de074a08bb5e5b2805ac97a78767de2926acc8375a207920ec2f6e5db5"
+    },
+    {
+      "path": "packages/storage/package.json",
+      "sha256": "2c29304321a6a48ac0c474b82c852e1f800bbdef60ec44d79bb815754b8e6b1c"
+    },
+    {
+      "path": "packages/storage/src/aes-gcm.test.ts",
+      "sha256": "5ba0dae6518728a4576e871035ddc74affdd6abeff12427783e7c1125993ba5b"
+    },
+    {
+      "path": "packages/storage/src/aes-gcm.ts",
+      "sha256": "33f22b0984334e25d8fedcc400db20c7a3b196ce11c3a3ba18781cde2bf39b1f"
+    },
+    {
+      "path": "packages/storage/src/connection.test.ts",
+      "sha256": "f29c17e5aee8f076bc026285d74ec700e402b3c234db9b4642d30182bd48cba2"
+    },
+    {
+      "path": "packages/storage/src/connection.ts",
+      "sha256": "8cbf5a74c5ffb5177b4608ee65f4f1fa9f8a002543cd56105ce0f6489b8befac"
+    },
+    {
+      "path": "packages/storage/src/content-hash.test.ts",
+      "sha256": "cec8fd427023abe1a03ed2eaf4292c9fecab7fc4bd0ab43941e858e3c3969014"
+    },
+    {
+      "path": "packages/storage/src/content-hash.ts",
+      "sha256": "97a2972d0f7b8d32782e5e088ca9098e84ce406d5a61fb0b8fb40a1c1177e021"
+    },
+    {
+      "path": "packages/storage/src/conversation-store.test.ts",
+      "sha256": "39b26fc83645f42d897abdc61bb26758002bc300b89fd227c970eaf812e9f369"
+    },
+    {
+      "path": "packages/storage/src/conversation-store.ts",
+      "sha256": "7a8100df6131eff97bdbbe53e234a3adfdf005385f368cefcc191c1f6b04a2b9"
+    },
+    {
+      "path": "packages/storage/src/crash-child.ts",
+      "sha256": "d751513aef95f9920a09d7913f428a436dbfb3c047e0da8f9a5fa4cc424c1282"
+    },
+    {
+      "path": "packages/storage/src/crash-recovery.test.ts",
+      "sha256": "9dba4f6f8f5dee57da670f0627d85b0008faf97c985d0890666b3462e68a651c"
+    },
+    {
+      "path": "packages/storage/src/db-client.ts",
+      "sha256": "3f82dbd6f9b8fad593790c4f79673f892584c6199d9d29f399c7b5aadb0d7086"
+    },
+    {
+      "path": "packages/storage/src/db-protocol.ts",
+      "sha256": "75562de393aba4ee4189b21d6aa93d8080b5ce3469640b3b89d9581a1ba9ff01"
+    },
+    {
+      "path": "packages/storage/src/db-worker.test.ts",
+      "sha256": "fb1e63315c1ed0c3da3ce3eb2750b5146767cd876b3ae3d6c5ab0be285ce8657"
+    },
+    {
+      "path": "packages/storage/src/db-worker.ts",
+      "sha256": "792a1847a92ffca65249e83e35c30a8f4db0506294de03c69e071357adb87714"
+    },
+    {
+      "path": "packages/storage/src/device-store.test.ts",
+      "sha256": "9e4c419d29e6ba665d42b3cc61d73db9d059c0cd2ae456f621e9e9c1c7e4e958"
+    },
+    {
+      "path": "packages/storage/src/device-store.ts",
+      "sha256": "50944f534f04b9523a5c8eab4ffce4d67ae70b4611216c3519374a304343563a"
+    },
+    {
+      "path": "packages/storage/src/errors.ts",
+      "sha256": "91845cc4966033e16d3cfda70fa0d056758b43b3df4d8ca9b911d01c1ccad2fd"
+    },
+    {
+      "path": "packages/storage/src/event-store.test.ts",
+      "sha256": "0bc7ec68ec97e37439c0df61b65880e8f96cc1879ff807c06c1bd086993a5bf4"
+    },
+    {
+      "path": "packages/storage/src/event-store.ts",
+      "sha256": "c8aaec5f52bb4c5c3b8517bb2385e4d34207a539e69d9f1d79182ef3a79fdeb5"
+    },
+    {
+      "path": "packages/storage/src/home-network-store.test.ts",
+      "sha256": "31001b927c66f8a7c792e0efbfd77bd6509d07b1e3f79d4f79f793c7f8ce2103"
+    },
+    {
+      "path": "packages/storage/src/home-network-store.ts",
+      "sha256": "7a382e90e5ef3951af0335e15572f3fd693fa3eacdc87c120950e2d0aa217134"
+    },
+    {
+      "path": "packages/storage/src/index.ts",
+      "sha256": "bc6fda7d4977d2a01fc9c4e53d5cffd44e8a2903dab039927070ebaf198886ba"
+    },
+    {
+      "path": "packages/storage/src/migrations.test.ts",
+      "sha256": "137e864df07d1d964fd314e510d9c44cf73a7bd63e9951588430b7335daa61e5"
+    },
+    {
+      "path": "packages/storage/src/migrations.ts",
+      "sha256": "c3aa4e9a6fe3ffc53224c0fcb2f12ed2dbe07c57ca1e777627eb44600c7d1106"
+    },
+    {
+      "path": "packages/storage/src/operation-commands.ts",
+      "sha256": "edea196eefb0bee22ec851d267d5d6092eb06d88ca355db9ce0783af5490d3c5"
+    },
+    {
+      "path": "packages/storage/src/operation-store.test.ts",
+      "sha256": "d55d97344511cbced2d83a91f56a57d89e338b70fee4c7f977c424eaaccad7ad"
+    },
+    {
+      "path": "packages/storage/src/operation-store.ts",
+      "sha256": "112600fb00387b55f508f6a16a3cbb67cfbc10c0ed011dda9a751bb92a37b242"
+    },
+    {
+      "path": "packages/storage/src/operation-test-support.ts",
+      "sha256": "b7dfca071a44bdc4f22cd401030bcea26602d4e2bf9637ad744117242d76b7d7"
+    },
+    {
+      "path": "packages/storage/src/pairing-store.test.ts",
+      "sha256": "cbeb5f548f5350f11bfcfa8714e99fadd94a0b9c08742d84423d787048b5739d"
+    },
+    {
+      "path": "packages/storage/src/pairing-store.ts",
+      "sha256": "7aa36dc5f84be01cdbf73f800a27caed40662553251908a2bccdd5ebb8b7748e"
+    },
+    {
+      "path": "packages/storage/src/policy.ts",
+      "sha256": "456282905e179e400826c6fcc83eb8e2a85015d84f12a3c7eec405264c40153c"
+    },
+    {
+      "path": "packages/storage/src/sealed-blob.test.ts",
+      "sha256": "f682712781041175aace22175d123a46f7ce9606308cbfe08dd7dc04a88cfd0a"
+    },
+    {
+      "path": "packages/storage/src/sealed-blob.ts",
+      "sha256": "9c6dc8f8ce467905bf5312735816f2cea6e7d10b01b11360bd015d3021e5ea57"
+    },
+    {
+      "path": "packages/storage/src/snapshot-store.ts",
+      "sha256": "634b39170c4db1da10daae8e89136f7d982e2b321aca17abcdee8052b87184b8"
+    },
+    {
+      "path": "packages/storage/src/storage-cases.test.ts",
+      "sha256": "ac93627a27e1430da63240dca1776ed0dfea64fa000f0247449f77391f2cc941"
+    },
+    {
+      "path": "packages/storage/src/store-binding.test.ts",
+      "sha256": "a6d9184d5e27f9b76bf79c65f68f8353e9163ebf077ba114594a2bd136274a21"
+    },
+    {
+      "path": "packages/storage/src/store-binding.ts",
+      "sha256": "d3b442c704a90cafa5a598a080b9caa8671df38c78dde09f1133b5f3944779e9"
+    },
+    {
+      "path": "packages/storage/tsconfig.json",
+      "sha256": "eb282c463c3c927e3af91a82949e0ce4f9bc9c492a331b90ed538b4b9ae8758a"
+    },
+    {
+      "path": "scripts/api.test.mjs",
+      "sha256": "4fcc4184a36cbe9ec4862d485fb29b0a9360bd7fced99109eb639e4d349ceb1a"
+    },
+    {
+      "path": "scripts/boundary.test.mjs",
+      "sha256": "2bda12ae739d963860975d7400fedd4a6eb575befa095a23bdee24f16a1022f6"
+    },
+    {
+      "path": "scripts/budget.test.mjs",
+      "sha256": "4b40b5b27acf260dbc3d9a4ba282f9367b94c8c8f9957cebdba4193f0cb78643"
+    },
+    {
+      "path": "scripts/check-contracts.mjs",
+      "sha256": "71e35c119f4ab9f5aced8a71e99c074e162e311e2b75f457e3b26957ed2f5f87"
+    },
+    {
+      "path": "scripts/check-design.mjs",
+      "sha256": "0e8f3fa2fceece415f56b35633fa9ff98a2d87136bd7d54e466473e563670cf1"
+    },
+    {
+      "path": "scripts/check-public-content.mjs",
+      "sha256": "63389d10bc37f54c70b4c276416ed5aeffd75f7f205f8a476867a47ab8e5b09f"
+    },
+    {
+      "path": "scripts/check-push.mjs",
+      "sha256": "c4873ec23b90043c9bc284a0851eb2cb4f4d9a44c274a598e7f544550d85506b"
+    },
+    {
+      "path": "scripts/clean.mjs",
+      "sha256": "9ba1ea94b88a97afb70d0796e9ba88bcf90baed1748916a10e2c7c0511991f9d"
+    },
+    {
+      "path": "scripts/common-contracts.test.mjs",
+      "sha256": "53c118e1f62ca478d3ba3dd99c6cda5d80f3b0037dbf8b1d794e8a2a5ac4813e"
+    },
+    {
+      "path": "scripts/contract-gate.test.mjs",
+      "sha256": "31627d7e512a872063deee504e9afb3ffcef3c612ed24327ca8d13237c26806b"
+    },
+    {
+      "path": "scripts/contract-tools.mjs",
+      "sha256": "458dfb0d171a6d1bf663802c1b6bca70c8dd8130d859ae73e21636d9a2e4467b"
+    },
+    {
+      "path": "scripts/contracts.test.mjs",
+      "sha256": "6d8762c7fa15654c86b5033a634b7ebef798f235b7e717e8f41a1ce10d9ad185"
+    },
+    {
+      "path": "scripts/contrast.test.mjs",
+      "sha256": "656208343e6f07e72a870e096d5b29ceced02688432c70d4275a8f3cf71c9584"
+    },
+    {
+      "path": "scripts/desktop-ipc.test.mjs",
+      "sha256": "6ca13a354b49bf8e48609cf04fbd8ee1924d2b4221cd951be845a8fef635b1da"
+    },
+    {
+      "path": "scripts/desktop-semantic-parity.test.mjs",
+      "sha256": "80861b3584298fab66dfd293f112854970c8b57de1b17bca5bebd0380e91f45a"
+    },
+    {
+      "path": "scripts/doctor.mjs",
+      "sha256": "e7926ac22e307ec52bff5b6db494bddd92619201647a16415d9274bcfce424f3"
+    },
+    {
+      "path": "scripts/domain.test.mjs",
+      "sha256": "aae407e17fea5462168acf9fc2c53fb419bec1bb8f5b96a398d3cc0cf10c42c2"
+    },
+    {
+      "path": "scripts/eval-tools.mjs",
+      "sha256": "a2eb07126f60938377f2c8e65e4dbab057f4e6ccbfc63f61473d64a8d8902ecd"
+    },
+    {
+      "path": "scripts/generate-contract-types.mjs",
+      "sha256": "402a54385bb9e3e4a56ee30896dc7f862c78493e03899bd0475c9775891a59a7"
+    },
+    {
+      "path": "scripts/home-network.test.mjs",
+      "sha256": "6982383dbad2b332e866699e6176d16c2fec365f671ae54ce4befeeac9e489ea"
+    },
+    {
+      "path": "scripts/hub-host.test.mjs",
+      "sha256": "dc3bb8a7f6032ef9f6349472fa567df914382746829524995cc90849c1d62203"
+    },
+    {
+      "path": "scripts/install-gitleaks.mjs",
+      "sha256": "e8deb91659c8f1aacd45e9ec599708dc59b9080aa484770d509bed32a1ac7275"
+    },
+    {
+      "path": "scripts/install-hooks.mjs",
+      "sha256": "5fdb75bc1cf9762409e1c822e37ee7a168feec16eead0760142f0869e25d09b1"
+    },
+    {
+      "path": "scripts/listen-address.test.mjs",
+      "sha256": "9c14fa32536f045d72ee6d34c71a53390727c3a01b22f730787b24409c32ce3a"
+    },
+    {
+      "path": "scripts/memory-evaluation.test.mjs",
+      "sha256": "294355a860d3513aec31790e2614837161f85fdf10539e6a2db5a4154cb85135"
+    },
+    {
+      "path": "scripts/operation-kinds.test.mjs",
+      "sha256": "1efd56d2a267a2e6e9656d28ae535e7aec7387d4021bab98baff41f5309a87ea"
+    },
+    {
+      "path": "scripts/public-content.mjs",
+      "sha256": "6bec3cec89f883714db2de13104f57836e8cdb9e220205d4ec795e1b6084a660"
+    },
+    {
+      "path": "scripts/public-content.test.mjs",
+      "sha256": "5070a4fd37b3b7878b1193fab00e43088aa8461a17cbbaeba2855fccdfb177ba"
+    },
+    {
+      "path": "scripts/renderer-copy.test.mjs",
+      "sha256": "5e3044ec18291dea1b6b08345f38a59049401c07d05f7f08ffb7eec3230a974a"
+    },
+    {
+      "path": "scripts/run-gitleaks.mjs",
+      "sha256": "ab942c9748ffebe2617210462ccc55cf32b5142c4d7d099e51820d4ccbfdea19"
+    },
+    {
+      "path": "scripts/run-tests.mjs",
+      "sha256": "ba265338959693d6edc6dfe077e4d99717581ef36c124fcec51eb48933e3d683"
+    },
+    {
+      "path": "scripts/storage.test.mjs",
+      "sha256": "2a27fd096c4fa9f912454896ac1f006cbfd1831bcecf49cae9fdecc716a581f2"
+    },
+    {
+      "path": "scripts/sync-analysis.test.mjs",
+      "sha256": "fff486b57a744536ae76383b7381e58204a1641500dc0ccb100010a8b1e6c536"
+    },
+    {
+      "path": "scripts/test-map.test.mjs",
+      "sha256": "9530edbf1ac3049ccd318db1be8aa83d998442f9aa2d5e30ac1b819c46568bf0"
+    },
+    {
+      "path": "scripts/tooling.test.mjs",
+      "sha256": "fff9980383add1f39a15e5b96ebb3d899a2a3215ff04f7c63b31ef33767c383f"
+    },
+    {
+      "path": "scripts/voice.test.mjs",
+      "sha256": "c2ededf24b6bd52cd105b51af247491ffdde35b2b2d787b521b40e83dede0579"
+    },
+    {
+      "path": "scripts/workspaces.mjs",
+      "sha256": "ba43c4fe72a917af0e0b2a6f14d2fd7732570bdc4ae7ff1d12ef261f0f731a47"
+    },
+    {
+      "path": "tests/fixtures/storage-cases.json",
+      "sha256": "1736458d8ab97b335537f045b44dc10cca0b8b58b2ebe10952c0c67359bda406"
+    },
+    {
+      "path": "tests/integration/b04-cases.mjs",
+      "sha256": "31e303ab4b9d1c5bde15ae4500d10f817bd8739e56f8711e4beefdab0a3ae743"
+    },
+    {
+      "path": "tests/integration/b04-support.mjs",
+      "sha256": "f83ab762ae6ee44683032b36753a13f5df91e69432816f7662a66ce1f57b3df2"
+    },
+    {
+      "path": "tests/integration/b04.test.mjs",
+      "sha256": "2d82121fa55f340ecf38bcd83d16ac19ed879378eb5cb0dc3aeda58483b1bc98"
+    },
+    {
+      "path": "tests/integration/fault-points.json",
+      "sha256": "9e99a78874a561c1ac9425a1b017d74d1eba56b51ee38019a7d0848903d98c2b"
+    },
+    {
+      "path": "tests/integration/test-evidence.schema.json",
+      "sha256": "618768342344b4c633e5a8da5038f195eb0f58d0b0a3442a2a71080d8254d969"
+    },
+    {
+      "path": "tests/test-map.json",
+      "sha256": "0e2448c82859368103956eb3b1564056aa57019a7f6f91cb40ce078c313a31fa"
+    }
+  ],
+  "records": [
+    {
+      "case_id": "X01",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "core_restart",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 1,
+      "final_state": "succeeded",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X02",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "approval_barrier",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 1,
+      "final_state": "succeeded",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X03",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "awaiting_approval",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X04",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "core_restart",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "awaiting_approval",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X05-before-dispatch",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "after_target_recheck",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 1,
+      "final_state": "cancelled",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X05-after-dispatch",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "after_dispatch_intent_before_send",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 1,
+      "final_state": "reconciling",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X06",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "after_dispatch_intent_before_send,core_restart",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 1,
+      "final_state": "unknown_held",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X07",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "after_external_apply_before_response",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 1,
+      "final_state": "succeeded",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X08",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "response_timeout_then_late_apply",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 1,
+      "final_state": "succeeded",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X09",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "after_approval_save",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 1,
+      "final_state": "awaiting_approval",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "B04-x10-after-draft-mechanism",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "after_dispatch_intent_before_send,core_restart",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 1,
+      "final_state": "unknown_held",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "B04-x10-after-send-accepted-mechanism",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "after_dispatch_intent_before_send,core_restart",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 1,
+      "final_state": "unknown_held",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X11",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "after_event_delivery_before_ack,core_restart",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 1,
+      "final_state": "succeeded",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA27-read",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "answered",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": "QA27 の部分検証。外部下書き保存・同じ Electron 画面での比較は未実施。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA27-local",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 1,
+      "final_state": "succeeded",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": "QA27 の部分検証。外部下書き保存・同じ Electron 画面での比較は未実施。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA27-remote",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": null,
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 1,
+      "final_state": "succeeded",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": "QA27 の部分検証。外部下書き保存・同じ Electron 画面での比較は未実施。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA28",
+      "kind": "simulated",
+      "commit": "f0e67d334e2a84103d2bd8d3032c2d4513d69262",
+      "contract_version": "1.0.0",
+      "db_version": "5",
+      "environment": {
+        "os": "darwin 27.0.0 / v24.19.0",
+        "hub": "同一プロセスの Core・独立した一時 DB・loopback HTTPS と模擬 provider HTTP",
+        "devices": [
+          "2 個の模擬端末（X02）・製品クライアントの TLS/WSS（X02・X11）。Electron 未起動"
+        ]
+      },
+      "seed": "86,1406,20261022",
+      "fault_point": "local_commit_before_ack",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 1,
+      "final_state": "succeeded",
+      "observed_at": "2026-10-22T13:58:23.261Z",
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    }
+  ],
+  "runs": [
+    {
+      "case_id": "QA27-read",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": [],
+      "observed": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "db_version": "5",
+        "final_state": "answered",
+        "counts": {
+          "operations": 0,
+          "approvals": 0,
+          "operation_attempts": 0
+        }
+      }
+    },
+    {
+      "case_id": "X05-before-dispatch",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["after_target_recheck"],
+      "observed": {
+        "operation_id": "0df20900-9533-4761-b228-649b33576fc8",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "cancelled",
+            "state_revision": 4,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "eaee8a54-b9c8-4d4e-8f64-8759e283f645",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "284ccacb-3b8f-4197-adfc-4baa6279a958",
+            "content_version": "1",
+            "approval_id": "eaee8a54-b9c8-4d4e-8f64-8759e283f645",
+            "status": "cancelled",
+            "dispatch_intent_at": null,
+            "external_id": null,
+            "result_status": null
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "cancelled"
+      }
+    },
+    {
+      "case_id": "X04",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["core_restart"],
+      "observed": {
+        "operation_id": "c6cddee0-9ca3-41c4-bbe3-21e3d71efe13",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          }
+        ],
+        "approvals": [],
+        "attempts": [],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "final_state": "awaiting_approval"
+      }
+    },
+    {
+      "case_id": "X07",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["after_external_apply_before_response"],
+      "observed": {
+        "operation_id": "2e47204f-f79c-4c2b-b80b-a67fd1eac82d",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "277029f3-2c75-4401-a4c8-0fa0a734aabf",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "42d6ab90-f0f5-42dc-94c2-b3ea247ef8d4",
+            "content_version": "1",
+            "approval_id": "277029f3-2c75-4401-a4c8-0fa0a734aabf",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677470722,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677470722,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "2e47204f-f79c-4c2b-b80b-a67fd1eac82d",
+            "attempt_id": "42d6ab90-f0f5-42dc-94c2-b3ea247ef8d4",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": false
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "automatic_lookups": 1
+      }
+    },
+    {
+      "case_id": "X10-after-draft",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "ee7809d8-75b6-4f7a-9b54-8595366b1058",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "bce72601-dece-4453-bfd8-207bb99290a6",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "6df953d2-1909-4938-b604-97c25f1a5dc4",
+            "content_version": "1",
+            "approval_id": "bce72601-dece-4453-bfd8-207bb99290a6",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677471069,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-create_draft",
+            "step_kind": "create_draft",
+            "dispatch_intent_at": 1792677471069,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held",
+        "decision": {
+          "action": "reconcile",
+          "step_id": "1-create_draft"
+        },
+        "scope": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。"
+      }
+    },
+    {
+      "case_id": "X06",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "cec59927-4954-4a1c-a761-0968033c54de",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "80cb143a-5bb0-47b8-b1ab-608c8612aefe",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "ae01685d-f243-4288-bcb7-d42bf32393f2",
+            "content_version": "1",
+            "approval_id": "80cb143a-5bb0-47b8-b1ab-608c8612aefe",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677471597,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677471597,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held"
+      }
+    },
+    {
+      "case_id": "QA28",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["local_commit_before_ack"],
+      "observed": {
+        "operation_id": "3a5b1d58-07a3-4aad-99b3-97e065c3f34a",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 3,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "eb81254f-ef27-4c41-9e4e-38311077f209",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "4a9483fa-9a20-4127-979e-afbdb86bcf1b",
+            "content_version": "1",
+            "approval_id": "eb81254f-ef27-4c41-9e4e-38311077f209",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677472373,
+            "external_id": "044bb5ed-b757-40a0-a526-f7689540b570",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "lost_ack_outcome": "unknown",
+        "replayed": true
+      }
+    },
+    {
+      "case_id": "X10-after-send-accepted",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "a52253e3-f133-491d-a2f0-fba876095500",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "175b9057-afff-4648-a930-5f4925cede30",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "f24a6e4d-4bf2-4478-88db-72b8147574eb",
+            "content_version": "1",
+            "approval_id": "175b9057-afff-4648-a930-5f4925cede30",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677472733,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "2-send",
+            "step_kind": "send",
+            "dispatch_intent_at": 1792677472733,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held",
+        "decision": {
+          "action": "reconcile",
+          "step_id": "2-send"
+        },
+        "scope": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。"
+      }
+    },
+    {
+      "case_id": "X02",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["approval_barrier"],
+      "observed": {
+        "operation_id": "5d1f3e51-3df1-4cd1-b33b-d7d35802a64f",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "825d35ae-cc53-43f9-bcab-d91437604245",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "ff150591-3b89-49ef-b47d-a51f121abdd2",
+            "content_version": "1",
+            "approval_id": "825d35ae-cc53-43f9-bcab-d91437604245",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677473483,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677473483,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "5d1f3e51-3df1-4cd1-b33b-d7d35802a64f",
+            "attempt_id": "ff150591-3b89-49ef-b47d-a51f121abdd2",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "approval_entry_order": ["A", "B"]
+      }
+    },
+    {
+      "case_id": "QA27-remote",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "c628a691-bde5-4b59-b6a1-e42ec375d0aa",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "c2fda347-e512-4f91-874e-99cae914000b",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "e41c93d5-6b17-47d3-8371-1181e1bdd924",
+            "content_version": "1",
+            "approval_id": "c2fda347-e512-4f91-874e-99cae914000b",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677473930,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677473930,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "c628a691-bde5-4b59-b6a1-e42ec375d0aa",
+            "attempt_id": "e41c93d5-6b17-47d3-8371-1181e1bdd924",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X05-after-dispatch",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["after_dispatch_intent_before_send"],
+      "observed": {
+        "operation_id": "102ccc9e-a0a2-465c-aa3e-21ea654c8dbe",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "3a56038f-15d0-497e-87e9-ade47fb82e4e",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "6a8dba1c-93df-41af-91a1-20333c0d3965",
+            "content_version": "1",
+            "approval_id": "3a56038f-15d0-497e-87e9-ade47fb82e4e",
+            "status": "reconciling",
+            "dispatch_intent_at": 1792677474363,
+            "external_id": "mail-001",
+            "result_status": null
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677474363,
+            "result_status": null,
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "102ccc9e-a0a2-465c-aa3e-21ea654c8dbe",
+            "attempt_id": "6a8dba1c-93df-41af-91a1-20333c0d3965",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "reconciling"
+      }
+    },
+    {
+      "case_id": "QA27-local",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "33955dce-4c2e-4d7f-b15a-a5a0cbdbff62",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 3,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "d328625b-4c05-438e-a6b7-b977ad514616",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "3f755c11-63f9-4c20-be54-aca4667361b0",
+            "content_version": "1",
+            "approval_id": "d328625b-4c05-438e-a6b7-b977ad514616",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677474794,
+            "external_id": "c212a305-7d65-4c11-9202-550299412dde",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X09",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["after_approval_save"],
+      "observed": {
+        "operation_id": "2080ced6-dd92-4df8-9290-dd8e4ce606a7",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "awaiting_approval",
+            "state_revision": 4,
+            "content_version": 2
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "a9b294e0-bc33-47b3-b27f-df19cb42a6e8",
+            "content_version": "1",
+            "route": "screen",
+            "status": "revoked"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "fc6e26cf-3770-4178-9b6e-975cd0ed3910",
+            "content_version": "1",
+            "approval_id": "a9b294e0-bc33-47b3-b27f-df19cb42a6e8",
+            "status": "superseded",
+            "dispatch_intent_at": null,
+            "external_id": null,
+            "result_status": null
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "awaiting_approval",
+        "change": "source_revision"
+      }
+    },
+    {
+      "case_id": "X11",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["after_event_delivery_before_ack", "core_restart"],
+      "observed": {
+        "operation_id": "9b5463ad-76c8-4aae-acce-5e1512cd50ca",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "c6bf2a2f-b2ce-4770-865a-e96a4e7fae8f",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "734b3583-74f8-4472-848a-28cffcd47a0c",
+            "content_version": "1",
+            "approval_id": "c6bf2a2f-b2ce-4770-865a-e96a4e7fae8f",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677475775,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677475775,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "9b5463ad-76c8-4aae-acce-5e1512cd50ca",
+            "attempt_id": "734b3583-74f8-4472-848a-28cffcd47a0c",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "delivered_revisions": ["6", "4", "3", "2", "5", "6", "6"]
+      }
+    },
+    {
+      "case_id": "X01",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["core_restart"],
+      "observed": {
+        "operation_id": "9f31ce34-5c99-45e1-8f04-efa348cfe788",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "c38c406d-441a-4733-9649-62c62354710f",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "67f915d9-5cd1-4a4b-a485-680cb5808f3b",
+            "content_version": "1",
+            "approval_id": "c38c406d-441a-4733-9649-62c62354710f",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677476397,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677476397,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "9f31ce34-5c99-45e1-8f04-efa348cfe788",
+            "attempt_id": "67f915d9-5cd1-4a4b-a485-680cb5808f3b",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X08",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": ["response_timeout_then_late_apply"],
+      "observed": {
+        "operation_id": "7669fb1a-7e42-44fc-9611-a81521511810",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 6,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 7,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "f35a4f54-706d-4ccd-9668-f51c1923e078",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "ad61ba71-bb0e-44d5-a8ac-70efc29d9568",
+            "content_version": "1",
+            "approval_id": "f35a4f54-706d-4ccd-9668-f51c1923e078",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677476978,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677476978,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "7669fb1a-7e42-44fc-9611-a81521511810",
+            "attempt_id": "ad61ba71-bb0e-44d5-a8ac-70efc29d9568",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": false
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "automatic_lookups": 1
+      }
+    },
+    {
+      "case_id": "X03",
+      "seed": "86",
+      "order": [
+        "QA27-read",
+        "X05-before-dispatch",
+        "X04",
+        "X07",
+        "X10-after-draft",
+        "X06",
+        "QA28",
+        "X10-after-send-accepted",
+        "X02",
+        "QA27-remote",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X09",
+        "X11",
+        "X01",
+        "X08",
+        "X03"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "f3eefd90-08fb-4273-a314-e05360a7f7dd",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "awaiting_approval",
+            "state_revision": 2,
+            "content_version": 2
+          }
+        ],
+        "approvals": [],
+        "attempts": [],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "final_state": "awaiting_approval"
+      }
+    },
+    {
+      "case_id": "QA28",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["local_commit_before_ack"],
+      "observed": {
+        "operation_id": "81a5f243-71fc-47e0-bea6-c40660fb4dc3",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 3,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "90ca6e18-ff39-4906-9bf7-dc8d770499a4",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "6f153ff6-9445-4cac-8f8a-5d7e5accb684",
+            "content_version": "1",
+            "approval_id": "90ca6e18-ff39-4906-9bf7-dc8d770499a4",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677478261,
+            "external_id": "f766d20f-5d00-45e1-895e-15dc4ceb1e0e",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "lost_ack_outcome": "unknown",
+        "replayed": true
+      }
+    },
+    {
+      "case_id": "X04",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["core_restart"],
+      "observed": {
+        "operation_id": "474acfa3-e196-4e8b-9617-9c2134086041",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          }
+        ],
+        "approvals": [],
+        "attempts": [],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "final_state": "awaiting_approval"
+      }
+    },
+    {
+      "case_id": "X02",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["approval_barrier"],
+      "observed": {
+        "operation_id": "1caf578c-c599-400c-a4c9-3d3a0d9c883b",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "4f7c4d69-18ed-4004-8f55-890062135400",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "caf613a8-3193-4ff4-aed4-fb0c20158374",
+            "content_version": "1",
+            "approval_id": "4f7c4d69-18ed-4004-8f55-890062135400",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677480314,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677480314,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "1caf578c-c599-400c-a4c9-3d3a0d9c883b",
+            "attempt_id": "caf613a8-3193-4ff4-aed4-fb0c20158374",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "approval_entry_order": ["B", "A"]
+      }
+    },
+    {
+      "case_id": "X07",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["after_external_apply_before_response"],
+      "observed": {
+        "operation_id": "d0a82958-2e19-4a13-af66-d38bcd3038e7",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "03328360-db47-4cda-8f4d-8234e7938cb6",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "820d17e0-eaf4-4b27-baf9-92aa11b28446",
+            "content_version": "1",
+            "approval_id": "03328360-db47-4cda-8f4d-8234e7938cb6",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677481050,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677481050,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "d0a82958-2e19-4a13-af66-d38bcd3038e7",
+            "attempt_id": "820d17e0-eaf4-4b27-baf9-92aa11b28446",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": false
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "automatic_lookups": 1
+      }
+    },
+    {
+      "case_id": "X08",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["response_timeout_then_late_apply"],
+      "observed": {
+        "operation_id": "98454e00-20d9-4154-bef7-9463622f5476",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 6,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 7,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "3cb86a24-fe63-4d61-9f9c-da3119b8e932",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "149b9f20-bc4e-4f9a-a39c-52a51d25d5b0",
+            "content_version": "1",
+            "approval_id": "3cb86a24-fe63-4d61-9f9c-da3119b8e932",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677481775,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677481775,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "98454e00-20d9-4154-bef7-9463622f5476",
+            "attempt_id": "149b9f20-bc4e-4f9a-a39c-52a51d25d5b0",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": false
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "automatic_lookups": 1
+      }
+    },
+    {
+      "case_id": "X09",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["after_approval_save"],
+      "observed": {
+        "operation_id": "1e73119b-13b8-4752-a07b-94929256c83e",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "awaiting_approval",
+            "state_revision": 4,
+            "content_version": 2
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "016b9512-90dc-45cb-87a5-df3c1f3459a6",
+            "content_version": "1",
+            "route": "screen",
+            "status": "revoked"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "e1bfc2ba-284d-45b0-89df-93a8f6c6cda3",
+            "content_version": "1",
+            "approval_id": "016b9512-90dc-45cb-87a5-df3c1f3459a6",
+            "status": "superseded",
+            "dispatch_intent_at": null,
+            "external_id": null,
+            "result_status": null
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "awaiting_approval",
+        "change": "permission"
+      }
+    },
+    {
+      "case_id": "X05-after-dispatch",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["after_dispatch_intent_before_send"],
+      "observed": {
+        "operation_id": "cf3f113a-9f28-48b5-bc56-4ecf654c2158",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "8bf1eec3-4450-4303-95ca-a13fbae7fcd7",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "62492fba-e575-4bff-802f-9a3b9ae25e1d",
+            "content_version": "1",
+            "approval_id": "8bf1eec3-4450-4303-95ca-a13fbae7fcd7",
+            "status": "reconciling",
+            "dispatch_intent_at": 1792677483186,
+            "external_id": "mail-001",
+            "result_status": null
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677483186,
+            "result_status": null,
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "cf3f113a-9f28-48b5-bc56-4ecf654c2158",
+            "attempt_id": "62492fba-e575-4bff-802f-9a3b9ae25e1d",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "reconciling"
+      }
+    },
+    {
+      "case_id": "QA27-local",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "2c35b88d-a0a8-41f1-a527-12ac11bafd44",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 3,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "6a64ddc9-26dc-4719-a197-59349465e30e",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "acf28a60-0ba6-4843-9863-3f5879a6baa0",
+            "content_version": "1",
+            "approval_id": "6a64ddc9-26dc-4719-a197-59349465e30e",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677483983,
+            "external_id": "3a87ad54-87b7-41ec-b64f-4b4197ef6e4d",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X03",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "8b0abf09-1cad-49fa-bfea-20581ac80005",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "awaiting_approval",
+            "state_revision": 2,
+            "content_version": 2
+          }
+        ],
+        "approvals": [],
+        "attempts": [],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "final_state": "awaiting_approval"
+      }
+    },
+    {
+      "case_id": "X05-before-dispatch",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["after_target_recheck"],
+      "observed": {
+        "operation_id": "ceedde87-508e-4822-b502-9a3d9eb617a3",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "cancelled",
+            "state_revision": 4,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "36a891f4-dff7-49ac-8d55-cb586ead392a",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "ee8a60c1-d7c4-4b06-aa6d-64f17954360a",
+            "content_version": "1",
+            "approval_id": "36a891f4-dff7-49ac-8d55-cb586ead392a",
+            "status": "cancelled",
+            "dispatch_intent_at": null,
+            "external_id": null,
+            "result_status": null
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "cancelled"
+      }
+    },
+    {
+      "case_id": "X06",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "7a5fe33a-4464-4164-8ea7-0a325f0cc2be",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "9d2e227d-c908-4140-ab13-d5eb1d8a9938",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "333fccc2-20a1-4c30-a3ea-9eecbba49bc1",
+            "content_version": "1",
+            "approval_id": "9d2e227d-c908-4140-ab13-d5eb1d8a9938",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677486585,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677486585,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held"
+      }
+    },
+    {
+      "case_id": "QA27-read",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": [],
+      "observed": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "db_version": "5",
+        "final_state": "answered",
+        "counts": {
+          "operations": 0,
+          "approvals": 0,
+          "operation_attempts": 0
+        }
+      }
+    },
+    {
+      "case_id": "X10-after-draft",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "11184492-a816-4d08-a07e-4690f007ab60",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "041057a2-87c8-43a4-ae0f-0c6a3c2ec15c",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "0cad8e7e-9aad-425d-8d26-a25e6d7f2b67",
+            "content_version": "1",
+            "approval_id": "041057a2-87c8-43a4-ae0f-0c6a3c2ec15c",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677488419,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-create_draft",
+            "step_kind": "create_draft",
+            "dispatch_intent_at": 1792677488419,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held",
+        "decision": {
+          "action": "reconcile",
+          "step_id": "1-create_draft"
+        },
+        "scope": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。"
+      }
+    },
+    {
+      "case_id": "QA27-remote",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "5a27bd60-a575-4123-9d15-d7c040f079c1",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "56c2291f-295d-4b90-90dd-d122bca75b85",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "0be50ed7-02ab-4479-b896-1aae4748bc70",
+            "content_version": "1",
+            "approval_id": "56c2291f-295d-4b90-90dd-d122bca75b85",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677489295,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677489295,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "5a27bd60-a575-4123-9d15-d7c040f079c1",
+            "attempt_id": "0be50ed7-02ab-4479-b896-1aae4748bc70",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X10-after-send-accepted",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "7f24ea06-bdfc-45ff-b643-28728b537784",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "784bc8e7-e380-4750-aaa8-047c530a6313",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "2f6d5e17-9455-4f9b-818c-2ea77494af68",
+            "content_version": "1",
+            "approval_id": "784bc8e7-e380-4750-aaa8-047c530a6313",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677489980,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "2-send",
+            "step_kind": "send",
+            "dispatch_intent_at": 1792677489980,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held",
+        "decision": {
+          "action": "reconcile",
+          "step_id": "2-send"
+        },
+        "scope": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。"
+      }
+    },
+    {
+      "case_id": "X01",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["core_restart"],
+      "observed": {
+        "operation_id": "5fe384fc-c5a0-4622-9bda-0723d699b91a",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "619c17fe-d635-416d-ab5e-8b4e74cb81db",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "3e248bd0-dc74-4e6a-8a73-e857c5ef230a",
+            "content_version": "1",
+            "approval_id": "619c17fe-d635-416d-ab5e-8b4e74cb81db",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677491072,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677491072,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "5fe384fc-c5a0-4622-9bda-0723d699b91a",
+            "attempt_id": "3e248bd0-dc74-4e6a-8a73-e857c5ef230a",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X11",
+      "seed": "1406",
+      "order": [
+        "QA28",
+        "X04",
+        "X02",
+        "X07",
+        "X08",
+        "X09",
+        "X05-after-dispatch",
+        "QA27-local",
+        "X03",
+        "X05-before-dispatch",
+        "X06",
+        "QA27-read",
+        "X10-after-draft",
+        "QA27-remote",
+        "X10-after-send-accepted",
+        "X01",
+        "X11"
+      ],
+      "faults": ["after_event_delivery_before_ack", "core_restart"],
+      "observed": {
+        "operation_id": "d754a1fa-e3ad-441e-bb2c-0b54ce5320b2",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "8f398b86-7157-44b3-ab66-b8b37cd15ec1",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "e452225e-12fe-4e20-ba85-bb67a96e42b5",
+            "content_version": "1",
+            "approval_id": "8f398b86-7157-44b3-ab66-b8b37cd15ec1",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677492074,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677492074,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "d754a1fa-e3ad-441e-bb2c-0b54ce5320b2",
+            "attempt_id": "e452225e-12fe-4e20-ba85-bb67a96e42b5",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "delivered_revisions": ["6", "6", "3", "4", "5", "2", "6"]
+      }
+    },
+    {
+      "case_id": "QA27-local",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "53a3a11c-28e9-42b7-88b3-cff6a25cc4ce",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 3,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "2fc45aa9-a0cf-4b3a-9c3b-8bc2a8b4a701",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "3880905a-a8c3-4ca5-ae35-07decdda060b",
+            "content_version": "1",
+            "approval_id": "2fc45aa9-a0cf-4b3a-9c3b-8bc2a8b4a701",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677493361,
+            "external_id": "b1308e69-9578-4431-b849-846e4bd3f294",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X05-before-dispatch",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["after_target_recheck"],
+      "observed": {
+        "operation_id": "028b2a98-ee84-4968-a7dc-7d380f4c6bfe",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "cancelled",
+            "state_revision": 4,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "b96508ae-deed-447a-92a2-607f0d5d60cf",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "eb8ad6e7-522b-4ecc-9b93-239629b9637b",
+            "content_version": "1",
+            "approval_id": "b96508ae-deed-447a-92a2-607f0d5d60cf",
+            "status": "cancelled",
+            "dispatch_intent_at": null,
+            "external_id": null,
+            "result_status": null
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "cancelled"
+      }
+    },
+    {
+      "case_id": "X03",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "4f6c0246-4a30-4709-870f-d86f035ef919",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "awaiting_approval",
+            "state_revision": 2,
+            "content_version": 2
+          }
+        ],
+        "approvals": [],
+        "attempts": [],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "final_state": "awaiting_approval"
+      }
+    },
+    {
+      "case_id": "QA28",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["local_commit_before_ack"],
+      "observed": {
+        "operation_id": "38523b98-84be-423a-b525-08623288ec5f",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 3,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "0c89255d-2099-44b1-afc0-3a16fb26545d",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "278c11e8-f061-4ef4-85c4-154487eb2d12",
+            "content_version": "1",
+            "approval_id": "0c89255d-2099-44b1-afc0-3a16fb26545d",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677496097,
+            "external_id": "14a6e9b0-9b71-4875-b4f6-db2f00c2bfce",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "lost_ack_outcome": "unknown",
+        "replayed": true
+      }
+    },
+    {
+      "case_id": "QA27-read",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": [],
+      "observed": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "db_version": "5",
+        "final_state": "answered",
+        "counts": {
+          "operations": 0,
+          "approvals": 0,
+          "operation_attempts": 0
+        }
+      }
+    },
+    {
+      "case_id": "X07",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["after_external_apply_before_response"],
+      "observed": {
+        "operation_id": "ba13cf12-aadd-4890-b626-ca65a6ff0c00",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "d3d45943-bd70-48d1-b7d7-38caa943b808",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "089ff956-779b-41f7-bedc-a0683905e561",
+            "content_version": "1",
+            "approval_id": "d3d45943-bd70-48d1-b7d7-38caa943b808",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677497176,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677497176,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "ba13cf12-aadd-4890-b626-ca65a6ff0c00",
+            "attempt_id": "089ff956-779b-41f7-bedc-a0683905e561",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": false
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "automatic_lookups": 1
+      }
+    },
+    {
+      "case_id": "X09",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["after_approval_save"],
+      "observed": {
+        "operation_id": "4603f4a9-263c-45fb-a872-69bb6172d7fa",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "awaiting_approval",
+            "state_revision": 4,
+            "content_version": 2
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "ff0e576e-ed8d-46b0-8316-9dd1e3e4635a",
+            "content_version": "1",
+            "route": "screen",
+            "status": "revoked"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "99ecbb69-edfd-4953-889f-0ffc4dc4a9e3",
+            "content_version": "1",
+            "approval_id": "ff0e576e-ed8d-46b0-8316-9dd1e3e4635a",
+            "status": "superseded",
+            "dispatch_intent_at": null,
+            "external_id": null,
+            "result_status": null
+          }
+        ],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "awaiting_approval",
+        "change": "source_revision"
+      }
+    },
+    {
+      "case_id": "X11",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["after_event_delivery_before_ack", "core_restart"],
+      "observed": {
+        "operation_id": "c9edd956-3767-4ba0-b487-224ec1de8d88",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "39fc9234-6159-4383-b089-3dd9570e5a52",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "59ffe160-5312-474c-8927-c9c996d87746",
+            "content_version": "1",
+            "approval_id": "39fc9234-6159-4383-b089-3dd9570e5a52",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677498408,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677498408,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "c9edd956-3767-4ba0-b487-224ec1de8d88",
+            "attempt_id": "59ffe160-5312-474c-8927-c9c996d87746",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "delivered_revisions": ["6", "4", "6", "2", "6", "3", "5"]
+      }
+    },
+    {
+      "case_id": "X02",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["approval_barrier"],
+      "observed": {
+        "operation_id": "5dfc4d96-0c31-4b59-a7f3-1132dd88ee53",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "e164716f-e6f1-43fc-b152-6b2271c1076f",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "514c35ca-44de-440d-9f4a-bfdbaf9f56c0",
+            "content_version": "1",
+            "approval_id": "e164716f-e6f1-43fc-b152-6b2271c1076f",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677499395,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677499395,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "5dfc4d96-0c31-4b59-a7f3-1132dd88ee53",
+            "attempt_id": "514c35ca-44de-440d-9f4a-bfdbaf9f56c0",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "approval_entry_order": ["A", "B"]
+      }
+    },
+    {
+      "case_id": "X06",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "d505b6d2-d352-4014-835c-4e92c26a4e55",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "22128704-3a80-444a-91b2-f526cb2b74c9",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "bb1226b0-4c8c-4946-9219-2e3b6a5f4c8c",
+            "content_version": "1",
+            "approval_id": "22128704-3a80-444a-91b2-f526cb2b74c9",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677499877,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677499877,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held"
+      }
+    },
+    {
+      "case_id": "X04",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["core_restart"],
+      "observed": {
+        "operation_id": "0cd3461e-b81a-4fd3-8afb-1e198277e654",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          }
+        ],
+        "approvals": [],
+        "attempts": [],
+        "steps": [],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 0,
+        "final_state": "awaiting_approval"
+      }
+    },
+    {
+      "case_id": "X08",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["response_timeout_then_late_apply"],
+      "observed": {
+        "operation_id": "717c4aa5-fa70-4955-8341-53cf777988be",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 6,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 7,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "501ce78d-2caa-4eca-9804-17e2fa9ee0d0",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "1c830672-8e45-455d-b44b-6566fb4624da",
+            "content_version": "1",
+            "approval_id": "501ce78d-2caa-4eca-9804-17e2fa9ee0d0",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677501149,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677501149,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "717c4aa5-fa70-4955-8341-53cf777988be",
+            "attempt_id": "1c830672-8e45-455d-b44b-6566fb4624da",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": false
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded",
+        "automatic_lookups": 1
+      }
+    },
+    {
+      "case_id": "QA27-remote",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": [],
+      "observed": {
+        "operation_id": "5b3d8f0f-d9ef-4efb-8444-f2ef0e4d63a1",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "f382c202-eacf-448f-baa0-fbc16d536a4e",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "94086742-19a9-4e30-accf-341a4d63bec7",
+            "content_version": "1",
+            "approval_id": "f382c202-eacf-448f-baa0-fbc16d536a4e",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677501562,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677501562,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "5b3d8f0f-d9ef-4efb-8444-f2ef0e4d63a1",
+            "attempt_id": "94086742-19a9-4e30-accf-341a4d63bec7",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X10-after-draft",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "8f46eb94-a0da-4f3d-90a0-9fb2852c6032",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "1aaed28f-86ee-4164-ab3c-c28f5861d96f",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "c500f615-51ee-4468-8996-cab5739cbcbb",
+            "content_version": "1",
+            "approval_id": "1aaed28f-86ee-4164-ab3c-c28f5861d96f",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677501874,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-create_draft",
+            "step_kind": "create_draft",
+            "dispatch_intent_at": 1792677501874,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held",
+        "decision": {
+          "action": "reconcile",
+          "step_id": "1-create_draft"
+        },
+        "scope": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。"
+      }
+    },
+    {
+      "case_id": "X10-after-send-accepted",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "observed": {
+        "operation_id": "8c0fac61-53fb-41bd-bfb9-5b487b343db3",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "unknown_held",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "a8d0c79d-ccd2-4ef7-937b-1e852f2bcb9d",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "359bceaa-81b7-4d0c-90b0-c8ce0ca45c4a",
+            "content_version": "1",
+            "approval_id": "a8d0c79d-ccd2-4ef7-937b-1e852f2bcb9d",
+            "status": "unknown_held",
+            "dispatch_intent_at": 1792677502250,
+            "external_id": null,
+            "result_status": "unknown"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "2-send",
+            "step_kind": "send",
+            "dispatch_intent_at": 1792677502250,
+            "result_status": "unknown",
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [],
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approval_count": 1,
+        "final_state": "unknown_held",
+        "decision": {
+          "action": "reconcile",
+          "step_id": "2-send"
+        },
+        "scope": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。"
+      }
+    },
+    {
+      "case_id": "X01",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["core_restart"],
+      "observed": {
+        "operation_id": "638eb577-35be-48f2-bf82-c9f694b83ec2",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          },
+          {
+            "state": "succeeded",
+            "state_revision": 6,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "ac6d92e8-831d-4203-a037-1b4d0128efd3",
+            "content_version": "1",
+            "route": "screen",
+            "status": "consumed"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "281725be-82e6-49cb-8b60-1f1e33ae1373",
+            "content_version": "1",
+            "approval_id": "ac6d92e8-831d-4203-a037-1b4d0128efd3",
+            "status": "succeeded",
+            "dispatch_intent_at": 1792677502710,
+            "external_id": "mail-001",
+            "result_status": "confirmed_success"
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677502710,
+            "result_status": "confirmed_success",
+            "external_id": "mail-001"
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "638eb577-35be-48f2-bf82-c9f694b83ec2",
+            "attempt_id": "281725be-82e6-49cb-8b60-1f1e33ae1373",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "succeeded"
+      }
+    },
+    {
+      "case_id": "X05-after-dispatch",
+      "seed": "20261022",
+      "order": [
+        "QA27-local",
+        "X05-before-dispatch",
+        "X03",
+        "QA28",
+        "QA27-read",
+        "X07",
+        "X09",
+        "X11",
+        "X02",
+        "X06",
+        "X04",
+        "X08",
+        "QA27-remote",
+        "X10-after-draft",
+        "X10-after-send-accepted",
+        "X01",
+        "X05-after-dispatch"
+      ],
+      "faults": ["after_dispatch_intent_before_send"],
+      "observed": {
+        "operation_id": "1659f2de-11eb-479a-874e-e3c76f458598",
+        "db_version": "5",
+        "state_history": [
+          {
+            "state": "awaiting_approval",
+            "state_revision": 1,
+            "content_version": 1
+          },
+          {
+            "state": "approved",
+            "state_revision": 2,
+            "content_version": 1
+          },
+          {
+            "state": "preparing",
+            "state_revision": 3,
+            "content_version": 1
+          },
+          {
+            "state": "dispatching",
+            "state_revision": 4,
+            "content_version": 1
+          },
+          {
+            "state": "reconciling",
+            "state_revision": 5,
+            "content_version": 1
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "b985b694-aac2-4717-a9cd-ab3a0dabb517",
+            "content_version": "1",
+            "route": "screen",
+            "status": "valid"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "7a08c9c8-b6b7-4602-a24b-8fc6ffdf48d2",
+            "content_version": "1",
+            "approval_id": "b985b694-aac2-4717-a9cd-ab3a0dabb517",
+            "status": "reconciling",
+            "dispatch_intent_at": 1792677503179,
+            "external_id": "mail-001",
+            "result_status": null
+          }
+        ],
+        "steps": [
+          {
+            "step_id": "1-apply_labels",
+            "step_kind": "apply_labels",
+            "dispatch_intent_at": 1792677503179,
+            "result_status": null,
+            "external_id": null
+          }
+        ],
+        "provider_receipts": [
+          {
+            "operation_id": "1659f2de-11eb-479a-874e-e3c76f458598",
+            "attempt_id": "7a08c9c8-b6b7-4602-a24b-8fc6ffdf48d2",
+            "step_id": "1-apply_labels",
+            "receive_order": 1,
+            "applied": true,
+            "responded": true
+          }
+        ],
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approval_count": 1,
+        "final_state": "reconciling"
+      }
+    }
+  ]
+}

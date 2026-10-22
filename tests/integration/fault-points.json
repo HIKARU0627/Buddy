@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "B04 の模擬サービスで X01〜X11 を実行するための故障点と期待値（設計 09 §1〜§5、08 §3・§4、ADR 0011）。手で書いたもので、実行した記録ではない。期待する状態の並びは packages/contracts/fixtures/operation-transitions.json の同じ id を正本とし、ここでは故障点・模擬サービスの記録・真の結果と中枢が観測できる結果を加える。",
+  "description": "B04 の故障点と手書きの期待値。状態履歴は operation-transitions.json と整合検査する。実行結果ではない。X10 の expected は B14 の完了期待で、B04 は b04_expected の工程保存・照合判断だけを検査する。approvals は失効分を含む保存件数。",
   "mock_service": {
     "persists_across_core_restart": true,
     "deduplicates_requests": false,
@@ -44,7 +44,28 @@
         "approvals": 1,
         "core_final_state": "succeeded",
         "provider_truth": "applied_once",
-        "core_observed": "succeeded"
+        "core_observed": "succeeded",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-apply_labels": 1
+        },
+        "provider_responses": [true],
+        "stored_steps": [
+          {
+            "step_id": "1-apply_labels",
+            "intent": true,
+            "result_status": "confirmed_success"
+          }
+        ]
       }
     },
     {
@@ -62,7 +83,28 @@
         "approvals": 1,
         "core_final_state": "succeeded",
         "provider_truth": "applied_once",
-        "core_observed": "succeeded"
+        "core_observed": "succeeded",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-apply_labels": 1
+        },
+        "provider_responses": [true],
+        "stored_steps": [
+          {
+            "step_id": "1-apply_labels",
+            "intent": true,
+            "result_status": "confirmed_success"
+          }
+        ]
       }
     },
     {
@@ -82,7 +124,15 @@
         "provider_truth": "not_applied",
         "core_observed": "awaiting_approval_new_content_version",
         "content_version_after": "2",
-        "note": "ADR 0027（D1）で superseded から変更。同じ operation_id で内容版 2 の承認待ちになる（旧版に承認・試行はない）。外部変更は 0 回のまま"
+        "note": "ADR 0027（D1）で superseded から変更。同じ operation_id で内容版 2 の承認待ちになる（旧版に承認・試行はない）。外部変更は 0 回のまま",
+        "state_history": ["awaiting_approval", "awaiting_approval"],
+        "attempts": 0,
+        "revoked_approvals": 0,
+        "step_receives": {},
+        "invalid_json_status": 422,
+        "stale_preview_status": 409,
+        "provider_responses": [],
+        "stored_steps": []
       }
     },
     {
@@ -103,7 +153,13 @@
           "old_scope": 410
         },
         "provider_truth": "not_applied",
-        "core_observed": "awaiting_approval"
+        "core_observed": "awaiting_approval",
+        "state_history": ["awaiting_approval"],
+        "attempts": 0,
+        "revoked_approvals": 0,
+        "step_receives": {},
+        "provider_responses": [],
+        "stored_steps": []
       }
     },
     {
@@ -117,7 +173,18 @@
         "approvals": 1,
         "core_final_state": "cancelled",
         "provider_truth": "not_applied",
-        "core_observed": "cancelled"
+        "core_observed": "cancelled",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "cancelled"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {},
+        "provider_responses": [],
+        "stored_steps": []
       }
     },
     {
@@ -131,7 +198,28 @@
         "approvals": 1,
         "core_final_state": "reconciling",
         "provider_truth": "applied_once",
-        "core_observed": "cancel_accepted_not_cancelled"
+        "core_observed": "cancel_accepted_not_cancelled",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "reconciling"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-apply_labels": 1
+        },
+        "provider_responses": [true],
+        "stored_steps": [
+          {
+            "step_id": "1-apply_labels",
+            "intent": true,
+            "result_status": null
+          }
+        ],
+        "note": "取消は受付だけ。本人の照合で確定するまで工程の成功を記録しない（ADR 0030）。"
       }
     },
     {
@@ -145,7 +233,25 @@
         "core_final_state": "unknown_held",
         "automatic_retry": false,
         "provider_truth": "not_applied",
-        "core_observed": "unknown_held"
+        "core_observed": "unknown_held",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "unknown_held"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {},
+        "provider_responses": [],
+        "stored_steps": [
+          {
+            "step_id": "1-apply_labels",
+            "intent": true,
+            "result_status": "unknown"
+          }
+        ]
       }
     },
     {
@@ -158,7 +264,29 @@
         "approvals": 1,
         "core_final_state": "succeeded",
         "provider_truth": "applied_once",
-        "core_observed": "succeeded_after_exact_reconcile"
+        "core_observed": "succeeded_after_exact_reconcile",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-apply_labels": 1
+        },
+        "automatic_lookups": 1,
+        "provider_responses": [false],
+        "stored_steps": [
+          {
+            "step_id": "1-apply_labels",
+            "intent": true,
+            "result_status": "confirmed_success"
+          }
+        ]
       }
     },
     {
@@ -172,7 +300,35 @@
         "core_final_state": "succeeded",
         "automatic_retry": false,
         "provider_truth": "applied_once_late",
-        "core_observed": "unknown_held_then_succeeded"
+        "core_observed": "unknown_held_then_succeeded",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "unknown_held",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-apply_labels": 1
+        },
+        "before_late_apply": {
+          "state": "unknown_held",
+          "provider_requests": 1,
+          "provider_state_changes": 0
+        },
+        "automatic_lookups": 1,
+        "provider_responses": [false],
+        "stored_steps": [
+          {
+            "step_id": "1-apply_labels",
+            "intent": true,
+            "result_status": "confirmed_success"
+          }
+        ]
       }
     },
     {
@@ -188,7 +344,18 @@
         "provider_truth": "not_applied",
         "core_observed": "awaiting_approval_new_content_version",
         "content_version_after": "2",
-        "note": "ADR 0027（D1）で superseded から変更。同じ operation_id で内容版 2 の承認待ちになり、旧版の承認は revoked、試行は superseded。外部変更は 0 回のまま"
+        "note": "ADR 0027（D1）で superseded から変更。同じ operation_id で内容版 2 の承認待ちになり、旧版の承認は revoked、試行は superseded。外部変更は 0 回のまま",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "awaiting_approval"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 1,
+        "step_receives": {},
+        "provider_responses": [],
+        "stored_steps": []
       }
     },
     {
@@ -206,8 +373,53 @@
         },
         "core_final_state": "succeeded",
         "provider_truth": "draft_once_send_once",
-        "core_observed": "succeeded"
-      }
+        "core_observed": "succeeded",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "unknown_held",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-create_draft": 1,
+          "2-send": 1
+        }
+      },
+      "b04_expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 1,
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "core_final_state": "unknown_held",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "unknown_held"
+        ],
+        "step_receives": {},
+        "decision": {
+          "action": "reconcile",
+          "step_id": "1-create_draft"
+        },
+        "scope": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。",
+        "provider_responses": [],
+        "stored_steps": [
+          {
+            "step_id": "1-create_draft",
+            "intent": true,
+            "result_status": "unknown"
+          }
+        ]
+      },
+      "b04_faults": ["after_dispatch_intent_before_send", "core_restart"]
     },
     {
       "id": "X10-after-send-accepted",
@@ -224,8 +436,53 @@
         },
         "core_final_state": "succeeded",
         "provider_truth": "draft_once_send_once",
-        "core_observed": "succeeded"
-      }
+        "core_observed": "succeeded",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "unknown_held",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-create_draft": 1,
+          "2-send": 1
+        }
+      },
+      "b04_expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 1,
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "core_final_state": "unknown_held",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "unknown_held"
+        ],
+        "step_receives": {},
+        "decision": {
+          "action": "reconcile",
+          "step_id": "2-send"
+        },
+        "scope": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。",
+        "provider_responses": [],
+        "stored_steps": [
+          {
+            "step_id": "2-send",
+            "intent": true,
+            "result_status": "unknown"
+          }
+        ]
+      },
+      "b04_faults": ["after_dispatch_intent_before_send", "core_restart"]
     },
     {
       "id": "X11",
@@ -238,7 +495,113 @@
         "approvals": 1,
         "core_final_state": "succeeded",
         "provider_truth": "applied_once",
-        "core_observed": "client_converges_without_overwrite"
+        "core_observed": "client_converges_without_overwrite",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-apply_labels": 1
+        },
+        "client_state": "succeeded",
+        "client_state_revision": "6",
+        "provider_responses": [true],
+        "stored_steps": [
+          {
+            "step_id": "1-apply_labels",
+            "intent": true,
+            "result_status": "confirmed_success"
+          }
+        ]
+      }
+    }
+  ],
+  "seeds": [86, 1406, 20261022],
+  "qa_cases": [
+    {
+      "id": "QA27-read",
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "attempts": 0,
+        "operations": 0,
+        "result_kind": "schedule_cards",
+        "provider_responses": [],
+        "stored_steps": []
+      }
+    },
+    {
+      "id": "QA27-local",
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 1,
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "core_final_state": "succeeded",
+        "state_history": ["awaiting_approval", "approved", "succeeded"],
+        "step_receives": {},
+        "external_calls": 0,
+        "tasks": 1,
+        "provider_responses": [],
+        "stored_steps": []
+      }
+    },
+    {
+      "id": "QA27-remote",
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "core_final_state": "succeeded",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "reconciling",
+          "succeeded"
+        ],
+        "step_receives": {
+          "1-apply_labels": 1
+        },
+        "provider_responses": [true],
+        "stored_steps": [
+          {
+            "step_id": "1-apply_labels",
+            "intent": true,
+            "result_status": "confirmed_success"
+          }
+        ]
+      }
+    },
+    {
+      "id": "QA28",
+      "faults": ["local_commit_before_ack"],
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 1,
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "core_final_state": "succeeded",
+        "state_history": ["awaiting_approval", "approved", "succeeded"],
+        "step_receives": {},
+        "tasks": 1,
+        "lost_ack_outcome": "unknown",
+        "replayed": true,
+        "changed_replay_reason": "command_id_reused",
+        "provider_responses": [],
+        "stored_steps": []
       }
     }
   ]

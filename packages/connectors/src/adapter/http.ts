@@ -31,10 +31,16 @@ export function callOnce(call: HttpCall): Promise<HttpOutcome> {
     const payload =
       call.body === undefined ? undefined : JSON.stringify(call.body);
     let settled = false;
+    function expire(): void {
+      finish({ kind: 'no_response', reason: 'timeout' });
+      req.destroy();
+    }
     const finish = (outcome: HttpOutcome): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      // 終わった要求は、中止の通知を受けない（同じ signal を使う後の要求に影響しない）。
+      call.signal?.removeEventListener('abort', expire);
       resolve(outcome);
     };
     const req = request(
@@ -74,10 +80,6 @@ export function callOnce(call: HttpCall): Promise<HttpOutcome> {
         );
       },
     );
-    const expire = (): void => {
-      finish({ kind: 'no_response', reason: 'timeout' });
-      req.destroy();
-    };
     const timer = setTimeout(expire, call.timeoutMs);
     if (call.signal?.aborted === true) expire();
     else call.signal?.addEventListener('abort', expire, { once: true });

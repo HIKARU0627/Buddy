@@ -13,11 +13,9 @@ import {
   renameSync,
   writeFileSync,
   existsSync,
-  closeSync,
-  openSync,
-  unlinkSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { acquireDirLock, type DirLock } from './dir-lock.js';
 import { FaultInjector, type FaultContext } from '../fault-injector.js';
 import {
   SYNTHETIC_CLOCK,
@@ -30,7 +28,6 @@ import {
 } from './data.js';
 
 const STATE_FILE = 'provider.json';
-const LOCK_FILE = 'provider.lock';
 const MAX_BODY_BYTES = 64 * 1024;
 
 export interface MockProviderOptions {
@@ -114,58 +111,16 @@ function readBody(req: IncomingMessage): Promise<string | null> {
   });
 }
 
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM は、存在するが権限がないプロセス。
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
-/** 保存ディレクトリの排他。同じディレクトリで 2 つの provider を動かすと、後の保存が先の記録を消すため拒否する。 */
-function acquireLock(lockFile: string): () => void {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const fd = openSync(lockFile, 'wx');
-      writeFileSync(fd, `${process.pid}\n`);
-      closeSync(fd);
-      let released = false;
-      return () => {
-        if (released) return;
-        released = true;
-        try {
-          unlinkSync(lockFile);
-        } catch {
-          // 既に消えていれば何もしない。
-        }
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      const pid = Number.parseInt(readFileSync(lockFile, 'utf8'), 10);
-      if (Number.isInteger(pid) && processAlive(pid))
-        throw new Error(
-          '模擬 provider の保存ディレクトリは、別の provider が使っています。',
-          { cause: error },
-        );
-      // 持ち主のプロセスが終了している（異常終了の残り）。引き継ぐ。
-      unlinkSync(lockFile);
-    }
-  }
-  throw new Error('模擬 provider の保存ディレクトリの排他を取得できません。');
-}
-
 export async function createMockProvider(
   options: MockProviderOptions,
 ): Promise<MockProvider> {
   mkdirSync(options.dir, { recursive: true });
   const file = join(options.dir, STATE_FILE);
-  const releaseLock = acquireLock(join(options.dir, LOCK_FILE));
+  const lock = await acquireDirLock(options.dir);
   try {
-    return await startProvider(options, file, releaseLock);
+    return await startProvider(options, file, lock);
   } catch (error) {
-    releaseLock();
+    await lock.release();
     throw error;
   }
 }
@@ -173,7 +128,7 @@ export async function createMockProvider(
 async function startProvider(
   options: MockProviderOptions,
   file: string,
-  releaseLock: () => void,
+  lock: DirLock,
 ): Promise<MockProvider> {
   const now = options.now ?? (() => SYNTHETIC_CLOCK);
   const injector = options.injector ?? new FaultInjector();
@@ -419,6 +374,9 @@ async function startProvider(
           return send(res, 404, { error: 'not_found' });
         return send(res, 200, state.permission);
       }
+      // 排他の持ち主の確認用（pid の再利用と見分ける）。
+      if (parts.join('/') === 'v1/instance')
+        return send(res, 200, { token: lock.token });
       if (parts.join('/') === 'v1/calendar/events')
         return send(res, 200, { events: state.events });
       if (
@@ -471,6 +429,12 @@ async function startProvider(
     server.listen(options.port ?? 0, '127.0.0.1', resolve);
   });
   const address = server.address() as AddressInfo;
+  try {
+    await lock.setPort(address.port);
+  } catch (error) {
+    server.close();
+    throw error;
+  }
 
   const truth: MockProviderTruth = {
     requestCount: () => state.receipts.length,
@@ -508,15 +472,13 @@ async function startProvider(
   return {
     url: `http://127.0.0.1:${address.port}`,
     truth,
-    close() {
-      return new Promise<void>((resolve) => {
-        server.close(() => {
-          // 閉じた後に排他を手放す（次の provider が同じディレクトリで始められる）。
-          releaseLock();
-          resolve();
-        });
+    async close() {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
         server.closeAllConnections();
       });
+      // 閉じた後に排他を手放す（次の provider が同じディレクトリで始められる）。
+      await lock.release();
     },
   };
 }

@@ -258,6 +258,30 @@ test('模擬 provider の試験用の出口は、Core の製品コードとア�
       [],
       filePath,
     );
+  // 試験の道具を経由した抜け道を塞ぐ: 製品コードは *-test-support を読み込めず、
+  // 試験の例外は公開の出口 @buddy/connectors/testing に限る（connectors の内部の src は読めない）。
+  assert.ok(
+    (
+      await violations(
+        "export * from './probe-test-support.js';\n",
+        'apps/core/src/probe.ts',
+      )
+    ).some((m) => m.ruleId === 'no-restricted-imports'),
+    'product -> test-support',
+  );
+  for (const specifier of [
+    '@buddy/connectors/dist/provider/server.js',
+    '../../../packages/connectors/src/provider/server.js',
+  ])
+    assert.ok(
+      (
+        await violations(
+          `export * from '${specifier}';\n`,
+          'apps/core/src/probe.test.ts',
+        )
+      ).some((m) => m.ruleId === 'no-restricted-imports'),
+      specifier,
+    );
   // アダプターと公開出口: 静的 import・動的 import のどちらも拒否する。
   for (const filePath of [
     'packages/connectors/src/adapter/probe.ts',

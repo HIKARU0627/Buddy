@@ -320,6 +320,9 @@ export default tseslint.config(
           '@buddy/connectors/testing',
           '@buddy/connectors/dist/*',
           '../**/connectors/**',
+          // 試験の道具を経由して試験用の出口を読む抜け道を塞ぐ。
+          '**/*test-support',
+          '**/*test-support.js',
         ],
       ]),
       'no-restricted-syntax': [
@@ -339,6 +342,8 @@ export default tseslint.config(
       'apps/core/**/*.test.ts',
       'apps/core/src/*-test-support.ts',
       'packages/storage/**/*.test.ts',
+      // 試験が子プロセスとして起動する道具。
+      'packages/storage/src/crash-child.ts',
     ],
     languageOptions: { globals: globals.node },
     rules: {
@@ -350,14 +355,18 @@ export default tseslint.config(
           '@buddy/desktop',
           '@buddy/desktop/*',
           '../**/desktop/**',
+          // 例外は公開の出口 @buddy/connectors/testing だけ。connectors の内部の src・dist は読めない。
+          '@buddy/connectors/dist/*',
+          '../**/connectors/**',
         ],
       ]),
       'no-restricted-syntax': [
         'error',
         {
           selector:
-            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop)(\\/|$)/]',
-          message: 'Core / storage は Electron クライアントへ依存しません。',
+            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop|@buddy\\/connectors\\/dist)(\\/|$)/]',
+          message:
+            'Core / storage は Electron クライアントと connectors の内部へ依存しません。',
         },
       ],
     },

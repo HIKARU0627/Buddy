@@ -9,6 +9,7 @@ import {
   type ServerResponse,
 } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { getEventListeners } from 'node:events';
 import test from 'node:test';
 import {
   FAULT_POINTS,
@@ -452,5 +453,24 @@ test(
       { mode: 'barrier', parties: 3 },
       { times: 3 },
     );
+  },
+);
+
+test(
+  'timeoutSignal の listener は、要求が終わったら外す（完了後の中止で完了済みの要求を壊さない）',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t);
+    const controller = new AbortController();
+    const connector = createMockMailConnector({
+      baseUrl: provider.url,
+      timeoutSignal: controller.signal,
+    });
+    for (let i = 0; i < 3; i += 1) await connector.readTarget('mail-001');
+    assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
+    // 失敗（接続できない）で終わった要求も外す。
+    await provider.close();
+    await assert.rejects(connector.readTarget('mail-001'));
+    assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
   },
 );

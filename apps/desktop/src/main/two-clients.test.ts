@@ -204,15 +204,29 @@ async function createClient(
       ipc.push(response);
       return response;
     },
+    // 接続の取り直し（resnapshot）の最中は main が送らずに not_connected を返す（送っていないので、live に戻るのを
+    // 待って送り直しても二重に届かない）。条件（live）を待って送り直す。時間では待たない。
     async work(channel, payload) {
-      const { response } = await created.handleOperationIpc(
-        channel,
-        { channel, request_id: randomUUID(), payload },
-        SCREEN,
-        UNLOCKED,
-      );
-      ipc.push(response);
-      return response;
+      for (let attempt = 0; ; attempt += 1) {
+        await waitUntil(
+          () => created.linkState?.phase === 'live',
+          `${name} live for ${channel}`,
+        );
+        const { response } = await created.handleOperationIpc(
+          channel,
+          { channel, request_id: randomUUID(), payload },
+          SCREEN,
+          UNLOCKED,
+        );
+        if (
+          attempt < 20 &&
+          response.outcome === 'rejected' &&
+          response.reason === 'not_connected'
+        )
+          continue;
+        ipc.push(response);
+        return response;
+      }
     },
     async admin(channel, payload, adminOptions = {}) {
       const { response } = await created.handleAdminIpc(
@@ -1274,7 +1288,7 @@ test(
     const { a, b } = await pairTwoClients(t, hub);
     // A の発言（文字入力）から、承認待ちの操作ができる。外部変更の完了ではなく、まだ何も実行していない。
     const turn = await a.work('desktop.turn_submit', { text: TASK_TEXT });
-    assert.equal(turn.outcome, 'ok');
+    assert.equal(turn.outcome, 'ok', JSON.stringify(turn));
     const result = (
       field(turn, 'turn') as {
         status: string;
@@ -1308,7 +1322,7 @@ test(
     const prepared = await b.work('desktop.operation_preview', {
       ref: entryB.ref,
     });
-    assert.equal(prepared.outcome, 'ok');
+    assert.equal(prepared.outcome, 'ok', JSON.stringify(prepared));
     const preview = field(prepared, 'preview') as {
       preview_ref: string;
       operation_kind: string;
@@ -1336,7 +1350,7 @@ test(
     const approved = await b.work('desktop.operation_approve', {
       ref: preview.preview_ref,
     });
-    assert.equal(approved.outcome, 'ok');
+    assert.equal(approved.outcome, 'ok', JSON.stringify(approved));
     assert.match(String(field(approved, 'receipt')), /^(accepted|durable)$/u);
     assert.equal(b.confirms.length, 1);
     assert.deepEqual(b.confirms[0], {
@@ -1419,7 +1433,7 @@ test(
       assert.equal(decided.kind === 'response' && decided.status, 200);
     });
     const turn = await a.work('desktop.turn_submit', { text: TASK_TEXT });
-    assert.equal(turn.outcome, 'ok');
+    assert.equal(turn.outcome, 'ok', JSON.stringify(turn));
     await waitUntil(() => b.view().operations.length === 1, 'B sees it');
     const ref = b.view().operations[0]?.ref ?? '';
     const preview = async () =>

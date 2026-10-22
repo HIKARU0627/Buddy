@@ -1377,3 +1377,67 @@ test('cancel and retry of an external change are not confirmed when the account 
   });
   assert.equal(ok.confirms.length, 1);
 });
+
+test('a content read as unidentified (a temporary provider failure) is read again when the person presses cancel or retry', async () => {
+  const none = {
+    kind: 'response' as const,
+    status: 200,
+    body: {
+      content_version: '1',
+      content_hash: HASH,
+      state_revision: '1',
+      intent: labelIntent,
+      display: { account_label: null, target: null },
+    },
+  };
+  const full = {
+    kind: 'response' as const,
+    status: 200,
+    body: {
+      ...none.body,
+      display: {
+        account_label: 'user@example.com',
+        target: {
+          subject: '来週の打ち合わせ',
+          sender: 'sato@example.com',
+          received_at: '2026-10-04T18:30:00+09:00',
+        },
+      },
+    },
+  };
+  for (const [kind, state, allowed] of [
+    ['cancel', 'approved', ['cancel']],
+    ['retry', 'not_executed', ['retry']],
+  ] as const) {
+    const h = harness();
+    h.operations = [
+      snapshot({
+        operation_kind: 'mail.labels.change',
+        state,
+        state_revision: '3',
+        allowed_actions: [...allowed],
+      }),
+    ];
+    // 1 回目の読み取りは、provider の一時的な失敗で口座・対象が null（確認できない）。
+    h.displayQueue.push(none, full);
+    const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+    await flush();
+    await flush();
+    assert.equal(h.displayCount, 1);
+    // null のまま押しても確認は出ない（読み直しても null のとき）。
+    h.displayQueue.unshift(none);
+    assert.deepEqual(await h.bridge.command(kind, ref), {
+      ok: false,
+      reason: 'content_unavailable',
+    });
+    assert.equal(h.confirms.length, 0);
+    // provider が戻った後に押し直すと、読み直して確認が出る（キャッシュした null に縛られない）。
+    assert.deepEqual(await h.bridge.command(kind, ref), {
+      ok: true,
+      value: 'accepted',
+    });
+    assert.equal(h.confirms.length, 1);
+    assert.equal(h.confirms[0]?.action, `${kind}_operation`);
+    assert.equal(h.sent.length, 1);
+  }
+});

@@ -641,11 +641,15 @@ export class OperationBridge {
       if (io !== null && !io.permitted) return fail('input_stopped');
       // 確認に出す見出しは、今の内容版・hash と一致する内容だけ。なければ（ロック・切断の後、別端末での改訂など）、
       // 内容の表示用の読み取りで取り直し、取れなければ確認へ進ませない。
+      // 以前に読んだ内容が「確認できていない」（provider の一時的な失敗など）だったときも、本人が押したこのときに読み直す。
       let content = this.#contentFor(target.snapshot);
-      if (content === undefined) {
+      if (content === undefined || !content.identified) {
+        const before = content;
         await this.#serial(target.id, async () => {
           if (gen !== this.#gen) return;
-          if (this.#contentFor(target.snapshot) !== undefined) return;
+          // 待っている間に、別の読み取りが同じ内容を確認できる形で読めていたら、読み直さない。
+          const now = this.#contentFor(target.snapshot);
+          if (now !== undefined && now !== before && now.identified) return;
           await this.#fetchDisplay(target.id, gen);
         });
         if (gen !== this.#gen) return fail('not_connected');

@@ -902,6 +902,17 @@ export class DesktopCoreLink {
       default:
         return this.#reject(requestId, raw.channel, 'invalid_request');
     }
+    // 世代（ロック・切断）が変わっていた場合の返し方。送った後の結果を「送っていない（not_connected）」と答えない:
+    // 発言は中枢へ届いているので、内容を隠して結果不明にする（自動では送り直さない）。承認・取消・再試行・照合・確認の
+    // 受付の応答は内容を含まないので、そのまま返す。承認表示の準備は内容を含むので隠す。
+    if (
+      (generation !== this.#viewGeneration || this.#lockState !== 'unlocked') &&
+      outcome.response.outcome === 'ok'
+    ) {
+      if (raw.channel === 'desktop.turn_submit')
+        return this.#reject(requestId, raw.channel, 'outcome_unknown');
+      if (raw.channel !== 'desktop.operation_preview') return outcome;
+    }
     return this.#withinGeneration(generation, outcome);
   }
 

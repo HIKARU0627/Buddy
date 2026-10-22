@@ -108,6 +108,8 @@ async function createClient(
     readonly confirm?: (request: AdminConfirmRequest) => boolean;
     // 中枢へ送らずに「届いたか分からない」を返す要求（試験で結果不明を作る）。
     readonly dropRequest?: (method: string, path: string) => boolean;
+    // 要求を中枢へ送る直前に呼ぶ（送った後に世代が変わる状況を作る）。
+    readonly beforeSend?: (method: string, path: string) => void;
   } = {},
 ): Promise<Client> {
   const dir = options.dir ?? (await tempDir(t, `bd${name}-`));
@@ -148,6 +150,7 @@ async function createClient(
       return {
         request: (request) => {
           requests.push(`${request.method} ${request.path}`);
+          options.beforeSend?.(request.method, request.path);
           if (options.dropRequest?.(request.method, request.path) === true)
             return Promise.resolve({
               kind: 'unreachable' as const,
@@ -212,6 +215,7 @@ async function createClient(
           () => created.linkState?.phase === 'live',
           `${name} live for ${channel}`,
         );
+        const before = requests.length;
         const { response } = await created.handleOperationIpc(
           channel,
           { channel, request_id: randomUUID(), payload },
@@ -222,8 +226,21 @@ async function createClient(
           attempt < 20 &&
           response.outcome === 'rejected' &&
           response.reason === 'not_connected'
-        )
+        ) {
+          // 送り直すのは、未送信が確かなとき（送る前の not_connected）だけ。この呼び出しで命令・発言の要求を中枢へ
+          // 出していたら、送り直さずに試験を失敗させる（二重に届かせない）。
+          const sentNow = requests
+            .slice(before)
+            .filter((line) =>
+              /^POST .*\/(turns|approve|cancel|retry|reconcile)$/u.test(line),
+            );
+          assert.deepEqual(
+            sentNow,
+            [],
+            `${name} ${channel} sent and then said not_connected`,
+          );
           continue;
+        }
         ipc.push(response);
         return response;
       }
@@ -1599,5 +1616,61 @@ test(
     assert.match(String(reconciled.outcome), /^(ok|rejected)$/u);
     assert.deepEqual(posts(), [`POST /v1/operations/${held}/reconcile`]);
     assertNoOperationValues([a, b], [held]);
+  },
+);
+
+test(
+  'a message sent before a lock and unlock is reported as unknown by the real routes, is not sent again, and shows no answer',
+  { timeout: 60_000 },
+  async (t) => {
+    const dir = await tempDir(t, 'bdg-');
+    const hub = await startHub(t, {
+      dataDir: join(dir, 'd'),
+      port: await freePort(),
+    });
+    const flip = { on: false };
+    const a = await createClient(t, 'A', {
+      beforeSend: (method, path) => {
+        // 発言の要求を中枢へ出す直前に、ロック → 解除（表示の権限の世代が進む）。要求はそのまま届く。
+        if (flip.on && method === 'POST' && path.endsWith('/turns')) {
+          a.link.setLockState('locked');
+          a.link.setLockState('unlocked');
+        }
+      },
+    });
+    a.link.start('unlocked');
+    const pairing = hub.handle.pairing;
+    assert(pairing !== null);
+    const first = await pairing.startFirstDevice();
+    assert(first.ok);
+    await pair(a, hub, first.pairing_code, async () => {
+      await waitUntil(() => a.claims.length === 1, 'A claim');
+      const approved = await pairing.approveFirstDevice(first.pairing_id);
+      assert(approved.ok);
+    });
+    await waitUntil(() => a.link.linkState?.phase === 'live', 'A live');
+    flip.on = true;
+    const { response } = await a.link.handleOperationIpc(
+      'desktop.turn_submit',
+      {
+        channel: 'desktop.turn_submit',
+        request_id: randomUUID(),
+        payload: { text: TASK_TEXT },
+      },
+      SCREEN,
+      UNLOCKED,
+    );
+    flip.on = false;
+    // 送った後の世代の変化: 未送信（not_connected）ではなく結果不明。答えの内容は返さない。
+    assert.equal(response.outcome, 'rejected', JSON.stringify(response));
+    assert.equal(field(response, 'reason'), 'outcome_unknown');
+    assert.equal(JSON.stringify(response).includes('approval'), false);
+    // 中枢へ届いたのは 1 回だけ（試験も main も送り直していない）。操作は 1 件できている。
+    assert.equal(
+      a.requests.filter((line) => line.endsWith('/turns')).length,
+      1,
+    );
+    await waitUntil(() => a.view().operations.length === 1, 'A sees it');
+    assert.equal(a.view().operations.length, 1);
   },
 );

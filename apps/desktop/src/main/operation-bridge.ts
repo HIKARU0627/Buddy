@@ -319,8 +319,10 @@ export class OperationBridge {
       scoped: true,
       expectedScopeId: scope,
     });
-    if (gen !== this.#gen) return fail('not_connected');
+    // 送る前に送れなかった（未送信）だけを not_connected にする。送った後に世代が変わったときは、結果を画面へ返さず、
+    // 結果不明にする（未送信と答えると、本人も試験も同じ発言を別の要求として送り直し、二重に届く）。
     if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
     // 発言は読み取り・聞き返し・承認待ちの操作の作成だけで外部変更ではない。結果が分からなければ、
     // 自動では送り直さず、本人がもう一度送る（同じ発言の再送は新しい受付になる）。
     if (outcome.kind === 'unknown') return fail('outcome_unknown');

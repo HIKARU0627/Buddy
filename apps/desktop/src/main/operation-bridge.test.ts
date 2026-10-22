@@ -86,6 +86,8 @@ interface Harness {
   getQueue: Reply[];
   getGate: ((n: number) => Promise<void>) | null;
   getCount: number;
+  // 要求を出した直後（応答を返す前）に呼ぶ（送った後に世代が変わる状況を作る）。
+  onRequest: ((path: string) => void) | null;
 }
 
 function harness(): Harness {
@@ -115,6 +117,7 @@ function harness(): Harness {
     getQueue: [],
     getGate: null,
     getCount: 0,
+    onRequest: null,
   };
   const connection = {
     get state() {
@@ -122,6 +125,7 @@ function harness(): Harness {
     },
     async request(request: { path: string; body?: unknown }) {
       h.requests.push({ path: request.path, body: request.body });
+      h.onRequest?.(request.path);
       if (request.path.endsWith('/preview')) {
         h.previewCount += 1;
         await h.previewGate?.(h.previewCount);
@@ -1440,4 +1444,68 @@ test('a content read as unidentified (a temporary provider failure) is read agai
     assert.equal(h.confirms[0]?.action, `${kind}_operation`);
     assert.equal(h.sent.length, 1);
   }
+});
+
+test('a turn sent before the generation changed is reported as unknown, never as not sent', async () => {
+  const session: Reply = {
+    kind: 'response',
+    status: 201,
+    body: {
+      request_id: id(1),
+      session_id: id(0x44),
+      storage_mode: 'normal',
+      route_revision: '0',
+    },
+  };
+  const answered: Reply = {
+    kind: 'response',
+    status: 200,
+    body: {
+      request_id: id(2),
+      session_id: id(0x44),
+      turn_id: id(0x45),
+      input_id: id(0x46),
+      workflow_id: null,
+      status: 'clarification',
+      result_view: null,
+      reply_text: '聞き返し',
+    },
+  };
+  // 応答が成功だった場合・応答が失われた場合・中枢が拒否した場合: どれも、送った後の世代の変化は結果不明（内容は返さない）。
+  for (const reply of [
+    answered,
+    { kind: 'unknown' } as Reply,
+    { kind: 'response', status: 409, body: {} } as Reply,
+  ]) {
+    const h = harness();
+    h.replies.push(session, reply);
+    // 発言の送信を出した直後（応答の前）に、ロック・切断で世代が進む。
+    h.onRequest = (path) => {
+      if (path.endsWith('/turns')) h.bridge.reset();
+    };
+    assert.deepEqual(await h.bridge.submitTurn('こんにちは'), {
+      ok: false,
+      reason: 'outcome_unknown',
+    });
+    // 送ったのは 1 回だけで、送り直さない。会話は今の世代に戻さない。
+    assert.equal(
+      h.requests.filter((request) => request.path.endsWith('/turns')).length,
+      1,
+    );
+    h.onRequest = null;
+    h.replies.push(session, answered);
+    const again = await h.bridge.submitTurn('こんにちは');
+    assert(again.ok);
+    assert.equal(
+      h.requests.filter((request) => request.path === '/v1/sessions').length,
+      2,
+    );
+  }
+  // 送る前に送れなかった（未送信）なら not_connected。
+  const unsent = harness();
+  unsent.replies.push(session, { kind: 'not_sent', reason: 'not_connected' });
+  assert.deepEqual(await unsent.bridge.submitTurn('こんにちは'), {
+    ok: false,
+    reason: 'not_connected',
+  });
 });

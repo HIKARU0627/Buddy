@@ -24,3 +24,4 @@ export * from './snapshot-store.js';
 export * from './event-store.js';
 // B03-03: 自宅の登録値と端末ごとの最新の報告（ADR 0022）。
 export * from './home-network-store.js';
+export * from './conversation-store.js';

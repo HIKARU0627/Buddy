@@ -1,4 +1,4 @@
-// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
+// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022、0004 の表は ADR 0029）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
 // retention は domain の RETENTION_RULES の ID、または期限の持ち方の説明。body は本文の置き場所。
 // transaction は同じ短い transaction で書く表の組（08 §3・§5、11 §1A・§9）。
 
@@ -51,6 +51,12 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     body: 'none',
     retention: 'latest_per_device',
     transaction: 'home_network',
+  },
+  // 0004（B04-03、ADR 0029）。発言への応答（ID・状態・決まった文だけ）。発言と同じ期限。
+  turn_responses: {
+    body: 'none',
+    retention: 'turn_normal_or_turn_extended',
+    transaction: 'conversation',
   },
   connections: {
     body: 'sealed_refs',

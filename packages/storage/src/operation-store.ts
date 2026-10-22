@@ -17,9 +17,10 @@ import {
   approvalDecision,
   canTransition,
   commandGuard,
+  planContentRevision,
   replayDecision,
 } from '@buddy/domain';
-import type { OperationState } from '@buddy/domain';
+import type { OperationRoute, OperationState } from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import {
@@ -36,6 +37,8 @@ import type {
   PrepareOperationCommand,
   RecordResultCommand,
   RecoverAfterRestartCommand,
+  ReviseContentCommand,
+  SealedBlobInput,
   StoreOutcome,
 } from './operation-commands.js';
 
@@ -192,7 +195,7 @@ interface OperationRow {
   operation_id: string;
   workflow_id: string | null;
   kind: string;
-  effect_route: string;
+  effect_route: OperationRoute;
   current_content_version: number;
   state: OperationState;
   state_revision: number;
@@ -541,7 +544,7 @@ function requireOperation(
 
 // --- 書込みの部品（同じ transaction の中で呼ぶ） ---
 
-function appendEvent(
+export function appendEvent(
   db: SqliteDatabase,
   context: StoreContext,
   operationId: string,
@@ -609,7 +612,7 @@ function advance(
   operation: OperationRow,
   to: OperationState,
 ): number {
-  if (!canTransition(operation.state, to))
+  if (!canTransition(operation.state, to, operation.effect_route))
     throw new CommandRejection(['transition_not_allowed']);
   const next = operation.state_revision + 1;
   const completed = to === 'succeeded' || to === 'cancelled';
@@ -651,6 +654,33 @@ function durable(
     existing: options.existing ?? false,
     dispatched: options.dispatched ?? null,
   };
+}
+
+// 内容版の行と、その確定 intent の暗号文（sealed_blobs、持ち主は operation_versions の版）を書く。
+export function insertVersion(
+  db: SqliteDatabase,
+  context: StoreContext,
+  operationId: string,
+  contentVersion: number,
+  contentHash: string,
+  intent: SealedBlobInput,
+): void {
+  db.prepare(
+    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'operation_intent', 'operation_versions', ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+  ).run(
+    intent.blob_id,
+    operationId,
+    contentVersion,
+    intent.format_version,
+    intent.key_id,
+    bytes(intent.nonce),
+    bytes(intent.ciphertext),
+    bytes(intent.tag),
+    context.now,
+  );
+  db.prepare(
+    'INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(operationId, contentVersion, contentHash, intent.blob_id, context.now);
 }
 
 // --- 命令ごとの本体 ---
@@ -700,26 +730,13 @@ function createOperation(
     state,
     context.now,
   );
-  const intent = command.intent;
-  db.prepare(
-    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'operation_intent', 'operation_versions', ?, 1, ?, ?, ?, ?, ?, ?, NULL)",
-  ).run(
-    intent.blob_id,
+  insertVersion(
+    db,
+    context,
     command.operation_id,
-    intent.format_version,
-    intent.key_id,
-    bytes(intent.nonce),
-    bytes(intent.ciphertext),
-    bytes(intent.tag),
-    context.now,
-  );
-  db.prepare(
-    'INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at) VALUES (?, 1, ?, ?, ?)',
-  ).run(
-    command.operation_id,
+    1,
     command.content_hash,
-    intent.blob_id,
-    context.now,
+    command.intent,
   );
   if (auto !== null)
     db.prepare(
@@ -812,7 +829,7 @@ function prepareOperation(
 ): StoreOutcome {
   const operation = requireOperation(db, command);
   requireStateRevision(command, operation);
-  if (!canTransition(operation.state, 'preparing'))
+  if (!canTransition(operation.state, 'preparing', operation.effect_route))
     throw new CommandRejection(['transition_not_allowed']);
   guard(
     db,
@@ -858,7 +875,7 @@ function recordDispatchIntent(
 ): StoreOutcome {
   const operation = requireOperation(db, command);
   requireStateRevision(command, operation);
-  if (!canTransition(operation.state, 'dispatching'))
+  if (!canTransition(operation.state, 'dispatching', operation.effect_route))
     throw new CommandRejection(['transition_not_allowed']);
   const attempt = attemptRow(db, command.attempt_id);
   if (
@@ -942,7 +959,7 @@ function recordResult(
 ): StoreOutcome {
   const operation = requireOperation(db, command);
   requireStateRevision(command, operation);
-  if (!canTransition(operation.state, command.to))
+  if (!canTransition(operation.state, command.to, operation.effect_route))
     throw new CommandRejection(['transition_not_allowed']);
   const attempt = attemptRow(db, command.attempt_id);
   // 結果を記録できるのは、操作の現在の状態と同じ状態にある送出済みの試行だけ。
@@ -985,7 +1002,7 @@ function cancelOperation(
       reason: 'dispatch_boundary_crossed',
     };
   }
-  if (!canTransition(operation.state, 'cancelled'))
+  if (!canTransition(operation.state, 'cancelled', operation.effect_route))
     throw new CommandRejection(['operation_finished']);
   db.prepare(
     "UPDATE operation_attempts SET status = 'cancelled' WHERE operation_id = ? AND status = 'preparing'",
@@ -1029,6 +1046,69 @@ function recoverAfterRestart(
   );
 }
 
+// 内容版の更新（D1、ADR 0027・0029）。domain の planContentRevision で決め、旧版の有効な承認の失効・新しい版の
+// 保存・承認待ちへの遷移を一つの transaction で行う。実行中の試行がある操作は試行の superseded（0001 の CHECK に
+// ない状態）が要るため、B04-04 まで拒否する。
+function reviseContent(
+  db: SqliteDatabase,
+  context: StoreContext,
+  command: ReviseContentCommand,
+): StoreOutcome {
+  const operation = requireOperation(db, command);
+  requireStateRevision(command, operation);
+  const current = operation.current_content_version;
+  const currentHash = versionHash(db, operation.operation_id, current) ?? '';
+  const effective = effectiveApproval(db, operation.operation_id, current);
+  const active = db
+    .prepare(
+      "SELECT count(*) AS value FROM operation_attempts WHERE operation_id = ? AND status IN ('preparing', 'dispatching', 'reconciling')",
+    )
+    .get(operation.operation_id) as { value: number };
+  const plan = planContentRevision({
+    state: operation.state,
+    current_content_version: toText(current),
+    current_content_hash: currentHash,
+    next_content_hash: command.content_hash,
+    has_valid_approval: effective?.status === 'valid',
+    has_active_attempt: active.value > 0,
+  });
+  if (!plan.ok) throw new CommandRejection(plan.reasons);
+  if (plan.supersede_attempt) throw new CommandRejection(['attempt_active']);
+  if (command.content_version !== plan.next_content_version)
+    throw new CommandRejection(['content_version_changed']);
+  guard(
+    db,
+    command,
+    toText(operation.state_revision),
+    operation.workflow_id,
+    null,
+  );
+  const next = toInt(plan.next_content_version);
+  insertVersion(
+    db,
+    context,
+    operation.operation_id,
+    next,
+    command.content_hash,
+    command.intent,
+  );
+  if (plan.revoke_approval)
+    db.prepare(
+      "UPDATE approvals SET status = 'revoked' WHERE operation_id = ? AND content_version = ? AND status = 'valid'",
+    ).run(operation.operation_id, current);
+  const updated = db
+    .prepare(
+      'UPDATE operations SET current_content_version = ? WHERE operation_id = ? AND state_revision = ?',
+    )
+    .run(next, operation.operation_id, operation.state_revision);
+  if (updated.changes !== 1)
+    throw new CommandRejection(['state_revision_changed']);
+  return durable(
+    command,
+    advance(db, context, command, operation, plan.next_state),
+  );
+}
+
 function applyCommand(
   db: SqliteDatabase,
   context: StoreContext,
@@ -1047,6 +1127,8 @@ function applyCommand(
       return recordResult(db, context, command);
     case 'operation.cancel':
       return cancelOperation(db, context, command);
+    case 'operation.revise_content':
+      return reviseContent(db, context, command);
     case 'operation.recover_after_restart':
       return recoverAfterRestart(db, context, command);
   }

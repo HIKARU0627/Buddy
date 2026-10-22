@@ -17,6 +17,7 @@ export * from './hub-host.js';
 export * from './intents.js';
 // B03-07: 中枢の待ち受けのアドレスの判定（ADR 0020）。
 export * from './listen-address.js';
+export * from './local-time.js';
 export * from './memory.js';
 export * from './notification.js';
 // B04-01: 操作の工程（D3、ADR 0027）。

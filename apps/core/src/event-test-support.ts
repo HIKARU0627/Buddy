@@ -37,7 +37,7 @@ import type {
   TestDevice,
 } from './api-test-support.js';
 import { startCore } from './core.js';
-import type { CoreHandle, StartCoreOptions } from './core.js';
+import type { CoreHandle, CoreTurnOptions, StartCoreOptions } from './core.js';
 import { TLS_CERTIFICATE_FILE } from './tls-identity.js';
 
 // 合成のデータ鍵（値に意味はない）。
@@ -83,6 +83,9 @@ export async function startEventCore(
     readonly env?: MutableEnvironment;
     // true なら lockState を注入せず、Core の既定（Buddy-Lock-State の申告。ADR 0025）を使う。
     readonly lockFromHeader?: boolean;
+    // 発言の解釈・対象の解決（ADR 0029）。
+    readonly turns?: CoreTurnOptions;
+    readonly now?: () => Date;
   } = {},
 ): Promise<EventCore> {
   const dataDir =
@@ -111,8 +114,10 @@ export async function startEventCore(
       environment,
       ...(options.previewValid === false ? {} : { previewValid: () => true }),
       eventStream: { pingIntervalMs: options.pingIntervalMs ?? 200 },
+      ...(options.turns === undefined ? {} : { turns: options.turns }),
     },
     ...(options.events === undefined ? {} : { events: options.events }),
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
   onCleanup(t, () => handle.stop('test').catch(() => undefined));
   assert(handle.https !== null);

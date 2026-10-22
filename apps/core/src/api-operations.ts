@@ -37,7 +37,7 @@ export interface OperationRouteStore extends EventQueryStore {
 }
 
 // preview の有効性（07 §3: 端末・接続範囲・表示内容に結び付き、接続終了・ロック・内容変更で無効）。
-// preview の発行（previewOperation）は後の Issue で作る。それまでの既定は「有効な preview はない」（安全側）。
+// 発行と照合は api-turns.ts（ADR 0029）。渡されなければ「有効な preview はない」（安全側）。
 export type PreviewCheck = (input: {
   readonly device_id: string;
   readonly command_scope_id: string;
@@ -55,6 +55,9 @@ export interface OperationRoutesOptions {
   readonly environment: RequestEnvironment;
   readonly now?: () => number;
   readonly previewValid?: PreviewCheck;
+  // 承認の命令を送る直前（同期）に preview がまだ無効化されていないか（ADR 0029）。previewValid の非同期の
+  // 照合の後にロック・接続の終了が起きても取り逃さないため、命令の送信と同じ同期の区間で確かめる。
+  readonly previewCurrent?: (previewId: string) => boolean;
 }
 
 // 版の照合（expected_revision）をこのファイルで行う経路。
@@ -252,6 +255,7 @@ export function createOperationRoutes(
   const { store, feed, environment } = options;
   const now = options.now ?? (() => Date.now());
   const previewValid: PreviewCheck = options.previewValid ?? (() => false);
+  const previewCurrent = options.previewCurrent ?? (() => true);
 
   const lockStateOf = async (request: ApiHandlerRequest) =>
     environment.lockState({
@@ -365,7 +369,14 @@ export function createOperationRoutes(
       operation_id: request.params['id'] ?? '',
     });
     if (view === null) return apiErrorResponse(409, 'conflict', requestId);
-    const command = await build(view);
+    const built = await build(view);
+    // 承認では、送る直前に preview の生死を同期で確かめ直す（この後の無効化は承認の後の出来事になる）。
+    const command: DbCommand =
+      built.kind === 'operation.approve' &&
+      built.preview_valid &&
+      (built.preview_id === null || !previewCurrent(built.preview_id))
+        ? { ...built, preview_valid: false }
+        : built;
     const outcome = await store.submit(command).result;
     return receiptResponse(requestId, outcome);
   };

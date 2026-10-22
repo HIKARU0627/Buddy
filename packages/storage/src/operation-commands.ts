@@ -18,6 +18,8 @@ export const DB_COMMAND_KINDS = [
   'operation.cancel',
   // 起動時の回復（08 §4、ADR 0019）。送出意図の記録の後に中枢が止まった試行を unknown_held へ回す。
   'operation.recover_after_restart',
+  // 内容版の更新（D1、ADR 0027・0029）。同じ operation_id で content_version を上げ、承認待ちへ戻す。
+  'operation.revise_content',
 ] as const;
 
 export type DbCommandKind = (typeof DB_COMMAND_KINDS)[number];
@@ -118,8 +120,19 @@ export interface RecoverAfterRestartCommand extends DbCommandBase<'operation.rec
   readonly attempt_id: string;
 }
 
+// 内容版の更新（D1、ADR 0027・0029）。新しい版の確定 intent（暗号化済み）と hash を渡す。旧版の有効な承認は
+// 同じ transaction で revoked にする。実行中の試行（preparing）がある操作の更新は B04-04（試行の superseded）で、
+// それまでは拒否する（attempt_active）。
+export interface ReviseContentCommand extends DbCommandBase<'operation.revise_content'> {
+  // 新しい内容版（現在の版＋1）。
+  readonly content_version: string;
+  readonly content_hash: string;
+  readonly intent: SealedBlobInput;
+}
+
 export type DbCommand =
   | CreateOperationCommand
+  | ReviseContentCommand
   | ApproveOperationCommand
   | PrepareOperationCommand
   | DispatchIntentCommand
@@ -219,6 +232,22 @@ function isBytes(value: unknown, length?: number): boolean {
   );
 }
 
+function isSealedBlob(value: unknown): boolean {
+  const intent = value as SealedBlobInput | null | undefined;
+  return (
+    typeof intent === 'object' &&
+    intent !== null &&
+    isId(intent.blob_id) &&
+    Number.isSafeInteger(intent.format_version) &&
+    intent.format_version >= 1 &&
+    typeof intent.key_id === 'string' &&
+    intent.key_id.length > 0 &&
+    isBytes(intent.nonce, 12) &&
+    isBytes(intent.ciphertext) &&
+    isBytes(intent.tag, 16)
+  );
+}
+
 // 命令の形の検査。理由が空なら形は正しい。状態・版の照合は worker の中で DB と行う。
 export function commandShapeReasons(command: DbCommand): string[] {
   const reasons: string[] = [];
@@ -262,20 +291,7 @@ export function commandShapeReasons(command: DbCommand): string[] {
       if (!['local_command', 'remote_mutation'].includes(command.effect_route))
         reasons.push('effect_route_invalid');
       if (!isHash(command.content_hash)) reasons.push('content_hash_invalid');
-      const intent = command.intent as SealedBlobInput | null | undefined;
-      if (
-        typeof intent !== 'object' ||
-        intent === null ||
-        !isId(intent.blob_id) ||
-        !Number.isSafeInteger(intent.format_version) ||
-        intent.format_version < 1 ||
-        typeof intent.key_id !== 'string' ||
-        intent.key_id.length === 0 ||
-        !isBytes(intent.nonce, 12) ||
-        !isBytes(intent.ciphertext) ||
-        !isBytes(intent.tag, 16)
-      )
-        reasons.push('intent_invalid');
+      if (!isSealedBlob(command.intent)) reasons.push('intent_invalid');
       const auto = command.auto_approval;
       if (
         auto !== null &&
@@ -339,6 +355,16 @@ export function commandShapeReasons(command: DbCommand): string[] {
       break;
     case 'operation.recover_after_restart':
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');
+      break;
+    case 'operation.revise_content':
+      if (
+        !isRevision(command.content_version) ||
+        command.content_version === '0' ||
+        command.content_version === '1'
+      )
+        reasons.push('content_version_invalid');
+      if (!isHash(command.content_hash)) reasons.push('content_hash_invalid');
+      if (!isSealedBlob(command.intent)) reasons.push('intent_invalid');
       break;
   }
   return [...new Set(reasons)];

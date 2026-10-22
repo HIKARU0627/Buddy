@@ -1,9 +1,10 @@
 // 模擬 provider とアダプターの試験。期待値は手で書いた値で、実装の処理から作らない。
 import assert from 'node:assert/strict';
+import { request } from 'node:http';
 import test from 'node:test';
 import { createMockMailConnector } from './index.js';
 import { createMockProvider } from './testing.js';
-import { startProvider, TEST_TIMEOUT_MS } from './test-support.js';
+import { startProvider, TEST_TIMEOUT_MS, withTimeout } from './test-support.js';
 
 const OPTIONS = { timeout: TEST_TIMEOUT_MS };
 const CLOCK = '2026-10-05T09:00:00+09:00';
@@ -399,5 +400,59 @@ test(
     await first.close();
     const second = await startProvider(t, { dir: first.dir });
     assert.equal(second.truth.requestCount(), 0);
+  },
+);
+
+test(
+  '閉じるときは、本文を受信している最中の要求の処理を終えてから排他を手放し、古い状態を保存し直さない',
+  OPTIONS,
+  async (t) => {
+    const first = await startProvider(t, { now: () => CLOCK });
+    // 本文の途中までしか送らない要求（content-length より少ない）を開いたままにする。
+    const partial = request(
+      {
+        host: '127.0.0.1',
+        port: new URL(first.url).port,
+        method: 'POST',
+        path: '/v1/mail/messages/mail-001/labels',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': '1000',
+        },
+      },
+      () => undefined,
+    );
+    partial.on('error', () => undefined);
+    partial.write('{"operation_id":"op-old"');
+    // sleep ではなく、処理中の件数が 1 になるまで、イベントループを譲りながら待つ。
+    await withTimeout(
+      (async () => {
+        while (first.truth.inflightCount() < 1)
+          await new Promise<void>((resolve) => setImmediate(resolve));
+      })(),
+      5_000,
+      'inflight',
+    );
+
+    await first.close();
+    assert.equal(first.truth.inflightCount(), 0);
+    const second = await startProvider(t, { dir: first.dir, now: () => CLOCK });
+    const connector = createMockMailConnector({ baseUrl: second.url });
+    await connector.changeLabels(
+      { operation_id: 'op-new', attempt_id: 'attempt-1' },
+      { remote_id: 'mail-001', add: ['follow-up'], remove: [] },
+    );
+    await second.close();
+
+    // 閉じた後も、古い要求の処理は受信記録を足さず、保存した状態を戻さない。
+    const third = await startProvider(t, { dir: first.dir, now: () => CLOCK });
+    assert.deepEqual(
+      third.truth.receipts().map((r) => [r.receive_order, r.operation_id]),
+      [[1, 'op-new']],
+    );
+    assert.equal(third.truth.stateChangeCount(), 1);
+    assert.deepEqual(third.truth.snapshot().mails['mail-001']?.labels, [
+      'follow-up',
+    ]);
   },
 );

@@ -49,6 +49,8 @@ export interface MockProviderTruth {
   stateChangeCount(): number;
   receipts(): readonly MockReceipt[];
   snapshot(): ProviderState;
+  /** 処理中の要求の件数（本文を受信している最中のものを含む）。 */
+  inflightCount(): number;
   /** 保留中（response_timeout_then_late_apply）の件数。 */
   heldCount(): number;
   /** 保留中の要求を、受信順に遅れて適用する。適用した件数を返す。 */
@@ -111,6 +113,7 @@ function readBody(req: IncomingMessage): Promise<string | null> {
     });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', () => resolve(null));
+    req.on('close', () => resolve(null));
   });
 }
 
@@ -150,8 +153,11 @@ async function startProvider(
 
   const instanceId = randomUUID();
   let released = false;
+  // close() を始めた後は、受信記録の追加も保存も行わない。
+  let closing = false;
   // 状態と受信記録は 1 つのファイルへまとめて書き、途中で止まっても食い違わないようにする。
   function persist(): void {
+    if (closing) return;
     const temp = `${file}.${String(process.pid)}-${instanceId}.tmp`;
     writeFileSync(temp, `${JSON.stringify(state)}\n`, 'utf8');
     renameSync(temp, file);
@@ -159,6 +165,8 @@ async function startProvider(
   if (!existsSync(file)) persist();
 
   const held: Held[] = [];
+  // 処理中のハンドラー。close() は、これが終わってから排他を手放す。
+  const inflight = new Set<Promise<void>>();
 
   function send(res: ServerResponse, status: number, body: unknown): void {
     const text = JSON.stringify(body);
@@ -279,6 +287,8 @@ async function startProvider(
     ) => Plan,
   ): Promise<void> {
     const text = await readBody(req);
+    // 閉じ始めた後に届いた（本文の受信が終わった）要求は、記録も保存もしない。
+    if (closing) return;
     let parsed: Record<string, unknown> | null = null;
     if (text !== null) {
       try {
@@ -369,10 +379,13 @@ async function startProvider(
     const parts = url.pathname.split('/').filter((part) => part.length > 0);
     const method = req.method ?? 'GET';
     const run = (task: Promise<void>): void => {
-      task.catch(() => {
-        if (!res.headersSent) send(res, 500, { error: 'internal_error' });
-        else res.socket?.destroy();
-      });
+      const tracked: Promise<void> = task
+        .catch(() => {
+          if (!res.headersSent) send(res, 500, { error: 'internal_error' });
+          else res.socket?.destroy();
+        })
+        .finally(() => inflight.delete(tracked));
+      inflight.add(tracked);
     };
     if (method === 'GET') {
       // 読み取りは状態を変えず、要求の回数にも数えない。
@@ -444,6 +457,7 @@ async function startProvider(
     stateChangeCount: () => state.state_changes,
     receipts: () => structuredClone(state.receipts),
     snapshot: () => structuredClone(state),
+    inflightCount: () => inflight.size,
     heldCount: () => held.length,
     releaseLateApplies() {
       const entries = held.splice(0, held.length);
@@ -476,10 +490,13 @@ async function startProvider(
     url: `http://127.0.0.1:${address.port}`,
     truth,
     async close() {
+      closing = true;
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
         server.closeAllConnections();
       });
+      // 処理中のハンドラーが終わるのを待ってから、排他を手放す。
+      await Promise.allSettled([...inflight]);
       // 閉じた後に排他を手放す（次の provider が同じディレクトリで始められる）。
       // 2 回目以降の close() は、同じディレクトリで起動し直した別の provider の使用を外さない。
       if (!released) {

@@ -102,6 +102,7 @@ test(
           attempt_id: null,
           attempt_status: null,
           cancel_requested: false,
+          steps: [],
           request_revision: null,
           forgetting_generation: '0',
           created_at: 1_000_000,

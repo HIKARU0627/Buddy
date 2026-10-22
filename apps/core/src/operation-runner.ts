@@ -17,10 +17,15 @@ import {
   OPERATION_KIND_RULES,
   canAutoReconcile,
   isOperationKind,
+  nextStepDecision,
   reconcileOutcome,
-  stepId,
 } from '@buddy/domain';
-import type { ReconcileObservation } from '@buddy/domain';
+import type {
+  OperationStepKind,
+  OperationStepRecord,
+  ReconcileObservation,
+  StepResultStatus,
+} from '@buddy/domain';
 import { openOperationIntent, sealOperationIntent } from '@buddy/storage';
 import type {
   DataKeyMaterial,
@@ -119,6 +124,34 @@ export function labelChangeObserved(
   return applied
     ? { kind: 'found', external_id: target.remote_id }
     : { kind: 'not_found' };
+}
+
+const STEP_KINDS: readonly string[] = [
+  'apply_labels',
+  'create_draft',
+  'send',
+  'create_task',
+];
+const STEP_RESULTS: readonly string[] = [
+  'confirmed_success',
+  'confirmed_not_executed',
+  'unknown',
+];
+
+// 保存した工程の行を domain の形にする。知らない値の行は、順序の食い違いとして nextStepDecision に止めさせる。
+function stepRecords(current: OperationView): OperationStepRecord[] {
+  return current.steps.map((row) => ({
+    step_id: row.step_id,
+    step_kind: (STEP_KINDS.includes(row.step_kind)
+      ? row.step_kind
+      : 'unknown') as OperationStepKind,
+    dispatch_intent_at: row.dispatch_intent_at,
+    result_status:
+      row.result_status === null || STEP_RESULTS.includes(row.result_status)
+        ? (row.result_status as StepResultStatus | null)
+        : 'unknown',
+    external_id: row.external_id,
+  }));
 }
 
 export function createOperationRunner(
@@ -456,6 +489,18 @@ export function createOperationRunner(
       current.attempt_id !== attemptId
     )
       return;
+    // 工程の仕組み（D3）: 保存した工程から次に行うことを決める。送出意図のある工程は再送しない（照合だけ）。
+    const decision = nextStepDecision(
+      OPERATION_KIND_RULES['mail.labels.change'].steps,
+      stepRecords(current),
+    );
+    if (decision.action !== 'dispatch') {
+      log(
+        `操作 ${current.operation_id} の工程は送出できません（${decision.action}）。`,
+      );
+      return;
+    }
+    const step = decision.step_id;
     const dispatched = await submit({
       ...base(current, intent.permission_revision),
       kind: 'operation.dispatch_intent',
@@ -466,11 +511,11 @@ export function createOperationRunner(
         access: checked.access,
         permission_revision: checked.permission_revision,
       },
+      step: { step_id: step, step_kind: decision.step_kind },
     });
     if (dispatched.outcome !== 'durable' || dispatched.dispatch_permit === null)
       return;
     const operationId = current.operation_id;
-    const step = stepId(0, 'apply_labels');
     await faults.hit('after_dispatch_intent_before_send', {
       operation_id: operationId,
       step_id: step,

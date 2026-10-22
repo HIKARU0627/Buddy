@@ -945,6 +945,16 @@ function recordDispatchIntent(
     .run(context.now, attempt.attempt_id);
   if (updated.changes !== 1)
     throw new CommandRejection(['attempt_not_preparing']);
+  // 工程の送出意図（D3）。同じ工程の二度目の送出意図は主キーで拒否する（再送しない最終の保証）。
+  if (command.step !== undefined && command.step !== null)
+    db.prepare(
+      'INSERT INTO operation_steps (attempt_id, step_id, step_kind, external_id, dispatch_intent_at, result_status) VALUES (?, ?, ?, NULL, ?, NULL)',
+    ).run(
+      attempt.attempt_id,
+      command.step.step_id,
+      command.step.step_kind,
+      context.now,
+    );
   const committed = advance(db, context, command, operation, 'dispatching');
   return durable(command, committed, {
     dispatched: {
@@ -985,6 +995,11 @@ function recordResult(
   db.prepare(
     'UPDATE operation_attempts SET status = ?, result_status = coalesce(?, result_status), external_id = coalesce(?, external_id) WHERE attempt_id = ?',
   ).run(command.to, resultStatus, command.external_id, attempt.attempt_id);
+  // 送出意図のある工程のうち、結果が確定していないものに同じ結果を記録する（D3。1 工程の操作）。
+  if (resultStatus !== null)
+    db.prepare(
+      "UPDATE operation_steps SET result_status = ?, external_id = coalesce(?, external_id) WHERE attempt_id = ? AND dispatch_intent_at IS NOT NULL AND coalesce(result_status, 'unknown') = 'unknown'",
+    ).run(resultStatus, command.external_id, attempt.attempt_id);
   // 成功した送出で承認を使い終える。未実行の確定では同じ承認を本人の明示再試行へ戻せる（08 §4）。
   if (command.to === 'succeeded')
     db.prepare(
@@ -1051,6 +1066,10 @@ function recoverAfterRestart(
     .run(attempt.attempt_id);
   if (updated.changes !== 1)
     throw new CommandRejection(['attempt_not_dispatched']);
+  // 送出意図のある工程も結果不明にする（D3。再送せず照合だけにする）。
+  db.prepare(
+    "UPDATE operation_steps SET result_status = 'unknown' WHERE attempt_id = ? AND dispatch_intent_at IS NOT NULL AND result_status IS NULL",
+  ).run(attempt.attempt_id);
   return durable(
     command,
     advance(db, context, command, operation, 'unknown_held'),

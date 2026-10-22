@@ -114,6 +114,11 @@ export interface DispatchIntentCommand extends DbCommandBase<'operation.dispatch
   readonly reservation_id: string | null;
   // connection_id が null の外部変更で使う、送出の直前の接続の読み直し。
   readonly observed_connection?: ObservedConnection | null;
+  // 送出する工程（D3、ADR 0030）。あれば operation_steps に送出意図と同じ transaction で記録する。
+  readonly step?: {
+    readonly step_id: string;
+    readonly step_kind: string;
+  } | null;
 }
 
 export type ResultState =
@@ -378,6 +383,17 @@ export function commandShapeReasons(command: DbCommand): string[] {
           !isRevision(command.observed_connection.permission_revision))
       )
         reasons.push('observed_connection_invalid');
+      if (
+        command.step !== undefined &&
+        command.step !== null &&
+        (typeof command.step !== 'object' ||
+          typeof command.step.step_id !== 'string' ||
+          !/^[1-9][0-9]{0,3}-[a-z_]{1,32}$/u.test(command.step.step_id) ||
+          !['apply_labels', 'create_draft', 'send', 'create_task'].includes(
+            command.step.step_kind,
+          ))
+      )
+        reasons.push('step_invalid');
       break;
     case 'operation.apply_local':
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');

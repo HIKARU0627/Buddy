@@ -23,6 +23,14 @@ export type ApprovalStatus =
   'none' | 'valid' | 'consumed' | 'revoked' | 'expired';
 
 // 操作の表示用の値と、承認・取消の命令に入れる版（依頼・忘却）。本文は含めない。
+export interface OperationStepView {
+  readonly step_id: string;
+  readonly step_kind: string;
+  readonly dispatch_intent_at: number | null;
+  readonly result_status: string | null;
+  readonly external_id: string | null;
+}
+
 export interface OperationView {
   readonly operation_id: string;
   readonly workflow_id: string | null;
@@ -43,6 +51,8 @@ export interface OperationView {
   readonly attempt_status: string | null;
   // 送出境界を越えた後の取消を受け付けた（受付だけで状態は変えていない、X05）。
   readonly cancel_requested: boolean;
+  // 最新の試行の工程（operation_steps、D3）。送出の前に nextStepDecision で次に行うことを決める。
+  readonly steps: readonly OperationStepView[];
   // workflow の現在の依頼の版。workflow のない操作は null。
   readonly request_revision: string | null;
   // 忘却台帳の最大の世代（なければ 0）。
@@ -147,6 +157,14 @@ function toView(
     attempt_id: attempt?.attempt_id ?? null,
     attempt_status: attempt?.status ?? null,
     cancel_requested: cancel.value > 0,
+    steps:
+      attempt === undefined
+        ? []
+        : (db
+            .prepare(
+              'SELECT step_id, step_kind, dispatch_intent_at, result_status, external_id FROM operation_steps WHERE attempt_id = ? ORDER BY step_id',
+            )
+            .all(attempt.attempt_id) as OperationStepView[]),
     request_revision: requestRevision,
     forgetting_generation: forgetting,
     created_at: row.created_at,

@@ -257,6 +257,20 @@ const reached = (
 
 const LABEL = 'mail-001 に follow-up を付けて';
 
+// 最新の試行の工程（operation_steps）。DB worker の表示用の照会で読む。
+async function stepsOf(core: EventCore, operationId: string) {
+  const view = await core.handle.store.query({
+    kind: 'operation_view',
+    operation_id: operationId,
+  });
+  assert(view !== null);
+  return view.steps.map((step) => ({
+    step_id: step.step_id,
+    intent: step.dispatch_intent_at !== null,
+    result_status: step.result_status,
+  }));
+}
+
 function assertProvider(rig: Rig, id: string): void {
   const expected = expectedOf(id);
   assert.equal(
@@ -296,6 +310,14 @@ test(
     const view = await operationOf(restarted, again, operationId);
     assert.equal(view['state'], expectedOf('X01').core_final_state);
     assertProvider(rig, 'X01');
+    // 工程（D3）: 1 工程だけを送出意図つきで記録し、成功で確定した。
+    assert.deepEqual(await stepsOf(restarted, operationId), [
+      {
+        step_id: '1-apply_labels',
+        intent: true,
+        result_status: 'confirmed_success',
+      },
+    ]);
   },
 );
 
@@ -435,6 +457,10 @@ test(
     assert.equal(view['state'], expected.core_final_state);
     assert.equal(expected.automatic_retry, false);
     assertProvider(rig, 'X06');
+    // 送出意図を記録した工程は結果不明（再送せず照合だけ。nextStepDecision は reconcile を返す）。
+    assert.deepEqual(await stepsOf(restarted, operationId), [
+      { step_id: '1-apply_labels', intent: true, result_status: 'unknown' },
+    ]);
   },
 );
 

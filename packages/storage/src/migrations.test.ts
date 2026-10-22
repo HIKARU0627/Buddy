@@ -448,3 +448,102 @@ test('store_generation is created once and kept afterwards', () => {
     }
   });
 });
+
+// 0005（ADR 0030）: 既存の試行・工程が入った版 4 の DB を更新しても、全行・索引・外部キーが残る（レビュー P1）。
+test('0005 upgrades a version 4 DB holding attempts and steps and keeps every row, index and foreign key', () => {
+  withTempDir((dir) => {
+    const path = join(dir, 'buddy.sqlite');
+    const db = openWriteConnection(path, { platform: 'macos' });
+    try {
+      const bundled = loadMigrations();
+      applyMigrations(db, bundled.slice(0, 4));
+      const h1 = '1'.repeat(64);
+      for (const sql of [
+        "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-1', 'operation_intent', 'operation_versions', 'op-1', 1, 1, 'k1', X'000000000000000000000001', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+        "INSERT INTO operations VALUES ('op-1', NULL, 'mail.labels.change', 'remote_mutation', 1, 'unknown_held', 5, 1000, NULL)",
+        `INSERT INTO operation_versions VALUES ('op-1', 1, '${h1}', 'b-1', 1000)`,
+        "INSERT INTO devices (device_id, device_name, platform, hub_local, token_hash, registered_at) VALUES ('dev-1', 'd', 'macos', 0, X'0000000000000000000000000000000000000000000000000000000000000000', 1000)",
+        `INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '${h1}', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1100)`,
+        "INSERT INTO operation_attempts VALUES ('at-1', 'op-1', 1, 'ap-1', 'unknown_held', 1200, NULL, 'unknown', 1150)",
+        "INSERT INTO operation_steps VALUES ('at-1', '1-apply_labels', 'apply_labels', NULL, 1200, 'unknown')",
+      ])
+        db.exec(sql);
+      assert.deepEqual(applyMigrations(db), {
+        from: 4,
+        to: 5,
+        applied: [5],
+      });
+      assert.deepEqual(db.prepare('SELECT * FROM operation_attempts').all(), [
+        {
+          attempt_id: 'at-1',
+          operation_id: 'op-1',
+          content_version: 1,
+          approval_id: 'ap-1',
+          status: 'unknown_held',
+          dispatch_intent_at: 1200,
+          external_id: null,
+          result_status: 'unknown',
+          created_at: 1150,
+        },
+      ]);
+      assert.deepEqual(db.prepare('SELECT * FROM operation_steps').all(), [
+        {
+          attempt_id: 'at-1',
+          step_id: '1-apply_labels',
+          step_kind: 'apply_labels',
+          external_id: null,
+          dispatch_intent_at: 1200,
+          result_status: 'unknown',
+        },
+      ]);
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT name FROM sqlite_schema WHERE type = 'index' AND tbl_name IN ('operation_attempts', 'operation_steps') AND name NOT LIKE 'sqlite_%' ORDER BY name",
+          )
+          .pluck()
+          .all(),
+        [
+          'operation_attempts_one_active',
+          'operation_attempts_one_per_approval',
+        ],
+      );
+      // 外部キーは新しい表を指す（存在しない試行の工程・存在しない操作の試行は拒否）。
+      assert.deepEqual(
+        db
+          .prepare('PRAGMA foreign_key_list(operation_steps)')
+          .all()
+          .map((row) => (row as { table: string }).table),
+        ['operation_attempts'],
+      );
+      assert.throws(
+        () =>
+          db.exec(
+            "INSERT INTO operation_steps VALUES ('at-x', '1-apply_labels', 'apply_labels', NULL, NULL, NULL)",
+          ),
+        /FOREIGN KEY/u,
+      );
+      assert.throws(
+        () =>
+          db.exec(
+            "INSERT INTO operation_attempts VALUES ('at-2', 'op-x', 1, 'ap-x', 'preparing', NULL, NULL, NULL, 1300)",
+          ),
+        /FOREIGN KEY/u,
+      );
+      // 0001 の一意の索引も働く（一つの承認に有効な試行は一つ）。
+      db.exec(
+        "UPDATE operation_attempts SET status = 'reconciling' WHERE attempt_id = 'at-1'",
+      );
+      assert.throws(
+        () =>
+          db.exec(
+            "INSERT INTO operation_attempts VALUES ('at-3', 'op-1', 1, 'ap-1', 'preparing', NULL, NULL, NULL, 1300)",
+          ),
+        /UNIQUE/u,
+      );
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    } finally {
+      db.close();
+    }
+  });
+});

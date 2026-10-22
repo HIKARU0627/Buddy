@@ -4,7 +4,7 @@ import { request } from 'node:http';
 import test from 'node:test';
 import { createMockMailConnector } from './index.js';
 import { createMockProvider } from './testing.js';
-import { startProvider, TEST_TIMEOUT_MS, withTimeout } from './test-support.js';
+import { startProvider, TEST_TIMEOUT_MS } from './test-support.js';
 
 const OPTIONS = { timeout: TEST_TIMEOUT_MS };
 const CLOCK = '2026-10-05T09:00:00+09:00';
@@ -425,14 +425,12 @@ test(
     partial.on('error', () => undefined);
     partial.write('{"operation_id":"op-old"');
     // sleep ではなく、処理中の件数が 1 になるまで、イベントループを譲りながら待つ。
-    await withTimeout(
-      (async () => {
-        while (first.truth.inflightCount() < 1)
-          await new Promise<void>((resolve) => setImmediate(resolve));
-      })(),
-      5_000,
-      'inflight',
-    );
+    // 時間切れで試験が失敗したときにループが残らないよう、ループ自体にも期限を持たせる。
+    const deadline = Date.now() + 5_000;
+    while (first.truth.inflightCount() < 1) {
+      if (Date.now() > deadline) throw new Error('timeout: inflight');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
 
     await first.close();
     assert.equal(first.truth.inflightCount(), 0);

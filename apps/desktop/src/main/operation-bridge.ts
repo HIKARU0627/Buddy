@@ -102,6 +102,8 @@ interface PreviewRecord {
 // 一覧の行の見出しにする内容（main の中にだけ持つ）。
 interface ContentRecord {
   readonly key: string;
+  // 外部変更で、口座と対象のメールを確認できているか（できていなければ取消・再試行の確認も出さない）。
+  readonly identified: boolean;
   readonly headline: string | null;
   readonly detail: string | null;
 }
@@ -398,6 +400,7 @@ export class OperationBridge {
     const summary = contentOf(shown.intent, shown.display);
     this.#content.set(operationId, {
       key: `${shown.content_version}:${shown.content_hash}`,
+      identified: identifiedOf(shown.intent, shown.display),
       headline: summary.headline,
       detail: summary.detail,
     });
@@ -437,6 +440,7 @@ export class OperationBridge {
     const summary = contentOf(preview.intent, preview.display);
     this.#content.set(operationId, {
       key: `${preview.intent.content_version}:${preview.content_hash}`,
+      identified: view.approvable,
       headline: summary.headline,
       detail: summary.detail,
     });
@@ -647,7 +651,9 @@ export class OperationBridge {
         if (gen !== this.#gen) return fail('not_connected');
         content = this.#contentFor(target.snapshot);
       }
-      if (content === undefined) return fail('content_unavailable');
+      // 内容がない・外部変更で口座か対象のメールを確認できない（接続先が替わったなど）ときは、確認を出さない。
+      if (content === undefined || !content.identified)
+        return fail('content_unavailable');
       const confirmed = await this.#host.confirm({
         action: kind === 'cancel' ? 'cancel_operation' : 'retry_operation',
         operationKind: target.snapshot.operation_kind,
@@ -749,6 +755,23 @@ export class OperationBridge {
 
 type PreviewDisplay = OperationPreview['display'];
 
+// 外部変更は、口座の表示名と対象のメールの件名・差出人・受信日時がすべてそろうまで確認できない（承認・取消・再試行の
+// 確認に出せない）。Buddy 内の用事は常に確認できる。
+function identifiedOf(
+  intent: OperationIntent,
+  display: PreviewDisplay,
+): boolean {
+  if (!('provider' in intent)) return true;
+  const target = display?.target ?? null;
+  return (
+    (display?.account_label ?? null) !== null &&
+    target !== null &&
+    target.subject !== null &&
+    target.sender !== null &&
+    target.received_at !== null
+  );
+}
+
 // 一覧の行の見出しと補足（承認待ちの内容から。1 行ずつ）。
 function contentOf(
   intent: OperationIntent,
@@ -816,13 +839,7 @@ export function previewView(
   const external = 'provider' in intent;
   const target = display?.target ?? null;
   const accountLabel = external ? (display?.account_label ?? null) : null;
-  const identified =
-    !external ||
-    (accountLabel !== null &&
-      target !== null &&
-      target.subject !== null &&
-      target.sender !== null &&
-      target.received_at !== null);
+  const identified = identifiedOf(intent, display);
   return {
     preview_ref: previewRef,
     operation_kind: action.kind,

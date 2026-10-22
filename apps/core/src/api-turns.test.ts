@@ -433,6 +433,35 @@ test(
       assert.equal(refused.text.includes('follow-up'), false);
       assert.equal(refused.text.includes('mail-001'), false);
     }
+    // 接続先（アカウント）を別のものに替えた後は、同じ remote_id でも別のアカウントのメールを読まない（A で保存 → B に
+    // 切り替え → 同じ remote_id）。display は対象・口座の表示名を null にして内容だけを返し、preview は 409。
+    const savedConnection = provider.connectionState;
+    assert(savedConnection !== null);
+    provider.connectionState = {
+      ...savedConnection,
+      account_id: '00000000-0000-4000-8000-0000000000b2',
+      account_label: '別のアカウント（other@example.com）',
+    };
+    const readsBefore = provider.calls.filter(
+      (call) => call === 'readTarget',
+    ).length;
+    const switched = await postJson(core, one, displayPath, {
+      request_id: randomUUID(),
+      command_scope_id: scope1,
+    });
+    assert.equal(switched.status, 200, switched.text);
+    assert.deepEqual(switched.json?.['display'], {
+      account_label: null,
+      target: null,
+    });
+    assert.equal(switched.text.includes('合成の件名'), false);
+    assert.equal(switched.text.includes('other@example.com'), false);
+    assert.equal(
+      provider.calls.filter((call) => call === 'readTarget').length,
+      readsBefore,
+    );
+    assert.equal((await preview(core, one, operationId, scope1)).status, 409);
+    provider.connectionState = savedConnection;
     // 別の端末が、端末 1 に出した preview で承認する: 409。
     const other = await approve(
       core,

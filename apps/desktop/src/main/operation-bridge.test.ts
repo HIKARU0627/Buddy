@@ -1312,3 +1312,68 @@ test('an external change is approvable only when the account, the subject, the s
   );
   assert.equal(previewView(taskIntent, id(1), undefined).approvable, true);
 });
+
+test('cancel and retry of an external change are not confirmed when the account or the target mail was not identified', async () => {
+  const none = {
+    kind: 'response' as const,
+    status: 200,
+    body: {
+      content_version: '1',
+      content_hash: HASH,
+      state_revision: '1',
+      intent: labelIntent,
+      // 接続先が替わった後は、Core は対象・口座の表示名を null にして返す。
+      display: { account_label: null, target: null },
+    },
+  };
+  const h = harness();
+  h.operations = [
+    snapshot({
+      operation_kind: 'mail.labels.change',
+      state: 'approved',
+      state_revision: '3',
+      allowed_actions: ['cancel'],
+    }),
+  ];
+  h.displayQueue.push(none, none, none);
+  const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+  await flush();
+  assert.deepEqual(await h.bridge.command('cancel', ref), {
+    ok: false,
+    reason: 'content_unavailable',
+  });
+  assert.equal(h.confirms.length, 0);
+  assert.equal(h.sent.length, 0);
+  // 確認できる内容（口座の表示名と対象のメールがそろう）なら、確認へ進む。
+  const ok = harness();
+  ok.operations = [
+    snapshot({
+      operation_kind: 'mail.labels.change',
+      state: 'approved',
+      state_revision: '3',
+      allowed_actions: ['cancel'],
+    }),
+  ];
+  ok.displayQueue.push({
+    kind: 'response',
+    status: 200,
+    body: {
+      ...none.body,
+      display: {
+        account_label: 'user@example.com',
+        target: {
+          subject: '来週の打ち合わせ',
+          sender: 'sato@example.com',
+          received_at: '2026-10-04T18:30:00+09:00',
+        },
+      },
+    },
+  });
+  const okRef = ok.bridge.entries(ok.operations)[0]?.ref ?? '';
+  await flush();
+  assert.deepEqual(await ok.bridge.command('cancel', okRef), {
+    ok: true,
+    value: 'accepted',
+  });
+  assert.equal(ok.confirms.length, 1);
+});

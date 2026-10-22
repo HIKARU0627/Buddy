@@ -270,8 +270,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   };
 
   // 対象のメールの表示用の値（件名・差出人・受信日時）。読めなければ null（承認画面は対象を確認できないと言う）。
+  // 今の接続先（アカウント）が確定 intent の口座と同じときだけ読む。違えば（接続先を替えた後に、同じ remote_id で別の
+  // アカウントのメールを読んでしまう）null を返す。
   const readTargetDisplay = async (
     intent: Record<string, unknown>,
+    connection: { readonly account_id: string } | null,
   ): Promise<{
     subject: string | null;
     sender: string | null;
@@ -280,6 +283,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const target = intent['target'];
     if (
       options.provider === null ||
+      connection === null ||
+      connection.account_id !== intent['account_id'] ||
       typeof target !== 'object' ||
       target === null
     )
@@ -842,7 +847,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       account = { account_id: accountId, permission_revision: permission };
       display = {
         account_label: connection.account_label ?? null,
-        target: await readTargetDisplay(intent),
+        target: await readTargetDisplay(intent, connection),
       };
     }
     const previewId = randomUUID();
@@ -898,7 +903,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           connection !== null && connection.account_id === intent['account_id']
             ? (connection.account_label ?? null)
             : null,
-        target: await readTargetDisplay(intent),
+        target: await readTargetDisplay(intent, connection),
       };
     }
     return {

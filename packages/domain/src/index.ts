@@ -5,6 +5,8 @@ export * from './approval.js';
 export * from './audio.js';
 export * from './budget.js';
 export * from './conversation.js';
+// B04-01: 操作の種類・connector の能力・照合（ADR 0027）。
+export * from './connectors.js';
 export * from './desktop.js';
 export * from './evaluation.js';
 export * from './extraction.js';
@@ -17,6 +19,8 @@ export * from './intents.js';
 export * from './listen-address.js';
 export * from './memory.js';
 export * from './notification.js';
+// B04-01: 操作の工程（D3、ADR 0027）。
+export * from './operation-steps.js';
 export * from './operations.js';
 export * from './readiness.js';
 export * from './retention.js';

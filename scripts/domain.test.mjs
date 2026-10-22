@@ -188,14 +188,32 @@ test('X01〜X11 expected operation paths stay inside the 08 §3 state graph', as
     [...defs.OperationSnapshot.properties.state.enum].sort(),
   );
   for (const entry of spec.cases) {
+    // route を書かない例は RemoteMutation（ADR 0027）。
+    const route = entry.route ?? 'remote_mutation';
     assert(INITIAL_OPERATION_STATES.includes(entry.path[0]), entry.id);
     for (let i = 1; i < entry.path.length; i++)
       assert(
-        canTransition(entry.path[i - 1], entry.path[i]),
+        canTransition(entry.path[i - 1], entry.path[i], route),
         `${entry.id}: ${entry.path[i - 1]} -> ${entry.path[i]}`,
       );
+    // 成功の証拠は、RemoteMutation では外部変更、LocalCommand では一つの transaction（D5）。
     if (entry.path.at(-1) === 'succeeded')
-      assert(entry.external_writes >= 1, entry.id);
+      if (route === 'local_command') {
+        assert.equal(entry.external_writes, 0, entry.id);
+        assert.equal(entry.local_transactions, 1, entry.id);
+      } else assert(entry.external_writes >= 1, entry.id);
+    // D1: 内容版は awaiting_approval への戻りでだけ一つ上がり、他の遷移では変わらない。
+    if (entry.content_versions) {
+      assert.equal(entry.content_versions.length, entry.path.length, entry.id);
+      for (let i = 1; i < entry.path.length; i++) {
+        const step =
+          BigInt(entry.content_versions[i]) -
+          BigInt(entry.content_versions[i - 1]);
+        const revised =
+          entry.path[i] === 'awaiting_approval' && i > 0 ? 1n : 0n;
+        assert.equal(step, revised, `${entry.id} #${i}`);
+      }
+    }
     if (entry.automatic_retry === false)
       assert(!OPERATION_TRANSITIONS.unknown_held.includes('dispatching'));
   }

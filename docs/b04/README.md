@@ -1,6 +1,6 @@
 # B04 の完了判定
 
-B04（#14）の文字入力から一度だけ変更する縦断試作と、B04-06（#86）の統合試験を記録します。**実装済み経路の模擬確認は完了しました。QA27 の外部下書き保存は未実装・未実施なので、B04 全体の完了判定は保留します。** 実機・実 API・実請求は未実施です。
+B04（#14）の文字入力から一度だけ変更する縦断試作と、B04-06（#86）の統合試験を記録します。**実装済み経路の模擬確認は完了しました。QA27 の外部下書き保存は B04-07（Issue #106）で実装予定で、未実装・未実施なので、B04 全体の完了判定は保留します。** 実機・実 API・実請求は未実施です。
 
 根拠は設計 06 の B04、09 §1〜5・QA27・QA28・§8、08 §1〜4、07 §1〜4、01 の承認画面と状態表示、本人の判断 D1〜D6（2026-10-22）。今回、権限のある接続で原本本文を確認し、取得資料は非公開の `.local/design/notion/` に置きました。更新履歴の旧例は仕様に用いていません。D1〜D6 と既存 ADR の判断は変更していません。
 
@@ -15,7 +15,9 @@ B04（#14）の文字入力から一度だけ変更する縦断試作と、B04-0
 | B04-05 | #85   | 会話・確認・処理状況、main の確認ダイアログ（[ADR 0031](../adr/0031-b04-desktop-conversation-approval-screen.md)）   |
 | B04-06 | #86   | 下記の実行器・模擬証拠・対応表・実機手順                                                                             |
 
-先行実装にはそれぞれの契約・単体・模擬統合試験があります。実行器は既存の Core 試験装置を `operation-runner-test-support.ts` に取り出して再利用しています。製品コードの変更はありません。
+QA27 の外部下書き保存は B04-07（Issue #106）の別タスクで実装します。
+
+先行実装にはそれぞれの契約・単体・模擬統合試験があります。実行器は既存の Core 試験装置を `operation-runner-test-support.ts` に取り出して再利用しています。製品の動作は変更せず、runner のコメントを B04-07 の範囲記述にそろえています。
 
 ## 親 Issue の完了条件 4 項目
 
@@ -24,7 +26,7 @@ B04（#14）の文字入力から一度だけ変更する縦断試作と、B04-0
 | 1   | 2 端末で同じ候補を見て、一度の承認で変更が 1 回                                         | 実行器の X02: 2 個の製品クライアントを TLS/WSS で接続し、同じ操作 ID・内容版・hash を確認。関門にそろえた承認と二度押しでも承認 1 件・受信 1 回・変更 1 回。両端末が成功へ収束 | 模擬。画面側は既存 `two-clients.test.ts` の「A の発言から B の確認で完了」の試験（LocalCommand、main の OS 確認は模擬）も通す。実際の OS ダイアログと別のマシンは未実施 |
 | 2   | 二重操作・ACK 喪失・再起動でも重複変更しない                                            | X01・X02・X04・X06・X07・X08・X11、QA28。provider の受信 ID・試行 ID・工程・回数と、DB の状態履歴・承認・試行・outbox を突き合わせる                                           | 模擬。X01 は完了後と preparing 中、X06 は送出意図の後の中枢だけの再起動。QA28 は DB worker の COMMIT 後の異常終了                                                       |
 | 3   | 結果不明を成功とせず、自動再送しない                                                    | X05-after-dispatch は取消の受付だけで reconciling。X06 は受信 0 でも unknown_held。X07 は応答喪失後の自動照合 1 回。X08 は遅延適用前も後も保留し、本人の参照照合で成功         | 模擬。unknown_held の再開要求や再起動で書込みを増やさない。一定時間の未発見を未実行の証明にしない                                                                       |
-| 4   | Read は変更承認なし、LocalCommand は外部 HTTP なし、RemoteMutation だけが送出境界を使う | QA27-read: 予定参照で操作・承認・試行 0。QA27-local: 用事 1 件、外部アダプター呼出し 0、承認→成功。QA27-remote: ラベル変更だけに preparing・dispatching と工程の送出意図       | 実装済み 3 経路の模擬確認。**QA27 原本の外部下書き保存への置き換え、同じ Electron 画面での 3 種比較は未実施**                                                           |
+| 4   | Read は変更承認なし、LocalCommand は外部 HTTP なし、RemoteMutation だけが送出境界を使う | QA27-read: 予定参照で操作・承認・試行 0。QA27-local: 用事 1 件、外部アダプター呼出し 0、承認→成功。QA27-remote: ラベル変更だけに preparing・dispatching と工程の送出意図       | 実装済み 3 経路の模擬確認。**QA27 の外部下書き保存は B04-07（#106）で実装。同じ Electron 画面での 3 種比較も未実施**                                                    |
 
 ## ケース別の結果
 
@@ -44,7 +46,7 @@ B04（#14）の文字入力から一度だけ変更する縦断試作と、B04-0
 | X09                                   | 0 / 0 / 1                  | awaiting_approval・内容版 2。対象 r2 と許可失効を別に注入。承認 revoked・試行 superseded                                                                                        |
 | X10-after-draft / after-send-accepted | 各 0 / 0 / 1（仕組みだけ） | 送出意図と unknown_held の工程が保存され、再起動後は該当工程の照合判断。実際の下書き作成・送信は実行していない                                                                  |
 | X11                                   | 1 / 1 / 1                  | succeeded。snapshot と購読の隙間の更新、イベント受領情報の喪失、中枢再起動、再配信・重複・逆順でも状態版 6                                                                      |
-| QA27-read / local / remote            | 0/0/0、0/0/1、1/1/1        | 前表の経路分離。**部分確認**                                                                                                                                                    |
+| QA27-read / local / remote            | 0/0/0、0/0/1、1/1/1        | 前表の経路分離。**部分確認**。外部下書き保存は B04-07（#106）で実装                                                                                                             |
 | QA28                                  | 0 / 0 / 1                  | succeeded。文字入力と画面経路の承認後、適用 COMMIT 直後に worker を終了。ACK は unknown、同じ command_id は保存済み receipt、内容違いは拒否。用事・試行・成功イベントは増えない |
 
 ## 実行器と証拠
@@ -56,30 +58,31 @@ node scripts/clean.mjs && pnpm run check
 pnpm run contracts:check
 ```
 
-2026-10-22 のローカル検証（このブランチの差分）:
+2026-10-22〜23 のローカル検証（main 取り込み後・レビュー修正後のソースを再ビルドして実行）:
 
 | 検証                                         | 結果                                                                            |
 | -------------------------------------------- | ------------------------------------------------------------------------------- |
-| `node scripts/clean.mjs && pnpm run check`   | 成功、823 件・失敗 0。書式・lint・ビルド・型・契約・公開情報検査を含む          |
+| `node scripts/clean.mjs && pnpm run check`   | 成功、853 件・失敗 0。書式・lint・ビルド・型・契約・公開情報検査を含む          |
 | `pnpm run contracts:check`                   | 成功。生成型の直接変更なし                                                      |
 | `node --test tests/integration/b04.test.mjs` | 51 回の観測が期待値に一致（親試験を含む 52 件）。範囲は本書のケース別表のとおり |
 
 `pnpm test` / `pnpm run check` は実行器を自動で含みます。17 ケースを seed `86, 1406, 20261022` で並べ替えて 3 回、計 51 回実行します。node:test の親試験を含めると 52 件です。seed は順序だけを固定し、鍵・資格情報・ID の乱数は固定しません。
 
-- 期待値は [fault-points.json](../../tests/integration/fault-points.json) に手書きします。状態履歴は既存の手書き `operation-transitions.json` と整合検査します。実装の遷移判定から期待結果を作りません。
+- 期待値は [fault-points.json](../../tests/integration/fault-points.json) に手書きします。状態履歴は既存の手書き `operation-transitions.json` と整合検査します。合成入力から手で決めた対象・追加/削除ラベル・最終ラベル集合を provider の `applied_change` と真の状態にも照合します。実装の送出引数や遷移判定から期待結果を作りません。
 - 試験用の `b04_history` と trigger を合成 DB にだけ追加し、同じ transaction で状態版・内容版・状態を記録します。Core の結果を読んだ時点の標本だけでは中間状態を落とすためです。期待値や provider の真の結果を Core へ渡しません。
-- `FaultInjector` の pause・barrier・waitReached と `runner.idle()`、クライアントの状態通知で同期します。固定 sleep で競合を作りません。上限 timeout は失敗検出用です。
+- `FaultInjector` の pause・barrier・waitReached と `runner.idle()`、クライアントの状態通知で同期します。固定 sleep で競合を作りません。上限 timeout は失敗検出用です。イベント待機は時間切れ・試験終了・条件の例外でも停止し、時間切れと試験終了後に子プロセスが自然終了することを回帰試験で確認します。
 - Core と provider は別のデータディレクトリを使用します。中枢だけを止め、同じ provider オブジェクトと記録を保ちます。これは同じプロセス内の停止・再起動であり、OS の電源断や実機試験ではありません。
 - X11 の「ACK 喪失」はイベントを transport までは届け、クライアントの cursor に反映する直前で止める模擬です。存在しない WSS ACK API を呼んだ試験ではありません。再接続後に実際に再配信されたイベントを使います。
 - X10 は `b04_expected` だけを検査します。ラベル操作を工程保存の試験用の容器にし、工程 ID を DB 命令へ渡します。send の先行工程成功は合成入力です。2 工程を完走した証拠ではありません。元の `expected`（下書き 1・送信 1・承認 1・成功）は B14 用のまま残します。
 
 記録は [evidence-b04-simulated.json](../../tests/integration/evidence-b04-simulated.json)、実施状態は [test-map.json](../../tests/test-map.json) です。`kind: simulated` を証拠 Schema に追加し、旧 `mock_service` は既存例の互換用に残しました。X10 は `B04-x10-…-mechanism` の記録で、X10 全体の合格記録を作りません。QA27 も部分ケースだけを記録します。
 
-証拠の `records` はケース別の結果、`runs` は各 seed の実際の順序・状態履歴・provider 受信 ID と工程・承認と試行です。`commit` は実行時の基点コミットです。未コミット差分を含む検査対象を特定するため、`source_sha256` にソース・fixture・検証スクリプトの内容 hash を併記しています。これを基点コミットだけの試験結果と読み替えないでください。公開文書・秘密・鍵・トークン・メール本文は観測へ含めません。
+証拠の `records` はケース別の結果、`runs` は各 seed の実際の順序・状態履歴・provider 受信 ID・適用内容・真のラベル集合と工程・承認と試行です。`commit` は実行時の基点コミットです。未コミット差分を含む検査対象を特定するため、`source_sha256` にソース・fixture・検証スクリプトの内容 hash を併記しています。`scripts/test-map.test.mjs` が現行ソースの対象一覧と hash の完全一致を検査し、変更・追加・削除・証拠の欠落を拒否します。これを基点コミットだけの試験結果と読み替えないでください。公開文書・秘密・鍵・トークン・メール本文は観測へ含めません。
 
 POSIX シェルで新しい証拠を保存する場合:
 
 ```sh
+pnpm run build
 BUDDY_B04_EVIDENCE_PATH=tests/integration/evidence-b04-simulated.json node --test tests/integration/b04.test.mjs
 pnpm exec prettier --write tests/integration/evidence-b04-simulated.json
 ```
@@ -91,5 +94,5 @@ pnpm exec prettier --write tests/integration/evidence-b04-simulated.json
 - 実機（Mac mini・別マシンの macOS / Windows・Tailscale・本物の OS 確認ダイアログ）はすべて未実施。[device-check.md](device-check.md) に前提と手順を記載しています。CI の別 OS の結果も今回のローカル検証からは主張しません。
 - 実 API・実メール送信・実予定変更・実請求・実音声・モデル採用は未実施。
 - X10 の縦断合格は D3 により B14。表示の移動（handoff）は D6 により B05。2 端末が同じ操作を見ることと、表示権を移すことを混同しません。
-- QA27 の外部下書き保存は、契約・provider・画面の部品はあるものの、Core の発言からの作成と実行が未実装です（ADR 0030 の残件）。今回ラベル変更で確認した経路分離を、QA27 全体の合格にはしません。下書き経路を別タスクで補うか、QA27 の完了時期を変更するかが判断点です。
-- 次の着手点は QA27 の下書き作成・照合経路と実機用 provider の配線。既存 ADR 0027〜0031 の未決の読み取りは、この試験追加で承認済みに変更しません。
+- QA27 の外部下書き保存は、契約・provider・画面の部品はあるものの、Core の発言からの作成と実行が未実装です（ADR 0030 の残件）。今回ラベル変更で確認した経路分離を、QA27 全体の合格にはしません。外部下書き保存の発言・実行・照合経路は B04-07（Issue #106）で実装します。
+- 次の着手点は B04-07（Issue #106）の QA27 外部下書き保存と実機用 provider の配線。既存 ADR 0027〜0031 の未決の読み取りは、この試験追加で承認済みに変更しません。

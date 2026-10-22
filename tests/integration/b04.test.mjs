@@ -1,12 +1,12 @@
 // 全ケースを同じ入口から、固定 seed・異なる順序で反復する。件数は期待値から作らず実観測を保存する。
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { platform, release } from 'node:os';
 import { specification, shuffled } from './b04-support.mjs';
 import { runCase } from './b04-cases.mjs';
+import { b04SourceSha256 } from '../../scripts/b04-evidence-sources.mjs';
 
 const cases = [...specification.cases, ...specification.qa_cases];
 const ids = cases.map((c) => c.id);
@@ -47,23 +47,7 @@ test(
       const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
         encoding: 'utf8',
       }).trim();
-      const tracked = execFileSync(
-        'git',
-        ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
-        { encoding: 'utf8' },
-      ).split('\0');
-      const sources = [...new Set(tracked)]
-        .filter(
-          (p) =>
-            /^(apps|packages|scripts|tests)\//u.test(p) &&
-            !p.includes('/evidence-') &&
-            !p.endsWith('.md'),
-        )
-        .sort();
-      const sourceSha256 = sources.map((p) => ({
-        path: p,
-        sha256: createHash('sha256').update(readFileSync(p)).digest('hex'),
-      }));
+      const sourceSha256 = b04SourceSha256();
       const observedAt = new Date().toISOString();
       const records = cases.map((spec) => {
         const run = runs.find((r) => r.case_id === spec.id);

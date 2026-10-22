@@ -4,6 +4,7 @@ import test from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { parseStrictJson, root } from './contract-tools.mjs';
+import { assertB04EvidenceSources } from './b04-evidence-sources.mjs';
 
 // 試験 ID の対応表・B04 へ渡す故障点・証拠の形式を検査する（B00-10 #29、ADR 0011）。
 const read = async (path) =>
@@ -214,6 +215,11 @@ test('B04 のケース・seed・観測値・対応表の範囲が証拠と一致
         expected.provider_state_changes,
       );
       assert.equal(run.observed.approval_count, expected.approvals);
+      assert.deepEqual(
+        run.observed.provider_receipts.map((r) => r.applied_change),
+        expected.provider_applied_changes,
+      );
+      assert.deepEqual(run.observed.provider_labels, expected.provider_labels);
       if (expected.state_history) {
         assert.deepEqual(
           run.observed.state_history.map((h) => h.state),
@@ -242,5 +248,32 @@ test('B04 のケース・seed・観測値・対応表の範囲が証拠と一致
       'simulated_partial',
     );
     assert(!evidence.records.some((r) => r.case_id === id));
+  }
+});
+
+test('B04 の証拠は現行ソースの全対象ファイルと hash が一致する', async () => {
+  const evidence = await read('tests/integration/evidence-b04-simulated.json');
+  assertB04EvidenceSources(evidence);
+});
+
+test('B04 の証拠の古い hash・欠落・余分なファイルを拒否する', async () => {
+  const evidence = await read('tests/integration/evidence-b04-simulated.json');
+  for (const mutate of [
+    (sources) => {
+      sources[0].sha256 = '0'.repeat(64);
+    },
+    (sources) => {
+      sources.pop();
+    },
+    (sources) => {
+      sources.push({ path: 'tests/removed.mjs', sha256: '0'.repeat(64) });
+    },
+  ]) {
+    const changed = structuredClone(evidence);
+    mutate(changed.source_sha256);
+    assert.throws(
+      () => assertB04EvidenceSources(changed),
+      /B04 の証拠と現行ソースが不一致/u,
+    );
   }
 });

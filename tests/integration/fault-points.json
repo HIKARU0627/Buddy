@@ -65,7 +65,19 @@
             "intent": true,
             "result_status": "confirmed_success"
           }
-        ]
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.labels.change",
+            "remote_id": "mail-001",
+            "add": ["follow-up"],
+            "remove": [],
+            "labels_after": ["follow-up"]
+          }
+        ],
+        "provider_labels": {
+          "mail-001": ["follow-up"]
+        }
       }
     },
     {
@@ -104,7 +116,19 @@
             "intent": true,
             "result_status": "confirmed_success"
           }
-        ]
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.labels.change",
+            "remote_id": "mail-001",
+            "add": ["follow-up"],
+            "remove": [],
+            "labels_after": ["follow-up"]
+          }
+        ],
+        "provider_labels": {
+          "mail-001": ["follow-up"]
+        }
       }
     },
     {
@@ -132,7 +156,11 @@
         "invalid_json_status": 422,
         "stale_preview_status": 409,
         "provider_responses": [],
-        "stored_steps": []
+        "stored_steps": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       }
     },
     {
@@ -159,7 +187,11 @@
         "revoked_approvals": 0,
         "step_receives": {},
         "provider_responses": [],
-        "stored_steps": []
+        "stored_steps": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       }
     },
     {
@@ -184,7 +216,11 @@
         "revoked_approvals": 0,
         "step_receives": {},
         "provider_responses": [],
-        "stored_steps": []
+        "stored_steps": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       }
     },
     {
@@ -219,7 +255,19 @@
             "result_status": null
           }
         ],
-        "note": "取消は受付だけ。本人の照合で確定するまで工程の成功を記録しない（ADR 0030）。"
+        "note": "取消は受付だけ。本人の照合で確定するまで工程の成功を記録しない（ADR 0030）。",
+        "provider_applied_changes": [
+          {
+            "kind": "mail.labels.change",
+            "remote_id": "mail-001",
+            "add": ["follow-up"],
+            "remove": [],
+            "labels_after": ["follow-up"]
+          }
+        ],
+        "provider_labels": {
+          "mail-001": ["follow-up"]
+        }
       }
     },
     {
@@ -251,7 +299,11 @@
             "intent": true,
             "result_status": "unknown"
           }
-        ]
+        ],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       }
     },
     {
@@ -286,7 +338,19 @@
             "intent": true,
             "result_status": "confirmed_success"
           }
-        ]
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.labels.change",
+            "remote_id": "mail-001",
+            "add": ["follow-up"],
+            "remove": [],
+            "labels_after": ["follow-up"]
+          }
+        ],
+        "provider_labels": {
+          "mail-001": ["follow-up"]
+        }
       }
     },
     {
@@ -328,7 +392,19 @@
             "intent": true,
             "result_status": "confirmed_success"
           }
-        ]
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.labels.change",
+            "remote_id": "mail-001",
+            "add": ["follow-up"],
+            "remove": [],
+            "labels_after": ["follow-up"]
+          }
+        ],
+        "provider_labels": {
+          "mail-001": ["follow-up"]
+        }
       }
     },
     {
@@ -355,7 +431,11 @@
         "revoked_approvals": 1,
         "step_receives": {},
         "provider_responses": [],
-        "stored_steps": []
+        "stored_steps": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       }
     },
     {
@@ -417,7 +497,11 @@
             "intent": true,
             "result_status": "unknown"
           }
-        ]
+        ],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       },
       "b04_faults": ["after_dispatch_intent_before_send", "core_restart"]
     },
@@ -480,7 +564,11 @@
             "intent": true,
             "result_status": "unknown"
           }
-        ]
+        ],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       },
       "b04_faults": ["after_dispatch_intent_before_send", "core_restart"]
     },
@@ -518,7 +606,19 @@
             "intent": true,
             "result_status": "confirmed_success"
           }
-        ]
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.labels.change",
+            "remote_id": "mail-001",
+            "add": ["follow-up"],
+            "remove": [],
+            "labels_after": ["follow-up"]
+          }
+        ],
+        "provider_labels": {
+          "mail-001": ["follow-up"]
+        }
       }
     }
   ],
@@ -534,7 +634,11 @@
         "operations": 0,
         "result_kind": "schedule_cards",
         "provider_responses": [],
-        "stored_steps": []
+        "stored_steps": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       }
     },
     {
@@ -551,7 +655,11 @@
         "external_calls": 0,
         "tasks": 1,
         "provider_responses": [],
-        "stored_steps": []
+        "stored_steps": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       }
     },
     {
@@ -581,7 +689,19 @@
             "intent": true,
             "result_status": "confirmed_success"
           }
-        ]
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.labels.change",
+            "remote_id": "mail-001",
+            "add": ["follow-up"],
+            "remove": [],
+            "labels_after": ["follow-up"]
+          }
+        ],
+        "provider_labels": {
+          "mail-001": ["follow-up"]
+        }
       }
     },
     {
@@ -601,7 +721,11 @@
         "replayed": true,
         "changed_replay_reason": "command_id_reused",
         "provider_responses": [],
-        "stored_steps": []
+        "stored_steps": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        }
       }
     }
   ]

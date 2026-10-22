@@ -35,6 +35,7 @@ import {
   installHistory,
   database,
   observe,
+  observeProviderLabels,
   restart,
   client,
   waitClient,
@@ -120,7 +121,10 @@ export async function runCase(t, spec, seed, round) {
       rig.provider.truth.stateChangeCount(),
       expected.provider_state_changes,
     );
+    const providerLabels = observeProviderLabels(rig.provider.truth, expected);
     return {
+      provider_labels: providerLabels,
+      provider_receipts: [],
       provider_requests: rig.provider.truth.requestCount(),
       provider_state_changes: rig.provider.truth.stateChangeCount(),
       approval_count: counts.approvals,
@@ -398,7 +402,7 @@ export async function runCase(t, spec, seed, round) {
           await idle(core);
         },
       });
-      await until(() =>
+      await until(t, () =>
         c.pending.some(
           (e) => e.data.event.state_revision === expected.client_state_revision,
         ),
@@ -416,7 +420,7 @@ export async function runCase(t, spec, seed, round) {
         c.link,
         (s) => s.phase === 'live' && s.coreInstanceId !== instance,
       );
-      await until(() =>
+      await until(t, () =>
         c.pending
           .slice(events.length)
           .some(

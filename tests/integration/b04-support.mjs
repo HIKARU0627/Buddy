@@ -179,6 +179,7 @@ export async function observe(core, rig, operationId, expected) {
     receipts.filter((r) => r.applied_change !== null).length,
     expected.provider_state_changes,
   );
+  const providerLabels = observeProviderLabels(rig.provider.truth, expected);
   const stepReceives = {};
   for (const [i, r] of receipts.entries()) {
     assert.equal(r.operation_id, operationId);
@@ -214,14 +215,37 @@ export async function observe(core, rig, operationId, expected) {
         step_id,
         receive_order,
         applied: applied_change !== null,
+        applied_change,
         responded,
       }),
     ),
     provider_requests: receipts.length,
     provider_state_changes: rig.provider.truth.stateChangeCount(),
+    provider_labels: providerLabels,
     approval_count: record.approvals.length,
     final_state: record.state,
   };
+}
+
+export function observeProviderLabels(truth, expected) {
+  // 入力から手書きした期待値だけを使う。送出引数や受信記録から期待値を作らない。
+  assert.deepEqual(
+    truth.receipts().map((r) => r.applied_change),
+    expected.provider_applied_changes,
+    'provider の対象・追加/削除ラベル・適用後ラベル',
+  );
+  const labels = Object.fromEntries(
+    Object.values(truth.snapshot().mails).map((mail) => [
+      mail.remote_id,
+      [...mail.labels].sort(),
+    ]),
+  );
+  assert.deepEqual(
+    labels,
+    expected.provider_labels,
+    'provider の真のラベル集合',
+  );
+  return labels;
 }
 
 export async function client(
@@ -286,13 +310,40 @@ export function waitClient(link, predicate) {
   ).finally(() => remove?.());
 }
 
-export async function until(predicate) {
-  await withTimeout(
-    (async () => {
-      while (!predicate())
-        await new Promise((resolve) => setImmediate(resolve));
-    })(),
-    10000,
-    'イベントの到達',
-  );
+export function until(t, predicate, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    let immediate;
+    let timer;
+    let done = false;
+    const finish = (error) => {
+      if (done) return;
+      done = true;
+      clearImmediate(immediate);
+      clearTimeout(timer);
+      t.signal.removeEventListener('abort', abort);
+      if (error) reject(error);
+      else resolve();
+    };
+    const abort = () => finish(new Error('イベントの待機を中止'));
+    const check = () => {
+      if (done) return;
+      try {
+        if (predicate()) finish();
+        else immediate = setImmediate(check);
+      } catch (error) {
+        finish(error);
+      }
+    };
+    onCleanup(t, abort);
+    t.signal.addEventListener('abort', abort, { once: true });
+    if (t.signal.aborted) {
+      abort();
+      return;
+    }
+    timer = setTimeout(
+      () => finish(new Error('timeout: イベントの到達')),
+      timeoutMs,
+    );
+    check();
+  });
 }

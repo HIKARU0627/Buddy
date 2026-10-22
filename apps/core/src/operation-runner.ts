@@ -449,7 +449,7 @@ export function createOperationRunner(
     const writer = options.writer;
     if (writer === null || options.provider === null) return;
     if (initial.operation_kind !== 'mail.labels.change') {
-      // 下書き（目印での照合）の実行は、下書きを作る発言（B04 の範囲外）と一緒に足す。
+      // QA27 の外部下書き保存（発言・実行・目印での照合）は B04-07（Issue #106）で実装する。
       log(`操作 ${initial.operation_id} の種類はまだ実行できません。`);
       return;
     }

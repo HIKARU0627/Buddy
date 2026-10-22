@@ -691,6 +691,9 @@ export function createOperationRunner(
     if (
       current === null ||
       current.attempt_id === null ||
+      // 経路が受付を調べてから排他を取るまでに先行要求が完了した場合も、再び対象を読まない。
+      // 呼び出し側が保存済みの受付を照会する（別の要求なら 409）。
+      current.state_revision !== expectedStateRevision ||
       !['unknown_held', 'reconciling'].includes(current.state)
     )
       return null;

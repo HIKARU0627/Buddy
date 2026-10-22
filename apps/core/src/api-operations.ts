@@ -16,6 +16,9 @@ import type {
   DbCommand,
   DbCommandOutcome,
   DbSubmission,
+  CommandReceiptRecord,
+  EventQuery,
+  EventQueryValues,
   OperationView,
 } from '@buddy/storage';
 import type {
@@ -36,6 +39,11 @@ import { NO_FAULTS } from './turn-ports.js';
 import type { FaultHook } from './turn-ports.js';
 
 export interface OperationRouteStore extends EventQueryStore {
+  query(query: {
+    readonly kind: 'command';
+    readonly command_id: string;
+  }): Promise<CommandReceiptRecord | null>;
+  query<Q extends EventQuery>(query: Q): Promise<EventQueryValues[Q['kind']]>;
   submit(command: DbCommand): DbSubmission;
 }
 
@@ -211,23 +219,34 @@ const CONFLICT_REASONS = new Set([
   'workflow_not_found',
 ]);
 
+function durableReceiptResponse(
+  requestId: string,
+  receipt: {
+    readonly command_id: string;
+    readonly operation_id: string;
+    readonly committed_state_revision: string;
+  },
+): { status: number; body: object } {
+  return {
+    status: 202,
+    body: {
+      request_id: requestId,
+      command_id: receipt.command_id,
+      operation_id: receipt.operation_id,
+      state_revision: receipt.committed_state_revision,
+      status: 'durable',
+      committed_state_revision: receipt.committed_state_revision,
+    },
+  };
+}
+
 // 命令の結果を CommandReceipt（202）へ写す。durable・accepted は受付の記録で、外部変更の成功ではない。
 export function receiptResponse(
   requestId: string,
   outcome: DbCommandOutcome,
 ): { status: number; body: object } {
   if (outcome.outcome === 'durable')
-    return {
-      status: 202,
-      body: {
-        request_id: requestId,
-        command_id: outcome.command_id,
-        operation_id: outcome.operation_id,
-        state_revision: outcome.committed_state_revision,
-        status: 'durable',
-        committed_state_revision: outcome.committed_state_revision,
-      },
-    };
+    return durableReceiptResponse(requestId, outcome);
   if (outcome.outcome === 'accepted')
     return {
       status: 202,
@@ -446,27 +465,34 @@ export function createOperationRoutes(
       kind: 'operation.cancel',
     }));
 
-  // 保存済みの受付（同じ接続範囲・request_id）の結果を返す。DB worker は受付の照合を適用の前に行うため、
-  // 同じ命令 ID・要求の照合値の命令を送れば保存済みの結果だけが返る（状態は変えない）。
-  const storedReceipt = async (
-    request: ApiHandlerRequest,
-    view: OperationView,
-  ) => {
-    const base = commandBase(request, view);
+  // 保存済みの受付を読むだけ。結果記録の命令（to・attempt_id など）を再構成しない。
+  // 同じ接続範囲・request_id でも、経路・対象・本文の違いは従来どおり 409 にする。
+  const storedReceipt = async (request: ApiHandlerRequest) => {
+    const body = request.body as JsonObject;
+    const scopeId = stringOf(body, 'command_scope_id');
+    const requestId = stringOf(body, 'request_id');
+    const operationId = request.params['id'] ?? '';
     const stored = await store.query({
-      kind: 'receipt_exists',
-      command_scope_id: base.request.command_scope_id,
-      request_id: base.request.request_id,
+      kind: 'command',
+      command_id: deviceCommandId(scopeId, requestId),
     });
-    if (!stored) return null;
-    const outcome = await store.submit({
-      ...base,
-      kind: 'operation.record_result',
-      attempt_id: view.attempt_id ?? randomUUID(),
-      to: 'reconciling',
-      external_id: null,
-    }).result;
-    return receiptResponse(base.request.request_id, outcome);
+    if (stored === null) return null;
+    if (
+      stored.command_scope_id !== scopeId ||
+      stored.request_id !== requestId ||
+      stored.target_id !== operationId ||
+      stored.request_hash !==
+        requestHash(request.route.operationId, operationId, body)
+    )
+      return apiErrorResponse(409, 'conflict', requestId);
+    // 照合の受付は状態更新と同じ transaction で durable として保存される。
+    if (stored.status !== 'durable' || stored.committed_state_revision === null)
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    return durableReceiptResponse(requestId, {
+      command_id: stored.command_id,
+      operation_id: stored.target_id,
+      committed_state_revision: stored.committed_state_revision,
+    });
   };
 
   // 本人の照合（D4）。参照だけで、書込みを増やさない。unknown_held・reconciling の操作だけ。
@@ -479,7 +505,7 @@ export function createOperationRoutes(
       operation_id: request.params['id'] ?? '',
     });
     if (view === null) return apiErrorResponse(409, 'conflict', requestId);
-    const stored = await storedReceipt(request, view);
+    const stored = await storedReceipt(request);
     if (stored !== null) return stored;
     const base = commandBase(request, view);
     const outcome = await runner.reconcile(
@@ -490,7 +516,7 @@ export function createOperationRoutes(
     );
     if (outcome === null) {
       // 同じ要求が先に照合していた場合は、その保存済みの受付を返す。
-      const after = await storedReceipt(request, view);
+      const after = await storedReceipt(request);
       return after ?? apiErrorResponse(409, 'conflict', requestId);
     }
     return receiptResponse(requestId, outcome);
@@ -514,11 +540,18 @@ export function createOperationRoutes(
     return response;
   };
 
-  // 版の照合。保存済みの受付（同じ接続範囲・request_id）があれば DB worker の再送の判定に任せる（同じ内容は
+  // 版の照合。保存済みの受付（同じ接続範囲・request_id）があれば経路側の再送の判定に任せる（同じ内容は
   // 保存済みの結果、違えば 409）。承認では、同じ内容版・hash の有効な承認がすでにあれば DB worker が現在の版を
   // 返す（X02、approvalDecision の existing）ので、状態版が進んでいても 409 にしない。
   const revisionMatches = async (input: EnvironmentInput): Promise<boolean> => {
     const body = input.body;
+    // 状態を先に読む。状態更新と受付は同時に COMMIT されるため、先行要求で版が進んでいたら
+    // 後の受付照会で必ずその受付が見える。「受付なし」→新しい状態版、という競合を作らない。
+    const view = await store.query({
+      kind: 'operation_view',
+      operation_id: input.params['id'] ?? '',
+    });
+    if (view === null) return false;
     const scopeId = stringOf(body, 'command_scope_id');
     const requestId = stringOf(body, 'request_id');
     if (scopeId !== '' && requestId !== '') {
@@ -529,11 +562,6 @@ export function createOperationRoutes(
       });
       if (stored) return true;
     }
-    const view = await store.query({
-      kind: 'operation_view',
-      operation_id: input.params['id'] ?? '',
-    });
-    if (view === null) return false;
     if (stringOf(body, 'expected_state_revision') === view.state_revision)
       return true;
     return (

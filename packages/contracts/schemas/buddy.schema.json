@@ -300,6 +300,18 @@
     },
     {
       "$ref": "#/$defs/DesktopStatusBar"
+    },
+    {
+      "$ref": "#/$defs/CanvasDocument"
+    },
+    {
+      "$ref": "#/$defs/CanvasOpBatch"
+    },
+    {
+      "$ref": "#/$defs/StreamTurnRequest"
+    },
+    {
+      "$ref": "#/$defs/StreamTurnResponse"
     }
   ],
   "$defs": {
@@ -9132,6 +9144,522 @@
         }
       ],
       "description": "main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。"
+    },
+    "CanvasRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "キャンバスの記述の版（ADR 0032）。Core が変更の束ごとに 1 進める。state_revision・request_revision とは別。"
+    },
+    "CanvasItemId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+      "description": "キャンバスの中の物の名前（ADR 0032）。同じキャンバスの中だけで一意。操作 ID・会話 ID などの内部の識別子を使わない。"
+    },
+    "CanvasGroupId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+      "description": "まとまりの名前（ADR 0032）。同じまとまりの物を近くに置く。"
+    },
+    "CanvasHeading": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 24,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u2028-\\u202E\\u2066-\\u2069]+$",
+      "description": "物の見出し（ADR 0032）。24 文字（コードポイント）まで・1 行。制御文字・改行・双方向の上書きと埋め込み・分離の文字（U+202A〜202E・U+2066〜2069）・方向の印（U+200E・200F・061C）を拒否する。空白だけの見出しは意味の検査で拒否する。"
+    },
+    "CanvasItemKind": {
+      "type": "string",
+      "enum": ["card", "float"],
+      "description": "物の種類（ADR 0032）。card はキャンバスの格子に置くカード、float はキャンバスの窓の中に浮かぶフローティングウィンドウ。どちらもキャンバスの窓の外に出られない。"
+    },
+    "CanvasComponent": {
+      "type": "string",
+      "enum": [
+        "list",
+        "table",
+        "schedule_timeline",
+        "mail_card",
+        "compare",
+        "progress",
+        "chart",
+        "source_list",
+        "text"
+      ],
+      "description": "決まった部品の集合（ADR 0032）。描画は HeroUI で作った部品だけで行い、AI はコード・HTML・CSS を出さない。text は 1 回の答えにつき 1 つまで（意味の検査）。"
+    },
+    "CanvasEmphasis": {
+      "type": "string",
+      "enum": ["low", "normal", "high"],
+      "description": "強調の度合い（ADR 0032）。色・大きさ・置き場所は部品と配置のエンジンが決める。"
+    },
+    "CanvasRelation": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["compare", "sequence", "detail_of"]
+        },
+        "target": {
+          "$ref": "#/$defs/CanvasItemId"
+        }
+      },
+      "required": ["kind", "target"],
+      "additionalProperties": false,
+      "description": "ほかの物との関係（ADR 0032）。compare は見比べる、sequence は target の次、detail_of は target の詳細。関係はレイアウトで見せ、説明文にしない。"
+    },
+    "CanvasGrid": {
+      "type": "object",
+      "properties": {
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "span": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        }
+      },
+      "required": ["column", "span", "rows"],
+      "additionalProperties": false,
+      "description": "12 列の格子のヒント（ADR 0032）。column + span − 1 が 12 を超えないこと（意味の検査）。ピクセル・座標・画面の大きさは持たない。最後の配置は配置のエンジンが決める。"
+    },
+    "CanvasDataRef": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z_]{0,31}$"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "description": "表示する対象の参照（ResultView の item_refs と同じ考え）。本文は開いたときに許可範囲内で取得する。"
+    },
+    "CanvasData": {
+      "type": "object",
+      "properties": {
+        "item_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasDataRef"
+          },
+          "maxItems": 50
+        },
+        "more_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["item_refs", "more_count"],
+      "additionalProperties": false,
+      "description": "物が見せるデータの参照（ADR 0032）。50 件まで、残りは more_count（50 件に満たないときは 0。意味の検査）。本文・説明文を持たない。"
+    },
+    "CanvasPlacement": {
+      "type": "string",
+      "enum": ["canvas", "shelf"],
+      "description": "置き場所（ADR 0032）。canvas は見える物、shelf は下の棚に片付けた物。"
+    },
+    "CanvasItem": {
+      "type": "object",
+      "properties": {
+        "item_id": {
+          "$ref": "#/$defs/CanvasItemId"
+        },
+        "kind": {
+          "$ref": "#/$defs/CanvasItemKind"
+        },
+        "component": {
+          "$ref": "#/$defs/CanvasComponent"
+        },
+        "heading": {
+          "$ref": "#/$defs/CanvasHeading"
+        },
+        "emphasis": {
+          "$ref": "#/$defs/CanvasEmphasis"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasGroupId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasRelation"
+          },
+          "maxItems": 4
+        },
+        "grid": {
+          "$ref": "#/$defs/CanvasGrid"
+        },
+        "placement": {
+          "$ref": "#/$defs/CanvasPlacement"
+        },
+        "data": {
+          "$ref": "#/$defs/CanvasData"
+        }
+      },
+      "required": [
+        "item_id",
+        "kind",
+        "component",
+        "heading",
+        "emphasis",
+        "group",
+        "relations",
+        "grid",
+        "placement",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "キャンバスに置く物（ADR 0032）。宣言的な記述だけで、説明文の項目（description・note・caption など）を持たない。承認・停止・取消の操作を持たない。"
+    },
+    "CanvasItemChanges": {
+      "type": "object",
+      "properties": {
+        "heading": {
+          "$ref": "#/$defs/CanvasHeading"
+        },
+        "emphasis": {
+          "$ref": "#/$defs/CanvasEmphasis"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasGroupId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasRelation"
+          },
+          "maxItems": 4
+        },
+        "data": {
+          "$ref": "#/$defs/CanvasData"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false,
+      "description": "update で変える項目（ADR 0032）。種類・部品・置き場所は変えない（部品を変えるなら close と add、置き場所は move）。"
+    },
+    "CanvasOp": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "add"
+            },
+            "item": {
+              "$ref": "#/$defs/CanvasItem"
+            }
+          },
+          "required": ["op", "item"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "update"
+            },
+            "item_id": {
+              "$ref": "#/$defs/CanvasItemId"
+            },
+            "changes": {
+              "$ref": "#/$defs/CanvasItemChanges"
+            }
+          },
+          "required": ["op", "item_id", "changes"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "move"
+            },
+            "item_id": {
+              "$ref": "#/$defs/CanvasItemId"
+            },
+            "grid": {
+              "$ref": "#/$defs/CanvasGrid"
+            },
+            "placement": {
+              "$ref": "#/$defs/CanvasPlacement"
+            }
+          },
+          "required": ["op", "item_id"],
+          "minProperties": 3,
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "close"
+            },
+            "item_id": {
+              "$ref": "#/$defs/CanvasItemId"
+            }
+          },
+          "required": ["op", "item_id"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "relayout"
+            }
+          },
+          "required": ["op"],
+          "additionalProperties": false
+        }
+      ],
+      "description": "キャンバスの 1 つの操作（ADR 0032）。add・update・move・close・relayout だけ。move は grid と placement の少なくとも 1 つを持つ（ピクセル・座標は持たない）。relayout は読む順とまとまりに沿って配置のエンジンに置き直させる。"
+    },
+    "CanvasOpBatch": {
+      "type": "object",
+      "properties": {
+        "base_canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        },
+        "canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        },
+        "ops": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasOp"
+          },
+          "minItems": 1,
+          "maxItems": 12
+        },
+        "reading_order": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasItemId"
+          },
+          "maxItems": 24
+        }
+      },
+      "required": [
+        "base_canvas_revision",
+        "canvas_revision",
+        "ops",
+        "reading_order"
+      ],
+      "additionalProperties": false,
+      "description": "1 回の答えのキャンバスの変更（ADR 0032）。操作は 12 個まで。reading_order は適用した後の見える物の読む順で、見える物をちょうど 1 回ずつ含む（意味の検査）。canvas_revision は base_canvas_revision + 1。"
+    },
+    "CanvasDocument": {
+      "type": "object",
+      "properties": {
+        "canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasItem"
+          },
+          "maxItems": 48
+        },
+        "reading_order": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasItemId"
+          },
+          "maxItems": 24
+        }
+      },
+      "required": ["canvas_revision", "items", "reading_order"],
+      "additionalProperties": false,
+      "description": "キャンバスの今の記述（ADR 0032）。見える物（placement が canvas）は 24 個まで、棚を含めて 48 個まで。reading_order は見える物をちょうど 1 回ずつ含む（意味の検査）。"
+    },
+    "SegmentBoundaryReason": {
+      "type": "string",
+      "enum": [
+        "stream_started",
+        "idle_timeout",
+        "date_changed",
+        "private_started",
+        "private_ended",
+        "storage_mode_changed",
+        "user_requested",
+        "forget_requested"
+      ],
+      "description": "区切り（segment）を新しく始めた理由（ADR 0032）。Core だけが選ぶ。idle_timeout は 30 分やりとりがない、date_changed は本人の時間帯で日付が変わった、private_started・private_ended は記録しない会話（StorageMode private）に入った・出た、storage_mode_changed はそれ以外の保存モードの変更、user_requested は区切りの指示、forget_requested は忘却の指示。"
+    },
+    "StreamSegment": {
+      "type": "object",
+      "properties": {
+        "segment_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "storage_mode": {
+          "$ref": "#/$defs/StorageMode"
+        },
+        "opened_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "open_reason": {
+          "$ref": "#/$defs/SegmentBoundaryReason"
+        },
+        "carried_summary_from": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "segment_id",
+        "storage_mode",
+        "opened_at",
+        "open_reason",
+        "carried_summary_from"
+      ],
+      "additionalProperties": false,
+      "description": "流れ（stream）の中の今の区切り（ADR 0032）。画面には区切りとして見せず、保存モードの表示と表示の権限の判定に使う。carried_summary_from は要約をつないだ前の区切り。記録しない区切り・記録しない会話から出た区切り・流れの最初・忘却の指示で始めた区切りはつながない（意味の検査）。"
+    },
+    "StreamTurnRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "input_kind": {
+          "type": "string",
+          "enum": ["text", "voice_local"]
+        },
+        "expected_canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "text",
+        "input_kind",
+        "expected_canvas_revision"
+      ],
+      "additionalProperties": false,
+      "description": "流れへの発言（ADR 0032）。会話の ID・区切りの ID・保存モードを送らない（区切りは Core が選ぶ）。expected_canvas_revision は端末が今描いているキャンバスの版。"
+    },
+    "StreamTurnResponse": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "segment": {
+          "$ref": "#/$defs/StreamSegment"
+        },
+        "turn_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "input_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["answered", "clarification", "background", "session_control"]
+        },
+        "result_view": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResultView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reply_text": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canvas": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasOpBatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_id",
+        "segment",
+        "turn_id",
+        "input_id",
+        "workflow_id",
+        "status",
+        "result_view",
+        "reply_text",
+        "canvas"
+      ],
+      "additionalProperties": false,
+      "description": "流れへの発言の結果（ADR 0032）。segment は発言を受けた区切り。canvas は Core が意味の検査を通したキャンバスの変更（なければ null）。外部変更の完了は操作の状態で別に示し、承認・停止はキャンバスに置かない。"
     }
   }
 }

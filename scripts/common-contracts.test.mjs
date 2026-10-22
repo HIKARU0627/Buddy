@@ -46,6 +46,10 @@ const VERSION_FIELDS = {
   expected_reservation_revision: 'ReservationRevision',
   route_revision: 'RouteRevision',
   expected_route_revision: 'RouteRevision',
+  // キャンバスの記述の版（ADR 0032）。
+  canvas_revision: 'CanvasRevision',
+  base_canvas_revision: 'CanvasRevision',
+  expected_canvas_revision: 'CanvasRevision',
   safety_revision: 'SafetyRevision',
   expected_safety_revision: 'SafetyRevision',
   expected_io_epoch: 'IoEpoch',

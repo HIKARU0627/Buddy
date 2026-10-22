@@ -159,6 +159,66 @@ export function admitDesktopRequest(
   return { ok: true };
 }
 
+// 窓の役割（ADR 0032）。キャンバス（画面ぴったりの 1 枚。AI が宣言的に置く物を描く）・状態の層（端のつまみ・
+// スライドのパネル。状態・停止・確認の一覧）・入力バー（画面の下）。窓ごとに使えるチャネルを分け、
+// main は送信元の窓の役割でも受付を絞る（UI-02 で接続する。今の窓の受付 admitDesktopRequest は変えない）。
+export const DESKTOP_WINDOW_ROLES = ['canvas', 'status', 'input'] as const;
+
+export type DesktopWindowRole = (typeof DESKTOP_WINDOW_ROLES)[number];
+
+// 役割ごとに使える要求のチャネル。キャンバスは承認・停止・再開・取消・登録・失効・終了のチャネルを使えない
+// （AI の部品が状態や停止を隠す・承認の画面に見せかけることを、構造で防ぐ）。入力バーは状態の取得だけ
+// （発言のチャネルは B04-05 #91 の desktop.turn_submit を UI-03 で入力バーに割り当てる）。
+export const DESKTOP_ROLE_CHANNELS: Readonly<
+  Record<DesktopWindowRole, readonly DesktopIpcChannel[]>
+> = {
+  canvas: ['desktop.get_state'],
+  status: [
+    'desktop.get_state',
+    'desktop.io_stop',
+    'desktop.io_resume',
+    'desktop.window_hide',
+    'desktop.client_quit',
+    'desktop.get_connection',
+    'desktop.pairing_begin',
+    'desktop.pairing_confirm',
+    'desktop.pairing_submit',
+    'desktop.pairing_cancel',
+    'desktop.claims_list',
+    'desktop.claim_decide',
+    'desktop.devices_list',
+    'desktop.device_revoke',
+    'desktop.pairing_open',
+    'desktop.home_status',
+    'desktop.home_register',
+  ],
+  input: ['desktop.get_state'],
+};
+
+// 役割ごとに main から送る通知。電源・ロックの記録と接続の状態は状態の層だけ。
+export const DESKTOP_ROLE_NOTIFICATIONS: Readonly<
+  Record<
+    DesktopWindowRole,
+    readonly (typeof DESKTOP_NOTIFICATION_CHANNELS)[number][]
+  >
+> = {
+  canvas: ['desktop.state_changed'],
+  status: [
+    'desktop.state_changed',
+    'desktop.power_event',
+    'desktop.connection_changed',
+  ],
+  input: ['desktop.state_changed'],
+};
+
+// 送信元の窓の役割がそのチャネルを使えるか。未知のチャネルは使えない。
+export function desktopChannelAllowedForRole(
+  role: DesktopWindowRole,
+  channel: string,
+): boolean {
+  return (DESKTOP_ROLE_CHANNELS[role] as readonly string[]).includes(channel);
+}
+
 export function desktopInputPermitted(state: DesktopIoState): boolean {
   return state.lockState === 'unlocked' && state.stopScope === 'none';
 }

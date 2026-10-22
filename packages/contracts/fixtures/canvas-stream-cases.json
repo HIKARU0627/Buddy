@@ -1,0 +1,4902 @@
+[
+  {
+    "id": "canvas-document-valid",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"]
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "canvas-batch-valid",
+    "schema": "CanvasOpBatch",
+    "valid": true,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "add",
+          "item": {
+            "item_id": "progress",
+            "kind": "card",
+            "component": "progress",
+            "heading": "同期の進み具合",
+            "emphasis": "normal",
+            "group": null,
+            "relations": [],
+            "grid": {
+              "column": 1,
+              "span": 12,
+              "rows": 1
+            },
+            "placement": "canvas",
+            "data": {
+              "item_refs": [
+                {
+                  "kind": "task",
+                  "id": "00000000-0000-4000-8000-000000000100"
+                }
+              ],
+              "more_count": 0
+            }
+          }
+        },
+        {
+          "op": "update",
+          "item_id": "tasks-today",
+          "changes": {
+            "emphasis": "low"
+          }
+        },
+        {
+          "op": "move",
+          "item_id": "old-mail",
+          "placement": "canvas"
+        },
+        {
+          "op": "close",
+          "item_id": "reply"
+        },
+        {
+          "op": "relayout"
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "canvas-heading-24-astral",
+    "schema": "CanvasHeading",
+    "valid": true,
+    "value": "予定🗓あああああああああああああああああああああ"
+  },
+  {
+    "id": "canvas-refs-50-with-more",
+    "schema": "CanvasItem",
+    "valid": true,
+    "value": {
+      "item_id": "many",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000101"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000102"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000103"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000104"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000105"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000106"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000107"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000108"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000109"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000110"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000111"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000112"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000113"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000114"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000115"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000116"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000117"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000118"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000119"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000120"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000121"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000122"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000123"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000124"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000125"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000126"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000127"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000128"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000129"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000130"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000131"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000132"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000133"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000134"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000135"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000136"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000137"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000138"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000139"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000140"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000141"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000142"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000143"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000144"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000145"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000146"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000147"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000148"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000149"
+          }
+        ],
+        "more_count": 7
+      }
+    }
+  },
+  {
+    "id": "canvas-batch-12-ops",
+    "schema": "CanvasOpBatch",
+    "valid": true,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "close",
+          "item_id": "i0"
+        },
+        {
+          "op": "close",
+          "item_id": "i1"
+        },
+        {
+          "op": "close",
+          "item_id": "i2"
+        },
+        {
+          "op": "close",
+          "item_id": "i3"
+        },
+        {
+          "op": "close",
+          "item_id": "i4"
+        },
+        {
+          "op": "close",
+          "item_id": "i5"
+        },
+        {
+          "op": "close",
+          "item_id": "i6"
+        },
+        {
+          "op": "close",
+          "item_id": "i7"
+        },
+        {
+          "op": "close",
+          "item_id": "i8"
+        },
+        {
+          "op": "close",
+          "item_id": "i9"
+        },
+        {
+          "op": "close",
+          "item_id": "i10"
+        },
+        {
+          "op": "close",
+          "item_id": "i11"
+        }
+      ],
+      "reading_order": []
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "canvas-heading-25",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "あああああああああああああああああああああああああ"
+  },
+  {
+    "id": "canvas-batch-13-ops",
+    "schema": "CanvasOpBatch",
+    "valid": false,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "close",
+          "item_id": "i0"
+        },
+        {
+          "op": "close",
+          "item_id": "i1"
+        },
+        {
+          "op": "close",
+          "item_id": "i2"
+        },
+        {
+          "op": "close",
+          "item_id": "i3"
+        },
+        {
+          "op": "close",
+          "item_id": "i4"
+        },
+        {
+          "op": "close",
+          "item_id": "i5"
+        },
+        {
+          "op": "close",
+          "item_id": "i6"
+        },
+        {
+          "op": "close",
+          "item_id": "i7"
+        },
+        {
+          "op": "close",
+          "item_id": "i8"
+        },
+        {
+          "op": "close",
+          "item_id": "i9"
+        },
+        {
+          "op": "close",
+          "item_id": "i10"
+        },
+        {
+          "op": "close",
+          "item_id": "i11"
+        },
+        {
+          "op": "close",
+          "item_id": "i12"
+        }
+      ],
+      "reading_order": []
+    }
+  },
+  {
+    "id": "canvas-refs-51",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "many",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000101"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000102"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000103"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000104"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000105"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000106"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000107"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000108"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000109"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000110"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000111"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000112"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000113"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000114"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000115"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000116"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000117"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000118"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000119"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000120"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000121"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000122"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000123"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000124"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000125"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000126"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000127"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000128"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000129"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000130"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000131"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000132"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000133"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000134"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000135"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000136"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000137"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000138"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000139"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000140"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000141"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000142"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000143"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000144"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000145"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000146"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000147"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000148"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000149"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000150"
+          }
+        ],
+        "more_count": 0
+      }
+    }
+  },
+  {
+    "id": "canvas-document-49-items",
+    "schema": "CanvasDocument",
+    "valid": false,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "s0",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s1",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s2",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s3",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s4",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s5",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s6",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s7",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s8",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s9",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s10",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s11",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s12",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s13",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s14",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s15",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s16",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s17",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s18",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s19",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s20",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s21",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s22",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s23",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s24",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s25",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s26",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s27",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s28",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s29",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s30",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s31",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s32",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s33",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s34",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s35",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s36",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s37",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s38",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s39",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s40",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s41",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s42",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s43",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s44",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s45",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s46",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s47",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "s48",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": []
+    }
+  },
+  {
+    "id": "canvas-document-reading-order-25",
+    "schema": "CanvasDocument",
+    "valid": false,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "v0",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v1",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v2",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v3",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v4",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v5",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v6",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v7",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v8",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v9",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v10",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v11",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v12",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v13",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v14",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v15",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v16",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v17",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v18",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v19",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v20",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v21",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v22",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v23",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v24",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": [
+        "v0",
+        "v1",
+        "v2",
+        "v3",
+        "v4",
+        "v5",
+        "v6",
+        "v7",
+        "v8",
+        "v9",
+        "v10",
+        "v11",
+        "v12",
+        "v13",
+        "v14",
+        "v15",
+        "v16",
+        "v17",
+        "v18",
+        "v19",
+        "v20",
+        "v21",
+        "v22",
+        "v23",
+        "v24"
+      ]
+    }
+  },
+  {
+    "id": "canvas-grid-column-13",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "g",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 13,
+        "span": 1,
+        "rows": 1
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      }
+    }
+  },
+  {
+    "id": "canvas-document-25-visible",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "v0",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v1",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v2",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v3",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v4",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v5",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v6",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v7",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v8",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v9",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v10",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v11",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v12",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v13",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v14",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v15",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v16",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v17",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v18",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v19",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v20",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v21",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v22",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v23",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "v24",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": [
+        "v0",
+        "v1",
+        "v2",
+        "v3",
+        "v4",
+        "v5",
+        "v6",
+        "v7",
+        "v8",
+        "v9",
+        "v10",
+        "v11",
+        "v12",
+        "v13",
+        "v14",
+        "v15",
+        "v16",
+        "v17",
+        "v18",
+        "v19",
+        "v20",
+        "v21",
+        "v22",
+        "v23"
+      ]
+    },
+    "semantic_errors": ["reading_order_missing", "visible_limit"]
+  },
+  {
+    "id": "canvas-batch-two-texts",
+    "schema": "CanvasOpBatch",
+    "valid": true,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "add",
+          "item": {
+            "item_id": "t1",
+            "kind": "card",
+            "component": "text",
+            "heading": "今日の用事",
+            "emphasis": "normal",
+            "group": null,
+            "relations": [],
+            "grid": {
+              "column": 1,
+              "span": 4,
+              "rows": 2
+            },
+            "placement": "canvas",
+            "data": {
+              "item_refs": [
+                {
+                  "kind": "task",
+                  "id": "00000000-0000-4000-8000-000000000100"
+                }
+              ],
+              "more_count": 0
+            }
+          }
+        },
+        {
+          "op": "add",
+          "item": {
+            "item_id": "t2",
+            "kind": "float",
+            "component": "text",
+            "heading": "今日の用事",
+            "emphasis": "normal",
+            "group": null,
+            "relations": [],
+            "grid": {
+              "column": 1,
+              "span": 4,
+              "rows": 2
+            },
+            "placement": "canvas",
+            "data": {
+              "item_refs": [
+                {
+                  "kind": "task",
+                  "id": "00000000-0000-4000-8000-000000000100"
+                }
+              ],
+              "more_count": 0
+            }
+          }
+        }
+      ],
+      "reading_order": ["t1", "t2"]
+    },
+    "semantic_errors": ["text_limit"]
+  },
+  {
+    "id": "canvas-more-count-without-full-refs",
+    "schema": "CanvasItem",
+    "valid": true,
+    "value": {
+      "item_id": "few",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000101"
+          },
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000102"
+          }
+        ],
+        "more_count": 2
+      }
+    }
+  },
+  {
+    "id": "canvas-document-more-count-without-full-refs",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "few",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              },
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000101"
+              },
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000102"
+              }
+            ],
+            "more_count": 2
+          }
+        }
+      ],
+      "reading_order": ["few"]
+    },
+    "semantic_errors": ["more_count_without_full_refs"]
+  },
+  {
+    "id": "canvas-document-grid-overflow",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "wide",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 10,
+            "span": 6,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["wide"]
+    },
+    "semantic_errors": ["grid_overflow"]
+  },
+  {
+    "id": "canvas-heading-rlo",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "請求書\u202Efdp.exe"
+  },
+  {
+    "id": "canvas-heading-lri",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "予定\u2066a\u2069"
+  },
+  {
+    "id": "canvas-heading-rlm",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "予定\u200F"
+  },
+  {
+    "id": "canvas-heading-newline",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "1 行目\n2 行目"
+  },
+  {
+    "id": "canvas-heading-line-separator",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "1 行目\u20282 行目"
+  },
+  {
+    "id": "canvas-heading-bell",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "予定\u0007"
+  },
+  {
+    "id": "canvas-heading-c1",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": "予定\u0085"
+  },
+  {
+    "id": "canvas-heading-empty",
+    "schema": "CanvasHeading",
+    "valid": false,
+    "value": ""
+  },
+  {
+    "id": "canvas-document-heading-blank",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "blank",
+          "kind": "card",
+          "component": "list",
+          "heading": "\u3000 ",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["blank"]
+    },
+    "semantic_errors": ["heading_blank"]
+  },
+  {
+    "id": "canvas-unknown-component",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "card",
+      "component": "html",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      }
+    }
+  },
+  {
+    "id": "canvas-unknown-kind",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "modal",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      }
+    }
+  },
+  {
+    "id": "canvas-unknown-op",
+    "schema": "CanvasOpBatch",
+    "valid": false,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "script",
+          "item_id": "x"
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    }
+  },
+  {
+    "id": "canvas-approval-op",
+    "schema": "CanvasOpBatch",
+    "valid": false,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "approve",
+          "item_id": "x"
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    }
+  },
+  {
+    "id": "canvas-unknown-relation",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [
+        {
+          "kind": "explains",
+          "target": "y"
+        }
+      ],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      }
+    }
+  },
+  {
+    "id": "canvas-item-id-uuid",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "00000000-0000-4000-8000-000000000005",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      }
+    }
+  },
+  {
+    "id": "canvas-item-description",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      },
+      "description": "この表は予定を示します"
+    }
+  },
+  {
+    "id": "canvas-item-note",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      },
+      "note": "この表は予定を示します"
+    }
+  },
+  {
+    "id": "canvas-item-caption",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      },
+      "caption": "この表は予定を示します"
+    }
+  },
+  {
+    "id": "canvas-item-body",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [],
+        "more_count": 0,
+        "body": "本文"
+      }
+    }
+  },
+  {
+    "id": "canvas-item-html",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      },
+      "html": "<b>x</b>"
+    }
+  },
+  {
+    "id": "canvas-item-style",
+    "schema": "CanvasItem",
+    "valid": false,
+    "value": {
+      "item_id": "x",
+      "kind": "card",
+      "component": "list",
+      "heading": "今日の用事",
+      "emphasis": "normal",
+      "group": null,
+      "relations": [],
+      "grid": {
+        "column": 1,
+        "span": 4,
+        "rows": 2
+      },
+      "placement": "canvas",
+      "data": {
+        "item_refs": [
+          {
+            "kind": "task",
+            "id": "00000000-0000-4000-8000-000000000100"
+          }
+        ],
+        "more_count": 0
+      },
+      "style": {
+        "color": "red"
+      }
+    }
+  },
+  {
+    "id": "canvas-update-description",
+    "schema": "CanvasOpBatch",
+    "valid": false,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "update",
+          "item_id": "x",
+          "changes": {
+            "description": "説明"
+          }
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    }
+  },
+  {
+    "id": "canvas-update-component",
+    "schema": "CanvasOpBatch",
+    "valid": false,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "update",
+          "item_id": "x",
+          "changes": {
+            "component": "table"
+          }
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    }
+  },
+  {
+    "id": "canvas-update-empty",
+    "schema": "CanvasOpBatch",
+    "valid": false,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "update",
+          "item_id": "x",
+          "changes": {}
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    }
+  },
+  {
+    "id": "canvas-move-nothing",
+    "schema": "CanvasOpBatch",
+    "valid": false,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "move",
+          "item_id": "x"
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    }
+  },
+  {
+    "id": "canvas-move-pixels",
+    "schema": "CanvasOpBatch",
+    "valid": false,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "move",
+          "item_id": "x",
+          "x": 10,
+          "y": 20
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    }
+  },
+  {
+    "id": "canvas-reading-order-missing",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "reply"]
+    },
+    "semantic_errors": ["reading_order_missing"]
+  },
+  {
+    "id": "canvas-reading-order-duplicate",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply", "tasks-today"]
+    },
+    "semantic_errors": ["reading_order_duplicate"]
+  },
+  {
+    "id": "canvas-reading-order-shelf",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply", "old-mail"]
+    },
+    "semantic_errors": ["reading_order_unknown"]
+  },
+  {
+    "id": "canvas-batch-reading-order-duplicate",
+    "schema": "CanvasOpBatch",
+    "valid": true,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "add",
+          "item": {
+            "item_id": "progress",
+            "kind": "card",
+            "component": "progress",
+            "heading": "同期の進み具合",
+            "emphasis": "normal",
+            "group": null,
+            "relations": [],
+            "grid": {
+              "column": 1,
+              "span": 12,
+              "rows": 1
+            },
+            "placement": "canvas",
+            "data": {
+              "item_refs": [
+                {
+                  "kind": "task",
+                  "id": "00000000-0000-4000-8000-000000000100"
+                }
+              ],
+              "more_count": 0
+            }
+          }
+        },
+        {
+          "op": "update",
+          "item_id": "tasks-today",
+          "changes": {
+            "emphasis": "low"
+          }
+        },
+        {
+          "op": "move",
+          "item_id": "old-mail",
+          "placement": "canvas"
+        },
+        {
+          "op": "close",
+          "item_id": "reply"
+        },
+        {
+          "op": "relayout"
+        }
+      ],
+      "reading_order": [
+        "progress",
+        "progress",
+        "tasks-today",
+        "plan-compare",
+        "old-mail"
+      ]
+    },
+    "semantic_errors": ["reading_order_duplicate"]
+  },
+  {
+    "id": "canvas-batch-revision-skip",
+    "schema": "CanvasOpBatch",
+    "valid": true,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "9",
+      "ops": [
+        {
+          "op": "add",
+          "item": {
+            "item_id": "progress",
+            "kind": "card",
+            "component": "progress",
+            "heading": "同期の進み具合",
+            "emphasis": "normal",
+            "group": null,
+            "relations": [],
+            "grid": {
+              "column": 1,
+              "span": 12,
+              "rows": 1
+            },
+            "placement": "canvas",
+            "data": {
+              "item_refs": [
+                {
+                  "kind": "task",
+                  "id": "00000000-0000-4000-8000-000000000100"
+                }
+              ],
+              "more_count": 0
+            }
+          }
+        },
+        {
+          "op": "update",
+          "item_id": "tasks-today",
+          "changes": {
+            "emphasis": "low"
+          }
+        },
+        {
+          "op": "move",
+          "item_id": "old-mail",
+          "placement": "canvas"
+        },
+        {
+          "op": "close",
+          "item_id": "reply"
+        },
+        {
+          "op": "relayout"
+        }
+      ],
+      "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+    },
+    "semantic_errors": ["revision_not_next"]
+  },
+  {
+    "id": "canvas-batch-same-target-twice",
+    "schema": "CanvasOpBatch",
+    "valid": true,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "update",
+          "item_id": "tasks-today",
+          "changes": {
+            "emphasis": "low"
+          }
+        },
+        {
+          "op": "close",
+          "item_id": "tasks-today"
+        }
+      ],
+      "reading_order": ["plan-compare", "reply"]
+    },
+    "semantic_errors": ["op_target_duplicate"]
+  },
+  {
+    "id": "canvas-batch-two-relayouts",
+    "schema": "CanvasOpBatch",
+    "valid": true,
+    "value": {
+      "base_canvas_revision": "7",
+      "canvas_revision": "8",
+      "ops": [
+        {
+          "op": "relayout"
+        },
+        {
+          "op": "relayout"
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"]
+    },
+    "semantic_errors": ["relayout_duplicate"]
+  },
+  {
+    "id": "canvas-document-relation-self",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "solo",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [
+            {
+              "kind": "detail_of",
+              "target": "solo"
+            }
+          ],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["solo"]
+    },
+    "semantic_errors": ["relation_self"]
+  },
+  {
+    "id": "canvas-document-relation-unknown",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "solo",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [
+            {
+              "kind": "sequence",
+              "target": "gone"
+            }
+          ],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["solo"]
+    },
+    "semantic_errors": ["relation_unknown_target"]
+  },
+  {
+    "id": "canvas-document-duplicate-id",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "same",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "same",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["same"]
+    },
+    "semantic_errors": ["duplicate_item_id"]
+  },
+  {
+    "id": "segment-idle-carries",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "idle_timeout",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "segment-date-changed",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "date_changed",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "segment-first",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "stream_started",
+      "carried_summary_from": null
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "segment-private",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "private",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "private_started",
+      "carried_summary_from": null
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "segment-private-ended",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "private_ended",
+      "carried_summary_from": null
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "segment-extended",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "extended",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "storage_mode_changed",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "segment-user-requested",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "user_requested",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "segment-private-carries",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "private",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "private_started",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    },
+    "semantic_errors": [
+      "private_carries_summary",
+      "summary_carried_across_boundary"
+    ]
+  },
+  {
+    "id": "segment-private-idle-carries",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "private",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "idle_timeout",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    },
+    "semantic_errors": ["private_carries_summary"]
+  },
+  {
+    "id": "segment-forget-carries",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "forget_requested",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    },
+    "semantic_errors": ["summary_carried_across_boundary"]
+  },
+  {
+    "id": "segment-private-ended-carries",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "private_ended",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    },
+    "semantic_errors": ["summary_carried_across_boundary"]
+  },
+  {
+    "id": "segment-private-started-normal",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "private_started",
+      "carried_summary_from": null
+    },
+    "semantic_errors": ["storage_mode_mismatch"]
+  },
+  {
+    "id": "segment-mode-changed-to-private",
+    "schema": "StreamSegment",
+    "valid": true,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "private",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "storage_mode_changed",
+      "carried_summary_from": null
+    },
+    "semantic_errors": ["storage_mode_mismatch"]
+  },
+  {
+    "id": "segment-unknown-reason",
+    "schema": "StreamSegment",
+    "valid": false,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "session_ended",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    }
+  },
+  {
+    "id": "segment-unknown-mode",
+    "schema": "StreamSegment",
+    "valid": false,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "forever",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "idle_timeout",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+    }
+  },
+  {
+    "id": "segment-with-title",
+    "schema": "StreamSegment",
+    "valid": false,
+    "value": {
+      "segment_id": "00000000-0000-4000-8000-000000000031",
+      "storage_mode": "normal",
+      "opened_at": "2026-10-22T00:40:00Z",
+      "open_reason": "idle_timeout",
+      "carried_summary_from": "00000000-0000-4000-8000-000000000030",
+      "title": "会話 3"
+    }
+  },
+  {
+    "id": "stream-turn-valid",
+    "schema": "StreamTurnRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009001",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "text": "明日の予定は？",
+      "input_kind": "text",
+      "expected_canvas_revision": "7"
+    }
+  },
+  {
+    "id": "stream-turn-session-id",
+    "schema": "StreamTurnRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009001",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "text": "明日の予定は？",
+      "input_kind": "text",
+      "expected_canvas_revision": "7",
+      "session_id": "00000000-0000-4000-8000-000000000003"
+    }
+  },
+  {
+    "id": "stream-turn-segment-id",
+    "schema": "StreamTurnRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009001",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "text": "明日の予定は？",
+      "input_kind": "text",
+      "expected_canvas_revision": "7",
+      "segment_id": "00000000-0000-4000-8000-000000000031"
+    }
+  },
+  {
+    "id": "stream-turn-canvas-ops",
+    "schema": "StreamTurnRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000009001",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "text": "明日の予定は？",
+      "input_kind": "text",
+      "expected_canvas_revision": "7",
+      "canvas": {
+        "base_canvas_revision": "7",
+        "canvas_revision": "8",
+        "ops": [
+          {
+            "op": "add",
+            "item": {
+              "item_id": "progress",
+              "kind": "card",
+              "component": "progress",
+              "heading": "同期の進み具合",
+              "emphasis": "normal",
+              "group": null,
+              "relations": [],
+              "grid": {
+                "column": 1,
+                "span": 12,
+                "rows": 1
+              },
+              "placement": "canvas",
+              "data": {
+                "item_refs": [
+                  {
+                    "kind": "task",
+                    "id": "00000000-0000-4000-8000-000000000100"
+                  }
+                ],
+                "more_count": 0
+              }
+            }
+          },
+          {
+            "op": "update",
+            "item_id": "tasks-today",
+            "changes": {
+              "emphasis": "low"
+            }
+          },
+          {
+            "op": "move",
+            "item_id": "old-mail",
+            "placement": "canvas"
+          },
+          {
+            "op": "close",
+            "item_id": "reply"
+          },
+          {
+            "op": "relayout"
+          }
+        ],
+        "reading_order": ["progress", "tasks-today", "plan-compare", "old-mail"]
+      }
+    }
+  }
+]

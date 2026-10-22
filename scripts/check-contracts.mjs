@@ -37,6 +37,26 @@ for (const entry of cases) {
     );
   else assert.equal(entry.semantic_errors, undefined, entry.id);
 }
+// キャンバスと流れの区切りの例（ADR 0032）。ここは形式だけを確かめ、意味の検査（semantic_errors）は
+// domain の関数で scripts/canvas.test.mjs が確かめる（contracts:check は build の前に走るため）。
+const canvasCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/canvas-stream-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of canvasCases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (!entry.valid) assert.equal(entry.semantic_errors, undefined, entry.id);
+}
 const plan = parseStrictJson(
   await readFile(
     new URL('packages/contracts/model-evaluation.json', root),
@@ -54,5 +74,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

@@ -136,6 +136,43 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/stream/turns:
+    post:
+      operationId: postStreamTurn
+      summary: 流れへの発言
+      description: 会話の単位を見せない 1 本の流れへの発言（ADR 0032）。区切り（segment）は Core が選び、要求に会話・区切りの ID と保存モードを持たない。結果は文字とキャンバスの変更の記述で返す。発言から外部変更を直接実行せず、承認・停止をキャンバスに置かない。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      x-buddy-core-checks: *id002
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/StreamTurnRequest
+      responses:
+        '200':
+          description: 受けた区切りと、文字とキャンバスの変更の結果。外部変更の完了ではない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/StreamTurnResponse
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/sessions/{session_id}/handoff:
     post:
       operationId: handoffSession

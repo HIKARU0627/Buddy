@@ -33,6 +33,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   listConnections: [...READ, 'unlocked'],
   createSession: COMMAND,
   postTurn: COMMAND,
+  // 流れへの発言（ADR 0032）。会話への発言と同じ検査。区切りは Core が選ぶ。
+  postStreamTurn: COMMAND,
   handoffSession: [...SCREEN, 'expected_revision'],
   previewOperation: COMMAND,
   displayOperation: COMMAND,

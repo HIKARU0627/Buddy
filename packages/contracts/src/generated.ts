@@ -103,7 +103,11 @@ export type BuddyContract =
   | DesktopIpcRequest
   | DesktopIpcResponse
   | DesktopIpcNotification
-  | DesktopStatusBar;
+  | DesktopStatusBar
+  | CanvasDocument
+  | CanvasOpBatch
+  | StreamTurnRequest
+  | StreamTurnResponse;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -1072,6 +1076,85 @@ export type DesktopIpcNotification =
       channel: 'desktop.connection_changed';
       connection: DesktopConnectionView;
     };
+/**
+ * キャンバスの記述の版（ADR 0032）。Core が変更の束ごとに 1 進める。state_revision・request_revision とは別。
+ */
+export type CanvasRevision = string;
+/**
+ * キャンバスの中の物の名前（ADR 0032）。同じキャンバスの中だけで一意。操作 ID・会話 ID などの内部の識別子を使わない。
+ */
+export type CanvasItemId = string;
+/**
+ * 物の種類（ADR 0032）。card はキャンバスの格子に置くカード、float はキャンバスの窓の中に浮かぶフローティングウィンドウ。どちらもキャンバスの窓の外に出られない。
+ */
+export type CanvasItemKind = 'card' | 'float';
+/**
+ * 決まった部品の集合（ADR 0032）。描画は HeroUI で作った部品だけで行い、AI はコード・HTML・CSS を出さない。text は 1 回の答えにつき 1 つまで（意味の検査）。
+ */
+export type CanvasComponent =
+  | 'list'
+  | 'table'
+  | 'schedule_timeline'
+  | 'mail_card'
+  | 'compare'
+  | 'progress'
+  | 'chart'
+  | 'source_list'
+  | 'text';
+/**
+ * 物の見出し（ADR 0032）。24 文字（コードポイント）まで・1 行。制御文字・改行・双方向の上書きと埋め込み・分離の文字（U+202A〜202E・U+2066〜2069）・方向の印（U+200E・200F・061C）を拒否する。マークアップ（閉じたタグ（空白なしの自己終了 <br/> を含む）・終わりのタグ・<! と <?・属性の形）と、URL のスキーム（http・https・javascript・vbscript・data・file・ftp・blob・mailto の後の :。直前が ASCII の英数字でないとき）、www. で始まる表現も拒否する。大文字・小文字は ASCII の文字集合で明示し、domain の検査と同じパターンを使う。描画はプレーンテキストだけ。空白だけの見出しは意味の検査で拒否する。
+ */
+export type CanvasHeading = string;
+/**
+ * 強調の度合い（ADR 0032）。色・大きさ・置き場所は部品と配置のエンジンが決める。
+ */
+export type CanvasEmphasis = 'low' | 'normal' | 'high';
+/**
+ * まとまりの名前（ADR 0032）。同じまとまりの物を近くに置く。
+ */
+export type CanvasGroupId = string;
+/**
+ * 置き場所（ADR 0032）。canvas は見える物、shelf は下の棚に片付けた物。
+ */
+export type CanvasPlacement = 'canvas' | 'shelf';
+/**
+ * キャンバスの 1 つの操作（ADR 0032）。add・update・move・close・relayout だけ。move は grid と placement の少なくとも 1 つを持つ（ピクセル・座標は持たない）。relayout は読む順とまとまりに沿って配置のエンジンに置き直させる。
+ */
+export type CanvasOp =
+  | {
+      op: 'add';
+      item: CanvasItem;
+    }
+  | {
+      op: 'update';
+      item_id: CanvasItemId;
+      changes: CanvasItemChanges;
+    }
+  | {
+      op: 'move';
+      item_id: CanvasItemId;
+      grid?: CanvasGrid;
+      placement?: CanvasPlacement;
+    }
+  | {
+      op: 'close';
+      item_id: CanvasItemId;
+    }
+  | {
+      op: 'relayout';
+    };
+/**
+ * 区切り（segment）を新しく始めた理由（ADR 0032）。Core だけが選ぶ。idle_timeout は 30 分やりとりがない、date_changed は本人の時間帯で日付が変わった、private_started・private_ended は記録しない会話（StorageMode private）に入った・出た、storage_mode_changed はそれ以外の保存モードの変更、user_requested は区切りの指示、forget_requested は忘却の指示。
+ */
+export type SegmentBoundaryReason =
+  | 'stream_started'
+  | 'idle_timeout'
+  | 'date_changed'
+  | 'private_started'
+  | 'private_ended'
+  | 'storage_mode_changed'
+  | 'user_requested'
+  | 'forget_requested';
 
 export interface AudioRange {
   audio_epoch: AudioEpoch;
@@ -3470,4 +3553,219 @@ export interface DesktopOperationPreview {
    * 承認へ進めてよいか。外部変更で、口座の表示名と対象のメールの件名・差出人・受信日時がすべてそろわないときは false で、画面は承認を出さず、main も承認を送らない。
    */
   approvable: boolean;
+}
+/**
+ * キャンバスの今の記述（ADR 0032）。見える物（placement が canvas）は 24 個まで、棚を含めて 48 個まで。reading_order は見える物をちょうど 1 回ずつ含む（意味の検査）。
+ */
+export interface CanvasDocument {
+  canvas_revision: CanvasRevision;
+  /**
+   * @maxItems 48
+   */
+  items: CanvasItem[];
+  /**
+   * @maxItems 24
+   */
+  reading_order: CanvasItemId[];
+}
+/**
+ * キャンバスに置く物（ADR 0032）。宣言的な記述だけで、説明文の項目（description・note・caption など）を持たない。承認・停止・取消の操作を持たない。
+ */
+export interface CanvasItem {
+  item_id: CanvasItemId;
+  kind: CanvasItemKind;
+  component: CanvasComponent;
+  heading: CanvasHeading;
+  emphasis: CanvasEmphasis;
+  group: CanvasGroupId | null;
+  /**
+   * @maxItems 4
+   */
+  relations:
+    | []
+    | [CanvasRelation]
+    | [CanvasRelation, CanvasRelation]
+    | [CanvasRelation, CanvasRelation, CanvasRelation]
+    | [CanvasRelation, CanvasRelation, CanvasRelation, CanvasRelation];
+  grid: CanvasGrid;
+  placement: CanvasPlacement;
+  data: CanvasData;
+}
+/**
+ * ほかの物との関係（ADR 0032）。compare は見比べる、sequence は target の次、detail_of は target の詳細。関係はレイアウトで見せ、説明文にしない。
+ */
+export interface CanvasRelation {
+  kind: 'compare' | 'sequence' | 'detail_of';
+  target: CanvasItemId;
+}
+/**
+ * 12 列の格子のヒント（ADR 0032）。column + span − 1 が 12 を超えないこと（意味の検査）。ピクセル・座標・画面の大きさは持たない。最後の配置は配置のエンジンが決める。
+ */
+export interface CanvasGrid {
+  column: number;
+  span: number;
+  rows: number;
+}
+/**
+ * 物が見せるデータの参照（ADR 0032）。50 件まで、残りは more_count（50 件に満たないときは 0。意味の検査）。本文・説明文を持たない。
+ */
+export interface CanvasData {
+  /**
+   * @maxItems 50
+   */
+  item_refs: CanvasDataRef[];
+  more_count: number;
+}
+/**
+ * 表示する対象の参照（ResultView の item_refs と同じ考え）。本文は開いたときに許可範囲内で取得する。
+ */
+export interface CanvasDataRef {
+  kind: string;
+  id: Id;
+}
+/**
+ * 1 回の答えのキャンバスの変更（ADR 0032）。操作は 12 個まで。reading_order は適用した後の見える物の読む順で、見える物をちょうど 1 回ずつ含む（意味の検査）。canvas_revision は base_canvas_revision + 1。
+ */
+export interface CanvasOpBatch {
+  base_canvas_revision: CanvasRevision;
+  canvas_revision: CanvasRevision;
+  /**
+   * @minItems 1
+   * @maxItems 12
+   */
+  ops:
+    | [CanvasOp]
+    | [CanvasOp, CanvasOp]
+    | [CanvasOp, CanvasOp, CanvasOp]
+    | [CanvasOp, CanvasOp, CanvasOp, CanvasOp]
+    | [CanvasOp, CanvasOp, CanvasOp, CanvasOp, CanvasOp]
+    | [CanvasOp, CanvasOp, CanvasOp, CanvasOp, CanvasOp, CanvasOp]
+    | [CanvasOp, CanvasOp, CanvasOp, CanvasOp, CanvasOp, CanvasOp, CanvasOp]
+    | [
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+      ]
+    | [
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+      ]
+    | [
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+      ]
+    | [
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+      ]
+    | [
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+        CanvasOp,
+      ];
+  /**
+   * @maxItems 24
+   */
+  reading_order: CanvasItemId[];
+}
+/**
+ * update で変える項目（ADR 0032）。種類・部品・置き場所は変えない（部品を変えるなら close と add、置き場所は move）。
+ */
+export interface CanvasItemChanges {
+  heading?: CanvasHeading;
+  emphasis?: CanvasEmphasis;
+  group?: CanvasGroupId | null;
+  /**
+   * @maxItems 4
+   */
+  relations?:
+    | []
+    | [CanvasRelation]
+    | [CanvasRelation, CanvasRelation]
+    | [CanvasRelation, CanvasRelation, CanvasRelation]
+    | [CanvasRelation, CanvasRelation, CanvasRelation, CanvasRelation];
+  data?: CanvasData;
+}
+/**
+ * 流れへの発言（ADR 0032）。会話の ID・区切りの ID・保存モードを送らない（区切りは Core が選ぶ）。expected_canvas_revision は端末が今描いているキャンバスの版。
+ */
+export interface StreamTurnRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  text: string;
+  input_kind: 'text' | 'voice_local';
+  expected_canvas_revision: CanvasRevision;
+}
+/**
+ * 流れへの発言の結果（ADR 0032）。segment は発言を受けた区切り。canvas は Core が意味の検査を通したキャンバスの変更（なければ null）。外部変更の完了は操作の状態で別に示し、承認・停止はキャンバスに置かない。
+ */
+export interface StreamTurnResponse {
+  request_id: Id;
+  segment: StreamSegment;
+  turn_id: Id;
+  input_id: Id;
+  workflow_id: Id | null;
+  status: 'answered' | 'clarification' | 'background' | 'session_control';
+  result_view: ResultView | null;
+  reply_text: string | null;
+  canvas: CanvasOpBatch | null;
+}
+/**
+ * 流れ（stream）の中の今の区切り（ADR 0032）。画面には区切りとして見せず、保存モードの表示と表示の権限の判定に使う。carried_summary は前の区切りからつないだ要約の由来と期限。記録しない区切り・記録しない会話から出た区切り・流れの最初・忘却の指示で始めた区切りはつながない。期限が区切りの始まり以前の要約・自分を由来に含む要約は持たない（意味の検査）。
+ */
+export interface StreamSegment {
+  segment_id: Id;
+  storage_mode: StorageMode;
+  opened_at: UtcTime;
+  open_reason: SegmentBoundaryReason;
+  carried_summary: CarriedSummary | null;
+}
+/**
+ * 区切りにつないだ要約の由来と期限（ADR 0032）。source_segment_ids は要約の材料になった区切り（要約し直しても前の由来を引き継ぐ）。expires_at は由来の発言のうち最も早い期限で、その時に要約全体を捨てる。本文は持たない。
+ */
+export interface CarriedSummary {
+  /**
+   * @minItems 1
+   * @maxItems 256
+   */
+  source_segment_ids: [Id, ...Id[]];
+  expires_at: UtcTime;
 }

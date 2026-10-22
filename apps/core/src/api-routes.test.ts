@@ -165,7 +165,8 @@ test(
       .map(([id]) => id)
       .sort();
     assert.deepEqual(declared, expected);
-    assert.equal(declared.length, 25);
+    // 内容の表示用の読み取り（displayOperation、ADR 0031）と流れへの発言（postStreamTurn、ADR 0032）で 2 つ増えた。
+    assert.equal(declared.length, 26);
   },
 );
 

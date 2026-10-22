@@ -58,6 +58,10 @@ export const API_ROUTES: readonly ApiRoute[] = [
   route('postTurn', 'POST', '/v1/sessions/{session_id}/turns', {
     body: 'TurnRequest',
   }),
+  // 流れへの発言（ADR 0032）。処理は UI-05 で足す。それまでは検査の後に 503。
+  route('postStreamTurn', 'POST', '/v1/stream/turns', {
+    body: 'StreamTurnRequest',
+  }),
   route('handoffSession', 'POST', '/v1/sessions/{session_id}/handoff', {
     body: 'HandoffRequest',
     ...SCREEN,

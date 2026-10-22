@@ -49,6 +49,7 @@ OpenAPI に `x-buddy-websocket-close-codes`（閉じるコードの表）を足�
 | 1003     | `unsupported_data`                                             | 端末からメッセージを受け取った（定義していない）                                             | —                                   |
 | 1011     | `dependency_unavailable`                                       | DB の照会の失敗（DB worker の停止など）                                                      | 時間をおいて cursor から接続し直す  |
 | 1013     | `slow_consumer`                                                | 送り先に 1 MiB を超えて溜まった                                                              | cursor から接続し直す               |
+| 4429     | `too_many_streams`                                             | 同じ端末の購読が上限（4）を超えた（同時の切り替えで後から開いたもの。B03-07）                | 購読を閉じてから接続し直す          |
 | （切断） | —                                                              | 前の ping に pong がない（閉じる手順を踏まない。端末からは 1006）                            | cursor から接続し直す               |
 
 ping は 15 秒ごと。同じ間隔で接続範囲（`scope.find` と `commandScopeState`：再接続・失効・期限・起動 ID）と自宅判定を確かめ直す。失効・自宅判定の不成立は `DeviceConnections`（`register(deviceId, close)`・`closeDevice(deviceId, reason)`、形は B03-02・B03-03 と合わせた）からすぐに閉じ、ping ごとの確認は呼び忘れの保険にする。
@@ -102,6 +103,14 @@ ping は 15 秒ごと。同じ間隔で接続範囲（`scope.find` と `commandS
 - **定期の読み直し**: 1 秒ごと（購読がある間だけ）。DB worker の照会 1 件で、件数に応じて増えない。
 - **数値**: ping 15 秒、送り先に溜めてよい量 1 MiB、1 ページ 100 件（照会の上限 500 件）は設計に数値がないため仮に決めた。
 - **tests/test-map.json**: X04・X11 の中枢の部分（HTTP・WSS・再起動）を模擬で確かめたが、fault-points.json の期待値は B04 の模擬サービス（外部への要求の回数）を含むため、`product_test` は not_run のまま。
+
+## B03-07 の変更（独立したセキュリティレビューの指摘、#75）
+
+試験は 127.0.0.1 の模擬（`apps/core/src/api-hardening.test.ts`）だけで、実際の端末・実機は未実施。
+
+- **M3 停止の途中の購読**: Core の停止は配信の元（`EventFeed`）を HTTPS より先に止めるため、その間に届いた切り替えで `subscribe` が `event_feed_closed` を投げ、`void start()` が未処理の拒否になっていた（停止中のクラッシュ）。切り替えの前（`admit`）に配信の元が止まっていれば 503 `dependency_unavailable` で切り替えない。受け付けの判定の後に止まった場合を含め、開始の失敗はすべて購読の失敗として 1011 `dependency_unavailable` で閉じる（`start().catch(...)`）。停止の途中の 503・1011 は、端末が時間をおいて接続し直す既存の扱いと同じ。
+- **L3 端末ごとの購読の数**: 1 台の端末が WSS の購読で接続の枠（同時の TLS 接続 32 本）を使い切れた。端末（device_id）ごとに同時に開ける購読を 4 本（`DEFAULT_MAX_STREAMS_PER_DEVICE`、仮の値）までにした。切り替えの前（`admit`）に上限に達していれば切り替えずに 429 `rate_limited`。数は切り替えた直後（`open`）に同期で数えるので、同時の切り替えで受け付けの判定を両方通った場合は、後から開いたものを 4429 `too_many_streams` で閉じる（OpenAPI の `x-buddy-websocket-close-codes` に足した）。閉じた購読の枠はすぐに戻る。
+  - **4 本にした理由**: 正しい端末の通常の購読は 1 本。回線の切り替えなどで再接続すると、古い購読は前の ping に pong がない時点（最長で ping の間隔の 2 倍、30 秒）か、再接続の bootstrap で接続範囲が変わった後の確かめ直し（15 秒以内）まで残るため、数本の重なりは起こり得る。その余裕を残しつつ、1 台で使える枠を全体（32 本）の 8 分の 1 にとどめる。設計に数値がないため、実際の端末（B03-05）の再接続の様子を見て見直す。
 
 ## 残ること
 

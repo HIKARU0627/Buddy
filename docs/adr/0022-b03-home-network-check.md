@@ -56,7 +56,7 @@
 ### 不成立のときの扱い
 
 - 経路の検査で 403 `outside_home_network`（ApiError だけ。診断の理由は報告の応答と Core の記録に出す）。
-- 認証済みの端末なら、その端末の有効な接続範囲（command_scope）を失効させる（`home.revoke_scopes`）。音声・機密表示のリース（`Lease`）は接続範囲に結び付いており、接続範囲が変われば無効（`leaseReasons` の `scope_changed`）なので、リースの表はまだないが同時に失効する。
+- 認証済みの端末なら、その端末の有効な接続範囲（command_scope）を失効させる（`home.revoke_scopes`）。同じ端末を直近 60 秒以内に失効させ、その後に自宅判定が成り立っていなければ書かない（B03-07、下の「B03-07 の変更」）。音声・機密表示のリース（`Lease`）は接続範囲に結び付いており、接続範囲が変われば無効（`leaseReasons` の `scope_changed`）なので、リースの表はまだないが同時に失効する。
 - 失効の後に `HomeNetworkGate.onDenied(deviceId, reasons)` で知らせる。WSS を閉じる差し込み口で、Core は `CoreHandle.homeNetwork` として出す。Core は `onDenied` を B03-04 の `DeviceConnections.closeDevice(deviceId, 'outside_home_network')` につなぎ、その端末の WSS の購読を 4403（`outside_home_network`）で閉じる。B03-04 の WSS は ping ごとに同じ環境の `homeNetwork` を引き直すので、報告の経路を通らない変化（Tailscale の経路・報告の鮮度）も購読中に拾う。
 - 判定の元（自宅の登録値・報告）を DB から読めないときは例外にし、経路の検査は 503（許可にしない）。
 
@@ -139,6 +139,14 @@ DB worker に `type: 'home'` のメッセージで `home.register`・`home.get`�
 - **端末側の収集は platform に置いた**: Issue の指定どおり。ただし ADR 0015 でデスクトップの main は OS アダプター（`@buddy/platform`）を読み込めないので、端末の定期報告（B03-05）で使うときは、境界の見直し（指紋の収集だけを読み込めるようにする、など）が要る。
 - **既定の環境（`SAFE_REQUEST_ENVIRONMENT`）は変えていない**: Core は常に自宅判定を注入するので、`createApiServer` を直接使うときの安全側の既定（hub_local だけ）は B03-01 のまま。
 - **tests/test-map.json**: X42 に契約の期待値（判定の fixture・経路・schema・保存の制約）を足して `contract_fixture` にした。HTTP 経由の模擬の試験は通ったが、実機の Tailscale・指紋の取得は未実施なので `product_test` は not_run のまま。
+
+## B03-07 の変更（独立したセキュリティレビューの指摘、#75）
+
+試験は 127.0.0.1 の模擬（模擬の Tailscale の状態・一時ディレクトリの DB）だけで、実機は未実施。
+
+- **L1 失効の書込みの間引き**: 自宅判定が成り立たない間、認証済みの端末の要求のたびに `home.revoke_scopes`（DB の書込みの transaction）を行っていた。端末ごとに直近の失効の時刻（中枢の時計）をメモリーに持ち、60 秒（`HOME_REVOKE_SUPPRESS_MS`、仮の値）以内に失効させていて、その後に自宅判定が成り立っていなければ書かない。自宅判定が成り立ったら記録を消すので、その後に発行した接続範囲は次の不成立で必ず失効させる。WSS を閉じる通知（`onDenied`）と 403 は毎回行う。時計が戻ったとき・前の失効を書けなかったときは書く（安全側）。記録はメモリーだけで、再起動で消える（接続範囲は起動 ID に結び付くので、再起動の前の接続範囲は使えない）。
+  - **書かなくてよい理由**: 接続範囲の発行（`getBootstrap`）も自宅判定（home_network）を求めるので、不成立が続く間に新しい接続範囲はできない。
+  - **60 秒にした理由**: 設計に数値がない。上の理由で書く必要があるのは「成り立った後の最初の不成立」だけだが、成り立つ判定と不成立の判定が同時に進んだ場合（bootstrap の自宅判定が通った直後に、別の要求の不成立で失効を書き、その後に bootstrap が接続範囲を発行する）に、失効していない接続範囲が残り得る。その接続範囲も自宅判定が成り立つまで使えない（使う経路はどれも home_network を先に求める）が、間隔を区切って最長 60 秒後の不成立で書き直す。書込みは 1 台あたり 1 分に 1 回までになる。
 
 ## 残ること
 

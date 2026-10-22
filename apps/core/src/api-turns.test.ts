@@ -1085,3 +1085,56 @@ test(
     assert.equal((await snapshotOperations(core, device)).length, 2);
   },
 );
+
+test(
+  'review P2: a schedule query caps the references at 50 events and reports the rest in more_count instead of failing',
+  { timeout: 60_000 },
+  async (t) => {
+    const provider = mockProvider();
+    const core = await startTurnCore(t, provider);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    // 応答が最も長くなる形（全件が重なり、予定ごとに重なりの参照も付く）。
+    const overlapping = (count: number): ProviderEvent[] =>
+      Array.from({ length: count }, (_, index) => ({
+        event_id: `ev-${String(index).padStart(3, '0')}`,
+        title: `合成の予定${index}`,
+        start: '2026-10-05T10:00:00+09:00',
+        end: '2026-10-05T11:00:00+09:00',
+      }));
+    // [予定の件数, 返す予定の参照, 重なりの参照, more_count]（手で書いた期待値。上限は 50 件）。
+    const cases: readonly [number, number, number, number][] = [
+      [50, 50, 50, 0],
+      [51, 50, 50, 1],
+      [120, 50, 50, 70],
+    ];
+    for (const [count, events, overlaps, more] of cases) {
+      provider.listEvents = () => Promise.resolve(overlapping(count));
+      const response = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '今日の予定を見せて',
+      );
+      assert.equal(response.status, 200, `${count}: ${response.text}`);
+      const view = response.json?.['result_view'] as Record<string, unknown>;
+      const refs = view['item_refs'] as { kind: string }[];
+      assert.equal(
+        refs.filter((ref) => ref.kind === 'calendar_event').length,
+        events,
+        String(count),
+      );
+      assert.equal(
+        refs.filter((ref) => ref.kind === 'calendar_overlap').length,
+        overlaps,
+        String(count),
+      );
+      assert.equal(view['more_count'], more, String(count));
+      assert.equal(view['status'], 'needs_review', String(count));
+      assert(response.text.length < 16_384, String(response.text.length));
+    }
+    assert.deepEqual(await snapshotOperations(core, device), []);
+  },
+);

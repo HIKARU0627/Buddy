@@ -684,10 +684,16 @@ test(
           pairing_code: string;
           certificate_fingerprint: string;
           expires_at: string;
+          hub_endpoint: { host: string; port: number };
         };
       }
     ).session;
     assert.equal(session.certificate_fingerprint, fingerprintOf(hub));
+    // 登録する端末で入力する宛先（中枢の待ち受けのアドレスとポート）も、中枢の画面に出せる。
+    assert.deepEqual(session.hub_endpoint, {
+      host: '127.0.0.1',
+      port: hub.port,
+    });
     let decided: DesktopIpcResponse | null = null;
     await pair(b, hub, session.pairing_code, async () => {
       // 端末の画面の確認コードと、中枢の画面の一覧の確認コードが同じ申請を承認する。

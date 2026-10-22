@@ -698,6 +698,10 @@ export class DesktopCoreLink {
             pairing_code: session.pairing_code,
             certificate_fingerprint: session.certificate_fingerprint,
             expires_at: session.expires_at,
+            hub_endpoint: {
+              host: session.hub_endpoint.host,
+              port: session.hub_endpoint.port,
+            },
           },
         });
       }

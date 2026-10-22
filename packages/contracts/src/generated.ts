@@ -2885,6 +2885,14 @@ export interface PairingSession {
   certificate_fingerprint: Hash;
   expires_at: UtcTime;
   attempts_left: number;
+  hub_endpoint: HubEndpoint;
+}
+/**
+ * 中枢の HTTPS の待ち受けのアドレスとポート（Core の設定の値。待ち受けは具体的な IP アドレスで、0.0.0.0 などは使わない。ADR 0020）。登録する端末で入力する宛先として、中枢の画面に表示する（ADR 0026）。秘密ではない。
+ */
+export interface HubEndpoint {
+  host: string;
+  port: number;
 }
 /**
  * 登録する端末の申請（認証前）。端末が作った申請用の秘密の SHA-256 だけを送る。claim_secret_hash は PairingTokenRequest.claim_secret の ASCII の 43 文字の SHA-256 を小文字の 16 進 64 桁にした値（ADR 0021）。指紋の照合は端末の画面で本人が行い、この要求の前に済ませる（ADR 0009）。 home_fingerprint は申請する端末が見た自宅の指紋で、中枢は申請の自宅判定（home_network）に使う（ADR 0022）。
@@ -3090,10 +3098,11 @@ export interface DesktopDeviceEntry {
   revoked_at: UtcTime | null;
 }
 /**
- * 中枢の画面に出すワンタイムコードと中枢の証明書の指紋（B03-06、ADR 0026）。コードは本人が登録する端末に入力するための表示で、中枢の画面の端末の画面にだけ返す（申請の一覧・端末の一覧・ログには出さない）。
+ * 中枢の画面に出すワンタイムコードと中枢の証明書の指紋（B03-06、ADR 0026）。コードは本人が登録する端末に入力するための表示で、中枢の画面の端末の画面にだけ返す（申請の一覧・端末の一覧・ログには出さない）。hub_endpoint は端末で入力する中枢の宛先（表示用）。
  */
 export interface DesktopPairingSession {
   pairing_code: string;
   certificate_fingerprint: Hash;
   expires_at: UtcTime;
+  hub_endpoint: HubEndpoint;
 }

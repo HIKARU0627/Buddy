@@ -42,7 +42,7 @@ export const REJECT_MESSAGES: Readonly<Record<RejectReason, string>> = {
   outcome_unknown:
     '結果を確かめられませんでした。自動では送り直しません。一覧を取り直して確かめてください。',
   fingerprint_tail_mismatch:
-    '中枢の画面の指紋と違います。宛先が正しいか確かめてください。',
+    '入力した 4\u00a0桁が、この端末が受け取った中枢の証明書と合いません。申請はまだ送っていません。打ち間違いでなければ、別の機器につながっているおそれがあります。中枢の画面の下線の 4\u00a0桁を確かめ、合わなければ「一致しない（やめる）」を押してください。',
   pairing_host_not_allowed:
     'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。',
 };
@@ -90,8 +90,8 @@ export const NOT_RECEIVED = '—';
 export const NOT_RECEIVED_NOTE = '（— は中枢から未受信）';
 
 export const STORAGE_MODE_LABELS: Readonly<Record<string, string>> = {
-  normal: '通常（7 日）',
-  extended: '継続相談（30 日）',
+  normal: '通常（7\u00a0日）',
+  extended: '継続相談（30\u00a0日）',
   private: '記録しない',
 };
 
@@ -166,6 +166,8 @@ export interface FailureCopy {
   // 失敗した手順（失敗の画面でも「手順 n / 4」を残す）。
   readonly step: keyof typeof PAIRING_STEPS;
   readonly title: string;
+  // 本文の先頭に等幅で出す値（試した宛先）。null なら本文だけ。
+  readonly subject: string | null;
   readonly body: string;
   readonly action: string;
 }
@@ -183,7 +185,6 @@ export function pairingFailureCopy(
   failure: PairingFailure,
   context: FailureContext,
 ): FailureCopy {
-  const at = context.target === null ? '中枢' : `${context.target}`;
   const name =
     context.deviceName === null ? 'この端末' : `「${context.deviceName}」`;
   switch (failure) {
@@ -193,7 +194,8 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: failure === 'unreachable' ? 'code' : 'address',
         title: '中枢に接続できませんでした',
-        body: `${at} に接続できませんでした。宛先とポート、中枢が起動しているか、Tailscale がつながっているかを確かめてください。`,
+        subject: context.target,
+        body: `${context.target === null ? '中枢' : ''}に接続できませんでした。宛先とポート、中枢が起動しているか、Tailscale がつながっているかを確かめてください。`,
         action: '宛先を直す',
       };
     case 'certificate_changed':
@@ -201,6 +203,7 @@ export function pairingFailureCopy(
         severity: 'danger',
         step: 'code',
         title: '中枢の証明書が変わったため、申請を送りませんでした',
+        subject: null,
         body: '指紋を確かめた後に、中枢の証明書が変わりました。中枢の画面で状態を確かめてから、最初からやり直してください。',
         action: RESTART,
       };
@@ -209,7 +212,8 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'code',
         title: 'コードを受け付けませんでした',
-        body: 'コードが違うか、5 分の期限が切れたか、5 回の上限に達しました。中枢の画面で新しいコードを出してから、最初からやり直してください。',
+        subject: null,
+        body: 'コードが違うか、5\u00a0分の期限が切れたか、5\u00a0回の上限に達しました。中枢の画面で新しいコードを出してから、最初からやり直してください。',
         action: RESTART,
       };
     case 'outside_home_network':
@@ -217,6 +221,7 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'code',
         title: '自宅のネットワークの外からは登録できません',
+        subject: null,
         body: '自宅の Wi-Fi・有線につないでから、最初からやり直してください。',
         action: RESTART,
       };
@@ -225,7 +230,8 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'code',
         title: '要求が多すぎるため、受け付けられませんでした',
-        body: '1 分ほど待ってから、最初からやり直してください。',
+        subject: null,
+        body: '1\u00a0分ほど待ってから、最初からやり直してください。',
         action: RESTART,
       };
     case 'claim_expired':
@@ -233,7 +239,8 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'waiting',
         title: '申請の期限が切れました',
-        body: '申請から 5 分以内に中枢で承認されませんでした。中枢の画面で新しいコードを出してから、最初からやり直してください。',
+        subject: null,
+        body: '申請から 5\u00a0分以内に中枢で承認されませんでした。中枢の画面で新しいコードを出してから、最初からやり直してください。',
         action: RESTART,
       };
     case 'pickup_refused':
@@ -241,6 +248,7 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'waiting',
         title: '申請が受け付けられませんでした',
+        subject: null,
         body: '中枢で拒否されたか、期限が切れたか、すでに受け取り済みです。最初からやり直してください。',
         action: RESTART,
       };
@@ -249,6 +257,7 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'waiting',
         title: '登録が済んだか確かめられませんでした',
+        subject: null,
         body: `自動ではやり直しません。中枢の画面の「登録済みの端末」に${name}があれば失効してから、もう一度登録してください。`,
         action: '確かめたので、もう一度登録する',
       };
@@ -257,6 +266,7 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'address',
         title: 'この端末では登録できません',
+        subject: null,
         body: 'OS の鍵束（安全な保存）が使えないため、登録の情報を保存できません。',
         action: '最初に戻る',
       };
@@ -265,6 +275,7 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'waiting',
         title: '登録の情報を保存できませんでした',
+        subject: null,
         body: `中枢の画面の「登録済みの端末」に${name}があれば失効してから、もう一度登録してください。`,
         action: '確かめたので、もう一度登録する',
       };
@@ -273,6 +284,7 @@ export function pairingFailureCopy(
         severity: 'warning',
         step: 'address',
         title: '中枢の応答を読めませんでした',
+        subject: null,
         body: '中枢とこの端末の版を確かめてから、最初からやり直してください。',
         action: RESTART,
       };

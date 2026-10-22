@@ -4732,6 +4732,63 @@
       "session": {
         "pairing_code": "12345678",
         "certificate_fingerprint": "abababababababababababababababababababababababababababababababab",
+        "expires_at": "2030-10-05T00:05:00Z",
+        "hub_endpoint": {
+          "host": "100.64.0.1",
+          "port": 47443
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-response-pairing-session-hub-endpoint-url",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c32",
+      "channel": "desktop.pairing_open",
+      "outcome": "ok",
+      "session": {
+        "pairing_code": "12345678",
+        "certificate_fingerprint": "abababababababababababababababababababababababababababababababab",
+        "expires_at": "2030-10-05T00:05:00Z",
+        "hub_endpoint": {
+          "host": "https://100.64.0.1",
+          "port": 47443
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-response-pairing-session-hub-endpoint-port",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c32",
+      "channel": "desktop.pairing_open",
+      "outcome": "ok",
+      "session": {
+        "pairing_code": "12345678",
+        "certificate_fingerprint": "abababababababababababababababababababababababababababababababab",
+        "expires_at": "2030-10-05T00:05:00Z",
+        "hub_endpoint": {
+          "host": "100.64.0.1",
+          "port": 70000
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-response-pairing-session-without-hub-endpoint",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c32",
+      "channel": "desktop.pairing_open",
+      "outcome": "ok",
+      "session": {
+        "pairing_code": "12345678",
+        "certificate_fingerprint": "abababababababababababababababababababababababababababababababab",
         "expires_at": "2030-10-05T00:05:00Z"
       }
     }
@@ -4748,7 +4805,11 @@
         "pairing_code": "12345678",
         "certificate_fingerprint": "abababababababababababababababababababababababababababababababab",
         "expires_at": "2030-10-05T00:05:00Z",
-        "pairing_id": "00000000-0000-4000-8000-000000000c34"
+        "pairing_id": "00000000-0000-4000-8000-000000000c34",
+        "hub_endpoint": {
+          "host": "100.64.0.1",
+          "port": 47443
+        }
       }
     }
   },

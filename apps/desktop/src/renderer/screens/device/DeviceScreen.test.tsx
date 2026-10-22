@@ -209,7 +209,7 @@ test('when this device is stopped, the banner gives the cause, time and resume',
   assert.match(html, /ウィンドウが前面にあるときだけ再開できます。/u);
   // main が止まっていることを確かめた後は、状態帯の停止のボタンを出さない（再開は帯の中）。
   assert.deepEqual(buttonLabels(html), [RESUME, HIDE, QUIT]);
-  assert.match(html, /電源とロックの記録（1 件）/u);
+  assert.match(html, /電源とロックの記録（1\u00a0件）/u);
   const button = render(
     view(shown('local'), { stopCause: { kind: 'button', at: AT } }),
   );
@@ -291,7 +291,7 @@ test('the hub line and connection section do not repeat the same state', () => {
   const html = render(view(shown('none'), { connection: connection({}) }));
   assert.match(html, /接続中（10:02:03 確認）/u);
   assert.match(html, /<h2[^>]*>中枢との接続<\/h2>/u);
-  assert.match(html, /中枢の操作はありません。/u);
+  assert.match(html, /中枢で進んでいる操作はありません。/u);
   assert.doesNotMatch(html, /理由/u);
   // 接続し直し待ちは時刻と何秒後かを出し、状態の言い換えの理由は出さない。
   const retry = new Date(2026, 9, 21, 10, 3, 33).toISOString();
@@ -304,7 +304,10 @@ test('the hub line and connection section do not repeat the same state', () => {
       }),
     }),
   );
-  assert.match(waiting, /接続し直しを待っています。次は 10:03:33（30 秒後）/u);
+  assert.match(
+    waiting,
+    /接続し直しを待っています。次は 10:03:33（30\u00a0秒後）/u,
+  );
   assert.doesNotMatch(waiting, /<dt[^>]*>理由<\/dt>/u);
 });
 

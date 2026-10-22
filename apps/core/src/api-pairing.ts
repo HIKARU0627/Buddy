@@ -131,6 +131,11 @@ export interface PairingServiceOptions {
   readonly log?: (message: string) => void;
   // 接続元が中枢と同じマシンか（試験で差し替える）。既定は isSameMachine(remote, host)。
   readonly sameMachine?: (remoteAddress: string) => boolean;
+  // 待ち受けのアドレスとポート（待ち受けを始めた後の値。ペアリングの応答に、端末で入力する宛先として載せる）。
+  readonly endpoint: () => {
+    readonly host: string;
+    readonly port: number;
+  } | null;
 }
 
 export interface PairingService {
@@ -324,6 +329,10 @@ export function createPairingService(
 
   const startPairing: ApiRouteHandler = async (request) => {
     const requestId = requestIdOf(request);
+    // 待ち受けを始める前は宛先が決まらない（要求も届かないが、念のため 503 にする）。
+    const endpoint = options.endpoint();
+    if (endpoint === null)
+      return fail(503, 'dependency_unavailable', requestId);
     const started = await startSession();
     if (!started.ok) return fail(503, 'dependency_unavailable', requestId);
     log(
@@ -337,6 +346,7 @@ export function createPairingService(
         certificate_fingerprint: fingerprint,
         expires_at: iso(started.expiresAt),
         attempts_left: PAIRING_MAX_ATTEMPTS,
+        hub_endpoint: { host: endpoint.host, port: endpoint.port },
       },
     };
   };

@@ -348,6 +348,11 @@ test(
       hub.target.fingerprint,
     );
     assert.equal(session.json?.['attempts_left'], 5);
+    // 端末で入力する宛先として、待ち受けのアドレスと実際のポートを返す。
+    assert.deepEqual(session.json?.['hub_endpoint'], {
+      host: hub.target.host,
+      port: hub.target.port,
+    });
     assert.equal(
       Date.parse(String(session.json?.['expires_at'])),
       base + 5 * MINUTE,

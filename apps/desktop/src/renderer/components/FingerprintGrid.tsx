@@ -4,9 +4,10 @@
 // （自分の画面から写して進めないため。UI レビュー 2 回目 R1-H1）。中枢の画面では最後の組に下線を引き、入力させる 4 桁を示す。
 import { fingerprintGroups } from '../format.js';
 
-export const FINGERPRINT_HEADING = '中枢の証明書の指紋（SHA-256・64 桁）';
+export const FINGERPRINT_HEADING = '中枢の証明書の指紋（SHA-256・64\u00a0桁）';
 export const MASKED_GROUP = '····';
-export const MASKED_LABEL = '最後の 4 桁は伏せています（中枢の画面で読みます）';
+export const MASKED_LABEL =
+  '最後の 4\u00a0桁は伏せています（中枢の画面で読みます）';
 
 export function FingerprintGrid({
   fingerprint,
@@ -50,7 +51,7 @@ export function FingerprintGrid({
           ) : (
             <li
               key={index}
-              aria-label={`最後の 4 桁 ${group}`}
+              aria-label={`最後の 4\u00a0桁 ${group}`}
               className="whitespace-nowrap font-semibold underline decoration-2 underline-offset-4"
             >
               {group}

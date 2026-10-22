@@ -33,14 +33,20 @@ test('times of today show only the clock; other days add the month and day', () 
 });
 
 test('relative times count up to the next whole second or minute', () => {
-  assert.equal(afterOf(local(10, 0, 4).toISOString(), NOW), '4 秒後');
-  assert.equal(afterOf(local(10, 0, 59).toISOString(), NOW), '59 秒後');
-  assert.equal(afterOf(local(10, 1, 0).toISOString(), NOW), '1 分後');
-  assert.equal(afterOf(local(10, 1, 1).toISOString(), NOW), '2 分後');
+  assert.equal(afterOf(local(10, 0, 4).toISOString(), NOW), '4\u00a0秒後');
+  assert.equal(afterOf(local(10, 0, 59).toISOString(), NOW), '59\u00a0秒後');
+  assert.equal(afterOf(local(10, 1, 0).toISOString(), NOW), '1\u00a0分後');
+  assert.equal(afterOf(local(10, 1, 1).toISOString(), NOW), '2\u00a0分後');
   assert.equal(afterOf(local(10, 0, 0).toISOString(), NOW), 'まもなく');
   assert.equal(afterOf(local(9, 59, 0).toISOString(), NOW), 'まもなく');
-  assert.equal(remainingOf(local(10, 5, 0).toISOString(), NOW), '残り 5 分');
-  assert.equal(remainingOf(local(10, 0, 30).toISOString(), NOW), '残り 30 秒');
+  assert.equal(
+    remainingOf(local(10, 5, 0).toISOString(), NOW),
+    '残り 5\u00a0分',
+  );
+  assert.equal(
+    remainingOf(local(10, 0, 30).toISOString(), NOW),
+    '残り 30\u00a0秒',
+  );
   assert.equal(remainingOf(local(10, 0, 0).toISOString(), NOW), '期限切れ');
   assert.equal(remainingOf('not-a-time', NOW), '期限切れ');
 });

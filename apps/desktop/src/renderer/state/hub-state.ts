@@ -10,6 +10,7 @@ import type {
   DesktopPairingSession,
 } from '@buddy/contracts';
 import { request } from '../desktop-api.js';
+import { clockOf } from '../format.js';
 import { REJECT_MESSAGES } from '../labels.js';
 
 type Channel = DesktopIpcRequest['channel'];
@@ -31,7 +32,7 @@ export type NoticePlace =
 export interface HubNotice {
   readonly pane: HubPane;
   readonly place: NoticePlace;
-  // warning は失敗・結果不明、success は適用できた（一覧の更新だけ失敗した）とき。
+  // warning は失敗・結果不明（role="alert"）、success は適用できたとき（role="status"）。
   readonly tone: 'warning' | 'success';
   readonly text: string;
 }
@@ -52,6 +53,8 @@ export interface HubViewState {
   readonly session: DesktopPairingSession | null;
   // 出したコードで申請が届いた（コードは 1 回だけ使える。ADR 0021）。
   readonly sessionUsed: boolean;
+  // コードの表示を画面のロックで消した（次にコードを出すまで、その理由を出す。UI レビュー 3 回目 R1-L7）。
+  readonly sessionCleared: 'lock' | null;
   readonly notice: HubNotice | null;
   // 承認・拒否・失効・ペアリングの開始を送って結果を待っている（二重に押させない）。
   readonly pending: PendingOperation | null;
@@ -62,6 +65,7 @@ export const INITIAL_HUB_STATE: HubViewState = {
   devices: null,
   session: null,
   sessionUsed: false,
+  sessionCleared: null,
   notice: null,
   pending: null,
 };
@@ -92,15 +96,34 @@ export function operationFailureText(
       : `「${operation.name}」の${operation.verb}`;
   switch (reason) {
     case 'not_connected':
-      return `${target}を中枢に送れませんでした。中枢との接続が戻ってから、もう一度押してください。自動では送り直しません。`;
+      return `中枢に${target}を送れませんでした。中枢との接続が戻ってから、もう一度押してください。自動では送り直しません。`;
     case 'outcome_unknown':
-      return `${target}が中枢に届いたか確かめられませんでした。自動では送り直しません。「一覧を更新」を押して、結果を確かめてください。`;
+      return `中枢に${target}が届いたか確かめられませんでした。自動では送り直しません。「一覧を更新」を押して、結果を確かめてください。`;
     case 'entry_not_found':
-      return `${target}ができませんでした。一覧が古くなっています。「一覧を更新」を押してから、もう一度操作してください。`;
+      return `一覧が古いため、${target}ができませんでした。「一覧を更新」を押してから、もう一度操作してください。`;
     case 'core_rejected':
       return `中枢が${target}を受け付けませんでした（期限切れ・決め済みなど）。「一覧を更新」を押して確かめてください。`;
     default:
-      return `${target}ができませんでした。${REJECT_MESSAGES[reason]}`;
+      return `この操作（${target}）ができませんでした。${REJECT_MESSAGES[reason]}`;
+  }
+}
+
+// 操作が適用できたときの知らせ（R1-M1。押した行は一覧から消えるので、欄の先頭に出す）。
+export function operationSuccessText(
+  operation: PendingOperation,
+  now: number,
+): string | null {
+  const name = operation.name === null ? null : `「${operation.name}」`;
+  if (name === null) return null;
+  switch (operation.verb) {
+    case '承認':
+      return `中枢で${name}を承認しました（${clockOf(new Date(now).toISOString(), now)}）。「登録済みの端末」に出ています。`;
+    case '拒否':
+      return `中枢で${name}の申請を拒否しました。`;
+    case '失効':
+      return `中枢で${name}を失効しました。`;
+    default:
+      return null;
   }
 }
 
@@ -126,6 +149,7 @@ export function applyHubResponse(
   state: HubViewState,
   sent: Channel,
   response: DesktopIpcResponse,
+  now: number = Date.now(),
 ): HubViewState {
   const heavy = HEAVY.has(sent);
   const operation = heavy ? state.pending : null;
@@ -157,9 +181,18 @@ export function applyHubResponse(
             },
     };
   }
-  // 操作の後の文言は消す。一覧の取り直し（定期）は、欄の先頭の一覧の失敗だけを消す。
+  // 操作が適用できたら、成功の知らせを欄の先頭に出す。一覧の取り直し（定期）は、欄の先頭の一覧の失敗だけを消す。
+  const success =
+    operation === null ? null : operationSuccessText(operation, now);
   const notice = heavy
-    ? null
+    ? success === null
+      ? null
+      : {
+          pane: paneOf(sent),
+          place: { kind: 'section' } as const,
+          tone: 'success' as const,
+          text: success,
+        }
     : state.notice !== null &&
         state.notice.pane === paneOf(sent) &&
         state.notice.place.kind === 'section' &&
@@ -174,6 +207,7 @@ export function applyHubResponse(
       notice,
       session: response.session,
       sessionUsed: false,
+      sessionCleared: null,
     };
   if ('list_refreshed' in response) {
     // 適用はできたが、一覧の取り直しだけが失敗した（CR-L2）。前の一覧からその行を除く。
@@ -191,7 +225,11 @@ export function applyHubResponse(
         sent === 'desktop.device_revoke' && state.devices !== null
           ? state.devices.map((device) =>
               device.ref !== null && device.ref === ref
-                ? { ...device, ref: null }
+                ? {
+                    ...device,
+                    ref: null,
+                    revoked_at: new Date(now).toISOString(),
+                  }
                 : device,
             )
           : state.devices,
@@ -199,7 +237,7 @@ export function applyHubResponse(
         pane: paneOf(sent),
         place: { kind: 'section' },
         tone: 'success',
-        text: `${name === null ? '' : `「${name}」を`}${verb}しました。一覧を更新できなかったため、「一覧を更新」を押して確かめてください。`,
+        text: `中枢で${name === null ? '' : `「${name}」を`}${verb}しました。一覧を更新できなかったため、「一覧を更新」を押して確かめてください。`,
       },
     };
   }
@@ -232,6 +270,17 @@ export function applyHubFailure(
       tone: 'warning',
       text: HUB_IPC_FAILURE_MESSAGE,
     },
+  };
+}
+
+// 画面のロックでコードの表示を消す（ロック中は内容を隠すため。次に開いたときは理由を出し、コードを出し直してもらう）。
+export function forgetSession(state: HubViewState): HubViewState {
+  if (state.session === null) return state;
+  return {
+    ...state,
+    session: null,
+    sessionUsed: false,
+    sessionCleared: 'lock',
   };
 }
 

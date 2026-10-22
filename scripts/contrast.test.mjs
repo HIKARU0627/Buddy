@@ -312,6 +312,18 @@ const PAIRS = [
     4.5,
   ],
   [
+    'Alert danger の題 --danger-soft-foreground / --danger-soft（地の上）',
+    '--danger-soft-foreground',
+    ['--danger-soft', '--background'],
+    4.5,
+  ],
+  [
+    'Alert warning の題 --warning-soft-foreground / --warning-soft（カードの上）',
+    '--warning-soft-foreground',
+    ['--warning-soft', '--surface'],
+    4.5,
+  ],
+  [
     'Alert warning の題 --warning-soft-foreground / --warning-soft（地の上）',
     '--warning-soft-foreground',
     ['--warning-soft', '--background'],
@@ -373,6 +385,18 @@ const PAIRS = [
     3,
   ],
   ['入力欄の境界 --field-border / カード', '--field-border', ['--surface'], 3],
+  [
+    'outline ボタン（一覧を更新）の縁 --field-border / 地',
+    '--field-border',
+    ['--background'],
+    3,
+  ],
+  [
+    'outline ボタン（一覧を更新）の縁 --field-border / カード',
+    '--field-border',
+    ['--surface'],
+    3,
+  ],
   [
     'InputOTP の枠 --field-border / --field-background',
     '--field-border',
@@ -484,6 +508,11 @@ test('parts that HeroUI colors with --danger as text use the soft foreground', (
   assert.match(
     css,
     /\.label--required::after[^{]*\{\s*color:\s*var\(--danger-soft-foreground\);/u,
+  );
+  // outline のボタンの縁は --border（地に 1.2:1）ではなく --field-border（上の表で 3:1 以上）。
+  assert.match(
+    css,
+    /\.button--outline\s*\{\s*border-color:\s*var\(--field-border\);/u,
   );
   // ダークで --danger をそのまま文字に使うと AA に届かないこと（上の規則が要る理由）も測っておく。
   const color = resolver(themes().dark);

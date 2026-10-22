@@ -106,7 +106,11 @@ export function PairingScreen({
       : null;
   return (
     <AppShell
-      role="この端末（未登録）"
+      role={
+        connection.registration === 'reregistration_required'
+          ? 'この端末（再登録が必要）'
+          : 'この端末（未登録）'
+      }
       band={
         <StatusBand
           status={state.status}
@@ -117,8 +121,11 @@ export function PairingScreen({
       }
       todo={
         <>
-          {/* 理由の警告: 手順を始める前は全文、登録し直している途中は 1 行、失敗したときは失敗の Alert に任せて出さない。 */}
-          {rereg === null || connection.pairing?.step === 'failed' ? null : (
+          {/* 理由の警告: 手順を始める前は全文、登録し直している途中・失敗の画面では 1 行（R1-L8）。証明書が変わった失敗は
+              失敗の Alert と内容が重なるので出さない。 */}
+          {rereg === null ||
+          (connection.pairing?.step === 'failed' &&
+            connection.pairing.failure === 'certificate_changed') ? null : (
             <Alert status={rereg.status}>
               <Alert.Indicator>
                 <AlertIcon />

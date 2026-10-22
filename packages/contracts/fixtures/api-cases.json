@@ -869,7 +869,8 @@
         "pairing_code": "12345678",
         "certificate_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "expires_at": "2030-10-05T00:05:00Z",
-        "attempts_left": 5
+        "attempts_left": 5,
+        "hub_endpoint": { "host": "100.64.0.1", "port": 47443 }
       },
       "rejections": [
         ["no_token", 401, "unauthenticated"],

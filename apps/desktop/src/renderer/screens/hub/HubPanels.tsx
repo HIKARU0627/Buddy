@@ -29,6 +29,7 @@ import type { ConfirmRequest } from './ConfirmDialog.js';
 
 export const HUB_LABELS = {
   thisMachine: 'このマシンの接続',
+  registerTab: '端末の登録',
   claimsTitle: '承認待ちの申請',
   devicesTitle: '登録済みの端末',
   noClaims: '承認待ちの申請はありません。',
@@ -41,23 +42,36 @@ export const HUB_LABELS = {
   open: 'ペアリングを始める（コードを出す）',
   reopen: 'コードを出し直す',
   claimCheck: '確認コード',
-  claimCheckRole: '承認の前に、申請した端末の画面と見比べる 8 桁',
+  claimsNote:
+    '申請した端末の画面の確認コードと、8\u00a0桁すべて同じ申請だけを承認してください。',
   pairingCode: 'ワンタイムコード',
-  pairingCodeRole: '登録する端末に入力する 8 桁',
+  pairingCodeRole: '登録する端末に入力する 8\u00a0桁',
   fingerprintNote:
-    '下線の最後の 4 桁を、登録する端末に入力してもらいます（端末の画面では伏せています）。',
+    '下線の最後の 4\u00a0桁を、登録する端末に入力してもらいます（端末の画面では伏せています）。',
   hubDevice: '中枢（このマシン）',
+  approveNote:
+    '申請した端末の画面の確認コードと、8\u00a0桁すべて同じときだけ承認してください。承認すると、その端末はこの中枢に接続できるようになります。',
+  openIntro:
+    '登録する端末でペアリングを始める前に、ここでワンタイムコードを出します（有効 5\u00a0分・入力は 5\u00a0回まで）。',
+  used: 'このコードは申請に使われました（コードは 1\u00a0回だけ使えます）。別の端末を登録するときは、コードを出し直してください。',
+  expired:
+    'このコードは期限が切れました。登録するときは、コードを出し直してください。',
+  clearedByLock:
+    '画面をロックしたため、コードの表示を消しました。登録を続けるときは、コードを出し直してください。',
+  endpoint: 'この中枢の宛先',
+  endpointRole: '登録する端末の「中枢の宛先」「ポート」に入れる値',
 } as const;
 
 function platformOf(platform: string): string {
   return PLATFORM_LABELS[platform] ?? platform;
 }
 
-// 欄・行・ボタンの下に出す操作の結果（警告は warning、適用できたときは success の文字色）。
+// 欄・行・ボタンの下に出す操作の結果（失敗は warning の色で role="alert"、適用できたときは success の色で
+// role="status"。R1-M1）。
 function NoticeText({ notice }: { readonly notice: HubNotice }) {
   return (
     <p
-      role="alert"
+      role={notice.tone === 'success' ? 'status' : 'alert'}
       className={`text-sm leading-6 ${notice.tone === 'success' ? 'text-success-soft-foreground' : 'text-warning-soft-foreground'}`}
     >
       {notice.text}
@@ -79,9 +93,15 @@ const noticeAt = (
     : null;
 };
 
-function RefreshButton({ onPress }: { readonly onPress: () => void }) {
+function RefreshButton({
+  onPress,
+  disabled,
+}: {
+  readonly onPress: () => void;
+  readonly disabled: boolean;
+}) {
   return (
-    <Button size="sm" variant="outline" onPress={onPress}>
+    <Button size="sm" variant="outline" isDisabled={disabled} onPress={onPress}>
       {HUB_LABELS.refresh}
     </Button>
   );
@@ -90,14 +110,20 @@ function RefreshButton({ onPress }: { readonly onPress: () => void }) {
 export function PairingOpenPanel({
   session,
   sessionUsed,
+  sessionCleared = null,
   busy,
+  primary = true,
   now,
   notice,
   actions,
 }: {
   readonly session: DesktopPairingSession | null;
   readonly sessionUsed: boolean;
+  // コードの表示を画面のロックで消したとき（理由を出す）。
+  readonly sessionCleared?: 'lock' | null;
   readonly busy: boolean;
+  // 「ペアリングを始める」を主操作（primary）にするか。申請があるとき・停止中は primary にしない（1 画面に primary は 1 つ。R1-M4）。
+  readonly primary?: boolean;
   readonly now: number;
   readonly notice: HubNotice | null;
   readonly actions: HubActions;
@@ -109,20 +135,41 @@ export function PairingOpenPanel({
     <Section id="hub-open-heading" title={HUB_LABELS.openTitle}>
       {session === null ? (
         <p className="max-w-prose text-sm leading-6">
-          登録する端末でペアリングを始める前に、ここでワンタイムコードを出します（有効
-          5 分・入力は 5 回まで）。
+          {sessionCleared === 'lock'
+            ? HUB_LABELS.clearedByLock
+            : HUB_LABELS.openIntro}
         </p>
       ) : !showCode ? (
         <p className="max-w-prose text-sm leading-6">
-          {sessionUsed
-            ? 'このコードは申請に使われました（コードは 1 回だけ使えます）。別の端末を登録するときは、コードを出し直してください。'
-            : 'このコードは期限が切れました。登録するときは、コードを出し直してください。'}
+          {sessionUsed ? HUB_LABELS.used : HUB_LABELS.expired}
         </p>
       ) : (
         <div className="flex flex-col gap-4">
           <p className="max-w-prose text-sm leading-6">
-            登録する端末にこのコードを入力してもらいます。端末の画面の指紋が下の指紋と同じことを確かめてもらってください。
+            登録する端末に、下の宛先とこのコードを入力してもらいます。端末の画面の指紋が下の指紋と同じことを確かめてもらってください。
           </p>
+          <dl className="flex flex-col gap-1">
+            <dt className="text-sm font-medium">
+              {HUB_LABELS.endpoint}
+              <span className="ml-2 text-xs font-normal text-muted">
+                {HUB_LABELS.endpointRole}
+              </span>
+            </dt>
+            <dd className="flex flex-wrap gap-x-4 text-sm">
+              <span>
+                <span className="text-muted">宛先: </span>
+                <span className="font-mono" id="hub-open-host">
+                  {session.hub_endpoint.host}
+                </span>
+              </span>
+              <span>
+                <span className="text-muted">ポート: </span>
+                <span className="font-mono tabular-nums" id="hub-open-port">
+                  {session.hub_endpoint.port}
+                </span>
+              </span>
+            </dd>
+          </dl>
           <dl className="flex flex-col gap-1">
             <dt className="text-sm font-medium">
               {HUB_LABELS.pairingCode}
@@ -151,7 +198,7 @@ export function PairingOpenPanel({
       <div className="flex flex-col gap-1">
         <div>
           <Button
-            variant={session === null ? 'primary' : 'secondary'}
+            variant={session === null && primary ? 'primary' : 'secondary'}
             isDisabled={busy}
             onPress={actions.openPairing}
           >
@@ -182,10 +229,7 @@ export function approveRequest(
             {splitInFour(claim.claim_check)}
           </p>
         </div>
-        <p className="text-sm leading-6">
-          申請した端末の画面の確認コードと、8
-          桁すべて同じときだけ承認してください。承認すると、その端末はこの中枢に接続できるようになります。
-        </p>
+        <p className="text-sm leading-6">{HUB_LABELS.approveNote}</p>
       </div>
     ),
     confirmLabel: HUB_LABELS.approve,
@@ -197,6 +241,7 @@ export function approveRequest(
 export function ClaimsPanel({
   claims,
   busy,
+  refreshDisabled = false,
   now,
   notice,
   onAsk,
@@ -204,6 +249,7 @@ export function ClaimsPanel({
 }: {
   readonly claims: readonly DesktopClaimEntry[] | null;
   readonly busy: boolean;
+  readonly refreshDisabled?: boolean;
   readonly now: number;
   readonly notice: HubNotice | null;
   readonly onAsk: (request: ConfirmRequest) => void;
@@ -214,9 +260,17 @@ export function ClaimsPanel({
     <Section
       id="hub-claims-heading"
       title={HUB_LABELS.claimsTitle}
-      action={<RefreshButton onPress={() => actions.refresh('claims')} />}
+      action={
+        <RefreshButton
+          disabled={refreshDisabled}
+          onPress={() => actions.refresh('claims')}
+        />
+      }
     >
       {top === null ? null : <NoticeText notice={top} />}
+      {claims !== null && claims.length > 0 ? (
+        <p className="max-w-prose text-sm leading-6">{HUB_LABELS.claimsNote}</p>
+      ) : null}
       {claims === null ? (
         <p className="text-sm text-muted">{HUB_LABELS.loading}</p>
       ) : claims.length === 0 ? (
@@ -242,8 +296,7 @@ export function ClaimsPanel({
                       </span>
                     </p>
                     <p className="text-xs text-muted tabular-nums">
-                      {HUB_LABELS.claimCheckRole}。申請{' '}
-                      {clockOf(claim.claimed_at, now)}・
+                      申請 {clockOf(claim.claimed_at, now)}・
                       {clockOf(claim.expires_at, now, { seconds: false })}{' '}
                       まで（
                       {remainingOf(claim.expires_at, now)}）
@@ -266,8 +319,9 @@ export function ClaimsPanel({
                       {HUB_LABELS.approve}
                     </Button>
                     <Button
-                      variant="danger-soft"
+                      variant="tertiary"
                       size="sm"
+                      className="text-danger-soft-foreground"
                       isDisabled={busy}
                       aria-label={`「${claim.device_name}」の申請を拒否する`}
                       onPress={() =>
@@ -310,6 +364,7 @@ function deviceLine(device: DesktopDeviceEntry): StatusLine {
 export function DevicesPanel({
   devices,
   busy,
+  refreshDisabled = false,
   now,
   notice,
   onAsk,
@@ -317,6 +372,7 @@ export function DevicesPanel({
 }: {
   readonly devices: readonly DesktopDeviceEntry[] | null;
   readonly busy: boolean;
+  readonly refreshDisabled?: boolean;
   readonly now: number;
   readonly notice: HubNotice | null;
   readonly onAsk: (request: ConfirmRequest) => void;
@@ -327,7 +383,12 @@ export function DevicesPanel({
     <Section
       id="hub-devices-heading"
       title={HUB_LABELS.devicesTitle}
-      action={<RefreshButton onPress={() => actions.refresh('devices')} />}
+      action={
+        <RefreshButton
+          disabled={refreshDisabled}
+          onPress={() => actions.refresh('devices')}
+        />
+      }
     >
       {top === null ? null : <NoticeText notice={top} />}
       {devices === null ? (
@@ -407,16 +468,28 @@ export function DevicesPanel({
 
 export type HubTab = 'device' | 'claims' | 'devices';
 
+// 最小の幅（480px）でもタブの名前を 1 行に収める（折り返さず、狭いときは字と余白を小さくする。UI レビュー 3 回目の未確認）。
+const TAB_CLASS = 'whitespace-nowrap px-1.5 text-xs sm:px-4 sm:text-sm';
+
 export function HubTabs({
   state,
   actions,
   now,
   thisDevice,
   initialTab = 'claims',
+  paused = null,
+  stopped = false,
 }: {
   readonly state: HubViewState;
   readonly actions: HubActions;
   readonly now: number;
+  // 前に中枢の画面と確かめたが、今は中枢との接続を待っている（最後の一覧を残し、操作を止める。R1-M5）。
+  readonly paused?: {
+    readonly linked: boolean;
+    readonly lastConfirmedAt: string | null;
+  } | null;
+  // この端末の入出力が止まっている（停止の帯の再開を 1 画面の primary にする）。
+  readonly stopped?: boolean;
   // 「このマシンの接続」のタブの中身（中枢との接続の欄）。
   readonly thisDevice: ReactNode;
   readonly initialTab?: HubTab;
@@ -424,13 +497,19 @@ export function HubTabs({
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [tab, setTab] = useState<HubTab>(initialTab);
   const claimCount = state.claims?.length ?? 0;
-  const busy = state.pending !== null;
+  const busy = state.pending !== null || paused !== null;
+  const pausedText =
+    paused === null
+      ? null
+      : `${paused.linked ? '中枢の画面か確かめています。' : '中枢との接続を待っています。'}接続が戻ると、申請の承認と端末の管理ができます。${paused.lastConfirmedAt === null ? '' : `下の一覧は ${clockOf(paused.lastConfirmedAt, now)} の時点のものです。`}`;
   const open = (
     <PairingOpenPanel
       key="open"
       session={state.session}
       sessionUsed={state.sessionUsed}
+      sessionCleared={state.sessionCleared}
       busy={busy}
+      primary={claimCount === 0 && !stopped}
       now={now}
       notice={noticeAt(state.notice, 'claims', 'open')}
       actions={actions}
@@ -441,6 +520,7 @@ export function HubTabs({
       key="claims"
       claims={state.claims}
       busy={busy}
+      refreshDisabled={paused !== null}
       now={now}
       notice={state.notice}
       onAsk={setConfirm}
@@ -449,6 +529,15 @@ export function HubTabs({
   );
   return (
     <>
+      {pausedText === null ? null : (
+        <p
+          role="status"
+          className="flex items-start gap-2 text-sm leading-6 text-warning-soft-foreground"
+        >
+          <span aria-hidden="true">○</span>
+          <span>{pausedText}</span>
+        </p>
+      )}
       <Tabs
         selectedKey={tab}
         onSelectionChange={(key) => {
@@ -459,16 +548,16 @@ export function HubTabs({
       >
         <Tabs.ListContainer>
           <Tabs.List aria-label="中枢の画面">
-            <Tabs.Tab id="claims">
-              {HUB_LABELS.claimsTitle}
-              {claimCount > 0 ? `（${claimCount}）` : ''}
+            <Tabs.Tab id="claims" className={TAB_CLASS}>
+              {HUB_LABELS.registerTab}
+              {claimCount > 0 ? `（申請 ${claimCount}）` : ''}
               <Tabs.Indicator />
             </Tabs.Tab>
-            <Tabs.Tab id="devices">
+            <Tabs.Tab id="devices" className={TAB_CLASS}>
               {HUB_LABELS.devicesTitle}
               <Tabs.Indicator />
             </Tabs.Tab>
-            <Tabs.Tab id="device">
+            <Tabs.Tab id="device" className={TAB_CLASS}>
               {HUB_LABELS.thisMachine}
               <Tabs.Indicator />
             </Tabs.Tab>
@@ -481,6 +570,7 @@ export function HubTabs({
           <DevicesPanel
             devices={state.devices}
             busy={busy}
+            refreshDisabled={paused !== null}
             now={now}
             notice={state.notice}
             onAsk={setConfirm}

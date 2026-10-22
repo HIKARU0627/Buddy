@@ -23,7 +23,7 @@ export function PowerLogDetails({
         <Disclosure.Heading>
           <Disclosure.Trigger className="flex w-full items-center justify-between text-sm">
             <span id="power-log-heading" className="font-semibold">
-              電源とロックの記録（{entries.length} 件）
+              {`電源とロックの記録（${entries.length}\u00a0件）`}
             </span>
             <Disclosure.Indicator />
           </Disclosure.Trigger>
@@ -55,8 +55,7 @@ export function PowerLogDetails({
             )}
             {entries.length > POWER_LOG_SHOWN ? (
               <p className="pt-1 text-xs text-muted">
-                直近 {POWER_LOG_SHOWN} 件を表示しています（ほか{' '}
-                {entries.length - POWER_LOG_SHOWN} 件）。
+                {`直近 ${POWER_LOG_SHOWN}\u00a0件を表示しています（ほか ${entries.length - POWER_LOG_SHOWN}\u00a0件）。`}
               </p>
             ) : null}
           </Disclosure.Body>

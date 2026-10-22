@@ -77,7 +77,7 @@ export const WORK_LABELS = {
 } as const;
 
 export function hiddenFinishedNote(count: number): string {
-  return `ほか${count} 件の終わった操作は、ここには出していません。`;
+  return `ほか${count}\u00a0件の終わった操作は、ここには出していません。`;
 }
 
 function Conversation({
@@ -316,7 +316,9 @@ function OperationRow({
 }) {
   const available = entryActions(entry);
   const note = operationNote(entry);
-  const notice: Notice | undefined = state.notices[entry.ref];
+  // 確認を開いている操作の文言は、確認の欄に出す（行と二重に出さない）。
+  const notice: Notice | undefined =
+    state.preview?.ref === entry.ref ? undefined : state.notices[entry.ref];
   const busy = state.busy.includes(entry.ref);
   const showPreview =
     !stopped && available.preview && state.preview?.ref !== entry.ref;

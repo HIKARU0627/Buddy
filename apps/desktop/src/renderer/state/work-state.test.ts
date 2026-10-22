@@ -217,11 +217,11 @@ test('schedule counts use no-break spaces and say what is not shown', () => {
   assert.equal(scheduleText(base), '予定はありません。');
   assert.equal(
     scheduleText({ ...base, event_count: 3, overlap_count: 2, more_count: 4 }),
-    '予定は3 件あります。そのうち2 件は、時間が重なっています。ほか4 件は、ここには出していません。',
+    '予定は3\u00a0件あります。そのうち2\u00a0件は、時間が重なっています。ほか4\u00a0件は、ここには出していません。',
   );
   assert.equal(
     scheduleText({ ...base, event_count: 1 }),
-    '予定は1 件あります。',
+    '予定は1\u00a0件あります。',
   );
 });
 
@@ -435,7 +435,7 @@ test('actions send only references and text; an empty or long draft is refused b
   actions.setDraft('あ'.repeat(4001));
   actions.submit();
   assert.equal(sent.length, 0);
-  assert.match(current.turnNotice?.text ?? '', /4000 文字までです/u);
+  assert.match(current.turnNotice?.text ?? '', /4000\u00a0文字までです/u);
   actions.setDraft(' 今日の予定を見せて ');
   actions.submit();
   assert.equal(sent.length, 1);

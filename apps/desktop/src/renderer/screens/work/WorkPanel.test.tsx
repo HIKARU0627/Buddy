@@ -163,7 +163,10 @@ test('running and finished operations use the sentence table; finished ones are 
   assert.match(html, /結果を確認しています/u);
   assert.match(html, /<h2[^>]*>終わった操作<\/h2>/u);
   assert.match(html, /完了しました/u);
-  assert.match(html, /ほか2 件の終わった操作は、ここには出していません。/u);
+  assert.match(
+    html,
+    /ほか2\u00a0件の終わった操作は、ここには出していません。/u,
+  );
 });
 
 test('the confirmation shows kind, account, target, before and after, and impact, with one primary approve button', () => {
@@ -239,4 +242,17 @@ test('while not connected only the conversation history and a sentence remain', 
   assert.match(html, /中枢に接続していないため、発言と承認はできません。/u);
   assert.doesNotMatch(html, /<textarea|確認が必要な操作/u);
   assert.deepEqual(buttons(html), []);
+});
+
+test('a notice of the operation whose confirmation is open is shown once, in the confirmation', () => {
+  const text = '確認で「やめる」を選んだため、承認していません。';
+  const state: WorkViewState = {
+    ...INITIAL_WORK_STATE,
+    preview: { ref: id(1), preview, approving: false },
+    notices: { [id(1)]: { tone: 'warning', text } },
+  };
+  const html = render([entry({ operation_kind: 'mail.labels.change' })], {
+    state,
+  });
+  assert.equal(html.split(text).length - 1, 1);
 });

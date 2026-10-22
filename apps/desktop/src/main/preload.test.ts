@@ -92,6 +92,12 @@ test('requests go only to the contract channels', async () => {
     // B03-08: 中枢の画面の端末の自宅のネットワークの登録（ADR 0022）。
     'desktop.home_status',
     'desktop.home_register',
+    // B04-05: 発言・承認表示の準備・承認・取消・照合（ADR 0031）。
+    'desktop.turn_submit',
+    'desktop.operation_preview',
+    'desktop.operation_approve',
+    'desktop.operation_cancel',
+    'desktop.operation_reconcile',
   ];
   // preload の一覧は domain の一覧と同じ。
   assert.deepEqual([...DESKTOP_IPC_CHANNELS], channels);

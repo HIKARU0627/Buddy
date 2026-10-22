@@ -269,7 +269,7 @@ export function groupOperations(
 
 // --- 発言の結果の文言 ---
 
-const NB = ' ';
+const NB = '\u00a0';
 
 // 予定の照会の結果の文（件数だけ。予定の本文を出す経路は B04 にはない）。
 export function scheduleText(
@@ -483,7 +483,8 @@ function withoutNotice(
   notices: Readonly<Record<string, Notice>>,
   ref: string,
 ): Record<string, Notice> {
-  const { [ref]: _dropped, ...rest } = notices;
+  const rest = { ...notices };
+  delete rest[ref];
   return rest;
 }
 

@@ -244,6 +244,55 @@ export default tseslint.config(
       ]),
     },
   },
+  // 模擬 provider とアダプター（B04-02、ADR 0028）。Electron・デスクトップ・中枢・保存へ依存しない。
+  {
+    files: ['packages/connectors/**/*.ts'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-restricted-imports': restricted([
+        [
+          'electron',
+          'electron/*',
+          '@electron/*',
+          '@buddy/desktop',
+          '@buddy/desktop/*',
+          '@buddy/core',
+          '@buddy/core/*',
+          '@buddy/storage',
+          '@buddy/storage/*',
+          '../**/packages/**',
+          '../**/apps/**',
+        ],
+      ]),
+    },
+  },
+  // Core 側のアダプターと公開出口は、真の結果を見る模擬 provider・試験装置の出口を読み込まない。
+  {
+    files: [
+      'packages/connectors/src/adapter/**/*.ts',
+      'packages/connectors/src/index.ts',
+    ],
+    rules: {
+      'no-restricted-imports': restricted([
+        [
+          'electron',
+          'electron/*',
+          '@electron/*',
+          '@buddy/desktop',
+          '@buddy/desktop/*',
+          '@buddy/core',
+          '@buddy/core/*',
+          '@buddy/storage',
+          '@buddy/storage/*',
+          '../**/packages/**',
+          '../**/apps/**',
+          '**/provider/*',
+          '**/testing.js',
+          '@buddy/connectors/testing',
+        ],
+      ]),
+    },
+  },
   {
     files: ['apps/core/**/*.ts', 'packages/storage/**/*.ts'],
     languageOptions: { globals: globals.node },

@@ -11,33 +11,82 @@
     },
     "kind": {
       "type": "string",
-      "enum": ["mock_service", "real_device", "real_api", "real_billing"]
+      "enum": [
+        "simulated",
+        "mock_service",
+        "real_device",
+        "real_api",
+        "real_billing"
+      ],
+      "description": "新しい模擬結果は simulated。mock_service は B00 の既存例の互換用。実機・実 API・実請求とは区別する。"
     },
-    "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
-    "contract_version": { "type": "string", "minLength": 1 },
-    "db_version": { "type": "string", "minLength": 1 },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "contract_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "db_version": {
+      "type": "string",
+      "minLength": 1
+    },
     "environment": {
       "type": "object",
       "properties": {
-        "os": { "type": "string", "minLength": 1 },
-        "hub": { "type": "string", "minLength": 1 },
+        "os": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hub": {
+          "type": "string",
+          "minLength": 1
+        },
         "devices": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "required": ["os", "hub", "devices"],
       "additionalProperties": false
     },
-    "seed": { "type": ["string", "null"] },
-    "fault_point": { "type": ["string", "null"] },
-    "provider_requests": { "type": "integer", "minimum": 0 },
-    "provider_state_changes": { "type": "integer", "minimum": 0 },
-    "approvals": { "type": "integer", "minimum": 0 },
-    "final_state": { "type": "string", "minLength": 1 },
-    "observed_at": { "type": "string", "format": "date-time" },
-    "deviation": { "type": ["string", "null"] },
-    "voice_stop_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "seed": {
+      "type": ["string", "null"]
+    },
+    "fault_point": {
+      "type": ["string", "null"]
+    },
+    "provider_requests": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "provider_state_changes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "approvals": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "final_state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deviation": {
+      "type": ["string", "null"]
+    },
+    "voice_stop_ms": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
     "outcome": {
       "type": "string",
       "enum": ["matched_expectation", "deviated", "aborted"]

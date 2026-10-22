@@ -8784,7 +8784,7 @@
           },
           "required": ["request_id", "channel", "outcome", "home", "list_seq"],
           "additionalProperties": false,
-          "description": "受け付けた。自宅の登録の状態と、このマシンのネットワークの伏せた表示を返す（登録の後は登録した後の状態）。"
+          "description": "受け付けた。自宅の登録の状態と、このマシンのネットワークの伏せた表示を返す（登録の後は登録した後の状態）。今のネットワークの表示・参照は登録の成否と別で、読み取れなければ登録の後でも null になれる。"
         },
         {
           "type": "object",

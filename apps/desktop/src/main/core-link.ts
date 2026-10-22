@@ -254,7 +254,12 @@ export class DesktopCoreLink {
   } | null = null;
   // 進行中のこのマシンの指紋の収集（コマンドの連鎖）。読み取りを時間切れで見限っても、収集が終わる（settle する）
   // まで残し、その間の要求は同じ収集を待つ（コマンドの連鎖を重ねない。コマンドそのものは runner の時間切れで止まる）。
-  #homeCollect: Promise<HomeObservation | 'failed'> | null = null;
+  // 収集を始めたときの表示の権限の世代を持ち、世代が違う（ロック・切断をまたいだ）収集には相乗りしない（終わるのを
+  // 待って結果を捨て、集め直す。PR #79 の Codex の最終確認）。
+  #homeCollect: {
+    readonly generation: number;
+    readonly promise: Promise<HomeObservation | 'failed'>;
+  } | null = null;
   // 自宅の要求の順（一覧と同じ形）: 読み取りごとの通し番号と、これより前に始めた読み取りを古いとみなす境目
   // （登録・新しい読み取りで進む）。結果が分からなかった登録の保留（結果が分かった後の通し番号。それより後に
   // 始めた読み取りで解く。それまで登録させない）。
@@ -1294,7 +1299,9 @@ export class DesktopCoreLink {
   // 指紋の収集を始める（進行中の収集があれば、それを返す）。
   #startHomeCollect(): Promise<HomeObservation | 'failed'> {
     const running = this.#homeCollect;
-    if (running !== null) return running;
+    // 呼ぶ側（#readHubHome）は、世代の違う収集が終わるのを待ってから呼ぶ。
+    if (running !== null) return running.promise;
+    const generation = this.#viewGeneration;
     let started: Promise<HomeObservation | 'failed'>;
     try {
       started = this.#options.collectHome().catch(() => 'failed' as const);
@@ -1302,9 +1309,9 @@ export class DesktopCoreLink {
       started = Promise.resolve('failed' as const);
     }
     const tracked: Promise<HomeObservation | 'failed'> = started.finally(() => {
-      if (this.#homeCollect === tracked) this.#homeCollect = null;
+      if (this.#homeCollect?.promise === tracked) this.#homeCollect = null;
     });
-    this.#homeCollect = tracked;
+    this.#homeCollect = { generation, promise: tracked };
     return tracked;
   }
 
@@ -1321,13 +1328,25 @@ export class DesktopCoreLink {
     });
     let observation: HomeObservation | 'timeout' | 'failed' | null = null;
     try {
-      const running = this.#homeCollect;
-      if (fresh && running !== null) {
+      // 新しく読む（fresh）ときは進行中の収集に相乗りせず、終わるのを待ってから集め直す。世代の違う（ロック・切断の
+      // 前に始めた）収集も、終わるのを待って結果を捨てる（収集は重ねて起動しない）。
+      let mustWait = fresh;
+      for (;;) {
+        const running = this.#homeCollect;
+        if (
+          running === null ||
+          (!mustWait && running.generation === this.#viewGeneration)
+        )
+          break;
         const waited = await Promise.race([
-          running.then(() => 'settled' as const),
+          running.promise.then(() => 'settled' as const),
           timeout,
         ]);
-        if (waited === 'timeout') observation = 'timeout';
+        if (waited === 'timeout') {
+          observation = 'timeout';
+          break;
+        }
+        mustWait = false;
       }
       observation ??= await Promise.race([this.#startHomeCollect(), timeout]);
     } catch {

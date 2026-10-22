@@ -366,7 +366,8 @@ test('the home network view masks the values and keeps the reference, SSID hint 
     }),
     [],
   );
-  // 登録の応答は、登録した後の状態と登録に使った参照を持つ。
+  // 登録の応答は、登録した後の状態を持つ。今のネットワークの表示・参照は null になれる（登録の最中の読み取りで
+  // 取得できなかった）。
   const registered = fixture('desktop-response-home-registered-wired');
   assert.deepEqual(semanticErrors('DesktopIpcResponse', registered), []);
   assert.deepEqual(
@@ -381,7 +382,21 @@ test('the home network view masks the values and keeps the reference, SSID hint 
       ...registered,
       home: { ...registered.home, observation: null },
     }),
-    ['home_register_without_registration'],
+    [],
+  );
+  assert.deepEqual(
+    semanticErrors('DesktopIpcResponse', {
+      ...registered,
+      home: {
+        ...registered.home,
+        observation: {
+          ...registered.home.observation,
+          ref: null,
+          gateway_mac_tail: null,
+        },
+      },
+    }),
+    [],
   );
   // 生の値を入れる形は schema にない（MAC の全体・SSID の値・2 文字の先頭）。
   for (const id of [

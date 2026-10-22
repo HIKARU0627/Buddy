@@ -467,10 +467,11 @@ export function semanticErrors(name, value) {
     errors.push(...semanticErrors('DesktopHomeObservation', value.observation));
   if (name === 'DesktopIpcResponse' && value.home) {
     errors.push(...semanticErrors('DesktopHomeView', value.home));
-    // 登録の応答は、登録した後の状態と登録に使った参照を持つ。
+    // 登録の応答は、登録した後の状態を持つ。今のネットワークの表示・参照は、登録の成功とは別で、登録の最中の
+    // 読み取りで取得できなかった（表示なし・MAC が欠けて参照なし）ときは null になれる（PR #79 の Codex の最終確認）。
     if (
       value.channel === 'desktop.home_register' &&
-      (value.home.registration === null || !value.home.observation?.ref)
+      value.home.registration === null
     )
       errors.push('home_register_without_registration');
   }

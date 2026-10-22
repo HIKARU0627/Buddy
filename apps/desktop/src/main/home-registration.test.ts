@@ -1114,3 +1114,84 @@ test(
     assertNoRawValues(shown, logs);
   },
 );
+
+test(
+  'a registration succeeds even when the read returned during it could not get the network or its MAC; the response has no view or no reference (Codex final review)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { hub, network, admin, puts, shown, logs } = await liveLink(t);
+    // PUT の最中の読み取りで、どの要素も取れなかった: 登録は成功し、今の表示は null（例外にしない）。
+    const ref = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
+    hub.gatePut = true;
+    const registering = admin('desktop.home_register', {
+      ref,
+      include_ssid: true,
+    });
+    await waitUntil(() => puts().length === 1, 'put sent');
+    network.value = 'throw';
+    const unreadable = await admin('desktop.home_status', null);
+    assert.equal(unreadable.home?.observation, null);
+    hub.releasePut();
+    const done = await registering;
+    assert.equal(done['outcome'], 'ok');
+    assert.equal(done.home?.registration?.['subnet'], '192.0.2.0/24');
+    assert.equal(done.home?.observation, null);
+
+    // PUT の最中の読み取りで MAC が欠けた: 表示はあるが参照はない（登録できない）。登録は成功する。
+    network.value = { ...HOME, unavailable: [] };
+    const ref2 = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
+    const registering2 = admin('desktop.home_register', {
+      ref: ref2,
+      include_ssid: false,
+    });
+    await waitUntil(() => puts().length === 2, 'second put sent');
+    network.value = { ...HOME, gateway_mac: null, unavailable: [] };
+    const noMac = await admin('desktop.home_status', null);
+    assert.equal(noMac.home?.observation?.['ref'], null);
+    hub.releasePut();
+    const done2 = await registering2;
+    assert.equal(done2['outcome'], 'ok');
+    assert.equal(done2.home?.registration?.['ssid_registered'], false);
+    assert.equal(done2.home?.observation?.['ref'], null);
+    assert.equal(done2.home?.observation?.['gateway_mac_tail'], null);
+    assertNoRawValues(shown, logs);
+  },
+);
+
+test(
+  'a read after unlocking does not reuse a collection started before the lock; it waits for it, drops it and collects again (Codex final review)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, network, admin } = await liveLink(t);
+    // ロックの前に始めた読み取り（収集を止めておく）。
+    network.value = 'gate';
+    const before = network.collects;
+    const old = admin('desktop.home_status', null);
+    await waitUntil(() => network.collects > before, 'collect before lock');
+    // ロックの間にネットワークが変わった。解除の後の読み取りは、ロックの前の収集に相乗りしない。
+    link.setLockState('locked');
+    link.setLockState('unlocked');
+    const fresh = admin('desktop.home_status', null);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(network.collects - before, 1);
+    // ロックの前の収集は変わる前のネットワーク（53:01）を返して終わり、その後の収集は変わった後（53:02）を読む。
+    network.release();
+    network.value = {
+      ...HOME,
+      gateway_mac: '00:00:5e:00:53:02',
+      unavailable: [],
+    };
+    // ロックをまたいだ前の要求は、表示を返さない（解除の後に終わるので not_connected）。
+    const oldDone = await old;
+    assert.equal(oldDone.reason, 'not_connected');
+    assert.equal(oldDone.home, undefined);
+    const after = await fresh;
+    assert.equal(after['outcome'], 'ok');
+    assert.equal(after.home?.observation?.['gateway_mac_tail'], '53:02');
+    assert.equal(network.collects - before, 2);
+  },
+);

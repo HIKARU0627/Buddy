@@ -50,22 +50,25 @@ export interface AdminConfirmText {
 // 自宅の登録・登録し直しの確認（B03-08）。出すのは伏せた値（MAC は最後の 2 組、SSID は先頭の 1 文字と文字数）
 // だけ。何と見比べるかと、Wi-Fi 名を確かめるかどうか、置き換えて元に戻せないことを書く。
 export function homeConfirmText(request: HomeConfirmRequest): AdminConfirmText {
+  // 数字と単位の間・「MAC アドレス」の間は改行しない空白（U+00A0。画面の文言と同じ。UI レビュー M6）。
+  const nb = '\u00a0';
+  const macAddress = `MAC${nb}アドレス`;
   const mask = '·';
   const mac = `${mask.repeat(2)}:${mask.repeat(2)}:${mask.repeat(2)}:${mask.repeat(2)}:${displayText(request.macTail, 5)}`;
   const ssid =
     request.includeSsid && request.ssidHint !== null
-      ? `確かめる（${request.ssidHint.first === null ? '' : displayText(request.ssidHint.first, 1)}${mask.repeat(request.ssidHint.length - (request.ssidHint.first === null ? 0 : 1))}・${request.ssidHint.length} 文字）`
+      ? `確かめる（${request.ssidHint.first === null ? '' : displayText(request.ssidHint.first, 1)}${mask.repeat(request.ssidHint.length - (request.ssidHint.first === null ? 0 : 1))}・${request.ssidHint.length}${nb}文字）`
       : '確かめない（Wi-Fi 名は送りません）';
   const lines = [
-    `ルーターの MAC アドレス（最後の 2 組）: ${mac}`,
-    'ルーターのラベルや管理画面の MAC アドレスの、最後の 2 組と同じかを確かめてください。',
+    `ルーターの ${macAddress}（最後の${nb}2${nb}組）: ${mac}`,
+    `ルーターのラベルや管理画面の ${macAddress}の、最後の${nb}2${nb}組と同じかを確かめてください。`,
     `サブネット: ${displayText(request.subnet, 18)}`,
     'ルーターの管理画面の、LAN 側のアドレスの範囲です。',
     `Wi-Fi 名（SSID）: ${ssid}`,
     ...(request.includeSsid
       ? []
       : [
-          'Wi-Fi 名は確かめず、ルーターの MAC アドレス・サブネット・Tailscale の直接経路で判定します。',
+          `Wi-Fi 名は確かめず、ルーターの ${macAddress}・サブネット・Tailscale の直接経路で判定します。`,
         ]),
     '',
     '登録すると、ほかのマシンの端末は、このネットワークにつながっていて Tailscale で直接つながっているときだけ中枢に接続できます。',

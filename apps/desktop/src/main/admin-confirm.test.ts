@@ -78,16 +78,21 @@ test('the home registration confirmation shows only masked values and what to co
   assert.deepEqual(text.buttons, ['やめる', '登録する']);
   assert.match(
     text.detail,
-    /^ルーターの MAC アドレス（最後の 2 組）: ··:··:··:··:53:01\n/u,
+    /^ルーターの MAC\u00a0アドレス（最後の\u00a02\u00a0組）: ··:··:··:··:53:01\n/u,
   );
   assert.match(
     text.detail,
-    /ルーターのラベルや管理画面の MAC アドレスの、最後の 2 組と同じかを確かめてください。/u,
+    /ルーターのラベルや管理画面の MAC\u00a0アドレスの、最後の\u00a02\u00a0組と同じかを確かめてください。/u,
   );
   assert.match(text.detail, /\nサブネット: 192\.0\.2\.0\/24\n/u);
-  assert.match(text.detail, /Wi-Fi 名（SSID）: 確かめる（合····・5 文字）/u);
+  assert.match(
+    text.detail,
+    /Wi-Fi 名（SSID）: 確かめる（合····・5\u00a0文字）/u,
+  );
   assert.match(text.detail, /Tailscale で直接つながっているときだけ/u);
   assert.doesNotMatch(text.detail, /置き換わり|登録し直すと|確かめず/u);
+  // 数字と単位の間に普通の空白を残さない（U+00A0）。
+  assert.doesNotMatch(text.detail, /\d (?:組|文字)|MAC アドレス/u);
 });
 
 test('without the Wi-Fi name the confirmation says it is not sent and what is still checked', () => {
@@ -102,7 +107,7 @@ test('without the Wi-Fi name the confirmation says it is not sent and what is st
   );
   assert.match(
     text.detail,
-    /Wi-Fi 名は確かめず、ルーターの MAC アドレス・サブネット・Tailscale の直接経路で判定します。/u,
+    /Wi-Fi 名は確かめず、ルーターの MAC\u00a0アドレス・サブネット・Tailscale の直接経路で判定します。/u,
   );
   assert.doesNotMatch(text.detail, /合/u);
 });

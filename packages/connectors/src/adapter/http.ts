@@ -1,0 +1,95 @@
+// 1 回だけ送る HTTP の呼び出し。自動再送はしない（keep-alive も使わず、毎回新しい接続で送る）。
+import { request } from 'node:http';
+
+export type HttpOutcome =
+  | {
+      readonly kind: 'response';
+      readonly status: number;
+      readonly body: unknown;
+    }
+  /** 接続を確立できなかった。要求は送られていない。 */
+  | { readonly kind: 'not_sent' }
+  /** 送ったが応答を受け取れなかった（時間切れ・切断）。相手が適用したかは分からない。 */
+  | {
+      readonly kind: 'no_response';
+      readonly reason: 'timeout' | 'connection_lost';
+    };
+
+export interface HttpCall {
+  readonly baseUrl: string;
+  readonly method: 'GET' | 'POST';
+  readonly path: string;
+  readonly body?: unknown;
+  readonly timeoutMs: number;
+  /** 中止されたら時間切れとして扱う（試験用）。 */
+  readonly signal?: AbortSignal;
+}
+
+export function callOnce(call: HttpCall): Promise<HttpOutcome> {
+  return new Promise((resolve) => {
+    const url = new URL(call.path, call.baseUrl);
+    const payload =
+      call.body === undefined ? undefined : JSON.stringify(call.body);
+    let settled = false;
+    function expire(): void {
+      finish({ kind: 'no_response', reason: 'timeout' });
+      req.destroy();
+    }
+    const finish = (outcome: HttpOutcome): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      // 終わった要求は、中止の通知を受けない（同じ signal を使う後の要求に影響しない）。
+      call.signal?.removeEventListener('abort', expire);
+      resolve(outcome);
+    };
+    const req = request(
+      url,
+      {
+        method: call.method,
+        // 新しい接続を 1 本だけ使い、再利用・再試行をしない。
+        agent: false,
+        headers: {
+          connection: 'close',
+          ...(payload === undefined
+            ? {}
+            : {
+                'content-type': 'application/json',
+                'content-length': Buffer.byteLength(payload),
+              }),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let body: unknown;
+          try {
+            body = text.length === 0 ? null : JSON.parse(text);
+          } catch {
+            body = null;
+          }
+          finish({ kind: 'response', status: res.statusCode ?? 0, body });
+        });
+        res.on('error', () =>
+          finish({ kind: 'no_response', reason: 'connection_lost' }),
+        );
+        res.on('aborted', () =>
+          finish({ kind: 'no_response', reason: 'connection_lost' }),
+        );
+      },
+    );
+    const timer = setTimeout(expire, call.timeoutMs);
+    if (call.signal?.aborted === true) expire();
+    else call.signal?.addEventListener('abort', expire, { once: true });
+    req.on('error', (error: NodeJS.ErrnoException) => {
+      finish(
+        error.code === 'ECONNREFUSED'
+          ? { kind: 'not_sent' }
+          : { kind: 'no_response', reason: 'connection_lost' },
+      );
+    });
+    req.end(payload);
+  });
+}

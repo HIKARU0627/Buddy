@@ -97,6 +97,12 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'operation_receipt',
     transaction: 'operation',
   },
+  // 0004（ADR 0030）: 用事。題名・期限・本文は確定 intent の暗号文を参照し、複製しない。
+  tasks: {
+    body: 'none',
+    retention: 'operation_receipt',
+    transaction: 'operation',
+  },
   operation_steps: {
     body: 'none',
     retention: 'operation_receipt',

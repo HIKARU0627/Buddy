@@ -38,6 +38,11 @@ export interface OperationView {
   // 最新の試行の結果。試行がない・結果がまだなければ null。
   readonly result_status: string | null;
   readonly external_id: string | null;
+  // 最新の試行の ID と状態（実行担当の再開と照合に使う。ADR 0030）。試行がなければ null。
+  readonly attempt_id: string | null;
+  readonly attempt_status: string | null;
+  // 送出境界を越えた後の取消を受け付けた（受付だけで状態は変えていない、X05）。
+  readonly cancel_requested: boolean;
   // workflow の現在の依頼の版。workflow のない操作は null。
   readonly request_revision: string | null;
   // 忘却台帳の最大の世代（なければ 0）。
@@ -102,10 +107,22 @@ function toView(
     { status: ApprovalStatus } | undefined;
   const attempt = db
     .prepare(
-      'SELECT result_status, external_id FROM operation_attempts WHERE operation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1',
+      'SELECT attempt_id, status, result_status, external_id FROM operation_attempts WHERE operation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1',
     )
     .get(row.operation_id) as
-    { result_status: string | null; external_id: string | null } | undefined;
+    | {
+        attempt_id: string;
+        status: string;
+        result_status: string | null;
+        external_id: string | null;
+      }
+    | undefined;
+  // 受付だけ（accepted）の記録は、送出境界を越えた後の取消だけが作る（operation-store の cancelOperation）。
+  const cancel = db
+    .prepare(
+      "SELECT count(*) AS value FROM command_receipts WHERE target_id = ? AND status = 'accepted'",
+    )
+    .get(row.operation_id) as { value: number };
   let requestRevision: string | null = null;
   if (row.workflow_id !== null) {
     const workflow = db
@@ -127,6 +144,9 @@ function toView(
     approval_status: approval?.status ?? 'none',
     result_status: attempt?.result_status ?? null,
     external_id: attempt?.external_id ?? null,
+    attempt_id: attempt?.attempt_id ?? null,
+    attempt_status: attempt?.status ?? null,
+    cancel_requested: cancel.value > 0,
     request_revision: requestRevision,
     forgetting_generation: forgetting,
     created_at: row.created_at,

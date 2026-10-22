@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "保存案 0001〜0003 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
+  "description": "保存案 0001〜0004 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022・0030）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
   "seed": [
     "INSERT INTO devices VALUES ('dev-1', '合成の端末', 'windows', 0, X'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000, NULL, NULL)",
     "INSERT INTO devices VALUES ('dev-hub', '合成の中枢', 'macos', 1, X'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000, NULL, NULL)",
@@ -687,6 +687,52 @@
         [
           "INSERT INTO home_network_reports VALUES ('dev-1', X'abababababababababababababababababababababababababababababababab', '192.0.2.0/24', NULL, NULL)",
           "not_null"
+        ]
+      ]
+    },
+    {
+      "id": "0004-superseded-attempt-and-one-task-per-operation",
+      "refs": ["X09", "D1", "D5", "ADR 0030"],
+      "steps": [
+        [
+          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operation_attempts VALUES ('at-1', 'op-1', 1, 'ap-1', 'preparing', NULL, NULL, NULL, 1300)",
+          "ok"
+        ],
+        [
+          "UPDATE operation_attempts SET status = 'superseded', dispatch_intent_at = 1400 WHERE attempt_id = 'at-1'",
+          "check"
+        ],
+        [
+          "UPDATE operation_attempts SET status = 'superseded' WHERE attempt_id = 'at-1'",
+          "ok"
+        ],
+        [
+          "INSERT INTO operation_attempts VALUES ('at-2', 'op-1', 1, 'ap-1', 'preparing', NULL, NULL, NULL, 1300)",
+          "ok"
+        ],
+        [
+          "INSERT INTO operation_attempts VALUES ('at-3', 'op-1', 1, 'ap-1', 'succeeded', NULL, NULL, 'confirmed_success', 1300)",
+          "check"
+        ],
+        [
+          "INSERT INTO tasks VALUES ('task-1', 'op-1', 1, 'inbox', 'open', 1500)",
+          "ok"
+        ],
+        [
+          "INSERT INTO tasks VALUES ('task-2', 'op-1', 1, 'inbox', 'open', 1500)",
+          "unique"
+        ],
+        [
+          "INSERT INTO tasks VALUES ('task-3', 'op-x', 1, 'inbox', 'open', 1500)",
+          "foreign_key"
+        ],
+        [
+          "INSERT INTO tasks VALUES ('task-4', 'op-x', 1, '', 'open', 1500)",
+          "check"
         ]
       ]
     }

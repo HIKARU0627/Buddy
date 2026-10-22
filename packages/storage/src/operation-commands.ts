@@ -20,6 +20,8 @@ export const DB_COMMAND_KINDS = [
   'operation.recover_after_restart',
   // 内容版の更新（D1、ADR 0027・0029）。同じ operation_id で content_version を上げ、承認待ちへ戻す。
   'operation.revise_content',
+  // LocalCommand の適用（D5、ADR 0030）。用事の行・試行・承認の使用・最終状態・イベント・受付を一つの transaction で書く。
+  'operation.apply_local',
 ] as const;
 
 export type DbCommandKind = (typeof DB_COMMAND_KINDS)[number];
@@ -96,10 +98,22 @@ export interface PrepareOperationCommand extends DbCommandBase<'operation.prepar
   readonly attempt_id: string;
 }
 
+// 送出の直前に Core が provider から読み直した接続（ADR 0030）。DB の connections に行のない接続（B04 の模擬
+// provider）の照合に使う。preview の有効性と同じく Core が判定の材料を渡し、DB worker が transaction の中で確かめる。
+export interface ObservedConnection {
+  readonly status:
+    'active' | 'needs_reauth' | 'needs_attention' | 'disconnected';
+  readonly access: 'read' | 'read_write';
+  // 読み直した許可の版。命令の permission_revision（確定 intent の許可の版）と一致すること。
+  readonly permission_revision: string;
+}
+
 export interface DispatchIntentCommand extends DbCommandBase<'operation.dispatch_intent'> {
   readonly attempt_id: string;
   // 予算予約（05、ADR 0006）。費用のない操作は null。あれば reserved であること。
   readonly reservation_id: string | null;
+  // connection_id が null の外部変更で使う、送出の直前の接続の読み直し。
+  readonly observed_connection?: ObservedConnection | null;
 }
 
 export type ResultState =
@@ -120,9 +134,8 @@ export interface RecoverAfterRestartCommand extends DbCommandBase<'operation.rec
   readonly attempt_id: string;
 }
 
-// 内容版の更新（D1、ADR 0027・0029）。新しい版の確定 intent（暗号化済み）と hash を渡す。旧版の有効な承認は
-// 同じ transaction で revoked にする。実行中の試行（preparing）がある操作の更新は B04-04（試行の superseded）で、
-// それまでは拒否する（attempt_active）。
+// 内容版の更新（D1、ADR 0027・0029・0030）。新しい版の確定 intent（暗号化済み）と hash を渡す。旧版の有効な承認は
+// 同じ transaction で revoked にし、送出意図の前の試行（preparing）は superseded にする。
 export interface ReviseContentCommand extends DbCommandBase<'operation.revise_content'> {
   // 新しい内容版（現在の版＋1）。
   readonly content_version: string;
@@ -130,8 +143,18 @@ export interface ReviseContentCommand extends DbCommandBase<'operation.revise_co
   readonly intent: SealedBlobInput;
 }
 
+// LocalCommand の適用（D5、ADR 0030）。外部 HTTP を使わない。承認済み（approved）の操作だけ。
+export interface ApplyLocalCommand extends DbCommandBase<'operation.apply_local'> {
+  // 成功の試行（送出意図の時刻＝適用の時刻）と、作る用事の ID。
+  readonly attempt_id: string;
+  readonly task_id: string;
+  // 登録先の一覧（確定 intent の target.list_id。復号は Core が行う）。
+  readonly list_id: string;
+}
+
 export type DbCommand =
   | CreateOperationCommand
+  | ApplyLocalCommand
   | ReviseContentCommand
   | ApproveOperationCommand
   | PrepareOperationCommand
@@ -339,6 +362,32 @@ export function commandShapeReasons(command: DbCommand): string[] {
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');
       if (!isNullable(command.reservation_id, isId))
         reasons.push('reservation_id_invalid');
+      if (
+        command.observed_connection !== undefined &&
+        command.observed_connection !== null &&
+        (typeof command.observed_connection !== 'object' ||
+          ![
+            'active',
+            'needs_reauth',
+            'needs_attention',
+            'disconnected',
+          ].includes(command.observed_connection.status) ||
+          !['read', 'read_write'].includes(
+            command.observed_connection.access,
+          ) ||
+          !isRevision(command.observed_connection.permission_revision))
+      )
+        reasons.push('observed_connection_invalid');
+      break;
+    case 'operation.apply_local':
+      if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');
+      if (!isId(command.task_id)) reasons.push('task_id_invalid');
+      if (
+        typeof command.list_id !== 'string' ||
+        command.list_id.length < 1 ||
+        command.list_id.length > 128
+      )
+        reasons.push('list_id_invalid');
       break;
     case 'operation.record_result':
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');

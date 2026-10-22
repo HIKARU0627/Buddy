@@ -697,7 +697,7 @@ test(
     const crashed = await startCli(t, dataDir);
     assert.deepEqual(crashed.events['store_opened'], {
       event: 'store_opened',
-      schema_version: 3,
+      schema_version: 4,
       store_generation: generation,
       store_generation_source: 'database',
       data_key_check: 'matched',

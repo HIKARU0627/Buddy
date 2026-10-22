@@ -10,12 +10,13 @@ import type { AddressInfo } from 'node:net';
 import {
   mkdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   writeFileSync,
   existsSync,
 } from 'node:fs';
-import { join } from 'node:path';
-import { acquireDirLock, type DirLock } from './dir-lock.js';
+import { randomUUID } from 'node:crypto';
+import { join, resolve } from 'node:path';
 import { FaultInjector, type FaultContext } from '../fault-injector.js';
 import {
   SYNTHETIC_CLOCK,
@@ -28,6 +29,8 @@ import {
 } from './data.js';
 
 const STATE_FILE = 'provider.json';
+// このプロセスで使用中の保存ディレクトリ。
+const IN_USE = new Set<string>();
 const MAX_BODY_BYTES = 64 * 1024;
 
 export interface MockProviderOptions {
@@ -116,11 +119,18 @@ export async function createMockProvider(
 ): Promise<MockProvider> {
   mkdirSync(options.dir, { recursive: true });
   const file = join(options.dir, STATE_FILE);
-  const lock = await acquireDirLock(options.dir);
+  // 同じプロセスの中で、同じディレクトリを 2 つの provider に使わせない（後の保存が先の記録を消すため）。
+  // 別のプロセスで同じ保存先を共有する使い方には対応しない（ADR 0028）。
+  const key = realpathSync(resolve(options.dir));
+  if (IN_USE.has(key))
+    throw new Error(
+      '模擬 provider の保存ディレクトリは、別の provider が使っています。',
+    );
+  IN_USE.add(key);
   try {
-    return await startProvider(options, file, lock);
+    return await startProvider(options, file, () => IN_USE.delete(key));
   } catch (error) {
-    await lock.release();
+    IN_USE.delete(key);
     throw error;
   }
 }
@@ -128,7 +138,7 @@ export async function createMockProvider(
 async function startProvider(
   options: MockProviderOptions,
   file: string,
-  lock: DirLock,
+  release: () => void,
 ): Promise<MockProvider> {
   const now = options.now ?? (() => SYNTHETIC_CLOCK);
   const injector = options.injector ?? new FaultInjector();
@@ -138,9 +148,11 @@ async function startProvider(
   if (state.schema !== 'buddy.mock-provider.v1')
     throw new Error('模擬 provider の状態ファイルの形式が違います。');
 
+  const instanceId = randomUUID();
+  let released = false;
   // 状態と受信記録は 1 つのファイルへまとめて書き、途中で止まっても食い違わないようにする。
   function persist(): void {
-    const temp = `${file}.tmp`;
+    const temp = `${file}.${String(process.pid)}-${instanceId}.tmp`;
     writeFileSync(temp, `${JSON.stringify(state)}\n`, 'utf8');
     renameSync(temp, file);
   }
@@ -374,9 +386,6 @@ async function startProvider(
           return send(res, 404, { error: 'not_found' });
         return send(res, 200, state.permission);
       }
-      // 排他の持ち主の確認用（pid の再利用と見分ける）。
-      if (parts.join('/') === 'v1/instance')
-        return send(res, 200, { token: lock.token });
       if (parts.join('/') === 'v1/calendar/events')
         return send(res, 200, { events: state.events });
       if (
@@ -429,12 +438,6 @@ async function startProvider(
     server.listen(options.port ?? 0, '127.0.0.1', resolve);
   });
   const address = server.address() as AddressInfo;
-  try {
-    await lock.setPort(address.port);
-  } catch (error) {
-    server.close();
-    throw error;
-  }
 
   const truth: MockProviderTruth = {
     requestCount: () => state.receipts.length,
@@ -478,7 +481,11 @@ async function startProvider(
         server.closeAllConnections();
       });
       // 閉じた後に排他を手放す（次の provider が同じディレクトリで始められる）。
-      await lock.release();
+      // 2 回目以降の close() は、同じディレクトリで起動し直した別の provider の使用を外さない。
+      if (!released) {
+        released = true;
+        release();
+      }
     },
   };
 }

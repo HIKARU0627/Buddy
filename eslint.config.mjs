@@ -323,6 +323,10 @@ export default tseslint.config(
           // 試験の道具を経由して試験用の出口を読む抜け道を塞ぐ。
           '**/*test-support',
           '**/*test-support.js',
+          '**/*.test',
+          '**/*.test.js',
+          '**/crash-child',
+          '**/crash-child.js',
         ],
       ]),
       'no-restricted-syntax': [
@@ -332,6 +336,12 @@ export default tseslint.config(
             'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop|@buddy\\/connectors\\/(testing|dist))(\\/|$)/]',
           message:
             'Core / storage は Electron クライアントと、模擬 provider の試験用の出口（@buddy/connectors/testing）へ依存しません。',
+        },
+        // 試験の道具・試験ファイル・子プロセスの道具を、文字列の動的 import で読む経路も塞ぐ。
+        {
+          selector:
+            'ImportExpression[source.value=/(test-support|\\.test(\\.js)?$|crash-child)/]',
+          message: '製品コードから試験の道具・試験ファイルを読み込めません。',
         },
       ],
     },

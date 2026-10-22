@@ -1,17 +1,9 @@
 // 模擬 provider とアダプターの試験。期待値は手で書いた値で、実装の処理から作らない。
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
-import { join } from 'node:path';
 import test from 'node:test';
 import { createMockMailConnector } from './index.js';
 import { createMockProvider } from './testing.js';
-import {
-  onCleanup,
-  startProvider,
-  tempDir,
-  TEST_TIMEOUT_MS,
-} from './test-support.js';
+import { startProvider, TEST_TIMEOUT_MS } from './test-support.js';
 
 const OPTIONS = { timeout: TEST_TIMEOUT_MS };
 const CLOCK = '2026-10-05T09:00:00+09:00';
@@ -386,7 +378,7 @@ test(
 );
 
 test(
-  '同じ保存ディレクトリでの二重起動を拒否し、閉じた後は起動し直せる',
+  '同じプロセスで同じ保存ディレクトリを二重に起動できず、閉じた後は起動し直せる',
   OPTIONS,
   async (t) => {
     const first = await startProvider(t);
@@ -407,75 +399,5 @@ test(
     await first.close();
     const second = await startProvider(t, { dir: first.dir });
     assert.equal(second.truth.requestCount(), 0);
-  },
-);
-
-test(
-  '異常終了で残った排他（終了したプロセスの記録）は引き継ぐ',
-  OPTIONS,
-  async (t) => {
-    const dir = await tempDir(t);
-    // 存在しないプロセスの ID（pid の上限より十分大きい値）を持つ残りの排他。
-    await writeFile(
-      join(dir, 'provider.lock'),
-      `${JSON.stringify({ pid: 2147483646, token: 'dead-owner', port: null })}\n`,
-    );
-    const provider = await startProvider(t, { dir });
-    assert.equal(provider.truth.requestCount(), 0);
-  },
-);
-
-async function freePort(): Promise<number> {
-  const server = createServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  const port =
-    typeof address === 'object' && address !== null ? address.port : 0;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  return port;
-}
-
-test(
-  'pid が再利用されても、持ち主のトークンが応答しなければ古い排他として引き継ぐ',
-  OPTIONS,
-  async (t) => {
-    const dir = await tempDir(t);
-    // 生きているプロセス（この試験自身）の pid と、閉じた後のポート・別のトークンを持つ残りの排他。
-    await writeFile(
-      join(dir, 'provider.lock'),
-      `${JSON.stringify({ pid: process.pid, token: 'previous-owner', port: await freePort() })}\n`,
-    );
-    const provider = await startProvider(t, { dir });
-    assert.equal(provider.truth.requestCount(), 0);
-  },
-);
-
-test('閉じても、他の持ち主の排他は消さない', OPTIONS, async (t) => {
-  const provider = await startProvider(t);
-  const lockFile = join(provider.dir, 'provider.lock');
-  // 何らかの理由で排他が別の持ち主のものに替わっている。
-  const foreign = `${JSON.stringify({ pid: process.pid, token: 'someone-else', port: null })}\n`;
-  await writeFile(lockFile, foreign);
-  await provider.close();
-  assert.equal(await readFile(lockFile, 'utf8'), foreign);
-});
-
-test(
-  '古い排他を同時に引き継ごうとしても、起動できるのは 1 つだけ',
-  OPTIONS,
-  async (t) => {
-    const dir = await tempDir(t);
-    await writeFile(
-      join(dir, 'provider.lock'),
-      `${JSON.stringify({ pid: 2147483646, token: 'dead-owner', port: null })}\n`,
-    );
-    const results = await Promise.allSettled(
-      Array.from({ length: 8 }, () => createMockProvider({ dir })),
-    );
-    const started = results.flatMap((r) =>
-      r.status === 'fulfilled' ? [r.value] : [],
-    );
-    for (const provider of started) onCleanup(t, () => provider.close());
-    assert.equal(started.length, 1);
   },
 );

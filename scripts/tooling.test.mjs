@@ -282,6 +282,31 @@ test('模擬 provider の試験用の出口は、Core の製品コードとア�
       ).some((m) => m.ruleId === 'no-restricted-imports'),
       specifier,
     );
+  // 製品コードは、文字列の動的 import でも、試験ファイル・crash-child を経由する再 export でも、試験の道具を読めない。
+  for (const specifier of [
+    './probe-test-support.js',
+    './probe.test.js',
+    './crash-child.js',
+  ]) {
+    assert.ok(
+      (
+        await violations(
+          `export * from '${specifier}';\n`,
+          'apps/core/src/probe.ts',
+        )
+      ).some((m) => m.ruleId === 'no-restricted-imports'),
+      `static ${specifier}`,
+    );
+    assert.ok(
+      (
+        await violations(
+          `export const load = () => import('${specifier}');\n`,
+          'apps/core/src/probe.ts',
+        )
+      ).some((m) => m.ruleId === 'no-restricted-syntax'),
+      `dynamic ${specifier}`,
+    );
+  }
   // アダプターと公開出口: 静的 import・動的 import のどちらも拒否する。
   for (const filePath of [
     'packages/connectors/src/adapter/probe.ts',

@@ -364,6 +364,14 @@ test('headings with markup or URLs are refused by both the schema and the domain
     '<?xml',
     'A<B>C',
     '<img src=x onerror=x',
+    // 空白なしの自己終了タグと、/ で区切った属性（PR #102 の再々確認）。
+    '<br/>',
+    '<br />',
+    '<img/>',
+    '<svg/>',
+    '<wbr/>',
+    '<img/src=x>',
+    '<img/src=x',
     'https://example.invalid',
     'HTTP://EXAMPLE.INVALID',
     'javascript:alert(1)',
@@ -404,6 +412,8 @@ test('headings with markup or URLs are refused by both the schema and the domain
     'A<B の比較',
     'A < B > C',
     '2<3 と 5>4',
+    'A</B の比較',
+    '1/2 と 3/4',
     // ſ（U+017F）は [Ss] に含めない。/iu の大文字・小文字の対応を使わない。
     'http\u017F://x',
     // プレーンテキストで描くので通してよい（ADR 0032）。

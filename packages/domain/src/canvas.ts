@@ -126,14 +126,14 @@ const URL_SCHEMES = [
   ci('mailto'),
 ].join('|');
 export const CANVAS_HEADING_MARKUP_PATTERNS: readonly string[] = [
-  // 閉じたタグ（属性は任意）。
-  String.raw`<${TAG_NAME}(\s[^<>]*)?>`,
+  // 閉じたタグ（属性は任意）。名前の直後の / も区切りとして扱う（<br/>・<img/src=x> も HTML ではタグになる）。
+  String.raw`<${TAG_NAME}([\s/][^<>]*)?>`,
   // 終わりのタグ。
   String.raw`</${TAG_NAME}\s*>`,
   // コメント・宣言・処理命令。
   '<[!?]',
-  // 属性の形（> がなくても拒否）。
-  String.raw`<${TAG_NAME}\s+[A-Za-z_:][A-Za-z0-9_.:-]*\s*=`,
+  // 属性の形（> がなくても拒否）。名前と属性の区切りは空白か /。
+  String.raw`<${TAG_NAME}[\s/]+[A-Za-z_:][A-Za-z0-9_.:-]*\s*=`,
   // URL のスキーム。直前が ASCII の英数字でない（または先頭）。
   String.raw`(^|[^A-Za-z0-9])(${URL_SCHEMES})\s*:`,
   // www. で始まる表現。

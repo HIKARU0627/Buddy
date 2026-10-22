@@ -122,6 +122,8 @@ export class OperationBridge {
   readonly #previews = new Map<string, PreviewRecord>();
   readonly #held = new Map<string, HeldRecord>();
   readonly #content = new Map<string, ContentRecord>();
+  // 「状態を確かめる」で読み取った今の状態（クライアントの状態がまだ追いついていない間、一覧に反映する）。
+  readonly #observed = new Map<string, OperationSnapshot>();
   // 内容を読もうとした (操作 ID → 状態版)。同じ状態版では読み直さない（失敗を繰り返さない）。
   readonly #prefetched = new Map<string, string>();
   readonly #queues = new Map<string, Promise<unknown>>();
@@ -145,6 +147,7 @@ export class OperationBridge {
     this.#previews.clear();
     this.#held.clear();
     this.#content.clear();
+    this.#observed.clear();
     this.#prefetched.clear();
     this.#queues.clear();
     this.#previewSeq.clear();
@@ -176,20 +179,22 @@ export class OperationBridge {
         this.#refs.delete(id);
         this.#held.delete(id);
         this.#content.delete(id);
+        this.#observed.delete(id);
         this.#prefetched.delete(id);
         this.#previewSeq.delete(id);
         this.#dropPreviews(id);
       }
+    const merged = operations.map((op) => this.#current(op));
     for (const [id, held] of this.#held) {
-      const current = operations.find((op) => op.operation_id === id);
+      const current = merged.find((op) => op.operation_id === id);
       if (current !== undefined && newer(current.state_revision, held.revision))
         this.#held.delete(id);
     }
-    const entries = operations.map((op) => {
+    const entries = merged.map((op) => {
       this.#refOf(op.operation_id, true);
       const record = this.#refs.get(op.operation_id) as RefRecord;
       this.#maybePrefetch(op);
-      const content = this.#content.get(op.operation_id);
+      const content = this.#contentFor(op);
       const entry: DesktopOperationEntry = {
         ref: record.ref,
         operation_kind: op.operation_kind,
@@ -207,6 +212,23 @@ export class OperationBridge {
     return entries.sort((a, b) => b.order - a.order).map((item) => item.entry);
   }
 
+  // クライアントの状態と、読み取りで確かめた状態のうち、状態版が新しい方（クライアントが追いついたら読み取りは捨てる）。
+  #current(op: OperationSnapshot): OperationSnapshot {
+    const observed = this.#observed.get(op.operation_id);
+    if (observed === undefined) return op;
+    if (newer(observed.state_revision, op.state_revision)) return observed;
+    this.#observed.delete(op.operation_id);
+    return op;
+  }
+
+  // 今の内容版・hash と一致する内容（見出し）だけを使う。別端末の改訂などで古くなった内容は使わない。
+  #contentFor(op: OperationSnapshot): ContentRecord | undefined {
+    const record = this.#content.get(op.operation_id);
+    return record?.key === `${op.content_version}:${op.content_hash}`
+      ? record
+      : undefined;
+  }
+
   #dropPreviews(operationId: string): void {
     for (const [ref, preview] of this.#previews)
       if (preview.operationId === operationId) this.#previews.delete(ref);
@@ -218,10 +240,12 @@ export class OperationBridge {
   ): { id: string; snapshot: OperationSnapshot } | null {
     for (const [id, record] of this.#refs)
       if (record.ref === ref) {
-        const snapshot = connection.state.operations.find(
+        const found = connection.state.operations.find(
           (op) => op.operation_id === id,
         );
-        return snapshot === undefined ? null : { id, snapshot };
+        return found === undefined
+          ? null
+          : { id, snapshot: this.#current(found) };
       }
     return null;
   }
@@ -339,7 +363,8 @@ export class OperationBridge {
       // 待っている間に、本人の確認で内容が読めた・世代が進んだなら、読まない（確認で出した preview を失効させない）。
       if (gen !== this.#gen) return;
       if (this.#content.get(op.operation_id)?.key === key) return;
-      await this.#issue(op.operation_id, gen);
+      // 見出しを読むだけ。承認用の preview の記録は作らない（表示中の確認の参照を追い出さない）。
+      await this.#issue(op.operation_id, gen, false);
     }).catch(() => undefined);
   }
 
@@ -347,6 +372,7 @@ export class OperationBridge {
   async #issue(
     operationId: string,
     gen: number,
+    record: boolean,
   ): Promise<BridgeOutcome<DesktopOperationPreview>> {
     const connection = this.#host.connection();
     const scope = connection?.state.commandScopeId ?? null;
@@ -371,6 +397,25 @@ export class OperationBridge {
     const preview = outcome.body as OperationPreview;
     const previewRef = this.#host.newRef();
     const view = previewView(preview.intent, previewRef, preview.display);
+    if (record) this.#remember(operationId, previewRef, preview, view, scope);
+    const summary = contentOf(preview.intent, preview.display);
+    this.#content.set(operationId, {
+      key: `${preview.intent.content_version}:${preview.content_hash}`,
+      headline: summary.headline,
+      detail: summary.detail,
+    });
+    this.#host.changed();
+    return { ok: true, value: view };
+  }
+
+  // 承認用の preview の記録（上限 MAX_PREVIEWS。見出し用の読み取りとは分ける）。
+  #remember(
+    operationId: string,
+    previewRef: string,
+    preview: OperationPreview,
+    view: DesktopOperationPreview,
+    scope: string,
+  ): void {
     // 同じ操作の前の確認は捨てる（中枢も古い preview を失効させる）。
     this.#dropPreviews(operationId);
     this.#previews.set(previewRef, {
@@ -397,14 +442,6 @@ export class OperationBridge {
       if (oldest.done === true) break;
       this.#previews.delete(oldest.value);
     }
-    const summary = contentOf(preview.intent, preview.display);
-    this.#content.set(operationId, {
-      key: `${preview.intent.content_version}:${preview.content_hash}`,
-      headline: summary.headline,
-      detail: summary.detail,
-    });
-    this.#host.changed();
-    return { ok: true, value: view };
   }
 
   async preview(ref: string): Promise<BridgeOutcome<DesktopOperationPreview>> {
@@ -422,7 +459,7 @@ export class OperationBridge {
     return this.#serial(target.id, async () => {
       if (gen !== this.#gen) return fail('not_connected');
       if (this.#previewSeq.get(target.id) !== seq) return fail('preview_stale');
-      return this.#issue(target.id, gen);
+      return this.#issue(target.id, gen, true);
     });
   }
 
@@ -433,10 +470,11 @@ export class OperationBridge {
     record: PreviewRecord,
     connection: ClientConnection,
   ): DesktopIpcRejectReason | null {
-    const snapshot = connection.state.operations.find(
+    const raw = connection.state.operations.find(
       (op) => op.operation_id === record.operationId,
     );
-    if (snapshot === undefined) return 'entry_not_found';
+    if (raw === undefined) return 'entry_not_found';
+    const snapshot = this.#current(raw);
     if (this.#held.has(record.operationId)) return 'entry_not_found';
     if (
       snapshot.state !== 'awaiting_approval' ||
@@ -561,24 +599,42 @@ export class OperationBridge {
       // 再試行は外部変更をもう一度行うので、停止していないこと・io_epoch も送る直前に確かめる。
       const io = kind === 'retry' ? this.#host.io() : null;
       if (io !== null && !io.permitted) return fail('input_stopped');
-      const content = this.#content.get(target.id);
+      // 確認に出す見出しは、今の内容版・hash と一致する内容だけ。なければ（ロック・切断の後、別端末での改訂など）、
+      // 承認待ちなら読み取り（承認表示の準備）で取り直し、取れなければ確認へ進ませない。
+      let content = this.#contentFor(target.snapshot);
+      if (
+        content === undefined &&
+        target.snapshot.state === 'awaiting_approval'
+      ) {
+        await this.#serial(target.id, async () => {
+          if (gen !== this.#gen) return;
+          if (this.#contentFor(target.snapshot) !== undefined) return;
+          await this.#issue(target.id, gen, false);
+        });
+        if (gen !== this.#gen) return fail('not_connected');
+        content = this.#contentFor(target.snapshot);
+      }
+      if (content === undefined) return fail('content_unavailable');
       const confirmed = await this.#host.confirm({
         action: kind === 'cancel' ? 'cancel_operation' : 'retry_operation',
         operationKind: target.snapshot.operation_kind,
-        headline: content?.headline ?? null,
-        detail: content?.detail ?? null,
+        headline: content.headline,
+        detail: content.detail,
         state: target.snapshot.state,
       });
       const stopped = this.#stillAllowed(gen, scope, io);
       if (stopped !== null) return fail(stopped);
       if (typeof confirmed === 'string') return fail(confirmed);
       const live = this.#host.connection();
-      const current = live?.state.operations.find(
+      const rawCurrent = live?.state.operations.find(
         (op) => op.operation_id === target.id,
       );
+      const current =
+        rawCurrent === undefined ? undefined : this.#current(rawCurrent);
       if (
         live === null ||
         current === undefined ||
+        this.#contentFor(current) === undefined ||
         this.#held.has(target.id) ||
         current.state !== target.snapshot.state ||
         current.state_revision !== revision
@@ -605,7 +661,7 @@ export class OperationBridge {
 
   async check(
     ref: string,
-  ): Promise<BridgeOutcome<'state_advanced' | 'not_delivered'>> {
+  ): Promise<BridgeOutcome<'state_changed' | 'state_unchanged'>> {
     const gen = this.#gen;
     const connection = this.#host.connection();
     const scope = connection?.state.commandScopeId ?? null;
@@ -632,12 +688,14 @@ export class OperationBridge {
     // 保留を付けたときより状態が進んでいれば、命令は届いていた。進んでいなければ届いていない（遅れて届いても、
     // 期待する状態版で守られ、二重には適用されない）。どちらも保留を解き、本人が今の状態から操作できるようにする。
     const advanced = newer(snapshot.state_revision, held.revision);
+    // 読み取った今の状態を一覧に反映する（クライアントの状態が追いつくまで）。到達したかは断定しない。
+    this.#observed.set(id, snapshot);
     this.#held.delete(id);
     this.#host.log(
       advanced ? 'operation_hold_released_advanced' : 'operation_hold_released',
     );
     this.#host.changed();
-    return { ok: true, value: advanced ? 'state_advanced' : 'not_delivered' };
+    return { ok: true, value: advanced ? 'state_changed' : 'state_unchanged' };
   }
 }
 
@@ -714,7 +772,9 @@ export function previewView(
     !external ||
     (accountLabel !== null &&
       target !== null &&
-      (target.subject !== null || target.sender !== null));
+      target.subject !== null &&
+      target.sender !== null &&
+      target.received_at !== null);
   return {
     preview_ref: previewRef,
     operation_kind: action.kind,

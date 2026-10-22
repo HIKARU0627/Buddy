@@ -659,10 +659,13 @@ test('a check of a held command reports what was found and never says it was res
       request_id: id(2),
       channel: 'desktop.operation_check',
       outcome: 'ok',
-      resolved: 'state_advanced',
+      resolved: 'state_changed',
     },
   );
-  assert.match(delivered.notices[id(1)]?.text ?? '', /命令は届いていました。/u);
+  assert.equal(
+    delivered.notices[id(1)]?.text,
+    '今の状態を読み取りました。状態が変わっています。この行の表示を確かめてください。',
+  );
   const notDelivered = applyCommandResponse(
     held,
     id(1),
@@ -671,12 +674,17 @@ test('a check of a held command reports what was found and never says it was res
       request_id: id(3),
       channel: 'desktop.operation_check',
       outcome: 'ok',
-      resolved: 'not_delivered',
+      resolved: 'state_unchanged',
     },
   );
   assert.equal(
     notDelivered.notices[id(1)]?.text,
-    '命令は届いていませんでした。もう一度操作できます。',
+    '今の状態を読み取りました。状態は変わっていません。もう一度操作できます。',
+  );
+  // 命令が届いたか・届かなかったかは断定しない。
+  assert.doesNotMatch(
+    `${delivered.notices[id(1)]?.text}${notDelivered.notices[id(1)]?.text}`,
+    /届いていま|届いていませ/u,
   );
   assert.deepEqual(notDelivered.busy, []);
   assert.equal(

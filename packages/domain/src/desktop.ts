@@ -85,6 +85,8 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'preview_stale',
   // 入出力が止まっている間は、発言と承認を受け付けない（B04-05、ADR 0031）。
   'input_stopped',
+  // 取消・再試行の確認に出す操作の内容（見出し）を、今の内容版で確かめられない（確認へ進ませない。B04-05、ADR 0031）。
+  'content_unavailable',
 ] as const;
 
 export type DesktopIpcRejectReason =

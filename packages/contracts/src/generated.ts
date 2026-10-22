@@ -868,9 +868,9 @@ export type DesktopIpcResponse =
       channel: 'desktop.operation_check';
       outcome: 'ok';
       /**
-       * state_advanced は操作の状態が進んでいた（命令は届いていた）。not_delivered は状態が変わっておらず、届いていないとして保留を解いた。
+       * state_changed は読み取った状態が保留を付けたときより進んでいた。state_unchanged は変わっていなかった。どちらも読み取った事実だけで、命令が届いたかは断定しない（読み取った状態は一覧に反映する）。
        */
-      resolved: 'state_advanced' | 'not_delivered';
+      resolved: 'state_changed' | 'state_unchanged';
     }
   | {
       request_id: Id | null;
@@ -898,7 +898,8 @@ export type DesktopIpcResponse =
         | 'list_superseded'
         | 'home_network_changed'
         | 'preview_stale'
-        | 'input_stopped';
+        | 'input_stopped'
+        | 'content_unavailable';
       /**
        * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。
        */
@@ -3445,7 +3446,7 @@ export interface DesktopOperationPreview {
     received_at: string | null;
   } | null;
   /**
-   * 承認へ進めてよいか。外部変更で、口座の表示名と対象のメール（件名か差出人）を確認できないときは false で、画面は承認を出さず、main も承認を送らない。
+   * 承認へ進めてよいか。外部変更で、口座の表示名と対象のメールの件名・差出人・受信日時がすべてそろわないときは false で、画面は承認を出さず、main も承認を送らない。
    */
   approvable: boolean;
 }

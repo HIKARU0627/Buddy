@@ -609,6 +609,7 @@ test('a preview is refused for an operation that is not waiting for approval, an
 
 test('retry is sent only for an operation known not to have run, as a screen command, and a lost reply is held', async () => {
   const h = harness();
+  await seed(h);
   // 実行されなかった（not_executed）以外は送らない（結果不明は照合を使う）。
   for (const state of [
     'unknown_held',
@@ -671,12 +672,20 @@ const labelIntent: OperationIntent = {
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
+// 承認待ちのときに内容（見出し）を読ませておく（その後の状態は、同じ内容版・hash のまま変える）。
+async function seed(h: Harness): Promise<void> {
+  h.bridge.entries(h.operations);
+  await flush();
+  await flush();
+}
+
 test('cancel and retry ask main for one confirmation with the content and the state, and send only after it', async () => {
   for (const [kind, action, state, allowed] of [
     ['cancel', 'cancel_operation', 'awaiting_approval', ['cancel']],
     ['retry', 'retry_operation', 'not_executed', ['retry']],
   ] as const) {
     const h = harness();
+    await seed(h);
     h.operations = [
       snapshot({ state, state_revision: '4', allowed_actions: [...allowed] }),
     ];
@@ -702,8 +711,8 @@ test('cancel and retry ask main for one confirmation with the content and the st
     assert.deepEqual(h.confirms[1], {
       action,
       operationKind: 'task.create',
-      headline: kind === 'cancel' ? '牛乳を買う' : null,
-      detail: kind === 'cancel' ? '期限 2030-10-06' : null,
+      headline: '牛乳を買う',
+      detail: '期限 2030-10-06',
       state,
     });
   }
@@ -711,6 +720,7 @@ test('cancel and retry ask main for one confirmation with the content and the st
 
 test('cancel and retry are not sent when the state changed while the confirmation was open', async () => {
   const h = harness();
+  await seed(h);
   h.operations = [
     snapshot({
       state: 'not_executed',
@@ -760,6 +770,7 @@ test('approval and retry are not sent when the input was stopped while the confi
   assert.equal(resumed.sent.length, 0);
 
   const retry = harness();
+  await seed(retry);
   retry.operations = [
     snapshot({
       state: 'not_executed',
@@ -802,7 +813,7 @@ test('a lost command is checked by reading only: not delivered releases the hold
   };
   assert.deepEqual(await h.bridge.check(ref), {
     ok: true,
-    value: 'not_delivered',
+    value: 'state_unchanged',
   });
   assert.equal(h.bridge.entries(h.operations)[0]?.delivery_unknown, false);
   assert.equal(h.sent.length, 1);
@@ -847,7 +858,7 @@ test('a lost command is checked by reading only: not delivered releases the hold
   };
   assert.deepEqual(await moved.bridge.check(second.ref), {
     ok: true,
-    value: 'state_advanced',
+    value: 'state_changed',
   });
   // 読めなければ保留のまま。
   const unread = harness();
@@ -1045,4 +1056,152 @@ test('an external change whose account or target mail could not be read cannot b
   });
   assert.equal(h.confirms.length, 0);
   assert.equal(h.sent.length, 0);
+});
+
+test('a confirmation for cancel or retry uses only content that matches the current content version and hash', async () => {
+  // 別端末で内容が改訂された（内容版・hash が変わった）後の再試行: 古い見出しでは確認へ進ませない。
+  const h = harness();
+  await seed(h);
+  assert.equal(h.bridge.entries(h.operations)[0]?.headline, '牛乳を買う');
+  h.operations = [
+    snapshot({
+      state: 'not_executed',
+      state_revision: '5',
+      content_version: '2',
+      content_hash: 'cd'.repeat(32),
+      allowed_actions: ['retry'],
+    }),
+  ];
+  // 古い内容の見出しは、一覧にも出さない。
+  assert.equal(h.bridge.entries(h.operations)[0]?.headline, null);
+  const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+  assert.deepEqual(await h.bridge.command('retry', ref), {
+    ok: false,
+    reason: 'content_unavailable',
+  });
+  assert.equal(h.confirms.length, 0);
+  assert.equal(h.sent.length, 0);
+
+  // ロック・切断の後（内容を捨てた後）に承認待ち以外の操作を取り直しても、内容が読めないので確認を出さない。
+  const reset = harness();
+  await seed(reset);
+  reset.bridge.reset();
+  reset.operations = [
+    snapshot({
+      state: 'not_executed',
+      state_revision: '5',
+      allowed_actions: ['retry'],
+    }),
+  ];
+  const second = reset.bridge.entries(reset.operations)[0]?.ref ?? '';
+  assert.deepEqual(await reset.bridge.command('retry', second), {
+    ok: false,
+    reason: 'content_unavailable',
+  });
+  assert.equal(reset.confirms.length, 0);
+
+  // 承認待ちなら、読み取り（承認表示の準備）で取り直して、確認へ進める。
+  const awaiting = harness();
+  awaiting.operations = [snapshot()];
+  const third = awaiting.bridge.entries(awaiting.operations)[0]?.ref ?? '';
+  awaiting.bridge.reset();
+  awaiting.bridge.entries(awaiting.operations);
+  const ref3 = awaiting.bridge.entries(awaiting.operations)[0]?.ref ?? '';
+  assert.notEqual(ref3, third);
+  assert.deepEqual(await awaiting.bridge.command('cancel', ref3), {
+    ok: true,
+    value: 'accepted',
+  });
+  assert.equal(awaiting.confirms[0]?.action, 'cancel_operation');
+});
+
+test('reading the state of a held command shows the state read, without saying the command arrived', async () => {
+  const h = harness();
+  const { ref, preview } = await openPreview(h);
+  h.sendOutcome = { kind: 'unknown', requestId: id(2) };
+  await h.bridge.approve(preview.preview_ref);
+  h.getReply = {
+    kind: 'response',
+    status: 200,
+    body: snapshot({
+      state: 'approved',
+      state_revision: '2',
+      approval_state: 'valid',
+      allowed_actions: ['cancel'],
+    }),
+  };
+  assert.deepEqual(await h.bridge.check(ref), {
+    ok: true,
+    value: 'state_changed',
+  });
+  // クライアントの状態は古いまま（承認待ち・版 1）でも、読み取った状態（承認済み・版 2）を一覧に出す。
+  const row = h.bridge.entries(h.operations)[0];
+  assert.equal(row?.state, 'approved');
+  assert.equal(row?.state_revision, '2');
+  assert.equal(row?.delivery_unknown, false);
+  assert.deepEqual(row?.allowed_actions, ['cancel']);
+  // 状態が変わっていなければ、変わっていないという事実だけを返す。
+  const same = harness();
+  const second = await openPreview(same);
+  same.sendOutcome = { kind: 'unknown', requestId: id(3) };
+  await same.bridge.approve(second.preview.preview_ref);
+  same.getReply = { kind: 'response', status: 200, body: snapshot() };
+  assert.deepEqual(await same.bridge.check(second.ref), {
+    ok: true,
+    value: 'state_unchanged',
+  });
+  assert.equal(
+    same.bridge.entries(same.operations)[0]?.state,
+    'awaiting_approval',
+  );
+});
+
+test('reading headings in the background does not push out the reference of the confirmation on screen', async () => {
+  const h = harness();
+  const { preview } = await openPreview(h);
+  // ほかの承認待ちの操作が 25 件見つかり、main が見出しを読む（承認用の上限 20 件とは別）。
+  h.operations = [
+    snapshot(),
+    ...Array.from({ length: 25 }, (_, index) =>
+      snapshot({ operation_id: id(0x300 + index) }),
+    ),
+  ];
+  h.bridge.entries(h.operations);
+  for (let i = 0; i < 30; i += 1) await flush();
+  const headlines = h.bridge
+    .entries(h.operations)
+    .filter((entry) => entry.headline !== null);
+  assert.equal(headlines.length, 26);
+  // 表示中の確認は、そのまま承認できる。
+  assert.deepEqual(await h.bridge.approve(preview.preview_ref), {
+    ok: true,
+    value: 'accepted',
+  });
+});
+
+test('an external change is approvable only when the account, the subject, the sender and the received time are all read', () => {
+  const full = {
+    account_label: 'user@example.com',
+    target: {
+      subject: '件名',
+      sender: 'sato@example.com',
+      received_at: '2026-10-04T18:30:00+09:00',
+    },
+  };
+  assert.equal(previewView(labelIntent, id(1), full).approvable, true);
+  for (const missing of ['subject', 'sender', 'received_at'] as const)
+    assert.equal(
+      previewView(labelIntent, id(1), {
+        ...full,
+        target: { ...full.target, [missing]: null },
+      }).approvable,
+      false,
+      missing,
+    );
+  assert.equal(
+    previewView(labelIntent, id(1), { ...full, account_label: null })
+      .approvable,
+    false,
+  );
+  assert.equal(previewView(taskIntent, id(1), undefined).approvable, true);
 });

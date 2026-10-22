@@ -669,9 +669,9 @@ export function applyCommandResponse(
         [ref]: {
           tone: 'success',
           text:
-            response.resolved === 'state_advanced'
-              ? '命令は届いていました。状態が進んでいるので、この行の状態を確かめてください。'
-              : '命令は届いていませんでした。もう一度操作できます。',
+            response.resolved === 'state_changed'
+              ? '今の状態を読み取りました。状態が変わっています。この行の表示を確かめてください。'
+              : '今の状態を読み取りました。状態は変わっていません。もう一度操作できます。',
         },
       },
     };

@@ -8346,7 +8346,7 @@
           },
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
-          "description": "命令を送ったが届いたか分からない操作（結果不明の保留）の今の状態を、読み取りだけで確かめる（変更の命令の再送ではない。B04-05、ADR 0031）。状態が進んでいれば、その状態を見せる。進んでいなければ、届いていないとして保留を解き、本人がもう一度操作できるようにする（承認・再試行は期待する状態版で守られ、遅れて届いても二重に適用されない）。ロック解除済みの画面操作だけ。"
+          "description": "命令を送ったが届いたか分からない操作（結果不明の保留）の今の状態を、読み取りだけで確かめる（変更の命令の再送ではない。B04-05、ADR 0031）。読み取った状態は一覧に反映し、保留を解いて、本人が今の状態から操作できるようにする。命令が届いたかは断定しない（承認・再試行は期待する状態版で守られ、遅れて届いても二重に適用されない）。ロック解除済みの画面操作だけ。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -9342,13 +9342,13 @@
             },
             "resolved": {
               "type": "string",
-              "enum": ["state_advanced", "not_delivered"],
-              "description": "state_advanced は操作の状態が進んでいた（命令は届いていた）。not_delivered は状態が変わっておらず、届いていないとして保留を解いた。"
+              "enum": ["state_changed", "state_unchanged"],
+              "description": "state_changed は読み取った状態が保留を付けたときより進んでいた。state_unchanged は変わっていなかった。どちらも読み取った事実だけで、命令が届いたかは断定しない（読み取った状態は一覧に反映する）。"
             }
           },
           "required": ["request_id", "channel", "outcome", "resolved"],
           "additionalProperties": false,
-          "description": "保留を解いた。操作の状態は desktop.connection_changed の operations で知らせる。"
+          "description": "保留を解いた（読み取りだけ。命令は送らない）。操作の状態は desktop.connection_changed の operations で知らせる。"
         },
         {
           "type": "object",
@@ -9401,7 +9401,8 @@
                 "list_superseded",
                 "home_network_changed",
                 "preview_stale",
-                "input_stopped"
+                "input_stopped",
+                "content_unavailable"
               ]
             },
             "list_seq": {
@@ -9692,7 +9693,7 @@
         },
         "approvable": {
           "type": "boolean",
-          "description": "承認へ進めてよいか。外部変更で、口座の表示名と対象のメール（件名か差出人）を確認できないときは false で、画面は承認を出さず、main も承認を送らない。"
+          "description": "承認へ進めてよいか。外部変更で、口座の表示名と対象のメールの件名・差出人・受信日時がすべてそろわないときは false で、画面は承認を出さず、main も承認を送らない。"
         }
       },
       "required": [

@@ -664,3 +664,137 @@ test(
     assert.equal(rig.ports.calls, 0);
   },
 );
+
+const stateCommand = (who: Session, expected: unknown) => ({
+  request_id: randomUUID(),
+  command_scope_id: who.scope,
+  expected_state_revision: expected,
+});
+
+test(
+  'retry is refused unless the operation is not_executed, so an approved operation still runs once (review P2)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const operationId = await createOperation(core, who, LABEL);
+    rig.injector.arm('after_approval_save', { mode: 'pause' });
+    await approveOperation(core, who, operationId);
+    await reached(rig.injector, 'after_approval_save');
+    const approved = await operationOf(core, who, operationId);
+    assert.equal(approved['state'], 'approved');
+    const retried = await postJson(
+      core,
+      who.device,
+      `/v1/operations/${operationId}/retry`,
+      stateCommand(who, approved['state_revision']),
+      { 'buddy-input-origin': 'screen' },
+    );
+    assert.equal(retried.status, 409, retried.text);
+    assert.equal(
+      (await operationOf(core, who, operationId))['state'],
+      'approved',
+    );
+    rig.injector.release('after_approval_save');
+    await idle(core);
+    const done = await operationOf(core, who, operationId);
+    assert.equal(done['state'], 'succeeded');
+    // 成功の後の再試行も拒否する。
+    const after = await postJson(
+      core,
+      who.device,
+      `/v1/operations/${operationId}/retry`,
+      stateCommand(who, done['state_revision']),
+      { 'buddy-input-origin': 'screen' },
+    );
+    assert.equal(after.status, 409, after.text);
+    assert.equal(rig.provider.truth.requestCount(), 1);
+  },
+);
+
+test(
+  'a user reconcile that finds the change succeeds even after a cancel was accepted on the unknown result (review P2)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const timeout = new AbortController();
+    const rig = await startRig(t, { writeSignal: timeout.signal });
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const operationId = await createOperation(core, who, LABEL);
+    rig.injector.arm('response_timeout_then_late_apply', {
+      mode: 'hold_then_apply',
+    });
+    await approveOperation(core, who, operationId);
+    await reached(rig.injector, 'response_timeout_then_late_apply');
+    timeout.abort();
+    await idle(core);
+    const held = await operationOf(core, who, operationId);
+    assert.equal(held['state'], 'unknown_held');
+    // 結果不明の後の取消は受付だけ。
+    const cancelled = await cancel(
+      core,
+      who.device,
+      operationId,
+      stateCommand(who, held['state_revision']),
+    );
+    assert.equal(cancelled.status, 202, cancelled.text);
+    assert.equal(cancelled.json?.['status'], 'accepted');
+    assert.equal(rig.provider.truth.releaseLateApplies(), 1);
+    const reconciled = await postJson(
+      core,
+      who.device,
+      `/v1/operations/${operationId}/reconcile`,
+      stateCommand(who, held['state_revision']),
+    );
+    assert.equal(reconciled.status, 202, reconciled.text);
+    assert.equal(
+      (await operationOf(core, who, operationId))['state'],
+      'succeeded',
+    );
+    assert.equal(rig.provider.truth.requestCount(), 1);
+  },
+);
+
+test(
+  'the same reconcile request arriving twice at once looks up only once and both get the same receipt (review P2)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const operationId = await createOperation(core, who, LABEL);
+    // 送出の後に取消を受け付け、照合中で止める（X05）。
+    rig.injector.arm('after_dispatch_intent_before_send', { mode: 'pause' });
+    await approveOperation(core, who, operationId);
+    await reached(rig.injector, 'after_dispatch_intent_before_send');
+    const dispatching = await operationOf(core, who, operationId);
+    const accepted = await cancel(
+      core,
+      who.device,
+      operationId,
+      stateCommand(who, dispatching['state_revision']),
+    );
+    assert.equal(accepted.status, 202, accepted.text);
+    rig.injector.release('after_dispatch_intent_before_send');
+    await idle(core);
+    const held = await operationOf(core, who, operationId);
+    assert.equal(held['state'], 'reconciling');
+    const body = stateCommand(who, held['state_revision']);
+    rig.ports.calls = 0;
+    const path = `/v1/operations/${operationId}/reconcile`;
+    const [one, two] = await Promise.all([
+      postJson(core, who.device, path, body),
+      postJson(core, who.device, path, body),
+    ]);
+    assert.equal(one.status, 202, one.text);
+    assert.equal(two.status, 202, two.text);
+    assert.deepEqual(one.json, two.json);
+    // 照合（対象の読み取り）は 1 回だけ。
+    assert.equal(rig.ports.calls, 1);
+    assert.equal(
+      (await operationOf(core, who, operationId))['state'],
+      'succeeded',
+    );
+  },
+);

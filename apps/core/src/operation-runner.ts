@@ -320,10 +320,12 @@ export function createOperationRunner(
 
   // 照合の観測を記録する。成功の証拠（found）だけを succeeded にし、他は unknown_held に留める。
   // 送出境界の後に取消を受け付けた操作は reconciling で止める（X05、本人の照合へ）。
+  // byUser: 本人が要求した照合。found なら、取消の受付があっても成功として確定する（本人が結果を見て決めた）。
   const recordObservation = async (
     operationId: string,
     attemptId: string,
     observation: ReconcileObservation,
+    byUser = false,
   ): Promise<void> => {
     let current = await view(operationId);
     if (current === null || current.attempt_id !== attemptId) return;
@@ -357,7 +359,7 @@ export function createOperationRunner(
       if (current === null) return;
     }
     if (current.state !== 'reconciling') return;
-    if (current.cancel_requested) {
+    if (current.cancel_requested && !byUser) {
       log(
         `操作 ${operationId} は送出の後に取消を受け付けたため、照合中のまま本人の確認を待ちます。`,
       );
@@ -587,28 +589,61 @@ export function createOperationRunner(
     else await runRemote(current);
   };
 
+  // 操作ごとの排他。最初の await より前に登録し、終わったら自分の登録だけを外す。
+  const hold = (operationId: string, task: Promise<unknown>): void => {
+    const tracked = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    running.set(operationId, tracked);
+    void tracked.then(() => {
+      if (running.get(operationId) === tracked) running.delete(operationId);
+    });
+  };
+
   const launch = (operationId: string, afterApproval: boolean): void => {
     if (closed || running.has(operationId)) return;
-    const task = run(operationId, afterApproval)
-      .catch((error: unknown) => {
+    hold(
+      operationId,
+      run(operationId, afterApproval).catch((error: unknown) => {
         // 故障の注入・停止の後の DB worker の拒否など。状態は DB の正本に残る（起動時に再開・回復する）。
         log(
           `操作 ${operationId} の実行を中断しました: ${error instanceof Error ? error.name : 'unknown'}`,
         );
-      })
-      .finally(() => {
-        running.delete(operationId);
-      });
-    running.set(operationId, task);
+      }),
+    );
   };
 
+  // 本人の照合。実行中・照合中の操作には重ねず、終わるのを待ってから null を返す（呼び出し側が保存済みの
+  // 受付を読み直す。同じ要求の同時の到着でも照合は 1 回）。
   const reconcile = async (
     operationId: string,
     expectedStateRevision: string,
     request: DeviceRequestRef,
     commandId: string,
   ): Promise<DbCommandOutcome | null> => {
-    if (closed || running.has(operationId)) return null;
+    if (closed) return null;
+    const busy = running.get(operationId);
+    if (busy !== undefined) {
+      await busy;
+      return null;
+    }
+    const task = reconcileWork(
+      operationId,
+      expectedStateRevision,
+      request,
+      commandId,
+    );
+    hold(operationId, task);
+    return task;
+  };
+
+  const reconcileWork = async (
+    operationId: string,
+    expectedStateRevision: string,
+    request: DeviceRequestRef,
+    commandId: string,
+  ): Promise<DbCommandOutcome | null> => {
     const current = await view(operationId);
     if (
       current === null ||
@@ -635,7 +670,7 @@ export function createOperationRunner(
         if (accepted.outcome !== 'durable' || accepted.replayed)
           return accepted;
         const observation = await lookup(intent);
-        await recordObservation(operationId, attemptId, observation);
+        await recordObservation(operationId, attemptId, observation, true);
         return accepted;
       }
       // 照合中（X05 の取消の後など）: 参照で照合し、結果を本人の要求として記録する。
@@ -651,19 +686,7 @@ export function createOperationRunner(
         commandId,
       );
     };
-    const task = work();
-    running.set(
-      operationId,
-      task.then(
-        () => undefined,
-        () => undefined,
-      ),
-    );
-    try {
-      return await task;
-    } finally {
-      running.delete(operationId);
-    }
+    return work();
   };
 
   return {

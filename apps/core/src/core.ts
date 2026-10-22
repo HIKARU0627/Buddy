@@ -56,6 +56,15 @@ import {
 } from './api-operations.js';
 import type { PreviewCheck } from './api-operations.js';
 import { DeviceConnections } from './device-connections.js';
+import { createTurnRoutes } from './api-turns.js';
+import { PreviewRegistry } from './previews.js';
+import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
+import type {
+  CandidateSource,
+  Interpreter,
+  ProviderReader,
+  TurnPolicy,
+} from './turn-ports.js';
 import { EventFeed } from './event-feed.js';
 import type { EventFeedOptions } from './event-feed.js';
 import { createEventStream } from './event-stream.js';
@@ -142,13 +151,25 @@ export interface CoreHttpsOptions {
   readonly tailscale?: TailscaleStatusSource;
   // 接続元が中枢と同じマシンか（試験で差し替える。既定はループバックか待ち受けのアドレスと同じ IP）。
   readonly sameMachine?: (remoteAddress: string) => boolean;
-  // preview の有効性（ADR 0023）。preview の発行は後の Issue で、省略すると有効な preview はない（承認は 409）。
+  // preview の有効性の差し替え（試験用、ADR 0023）。省略すると previewOperation で発行した preview と照合する
+  // （ADR 0029）。
   readonly previewValid?: PreviewCheck;
+  // 発言の解釈・対象の解決・方針（ADR 0029）。省略したものは、解釈は模擬（モデルを使わない）、provider は
+  // 接続なし、候補はなし、方針は試験用の表（自動実行はすべて off）、時差は +09:00。
+  readonly turns?: CoreTurnOptions;
   // WSS の配信の設定（試験用。ping の間隔・送り先に溜めてよい量）。
   readonly eventStream?: Pick<
     EventStreamOptions,
     'pingIntervalMs' | 'maxBufferedBytes'
   >;
+}
+
+export interface CoreTurnOptions {
+  readonly interpreter?: Interpreter;
+  readonly provider?: ProviderReader | null;
+  readonly candidates?: CandidateSource;
+  readonly policy?: TurnPolicy;
+  readonly utcOffset?: string;
 }
 
 export interface CoreHttpsInfo {
@@ -474,6 +495,7 @@ export async function startCore(
         feed,
         deviceConnections,
         log,
+        options.keyStore,
       );
       api = started.api;
       streams = started.streams;
@@ -581,6 +603,7 @@ async function startHttps(
   feed: EventFeed,
   deviceConnections: DeviceConnections,
   log: (message: string) => void,
+  keyStore: DataKeyProvider,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -644,12 +667,27 @@ async function startHttps(
   const watched = feed.watchStore(store);
   // 注入した環境（試験）が、ペアリングの判定（中枢の画面・申請用の秘密）と自宅判定（B03-03）より優先する。
   // ロック状態は端末の main が Buddy-Lock-State で申告した値（認証した端末だけ。B03-05、ADR 0025）。
-  const base: RequestEnvironment = {
+  const merged: RequestEnvironment = {
     ...SAFE_REQUEST_ENVIRONMENT,
     lockState: declaredLockState,
     ...pairing.environment,
     homeNetwork: homeNetwork.homeNetwork,
     ...https.environment,
+  };
+  // 発行した preview（ADR 0029）。Core のメモリーだけに置き、再起動で無効になる。端末の接続の終了（失効・自宅判定の
+  // 不成立）とロック（ロック中・不明の判定）で、その端末の preview を無効にする。
+  const previews = new PreviewRegistry();
+  deviceConnections.onDeviceClosed((deviceId) => {
+    previews.invalidateDevice(deviceId);
+  });
+  const base: RequestEnvironment = {
+    ...merged,
+    lockState: async (input) => {
+      const state = await merged.lockState(input);
+      if (state !== 'unlocked' && input.device !== null)
+        previews.invalidateDevice(input.device.device_id);
+      return state;
+    },
   };
   let routes: ReturnType<typeof createOperationRoutes> | null = null;
   // 承認・取消の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。
@@ -660,15 +698,27 @@ async function startHttps(
         ? routes.revisionMatches(input)
         : base.revisionMatches(input),
   };
+  const turnOptions = https.turns ?? {};
+  const turns = createTurnRoutes({
+    store: watched,
+    keyStore,
+    interpreter: turnOptions.interpreter ?? createMockInterpreter(),
+    provider: turnOptions.provider ?? null,
+    candidates: turnOptions.candidates ?? {
+      mailCandidates: () => Promise.resolve([]),
+    },
+    policy: turnOptions.policy ?? TEST_TURN_POLICY,
+    previews,
+    utcOffset: turnOptions.utcOffset ?? '+09:00',
+    now: () => now().getTime(),
+  });
   routes = createOperationRoutes({
     store: watched,
     feed,
     coreInstanceId,
     environment,
     now: () => now().getTime(),
-    ...(https.previewValid === undefined
-      ? {}
-      : { previewValid: https.previewValid }),
+    previewValid: https.previewValid ?? turns.previewValid,
   });
   const streams = createEventStream({
     feed,
@@ -684,6 +734,7 @@ async function startHttps(
     pairing.handlers,
     routes.handlers,
     homeNetwork.handlers,
+    turns.handlers,
   ].flatMap((handlers) => Object.keys(handlers));
   if (new Set(handlerKeys).size !== handlerKeys.length)
     throw new Error('route_handlers_overlap');
@@ -702,6 +753,7 @@ async function startHttps(
         ...pairing.handlers,
         ...routes.handlers,
         ...homeNetwork.handlers,
+        ...turns.handlers,
       },
       eventStream: streams,
       ...(https.limits === undefined ? {} : { limits: https.limits }),

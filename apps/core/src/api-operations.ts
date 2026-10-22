@@ -37,7 +37,7 @@ export interface OperationRouteStore extends EventQueryStore {
 }
 
 // preview の有効性（07 §3: 端末・接続範囲・表示内容に結び付き、接続終了・ロック・内容変更で無効）。
-// preview の発行（previewOperation）は後の Issue で作る。それまでの既定は「有効な preview はない」（安全側）。
+// 発行と照合は api-turns.ts（ADR 0029）。渡されなければ「有効な preview はない」（安全側）。
 export type PreviewCheck = (input: {
   readonly device_id: string;
   readonly command_scope_id: string;

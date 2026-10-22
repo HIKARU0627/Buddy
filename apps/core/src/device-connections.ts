@@ -7,6 +7,7 @@
 export type DeviceCloseReason = 'device_revoked' | 'outside_home_network';
 
 export class DeviceConnections {
+  readonly #closedListeners = new Set<(deviceId: string) => void>();
   readonly #closers = new Map<
     string,
     Set<(reason: DeviceCloseReason) => void>
@@ -31,8 +32,21 @@ export class DeviceConnections {
     };
   }
 
+  // 端末の接続を閉じたこと（開いている接続がなくても）を知らせる（preview の無効化、ADR 0029）。
+  onDeviceClosed(listener: (deviceId: string) => void): () => void {
+    this.#closedListeners.add(listener);
+    return () => this.#closedListeners.delete(listener);
+  }
+
   // 端末の接続をすべて閉じ、閉じた数を返す。閉じる処理の失敗で他の接続を閉じ残さない。
   closeDevice(deviceId: string, reason: DeviceCloseReason): number {
+    for (const listener of this.#closedListeners) {
+      try {
+        listener(deviceId);
+      } catch {
+        // 次の通知先へ進む。
+      }
+    }
     const set = this.#closers.get(deviceId);
     if (set === undefined) return 0;
     this.#closers.delete(deviceId);

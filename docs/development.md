@@ -11,7 +11,7 @@
 - `@types/node` は実行環境の Node.js 24 系に合わせ、24.19.2 を固定する。
 - Dependabot は TypeScript 6.1 以上と `@types/node` 25 以上を更新対象から除外する。互換範囲内の更新は継続する。上限の見直し時は linter の対応範囲または Node の実行環境・型定義を揃え、lockfile と本手順を更新して全 OS の CI を確認する。
 - 共通層の tsconfig は DOM / Node の型を読み込まない。Core / storage / platform のみ Node 型を追加する。
-- デスクトップ（apps/desktop）は main・preload が Electron の型定義のため DOM と Node の型を使い、main の純粋なモジュールは DOM なしでも型検査する（tsconfig.pure.json）。UI レンダラーは DOM の型だけを使う。lint で UI レンダラーから Electron・Node・`@buddy/core`・`@buddy/platform` を、main から中枢・OS アダプターを読み込めないようにしている（ADR 0015）。
+- デスクトップ（apps/desktop）は main・preload が Electron の型定義のため DOM と Node の型を使い、main の純粋なモジュールは DOM なしでも型検査する（tsconfig.pure.json）。UI レンダラーは DOM の型だけを使い、画面は HeroUI と Tailwind CSS で作る（ADR 0024。HeroUI の型定義の都合で renderer の tsconfig だけ skipLibCheck を有効にしている）。lint で UI レンダラーから Electron・Node・`@buddy/core`・`@buddy/platform` を、main から中枢・OS アダプターを読み込めないようにしている（ADR 0015）。
 - デスクトップの開発起動は `pnpm --filter @buddy/desktop dev`（[apps/desktop/README.md](../apps/desktop/README.md)）。初回の起動で Electron のバイナリを取得する。`pnpm install` と CI では取得しない。
 - `.env` は現段階では不要。個人の認証、データ、設定はリポジトリ外または gitignore 対象に置く。
 
@@ -53,7 +53,7 @@ GitHub Actions は Ubuntu / Windows / macOS で同じ `pnpm install --frozen-loc
 
 - `scripts/*.test.mjs`: lint 設定が禁止した直接 import を実際に拒否するかを検証。
 - 製品の TypeScript 試験: 対象 workspace の `src/**/*.test.ts` に追加し、ビルド後の `dist/**/*.test.js` を実行。
-- デスクトップは Electron を import しない main の純粋なモジュールだけを試験し、Electron 本体は CI で起動・取得しない。実機の確認は B01-05。
+- デスクトップは Electron を import しない main の純粋なモジュール、UI レンダラーの純粋なモジュールとサーバー描画（react-dom/server）、ビルド後の画面の CSP の検査を試験し、Electron 本体は CI で起動・取得しない。実機の確認は B01-05。
 - `tests/integration/**/*.test.mjs`: モックや故障注入の試験を後続で追加。
 - `pnpm test` の前に TypeScript をビルドする。`pnpm run check` はビルドを含む。workspace 間の import は依存先の `dist` の型定義を読むため、`pnpm run check` はビルド（依存順）を型検査より先に行う。クリーンな状態（`node scripts/clean.mjs` の後）でも通ることを確かめる。
 - 非公開資料を CI へ持ち込まない。`pnpm run design:check` はローカルに非公開 manifest がある場合だけ使う。

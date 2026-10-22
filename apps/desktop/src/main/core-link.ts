@@ -261,6 +261,13 @@ export class DesktopCoreLink {
   #homeSeq = 0;
   #homeFloor = 0;
   #homeHeld: number | null = null;
+  // 最後に画面へ返した読み取り（通し番号・指紋・参照）。登録の最中に新しい読み取りを返していたら、登録の応答も
+  // その読み取りを返す（画面は通し番号だけで新旧を比べ、表示をまるごと置き換える）。
+  #homeShown: {
+    readonly seq: number;
+    readonly reading: HubHomeReading | null;
+    readonly ref: string | null;
+  } | null = null;
   // 最後に読んだ中枢の登録（登録し直しの確認に、置き換えと Wi-Fi 名の確認の変化を出すため）。
   #homeRegistration: HomeRegistration | null = null;
 
@@ -794,8 +801,11 @@ export class DesktopCoreLink {
   }
 
   // 結果が分からなかった参照を、同じ種類の一覧で照合できるまで保留にする。
-  #hold(pane: 'claims' | 'devices', ref: string): void {
-    this.#held[pane].set(ref, ++this.#listSeq[pane]);
+  // 返すのは保留を付けた時点の通し番号（画面にも渡し、同じ番号で保留を解く）。
+  #hold(pane: 'claims' | 'devices', ref: string): number {
+    const after = ++this.#listSeq[pane];
+    this.#held[pane].set(ref, after);
+    return after;
   }
 
   // 一覧（通し番号 seq）を反映した: それより前に結果が分かった保留だけを解く。
@@ -844,19 +854,25 @@ export class DesktopCoreLink {
         // 古い世代の処理は、今の世代の参照・順序の状態を進めない（応答も返さない）。
         const stale = this.#staleReason(generation);
         if (stale !== null) return this.#reject(requestId, raw.channel, stale);
+        if (failed === 'outcome_unknown')
+          return this.#unknown(
+            requestId,
+            raw.channel,
+            this.#hold('claims', raw.payload.ref),
+          );
         if (failed !== null) {
-          if (failed === 'outcome_unknown')
-            this.#hold('claims', raw.payload.ref);
-          else this.#claimRefs.delete(raw.payload.ref);
+          this.#claimRefs.delete(raw.payload.ref);
           return this.#reject(requestId, raw.channel, failed);
         }
         this.#log(`hub_claim_decided:${raw.payload.decision}`);
         this.#claimRefs.delete(raw.payload.ref);
         // POST の最中に始めた一覧も古い（取り直しが失敗しても、この境目は保つ）。
         this.#listFloor.claims = ++this.#listSeq.claims;
+        const claimsFloor = this.#listFloor.claims;
         return this.#afterApplied(
           requestId,
           await this.#listClaims(requestId, raw.channel, generation),
+          claimsFloor,
         );
       }
       case 'desktop.device_revoke': {
@@ -883,17 +899,22 @@ export class DesktopCoreLink {
         const failed = this.#adminFailure(outcome, 200);
         const stale = this.#staleReason(generation);
         if (stale !== null) return this.#reject(requestId, raw.channel, stale);
-        if (failed !== null) {
-          if (failed === 'outcome_unknown')
-            this.#hold('devices', raw.payload.ref);
+        if (failed === 'outcome_unknown')
+          return this.#unknown(
+            requestId,
+            raw.channel,
+            this.#hold('devices', raw.payload.ref),
+          );
+        if (failed !== null)
           return this.#reject(requestId, raw.channel, failed);
-        }
         this.#deviceRefs.delete(raw.payload.ref);
         this.#log('hub_device_revoked');
         this.#listFloor.devices = ++this.#listSeq.devices;
+        const devicesFloor = this.#listFloor.devices;
         return this.#afterApplied(
           requestId,
           await this.#listDevices(requestId, raw.channel, generation),
+          devicesFloor,
         );
       }
       case 'desktop.pairing_open': {
@@ -1007,6 +1028,8 @@ export class DesktopCoreLink {
       channel,
       outcome: 'ok',
       claims,
+      // 画面は届いた順ではなく、この番号で一覧の新旧を比べる。
+      list_seq: seq,
     });
   }
 
@@ -1072,6 +1095,7 @@ export class DesktopCoreLink {
       channel,
       outcome: 'ok',
       devices,
+      list_seq: seq,
     });
   }
 
@@ -1123,7 +1147,15 @@ export class DesktopCoreLink {
           : this.#options.clock.newRequestId();
       this.#homeRef = { ref, fingerprint: reading.fingerprint };
     } else this.#homeRef = null;
-    return this.#homeResponse(requestId, channel, registration, reading, ref);
+    this.#homeShown = { seq, reading, ref };
+    return this.#homeResponse(
+      requestId,
+      channel,
+      registration,
+      reading,
+      ref,
+      seq,
+    );
   }
 
   // 画面で確かめた指紋を自宅として登録する（B03-08）。承認・失効と同じ OS の確認で本人に確かめ、参照の指紋と、
@@ -1157,7 +1189,8 @@ export class DesktopCoreLink {
     if (typeof confirmed === 'string')
       return this.#reject(requestId, channel, confirmed);
     // これより前に始めた読み取りは古い（登録の前の表示・参照を戻さない）。
-    this.#homeFloor = ++this.#homeSeq;
+    const started = ++this.#homeSeq;
+    this.#homeFloor = started;
     // 確認の後に始めた読み取りの値と比べる（進行中の読み取りに相乗りしない）。
     const reading = await this.#readHubHome(true);
     const staleRead = this.#staleReason(generation);
@@ -1194,27 +1227,39 @@ export class DesktopCoreLink {
     if (stale !== null) return this.#reject(requestId, channel, stale);
     if (failed !== null || outcome.kind !== 'response') {
       this.#log(`hub_home_register_failed:${failed ?? 'not_connected'}`);
-      if (failed === 'outcome_unknown') this.#homeHeld = ++this.#homeSeq;
+      if (failed === 'outcome_unknown') {
+        this.#homeHeld = ++this.#homeSeq;
+        return this.#unknown(requestId, channel, this.#homeHeld);
+      }
       return this.#reject(requestId, channel, failed ?? 'not_connected');
     }
     // 2xx で本文が契約に合わなければ、登録は反映されたかもしれない（外部の変更）。結果不明として扱う。
     if (!this.#options.contract.valid('HomeRegistration', outcome.body)) {
       this.#log('hub_home_register_failed:outcome_unknown');
       this.#homeHeld = ++this.#homeSeq;
-      return this.#reject(requestId, channel, 'outcome_unknown');
+      return this.#unknown(requestId, channel, this.#homeHeld);
     }
     this.#log(
       `hub_home_registered:${includeSsid && pending.fingerprint.ssid !== null ? 'with_ssid' : 'without_ssid'}`,
     );
     // 登録の最中に始めた読み取りも古い（登録の前の登録の状態を戻さない）。
-    this.#homeFloor = ++this.#homeSeq;
+    const floor = ++this.#homeSeq;
+    this.#homeFloor = floor;
     this.#homeRegistration = outcome.body as HomeRegistration;
+    // 登録の最中に、登録の前の読み取りより新しい読み取りを画面へ返していたら、その表示と参照を返す（画面は
+    // 通し番号で比べて表示をまるごと置き換えるので、新しい読み取りを古い読み取りで戻さない）。
+    const shown = this.#homeShown;
+    const newer = shown !== null && shown.seq > started ? shown : null;
+    const shownReading = newer === null ? reading : newer.reading;
+    const shownRef = newer === null ? pending.ref : newer.ref;
+    this.#homeShown = { seq: floor, reading: shownReading, ref: shownRef };
     return this.#homeResponse(
       requestId,
       channel,
       outcome.body as HomeRegistration,
-      reading,
-      pending.ref,
+      shownReading,
+      shownRef,
+      floor,
     );
   }
 
@@ -1224,11 +1269,13 @@ export class DesktopCoreLink {
     registration: HomeRegistration | null,
     reading: HubHomeReading | null,
     ref: string | null,
+    seq: number,
   ): ConnectionIpcOutcome {
     return this.#respond({
       request_id: requestId,
       channel,
       outcome: 'ok',
+      list_seq: seq,
       home: {
         registration,
         observation:
@@ -1312,9 +1359,11 @@ export class DesktopCoreLink {
 
   // 承認・拒否・失効は適用できたが、その後の一覧の取り直しだけが失敗したときは、拒否ではなく
   // 「適用した・一覧は古い」（list_refreshed: false）として返す（CR-L2）。
+  // floor は変更の結果が分かった時点の境目（画面もこれより前の番号の一覧を反映しない）。
   #afterApplied(
     requestId: string,
     outcome: ConnectionIpcOutcome,
+    floor: number,
   ): ConnectionIpcOutcome {
     const response = outcome.response;
     if (
@@ -1329,6 +1378,25 @@ export class DesktopCoreLink {
       channel: response.channel,
       outcome: 'ok',
       list_refreshed: false,
+      list_seq: floor,
+    });
+  }
+
+  // 結果が分からなかった: 保留を付けた時点の通し番号を添える（画面はそれより後の同じ種類の一覧で保留を解く）。
+  #unknown(
+    requestId: string,
+    channel:
+      | 'desktop.claim_decide'
+      | 'desktop.device_revoke'
+      | 'desktop.home_register',
+    after: number,
+  ): ConnectionIpcOutcome {
+    return this.#respond({
+      request_id: requestId,
+      channel,
+      outcome: 'rejected',
+      reason: 'outcome_unknown',
+      list_seq: after,
     });
   }
 
@@ -1378,6 +1446,7 @@ export class DesktopCoreLink {
     this.#deviceRefs.clear();
     this.#homeRef = null;
     this.#homeHeld = null;
+    this.#homeShown = null;
     this.#reporter?.stop();
     this.#reporter = null;
     this.#connection?.stop();

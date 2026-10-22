@@ -4554,6 +4554,27 @@
           "expires_at": "2030-10-05T00:06:00Z",
           "claim_check": "0a1b2c3d"
         }
+      ],
+      "list_seq": 3
+    }
+  },
+  {
+    "id": "desktop-response-claims-without-list-seq",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c08",
+      "channel": "desktop.claims_list",
+      "outcome": "ok",
+      "claims": [
+        {
+          "ref": "00000000-0000-4000-8000-000000000c21",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0a1b2c3d"
+        }
       ]
     }
   },
@@ -4575,7 +4596,8 @@
           "claim_check": "0a1b2c3d",
           "pairing_code": "12345678"
         }
-      ]
+      ],
+      "list_seq": 3
     }
   },
   {
@@ -4607,7 +4629,8 @@
           "last_seen_at": "2030-10-05T00:10:00Z",
           "revoked_at": null
         }
-      ]
+      ],
+      "list_seq": 3
     }
   },
   {
@@ -4630,7 +4653,8 @@
           "revoked_at": null,
           "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         }
-      ]
+      ],
+      "list_seq": 3
     }
   },
   {
@@ -4653,7 +4677,8 @@
           "revoked_at": null,
           "device_id": "00000000-0000-4000-8000-000000000c22"
         }
-      ]
+      ],
+      "list_seq": 3
     }
   },
   {
@@ -4664,7 +4689,8 @@
       "request_id": "00000000-0000-4000-8000-000000000e71",
       "channel": "desktop.claim_decide",
       "outcome": "ok",
-      "list_refreshed": false
+      "list_refreshed": false,
+      "list_seq": 3
     }
   },
   {
@@ -4675,7 +4701,20 @@
       "request_id": "00000000-0000-4000-8000-000000000e71",
       "channel": "desktop.device_revoke",
       "outcome": "ok",
-      "list_refreshed": false
+      "list_refreshed": false,
+      "list_seq": 3
+    }
+  },
+  {
+    "id": "desktop-response-list-stale-zero-seq",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e71",
+      "channel": "desktop.device_revoke",
+      "outcome": "ok",
+      "list_refreshed": false,
+      "list_seq": 0
     }
   },
   {
@@ -4686,7 +4725,8 @@
       "request_id": "00000000-0000-4000-8000-000000000e71",
       "channel": "desktop.claims_list",
       "outcome": "ok",
-      "list_refreshed": false
+      "list_refreshed": false,
+      "list_seq": 3
     }
   },
   {
@@ -4697,7 +4737,8 @@
       "request_id": "00000000-0000-4000-8000-000000000e71",
       "channel": "desktop.claim_decide",
       "outcome": "ok",
-      "list_refreshed": true
+      "list_refreshed": true,
+      "list_seq": 3
     }
   },
   {
@@ -4709,6 +4750,18 @@
       "channel": "desktop.claims_list",
       "outcome": "rejected",
       "reason": "hub_screen_required"
+    }
+  },
+  {
+    "id": "desktop-response-outcome-unknown-with-list-seq",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e72",
+      "channel": "desktop.device_revoke",
+      "outcome": "rejected",
+      "reason": "outcome_unknown",
+      "list_seq": 4
     }
   },
   {
@@ -4866,7 +4919,9 @@
     "value": {
       "channel": "desktop.home_status",
       "request_id": "00000000-0000-4000-8000-000000000e52",
-      "payload": { "refresh": true }
+      "payload": {
+        "refresh": true
+      }
     }
   },
   {
@@ -4932,7 +4987,9 @@
     "value": {
       "channel": "desktop.home_register",
       "request_id": "00000000-0000-4000-8000-000000000e64",
-      "payload": { "ref": "00000000-0000-4000-8000-000000000e61" }
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61"
+      }
     }
   },
   {
@@ -4963,10 +5020,14 @@
           "collected_at": "2030-10-05T00:00:00Z",
           "gateway_mac_tail": "53:01",
           "subnet": "192.0.2.0/24",
-          "ssid_hint": { "first": "合", "length": 5 },
+          "ssid_hint": {
+            "first": "合",
+            "length": 5
+          },
           "ssid_unavailable_reason": null
         }
-      }
+      },
+      "list_seq": 2
     }
   },
   {
@@ -4991,7 +5052,20 @@
           "ssid_hint": null,
           "ssid_unavailable_reason": "unavailable"
         }
-      }
+      },
+      "list_seq": 3
+    }
+  },
+  {
+    "id": "desktop-response-home-register-outcome-unknown-with-seq",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e57",
+      "channel": "desktop.home_register",
+      "outcome": "rejected",
+      "reason": "outcome_unknown",
+      "list_seq": 5
     }
   },
   {
@@ -5016,7 +5090,8 @@
           "ssid_hint": null,
           "ssid_unavailable_reason": "redacted"
         }
-      }
+      },
+      "list_seq": 4
     }
   },
   {
@@ -5034,10 +5109,14 @@
           "collected_at": "2030-10-05T00:00:00Z",
           "gateway_mac_tail": "53:01",
           "subnet": "192.0.2.0/24",
-          "ssid_hint": { "first": null, "length": 3 },
+          "ssid_hint": {
+            "first": null,
+            "length": 3
+          },
           "ssid_unavailable_reason": null
         }
-      }
+      },
+      "list_seq": 5
     }
   },
   {
@@ -5055,7 +5134,8 @@
           "registered_at": "2030-10-05T00:00:00Z"
         },
         "observation": null
-      }
+      },
+      "list_seq": 6
     }
   },
   {
@@ -5073,10 +5153,14 @@
           "collected_at": "2030-10-05T00:00:00Z",
           "gateway_mac_tail": "00:00:5e:00:53:01",
           "subnet": "192.0.2.0/24",
-          "ssid_hint": { "first": "合", "length": 5 },
+          "ssid_hint": {
+            "first": "合",
+            "length": 5
+          },
           "ssid_unavailable_reason": null
         }
-      }
+      },
+      "list_seq": 7
     }
   },
   {
@@ -5094,11 +5178,15 @@
           "collected_at": "2030-10-05T00:00:00Z",
           "gateway_mac_tail": "53:01",
           "subnet": "192.0.2.0/24",
-          "ssid_hint": { "first": "合", "length": 5 },
+          "ssid_hint": {
+            "first": "合",
+            "length": 5
+          },
           "ssid_unavailable_reason": null,
           "ssid": "合成の自宅"
         }
-      }
+      },
+      "list_seq": 8
     }
   },
   {
@@ -5116,10 +5204,14 @@
           "collected_at": "2030-10-05T00:00:00Z",
           "gateway_mac_tail": "53:01",
           "subnet": "192.0.2.0/24",
-          "ssid_hint": { "first": "合成", "length": 5 },
+          "ssid_hint": {
+            "first": "合成",
+            "length": 5
+          },
           "ssid_unavailable_reason": null
         }
-      }
+      },
+      "list_seq": 9
     }
   },
   {
@@ -5142,10 +5234,14 @@
           "collected_at": "2030-10-05T00:00:00Z",
           "gateway_mac_tail": "53:01",
           "subnet": "192.0.2.0/24",
-          "ssid_hint": { "first": "合", "length": 5 },
+          "ssid_hint": {
+            "first": "合",
+            "length": 5
+          },
           "ssid_unavailable_reason": null
         }
-      }
+      },
+      "list_seq": 10
     }
   },
   {
@@ -5720,7 +5816,9 @@
     "id": "home-registration-state-unregistered",
     "schema": "HomeRegistrationState",
     "valid": true,
-    "value": { "registration": null }
+    "value": {
+      "registration": null
+    }
   },
   {
     "id": "home-registration-state-registered",

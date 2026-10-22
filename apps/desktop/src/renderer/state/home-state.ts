@@ -29,6 +29,11 @@ export interface HomeViewState {
   readonly registered: boolean;
   // main が参照を捨てた（ネットワークが変わった・参照が古い・ロックした）。読み取り直すまで登録のボタンを出さない。
   readonly stale: boolean;
+  // 反映した最新の自宅の応答の main の通し番号（list_seq。0 はまだ反映していない）。画面は自分では番号を持たず、
+  // これより小さい番号の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0022・0026）。
+  readonly seq: number;
+  // 結果が分からなかった登録の通し番号。これより大きい番号の読み取りを反映するまで登録のボタンを出さない。
+  readonly heldSeq: number | null;
 }
 
 export const INITIAL_HOME_STATE: HomeViewState = {
@@ -39,6 +44,8 @@ export const INITIAL_HOME_STATE: HomeViewState = {
   messageFrom: null,
   registered: false,
   stale: false,
+  seq: 0,
+  heldSeq: null,
 };
 
 // 開発の語（main）を出さない（ADR 0024 の UI レビュー 2 回目の追記 8。中枢の画面と同じ文言）。
@@ -89,25 +96,6 @@ const STALE_REASONS: ReadonlySet<RejectReason> = new Set([
   'device_locked',
 ]);
 
-// 登録の応答は、登録の前に読み取った表示を持つ。その間に読み取り直した、より新しい表示があれば、表示（と参照）は
-// 新しい方を残し、登録の状態だけを置き換える（古い表示・参照を画面に戻さない。PR #79 のレビュー Low-3）。
-function newerHome(
-  current: DesktopHomeView | null,
-  sent: DesktopIpcRequest['channel'],
-  received: DesktopHomeView,
-): DesktopHomeView {
-  const kept = current?.observation ?? null;
-  const incoming = received.observation;
-  if (
-    sent !== 'desktop.home_register' ||
-    kept === null ||
-    incoming === null ||
-    Date.parse(kept.collected_at) <= Date.parse(incoming.collected_at)
-  )
-    return received;
-  return { registration: received.registration, observation: kept };
-}
-
 // main の応答を反映する。読み取り・登録の応答は表示を置き換え、拒否は文言だけを出して表示を変えない。
 export function applyHomeResponse(
   state: HomeViewState,
@@ -124,7 +112,14 @@ export function applyHomeResponse(
       response.reason === 'list_superseded')
   )
     return { ...state, busy, reading };
-  if (response.outcome === 'rejected')
+  if (response.outcome === 'rejected') {
+    // 結果が分からなかった登録は、main が保留にした時点の番号より大きい番号の読み取りまで登録させない。
+    const held =
+      sent === 'desktop.home_register' &&
+      response.reason === 'outcome_unknown' &&
+      response.list_seq !== undefined
+        ? Math.max(state.heldSeq ?? 0, response.list_seq)
+        : state.heldSeq;
     return {
       ...state,
       busy,
@@ -132,19 +127,30 @@ export function applyHomeResponse(
       message: homeRejectMessage(sent, response.reason),
       messageFrom: messageFromOf(sent),
       registered: false,
+      heldSeq: held,
       stale:
         state.stale ||
+        held !== null ||
         (sent === 'desktop.home_register' &&
           STALE_REASONS.has(response.reason)),
     };
+  }
   if (!('home' in response)) return { ...state, busy, reading };
+  // main の順で古い応答（後から始めた読み取り・登録をもう反映した）は、表示も参照も戻さない。
+  if (response.list_seq < state.seq) return { ...state, busy, reading };
+  const heldSeq =
+    state.heldSeq !== null && response.list_seq > state.heldSeq
+      ? null
+      : state.heldSeq;
   return {
     ...state,
     busy,
     reading,
-    home: newerHome(state.home, sent, response.home),
+    home: response.home,
+    seq: response.list_seq,
+    heldSeq,
     registered: sent === 'desktop.home_register',
-    stale: false,
+    stale: heldSeq !== null,
   };
 }
 

@@ -742,12 +742,20 @@ export type DesktopIpcResponse =
       channel: 'desktop.claims_list' | 'desktop.claim_decide';
       outcome: 'ok';
       claims: DesktopClaimEntry[];
+      /**
+       * main が付ける一覧の通し番号（申請・端末ごとに増える）。画面は同じ種類の一覧でこれより小さい番号の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0026）。
+       */
+      list_seq: number;
     }
   | {
       request_id: Id;
       channel: 'desktop.devices_list' | 'desktop.device_revoke';
       outcome: 'ok';
       devices: DesktopDeviceEntry[];
+      /**
+       * main が付ける一覧の通し番号（申請・端末ごとに増える）。画面は同じ種類の一覧でこれより小さい番号の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0026）。
+       */
+      list_seq: number;
     }
   | {
       request_id: Id;
@@ -757,6 +765,10 @@ export type DesktopIpcResponse =
        * 承認・拒否・失効は中枢に適用されたが、その後の一覧の取り直しだけが失敗した。画面は前の一覧からその行を除き、一覧の更新を促す（失敗として扱わない）。
        */
       list_refreshed: false;
+      /**
+       * 変更の結果が分かった時点の一覧の境目（main の通し番号）。画面はこれより小さい番号の一覧を反映しない（ADR 0026）。
+       */
+      list_seq: number;
     }
   | {
       request_id: Id;
@@ -769,6 +781,10 @@ export type DesktopIpcResponse =
       channel: 'desktop.home_status' | 'desktop.home_register';
       outcome: 'ok';
       home: DesktopHomeView;
+      /**
+       * main が付ける自宅の要求の通し番号（読み取りはその番号、登録は成功の後の境目）。画面はこれより小さい番号の自宅の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0022・0026）。
+       */
+      list_seq: number;
     }
   | {
       request_id: Id | null;
@@ -795,6 +811,10 @@ export type DesktopIpcResponse =
         | 'confirmation_pending'
         | 'list_superseded'
         | 'home_network_changed';
+      /**
+       * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。
+       */
+      list_seq?: number;
     };
 /**
  * 上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。

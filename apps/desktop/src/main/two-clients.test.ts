@@ -704,6 +704,8 @@ test(
       channel: 'desktop.claims_list',
       outcome: 'ok',
       claims: [],
+      // main の一覧の通し番号（この端末で最初の申請の一覧）。
+      list_seq: 1,
     });
     // 中枢の画面でペアリングを始める（コードは本人が端末へ入力するための表示で、この応答にだけ入る）。
     const opened = await a.admin('desktop.pairing_open', null);

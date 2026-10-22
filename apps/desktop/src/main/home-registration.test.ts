@@ -129,6 +129,7 @@ test(
           channel: 'desktop.home_status',
           outcome: 'ok',
           home: { registration: null, observation },
+          list_seq: 1,
         }),
         [],
       );
@@ -1053,5 +1054,63 @@ test(
       'ok',
     );
     assert.equal(puts().length, 6);
+  },
+);
+
+test(
+  'list_seq: a re-read after the registration response comes later in main order; a re-read returned during the registration is what the registration response shows (B03-08)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { hub, network, admin, puts, shown, logs } = await liveLink(t);
+    // 順 1: 登録の応答の後に本人が読み取り直した結果は、登録の応答より大きい番号で返る（画面は捨てない）。
+    const first = await admin('desktop.home_status', null);
+    const firstSeq = Number(first['list_seq']);
+    assert(firstSeq >= 1);
+    const registered = await admin('desktop.home_register', {
+      ref: first.home?.observation?.['ref'],
+      include_ssid: true,
+    });
+    const registeredSeq = Number(registered['list_seq']);
+    assert(registeredSeq > firstSeq);
+    const reread = await admin('desktop.home_status', null);
+    assert(Number(reread['list_seq']) > registeredSeq);
+    assert.equal(reread.home?.observation?.['gateway_mac_tail'], '53:01');
+
+    // 順 2: 登録の最中（PUT を送った後）に読み取り直した結果が先に返り、ネットワークは変わっていた。登録の応答は
+    // それより大きい番号で、その新しい読み取りの表示と参照を返す（登録の前の古い読み取りで戻さない）。
+    hub.gatePut = true;
+    const registering = admin('desktop.home_register', {
+      ref: reread.home?.observation?.['ref'],
+      include_ssid: true,
+    });
+    await waitUntil(() => puts().length === 2, 'put sent');
+    network.value = {
+      ...HOME,
+      gateway_mac: '00:00:5e:00:53:02',
+      unavailable: [],
+    };
+    const during = await admin('desktop.home_status', null);
+    const duringSeq = Number(during['list_seq']);
+    const duringRef = during.home?.observation?.['ref'];
+    assert.equal(during.home?.observation?.['gateway_mac_tail'], '53:02');
+    assert.notEqual(duringRef, reread.home?.observation?.['ref']);
+    hub.releasePut();
+    const done = await registering;
+    assert.equal(done['outcome'], 'ok');
+    assert(Number(done['list_seq']) > duringSeq);
+    assert.equal(done.home?.observation?.['gateway_mac_tail'], '53:02');
+    assert.equal(done.home?.observation?.['ref'], duringRef);
+    assert.equal(done.home?.registration?.['ssid_registered'], true);
+
+    // 結果が分からなかった登録は、保留にした時点の番号を返す。
+    hub.gatePut = false;
+    hub.badPutBody = true;
+    const unknown = await admin('desktop.home_register', {
+      ref: duringRef,
+      include_ssid: true,
+    });
+    assert.equal(unknown.reason, 'outcome_unknown');
+    assert(Number(unknown['list_seq']) > Number(done['list_seq']));
+    assertNoRawValues(shown, logs);
   },
 );

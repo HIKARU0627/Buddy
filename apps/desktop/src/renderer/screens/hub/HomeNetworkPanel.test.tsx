@@ -476,6 +476,7 @@ test(
       channel: 'desktop.home_status',
       outcome: 'ok',
       home,
+      list_seq: 1,
     });
     assert.equal(read.reading, false);
     assert.deepEqual(read.home, home);
@@ -524,6 +525,7 @@ test(
         request_id: status.request_id,
         channel: 'desktop.home_status',
         outcome: 'ok',
+        list_seq: 2,
         home,
       },
     );
@@ -582,6 +584,7 @@ test(
       channel: 'desktop.home_register',
       outcome: 'ok',
       home: { registration: REGISTRATION, observation: OBSERVATION },
+      list_seq: 4,
     });
     assert.equal(done.busy, false);
     assert.equal(done.registered, true);
@@ -814,40 +817,95 @@ test(
       ),
       /role="status"[\s\S]*自宅のネットワークを登録しました。/u,
     );
-    // Low-3: 登録の応答より新しい読み取りが届いていれば、表示（と参照）は新しい方を残す。
+  },
+);
+
+test(
+  'list_seq: a re-read after the registration response is kept, a registration response after a re-read keeps it, and older numbers are ignored (B03-08)',
+  { timeout: 10_000 },
+  () => {
+    // 新しい読み取り（時計が戻って collected_at は前の読み取りより早い。届いた時刻・時計ではなく main の番号で比べる）。
     const newer: DesktopHomeObservation = {
       ...OBSERVATION,
       ref: '00000000-0000-4000-8000-000000000e66',
-      collected_at: '2030-10-05T03:00:05Z',
+      collected_at: '2030-10-05T02:59:00Z',
     };
-    const applied = applyHomeResponse(
-      state({ busy: true, home: { registration: null, observation: newer } }),
+    const ok = (
+      channel: 'desktop.home_status' | 'desktop.home_register',
+      registration: typeof REGISTRATION | null,
+      observation: DesktopHomeObservation,
+      listSeq: number,
+    ): DesktopIpcResponse => ({
+      request_id: '00000000-0000-4000-8000-000000000e73',
+      channel,
+      outcome: 'ok',
+      home: { registration, observation },
+      list_seq: listSeq,
+    });
+    // 順 1: 登録の応答（5）の後に、本人が読み取り直した結果（6）が届く → 読み直しを捨てない。
+    const registered = applyHomeResponse(
+      state({ busy: true }),
       'desktop.home_register',
-      {
-        request_id: '00000000-0000-4000-8000-000000000e73',
-        channel: 'desktop.home_register',
-        outcome: 'ok',
-        home: { registration: REGISTRATION, observation: OBSERVATION },
-      },
+      ok('desktop.home_register', REGISTRATION, OBSERVATION, 5),
     );
-    assert.deepEqual(applied.home, {
+    const reread = applyHomeResponse(
+      { ...registered, reading: true },
+      'desktop.home_status',
+      ok('desktop.home_status', REGISTRATION, newer, 6),
+    );
+    assert.deepEqual(reread.home?.observation, newer);
+    assert.equal(reread.seq, 6);
+    // 順 2: 読み取り直し（6）が先に届き、その後に登録の応答（7。main は新しい方の読み取りを返す）が届く。
+    const first = applyHomeResponse(
+      state({ reading: true, busy: true }),
+      'desktop.home_status',
+      ok('desktop.home_status', null, newer, 6),
+    );
+    const after = applyHomeResponse(
+      first,
+      'desktop.home_register',
+      ok('desktop.home_register', REGISTRATION, newer, 7),
+    );
+    assert.deepEqual(after.home, {
       registration: REGISTRATION,
       observation: newer,
     });
-    // 読み取りの応答は、いつも置き換える。
-    assert.deepEqual(
-      applyHomeResponse(
-        state({ home: { registration: null, observation: newer } }),
-        'desktop.home_status',
-        {
-          request_id: '00000000-0000-4000-8000-000000000e74',
-          channel: 'desktop.home_status',
-          outcome: 'ok',
-          home: { registration: null, observation: OBSERVATION },
-        },
-      ).home?.observation,
-      OBSERVATION,
+    assert.equal(after.registered, true);
+    // main の順で古い応答（番号が小さい）は、表示も参照も戻さない（届いた順では比べない）。
+    const late = applyHomeResponse(
+      { ...after, reading: true },
+      'desktop.home_status',
+      ok('desktop.home_status', null, OBSERVATION, 3),
     );
+    assert.deepEqual(late.home, after.home);
+    assert.equal(late.reading, false);
+    // 結果が分からなかった登録（保留 8）は、それより大きい番号の読み取りでだけ解く。
+    const unknown = applyHomeResponse(
+      { ...after, busy: true },
+      'desktop.home_register',
+      {
+        request_id: '00000000-0000-4000-8000-000000000e75',
+        channel: 'desktop.home_register',
+        outcome: 'rejected',
+        reason: 'outcome_unknown',
+        list_seq: 8,
+      },
+    );
+    assert.equal(unknown.stale, true);
+    assert.equal(unknown.heldSeq, 8);
+    const stillHeld = applyHomeResponse(
+      unknown,
+      'desktop.home_status',
+      ok('desktop.home_status', REGISTRATION, newer, 8),
+    );
+    assert.equal(stillHeld.stale, true);
+    const released = applyHomeResponse(
+      stillHeld,
+      'desktop.home_status',
+      ok('desktop.home_status', REGISTRATION, newer, 9),
+    );
+    assert.equal(released.stale, false);
+    assert.equal(released.heldSeq, null);
   },
 );
 

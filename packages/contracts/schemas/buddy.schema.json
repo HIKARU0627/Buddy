@@ -8649,9 +8649,20 @@
               "items": {
                 "$ref": "#/$defs/DesktopClaimEntry"
               }
+            },
+            "list_seq": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "main が付ける一覧の通し番号（申請・端末ごとに増える）。画面は同じ種類の一覧でこれより小さい番号の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0026）。"
             }
           },
-          "required": ["request_id", "channel", "outcome", "claims"],
+          "required": [
+            "request_id",
+            "channel",
+            "outcome",
+            "claims",
+            "list_seq"
+          ],
           "additionalProperties": false,
           "description": "受け付けた。承認待ちの申請の一覧（承認・拒否の後は取り直した一覧）を返す。"
         },
@@ -8674,9 +8685,20 @@
               "items": {
                 "$ref": "#/$defs/DesktopDeviceEntry"
               }
+            },
+            "list_seq": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "main が付ける一覧の通し番号（申請・端末ごとに増える）。画面は同じ種類の一覧でこれより小さい番号の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0026）。"
             }
           },
-          "required": ["request_id", "channel", "outcome", "devices"],
+          "required": [
+            "request_id",
+            "channel",
+            "outcome",
+            "devices",
+            "list_seq"
+          ],
           "additionalProperties": false,
           "description": "受け付けた。登録済みの端末の一覧（失効の後は取り直した一覧）を返す。"
         },
@@ -8698,9 +8720,20 @@
               "type": "boolean",
               "const": false,
               "description": "承認・拒否・失効は中枢に適用されたが、その後の一覧の取り直しだけが失敗した。画面は前の一覧からその行を除き、一覧の更新を促す（失敗として扱わない）。"
+            },
+            "list_seq": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "変更の結果が分かった時点の一覧の境目（main の通し番号）。画面はこれより小さい番号の一覧を反映しない（ADR 0026）。"
             }
           },
-          "required": ["request_id", "channel", "outcome", "list_refreshed"],
+          "required": [
+            "request_id",
+            "channel",
+            "outcome",
+            "list_refreshed",
+            "list_seq"
+          ],
           "additionalProperties": false,
           "description": "受け付けて適用した。一覧は取り直せなかった（ADR 0026）。"
         },
@@ -8742,9 +8775,14 @@
             },
             "home": {
               "$ref": "#/$defs/DesktopHomeView"
+            },
+            "list_seq": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "main が付ける自宅の要求の通し番号（読み取りはその番号、登録は成功の後の境目）。画面はこれより小さい番号の自宅の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0022・0026）。"
             }
           },
-          "required": ["request_id", "channel", "outcome", "home"],
+          "required": ["request_id", "channel", "outcome", "home", "list_seq"],
           "additionalProperties": false,
           "description": "受け付けた。自宅の登録の状態と、このマシンのネットワークの伏せた表示を返す（登録の後は登録した後の状態）。"
         },
@@ -8799,11 +8837,16 @@
                 "list_superseded",
                 "home_network_changed"
               ]
+            },
+            "list_seq": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。"
             }
           },
           "required": ["request_id", "channel", "outcome", "reason"],
           "additionalProperties": false,
-          "description": "拒否した。理由コードだけを返し、本文・詳細な文言を含めない。形式の不正で request_id・channel を確かめられないときは null。"
+          "description": "拒否した。理由コード（結果不明の操作では一覧の通し番号も）だけを返し、本文・詳細な文言を含めない。形式の不正で request_id・channel を確かめられないときは null。"
         }
       ],
       "description": "main から UI レンダラーへの応答（ADR 0014・0025）。どの拒否を返すかは domain の desktop.ts の規則と main のペアリングの手順が決める。"

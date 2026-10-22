@@ -43,6 +43,10 @@ export const REJECT_MESSAGES: Readonly<Record<RejectReason, string>> = {
     '結果を確かめられませんでした。自動では送り直しません。一覧を取り直して確かめてください。',
   fingerprint_tail_mismatch:
     '入力した 4\u00a0桁が、この端末が受け取った中枢の証明書と合いません。申請はまだ送っていません。打ち間違いでなければ、別の機器につながっているおそれがあります。中枢の画面の下線の 4\u00a0桁を確かめ、合わなければ「一致しない（やめる）」を押してください。',
+  confirmation_declined: '確認で「やめる」を選んだため、送りませんでした。',
+  confirmation_pending:
+    '別の確認を表示しています。そちらを閉じてから、もう一度押してください。',
+  list_superseded: '一覧は新しい結果に置き換わりました。',
   pairing_host_not_allowed:
     'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。',
   home_network_changed:

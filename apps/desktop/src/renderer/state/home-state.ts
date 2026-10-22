@@ -116,6 +116,14 @@ export function applyHomeResponse(
 ): HomeViewState {
   const busy = sent === 'desktop.home_register' ? false : state.busy;
   const reading = sent === 'desktop.home_status' ? false : state.reading;
+  // 確認で「やめる」を選んだ・main が古い読み取りとして捨てたときは、何も出さない（表示と参照もそのまま。
+  // 承認・失効と同じ扱い。ADR 0026）。
+  if (
+    response.outcome === 'rejected' &&
+    (response.reason === 'confirmation_declined' ||
+      response.reason === 'list_superseded')
+  )
+    return { ...state, busy, reading };
   if (response.outcome === 'rejected')
     return {
       ...state,

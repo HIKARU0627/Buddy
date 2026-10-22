@@ -25,6 +25,7 @@ import type {
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
+import type { AdminConfirmRequest } from './core-link.js';
 import { CREDENTIAL_FILE, parseCredential } from './credential-store.js';
 import type { HomeObservation } from './home-reporter.js';
 import { createHubTransport, hubRequest } from './hub-transport.js';
@@ -73,6 +74,8 @@ interface Client {
   readonly ipc: unknown[];
   readonly logs: string[];
   readonly claims: string[];
+  // main が出した本人の確認（OS の確認ダイアログの代わりに、試験は内容を控えて「確定」を返す）。
+  readonly confirms: AdminConfirmRequest[];
   // 登録した端末として中枢へ送った要求（方法とパス。本文・ヘッダーは記録しない）。
   readonly requests: string[];
   view(): Extract<DesktopConnectionView, { visibility: 'shown' }>;
@@ -108,6 +111,7 @@ async function createClient(
   const logs: string[] = [];
   const claims: string[] = [];
   const requests: string[] = [];
+  const confirms: AdminConfirmRequest[] = [];
   let link: DesktopCoreLink | null = null;
   link = new DesktopCoreLink({
     contract,
@@ -126,6 +130,10 @@ async function createClient(
       if (link) ipc.push(link.view('unlocked'));
     },
     log: (code) => logs.push(code),
+    confirmAdmin: (request) => {
+      confirms.push(request);
+      return Promise.resolve(true);
+    },
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     aliveTimeoutMs: 3_000,
     pairingPollIntervalMs: options.pollIntervalMs ?? 50,
@@ -168,6 +176,7 @@ async function createClient(
     ipc,
     logs,
     claims,
+    confirms,
     requests,
     view() {
       const view = created.view('unlocked');
@@ -761,6 +770,15 @@ test(
         ref: claims[0]?.['ref'],
         decision: 'approve',
       });
+      // main は確認に、中枢から受け取った端末名と確認コード（端末の画面と同じ値）を出した。
+      assert.deepEqual(
+        a.confirms.flatMap((entry) =>
+          entry.action === 'register_home'
+            ? []
+            : [[entry.action, entry.deviceName, entry.claimCheck]],
+        ),
+        [['approve', '合成の端末 B', check]],
+      );
       // 受取りの前に「中枢と別のマシン」へ切り替え、B を hub_local でない端末として登録させる。
       machine.same = false;
       openGate();
@@ -1024,6 +1042,16 @@ test(
       await a.admin('desktop.home_register', { ref, include_ssid: true }),
     );
     assert.equal(registered.registration?.subnet, '192.0.2.0/24');
+    // 登録は、承認・失効と同じ OS の確認（main の confirmAdmin）を経た。出したのは伏せた値だけ。
+    assert.deepEqual(a.confirms.at(-1), {
+      action: 'register_home',
+      replacing: false,
+      macTail: '53:01',
+      subnet: '192.0.2.0/24',
+      includeSsid: true,
+      ssidHint: { first: '合', length: 5 },
+      ssidChange: null,
+    });
     assert.equal(registered.registration?.ssid_registered, true);
     assert.equal(typeof registered.registration?.registered_at, 'string');
     // 中枢は MAC・SSID を HMAC にして保存する（平文を保存しない）。

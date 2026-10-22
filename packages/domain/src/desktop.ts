@@ -66,6 +66,11 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'fingerprint_tail_mismatch',
   // ペアリングの宛先が Tailscale のアドレス・ループバック・*.ts.net の名前でない（ADR 0025、hub-host.ts）。
   'pairing_host_not_allowed',
+  // 承認・拒否・失効の OS の確認で「やめる」を選んだ・別の確認を表示している（本人の判断 2026-10-22、ADR 0026）。
+  'confirmation_declined',
+  'confirmation_pending',
+  // 一覧の要求が、後から始めた一覧・変更の操作に追い越された（古い一覧で表示と参照を戻さない）。
+  'list_superseded',
   // 自宅の登録の確認を出した後に、このマシンのネットワークの指紋が変わった・読み取れなくなった（B03-08）。
   'home_network_changed',
 ] as const;

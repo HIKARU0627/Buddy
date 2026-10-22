@@ -13,6 +13,7 @@ import type { ClientApiOutcome, ClientApiRequest } from '@buddy/client';
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
+import type { AdminConfirmRequest } from './core-link.js';
 import {
   CREDENTIAL_FILE,
   SecretText,
@@ -163,6 +164,13 @@ async function liveLink(
   // 試験が決めるこのマシンの指紋（'throw' は読み取りの失敗、'hang' は応答しない、'gate' は release まで待つ）。
   // ウィンドウが前面か（送る直前の確かめ直しに使う。試験が切り替える）。
   const focus = { value: true };
+  // 本人の確認（OS の確認ダイアログの代わり）。answer で「登録する」か「やめる」か、'hold' なら閉じられるまで
+  // 待つかを決め、出した値と閉じる合図を記録する。
+  const confirm: {
+    answer: boolean | 'hold';
+    shown: AdminConfirmRequest[];
+    signals: AbortSignal[];
+  } = { answer: true, shown: [], signals: [] };
   const network: {
     value: HomeObservation | 'throw' | 'hang' | 'gate';
     collects: number;
@@ -272,6 +280,15 @@ async function liveLink(
     log: (code) => logs.push(code),
     homeReportIntervalMs: 600_000,
     windowFocused: () => focus.value,
+    confirmAdmin: (request, signal) => {
+      confirm.shown.push(request);
+      confirm.signals.push(signal);
+      const answer = confirm.answer;
+      if (answer !== 'hold') return Promise.resolve(answer);
+      return new Promise<boolean>((resolve) => {
+        signal.addEventListener('abort', () => resolve(false));
+      });
+    },
     ...(options.homeCollectTimeoutMs === undefined
       ? {}
       : { homeCollectTimeoutMs: options.homeCollectTimeoutMs }),
@@ -326,7 +343,7 @@ async function liveLink(
         request.method === 'PUT' &&
         request.path === '/v1/home-network/registration',
     );
-  return { link, hub, network, focus, sent, shown, logs, admin, puts };
+  return { link, hub, network, focus, confirm, sent, shown, logs, admin, puts };
 }
 
 function assertNoRawValues(shown: unknown[], logs: string[]): void {
@@ -585,9 +602,10 @@ test(
     network.release();
     const [one, two] = await Promise.all([first, second]);
     assert.equal(network.collects - before, 1);
-    const ref = one.home?.observation?.['ref'];
+    // 先の読み取りは後の読み取りに追い越されたので返さず、後の読み取りが参照を返す。
+    assert.equal(one.reason, 'list_superseded');
+    const ref = two.home?.observation?.['ref'];
     assert.equal(typeof ref, 'string');
-    assert.equal(two.home?.observation?.['ref'], ref);
 
     // 送る直前の読み取りの間にロックした: 送らず、参照も捨てる。
     network.value = 'gate';
@@ -743,10 +761,147 @@ test(
       assert.equal(network.collects - before, 1);
       assert.equal(puts().length, 0);
       network.release();
-      assert.equal((await status)['outcome'], 'ok');
+      // 登録より前に始めた読み取りは、登録に追い越されたので返さない（古い表示・参照を戻さない）。
+      assert.equal((await status).reason, 'list_superseded');
       assert.equal((await register)['outcome'], 'ok');
       assert.equal(network.collects - before, 2);
       assert.equal(puts().length, 1);
     }
+  },
+);
+
+test(
+  'registering asks with the OS confirmation showing only masked values; cancel, a lock or a hidden window while it is open sends nothing (B03-08)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, hub, confirm, shown, logs, admin, puts } = await liveLink(t);
+    const ref = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
+    // 確認に出すのは伏せた値だけ（MAC の最後の 2 組・サブネット・Wi-Fi 名の先頭の 1 文字と文字数）。
+    confirm.answer = false;
+    assert.equal(
+      (await admin('desktop.home_register', { ref, include_ssid: true }))
+        .reason,
+      'confirmation_declined',
+    );
+    assert.deepEqual(confirm.shown.at(-1), {
+      action: 'register_home',
+      replacing: false,
+      macTail: '53:01',
+      subnet: '192.0.2.0/24',
+      includeSsid: true,
+      ssidHint: { first: '合', length: 5 },
+      ssidChange: null,
+    });
+    assert.equal(
+      JSON.stringify(confirm.shown).includes(HOME.gateway_mac),
+      false,
+    );
+    assert.equal(JSON.stringify(confirm.shown).includes(HOME.ssid), false);
+    assert.equal(puts().length, 0);
+
+    // 確認を開いている間にロックした: 確認を閉じ、送らない。参照も捨てる。
+    confirm.answer = 'hold';
+    const locked = admin('desktop.home_register', { ref, include_ssid: true });
+    await waitUntil(() => confirm.signals.length === 2, 'confirm shown');
+    link.setLockState('locked');
+    assert.equal(confirm.signals[1]?.aborted, true);
+    assert.equal((await locked).reason, 'device_locked');
+    link.setLockState('unlocked');
+    assert.equal(puts().length, 0);
+
+    // 確認を開いている間にウィンドウが隠れた: 確認を閉じ、画面操作からやり直す（参照は残す）。
+    const ref2 = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
+    const hidden = admin('desktop.home_register', {
+      ref: ref2,
+      include_ssid: false,
+    });
+    await waitUntil(() => confirm.signals.length === 3, 'confirm shown again');
+    // 確認は同時に 1 つまで。
+    assert.equal(
+      (await admin('desktop.home_register', { ref: ref2, include_ssid: true }))
+        .reason,
+      'confirmation_pending',
+    );
+    link.closeConfirm();
+    assert.equal((await hidden).reason, 'screen_operation_required');
+    assert.equal(puts().length, 0);
+
+    // 確認されたときだけ送る。登録し直しの確認には置き換えと Wi-Fi 名の確認の変化を出す。
+    confirm.answer = true;
+    const done = await admin('desktop.home_register', {
+      ref: ref2,
+      include_ssid: true,
+    });
+    assert.equal(done.home?.registration?.['ssid_registered'], true);
+    assert.equal(puts().length, 1);
+    await admin('desktop.home_status', null);
+    const ref3 = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
+    await admin('desktop.home_register', { ref: ref3, include_ssid: false });
+    assert.equal(confirm.shown.at(-1)?.action, 'register_home');
+    assert.deepEqual(
+      (({ replacing, includeSsid, ssidHint, ssidChange }) => ({
+        replacing,
+        includeSsid,
+        ssidHint,
+        ssidChange,
+      }))(
+        confirm.shown.at(-1) as Extract<
+          AdminConfirmRequest,
+          { action: 'register_home' }
+        >,
+      ),
+      {
+        replacing: true,
+        includeSsid: false,
+        ssidHint: null,
+        ssidChange: 'removed',
+      },
+    );
+    assert.equal(hub.registration?.['ssid_registered'], false);
+    assertNoRawValues(shown, logs);
+  },
+);
+
+test(
+  'a read that a later request overtook is not returned; a lock during a read returns no masked view or reference (B03-08)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, network, admin } = await liveLink(t);
+    // 後から始めた読み取りに追い越された読み取りは、古いとして返さない。
+    network.value = 'gate';
+    const before = network.collects;
+    const older = admin('desktop.home_status', null);
+    await waitUntil(() => network.collects > before, 'collect started');
+    const newer = admin('desktop.home_status', null);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    network.release();
+    const [first, second] = await Promise.all([older, newer]);
+    assert.equal(first.reason, 'list_superseded');
+    assert.equal(first.home, undefined);
+    const ref = second.home?.observation?.['ref'];
+    assert.equal(typeof ref, 'string');
+
+    // 読み取りの間にロックした: 伏せた表示も参照も返さない（ロックをまたいだ内容を返さない）。
+    network.value = 'gate';
+    const gated = network.collects;
+    const during = admin('desktop.home_status', null);
+    await waitUntil(() => network.collects > gated, 'collect before lock');
+    link.setLockState('locked');
+    network.release();
+    const response = await during;
+    assert.equal(response.reason, 'device_locked');
+    assert.equal(response.home, undefined);
+    link.setLockState('unlocked');
+    assert.equal(
+      (await admin('desktop.home_register', { ref, include_ssid: true }))
+        .reason,
+      'entry_not_found',
+    );
   },
 );

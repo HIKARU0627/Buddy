@@ -19,6 +19,7 @@ import {
   applyHubFailure,
   applyHubResponse,
   clearNotice,
+  dropStaleResponse,
   hubActions,
   markSending,
 } from '../../state/hub-state.js';
@@ -27,14 +28,11 @@ import type {
   HubViewState,
   PendingOperation,
 } from '../../state/hub-state.js';
-import { ConfirmDialog } from './ConfirmDialog.js';
-import type { ConfirmRequest } from './ConfirmDialog.js';
 import {
   ClaimsPanel,
   DevicesPanel,
   HubTabs,
   PairingOpenPanel,
-  approveRequest,
 } from './HubPanels.js';
 
 // 地域時間の 2030-10-05 12:00 を「今」にする。
@@ -108,12 +106,10 @@ function pressables(node: ReactNode): Map<string, () => void> {
 function capture() {
   const sent: DesktopIpcRequest[] = [];
   const operations: (PendingOperation | undefined)[] = [];
-  const asked: ConfirmRequest[] = [];
   let state: HubViewState = INITIAL_HUB_STATE;
   return {
     sent,
     operations,
-    asked,
     state: () => state,
     actions: hubActions({
       request: (built, operation) => {
@@ -124,7 +120,6 @@ function capture() {
         state = change(state);
       },
     }),
-    onAsk: (request: ConfirmRequest) => asked.push(request),
   };
 }
 
@@ -139,9 +134,9 @@ const notice = (
   text,
 });
 
-test('claims: empty, loading and listed claims show the claim check prominently and ask before deciding', () => {
-  const { sent, operations, asked, actions, onAsk } = capture();
-  const props = { busy: false, now: NOW, notice: null, onAsk, actions };
+test('claims: empty, loading and listed claims show the claim check prominently; pressing sends to main, which asks with the OS dialog', () => {
+  const { sent, operations, actions } = capture();
+  const props = { busy: false, now: NOW, notice: null, actions };
   assert.match(
     html(<ClaimsPanel {...props} claims={[]} />),
     /承認待ちの申請はありません。/u,
@@ -173,24 +168,7 @@ test('claims: empty, loading and listed claims show the claim check prominently 
   const buttons = pressables(ClaimsPanel({ ...props, claims: [CLAIM] }));
   buttons.get('承認する')?.();
   buttons.get('拒否する')?.();
-  // 押しただけでは送らず、確認を出す。
-  assert.equal(sent.length, 0);
-  assert.deepEqual(
-    asked.map((request) => [request.title, request.tone, request.confirmLabel]),
-    [
-      [
-        '「合成の申請」（Windows・11:58:30 の申請）を承認しますか',
-        'accent',
-        '承認する',
-      ],
-      [
-        '「合成の申請」（Windows・11:58:30 の申請）を拒否しますか',
-        'danger',
-        '拒否する',
-      ],
-    ],
-  );
-  for (const request of asked) request.onConfirm();
+  // 画面の中では確認しない（本人の確認は main が OS の確認ダイアログで行う。ADR 0026）。
   assert.deepEqual(
     sent.map((request) => [request.channel, request.payload]),
     [
@@ -212,16 +190,8 @@ test('claims: empty, loading and listed claims show the claim check prominently 
   );
 });
 
-test('the approve confirmation shows the claim check in its own large line with the body in the foreground', () => {
-  const body = html(approveRequest(CLAIM, NOW, () => undefined).body);
-  assert.match(body, /この申請の確認コード/u);
-  assert.match(body, /<p class="font-mono text-2xl[^"]*">0a1b 2c3d<\/p>/u);
-  assert.match(body, /8\u00a0桁すべて同じときだけ承認してください。/u);
-  assert.doesNotMatch(body, /text-muted/u);
-});
-
 test('a failed operation is shown under the row that was pressed, and only there', () => {
-  const { actions, onAsk } = capture();
+  const { actions } = capture();
   const text = '中枢に「合成の申請」の承認を送れませんでした。';
   const listed = html(
     <ClaimsPanel
@@ -229,7 +199,6 @@ test('a failed operation is shown under the row that was pressed, and only there
       busy={false}
       now={NOW}
       notice={notice('claims', CLAIM.ref, text)}
-      onAsk={onAsk}
       actions={actions}
     />,
   );
@@ -246,21 +215,19 @@ test('a failed operation is shown under the row that was pressed, and only there
       busy={false}
       now={NOW}
       notice={notice('claims', CLAIM.ref, text)}
-      onAsk={onAsk}
       actions={actions}
     />,
   );
   assert.doesNotMatch(devices, /role="alert"/u);
 });
 
-test('devices: the hub machine and revoked devices cannot be revoked; revoked is a muted circle; revoking asks first', () => {
-  const { sent, asked, actions, onAsk } = capture();
+test('devices: the hub machine and revoked devices cannot be revoked; revoked is a muted circle; revoking sends to main', () => {
+  const { sent, actions } = capture();
   const props = {
     devices: [SELF, OTHER, REVOKED],
     busy: false,
     now: NOW,
     notice: null,
-    onAsk,
     actions,
   };
   const listed = html(<DevicesPanel {...props} />);
@@ -276,13 +243,6 @@ test('devices: the hub machine and revoked devices cannot be revoked; revoked is
   assert.equal(listed.match(/>失効する</gu)?.length, 1);
   assert.match(listed, /aria-label="「合成の端末」を失効する"/u);
   pressables(DevicesPanel(props)).get('失効する')?.();
-  assert.equal(sent.length, 0);
-  assert.equal(
-    asked[0]?.title,
-    '「合成の端末」（Windows・10/5 09:00:00 の登録）を失効しますか',
-  );
-  assert.equal(asked[0]?.tone, 'danger');
-  asked[0]?.onConfirm();
   assert.deepEqual(
     sent.map((request) => [request.channel, request.payload]),
     [['desktop.device_revoke', { ref: OTHER.ref }]],
@@ -602,15 +562,13 @@ test('hub state: a successful decision or revocation is announced at the top of 
     '中枢で「合成の申請」の申請を拒否しました。',
   );
   // 成功は role="status"、失敗は role="alert"。
-  const { actions, onAsk } = capture();
+  const { actions } = capture();
   const shown = html(
-    <ClaimsPanel
-      claims={[]}
-      busy={false}
-      now={NOW}
-      notice={approved.notice}
-      onAsk={onAsk}
+    <HubTabs
+      state={{ ...INITIAL_HUB_STATE, claims: [], notice: approved.notice }}
       actions={actions}
+      now={NOW}
+      thisDevice={null}
     />,
   );
   assert.match(
@@ -693,35 +651,133 @@ test('the open-pairing button is the primary only when there is nothing else to 
   assert.match(opened, /id="hub-open-port">47443<\/span>/u);
 });
 
-test('the confirmation dialog focuses the cancel button first and has no colored icon face', () => {
-  const { actions, onAsk } = capture();
-  void actions;
-  void onAsk;
-  const request = approveRequest(CLAIM, NOW, () => undefined);
-  const dialog = ConfirmDialog({ request, onClose: () => undefined });
-  const found: { label: string; autoFocus: unknown }[] = [];
-  const walk = (node: ReactNode): void => {
-    if (Array.isArray(node)) {
-      for (const child of node as ReactNode[]) walk(child);
-      return;
-    }
-    if (!isValidElement(node)) return;
-    const props = node.props as {
-      children?: ReactNode;
-      autoFocus?: unknown;
-      onPress?: unknown;
-    };
-    if (
-      typeof props.onPress === 'function' &&
-      typeof props.children === 'string'
-    )
-      found.push({ label: props.children, autoFocus: props.autoFocus });
-    walk(props.children);
-  };
-  walk(dialog);
-  assert.deepEqual(found, [
-    { label: 'やめる', autoFocus: true },
-    { label: '承認する', autoFocus: undefined },
-  ]);
-  assert.doesNotMatch(html(dialog), /alert-dialog__icon/u);
+test('hub state: a declined confirmation shows nothing; a held row cannot be pressed until the list is refreshed', () => {
+  const sending = markSending(
+    { ...INITIAL_HUB_STATE, claims: [CLAIM] },
+    decide,
+    approving,
+  );
+  const declined = applyHubResponse(
+    sending,
+    'desktop.claim_decide',
+    rejected('desktop.claim_decide', 'confirmation_declined'),
+  );
+  assert.equal(declined.notice, null);
+  assert.equal(declined.pending, null);
+  const unknown = applyHubResponse(
+    sending,
+    'desktop.claim_decide',
+    rejected('desktop.claim_decide', 'outcome_unknown'),
+  );
+  assert.deepEqual(unknown.held, [CLAIM.ref]);
+  const { actions } = capture();
+  assert.match(
+    html(
+      <ClaimsPanel
+        claims={[CLAIM]}
+        busy={false}
+        held={unknown.held}
+        now={NOW}
+        notice={null}
+        actions={actions}
+      />,
+    ),
+    /<button[^>]*disabled[^>]*>承認する/u,
+  );
+  const refreshed = applyHubResponse(unknown, 'desktop.claims_list', {
+    request_id: decide.request_id,
+    channel: 'desktop.claims_list',
+    outcome: 'ok',
+    claims: [CLAIM],
+  });
+  assert.deepEqual(refreshed.held, []);
+});
+
+test('hub state: a list started before a later list or a change does not overwrite the newer result', () => {
+  const list = (claims: DesktopClaimEntry[]): DesktopIpcResponse => ({
+    request_id: decide.request_id,
+    channel: 'desktop.claims_list',
+    outcome: 'ok',
+    claims,
+  });
+  // 一覧 1（古い）を送った後に一覧 2 が先に届く → 一覧 1 が遅れて届いても戻さない。
+  const newer = applyHubResponse(
+    INITIAL_HUB_STATE,
+    'desktop.claims_list',
+    list([]),
+    NOW,
+    2,
+  );
+  assert.deepEqual(
+    applyHubResponse(newer, 'desktop.claims_list', list([CLAIM]), NOW, 1)
+      .claims,
+    [],
+  );
+  // 承認（通し番号 3）の前に始めた一覧（2）は、承認の後の一覧を戻さない。
+  const sending = markSending(
+    { ...INITIAL_HUB_STATE, claims: [CLAIM] },
+    decide,
+    approving,
+    3,
+  );
+  const decided = applyHubResponse(
+    sending,
+    'desktop.claim_decide',
+    {
+      request_id: decide.request_id,
+      channel: 'desktop.claim_decide',
+      outcome: 'ok',
+      claims: [],
+    },
+    NOW,
+    3,
+  );
+  assert.deepEqual(
+    applyHubResponse(decided, 'desktop.claims_list', list([CLAIM]), NOW, 2)
+      .claims,
+    [],
+  );
+  // main が古いとして捨てた一覧（list_superseded）は何も出さない。
+  assert.equal(
+    applyHubResponse(
+      decided,
+      'desktop.claims_list',
+      rejected('desktop.claims_list', 'list_superseded'),
+      NOW,
+      4,
+    ).notice,
+    decided.notice,
+  );
+  // ロック・切断をまたいだ応答は捨て、重い操作の待ちだけを外す。
+  assert.equal(
+    dropStaleResponse(sending, 'desktop.claim_decide').pending,
+    null,
+  );
+  assert.equal(dropStaleResponse(newer, 'desktop.claims_list'), newer);
+});
+
+test('hub tabs: the success notice for the claims stays at the top of the tab even when the order changes', () => {
+  const { actions } = capture();
+  const tabs = html(
+    <HubTabs
+      state={{
+        ...INITIAL_HUB_STATE,
+        claims: [],
+        notice: {
+          pane: 'claims',
+          place: { kind: 'section' },
+          tone: 'success',
+          text: '中枢で「合成の申請」を承認しました（12:00:05）。',
+        },
+      }}
+      actions={actions}
+      now={NOW}
+      thisDevice={null}
+    />,
+  );
+  // 申請が 0 件で「新しい端末を登録する」が先に来ても、知らせはその上（タブの本文の先頭）。
+  assert.match(
+    tabs,
+    /role="status"[^>]*>(?:<[^>]+>|●)*中枢で「合成の申請」を承認しました.*hub-open-heading.*hub-claims-heading/su,
+  );
 });

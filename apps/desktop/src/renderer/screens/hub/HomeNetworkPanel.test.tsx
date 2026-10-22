@@ -1,6 +1,7 @@
 // 中枢の画面の「自宅のネットワーク」のタブの試験（ADR 0022・0024・0026、B03-08）。
 // サーバー描画（react-dom/server）で、未登録・登録済み・取得できない要素がある・読み取りの失敗の表示とボタンを確かめ、
-// 押したときは確認（ConfirmRequest）を経て要求を送ることを onPress・onConfirm を呼んで確かめる。
+// 押したときは要求を送ることを onPress を呼んで確かめる（本人の確認は main の OS の確認ダイアログで、その文言は
+// main の admin-confirm.test.ts で確かめる）。
 // 期待値の文言・伏せた表示は手で書く。画面に来る値は伏せた表示だけなので、生の値は描画にも出ない。
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -24,11 +25,9 @@ import {
 } from '../../state/home-state.js';
 import type { HomeViewState } from '../../state/home-state.js';
 import { INITIAL_HUB_STATE, hubActions } from '../../state/hub-state.js';
-import type { ConfirmRequest } from './ConfirmDialog.js';
 import {
   CurrentNetworkSection,
   HOME_LABELS,
-  confirmRequest,
   HomeNetworkPanel,
   RegistrationSection,
 } from './HomeNetworkPanel.js';
@@ -96,11 +95,9 @@ function buttonTag(markup: string, label: string): string | null {
 
 function capture() {
   const sent: DesktopIpcRequest[] = [];
-  const asked: ConfirmRequest[] = [];
   let dismissed = 0;
   return {
     sent,
-    asked,
     dismissed: () => dismissed,
     actions: homeActions(
       (built) => sent.push(built),
@@ -108,15 +105,14 @@ function capture() {
         dismissed += 1;
       },
     ),
-    onAsk: (request: ConfirmRequest) => asked.push(request),
   };
 }
 
 test(
-  'unregistered: the masked network and a primary register button that asks before sending',
+  'unregistered: the masked network and a primary register button that sends the request (main asks with the OS dialog)',
   { timeout: 10_000 },
   () => {
-    const { sent, asked, actions, onAsk } = capture();
+    const { sent, actions } = capture();
     const home = { registration: null, observation: OBSERVATION };
     const markup = html(
       <HomeNetworkPanel state={state({ home })} actions={actions} now={NOW} />,
@@ -147,37 +143,15 @@ test(
     assert(tag !== null, markup);
     assert.match(tag, /button--primary/u);
     assert.doesNotMatch(tag, /disabled/u);
-    // 押しただけでは送らず、確認を出す。
+    // 押すと登録の要求を送る（本人の確認は main が OS の確認ダイアログで行い、画面の中では確かめない）。
     const buttons = pressables(
       CurrentNetworkSection({
         state: state({ home }),
         actions,
         now: NOW,
-        onAsk,
       }),
     );
     buttons.get(HOME_LABELS.register)?.();
-    assert.equal(sent.length, 0);
-    assert.equal(asked.length, 1);
-    const request = asked[0];
-    assert(request);
-    assert.equal(request.title, 'このネットワークを自宅として登録しますか');
-    assert.equal(request.tone, 'accent');
-    assert.equal(request.confirmLabel, '登録する');
-    const body = html(request.body);
-    assert.match(body, /··:··:··:··:53:01/u);
-    assert.match(body, /Tailscale\s*で直接つながっているときだけ/u);
-    // 確かめる値は、値ごとに別の段の大きな等幅で出す。
-    assert.match(
-      body,
-      /ルーターの MAC\u00a0アドレス（最後の\u00a02\u00a0組）<\/p><p><span aria-hidden="true" class="font-mono whitespace-nowrap tabular-nums text-2xl[^"]*">··:··:··:··:53:01/u,
-    );
-    assert.match(
-      body,
-      /class="font-mono whitespace-nowrap tabular-nums text-2xl[^"]*">192\.0\.2\.0\/24/u,
-    );
-    assert.doesNotMatch(body, /置き換わり/u);
-    request.onConfirm();
     assert.deepEqual(
       sent.map((built) => [built.channel, built.payload]),
       [['desktop.home_register', { ref: REF, include_ssid: true }]],
@@ -192,7 +166,7 @@ test(
   'the Wi-Fi name choice is on by default; turning it off says what is still checked and registers without the SSID',
   { timeout: 10_000 },
   () => {
-    const { sent, asked, actions, onAsk } = capture();
+    const { sent, actions } = capture();
     const home = { registration: null, observation: OBSERVATION };
     // 既定は「確かめる」（パネルの初期値）。
     const markup = html(
@@ -207,7 +181,6 @@ test(
         state={state({ home })}
         actions={actions}
         now={NOW}
-        onAsk={onAsk}
         includeSsid={false}
       />,
     );
@@ -221,24 +194,10 @@ test(
         state: state({ home }),
         actions,
         now: NOW,
-        onAsk,
         includeSsid: false,
       }),
     ).get(HOME_LABELS.register)?.();
-    const request = asked[0];
-    assert(request);
-    const body = html(request.body);
-    assert.match(body, /確かめない（Wi-Fi 名は送りません）/u);
-    assert.match(body, /Wi-Fi 名は確かめず、/u);
-    assert.doesNotMatch(body, /合····/u);
-    request.onConfirm();
     assert.deepEqual(sent[0]?.payload, { ref: REF, include_ssid: false });
-    // 入れたときの確認には、伏せた Wi-Fi 名を大きく出す。
-    const on = html(
-      confirmRequest(OBSERVATION, REF, null, NOW, actions, true).body,
-    );
-    assert.match(on, /合····/u);
-    assert.doesNotMatch(on, /Wi-Fi 名は確かめず/u);
   },
 );
 
@@ -246,7 +205,7 @@ test(
   'registered: the subnet, whether an SSID is registered and the last update, with a secondary re-register that warns about replacing',
   { timeout: 10_000 },
   () => {
-    const { sent, asked, actions, onAsk } = capture();
+    const { sent, actions } = capture();
     const wired: DesktopHomeObservation = {
       ...OBSERVATION,
       ssid_hint: null,
@@ -275,16 +234,8 @@ test(
         state: state({ home }),
         actions,
         now: NOW,
-        onAsk,
       }),
     ).get(HOME_LABELS.reregister)?.();
-    assert.equal(sent.length, 0);
-    const request = asked[0];
-    assert(request);
-    assert.equal(request.title, '自宅の登録を今のネットワークで置き換えますか');
-    assert.equal(request.confirmLabel, '登録し直す');
-    assert.match(html(request.body), /置き換わり、元に戻せません/u);
-    request.onConfirm();
     assert.deepEqual(sent[0]?.payload, { ref: REF, include_ssid: true });
     // SSID を登録していない登録。
     assert.match(
@@ -341,7 +292,6 @@ test(
         })}
         actions={actions}
         now={NOW}
-        onAsk={() => undefined}
       />,
     );
     assert.match(short, /···/u);
@@ -362,7 +312,6 @@ test(
           })}
           actions={actions}
           now={NOW}
-          onAsk={() => undefined}
         />,
       ),
       /決められません（無線の接続が複数あります）/u,
@@ -533,6 +482,22 @@ test(
     assert.equal(read.registered, false);
     const sending = markHomeSending(read, register);
     assert.equal(sending.busy, true);
+    // OS の確認で「やめる」を選んだ・main が古い読み取りとして捨てたときは、何も出さず、表示と参照を変えない。
+    for (const reason of [
+      'confirmation_declined',
+      'list_superseded',
+    ] as const) {
+      const quiet = applyHomeResponse(sending, 'desktop.home_register', {
+        request_id: register.request_id,
+        channel: 'desktop.home_register',
+        outcome: 'rejected',
+        reason,
+      });
+      assert.equal(quiet.busy, false);
+      assert.equal(quiet.message, null);
+      assert.equal(quiet.stale, false);
+      assert.deepEqual(quiet.home, home);
+    }
     const changed: DesktopIpcResponse = {
       request_id: register.request_id,
       channel: 'desktop.home_register',
@@ -731,7 +696,6 @@ test(
         })}
         actions={actions}
         now={NOW}
-        onAsk={() => undefined}
       />,
     );
     assert.match(
@@ -753,7 +717,6 @@ test(
         })}
         actions={actions}
         now={NOW}
-        onAsk={() => undefined}
       />,
     );
     assert.match(
@@ -777,7 +740,6 @@ test(
         })}
         actions={actions}
         now={NOW}
-        onAsk={() => undefined}
       />,
     );
     assert.match(redactedNoMac, /位置情報サービス/u);
@@ -799,65 +761,10 @@ test(
           })}
           actions={actions}
           now={NOW}
-          onAsk={() => undefined}
         />,
       ),
       /無線の接続が複数あるため、Wi-Fi 名を決められません。使わない Wi-Fi を切ってから/u,
     );
-  },
-);
-
-test(
-  'review: the re-register confirmation says when the Wi-Fi check changes, shows what to compare against and marks the replacement',
-  { timeout: 10_000 },
-  () => {
-    const { actions } = capture();
-    const wired: DesktopHomeObservation = {
-      ...OBSERVATION,
-      ssid_hint: null,
-      ssid_unavailable_reason: 'unavailable',
-    };
-    // M4: 確かめる登録を、Wi-Fi 名なしで登録し直すと外れる。
-    const off = html(
-      confirmRequest(wired, REF, REGISTRATION, NOW, actions).body,
-    );
-    assert.match(off, /登録し直すと、Wi-Fi 名は確かめなくなります。/u);
-    // 確かめない登録に、Wi-Fi 名を入れて登録し直すと付く。
-    const on = html(
-      confirmRequest(
-        OBSERVATION,
-        REF,
-        { ...REGISTRATION, ssid_registered: false },
-        NOW,
-        actions,
-        true,
-      ).body,
-    );
-    assert.match(on, /登録し直すと、Wi-Fi 名も確かめるようになります/u);
-    // 変わらないときは書かない。
-    assert.doesNotMatch(
-      html(confirmRequest(OBSERVATION, REF, REGISTRATION, NOW, actions).body),
-      /登録し直すと、Wi-Fi 名/u,
-    );
-    // M5: 何と見比べるかを添える。L5: 置き換えの段は ⚠ と太字。
-    assert.match(
-      on,
-      /ルーターのラベルや管理画面の MAC\u00a0アドレスの、最後の\u00a02\u00a0組と同じかを確かめてください。/u,
-    );
-    assert.match(on, /ルーターの管理画面の、LAN 側のアドレスの範囲です。/u);
-    assert.match(
-      on,
-      /<p class="flex items-start gap-1\.5 text-sm leading-6 font-medium">(?:<[^>]+>)*<span>今の登録/u,
-    );
-    // L1: 確かめないときの文は「切っても」を使わない。
-    const ssidOff = html(
-      confirmRequest(OBSERVATION, REF, null, NOW, actions, false).body,
-    );
-    assert.match(
-      ssidOff,
-      /Wi-Fi 名は確かめず、ルーターの MAC\u00a0アドレス・サブネット・Tailscale の直接経路で判定します。/u,
-    );
-    assert.doesNotMatch(ssidOff, /切っても/u);
   },
 );
 
@@ -873,7 +780,6 @@ test(
         state={state({ home, reading: true })}
         actions={actions}
         now={NOW}
-        onAsk={() => undefined}
       />,
     );
     assert.match(String(buttonTag(reading, HOME_LABELS.register)), /disabled/u);
@@ -883,7 +789,6 @@ test(
         state={state({ home, busy: true })}
         actions={actions}
         now={NOW}
-        onAsk={() => undefined}
       />,
     );
     assert.match(String(buttonTag(busy, HOME_LABELS.reread)), /disabled/u);

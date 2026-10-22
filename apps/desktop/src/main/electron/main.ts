@@ -8,6 +8,7 @@ import {
   Menu,
   Tray,
   app,
+  dialog,
   ipcMain,
   nativeImage,
   powerMonitor,
@@ -26,12 +27,14 @@ import {
 } from '@buddy/platform/home-fingerprint';
 import { fileURLToPath } from 'node:url';
 import { DESKTOP_IPC_CHANNELS, type DesktopPowerEvent } from '@buddy/domain';
+import { adminConfirmText } from '../admin-confirm.js';
 import { ConnectionPublisher } from '../connection-publisher.js';
 import { createDesktopContract, loadContractSchema } from '../contract.js';
 import {
   ADMIN_CHANNELS,
   CONNECTION_CHANNELS,
   DesktopCoreLink,
+  type AdminConfirmRequest,
 } from '../core-link.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
 import type { SecretProtector } from '../credential-store.js';
@@ -185,6 +188,9 @@ function createWindow(): BrowserWindow {
       window.hide();
     }
   });
+  // 隠れた・最小化された（前面でなくなった）ら、表示している本人の確認（承認・失効・自宅の登録）を閉じて送らない。
+  window.on('hide', () => link?.closeConfirm());
+  window.on('minimize', () => link?.closeConfirm());
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null;
     rendererReady = false;
@@ -404,7 +410,35 @@ function createLink(
     windowFocused,
     onChange: pushConnection,
     log,
+    confirmAdmin: confirmAdminWithDialog,
   });
+}
+
+// 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。親付きのモーダルな OS の確認ダイアログで、
+// 「やめる」を既定・取り消しにする。ロック・切断で signal が閉じられたら閉じる。ウィンドウがなければ確認できないので送らない。
+async function confirmAdminWithDialog(
+  request: AdminConfirmRequest,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const window = mainWindow;
+  if (window === null || window.isDestroyed() || signal.aborted) return false;
+  const text = adminConfirmText(request);
+  const result = await dialog.showMessageBox(window, {
+    type:
+      request.action === 'approve' ||
+      (request.action === 'register_home' && !request.replacing)
+        ? 'question'
+        : 'warning',
+    title: text.title,
+    message: text.message,
+    detail: text.detail,
+    buttons: [...text.buttons],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    signal,
+  });
+  return !signal.aborted && result.response === 1;
 }
 
 function start(): void {

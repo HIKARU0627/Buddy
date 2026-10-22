@@ -16,6 +16,7 @@ import type {
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
+import type { AdminConfirm, AdminConfirmRequest } from './core-link.js';
 import {
   CREDENTIAL_FILE,
   SecretText,
@@ -59,6 +60,7 @@ async function setup(
     readonly transport?: ClientTransport;
     readonly homeReportIntervalMs?: number;
     readonly hubScreenProbeRetryMs?: number;
+    readonly confirmAdmin?: AdminConfirm;
   } = {},
 ) {
   const dir = await tempDir(t, 'bdl-');
@@ -107,6 +109,9 @@ async function setup(
     ...(options.hubScreenProbeRetryMs === undefined
       ? {}
       : { hubScreenProbeRetryMs: options.hubScreenProbeRetryMs }),
+    ...(options.confirmAdmin === undefined
+      ? {}
+      : { confirmAdmin: options.confirmAdmin }),
   });
   onCleanup(t, () => link.stop());
   const invoke = (
@@ -901,7 +906,10 @@ async function liveHub(
     readonly method: string;
     readonly path: string;
   }) => ClientApiOutcome | null,
-  extra: { readonly hubScreenProbeRetryMs?: number } = {},
+  extra: {
+    readonly hubScreenProbeRetryMs?: number;
+    readonly confirmAdmin?: AdminConfirm;
+  } = {},
 ) {
   const protector = mockProtector();
   const sent: string[] = [];
@@ -1064,14 +1072,18 @@ test(
 
 // CR-L7: 承認の要求を送った後に結果が分からなければ outcome_unknown にし、自動で送り直さず、参照も残す。
 test(
-  'a decision whose result is unknown is reported as outcome_unknown, sent once, and keeps the reference',
+  'a decision whose result is unknown is reported as outcome_unknown, sent once, and held until the list is refreshed',
   { timeout: 30_000 },
   async (t) => {
-    const { admin, sent } = await liveHub(t, (request) => {
-      if (request.method === 'GET' && request.path === '/v1/pairing/claims')
-        return ok(CLAIM_LIST);
-      return null; // 決定の POST は応答の前に切れる（unreachable）。
-    });
+    const { admin, sent } = await liveHub(
+      t,
+      (request) => {
+        if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+          return ok(CLAIM_LIST);
+        return null; // 決定の POST は応答の前に切れる（unreachable）。
+      },
+      { confirmAdmin: confirmYes },
+    );
     const listed = await admin('desktop.claims_list', null);
     const ref = String(
       (listed['claims'] as Record<string, unknown>[])[0]?.['ref'],
@@ -1084,7 +1096,10 @@ test(
     assert.equal(posts().length, 1);
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(posts().length, 1);
-    // 参照は残る（本人が一覧を更新して確かめてから、もう一度押せる）。
+    // 一覧を更新するまで、同じ参照では送らない（本人が結果を確かめてから押し直す）。
+    assert.equal((await decide())['reason'], 'entry_not_found');
+    assert.equal(posts().length, 1);
+    await admin('desktop.claims_list', null);
     assert.equal((await decide())['reason'], 'outcome_unknown');
     assert.equal(posts().length, 2);
   },
@@ -1122,42 +1137,46 @@ test(
   async (t) => {
     let claimLists = 0;
     let deviceLists = 0;
-    const { admin } = await liveHub(t, (request) => {
-      if (request.method === 'GET' && request.path === '/v1/pairing/claims') {
-        claimLists += 1;
-        // 1 回目は判定、2 回目は画面の一覧、3 回目（決定の後の取り直し）は 503。
-        return claimLists <= 2 ? ok(CLAIM_LIST) : unavailable;
-      }
-      if (request.method === 'POST' && request.path.endsWith('/decision'))
-        return ok({
-          claim_id: CLAIM_LIST.claims[0]?.claim_id,
-          status: 'approved',
-        });
-      if (request.method === 'GET' && request.path === '/v1/devices') {
-        deviceLists += 1;
-        return deviceLists === 1
-          ? ok({
-              devices: [
-                {
-                  device_id: '00000000-0000-4000-8000-000000000402',
-                  device_name: '合成の端末',
-                  platform: 'windows',
-                  hub_local: false,
-                  registered_at: '2030-10-01T00:00:00Z',
-                  last_seen_at: null,
-                  revoked_at: null,
-                },
-              ],
-            })
-          : { kind: 'unreachable', reason: 'test' };
-      }
-      if (request.method === 'POST' && request.path.endsWith('/revoke'))
-        return ok({
-          device_id: '00000000-0000-4000-8000-000000000402',
-          revoked_at: '2030-10-01T00:01:00Z',
-        });
-      return null;
-    });
+    const { admin } = await liveHub(
+      t,
+      (request) => {
+        if (request.method === 'GET' && request.path === '/v1/pairing/claims') {
+          claimLists += 1;
+          // 1 回目は判定、2 回目は画面の一覧、3 回目（決定の後の取り直し）は 503。
+          return claimLists <= 2 ? ok(CLAIM_LIST) : unavailable;
+        }
+        if (request.method === 'POST' && request.path.endsWith('/decision'))
+          return ok({
+            claim_id: CLAIM_LIST.claims[0]?.claim_id,
+            status: 'approved',
+          });
+        if (request.method === 'GET' && request.path === '/v1/devices') {
+          deviceLists += 1;
+          return deviceLists === 1
+            ? ok({
+                devices: [
+                  {
+                    device_id: '00000000-0000-4000-8000-000000000402',
+                    device_name: '合成の端末',
+                    platform: 'windows',
+                    hub_local: false,
+                    registered_at: '2030-10-01T00:00:00Z',
+                    last_seen_at: null,
+                    revoked_at: null,
+                  },
+                ],
+              })
+            : { kind: 'unreachable', reason: 'test' };
+        }
+        if (request.method === 'POST' && request.path.endsWith('/revoke'))
+          return ok({
+            device_id: '00000000-0000-4000-8000-000000000402',
+            revoked_at: '2030-10-01T00:01:00Z',
+          });
+        return null;
+      },
+      { confirmAdmin: confirmYes },
+    );
     const listed = await admin('desktop.claims_list', null);
     const claimRef = String(
       (listed['claims'] as Record<string, unknown>[])[0]?.['ref'],
@@ -1195,5 +1214,235 @@ test(
       },
       { outcome: 'ok', list_refreshed: false },
     );
+  },
+);
+
+const confirmYes: AdminConfirm = () => Promise.resolve(true);
+
+// 本人の判断（2026-10-22、ADR 0026）: 承認・拒否・失効は main の OS の確認で確かめたときだけ送る。
+test(
+  'decisions and revocations are sent only after the main-process confirmation; cancel, lock and disconnect send nothing',
+  { timeout: 30_000 },
+  async (t) => {
+    const asked: AdminConfirmRequest[] = [];
+    let answer: (value: boolean) => void = () => undefined;
+    const signals: AbortSignal[] = [];
+    const { link, admin, sent } = await liveHub(
+      t,
+      (request) => {
+        if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+          return ok(CLAIM_LIST);
+        if (request.method === 'POST' && request.path.endsWith('/decision'))
+          return ok({ claim_id: CLAIM_LIST.claims[0]?.claim_id });
+        return null;
+      },
+      {
+        confirmAdmin: (request, signal) => {
+          asked.push(request);
+          signals.push(signal);
+          return new Promise<boolean>((resolve) => {
+            answer = resolve;
+            signal.addEventListener('abort', () => resolve(false));
+          });
+        },
+      },
+    );
+    const posts = () =>
+      sent.filter((entry) => entry.startsWith('POST /v1/pairing/claims/'));
+    const listed = await admin('desktop.claims_list', null);
+    const ref = String(
+      (listed['claims'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    // 確認に出すのは main が持っている値（端末名・OS・確認コード）。
+    const first = admin('desktop.claim_decide', { ref, decision: 'approve' });
+    await waitUntil(() => asked.length === 1, 'asked');
+    assert.deepEqual(asked[0], {
+      action: 'approve',
+      deviceName: '合成の申請',
+      platform: 'windows',
+      claimCheck: '0a1b2c3d',
+      at: '2030-10-01T00:00:00Z',
+    });
+    // 同時に表示するのは 1 つまで。
+    assert.equal(
+      (await admin('desktop.claim_decide', { ref, decision: 'reject' }))[
+        'reason'
+      ],
+      'confirmation_pending',
+    );
+    // 「やめる」では送らない。
+    answer(false);
+    assert.equal((await first)['reason'], 'confirmation_declined');
+    assert.equal(posts().length, 0);
+    // ロックすると確認を閉じ、送らない。
+    const locked = admin('desktop.claim_decide', { ref, decision: 'approve' });
+    await waitUntil(() => asked.length === 2, 'asked again');
+    link.setLockState('locked');
+    assert.equal(signals[1]?.aborted, true);
+    assert.equal((await locked)['reason'], 'device_locked');
+    assert.equal(posts().length, 0);
+    link.setLockState('unlocked');
+    // 確かめたときだけ 1 件送る。
+    await admin('desktop.claims_list', null);
+    const confirmed = admin('desktop.claim_decide', {
+      ref,
+      decision: 'approve',
+    });
+    await waitUntil(() => asked.length === 3, 'asked third');
+    answer(true);
+    assert.equal((await confirmed)['outcome'], 'ok');
+    assert.equal(posts().length, 1);
+    // 切断でも確認を閉じ、送らない（模擬の中枢は同じ申請を返し続けるので、新しい参照で試す）。
+    const again = await admin('desktop.claims_list', null);
+    const nextRef = String(
+      (again['claims'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    const cut = admin('desktop.claim_decide', {
+      ref: nextRef,
+      decision: 'reject',
+    });
+    await waitUntil(() => asked.length === 4, 'asked fourth');
+    link.stop();
+    assert.equal(signals[3]?.aborted, true);
+    assert.notEqual((await cut)['outcome'], 'ok');
+    assert.equal(posts().length, 1);
+  },
+);
+
+test(
+  'without a confirmation component a direct IPC call from the renderer sends nothing',
+  { timeout: 30_000 },
+  async (t) => {
+    const { admin, sent } = await liveHub(t, (request) => {
+      if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+        return ok(CLAIM_LIST);
+      return ok({});
+    });
+    const listed = await admin('desktop.claims_list', null);
+    const ref = String(
+      (listed['claims'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    assert.equal(
+      (await admin('desktop.claim_decide', { ref, decision: 'approve' }))[
+        'reason'
+      ],
+      'confirmation_declined',
+    );
+    assert.equal(
+      sent.filter((entry) => entry.startsWith('POST /v1/pairing/claims/'))
+        .length,
+      0,
+    );
+  },
+);
+
+// ロックをまたいだ一覧・ワンタイムコードは返さない（Codex のレビュー Medium 1）。
+test(
+  'a list or one-time code whose response arrives after the screen locked is not returned',
+  { timeout: 30_000 },
+  async (t) => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let hold = false;
+    const { link, admin } = await liveHub(t, (request) => {
+      if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+        return ok(CLAIM_LIST);
+      return null;
+    });
+    // 一覧の応答を試験が止める（判定の後から）。
+    const connection = link.connection;
+    assert(connection !== null);
+    const original = connection.request.bind(connection);
+    (connection as unknown as { request: typeof original }).request = async (
+      request,
+    ) => {
+      const outcome = await original(request);
+      if (hold) await held;
+      return outcome;
+    };
+    hold = true;
+    const pending = admin('desktop.claims_list', null);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    link.setLockState('locked');
+    release();
+    const response = await pending;
+    assert.equal(response['reason'], 'device_locked');
+    assert.equal('claims' in response, false);
+  },
+);
+
+// 遅れて届いた古い一覧で、表示と参照を戻さない（Codex のレビュー Medium 2）。
+test(
+  'a list started before a later list or a change is superseded and does not restore references',
+  { timeout: 30_000 },
+  async (t) => {
+    const gates: (() => void)[] = [];
+    let lists = 0;
+    const { link, admin, sent } = await liveHub(
+      t,
+      (request) => {
+        if (request.method === 'GET' && request.path === '/v1/devices') {
+          lists += 1;
+          return ok({
+            devices: [
+              {
+                device_id: '00000000-0000-4000-8000-000000000402',
+                device_name: '合成の端末',
+                platform: 'windows',
+                hub_local: false,
+                registered_at: '2030-10-01T00:00:00Z',
+                last_seen_at: null,
+                // 失効の後の一覧（3 回目以降）は失効済み。
+                revoked_at: lists >= 3 ? '2030-10-01T00:01:00Z' : null,
+              },
+            ],
+          });
+        }
+        if (request.method === 'POST' && request.path.endsWith('/revoke'))
+          return ok({});
+        if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+          return ok(CLAIM_LIST);
+        return null;
+      },
+      { confirmAdmin: confirmYes },
+    );
+    const first = await admin('desktop.devices_list', null);
+    const ref = String(
+      (first['devices'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    // 2 回目の一覧（失効の前の状態）の応答を止める。
+    const connection = link.connection;
+    assert(connection !== null);
+    const original = connection.request.bind(connection);
+    let stall = true;
+    (connection as unknown as { request: typeof original }).request = async (
+      request,
+    ) => {
+      const outcome = await original(request);
+      if (stall && request.path === '/v1/devices') {
+        stall = false;
+        await new Promise<void>((resolve) => gates.push(resolve));
+      }
+      return outcome;
+    };
+    const stale = admin('desktop.devices_list', null);
+    await waitUntil(() => gates.length === 1, 'stalled');
+    // 失効（その後の一覧で失効済み）。
+    const revoked = await admin('desktop.device_revoke', { ref });
+    assert.equal(revoked['outcome'], 'ok');
+    assert.equal(
+      (revoked['devices'] as Record<string, unknown>[])[0]?.['ref'],
+      null,
+    );
+    // 止めていた古い一覧が届いても、表示に返さず、参照も戻さない。
+    gates[0]?.();
+    assert.equal((await stale)['reason'], 'list_superseded');
+    assert.equal(
+      (await admin('desktop.device_revoke', { ref }))['reason'],
+      'entry_not_found',
+    );
+    assert.equal(sent.filter((entry) => entry.endsWith('/revoke')).length, 1);
   },
 );

@@ -10,6 +10,7 @@
 // Electron に依存しない。safeStorage・指紋の収集・接続口の一覧は Electron の層が注入する。
 
 import type {
+  DesktopIpcRequest,
   DeviceList,
   PairingClaimList,
   PairingSession,
@@ -49,7 +50,9 @@ import type { SecretProtector, StoredCredential } from './credential-store.js';
 import { DesktopContractError } from './device-controller.js';
 import {
   HOME_COLLECT_TIMEOUT_MS,
+  macTailOf,
   maskHomeObservation,
+  ssidHintOf,
   registrable,
   sameFingerprint,
 } from './home-registration.js';
@@ -137,7 +140,47 @@ export interface DesktopCoreLinkOptions {
   readonly windowFocused?: () => boolean;
   // 中枢の画面の端末かの判定の再試行の間隔の単位（試験で短くする）。
   readonly hubScreenProbeRetryMs?: number;
+  // 承認・拒否・失効の前の本人の確認。省略すると確認できないので送らない。
+  readonly confirmAdmin?: AdminConfirm;
 }
+
+// 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。main が OS の確認ダイアログで行う。
+// 表示する値（端末名・OS・確認コード）は main が中枢から受け取った一覧の値で、画面からは受け取らない。
+// 「やめる」を既定にし、signal で閉じられたら false を返す。Electron の層が dialog.showMessageBox で実装し、試験は注入する。
+export type AdminConfirmRequest = DeviceConfirmRequest | HomeConfirmRequest;
+
+export interface DeviceConfirmRequest {
+  readonly action: 'approve' | 'reject' | 'revoke';
+  readonly deviceName: string;
+  readonly platform: string;
+  // 承認・拒否の確認コード（8 桁の 16 進）。失効では null。
+  readonly claimCheck: string | null;
+  // 申請・登録の時刻（UTC）。
+  readonly at: string;
+}
+
+// 自宅の登録・登録し直しの確認（B03-08）。値は main が読み取った指紋の伏せた表示だけで、生の値を入れない。
+export interface HomeConfirmRequest {
+  readonly action: 'register_home';
+  // 登録し直し（今の登録を置き換える）か。
+  readonly replacing: boolean;
+  // ゲートウェイの MAC の最後の 2 組・サブネット。
+  readonly macTail: string;
+  readonly subnet: string;
+  // Wi-Fi 名（SSID）も確かめるか。確かめるときだけ伏せた表示（先頭の 1 文字と文字数）を出す。
+  readonly includeSsid: boolean;
+  readonly ssidHint: {
+    readonly first: string | null;
+    readonly length: number;
+  } | null;
+  // 登録し直すと Wi-Fi 名の確認が付く・外れるか（変わらなければ null）。
+  readonly ssidChange: 'added' | 'removed' | null;
+}
+
+export type AdminConfirm = (
+  request: AdminConfirmRequest,
+  signal: AbortSignal,
+) => Promise<boolean>;
 
 export interface ConnectionIpcOutcome {
   readonly response: DesktopIpcResponse;
@@ -188,6 +231,18 @@ export class DesktopCoreLink {
   // 一覧ごとに作る参照 → 申請 ID・端末 ID。参照だけを画面へ渡す（ID を画面に持たせない）。
   #claimRefs = new Map<string, string>();
   #deviceRefs = new Map<string, string>();
+  // 一覧の表示用の値（確認のダイアログに出す。参照 → 値）。
+  #claimInfo = new Map<string, DeviceConfirmRequest>();
+  #deviceInfo = new Map<string, DeviceConfirmRequest>();
+  // 結果が分からなかった参照。一覧を取り直すまで操作させない（同じ参照で続けて送らない）。
+  #heldRefs = new Set<string>();
+  // 表示の権限の世代: ロック・切断・接続のやり直しで進める。応答を返すときに照合し、またいだ内容は返さない。
+  #viewGeneration = 0;
+  // 一覧の要求の順: 一覧ごとの通し番号と、これより前に始めた一覧を古いとみなす境目（変更の操作・新しい一覧で進む）。
+  #listSeq = { claims: 0, devices: 0 };
+  #listFloor = { claims: 0, devices: 0 };
+  // 表示している確認（同時に 1 つまで）。世代が進むと閉じる。
+  #confirmAbort: AbortController | null = null;
   // 自宅の登録の参照 → 画面に伏せて見せた指紋（B03-08）。最後に見せた 1 つだけを持つ。
   #homeRef: {
     readonly ref: string;
@@ -196,6 +251,10 @@ export class DesktopCoreLink {
   // 進行中のこのマシンの指紋の収集（コマンドの連鎖）。読み取りを時間切れで見限っても、収集が終わる（settle する）
   // まで残し、その間の要求は同じ収集を待つ（コマンドの連鎖を重ねない。コマンドそのものは runner の時間切れで止まる）。
   #homeCollect: Promise<HomeObservation | 'failed'> | null = null;
+  // 自宅の要求の順（読み取り・登録ごとの通し番号）。読み取りの応答は、後から始めた要求があれば古いとして返さない。
+  #homeSeq = 0;
+  // 最後に読んだ中枢の登録（登録し直しの確認に、置き換えと Wi-Fi 名の確認の変化を出すため）。
+  #homeRegistration: HomeRegistration | null = null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -266,6 +325,7 @@ export class DesktopCoreLink {
   setLockState(lockState: ClientLockState): void {
     if (lockState === this.#lockState) return;
     this.#lockState = lockState;
+    if (lockState !== 'unlocked') this.#bumpGeneration();
     this.#connection?.setLockState(lockState);
     if (lockState === 'unlocked') void this.#probeHubScreen();
     // ロックした・不明になったら、自宅の登録の参照を捨てる（解除の後に読み取り直して確かめ直す。B03-08）。
@@ -471,6 +531,7 @@ export class DesktopCoreLink {
   }
 
   #connect(credential: StoredCredential): void {
+    this.#bumpGeneration();
     this.#registration = 'registered';
     this.#hubTarget = { host: credential.hub.host, port: credential.hub.port };
     const hub: PinnedHub = credential.hub;
@@ -508,6 +569,17 @@ export class DesktopCoreLink {
         this.#hubScreen = null;
         this.#reporter?.stop();
       }
+      // 接続が切れたら（待ち・再登録・版違い）、表示している確認を閉じ、またいだ応答を返さない。届いたイベントでの
+      // 取り直し（snapshotting・subscribing）は同じ接続の中なので世代を進めない。
+      if (
+        previous.phase !== state.phase &&
+        (state.phase === 'waiting_retry' ||
+          state.phase === 'reregistration_required' ||
+          state.phase === 'upgrade_required' ||
+          state.phase === 'idle' ||
+          state.phase === 'stopped')
+      )
+        this.#bumpGeneration();
       // 接続するたびに中枢の画面の端末かを確かめる（B03-06）。
       if (state.phase === 'live' && previous.phase !== 'live') {
         this.#probeRetries = 0;
@@ -650,9 +722,59 @@ export class DesktopCoreLink {
       connection.state.phase !== 'live'
     )
       return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
     if (this.#hubScreen === null) await this.#probeHubScreen();
     if (this.#hubScreen !== true)
       return this.#reject(raw.request_id, raw.channel, 'hub_screen_required');
+    const outcome = await this.#admin(raw, connection);
+    return this.#withinGeneration(generation, outcome);
+  }
+
+  // ロック・切断をまたいだ一覧・コードは返さない（またいだ変更の操作の結果も、表示の内容は渡さない）。
+  #withinGeneration(
+    generation: number,
+    outcome: ConnectionIpcOutcome,
+  ): ConnectionIpcOutcome {
+    if (generation === this.#viewGeneration && this.#lockState === 'unlocked')
+      return outcome;
+    const response = outcome.response;
+    if (response.outcome === 'rejected') return outcome;
+    return this.#reject(
+      response.request_id,
+      response.channel,
+      this.#lockState === 'unlocked' ? 'not_connected' : 'device_locked',
+    );
+  }
+
+  // 本人の確認（OS の確認ダイアログ）。同時に 1 つまで。世代が進むと閉じて「送らない」。
+  async #confirm(
+    request: AdminConfirmRequest,
+  ): Promise<'confirmed' | DesktopIpcRejectReason> {
+    const confirm = this.#options.confirmAdmin;
+    if (confirm === undefined) return 'confirmation_declined';
+    if (this.#confirmAbort !== null) return 'confirmation_pending';
+    const generation = this.#viewGeneration;
+    const controller = new AbortController();
+    this.#confirmAbort = controller;
+    let confirmed: boolean;
+    try {
+      confirmed = await confirm(request, controller.signal);
+    } catch {
+      confirmed = false;
+    } finally {
+      if (this.#confirmAbort === controller) this.#confirmAbort = null;
+    }
+    if (generation !== this.#viewGeneration)
+      return this.#lockState === 'unlocked' ? 'not_connected' : 'device_locked';
+    // ウィンドウが隠れた・最小化された（前面でなくなった）ので閉じた。画面操作からやり直す。
+    if (controller.signal.aborted) return 'screen_operation_required';
+    return confirmed ? 'confirmed' : 'confirmation_declined';
+  }
+
+  async #admin(
+    raw: DesktopIpcRequest,
+    connection: ClientConnection,
+  ): Promise<ConnectionIpcOutcome> {
     const requestId = raw.request_id;
     switch (raw.channel) {
       case 'desktop.claims_list':
@@ -661,8 +783,21 @@ export class DesktopCoreLink {
         return this.#listDevices(requestId, raw.channel);
       case 'desktop.claim_decide': {
         const claimId = this.#claimRefs.get(raw.payload.ref);
-        if (claimId === undefined)
+        const info = this.#claimInfo.get(raw.payload.ref);
+        if (
+          claimId === undefined ||
+          info === undefined ||
+          this.#heldRefs.has(raw.payload.ref)
+        )
           return this.#reject(requestId, raw.channel, 'entry_not_found');
+        const confirmed = await this.#confirm({
+          ...info,
+          action: raw.payload.decision,
+        });
+        if (confirmed !== 'confirmed')
+          return this.#reject(requestId, raw.channel, confirmed);
+        // これより前に始めた申請の一覧は古い（決めた申請を戻さない）。
+        this.#listFloor.claims = ++this.#listSeq.claims;
         const outcome = await connection.request({
           method: 'POST',
           path: `/v1/pairing/claims/${encodeURIComponent(claimId)}/decision`,
@@ -672,8 +807,8 @@ export class DesktopCoreLink {
         });
         const failed = this.#adminFailure(outcome, 200);
         if (failed !== null) {
-          if (failed !== 'outcome_unknown')
-            this.#claimRefs.delete(raw.payload.ref);
+          if (failed === 'outcome_unknown') this.#heldRefs.add(raw.payload.ref);
+          else this.#claimRefs.delete(raw.payload.ref);
           return this.#reject(requestId, raw.channel, failed);
         }
         this.#log(`hub_claim_decided:${raw.payload.decision}`);
@@ -685,8 +820,17 @@ export class DesktopCoreLink {
       }
       case 'desktop.device_revoke': {
         const deviceId = this.#deviceRefs.get(raw.payload.ref);
-        if (deviceId === undefined)
+        const info = this.#deviceInfo.get(raw.payload.ref);
+        if (
+          deviceId === undefined ||
+          info === undefined ||
+          this.#heldRefs.has(raw.payload.ref)
+        )
           return this.#reject(requestId, raw.channel, 'entry_not_found');
+        const confirmed = await this.#confirm(info);
+        if (confirmed !== 'confirmed')
+          return this.#reject(requestId, raw.channel, confirmed);
+        this.#listFloor.devices = ++this.#listSeq.devices;
         const outcome = await connection.request({
           method: 'POST',
           path: `/v1/devices/${encodeURIComponent(deviceId)}/revoke`,
@@ -695,8 +839,10 @@ export class DesktopCoreLink {
           scoped: true,
         });
         const failed = this.#adminFailure(outcome, 200);
-        if (failed !== null)
+        if (failed !== null) {
+          if (failed === 'outcome_unknown') this.#heldRefs.add(raw.payload.ref);
           return this.#reject(requestId, raw.channel, failed);
+        }
         this.#deviceRefs.delete(raw.payload.ref);
         this.#log('hub_device_revoked');
         return this.#afterApplied(
@@ -764,6 +910,7 @@ export class DesktopCoreLink {
     const connection = this.#connection;
     if (connection === null)
       return this.#reject(requestId, channel, 'not_connected');
+    const seq = ++this.#listSeq.claims;
     const outcome = await connection.request({
       method: 'GET',
       path: '/v1/pairing/claims',
@@ -773,14 +920,27 @@ export class DesktopCoreLink {
       return this.#reject(requestId, channel, failed ?? 'not_connected');
     if (!this.#options.contract.valid('PairingClaimList', outcome.body))
       return this.#reject(requestId, channel, 'core_rejected');
+    // 後から始めた一覧・変更の操作に追い越された古い一覧では、参照も表示も戻さない。
+    if (seq < this.#listFloor.claims)
+      return this.#reject(requestId, channel, 'list_superseded');
+    this.#listFloor.claims = seq;
     // 同じ申請には同じ参照を使う（取り直しの間に確認を開いていても参照が古くならない）。一覧から消えたものは捨てる。
     const previousClaims = this.#claimRefs;
     this.#claimRefs = new Map();
+    this.#claimInfo = new Map();
+    this.#heldRefs.clear();
     const claims = (outcome.body as PairingClaimList).claims.map((claim) => {
       const ref =
         refFor(previousClaims, claim.claim_id) ??
         this.#options.clock.newRequestId();
       this.#claimRefs.set(ref, claim.claim_id);
+      this.#claimInfo.set(ref, {
+        action: 'approve',
+        deviceName: claim.device_name,
+        platform: claim.platform,
+        claimCheck: claim.claim_check,
+        at: claim.claimed_at,
+      });
       return {
         ref,
         device_name: claim.device_name,
@@ -805,6 +965,7 @@ export class DesktopCoreLink {
     const connection = this.#connection;
     if (connection === null)
       return this.#reject(requestId, channel, 'not_connected');
+    const seq = ++this.#listSeq.devices;
     const outcome = await connection.request({
       method: 'GET',
       path: '/v1/devices',
@@ -814,9 +975,14 @@ export class DesktopCoreLink {
       return this.#reject(requestId, channel, failed ?? 'not_connected');
     if (!this.#options.contract.valid('DeviceList', outcome.body))
       return this.#reject(requestId, channel, 'core_rejected');
+    if (seq < this.#listFloor.devices)
+      return this.#reject(requestId, channel, 'list_superseded');
+    this.#listFloor.devices = seq;
     const self = connection.state.deviceId;
     const previousDevices = this.#deviceRefs;
     this.#deviceRefs = new Map();
+    this.#deviceInfo = new Map();
+    this.#heldRefs.clear();
     const devices = (outcome.body as DeviceList).devices.map((device) => {
       const thisDevice = device.device_id === self;
       // この端末と失効済みの端末には参照を作らない（画面から失効できない）。
@@ -826,6 +992,13 @@ export class DesktopCoreLink {
           refFor(previousDevices, device.device_id) ??
           this.#options.clock.newRequestId();
         this.#deviceRefs.set(ref, device.device_id);
+        this.#deviceInfo.set(ref, {
+          action: 'revoke',
+          deviceName: device.device_name,
+          platform: device.platform,
+          claimCheck: null,
+          at: device.registered_at,
+        });
       }
       return {
         ref,
@@ -856,6 +1029,9 @@ export class DesktopCoreLink {
     const connection = this.#connection;
     if (connection === null)
       return this.#reject(requestId, channel, 'not_connected');
+    this.#homeSeq += 1;
+    const seq = this.#homeSeq;
+    const generation = this.#viewGeneration;
     const [outcome, reading] = await Promise.all([
       connection.request({
         method: 'GET',
@@ -863,15 +1039,25 @@ export class DesktopCoreLink {
       }),
       this.#readHubHome(),
     ]);
-    // 読み取りの間に切断・登録し直しがあれば、前の接続の参照を作らない。
+    // 読み取りの間に切断・登録し直し・ロックがあれば、前の接続・ロックの前の参照を作らない（表示の権限の世代）。
     if (connection !== this.#connection)
       return this.#reject(requestId, channel, 'not_connected');
+    if (generation !== this.#viewGeneration || this.#lockState !== 'unlocked')
+      return this.#reject(
+        requestId,
+        channel,
+        this.#lockState === 'unlocked' ? 'not_connected' : 'device_locked',
+      );
     const failed = this.#adminFailure(outcome, 200, true);
     if (failed !== null || outcome.kind !== 'response')
       return this.#reject(requestId, channel, failed ?? 'not_connected');
     if (!this.#options.contract.valid('HomeRegistrationState', outcome.body))
       return this.#reject(requestId, channel, 'core_rejected');
+    // 後から読み取り・登録を始めていれば、この応答は古い（表示と参照を戻さない）。
+    if (seq !== this.#homeSeq)
+      return this.#reject(requestId, channel, 'list_superseded');
     const registration = (outcome.body as HomeRegistrationState).registration;
+    this.#homeRegistration = registration;
     let ref: string | null = null;
     if (reading !== null && registrable(reading.fingerprint)) {
       const previous = this.#homeRef;
@@ -901,6 +1087,19 @@ export class DesktopCoreLink {
     const pending = this.#homeRef;
     if (pending === null || pending.ref !== ref)
       return this.#reject(requestId, channel, 'entry_not_found');
+    // 登録の後の古い読み取りの応答は返さない（要求の順を進める）。
+    this.#homeSeq += 1;
+    // 本人の確認（承認・失効と同じ OS の確認ダイアログ。「やめる」が既定。ロック・切断で閉じる。本人の判断
+    // 2026-10-22）。出すのは伏せた値だけ。確認されたときだけ先へ進む。
+    const confirmed = await this.#confirm(
+      homeConfirmRequest(
+        pending.fingerprint,
+        includeSsid,
+        this.#homeRegistration,
+      ),
+    );
+    if (confirmed !== 'confirmed')
+      return this.#reject(requestId, channel, confirmed);
     // 確認の後に始めた読み取りの値と比べる（進行中の読み取りに相乗りしない）。
     const reading = await this.#readHubHome(true);
     if (connection !== this.#connection)
@@ -945,6 +1144,7 @@ export class DesktopCoreLink {
     this.#log(
       `hub_home_registered:${includeSsid && pending.fingerprint.ssid !== null ? 'with_ssid' : 'without_ssid'}`,
     );
+    this.#homeRegistration = outcome.body as HomeRegistration;
     return this.#homeResponse(
       requestId,
       channel,
@@ -1089,7 +1289,23 @@ export class DesktopCoreLink {
     return 'core_rejected';
   }
 
+  // 表示している確認を閉じて「送らない」にする（ウィンドウが隠れた・最小化されたとき。Electron の層が呼ぶ）。
+  // 表示の権限の世代は進めない（参照・一覧は残し、前面に戻して押し直せる）。
+  closeConfirm(): void {
+    this.#confirmAbort?.abort();
+    this.#confirmAbort = null;
+  }
+
+  // 表示の権限の世代を進め、表示している確認を閉じる。
+  #bumpGeneration(): void {
+    this.#viewGeneration += 1;
+    this.#confirmAbort?.abort();
+    this.#confirmAbort = null;
+  }
+
   #disconnect(): void {
+    this.#bumpGeneration();
+    this.#heldRefs.clear();
     this.#hubScreen = null;
     this.#cancelProbeRetry();
     this.#probeRetries = 0;
@@ -1179,4 +1395,30 @@ function echoChannel(
     (DESKTOP_IPC_CHANNELS as readonly string[]).includes(channel)
     ? (channel as DesktopIpcChannel)
     : null;
+}
+
+// 自宅の登録の確認に出す伏せた値（B03-08）。MAC は最後の 2 組、SSID は先頭の 1 文字と文字数だけ。
+function homeConfirmRequest(
+  fingerprint: HomeFingerprint,
+  includeSsid: boolean,
+  registration: HomeRegistration | null,
+): HomeConfirmRequest {
+  const sendsSsid = includeSsid && fingerprint.ssid !== null;
+  return {
+    action: 'register_home',
+    replacing: registration !== null,
+    macTail: macTailOf(fingerprint.gateway_mac ?? ''),
+    subnet: fingerprint.subnet ?? '',
+    includeSsid: sendsSsid,
+    ssidHint:
+      sendsSsid && fingerprint.ssid !== null
+        ? ssidHintOf(fingerprint.ssid)
+        : null,
+    ssidChange:
+      registration === null || registration.ssid_registered === sendsSsid
+        ? null
+        : sendsSsid
+          ? 'added'
+          : 'removed',
+  };
 }

@@ -1,9 +1,10 @@
 // 中枢の画面の「自宅のネットワーク」のタブ（設計 11 §10、ADR 0022・0024・0026、B03-08）。
 // 上から「説明 → 登録している自宅 → このマシンが今つながっているネットワーク（伏せた表示・登録のボタン）」。
-// 登録・登録し直しは確認（ConfirmDialog）を挟んでから送る。画面に来るのは伏せた表示と main の参照だけで、
+// 登録・登録し直しは、main が OS の確認ダイアログで本人に確かめてから送る（承認・失効と同じ。本人の判断 2026-10-22、
+// ADR 0026。画面の中の確認は使わない）。画面に来るのは伏せた表示と main の参照だけで、
 // MAC・SSID の値はない。タブを開いたときに main へ読み取りを頼む。状態と操作は引数で受け取り、限定 API を直接呼ばない。
 // UI レビュー 2 回目の約束（ADR 0024 の追記）: 失敗の Alert は warning（danger は証明書の変化だけ）で記号を付ける。
-// 操作の結果の文言は押したボタンのすぐ下に出す。確認のダイアログでは、確かめる値を大きな等幅で別の段に出す。
+// 操作の結果の文言は押したボタンのすぐ下に出す。
 // 数字と単位の間は改行しない空白（U+00A0）にする（UI レビュー 3 回目の決定。`NB` を使う）。
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -27,8 +28,6 @@ import { StatusMark, StatusText } from '../../components/StatusText.js';
 import { clockOf } from '../../format.js';
 import type { HomeActions, HomeViewState } from '../../state/home-state.js';
 import type { StatusLine } from '../../tones.js';
-import { ConfirmDialog } from './ConfirmDialog.js';
-import type { ConfirmRequest } from './ConfirmDialog.js';
 
 // 改行しない空白（数字と単位の間・「MAC アドレス」の間）。
 const NB = '\u00a0';
@@ -308,7 +307,6 @@ export function CurrentNetworkSection({
   state,
   actions,
   now,
-  onAsk,
   includeSsid = true,
   onIncludeSsidChange = () => undefined,
   paused = false,
@@ -317,7 +315,6 @@ export function CurrentNetworkSection({
   readonly state: HomeViewState;
   readonly actions: HomeActions;
   readonly now: number;
-  readonly onAsk: (request: ConfirmRequest) => void;
   // 中枢との接続を待っている（表示を残して、読み取り直し・登録を止める）。
   readonly paused?: boolean;
   // この端末の入出力が止まっている（停止の帯の再開を 1 画面の primary にするため、登録は secondary）。
@@ -436,18 +433,7 @@ export function CurrentNetworkSection({
                     registration === null && !stopped ? 'primary' : 'secondary'
                   }
                   isDisabled={state.busy || state.reading || paused}
-                  onPress={() =>
-                    onAsk(
-                      confirmRequest(
-                        observation,
-                        ref,
-                        registration,
-                        now,
-                        actions,
-                        includeSsid,
-                      ),
-                    )
-                  }
+                  onPress={() => actions.register(ref, includeSsid)}
                 >
                   {registration === null
                     ? HOME_LABELS.register
@@ -465,129 +451,6 @@ export function CurrentNetworkSection({
   );
 }
 
-// 確認のダイアログで確かめる値（大きな等幅で、値ごとに別の段に出す。ADR 0024 の UI レビュー 2 回目の追記 6）。
-// 値の下に、何と見比べるかを添える（UI レビュー M5）。
-function ConfirmValues({
-  observation,
-  includeSsid,
-}: {
-  readonly observation: DesktopHomeObservation;
-  readonly includeSsid: boolean;
-}) {
-  const value = 'text-2xl font-semibold tracking-wider';
-  const items: [string, ReactNode, string | null][] = [
-    [
-      `${MAC_ADDRESS}（最後の${NB}2${NB}組）`,
-      observation.gateway_mac_tail === null ? null : (
-        <MaskedMac tail={observation.gateway_mac_tail} className={value} />
-      ),
-      `ルーターのラベルや管理画面の MAC${NB}アドレスの、最後の${NB}2${NB}組と同じかを確かめてください。`,
-    ],
-    [
-      'サブネット',
-      <span
-        key="subnet"
-        className={`font-mono whitespace-nowrap tabular-nums ${value}`}
-      >
-        {observation.subnet}
-      </span>,
-      'ルーターの管理画面の、LAN 側のアドレスの範囲です。',
-    ],
-    [
-      'Wi-Fi 名（SSID）',
-      observation.ssid_hint !== null && includeSsid ? (
-        <MaskedSsid hint={observation.ssid_hint} className={value} />
-      ) : observation.ssid_hint !== null ? (
-        <span className="text-sm">確かめない（Wi-Fi 名は送りません）</span>
-      ) : (
-        <span className="text-sm">
-          {
-            SSID_REASON_LABELS[
-              observation.ssid_unavailable_reason ?? 'unavailable'
-            ]
-          }
-        </span>
-      ),
-      null,
-    ],
-  ];
-  return (
-    <div className="flex flex-col gap-3">
-      {items.map(([label, shown, note]) => (
-        <div key={label} className="flex flex-col gap-1">
-          <p className="text-sm font-medium">{label}</p>
-          <p>{shown}</p>
-          {note === null ? null : (
-            <p className="text-xs leading-5 text-muted">{note}</p>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// 登録・登録し直しの確認。読み取った内容（伏せた表示）を見せ、登録の意味と置き換えを書く。
-// 登録し直しは前に進む操作なので accent のまま。元に戻せないことは ⚠ と文で示す（UI レビュー L5、ADR 0024）。
-export function confirmRequest(
-  observation: DesktopHomeObservation,
-  ref: string,
-  registration: HomeRegistration | null,
-  now: number,
-  actions: HomeActions,
-  includeSsid = true,
-): ConfirmRequest {
-  const sendsSsid = observation.ssid_hint !== null && includeSsid;
-  const ssidOff = observation.ssid_hint !== null && !includeSsid;
-  // 登録し直すと Wi-Fi 名の確認が付く・外れるか（UI レビュー M4）。
-  const ssidChange =
-    registration === null || registration.ssid_registered === sendsSsid
-      ? null
-      : sendsSsid
-        ? '登録し直すと、Wi-Fi 名も確かめるようになります（Wi-Fi 名の違う端末は接続できなくなります）。'
-        : '登録し直すと、Wi-Fi 名は確かめなくなります。';
-  return {
-    title:
-      registration === null
-        ? 'このネットワークを自宅として登録しますか'
-        : '自宅の登録を今のネットワークで置き換えますか',
-    body: (
-      <div className="flex flex-col gap-4">
-        <ConfirmValues observation={observation} includeSsid={includeSsid} />
-        <p className="text-sm leading-6">
-          登録すると、ほかのマシンの端末は、このネットワークにつながっていて
-          Tailscale で直接つながっているときだけ中枢に接続できます。
-        </p>
-        {ssidOff ? (
-          <p className="text-sm leading-6">
-            {`Wi-Fi 名は確かめず、${MAC_ADDRESS}・サブネット・Tailscale の直接経路で判定します。`}
-          </p>
-        ) : null}
-        {ssidChange === null ? null : (
-          <p className="text-sm leading-6">{ssidChange}</p>
-        )}
-        {registration === null ? null : (
-          <p className="flex items-start gap-1.5 text-sm leading-6 font-medium">
-            <span className="mt-1 flex shrink-0">
-              <StatusMark line={UNAVAILABLE} />
-            </span>
-            <span>
-              今の登録（
-              <span className="font-mono">{registration.subnet}</span>・
-              <span className="tabular-nums">
-                {clockOf(registration.registered_at, now, { date: true })}
-              </span>
-              ）は置き換わり、元に戻せません。前のネットワークにいる端末は接続できなくなります。
-            </span>
-          </p>
-        )}
-      </div>
-    ),
-    confirmLabel: registration === null ? '登録する' : '登録し直す',
-    tone: 'accent',
-    onConfirm: () => actions.register(ref, includeSsid),
-  };
-}
-
 export function HomeNetworkPanel({
   state,
   actions,
@@ -601,7 +464,6 @@ export function HomeNetworkPanel({
   readonly paused?: boolean;
   readonly stopped?: boolean;
 }) {
-  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const registration = state.home?.registration ?? null;
   // Wi-Fi 名（SSID）も確かめるか（本人の判断 2026-10-22）。未登録なら確かめる。登録済みなら今の登録に合わせ、
   // 登録が変わったら合わせ直す（Checkbox が「今の設定」と食い違って見えないように。UI レビュー M1）。
@@ -651,13 +513,11 @@ export function HomeNetworkPanel({
         state={state}
         actions={actions}
         now={now}
-        onAsk={setConfirm}
         includeSsid={includeSsid}
         onIncludeSsidChange={setIncludeSsid}
         paused={paused}
         stopped={stopped}
       />
-      <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </div>
   );
 }

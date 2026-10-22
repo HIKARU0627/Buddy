@@ -791,6 +791,9 @@ export type DesktopIpcResponse =
         | 'outcome_unknown'
         | 'fingerprint_tail_mismatch'
         | 'pairing_host_not_allowed'
+        | 'confirmation_declined'
+        | 'confirmation_pending'
+        | 'list_superseded'
         | 'home_network_changed';
     };
 /**

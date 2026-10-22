@@ -79,8 +79,9 @@ export interface EventStreamOptions {
 export interface EventStreamManager extends ApiEventStream {
   // 開いている購読の数（診断・試験用）。
   readonly openCount: number;
-  // 中枢の停止。すべての購読を 1001 で閉じる。
-  closeAll(): void;
+  // 中枢の停止。すべての購読を 1001 で閉じ、close の往復（または打ち切り）が終わるまで待つ。
+  // 下の層（HTTPS の接続）を先に切ると close フレームが届かない（Windows で 1006 になった）。
+  closeAll(): Promise<void>;
 }
 
 type CloseReason = keyof typeof STREAM_CLOSE_CODES | ResnapshotReason;
@@ -92,6 +93,8 @@ export function createEventStream(
   const pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
   const maxBuffered = options.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_BYTES;
   const sessions = new Set<(reason: CloseReason) => void>();
+  // 閉じ始めた購読の、close の完了（打ち切りを含む）。
+  const closing = new Set<Promise<void>>();
   const maxPerDevice =
     options.maxStreamsPerDevice ?? DEFAULT_MAX_STREAMS_PER_DEVICE;
   // 端末ごとの開いている購読の数。切り替えた直後（open）に同期で数え、閉じたら（cleanup）減らす。
@@ -174,7 +177,14 @@ export function createEventStream(
         : STREAM_CLOSE_CODES[reason];
       const fallback = setTimeout(() => client.terminate(), CLOSE_FALLBACK_MS);
       fallback.unref();
-      client.once('close', () => clearTimeout(fallback));
+      const done = new Promise<void>((resolve) => {
+        client.once('close', () => {
+          clearTimeout(fallback);
+          resolve();
+        });
+      });
+      closing.add(done);
+      void done.then(() => closing.delete(done));
       if (resnapshot)
         client.send(JSON.stringify({ type: 'resnapshot_required', reason }));
       client.close(code, reason);
@@ -319,8 +329,9 @@ export function createEventStream(
     get openCount() {
       return sessions.size;
     },
-    closeAll() {
+    async closeAll() {
       for (const finish of [...sessions]) finish('core_stopping');
+      await Promise.all([...closing]);
     },
   };
 }

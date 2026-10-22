@@ -112,7 +112,7 @@ async function startApi(
   });
   await api.listen();
   onCleanup(t, async () => {
-    streams.closeAll();
+    await streams.closeAll();
     await api.close(0);
   });
   return {

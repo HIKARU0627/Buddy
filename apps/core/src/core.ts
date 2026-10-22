@@ -472,7 +472,7 @@ export async function startCore(
     runner?.close();
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
-      streams?.closeAll();
+      await streams?.closeAll();
       feed?.close();
     });
     await step(async () => api?.close(options.shutdownGraceMs ?? 2000));

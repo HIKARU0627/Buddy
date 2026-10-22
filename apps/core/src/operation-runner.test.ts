@@ -29,7 +29,11 @@ import {
   startEventCore,
 } from './event-test-support.js';
 import type { EventCore } from './event-test-support.js';
+import type { DataKeyProvider } from '@buddy/storage';
+import { createApiContract } from './api-contract.js';
 import { mockMailPorts } from './mock-mail-ports.js';
+import { createOperationRunner } from './operation-runner.js';
+import type { RunnerStore } from './operation-runner.js';
 import type { ProviderReader, ProviderWriter } from './turn-ports.js';
 
 interface FaultCase {
@@ -796,5 +800,83 @@ test(
       (await operationOf(core, who, operationId))['state'],
       'succeeded',
     );
+  },
+);
+
+// 排他の単体の試験（レビュー P2）。DB worker の照会を関門で止めた偽物の store で、照合の最中に届いた実行の開始を
+// 捨てないこと、別の要求の照合はすぐに断ること、同じ要求の照合だけを待つことを確かめる。
+test(
+  'a start arriving while a reconcile holds the operation is run afterwards, and only the same reconcile request waits',
+  { timeout: TIMEOUT },
+  async () => {
+    const views: ((value: unknown) => void)[] = [];
+    let viewCalls = 0;
+    const store = {
+      storeGeneration: 'g',
+      query: () => {
+        viewCalls += 1;
+        return new Promise((resolve) => views.push(resolve));
+      },
+      submit: () => assert.fail('submit は呼ばない'),
+      conversation: () => assert.fail('conversation は呼ばない'),
+      consumeDispatchPermit: () => false,
+    };
+    const runner = createOperationRunner({
+      store: store as unknown as RunnerStore,
+      keyStore: {
+        loadDataKey: () => Promise.reject(new Error('unused')),
+      } as unknown as DataKeyProvider,
+      provider: null,
+      writer: null,
+      faults: new FaultInjector(),
+      contract: createApiContract(),
+      log: () => undefined,
+    });
+    const operationId = randomUUID();
+    const request = {
+      command_scope_id: randomUUID(),
+      request_id: randomUUID(),
+      request_hash: 'a'.repeat(64),
+    };
+    const first = runner.reconcile(operationId, '6', request, 'cmd-a');
+    assert.equal(viewCalls, 1);
+    // 別の要求の照合は、待たずに断る。
+    assert.equal(
+      await runner.reconcile(operationId, '6', request, 'cmd-b'),
+      null,
+    );
+    // 同じ要求の照合は、先の照合が終わるまで待つ。
+    let sameDone = false;
+    const same = runner
+      .reconcile(operationId, '6', request, 'cmd-a')
+      .then((value) => {
+        sameDone = true;
+        return value;
+      });
+    // 照合の最中に届いた実行の開始（retry の保存の後）。
+    runner.start(operationId);
+    assert.equal(viewCalls, 1);
+    await Promise.resolve();
+    assert.equal(sameDone, false);
+    // 照合は対象外の状態（not_executed）を読んで終わる。
+    views.shift()?.({
+      operation_id: operationId,
+      state: 'not_executed',
+      attempt_id: 'at-1',
+    });
+    assert.equal(await first, null);
+    assert.equal(await same, null);
+    // 排他が外れた後に、預かった開始が状態を読み直す。
+    await withTimeout(
+      (async () => {
+        while (viewCalls < 2)
+          await new Promise((resolve) => setImmediate(resolve));
+      })(),
+      5_000,
+      'pending start',
+    );
+    views.shift()?.(null);
+    await idle({ handle: { runner } } as unknown as EventCore);
+    assert.equal(viewCalls, 2);
   },
 );

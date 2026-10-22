@@ -33,6 +33,7 @@ import type {
 import { apiErrorResponse } from './api-server.js';
 import type { ApiEventStream, ApiHandlerRequest } from './api-server.js';
 import type { DeviceConnections } from './device-connections.js';
+import type { FaultHook } from './turn-ports.js';
 import { cursorReplayDecision, decodeEventCursor } from './event-cursor.js';
 import type { ResnapshotReason } from './event-cursor.js';
 import type {
@@ -70,6 +71,9 @@ export interface EventStreamOptions {
   readonly pingIntervalMs?: number;
   readonly maxBufferedBytes?: number;
   readonly maxStreamsPerDevice?: number;
+  // 故障点（試験用、ADR 0030）。イベントを送った後・端末の ACK（cursor の前進）の前。注入で例外になれば、
+  // 配信の後に接続を失ったものとして閉じる（端末は cursor から再開する）。
+  readonly faults?: FaultHook;
 }
 
 export interface EventStreamManager extends ApiEventStream {
@@ -206,8 +210,16 @@ export function createEventStream(
         finish('slow_consumer');
         return false;
       }
-      for (const event of events)
+      for (const event of events) {
         client.send(JSON.stringify({ type: 'event', event }));
+        options.faults
+          ?.hit('after_event_delivery_before_ack', {
+            operation_id: event.operation_id,
+          })
+          .catch(() => {
+            finish('dependency_unavailable');
+          });
+      }
       return true;
     };
 

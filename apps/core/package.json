@@ -17,6 +17,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@buddy/connectors": "workspace:*",
     "@buddy/contracts": "workspace:*",
     "@buddy/domain": "workspace:*",
     "@buddy/platform": "workspace:*",

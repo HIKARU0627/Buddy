@@ -229,7 +229,7 @@ test(
     const first = await start(t, dataDir);
     assert.equal(first.storeGenerationSource, 'created');
     assert.equal(first.dataKeyCheck, 'stored');
-    assert.equal(first.schemaVersion, 3);
+    assert.equal(first.schemaVersion, 4);
     assert.deepEqual(first.recovery, { held: [], resumable: [] });
 
     const plans: Record<string, DbCommand[]> = {

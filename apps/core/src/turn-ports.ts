@@ -77,6 +77,58 @@ export interface ProviderReader {
   listEvents(): Promise<readonly ProviderEvent[]>;
 }
 
+// 連携の provider への書込み（B04-04、ADR 0030）。形は #87 の MockMailConnector の書込みに合わせた。
+// 毎回 1 回だけ送り、自動では再送しない（再送・照合は Core の実行担当が決める）。
+export interface ProviderWriteIdentity {
+  readonly operation_id: string;
+  readonly attempt_id: string;
+  readonly step_id?: string;
+}
+
+export type ProviderWriteOutcome<T> =
+  // 相手が適用して応答した。
+  | { readonly kind: 'applied'; readonly status: number; readonly value: T }
+  // 相手が適用せずに拒否した（4xx）。
+  | { readonly kind: 'rejected'; readonly status: number; readonly code: string }
+  // 接続できず、要求は送られていない。
+  | { readonly kind: 'not_sent' }
+  // 適用されたか分からない（時間切れ・切断・5xx・形の違う応答）。
+  | { readonly kind: 'unknown'; readonly reason: string };
+
+export interface ProviderWriter {
+  changeLabels(
+    identity: ProviderWriteIdentity,
+    change: {
+      readonly remote_id: string;
+      readonly add: readonly string[];
+      readonly remove: readonly string[];
+    },
+  ): Promise<ProviderWriteOutcome<ProviderMailTarget>>;
+}
+
+// Core 側の故障点（tests/integration/fault-points.json の fault_points、ADR 0028）。製品では何もしない。
+// 試験は @buddy/connectors の FaultInjector を渡す（構造が同じ）。
+export type CoreFaultPoint =
+  | 'before_approval_save'
+  | 'after_approval_save'
+  | 'approval_barrier'
+  | 'after_target_recheck'
+  | 'after_dispatch_intent_before_send'
+  | 'before_result_save'
+  | 'after_event_delivery_before_ack';
+
+export interface FaultHook {
+  hit(
+    point: CoreFaultPoint,
+    context?: {
+      readonly operation_id?: string | null;
+      readonly step_id?: string | null;
+    },
+  ): Promise<void>;
+}
+
+export const NO_FAULTS: FaultHook = { hit: () => Promise.resolve() };
+
 export interface CandidateSource {
   mailCandidates(): Promise<readonly MailCandidate[]>;
 }

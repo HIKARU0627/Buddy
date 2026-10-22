@@ -236,6 +236,9 @@ importers:
 
   apps/core:
     dependencies:
+      '@buddy/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@buddy/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -362,6 +365,8 @@ importers:
       ajv-formats:
         specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
+
+  packages/connectors: {}
 
   packages/contracts: {}
 

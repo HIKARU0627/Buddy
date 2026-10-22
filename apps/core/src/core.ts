@@ -58,13 +58,22 @@ import type { PreviewCheck } from './api-operations.js';
 import { DeviceConnections } from './device-connections.js';
 import { createTurnRoutes } from './api-turns.js';
 import { PreviewRegistry } from './previews.js';
-import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
+import {
+  NO_FAULTS,
+  TEST_TURN_POLICY,
+  createMockInterpreter,
+} from './turn-ports.js';
 import type {
   CandidateSource,
+  FaultHook,
   Interpreter,
   ProviderReader,
+  ProviderWriter,
   TurnPolicy,
 } from './turn-ports.js';
+import { createApiContract } from './api-contract.js';
+import { createOperationRunner } from './operation-runner.js';
+import type { OperationRunner } from './operation-runner.js';
 import { EventFeed } from './event-feed.js';
 import type { EventFeedOptions } from './event-feed.js';
 import { createEventStream } from './event-stream.js';
@@ -170,6 +179,10 @@ export interface CoreTurnOptions {
   readonly candidates?: CandidateSource;
   readonly policy?: TurnPolicy;
   readonly utcOffset?: string;
+  // 連携の provider への書込み（ADR 0030）。null なら外部変更を実行しない（承認の後も approved のまま）。
+  readonly writer?: ProviderWriter | null;
+  // Core 側の故障点（試験用）。既定は何もしない。
+  readonly faults?: FaultHook;
 }
 
 export interface CoreHttpsInfo {
@@ -225,6 +238,8 @@ export interface CoreHandle {
   readonly store: DbWorkerClient;
   // HTTPS の受付。設定しなければ null。
   readonly https: CoreHttpsInfo | null;
+  // 実行担当（ADR 0030）。HTTPS を設定しなければ null。idle() は試験・診断の待ち合わせに使う。
+  readonly runner: OperationRunner | null;
   // イベントの配信の元（ADR 0023）。操作の命令を別の経路で送ったら notify() を呼ぶ（呼ばなくても一定の間隔で読み直す）。
   readonly events: EventFeed;
   // 端末の接続（WSS の購読）を閉じる差し込み口。失効（B03-02、ADR 0021）・自宅判定の不成立（B03-03）が呼ぶ。
@@ -351,7 +366,7 @@ async function openStore(
     );
     if (recovery.held.length > 0 || recovery.resumable.length > 0)
       log(
-        `起動時の回復: 結果不明として保留（unknown_held）${recovery.held.length} 件、送出前（preparing）のまま ${recovery.resumable.length} 件。自動では送りません。`,
+        `起動時の回復: 結果不明として保留（unknown_held）${recovery.held.length} 件、送出意図の前（approved・preparing）${recovery.resumable.length} 件。保留は自動では送らず、送出意図の前の操作は対象を確かめ直してから再開します。`,
       );
     return { store, binding, recovery, homeNetworkKey };
   } catch (error) {
@@ -413,6 +428,7 @@ export async function startCore(
   let opened: OpenedStore | null = null;
   let api: ApiServer | null = null;
   let streams: EventStreamManager | null = null;
+  let runner: OperationRunner | null = null;
   let feed: EventFeed | null = null;
   const deviceConnections = new DeviceConnections();
   let httpsInfo: CoreHttpsInfo | null = null;
@@ -452,6 +468,8 @@ export async function startCore(
         errors.push(error);
       }
     };
+    // 実行担当を止める（以後は外部へ送らない。送出意図の後に止まった試行は次の起動で unknown_held になる）。
+    runner?.close();
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
       streams?.closeAll();
@@ -499,6 +517,7 @@ export async function startCore(
       );
       api = started.api;
       streams = started.streams;
+      runner = started.runner;
       httpsInfo = started.info;
       homeNetwork = started.homeNetwork;
       pairing = started.pairing;
@@ -579,6 +598,7 @@ export async function startCore(
     recovery,
     store,
     https: httpsInfo,
+    runner,
     homeNetwork,
     events,
     deviceConnections,
@@ -610,6 +630,7 @@ async function startHttps(
   readonly streams: EventStreamManager;
   readonly pairing: PairingService;
   readonly homeNetwork: HomeNetworkGate;
+  readonly runner: OperationRunner;
 }> {
   const store = opened.store;
   let identity;
@@ -712,6 +733,17 @@ async function startHttps(
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
   });
+  // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
+  const faults = turnOptions.faults ?? NO_FAULTS;
+  const runner = createOperationRunner({
+    store: watched,
+    keyStore,
+    provider: turnOptions.provider ?? null,
+    writer: turnOptions.writer ?? null,
+    faults,
+    contract: createApiContract(),
+    log,
+  });
   routes = createOperationRoutes({
     store: watched,
     feed,
@@ -719,6 +751,8 @@ async function startHttps(
     environment,
     now: () => now().getTime(),
     previewValid: https.previewValid ?? turns.previewValid,
+    runner,
+    faults,
   });
   const streams = createEventStream({
     feed,
@@ -727,6 +761,7 @@ async function startHttps(
     environment,
     deviceConnections,
     now: () => now().getTime(),
+    faults,
     ...https.eventStream,
   });
   // 経路の処理の表は重ならない（同じ operationId を二つの処理が持たない）。重なれば起動しない。
@@ -772,7 +807,10 @@ async function startHttps(
     throw error;
   }
   listening = { host: api.host, port: api.port };
+  // 起動時の再開: 送出意図の前（approved・preparing）の操作を、対象の確かめ直しから進める。
+  for (const operationId of opened.recovery.resumable) runner.start(operationId);
   return {
+    runner,
     api,
     homeNetwork,
     pairing,

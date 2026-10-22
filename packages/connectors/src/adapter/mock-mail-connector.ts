@@ -66,6 +66,8 @@ export type WriteOutcome<T> =
 export interface MockMailConnectorOptions {
   readonly baseUrl: string;
   readonly timeoutMs?: number;
+  /** 試験用: 中止されたら、時間切れとして扱う（時計に依存せず、時間切れを起こす地点を試験が決める）。 */
+  readonly timeoutSignal?: AbortSignal;
 }
 
 export interface MockMailConnector {
@@ -146,6 +148,9 @@ export function createMockMailConnector(
       method,
       path,
       timeoutMs,
+      ...(options.timeoutSignal === undefined
+        ? {}
+        : { signal: options.timeoutSignal }),
       ...(body === undefined ? {} : { body }),
     });
 
@@ -195,10 +200,16 @@ export function createMockMailConnector(
     attempt_id: identity.attempt_id,
     ...(identity.step_id === undefined ? {} : { step_id: identity.step_id }),
   });
-  const parseDraftId = (body: unknown): { draft_id: string } | null => {
-    const draft_id = str(obj(body)?.['draft_id']);
-    return draft_id === null ? null : { draft_id };
-  };
+  // 下書きの応答は工程ごとに検証する。作成は status 'draft'、送信は status 'sent' と要求した下書きの ID の一致が必須。
+  const parseDraft =
+    (status: 'draft' | 'sent', expectedId?: string) =>
+    (body: unknown): { draft_id: string } | null => {
+      const o = obj(body);
+      const draft_id = str(o?.['draft_id']);
+      if (draft_id === null || str(o?.['status']) !== status) return null;
+      if (expectedId !== undefined && draft_id !== expectedId) return null;
+      return { draft_id };
+    };
 
   return {
     capability: MOCK_CONNECTOR_CAPABILITY,
@@ -293,13 +304,13 @@ export function createMockMailConnector(
           subject: draft.subject,
           body: draft.body,
         },
-        parseDraftId,
+        parseDraft('draft'),
       ),
     sendDraft: (identity, draftId) =>
       write(
         `/v1/mail/drafts/${encodeURIComponent(draftId)}/send`,
         idBody(identity),
-        parseDraftId,
+        parseDraft('sent', draftId),
       ),
   };
 }

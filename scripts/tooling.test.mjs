@@ -224,6 +224,62 @@ test('Core の Electron 依存を拒否し Node 組み込みは受け付ける',
       specifier,
     );
 });
+test('模擬 provider の試験用の出口は、Core の製品コードとアダプターから静的にも動的にも読めない（ADR 0028）', async () => {
+  const specifiers = ['@buddy/connectors/testing'];
+  // Core の製品コード: 静的 import は no-restricted-imports、動的 import は no-restricted-syntax で拒否する。
+  for (const specifier of specifiers) {
+    const staticImport = await violations(
+      `export * from '${specifier}';\n`,
+      'apps/core/src/probe.ts',
+    );
+    assert.ok(
+      staticImport.some((m) => m.ruleId === 'no-restricted-imports'),
+      specifier,
+    );
+    const dynamicImport = await violations(
+      `export const load = () => import('${specifier}');\n`,
+      'apps/core/src/probe.ts',
+    );
+    assert.ok(
+      dynamicImport.some((m) => m.ruleId === 'no-restricted-syntax'),
+      specifier,
+    );
+  }
+  // Core の試験と試験の道具だけは読める。
+  for (const filePath of [
+    'apps/core/src/probe.test.ts',
+    'apps/core/src/probe-test-support.ts',
+  ])
+    assert.deepEqual(
+      await violations(
+        "export * from '@buddy/connectors/testing';\nexport const load = () => import('@buddy/connectors/testing');\n",
+        filePath,
+      ),
+      [],
+      filePath,
+    );
+  // アダプターと公開出口: 静的 import・動的 import のどちらも拒否する。
+  for (const filePath of [
+    'packages/connectors/src/adapter/probe.ts',
+    'packages/connectors/src/index.ts',
+  ]) {
+    assert.ok(
+      (
+        await violations("export * from '../provider/server.js';\n", filePath)
+      ).some((m) => m.ruleId === 'no-restricted-imports'),
+      filePath,
+    );
+    assert.ok(
+      (
+        await violations(
+          "export const load = () => import('../testing.js');\n",
+          filePath,
+        )
+      ).some((m) => m.ruleId === 'no-restricted-syntax'),
+      filePath,
+    );
+  }
+});
 test('共有層から platform への直接依存を拒否する', async () => {
   for (const [filePath, specifiers] of [
     [

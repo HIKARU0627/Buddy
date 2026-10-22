@@ -88,28 +88,39 @@ test(
   async (t) => {
     const injector = new FaultInjector();
     const provider = await startProvider(t, { injector });
+    // 時間切れは時計ではなく、保留に届いたことを確かめてから、試験が起こす。
+    const timeout = new AbortController();
     const connector = createMockMailConnector({
       baseUrl: provider.url,
-      timeoutMs: 200,
+      timeoutSignal: timeout.signal,
     });
+    // 中止した後の読み取りは、別のアダプター（中止されない）で行う。
+    const reader = createMockMailConnector({ baseUrl: provider.url });
     injector.arm('response_timeout_then_late_apply', {
       mode: 'hold_then_apply',
     });
 
-    const outcome = await connector.changeLabels(
+    const pending = connector.changeLabels(
       { operation_id: 'op-x08', attempt_id: 'attempt-1' },
       LABEL,
     );
+    await withTimeout(
+      injector.waitReached('response_timeout_then_late_apply'),
+      5_000,
+      'held',
+    );
+    timeout.abort();
+    const outcome = await pending;
     assert.deepEqual(outcome, { kind: 'unknown', reason: 'timeout' });
     assert.equal(provider.truth.heldCount(), 1);
     assert.equal(provider.truth.stateChangeCount(), 0);
-    assert.deepEqual((await connector.readTarget('mail-001'))?.labels, []);
+    assert.deepEqual((await reader.readTarget('mail-001'))?.labels, []);
 
     assert.equal(provider.truth.releaseLateApplies(), 1);
     assert.equal(provider.truth.heldCount(), 0);
     assert.equal(provider.truth.requestCount(), 1);
     assert.equal(provider.truth.stateChangeCount(), 1);
-    assert.deepEqual((await connector.readTarget('mail-001'))?.labels, [
+    assert.deepEqual((await reader.readTarget('mail-001'))?.labels, [
       'follow-up',
     ]);
     assert.equal(provider.truth.receipts()[0]?.responded, false);
@@ -257,10 +268,17 @@ test(
 async function countingServer(
   t: test.TestContext,
   onRequest: (count: number, req: IncomingMessage, res: ServerResponse) => void,
-): Promise<{ readonly url: string; readonly count: () => number }> {
+): Promise<{
+  readonly url: string;
+  readonly count: () => number;
+  /** n 件目の要求が届くまで待つ。 */
+  readonly reached: (n: number) => Promise<void>;
+}> {
   let count = 0;
+  const waiters: { n: number; wake: () => void }[] = [];
   const server: Server = createServer((req, res) => {
     count += 1;
+    for (const w of waiters) if (count >= w.n) w.wake();
     onRequest(count, req, res);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -273,7 +291,14 @@ async function countingServer(
       }),
   );
   const port = (server.address() as AddressInfo).port;
-  return { url: `http://127.0.0.1:${port}`, count: () => count };
+  return {
+    url: `http://127.0.0.1:${port}`,
+    count: () => count,
+    reached: (n) =>
+      count >= n
+        ? Promise.resolve()
+        : new Promise<void>((wake) => waiters.push({ n, wake })),
+  };
 }
 
 test(
@@ -297,10 +322,15 @@ test(
       baseUrl: failing.url,
     }).changeLabels(identity, LABEL);
     assert.deepEqual(b, { kind: 'unknown', reason: 'server_error' });
-    const c = await createMockMailConnector({
+    // 要求が届いたことを確かめてから、試験が時間切れを起こす。
+    const timeout = new AbortController();
+    const pending = createMockMailConnector({
       baseUrl: silent.url,
-      timeoutMs: 200,
+      timeoutSignal: timeout.signal,
     }).changeLabels(identity, LABEL);
+    await withTimeout(silent.reached(1), 5_000, 'silent received');
+    timeout.abort();
+    const c = await pending;
     assert.deepEqual(c, { kind: 'unknown', reason: 'timeout' });
 
     // 戻った時点で再送は終わっている（再送があれば、戻る前に同じ呼び出しの中で起きる）。
@@ -331,6 +361,96 @@ test(
         LABEL,
       ),
       { kind: 'not_sent' },
+    );
+  },
+);
+
+test(
+  '下書きの応答は工程ごとに検証する: 送信は status が sent かつ要求した ID と一致しなければ unknown',
+  OPTIONS,
+  async (t) => {
+    const identity = { operation_id: 'op-draft', attempt_id: 'attempt-1' };
+    const respondWith = async (body: unknown) => {
+      const server = await countingServer(t, (_count, _req, res) => {
+        res
+          .writeHead(200, { 'content-type': 'application/json' })
+          .end(JSON.stringify(body));
+      });
+      return createMockMailConnector({ baseUrl: server.url });
+    };
+    const invalid = { kind: 'unknown', reason: 'invalid_response' };
+
+    // 未送信を示す応答、別の下書きの応答、状態のない応答は送信の成功にしない。
+    assert.deepEqual(
+      await (
+        await respondWith({ draft_id: 'draft-001', status: 'draft' })
+      ).sendDraft(identity, 'draft-001'),
+      invalid,
+    );
+    assert.deepEqual(
+      await (
+        await respondWith({ draft_id: 'draft-002', status: 'sent' })
+      ).sendDraft(identity, 'draft-001'),
+      invalid,
+    );
+    assert.deepEqual(
+      await (
+        await respondWith({ draft_id: 'draft-001' })
+      ).sendDraft(identity, 'draft-001'),
+      invalid,
+    );
+    // 作成は status が draft でなければ成功にしない。
+    assert.deepEqual(
+      await (
+        await respondWith({ draft_id: 'draft-001', status: 'sent' })
+      ).createDraft(identity, {
+        to: [],
+        subject: '（合成）',
+        body: '（合成）',
+      }),
+      invalid,
+    );
+    // 正しい応答は成功にする。
+    assert.deepEqual(
+      await (
+        await respondWith({ draft_id: 'draft-001', status: 'sent' })
+      ).sendDraft(identity, 'draft-001'),
+      { kind: 'applied', status: 200, value: { draft_id: 'draft-001' } },
+    );
+  },
+);
+
+test(
+  'barrier の設定は arm() で即座に拒否する（永久待ちを作らない）',
+  OPTIONS,
+  () => {
+    const injector = new FaultInjector();
+    assert.throws(
+      () =>
+        injector.arm(
+          'approval_barrier',
+          { mode: 'barrier', parties: 3 },
+          { times: 2 },
+        ),
+      /times は parties と同じ/,
+    );
+    assert.throws(
+      () => injector.arm('approval_barrier', { mode: 'barrier', parties: 1 }),
+      /2 以上/,
+    );
+    assert.throws(
+      () => injector.arm('approval_barrier', { mode: 'barrier', parties: 2.5 }),
+      /整数/,
+    );
+    assert.throws(
+      () => injector.arm('before_result_save', { mode: 'throw' }, { times: 0 }),
+      /1 以上の整数/,
+    );
+    // parties と同じ times は受け付ける。
+    injector.arm(
+      'approval_barrier',
+      { mode: 'barrier', parties: 3 },
+      { times: 3 },
     );
   },
 );

@@ -9,11 +9,11 @@
 | `@buddy/connectors`         | アダプター（`createMockMailConnector`）、能力の最小の型、故障注入（`FaultInjector`・`FAULT_POINTS`） | Core                              |
 | `@buddy/connectors/testing` | 模擬 provider の起動（`createMockProvider`）と、真の結果を見る `truth`、合成データの定数             | 試験装置だけ（Core には渡さない） |
 
-`src/adapter/**` と `src/index.ts` から `provider/`・`testing` を読み込むことは ESLint で禁止しています。
+`src/adapter/**` と `src/index.ts` は静的 import だけで、`provider/`・`testing` を読み込めません。Core（apps/core・packages/storage）の製品コードも `@buddy/connectors/testing` を静的・動的のどちらでも読み込めず、試験（`*.test.ts`・`*-test-support.ts`）だけが例外です（ESLint。検査は `scripts/tooling.test.mjs`）。
 
 ## 模擬 provider
 
-- `127.0.0.1` の HTTP（`node:http`）。状態と受信記録は、注入したディレクトリの `provider.json` に 1 つのファイルとして保存します（一時ファイルへ書いて置き換え）。同じディレクトリで作り直すと引き継ぎ、Core の再起動とは独立しています。
+- `127.0.0.1` の HTTP（`node:http`）。状態と受信記録は、注入したディレクトリの `provider.json` に 1 つのファイルとして保存します（一時ファイルへ書いて置き換え）。同じディレクトリで作り直すと引き継ぎ、Core の再起動とは独立しています。同じディレクトリでの同時の起動は `provider.lock` で拒否します（終了したプロセスの残りは引き継ぐ）。
 - 受信記録は、書込みの経路に届いた要求を、不正・拒否も含めて届いた順に残します。項目は `operation_id`・`attempt_id`・`step_id`・`receive_order`・`applied_change`・`responded`（`received_at`・`route`・`response_status` を加えています）。
 - **要求の回数**（受信記録の件数）と**状態の変更の回数**（`state_changes`）は別に数えます。重複した要求は消さず、サービス側で冪等にもしません（同じ要求を 2 回送ると 2 件・変更 2 件）。読み取りはどちらにも数えません。
 - 合成データ: 時計は `2026-10-05T09:00:00+09:00`。`mail-001`（`r1`・INBOX）、`event-001`（13:00〜14:00）・`event-002`（13:30〜14:30。13:30〜14:00 が重なる）。口座・許可は H01 の fixture と同じ合成の値。
@@ -36,11 +36,11 @@
 
 - Core 側の地点: Core のコードが `await injector.hit(point, { operation_id, step_id })` を呼ぶ。`pause`（`release()` まで待つ）・`throw`（`InjectedFaultError`）・`barrier`（`parties` 件がそろうまで待ち、そろった瞬間に一斉に解放する。`approval_barrier` 用）。待ち合わせには `waitReached(point, n)` を使い、sleep を使わない。
 - provider 側の地点: `after_external_apply_before_response`（適用して記録した後、応答を返さず接続を切る = `drop_response`）、`response_timeout_then_late_apply`（適用せず保留し、`truth.releaseLateApplies()` で遅れて適用する = `hold_then_apply`。応答は返さない）。
-- `arm(point, spec, { times, match: { operation_id, step_id } })` で回数と対象を絞れる。`core_restart` は試験装置がアダプターを作り直して表す（provider は止めない）。
+- `arm(point, spec, { times, match: { operation_id, step_id } })` で回数と対象を絞れる（barrier の `times` は `parties` と同じだけ。不正な設定は即座に拒否）。`core_restart` は試験装置がアダプターを作り直して表す（provider は止めない）。
 
 ## アダプター
 
-`createMockMailConnector({ baseUrl, timeoutMs })`。
+`createMockMailConnector({ baseUrl, timeoutMs, timeoutSignal })`（`timeoutSignal` は試験用。中止すると時間切れとして扱う）。
 
 - 読み取り: `readPermission`・`readTarget`・`listEvents`・`lookupDrafts`（状態を変えない）。
 - 書込み: `changeLabels`・`createDraft`・`sendDraft`。**1 回だけ送り、HTTP の自動再送は 0 回**（keep-alive も使わない）。結果は `applied`・`rejected`（4xx。適用されていない）・`not_sent`（接続できない）・`unknown`（時間切れ・切断・5xx・形の違う応答。再送するかは Core の状態機械が決める）。

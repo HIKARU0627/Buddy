@@ -101,9 +101,22 @@ export class FaultInjector {
     [];
 
   arm(point: FaultPoint, spec: FaultSpec, options: ArmOptions = {}): void {
-    if (spec.mode === 'barrier' && spec.parties < 2)
-      throw new Error('barrier の parties は 2 以上にしてください。');
+    if (
+      spec.mode === 'barrier' &&
+      (!Number.isInteger(spec.parties) || spec.parties < 2)
+    )
+      throw new Error('barrier の parties は 2 以上の整数にしてください。');
+    // barrier は parties 件がそろわないと解放されないため、回数は parties と同じに限る
+    // （少ないと一部だけが通り、残りが永久に待つ）。
+    if (
+      spec.mode === 'barrier' &&
+      options.times !== undefined &&
+      options.times !== spec.parties
+    )
+      throw new Error('barrier の times は parties と同じにしてください。');
     const times = options.times ?? (spec.mode === 'barrier' ? spec.parties : 1);
+    if (!Number.isInteger(times) || times < 1)
+      throw new Error('times は 1 以上の整数にしてください。');
     this.#armed.push({
       point,
       spec,

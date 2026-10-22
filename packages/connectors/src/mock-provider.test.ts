@@ -1,8 +1,11 @@
 // 模擬 provider とアダプターの試験。期待値は手で書いた値で、実装の処理から作らない。
 import assert from 'node:assert/strict';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
 import { createMockMailConnector } from './index.js';
-import { startProvider, TEST_TIMEOUT_MS } from './test-support.js';
+import { createMockProvider } from './testing.js';
+import { startProvider, tempDir, TEST_TIMEOUT_MS } from './test-support.js';
 
 const OPTIONS = { timeout: TEST_TIMEOUT_MS };
 const CLOCK = '2026-10-05T09:00:00+09:00';
@@ -373,5 +376,42 @@ test(
     assert.equal('truth' in connector, false);
     const exported = Object.keys(await import('./index.js'));
     assert.equal(exported.includes('createMockProvider'), false);
+  },
+);
+
+test(
+  '同じ保存ディレクトリでの二重起動を拒否し、閉じた後は起動し直せる',
+  OPTIONS,
+  async (t) => {
+    const first = await startProvider(t);
+    await assert.rejects(
+      createMockProvider({ dir: first.dir }),
+      /別の provider が使っています/,
+    );
+    // 拒否された起動は、先の provider の排他を壊さない。
+    await assert.rejects(createMockProvider({ dir: first.dir }));
+    assert.equal(
+      (
+        await createMockMailConnector({ baseUrl: first.url }).readTarget(
+          'mail-001',
+        )
+      )?.remote_id,
+      'mail-001',
+    );
+    await first.close();
+    const second = await startProvider(t, { dir: first.dir });
+    assert.equal(second.truth.requestCount(), 0);
+  },
+);
+
+test(
+  '異常終了で残った排他（終了したプロセスの記録）は引き継ぐ',
+  OPTIONS,
+  async (t) => {
+    const dir = await tempDir(t);
+    // 存在しないプロセスの ID（pid の上限より十分大きい値）を持つ残りの排他。
+    await writeFile(join(dir, 'provider.lock'), '2147483646\n');
+    const provider = await startProvider(t, { dir });
+    assert.equal(provider.truth.requestCount(), 0);
   },
 );

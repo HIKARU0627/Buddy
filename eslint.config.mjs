@@ -291,10 +291,55 @@ export default tseslint.config(
           '@buddy/connectors/testing',
         ],
       ]),
+      // 動的 import でも試験用の出口を読めないよう、アダプターは静的 import だけにする。
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression',
+          message: 'アダプターの依存は静的 import で明示してください。',
+        },
+        {
+          selector: 'TSImportType',
+          message: 'アダプターの型依存は import type で明示してください。',
+        },
+      ],
     },
   },
   {
     files: ['apps/core/**/*.ts', 'packages/storage/**/*.ts'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-restricted-imports': restricted([
+        [
+          'electron',
+          'electron/*',
+          '@electron/*',
+          '@buddy/desktop',
+          '@buddy/desktop/*',
+          '../**/desktop/**',
+          '@buddy/connectors/testing',
+          '@buddy/connectors/dist/*',
+          '../**/connectors/**',
+        ],
+      ]),
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop|@buddy\\/connectors\\/(testing|dist))(\\/|$)/]',
+          message:
+            'Core / storage は Electron クライアントと、模擬 provider の試験用の出口（@buddy/connectors/testing）へ依存しません。',
+        },
+      ],
+    },
+  },
+  // Core の試験と試験の道具だけは、模擬 provider（@buddy/connectors/testing）を起動できる（B04-02、ADR 0028）。
+  {
+    files: [
+      'apps/core/**/*.test.ts',
+      'apps/core/src/*-test-support.ts',
+      'packages/storage/**/*.test.ts',
+    ],
     languageOptions: { globals: globals.node },
     rules: {
       'no-restricted-imports': restricted([

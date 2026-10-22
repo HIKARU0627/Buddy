@@ -13,6 +13,9 @@ import {
   renameSync,
   writeFileSync,
   existsSync,
+  closeSync,
+  openSync,
+  unlinkSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { FaultInjector, type FaultContext } from '../fault-injector.js';
@@ -27,6 +30,7 @@ import {
 } from './data.js';
 
 const STATE_FILE = 'provider.json';
+const LOCK_FILE = 'provider.lock';
 const MAX_BODY_BYTES = 64 * 1024;
 
 export interface MockProviderOptions {
@@ -110,13 +114,69 @@ function readBody(req: IncomingMessage): Promise<string | null> {
   });
 }
 
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM は、存在するが権限がないプロセス。
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/** 保存ディレクトリの排他。同じディレクトリで 2 つの provider を動かすと、後の保存が先の記録を消すため拒否する。 */
+function acquireLock(lockFile: string): () => void {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = openSync(lockFile, 'wx');
+      writeFileSync(fd, `${process.pid}\n`);
+      closeSync(fd);
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        try {
+          unlinkSync(lockFile);
+        } catch {
+          // 既に消えていれば何もしない。
+        }
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const pid = Number.parseInt(readFileSync(lockFile, 'utf8'), 10);
+      if (Number.isInteger(pid) && processAlive(pid))
+        throw new Error(
+          '模擬 provider の保存ディレクトリは、別の provider が使っています。',
+          { cause: error },
+        );
+      // 持ち主のプロセスが終了している（異常終了の残り）。引き継ぐ。
+      unlinkSync(lockFile);
+    }
+  }
+  throw new Error('模擬 provider の保存ディレクトリの排他を取得できません。');
+}
+
 export async function createMockProvider(
   options: MockProviderOptions,
 ): Promise<MockProvider> {
-  const now = options.now ?? (() => SYNTHETIC_CLOCK);
-  const injector = options.injector ?? new FaultInjector();
   mkdirSync(options.dir, { recursive: true });
   const file = join(options.dir, STATE_FILE);
+  const releaseLock = acquireLock(join(options.dir, LOCK_FILE));
+  try {
+    return await startProvider(options, file, releaseLock);
+  } catch (error) {
+    releaseLock();
+    throw error;
+  }
+}
+
+async function startProvider(
+  options: MockProviderOptions,
+  file: string,
+  releaseLock: () => void,
+): Promise<MockProvider> {
+  const now = options.now ?? (() => SYNTHETIC_CLOCK);
+  const injector = options.injector ?? new FaultInjector();
   const state: ProviderState = existsSync(file)
     ? (JSON.parse(readFileSync(file, 'utf8')) as ProviderState)
     : seedState();
@@ -450,7 +510,11 @@ export async function createMockProvider(
     truth,
     close() {
       return new Promise<void>((resolve) => {
-        server.close(() => resolve());
+        server.close(() => {
+          // 閉じた後に排他を手放す（次の provider が同じディレクトリで始められる）。
+          releaseLock();
+          resolve();
+        });
         server.closeAllConnections();
       });
     },

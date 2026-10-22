@@ -21,6 +21,8 @@ export interface HttpCall {
   readonly path: string;
   readonly body?: unknown;
   readonly timeoutMs: number;
+  /** 中止されたら時間切れとして扱う（試験用）。 */
+  readonly signal?: AbortSignal;
 }
 
 export function callOnce(call: HttpCall): Promise<HttpOutcome> {
@@ -72,10 +74,13 @@ export function callOnce(call: HttpCall): Promise<HttpOutcome> {
         );
       },
     );
-    const timer = setTimeout(() => {
+    const expire = (): void => {
       finish({ kind: 'no_response', reason: 'timeout' });
       req.destroy();
-    }, call.timeoutMs);
+    };
+    const timer = setTimeout(expire, call.timeoutMs);
+    if (call.signal?.aborted === true) expire();
+    else call.signal?.addEventListener('abort', expire, { once: true });
     req.on('error', (error: NodeJS.ErrnoException) => {
       finish(
         error.code === 'ECONNREFUSED'

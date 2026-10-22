@@ -49,23 +49,26 @@ export const PAIRING_LABELS = {
   portInvalid: '1〜65535 の数字にしてください。',
   begin: '中枢の証明書を受け取る',
   fetching: '中枢の証明書を受け取っています',
-  compare: '中枢の画面に出ている指紋と、1 行ずつ見比べてください。',
+  compare:
+    '中枢の画面の「新しい端末を登録する」に出ている指紋と、1\u00a0行ずつ見比べてください（中枢の画面で「ペアリングを始める」を押すと、指紋が表示されます）。',
+  beforeStart:
+    '先に中枢の画面の「端末の登録」で「ペアリングを始める（コードを出す）」を押してください。宛先・指紋・コードはそこに出ます。',
   masked:
-    '最後の 4 桁はこの画面では伏せています。中枢の画面から読んで入力してください。',
+    '最後の 4\u00a0桁はこの画面では伏せています。中枢の画面から読んで入力してください。',
   cliNote:
-    'buddy-core first-device start の出力にも、同じ 4 桁区切り・4 行の指紋が出ます。',
-  tail: '中枢の画面の指紋の最後の 4 桁',
-  tailInvalid: '指紋の最後の 4 桁（0〜9・a〜f）を入れてください。',
+    'buddy-core first-device start の出力にも、同じ 4\u00a0桁区切り・4\u00a0行の指紋が出ます。',
+  tail: '中枢の画面の指紋の最後の 4\u00a0桁',
+  tailInvalid: '指紋の最後の 4\u00a0桁（0〜9・a〜f）を入れてください。',
   tailNote:
     '中枢の画面の指紋の最後の組です。一致しないときは申請を送りません。',
-  confirm: '最後の 4 桁を確かめて次へ',
+  confirm: '最後の 4\u00a0桁を確かめて次へ',
   mismatch: '一致しない（やめる）',
   code: 'ワンタイムコード',
   codeHelp:
-    '中枢の画面に出ている 8 桁の数字です。5 分で切れ、入力は 5 回までです。',
-  codeInvalid: '8 桁の数字を入れてください。',
+    '中枢の画面に出ている 8\u00a0桁の数字です。5\u00a0分で切れ、入力は 5\u00a0回までです。',
+  codeInvalid: '8\u00a0桁の数字を入れてください。',
   deviceName: 'この端末の名前',
-  deviceNameInvalid: '1〜40 文字で入れてください。',
+  deviceNameInvalid: '1〜40\u00a0文字で入れてください。',
   submit: '申請する',
   cancel: 'やめる',
   claiming: '申請しています',
@@ -117,6 +120,9 @@ export function AddressStep({
     tried && parsedHost === null ? PAIRING_LABELS.hostInvalid : hostRejected;
   return (
     <div className="flex flex-col gap-4">
+      <p className="max-w-prose text-sm leading-6">
+        {PAIRING_LABELS.beforeStart}
+      </p>
       <div className="flex flex-wrap items-start gap-4">
         <TextField
           className="min-w-48 flex-1"
@@ -193,8 +199,9 @@ export function FingerprintStep({
   const [tried, setTried] = useState(false);
   const parsed = normalizeTail(tail);
   const fingerprint = pairing.fingerprint ?? '';
-  const error =
-    tried && parsed === null ? PAIRING_LABELS.tailInvalid : tailRejected;
+  const formatError =
+    tried && parsed === null ? PAIRING_LABELS.tailInvalid : null;
+  const error = formatError ?? tailRejected;
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-prose text-sm leading-6">{PAIRING_LABELS.compare}</p>
@@ -212,7 +219,9 @@ export function FingerprintStep({
       />
       <p className="text-xs text-muted">{PAIRING_LABELS.cliNote}</p>
       <div className="flex flex-col gap-1">
-        <Label id="pairing-tail-label">{PAIRING_LABELS.tail}</Label>
+        <Label id="pairing-tail-label" isRequired>
+          {PAIRING_LABELS.tail}
+        </Label>
         <InputOTP
           maxLength={4}
           value={tail}
@@ -234,12 +243,24 @@ export function FingerprintStep({
         <p id="pairing-tail-help" className="text-xs leading-5 text-muted">
           {PAIRING_LABELS.tailNote}
         </p>
-        {error === null ? null : (
-          <p role="alert" className="text-xs text-danger-soft-foreground">
-            {error}
+        {formatError === null ? null : (
+          <p role="alert" className="text-sm text-danger-soft-foreground">
+            {formatError}
           </p>
         )}
       </div>
+      {formatError === null && tailRejected !== null ? (
+        <Alert status="warning" role="alert">
+          <Alert.Indicator>
+            <AlertIcon />
+          </Alert.Indicator>
+          <Alert.Content>
+            <Alert.Description className="text-sm leading-6 text-foreground">
+              {tailRejected}
+            </Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button
           variant="secondary"
@@ -281,7 +302,9 @@ export function CodeStep({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <Label id="pairing-code-label">{PAIRING_LABELS.code}</Label>
+        <Label id="pairing-code-label" isRequired>
+          {PAIRING_LABELS.code}
+        </Label>
         <InputOTP
           maxLength={8}
           value={code}
@@ -291,6 +314,7 @@ export function CodeStep({
           pattern="^[0-9]*$"
           aria-labelledby="pairing-code-label"
           aria-describedby="pairing-code-help"
+          aria-required="true"
           isInvalid={codeInvalid}
           noScriptCSSFallback={null}
         >
@@ -377,7 +401,7 @@ export function WaitingStep({
       {pairing.claim_check === null ? null : (
         <div className="flex flex-col gap-1">
           <p className="text-sm">確認コード</p>
-          <p className="font-mono text-2xl tracking-wider tabular-nums">
+          <p className="font-mono text-2xl font-semibold tracking-wider tabular-nums">
             {splitInFour(pairing.claim_check)}
           </p>
           <p className="max-w-prose text-xs leading-5 text-muted">
@@ -427,6 +451,9 @@ export function FailedStep({
         <Alert.Content>
           <Alert.Title>{copy.title}</Alert.Title>
           <Alert.Description className="text-sm leading-6 text-foreground">
+            {copy.subject === null ? null : (
+              <span className="font-mono">{copy.subject}</span>
+            )}
             {copy.body}
           </Alert.Description>
         </Alert.Content>

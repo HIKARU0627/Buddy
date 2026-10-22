@@ -1,5 +1,5 @@
 // 中枢との接続の欄（ADR 0024・0025）。接続の状態と最終確認は状態帯に出すので、ここは理由・自宅の判定・
-// 中枢の操作だけを出す（同じ情報を 2 か所に出さない）。理由は状態の言い換えになるときは出さない。
+// 中枢で進んでいる操作（状態の文言だけ）を出す（同じ情報を 2 か所に出さない）。理由は状態の言い換えになるときは出さない。
 import type { DesktopConnectionView } from '@buddy/contracts';
 import type { ReactNode } from 'react';
 import { Section } from '../../components/Section.js';
@@ -45,8 +45,11 @@ export function homeLine(connection: ShownConnection): StatusLine | null {
 
 export function ConnectionSection({
   connection,
+  title = '中枢との接続',
 }: {
   readonly connection: ShownConnection;
+  // 欄の見出し（中枢の画面のタブでは「このマシンと中枢の接続」）。
+  readonly title?: string;
 }) {
   const rows: [string, ReactNode][] = [];
   const reason = connection.link_reason;
@@ -59,7 +62,7 @@ export function ConnectionSection({
   const home = homeLine(connection);
   if (home !== null) rows.push(['自宅の判定', <StatusText line={home} />]);
   return (
-    <Section id="connection-heading" title="中枢との接続">
+    <Section id="connection-heading" title={title}>
       {rows.length === 0 ? null : (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm leading-6">
           {rows.map(([label, value]) => (
@@ -72,27 +75,16 @@ export function ConnectionSection({
       )}
       {connection.link !== 'connected' ? null : connection.operations.length ===
         0 ? (
-        <p className="text-sm text-muted">中枢の操作はありません。</p>
+        <p className="text-sm text-muted">中枢で進んでいる操作はありません。</p>
       ) : (
+        // 本人向けには状態の文言だけを出す（操作の ID・版は開発・照合の値なので出さない。UI レビュー 3 回目 R1-L6）。
         <ul
-          aria-label="中枢の操作"
+          aria-label="中枢で進んでいる操作"
           className="flex flex-col divide-y divide-separator text-sm"
         >
           {connection.operations.map((operation) => (
-            <li
-              key={operation.operation_id}
-              className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-1.5"
-            >
-              <span className="font-medium">
-                {OPERATION_STATE_LABELS[operation.state] ?? operation.state}
-              </span>
-              <span className="font-mono text-xs break-all text-muted">
-                {operation.operation_id}
-              </span>
-              <span className="text-xs text-muted tabular-nums">
-                版 {operation.state_revision}・内容版{' '}
-                {operation.content_version}
-              </span>
+            <li key={operation.operation_id} className="py-1.5">
+              {OPERATION_STATE_LABELS[operation.state] ?? operation.state}
             </li>
           ))}
         </ul>

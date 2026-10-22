@@ -6821,6 +6821,9 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 5
+        },
+        "hub_endpoint": {
+          "$ref": "#/$defs/HubEndpoint"
         }
       },
       "required": [
@@ -6828,10 +6831,30 @@
         "pairing_code",
         "certificate_fingerprint",
         "expires_at",
-        "attempts_left"
+        "attempts_left",
+        "hub_endpoint"
       ],
       "additionalProperties": false,
       "description": "中枢の画面に出すワンタイムコードと中枢の証明書の指紋（設計 02 端末登録と接続）。certificate_fingerprint は中枢の TLS 証明書の DER 全体の SHA-256 を小文字の 16 進 64 桁にした値で、端末は TLS で見えた証明書から同じ方法で求めて比べ、以後の接続でピン留めする（ADR 0020）。有効 5 分・連続 5 回失敗で無効は設計初期値。中枢の画面の端末だけが受け取る。"
+    },
+    "HubEndpoint": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "pattern": "^[0-9A-Za-z.:-]+$"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      },
+      "required": ["host", "port"],
+      "additionalProperties": false,
+      "description": "中枢の HTTPS の待ち受けのアドレスとポート（Core の設定の値。待ち受けは具体的な IP アドレスで、0.0.0.0 などは使わない。ADR 0020）。登録する端末で入力する宛先として、中枢の画面に表示する（ADR 0026）。秘密ではない。"
     },
     "PairingClaimRequest": {
       "type": "object",
@@ -8395,11 +8418,19 @@
         },
         "expires_at": {
           "$ref": "#/$defs/UtcTime"
+        },
+        "hub_endpoint": {
+          "$ref": "#/$defs/HubEndpoint"
         }
       },
-      "required": ["pairing_code", "certificate_fingerprint", "expires_at"],
+      "required": [
+        "pairing_code",
+        "certificate_fingerprint",
+        "expires_at",
+        "hub_endpoint"
+      ],
       "additionalProperties": false,
-      "description": "中枢の画面に出すワンタイムコードと中枢の証明書の指紋（B03-06、ADR 0026）。コードは本人が登録する端末に入力するための表示で、中枢の画面の端末の画面にだけ返す（申請の一覧・端末の一覧・ログには出さない）。"
+      "description": "中枢の画面に出すワンタイムコードと中枢の証明書の指紋（B03-06、ADR 0026）。コードは本人が登録する端末に入力するための表示で、中枢の画面の端末の画面にだけ返す（申請の一覧・端末の一覧・ログには出さない）。hub_endpoint は端末で入力する中枢の宛先（表示用）。"
     },
     "DesktopHomeView": {
       "type": "object",

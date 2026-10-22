@@ -38,8 +38,9 @@
     /* 白文字で 4.5:1 以上（HeroUI 既定は 3.59:1・3.48:1）。 */
     --accent: oklch(0.54 0.15 253.83);
     --danger: oklch(0.56 0.19 25.74);
-    /* 補足の文字（地・入力欄の背景・placeholder でも 4.5:1 以上。HeroUI 既定は地で 4.43:1）。 */
-    --muted: oklch(0.51 0.0138 285.94);
+    /* 補足の文字（地・入力欄の背景・placeholder でも 4.5:1 以上。HeroUI 既定は地で 4.43:1）。12px の細い字でも
+       読めるよう、もう 1 段濃くした（UI レビュー 3 回目 R2 の低 7。地で 5.8:1）。 */
+    --muted: oklch(0.49 0.0138 285.94);
     /* 入力欄の境界（カードに対して 3:1 以上）。 */
     --field-border: oklch(0.64 0.006 286);
   }
@@ -114,8 +115,13 @@
     border: 1px solid var(--border);
   }
   .alert-dialog__dialog,
-  .alert-dialog__icon {
+  .alert-dialog__icon,
+  .close-button {
     border-radius: var(--radius-lg);
+  }
+  /* outline のボタン（一覧を更新）の縁は入力欄の境界と同じ色にし、地・カードに対して 3:1 以上にする（R2-M2）。 */
+  .button--outline {
+    border-color: var(--field-border);
   }
 }
 

@@ -33,7 +33,9 @@ export function afterOf(utc: string, now: number): string {
   const ms = new Date(utc).getTime() - now;
   if (Number.isNaN(ms) || ms <= 0) return 'まもなく';
   const seconds = Math.ceil(ms / 1000);
-  return seconds < 60 ? `${seconds} 秒後` : `${Math.ceil(seconds / 60)} 分後`;
+  return seconds < 60
+    ? `${seconds}\u00a0秒後`
+    : `${Math.ceil(seconds / 60)}\u00a0分後`;
 }
 
 // 「残り 4 分」「残り 30 秒」「期限切れ」。
@@ -42,8 +44,8 @@ export function remainingOf(utc: string, now: number): string {
   if (Number.isNaN(ms) || ms <= 0) return '期限切れ';
   const seconds = Math.ceil(ms / 1000);
   return seconds < 60
-    ? `残り ${seconds} 秒`
-    : `残り ${Math.ceil(seconds / 60)} 分`;
+    ? `残り ${seconds}\u00a0秒`
+    : `残り ${Math.ceil(seconds / 60)}\u00a0分`;
 }
 
 // 指紋（64 桁の 16 進）を 4 桁ずつの 16 組にする（4 組ずつ 4 行に並べる）。CLI の人向けの出力と同じ区切り。

@@ -945,3 +945,64 @@ test(
     );
   },
 );
+
+// b03-06 の 3 回目の修正に合わせた表示（接続を待つ間・止まっている間・タブの幅）。
+test(
+  'while waiting for the hub the home tab keeps its values and stops re-reading and registering; a stop banner keeps the only primary',
+  { timeout: 10_000 },
+  () => {
+    const { actions, sent } = capture();
+    const home = { registration: null, observation: OBSERVATION };
+    const paused = html(
+      <HomeNetworkPanel
+        state={state({ home })}
+        actions={actions}
+        now={NOW}
+        paused
+      />,
+    );
+    assert.match(
+      paused,
+      /中枢との接続を待っています。接続が戻ると、読み取り直しと自宅の登録ができます。/u,
+    );
+    assert.match(paused, /··:··:··:··:53:01/u);
+    assert.match(String(buttonTag(paused, HOME_LABELS.reread)), /disabled/u);
+    assert.match(String(buttonTag(paused, HOME_LABELS.register)), /disabled/u);
+    // 待つ間の文は読み上げの領域にしない（中枢の画面の Tabs の上の 1 行が受け持つ）。
+    assert.doesNotMatch(
+      paused,
+      /role="status"[^>]*>(?:<[^>]+>|○)*中枢との接続を待っています/u,
+    );
+    assert.equal(sent.length, 0);
+    // 入出力が止まっている間は、登録のボタンを primary にしない（停止の帯の再開が primary）。
+    const stopped = html(
+      <HomeNetworkPanel
+        state={state({ home })}
+        actions={actions}
+        now={NOW}
+        stopped
+      />,
+    );
+    assert.match(
+      String(buttonTag(stopped, HOME_LABELS.register)),
+      /button--secondary/u,
+    );
+    // 自宅のネットワークのタブも、ほかのタブと同じ幅の約束（狭い幅で字と余白を小さくし、折り返さない）。
+    const tabs = html(
+      <HubTabs
+        state={{ ...INITIAL_HUB_STATE, claims: [] }}
+        actions={hubActions({
+          request: () => undefined,
+          update: () => undefined,
+        })}
+        now={NOW}
+        thisDevice={null}
+        home={<p>自宅の中身</p>}
+      />,
+    );
+    assert.match(
+      tabs,
+      /class="[^"]*whitespace-nowrap px-1\.5 text-xs sm:px-4 sm:text-sm[^"]*"[^>]*>自宅のネットワーク/u,
+    );
+  },
+);

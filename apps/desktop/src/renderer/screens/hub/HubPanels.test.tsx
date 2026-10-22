@@ -27,6 +27,7 @@ import type {
   HubViewState,
   PendingOperation,
 } from '../../state/hub-state.js';
+import { ConfirmDialog } from './ConfirmDialog.js';
 import type { ConfirmRequest } from './ConfirmDialog.js';
 import {
   ClaimsPanel,
@@ -78,6 +79,7 @@ const SESSION = {
   certificate_fingerprint: 'ab'.repeat(30) + 'c1c2',
   // コードを出したのは 11:58（期限の 5 分前）。
   expires_at: at(12, 3),
+  hub_endpoint: { host: '100.64.0.1', port: 47443 },
 };
 
 const html = (node: ReactNode) =>
@@ -156,7 +158,14 @@ test('claims: empty, loading and listed claims show the claim check prominently 
     listed,
     /<span class="font-mono text-2xl font-semibold[^"]*">0a1b 2c3d<\/span>/u,
   );
-  assert.match(listed, /承認の前に、申請した端末の画面と見比べる 8 桁/u);
+  // 見比べる説明は欄に 1 回だけ（行は時刻だけ）。
+  assert.match(listed, /8\u00a0桁すべて同じ申請だけを承認してください。/u);
+  assert.match(listed, /申請 11:58:30・12:03 まで/u);
+  // 拒否は承認より軽い見た目（tertiary・文字だけ danger の色）。
+  assert.match(
+    listed,
+    /button--tertiary text-danger-soft-foreground[^>]*>拒否する/u,
+  );
   assert.match(listed, /aria-label="「合成の申請」の申請を承認する"/u);
   assert.match(listed, /aria-label="「合成の申請」の申請を拒否する"/u);
   assert.match(listed, /一覧を更新/u);
@@ -207,13 +216,13 @@ test('the approve confirmation shows the claim check in its own large line with 
   const body = html(approveRequest(CLAIM, NOW, () => undefined).body);
   assert.match(body, /この申請の確認コード/u);
   assert.match(body, /<p class="font-mono text-2xl[^"]*">0a1b 2c3d<\/p>/u);
-  assert.match(body, /8 桁すべて同じときだけ承認してください。/u);
+  assert.match(body, /8\u00a0桁すべて同じときだけ承認してください。/u);
   assert.doesNotMatch(body, /text-muted/u);
 });
 
 test('a failed operation is shown under the row that was pressed, and only there', () => {
   const { actions, onAsk } = capture();
-  const text = '「合成の申請」の承認を中枢に送れませんでした。';
+  const text = '中枢に「合成の申請」の承認を送れませんでした。';
   const listed = html(
     <ClaimsPanel
       claims={[CLAIM, { ...CLAIM, ref: 'other', device_name: '別の申請' }]}
@@ -227,7 +236,7 @@ test('a failed operation is shown under the row that was pressed, and only there
   // 押した行（合成の申請）の中、次の行（別の申請）より前に出る。
   assert.match(
     listed,
-    /合成の申請.*role="alert"[^>]*>(<[^>]+>)*「合成の申請」の承認を中枢に送れませんでした。.*別の申請/su,
+    /合成の申請.*role="alert"[^>]*>(?:<[^>]+>)*中枢に「合成の申請」の承認を送れませんでした。.*別の申請/su,
   );
   assert.equal(listed.match(/role="alert"/gu)?.length, 1);
   // 他の欄（登録済みの端末）には出さない。
@@ -297,14 +306,17 @@ test('pairing open shows the code smaller than the claim check, the fingerprint 
     after,
     /<dd id="hub-open-code" class="font-mono text-xl[^"]*">1234 5678/u,
   );
-  assert.match(after, /登録する端末に入力する 8 桁/u);
-  assert.match(after, /12:03 まで（残り 3 分）/u);
+  assert.match(after, /登録する端末に入力する 8\u00a0桁/u);
+  assert.match(after, /12:03 まで（残り 3\u00a0分）/u);
   assert.equal(after.match(/<li[^>]*>abab<\/li>/gu)?.length, 15);
   assert.match(
     after,
-    /<li aria-label="最後の 4 桁 c1c2" class="[^"]*underline[^"]*">c1c2<\/li>/u,
+    /<li aria-label="最後の 4\u00a0桁 c1c2" class="[^"]*underline[^"]*">c1c2<\/li>/u,
   );
-  assert.match(after, /下線の最後の 4 桁を、登録する端末に入力してもらいます/u);
+  assert.match(
+    after,
+    /下線の最後の 4\u00a0桁を、登録する端末に入力してもらいます/u,
+  );
   assert.match(after, /コードを出し直す/u);
   // p 要素に aria-label・aria-labelledby を付けない（名前を付けられない役割のため）。
   assert.doesNotMatch(after, /<p[^>]*aria-label/u);
@@ -362,15 +374,15 @@ test('hub state: an operation failure names the row and the operation, and does 
   for (const [reason, text] of [
     [
       'not_connected',
-      '「合成の申請」の承認を中枢に送れませんでした。中枢との接続が戻ってから、もう一度押してください。自動では送り直しません。',
+      '中枢に「合成の申請」の承認を送れませんでした。中枢との接続が戻ってから、もう一度押してください。自動では送り直しません。',
     ],
     [
       'outcome_unknown',
-      '「合成の申請」の承認が中枢に届いたか確かめられませんでした。自動では送り直しません。「一覧を更新」を押して、結果を確かめてください。',
+      '中枢に「合成の申請」の承認が届いたか確かめられませんでした。自動では送り直しません。「一覧を更新」を押して、結果を確かめてください。',
     ],
     [
       'entry_not_found',
-      '「合成の申請」の承認ができませんでした。一覧が古くなっています。「一覧を更新」を押してから、もう一度操作してください。',
+      '一覧が古いため、「合成の申請」の承認ができませんでした。「一覧を更新」を押してから、もう一度操作してください。',
     ],
   ] as const) {
     const after = applyHubResponse(
@@ -408,7 +420,7 @@ test('hub state: applied but the list could not be refreshed is a success that r
     pane: 'claims',
     place: { kind: 'section' },
     tone: 'success',
-    text: '「合成の申請」を承認しました。一覧を更新できなかったため、「一覧を更新」を押して確かめてください。',
+    text: '中枢で「合成の申請」を承認しました。一覧を更新できなかったため、「一覧を更新」を押して確かめてください。',
   });
   // 失効なら、その端末の失効のボタン（参照）を外す。
   const revoking = markSending(
@@ -432,6 +444,8 @@ test('hub state: applied but the list could not be refreshed is a success that r
     list_refreshed: false,
   });
   assert.equal(revoked.devices?.[1]?.ref, null);
+  // 一覧は未更新でも、その行は失効済みとして出す（「有効」のまま残さない。R1-L5）。
+  assert.equal(typeof revoked.devices?.[1]?.revoked_at, 'string');
   assert.equal(revoked.notice?.pane, 'devices');
 });
 
@@ -529,7 +543,7 @@ test('hub tabs: claims come first when there are any; the tab names match the co
     />,
   );
   assert.match(withClaims, /aria-label="中枢の画面"/u);
-  assert.match(withClaims, /承認待ちの申請（1）/u);
+  assert.match(withClaims, /端末の登録（申請 1）/u);
   assert.match(withClaims, /このマシンの接続/u);
   // 申請があるときは、申請の一覧が「新しい端末を登録する」より先。
   assert.match(withClaims, /hub-claims-heading.*hub-open-heading/su);
@@ -541,6 +555,173 @@ test('hub tabs: claims come first when there are any; the tab names match the co
       thisDevice={null}
     />,
   );
-  assert.doesNotMatch(empty, /承認待ちの申請（/u);
+  assert.doesNotMatch(empty, /端末の登録（/u);
   assert.match(empty, /hub-open-heading.*hub-claims-heading/su);
+});
+
+test('hub state: a successful decision or revocation is announced at the top of its section, and cleared by the next operation', () => {
+  const now = new Date(2030, 9, 5, 12, 0, 5).getTime();
+  const sending = markSending(
+    { ...INITIAL_HUB_STATE, claims: [CLAIM] },
+    decide,
+    approving,
+  );
+  const approved = applyHubResponse(
+    sending,
+    'desktop.claim_decide',
+    {
+      request_id: decide.request_id,
+      channel: 'desktop.claim_decide',
+      outcome: 'ok',
+      claims: [],
+    },
+    now,
+  );
+  assert.deepEqual(approved.notice, {
+    pane: 'claims',
+    place: { kind: 'section' },
+    tone: 'success',
+    text: '中枢で「合成の申請」を承認しました（12:00:05）。「登録済みの端末」に出ています。',
+  });
+  const rejectedDone = applyHubResponse(
+    markSending({ ...INITIAL_HUB_STATE, claims: [CLAIM] }, decide, {
+      ...approving,
+      verb: '拒否',
+    }),
+    'desktop.claim_decide',
+    {
+      request_id: decide.request_id,
+      channel: 'desktop.claim_decide',
+      outcome: 'ok',
+      claims: [],
+    },
+    now,
+  );
+  assert.equal(
+    rejectedDone.notice?.text,
+    '中枢で「合成の申請」の申請を拒否しました。',
+  );
+  // 成功は role="status"、失敗は role="alert"。
+  const { actions, onAsk } = capture();
+  const shown = html(
+    <ClaimsPanel
+      claims={[]}
+      busy={false}
+      now={NOW}
+      notice={approved.notice}
+      onAsk={onAsk}
+      actions={actions}
+    />,
+  );
+  assert.match(
+    shown,
+    /role="status"[^>]*>(?:<[^>]+>|●)*中枢で「合成の申請」を承認しました/u,
+  );
+  assert.doesNotMatch(shown, /role="alert"/u);
+  // 次の操作を送ると消える。
+  assert.equal(markSending(approved, decide, approving).notice, null);
+});
+
+test('hub tabs: while waiting for the hub the last lists stay, operations stop and the reason is shown', () => {
+  const { actions } = capture();
+  const paused = html(
+    <HubTabs
+      state={{ ...INITIAL_HUB_STATE, claims: [CLAIM], devices: [SELF] }}
+      actions={actions}
+      now={NOW}
+      paused={{ linked: false, lastConfirmedAt: at(11, 59, 0) }}
+      thisDevice={null}
+    />,
+  );
+  assert.match(
+    paused,
+    /role="status"[^>]*>.*中枢との接続を待っています。接続が戻ると、申請の承認と端末の管理ができます。下の一覧は 11:59:00 の時点のものです。/su,
+  );
+  assert.match(paused, /合成の申請/u);
+  assert.match(paused, /<button[^>]*disabled[^>]*>承認する/u);
+  assert.match(paused, /<button[^>]*disabled[^>]*>一覧を更新/u);
+});
+
+test('the open-pairing button is the primary only when there is nothing else to do', () => {
+  const { actions } = capture();
+  const base = {
+    session: null,
+    sessionUsed: false,
+    busy: false,
+    now: NOW,
+    notice: null,
+    actions,
+  };
+  assert.match(
+    html(<PairingOpenPanel {...base} />),
+    /button--primary[^>]*>ペアリングを始める/u,
+  );
+  assert.match(
+    html(<PairingOpenPanel {...base} primary={false} />),
+    /button--secondary[^>]*>ペアリングを始める/u,
+  );
+  const tabs = html(
+    <HubTabs
+      state={{ ...INITIAL_HUB_STATE, claims: [CLAIM] }}
+      actions={actions}
+      now={NOW}
+      thisDevice={null}
+    />,
+  );
+  assert.doesNotMatch(tabs, /button--primary/u);
+  const stopped = html(
+    <HubTabs
+      state={{ ...INITIAL_HUB_STATE, claims: [] }}
+      actions={actions}
+      now={NOW}
+      stopped
+      thisDevice={null}
+    />,
+  );
+  assert.doesNotMatch(stopped, /button--primary/u);
+  // ロックでコードを消したときは、その理由を出す。
+  assert.match(
+    html(<PairingOpenPanel {...base} sessionCleared="lock" />),
+    /画面をロックしたため、コードの表示を消しました。/u,
+  );
+  // コードを出したら、端末で入力する宛先とポートも出す（R1-M2）。
+  const opened = html(<PairingOpenPanel {...base} session={SESSION} />);
+  assert.match(
+    opened,
+    /<span class="font-mono" id="hub-open-host">100\.64\.0\.1<\/span>/u,
+  );
+  assert.match(opened, /id="hub-open-port">47443<\/span>/u);
+});
+
+test('the confirmation dialog focuses the cancel button first and has no colored icon face', () => {
+  const { actions, onAsk } = capture();
+  void actions;
+  void onAsk;
+  const request = approveRequest(CLAIM, NOW, () => undefined);
+  const dialog = ConfirmDialog({ request, onClose: () => undefined });
+  const found: { label: string; autoFocus: unknown }[] = [];
+  const walk = (node: ReactNode): void => {
+    if (Array.isArray(node)) {
+      for (const child of node as ReactNode[]) walk(child);
+      return;
+    }
+    if (!isValidElement(node)) return;
+    const props = node.props as {
+      children?: ReactNode;
+      autoFocus?: unknown;
+      onPress?: unknown;
+    };
+    if (
+      typeof props.onPress === 'function' &&
+      typeof props.children === 'string'
+    )
+      found.push({ label: props.children, autoFocus: props.autoFocus });
+    walk(props.children);
+  };
+  walk(dialog);
+  assert.deepEqual(found, [
+    { label: 'やめる', autoFocus: true },
+    { label: '承認する', autoFocus: undefined },
+  ]);
+  assert.doesNotMatch(html(dialog), /alert-dialog__icon/u);
 });

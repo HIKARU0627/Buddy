@@ -28,6 +28,7 @@ import {
 import type { DesktopViewState } from '../../state/desktop-state.js';
 import { ConnectionSection } from '../device/ConnectionSection.js';
 import { FailedStep, WaitingStep } from './PairingPanel.js';
+import { REJECT_MESSAGES } from '../../labels.js';
 import { PairingScreen, reregistrationCopy } from './PairingScreen.js';
 
 const FP = '0123456789abcdef'.repeat(4);
@@ -160,7 +161,7 @@ test('the fingerprint is a fixed 4 by 4 grid with the last group masked, and the
   assert.match(html, /手順 2 \/ 4<span[^>]*>指紋の確認/u);
   assert.match(
     html,
-    /<p id="pairing-fingerprint"[^>]*>中枢の証明書の指紋（SHA-256・64 桁）<\/p>/u,
+    /<p id="pairing-fingerprint"[^>]*>中枢の証明書の指紋（SHA-256・64\u00a0桁）<\/p>/u,
   );
   const groups = [
     ...html.matchAll(
@@ -194,43 +195,71 @@ test('the fingerprint is a fixed 4 by 4 grid with the last group masked, and the
   assert.match(html, lastRow);
   assert.match(
     html,
-    /<li aria-label="最後の 4 桁は伏せています（中枢の画面で読みます）"[^>]*>····<\/li>/u,
+    /<li aria-label="最後の 4\u00a0桁は伏せています（中枢の画面で読みます）"[^>]*>····<\/li>/u,
   );
   assert.match(
     html,
-    /最後の 4 桁はこの画面では伏せています。中枢の画面から読んで入力してください。/u,
+    /最後の 4\u00a0桁はこの画面では伏せています。中枢の画面から読んで入力してください。/u,
   );
-  assert.doesNotMatch(html, /64 桁すべてが同じ/u);
+  assert.doesNotMatch(html, /64\u00a0桁すべてが同じ/u);
   // 入力は 4 桁の InputOTP（16 進）。
   assert.match(
     html,
-    /<label[^>]*id="pairing-tail-label"[^>]*>中枢の画面の指紋の最後の 4 桁<\/label>/u,
+    /<label[^>]*id="pairing-tail-label"[^>]*>中枢の画面の指紋の最後の 4\u00a0桁<\/label>/u,
   );
   assert.match(html, /aria-labelledby="pairing-tail-label"/u);
   assert.match(html, /maxLength="4"|maxlength="4"/u);
   assert.match(html, /pattern="\^\[0-9a-fA-F\]\*\$"/u);
   assert.match(html, /一致しないときは申請を送りません。/u);
-  assert.match(html, /最後の 4 桁を確かめて次へ/u);
+  assert.match(html, /最後の 4\u00a0桁を確かめて次へ/u);
   assert.match(html, /一致しない（やめる）/u);
   assert.doesNotMatch(html, /ワンタイムコード/u);
 });
 
-test('a tail rejected by main is shown under the tail field', () => {
+test('a tail rejected by main is a warning with a symbol above the buttons, saying nothing was sent and what may be wrong', () => {
   const html = render(
     { ...base, pairing: pairingAt('fingerprint_check') },
     {
       message: {
         channel: 'desktop.pairing_confirm',
-        text: '中枢の画面の指紋と違います。宛先が正しいか確かめてください。',
+        text: REJECT_MESSAGES.fingerprint_tail_mismatch,
       },
     },
   );
+  // 記号付きの warning の Alert（text-sm）を、ボタンより上に出す（R1-M3）。
   assert.match(
     html,
-    /中枢の画面の指紋の最後の 4 桁.*role="alert"[^>]*>中枢の画面の指紋と違います。宛先が正しいか確かめてください。/u,
+    /alert--warning[^>]*role="alert".*alert__indicator.*text-sm[^"]*" data-slot="alert-description">入力した 4\u00a0桁が、この端末が受け取った中枢の証明書と合いません。申請はまだ送っていません。打ち間違いでなければ、別の機器につながっているおそれがあります。.*最後の 4\u00a0桁を確かめて次へ/su,
   );
   // 合わなかったときも、最後の組は伏せたまま。
   assert.doesNotMatch(html, /cdef<\/li><\/ol>/u);
+});
+
+test('step 1 and 2 say what to do on the hub screen first; the one-time fields are marked required', () => {
+  const address = render(base);
+  assert.match(
+    address,
+    /先に中枢の画面の「端末の登録」で「ペアリングを始める（コードを出す）」を押してください。宛先・指紋・コードはそこに出ます。/u,
+  );
+  const fingerprint = render({
+    ...base,
+    pairing: pairingAt('fingerprint_check'),
+  });
+  assert.match(
+    fingerprint,
+    /中枢の画面の「新しい端末を登録する」に出ている指紋と、1\u00a0行ずつ見比べてください/u,
+  );
+  // InputOTP の欄にも必須の印（読み上げは「必須」）を付ける（R2 の低 1）。
+  assert.match(
+    fingerprint,
+    /<label[^>]*label--required[^>]*id="pairing-tail-label"|<label[^>]*id="pairing-tail-label"[^>]*label--required/u,
+  );
+  const code = render({ ...base, pairing: pairingAt('code_entry') });
+  assert.match(
+    code,
+    /<label[^>]*label--required[^>]*id="pairing-code-label"|<label[^>]*id="pairing-code-label"[^>]*label--required/u,
+  );
+  assert.match(code, /aria-required="true"/u);
 });
 
 test('confirm sends the shown fingerprint and the typed tail; nothing else decides', () => {
@@ -286,7 +315,7 @@ test('waiting shows the claim check and the deadline with time left', () => {
   );
   assert.match(html, /中枢の画面で「合成の端末」の申請を承認してください。/u);
   assert.match(html, /cafe 5aa9/u);
-  assert.match(html, /10:05 まで（残り 5 分）/u);
+  assert.match(html, /10:05 まで（残り 5\u00a0分）/u);
   const sent: DesktopIpcRequest[] = [];
   pressables(
     WaitingStep({
@@ -342,7 +371,10 @@ test('a failure gives what happened and what to do, with one action', () => {
     ...base,
     pairing: pairingAt('failed', { failure: 'certificate_unavailable' }),
   });
-  assert.match(unreachable, /100\.64\.0\.10:47443 に接続できませんでした。/u);
+  assert.match(
+    unreachable,
+    /<span class="font-mono">100\.64\.0\.10:47443<\/span>に接続できませんでした。/u,
+  );
   assert.match(unreachable, /手順 1 \/ 4/u);
   const storage = render({
     ...base,
@@ -400,8 +432,22 @@ test('reregistration explains why first; a changed certificate is a danger alert
     failedAgain,
     /中枢の証明書が、登録したときと変わりました/u,
   );
-  assert.doesNotMatch(failedAgain, /登録し直しています/u);
+  // 失敗の画面でも、なぜ登録し直しているかを 1 行で残す（R1-L8）。上端の帯は「再登録が必要」（R1-L9）。
+  assert.match(
+    failedAgain,
+    /中枢の証明書が変わったため、登録し直しています。/u,
+  );
+  assert.match(failedAgain, /この端末（再登録が必要）/u);
   assert.match(failedAgain, /申請の期限が切れました/u);
+  // 証明書が変わった失敗は、失敗の Alert と同じことを言うので 1 行も出さない。
+  const changedAgain = render({
+    ...base,
+    registration: 'reregistration_required',
+    link: 'reregistration_required',
+    link_reason: 'certificate_mismatch',
+    pairing: pairingAt('failed', { failure: 'certificate_changed' }),
+  });
+  assert.doesNotMatch(changedAgain, /登録し直しています/u);
 });
 
 test('the connection section shows reason, home check and operations without secrets', () => {
@@ -440,8 +486,9 @@ test('the connection section shows reason, home check and operations without sec
     /text-success-soft-foreground">●<\/span><span>自宅のネットワークです<\/span>/u,
   );
   assert.match(html, /結果不明（保留）/u);
-  assert.match(html, /00000000-0000-4000-8000-000000000501/u);
-  assert.match(html, /版 4・内容版 1/u);
+  // 操作は状態の文言だけで、ID・版は出さない（R1-L6）。
+  assert.doesNotMatch(html, /00000000-0000-4000-8000-000000000501/u);
+  assert.doesNotMatch(html, /版 4|内容版/u);
   assert.doesNotMatch(html, /abab/u);
   const outside = renderToStaticMarkup(
     <AppProviders>

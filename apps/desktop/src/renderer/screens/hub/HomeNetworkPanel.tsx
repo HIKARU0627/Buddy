@@ -61,6 +61,9 @@ export const HOME_LABELS = {
   ssidChecked: '確かめる（登録した Wi-Fi 名と比べます）',
   ssidNotChecked: `確かめない（${MAC_ADDRESS}・サブネット・Tailscale の直接経路で判定します）`,
   doneTitle: '自宅のネットワークを登録しました。',
+  // 中枢との接続を待つ間（中枢の画面の Tabs と同じく、表示を残して操作を止める）。
+  paused:
+    '中枢との接続を待っています。接続が戻ると、読み取り直しと自宅の登録ができます。',
 } as const;
 
 // Wi-Fi 名が取れない理由（行の値。短く）。
@@ -308,11 +311,17 @@ export function CurrentNetworkSection({
   onAsk,
   includeSsid = true,
   onIncludeSsidChange = () => undefined,
+  paused = false,
+  stopped = false,
 }: {
   readonly state: HomeViewState;
   readonly actions: HomeActions;
   readonly now: number;
   readonly onAsk: (request: ConfirmRequest) => void;
+  // 中枢との接続を待っている（表示を残して、読み取り直し・登録を止める）。
+  readonly paused?: boolean;
+  // この端末の入出力が止まっている（停止の帯の再開を 1 画面の primary にするため、登録は secondary）。
+  readonly stopped?: boolean;
   // Wi-Fi 名（SSID）も確かめるか。SSID が読み取れないときは選択肢を出さない。
   readonly includeSsid?: boolean;
   readonly onIncludeSsidChange?: (include: boolean) => void;
@@ -335,13 +344,20 @@ export function CurrentNetworkSection({
         <Button
           size="sm"
           variant="outline"
-          isDisabled={state.busy}
+          isDisabled={state.busy || paused}
           onPress={actions.refresh}
         >
           {HOME_LABELS.reread}
         </Button>
       }
     >
+      {paused ? (
+        // 状態のライブ領域は Tabs の上の 1 行（中枢の画面）なので、ここは読み上げの領域にしない。
+        <p className="flex items-start gap-2 text-sm leading-6 text-warning-soft-foreground">
+          <span aria-hidden="true">○</span>
+          <span>{HOME_LABELS.paused}</span>
+        </p>
+      ) : null}
       {state.messageFrom === 'status' && state.message !== null ? (
         <InlineNotice tone="warning" text={state.message} />
       ) : null}
@@ -414,9 +430,12 @@ export function CurrentNetworkSection({
               )}
               <div>
                 {/* 読み取りの最中は押せない（確認の後に送る直前で読み直すが、表示と食い違わないように。Low-2）。 */}
+                {/* 1 画面に primary は 1 つ（ADR 0024）。止まっている間は停止の帯の再開が primary。 */}
                 <Button
-                  variant={registration === null ? 'primary' : 'secondary'}
-                  isDisabled={state.busy || state.reading}
+                  variant={
+                    registration === null && !stopped ? 'primary' : 'secondary'
+                  }
+                  isDisabled={state.busy || state.reading || paused}
                   onPress={() =>
                     onAsk(
                       confirmRequest(
@@ -573,10 +592,14 @@ export function HomeNetworkPanel({
   state,
   actions,
   now,
+  paused = false,
+  stopped = false,
 }: {
   readonly state: HomeViewState;
   readonly actions: HomeActions;
   readonly now: number;
+  readonly paused?: boolean;
+  readonly stopped?: boolean;
 }) {
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const registration = state.home?.registration ?? null;
@@ -597,10 +620,11 @@ export function HomeNetworkPanel({
       : (registration?.ssid_registered ?? true);
   const setIncludeSsid = (include: boolean) =>
     setChoice({ key: registrationKey, include });
-  // タブを開いたときに、このマシンのネットワークを読み取り直す（前に読んだ値を今の値として使わない）。
+  // タブを開いたとき・接続が戻ったときに、このマシンのネットワークを読み取り直す（前に読んだ値を今の値として
+  // 使わない）。接続を待つ間は読み取らない（中枢へ登録の状態を問い合わせられない）。
   useEffect(() => {
-    actions.refresh();
-  }, [actions]);
+    if (!paused) actions.refresh();
+  }, [actions, paused]);
   return (
     <div className="flex flex-col gap-6">
       {state.registered ? (
@@ -630,6 +654,8 @@ export function HomeNetworkPanel({
         onAsk={setConfirm}
         includeSsid={includeSsid}
         onIncludeSsidChange={setIncludeSsid}
+        paused={paused}
+        stopped={stopped}
       />
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </div>

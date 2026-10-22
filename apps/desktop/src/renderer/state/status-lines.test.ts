@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DesktopConnectionView } from '@buddy/contracts';
+import { hubScreenMode, nextHubSeen } from './connection-state.js';
 import type { ShownStatus } from './desktop-state.js';
 import {
   detailItems,
@@ -105,7 +106,7 @@ test('the hub line follows the registration first, then the link', () => {
     {
       tone: 'warning',
       mark: 'circle',
-      text: '接続し直しを待っています。次は 10:00:08（8 秒後）',
+      text: '接続し直しを待っています。次は 10:00:08（8\u00a0秒後）',
     },
   );
   assert.deepEqual(hubLine(s, connection({ link: 'upgrade_required' }), NOW), {
@@ -168,7 +169,7 @@ test('the five always-visible items are kept and missing values are dashes', () 
     [
       { label: '表示先', value: '他の端末', missing: false },
       { label: '音声', value: '会話中', missing: false },
-      { label: '保存モード', value: '継続相談（30 日）', missing: false },
+      { label: '保存モード', value: '継続相談（30\u00a0日）', missing: false },
       { label: '予算保留', value: '保留あり', missing: false },
       { label: '安全停止', value: 'なし', missing: false },
     ],
@@ -201,5 +202,24 @@ test('the stop reason names the cause and time, or that the hub must lift it', (
       NOW,
     ),
     '全体停止のため止まっています。解除は中枢で行います。',
+  );
+});
+
+test('the hub screen frame stays while waiting for the hub, only for a registered device that was confirmed before', () => {
+  const live = connection({ hub_screen: true });
+  const waiting = connection({ link: 'waiting_retry', hub_screen: false });
+  assert.equal(nextHubSeen(false, live), true);
+  assert.equal(hubScreenMode(true, live), 'live');
+  // 接続が切れても、前に確かめていれば枠を残す（操作は止める）。
+  assert.equal(nextHubSeen(true, waiting), true);
+  assert.equal(hubScreenMode(true, waiting), 'paused');
+  // 一度も確かめていない端末には出さない。
+  assert.equal(hubScreenMode(false, waiting), 'off');
+  // ロック中など接続の状態が隠れているときは前のまま。
+  assert.equal(nextHubSeen(true, null), true);
+  // 登録が外れたら（再登録が必要など）捨てる。
+  assert.equal(
+    nextHubSeen(true, connection({ registration: 'reregistration_required' })),
+    false,
   );
 });

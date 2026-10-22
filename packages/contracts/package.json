@@ -8,7 +8,8 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./schema.json": "./schemas/buddy.schema.json"
+    "./schema.json": "./schemas/buddy.schema.json",
+    "./fixtures/h01.json": "./fixtures/h01.json"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

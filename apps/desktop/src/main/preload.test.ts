@@ -66,7 +66,7 @@ test('the preload requires only electron and exposes only invoke and onNotificat
   ]);
 });
 
-test('requests go only to the five contract channels', async () => {
+test('requests go only to the contract channels', async () => {
   const { exposed, invoked } = loadPreload();
   const api = exposed.get('buddyDesktop') as unknown as {
     invoke(request: unknown): Promise<unknown>;
@@ -77,6 +77,12 @@ test('requests go only to the five contract channels', async () => {
     'desktop.io_resume',
     'desktop.window_hide',
     'desktop.client_quit',
+    // B03-05: 中枢との接続・ペアリング（ADR 0025）。
+    'desktop.get_connection',
+    'desktop.pairing_begin',
+    'desktop.pairing_confirm',
+    'desktop.pairing_submit',
+    'desktop.pairing_cancel',
   ];
   // preload の一覧は domain の一覧と同じ。
   assert.deepEqual([...DESKTOP_IPC_CHANNELS], channels);
@@ -91,6 +97,8 @@ test('requests go only to the five contract channels', async () => {
   for (const bad of [
     { channel: 'desktop.hub_stop' },
     { channel: 'desktop.power_event' },
+    { channel: 'desktop.connection_changed' },
+    { channel: 'desktop.pickup_token' },
     { channel: 'http.fetch' },
     null,
     'desktop.get_state',
@@ -109,12 +117,16 @@ test('notifications pass only the body, never the Electron event', () => {
   assert.deepEqual([...listeners.keys()], [...DESKTOP_NOTIFICATION_CHANNELS]);
   assert.deepEqual(
     [...listeners.keys()],
-    ['desktop.state_changed', 'desktop.power_event'],
+    [
+      'desktop.state_changed',
+      'desktop.power_event',
+      'desktop.connection_changed',
+    ],
   );
   const event = { sender: 'ipc-renderer', senderId: 0 };
   for (const set of listeners.values())
     for (const listener of set) listener(event, { body: 1 });
-  assert.deepEqual(received, [{ body: 1 }, { body: 1 }]);
+  assert.deepEqual(received, [{ body: 1 }, { body: 1 }, { body: 1 }]);
   unsubscribe();
   for (const set of listeners.values()) assert.equal(set.size, 0);
 });

@@ -259,6 +259,7 @@ export function createOperationRoutes(
       remoteAddress: request.remoteAddress,
       params: request.params,
       body: request.body,
+      declaredLockState: request.declaredLockState,
     });
 
   const getSnapshot: ApiRouteHandler = async (request) => {

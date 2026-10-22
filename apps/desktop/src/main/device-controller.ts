@@ -20,7 +20,8 @@ import {
 } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 import type { DeviceIoRecord } from './device-io-store.js';
-import { buildStatusBar } from './status-bar.js';
+import { NOT_CONNECTED_HUB, buildStatusBar } from './status-bar.js';
+import type { StatusBarHub } from './status-bar.js';
 
 export type PowerEventNotification = Extract<
   DesktopIpcNotification,
@@ -66,6 +67,7 @@ export class DesktopDeviceController {
   readonly #options: DesktopDeviceControllerOptions;
   #state: DesktopIoState;
   #status: DesktopStatusBar;
+  #hub: StatusBarHub = NOT_CONNECTED_HUB;
   readonly #powerLog: PowerEventNotification[] = [];
 
   constructor(options: DesktopDeviceControllerOptions) {
@@ -134,6 +136,9 @@ export class DesktopDeviceController {
           { request_id: raw.request_id, channel: raw.channel, outcome: 'ok' },
           'quit',
         );
+      default:
+        // 接続・ペアリングのチャネルは core-link が受け付ける（ここへ渡さない。ADR 0025）。
+        return this.#reject(raw.request_id, raw.channel, 'invalid_request');
     }
   }
 
@@ -154,6 +159,17 @@ export class DesktopDeviceController {
     return true;
   }
 
+  // 中枢との接続の状態（core-link から。B03-05）。状態欄が変わるときだけ通知する。
+  setHub(hub: StatusBarHub): void {
+    if (
+      hub.connection === this.#hub.connection &&
+      hub.lastConfirmedAt === this.#hub.lastConfirmedAt
+    )
+      return;
+    this.#hub = hub;
+    this.#refreshStatus();
+  }
+
   // トレイからのこの端末の入出力停止（main の中の本人の操作）。いつでも受け付ける。
   stopFromTray(): void {
     this.#apply({ kind: 'io_stop' });
@@ -170,6 +186,10 @@ export class DesktopDeviceController {
       } catch (error) {
         this.#options.onPersistError?.(error);
       }
+    this.#refreshStatus();
+  }
+
+  #refreshStatus(): void {
     const status = this.#checkedStatus();
     if (JSON.stringify(status) === JSON.stringify(this.#status)) return;
     this.#status = status;
@@ -197,7 +217,7 @@ export class DesktopDeviceController {
   }
 
   #checkedStatus(): DesktopStatusBar {
-    const status = buildStatusBar(this.#state);
+    const status = buildStatusBar(this.#state, this.#hub);
     const errors = this.#options.contract.statusBarErrors(status);
     if (errors.length > 0) throw new DesktopContractError(errors);
     return status;

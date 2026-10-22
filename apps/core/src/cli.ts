@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// buddy-core start | status | stop（ADR 0012）。
+// buddy-core start | status | stop（ADR 0012）、first-device（ADR 0021）、device list | revoke（ADR 0021 の追記）。
 // start はフォアグラウンドで動き、SIGINT / SIGTERM（Windows では SIGINT・SIGBREAK と制御チャネルの stop）
 // で「新しい要求の受付停止 → 終了処理 → ソケット・ロックの解放 → 終了」を行う。
 // 標準出力には機械向けの JSON を 1 行ずつ、標準エラーには人向けの記録を書く。
@@ -42,6 +42,8 @@ const EXIT = {
   autostart_failed: 6,
   // first-device: Core が拒否した（有効な端末がある・HTTPS がない・申請がないなど）。
   first_device_refused: 7,
+  // device: Core が拒否した（端末がない・DB に書けないなど）。
+  device_refused: 8,
 } as const;
 
 // 鍵保護・データ鍵の照合による拒否（終了コード 5）。それ以外の起動の拒否は 4。
@@ -69,7 +71,13 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
          登録済みの端末が 0 台のときだけ、最初の端末のペアリングを始める（動いている Core に頼む）。
          ワンタイムコード（有効 5 分）と証明書の指紋を表示する。端末で指紋を確かめてからコードを入力する
   first-device approve --pairing-id <id>
-         start で始めたペアリングの、同じマシンからの申請を承認する（登録済みの端末があれば拒否）`;
+         start で始めたペアリングの、同じマシンからの申請を承認する（登録済みの端末があれば拒否）
+  device list
+         登録した端末の一覧（端末 ID・名前・中枢と同じマシンか・登録日時・最終接続・失効の時刻）を表示する。
+         トークン・その hash・証明書の指紋は表示しない（中枢の画面が使えないときの保守の手段）
+  device revoke --device-id <id>
+         端末を失効する（接続範囲を無効にし、開いている接続を閉じる）。有効な端末が 0 台になれば
+         first-device からやり直せる。承認はできない`;
 
 const out = (value: object) =>
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -90,6 +98,7 @@ async function main(argv: readonly string[]): Promise<number> {
         'https-host': { type: 'string' },
         'https-port': { type: 'string' },
         'pairing-id': { type: 'string' },
+        'device-id': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -113,9 +122,14 @@ async function main(argv: readonly string[]): Promise<number> {
     command === 'first-device' &&
     positionals.length === 2 &&
     ['start', 'approve'].includes(action ?? '');
+  const deviceCommand =
+    command === 'device' &&
+    positionals.length === 2 &&
+    ['list', 'revoke'].includes(action ?? '');
   if (
     !autostartCommand &&
     !firstDeviceCommand &&
+    !deviceCommand &&
     (positionals.length !== 1 ||
       !['start', 'status', 'stop'].includes(command ?? ''))
   ) {
@@ -143,6 +157,13 @@ async function main(argv: readonly string[]): Promise<number> {
     log(
       '--pairing-id は first-device approve で必ず指定し、他では使えません。',
     );
+    return EXIT.usage;
+  }
+  if (
+    (values['device-id'] !== undefined) !==
+    (deviceCommand && action === 'revoke')
+  ) {
+    log('--device-id は device revoke で必ず指定し、他では使えません。');
     return EXIT.usage;
   }
   let httpsPort = DEFAULT_HTTPS_PORT;
@@ -184,6 +205,7 @@ async function main(argv: readonly string[]): Promise<number> {
   if (autostartCommand) return autostart(action as AutostartAction, dataDir);
   if (firstDeviceCommand)
     return firstDevice(dataDir, values['pairing-id'] ?? null);
+  if (deviceCommand) return device(dataDir, values['device-id'] ?? null);
   return command === 'status' ? status(dataDir) : stop(dataDir);
 }
 
@@ -364,6 +386,37 @@ async function firstDevice(
   if (result.body['error'] === 'unavailable') return EXIT.not_running;
   if (result.body['error'] === 'invalid_request') return EXIT.usage;
   return EXIT.first_device_refused;
+}
+
+// 端末の一覧と失効（ADR 0021 の追記）。動いている Core の制御チャネルへ頼む（DB を直接開かない）。
+// 中枢の画面が使えないときの保守の手段で、承認はできない。出力にトークン・その hash・指紋は含まれない。
+async function device(
+  dataDir: string,
+  deviceId: string | null,
+): Promise<number> {
+  const endpoint = await endpointFor(dataDir);
+  const result = endpoint
+    ? deviceId === null
+      ? await callControl(endpoint, 'device_list', 5000)
+      : await callControl(endpoint, 'device_revoke', 5000, {
+          device_id: deviceId,
+        })
+    : { kind: 'absent' as const };
+  if (result.kind !== 'response') {
+    out({ ok: false, state: 'not_running' });
+    return EXIT.not_running;
+  }
+  out(result.body);
+  if (result.body['ok'] === true) {
+    if (deviceId !== null)
+      log(
+        '端末を失効しました（接続範囲を無効にし、開いている接続を閉じました）。有効な端末が 0 台なら first-device からやり直せます。',
+      );
+    return EXIT.ok;
+  }
+  if (result.body['error'] === 'unavailable') return EXIT.not_running;
+  if (result.body['error'] === 'invalid_request') return EXIT.usage;
+  return EXIT.device_refused;
 }
 
 async function stop(dataDir: string): Promise<number> {

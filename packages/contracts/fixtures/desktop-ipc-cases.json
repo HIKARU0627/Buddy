@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "デスクトップの限定 IPC の受付と、端末の入出力・ロックの状態遷移の期待値（設計 10 §1・§1A、07 §2・§5、01 いつも見える状態、02 停止、QA43・X13、ADR 0014）。手で書いたもので、domain の実装から生成していない。Electron の実機での試験ではない。",
+  "description": "デスクトップの限定 IPC の受付と、端末の入出力・ロックの状態遷移の期待値（設計 10 §1・§1A、07 §2・§5、01 いつも見える状態、02 停止、QA43・X13、ADR 0014・0025）。手で書いたもので、domain の実装から生成していない。Electron の実機での試験ではない。",
   "admission": {
     "state": { "lockState": "unlocked", "stopScope": "local", "ioEpoch": "5" },
     "sender": { "trustedSender": true, "windowFocused": true },
@@ -143,6 +143,76 @@
         "expected_io_epoch": null,
         "sender": { "trustedSender": false },
         "expected": { "ok": false, "reason": "invalid_request" }
+      },
+      {
+        "id": "get-connection-while-locked",
+        "refs": ["ADR 0025"],
+        "channel": "desktop.get_connection",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "pairing-cancel-while-lock-unknown",
+        "refs": ["ADR 0025"],
+        "channel": "desktop.pairing_cancel",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "pairing-begin-by-screen",
+        "refs": ["02 端末登録と接続", "ADR 0025"],
+        "channel": "desktop.pairing_begin",
+        "expected_io_epoch": null,
+        "expected": { "ok": true }
+      },
+      {
+        "id": "pairing-begin-while-locked",
+        "channel": "desktop.pairing_begin",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "pairing-confirm-while-lock-unknown",
+        "refs": ["07 §2 ロック状態が取得不能なら解除済みと扱わない"],
+        "channel": "desktop.pairing_confirm",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "pairing-confirm-from-hidden-window",
+        "channel": "desktop.pairing_confirm",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "pairing-submit-locked-and-unfocused",
+        "channel": "desktop.pairing_submit",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "pairing-submit-untrusted",
+        "channel": "desktop.pairing_submit",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
+        "id": "pairing-submit-while-io-stopped",
+        "refs": ["ペアリングは入出力ではない"],
+        "channel": "desktop.pairing_submit",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "global" },
+        "expected": { "ok": true }
       }
     ]
   },

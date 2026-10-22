@@ -97,3 +97,59 @@ test('strict JSON parser rejects duplicates at any depth and deep nesting', () =
   assert.equal(code('"\\ud83d\\ude00"'), 'ok');
   assert.equal(code('"a\tb"'), 'invalid_json');
 });
+
+// 本人の判断（2026-10-21）: 端末の一覧と失効（1 台目の復旧手段。ADR 0021）。承認の命令はない。
+test('device_list and device_revoke are accepted strictly; device_id belongs to revoke only', () => {
+  const DEVICE = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+  assert.deepEqual(
+    parseControlRequest(bytes(`{"op":"device_list","request_id":"${ID}"}`)),
+    { ok: true, request: { op: 'device_list', request_id: ID } },
+  );
+  assert.deepEqual(
+    parseControlRequest(
+      bytes(
+        `{"op":"device_revoke","request_id":"${ID}","device_id":"${DEVICE}"}`,
+      ),
+    ),
+    {
+      ok: true,
+      request: { op: 'device_revoke', request_id: ID, device_id: DEVICE },
+    },
+  );
+  const cases: ReadonlyArray<[string, string]> = [
+    [`{"op":"device_revoke","request_id":"${ID}"}`, 'missing_field'],
+    [
+      `{"op":"device_revoke","request_id":"${ID}","device_id":1}`,
+      'invalid_type',
+    ],
+    [
+      `{"op":"device_revoke","request_id":"${ID}","device_id":"not-a-uuid"}`,
+      'invalid_device_id',
+    ],
+    [
+      `{"op":"device_revoke","request_id":"${ID}","device_id":"${DEVICE.toUpperCase()}"}`,
+      'invalid_device_id',
+    ],
+    [
+      `{"op":"device_list","request_id":"${ID}","device_id":"${DEVICE}"}`,
+      'unknown_field',
+    ],
+    [
+      `{"op":"status","request_id":"${ID}","device_id":"${DEVICE}"}`,
+      'unknown_field',
+    ],
+    [
+      `{"op":"device_revoke","request_id":"${ID}","device_id":"${DEVICE}","pairing_id":"${DEVICE}"}`,
+      'unknown_field',
+    ],
+    [
+      `{"op":"device_revoke","request_id":"${ID}","device_id":"${DEVICE}","device_id":"${DEVICE}"}`,
+      'duplicate_key',
+    ],
+    // 承認・登録の命令は足していない。
+    [`{"op":"device_approve","request_id":"${ID}"}`, 'unknown_op'],
+    [`{"op":"pairing_approve","request_id":"${ID}"}`, 'unknown_op'],
+  ];
+  for (const [text, expected] of cases)
+    assert.equal(reason(text), expected, text);
+});

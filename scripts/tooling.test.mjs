@@ -102,6 +102,8 @@ test('UI レンダラーの試験は node:test・node:assert だけを足せて�
     ),
     [],
   );
+  // 画面と同じく、接続の状態機械（@buddy/client）・ws・OS アダプター（自宅の指紋の出口を含む）も読み込めない
+  // （レビューの指摘 L1: 試験の設定が main の拒否の一覧を使い、これらを通していた）。
   for (const specifier of [
     'electron',
     'node:fs',
@@ -109,6 +111,10 @@ test('UI レンダラーの試験は node:test・node:assert だけを足せて�
     'assert',
     '@buddy/core',
     '../main/device-controller.js',
+    '@buddy/client',
+    'ws',
+    '@buddy/platform',
+    '@buddy/platform/home-fingerprint',
   ])
     assert.ok(
       restrictedImport(
@@ -287,4 +293,120 @@ test('platform の Electron・Core 依存を拒否し Node 組み込みは受け
     ),
     [],
   );
+});
+
+test('端末側の接続（packages/client）は Node・Electron・中枢・OS アダプターを読み込めず、試験だけが Node を使える', async () => {
+  for (const specifier of [
+    'node:fs',
+    'fs',
+    'node:tls',
+    'electron',
+    'ws',
+    '@buddy/core',
+    '@buddy/platform',
+    '@buddy/storage',
+    '@buddy/desktop',
+    '../../domain/src/index.js',
+  ])
+    assert.ok(
+      restrictedImport(
+        await violations(
+          `export * from '${specifier}';\n`,
+          'packages/client/src/probe.ts',
+        ),
+      ),
+      specifier,
+    );
+  const dynamic = await violations(
+    "export const load = () => import('@buddy/domain');\n",
+    'packages/client/src/probe.ts',
+  );
+  assert.ok(
+    dynamic.some((message) => message.ruleId === 'no-restricted-syntax'),
+  );
+  assert.deepEqual(
+    await violations(
+      "import { applyEvents } from '@buddy/domain';\nimport type { Bootstrap } from '@buddy/contracts';\nexport const probe = (b: Bootstrap) => [applyEvents, b];\n",
+      'packages/client/src/probe.ts',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    await violations(
+      "import test from 'node:test';\nimport { readFileSync } from 'node:fs';\nexport const probe = [test, readFileSync];\n",
+      'packages/client/src/probe.test.ts',
+    ),
+    [],
+  );
+  assert.ok(
+    restrictedImport(
+      await violations(
+        "export * from '@buddy/core';\n",
+        'packages/client/src/probe.test.ts',
+      ),
+    ),
+  );
+});
+
+test('デスクトップの main は接続の状態機械・ws・自宅の指紋の収集だけを読み込め、試験だけが中枢を起動できる（ADR 0025）', async () => {
+  for (const file of [
+    'apps/desktop/src/main/probe.ts',
+    'apps/desktop/src/main/electron/probe.ts',
+  ]) {
+    assert.deepEqual(
+      await violations(
+        "export { ClientConnection } from '@buddy/client';\nexport { WebSocket } from 'ws';\nexport { createHomeFingerprintCollector } from '@buddy/platform/home-fingerprint';\n",
+        file,
+      ),
+      [],
+      file,
+    );
+    for (const specifier of [
+      '@buddy/platform',
+      '@buddy/platform/key-store',
+      '@buddy/core',
+      '@buddy/storage',
+    ])
+      assert.ok(
+        restrictedImport(
+          await violations(`export * from '${specifier}';\n`, file),
+        ),
+        `${file}: ${specifier}`,
+      );
+  }
+  // 試験と試験の道具は同じプロセスの中枢・保存・模擬の KeyStore を使える（Electron は使えない）。
+  for (const file of [
+    'apps/desktop/src/main/probe.test.ts',
+    'apps/desktop/src/main/hub-test-support.ts',
+  ]) {
+    assert.deepEqual(
+      await violations(
+        "export { startCore } from '@buddy/core';\nexport { createMockKeyStore } from '@buddy/platform';\nexport { sealOperationIntent } from '@buddy/storage';\n",
+        file,
+      ),
+      [],
+      file,
+    );
+    assert.ok(
+      restrictedImport(
+        await violations("export { app } from 'electron';\n", file),
+      ),
+      file,
+    );
+  }
+  // UI レンダラーは接続の状態機械・ws・指紋の収集を読み込めない。
+  for (const specifier of [
+    '@buddy/client',
+    'ws',
+    '@buddy/platform/home-fingerprint',
+  ])
+    assert.ok(
+      restrictedImport(
+        await violations(
+          `export * from '${specifier}';\n`,
+          'apps/desktop/src/renderer/probe.tsx',
+        ),
+      ),
+      specifier,
+    );
 });

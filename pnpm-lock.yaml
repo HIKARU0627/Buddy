@@ -267,12 +267,18 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@buddy/client':
+        specifier: workspace:*
+        version: link:../../packages/client
       '@buddy/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@buddy/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@buddy/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
       '@heroui/react':
         specifier: 3.2.6
         version: 3.2.6(@internationalized/date@3.12.4)(@react-aria/ssr@3.10.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@react-aria/utils@3.34.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@react-spectrum/provider@3.11.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-aria-components@1.21.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-aria@3.52.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.3)
@@ -306,7 +312,16 @@ importers:
       react-dom:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
     devDependencies:
+      '@buddy/core':
+        specifier: workspace:*
+        version: link:../core
+      '@buddy/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@tailwindcss/vite':
         specifier: 4.3.3
         version: 4.3.3(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -316,6 +331,9 @@ importers:
       '@types/react-dom':
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      '@types/ws':
+        specifier: 8.18.2
+        version: 8.18.2
       '@vitejs/plugin-react':
         specifier: 6.1.2
         version: 6.1.2(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -328,6 +346,22 @@ importers:
       vite:
         specifier: 8.3.4
         version: 8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1)
+
+  packages/client:
+    dependencies:
+      '@buddy/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@buddy/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: 3.0.1
+        version: 3.0.1(ajv@8.20.0)
 
   packages/contracts: {}
 

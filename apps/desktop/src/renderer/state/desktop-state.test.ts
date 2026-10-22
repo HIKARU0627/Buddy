@@ -57,6 +57,7 @@ test('the state notification replaces the status bar and keeps the log', () => {
     status: { visibility: 'hidden', lock_state: 'unknown' },
     powerLog: [powerEvent('2026-10-21T01:00:00.000Z')],
     message: null,
+    connection: null,
   };
   const after = applyNotification(before, {
     channel: 'desktop.state_changed',

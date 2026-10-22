@@ -12,10 +12,14 @@ import {
   deviceActions,
 } from './desktop-state.js';
 import type { DesktopViewState, DeviceActions } from './desktop-state.js';
+import { pairingActions } from './connection-state.js';
+import type { PairingActions } from './connection-state.js';
 
 export interface DesktopStateHandle {
   readonly state: DesktopViewState;
   readonly actions: DeviceActions;
+  // 中枢との接続・ペアリングの操作（ADR 0025）。
+  readonly pairing: PairingActions;
 }
 
 export function useDesktopState(api: BuddyDesktopApi): DesktopStateHandle {
@@ -36,6 +40,7 @@ export function useDesktopState(api: BuddyDesktopApi): DesktopStateHandle {
       setState((prev) => applyNotification(prev, notification)),
     );
     send(request('desktop.get_state', null));
+    send(request('desktop.get_connection', null));
     return unsubscribe;
   }, [api, send]);
 
@@ -43,5 +48,6 @@ export function useDesktopState(api: BuddyDesktopApi): DesktopStateHandle {
     () => deviceActions(state.status, send),
     [state.status, send],
   );
-  return { state, actions };
+  const pairing = useMemo(() => pairingActions(send), [send]);
+  return { state, actions, pairing };
 }

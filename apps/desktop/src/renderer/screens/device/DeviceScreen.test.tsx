@@ -73,7 +73,13 @@ function render(state: DesktopViewState, actions?: DeviceActions): string {
 const view = (
   status: DesktopStatusBar | null,
   extra: Partial<DesktopViewState> = {},
-): DesktopViewState => ({ status, powerLog: [], message: null, ...extra });
+): DesktopViewState => ({
+  status,
+  powerLog: [],
+  message: null,
+  connection: null,
+  ...extra,
+});
 
 // HTML の button 要素の文字（React Aria の Button は <button type="button"> を出す）。
 function buttonLabels(html: string): string[] {
@@ -144,7 +150,7 @@ test('when accepting, the status, content notice and empty log are shown without
   assert.match(html, /この端末の入出力:/u);
   assert.match(html, /<strong>● 受付中<\/strong>/u);
   assert.match(html, /（世代 7）/u);
-  assert.match(html, /未接続（B01 では中枢に接続しません）/u);
+  assert.match(html, /<dd[^>]*>未接続<\/dd>/u);
   assert.match(html, /未対応（B05 で追加）/u);
   assert.match(html, /<dd[^>]*>なし<\/dd>/u);
   assert.match(html, /会話・候補の表示は B02 以降で追加します。/u);

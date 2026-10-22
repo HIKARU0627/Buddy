@@ -382,10 +382,10 @@ export function semanticErrors(name, value) {
       value.budget_held,
       value.safety_stopped,
     ];
+    // 接続中は最終確認時刻を必ず持つ。中枢がまだ正本を持たない値は接続中でも null（不明）にできる（ADR 0025）。
     if (
       value.hub_connection === 'connected' &&
-      (value.hub_last_confirmed_at === null ||
-        hubValues.some((v) => v === null))
+      value.hub_last_confirmed_at === null
     )
       errors.push('connected_without_values');
     if (
@@ -396,6 +396,45 @@ export function semanticErrors(name, value) {
     )
       errors.push('hub_values_without_connection');
   }
+  // 中枢との接続・ペアリングの状態（ADR 0025）。
+  if (name === 'DesktopConnectionView' && value.visibility === 'shown') {
+    const pairing = value.pairing;
+    if (pairing !== null) {
+      if ((pairing.step === 'failed') !== (pairing.failure !== null))
+        errors.push('pairing_failure_mismatch');
+      if (
+        [
+          'fingerprint_check',
+          'code_entry',
+          'claiming',
+          'waiting_approval',
+        ].includes(pairing.step) &&
+        pairing.fingerprint === null
+      )
+        errors.push('pairing_without_fingerprint');
+      if (
+        pairing.step === 'fetching_certificate' &&
+        pairing.fingerprint !== null
+      )
+        errors.push('fingerprint_before_certificate');
+    }
+    if (value.link !== 'connected' && value.operations.length > 0)
+      errors.push('operations_without_connection');
+    if (value.link === 'connected' && value.last_confirmed_at === null)
+      errors.push('connected_without_confirmation');
+    if ((value.link === 'waiting_retry') !== (value.retry_at !== null))
+      errors.push('retry_at_mismatch');
+    if (
+      value.registration === 'reregistration_required'
+        ? value.link !== 'reregistration_required'
+        : value.registration === 'registered'
+          ? value.link === 'reregistration_required'
+          : value.link !== 'not_connected'
+    )
+      errors.push('link_conflicts_with_registration');
+  }
+  if (name === 'DesktopIpcResponse' && value.connection)
+    errors.push(...semanticErrors('DesktopConnectionView', value.connection));
   if (name === 'DesktopIpcResponse' && value.status) {
     errors.push(...semanticErrors('DesktopStatusBar', value.status));
     const shown = value.status.visibility === 'shown';
@@ -414,6 +453,8 @@ export function semanticErrors(name, value) {
   if (name === 'DesktopIpcNotification') {
     if (value.status)
       errors.push(...semanticErrors('DesktopStatusBar', value.status));
+    if (value.connection)
+      errors.push(...semanticErrors('DesktopConnectionView', value.connection));
     if (
       value.source === 'os_query' &&
       !['lock_screen', 'unlock_screen'].includes(value.event)

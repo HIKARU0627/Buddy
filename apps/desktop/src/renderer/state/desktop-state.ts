@@ -1,6 +1,7 @@
 // 画面が持つ端末の状態（状態欄・電源とロックの記録・拒否の文言）と、操作から送る要求（ADR 0014・0015・0024）。
 // React と DOM に依存しない純粋な関数だけを置き、node:test で試験する。受付の規則は main が持ち、ここは表示と要求の組み立てだけ。
 import type {
+  DesktopConnectionView,
   DesktopIpcNotification,
   DesktopIpcRequest,
   DesktopIpcResponse,
@@ -24,12 +25,15 @@ export interface DesktopViewState {
   readonly powerLog: readonly PowerEvent[];
   // 拒否・通信失敗の文言。null なら出さない。
   readonly message: string | null;
+  // 中枢との接続・登録・ペアリングの状態（ADR 0025）。null は main からまだ受け取っていないこと。
+  readonly connection: DesktopConnectionView | null;
 }
 
 export const INITIAL_VIEW_STATE: DesktopViewState = {
   status: null,
   powerLog: [],
   message: null,
+  connection: null,
 };
 
 export const IPC_FAILURE_MESSAGE = 'main と通信できませんでした。';
@@ -41,6 +45,8 @@ export function applyNotification(
 ): DesktopViewState {
   if (notification.channel === 'desktop.state_changed')
     return { ...state, status: notification.status };
+  if (notification.channel === 'desktop.connection_changed')
+    return { ...state, connection: notification.connection };
   return {
     ...state,
     powerLog: [notification, ...state.powerLog].slice(0, POWER_LOG_LIMIT),
@@ -54,6 +60,8 @@ export function applyResponse(
 ): DesktopViewState {
   if (response.outcome === 'rejected')
     return { ...state, message: REJECT_MESSAGES[response.reason] };
+  if ('connection' in response)
+    return { ...state, message: null, connection: response.connection };
   return 'status' in response
     ? { ...state, message: null, status: response.status }
     : { ...state, message: null };

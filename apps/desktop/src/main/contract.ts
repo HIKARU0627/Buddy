@@ -4,6 +4,7 @@
 // Electron に依存しない（node:test で試験する）。
 import { readFileSync } from 'node:fs';
 import type {
+  DesktopConnectionView,
   DesktopIpcNotification,
   DesktopIpcRequest,
   DesktopIpcResponse,
@@ -20,6 +21,7 @@ const CONTRACT_NAMES = [
   'DesktopIpcResponse',
   'DesktopIpcNotification',
   'DesktopStatusBar',
+  'DesktopConnectionView',
 ] as const;
 
 type ContractName = (typeof CONTRACT_NAMES)[number];
@@ -30,6 +32,10 @@ export interface DesktopContract {
   responseErrors(value: DesktopIpcResponse): readonly string[];
   notificationErrors(value: DesktopIpcNotification): readonly string[];
   statusBarErrors(value: DesktopStatusBar): readonly string[];
+  connectionErrors(value: DesktopConnectionView): readonly string[];
+  // 中枢の API の形式の検査（Bootstrap・Snapshot・PairingClaim・DeviceCredential など、契約の $defs の名前）。
+  // @buddy/client の ClientContract としても使う。
+  valid(name: string, value: unknown): boolean;
 }
 
 // schema の JSON は @buddy/contracts の公開出口（./schema.json）から読む。別ワークスペースの src は参照しない。
@@ -71,6 +77,15 @@ export function createDesktopContract(schema: unknown): DesktopContract {
     responseErrors: (value) => errors('DesktopIpcResponse', value),
     notificationErrors: (value) => errors('DesktopIpcNotification', value),
     statusBarErrors: (value) => errors('DesktopStatusBar', value),
+    connectionErrors: (value) => errors('DesktopConnectionView', value),
+    valid: (name, value) => {
+      if (!/^[A-Za-z][A-Za-z0-9]*$/u.test(name)) return false;
+      const validator = ajv.getSchema(
+        `${String(schema['$id'])}#/$defs/${name}`,
+      );
+      if (!validator) throw new Error(`desktop_contract_missing:${name}`);
+      return validator(value) === true;
+    },
   };
 }
 
@@ -107,11 +122,8 @@ export function desktopSemanticErrors(
       value['safety_stopped'],
     ];
     const connection = value['hub_connection'];
-    if (
-      connection === 'connected' &&
-      (value['hub_last_confirmed_at'] === null ||
-        hubValues.some((v) => v === null))
-    )
+    // 接続中は最終確認時刻を必ず持つ。中枢がまだ正本を持たない値は接続中でも null（不明）にできる（ADR 0025）。
+    if (connection === 'connected' && value['hub_last_confirmed_at'] === null)
       errors.push('connected_without_values');
     if (
       connection !== 'connected' &&
@@ -121,6 +133,50 @@ export function desktopSemanticErrors(
     )
       errors.push('hub_values_without_connection');
   }
+  // 中枢との接続・ペアリングの状態（ADR 0025）。
+  if (name === 'DesktopConnectionView' && value['visibility'] === 'shown') {
+    const pairing = value['pairing'];
+    if (isRecord(pairing)) {
+      const step = pairing['step'];
+      if ((step === 'failed') !== (pairing['failure'] !== null))
+        errors.push('pairing_failure_mismatch');
+      if (
+        (step === 'fingerprint_check' ||
+          step === 'code_entry' ||
+          step === 'claiming' ||
+          step === 'waiting_approval') &&
+        pairing['fingerprint'] === null
+      )
+        errors.push('pairing_without_fingerprint');
+      if (step === 'fetching_certificate' && pairing['fingerprint'] !== null)
+        errors.push('fingerprint_before_certificate');
+    }
+    const link = value['link'];
+    const operations = value['operations'];
+    if (
+      link !== 'connected' &&
+      Array.isArray(operations) &&
+      operations.length > 0
+    )
+      errors.push('operations_without_connection');
+    if (link === 'connected' && value['last_confirmed_at'] === null)
+      errors.push('connected_without_confirmation');
+    if ((link === 'waiting_retry') !== (value['retry_at'] !== null))
+      errors.push('retry_at_mismatch');
+    const registration = value['registration'];
+    if (
+      registration === 'reregistration_required'
+        ? link !== 'reregistration_required'
+        : registration === 'registered'
+          ? link === 'reregistration_required'
+          : link !== 'not_connected'
+    )
+      errors.push('link_conflicts_with_registration');
+  }
+  if (name === 'DesktopIpcResponse' && isRecord(value['connection']))
+    errors.push(
+      ...desktopSemanticErrors('DesktopConnectionView', value['connection']),
+    );
   if (name === 'DesktopIpcResponse' && isRecord(value['status'])) {
     const status = value['status'];
     errors.push(...desktopSemanticErrors('DesktopStatusBar', status));
@@ -141,6 +197,10 @@ export function desktopSemanticErrors(
     if (isRecord(value['status']))
       errors.push(
         ...desktopSemanticErrors('DesktopStatusBar', value['status']),
+      );
+    if (isRecord(value['connection']))
+      errors.push(
+        ...desktopSemanticErrors('DesktopConnectionView', value['connection']),
       );
     if (
       value['source'] === 'os_query' &&

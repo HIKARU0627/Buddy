@@ -38,6 +38,8 @@ paths:
       summary: 現在の表示状態
       description: 一つの整合した読取りで状態とイベント位置を返す。ロック中・停止中は再開用の管理情報だけ（07 §2・§4）。
       x-buddy-core-checks: *id001
+      parameters:
+        - $ref: '#/components/parameters/LockState'
       responses:
         '200':
           description: 表示状態と event_cursor。
@@ -65,6 +67,8 @@ paths:
         - home_network
         - command_scope
         - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -102,6 +106,7 @@ paths:
       x-buddy-core-checks: *id002
       parameters:
         - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -146,6 +151,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/SessionId'
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -208,6 +214,7 @@ paths:
       x-buddy-core-checks: *id002
       parameters:
         - $ref: '#/components/parameters/OperationId'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -252,6 +259,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/OperationId'
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -294,6 +302,7 @@ paths:
         - expected_revision
       parameters:
         - $ref: '#/components/parameters/OperationId'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -336,6 +345,7 @@ paths:
         - expected_revision
       parameters:
         - $ref: '#/components/parameters/OperationId'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -380,6 +390,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/OperationId'
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -447,6 +458,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/OperationId'
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -490,6 +502,7 @@ paths:
         - expected_revision
       parameters:
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -571,6 +584,7 @@ paths:
         - expected_revision
       parameters:
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -667,6 +681,8 @@ paths:
         - command_scope
         - unlocked
         - audio_owner
+      parameters:
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -743,6 +759,7 @@ paths:
         - hub_screen
       parameters:
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -820,6 +837,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ClaimId'
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -898,6 +916,8 @@ paths:
         - device_token
         - home_network
         - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
       responses:
         '200':
           description: 端末の一覧。
@@ -929,6 +949,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/DeviceId'
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -1002,6 +1023,7 @@ paths:
         - hub_screen
       parameters:
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -1038,6 +1060,8 @@ paths:
         - device_token
         - home_network
         - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
       responses:
         '200':
           description: 接続の一覧。
@@ -1069,6 +1093,7 @@ paths:
         - hub_screen
       parameters:
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -1113,6 +1138,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -1157,6 +1183,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
         - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
       requestBody:
         required: true
         content:
@@ -1253,6 +1280,16 @@ components:
           - voice
           - system
       description: 要求の起点。Electron main が限定 IPC の種類から付け、screen 以外は画面操作が必要な経路で 403。Renderer が任意に指定できない。
+    LockState:
+      name: Buddy-Lock-State
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+          - unlocked
+          - locked
+      description: 端末の main が OS から得たロック状態の申告（B03-05、ADR 0025）。ロック解除を求める経路（x-buddy-core-checks の unlocked）と getSnapshot の表示の範囲に使う。端末トークンで認証した要求の申告だけを使い、申告がない（端末で取得できない unknown を含む）ときは解除済みと扱わない（07 §2）。Renderer が任意に指定できない。値が列挙にない場合はどの経路でも 422。
   responses:
     Unauthenticated:
       description: 端末トークン・申請用の秘密がない、無効、または失効している（unauthenticated）。

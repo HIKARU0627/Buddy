@@ -6,9 +6,7 @@ import test from 'node:test';
 import {
   ARP_PATH,
   IPCONFIG_PATH,
-  NETSH_COMMAND,
   NETWORKSETUP_PATH,
-  POWERSHELL_COMMAND,
   ROUTE_PATH,
   WINDOWS_ROUTE_SCRIPT,
   createHomeFingerprintCollector,
@@ -208,6 +206,11 @@ const WINDOWS_JSON = JSON.stringify({
   address: '192.0.2.23',
   prefix: 24,
 });
+// Windows のコマンドは %SystemRoot% からの絶対パスで呼ぶ（レビューの指摘 L9）。期待値は手で書いたパス。
+const SYSTEM_ROOT = 'C:\\Windows';
+const POWERSHELL =
+  'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+const NETSH_EXE = 'C:\\Windows\\System32\\netsh.exe';
 const NETSH = [
   '',
   'There is 1 interface on the system:',
@@ -224,8 +227,8 @@ test(
   { timeout: 10_000 },
   async () => {
     const runner = createMockCommandRunner((command) => {
-      if (command === POWERSHELL_COMMAND) return ok(`${WINDOWS_JSON}\r\n`);
-      if (command === NETSH_COMMAND) return ok(NETSH);
+      if (command === POWERSHELL) return ok(`${WINDOWS_JSON}\r\n`);
+      if (command === NETSH_EXE) return ok(NETSH);
       return missing;
     });
     assert.deepEqual(
@@ -233,6 +236,7 @@ test(
         platform: 'win32',
         runner,
         networkInterfaces: () => ({}),
+        systemRoot: SYSTEM_ROOT,
       }).collect(),
       {
         gateway_mac: '00:00:5e:00:53:01',
@@ -242,18 +246,18 @@ test(
       },
     );
     assert.deepEqual(runner.calls[0], {
-      command: POWERSHELL_COMMAND,
+      command: POWERSHELL,
       args: ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_ROUTE_SCRIPT],
     });
     assert.deepEqual(runner.calls[1], {
-      command: NETSH_COMMAND,
+      command: NETSH_EXE,
       args: ['wlan', 'show', 'interfaces'],
     });
     // 有線（無線の接続口なし）・位置情報の許可がない（SSID の行が出ない）は SSID だけ取得できない。
     const wired = await createHomeFingerprintCollector({
       platform: 'win32',
       runner: createMockCommandRunner((command) =>
-        command === POWERSHELL_COMMAND
+        command === POWERSHELL
           ? ok(WINDOWS_JSON)
           : {
               exitCode: 1,
@@ -263,6 +267,7 @@ test(
             },
       ),
       networkInterfaces: () => ({}),
+      systemRoot: SYSTEM_ROOT,
     }).collect();
     assert.deepEqual(wired.unavailable, ['ssid_unavailable']);
     // PowerShell が失敗すれば MAC・サブネットは取得できない。
@@ -270,6 +275,7 @@ test(
       platform: 'win32',
       runner: createMockCommandRunner(() => missing),
       networkInterfaces: () => ({}),
+      systemRoot: SYSTEM_ROOT,
     }).collect();
     assert.deepEqual(failed, {
       gateway_mac: null,
@@ -282,6 +288,69 @@ test(
         'ssid_unavailable',
       ],
     });
+  },
+);
+
+test(
+  'Windows: commands are run only by absolute paths under SystemRoot; without a usable SystemRoot nothing is run',
+  { timeout: 10_000 },
+  async () => {
+    for (const [systemRoot, powershell, netsh] of [
+      [
+        'D:\\WinNT',
+        'D:\\WinNT\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+        'D:\\WinNT\\System32\\netsh.exe',
+      ],
+      [
+        'C:\\Windows\\',
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+        'C:\\Windows\\System32\\netsh.exe',
+      ],
+    ] as const) {
+      const runner = createMockCommandRunner(() => missing);
+      await createHomeFingerprintCollector({
+        platform: 'win32',
+        runner,
+        networkInterfaces: () => ({}),
+        systemRoot,
+      }).collect();
+      assert.deepEqual(
+        runner.calls.map((call) => call.command),
+        [powershell, netsh],
+        systemRoot,
+      );
+    }
+    // SystemRoot がない・相対パス・UNC・ドライブ文字だけ・不正な文字は、PATH から探さずに取得できない扱い。
+    for (const systemRoot of [
+      undefined,
+      '',
+      'Windows',
+      '.\\Windows',
+      '\\\\server\\share\\Windows',
+      'C:',
+      'C:\\Win"dows',
+      'C:\\Windows\\..\\Temp',
+      'C:/Windows',
+    ]) {
+      const runner = createMockCommandRunner(() => ok(WINDOWS_JSON));
+      const observed = await createHomeFingerprintCollector({
+        platform: 'win32',
+        runner,
+        networkInterfaces: () => ({}),
+        systemRoot,
+      }).collect();
+      assert.deepEqual(runner.calls, [], String(systemRoot));
+      assert.deepEqual(
+        observed,
+        {
+          gateway_mac: null,
+          subnet: null,
+          ssid: null,
+          unavailable: ['system_root_unavailable'],
+        },
+        String(systemRoot),
+      );
+    }
   },
 );
 

@@ -81,6 +81,8 @@ export async function startEventCore(
     readonly pingIntervalMs?: number;
     readonly events?: StartCoreOptions['events'];
     readonly env?: MutableEnvironment;
+    // true なら lockState を注入せず、Core の既定（Buddy-Lock-State の申告。ADR 0025）を使う。
+    readonly lockFromHeader?: boolean;
   } = {},
 ): Promise<EventCore> {
   const dataDir =
@@ -92,7 +94,7 @@ export async function startEventCore(
   };
   const environment: Partial<RequestEnvironment> = {
     homeNetwork: () => env.home,
-    lockState: () => env.lock,
+    ...(options.lockFromHeader === true ? {} : { lockState: () => env.lock }),
     hubLocal: () => true,
     audioOwner: () => 'self',
     claimSecretMatches: () => false,

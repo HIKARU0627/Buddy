@@ -7,11 +7,14 @@ import { runInNewContext } from 'node:vm';
 import {
   DESKTOP_IPC_CHANNELS,
   DESKTOP_NOTIFICATION_CHANNELS,
+  DESKTOP_ROLE_CHANNELS,
+  DESKTOP_ROLE_NOTIFICATIONS,
 } from '@buddy/domain';
 
 type Listener = (event: unknown, payload: unknown) => void;
 
-function loadPreload() {
+// argv を渡すと、sandbox の preload の process（argv だけ）を模擬する。渡さなければ process がない。
+function loadPreload(argv?: readonly string[]) {
   const exposed = new Map<
     string,
     Record<string, (...args: never[]) => unknown>
@@ -52,18 +55,22 @@ function loadPreload() {
     },
     Promise,
     Error,
+    ...(argv === undefined ? {} : { process: { argv } }),
   });
   return { exposed, invoked, listeners, requested };
 }
 
-test('the preload requires only electron and exposes only invoke and onNotification', () => {
+test('the preload requires only electron and exposes only invoke, onNotification and the window role', () => {
   const { exposed, requested } = loadPreload();
   assert.deepEqual(requested, ['electron']);
   assert.deepEqual([...exposed.keys()], ['buddyDesktop']);
   assert.deepEqual(Object.keys(exposed.get('buddyDesktop') ?? {}).sort(), [
     'invoke',
     'onNotification',
+    'windowRole',
   ]);
+  // 役割の引数がなければ従来の窓。
+  assert.equal(exposed.get('buddyDesktop')?.['windowRole'], 'legacy');
 });
 
 test('requests go only to the contract channels', async () => {
@@ -146,4 +153,135 @@ test('notifications pass only the body, never the Electron event', () => {
   assert.deepEqual(received, [{ body: 1 }, { body: 1 }, { body: 1 }]);
   unsubscribe();
   for (const set of listeners.values()) assert.equal(set.size, 0);
+});
+
+interface LoadedApi {
+  readonly windowRole: string | null;
+  invoke(request: unknown): Promise<unknown>;
+  onNotification(listener: (value: unknown) => void): () => void;
+}
+
+const apiOf = (loaded: ReturnType<typeof loadPreload>) =>
+  loaded.exposed.get('buddyDesktop') as unknown as LoadedApi;
+
+// UI-02: 窓の役割ごとに、preload でもチャネルと通知を絞る（多重の防御。正本は main の対応表）。
+// 期待する表は手で書き、domain の表とも一致することを確かめる。
+const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
+  canvas: ['desktop.get_state'],
+  input: ['desktop.get_state', 'desktop.turn_submit'],
+  status: [
+    'desktop.get_state',
+    'desktop.io_stop',
+    'desktop.io_resume',
+    'desktop.window_hide',
+    'desktop.client_quit',
+    'desktop.get_connection',
+    'desktop.pairing_begin',
+    'desktop.pairing_confirm',
+    'desktop.pairing_submit',
+    'desktop.pairing_cancel',
+    'desktop.claims_list',
+    'desktop.claim_decide',
+    'desktop.devices_list',
+    'desktop.device_revoke',
+    'desktop.pairing_open',
+    'desktop.home_status',
+    'desktop.home_register',
+    'desktop.operation_preview',
+    'desktop.operation_approve',
+    'desktop.operation_cancel',
+    'desktop.operation_reconcile',
+    'desktop.operation_retry',
+    'desktop.operation_check',
+  ],
+};
+const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
+  {
+    canvas: ['desktop.state_changed'],
+    input: ['desktop.state_changed'],
+    status: [
+      'desktop.state_changed',
+      'desktop.power_event',
+      'desktop.connection_changed',
+    ],
+  };
+
+test('each window role reaches only its own channels from the preload', async () => {
+  for (const role of ['canvas', 'status', 'input'] as const) {
+    const expected = EXPECTED_ROLE_CHANNELS[role] ?? [];
+    assert.deepEqual([...DESKTOP_ROLE_CHANNELS[role]], expected, role);
+    const loaded = loadPreload([
+      '/path/to/electron',
+      `--buddy-window-role=${role}`,
+    ]);
+    const api = apiOf(loaded);
+    assert.equal(api.windowRole, role);
+    for (const channel of DESKTOP_IPC_CHANNELS) {
+      const request = { channel, request_id: 'r', payload: null };
+      if (expected.includes(channel))
+        assert.deepEqual(await api.invoke(request), { ok: channel });
+      else
+        await assert.rejects(
+          api.invoke(request),
+          /desktop_unknown_channel/u,
+          `${role} ${channel}`,
+        );
+    }
+    assert.deepEqual(
+      loaded.invoked.map(([channel]) => channel),
+      expected,
+    );
+  }
+});
+
+test('each window role listens only to its own notifications', () => {
+  for (const role of ['canvas', 'status', 'input'] as const) {
+    const expected = EXPECTED_ROLE_NOTIFICATIONS[role] ?? [];
+    assert.deepEqual([...DESKTOP_ROLE_NOTIFICATIONS[role]], expected, role);
+    const loaded = loadPreload([`--buddy-window-role=${role}`]);
+    const unsubscribe = apiOf(loaded).onNotification(() => undefined);
+    assert.deepEqual(
+      [...loaded.listeners.entries()]
+        .filter(([, set]) => set.size > 0)
+        .map(([channel]) => channel),
+      expected,
+    );
+    unsubscribe();
+  }
+});
+
+test('an unknown or repeated role argument opens no channel', async () => {
+  for (const argv of [
+    ['--buddy-window-role=admin'],
+    ['--buddy-window-role='],
+    ['--buddy-window-role=__proto__'],
+    ['--buddy-window-role=canvas', '--buddy-window-role=status'],
+  ]) {
+    const loaded = loadPreload(argv);
+    const api = apiOf(loaded);
+    assert.equal(api.windowRole, null, argv.join(' '));
+    await assert.rejects(
+      api.invoke({ channel: 'desktop.get_state', request_id: 'r' }),
+      /desktop_unknown_channel/u,
+    );
+    api.onNotification(() => undefined);
+    assert.equal(loaded.listeners.size, 0);
+    assert.equal(loaded.invoked.length, 0);
+  }
+});
+
+test('the legacy role argument keeps every channel and notification', async () => {
+  const loaded = loadPreload(['--buddy-window-role=legacy']);
+  const api = apiOf(loaded);
+  assert.equal(api.windowRole, 'legacy');
+  for (const channel of DESKTOP_IPC_CHANNELS)
+    assert.deepEqual(
+      await api.invoke({ channel, request_id: 'r', payload: null }),
+      { ok: channel },
+    );
+  api.onNotification(() => undefined);
+  assert.deepEqual(
+    [...loaded.listeners.keys()],
+    [...DESKTOP_NOTIFICATION_CHANNELS],
+  );
 });

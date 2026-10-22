@@ -20,6 +20,10 @@ pnpm --filter @buddy/desktop dev
 - 中枢に登録すると、トークンと中枢の証明書を safeStorage（macOS はキーチェーン、Windows は DPAPI）で暗号化して userData の `device-credential.bin` に置きます。保護の弱い方式（Linux の basic_text など）しか使えなければ保存せず、登録もしません。
 - 確かめるときに実機のキーチェーンへ書きたくなければ、`electron . --use-mock-keychain --user-data-dir=<一時ディレクトリ>` で起動し、中枢は `buddy-core start --mock-key-protection --https-host 127.0.0.1` を使います（模擬。実機の確認は [docs/b03/device-check.md](../../docs/b03/device-check.md)）。
 
+### 3 つの窓の試作（UI-02）
+
+`electron . --buddy-ui=canvas`（または環境変数 `BUDDY_DESKTOP_UI=canvas`）で、キャンバス・状態の層（端のつまみ）・入力バーの 3 つの窓を作ります（[ADR 0032](../../docs/adr/0032-ui-canvas-stream-and-window-roles.md)）。既定（フラグなし）は今の 1 つの窓です。main は送信元の窓の役割で受付を絞り（`src/main/window-roles.ts`）、役割に合わない要求を `untrusted_sender` で拒否します。試作の記録は [docs/ui/window-prototype.md](../../docs/ui/window-prototype.md) です。
+
 ## 確かめられること
 
 - ウィンドウを閉じてもトレイ（macOS はメニューバー）に残ります。終了はトレイの「Buddy を終了」か画面のボタンです。どちらも中枢を止めません。

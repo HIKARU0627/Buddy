@@ -14,6 +14,7 @@ import {
   powerMonitor,
   protocol,
   safeStorage,
+  screen,
   session,
   shell,
   type IpcMainInvokeEvent,
@@ -58,12 +59,19 @@ import {
   ClientLifecycle,
   TRAY_MENU,
   externalOpenTarget,
-  isTrustedSender,
   navigationAllowed,
   resolveAppAsset,
   trayTooltip,
   type TrayAction,
 } from '../window-policy.js';
+import {
+  UiWindowRegistry,
+  rolesForMode,
+  uiWindowMode,
+  uiWindowSpec,
+  windowSender,
+  type UiWindowRole,
+} from '../window-roles.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 // dist/main/electron から見たビルド済みの preload と画面。
@@ -84,31 +92,60 @@ protocol.registerSchemesAsPrivileged([
 app.enableSandbox();
 
 const lifecycle = new ClientLifecycle();
-let mainWindow: BrowserWindow | null = null;
+// 窓の組み立て方（UI-02）。既定は従来の 1 つの窓。開発用のフラグ --buddy-ui=canvas（または BUDDY_DESKTOP_UI=canvas）で
+// キャンバス・状態の層・入力バーの 3 つの窓（試作）にする。
+const uiMode = uiWindowMode(process.argv, process.env);
+// main が作った窓の webContents と役割の対応。送信元の検査と通知の宛先はこれだけで決める。
+const windows = new UiWindowRegistry<BrowserWindow>();
 let tray: Tray | null = null;
 let controller: DesktopDeviceController | null = null;
 let link: DesktopCoreLink | null = null;
 let contractRef: ReturnType<typeof createDesktopContract> | null = null;
-// 画面の読み込みが終わるまでの通知は送らず、読み込み後に記録をまとめて送る。
-let rendererReady = false;
 
 // ログは理由のコードだけ（トークン・宛先・指紋の値・自宅の指紋を出さない）。例外の本文も出さない。
 const log = (code: string) => console.error(`[buddy-desktop] ${code}`);
 
+function liveWindow(role: UiWindowRole): BrowserWindow | null {
+  const window = windows.byRole(role)?.window ?? null;
+  return window !== null && !window.isDestroyed() ? window : null;
+}
+
+// 本人の画面操作（承認・失効・自宅の登録の確認）を受け持つ窓。従来の窓、または状態の層。
+function screenWindow(): BrowserWindow | null {
+  return liveWindow(uiMode === 'canvas' ? 'status' : 'legacy');
+}
+
+// 通知は、読み込みが終わり、役割の表（DESKTOP_ROLE_NOTIFICATIONS）に通知がある窓にだけ送る。
+// 画面の読み込みが終わるまでの通知は送らず、読み込み後に記録をまとめて送る。
 function sendToRenderer(channel: string, payload: unknown): void {
-  const contents = mainWindow?.webContents;
-  if (!rendererReady || !contents || contents.isDestroyed()) return;
-  contents.send(channel, payload);
+  for (const entry of windows.notificationTargets(channel)) {
+    const contents = entry.window.isDestroyed()
+      ? null
+      : entry.window.webContents;
+    if (contents && !contents.isDestroyed()) contents.send(channel, payload);
+  }
 }
 
 function showWindow(): void {
   // 準備（スキーム・IPC の登録）が終わる前の activate・second-instance では作らない。
   if (!controller) return;
   // 画面が自分で window.close() した場合もクライアントはトレイに残り、ここで作り直す。
-  if (!mainWindow || mainWindow.isDestroyed()) mainWindow = createWindow();
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+  for (const role of rolesForMode(uiMode)) {
+    const window = liveWindow(role) ?? createWindow(role);
+    if (window.isMinimized()) window.restore();
+    if (
+      uiWindowSpec(role, process.platform, primaryDisplay(), PRELOAD_PATH)
+        .focusOnShow
+    ) {
+      window.show();
+      window.focus();
+    } else window.showInactive();
+  }
+}
+
+function hideWindows(): void {
+  for (const entry of windows.entries())
+    if (!entry.window.isDestroyed()) entry.window.hide();
 }
 
 function requestQuit(): void {
@@ -130,13 +167,14 @@ function queryLockState(): void {
   }
 }
 
-function senderFacts(event: IpcMainInvokeEvent) {
-  const ui = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+// 送信元の事実。送信元の webContents が main の作った窓（対応表にある窓）のときだけ、その窓の主フレームと比べる。
+function senderFacts(event: IpcMainInvokeEvent, ui: BrowserWindow | null) {
+  const live = ui !== null && !ui.isDestroyed() ? ui : null;
   const frame = event.senderFrame;
-  const main = ui?.webContents.mainFrame;
+  const main = live?.webContents.mainFrame;
   return {
     senderWebContentsId: event.sender.id,
-    uiWebContentsId: ui ? ui.webContents.id : null,
+    uiWebContentsId: live ? live.webContents.id : null,
     senderIsMainFrame:
       frame !== null &&
       main !== undefined &&
@@ -147,8 +185,7 @@ function senderFacts(event: IpcMainInvokeEvent) {
   };
 }
 
-function windowFocused(): boolean {
-  const window = mainWindow;
+function isWindowFocused(window: BrowserWindow | null): boolean {
   return (
     window !== null &&
     !window.isDestroyed() &&
@@ -158,30 +195,47 @@ function windowFocused(): boolean {
   );
 }
 
-function createWindow(): BrowserWindow {
+// 本人の画面操作を受け持つ窓が表示中かつ前面にあるか（自宅の登録の送る直前の確かめ直し）。
+function windowFocused(): boolean {
+  return isWindowFocused(screenWindow());
+}
+
+function primaryDisplay() {
+  const display = screen.getPrimaryDisplay();
+  return { bounds: display.bounds, workArea: display.workArea };
+}
+
+// 役割の窓を作る。3 つの窓と従来の窓は、同じ sandbox・contextIsolation・CSP（特権スキームの応答の見出し）・preload を使い、
+// 役割の引数（--buddy-window-role）だけが違う。役割の正本は main の対応表（windows）。
+function createWindow(role: UiWindowRole): BrowserWindow {
+  const spec = uiWindowSpec(
+    role,
+    process.platform,
+    primaryDisplay(),
+    PRELOAD_PATH,
+  );
   const window = new BrowserWindow({
-    width: 960,
-    height: 680,
-    minWidth: 480,
-    minHeight: 360,
-    show: false,
-    title: 'Buddy',
-    autoHideMenuBar: true,
+    ...spec.options,
     webPreferences: {
-      preload: PRELOAD_PATH,
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      nodeIntegrationInWorker: false,
-      nodeIntegrationInSubFrames: false,
-      webSecurity: true,
-      allowRunningInsecureContent: false,
-      experimentalFeatures: false,
-      webviewTag: false,
-      spellcheck: false,
+      ...spec.options.webPreferences,
+      additionalArguments: [...spec.options.webPreferences.additionalArguments],
     },
   });
-  window.once('ready-to-show', () => window.show());
+  const contentsId = window.webContents.id;
+  windows.register(contentsId, role, window);
+  // 画面共有・スクリーンショットから守る（キャンバスと状態の層）。
+  if (spec.contentProtection) window.setContentProtection(true);
+  if (spec.allWorkspaces !== null)
+    window.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: spec.allWorkspaces.visibleOnFullScreen,
+    });
+  if (spec.alwaysOnTopLevel !== null)
+    window.setAlwaysOnTop(true, spec.alwaysOnTopLevel);
+  window.once('ready-to-show', () => {
+    if (spec.maximize) window.maximize();
+    if (spec.focusOnShow) window.show();
+    else window.showInactive();
+  });
   // ウィンドウを閉じてもトレイに残る。終了の操作の後だけ閉じる（02）。
   window.on('close', (event) => {
     if (lifecycle.onWindowCloseRequested() === 'hide') {
@@ -192,25 +246,31 @@ function createWindow(): BrowserWindow {
   // 隠れた・最小化された（前面でなくなった）ら、表示している本人の確認（承認・失効・自宅の登録）を閉じて送らない。
   window.on('hide', () => link?.closeConfirm());
   window.on('minimize', () => link?.closeConfirm());
-  window.on('closed', () => {
-    if (mainWindow === window) mainWindow = null;
-    rendererReady = false;
-  });
+  // 閉じた窓は対応表から外す（閉じた後の要求は役割が分からず拒否される）。
+  window.on('closed', () => windows.unregister(contentsId));
   // 画面が前面に来たとき、ロック状態が解除済みでなければ OS へ問い合わせ直す。
   window.on('focus', () => {
     if (controller && controller.state.lockState !== 'unlocked')
       queryLockState();
   });
   window.webContents.on('did-start-loading', () => {
-    rendererReady = false;
+    windows.setReady(contentsId, false);
   });
   window.webContents.on('did-finish-load', () => {
-    rendererReady = true;
+    windows.setReady(contentsId, true);
     if (!controller) return;
-    // 読み込み前の電源・ロックの記録と現在の状態欄を送る（記録の通知で、停止・再開の命令ではない）。
-    for (const record of controller.powerLog)
-      sendToRenderer(record.channel, record);
-    sendToRenderer('desktop.state_changed', {
+    // 読み込み前の電源・ロックの記録と現在の状態欄を、読み込んだ窓にだけ送る（記録の通知で、停止・再開の命令ではない）。
+    const sendHere = (channel: string, payload: unknown) => {
+      if (
+        windows
+          .notificationTargets(channel)
+          .some((entry) => entry.webContentsId === contentsId) &&
+        !window.isDestroyed()
+      )
+        window.webContents.send(channel, payload);
+    };
+    for (const record of controller.powerLog) sendHere(record.channel, record);
+    sendHere('desktop.state_changed', {
       channel: 'desktop.state_changed',
       status: controller.statusBar,
     });
@@ -284,10 +344,16 @@ function registerIpc(): void {
   for (const channel of DESKTOP_IPC_CHANNELS) {
     ipcMain.handle(channel, (event, raw: unknown) => {
       if (!controller || !link) throw new Error('desktop_not_ready');
-      const sender = {
-        trustedSender: isTrustedSender(senderFacts(event)),
-        windowFocused: windowFocused(),
-      };
+      // 送信元の窓を対応表で引き、送信元の検査に役割の検査（DESKTOP_ROLE_CHANNELS）を足す。
+      // 対応表にない・閉じた窓・役割に合わないチャネルは untrusted_sender で拒否される。
+      const entry = windows.lookup(event.sender.id);
+      const ui = entry?.window ?? null;
+      const sender = windowSender({
+        channel,
+        role: entry?.role ?? null,
+        facts: senderFacts(event, ui),
+        focused: isWindowFocused(ui),
+      });
       if (CONNECTION_CHANNELS.includes(channel))
         return link.handleIpc(channel, raw, sender, controller.state).response;
       // 中枢の画面の端末の申請の承認・端末の管理（B03-06）。中枢へ要求を送るので非同期。
@@ -302,8 +368,7 @@ function registerIpc(): void {
           .then((outcome) => outcome.response);
       const outcome = controller.handleIpc(channel, raw, sender);
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
-      if (outcome.effect === 'hide_window')
-        setImmediate(() => mainWindow?.hide());
+      if (outcome.effect === 'hide_window') setImmediate(hideWindows);
       if (outcome.effect === 'quit') setImmediate(requestQuit);
       return outcome.response;
     });
@@ -429,14 +494,16 @@ function createLink(
 
 // 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。親付きのモーダルな OS の確認ダイアログで、
 // 「やめる」を既定・取り消しにする。ロック・切断で signal が閉じられたら閉じる。ウィンドウがなければ確認できないので送らない。
+// 3 つの窓の試作（UI-02）では、状態の層のつまみが小さく、シートを付けられないので、親を付けないアプリのモーダルにする
+// （状態の層がなければ送らないことは同じ。確認の出し方は UI-04 で決める）。
 async function confirmAdminWithDialog(
   request: AdminConfirmRequest,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const window = mainWindow;
-  if (window === null || window.isDestroyed() || signal.aborted) return false;
+  const window = screenWindow();
+  if (window === null || signal.aborted) return false;
   const text = adminConfirmText(request);
-  const result = await dialog.showMessageBox(window, {
+  const options: Electron.MessageBoxOptions = {
     type:
       request.action === 'approve' ||
       (request.action === 'register_home' && !request.replacing)
@@ -450,7 +517,11 @@ async function confirmAdminWithDialog(
     cancelId: 0,
     noLink: true,
     signal,
-  });
+  };
+  const result =
+    uiMode === 'canvas'
+      ? await dialog.showMessageBox(options)
+      : await dialog.showMessageBox(window, options);
   return !signal.aborted && result.response === 1;
 }
 
@@ -500,7 +571,7 @@ function start(): void {
   // 起動直後のロック状態は unknown。OS へ問い合わせて確かめる。
   queryLockState();
   link.start(controller.state.lockState);
-  mainWindow = createWindow();
+  for (const role of rolesForMode(uiMode)) createWindow(role);
 }
 
 if (!app.requestSingleInstanceLock()) {

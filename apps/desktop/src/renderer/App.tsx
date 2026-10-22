@@ -16,6 +16,7 @@ import { DeviceScreen } from './screens/device/DeviceScreen.js';
 import { HomeNetworkPanel } from './screens/hub/HomeNetworkPanel.js';
 import { HubTabs } from './screens/hub/HubPanels.js';
 import { PairingScreen } from './screens/pairing/PairingScreen.js';
+import { RoleWindow } from './screens/canvas/RoleWindow.js';
 import {
   hubScreenMode,
   needsPairing,
@@ -27,6 +28,7 @@ import { useHomeState } from './state/use-home-state.js';
 import { useHubState } from './state/use-hub-state.js';
 import { useWorkState } from './state/use-work-state.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
+import { rendererWindowRole } from './state/window-role-state.js';
 
 // 操作がないときの空の配列（描画のたびに新しい配列を作らない）。
 const NO_OPERATIONS: readonly DesktopOperationEntry[] = [];
@@ -150,5 +152,10 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
 
 export function App() {
   const api = desktopApi();
-  return api === null ? <ApiUnavailable /> : <ConnectedApp api={api} />;
+  if (api === null) return <ApiUnavailable />;
+  // 窓の役割（UI-02）。従来の窓は今の画面のまま。3 つの窓の試作は役割ごとの画面。知らない役割は何も描かない。
+  const role = rendererWindowRole(api.windowRole);
+  if (role === null) return null;
+  if (role !== 'legacy') return <RoleWindow api={api} role={role} />;
+  return <ConnectedApp api={api} />;
 }

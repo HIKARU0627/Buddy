@@ -20,6 +20,7 @@ import {
   RETENTION_RULES,
   assessReadiness,
   checkIntentArgs,
+  isRealLocalDateTime,
 } from '@buddy/domain';
 import type { ArgValues, IntentName } from '@buddy/domain';
 import {
@@ -29,12 +30,12 @@ import {
 } from '@buddy/storage';
 import type {
   ConversationOpResult,
-  CreateOperationCommand,
   DataKeyMaterial,
   DataKeyProvider,
   DbCommand,
   DbSubmission,
   DbWorkerClient,
+  TurnOperationInput,
   WorkflowState,
 } from '@buddy/storage';
 import type { ApiContract } from './api-contract.js';
@@ -71,6 +72,8 @@ export interface TurnRoutesOptions {
   readonly utcOffset: string;
   readonly now?: () => number;
   readonly contract?: ApiContract;
+  // 発言から操作を作った後に呼ぶ（イベントの配信を起こす。event-feed の notify）。
+  readonly onOperationCreated?: () => void;
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -172,6 +175,7 @@ const clarify = (
 export interface TurnRoutes {
   readonly handlers: Readonly<Record<string, ApiRouteHandler>>;
   readonly previewValid: PreviewCheck;
+  readonly previewCurrent: (previewId: string) => boolean;
 }
 
 export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
@@ -431,6 +435,13 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const intent: IntentName = 'create_task';
     if (args.target_candidate_id !== null)
       return clarify('unsupported', intent);
+    // 期限の地域日時は実在の日時に限る（契約の Schema は形だけを見る。日付だけの値は format: date で検査済み）。
+    if (
+      typeof args.due === 'string' &&
+      args.due.includes('T') &&
+      !isRealLocalDateTime(args.due)
+    )
+      return clarify('invalid', intent);
     if (readiness(intent, true) === 'blocked')
       return clarify('blocked', intent);
     const operationId = randomUUID();
@@ -516,42 +527,34 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     return plan.intent === null ? null : 'clarifying';
   };
 
-  // 確定 intent を契約で確かめ、暗号化して operation.create を送る。
-  const createOperation = async (
+  // 確定 intent を契約で確かめて暗号化する。操作は発言と同じ transaction（turn.record）で作る。
+  const sealOperation = (
     plan: Extract<TurnPlan, { kind: 'operation' }>,
-    workflowId: string,
-    forgettingGeneration: string,
-  ): Promise<'created' | 'invalid' | 'unavailable'> => {
-    if (!contract.valid('OperationIntent', plan.content)) return 'invalid';
-    const key = await loadKey();
-    if (key === null) return 'unavailable';
+    key: DataKeyMaterial,
+  ): TurnOperationInput | null => {
+    if (!contract.valid('OperationIntent', plan.content)) return null;
     const sealed = sealOperationIntent(
       key,
       { operationId: plan.operation_id, contentVersion: 1 },
       plan.content,
     );
-    if (!sealed.ok) return 'invalid';
-    const command: CreateOperationCommand = {
-      command_id: randomUUID(),
-      kind: 'operation.create',
+    if (!sealed.ok) return null;
+    return {
       operation_id: plan.operation_id,
-      expected_state_revision: '0',
-      request_revision: '1',
-      permission_revision: plan.permission_revision,
-      forgetting_generation: forgettingGeneration,
-      // 操作に連携の接続の列がない（0001）。接続と許可の版は意味検証と preview・承認の照合で確かめる。
-      connection_id: null,
-      request: null,
-      workflow_id: workflowId,
       operation_kind: plan.operation_kind,
       effect_route: plan.route,
       content_hash: sealed.content_hash,
       intent: sealed.intent,
-      // 自動実行はすべて off（試験用の方針表）。画面承認を待つ。
-      auto_approval: null,
     };
-    const outcome = await store.submit(command).result;
-    return outcome.outcome === 'durable' ? 'created' : 'unavailable';
+  };
+
+  // 保存した応答を返す（同じ要求の再送）。読めなければ中枢側の保留。
+  const storedResponse = (json: string, requestId: string) => {
+    try {
+      return { status: 200, body: JSON.parse(json) as object };
+    } catch {
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    }
   };
 
   const postTurn: ApiRouteHandler = async (request) => {
@@ -570,16 +573,28 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (!session.ok) return conversationError(session, requestId);
     if (session.value === null || session.value.ended_at !== null)
       return apiErrorResponse(409, 'conflict', requestId);
+    // 再送の判定は解釈より先（保存済みの応答をそのまま返し、解釈・意味検証をやり直さない）。
+    const ref = requestRef(request, sessionId);
+    const found = await store.conversation({ kind: 'turn.find', request: ref });
+    if (!found.ok) return conversationError(found, requestId);
+    if (found.value !== null)
+      return storedResponse(found.value.response_json, requestId);
     const text = stringOf(body, 'text');
     // 入力の時点の許可の版（連携の接続がなければ 0）。
     const connection = await readConnection();
     const permissionAtInput =
       connection === null ? null : await readPermission(connection.account_id);
-    const plan = await planTurn(text, permissionAtInput);
+    let plan = await planTurn(text, permissionAtInput);
     const key = await loadKey();
     if (key === null)
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    let operation: TurnOperationInput | null = null;
+    if (plan.kind === 'operation') {
+      operation = sealOperation(plan, key);
+      if (operation === null) plan = clarify('invalid', plan.intent);
+    }
     const turnId = randomUUID();
+    const inputId = randomUUID();
     const createdAt = now();
     const rule =
       RETENTION_RULES[
@@ -596,11 +611,72 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (!sealed.ok || rule === undefined)
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     const state = workflowState(plan);
+    const workflowId = state === null ? null : randomUUID();
+    const view = (
+      intent: IntentName,
+      kind: string,
+      status: string,
+      itemRefs: readonly object[],
+    ) =>
+      workflowId === null
+        ? null
+        : {
+            workflow_id: workflowId,
+            request_revision: '1',
+            intent,
+            kind,
+            status,
+            item_refs: itemRefs,
+            more_count: 0,
+            template_id: null,
+            template_version: null,
+          };
+    const responseOf = (
+      status: 'answered' | 'clarification',
+      resultView: object | null,
+      replyText: string | null,
+    ) => ({
+      request_id: requestId,
+      session_id: sessionId,
+      turn_id: turnId,
+      input_id: inputId,
+      workflow_id: workflowId,
+      status,
+      result_view: resultView,
+      reply_text: replyText,
+    });
+    const responseBody =
+      plan.kind === 'clarify'
+        ? responseOf(
+            'clarification',
+            plan.intent === null
+              ? null
+              : view(plan.intent, 'clarification', 'confirming_input', []),
+            CLARIFY[plan.reason],
+          )
+        : plan.kind === 'read'
+          ? responseOf(
+              'answered',
+              view(
+                plan.intent,
+                'schedule_cards',
+                plan.overlaps ? 'needs_review' : 'ready',
+                plan.items,
+              ),
+              null,
+            )
+          : responseOf(
+              'answered',
+              view(plan.intent, 'approval_link', 'needs_review', [
+                { kind: 'operation', id: plan.operation_id },
+              ]),
+              null,
+            );
     const recorded = await store.conversation({
       kind: 'turn.record',
       session_id: sessionId,
       turn_id: turnId,
-      input_id: randomUUID(),
+      input_id: inputId,
       text: {
         blob_id: randomUUID(),
         format_version: sealed.envelope.formatVersion,
@@ -611,102 +687,21 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       },
       created_at: createdAt,
       expires_at: createdAt + rule.ms,
-      workflow: state === null ? null : { workflow_id: randomUUID(), state },
+      workflow:
+        state === null || workflowId === null
+          ? null
+          : { workflow_id: workflowId, state },
       permission_revision: permissionAtInput ?? '0',
-      request: requestRef(request, sessionId),
+      request: ref,
+      operation,
+      response_json: JSON.stringify(responseBody),
     });
     if (!recorded.ok) return conversationError(recorded, requestId);
-    const turn = recorded.value;
-    const response = (
-      status: 'answered' | 'clarification',
-      resultView: object | null,
-      replyText: string | null,
-    ) => ({
-      status: 200,
-      body: {
-        request_id: requestId,
-        session_id: sessionId,
-        turn_id: turn.turn_id,
-        input_id: turn.input_id,
-        workflow_id: turn.workflow_id,
-        status,
-        result_view: resultView,
-        reply_text: replyText,
-      },
-    });
-    const view = (
-      intent: IntentName,
-      kind: string,
-      status: string,
-      itemRefs: readonly object[],
-    ) =>
-      turn.workflow_id === null
-        ? null
-        : {
-            workflow_id: turn.workflow_id,
-            request_revision: '1',
-            intent,
-            kind,
-            status,
-            item_refs: itemRefs,
-            more_count: 0,
-            template_id: null,
-            template_version: null,
-          };
-    const clarification = (reason: ClarifyReason, intent: IntentName | null) =>
-      response(
-        'clarification',
-        intent === null
-          ? null
-          : view(intent, 'clarification', 'confirming_input', []),
-        CLARIFY[reason],
-      );
-    // 再送で、保存した発言に依頼がない（知らない文だった）なら、聞き返しのまま返す。
-    if (turn.workflow_id === null || plan.kind === 'clarify')
-      return clarification(
-        plan.kind === 'clarify' ? plan.reason : 'unclear',
-        plan.kind === 'clarify' ? plan.intent : null,
-      );
-    if (plan.kind === 'read')
-      return response(
-        'answered',
-        view(
-          plan.intent,
-          'schedule_cards',
-          plan.overlaps ? 'needs_review' : 'ready',
-          plan.items,
-        ),
-        null,
-      );
-    // 再送: 依頼に操作があればそれを返す（二つ目を作らない）。なければ作る（前回は作成の前に止まった）。
-    let operationId = plan.operation_id;
-    const existing = turn.replayed
-      ? await store.conversation({
-          kind: 'workflow.operation',
-          workflow_id: turn.workflow_id,
-        })
-      : null;
-    if (existing !== null && !existing.ok)
-      return conversationError(existing, requestId);
-    if (existing?.value.operation_id != null)
-      operationId = existing.value.operation_id;
-    else {
-      const created = await createOperation(
-        plan,
-        turn.workflow_id,
-        turn.forgetting_generation,
-      );
-      if (created === 'invalid') return clarification('invalid', plan.intent);
-      if (created === 'unavailable')
-        return apiErrorResponse(503, 'dependency_unavailable', requestId);
-    }
-    return response(
-      'answered',
-      view(plan.intent, 'approval_link', 'needs_review', [
-        { kind: 'operation', id: operationId },
-      ]),
-      null,
-    );
+    // 同時の再送で先に保存された発言があった: その応答を返す（この要求の計画は捨てる。操作は作っていない）。
+    if (recorded.value.replayed)
+      return storedResponse(recorded.value.response_json, requestId);
+    if (operation !== null) options.onOperationCreated?.();
+    return { status: 200, body: responseBody };
   };
 
   const previewOperation: ApiRouteHandler = async (request) => {
@@ -808,11 +803,15 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       binding.content_hash !== input.content_hash
     )
       return false;
+    // 非同期の照会の間に無効化（ロック・接続の終了・置き換え）されていないこと。登録は同じ値のまま残る
+    // 限り有効で、消されたら同じ ID で戻ることはない（ID は使い捨て）。
+    const alive = () => previews.get(input.preview_id) === binding;
     const operation = await store.query({
       kind: 'operation_view',
       operation_id: input.operation_id,
     });
     if (
+      !alive() ||
       operation === null ||
       operation.current_content_version !== binding.content_version ||
       operation.content_hash !== binding.content_hash
@@ -830,11 +829,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       )
         return false;
     }
-    return true;
+    return alive();
   };
 
   return {
     handlers: { createSession, postTurn, previewOperation },
     previewValid,
+    previewCurrent: (previewId) => previews.get(previewId) !== null,
   };
 }

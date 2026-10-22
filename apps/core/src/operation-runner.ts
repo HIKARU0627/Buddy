@@ -87,7 +87,8 @@ interface LabelIntent {
 type Recheck =
   | {
       readonly kind: 'ok';
-      readonly status: 'active' | 'needs_reauth' | 'needs_attention' | 'disconnected';
+      readonly status:
+        'active' | 'needs_reauth' | 'needs_attention' | 'disconnected';
       readonly access: 'read' | 'read_write';
       readonly permission_revision: string;
     }
@@ -296,7 +297,13 @@ export function createOperationRunner(
     const outcome = reconcileOutcome(observation);
     if (outcome.state === 'unknown_held') {
       if (current.state === 'dispatching' || current.state === 'reconciling')
-        await record(current, attemptId, 'unknown_held', current.state_revision, null);
+        await record(
+          current,
+          attemptId,
+          'unknown_held',
+          current.state_revision,
+          null,
+        );
       log(
         `操作 ${operationId} は結果不明として保留しました（${outcome.reasons.join(', ')}）。自動では再送しません。`,
       );
@@ -323,7 +330,13 @@ export function createOperationRunner(
       );
       return;
     }
-    await record(current, attemptId, 'succeeded', current.state_revision, externalId);
+    await record(
+      current,
+      attemptId,
+      'succeeded',
+      current.state_revision,
+      externalId,
+    );
   };
 
   // 確定した未実行（拒否・未送信）。reconciling を経て not_executed にする。
@@ -333,11 +346,23 @@ export function createOperationRunner(
   ): Promise<void> => {
     let current = await view(operationId);
     if (current === null || current.state !== 'dispatching') return;
-    const step = await record(current, attemptId, 'reconciling', current.state_revision, null);
+    const step = await record(
+      current,
+      attemptId,
+      'reconciling',
+      current.state_revision,
+      null,
+    );
     if (step.outcome !== 'durable') return;
     current = await view(operationId);
     if (current === null || current.state !== 'reconciling') return;
-    await record(current, attemptId, 'not_executed', current.state_revision, null);
+    await record(
+      current,
+      attemptId,
+      'not_executed',
+      current.state_revision,
+      null,
+    );
   };
 
   // D1: 対象・許可の版が変わったら送らず、同じ operation_id で内容版を上げる（旧版の承認は revoked、試行は superseded）。
@@ -477,7 +502,10 @@ export function createOperationRunner(
   };
 
   const runLocal = async (current: OperationView): Promise<void> => {
-    if (current.state !== 'approved' || current.operation_kind !== 'task.create')
+    if (
+      current.state !== 'approved' ||
+      current.operation_kind !== 'task.create'
+    )
       return;
     const intent = await openIntent(current);
     const target = intent?.['target'] as Record<string, unknown> | undefined;
@@ -547,7 +575,6 @@ export function createOperationRunner(
     const intent = raw === null ? null : labelIntent(raw);
     if (intent === null) return null;
     const attemptId = current.attempt_id;
-    let task!: Promise<DbCommandOutcome | null>;
     const work = async (): Promise<DbCommandOutcome | null> => {
       if (current.state === 'unknown_held') {
         // 本人の照合の受付を記録して照合中へ。同じ要求の再送は保存済みの結果を返し、照合し直さない。
@@ -579,7 +606,7 @@ export function createOperationRunner(
         commandId,
       );
     };
-    task = work();
+    const task = work();
     running.set(
       operationId,
       task.then(

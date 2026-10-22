@@ -89,7 +89,11 @@ export type ProviderWriteOutcome<T> =
   // 相手が適用して応答した。
   | { readonly kind: 'applied'; readonly status: number; readonly value: T }
   // 相手が適用せずに拒否した（4xx）。
-  | { readonly kind: 'rejected'; readonly status: number; readonly code: string }
+  | {
+      readonly kind: 'rejected';
+      readonly status: number;
+      readonly code: string;
+    }
   // 接続できず、要求は送られていない。
   | { readonly kind: 'not_sent' }
   // 適用されたか分からない（時間切れ・切断・5xx・形の違う応答）。

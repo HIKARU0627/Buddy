@@ -39,9 +39,14 @@ const thirdBytes = readFileSync(
   new URL('0003_home_network.sql', MIGRATIONS_DIR),
 );
 const thirdSha = createHash('sha256').update(thirdBytes).digest('hex');
-// 0004（ADR 0030）: 試行の superseded と用事の表。
-const fourthBytes = readFileSync(new URL('0004_runner.sql', MIGRATIONS_DIR));
+// 0004（ADR 0029）: 発言への応答。
+const fourthBytes = readFileSync(
+  new URL('0004_turn_responses.sql', MIGRATIONS_DIR),
+);
 const fourthSha = createHash('sha256').update(fourthBytes).digest('hex');
+// 0005（ADR 0030）: 試行の superseded と用事の表。
+const fifthBytes = readFileSync(new URL('0005_runner.sql', MIGRATIONS_DIR));
+const fifthSha = createHash('sha256').update(fifthBytes).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -102,7 +107,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0004 apply to a temporary file DB: 45 STRICT tables, version 4 and the content hashes', () => {
+test('0001 to 0005 apply to a temporary file DB: 46 STRICT tables, version 5 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -110,38 +115,39 @@ test('0001 to 0004 apply to a temporary file DB: 45 STRICT tables, version 4 and
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 4,
-        applied: [1, 2, 3, 4],
+        to: 5,
+        applied: [1, 2, 3, 4, 5],
       });
       const tables = tableNames(db);
-      assert.equal(tables.length, 45);
+      assert.equal(tables.length, 46);
       assert.deepEqual(tables, Object.keys(TABLE_POLICIES).sort());
       const strict = db
         .prepare(
           "SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'",
         )
         .all() as { name: string; strict: number }[];
-      assert.equal(strict.length, 45);
+      assert.equal(strict.length, 46);
       for (const row of strict) assert.equal(row.strict, 1, row.name);
       assert.deepEqual(meta(db), {
         'migration_sha256:0001': initialSha,
         'migration_sha256:0002': secondSha,
         'migration_sha256:0003': thirdSha,
         'migration_sha256:0004': fourthSha,
-        schema_version: '4',
+        'migration_sha256:0005': fifthSha,
+        schema_version: '5',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 4 のまま、適用するものはない。
+    // 開き直しても版は 5 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 4);
+      assert.equal(readSchemaVersion(reopened), 5);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 4,
-        to: 4,
+        from: 5,
+        to: 5,
         applied: [],
       });
     } finally {
@@ -311,7 +317,8 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [1, '0001_initial.sql'],
       [2, '0002_data_key_check.sql'],
       [3, '0003_home_network.sql'],
-      [4, '0004_runner.sql'],
+      [4, '0004_turn_responses.sql'],
+      [5, '0005_runner.sql'],
     ],
   );
   withTempDir((dir) => {

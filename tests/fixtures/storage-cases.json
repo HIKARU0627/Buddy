@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "保存案 0001〜0004 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022・0030）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
+  "description": "保存案 0001〜0005 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022・0030）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
   "seed": [
     "INSERT INTO devices VALUES ('dev-1', '合成の端末', 'windows', 0, X'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000, NULL, NULL)",
     "INSERT INTO devices VALUES ('dev-hub', '合成の中枢', 'macos', 1, X'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000, NULL, NULL)",
@@ -691,7 +691,7 @@
       ]
     },
     {
-      "id": "0004-superseded-attempt-and-one-task-per-operation",
+      "id": "0005-superseded-attempt-and-one-task-per-operation",
       "refs": ["X09", "D1", "D5", "ADR 0030"],
       "steps": [
         [

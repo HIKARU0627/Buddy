@@ -732,6 +732,7 @@ async function startHttps(
     previews,
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
+    onOperationCreated: () => feed.notify(),
   });
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
   const faults = turnOptions.faults ?? NO_FAULTS;
@@ -750,7 +751,12 @@ async function startHttps(
     coreInstanceId,
     environment,
     now: () => now().getTime(),
-    previewValid: https.previewValid ?? turns.previewValid,
+    ...(https.previewValid === undefined
+      ? {
+          previewValid: turns.previewValid,
+          previewCurrent: turns.previewCurrent,
+        }
+      : { previewValid: https.previewValid }),
     runner,
     faults,
   });
@@ -808,7 +814,8 @@ async function startHttps(
   }
   listening = { host: api.host, port: api.port };
   // 起動時の再開: 送出意図の前（approved・preparing）の操作を、対象の確かめ直しから進める。
-  for (const operationId of opened.recovery.resumable) runner.start(operationId);
+  for (const operationId of opened.recovery.resumable)
+    runner.start(operationId);
   return {
     runner,
     api,

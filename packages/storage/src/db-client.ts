@@ -563,8 +563,8 @@ export class DbWorkerClient {
     op: Extract<ConversationOp, { kind: 'turn.record' }>,
   ): Promise<ConversationOpOutcome<TurnRecordValue>>;
   conversation(
-    op: Extract<ConversationOp, { kind: 'workflow.operation' }>,
-  ): Promise<ConversationOpOutcome<{ readonly operation_id: string | null }>>;
+    op: Extract<ConversationOp, { kind: 'turn.find' }>,
+  ): Promise<ConversationOpOutcome<TurnRecordValue | null>>;
   conversation(
     op: Extract<ConversationOp, { kind: 'operation.intent' }>,
   ): Promise<ConversationOpOutcome<OperationIntentBlob | null>>;

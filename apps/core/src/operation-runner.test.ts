@@ -46,10 +46,7 @@ interface FaultCase {
 const FAULT_CASES = (
   JSON.parse(
     readFileSync(
-      new URL(
-        '../../../tests/integration/fault-points.json',
-        import.meta.url,
-      ),
+      new URL('../../../tests/integration/fault-points.json', import.meta.url),
       'utf8',
     ),
   ) as { readonly cases: readonly FaultCase[] }
@@ -130,7 +127,10 @@ async function startRig(
 async function startCore(
   t: test.TestContext,
   rig: Rig,
-  options: { readonly restartOf?: EventCore; readonly faults?: FaultInjector } = {},
+  options: {
+    readonly restartOf?: EventCore;
+    readonly faults?: FaultInjector;
+  } = {},
 ): Promise<EventCore> {
   const previous = options.restartOf;
   return startEventCore(t, {
@@ -250,14 +250,20 @@ const idle = (core: EventCore) => {
   return withTimeout(runner.idle(), 20_000, 'runner idle');
 };
 
-const reached = (injector: FaultInjector, point: Parameters<FaultInjector['waitReached']>[0]) =>
-  withTimeout(injector.waitReached(point), 20_000, `reach ${point}`);
+const reached = (
+  injector: FaultInjector,
+  point: Parameters<FaultInjector['waitReached']>[0],
+) => withTimeout(injector.waitReached(point), 20_000, `reach ${point}`);
 
 const LABEL = 'mail-001 に follow-up を付けて';
 
 function assertProvider(rig: Rig, id: string): void {
   const expected = expectedOf(id);
-  assert.equal(rig.provider.truth.requestCount(), expected.provider_requests, id);
+  assert.equal(
+    rig.provider.truth.requestCount(),
+    expected.provider_requests,
+    id,
+  );
   assert.equal(
     rig.provider.truth.stateChangeCount(),
     expected.provider_state_changes,
@@ -315,7 +321,10 @@ test(
         core,
         b.device,
         operationId,
-        approveBody(b.scope, { previewId: shownB.previewId, hash: shownB.hash }),
+        approveBody(b.scope, {
+          previewId: shownB.previewId,
+          hash: shownB.hash,
+        }),
       ),
     ]);
     assert.equal(first.status, 202, first.text);
@@ -440,7 +449,10 @@ test(
     rig.injector.arm('before_result_save', { mode: 'throw' });
     await approveOperation(core, who, operationId);
     await idle(core);
-    assert.equal((await operationOf(core, who, operationId))['state'], 'dispatching');
+    assert.equal(
+      (await operationOf(core, who, operationId))['state'],
+      'dispatching',
+    );
     await core.handle.stop('test');
     const restarted = await startCore(t, rig, {
       restartOf: core,

@@ -96,6 +96,7 @@ function mockProvider(): MockProvider {
     connectionState: {
       provider: 'mock',
       account_id: ACCOUNT,
+      account_label: '合成の口座（user@example.com）',
       status: 'active',
       access: 'read_write',
     },
@@ -126,6 +127,9 @@ function mockProvider(): MockProvider {
               source_revision: '7',
               mailbox: 'INBOX',
               labels: ['inbox'],
+              subject: '合成の件名',
+              sender: 'sender@example.com',
+              received_at: '2026-10-04T18:30:00+09:00',
             }
           : null,
       );
@@ -378,6 +382,15 @@ test(
       shown.json?.['intent'],
       JSON.parse(labelCanonical(operationId)),
     );
+    // 承認画面で口座と対象のメールを見分ける表示用の値（provider から読む。確定 intent・hash には入らない）。
+    assert.deepEqual(shown.json?.['display'], {
+      account_label: '合成の口座（user@example.com）',
+      target: {
+        subject: '合成の件名',
+        sender: 'sender@example.com',
+        received_at: '2026-10-04T18:30:00+09:00',
+      },
+    });
     const previewId = String(shown.json?.['preview_id']);
 
     // 別の端末が、端末 1 に出した preview で承認する: 409。

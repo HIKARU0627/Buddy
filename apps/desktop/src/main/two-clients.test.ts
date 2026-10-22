@@ -663,9 +663,14 @@ test(
       assert(!sent.includes('GET /v1/snapshot'), label);
       assert(sent.includes(`GET /v1/operations/${held}`), label);
       assert(!sent.includes(`GET /v1/operations/${waiting}`), label);
-      // 命令（POST /v1/operations/...）は送っていない。自宅の指紋の報告だけは送る。
+      // 命令（承認・取消・照合・再試行の POST /v1/operations/...）は送っていない。自宅の指紋の報告と、承認待ちの操作の
+      // 内容を読む承認表示の準備（/preview。外部変更ではない）は送る。
       assert(
-        sent.every((line) => !line.startsWith('POST /v1/operations/')),
+        sent.every(
+          (line) =>
+            !line.startsWith('POST /v1/operations/') ||
+            line.endsWith('/preview'),
+        ),
         label,
       );
     }
@@ -798,8 +803,7 @@ test(
       // main は確認に、中枢から受け取った端末名と確認コード（端末の画面と同じ値）を出した。
       assert.deepEqual(
         a.confirms.flatMap((entry) =>
-          entry.action === 'register_home' ||
-          entry.action === 'approve_operation'
+          entry.action === 'register_home' || 'operationKind' in entry
             ? []
             : [[entry.action, entry.deviceName, entry.claimCheck]],
         ),
@@ -1293,6 +1297,12 @@ test(
     assert.equal(entryB.state, 'awaiting_approval');
     assert.equal(entryB.operation_kind, 'task.create');
     assert.equal(entryB.delivery_unknown, false);
+    // 一覧の行の見出しは操作の内容（用事の題名）。main が自分で承認表示の準備を読んで持つ（イベントには本文を入れない）。
+    await waitUntil(
+      () => b.view().operations[0]?.headline === '牛乳を買う',
+      'B reads the content of the operation',
+    );
+    assert.equal(b.view().operations[0]?.detail, null);
     // 承認の準備: 確定した内容（題名・登録先）を中枢の値で見せる。確認を出す前は承認していない。
     const prepared = await b.work('desktop.operation_preview', {
       ref: entryB.ref,
@@ -1333,6 +1343,8 @@ test(
       operationKind: 'task.create',
       service: 'buddy',
       target: 'inbox',
+      accountLabel: null,
+      targetDetail: null,
       fields: [{ field: 'task_title', values: ['牛乳を買う'] }],
     });
     await waitUntil(

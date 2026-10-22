@@ -148,6 +148,12 @@ test(
       operationKind: 'mail.draft.create',
       service: 'mock',
       target: 'mail-001',
+      accountLabel: 'user@example.com',
+      targetDetail: {
+        subject: '来週の打ち合わせ',
+        sender: 'sato@example.com',
+        received_at: '2026-10-04T18:30:00+09:00',
+      },
       fields: [
         { field: 'draft_to', values: ['a@example.com', 'b@example.com'] },
         { field: 'draft_subject', values: ['件名‮と\u0000制御'] },
@@ -158,14 +164,17 @@ test(
     assert.equal(text.message, '「返信の下書きの作成」を承認しますか');
     assert.deepEqual(text.buttons, ['やめる', '承認する']);
     const lines = text.detail.split('\n');
-    assert.deepEqual(lines.slice(0, 4), [
+    assert.deepEqual(lines.slice(0, 7), [
       '変更先: 模擬のメール',
-      '対象: mail-001',
+      'アカウント: user@example.com',
+      '対象の件名: 来週の打ち合わせ',
+      '差出人: sato@example.com',
+      '受信: 2026-10-04T18:30:00+09:00',
       '宛先: a@example.com、b@example.com',
       '件名: 件名 と 制御',
     ]);
     // 本文は先頭の 200 文字だけ（末尾に「…」）。
-    assert.equal(lines[4], `本文: ${'あ'.repeat(200)}…`);
+    assert.equal(lines[7], `本文: ${'あ'.repeat(200)}…`);
     assert.match(text.detail, /メールを送ることはありません。/u);
     assert.match(text.detail, /取り消せるのは、実行の前だけです。$/u);
     const task = adminConfirmText({
@@ -173,10 +182,47 @@ test(
       operationKind: 'task.create',
       service: 'buddy',
       target: 'inbox',
+      accountLabel: null,
+      targetDetail: null,
       fields: [{ field: 'task_title', values: ['牛乳を買う'] }],
     });
     assert.equal(task.message, '「用事の登録」を承認しますか');
     assert.match(task.detail, /題名: 牛乳を買う/u);
     assert.match(task.detail, /Buddy の用事に登録します。/u);
+  },
+);
+
+test(
+  'the cancel and retry confirmations show the content and the current state, with cancel first',
+  { timeout: 10_000 },
+  () => {
+    const retry = adminConfirmText({
+      action: 'retry_operation',
+      operationKind: 'task.create',
+      headline: '牛乳を買う',
+      detail: '期限 2030-10-06',
+      state: 'not_executed',
+    });
+    assert.equal(retry.title, '操作の再試行');
+    assert.equal(retry.message, '「用事の登録」をもう一度実行しますか');
+    assert.deepEqual(retry.buttons, ['やめる', '再試行する']);
+    assert.deepEqual(retry.detail.split('\n').slice(0, 4), [
+      '操作: 用事の登録',
+      '内容: 牛乳を買う',
+      '補足: 期限 2030-10-06',
+      '今の状態: 実行されませんでした',
+    ]);
+    assert.match(retry.detail, /同じ内容・同じ承認で、もう一度実行します。/u);
+    const cancel = adminConfirmText({
+      action: 'cancel_operation',
+      operationKind: 'mail.labels.change',
+      headline: null,
+      detail: null,
+      state: 'awaiting_approval',
+    });
+    assert.equal(cancel.title, '操作の取消');
+    assert.deepEqual(cancel.buttons, ['やめる', '取り消す']);
+    assert.match(cancel.detail, /今の状態: 承認待ち/u);
+    assert.doesNotMatch(cancel.detail, /内容:/u);
   },
 );

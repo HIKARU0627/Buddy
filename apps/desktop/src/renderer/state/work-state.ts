@@ -29,6 +29,7 @@ export const WORK_CHANNELS: readonly Channel[] = [
   'desktop.operation_cancel',
   'desktop.operation_reconcile',
   'desktop.operation_retry',
+  'desktop.operation_check',
 ];
 
 export const WORK_IPC_FAILURE_MESSAGE =
@@ -189,7 +190,7 @@ export function operationStatus(entry: DesktopOperationEntry): StatusLine {
 // 状態の補足（次に何をするか）。なければ null。
 export function operationNote(entry: DesktopOperationEntry): string | null {
   if (entry.delivery_unknown)
-    return '承認か取消が中枢に届いたか分かりません。自動では送り直しません。状態が更新されるまで、お待ちください。';
+    return '命令が中枢に届いたか分かりません。自動では送り直しません。「状態を確かめる」を押すと、中枢の今の状態を読み取って確かめます（命令は送りません）。';
   switch (entry.state) {
     case 'awaiting_approval':
       return entry.approval_state === 'expired' ||
@@ -197,7 +198,7 @@ export function operationNote(entry: DesktopOperationEntry): string | null {
         ? '内容を確かめてから、もう一度承認してください。'
         : '内容を確かめてから承認してください。';
     case 'unknown_held':
-      return '実行されたかどうか分かりません。自動では送り直しません。「照合」を押すと、相手の状態を読み取って確かめます（変更は増えません）。';
+      return '実行されたかどうか分かりません。自動では送り直しません。「照合」を押すと、実行先の状態を確認します。変更は加えません。';
     case 'not_executed':
       return entry.allowed_actions.includes('retry')
         ? '変更は行われていません。「再試行」を押すと、同じ内容をもう一度実行します。'
@@ -209,6 +210,22 @@ export function operationNote(entry: DesktopOperationEntry): string | null {
   }
 }
 
+// 一覧の行の見出し（内容があれば内容、なければ操作の種類）と、補足（操作の種類・内容の補足）。
+export function rowTitle(entry: DesktopOperationEntry): string {
+  return (
+    entry.headline ??
+    OPERATION_KIND_LABELS[entry.operation_kind] ??
+    entry.operation_kind
+  );
+}
+
+export function rowSubtitle(entry: DesktopOperationEntry): string | null {
+  const kind =
+    OPERATION_KIND_LABELS[entry.operation_kind] ?? entry.operation_kind;
+  if (entry.headline === null) return entry.detail;
+  return entry.detail === null ? kind : `${kind}・${entry.detail}`;
+}
+
 // 行に出す操作（allowed_actions は表示の補助で、実行時の認可は中枢が行う）。結果不明の保留中は出さない。
 export interface EntryActions {
   readonly preview: boolean;
@@ -216,11 +233,19 @@ export interface EntryActions {
   readonly reconcile: boolean;
   // 再試行は、実行されなかったと確定した（not_executed）ときだけ。結果不明には出さない（照合を使う）。
   readonly retry: boolean;
+  // 命令が届いたか分からない保留を、読み取りだけで確かめる（命令の再送ではない）。
+  readonly check: boolean;
 }
 
 export function entryActions(entry: DesktopOperationEntry): EntryActions {
   if (entry.delivery_unknown)
-    return { preview: false, cancel: false, reconcile: false, retry: false };
+    return {
+      preview: false,
+      cancel: false,
+      reconcile: false,
+      retry: false,
+      check: true,
+    };
   const allowed = new Set<string>(entry.allowed_actions);
   return {
     preview:
@@ -229,6 +254,7 @@ export function entryActions(entry: DesktopOperationEntry): EntryActions {
     cancel: allowed.has('cancel'),
     reconcile: allowed.has('reconcile'),
     retry: entry.state === 'not_executed' && allowed.has('retry'),
+    check: false,
   };
 }
 
@@ -281,14 +307,16 @@ const NB = '\u00a0';
 export function scheduleText(
   result: NonNullable<DesktopTurnResult['result']>,
 ): string {
-  if (result.event_count === 0) return '予定はありません。';
-  const parts = [`予定は${result.event_count}${NB}件あります。`];
+  const note = 'この画面では、予定の件名と時刻はまだ表示できません。';
+  if (result.event_count === 0) return `取得した予定はありません。${note}`;
+  const parts = [`取得した予定は${result.event_count}${NB}件です。`];
   if (result.overlap_count > 0)
     parts.push(
       `そのうち${result.overlap_count}${NB}件は、時間が重なっています。`,
     );
   if (result.more_count > 0)
-    parts.push(`ほか${result.more_count}${NB}件は、ここには出していません。`);
+    parts.push(`ほか${result.more_count}${NB}件は、集計に含めていません。`);
+  parts.push(note);
   return parts.join('');
 }
 
@@ -315,6 +343,8 @@ export interface Message {
 export interface PreviewState {
   // 操作の参照（一覧の行と結ぶ）。
   readonly ref: string;
+  // 要求の番号。同じ画面で後から始めた要求の応答だけを反映する（古い応答が新しい確認を置き換えない）。
+  readonly seq: number;
   // 内容を取得している（null）か、取得した内容。
   readonly preview: DesktopOperationPreview | null;
   // 承認を送って結果を待っている（OS の確認ダイアログを表示している間も含む）。
@@ -324,6 +354,8 @@ export interface PreviewState {
 export interface Notice {
   readonly tone: 'warning' | 'success';
   readonly text: string;
+  // 入力の問題（空・長すぎ）だけ true。入力欄の下に出す。通信の失敗などは false で、欄とは別の通知にする。
+  readonly field?: boolean;
 }
 
 export interface WorkViewState {
@@ -333,6 +365,8 @@ export interface WorkViewState {
   readonly sending: boolean;
   readonly turnNotice: Notice | null;
   readonly preview: PreviewState | null;
+  // 承認表示の準備の要求の番号（増えるだけ）。
+  readonly previewSeq: number;
   // 操作ごとの結果の文言（行のすぐ下に出す）。キーは操作の参照。
   readonly notices: Readonly<Record<string, Notice>>;
   // 取消・照合を送って結果を待っている操作の参照。
@@ -346,6 +380,7 @@ export const INITIAL_WORK_STATE: WorkViewState = {
   sending: false,
   turnNotice: null,
   preview: null,
+  previewSeq: 0,
   notices: {},
   busy: [],
 };
@@ -381,7 +416,7 @@ export function operationFailureText(
   switch (channel) {
     case 'desktop.turn_submit':
       if (reason === 'outcome_unknown')
-        return '発言が中枢に届いたか確かめられませんでした。自動では送り直しません。「処理状況」を確かめて、必要ならもう一度送ってください。';
+        return '発言が中枢に届いたか確かめられませんでした。自動では送り直しません。「確認が必要な操作」に増えていないか確かめてから、必要ならもう一度送ってください。';
       if (reason === 'not_connected')
         return '中枢に接続していないため、発言を送れませんでした。接続が戻ってから、もう一度送ってください。';
       if (reason === 'core_rejected')
@@ -419,6 +454,12 @@ export function operationFailureText(
       if (reason === 'not_connected')
         return '中枢に接続していないため、照合できませんでした。接続が戻ってから、もう一度押してください。';
       break;
+    case 'desktop.operation_check':
+      if (reason === 'core_rejected')
+        return '今は確かめられません。少し待ってから、もう一度「状態を確かめる」を押してください。';
+      if (reason === 'not_connected')
+        return '中枢に接続していないため、確かめられませんでした。接続が戻ってから、もう一度押してください。';
+      break;
     case 'desktop.operation_retry':
       if (reason === 'outcome_unknown')
         return '再試行が中枢に届いたか確かめられませんでした。自動では送り直しません。この操作の状態が更新されるまで、お待ちください。';
@@ -433,7 +474,11 @@ export function operationFailureText(
   return REJECT_MESSAGES[reason];
 }
 
-const warn = (text: string): Notice => ({ tone: 'warning', text });
+const warn = (text: string, field = false): Notice => ({
+  tone: 'warning',
+  text,
+  ...(field ? { field: true } : {}),
+});
 
 // 発言の応答。送信中を解き、結果を会話に足す（失敗は入力欄の下に出し、入力は残す）。
 export function applyTurnResponse(
@@ -485,10 +530,12 @@ export function applyTurnFailure(state: WorkViewState): WorkViewState {
 export function markPreviewLoading(
   state: WorkViewState,
   ref: string,
+  seq: number,
 ): WorkViewState {
   return {
     ...state,
-    preview: { ref, preview: null, approving: false },
+    previewSeq: Math.max(state.previewSeq, seq),
+    preview: { ref, seq, preview: null, approving: false },
     notices: withoutNotice(state.notices, ref),
   };
 }
@@ -505,9 +552,11 @@ function withoutNotice(
 export function applyPreviewResponse(
   state: WorkViewState,
   ref: string,
+  seq: number,
   response: DesktopIpcResponse,
 ): WorkViewState {
-  if (state.preview?.ref !== ref) return state;
+  // 別の操作・後から始めた要求の確認を置き換えない（A → B → A と切り替えて古い A の応答が最後に届いても無視する）。
+  if (state.preview?.ref !== ref || state.preview.seq !== seq) return state;
   if (response.outcome === 'rejected')
     return {
       ...state,
@@ -522,7 +571,7 @@ export function applyPreviewResponse(
   if (response.channel !== 'desktop.operation_preview') return state;
   return {
     ...state,
-    preview: { ref, preview: response.preview, approving: false },
+    preview: { ref, seq, preview: response.preview, approving: false },
   };
 }
 
@@ -540,9 +589,10 @@ export function markApproving(state: WorkViewState): WorkViewState {
 export function applyApproveResponse(
   state: WorkViewState,
   ref: string,
+  seq: number,
   response: DesktopIpcResponse,
 ): WorkViewState {
-  if (state.preview?.ref !== ref) return state;
+  if (state.preview?.ref !== ref || state.preview.seq !== seq) return state;
   if (response.outcome === 'ok')
     return {
       ...state,
@@ -576,8 +626,9 @@ export function applyApproveResponse(
 export function applyApproveFailure(
   state: WorkViewState,
   ref: string,
+  seq: number,
 ): WorkViewState {
-  if (state.preview?.ref !== ref) return state;
+  if (state.preview?.ref !== ref || state.preview.seq !== seq) return state;
   return {
     ...state,
     preview: { ...state.preview, approving: false },
@@ -607,6 +658,21 @@ export function applyCommandResponse(
       notices: {
         ...state.notices,
         [ref]: warn(operationFailureText(channel, response.reason)),
+      },
+    };
+  if (response.channel === 'desktop.operation_check')
+    return {
+      ...state,
+      busy,
+      notices: {
+        ...state.notices,
+        [ref]: {
+          tone: 'success',
+          text:
+            response.resolved === 'state_advanced'
+              ? '命令は届いていました。状態が進んでいるので、この行の状態を確かめてください。'
+              : '命令は届いていませんでした。もう一度操作できます。',
+        },
       },
     };
   return {
@@ -675,6 +741,7 @@ export interface WorkActions {
   readonly cancel: (ref: string) => void;
   readonly reconcile: (ref: string) => void;
   readonly retry: (ref: string) => void;
+  readonly check: (ref: string) => void;
 }
 
 export interface WorkSink {
@@ -698,7 +765,10 @@ export function workActions(sink: WorkSink): WorkActions {
       if (current.sending) return;
       const problem = turnProblem(current);
       if (problem !== null) {
-        sink.update((state) => ({ ...state, turnNotice: warn(problem) }));
+        sink.update((state) => ({
+          ...state,
+          turnNotice: warn(problem, true),
+        }));
         return;
       }
       sink.send(
@@ -712,17 +782,18 @@ export function workActions(sink: WorkSink): WorkActions {
     preview: (ref) => {
       const current = sink.state();
       if (current.preview?.approving === true) return;
+      const seq = current.previewSeq + 1;
       sink.send(
         request('desktop.operation_preview', { ref }),
-        (state, response) => applyPreviewResponse(state, ref, response),
+        (state, response) => applyPreviewResponse(state, ref, seq, response),
         (state) =>
-          applyPreviewResponse(state, ref, {
+          applyPreviewResponse(state, ref, seq, {
             request_id: null,
             channel: null,
             outcome: 'rejected',
             reason: 'core_rejected',
           }),
-        (state) => markPreviewLoading(state, ref),
+        (state) => markPreviewLoading(state, ref, seq),
       );
     },
     closePreview: () => {
@@ -735,18 +806,20 @@ export function workActions(sink: WorkSink): WorkActions {
       if (preview === null || preview.preview === null || preview.approving)
         return;
       const ref = preview.ref;
+      const seq = preview.seq;
       sink.send(
         request('desktop.operation_approve', {
           ref: preview.preview.preview_ref,
         }),
-        (state, response) => applyApproveResponse(state, ref, response),
-        (state) => applyApproveFailure(state, ref),
+        (state, response) => applyApproveResponse(state, ref, seq, response),
+        (state) => applyApproveFailure(state, ref, seq),
         markApproving,
       );
     },
     cancel: (ref) => command(sink, 'desktop.operation_cancel', ref),
     reconcile: (ref) => command(sink, 'desktop.operation_reconcile', ref),
     retry: (ref) => command(sink, 'desktop.operation_retry', ref),
+    check: (ref) => command(sink, 'desktop.operation_check', ref),
   };
 }
 
@@ -755,7 +828,8 @@ function command(
   channel:
     | 'desktop.operation_cancel'
     | 'desktop.operation_reconcile'
-    | 'desktop.operation_retry',
+    | 'desktop.operation_retry'
+    | 'desktop.operation_check',
   ref: string,
 ): void {
   if (sink.state().busy.includes(ref)) return;
@@ -765,4 +839,64 @@ function command(
     (state) => applyCommandFailure(state, ref),
     (state) => markBusy(state, ref),
   );
+}
+
+// --- 状態の持ち主（React に依存しない。フックはこれを購読するだけ） ---
+
+export interface WorkApi {
+  invoke(request: DesktopIpcRequest): Promise<DesktopIpcResponse>;
+}
+
+// 表示の権限の世代を持ち、世代をまたいだ応答（ロック・切断・接続待ちの前に送った要求の遅い応答）は反映しない。
+export class WorkStore {
+  readonly #api: WorkApi;
+  readonly #listeners = new Set<() => void>();
+  #state: WorkViewState = INITIAL_WORK_STATE;
+  #epoch = 0;
+  readonly actions: WorkActions;
+
+  constructor(api: WorkApi) {
+    this.#api = api;
+    this.actions = workActions({
+      state: () => this.#state,
+      update: (change) => this.#set(change(this.#state)),
+      send: (built, onResponse, onFailure, before) => {
+        const epoch = this.#epoch;
+        this.#set(before(this.#state));
+        const apply = (change: (prev: WorkViewState) => WorkViewState) => {
+          if (epoch !== this.#epoch) return;
+          this.#set(change(this.#state));
+        };
+        this.#api.invoke(built).then(
+          (response) => apply((prev) => onResponse(prev, response)),
+          () => apply(onFailure),
+        );
+      },
+    });
+  }
+
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  };
+
+  readonly snapshot = (): WorkViewState => this.#state;
+
+  #set(next: WorkViewState): void {
+    if (next === this.#state) return;
+    this.#state = next;
+    for (const listener of this.#listeners) listener();
+  }
+
+  // 出せなくなった（ロック・切断・接続待ち）: 世代を進めて内容を捨てる。
+  hide(): void {
+    this.#epoch += 1;
+    this.#set(forgetWork());
+  }
+
+  sync(operations: readonly DesktopOperationEntry[]): void {
+    this.#set(syncOperations(this.#state, operations));
+  }
 }

@@ -756,6 +756,13 @@ export type DesktopIpcRequest =
       payload: {
         ref: Id;
       };
+    }
+  | {
+      channel: 'desktop.operation_check';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -855,6 +862,15 @@ export type DesktopIpcResponse =
         | 'desktop.operation_retry';
       outcome: 'ok';
       receipt: 'accepted' | 'durable';
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.operation_check';
+      outcome: 'ok';
+      /**
+       * state_advanced は操作の状態が進んでいた（命令は届いていた）。not_delivered は状態が変わっておらず、届いていないとして保留を解いた。
+       */
+      resolved: 'state_advanced' | 'not_delivered';
     }
   | {
       request_id: Id | null;
@@ -1033,7 +1049,8 @@ export type DesktopIpcChannel =
   | 'desktop.operation_approve'
   | 'desktop.operation_cancel'
   | 'desktop.operation_reconcile'
-  | 'desktop.operation_retry';
+  | 'desktop.operation_retry'
+  | 'desktop.operation_check';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -1295,6 +1312,17 @@ export interface OperationPreview {
   intent: OperationIntent;
   content_hash: Hash;
   state_revision: StateRevision;
+  /**
+   * 承認画面で口座と対象のメールを見分ける表示用の値（B04-05、ADR 0031）。外部変更の preview で Core が provider から読む。読めない項目は null で、画面は対象を確認できないと言い、承認へ進ませない。LocalCommand は両方 null。確定 intent の一部ではなく、content_hash に含めない。
+   */
+  display?: {
+    account_label: string | null;
+    target: {
+      subject: string | null;
+      sender: string | null;
+      received_at: string | null;
+    } | null;
+  };
 }
 export interface ApprovalRequest {
   request_id: Id;
@@ -3289,6 +3317,14 @@ export interface DesktopOperationEntry {
    * 承認・取消の命令を送ったが、中枢に届いたか確かめられていない（結果不明）。操作の状態が進むまで、同じ命令を自動で送り直さず、画面からも送らせない。
    */
   delivery_unknown: boolean;
+  /**
+   * 一覧の行の見出しにする内容の 1 行（用事の題名・メールの件名など）。main が承認表示の準備で読んだ値で、イベント・スナップショットには入れない。読めていなければ null（画面は操作の種類を見出しにする）。
+   */
+  headline: string | null;
+  /**
+   * 見出しの補足（期限・宛先・ラベルの変更など）。
+   */
+  detail: string | null;
 }
 /**
  * 画面に出す承認待ちの申請（B03-06、ADR 0026）。ref は main が一覧ごとに作る参照で、申請 ID・コード・秘密を含めない。
@@ -3396,4 +3432,20 @@ export interface DesktopOperationPreview {
       | 'task_body';
     values: string[];
   }[];
+  /**
+   * 口座の表示名（メールアドレスなど）。Buddy 内の用事は null。
+   */
+  account_label: string | null;
+  /**
+   * 対象のメールの件名・差出人・受信日時。読めない項目は null。
+   */
+  target_detail: {
+    subject: string | null;
+    sender: string | null;
+    received_at: string | null;
+  } | null;
+  /**
+   * 承認へ進めてよいか。外部変更で、口座の表示名と対象のメール（件名か差出人）を確認できないときは false で、画面は承認を出さず、main も承認を送らない。
+   */
+  approvable: boolean;
 }

@@ -69,6 +69,14 @@ interface Harness {
   confirm: () => OperationConfirmResult | Promise<OperationConfirmResult>;
   // 確認の最中に呼ぶ（確かめている間に操作が変わった状況を作る）。
   duringConfirm: () => void;
+  // 端末の今の入出力の状態（送る直前に確かめる）。
+  io: { permitted: boolean; epoch: string };
+  // 準備（preview）の応答を遅らせる（番号 n の要求の応答を、返す関数が呼ばれるまで待つ）。
+  previewGate: ((n: number) => Promise<void>) | null;
+  // 操作の読み取り（GET）の応答。
+  getReply: Reply;
+  // 準備を受けた順の番号。
+  previewCount: number;
 }
 
 function harness(): Harness {
@@ -88,14 +96,24 @@ function harness(): Harness {
     },
     confirm: () => ({ scope: SCOPE }),
     duringConfirm: () => undefined,
+    io: { permitted: true, epoch: '1' },
+    previewGate: null,
+    getReply: { kind: 'unknown' },
+    previewCount: 0,
   };
   const connection = {
     get state() {
       return { commandScopeId: SCOPE, operations: h.operations };
     },
-    request(request: { path: string; body?: unknown }) {
+    async request(request: { path: string; body?: unknown }) {
       h.requests.push({ path: request.path, body: request.body });
-      return Promise.resolve(h.replies.shift() ?? { kind: 'unknown' });
+      if (request.path.endsWith('/preview')) {
+        h.previewCount += 1;
+        await h.previewGate?.(h.previewCount);
+        return h.replies.shift() ?? previewReply();
+      }
+      if (request.path === `/v1/operations/${OP}`) return h.getReply;
+      return h.replies.shift() ?? { kind: 'unknown' };
     },
     send(command: unknown) {
       h.sent.push(command);
@@ -111,6 +129,7 @@ function harness(): Harness {
       h.duringConfirm();
       return h.confirm();
     },
+    io: () => h.io,
     changed: () => {
       h.changed.count += 1;
     },
@@ -135,7 +154,6 @@ const previewReply = (
 
 async function openPreview(h: Harness) {
   const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
-  h.replies.push(previewReply());
   const result = await h.bridge.preview(ref);
   assert(result.ok);
   return { ref, preview: result.value };
@@ -183,13 +201,27 @@ test('previewView lists what changes for each operation kind without IDs or hash
     action: { kind: 'mail.labels.change', add: ['follow-up'], remove: [] },
     effects: { external_recipients: [], reconcile_scope: 'exact_target' },
   };
-  const labels = previewView(labelsIntent, id(0x1));
+  const labels = previewView(labelsIntent, id(0x1), {
+    account_label: 'synthetic-user@example.com',
+    target: {
+      subject: '件名',
+      sender: 'sender@example.com',
+      received_at: '2026-10-04T18:30:00+09:00',
+    },
+  });
   assert.deepEqual(labels, {
     preview_ref: id(0x1),
     operation_kind: 'mail.labels.change',
     service: 'mock',
     target: 'mail-001',
     fields: [{ field: 'labels_add', values: ['follow-up'] }],
+    account_label: 'synthetic-user@example.com',
+    target_detail: {
+      subject: '件名',
+      sender: 'sender@example.com',
+      received_at: '2026-10-04T18:30:00+09:00',
+    },
+    approvable: true,
   });
   const draftIntent: OperationIntent = {
     schema: 'buddy.operation.v1',
@@ -208,12 +240,30 @@ test('previewView lists what changes for each operation kind without IDs or hash
     },
     effects: { external_recipients: [], reconcile_scope: 'operation_marker' },
   };
-  const draft = previewView(draftIntent, id(0x2));
+  // 口座の表示名・対象のメールを読めていない外部変更は、承認へ進ませない。
+  const draft = previewView(draftIntent, id(0x2), undefined);
+  assert.equal(draft.approvable, false);
+  assert.equal(draft.account_label, null);
+  assert.equal(draft.target_detail, null);
+  assert.equal(
+    previewView(draftIntent, id(0x2), {
+      account_label: 'a@example.com',
+      target: { subject: null, sender: null, received_at: null },
+    }).approvable,
+    false,
+  );
+  assert.equal(
+    previewView(draftIntent, id(0x2), {
+      account_label: null,
+      target: { subject: '件名', sender: null, received_at: null },
+    }).approvable,
+    false,
+  );
   assert.deepEqual(
     draft.fields.map((entry) => entry.field),
     ['draft_to', 'draft_subject', 'draft_body'],
   );
-  const task = previewView(taskIntent, id(0x3));
+  const task = previewView(taskIntent, id(0x3), undefined);
   assert.deepEqual(task, {
     preview_ref: id(0x3),
     operation_kind: 'task.create',
@@ -223,6 +273,9 @@ test('previewView lists what changes for each operation kind without IDs or hash
       { field: 'task_title', values: ['牛乳を買う'] },
       { field: 'task_due', values: ['2030-10-06'] },
     ],
+    account_label: null,
+    target_detail: null,
+    approvable: true,
   });
   const shown = JSON.stringify([labels, draft, task]);
   for (const value of [id(0xa1), id(0x101), HASH, 'account_id', 'content_hash'])
@@ -390,6 +443,8 @@ test("approve asks main for one confirmation with main's own values and sends on
       operationKind: 'task.create',
       service: 'buddy',
       target: 'inbox',
+      accountLabel: null,
+      targetDetail: null,
       fields: [
         { field: 'task_title', values: ['牛乳を買う'] },
         { field: 'task_due', values: ['2030-10-06'] },
@@ -600,4 +655,394 @@ test('retry is sent only for an operation known not to have run, as a screen com
     reason: 'entry_not_found',
   });
   assert.equal(h.sent.length, 2);
+});
+
+const labelIntent: OperationIntent = {
+  schema: 'buddy.operation.v1',
+  operation_id: OP,
+  content_version: '1',
+  permission_revision: '0',
+  provider: 'mock',
+  account_id: id(0xa1),
+  target: { remote_id: 'mail-001', source_revision: '3' },
+  action: { kind: 'mail.labels.change', add: ['follow-up'], remove: [] },
+  effects: { external_recipients: [], reconcile_scope: 'exact_target' },
+};
+
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+test('cancel and retry ask main for one confirmation with the content and the state, and send only after it', async () => {
+  for (const [kind, action, state, allowed] of [
+    ['cancel', 'cancel_operation', 'awaiting_approval', ['cancel']],
+    ['retry', 'retry_operation', 'not_executed', ['retry']],
+  ] as const) {
+    const h = harness();
+    h.operations = [
+      snapshot({ state, state_revision: '4', allowed_actions: [...allowed] }),
+    ];
+    const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+    // 内容（見出し）を持つ状態にする（取消の確認に、何を取り消すかを出すため）。
+    if (kind === 'cancel') await openPreview(h);
+    h.confirms.length = 0;
+    // 「やめる」: 送らない。
+    h.confirm = () => 'confirmation_declined';
+    assert.deepEqual(await h.bridge.command(kind, ref), {
+      ok: false,
+      reason: 'confirmation_declined',
+    });
+    assert.equal(h.sent.length, 0);
+    // 確定: 1 回の確認の後に 1 回だけ送る。
+    h.confirm = () => ({ scope: SCOPE });
+    assert.deepEqual(await h.bridge.command(kind, ref), {
+      ok: true,
+      value: 'accepted',
+    });
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.confirms.length, 2);
+    assert.deepEqual(h.confirms[1], {
+      action,
+      operationKind: 'task.create',
+      headline: kind === 'cancel' ? '牛乳を買う' : null,
+      detail: kind === 'cancel' ? '期限 2030-10-06' : null,
+      state,
+    });
+  }
+});
+
+test('cancel and retry are not sent when the state changed while the confirmation was open', async () => {
+  const h = harness();
+  h.operations = [
+    snapshot({
+      state: 'not_executed',
+      state_revision: '4',
+      allowed_actions: ['retry'],
+    }),
+  ];
+  const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+  h.duringConfirm = () => {
+    h.operations = [
+      snapshot({
+        state: 'preparing',
+        state_revision: '5',
+        allowed_actions: ['cancel'],
+      }),
+    ];
+  };
+  assert.deepEqual(await h.bridge.command('retry', ref), {
+    ok: false,
+    reason: 'preview_stale',
+  });
+  assert.equal(h.sent.length, 0);
+});
+
+test('approval and retry are not sent when the input was stopped while the confirmation was open, even after a resume', async () => {
+  const approve = harness();
+  const { preview } = await openPreview(approve);
+  approve.duringConfirm = () => {
+    approve.io = { permitted: false, epoch: '2' };
+  };
+  assert.deepEqual(await approve.bridge.approve(preview.preview_ref), {
+    ok: false,
+    reason: 'input_stopped',
+  });
+  assert.equal(approve.sent.length, 0);
+
+  // 停止して再開した（今は停止していないが io_epoch が進んでいる）: 確認を出したときと別の世代なので送らない。
+  const resumed = harness();
+  const second = await openPreview(resumed);
+  resumed.duringConfirm = () => {
+    resumed.io = { permitted: true, epoch: '3' };
+  };
+  assert.deepEqual(await resumed.bridge.approve(second.preview.preview_ref), {
+    ok: false,
+    reason: 'input_stopped',
+  });
+  assert.equal(resumed.sent.length, 0);
+
+  const retry = harness();
+  retry.operations = [
+    snapshot({
+      state: 'not_executed',
+      state_revision: '4',
+      allowed_actions: ['retry'],
+    }),
+  ];
+  const ref = retry.bridge.entries(retry.operations)[0]?.ref ?? '';
+  retry.duringConfirm = () => {
+    retry.io = { permitted: false, epoch: '2' };
+  };
+  assert.deepEqual(await retry.bridge.command('retry', ref), {
+    ok: false,
+    reason: 'input_stopped',
+  });
+  assert.equal(retry.sent.length, 0);
+  // 停止している間は、確認も出さない。
+  const stopped = harness();
+  const third = await openPreview(stopped);
+  stopped.io = { permitted: false, epoch: '2' };
+  assert.deepEqual(await stopped.bridge.approve(third.preview.preview_ref), {
+    ok: false,
+    reason: 'input_stopped',
+  });
+  assert.equal(stopped.confirms.length, 0);
+});
+
+test('a lost command is checked by reading only: not delivered releases the hold, an advanced state releases it too, and nothing is resent', async () => {
+  const h = harness();
+  const { ref, preview } = await openPreview(h);
+  h.sendOutcome = { kind: 'unknown', requestId: id(2) };
+  await h.bridge.approve(preview.preview_ref);
+  assert.equal(h.bridge.entries(h.operations)[0]?.delivery_unknown, true);
+  assert.equal(h.sent.length, 1);
+  // 状態が変わっていない: 届いていない。保留を解く（単独の端末でも復旧できる）。命令は送らない。
+  h.getReply = {
+    kind: 'response',
+    status: 200,
+    body: { ...snapshot(), state_revision: '1' },
+  };
+  assert.deepEqual(await h.bridge.check(ref), {
+    ok: true,
+    value: 'not_delivered',
+  });
+  assert.equal(h.bridge.entries(h.operations)[0]?.delivery_unknown, false);
+  assert.equal(h.sent.length, 1);
+  assert.equal(
+    h.requests.filter((r) => r.path === `/v1/operations/${OP}`).length,
+    1,
+  );
+  // 保留でない操作は確かめない。
+  assert.deepEqual(await h.bridge.check(ref), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  // 解けた後は、内容を確かめ直して、もう一度承認できる（新しい確認・新しい命令）。
+  h.sendOutcome = {
+    kind: 'accepted',
+    requestId: id(6),
+    receipt: { status: 'accepted' },
+  };
+  const again = await h.bridge.preview(ref);
+  assert(again.ok);
+  assert.deepEqual(await h.bridge.approve(again.value.preview_ref), {
+    ok: true,
+    value: 'accepted',
+  });
+  assert.equal(h.sent.length, 2);
+
+  // 状態が進んでいた（届いていた）: 保留を解き、進んだ状態を見せる。
+  const moved = harness();
+  const second = await openPreview(moved);
+  moved.sendOutcome = { kind: 'unknown', requestId: id(3) };
+  await moved.bridge.approve(second.preview.preview_ref);
+  moved.getReply = {
+    kind: 'response',
+    status: 200,
+    body: {
+      ...snapshot({
+        state: 'approved',
+        state_revision: '2',
+        allowed_actions: ['cancel'],
+      }),
+    },
+  };
+  assert.deepEqual(await moved.bridge.check(second.ref), {
+    ok: true,
+    value: 'state_advanced',
+  });
+  // 読めなければ保留のまま。
+  const unread = harness();
+  const third = await openPreview(unread);
+  unread.sendOutcome = { kind: 'unknown', requestId: id(4) };
+  await unread.bridge.approve(third.preview.preview_ref);
+  unread.getReply = { kind: 'unknown' };
+  assert.deepEqual(await unread.bridge.check(third.ref), {
+    ok: false,
+    reason: 'not_connected',
+  });
+  assert.equal(
+    unread.bridge.entries(unread.operations)[0]?.delivery_unknown,
+    true,
+  );
+});
+
+test('work started before a lock or disconnect sends nothing and changes nothing afterwards', async () => {
+  // 会話の作成を待っている間にロック・解除（reset）: 遅れて届いた応答で会話を戻さず、発言も送らない。
+  const turn = harness();
+  turn.replies.push({
+    kind: 'response',
+    status: 201,
+    body: {
+      request_id: id(1),
+      session_id: id(0x44),
+      storage_mode: 'normal',
+      route_revision: '0',
+    },
+  });
+  // 会話の作成を始めた直後（応答が届く前）にロック・解除する。
+  const pending = turn.bridge.submitTurn('こんにちは');
+  turn.bridge.reset();
+  assert.deepEqual(await pending, { ok: false, reason: 'not_connected' });
+  assert.deepEqual(
+    turn.requests.map((request) => request.path),
+    ['/v1/sessions'],
+  );
+
+  // 確認を出している間にロック・解除: 送らない。
+  const approve = harness();
+  const { preview } = await openPreview(approve);
+  approve.duringConfirm = () => approve.bridge.reset();
+  assert.deepEqual(await approve.bridge.approve(preview.preview_ref), {
+    ok: false,
+    reason: 'not_connected',
+  });
+  assert.equal(approve.sent.length, 0);
+
+  // 送った後に世代が進み、返事が分からなかった: 今の世代に保留を作らない。
+  const lost = harness();
+  const second = await openPreview(lost);
+  lost.sendOutcome = { kind: 'unknown', requestId: id(5) };
+  lost.duringConfirm = () => undefined;
+  const sending = lost.bridge.approve(second.preview.preview_ref);
+  lost.bridge.reset();
+  await sending;
+  assert.equal(
+    lost.bridge.entries(lost.operations)[0]?.delivery_unknown,
+    false,
+  );
+
+  // 準備を待っている間にロック・解除: 確認の記録を作らない。
+  const gate = harness();
+  gate.operations = [snapshot()];
+  const ref = gate.bridge.entries(gate.operations)[0]?.ref ?? '';
+  await flush();
+  let open: (() => void) | null = null;
+  gate.previewGate = () =>
+    new Promise<void>((resolve) => {
+      open = resolve;
+    });
+  const waiting = gate.bridge.preview(ref);
+  await flush();
+  gate.bridge.reset();
+  (open as unknown as () => void)();
+  assert.deepEqual(await waiting, { ok: false, reason: 'not_connected' });
+});
+
+test('previews of one operation are serialized and only the latest request is issued; an older reference is not valid', async () => {
+  const h = harness();
+  const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+  await flush();
+  const base = h.previewCount;
+  // 1 番目の応答を遅らせる間に、2 番目・3 番目の要求が来る。
+  const gates: (() => void)[] = [];
+  h.previewGate = (n) =>
+    n === base + 1
+      ? new Promise<void>((resolve) => {
+          gates.push(resolve);
+        })
+      : Promise.resolve();
+  const first = h.bridge.preview(ref);
+  await flush();
+  const second = h.bridge.preview(ref);
+  const third = h.bridge.preview(ref);
+  await flush();
+  // 直列: 1 番目の応答が返るまで、次の要求は中枢へ出ない。
+  assert.equal(h.previewCount, base + 1);
+  gates[0]?.();
+  const results = await Promise.all([first, second, third]);
+  // 古い 2 番目は発行しない。最新の 3 番目だけが有効。
+  assert.equal(h.previewCount, base + 2);
+  assert.deepEqual(results[1], { ok: false, reason: 'preview_stale' });
+  assert(results[0]?.ok && results[2]?.ok);
+  assert.notEqual(results[0].value.preview_ref, results[2].value.preview_ref);
+  assert.deepEqual(await h.bridge.approve(results[0].value.preview_ref), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.deepEqual(await h.bridge.approve(results[2].value.preview_ref), {
+    ok: true,
+    value: 'accepted',
+  });
+});
+
+test('the list shows the content of a waiting operation, read by main itself and kept only in main', async () => {
+  const h = harness();
+  const first = h.bridge.entries(h.operations)[0];
+  assert.equal(first?.headline, null);
+  await flush();
+  await flush();
+  const task = h.bridge.entries(h.operations)[0];
+  assert.equal(task?.headline, '牛乳を買う');
+  assert.equal(task?.detail, '期限 2030-10-06');
+  assert(h.changed.count > 0);
+  // 同じ状態版では読み直さない（失敗を繰り返さず、利用者の確認を失効させない）。
+  const count = h.previewCount;
+  h.bridge.entries(h.operations);
+  h.bridge.entries(h.operations);
+  await flush();
+  assert.equal(h.previewCount, count);
+  // 承認待ちでなくなっても、見出しは残る。
+  h.operations = [
+    snapshot({ state: 'succeeded', state_revision: '3', allowed_actions: [] }),
+  ];
+  assert.equal(h.bridge.entries(h.operations)[0]?.headline, '牛乳を買う');
+  // メールの操作は、件名を見出しにし、ラベルの変更を補足にする。
+  const mail = harness();
+  mail.operations = [
+    snapshot({
+      operation_kind: 'mail.labels.change',
+      content_hash: 'cd'.repeat(32),
+    }),
+  ];
+  mail.replies.push({
+    kind: 'response',
+    status: 200,
+    body: {
+      preview_id: id(0x778),
+      intent: labelIntent,
+      content_hash: 'cd'.repeat(32),
+      state_revision: '1',
+      display: {
+        account_label: 'user@example.com',
+        target: {
+          subject: '来週の打ち合わせ',
+          sender: 'sato@example.com',
+          received_at: '2026-10-04T18:30:00+09:00',
+        },
+      },
+    },
+  });
+  mail.bridge.entries(mail.operations);
+  await flush();
+  await flush();
+  const row = mail.bridge.entries(mail.operations)[0];
+  assert.equal(row?.headline, '来週の打ち合わせ');
+  assert.equal(row?.detail, '付ける: follow-up');
+  // 内容（本文・件名・差出人）は、操作の一覧の IPC には headline・detail としてだけ出る（ID・hash は出ない）。
+  assert.equal(JSON.stringify(row).includes('sato@example.com'), false);
+});
+
+test('an external change whose account or target mail could not be read cannot be approved', async () => {
+  const h = harness();
+  h.operations = [snapshot({ operation_kind: 'mail.labels.change' })];
+  const ref = h.bridge.entries(h.operations)[0]?.ref ?? '';
+  await flush();
+  h.replies.push({
+    kind: 'response',
+    status: 200,
+    body: {
+      preview_id: id(0x779),
+      intent: labelIntent,
+      content_hash: HASH,
+      state_revision: '1',
+    },
+  });
+  const result = await h.bridge.preview(ref);
+  assert(result.ok);
+  assert.equal(result.value.approvable, false);
+  assert.deepEqual(await h.bridge.approve(result.value.preview_ref), {
+    ok: false,
+    reason: 'core_rejected',
+  });
+  assert.equal(h.confirms.length, 0);
+  assert.equal(h.sent.length, 0);
 });

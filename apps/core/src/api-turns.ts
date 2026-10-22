@@ -269,6 +269,36 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     }
   };
 
+  // 対象のメールの表示用の値（件名・差出人・受信日時）。読めなければ null（承認画面は対象を確認できないと言う）。
+  const readTargetDisplay = async (
+    intent: Record<string, unknown>,
+  ): Promise<{
+    subject: string | null;
+    sender: string | null;
+    received_at: string | null;
+  } | null> => {
+    const target = intent['target'];
+    if (
+      options.provider === null ||
+      typeof target !== 'object' ||
+      target === null
+    )
+      return null;
+    const remoteId = (target as Record<string, unknown>)['remote_id'];
+    if (typeof remoteId !== 'string') return null;
+    try {
+      const mail = await options.provider.readTarget(remoteId);
+      if (mail === null) return null;
+      return {
+        subject: mail.subject ?? null,
+        sender: mail.sender ?? null,
+        received_at: mail.received_at ?? null,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const readPermission = async (accountId: string): Promise<string | null> => {
     if (options.provider === null) return null;
     try {
@@ -764,6 +794,15 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // 外部変更は、今の接続が書込み可で、許可の版が確定 intent と同じときだけ preview を出す。
     let account: { account_id: string; permission_revision: string } | null =
       null;
+    // 承認画面で口座と対象のメールを見分ける表示用の値（provider から読む。読めない項目は null）。
+    let display: {
+      account_label: string | null;
+      target: {
+        subject: string | null;
+        sender: string | null;
+        received_at: string | null;
+      } | null;
+    } = { account_label: null, target: null };
     if (typeof intent['account_id'] === 'string') {
       const accountId = intent['account_id'];
       const connection = await readConnection();
@@ -778,6 +817,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       )
         return apiErrorResponse(409, 'conflict', requestId);
       account = { account_id: accountId, permission_revision: permission };
+      display = {
+        account_label: connection.account_label ?? null,
+        target: await readTargetDisplay(intent),
+      };
     }
     const previewId = randomUUID();
     previews.issue({
@@ -797,6 +840,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         intent,
         content_hash: operation.content_hash,
         state_revision: operation.state_revision,
+        display,
       },
     };
   };

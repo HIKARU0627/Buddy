@@ -309,6 +309,14 @@
         "expected": { "ok": false, "reason": "screen_operation_required" }
       },
       {
+        "id": "operation-check-from-hidden-window",
+        "refs": ["ADR 0031"],
+        "channel": "desktop.operation_check",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
         "id": "home-status-unlocked-unfocused",
         "refs": ["ADR 0022", "B03-08"],
         "channel": "desktop.home_status",

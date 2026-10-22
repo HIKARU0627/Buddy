@@ -414,6 +414,13 @@ function createLink(
     networkSignature: () => networkSignatureOf(networkInterfaces()),
     // 自宅の登録の送る直前に、前面かを確かめ直す（受付の判定と同じ条件）。
     windowFocused,
+    // 送る直前に、最新の停止状態と io_epoch を確かめる（確認の最中に停止したら送らない。B04-05）。
+    ioState: () =>
+      controller?.state ?? {
+        lockState: 'unknown',
+        stopScope: 'local',
+        ioEpoch: '0',
+      },
     onChange: pushConnection,
     log,
     confirmAdmin: confirmAdminWithDialog,
@@ -475,6 +482,8 @@ function start(): void {
         updateTray();
         // ロック状態は要求の Buddy-Lock-State と接続の表示の範囲に使う。
         if (link && controller) {
+          // 停止した（トレイ・画面・電源の事象のどれでも）: 表示している承認・取消・再試行の確認を閉じて送らない。
+          if (controller.state.stopScope !== 'none') link.closeConfirm();
           link.setLockState(controller.state.lockState);
           pushConnection();
         }

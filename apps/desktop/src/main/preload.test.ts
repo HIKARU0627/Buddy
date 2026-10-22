@@ -99,6 +99,7 @@ test('requests go only to the contract channels', async () => {
     'desktop.operation_cancel',
     'desktop.operation_reconcile',
     'desktop.operation_retry',
+    'desktop.operation_check',
   ];
   // preload の一覧は domain の一覧と同じ。
   assert.deepEqual([...DESKTOP_IPC_CHANNELS], channels);

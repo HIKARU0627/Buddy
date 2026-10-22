@@ -46,6 +46,8 @@ export interface ProviderConnection {
   readonly status:
     'active' | 'needs_reauth' | 'needs_attention' | 'disconnected';
   readonly access: 'read' | 'read_write';
+  // 口座の表示名（承認画面で口座を見分けるための表示用）。読めなければ省略か null。
+  readonly account_label?: string | null;
 }
 
 export interface ProviderPermission {
@@ -59,6 +61,10 @@ export interface ProviderMailTarget {
   readonly source_revision: string;
   readonly mailbox: string;
   readonly labels: readonly string[];
+  // 承認画面で対象のメールを見分けるための表示用（読めなければ省略か null）。
+  readonly subject?: string | null;
+  readonly sender?: string | null;
+  readonly received_at?: string | null;
 }
 
 export interface ProviderEvent {

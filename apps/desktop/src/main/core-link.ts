@@ -104,6 +104,7 @@ export const OPERATION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.operation_cancel',
   'desktop.operation_reconcile',
   'desktop.operation_retry',
+  'desktop.operation_check',
 ];
 
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
@@ -154,6 +155,9 @@ export interface DesktopCoreLinkOptions {
   // ウィンドウが表示中かつ前面か（Electron の層が注入する）。自宅の登録の送る直前に確かめ直す（受付から送るまでに
   // 読み取りの時間が入るため）。省略すると受付の判定だけを使う（試験）。
   readonly windowFocused?: () => boolean;
+  // 端末の今の入出力・ロックの状態（Electron の層が注入する）。承認・再試行を送る直前に、確認を出したときと同じ
+  // 停止していない状態・io_epoch かを確かめる（確認の最中の停止）。省略すると受付の判定だけを使う（試験）。
+  readonly ioState?: () => DesktopIoState;
   // 中枢の画面の端末かの判定の再試行の間隔の単位（試験で短くする）。
   readonly hubScreenProbeRetryMs?: number;
   // 承認・拒否・失効の前の本人の確認。省略すると確認できないので送らない。
@@ -303,6 +307,12 @@ export class DesktopCoreLink {
       connection: () => this.#connection,
       newRef: () => options.clock.newRequestId(),
       confirm: (request) => this.#confirm(request),
+      io: () => {
+        const state = options.ioState?.() ?? null;
+        return state === null
+          ? { permitted: true, epoch: '' }
+          : { permitted: desktopInputPermitted(state), epoch: state.ioEpoch };
+      },
       changed: () => options.onChange(),
       log: (code) => this.#log(code),
     });
@@ -855,6 +865,16 @@ export class DesktopCoreLink {
           (receipt) => ({
             receipt,
           }),
+        );
+        break;
+      }
+      case 'desktop.operation_check': {
+        const result = await this.#operations.check(raw.payload.ref);
+        outcome = this.#operationOutcome(
+          requestId,
+          raw.channel,
+          result,
+          (resolved) => ({ resolved }),
         );
         break;
       }

@@ -4039,7 +4039,9 @@
           "allowed_actions": ["cancel"],
           "result": null,
           "state_revision": "2",
-          "delivery_unknown": false
+          "delivery_unknown": false,
+          "headline": null,
+          "detail": null
         }
       ],
       "hub_screen": false,
@@ -4141,7 +4143,9 @@
           "allowed_actions": ["cancel"],
           "result": null,
           "state_revision": "2",
-          "delivery_unknown": false
+          "delivery_unknown": false,
+          "headline": null,
+          "detail": null
         }
       ],
       "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -4179,7 +4183,9 @@
           "allowed_actions": ["cancel"],
           "result": null,
           "state_revision": "2",
-          "delivery_unknown": false
+          "delivery_unknown": false,
+          "headline": null,
+          "detail": null
         }
       ],
       "device_id": "00000000-0000-4000-8000-000000000b15",
@@ -4218,7 +4224,9 @@
           "allowed_actions": ["cancel"],
           "result": null,
           "state_revision": "2",
-          "delivery_unknown": false
+          "delivery_unknown": false,
+          "headline": null,
+          "detail": null
         }
       ],
       "hub_screen": false,
@@ -4424,7 +4432,9 @@
             "allowed_actions": ["cancel"],
             "result": null,
             "state_revision": "2",
-            "delivery_unknown": false
+            "delivery_unknown": false,
+            "headline": null,
+            "detail": null
           }
         ],
         "hub_screen": false,
@@ -6696,7 +6706,10 @@
             "field": "task_title",
             "values": ["牛乳を買う"]
           }
-        ]
+        ],
+        "account_label": null,
+        "target_detail": null,
+        "approvable": true
       }
     }
   },
@@ -6719,7 +6732,10 @@
             "field": "task_title",
             "values": ["牛乳を買う"]
           }
-        ]
+        ],
+        "account_label": null,
+        "target_detail": null,
+        "approvable": true
       }
     }
   },
@@ -6801,6 +6817,144 @@
       "channel": "desktop.operation_retry",
       "outcome": "ok",
       "receipt": "accepted"
+    }
+  },
+  {
+    "id": "desktop-ipc-operation-check",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.operation_check",
+      "request_id": "00000000-0000-4000-8000-000000000d20",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d96"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-operation-check-not-delivered",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d21",
+      "channel": "desktop.operation_check",
+      "outcome": "ok",
+      "resolved": "not_delivered"
+    }
+  },
+  {
+    "id": "desktop-response-operation-check-unknown-resolution",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d22",
+      "channel": "desktop.operation_check",
+      "outcome": "ok",
+      "resolved": "resent"
+    }
+  },
+  {
+    "id": "desktop-response-operation-preview-mail-with-target",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d23",
+      "channel": "desktop.operation_preview",
+      "outcome": "ok",
+      "preview": {
+        "preview_ref": "00000000-0000-4000-8000-000000000d98",
+        "operation_kind": "mail.labels.change",
+        "service": "mock",
+        "target": "mail-001",
+        "fields": [
+          {
+            "field": "labels_add",
+            "values": ["follow-up"]
+          }
+        ],
+        "account_label": "synthetic-user@example.com",
+        "target_detail": {
+          "subject": "（合成）件名",
+          "sender": "synthetic-sender@example.com",
+          "received_at": "2026-10-04T18:30:00+09:00"
+        },
+        "approvable": true
+      }
+    }
+  },
+  {
+    "id": "operation-preview-with-display",
+    "schema": "OperationPreview",
+    "valid": true,
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000032",
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "display": {
+        "account_label": "synthetic-user@example.com",
+        "target": {
+          "subject": "（合成）件名",
+          "sender": "synthetic-sender@example.com",
+          "received_at": "2026-10-04T18:30:00+09:00"
+        }
+      }
+    }
+  },
+  {
+    "id": "operation-preview-display-with-account-id",
+    "schema": "OperationPreview",
+    "valid": false,
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000032",
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "display": {
+        "account_label": null,
+        "target": null,
+        "account_id": "00000000-0000-4000-8000-0000000000a1"
+      }
     }
   }
 ]

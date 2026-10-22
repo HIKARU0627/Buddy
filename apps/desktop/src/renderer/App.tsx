@@ -69,9 +69,12 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   // 会話・変更の確認・処理状況（B04-05）。ロック中・未登録では内容を持たない（ロックで捨てる）。
   const workShown =
     !locked && connection !== null && connection.registration === 'registered';
+  // 中枢に接続している間だけ会話の内容を持つ。切断（接続の待ちを含む）で世代を進めて内容を捨て、切断をまたいだ応答を
+  // 反映しない（main も切断で参照・preview・会話を捨てる。ADR 0031）。
+  const workLive = workShown && connection?.link === 'connected';
   const work = useWorkState(
     api,
-    workShown,
+    workLive,
     connection?.operations ?? NO_OPERATIONS,
   );
   if (connection !== null && needsPairing(connection))

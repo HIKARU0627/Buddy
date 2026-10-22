@@ -472,6 +472,8 @@ test('the connection section shows reason, home check and operations without sec
         allowed_actions: ['reconcile'],
         result: null,
         delivery_unknown: false,
+        headline: null,
+        detail: null,
       },
     ],
   };

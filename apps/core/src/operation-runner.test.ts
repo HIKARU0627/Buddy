@@ -504,48 +504,156 @@ test(
   },
 );
 
-test(
-  'the same reconcile request arriving twice at once looks up only once and both get the same receipt (review P2)',
-  { timeout: TIMEOUT },
-  async (t) => {
-    const rig = await startRig(t);
-    const core = await startCore(t, rig);
-    const who = await session(core);
-    const operationId = await createOperation(core, who, LABEL);
-    // 送出の後に取消を受け付け、照合中で止める（X05）。
-    rig.injector.arm('after_dispatch_intent_before_send', { mode: 'pause' });
-    await approveOperation(core, who, operationId);
-    await reached(rig.injector, 'after_dispatch_intent_before_send');
-    const dispatching = await operationOf(core, who, operationId);
-    const accepted = await cancel(
-      core,
-      who.device,
-      operationId,
-      stateCommand(who, dispatching['state_revision']),
+function signal() {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+for (const [observation, finalState] of [
+  ['found', 'succeeded'],
+  ['unreadable', 'unknown_held'],
+] as const)
+  for (const arrival of ['waiting', 'after_release', 'revision_check'] as const)
+    test(
+      `the same reconcile request arriving twice gets the same receipt: ${arrival}, ${observation} (review P2)`,
+      { timeout: TIMEOUT },
+      async (t) => {
+        const rig = await startRig(t);
+        const core = await startCore(t, rig);
+        const who = await session(core);
+        const operationId = await createOperation(core, who, LABEL);
+        // 送出の後に取消を受け付け、照合中で止める（X05）。
+        rig.injector.arm('after_dispatch_intent_before_send', {
+          mode: 'pause',
+        });
+        await approveOperation(core, who, operationId);
+        await reached(rig.injector, 'after_dispatch_intent_before_send');
+        const dispatching = await operationOf(core, who, operationId);
+        const cancelRequest = stateCommand(who, dispatching['state_revision']);
+        const accepted = await cancel(
+          core,
+          who.device,
+          operationId,
+          cancelRequest,
+        );
+        assert.equal(accepted.status, 202, accepted.text);
+        rig.injector.release('after_dispatch_intent_before_send');
+        await idle(core);
+        const held = await operationOf(core, who, operationId);
+        assert.equal(held['state'], 'reconciling');
+        const body = stateCommand(who, held['state_revision']);
+        rig.ports.calls = 0;
+        const path = `/v1/operations/${operationId}/reconcile`;
+        const submissions = t.mock.method(core.handle.store, 'submit');
+        const lookupReached = signal();
+        const finishLookup = signal();
+        const secondReached = signal();
+        const continueSecond = signal();
+        t.after(() => {
+          finishLookup.resolve();
+          continueSecond.resolve();
+        });
+        const readTarget = rig.ports.reader.readTarget;
+        t.mock.method(rig.ports.reader, 'readTarget', async (id: string) => {
+          lookupReached.resolve();
+          await finishLookup.promise;
+          const target = await readTarget(id);
+          return observation === 'found' ? target : null;
+        });
+        const runner = core.handle.runner;
+        assert(runner !== null);
+        const reconcile = runner.reconcile;
+        let arrivals = 0;
+        t.mock.method(
+          runner,
+          'reconcile',
+          async (...args: Parameters<typeof reconcile>) => {
+            arrivals += 1;
+            if (arrivals === 2 && arrival === 'after_release') {
+              // 二つ目は古い view と「受付なし」を読んだところで止める。
+              secondReached.resolve();
+              await continueSecond.promise;
+            }
+            const result = reconcile(...args);
+            if (arrivals === 2 && arrival === 'waiting')
+              secondReached.resolve();
+            return result;
+          },
+        );
+        const first = postJson(core, who.device, path, body);
+        await withTimeout(lookupReached.promise, 5_000, 'first lookup');
+        if (arrival === 'revision_check') {
+          const query = core.handle.store.query.bind(core.handle.store);
+          t.mock.method(core.handle.store, 'query', (async (
+            input: Parameters<typeof query>[0],
+          ) => {
+            const value = await query(input);
+            if (
+              input.kind === 'receipt_exists' &&
+              input.request_id === body.request_id &&
+              value === false
+            ) {
+              // 経路の版検査が「受付なし」を読んだ後に一つ目を完了させる。
+              // 修正前はこの後で新しい状態版だけを読み、同じ要求を 409 にしていた。
+              secondReached.resolve();
+              await continueSecond.promise;
+            }
+            return value;
+          }) as typeof query);
+        }
+        const second = postJson(core, who.device, path, body);
+        await withTimeout(secondReached.promise, 5_000, 'second arrival');
+        // 別の要求は排他待ちせず 409。先の照合はまだ関門で止まっている。
+        const different = await postJson(core, who.device, path, {
+          ...body,
+          request_id: randomUUID(),
+        });
+        assert.equal(different.status, 409, different.text);
+        finishLookup.resolve();
+        const one = await first;
+        await idle(core);
+        continueSecond.resolve();
+        const two = await second;
+        assert.equal(one.status, 202, one.text);
+        assert.equal(two.status, 202, two.text);
+        assert.deepEqual(one.json, two.json);
+        // 排他が外れた後に届く再送も、同じ受付を読み取るだけ。
+        const replay = await postJson(core, who.device, path, body);
+        assert.equal(replay.status, 202, replay.text);
+        assert.deepEqual(replay.json, one.json);
+        const changed = await postJson(core, who.device, path, {
+          ...body,
+          expected_state_revision: '1',
+        });
+        assert.equal(changed.status, 409, changed.text);
+        // 照合の受付を別の経路へ流用しても 409。
+        const otherRoute = await cancel(core, who.device, operationId, body);
+        assert.equal(otherRoute.status, 409, otherRoute.text);
+        // 取消の accepted 受付も、照合の受付として返さない。
+        const reusedCancel = await postJson(
+          core,
+          who.device,
+          path,
+          cancelRequest,
+        );
+        assert.equal(reusedCancel.status, 409, reusedCancel.text);
+        // 照合（対象の読み取り）は 1 回だけ。受付の再読取りで結果記録の命令を送らない。
+        assert.equal(rig.ports.calls, 1);
+        const resultCommands = submissions.mock.calls.filter(
+          (call) => call.arguments[0].kind === 'operation.record_result',
+        );
+        assert.equal(resultCommands.length, 1);
+        assert.equal(rig.provider.truth.requestCount(), 1);
+        assert.equal(rig.provider.truth.stateChangeCount(), 1);
+        assert.equal(
+          (await operationOf(core, who, operationId))['state'],
+          finalState,
+        );
+      },
     );
-    assert.equal(accepted.status, 202, accepted.text);
-    rig.injector.release('after_dispatch_intent_before_send');
-    await idle(core);
-    const held = await operationOf(core, who, operationId);
-    assert.equal(held['state'], 'reconciling');
-    const body = stateCommand(who, held['state_revision']);
-    rig.ports.calls = 0;
-    const path = `/v1/operations/${operationId}/reconcile`;
-    const [one, two] = await Promise.all([
-      postJson(core, who.device, path, body),
-      postJson(core, who.device, path, body),
-    ]);
-    assert.equal(one.status, 202, one.text);
-    assert.equal(two.status, 202, two.text);
-    assert.deepEqual(one.json, two.json);
-    // 照合（対象の読み取り）は 1 回だけ。
-    assert.equal(rig.ports.calls, 1);
-    assert.equal(
-      (await operationOf(core, who, operationId))['state'],
-      'succeeded',
-    );
-  },
-);
 
 // 排他の単体の試験（レビュー P2）。DB worker の照会を関門で止めた偽物の store で、照合の最中に届いた実行の開始を
 // 捨てないこと、別の要求の照合はすぐに断ること、同じ要求の照合だけを待つことを確かめる。

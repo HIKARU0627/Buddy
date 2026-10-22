@@ -59,6 +59,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [発言から操作の作成までの経路と、preview の発行・無効化](docs/adr/0029-b04-turns-interpretation-and-preview.md)
 - [実行担当（一度だけの送出・照合・LocalCommand・再起動からの再開）](docs/adr/0030-b04-runner-dispatch-reconcile-local-command.md)
 - [デスクトップの会話・変更の確認・処理状況の画面（発言・承認・取消・照合の IPC）](docs/adr/0031-b04-desktop-conversation-approval-screen.md)
+- [キャンバスの UI への作り直し（窓の役割・宣言的なキャンバスの記述・流れと区切り）](docs/adr/0032-ui-canvas-stream-and-window-roles.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

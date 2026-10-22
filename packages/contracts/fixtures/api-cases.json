@@ -259,6 +259,123 @@
         }
       ]
     },
+    "postStreamTurn": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "text": "明日の予定は？",
+        "input_kind": "text",
+        "expected_canvas_revision": "3"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "segment": {
+          "segment_id": "00000000-0000-4000-8000-000000000031",
+          "storage_mode": "normal",
+          "opened_at": "2026-10-22T00:40:00Z",
+          "open_reason": "idle_timeout",
+          "carried_summary": {
+            "source_segment_ids": ["00000000-0000-4000-8000-000000000030"],
+            "expires_at": "2026-10-29T00:10:00Z"
+          }
+        },
+        "turn_id": "00000000-0000-4000-8000-000000000004",
+        "input_id": "00000000-0000-4000-8000-000000000005",
+        "workflow_id": "00000000-0000-4000-8000-000000000006",
+        "status": "answered",
+        "result_view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000012",
+          "request_revision": "1",
+          "intent": "query_schedule",
+          "kind": "schedule_cards",
+          "status": "ready",
+          "item_refs": [
+            {
+              "kind": "event",
+              "id": "00000000-0000-4000-8000-000000000080"
+            }
+          ],
+          "more_count": 0,
+          "template_id": "schedule.list",
+          "template_version": "1"
+        },
+        "reply_text": null,
+        "canvas": {
+          "base_canvas_revision": "3",
+          "canvas_revision": "4",
+          "ops": [
+            {
+              "op": "add",
+              "item": {
+                "item_id": "schedule-tomorrow",
+                "kind": "card",
+                "component": "schedule_timeline",
+                "heading": "明日の予定",
+                "emphasis": "high",
+                "group": null,
+                "relations": [],
+                "grid": {
+                  "column": 1,
+                  "span": 6,
+                  "rows": 2
+                },
+                "placement": "canvas",
+                "data": {
+                  "item_refs": [
+                    {
+                      "kind": "event",
+                      "id": "00000000-0000-4000-8000-000000000080"
+                    }
+                  ],
+                  "more_count": 0
+                }
+              }
+            }
+          ],
+          "reading_order": ["schedule-tomorrow"]
+        }
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "text": "明日の予定は？",
+          "input_kind": "text",
+          "expected_canvas_revision": "3",
+          "session_id": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "text": "明日の予定は？",
+          "input_kind": "text",
+          "expected_canvas_revision": "3",
+          "storage_mode": "private"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "text": "明日の予定は？",
+          "input_kind": "text"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "text": "明日の予定は？",
+          "input_kind": "voice_live",
+          "expected_canvas_revision": "3"
+        }
+      ]
+    },
     "handoffSession": {
       "params": {
         "session_id": "00000000-0000-4000-8000-000000000003"

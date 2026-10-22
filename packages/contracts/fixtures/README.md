@@ -18,6 +18,7 @@
 - `api-cases.json`: 経路ごとの正常な要求・応答と、認証不足・古い接続範囲・旧版などの拒否の期待値（X04・X42 ほか）。
 - `home-network-cases.json`: 自宅判定の期待値（指紋の不一致・DERP・経路不明・Tailscale を取得できない・指紋だけ・報告の鮮度・中枢と同じマシンの免除、X42、ADR 0022）と、サブネットの正準の表記。手書きで、domain の実装から生成していない。
 - `api-scenarios.json`: 再送・イベントの反映・リース・停止の到達・ペアリングの期待値（X04・X11・X13・X14）。
+- `canvas-stream-cases.json`: キャンバスの記述・流れの区切りの正常例と不正例（上限超え・双方向の上書き・制御文字・未知の種類・読む順の欠けや重複・説明文の項目・要約のつなぎ方、ADR 0032）。形式は `contracts:check`、手書きの `semantic_errors` は `scripts/canvas.test.mjs` がビルド後の domain で確かめる。
 - `desktop-ipc-cases.json`: デスクトップの限定 IPC の受付と、端末の入出力・ロックの状態遷移の期待値（QA43・X13、ADR 0014）。Electron の実機の記録ではありません。
 - `boundary-cases.json`: 承認の受付・DB 命令の再検査・通知の配信・削除期限の期待値（X02・X12 ほか）。
 - `workflow-label.json`: 実行境界の期待結果。`specification_only` で、DB・外部処理の実行済み記録ではありません。

@@ -12,8 +12,11 @@ import type {
 } from '@buddy/contracts';
 import { AppProviders } from '../../app/AppProviders.js';
 import {
+  canSummonCanvas,
+  contentShown,
   initialChannelsFor,
   inputBarEnabled,
+  inputDraftAfter,
   rendererWindowRole,
   statusTabView,
 } from '../../state/window-role-state.js';
@@ -145,10 +148,19 @@ test('the status tab shows one mark and the number of operations needing attenti
   assert.equal(statusTabView(null, null).line.mark, 'spinner');
 });
 
+const noop = () => undefined;
+const visibleText = (html: string) =>
+  html
+    .replace(/<[^>]+>/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
 test('the status tab draws a mark and a count with no visible sentence', () => {
   const html = render(
     <StatusTab
       view={statusTabView(shown(), connected([entry(1), entry(2)]))}
+      canSummon
+      onSummon={noop}
     />,
   );
   assert.match(html, /role="status"/u);
@@ -156,27 +168,27 @@ test('the status tab draws a mark and a count with no visible sentence', () => {
     html,
     /aria-label="Buddy の状態: 受付中、確認が必要な操作 2\u00a0件"/u,
   );
+  // つまみ全体がキャンバスを前に出すボタン（読み上げの名前だけ。見える説明文はない）。
+  assert.match(html, /<button[^>]*aria-label="キャンバスを前に出す"/u);
+  assert.doesNotMatch(html, /<button[^>]*\bdisabled/u);
   // 見える文字は記号と数だけ。
-  const visible = html
-    .replace(/<[^>]+>/gu, ' ')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  assert.equal(visible, '● 2');
+  assert.equal(visibleText(html), '● 2');
   const locked = render(
     <StatusTab
       view={statusTabView({ visibility: 'hidden', lock_state: 'locked' }, null)}
+      canSummon={canSummonCanvas({
+        visibility: 'hidden',
+        lock_state: 'locked',
+      })}
+      onSummon={noop}
     />,
   );
-  assert.equal(
-    locked
-      .replace(/<[^>]+>/gu, ' ')
-      .replace(/\s+/gu, ' ')
-      .trim(),
-    '○',
-  );
+  assert.equal(visibleText(locked), '○');
+  // ロック中はキャンバスを呼べない。
+  assert.match(locked, /<button[^>]*\bdisabled/u);
 });
 
-test('the input bar is a mark and one field; it is disabled while stopped or locked', () => {
+test('the input bar is a mark, one field and the canvas button; it is disabled while stopped or locked', () => {
   assert.equal(inputBarEnabled(shown()), true);
   assert.equal(
     inputBarEnabled(shown({ stop_scope: 'local', input_permitted: false })),
@@ -191,23 +203,98 @@ test('the input bar is a mark and one field; it is disabled while stopped or loc
     <InputBar
       line={{ tone: 'success', mark: 'dot', text: '受付中' }}
       enabled
+      value=""
+      onChange={noop}
+      canSummon
+      onSummon={noop}
     />,
   );
   assert.match(enabled, /aria-label="Buddy への入力"/u);
   assert.equal((enabled.match(/<input\b/gu) ?? []).length, 1);
   assert.doesNotMatch(enabled, /<input[^>]*\bdisabled/u);
   assert.doesNotMatch(enabled, /placeholder=/u);
+  assert.match(enabled, /<button[^>]*aria-label="キャンバスを前に出す"/u);
   const disabled = render(
     <InputBar
       line={{ tone: 'neutral', mark: 'square', text: '停止中' }}
       enabled={false}
+      value=""
+      onChange={noop}
+      canSummon={false}
+      onSummon={noop}
     />,
   );
   assert.match(disabled, /<input[^>]*\bdisabled/u);
+  assert.match(disabled, /<button[^>]*\bdisabled/u);
 });
 
-test('the canvas is an empty ground', () => {
-  const html = render(<CanvasGround />);
-  assert.match(html, /aria-label="Buddy のキャンバス"/u);
-  assert.equal(html.replace(/<[^>]+>/gu, '').trim(), '');
+// PR #104 のレビュー（P2）: 打てるかと内容を出せるかを分け、ロック中・不明では打った文字を描かない。
+test('typed text disappears when the device locks or the lock state becomes unknown', () => {
+  const typed = '明日の予定を確認';
+  const running = shown();
+  const stopped = shown({ stop_scope: 'local', input_permitted: false });
+  const locked: DesktopStatusBar = {
+    visibility: 'hidden',
+    lock_state: 'locked',
+  };
+  const unknown: DesktopStatusBar = {
+    visibility: 'hidden',
+    lock_state: 'unknown',
+  };
+  assert.equal(contentShown(running), true);
+  assert.equal(contentShown(stopped), true);
+  assert.equal(contentShown(locked), false);
+  assert.equal(contentShown(unknown), false);
+  assert.equal(contentShown(null), false);
+  // 文字を入れてから止める: 打てないが、文字は残る。
+  assert.equal(inputDraftAfter(typed, running), typed);
+  assert.equal(inputDraftAfter(typed, stopped), typed);
+  // 文字を入れてからロック・不明にする: 文字は消える。解除しても戻らない（捨てた後の下書きは空）。
+  for (const hidden of [locked, unknown, null]) {
+    const after = inputDraftAfter(typed, hidden);
+    assert.equal(after, '');
+    assert.equal(inputDraftAfter(after, running), '');
+  }
+  const draw = (status: DesktopStatusBar) =>
+    render(
+      <InputBar
+        line={statusTabView(status, null).line}
+        enabled={inputBarEnabled(status)}
+        value={inputDraftAfter(typed, status)}
+        onChange={noop}
+        canSummon={canSummonCanvas(status)}
+        onSummon={noop}
+      />,
+    );
+  assert.match(draw(running), /value="明日の予定を確認"/u);
+  assert.match(draw(stopped), /value="明日の予定を確認"/u);
+  for (const hidden of [locked, unknown]) {
+    const html = draw(hidden);
+    assert.doesNotMatch(html, /明日の予定を確認/u);
+    assert.match(html, /<input[^>]*\bdisabled/u);
+  }
+});
+
+test('the canvas is an empty ground; in front it shows an accent frame; locked it draws nothing inside', () => {
+  const behind = render(<CanvasGround front={false} shown />);
+  assert.match(behind, /aria-label="Buddy のキャンバス"/u);
+  assert.match(behind, /data-front="false"/u);
+  assert.doesNotMatch(behind, /ring-accent/u);
+  assert.equal(behind.replace(/<[^>]+>/gu, '').trim(), '');
+  const front = render(<CanvasGround front shown />);
+  assert.match(front, /data-front="true"/u);
+  assert.match(front, /ring-accent/u);
+  // ロック中・不明は中身（UI-03 以降のカード）を描かない。
+  const hidden = render(
+    <CanvasGround front={false} shown={false}>
+      <p>カード</p>
+    </CanvasGround>,
+  );
+  assert.doesNotMatch(hidden, /カード/u);
+  const visible = render(
+    <CanvasGround front={false} shown>
+      <p>カード</p>
+    </CanvasGround>,
+  );
+  assert.match(visible, /カード/u);
 });

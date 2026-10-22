@@ -84,3 +84,23 @@ export function statusTabView(
 export function inputBarEnabled(status: DesktopStatusBar | null): boolean {
   return status?.visibility === 'shown' && status.input_permitted;
 }
+
+// 内容を出してよいか（ロック解除済み）。「打てるか」とは別。止まっている間は打てないが、打った文字は出してよい。
+// ロック中・状態が不明・受け取る前は内容を出さない（ADR 0024・0032）。
+export function contentShown(status: DesktopStatusBar | null): boolean {
+  return status?.visibility === 'shown';
+}
+
+// 状態が変わった後の入力バーの下書き。内容を出せないとき（ロック中・不明）は捨てる（解除しても戻さない）。
+// 描画にもこの値を使い、捨てる前の一瞬にも下書きを描かない。
+export function inputDraftAfter(
+  draft: string,
+  status: DesktopStatusBar | null,
+): string {
+  return contentShown(status) ? draft : '';
+}
+
+// キャンバスを前に出す操作を出せるか（ロック解除済み。受付の正本は main）。
+export function canSummonCanvas(status: DesktopStatusBar | null): boolean {
+  return contentShown(status);
+}

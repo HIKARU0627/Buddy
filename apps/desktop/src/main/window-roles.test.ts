@@ -5,20 +5,20 @@ import test from 'node:test';
 import { DESKTOP_IPC_CHANNELS, admitDesktopRequest } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopDeviceController } from './device-controller.js';
-import { isTrustedSender, type SenderFacts } from './window-policy.js';
 import {
   UiWindowRegistry,
   channelAllowedForWindow,
   notificationAllowedForWindow,
   rolesForMode,
+  senderFactsOf,
   uiWindowMode,
   uiWindowSpec,
   windowSender,
   type UiWindowRole,
 } from './window-roles.js';
 
-// 今の 24 チャネル（B01〜B04-05）。従来の窓はこれをすべて使う。
-const ALL_CHANNELS = [
+// UI-02 より前からある 24 チャネル（B01〜B04-05）。従来の窓はこれをすべて使う。
+const LEGACY_CHANNELS = [
   'desktop.get_state',
   'desktop.io_stop',
   'desktop.io_resume',
@@ -44,6 +44,9 @@ const ALL_CHANNELS = [
   'desktop.operation_retry',
   'desktop.operation_check',
 ];
+// UI-02 で足した、キャンバスを前に出すチャネル（状態の層と入力バーだけ。従来の窓は使わない）。
+const SUMMON = 'desktop.canvas_summon';
+const ALL_CHANNELS = [...LEGACY_CHANNELS, SUMMON];
 
 const UNLOCKED = {
   lockState: 'unlocked',
@@ -51,31 +54,63 @@ const UNLOCKED = {
   ioEpoch: '0',
 } as const;
 
-// 窓の主フレームから送った要求の事実（その窓の webContents の ID を uiWebContentsId に入れる）。
-const factsFrom = (id: number, registered: boolean): SenderFacts => ({
-  senderWebContentsId: id,
-  uiWebContentsId: registered ? id : null,
-  senderIsMainFrame: registered,
-  senderFrameUrl: 'buddy://app/index.html',
-});
+const APP_URL = 'buddy://app/index.html';
 
 interface FakeWindow {
   readonly name: string;
+  // 窓の今の主フレーム（processId・routingId）。null は破棄した窓。
+  readonly mainFrame?: {
+    readonly processId: number;
+    readonly routingId: number;
+  } | null;
 }
 
-// main の受付と同じ組み立て: 対応表で送信元の窓を引き、送信元の事実と役割から送信元を作る。
+// 窓の webContents の ID から決めた主フレーム（processId = ID × 10、routingId = 1）。
+const mainFrameOf = (id: number) => ({ processId: id * 10, routingId: 1 });
+
+// その窓の主フレームから送った要求のフレーム。
+const frameOf = (id: number) => ({
+  parent: null,
+  ...mainFrameOf(id),
+  url: APP_URL,
+});
+
+// main の受付と同じ組み立て: 対応表で送信元の窓を引き、実際の senderFactsOf で送信元の事実を作り、役割から送信元を作る。
 function senderFor(
   registry: UiWindowRegistry<FakeWindow>,
   webContentsId: number,
   channel: string,
-  focused = true,
+  options: {
+    readonly focused?: boolean;
+    readonly frame?:
+      | ReturnType<typeof frameOf>
+      | {
+          readonly parent: unknown;
+          readonly processId: number;
+          readonly routingId: number;
+          readonly url: string;
+        }
+      | null;
+  } = {},
 ) {
   const entry = registry.lookup(webContentsId);
+  const mainFrame =
+    entry === null
+      ? null
+      : entry.window.mainFrame === undefined
+        ? mainFrameOf(entry.webContentsId)
+        : entry.window.mainFrame;
   return windowSender({
     channel,
     role: entry?.role ?? null,
-    facts: factsFrom(webContentsId, entry !== null),
-    focused,
+    facts: senderFactsOf(
+      webContentsId,
+      options.frame === undefined ? frameOf(webContentsId) : options.frame,
+      entry === null || mainFrame === null
+        ? null
+        : { webContentsId: entry.webContentsId, mainFrame },
+    ),
+    focused: options.focused ?? true,
   });
 }
 
@@ -87,57 +122,81 @@ function threeWindows() {
   return registry;
 }
 
-test('the default stays the single legacy window; the flag or env opens the three windows', () => {
-  assert.equal(uiWindowMode([], {}), 'legacy');
-  assert.equal(uiWindowMode(['electron', '.'], {}), 'legacy');
+const DEV = { packaged: false } as const;
+const PACKAGED = { packaged: true } as const;
+
+test('the default stays the single legacy window; the flag or env opens the three windows in a dev launch', () => {
+  assert.equal(uiWindowMode([], {}, DEV), 'legacy');
+  assert.equal(uiWindowMode(['electron', '.'], {}, DEV), 'legacy');
   assert.equal(
-    uiWindowMode(['electron', '.', '--buddy-ui=canvas'], {}),
+    uiWindowMode(['electron', '.', '--buddy-ui=canvas'], {}, DEV),
     'canvas',
   );
-  assert.equal(uiWindowMode([], { BUDDY_DESKTOP_UI: 'canvas' }), 'canvas');
+  assert.equal(uiWindowMode([], { BUDDY_DESKTOP_UI: 'canvas' }, DEV), 'canvas');
   // フラグが環境変数より優先。最後のフラグを使う。
   assert.equal(
-    uiWindowMode(['--buddy-ui=legacy'], { BUDDY_DESKTOP_UI: 'canvas' }),
+    uiWindowMode(['--buddy-ui=legacy'], { BUDDY_DESKTOP_UI: 'canvas' }, DEV),
     'legacy',
   );
   assert.equal(
-    uiWindowMode(['--buddy-ui=canvas', '--buddy-ui=legacy'], {}),
+    uiWindowMode(['--buddy-ui=canvas', '--buddy-ui=legacy'], {}, DEV),
     'legacy',
   );
   // 知らない値は既定のまま。
-  assert.equal(uiWindowMode(['--buddy-ui=CANVAS'], {}), 'legacy');
-  assert.equal(uiWindowMode(['--buddy-ui='], {}), 'legacy');
-  assert.equal(uiWindowMode([], { BUDDY_DESKTOP_UI: 'status' }), 'legacy');
+  assert.equal(uiWindowMode(['--buddy-ui=CANVAS'], {}, DEV), 'legacy');
+  assert.equal(uiWindowMode(['--buddy-ui='], {}, DEV), 'legacy');
+  assert.equal(uiWindowMode([], { BUDDY_DESKTOP_UI: 'status' }, DEV), 'legacy');
   assert.deepEqual(rolesForMode('legacy'), ['legacy']);
   // キャンバスを先に作り、状態の層・入力バーを前に重ねる。
   assert.deepEqual(rolesForMode('canvas'), ['canvas', 'status', 'input']);
 });
 
-test('the legacy window keeps every channel and the same sender decision as before', () => {
+test('a packaged launch ignores the dev flag and the env and always uses the legacy window', () => {
+  for (const [argv, env] of [
+    [['--buddy-ui=canvas'], {}],
+    [[], { BUDDY_DESKTOP_UI: 'canvas' }],
+    [['--buddy-ui=canvas'], { BUDDY_DESKTOP_UI: 'canvas' }],
+    [[], {}],
+  ] as const)
+    assert.equal(uiWindowMode(argv, env, PACKAGED), 'legacy');
+});
+
+test('the legacy window keeps every existing channel and the same sender decision as before', () => {
   assert.deepEqual([...DESKTOP_IPC_CHANNELS], ALL_CHANNELS);
   const registry = new UiWindowRegistry<FakeWindow>();
   registry.register(7, 'legacy', { name: 'legacy' });
-  for (const channel of ALL_CHANNELS) {
+  for (const channel of LEGACY_CHANNELS) {
     assert.equal(channelAllowedForWindow('legacy', channel), true, channel);
-    // 受付に渡す送信元は、今の送信元の検査（isTrustedSender）と同じ。
-    for (const facts of [
-      factsFrom(7, true),
-      { ...factsFrom(7, true), senderIsMainFrame: false },
-      { ...factsFrom(7, true), senderFrameUrl: 'https://example.com/' },
-      { ...factsFrom(7, true), senderWebContentsId: 8 },
-      factsFrom(7, false),
-    ])
-      for (const focused of [true, false])
-        assert.deepEqual(
-          windowSender({ channel, role: 'legacy', facts, focused }),
-          { trustedSender: isTrustedSender(facts), windowFocused: focused },
-          channel,
-        );
-    assert.deepEqual(senderFor(registry, 7, channel), {
-      trustedSender: true,
+    // 窓の主フレームからの要求は、前面かどうかをそのまま渡して受け付ける（期待値は手で書いた値）。
+    for (const focused of [true, false])
+      assert.deepEqual(senderFor(registry, 7, channel, { focused }), {
+        trustedSender: true,
+        windowFocused: focused,
+      });
+    // 子フレーム・別のページの URL・別の窓（対応表にない ID）からは受け付けない。
+    assert.deepEqual(
+      senderFor(registry, 7, channel, {
+        frame: { ...frameOf(7), parent: {} },
+      }),
+      { trustedSender: false, windowFocused: true },
+    );
+    assert.deepEqual(
+      senderFor(registry, 7, channel, {
+        frame: { ...frameOf(7), url: 'https://example.com/' },
+      }),
+      { trustedSender: false, windowFocused: true },
+    );
+    assert.deepEqual(senderFor(registry, 8, channel), {
+      trustedSender: false,
       windowFocused: true,
     });
   }
+  // 従来の窓はキャンバスを前に出さない（従来の窓の組み立てにはキャンバスがない）。
+  assert.equal(channelAllowedForWindow('legacy', SUMMON), false);
+  assert.deepEqual(
+    admitDesktopRequest(SUMMON, null, UNLOCKED, senderFor(registry, 7, SUMMON)),
+    { ok: false, reason: 'untrusted_sender' },
+  );
   assert.equal(channelAllowedForWindow('legacy', 'desktop.hub_stop'), false);
   for (const channel of [
     'desktop.state_changed',
@@ -151,7 +210,7 @@ test('each role admits only its own channels; the rest are untrusted senders', (
   const registry = threeWindows();
   const allowed: Record<Exclude<UiWindowRole, 'legacy'>, readonly string[]> = {
     canvas: ['desktop.get_state'],
-    input: ['desktop.get_state', 'desktop.turn_submit'],
+    input: ['desktop.get_state', 'desktop.turn_submit', SUMMON],
     status: ALL_CHANNELS.filter((channel) => channel !== 'desktop.turn_submit'),
   };
   const ids = { canvas: 11, status: 12, input: 13 } as const;
@@ -198,6 +257,10 @@ test('each role admits only its own channels; the rest are untrusted senders', (
       false,
       channel,
     );
+  // キャンバスは自分を前に出せない。状態の層と入力バーは呼べる。
+  assert.equal(senderFor(registry, 11, SUMMON).trustedSender, false);
+  assert.equal(senderFor(registry, 12, SUMMON).trustedSender, true);
+  assert.equal(senderFor(registry, 13, SUMMON).trustedSender, true);
   // 入力バーは発言だけ。状態の層は発言を使えない。
   assert.equal(
     senderFor(registry, 13, 'desktop.turn_submit').trustedSender,
@@ -237,7 +300,10 @@ test('a request from an unknown window or a closed window is rejected', () => {
     windowSender({
       channel: 'desktop.get_state',
       role: 'status',
-      facts: { ...factsFrom(12, true), uiWebContentsId: 11 },
+      facts: senderFactsOf(12, frameOf(12), {
+        webContentsId: 11,
+        mainFrame: mainFrameOf(12),
+      }),
       focused: true,
     }).trustedSender,
     false,
@@ -414,6 +480,8 @@ test('all windows share sandbox, isolation and the preload; only the role argume
 test('the macOS canvas sits on the desktop layer over the whole screen, on every space', () => {
   const spec = uiWindowSpec('canvas', 'darwin', DISPLAY, PRELOAD);
   assert.equal(spec.options.type, 'desktop');
+  // 後ろにある間はキー入力を受けない（前に出すときだけ受ける。canvas-presence.ts）。
+  assert.equal(spec.options.focusable, false);
   assert.equal(spec.options.frame, false);
   assert.deepEqual(
     [spec.options.x, spec.options.y, spec.options.width, spec.options.height],
@@ -486,4 +554,150 @@ test('the status tab and the input bar are small, frameless, always-on-top windo
     assert.equal(status.focusOnShow, false);
     assert.equal(input.focusOnShow, true);
   }
+});
+
+// PR #104 のレビュー（P3）: 実際の senderFactsOf を通して、送信元のフレームの検査を確かめる。期待値は手で書く。
+test('the sender frame must be the current main frame of the registered window', () => {
+  const registry = threeWindows();
+  const status = 12;
+  // 主フレームからの要求は受け付ける。
+  assert.deepEqual(
+    senderFactsOf(status, frameOf(status), {
+      webContentsId: status,
+      mainFrame: mainFrameOf(status),
+    }),
+    {
+      senderWebContentsId: 12,
+      uiWebContentsId: 12,
+      senderIsMainFrame: true,
+      senderFrameUrl: APP_URL,
+    },
+  );
+  assert.equal(
+    senderFor(registry, status, 'desktop.io_stop').trustedSender,
+    true,
+  );
+  const rejected = { trustedSender: false, windowFocused: true };
+  // 同じ窓の子フレーム（親がある）。
+  assert.deepEqual(
+    senderFor(registry, status, 'desktop.io_stop', {
+      frame: { ...frameOf(status), parent: { routingId: 1 } },
+    }),
+    rejected,
+  );
+  // 古い processId（読み込み直す前のレンダラーのフレーム）。
+  assert.deepEqual(
+    senderFor(registry, status, 'desktop.io_stop', {
+      frame: { ...frameOf(status), processId: 999 },
+    }),
+    rejected,
+  );
+  // 古い routingId。
+  assert.deepEqual(
+    senderFor(registry, status, 'desktop.io_stop', {
+      frame: { ...frameOf(status), routingId: 2 },
+    }),
+    rejected,
+  );
+  // 破棄されたフレーム（Electron は senderFrame を null にする）。
+  assert.deepEqual(
+    senderFor(registry, status, 'desktop.io_stop', { frame: null }),
+    rejected,
+  );
+  assert.deepEqual(
+    senderFactsOf(status, null, {
+      webContentsId: status,
+      mainFrame: mainFrameOf(status),
+    }),
+    {
+      senderWebContentsId: 12,
+      uiWebContentsId: 12,
+      senderIsMainFrame: false,
+      senderFrameUrl: null,
+    },
+  );
+  // 破棄した窓（main は破棄済みの窓を null として渡す）。
+  const destroyed = new UiWindowRegistry<FakeWindow>();
+  destroyed.register(status, 'status', { name: 'status', mainFrame: null });
+  assert.deepEqual(senderFor(destroyed, status, 'desktop.io_stop'), rejected);
+  assert.deepEqual(senderFactsOf(status, frameOf(status), null), {
+    senderWebContentsId: 12,
+    uiWebContentsId: null,
+    senderIsMainFrame: false,
+    senderFrameUrl: APP_URL,
+  });
+  // どれも受付では untrusted_sender。
+  for (const frame of [
+    { ...frameOf(status), parent: {} },
+    { ...frameOf(status), processId: 999 },
+    { ...frameOf(status), routingId: 2 },
+    null,
+  ])
+    assert.deepEqual(
+      admitDesktopRequest(
+        'desktop.io_stop',
+        null,
+        UNLOCKED,
+        senderFor(registry, status, 'desktop.io_stop', { frame }),
+      ),
+      { ok: false, reason: 'untrusted_sender' },
+    );
+});
+
+test('the controller turns a summon from the status tab or the input bar into the summon effect', () => {
+  const registry = threeWindows();
+  const controller = new DesktopDeviceController({
+    contract: createDesktopContract(loadContractSchema()),
+    initial: { io_epoch: '0', stop_scope: 'none' },
+    now: () => new Date('2026-10-22T00:00:00.000Z'),
+    persist: () => undefined,
+    onNotification: () => undefined,
+    onPersistError: () => undefined,
+  });
+  const request = {
+    channel: SUMMON,
+    request_id: '5d0e3c1a-7b2f-4a6e-8c9d-0e1f2a3b4c5d',
+    payload: null,
+  };
+  const rejected = (reason: string) => ({
+    request_id: request.request_id,
+    channel: SUMMON,
+    outcome: 'rejected',
+    reason,
+  });
+  // ロック状態が不明（起動直後）なら呼ばない。
+  assert.deepEqual(
+    controller.handleIpc(SUMMON, request, senderFor(registry, 12, SUMMON))
+      .response,
+    rejected('device_locked'),
+  );
+  controller.applyLockQuery('unlock_screen');
+  for (const id of [12, 13])
+    assert.deepEqual(
+      controller.handleIpc(SUMMON, request, senderFor(registry, id, SUMMON)),
+      {
+        response: {
+          request_id: request.request_id,
+          channel: SUMMON,
+          outcome: 'ok',
+        },
+        effect: 'summon_canvas',
+      },
+    );
+  // キャンバス自身からは呼べない。前面でない窓からも呼べない。
+  assert.deepEqual(
+    controller.handleIpc(SUMMON, request, senderFor(registry, 11, SUMMON))
+      .response,
+    rejected('untrusted_sender'),
+  );
+  assert.deepEqual(
+    controller.handleIpc(
+      SUMMON,
+      request,
+      senderFor(registry, 12, SUMMON, { focused: false }),
+    ).response,
+    rejected('screen_operation_required'),
+  );
+  // 入出力の状態は変えない。
+  assert.equal(controller.state.stopScope, 'none');
 });

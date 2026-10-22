@@ -15,12 +15,16 @@ import {
 import { isTrustedSender, type SenderFacts } from './window-policy.js';
 
 // 従来の窓（legacy）は、今の 1 つの窓（B03・B04 の画面）。今と同じく全チャネル・全通知を使う。
+// ただし UI-02 で足したキャンバスを前に出すチャネルは使わない（従来の窓の組み立てにはキャンバスがない）。
 export type UiWindowRole = DesktopWindowRole | 'legacy';
+
+const LEGACY_EXCLUDED_CHANNELS: readonly string[] = ['desktop.canvas_summon'];
 
 // 窓の組み立て方。既定は従来の 1 つの窓。canvas は 3 つの役割の窓（試作）。
 export type UiWindowMode = 'legacy' | 'canvas';
 
 // 開発用のフラグ（コマンドラインの --buddy-ui=canvas、または環境変数 BUDDY_DESKTOP_UI=canvas）。
+// 開発の起動（app.isPackaged が false）のときだけ受ける。配布版では両方を無視して従来の窓にする。
 export const UI_MODE_FLAG = '--buddy-ui=';
 export const UI_MODE_ENV = 'BUDDY_DESKTOP_UI';
 // preload へ窓の役割を渡す引数（webPreferences.additionalArguments）。
@@ -28,11 +32,14 @@ export const WINDOW_ROLE_ARG = '--buddy-window-role=';
 
 type NotificationChannel = (typeof DESKTOP_NOTIFICATION_CHANNELS)[number];
 
-// 窓の組み立て方を決める。フラグが環境変数より優先。知らない値は従来の窓（既定を変えない）。
+// 窓の組み立て方を決める。配布版（packaged）は必ず従来の窓。開発の起動ではフラグが環境変数より優先。
+// 知らない値は従来の窓（既定を変えない）。
 export function uiWindowMode(
   argv: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
+  launch: { readonly packaged: boolean },
 ): UiWindowMode {
+  if (launch.packaged) return 'legacy';
   const flagged = argv
     .filter((arg) => arg.startsWith(UI_MODE_FLAG))
     .map((arg) => arg.slice(UI_MODE_FLAG.length))
@@ -53,7 +60,10 @@ export function channelAllowedForWindow(
 ): boolean {
   if (role === null) return false;
   if (role === 'legacy')
-    return (DESKTOP_IPC_CHANNELS as readonly string[]).includes(channel);
+    return (
+      (DESKTOP_IPC_CHANNELS as readonly string[]).includes(channel) &&
+      !LEGACY_EXCLUDED_CHANNELS.includes(channel)
+    );
   return desktopChannelAllowedForRole(role, channel);
 }
 
@@ -69,6 +79,43 @@ export function notificationAllowedForWindow(
   return (DESKTOP_ROLE_NOTIFICATIONS[role] as readonly string[]).includes(
     channel,
   );
+}
+
+// IPC の送信元のフレーム（Electron の WebFrameMain の一部）。破棄されたフレームは null（Electron の仕様）。
+export interface SenderFrameLike {
+  readonly parent: unknown;
+  readonly processId: number;
+  readonly routingId: number;
+  readonly url: string;
+}
+
+// main が作った窓（対応表で引いた窓。破棄済みなら null）の webContents の ID と主フレーム。
+export interface UiContentsLike {
+  readonly webContentsId: number;
+  readonly mainFrame: {
+    readonly processId: number;
+    readonly routingId: number;
+  };
+}
+
+// 送信元の事実を組み立てる。送信元のフレームが、対応表で引いた窓の主フレーム（親がなく、processId と routingId が
+// 今の主フレームと同じ）のときだけ senderIsMainFrame。子フレーム・古いフレーム・破棄されたフレーム・破棄された窓は false。
+export function senderFactsOf(
+  senderWebContentsId: number,
+  frame: SenderFrameLike | null,
+  ui: UiContentsLike | null,
+): SenderFacts {
+  return {
+    senderWebContentsId,
+    uiWebContentsId: ui === null ? null : ui.webContentsId,
+    senderIsMainFrame:
+      frame !== null &&
+      ui !== null &&
+      frame.parent === null &&
+      frame.processId === ui.mainFrame.processId &&
+      frame.routingId === ui.mainFrame.routingId,
+    senderFrameUrl: frame === null ? null : frame.url,
+  };
 }
 
 // 受付（admitDesktopRequest）に渡す送信元の事実。送信元の検査に役割の検査を足し、どちらかに合わなければ
@@ -188,6 +235,7 @@ export interface UiWindowOptions {
   readonly title: string;
   readonly autoHideMenuBar?: boolean;
   readonly type?: 'desktop' | 'panel';
+  readonly focusable?: boolean;
   readonly frame?: boolean;
   readonly resizable?: boolean;
   readonly movable?: boolean;
@@ -306,6 +354,8 @@ export function uiWindowSpec(
           options: {
             ...common,
             type: 'desktop',
+            // 後ろにある間はキー入力を受けない。前に出すときだけ受けるようにする（canvas-presence.ts）。
+            focusable: false,
             ...display.bounds,
             roundedCorners: false,
             enableLargerThanScreen: true,

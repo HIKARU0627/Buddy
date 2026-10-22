@@ -32,6 +32,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.operation_reconcile',
   'desktop.operation_retry',
   'desktop.operation_check',
+  // UI-02: デスクトップの層のキャンバスを前に出す（状態の層と入力バーから。ADR 0032）。
+  'desktop.canvas_summon',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -138,6 +140,8 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.operation_reconcile',
   'desktop.operation_retry',
   'desktop.operation_check',
+  // キャンバスを前に出すのも本人の画面操作（UI-02。ロック中は呼ばず、キャンバスの中身を出さない）。
+  'desktop.canvas_summon',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -190,7 +194,8 @@ export type DesktopWindowRole = (typeof DESKTOP_WINDOW_ROLES)[number];
 
 // 役割ごとに使える要求のチャネル。キャンバスは承認・停止・再開・取消・登録・失効・終了のチャネルを使えない
 // （AI の部品が状態や停止を隠す・承認の画面に見せかけることを、構造で防ぐ）。入力バーは状態の取得と発言
-// （B04-05 の desktop.turn_submit）だけ。承認表示の準備・承認・取消・照合・再試行・状態の確認は状態の層だけ。
+// （B04-05 の desktop.turn_submit）と、キャンバスを前に出す（UI-02）だけ。承認表示の準備・承認・取消・照合・再試行・
+// 状態の確認は状態の層だけ。キャンバスは自分を前に出せない（呼ぶのは本人の操作: 全体のショートカット・つまみ・入力バー）。
 export const DESKTOP_ROLE_CHANNELS: Readonly<
   Record<DesktopWindowRole, readonly DesktopIpcChannel[]>
 > = {
@@ -219,8 +224,9 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.operation_reconcile',
     'desktop.operation_retry',
     'desktop.operation_check',
+    'desktop.canvas_summon',
   ],
-  input: ['desktop.get_state', 'desktop.turn_submit'],
+  input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };
 
 // 役割ごとに main から送る通知。電源・ロックの記録と接続の状態は状態の層だけ。

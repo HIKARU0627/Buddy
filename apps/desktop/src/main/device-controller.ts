@@ -28,7 +28,8 @@ export type PowerEventNotification = Extract<
   { channel: 'desktop.power_event' }
 >;
 
-export type DesktopEffect = 'none' | 'hide_window' | 'quit';
+// summon_canvas: デスクトップの層のキャンバスを前に出す（UI-02。前に出す・戻すの状態は canvas-presence が持つ）。
+export type DesktopEffect = 'none' | 'hide_window' | 'quit' | 'summon_canvas';
 
 export interface DesktopIpcOutcome {
   readonly response: DesktopIpcResponse;
@@ -135,6 +136,11 @@ export class DesktopDeviceController {
         return this.#respond(
           { request_id: raw.request_id, channel: raw.channel, outcome: 'ok' },
           'quit',
+        );
+      case 'desktop.canvas_summon':
+        return this.#respond(
+          { request_id: raw.request_id, channel: raw.channel, outcome: 'ok' },
+          'summon_canvas',
         );
       default:
         // 接続・ペアリングのチャネルは core-link が受け付ける（ここへ渡さない。ADR 0025）。

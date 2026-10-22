@@ -22,7 +22,7 @@ pnpm --filter @buddy/desktop dev
 
 ### 3 つの窓の試作（UI-02）
 
-`electron . --buddy-ui=canvas`（または環境変数 `BUDDY_DESKTOP_UI=canvas`）で、キャンバス・状態の層（端のつまみ）・入力バーの 3 つの窓を作ります（[ADR 0032](../../docs/adr/0032-ui-canvas-stream-and-window-roles.md)）。既定（フラグなし）は今の 1 つの窓です。main は送信元の窓の役割で受付を絞り（`src/main/window-roles.ts`）、役割に合わない要求を `untrusted_sender` で拒否します。試作の記録は [docs/ui/window-prototype.md](../../docs/ui/window-prototype.md) です。
+`electron . --buddy-ui=canvas`（または環境変数 `BUDDY_DESKTOP_UI=canvas`）で、キャンバス・状態の層（端のつまみ）・入力バーの 3 つの窓を作ります（[ADR 0032](../../docs/adr/0032-ui-canvas-stream-and-window-roles.md)）。既定（フラグなし）と配布版（`app.isPackaged`）は今の 1 つの窓です。main は送信元の窓の役割で受付を絞り（`src/main/window-roles.ts`）、役割に合わない要求を `untrusted_sender` で拒否します。キャンバスは普段はデスクトップの層にあり、⌘⌥⇧B（Windows は Ctrl+Alt+Shift+B）・端のつまみ・入力バーの右端のボタンで前に出て、Esc かほかのアプリへ移ると後ろへ戻ります（`src/main/canvas-presence.ts`）。試作の記録は [docs/ui/window-prototype.md](../../docs/ui/window-prototype.md) です。
 
 ## 確かめられること
 

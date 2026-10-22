@@ -108,8 +108,11 @@ test('requests go only to the contract channels', async () => {
     'desktop.operation_retry',
     'desktop.operation_check',
   ];
-  // preload の一覧は domain の一覧と同じ。
-  assert.deepEqual([...DESKTOP_IPC_CHANNELS], channels);
+  // preload の一覧は domain の一覧と同じ（UI-02 の canvas_summon は従来の窓では使わないので、最後に別に足す）。
+  assert.deepEqual(
+    [...DESKTOP_IPC_CHANNELS],
+    [...channels, 'desktop.canvas_summon'],
+  );
   for (const channel of channels) {
     const request = { channel, request_id: 'r', payload: null };
     assert.deepEqual(await api.invoke(request), { ok: channel });
@@ -119,6 +122,8 @@ test('requests go only to the contract channels', async () => {
     channels,
   );
   for (const bad of [
+    // 従来の窓（役割の引数なし）はキャンバスを前に出さない。
+    { channel: 'desktop.canvas_summon' },
     { channel: 'desktop.hub_stop' },
     { channel: 'desktop.power_event' },
     { channel: 'desktop.connection_changed' },
@@ -168,7 +173,7 @@ const apiOf = (loaded: ReturnType<typeof loadPreload>) =>
 // 期待する表は手で書き、domain の表とも一致することを確かめる。
 const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
   canvas: ['desktop.get_state'],
-  input: ['desktop.get_state', 'desktop.turn_submit'],
+  input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
   status: [
     'desktop.get_state',
     'desktop.io_stop',
@@ -193,6 +198,7 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.operation_reconcile',
     'desktop.operation_retry',
     'desktop.operation_check',
+    'desktop.canvas_summon',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
@@ -270,15 +276,21 @@ test('an unknown or repeated role argument opens no channel', async () => {
   }
 });
 
-test('the legacy role argument keeps every channel and notification', async () => {
+test('the legacy role argument keeps every existing channel and notification', async () => {
   const loaded = loadPreload(['--buddy-window-role=legacy']);
   const api = apiOf(loaded);
   assert.equal(api.windowRole, 'legacy');
   for (const channel of DESKTOP_IPC_CHANNELS)
-    assert.deepEqual(
-      await api.invoke({ channel, request_id: 'r', payload: null }),
-      { ok: channel },
-    );
+    if (channel === 'desktop.canvas_summon')
+      await assert.rejects(
+        api.invoke({ channel, request_id: 'r', payload: null }),
+        /desktop_unknown_channel/u,
+      );
+    else
+      assert.deepEqual(
+        await api.invoke({ channel, request_id: 'r', payload: null }),
+        { ok: channel },
+      );
   api.onNotification(() => undefined);
   assert.deepEqual(
     [...loaded.listeners.keys()],

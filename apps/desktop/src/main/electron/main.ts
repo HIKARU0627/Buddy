@@ -9,6 +9,7 @@ import {
   Tray,
   app,
   dialog,
+  globalShortcut,
   ipcMain,
   nativeImage,
   powerMonitor,
@@ -38,6 +39,15 @@ import {
   DesktopCoreLink,
   type AdminConfirmRequest,
 } from '../core-link.js';
+import {
+  CANVAS_SUMMON_ACCELERATOR,
+  CanvasPresence,
+  canvasLayerOps,
+  isDismissKey,
+  MAC_DESKTOP_RELATIVE_LEVEL,
+  type CanvasDismissReason,
+  type CanvasSummonSource,
+} from '../canvas-presence.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
 import type { SecretProtector } from '../credential-store.js';
 import { DesktopDeviceController } from '../device-controller.js';
@@ -67,6 +77,7 @@ import {
 import {
   UiWindowRegistry,
   rolesForMode,
+  senderFactsOf,
   uiWindowMode,
   uiWindowSpec,
   windowSender,
@@ -94,7 +105,12 @@ app.enableSandbox();
 const lifecycle = new ClientLifecycle();
 // 窓の組み立て方（UI-02）。既定は従来の 1 つの窓。開発用のフラグ --buddy-ui=canvas（または BUDDY_DESKTOP_UI=canvas）で
 // キャンバス・状態の層・入力バーの 3 つの窓（試作）にする。
-const uiMode = uiWindowMode(process.argv, process.env);
+// 開発の起動（app.isPackaged が false）のときだけフラグと環境変数を受け、配布版は必ず従来の窓。
+const uiMode = uiWindowMode(process.argv, process.env, {
+  packaged: app.isPackaged,
+});
+// キャンバスを前に出しているか（UI-02、本人の判断 2026-10-22）。正本は main。
+const presence = new CanvasPresence();
 // main が作った窓の webContents と役割の対応。送信元の検査と通知の宛先はこれだけで決める。
 const windows = new UiWindowRegistry<BrowserWindow>();
 let tray: Tray | null = null;
@@ -144,6 +160,7 @@ function showWindow(): void {
 }
 
 function hideWindows(): void {
+  dismissCanvas('hidden');
   for (const entry of windows.entries())
     if (!entry.window.isDestroyed()) entry.window.hide();
 }
@@ -167,22 +184,56 @@ function queryLockState(): void {
   }
 }
 
-// 送信元の事実。送信元の webContents が main の作った窓（対応表にある窓）のときだけ、その窓の主フレームと比べる。
+// 送信元の事実。送信元の webContents が main の作った窓（対応表にある窓）のときだけ、その窓の主フレームと比べる
+// （判定は window-roles.ts の senderFactsOf。破棄した窓・破棄したフレームは一致しない）。
 function senderFacts(event: IpcMainInvokeEvent, ui: BrowserWindow | null) {
-  const live = ui !== null && !ui.isDestroyed() ? ui : null;
-  const frame = event.senderFrame;
-  const main = live?.webContents.mainFrame;
-  return {
-    senderWebContentsId: event.sender.id,
-    uiWebContentsId: live ? live.webContents.id : null,
-    senderIsMainFrame:
-      frame !== null &&
-      main !== undefined &&
-      frame.parent === null &&
-      frame.processId === main.processId &&
-      frame.routingId === main.routingId,
-    senderFrameUrl: frame?.url ?? null,
-  };
+  const live =
+    ui !== null && !ui.isDestroyed() && !ui.webContents.isDestroyed()
+      ? ui
+      : null;
+  return senderFactsOf(
+    event.sender.id,
+    event.senderFrame,
+    live === null
+      ? null
+      : {
+          webContentsId: live.webContents.id,
+          mainFrame: live.webContents.mainFrame,
+        },
+  );
+}
+
+// キャンバスの窓に、前に出す・後ろへ戻す操作を当てる（canvasLayerOps の列のとおり）。
+function applyCanvasLayer(layer: 'front' | 'behind'): void {
+  const canvas = liveWindow('canvas');
+  if (canvas === null) return;
+  for (const step of canvasLayerOps(process.platform, layer)) {
+    if (step.op === 'set_focusable') canvas.setFocusable(step.value);
+    else if (step.op === 'set_level')
+      if (step.level === 'normal') canvas.setAlwaysOnTop(false);
+      else canvas.setAlwaysOnTop(true, 'normal', MAC_DESKTOP_RELATIVE_LEVEL);
+    else if (step.op === 'show_focus') {
+      canvas.show();
+      canvas.focus();
+    } else canvas.blur();
+  }
+}
+
+// キャンバスを前に出す（全体のショートカット・端のつまみ・入力バー）。ロック中・不明は出さない。
+function summonCanvas(source: CanvasSummonSource): void {
+  const result = presence.summon(source, {
+    lockState: controller?.state.lockState ?? 'unknown',
+    canvasAvailable: liveWindow('canvas') !== null,
+  });
+  if (!result.ok) {
+    log(`canvas_summon_refused:${result.reason}`);
+    return;
+  }
+  if (result.effect === 'raise') applyCanvasLayer('front');
+}
+
+function dismissCanvas(reason: CanvasDismissReason): void {
+  if (presence.dismiss(reason) === 'lower') applyCanvasLayer('behind');
 }
 
 function isWindowFocused(window: BrowserWindow | null): boolean {
@@ -247,7 +298,20 @@ function createWindow(role: UiWindowRole): BrowserWindow {
   window.on('hide', () => link?.closeConfirm());
   window.on('minimize', () => link?.closeConfirm());
   // 閉じた窓は対応表から外す（閉じた後の要求は役割が分からず拒否される）。
-  window.on('closed', () => windows.unregister(contentsId));
+  window.on('closed', () => {
+    windows.unregister(contentsId);
+    if (role === 'canvas') presence.reset();
+  });
+  if (role === 'canvas') {
+    // 前に出したキャンバスは、Esc・ほかのアプリへの移動（前面でなくなる）で後ろへ戻る。
+    window.on('blur', () => dismissCanvas('blur'));
+    window.webContents.on('before-input-event', (event, input) => {
+      if (presence.layer === 'front' && isDismissKey(input)) {
+        event.preventDefault();
+        dismissCanvas('escape');
+      }
+    });
+  }
   // 画面が前面に来たとき、ロック状態が解除済みでなければ OS へ問い合わせ直す。
   window.on('focus', () => {
     if (controller && controller.state.lockState !== 'unlocked')
@@ -369,6 +433,12 @@ function registerIpc(): void {
       const outcome = controller.handleIpc(channel, raw, sender);
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window') setImmediate(hideWindows);
+      // キャンバスを前に出す（端のつまみ・入力バー）。応答を返してから出す。
+      if (outcome.effect === 'summon_canvas') {
+        const source: CanvasSummonSource =
+          entry?.role === 'input' ? 'input' : 'status';
+        setImmediate(() => summonCanvas(source));
+      }
       if (outcome.effect === 'quit') setImmediate(requestQuit);
       return outcome.response;
     });
@@ -556,6 +626,9 @@ function start(): void {
           // 停止した（トレイ・画面・電源の事象のどれでも）: 表示している承認・取消・再試行の確認を閉じて送らない。
           if (controller.state.stopScope !== 'none') link.closeConfirm();
           link.setLockState(controller.state.lockState);
+          // ロック中・不明になったら、前に出したキャンバスを後ろへ戻す（中身を出したままにしない）。
+          if (presence.lockChanged(controller.state.lockState) === 'lower')
+            applyCanvasLayer('behind');
           pushConnection();
         }
       }
@@ -572,6 +645,20 @@ function start(): void {
   queryLockState();
   link.start(controller.state.lockState);
   for (const role of rolesForMode(uiMode)) createWindow(role);
+  // 全体のショートカットでキャンバスを呼ぶ（3 つの窓の組み立てのときだけ）。ほかのアプリが使っていれば登録できず、
+  // ショートカットなしで続ける（端のつまみ・入力バーから呼べる）。
+  if (uiMode === 'canvas') {
+    try {
+      if (
+        !globalShortcut.register(CANVAS_SUMMON_ACCELERATOR, () =>
+          summonCanvas('shortcut'),
+        )
+      )
+        log('canvas_shortcut_unavailable');
+    } catch {
+      log('canvas_shortcut_unavailable');
+    }
+  }
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -580,6 +667,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', showWindow);
   // OS の終了要求・メニューの終了もクライアントの終了として扱う（中枢は止めない）。
+  app.on('will-quit', () => globalShortcut.unregisterAll());
   app.on('before-quit', () => {
     lifecycle.requestQuit();
     link?.stop();

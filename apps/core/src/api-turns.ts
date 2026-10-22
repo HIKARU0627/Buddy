@@ -47,6 +47,7 @@ import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import type { EventQueryStore } from './event-feed.js';
 import type { PreviewRegistry } from './previews.js';
 import type { JsonObject } from './strict-json.js';
+import { canRead, canWrite } from './turn-ports.js';
 import type {
   CandidateSource,
   Interpreter,
@@ -107,6 +108,7 @@ const CLARIFY = {
   unclear: 'すみません、どうしたいのか分かりませんでした。言い換えてください。',
   missing_target: 'どのメールのことか教えてください。',
   missing_title: '用事の題名を教えてください。',
+  missing_body: '下書きの本文を教えてください。',
   missing_other: '足りない情報があります。もう少し詳しく教えてください。',
   invalid: 'その内容では進められません。言い換えてください。',
   target_not_found: '対象が見つかりませんでした。もう一度指定してください。',
@@ -142,6 +144,11 @@ export function scheduleOverlaps(
       overlapping.add(b.id);
     }
   return overlapping;
+}
+
+// 返信の件名。返信元の件名が既に「Re:」で始まれば（大文字・小文字を問わない）そのまま、なければ「Re: 」を付ける。
+export function replySubject(subject: string): string {
+  return /^re:/iu.test(subject) ? subject : `Re: ${subject}`;
 }
 
 // 予定の照会で返す予定の上限。予定 1 件の参照は重なりの参照を含めて高々 2 件（1 件は約 70 文字）なので、
@@ -322,10 +329,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   ): Promise<TurnPlan> => {
     if (intent !== 'query_schedule') return clarify('unsupported', intent);
     const connection = await readConnection();
+    // Read も権限を確かめる（QA27）: 接続が active で、予定の読み取りが許可に含まれること。
     if (
       options.provider === null ||
       connection === null ||
-      connection.status !== 'active'
+      !canRead(connection, 'calendar.events')
     )
       return clarify('connection', intent);
     const date = typeof args.start === 'string' ? args.start : today();
@@ -424,7 +432,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (
       connection === null ||
       connection.status !== 'active' ||
-      connection.access !== 'read_write'
+      !canWrite(connection, 'mail.labels.change')
     )
       return clarify('connection', intent);
     let target;
@@ -471,6 +479,90 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           remove: removeEffective,
         },
         effects: { external_recipients: [], reconcile_scope: 'exact_target' },
+      },
+    };
+  };
+
+  // 返信の下書きの保存（RemoteMutation、B04-07）。宛先は返信元の差出人、件名は返信元の件名に「Re: 」を付けた値で、
+  // どちらも Core が provider の読み取りから決める（モデルに作らせない。ADR 0004）。本文だけを発言から取る。
+  // CC は空。下書きは送らないので external_recipients は空で、照合は作成物の目印（operation_marker）。
+  const planDraft = async (
+    args: ArgValues,
+    permissionAtInput: string | null,
+  ): Promise<TurnPlan> => {
+    const intent: IntentName = 'draft_reply';
+    const body = typeof args.body === 'string' ? args.body.trim() : '';
+    if (body.length === 0) return clarify('missing_body', intent);
+    let candidates;
+    try {
+      candidates = await options.candidates.mailCandidates();
+    } catch {
+      candidates = [];
+    }
+    const candidate = candidates.find(
+      (item) => item.candidate_id === args.target_candidate_id,
+    );
+    if (candidate === undefined || options.provider === null)
+      return clarify('target_not_found', intent);
+    const connection = await readConnection();
+    if (
+      connection === null ||
+      connection.status !== 'active' ||
+      !canWrite(connection, 'mail.draft.create')
+    )
+      return clarify('connection', intent);
+    let target;
+    try {
+      target = await options.provider.readTarget(candidate.remote_id);
+    } catch {
+      return clarify('connection', intent);
+    }
+    if (target === null || target.remote_id !== candidate.remote_id)
+      return clarify('target_not_found', intent);
+    // 返信先（差出人）と件名が読めなければ、宛先と件名を決められないので作らない。
+    const sender = target.sender ?? null;
+    const subject = target.subject ?? null;
+    if (
+      sender === null ||
+      sender.length === 0 ||
+      subject === null ||
+      subject.length === 0
+    )
+      return clarify('invalid', intent);
+    const permission = await readPermission(connection.account_id);
+    if (permission === null) return clarify('connection', intent);
+    if (readiness(intent, permission === permissionAtInput) === 'blocked')
+      return clarify('blocked', intent);
+    const operationId = randomUUID();
+    return {
+      kind: 'operation',
+      intent,
+      route: 'remote_mutation',
+      operation_id: operationId,
+      operation_kind: 'mail.draft.create',
+      permission_revision: permission,
+      content: {
+        schema: 'buddy.operation.v1',
+        operation_id: operationId,
+        content_version: '1',
+        permission_revision: permission,
+        provider: connection.provider,
+        account_id: connection.account_id,
+        target: {
+          remote_id: target.remote_id,
+          source_revision: target.source_revision,
+        },
+        action: {
+          kind: 'mail.draft.create',
+          to: [sender],
+          cc: [],
+          subject: replySubject(subject),
+          body,
+        },
+        effects: {
+          external_recipients: [],
+          reconcile_scope: 'operation_marker',
+        },
       },
     };
   };
@@ -562,6 +654,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (intent === 'query_schedule') return planRead(intent, args);
     if (intent === 'label_mail') return planLabel(args, permissionAtInput);
     if (intent === 'create_task') return planTask(args);
+    if (intent === 'draft_reply') return planDraft(args, permissionAtInput);
     return clarify('unsupported', intent);
   };
 
@@ -835,10 +928,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       const accountId = intent['account_id'];
       const connection = await readConnection();
       const permission = await readPermission(accountId);
+      const actionKind = (intent['action'] as Record<string, unknown>)['kind'];
       if (
         connection === null ||
         connection.status !== 'active' ||
-        connection.access !== 'read_write' ||
+        typeof actionKind !== 'string' ||
+        !canWrite(connection, actionKind) ||
         connection.account_id !== accountId ||
         permission === null ||
         permission !== intent['permission_revision']

@@ -226,12 +226,24 @@ async function startProvider(
     const to = body['to'];
     const subject = body['subject'];
     const text = body['body'];
+    // 目印・返信元・CC は任意（省略は null・空）。あれば形を確かめる。
+    const marker = body['marker'];
+    const inReplyTo = body['in_reply_to'];
+    const cc = body['cc'] ?? [];
     if (
       !isStringArray(to) ||
       typeof subject !== 'string' ||
-      typeof text !== 'string'
+      typeof text !== 'string' ||
+      !isStringArray(cc) ||
+      (marker !== undefined &&
+        (typeof marker !== 'string' || marker.length === 0)) ||
+      (inReplyTo !== undefined &&
+        (typeof inReplyTo !== 'string' || inReplyTo.length === 0))
     )
       return { reject: { status: 400, body: { error: 'invalid_request' } } };
+    // 返信元のメールがなければ作らない（適用前に拒否する）。
+    if (typeof inReplyTo === 'string' && state.mails[inReplyTo] === undefined)
+      return { reject: { status: 404, body: { error: 'not_found' } } };
     return {
       apply: () => {
         const draftId = `draft-${String(state.next_draft).padStart(3, '0')}`;
@@ -241,7 +253,10 @@ async function startProvider(
           operation_id: ids.operation_id,
           attempt_id: ids.attempt_id,
           step_id: ids.step_id,
+          marker: typeof marker === 'string' ? marker : null,
+          in_reply_to: typeof inReplyTo === 'string' ? inReplyTo : null,
           to: [...to],
+          cc: [...cc],
           subject,
           body: text,
           status: 'draft',
@@ -414,10 +429,15 @@ async function startProvider(
       if (parts.join('/') === 'v1/mail/drafts') {
         const operationId = url.searchParams.get('operation_id');
         const stepId = url.searchParams.get('step_id');
+        const marker = url.searchParams.get('marker');
+        // 条件のない一覧は返さない（照合は目印か操作の ID で正確に探す）。
+        if (operationId === null && marker === null)
+          return send(res, 400, { error: 'invalid_request' });
         const drafts = Object.values(state.drafts).filter(
           (draft) =>
             (operationId === null || draft.operation_id === operationId) &&
-            (stepId === null || draft.step_id === stepId),
+            (stepId === null || draft.step_id === stepId) &&
+            (marker === null || draft.marker === marker),
         );
         return send(res, 200, { drafts });
       }

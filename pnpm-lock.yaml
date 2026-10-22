@@ -319,6 +319,9 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
     devDependencies:
+      '@buddy/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@buddy/core':
         specifier: workspace:*
         version: link:../core

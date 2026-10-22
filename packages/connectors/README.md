@@ -18,15 +18,16 @@
 - **要求の回数**（受信記録の件数）と**状態の変更の回数**（`state_changes`）は別に数えます。重複した要求は消さず、サービス側で冪等にもしません（同じ要求を 2 回送ると 2 件・変更 2 件）。読み取りはどちらにも数えません。
 - 合成データ: 時計は `2026-10-05T09:00:00+09:00`。`mail-001`（`r1`・INBOX）、`event-001`（13:00〜14:00）・`event-002`（13:30〜14:30。13:30〜14:00 が重なる）。口座・許可は H01 の fixture と同じ合成の値。
 
-| 経路                                       | 内容                                                              |
-| ------------------------------------------ | ----------------------------------------------------------------- |
-| `GET /v1/accounts/:id/permission`          | 許可（`permission_revision`・`scopes`）                           |
-| `GET /v1/mail/messages/:id`                | メールの状態（`source_revision`・`mailbox`・`labels`）            |
-| `GET /v1/calendar/events`                  | 予定の一覧                                                        |
-| `GET /v1/mail/drafts?operation_id&step_id` | 正確な対象の lookup                                               |
-| `POST /v1/mail/messages/:id/labels`        | ラベルの追加・削除（H01）。`step_id` は任意                       |
-| `POST /v1/mail/drafts`                     | 下書きの作成（X10 の工程 `create_draft`）                         |
-| `POST /v1/mail/drafts/:id/send`            | 下書きの送信（X10 の工程 `send`。実際には送らず状態だけを動かす） |
+| 経路                                       | 内容                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `GET /v1/accounts/:id/permission`          | 許可（`permission_revision`・`scopes`）                                                                |
+| `GET /v1/mail/messages/:id`                | メールの状態（`source_revision`・`mailbox`・`labels`）                                                 |
+| `GET /v1/calendar/events`                  | 予定の一覧                                                                                             |
+| `GET /v1/mail/drafts?operation_id&step_id` | 正確な対象の lookup                                                                                    |
+| `GET /v1/mail/drafts?marker`               | 操作の目印での lookup（下書きの保存の照合、B04-07）。条件なしは 400                                    |
+| `POST /v1/mail/messages/:id/labels`        | ラベルの追加・削除（H01）。`step_id` は任意                                                            |
+| `POST /v1/mail/drafts`                     | 下書きの作成（X10 の工程 `create_draft`、B04-07 の返信の下書き。任意の `marker`・`in_reply_to`・`cc`） |
+| `POST /v1/mail/drafts/:id/send`            | 下書きの送信（X10 の工程 `send`。実際には送らず状態だけを動かす）                                      |
 
 真の結果を見る API（`truth`: 要求と変更の回数・受信記録・状態・保留の件数・遅れた適用・試験の状況づくり）は、HTTP の経路にせず、プロセス内の試験装置の窓口だけにしています。
 

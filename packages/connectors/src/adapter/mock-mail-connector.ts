@@ -44,6 +44,14 @@ export interface RemoteDraft {
   readonly status: 'draft' | 'sent';
 }
 
+/** 目印で探した下書き（結果不明の照合に使う。読み取りだけ）。 */
+export interface MarkedDraft {
+  readonly draft_id: string;
+  readonly marker: string;
+  readonly in_reply_to: string | null;
+  readonly status: 'draft' | 'sent';
+}
+
 /** 書込みの識別。受信記録に残り、結果が分からないときの正確な照合の手がかりになる。 */
 export interface WriteIdentity {
   readonly operation_id: string;
@@ -86,6 +94,8 @@ export interface MockMailConnector {
     readonly operation_id: string;
     readonly step_id?: string;
   }): Promise<readonly RemoteDraft[]>;
+  /** 操作の目印で下書きを探す（照合の lookup、by_operation_marker）。読み取りだけ。 */
+  findDraftsByMarker(marker: string): Promise<readonly MarkedDraft[]>;
   changeLabels(
     identity: WriteIdentity,
     change: {
@@ -100,6 +110,10 @@ export interface MockMailConnector {
       readonly to: readonly string[];
       readonly subject: string;
       readonly body: string;
+      // 返信の下書き（B04-07）: CC・返信元・操作の目印。省略すると送らない。
+      readonly cc?: readonly string[];
+      readonly in_reply_to?: string;
+      readonly marker?: string;
     },
   ): Promise<WriteOutcome<{ readonly draft_id: string }>>;
   sendDraft(
@@ -303,6 +317,38 @@ export function createMockMailConnector(
       );
       return drafts ?? [];
     },
+    async findDraftsByMarker(marker) {
+      const params = new URLSearchParams({ marker });
+      const drafts = await read(
+        `/v1/mail/drafts?${params.toString()}`,
+        (body) => {
+          const list = obj(body)?.['drafts'];
+          if (!Array.isArray(list)) return null;
+          const parsed: MarkedDraft[] = [];
+          for (const item of list) {
+            const o = obj(item);
+            const draft_id = str(o?.['draft_id']);
+            const found = str(o?.['marker']);
+            const status = str(o?.['status']);
+            // 探した目印と違う下書きが返れば、応答の形が違うものとして扱う（数え違えない）。
+            if (
+              draft_id === null ||
+              found !== marker ||
+              (status !== 'draft' && status !== 'sent')
+            )
+              return null;
+            parsed.push({
+              draft_id,
+              marker: found,
+              in_reply_to: str(o?.['in_reply_to']),
+              status,
+            });
+          }
+          return parsed;
+        },
+      );
+      return drafts ?? [];
+    },
     changeLabels: (identity, change) =>
       write(
         `/v1/mail/messages/${encodeURIComponent(change.remote_id)}/labels`,
@@ -317,6 +363,11 @@ export function createMockMailConnector(
           to: draft.to,
           subject: draft.subject,
           body: draft.body,
+          ...(draft.cc === undefined ? {} : { cc: draft.cc }),
+          ...(draft.in_reply_to === undefined
+            ? {}
+            : { in_reply_to: draft.in_reply_to }),
+          ...(draft.marker === undefined ? {} : { marker: draft.marker }),
         },
         parseDraft('draft'),
       ),

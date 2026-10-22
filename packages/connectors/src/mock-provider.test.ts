@@ -464,3 +464,115 @@ test(
     ]);
   },
 );
+
+// B04-07: 返信の下書きの保存（目印・返信元・CC）と、目印での照合の読み取り。期待値は手で書いた値。
+const DRAFT_OPERATION = '00000000-0000-4000-8000-0000000000a7';
+const MARKER = 'buddy-op:00000000-0000-4000-8000-0000000000a7:1';
+
+test(
+  '返信の下書きを目印・返信元・CC つきで保存し、目印で 1 件だけ探せる（読み取りは要求に数えない）',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t, { now: () => CLOCK });
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+
+    const created = await connector.createDraft(
+      {
+        operation_id: DRAFT_OPERATION,
+        attempt_id: 'attempt-1',
+        step_id: '1-create_draft',
+      },
+      {
+        to: ['synthetic-sender@example.com'],
+        cc: [],
+        subject: 'Re: （合成）来週の打ち合わせの日程',
+        body: '（合成）承知しました。',
+        in_reply_to: 'mail-001',
+        marker: MARKER,
+      },
+    );
+    assert.deepEqual(created, {
+      kind: 'applied',
+      status: 201,
+      value: { draft_id: 'draft-001' },
+    });
+    assert.deepEqual(provider.truth.snapshot().drafts['draft-001'], {
+      draft_id: 'draft-001',
+      operation_id: DRAFT_OPERATION,
+      attempt_id: 'attempt-1',
+      step_id: '1-create_draft',
+      marker: MARKER,
+      in_reply_to: 'mail-001',
+      to: ['synthetic-sender@example.com'],
+      cc: [],
+      subject: 'Re: （合成）来週の打ち合わせの日程',
+      body: '（合成）承知しました。',
+      status: 'draft',
+      send_count: 0,
+    });
+    assert.deepEqual(await connector.findDraftsByMarker(MARKER), [
+      {
+        draft_id: 'draft-001',
+        marker: MARKER,
+        in_reply_to: 'mail-001',
+        status: 'draft',
+      },
+    ]);
+    // 内容版が違う目印では見つからない（内容版ごとに別の作成物）。
+    assert.deepEqual(
+      await connector.findDraftsByMarker(
+        'buddy-op:00000000-0000-4000-8000-0000000000a7:2',
+      ),
+      [],
+    );
+    assert.equal(provider.truth.requestCount(), 1);
+    assert.equal(provider.truth.stateChangeCount(), 1);
+    assert.deepEqual(
+      provider.truth
+        .receipts()
+        .map((r) => [r.route, r.step_id, r.applied_change, r.responded]),
+      [
+        [
+          'mail.draft.create',
+          '1-create_draft',
+          { kind: 'mail.draft.create', draft_id: 'draft-001' },
+          true,
+        ],
+      ],
+    );
+  },
+);
+
+test(
+  '返信元がない下書きの保存は適用前に拒否し、条件のない下書きの一覧は返さない',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t);
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+    assert.deepEqual(
+      await connector.createDraft(
+        { operation_id: 'op-a', attempt_id: 'attempt-1' },
+        {
+          to: ['synthetic-sender@example.com'],
+          subject: 'Re: x',
+          body: 'y',
+          in_reply_to: 'mail-404',
+          marker: MARKER,
+        },
+      ),
+      { kind: 'rejected', status: 404, code: 'not_found' },
+    );
+    // 受信記録には残る（要求 1・変更 0）。
+    assert.equal(provider.truth.requestCount(), 1);
+    assert.equal(provider.truth.stateChangeCount(), 0);
+    const listed = await new Promise<number>((resolve, reject) => {
+      const req = request(`${provider.url}/v1/mail/drafts`, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode ?? 0));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(listed, 400);
+  },
+);

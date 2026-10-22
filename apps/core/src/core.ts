@@ -711,6 +711,7 @@ async function startHttps(
     previews,
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
+    onOperationCreated: () => feed.notify(),
   });
   routes = createOperationRoutes({
     store: watched,
@@ -718,7 +719,12 @@ async function startHttps(
     coreInstanceId,
     environment,
     now: () => now().getTime(),
-    previewValid: https.previewValid ?? turns.previewValid,
+    ...(https.previewValid === undefined
+      ? {
+          previewValid: turns.previewValid,
+          previewCurrent: turns.previewCurrent,
+        }
+      : { previewValid: https.previewValid }),
   });
   const streams = createEventStream({
     feed,

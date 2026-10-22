@@ -7,6 +7,8 @@
 // - 発言の本文は Core が暗号化した sealed_blobs の行（purpose: turn_text）として受け取り、平文を受け取らない。
 // - 記録しない会話（private）は保存しない（0001 の CHECK）。Core が受け付けない。
 // - 入力は文字入力（typed・submitted_text・sealed）だけ。端末内の音声認識（local_asr）は B06。
+// - 発言から作る操作（承認待ち）は、発言・依頼と同じ transaction で作る（同じ要求の同時の再送で二つ作らない）。
+// - 応答（turn_responses、0004）も同じ transaction で書き、再送には解釈し直さずにその応答を返す。
 // 結果の理由にはコードだけを入れ、SQL・本文・hash の値を入れない。
 
 import Database from 'better-sqlite3';
@@ -15,7 +17,7 @@ import { writeConnectionReasons } from './connection.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import { isRevision } from './operation-commands.js';
 import type { SealedBlobInput } from './operation-commands.js';
-import { runImmediate } from './operation-store.js';
+import { appendEvent, insertVersion, runImmediate } from './operation-store.js';
 
 const RECEIPT_TTL_MS = RETENTION_RULES['command_receipt']?.ms ?? 0;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
@@ -42,10 +44,19 @@ export interface SessionRecord {
 
 export interface TurnRecordValue {
   readonly turn_id: string;
-  readonly input_id: string;
-  readonly workflow_id: string | null;
-  readonly forgetting_generation: string;
+  // 保存した応答（契約の TurnResponse の JSON）。再送では最初に保存した値。
+  readonly response_json: string;
   readonly replayed: boolean;
+}
+
+// 発言から作る承認待ちの操作（operation.create と同じ行を、発言と同じ transaction で書く）。
+// 自動承認はない（B04-03 の方針表はすべて off）。依頼は同じ transaction で作るので、依頼の版は 1。
+export interface TurnOperationInput {
+  readonly operation_id: string;
+  readonly operation_kind: string;
+  readonly effect_route: 'local_command' | 'remote_mutation';
+  readonly content_hash: string;
+  readonly intent: SealedBlobInput;
 }
 
 export interface OperationIntentBlob {
@@ -85,9 +96,13 @@ export type ConversationOp =
       // 入力の時点の許可の版（意味検証で provider から読んだ値）。
       readonly permission_revision: string;
       readonly request: ConversationRequestRef;
+      // 発言から作る操作。依頼（ready）があるときだけ。
+      readonly operation: TurnOperationInput | null;
+      // 応答（契約の TurnResponse の JSON）。
+      readonly response_json: string;
     }
-  // 依頼から作った操作（再送の後の再開に使う）。
-  | { readonly kind: 'workflow.operation'; readonly workflow_id: string }
+  // 解釈の前の再送の判定。保存済みの発言があればその応答、なければ null（照合値の違いは request_conflict）。
+  | { readonly kind: 'turn.find'; readonly request: ConversationRequestRef }
   // 操作の内容版の確定 intent の暗号文と hash（preview の発行に使う）。
   | {
       readonly kind: 'operation.intent';
@@ -98,11 +113,7 @@ export type ConversationOp =
 export type ConversationOpKind = ConversationOp['kind'];
 
 export type ConversationOpValue =
-  | SessionRecord
-  | TurnRecordValue
-  | OperationIntentBlob
-  | { readonly operation_id: string | null }
-  | null;
+  SessionRecord | TurnRecordValue | OperationIntentBlob | null;
 
 export type ConversationOpResult =
   | { readonly ok: true; readonly value: ConversationOpValue }
@@ -140,6 +151,22 @@ const isBytes = (value: unknown, length?: number): boolean =>
   value instanceof Uint8Array &&
   value.length > 0 &&
   (length === undefined || value.length === length);
+
+function isSealed(value: unknown): boolean {
+  const blob = value as SealedBlobInput | null | undefined;
+  return (
+    typeof blob === 'object' &&
+    blob !== null &&
+    isUuid(blob.blob_id) &&
+    Number.isSafeInteger(blob.format_version) &&
+    blob.format_version >= 1 &&
+    typeof blob.key_id === 'string' &&
+    blob.key_id.length > 0 &&
+    isBytes(blob.nonce, 12) &&
+    isBytes(blob.ciphertext) &&
+    isBytes(blob.tag, 16)
+  );
+}
 
 function requestReasons(request: ConversationRequestRef | undefined): string[] {
   if (
@@ -179,20 +206,7 @@ export function conversationOpShapeReasons(op: ConversationOp): string[] {
         reasons.push('expires_at_invalid');
       if (!isRevision(op.permission_revision))
         reasons.push('permission_revision_invalid');
-      const text = op.text as SealedBlobInput | null | undefined;
-      if (
-        typeof text !== 'object' ||
-        text === null ||
-        !isUuid(text.blob_id) ||
-        !Number.isSafeInteger(text.format_version) ||
-        text.format_version < 1 ||
-        typeof text.key_id !== 'string' ||
-        text.key_id.length === 0 ||
-        !isBytes(text.nonce, 12) ||
-        !isBytes(text.ciphertext) ||
-        !isBytes(text.tag, 16)
-      )
-        reasons.push('text_invalid');
+      if (!isSealed(op.text)) reasons.push('text_invalid');
       const workflow = op.workflow;
       if (
         workflow !== null &&
@@ -201,11 +215,36 @@ export function conversationOpShapeReasons(op: ConversationOp): string[] {
           !['clarifying', 'ready', 'done'].includes(workflow.state))
       )
         reasons.push('workflow_invalid');
+      const operation = op.operation;
+      if (operation !== null) {
+        if (
+          typeof operation !== 'object' ||
+          !isUuid(operation.operation_id) ||
+          typeof operation.operation_kind !== 'string' ||
+          operation.operation_kind.length === 0 ||
+          !['local_command', 'remote_mutation'].includes(
+            operation.effect_route,
+          ) ||
+          typeof operation.content_hash !== 'string' ||
+          !HASH.test(operation.content_hash) ||
+          !isSealed(operation.intent)
+        )
+          reasons.push('operation_invalid');
+        // 操作は依頼（ready）から作る。
+        if (workflow === null || workflow.state !== 'ready')
+          reasons.push('operation_without_workflow');
+      }
+      if (
+        typeof op.response_json !== 'string' ||
+        op.response_json.length === 0 ||
+        op.response_json.length > 16_384
+      )
+        reasons.push('response_invalid');
       reasons.push(...requestReasons(op.request));
       break;
     }
-    case 'workflow.operation':
-      if (!isUuid(op.workflow_id)) reasons.push('workflow_id_invalid');
+    case 'turn.find':
+      reasons.push(...requestReasons(op.request));
       break;
     case 'operation.intent':
       if (!isUuid(op.operation_id)) reasons.push('operation_id_invalid');
@@ -311,29 +350,54 @@ function storedTurn(
   turnId: string,
 ): TurnRecordValue | null {
   const row = db
-    .prepare(
-      'SELECT input_id, workflow_id, forgetting_generation FROM input_snapshots WHERE turn_id = ? AND request_revision = 1',
-    )
-    .get(turnId) as
-    | {
-        input_id: string;
-        workflow_id: string | null;
-        forgetting_generation: number;
-      }
-    | undefined;
+    .prepare('SELECT response_json FROM turn_responses WHERE turn_id = ?')
+    .get(turnId) as { response_json: string } | undefined;
   if (row === undefined) return null;
-  return {
-    turn_id: turnId,
-    input_id: row.input_id,
-    workflow_id: row.workflow_id,
-    forgetting_generation: String(row.forgetting_generation),
-    replayed: true,
+  return { turn_id: turnId, response_json: row.response_json, replayed: true };
+}
+
+// 発言から作る承認待ちの操作（operation-store.ts の createOperation と同じ行。自動承認なし）。
+function insertOperation(
+  db: SqliteDatabase,
+  context: ConversationContext,
+  workflowId: string,
+  operation: TurnOperationInput,
+  now: number,
+): void {
+  const exists = db
+    .prepare('SELECT 1 FROM operations WHERE operation_id = ?')
+    .get(operation.operation_id);
+  if (exists !== undefined)
+    throw new ConversationRejection(['operation_exists']);
+  db.prepare(
+    "INSERT INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at, completed_at) VALUES (?, ?, ?, ?, 1, 'awaiting_approval', 1, ?, NULL)",
+  ).run(
+    operation.operation_id,
+    workflowId,
+    operation.operation_kind,
+    operation.effect_route,
+    now,
+  );
+  const store = {
+    now,
+    platform: context.platform,
+    storeGeneration: context.storeGeneration,
   };
+  insertVersion(
+    db,
+    store,
+    operation.operation_id,
+    1,
+    operation.content_hash,
+    operation.intent,
+  );
+  appendEvent(db, store, operation.operation_id, 1);
 }
 
 function applyWrite(
   db: SqliteDatabase,
   op: Extract<ConversationOp, { kind: 'session.create' | 'turn.record' }>,
+  context: ConversationContext,
 ): ConversationOpValue {
   if (op.kind === 'session.create') {
     const stored = findReceipt(db, op.request);
@@ -391,6 +455,14 @@ function applyWrite(
       op.workflow.state,
       op.created_at,
     );
+  if (op.operation !== null && op.workflow !== null)
+    insertOperation(
+      db,
+      context,
+      op.workflow.workflow_id,
+      op.operation,
+      op.created_at,
+    );
   const forgetting = forgettingGeneration(db);
   db.prepare(
     "INSERT INTO input_snapshots (input_id, request_revision, workflow_id, turn_id, origin, state, seal_reason, input_evidence, policy_version, permission_revision, forgetting_generation, audio_epoch) VALUES (?, 1, ?, ?, 'typed', 'sealed', 'submitted_text', 'submitted_text', NULL, ?, ?, NULL)",
@@ -401,12 +473,13 @@ function applyWrite(
     Number(op.permission_revision),
     forgetting,
   );
+  db.prepare(
+    'INSERT INTO turn_responses (turn_id, response_json, created_at, delete_at) VALUES (?, ?, ?, ?)',
+  ).run(op.turn_id, op.response_json, op.created_at, op.expires_at);
   writeReceipt(db, op.request, op.turn_id, 1, op.created_at);
   return {
     turn_id: op.turn_id,
-    input_id: op.input_id,
-    workflow_id: op.workflow?.workflow_id ?? null,
-    forgetting_generation: String(forgetting),
+    response_json: op.response_json,
     replayed: false,
   };
 }
@@ -456,10 +529,17 @@ const rejected = (reasons: readonly string[]): ConversationOpResult => ({
 });
 
 // 会話の命令と照会を 1 件処理する。DB worker の中から呼ぶ。
+export interface ConversationContext {
+  readonly platform: StoragePlatform;
+  readonly halted: boolean;
+  // event_outbox の世代（発言から作る操作のイベント）。
+  readonly storeGeneration: string;
+}
+
 export function executeConversationOp(
   db: SqliteDatabase,
   op: ConversationOp,
-  context: { readonly platform: StoragePlatform; readonly halted: boolean },
+  context: ConversationContext,
 ): ConversationStoreResult {
   const shape = conversationOpShapeReasons(op);
   if (shape.length > 0) return { result: rejected(shape), halt: false };
@@ -468,16 +548,21 @@ export function executeConversationOp(
       result: { ok: true, value: readSession(db, op.session_id) },
       halt: false,
     };
-  if (op.kind === 'workflow.operation') {
-    const row = db
-      .prepare(
-        'SELECT operation_id FROM operations WHERE workflow_id = ? ORDER BY created_at, operation_id LIMIT 1',
-      )
-      .get(op.workflow_id) as { operation_id: string } | undefined;
-    return {
-      result: { ok: true, value: { operation_id: row?.operation_id ?? null } },
-      halt: false,
-    };
+  if (op.kind === 'turn.find') {
+    try {
+      const stored = findReceipt(db, op.request);
+      return {
+        result: {
+          ok: true,
+          value: stored === null ? null : storedTurn(db, stored),
+        },
+        halt: false,
+      };
+    } catch (error) {
+      if (error instanceof ConversationRejection)
+        return { result: rejected(error.reasons), halt: false };
+      throw error;
+    }
   }
   if (op.kind === 'operation.intent')
     return {
@@ -497,7 +582,7 @@ export function executeConversationOp(
       halt: true,
     };
   try {
-    const run = runImmediate(db, () => applyWrite(db, op));
+    const run = runImmediate(db, () => applyWrite(db, op, context));
     return { result: { ok: true, value: run.value }, halt: false };
   } catch (error) {
     if (error instanceof ConversationRejection)

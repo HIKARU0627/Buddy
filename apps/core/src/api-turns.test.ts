@@ -10,7 +10,15 @@ import test from 'node:test';
 import { sealOperationIntent } from '@buddy/storage';
 import type { ReviseContentCommand } from '@buddy/storage';
 import { createApiContract } from './api-contract.js';
-import { scheduleOverlaps } from './api-turns.js';
+import { isRealLocalDateTime } from '@buddy/domain';
+import type { DbCommand } from '@buddy/storage';
+import type { RequestEnvironment } from './api-environment.js';
+import { createOperationRoutes } from './api-operations.js';
+import type { OperationRouteStore } from './api-operations.js';
+import { createTurnRoutes, scheduleOverlaps } from './api-turns.js';
+import type { TurnRouteStore } from './api-turns.js';
+import type { EventFeed } from './event-feed.js';
+import { TEST_TURN_POLICY } from './turn-ports.js';
 import { DeviceConnections } from './device-connections.js';
 import { PreviewRegistry } from './previews.js';
 import {
@@ -27,6 +35,7 @@ import {
 import type { EventCore } from './event-test-support.js';
 import type { TestDevice } from './api-test-support.js';
 import type {
+  Interpreter,
   ProviderConnection,
   ProviderEvent,
   ProviderReader,
@@ -139,7 +148,10 @@ const READ_METHODS = new Set([
 async function startTurnCore(
   t: test.TestContext,
   provider: MockProvider,
-  options: { readonly restartOf?: EventCore } = {},
+  options: {
+    readonly restartOf?: EventCore;
+    readonly interpreter?: Interpreter;
+  } = {},
 ): Promise<EventCore> {
   const previous = options.restartOf;
   return startEventCore(t, {
@@ -150,6 +162,9 @@ async function startTurnCore(
       : { dataDir: previous.dataDir, tlsKeyStore: previous.tlsKeyStore }),
     turns: {
       provider,
+      ...(options.interpreter === undefined
+        ? {}
+        : { interpreter: options.interpreter }),
       candidates: {
         mailCandidates: () =>
           Promise.resolve([
@@ -774,5 +789,299 @@ test(
     assert.equal(previews.get('p2'), null);
     assert.equal(previews.get('p4'), null);
     assert.equal(previews.get('p3')?.device_id, 'd2');
+  },
+);
+
+// --- PR #89 のレビュー（P1 2 件・P2 2 件）の回帰試験 ---
+
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+}
+function deferred<T>(): Deferred<T> {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+const HASH_A = 'a'.repeat(64);
+const OPERATION = '00000000-0000-4000-8000-0000000000d1';
+
+// 照会を止められる偽の store（previewValid の照会の途中に無効化を起こす）。
+function pausedTurnRoutes() {
+  const pending: Deferred<unknown>[] = [];
+  const previews = new PreviewRegistry();
+  const store = {
+    storeGeneration: '00000000-0000-4000-8000-0000000000aa',
+    query: () => {
+      const next = deferred<unknown>();
+      pending.push(next);
+      return next.promise;
+    },
+    submit: () => {
+      throw new Error('not used');
+    },
+    conversation: () => {
+      throw new Error('not used');
+    },
+  } as unknown as TurnRouteStore;
+  const routes = createTurnRoutes({
+    store,
+    keyStore: {
+      loadDataKey: () =>
+        Promise.resolve({ ok: true as const, dataKey: DATA_KEY_MATERIAL }),
+    },
+    interpreter: { interpret: () => Promise.resolve({ kind: 'unclear' }) },
+    provider: null,
+    candidates: { mailCandidates: () => Promise.resolve([]) },
+    policy: TEST_TURN_POLICY,
+    previews,
+    utcOffset: '+09:00',
+  });
+  const view = {
+    operation_id: OPERATION,
+    current_content_version: '1',
+    content_hash: HASH_A,
+  };
+  return { routes, previews, pending, view };
+}
+
+const bindingOf = (previewId: string) => ({
+  preview_id: previewId,
+  device_id: 'd1',
+  command_scope_id: 's1',
+  operation_id: OPERATION,
+  content_version: '1',
+  content_hash: HASH_A,
+  account: null,
+  issued_at: 0,
+});
+
+const checkInput = (previewId: string) => ({
+  device_id: 'd1',
+  command_scope_id: 's1',
+  operation_id: OPERATION,
+  preview_id: previewId,
+  content_version: '1',
+  content_hash: HASH_A,
+});
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+test(
+  'review P1: a preview invalidated by a lock or replaced while previewValid waits for the DB is not valid',
+  { timeout: 5_000 },
+  async () => {
+    for (const disturb of ['lock', 'replace'] as const) {
+      const { routes, previews, pending, view } = pausedTurnRoutes();
+      previews.issue(bindingOf('p1'));
+      const checking = routes.previewValid(checkInput('p1'));
+      await settle();
+      assert.equal(pending.length, 1, disturb);
+      if (disturb === 'lock') previews.invalidateDevice('d1');
+      else previews.issue(bindingOf('p2'));
+      pending[0]?.resolve(view);
+      assert.equal(await checking, false, disturb);
+    }
+    // 乱されなければ有効（対照）。
+    const { routes, previews, pending, view } = pausedTurnRoutes();
+    previews.issue(bindingOf('p1'));
+    const checking = routes.previewValid(checkInput('p1'));
+    await settle();
+    pending[0]?.resolve(view);
+    assert.equal(await checking, true);
+    assert.equal(routes.previewCurrent('p1'), true);
+    previews.invalidateDevice('d1');
+    assert.equal(routes.previewCurrent('p1'), false);
+  },
+);
+
+test(
+  'review P1: approval re-checks the preview right before submitting, after the asynchronous checks',
+  { timeout: 5_000 },
+  async () => {
+    const submitted: DbCommand[] = [];
+    const store = {
+      storeGeneration: 'g',
+      query: (query: { kind: string }) =>
+        Promise.resolve(
+          query.kind === 'operation_view'
+            ? {
+                operation_id: OPERATION,
+                current_content_version: '1',
+                content_hash: HASH_A,
+                state_revision: '1',
+                request_revision: null,
+                forgetting_generation: '0',
+              }
+            : null,
+        ),
+      submit: (command: DbCommand) => {
+        submitted.push(command);
+        return {
+          received: Promise.resolve(true),
+          result: Promise.resolve({
+            outcome: 'rejected',
+            command_id: command.command_id,
+            kind: command.kind,
+            reasons: ['preview_invalid'],
+          }),
+        };
+      },
+    } as unknown as OperationRouteStore;
+    let current = true;
+    const routes = createOperationRoutes({
+      store,
+      feed: {} as EventFeed,
+      coreInstanceId: 'c',
+      environment: {} as RequestEnvironment,
+      // 非同期の照合は有効と答え、その後（承認を送る直前）に無効化された。
+      previewValid: () => {
+        current = false;
+        return true;
+      },
+      previewCurrent: () => current,
+    });
+    const handler = routes.handlers['approveOperation'];
+    assert(handler !== undefined);
+    const response = await handler({
+      route: { operationId: 'approveOperation' } as never,
+      device: { device_id: 'd1' } as never,
+      body: {
+        request_id: randomUUID(),
+        command_scope_id: randomUUID(),
+        preview_id: randomUUID(),
+        content_version: '1',
+        content_hash: HASH_A,
+        expected_state_revision: '1',
+      },
+      params: { id: OPERATION },
+      remoteAddress: '127.0.0.1',
+      query: {},
+      declaredLockState: null,
+    });
+    assert.equal(response.status, 409);
+    assert.equal(submitted.length, 1);
+    assert.equal(
+      (submitted[0] as { preview_valid?: boolean }).preview_valid,
+      false,
+    );
+  },
+);
+
+test(
+  'review P1/P2: concurrent and later resends of one turn return the stored result and make one operation',
+  { timeout: 60_000 },
+  async (t) => {
+    const provider = mockProvider();
+    const core = await startTurnCore(t, provider);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const requestId = randomUUID();
+    const send = () =>
+      postTurn(
+        core,
+        device,
+        session,
+        scope,
+        'mail-001 に follow-up を付けて',
+        requestId,
+      );
+    const responses = await Promise.all([send(), send(), send()]);
+    for (const response of responses) {
+      assert.equal(response.status, 200, response.text);
+      assert.deepEqual(response.json, responses[0]?.json);
+    }
+    assert.equal((await snapshotOperations(core, device)).length, 1);
+    // 対象に同じラベルが付き、接続も切れた後の再送でも、解釈し直さずに保存済みの結果（同じ操作）を返す。
+    provider.readTarget = (remoteId) =>
+      Promise.resolve(
+        remoteId === 'mail-001'
+          ? {
+              remote_id: 'mail-001',
+              source_revision: '8',
+              mailbox: 'INBOX',
+              labels: ['inbox', 'follow-up'],
+            }
+          : null,
+      );
+    provider.connectionState = null;
+    const later = await send();
+    assert.equal(later.status, 200, later.text);
+    assert.deepEqual(later.json, responses[0]?.json);
+    assert.equal((await snapshotOperations(core, device)).length, 1);
+  },
+);
+
+test(
+  'review P2: a task due date must be a real local date-time (leap days and time bounds)',
+  { timeout: 60_000 },
+  async (t) => {
+    // 期待値は手で書いた暦の事実（2028 年はうるう年、2026 年・2100 年は違う）。
+    const cases: readonly [string, boolean][] = [
+      ['2026-10-05T09:00', true],
+      ['2026-10-05T23:59:59', true],
+      ['2026-10-05T00:00:00', true],
+      ['2028-02-29T12:00', true],
+      ['2026-02-29T12:00', false],
+      ['2100-02-29T12:00', false],
+      ['2026-02-30T10:00', false],
+      ['2026-04-31T10:00', false],
+      ['2026-13-01T10:00', false],
+      ['2026-10-05T24:00', false],
+      ['2026-10-05T23:60', false],
+      ['2026-10-05T23:59:60', false],
+      ['2026-02-30T25:61', false],
+      ['0000-01-01T00:00', false],
+      ['2026-10-05 09:00', false],
+    ];
+    for (const [value, expected] of cases)
+      assert.equal(isRealLocalDateTime(value), expected, value);
+
+    const due = { value: '' };
+    const interpreter: Interpreter = {
+      interpret: () =>
+        Promise.resolve({
+          kind: 'intent',
+          intent: 'create_task',
+          args: {
+            target_candidate_id: null,
+            start: null,
+            end: null,
+            due: due.value,
+            title: '合成の用事',
+            body: null,
+            subject: null,
+            add_labels: null,
+            remove_labels: null,
+            task_change: null,
+            memory_kind: null,
+            query: null,
+            device_name: null,
+          },
+        }),
+    };
+    const core = await startTurnCore(t, mockProvider(), { interpreter });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const expectations: readonly [string, string][] = [
+      ['2026-02-30T10:00', 'clarification'],
+      ['2026-10-05T24:00', 'clarification'],
+      // 日付だけの不正な値は契約（format: date）で拒否し、知らない文と同じ扱い。
+      ['2026-02-30', 'clarification'],
+      ['2028-02-29T23:59', 'answered'],
+      ['2026-10-06', 'answered'],
+    ];
+    for (const [value, status] of expectations) {
+      due.value = value;
+      const response = await postTurn(core, device, session, scope, '用事');
+      assert.equal(response.status, 200, response.text);
+      assert.equal(response.json?.['status'], status, value);
+    }
+    assert.equal((await snapshotOperations(core, device)).length, 2);
   },
 );

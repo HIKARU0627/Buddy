@@ -268,6 +268,7 @@ function main(): void {
       const run = executeConversationOp(connection, message.op, {
         platform: data.platform,
         halted,
+        storeGeneration,
       });
       if (run.halt) halted = true;
       result = run.result;

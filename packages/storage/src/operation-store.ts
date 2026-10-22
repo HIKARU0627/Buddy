@@ -544,7 +544,7 @@ function requireOperation(
 
 // --- 書込みの部品（同じ transaction の中で呼ぶ） ---
 
-function appendEvent(
+export function appendEvent(
   db: SqliteDatabase,
   context: StoreContext,
   operationId: string,
@@ -657,7 +657,7 @@ function durable(
 }
 
 // 内容版の行と、その確定 intent の暗号文（sealed_blobs、持ち主は operation_versions の版）を書く。
-function insertVersion(
+export function insertVersion(
   db: SqliteDatabase,
   context: StoreContext,
   operationId: string,

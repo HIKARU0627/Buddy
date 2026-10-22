@@ -17,6 +17,7 @@ import type {
 import {
   CONTENT_HASH,
   OTHER_CONTENT_HASH,
+  STORE_GENERATION,
   approveCommand,
   createCommand,
   databasePath,
@@ -49,11 +50,18 @@ async function withStore(run: (db: SqliteDatabase) => void): Promise<void> {
 }
 
 const op = (db: SqliteDatabase, value: ConversationOp): ConversationOpResult =>
-  executeConversationOp(db, value, { platform: 'macos', halted: false }).result;
+  executeConversationOp(db, value, {
+    platform: 'macos',
+    halted: false,
+    storeGeneration: STORE_GENERATION,
+  }).result;
 
 const ok = (result: ConversationOpResult): Record<string, unknown> => {
   assert.equal(result.ok, true, JSON.stringify(result));
-  return (result.ok ? result.value : null) as Record<string, unknown>;
+  return (result.ok ? result.value : null) as unknown as Record<
+    string,
+    unknown
+  >;
 };
 
 const rejectedWith = (result: ConversationOpResult): readonly string[] => {
@@ -88,6 +96,7 @@ const turn = (
   options: {
     readonly ref?: ReturnType<typeof request>;
     readonly workflow?: string | null;
+    readonly operation?: string;
   } = {},
 ): Extract<ConversationOp, { kind: 'turn.record' }> => ({
   kind: 'turn.record',
@@ -103,6 +112,17 @@ const turn = (
       : { workflow_id: options.workflow ?? randomUUID(), state: 'ready' },
   permission_revision: '4',
   request: options.ref ?? request(),
+  operation:
+    options.operation === undefined
+      ? null
+      : {
+          operation_id: options.operation,
+          operation_kind: 'mail.labels.change',
+          effect_route: 'remote_mutation',
+          content_hash: CONTENT_HASH,
+          intent: sealedIntent(),
+        },
+  response_json: JSON.stringify({ synthetic: options.operation ?? 'none' }),
 });
 
 test(
@@ -178,11 +198,38 @@ test(
       const value = ok(op(db, record));
       assert.deepEqual(value, {
         turn_id: record.turn_id,
-        input_id: record.input_id,
-        workflow_id: record.workflow?.workflow_id,
-        forgetting_generation: '0',
+        response_json: '{"synthetic":"none"}',
         replayed: false,
       });
+      // 解釈の前の再送の判定: 保存した応答を返す。知らない要求は null、照合値の違いは request_conflict。
+      assert.deepEqual(
+        ok(op(db, { kind: 'turn.find', request: record.request })),
+        {
+          ...value,
+          replayed: true,
+        },
+      );
+      assert.deepEqual(op(db, { kind: 'turn.find', request: request() }), {
+        ok: true,
+        value: null,
+      });
+      assert.deepEqual(
+        rejectedWith(
+          op(db, {
+            kind: 'turn.find',
+            request: { ...record.request, request_hash: HASH_B },
+          }),
+        ),
+        ['request_conflict'],
+      );
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT delete_at - created_at AS ttl FROM turn_responses WHERE turn_id = ?',
+          )
+          .get(record.turn_id),
+        { ttl: 604_800_000 },
+      );
       assert.deepEqual(
         db
           .prepare(
@@ -227,7 +274,7 @@ test(
           forgetting_generation: 0,
         },
       );
-      // 同じ要求の再送: 保存済みの ID（新しい行を作らない）。
+      // 同じ要求の再送: 保存済みの応答（新しい行を作らない）。
       const again = ok(op(db, { ...turn(sessionId), request: record.request }));
       assert.deepEqual(again, { ...value, replayed: true });
       assert.equal(count(db, 'turns'), 1);
@@ -265,8 +312,15 @@ test(
       );
       // 依頼のない発言（聞き返し）: workflow を作らない。
       const unclear = turn(sessionId, { workflow: null });
-      assert.equal(ok(op(db, unclear))['workflow_id'], null);
+      assert.equal(ok(op(db, unclear))['replayed'], false);
       assert.equal(count(db, 'workflows'), 1);
+      // 依頼のない発言から操作は作らない（形の検査）。
+      assert.deepEqual(
+        rejectedWith(
+          op(db, turn(sessionId, { workflow: null, operation: randomUUID() })),
+        ),
+        ['operation_without_workflow'],
+      );
     });
   },
 );
@@ -307,49 +361,67 @@ const revise = (
 });
 
 test(
-  'an operation created from a workflow is found from it and its sealed intent is readable for the preview',
+  'a turn creates its operation in the same transaction, a resend never creates a second one and a failure writes nothing',
   { timeout: 30_000 },
   async () => {
     await withStore((db) => {
       const sessionId = randomUUID();
       ok(op(db, createSession(sessionId)));
-      const record = turn(sessionId);
-      ok(op(db, record));
-      const workflowId = String(record.workflow?.workflow_id);
-      assert.deepEqual(
-        ok(op(db, { kind: 'workflow.operation', workflow_id: workflowId })),
-        { operation_id: null },
-      );
       const operationId = randomUUID();
-      const intent = sealedIntent();
-      // 依頼の版は workflow の現在の版（1）と照合する。
+      const record = turn(sessionId, { operation: operationId });
+      ok(op(db, record));
+      assert.deepEqual(operationState(db, operationId), {
+        state: 'awaiting_approval',
+        state_revision: 1,
+      });
+      assert.equal(
+        db
+          .prepare('SELECT workflow_id FROM operations WHERE operation_id = ?')
+          .pluck()
+          .get(operationId),
+        record.workflow?.workflow_id,
+      );
+      // 操作のイベントも同じ transaction（版 1）。
       assert.deepEqual(
-        reasons(
-          run(
-            db,
-            createCommand(operationId, {
-              workflow_id: workflowId,
-              request_revision: '2',
-              intent,
-            }),
-          ),
-        ),
-        ['request_revision_changed'],
+        db
+          .prepare(
+            'SELECT target_id, state_revision FROM event_outbox WHERE target_id = ?',
+          )
+          .all(operationId),
+        [{ target_id: operationId, state_revision: 1 }],
       );
-      committed(
-        run(
-          db,
-          createCommand(operationId, {
-            workflow_id: workflowId,
-            request_revision: '1',
-            intent,
-          }),
-        ),
+      // 同じ要求の再送（別の操作 ID を計画していても）: 保存済みの応答で、操作は増えない。
+      const resend = ok(
+        op(db, {
+          ...turn(sessionId, { operation: randomUUID() }),
+          request: record.request,
+        }),
+      );
+      assert.equal(resend['replayed'], true);
+      assert.equal(resend['response_json'], record.response_json);
+      assert.equal(count(db, 'operations'), 1);
+      // 作成の途中で失敗（既にある操作 ID）: 発言・依頼・入力・応答・受付・暗号文のどれも書かない。
+      const tables = [
+        'turns',
+        'workflows',
+        'input_snapshots',
+        'turn_responses',
+        'command_receipts',
+        'sealed_blobs',
+        'operations',
+        'event_outbox',
+      ];
+      const before = tables.map((table) => count(db, table));
+      assert.deepEqual(
+        rejectedWith(op(db, turn(sessionId, { operation: operationId }))),
+        ['operation_exists'],
       );
       assert.deepEqual(
-        ok(op(db, { kind: 'workflow.operation', workflow_id: workflowId })),
-        { operation_id: operationId },
+        tables.map((table) => count(db, table)),
+        before,
       );
+      const intent = record.operation?.intent;
+      assert(intent !== undefined);
       const blob = ok(
         op(db, {
           kind: 'operation.intent',

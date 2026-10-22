@@ -9165,7 +9165,27 @@
       "minLength": 1,
       "maxLength": 24,
       "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u2028-\\u202E\\u2066-\\u2069]+$",
-      "description": "物の見出し（ADR 0032）。24 文字（コードポイント）まで・1 行。制御文字・改行・双方向の上書きと埋め込み・分離の文字（U+202A〜202E・U+2066〜2069）・方向の印（U+200E・200F・061C）を拒否する。空白だけの見出しは意味の検査で拒否する。"
+      "description": "物の見出し（ADR 0032）。24 文字（コードポイント）まで・1 行。制御文字・改行・双方向の上書きと埋め込み・分離の文字（U+202A〜202E・U+2066〜2069）・方向の印（U+200E・200F・061C）を拒否する。マークアップ（< の直後の英字・/・!・? と、< と > の組）、URL のスキーム（http・https・javascript・vbscript・data・file・ftp・blob・mailto の後の :。大文字・小文字を区別しない）、www. で始まる表現も拒否する。描画はプレーンテキストだけ。空白だけの見出しは意味の検査で拒否する。",
+      "not": {
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "<[A-Za-z!/?]"
+          },
+          {
+            "type": "string",
+            "pattern": "<[^>]*>"
+          },
+          {
+            "type": "string",
+            "pattern": "(^|[^A-Za-z0-9+.-])([Hh][Tt][Tt][Pp][Ss]|[Hh][Tt][Tt][Pp]|[Jj][Aa][Vv][Aa][Ss][Cc][Rr][Ii][Pp][Tt]|[Vv][Bb][Ss][Cc][Rr][Ii][Pp][Tt]|[Dd][Aa][Tt][Aa]|[Ff][Ii][Ll][Ee]|[Ff][Tt][Pp]|[Bb][Ll][Oo][Bb]|[Mm][Aa][Ii][Ll][Tt][Oo])\\s*:"
+          },
+          {
+            "type": "string",
+            "pattern": "(^|[^A-Za-z0-9])[Ww][Ww][Ww]\\."
+          }
+        ]
+      }
     },
     "CanvasItemKind": {
       "type": "string",
@@ -9533,10 +9553,10 @@
         "open_reason": {
           "$ref": "#/$defs/SegmentBoundaryReason"
         },
-        "carried_summary_from": {
+        "carried_summary": {
           "anyOf": [
             {
-              "$ref": "#/$defs/Id"
+              "$ref": "#/$defs/CarriedSummary"
             },
             {
               "type": "null"
@@ -9549,10 +9569,10 @@
         "storage_mode",
         "opened_at",
         "open_reason",
-        "carried_summary_from"
+        "carried_summary"
       ],
       "additionalProperties": false,
-      "description": "流れ（stream）の中の今の区切り（ADR 0032）。画面には区切りとして見せず、保存モードの表示と表示の権限の判定に使う。carried_summary_from は要約をつないだ前の区切り。記録しない区切り・記録しない会話から出た区切り・流れの最初・忘却の指示で始めた区切りはつながない（意味の検査）。"
+      "description": "流れ（stream）の中の今の区切り（ADR 0032）。画面には区切りとして見せず、保存モードの表示と表示の権限の判定に使う。carried_summary は前の区切りからつないだ要約の由来と期限。記録しない区切り・記録しない会話から出た区切り・流れの最初・忘却の指示で始めた区切りはつながない。期限が区切りの始まり以前の要約・自分を由来に含む要約は持たない（意味の検査）。"
     },
     "StreamTurnRequest": {
       "type": "object",
@@ -9660,6 +9680,26 @@
       ],
       "additionalProperties": false,
       "description": "流れへの発言の結果（ADR 0032）。segment は発言を受けた区切り。canvas は Core が意味の検査を通したキャンバスの変更（なければ null）。外部変更の完了は操作の状態で別に示し、承認・停止はキャンバスに置かない。"
+    },
+    "CarriedSummary": {
+      "type": "object",
+      "properties": {
+        "source_segment_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": ["source_segment_ids", "expires_at"],
+      "additionalProperties": false,
+      "description": "区切りにつないだ要約の由来と期限（ADR 0032）。source_segment_ids は要約の材料になった区切り（要約し直しても前の由来を引き継ぐ）。expires_at は由来の発言のうち最も早い期限で、その時に要約全体を捨てる。本文は持たない。"
     }
   }
 }

@@ -13,9 +13,14 @@ import {
   DESKTOP_ROLE_NOTIFICATIONS,
   DESKTOP_WINDOW_ROLES,
   applyCanvasBatch,
+  applyCanvasBatchToStore,
+  beginPrivateCanvas,
   canvasBatchErrors,
   canvasDocumentErrors,
+  canvasForDisplay,
   desktopChannelAllowedForRole,
+  endPrivateCanvas,
+  nextCarriedSummary,
   streamSegmentErrors,
 } from '../packages/domain/dist/index.js';
 import { loadContracts, parseStrictJson, root } from './contract-tools.mjs';
@@ -80,6 +85,15 @@ test('the issue #93 rejections are present: limits, bidi overrides, unknown kind
     'canvas-item-description',
     'canvas-item-note',
     'canvas-item-caption',
+    // PR #102 のレビュー: 見出しのマークアップ・URL（add と update）と、要約の期限。
+    'canvas-heading-script',
+    'canvas-heading-javascript',
+    'canvas-add-heading-script',
+    'canvas-add-heading-javascript',
+    'canvas-update-heading-url',
+    'canvas-update-heading-tag',
+    'segment-summary-expired',
+    'segment-summary-from-self',
   ])
     assert(rejected(id), id);
 });
@@ -333,4 +347,358 @@ test('window roles: every request and notification channel of the schema has a r
   // 手で数えた数（現在の DesktopIpcChannel は 17 個）。
   assert.equal(channels.size, 17);
   assert.equal(CANVAS_FORBIDDEN.length + 1, 17);
+});
+
+// PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、
+// 要約の由来と期限。期待値は手で書く。
+test('headings with markup or URLs are refused by both the schema and the domain; plain headings pass', () => {
+  const base = fixture('canvas-document-valid');
+  for (const heading of [
+    '<script>1</script>',
+    '<img src=x onerror=x>',
+    '予定</b>',
+    '<!--x',
+    'A < B > C',
+    'https://example.invalid',
+    'HTTP://EXAMPLE.INVALID',
+    'javascript:alert(1)',
+    '見る JavaScript:x',
+    'data:text/html,x',
+    'vbscript:x',
+    'file:///etc',
+    'mailto:a@example.invalid',
+    'www.example.invalid',
+    '詳細は WWW.example',
+  ]) {
+    assert.equal(validators.CanvasHeading(heading), false, heading);
+    const document = structuredClone(base);
+    document.items[0].heading = heading;
+    assert.deepEqual(
+      canvasDocumentErrors(document),
+      ['heading_markup'],
+      heading,
+    );
+  }
+  for (const heading of [
+    '3/5 の予定',
+    'A < B の比較',
+    'A > B の比較',
+    '比較: A と B',
+    'http の設定',
+    'www の話',
+    'metadata:2 件',
+    '＜予定＞の確認',
+  ]) {
+    assert.equal(validators.CanvasHeading(heading), true, heading);
+    const document = structuredClone(base);
+    document.items[0].heading = heading;
+    assert.deepEqual(canvasDocumentErrors(document), [], heading);
+  }
+  // update の見出しも domain が拒否する。
+  const batch = fixture('canvas-batch-valid');
+  batch.ops = [
+    {
+      op: 'update',
+      item_id: 'tasks-today',
+      changes: { heading: 'javascript:alert(1)' },
+    },
+  ];
+  assert.deepEqual(canvasBatchErrors(batch), ['heading_markup']);
+});
+
+// 既存の text を 2 つ持つキャンバス（手で作る）。
+function canvasWithTwoTexts() {
+  const document = fixture('canvas-document-valid');
+  const second = {
+    ...structuredClone(document.items[2]),
+    item_id: 'reply-old',
+    grid: { column: 1, span: 4, rows: 1 },
+  };
+  document.items.push(second);
+  document.reading_order = [...document.reading_order, 'reply-old'];
+  return document;
+}
+
+test('updating the content of existing text items counts toward one text per answer', () => {
+  const document = canvasWithTwoTexts();
+  assert.deepEqual(canvasDocumentErrors(document), []);
+  const batch = (ops, readingOrder = document.reading_order) => ({
+    base_canvas_revision: '7',
+    canvas_revision: '8',
+    ops,
+    reading_order: readingOrder,
+  });
+  const newText = {
+    ...structuredClone(document.items[2]),
+    item_id: 'reply-new',
+    grid: { column: 5, span: 4, rows: 1 },
+  };
+  // update 2 件（見出しと、データ）。
+  assert.deepEqual(
+    applyCanvasBatch(
+      document,
+      batch([
+        { op: 'update', item_id: 'reply', changes: { heading: '新しい答え' } },
+        {
+          op: 'update',
+          item_id: 'reply-old',
+          changes: { data: { item_refs: [], more_count: 0 } },
+        },
+      ]),
+    ),
+    { ok: false, errors: ['text_limit'] },
+  );
+  // add と update。
+  assert.deepEqual(
+    applyCanvasBatch(
+      document,
+      batch(
+        [
+          { op: 'add', item: newText },
+          { op: 'update', item_id: 'reply', changes: { heading: '答え 2' } },
+        ],
+        [...document.reading_order, 'reply-new'],
+      ),
+    ),
+    { ok: false, errors: ['text_limit'] },
+  );
+  // 1 件だけの中身の更新と、強調だけの更新は数えない（境界）。
+  assert.equal(
+    applyCanvasBatch(
+      document,
+      batch([
+        { op: 'update', item_id: 'reply', changes: { heading: '答え 3' } },
+        { op: 'update', item_id: 'reply-old', changes: { emphasis: 'low' } },
+      ]),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    applyCanvasBatch(
+      document,
+      batch(
+        [
+          { op: 'add', item: newText },
+          { op: 'update', item_id: 'reply-old', changes: { emphasis: 'low' } },
+        ],
+        [...document.reading_order, 'reply-new'],
+      ),
+    ).ok,
+    true,
+  );
+  // text でない物の中身の更新は数えない。
+  assert.equal(
+    applyCanvasBatch(
+      document,
+      batch([
+        { op: 'update', item_id: 'reply', changes: { heading: '答え 4' } },
+        {
+          op: 'update',
+          item_id: 'tasks-today',
+          changes: { heading: '今日の用事 2' },
+        },
+      ]),
+    ).ok,
+    true,
+  );
+});
+
+test('changes during a private segment stay temporary and are discarded when it ends', () => {
+  const persisted = fixture('canvas-document-valid');
+  let store = beginPrivateCanvas({ persisted, ephemeral: null });
+  assert.deepEqual(store.ephemeral, persisted);
+  // 既存のカードの見出しの変更・移動・閉じる・足す。
+  const first = applyCanvasBatchToStore(store, {
+    base_canvas_revision: '7',
+    canvas_revision: '8',
+    ops: [
+      {
+        op: 'update',
+        item_id: 'tasks-today',
+        changes: { heading: '内緒の相談' },
+      },
+      { op: 'move', item_id: 'plan-compare', placement: 'shelf' },
+      { op: 'close', item_id: 'reply' },
+      {
+        op: 'add',
+        item: {
+          ...structuredClone(persisted.items[0]),
+          item_id: 'secret',
+          heading: '内緒のメモ',
+        },
+      },
+    ],
+    reading_order: ['tasks-today', 'secret'],
+  });
+  assert.equal(first.ok, true);
+  store = first.store;
+  // 保存してよい記述は変わらない。描くのは一時の記述。
+  assert.deepEqual(store.persisted, fixture('canvas-document-valid'));
+  assert.equal(canvasForDisplay(store).canvas_revision, '8');
+  assert.deepEqual(
+    canvasForDisplay(store)
+      .items.map((item) => item.heading)
+      .sort(),
+    ['2 つの案', '内緒のメモ', '内緒の相談', '先週のメール'].sort(),
+  );
+  // 入り直しても一時の記述を保つ。
+  assert.equal(beginPrivateCanvas(store), store);
+  // 終わったら捨てて、前の記述に戻す。版は一時の記述の版より進める。
+  const ended = endPrivateCanvas(store);
+  assert.equal(ended.ephemeral, null);
+  assert.equal(ended.persisted.canvas_revision, '9');
+  assert.deepEqual(
+    { ...ended.persisted, canvas_revision: '7' },
+    fixture('canvas-document-valid'),
+  );
+  assert.equal(
+    JSON.stringify(ended).includes('内緒'),
+    false,
+    'private headings must not survive',
+  );
+  assert.equal(canvasForDisplay(ended), ended.persisted);
+  // 記録しない区切りでなければ、そのまま保存してよい記述に当てる。
+  const normal = applyCanvasBatchToStore(
+    { persisted, ephemeral: null },
+    fixture('canvas-batch-valid'),
+  );
+  assert.equal(normal.ok, true);
+  assert.equal(normal.store.persisted.canvas_revision, '8');
+  assert.equal(normal.store.ephemeral, null);
+  assert.equal(endPrivateCanvas(normal.store), normal.store);
+  // 一時の記述に合わない束（版が古い・一時の記述で閉じた reply を閉じる）は拒否し、何も変えない。
+  const stale = applyCanvasBatchToStore(store, fixture('canvas-batch-valid'));
+  assert.deepEqual(stale, {
+    ok: false,
+    errors: ['base_revision_mismatch', 'item_not_found'],
+  });
+});
+
+test('carried summaries expire with their earliest source, across several segments', () => {
+  const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  // 区切り A（normal）: 発言の期限は 10/29 と 10/30。
+  const a = nextCarriedSummary({
+    previous: null,
+    closing: {
+      segment_id: id(1),
+      storage_mode: 'normal',
+      turn_expires_at: ['2026-10-29T08:00:00Z', '2026-10-30T08:00:00Z'],
+    },
+    open_reason: 'idle_timeout',
+    now: '2026-10-22T09:00:00Z',
+  });
+  assert.deepEqual(a, {
+    source_segment_ids: [id(1)],
+    expires_at: '2026-10-29T08:00:00Z',
+  });
+  // 区切り B（extended）: 要約し直しても A の由来と早い期限を引き継ぐ。
+  const b = nextCarriedSummary({
+    previous: a,
+    closing: {
+      segment_id: id(2),
+      storage_mode: 'extended',
+      turn_expires_at: ['2026-11-21T10:00:00Z'],
+    },
+    open_reason: 'date_changed',
+    now: '2026-10-23T00:00:00Z',
+  });
+  assert.deepEqual(b, {
+    source_segment_ids: [id(1), id(2)],
+    expires_at: '2026-10-29T08:00:00Z',
+  });
+  // 区切り C の終わり（A の期限の後）: 期限の切れた要約は材料にせず、C の発言だけから作る。
+  const c = nextCarriedSummary({
+    previous: b,
+    closing: {
+      segment_id: id(3),
+      storage_mode: 'normal',
+      turn_expires_at: ['2026-11-05T12:00:00Z'],
+    },
+    open_reason: 'user_requested',
+    now: '2026-10-29T08:00:00Z',
+  });
+  assert.deepEqual(c, {
+    source_segment_ids: [id(3)],
+    expires_at: '2026-11-05T12:00:00Z',
+  });
+  // 材料が何も期限内でなければつながない。
+  assert.equal(
+    nextCarriedSummary({
+      previous: a,
+      closing: {
+        segment_id: id(4),
+        storage_mode: 'normal',
+        turn_expires_at: ['2026-10-29T07:00:00Z'],
+      },
+      open_reason: 'idle_timeout',
+      now: '2026-10-29T09:00:00Z',
+    }),
+    null,
+  );
+  // 発言のない区切りでも、期限内の前の要約は引き継ぐ。
+  assert.deepEqual(
+    nextCarriedSummary({
+      previous: b,
+      closing: {
+        segment_id: id(5),
+        storage_mode: 'normal',
+        turn_expires_at: [],
+      },
+      open_reason: 'idle_timeout',
+      now: '2026-10-24T00:00:00Z',
+    }),
+    b,
+  );
+  // つながない始まり方と、記録しない区切りから。
+  for (const reason of [
+    'stream_started',
+    'forget_requested',
+    'private_started',
+    'private_ended',
+  ])
+    assert.equal(
+      nextCarriedSummary({
+        previous: a,
+        closing: {
+          segment_id: id(6),
+          storage_mode: 'normal',
+          turn_expires_at: ['2026-10-30T00:00:00Z'],
+        },
+        open_reason: reason,
+        now: '2026-10-22T09:00:00Z',
+      }),
+      null,
+      reason,
+    );
+  assert.equal(
+    nextCarriedSummary({
+      previous: null,
+      closing: {
+        segment_id: id(7),
+        storage_mode: 'private',
+        turn_expires_at: ['2026-10-30T00:00:00Z'],
+      },
+      open_reason: 'idle_timeout',
+      now: '2026-10-22T09:00:00Z',
+    }),
+    null,
+  );
+  // 由来が 256 区切りを超えるなら、つながない。
+  const many = {
+    source_segment_ids: Array.from({ length: 256 }, (_, n) => id(100 + n)),
+    expires_at: '2026-10-29T08:00:00Z',
+  };
+  assert.equal(
+    nextCarriedSummary({
+      previous: many,
+      closing: {
+        segment_id: id(9),
+        storage_mode: 'normal',
+        turn_expires_at: ['2026-10-30T00:00:00Z'],
+      },
+      open_reason: 'idle_timeout',
+      now: '2026-10-22T09:00:00Z',
+    }),
+    null,
+  );
 });

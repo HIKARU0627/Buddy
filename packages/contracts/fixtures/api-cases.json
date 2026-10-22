@@ -274,7 +274,10 @@
           "storage_mode": "normal",
           "opened_at": "2026-10-22T00:40:00Z",
           "open_reason": "idle_timeout",
-          "carried_summary_from": "00000000-0000-4000-8000-000000000030"
+          "carried_summary": {
+            "source_segment_ids": ["00000000-0000-4000-8000-000000000030"],
+            "expires_at": "2026-10-29T00:10:00Z"
+          }
         },
         "turn_id": "00000000-0000-4000-8000-000000000004",
         "input_id": "00000000-0000-4000-8000-000000000005",

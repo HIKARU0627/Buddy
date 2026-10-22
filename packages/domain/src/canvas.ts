@@ -17,6 +17,7 @@ export type CanvasSemanticError =
   | 'duplicate_item_id'
   | 'heading_blank'
   | 'heading_invalid'
+  | 'heading_markup'
   | 'grid_overflow'
   | 'refs_limit'
   | 'more_count_without_full_refs'
@@ -107,6 +108,15 @@ const FORBIDDEN_HEADING =
   /[\u0000-\u001F\u007F-\u009F\u061C\u200E\u200F\u2028-\u202E\u2066-\u2069]/u;
 /* eslint-enable no-control-regex */
 
+// マークアップ・URL らしい見出し（Schema の CanvasHeading の not と同じ集合。ADR 0032）。描画はプレーンテキスト
+// だけだが、見出しに HTML・スクリプト・リンクを紛れ込ませない。「A < B の比較」「3/5 の予定」は通す。
+const HEADING_MARKUP: readonly RegExp[] = [
+  /<[A-Za-z!/?]/u,
+  /<[^>]*>/u,
+  /(^|[^A-Za-z0-9+.-])(https|http|javascript|vbscript|data|file|ftp|blob|mailto)\s*:/iu,
+  /(^|[^A-Za-z0-9])www\./iu,
+];
+
 const sorted = (errors: Set<CanvasSemanticError>): CanvasSemanticError[] =>
   [...errors].sort();
 
@@ -117,6 +127,8 @@ function headingErrors(heading: string, errors: Set<CanvasSemanticError>) {
     FORBIDDEN_HEADING.test(heading)
   )
     errors.add('heading_invalid');
+  if (HEADING_MARKUP.some((pattern) => pattern.test(heading)))
+    errors.add('heading_markup');
   if (heading.trim() === '') errors.add('heading_blank');
 }
 
@@ -240,6 +252,18 @@ export function applyCanvasBatch(
   if (batch.base_canvas_revision !== canvas.canvas_revision)
     errors.add('base_revision_mismatch');
   const items = new Map(canvas.items.map((item) => [item.item_id, item]));
+  // text は 1 回の答えにつき 1 つまで。足す text に加え、中身（見出し・データ）を変える既存の text も数える
+  // （既存の text の更新で上限を回避させない）。強調・まとまり・関係だけの更新は中身を変えないので数えない。
+  let texts = 0;
+  for (const op of batch.ops)
+    if (op.op === 'add' && op.item.component === 'text') texts += 1;
+    else if (
+      op.op === 'update' &&
+      items.get(op.item_id)?.component === 'text' &&
+      (op.changes.heading !== undefined || op.changes.data !== undefined)
+    )
+      texts += 1;
+  if (texts > CANVAS_TEXT_PER_ANSWER) errors.add('text_limit');
   for (const op of batch.ops) {
     if (op.op === 'relayout') continue;
     if (op.op === 'add') {
@@ -274,17 +298,84 @@ export function applyCanvasBatch(
     : { ok: true, canvas: next };
 }
 
+// 記録しない区切りの間のキャンバス（ADR 0032）。persisted は保存してよい記述（DB・スナップショット・
+// イベントの記録に書くのはこれだけ）、ephemeral は記録しない区切りの間だけ RAM に持つ一時の記述。
+// 記録しない間の変更は、既存の物の update・move・close を含めてすべて ephemeral に当て、区切りが終わったら
+// ephemeral を捨てて persisted に戻す。
+export interface CanvasStore {
+  readonly persisted: CanvasDocumentLike;
+  readonly ephemeral: CanvasDocumentLike | null;
+}
+
+export type CanvasStoreResult =
+  | { readonly ok: true; readonly store: CanvasStore }
+  | { readonly ok: false; readonly errors: readonly CanvasSemanticError[] };
+
+// 記録しない区切りに入る。既に入っていれば何も変えない。
+export function beginPrivateCanvas(store: CanvasStore): CanvasStore {
+  return store.ephemeral !== null
+    ? store
+    : { persisted: store.persisted, ephemeral: store.persisted };
+}
+
+// 今描くべき記述。記録しない間は一時の記述。
+export function canvasForDisplay(store: CanvasStore): CanvasDocumentLike {
+  return store.ephemeral ?? store.persisted;
+}
+
+// 変更の束を当てる。記録しない間は一時の記述にだけ当て、保存してよい記述は変えない。
+export function applyCanvasBatchToStore(
+  store: CanvasStore,
+  batch: CanvasOpBatchLike,
+): CanvasStoreResult {
+  const result = applyCanvasBatch(canvasForDisplay(store), batch);
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    store:
+      store.ephemeral === null
+        ? { persisted: result.canvas, ephemeral: null }
+        : { persisted: store.persisted, ephemeral: result.canvas },
+  };
+}
+
+// 記録しない区切りを終える。一時の記述を捨て、記録しない前の記述に戻す。端末が新しい記述として受け取れるよう、
+// 版は一時の記述の版より 1 進める（版を巻き戻さない）。記録しない区切りでなければ何も変えない。
+export function endPrivateCanvas(store: CanvasStore): CanvasStore {
+  if (store.ephemeral === null) return store;
+  const revision =
+    (BigInt(store.ephemeral.canvas_revision) >
+    BigInt(store.persisted.canvas_revision)
+      ? BigInt(store.ephemeral.canvas_revision)
+      : BigInt(store.persisted.canvas_revision)) + 1n;
+  return {
+    persisted: { ...store.persisted, canvas_revision: revision.toString() },
+    ephemeral: null,
+  };
+}
+
 // 流れの区切り（StreamSegment）の意味の検査（ADR 0032）。
 export type StreamSegmentError =
   | 'private_carries_summary'
   | 'summary_carried_across_boundary'
-  | 'storage_mode_mismatch';
+  | 'storage_mode_mismatch'
+  | 'summary_expired'
+  | 'summary_from_self';
+
+export interface CarriedSummaryLike {
+  readonly source_segment_ids: readonly string[];
+  readonly expires_at: string;
+}
 
 export interface StreamSegmentLike {
+  readonly segment_id: string;
   readonly storage_mode: 'normal' | 'extended' | 'private';
+  readonly opened_at: string;
   readonly open_reason: string;
-  readonly carried_summary_from: string | null;
+  readonly carried_summary: CarriedSummaryLike | null;
 }
+
+export const CARRIED_SUMMARY_SOURCE_LIMIT = 256;
 
 // 前の区切りの要約をつながない始まり方。流れの最初・忘却の指示・記録しない会話の出入り。
 // 記録しない会話の要約は作らないので、出た後にも持ち込まない（ADR 0032）。
@@ -299,16 +390,19 @@ export function streamSegmentErrors(
   segment: StreamSegmentLike,
 ): StreamSegmentError[] {
   const errors: StreamSegmentError[] = [];
-  if (
-    segment.storage_mode === 'private' &&
-    segment.carried_summary_from !== null
-  )
+  const summary = segment.carried_summary;
+  if (segment.storage_mode === 'private' && summary !== null)
     errors.push('private_carries_summary');
-  if (
-    NO_CARRY_REASONS.includes(segment.open_reason) &&
-    segment.carried_summary_from !== null
-  )
+  if (NO_CARRY_REASONS.includes(segment.open_reason) && summary !== null)
     errors.push('summary_carried_across_boundary');
+  // 期限が区切りの始まり以前の要約は、もう捨てているはずなのでつながない。
+  if (
+    summary !== null &&
+    Date.parse(summary.expires_at) <= Date.parse(segment.opened_at)
+  )
+    errors.push('summary_expired');
+  if (summary?.source_segment_ids.includes(segment.segment_id))
+    errors.push('summary_from_self');
   if (
     (segment.open_reason === 'private_started') !==
       (segment.storage_mode === 'private') &&
@@ -318,4 +412,47 @@ export function streamSegmentErrors(
   )
     errors.push('storage_mode_mismatch');
   return errors.sort();
+}
+
+export interface ClosingSegmentLike {
+  readonly segment_id: string;
+  readonly storage_mode: 'normal' | 'extended' | 'private';
+  // 区切りの発言ごとの保存期限（生成から一度だけ計算した値。設計 03）。
+  readonly turn_expires_at: readonly string[];
+}
+
+// 新しい区切りにつなぐ要約の由来と期限（ADR 0032）。規則:
+// - 要約の期限は、由来の発言のうち最も早い期限。その時に要約全体を捨てる（一部の由来だけを残さない）。
+// - 要約し直すときは、期限内の材料だけを使う。期限の切れた前の要約・期限の切れた発言は材料にしない。
+//   前の要約を材料にしたら、その由来と期限も引き継ぐ（何回区切りをまたいでも同じ規則）。
+// - つながない始まり方（流れの最初・忘却・記録しない会話の出入り）と、記録しない区切りからはつながない。
+// - 由来が 256 区切りを超えるなら、つながない（Core は期限内の発言から作り直す）。
+// 期限の比較は UTC のミリ秒で行い、返す期限は材料の値をそのまま使う。
+export function nextCarriedSummary(input: {
+  readonly previous: CarriedSummaryLike | null;
+  readonly closing: ClosingSegmentLike;
+  readonly open_reason: string;
+  readonly now: string;
+}): CarriedSummaryLike | null {
+  if (NO_CARRY_REASONS.includes(input.open_reason)) return null;
+  if (input.closing.storage_mode === 'private') return null;
+  const now = Date.parse(input.now);
+  const previous =
+    input.previous !== null && Date.parse(input.previous.expires_at) > now
+      ? input.previous
+      : null;
+  const turns = input.closing.turn_expires_at.filter(
+    (expiresAt) => Date.parse(expiresAt) > now,
+  );
+  const sources = [
+    ...(previous?.source_segment_ids ?? []),
+    ...(turns.length > 0 ? [input.closing.segment_id] : []),
+  ].filter((id, index, all) => all.indexOf(id) === index);
+  if (sources.length === 0 || sources.length > CARRIED_SUMMARY_SOURCE_LIMIT)
+    return null;
+  const candidates = [...(previous ? [previous.expires_at] : []), ...turns];
+  const earliest = candidates.reduce((a, b) =>
+    Date.parse(b) < Date.parse(a) ? b : a,
+  );
+  return { source_segment_ids: sources, expires_at: earliest };
 }

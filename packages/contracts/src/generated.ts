@@ -1011,7 +1011,7 @@ export type CanvasComponent =
   | 'source_list'
   | 'text';
 /**
- * 物の見出し（ADR 0032）。24 文字（コードポイント）まで・1 行。制御文字・改行・双方向の上書きと埋め込み・分離の文字（U+202A〜202E・U+2066〜2069）・方向の印（U+200E・200F・061C）を拒否する。空白だけの見出しは意味の検査で拒否する。
+ * 物の見出し（ADR 0032）。24 文字（コードポイント）まで・1 行。制御文字・改行・双方向の上書きと埋め込み・分離の文字（U+202A〜202E・U+2066〜2069）・方向の印（U+200E・200F・061C）を拒否する。マークアップ（< の直後の英字・/・!・? と、< と > の組）、URL のスキーム（http・https・javascript・vbscript・data・file・ftp・blob・mailto の後の :。大文字・小文字を区別しない）、www. で始まる表現も拒否する。描画はプレーンテキストだけ。空白だけの見出しは意味の検査で拒否する。
  */
 export type CanvasHeading = string;
 /**
@@ -3528,12 +3528,23 @@ export interface StreamTurnResponse {
   canvas: CanvasOpBatch | null;
 }
 /**
- * 流れ（stream）の中の今の区切り（ADR 0032）。画面には区切りとして見せず、保存モードの表示と表示の権限の判定に使う。carried_summary_from は要約をつないだ前の区切り。記録しない区切り・記録しない会話から出た区切り・流れの最初・忘却の指示で始めた区切りはつながない（意味の検査）。
+ * 流れ（stream）の中の今の区切り（ADR 0032）。画面には区切りとして見せず、保存モードの表示と表示の権限の判定に使う。carried_summary は前の区切りからつないだ要約の由来と期限。記録しない区切り・記録しない会話から出た区切り・流れの最初・忘却の指示で始めた区切りはつながない。期限が区切りの始まり以前の要約・自分を由来に含む要約は持たない（意味の検査）。
  */
 export interface StreamSegment {
   segment_id: Id;
   storage_mode: StorageMode;
   opened_at: UtcTime;
   open_reason: SegmentBoundaryReason;
-  carried_summary_from: Id | null;
+  carried_summary: CarriedSummary | null;
+}
+/**
+ * 区切りにつないだ要約の由来と期限（ADR 0032）。source_segment_ids は要約の材料になった区切り（要約し直しても前の由来を引き継ぐ）。expires_at は由来の発言のうち最も早い期限で、その時に要約全体を捨てる。本文は持たない。
+ */
+export interface CarriedSummary {
+  /**
+   * @minItems 1
+   * @maxItems 256
+   */
+  source_segment_ids: [Id, ...Id[]];
+  expires_at: UtcTime;
 }

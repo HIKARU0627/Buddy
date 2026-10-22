@@ -2,7 +2,7 @@
 
 - `schema-cases.json`: スキーマ名・期待する正常／拒否と合成入力。`contracts:check` で実行します。
 - `h01.json`: 設計 08 にある合成ラベル変更と独立した期待 SHA-256。期待値を実装から再生成しません。
-- `content-hash-cases.json`: 内容 hash の差分ケース。正規形は手書き、SHA-256 は OS の shasum で計算し、実装から生成していません。
+- `content-hash-cases.json`: 内容 hash の差分ケース。正規形は手書き、SHA-256 は OS の shasum で計算し、実装から生成していません。下書き・用事の系列（ADR 0027）は Python の json.dumps と hashlib で計算しました。
 - `readiness-cases.json`: 変更を伴う意図の実行可否の期待値（QA41 ほか）。手書きの表で、domain の実装から生成していません。
 - `operation-transitions.json`: X01〜X11 の操作の期待遷移。実行済みの記録ではありません。
 - `audio-control-cases.json`: 停止理由ごとの動作と再開条件の期待値（設計 10 §1A）。

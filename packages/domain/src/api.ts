@@ -35,6 +35,7 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   postTurn: COMMAND,
   handoffSession: [...SCREEN, 'expected_revision'],
   previewOperation: COMMAND,
+  displayOperation: COMMAND,
   approveOperation: [...SCREEN, 'expected_revision'],
   cancelOperation: [...COMMAND, 'expected_revision'],
   reconcileOperation: [...COMMAND, 'expected_revision'],

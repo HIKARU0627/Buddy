@@ -15,10 +15,16 @@ export interface MailTarget {
   readonly source_revision: string;
   readonly mailbox: string;
   readonly labels: readonly string[];
+  // 承認画面で対象のメールを見分けるための表示用（読めなければ null）。
+  readonly subject: string | null;
+  readonly sender: string | null;
+  readonly received_at: string | null;
 }
 
 export interface PermissionState {
   readonly account_id: string;
+  // 口座の表示名（承認画面で口座を見分けるための表示用。読めなければ null）。
+  readonly account_label: string | null;
   readonly permission_revision: string;
   readonly scopes: readonly string[];
 }
@@ -131,6 +137,9 @@ function parseTarget(value: unknown): MailTarget | null {
     // 一部の応答（書込みの結果）は mailbox を持たない。
     mailbox: str(o?.['mailbox']) ?? '',
     labels,
+    subject: str(o?.['subject']),
+    sender: str(o?.['from']),
+    received_at: str(o?.['received_at']),
   };
 }
 
@@ -225,7 +234,12 @@ export function createMockMailConnector(
             permission_revision === null ||
             scopes === null
             ? null
-            : { account_id, permission_revision, scopes };
+            : {
+                account_id,
+                account_label: str(o?.['account_label']),
+                permission_revision,
+                scopes,
+              };
         },
       ),
     readTarget: (remoteId) =>

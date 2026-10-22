@@ -6,12 +6,15 @@ export function Section({
   id,
   title,
   action,
+  focusable = false,
   children,
 }: {
   readonly id: string;
   readonly title: string;
   // 見出しの右に置く小さな操作（一覧を取り直す など）。
   readonly action?: ReactNode;
+  // 画面の操作でフォーカスを移す見出し（確認を開いたとき・閉じたとき。Tab の順には入れない）。
+  readonly focusable?: boolean;
   readonly children: ReactNode;
 }) {
   return (
@@ -20,7 +23,11 @@ export function Section({
       className="flex flex-col gap-4 border-t border-separator pt-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id={id} className="text-base font-semibold">
+        <h2
+          id={id}
+          tabIndex={focusable ? -1 : undefined}
+          className="text-base font-semibold"
+        >
           {title}
         </h2>
         {action}

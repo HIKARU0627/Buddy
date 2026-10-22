@@ -464,15 +464,16 @@ test('the connection section shows reason, home check and operations without sec
     },
     operations: [
       {
-        operation_id: '00000000-0000-4000-8000-000000000501',
+        ref: '00000000-0000-4000-8000-000000000501',
         operation_kind: 'mail.labels.change',
-        content_version: '1',
-        content_hash: 'ab'.repeat(32),
         state_revision: '4',
         state: 'unknown_held',
         approval_state: 'valid',
         allowed_actions: ['reconcile'],
         result: null,
+        delivery_unknown: false,
+        headline: null,
+        detail: null,
       },
     ],
   };
@@ -486,11 +487,10 @@ test('the connection section shows reason, home check and operations without sec
     html,
     /text-success-soft-foreground">●<\/span><span>自宅のネットワークです<\/span>/u,
   );
-  assert.match(html, /結果不明（保留）/u);
-  // 操作は状態の文言だけで、ID・版は出さない（R1-L6）。
+  // 操作の一覧は会話の画面の処理状況に出す（B04-05）。接続の欄には出さず、参照・版も出さない。
+  assert.doesNotMatch(html, /結果不明|中枢で進んでいる操作/u);
   assert.doesNotMatch(html, /00000000-0000-4000-8000-000000000501/u);
   assert.doesNotMatch(html, /版 4|内容版/u);
-  assert.doesNotMatch(html, /abab/u);
   const outside = renderToStaticMarkup(
     <AppProviders>
       <ConnectionSection

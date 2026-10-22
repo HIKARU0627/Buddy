@@ -14,6 +14,7 @@ export type BuddyContract =
   | CommandContext
   | PreviewRequest
   | OperationPreview
+  | OperationDisplay
   | ApprovalRequest
   | StateCommand
   | CommandReceipt
@@ -714,6 +715,55 @@ export type DesktopIpcRequest =
         ref: Id;
         include_ssid: boolean;
       };
+    }
+  | {
+      channel: 'desktop.turn_submit';
+      request_id: Id;
+      payload: {
+        text: string;
+      };
+    }
+  | {
+      channel: 'desktop.operation_preview';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.operation_approve';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.operation_cancel';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.operation_reconcile';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.operation_retry';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.operation_check';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -793,6 +843,37 @@ export type DesktopIpcResponse =
       list_seq: number;
     }
   | {
+      request_id: Id;
+      channel: 'desktop.turn_submit';
+      outcome: 'ok';
+      turn: DesktopTurnResult;
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.operation_preview';
+      outcome: 'ok';
+      preview: DesktopOperationPreview;
+    }
+  | {
+      request_id: Id;
+      channel:
+        | 'desktop.operation_approve'
+        | 'desktop.operation_cancel'
+        | 'desktop.operation_reconcile'
+        | 'desktop.operation_retry';
+      outcome: 'ok';
+      receipt: 'accepted' | 'durable';
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.operation_check';
+      outcome: 'ok';
+      /**
+       * state_changed は読み取った状態が保留を付けたときより進んでいた。state_unchanged は変わっていなかった。どちらも読み取った事実だけで、命令が届いたかは断定しない（読み取った状態は一覧に反映する）。
+       */
+      resolved: 'state_changed' | 'state_unchanged';
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -816,7 +897,10 @@ export type DesktopIpcResponse =
         | 'confirmation_declined'
         | 'confirmation_pending'
         | 'list_superseded'
-        | 'home_network_changed';
+        | 'home_network_changed'
+        | 'preview_stale'
+        | 'input_stopped'
+        | 'content_unavailable';
       /**
        * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。
        */
@@ -897,7 +981,7 @@ export type DesktopConnectionView =
         reasons: HomeNetworkReason[];
         reported_at: UtcTime;
       } | null;
-      operations: OperationSnapshot[];
+      operations: DesktopOperationEntry[];
       hub_screen: boolean;
       hub_target: {
         /**
@@ -942,7 +1026,7 @@ export type DesktopPairingFailure =
   | 'storage_failed'
   | 'protocol_error';
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -961,7 +1045,14 @@ export type DesktopIpcChannel =
   | 'desktop.device_revoke'
   | 'desktop.pairing_open'
   | 'desktop.home_status'
-  | 'desktop.home_register';
+  | 'desktop.home_register'
+  | 'desktop.turn_submit'
+  | 'desktop.operation_preview'
+  | 'desktop.operation_approve'
+  | 'desktop.operation_cancel'
+  | 'desktop.operation_reconcile'
+  | 'desktop.operation_retry'
+  | 'desktop.operation_check';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -1223,6 +1314,37 @@ export interface OperationPreview {
   intent: OperationIntent;
   content_hash: Hash;
   state_revision: StateRevision;
+  /**
+   * 承認画面で口座と対象のメールを見分ける表示用の値（B04-05、ADR 0031）。外部変更の preview で Core が provider から読む。読めない項目は null で、画面は対象を確認できないと言い、承認へ進ませない。LocalCommand は両方 null。確定 intent の一部ではなく、content_hash に含めない。
+   */
+  display?: {
+    account_label: string | null;
+    target: {
+      subject: string | null;
+      sender: string | null;
+      received_at: string | null;
+    } | null;
+  };
+}
+/**
+ * 操作の内容の表示用の読み取り（B04-05、ADR 0031）。取消・再試行の確認に出す見出しを、承認待ち以外の状態でも取り直すための応答。preview と同じ確定 intent と表示用の値を、preview_id なしで返す（preview は発行せず、承認にも使えない）。content_version と content_hash は、画面が今の操作の内容版・hash と照合するための値。認可は preview と同じ。内容はこの応答だけで、イベント・スナップショットには入れない。
+ */
+export interface OperationDisplay {
+  content_version: ContentVersion;
+  content_hash: Hash;
+  state_revision: StateRevision;
+  intent: OperationIntent;
+  /**
+   * 承認画面で口座と対象のメールを見分ける表示用の値（B04-05、ADR 0031）。外部変更の preview で Core が provider から読む。読めない項目は null で、画面は対象を確認できないと言い、承認へ進ませない。LocalCommand は両方 null。確定 intent の一部ではなく、content_hash に含めない。
+   */
+  display: {
+    account_label: string | null;
+    target: {
+      subject: string | null;
+      sender: string | null;
+      received_at: string | null;
+    } | null;
+  };
 }
 export interface ApprovalRequest {
   request_id: Id;
@@ -3193,6 +3315,40 @@ export interface ConnectionDisconnectRequest {
   expected_permission_revision: PermissionRevision;
 }
 /**
+ * 画面に出す操作（B04-05、ADR 0031）。ref は main が操作ごとに作る参照で、操作 ID・内容版・hash・provider の受領 ID を含めない。allowed_actions は表示補助で、実行時の認可ではない。
+ */
+export interface DesktopOperationEntry {
+  ref: Id;
+  operation_kind: OperationKind;
+  state:
+    | 'awaiting_approval'
+    | 'approved'
+    | 'preparing'
+    | 'dispatching'
+    | 'reconciling'
+    | 'succeeded'
+    | 'unknown_held'
+    | 'not_executed'
+    | 'cancelled'
+    | 'superseded';
+  approval_state: 'none' | 'valid' | 'revoked' | 'expired';
+  allowed_actions: ('preview' | 'approve' | 'cancel' | 'reconcile' | 'retry')[];
+  result: ('confirmed_success' | 'confirmed_not_executed' | 'unknown') | null;
+  state_revision: StateRevision;
+  /**
+   * 承認・取消の命令を送ったが、中枢に届いたか確かめられていない（結果不明）。操作の状態が進むまで、同じ命令を自動で送り直さず、画面からも送らせない。
+   */
+  delivery_unknown: boolean;
+  /**
+   * 一覧の行の見出しにする内容の 1 行（用事の題名・メールの件名など）。main が承認表示の準備で読んだ値で、イベント・スナップショットには入れない。読めていなければ null（画面は操作の種類を見出しにする）。
+   */
+  headline: string | null;
+  /**
+   * 見出しの補足（期限・宛先・ラベルの変更など）。
+   */
+  detail: string | null;
+}
+/**
  * 画面に出す承認待ちの申請（B03-06、ADR 0026）。ref は main が一覧ごとに作る参照で、申請 ID・コード・秘密を含めない。
  */
 export interface DesktopClaimEntry {
@@ -3249,4 +3405,69 @@ export interface DesktopHomeObservation {
 export interface DesktopSsidHint {
   first: string | null;
   length: number;
+}
+/**
+ * 発言への文字の結果（B04-05、ADR 0031）。main が中枢の TurnResponse から作る表示用の値で、会話・発言・依頼・入力の ID と item_refs の ID を含めない。予定の照会は件数だけ（本文は開いたときに許可範囲内で取得する設計で、B04 にその経路はない）、承認が要る操作は operation_ref（desktop.operation_preview に渡す参照）で指す。
+ */
+export interface DesktopTurnResult {
+  status: 'answered' | 'clarification' | 'background' | 'session_control';
+  reply_text: string | null;
+  result: {
+    kind: ResultViewKind;
+    /**
+     * 利用者に見せる状態（設計 01 いつも見える状態 D15）。内部の理由コードや API 名は見せない。
+     */
+    status:
+      | 'ready'
+      | 'needs_review'
+      | 'confirming_input'
+      | 'budget_held'
+      | 'preparing'
+      | 'reconciling'
+      | 'unknown_result'
+      | 'partial_success';
+    intent: IntentName;
+    event_count: number;
+    overlap_count: number;
+    more_count: number;
+    operation_ref: Id | null;
+  } | null;
+}
+/**
+ * 承認画面に出す確定した変更の内容（設計 01 承認画面の必須内容。B04-05、ADR 0031）。main が中枢の OperationPreview から作る表示用の値で、preview_id・content_hash・state_revision・アカウント ID・操作 ID を含めない（main が preview_ref の裏に持つ）。service は変更先（buddy は Buddy 内の用事）、target は対象（メールの ID・用事の一覧）。
+ */
+export interface DesktopOperationPreview {
+  preview_ref: Id;
+  operation_kind: OperationKind;
+  service: 'mock' | 'gmail' | 'microsoft_graph' | 'buddy';
+  target: string | null;
+  fields: {
+    field:
+      | 'labels_add'
+      | 'labels_remove'
+      | 'draft_to'
+      | 'draft_cc'
+      | 'draft_subject'
+      | 'draft_body'
+      | 'task_title'
+      | 'task_due'
+      | 'task_body';
+    values: string[];
+  }[];
+  /**
+   * 口座の表示名（メールアドレスなど）。Buddy 内の用事は null。
+   */
+  account_label: string | null;
+  /**
+   * 対象のメールの件名・差出人・受信日時。読めない項目は null。
+   */
+  target_detail: {
+    subject: string | null;
+    sender: string | null;
+    received_at: string | null;
+  } | null;
+  /**
+   * 承認へ進めてよいか。外部変更で、口座の表示名と対象のメールの件名・差出人・受信日時がすべてそろわないときは false で、画面は承認を出さず、main も承認を送らない。
+   */
+  approvable: boolean;
 }

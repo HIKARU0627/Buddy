@@ -269,6 +269,41 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     }
   };
 
+  // 対象のメールの表示用の値（件名・差出人・受信日時）。読めなければ null（承認画面は対象を確認できないと言う）。
+  // 今の接続先（アカウント）が確定 intent の口座と同じときだけ読む。違えば（接続先を替えた後に、同じ remote_id で別の
+  // アカウントのメールを読んでしまう）null を返す。
+  const readTargetDisplay = async (
+    intent: Record<string, unknown>,
+    connection: { readonly account_id: string } | null,
+  ): Promise<{
+    subject: string | null;
+    sender: string | null;
+    received_at: string | null;
+  } | null> => {
+    const target = intent['target'];
+    if (
+      options.provider === null ||
+      connection === null ||
+      connection.account_id !== intent['account_id'] ||
+      typeof target !== 'object' ||
+      target === null
+    )
+      return null;
+    const remoteId = (target as Record<string, unknown>)['remote_id'];
+    if (typeof remoteId !== 'string') return null;
+    try {
+      const mail = await options.provider.readTarget(remoteId);
+      if (mail === null) return null;
+      return {
+        subject: mail.subject ?? null,
+        sender: mail.sender ?? null,
+        received_at: mail.received_at ?? null,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const readPermission = async (accountId: string): Promise<string | null> => {
     if (options.provider === null) return null;
     try {
@@ -715,32 +750,37 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     return { status: 200, body: responseBody };
   };
 
-  const previewOperation: ApiRouteHandler = async (request) => {
-    const device = request.device;
-    const requestId = stringOf(request.body, 'request_id');
-    if (device === null) return apiErrorResponse(401, 'unauthenticated');
-    const operationId = request.params['id'] ?? '';
+  // 操作の確定 intent を読んで開く（preview と display の共通部）。ない・内容が合わない・開けないときは応答を返す。
+  const loadIntent = async (
+    operationId: string,
+    requestId: string,
+    states: readonly string[] | null,
+  ) => {
     const operation = await store.query({
       kind: 'operation_view',
       operation_id: operationId,
     });
-    // 承認待ちの操作だけ（承認の表示の準備）。それ以外は状態が変わった扱い。
-    if (operation === null || operation.state !== 'awaiting_approval')
-      return apiErrorResponse(409, 'conflict', requestId);
+    if (
+      operation === null ||
+      (states !== null && !states.includes(operation.state))
+    )
+      return { error: apiErrorResponse(409, 'conflict', requestId) } as const;
     const blob = await store.conversation({
       kind: 'operation.intent',
       operation_id: operationId,
       content_version: operation.current_content_version,
     });
-    if (!blob.ok) return conversationError(blob, requestId);
+    if (!blob.ok) return { error: conversationError(blob, requestId) } as const;
     if (
       blob.value === null ||
       blob.value.content_hash !== operation.content_hash
     )
-      return apiErrorResponse(409, 'conflict', requestId);
+      return { error: apiErrorResponse(409, 'conflict', requestId) } as const;
     const key = await loadKey();
     if (key === null)
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+      return {
+        error: apiErrorResponse(503, 'dependency_unavailable', requestId),
+      } as const;
     const opened = openOperationIntent(
       key,
       {
@@ -757,13 +797,40 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       operation.content_hash,
     );
     if (!opened.ok)
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+      return {
+        error: apiErrorResponse(503, 'dependency_unavailable', requestId),
+      } as const;
     const intent = JSON.parse(opened.canonical) as Record<string, unknown>;
     if (!contract.valid('OperationIntent', intent))
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+      return {
+        error: apiErrorResponse(503, 'dependency_unavailable', requestId),
+      } as const;
+    return { operation, intent } as const;
+  };
+
+  const previewOperation: ApiRouteHandler = async (request) => {
+    const device = request.device;
+    const requestId = stringOf(request.body, 'request_id');
+    if (device === null) return apiErrorResponse(401, 'unauthenticated');
+    const operationId = request.params['id'] ?? '';
+    // 承認待ちの操作だけ（承認の表示の準備）。それ以外は状態が変わった扱い。
+    const loaded = await loadIntent(operationId, requestId, [
+      'awaiting_approval',
+    ]);
+    if ('error' in loaded) return loaded.error;
+    const { operation, intent } = loaded;
     // 外部変更は、今の接続が書込み可で、許可の版が確定 intent と同じときだけ preview を出す。
     let account: { account_id: string; permission_revision: string } | null =
       null;
+    // 承認画面で口座と対象のメールを見分ける表示用の値（provider から読む。読めない項目は null）。
+    let display: {
+      account_label: string | null;
+      target: {
+        subject: string | null;
+        sender: string | null;
+        received_at: string | null;
+      } | null;
+    } = { account_label: null, target: null };
     if (typeof intent['account_id'] === 'string') {
       const accountId = intent['account_id'];
       const connection = await readConnection();
@@ -778,6 +845,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       )
         return apiErrorResponse(409, 'conflict', requestId);
       account = { account_id: accountId, permission_revision: permission };
+      display = {
+        account_label: connection.account_label ?? null,
+        target: await readTargetDisplay(intent, connection),
+      };
     }
     const previewId = randomUUID();
     previews.issue({
@@ -797,6 +868,52 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         intent,
         content_hash: operation.content_hash,
         state_revision: operation.state_revision,
+        display,
+      },
+    };
+  };
+
+  // 操作の内容の表示用の読み取り（B04-05、ADR 0031）。取消・再試行の確認に出す見出しを、承認待ち以外の状態でも取り直せる
+  // ようにする。読み取りだけで、preview は発行せず（古い preview を失効させない）、承認にも使えない。認可は preview と同じ
+  // （端末トークン・自宅・接続範囲・ロック解除）。外部変更の口座の表示名・対象のメールは provider から読み、読めない項目は
+  // null（接続が使えなくても内容は返す）。内容はこの応答だけで、イベント・スナップショットには入れない。
+  const displayOperation: ApiRouteHandler = async (request) => {
+    const device = request.device;
+    const requestId = stringOf(request.body, 'request_id');
+    if (device === null) return apiErrorResponse(401, 'unauthenticated');
+    const loaded = await loadIntent(
+      request.params['id'] ?? '',
+      requestId,
+      null,
+    );
+    if ('error' in loaded) return loaded.error;
+    const { operation, intent } = loaded;
+    let display: {
+      account_label: string | null;
+      target: {
+        subject: string | null;
+        sender: string | null;
+        received_at: string | null;
+      } | null;
+    } = { account_label: null, target: null };
+    if (typeof intent['account_id'] === 'string') {
+      const connection = await readConnection();
+      display = {
+        account_label:
+          connection !== null && connection.account_id === intent['account_id']
+            ? (connection.account_label ?? null)
+            : null,
+        target: await readTargetDisplay(intent, connection),
+      };
+    }
+    return {
+      status: 200,
+      body: {
+        content_version: operation.current_content_version,
+        content_hash: operation.content_hash,
+        state_revision: operation.state_revision,
+        intent,
+        display,
       },
     };
   };
@@ -844,7 +961,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   };
 
   return {
-    handlers: { createSession, postTurn, previewOperation },
+    handlers: { createSession, postTurn, previewOperation, displayOperation },
     previewValid,
     previewCurrent: (previewId) => previews.get(previewId) !== null,
   };

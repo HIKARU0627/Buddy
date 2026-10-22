@@ -35,6 +35,9 @@
       "$ref": "#/$defs/OperationPreview"
     },
     {
+      "$ref": "#/$defs/OperationDisplay"
+    },
+    {
       "$ref": "#/$defs/ApprovalRequest"
     },
     {
@@ -4245,6 +4248,72 @@
         },
         "state_revision": {
           "$ref": "#/$defs/StateRevision"
+        },
+        "display": {
+          "type": "object",
+          "properties": {
+            "account_label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "subject": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sender": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "received_at": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["subject", "sender", "received_at"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["account_label", "target"],
+          "additionalProperties": false,
+          "description": "承認画面で口座と対象のメールを見分ける表示用の値（B04-05、ADR 0031）。外部変更の preview で Core が provider から読む。読めない項目は null で、画面は対象を確認できないと言い、承認へ進ませない。LocalCommand は両方 null。確定 intent の一部ではなく、content_hash に含めない。"
         }
       },
       "required": ["preview_id", "intent", "content_hash", "state_revision"],
@@ -7715,9 +7784,16 @@
         "desktop.device_revoke",
         "desktop.pairing_open",
         "desktop.home_status",
-        "desktop.home_register"
+        "desktop.home_register",
+        "desktop.turn_submit",
+        "desktop.operation_preview",
+        "desktop.operation_approve",
+        "desktop.operation_cancel",
+        "desktop.operation_reconcile",
+        "desktop.operation_retry",
+        "desktop.operation_check"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -8097,6 +8173,183 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "直前の desktop.home_status で main が渡した参照のネットワークを自宅として登録する（登録し直すと置き換える。B03-08）。画面は MAC・SSID の値を送らない。include_ssid は Wi-Fi 名（SSID）も確かめるか（本人の判断 2026-10-22。画面の既定は true）で、false なら SSID を送らずに登録する（中枢は SSID を比べない。ルーターの MAC・サブネット・Tailscale の直接経路は確かめる）。SSID が読み取れないときは true でも SSID なしで登録する。main は指紋を集め直し、参照を作ったときと同じときだけ中枢へ送る（違う・読み取れなければ home_network_changed）。ロック解除済みの画面操作だけ（送る直前にもロックと前面を確かめ直す）。画面で確認を挟んでから送る。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.turn_submit"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                }
+              },
+              "required": ["text"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "文字入力の発言を送る（B04-05、ADR 0031）。会話の ID・接続範囲・request_id は main が決め、画面は文字だけを送る。ロック解除済みの画面操作だけ。発言から外部変更を直接実行しない（承認は別のチャネル）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.operation_preview"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "承認待ちの操作の内容を確認する（承認表示の準備。外部変更なし）。ref は main が操作ごとに作る参照（操作 ID ではない）。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.operation_approve"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "直前の desktop.operation_preview で main が渡した確認の参照（preview_ref）で承認する。main は OS の確認ダイアログで本人に 1 回確かめ、確定したときだけ中枢へ送る（本人の判断 2026-10-22 D2）。内容・状態が変わっていれば preview_stale で拒否する。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.operation_cancel"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "操作の取消を要求する。送出前だけ取消が確定し、送出後は照合へ回る（07 §2）。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.operation_reconcile"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "結果が分からない操作の照合を要求する（参照だけ。書込みを増やさない。再送ではない。07 §2、ADR 0030）。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.operation_retry"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "実行されなかったと確定した操作（not_executed）だけを、本人の明示の操作でもう一度実行する（同じ内容・同じ承認の新しい試行。結果不明の操作は対象外で、照合を使う。07 §2、ADR 0030・0031）。ロック解除済みの画面操作だけ。入出力が止まっている間は受け付けない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.operation_check"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "命令を送ったが届いたか分からない操作（結果不明の保留）の今の状態を、読み取りだけで確かめる（変更の命令の再送ではない。B04-05、ADR 0031）。読み取った状態は一覧に反映し、保留を解いて、本人が今の状態から操作できるようにする。命令が届いたかは断定しない（承認・再試行は期待する状態版で守られ、遅れて届いても二重に適用されない）。ロック解除済みの画面操作だけ。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -8477,7 +8730,7 @@
             "operations": {
               "type": "array",
               "items": {
-                "$ref": "#/$defs/OperationSnapshot"
+                "$ref": "#/$defs/DesktopOperationEntry"
               }
             },
             "hub_screen": {
@@ -8520,7 +8773,7 @@
             "hub_target"
           ],
           "additionalProperties": false,
-          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（ロック解除済みで接続しているときだけ）。 hub_screen は中枢の画面の端末（中枢と同じマシンの hub_local の端末）として中枢が認めたとき（承認待ちの申請の一覧が 200）だけ true で、申請の承認・端末の管理の画面を出す（B03-06）。 hub_target は登録した中枢の宛先（登録済み・再登録が必要のとき。再登録の宛先の初期値に使う。秘密ではない）。"
+          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（参照 ref で指す。操作 ID は含めない。ADR 0031）（ロック解除済みで接続しているときだけ）。 hub_screen は中枢の画面の端末（中枢と同じマシンの hub_local の端末）として中枢が認めたとき（承認待ちの申請の一覧が 200）だけ true で、申請の承認・端末の管理の画面を出す（B03-06）。 hub_target は登録した中枢の宛先（登録済み・再登録が必要のとき。再登録の宛先の初期値に使う。秘密ではない）。"
         }
       ],
       "description": "中枢との接続・登録・ペアリングの状態（設計 02 端末登録と接続、07 §2〜§4、ADR 0025）。main が作り、UI レンダラーは表示するだけ。端末トークン・申請用の秘密・端末 ID・中枢の証明書の本体・自宅の指紋の値を含めない。"
@@ -9008,6 +9261,102 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.turn_submit"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "turn": {
+              "$ref": "#/$defs/DesktopTurnResult"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "turn"],
+          "additionalProperties": false,
+          "description": "受け付けた。発言への文字の結果を返す。外部変更の完了ではない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.operation_preview"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "preview": {
+              "$ref": "#/$defs/DesktopOperationPreview"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "preview"],
+          "additionalProperties": false,
+          "description": "受け付けた。承認画面に出す確定した変更の内容を返す。承認ではない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "desktop.operation_approve",
+                "desktop.operation_cancel",
+                "desktop.operation_reconcile",
+                "desktop.operation_retry"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "receipt": {
+              "type": "string",
+              "enum": ["accepted", "durable"]
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "receipt"],
+          "additionalProperties": false,
+          "description": "中枢が命令を受け付けた（accepted）か記録した（durable）。外部変更の成功ではない。操作の状態は desktop.connection_changed の operations で知らせる。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.operation_check"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "resolved": {
+              "type": "string",
+              "enum": ["state_changed", "state_unchanged"],
+              "description": "state_changed は読み取った状態が保留を付けたときより進んでいた。state_unchanged は変わっていなかった。どちらも読み取った事実だけで、命令が届いたかは断定しない（読み取った状態は一覧に反映する）。"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "resolved"],
+          "additionalProperties": false,
+          "description": "保留を解いた（読み取りだけ。命令は送らない）。操作の状態は desktop.connection_changed の operations で知らせる。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -9053,7 +9402,10 @@
                 "confirmation_declined",
                 "confirmation_pending",
                 "list_superseded",
-                "home_network_changed"
+                "home_network_changed",
+                "preview_stale",
+                "input_stopped",
+                "content_unavailable"
               ]
             },
             "list_seq": {
@@ -9132,6 +9484,412 @@
         }
       ],
       "description": "main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。"
+    },
+    "DesktopOperationEntry": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "operation_kind": {
+          "$ref": "#/$defs/OperationKind"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "awaiting_approval",
+            "approved",
+            "preparing",
+            "dispatching",
+            "reconciling",
+            "succeeded",
+            "unknown_held",
+            "not_executed",
+            "cancelled",
+            "superseded"
+          ]
+        },
+        "approval_state": {
+          "type": "string",
+          "enum": ["none", "valid", "revoked", "expired"]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["preview", "approve", "cancel", "reconcile", "retry"]
+          },
+          "uniqueItems": true
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["confirmed_success", "confirmed_not_executed", "unknown"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state_revision": {
+          "$ref": "#/$defs/StateRevision"
+        },
+        "delivery_unknown": {
+          "type": "boolean",
+          "description": "承認・取消の命令を送ったが、中枢に届いたか確かめられていない（結果不明）。操作の状態が進むまで、同じ命令を自動で送り直さず、画面からも送らせない。"
+        },
+        "headline": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "一覧の行の見出しにする内容の 1 行（用事の題名・メールの件名など）。main が承認表示の準備で読んだ値で、イベント・スナップショットには入れない。読めていなければ null（画面は操作の種類を見出しにする）。"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "見出しの補足（期限・宛先・ラベルの変更など）。"
+        }
+      },
+      "required": [
+        "ref",
+        "operation_kind",
+        "state",
+        "approval_state",
+        "allowed_actions",
+        "result",
+        "state_revision",
+        "delivery_unknown",
+        "headline",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "description": "画面に出す操作（B04-05、ADR 0031）。ref は main が操作ごとに作る参照で、操作 ID・内容版・hash・provider の受領 ID を含めない。allowed_actions は表示補助で、実行時の認可ではない。"
+    },
+    "DesktopOperationPreview": {
+      "type": "object",
+      "properties": {
+        "preview_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "operation_kind": {
+          "$ref": "#/$defs/OperationKind"
+        },
+        "service": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph", "buddy"]
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "labels_add",
+                  "labels_remove",
+                  "draft_to",
+                  "draft_cc",
+                  "draft_subject",
+                  "draft_body",
+                  "task_title",
+                  "task_due",
+                  "task_body"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["field", "values"],
+            "additionalProperties": false
+          }
+        },
+        "account_label": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "口座の表示名（メールアドレスなど）。Buddy 内の用事は null。"
+        },
+        "target_detail": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "subject": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sender": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "received_at": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["subject", "sender", "received_at"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "対象のメールの件名・差出人・受信日時。読めない項目は null。"
+        },
+        "approvable": {
+          "type": "boolean",
+          "description": "承認へ進めてよいか。外部変更で、口座の表示名と対象のメールの件名・差出人・受信日時がすべてそろわないときは false で、画面は承認を出さず、main も承認を送らない。"
+        }
+      },
+      "required": [
+        "preview_ref",
+        "operation_kind",
+        "service",
+        "target",
+        "fields",
+        "account_label",
+        "target_detail",
+        "approvable"
+      ],
+      "additionalProperties": false,
+      "description": "承認画面に出す確定した変更の内容（設計 01 承認画面の必須内容。B04-05、ADR 0031）。main が中枢の OperationPreview から作る表示用の値で、preview_id・content_hash・state_revision・アカウント ID・操作 ID を含めない（main が preview_ref の裏に持つ）。service は変更先（buddy は Buddy 内の用事）、target は対象（メールの ID・用事の一覧）。"
+    },
+    "DesktopTurnResult": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["answered", "clarification", "background", "session_control"]
+        },
+        "reply_text": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "$ref": "#/$defs/ResultViewKind"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ready",
+                    "needs_review",
+                    "confirming_input",
+                    "budget_held",
+                    "preparing",
+                    "reconciling",
+                    "unknown_result",
+                    "partial_success"
+                  ],
+                  "description": "利用者に見せる状態（設計 01 いつも見える状態 D15）。内部の理由コードや API 名は見せない。"
+                },
+                "intent": {
+                  "$ref": "#/$defs/IntentName"
+                },
+                "event_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "overlap_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "more_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "operation_ref": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "status",
+                "intent",
+                "event_count",
+                "overlap_count",
+                "more_count",
+                "operation_ref"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["status", "reply_text", "result"],
+      "additionalProperties": false,
+      "description": "発言への文字の結果（B04-05、ADR 0031）。main が中枢の TurnResponse から作る表示用の値で、会話・発言・依頼・入力の ID と item_refs の ID を含めない。予定の照会は件数だけ（本文は開いたときに許可範囲内で取得する設計で、B04 にその経路はない）、承認が要る操作は operation_ref（desktop.operation_preview に渡す参照）で指す。"
+    },
+    "OperationDisplay": {
+      "type": "object",
+      "properties": {
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/StateRevision"
+        },
+        "intent": {
+          "$ref": "#/$defs/OperationIntent"
+        },
+        "display": {
+          "type": "object",
+          "properties": {
+            "account_label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "subject": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sender": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "received_at": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["subject", "sender", "received_at"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["account_label", "target"],
+          "additionalProperties": false,
+          "description": "承認画面で口座と対象のメールを見分ける表示用の値（B04-05、ADR 0031）。外部変更の preview で Core が provider から読む。読めない項目は null で、画面は対象を確認できないと言い、承認へ進ませない。LocalCommand は両方 null。確定 intent の一部ではなく、content_hash に含めない。"
+        }
+      },
+      "required": [
+        "content_version",
+        "content_hash",
+        "state_revision",
+        "intent",
+        "display"
+      ],
+      "additionalProperties": false,
+      "description": "操作の内容の表示用の読み取り（B04-05、ADR 0031）。取消・再試行の確認に出す見出しを、承認待ち以外の状態でも取り直すための応答。preview と同じ確定 intent と表示用の値を、preview_id なしで返す（preview は発行せず、承認にも使えない）。content_version と content_hash は、画面が今の操作の内容版・hash と照合するための値。認可は preview と同じ。内容はこの応答だけで、イベント・スナップショットには入れない。"
     }
   }
 }

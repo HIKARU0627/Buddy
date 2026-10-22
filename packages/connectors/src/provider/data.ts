@@ -13,6 +13,8 @@ export interface MockMail {
   labels: string[];
   subject: string;
   from: string;
+  /** 受信日時（承認画面で対象のメールを見分けるための表示用。合成の値）。 */
+  received_at: string;
 }
 
 export interface MockEvent {
@@ -38,6 +40,8 @@ export interface MockDraft {
 
 export interface MockPermission {
   account_id: string;
+  /** 口座の表示名（承認画面で口座を見分けるための表示用。合成の値）。 */
+  account_label: string;
   permission_revision: string;
   scopes: string[];
 }
@@ -92,6 +96,7 @@ export function seedState(): ProviderState {
     schema: 'buddy.mock-provider.v1',
     permission: {
       account_id: SYNTHETIC_ACCOUNT_ID,
+      account_label: 'synthetic-user@example.com',
       permission_revision: '1',
       scopes: [
         'mail.read',
@@ -108,7 +113,8 @@ export function seedState(): ProviderState {
         mailbox: 'INBOX',
         labels: [],
         subject: '（合成）来週の打ち合わせの日程',
-        from: 'synthetic-sender',
+        from: 'synthetic-sender@example.com',
+        received_at: '2026-10-04T18:30:00+09:00',
       },
     },
     // 13:30〜14:00 が重なる 2 件。

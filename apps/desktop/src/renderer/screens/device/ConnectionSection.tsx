@@ -1,15 +1,11 @@
-// 中枢との接続の欄（ADR 0024・0025）。接続の状態と最終確認は状態帯に出すので、ここは理由・自宅の判定・
-// 中枢で進んでいる操作（状態の文言だけ）を出す（同じ情報を 2 か所に出さない）。理由は状態の言い換えになるときは出さない。
+// 中枢との接続の欄（ADR 0024・0025）。接続の状態と最終確認は状態帯に出すので、ここは理由・自宅の判定を出す
+// （同じ情報を 2 か所に出さない）。中枢で進んでいる操作は、会話の画面の処理状況に出す（B04-05、ADR 0031）。理由は状態の言い換えになるときは出さない。
 import type { DesktopConnectionView } from '@buddy/contracts';
 import type { ReactNode } from 'react';
 import { Section } from '../../components/Section.js';
 import { StatusText } from '../../components/StatusText.js';
 import type { StatusLine } from '../../tones.js';
-import {
-  HOME_REASON_LABELS,
-  LINK_REASON_LABELS,
-  OPERATION_STATE_LABELS,
-} from '../../labels.js';
+import { HOME_REASON_LABELS, LINK_REASON_LABELS } from '../../labels.js';
 
 type ShownConnection = Extract<DesktopConnectionView, { visibility: 'shown' }>;
 
@@ -72,22 +68,6 @@ export function ConnectionSection({
             </div>
           ))}
         </dl>
-      )}
-      {connection.link !== 'connected' ? null : connection.operations.length ===
-        0 ? (
-        <p className="text-sm text-muted">中枢で進んでいる操作はありません。</p>
-      ) : (
-        // 本人向けには状態の文言だけを出す（操作の ID・版は開発・照合の値なので出さない。UI レビュー 3 回目 R1-L6）。
-        <ul
-          aria-label="中枢で進んでいる操作"
-          className="flex flex-col divide-y divide-separator text-sm"
-        >
-          {connection.operations.map((operation) => (
-            <li key={operation.operation_id} className="py-1.5">
-              {OPERATION_STATE_LABELS[operation.state] ?? operation.state}
-            </li>
-          ))}
-        </ul>
       )}
     </Section>
   );

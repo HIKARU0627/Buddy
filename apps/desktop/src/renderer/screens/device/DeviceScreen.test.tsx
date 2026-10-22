@@ -291,7 +291,8 @@ test('the hub line and connection section do not repeat the same state', () => {
   const html = render(view(shown('none'), { connection: connection({}) }));
   assert.match(html, /接続中（10:02:03 確認）/u);
   assert.match(html, /<h2[^>]*>中枢との接続<\/h2>/u);
-  assert.match(html, /中枢で進んでいる操作はありません。/u);
+  // 操作の一覧は会話の画面の処理状況に出す（B04-05）。接続の欄では繰り返さない。
+  assert.doesNotMatch(html, /中枢で進んでいる操作/u);
   assert.doesNotMatch(html, /理由/u);
   // 接続し直し待ちは時刻と何秒後かを出し、状態の言い換えの理由は出さない。
   const retry = new Date(2026, 9, 21, 10, 3, 33).toISOString();

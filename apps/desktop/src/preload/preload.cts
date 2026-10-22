@@ -23,6 +23,13 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.pairing_open',
   'desktop.home_status',
   'desktop.home_register',
+  'desktop.turn_submit',
+  'desktop.operation_preview',
+  'desktop.operation_approve',
+  'desktop.operation_cancel',
+  'desktop.operation_reconcile',
+  'desktop.operation_retry',
+  'desktop.operation_check',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

@@ -27,6 +27,10 @@ test(
       source_revision: 'r1',
       mailbox: 'INBOX',
       labels: [],
+      // 承認画面で対象のメールを見分ける表示用（合成の値）。
+      subject: '（合成）来週の打ち合わせの日程',
+      sender: 'synthetic-sender@example.com',
+      received_at: '2026-10-04T18:30:00+09:00',
     });
     assert.equal(await connector.readTarget('mail-999'), null);
     assert.deepEqual(await connector.listEvents(), [
@@ -45,6 +49,7 @@ test(
     ]);
     assert.deepEqual(await connector.readPermission(H01.account_id), {
       account_id: H01.account_id,
+      account_label: 'synthetic-user@example.com',
       permission_revision: '1',
       scopes: [
         'mail.read',
@@ -80,6 +85,10 @@ test(
         source_revision: 'r1',
         mailbox: '',
         labels: ['follow-up'],
+        // 書込みの結果は表示用の値を持たない。
+        subject: null,
+        sender: null,
+        received_at: null,
       },
     });
     assert.deepEqual(provider.truth.receipts(), [
@@ -343,6 +352,7 @@ test(
     );
     assert.deepEqual(await connector.readPermission(H01.account_id), {
       account_id: H01.account_id,
+      account_label: 'synthetic-user@example.com',
       permission_revision: '2',
       scopes: ['mail.read'],
     });

@@ -96,6 +96,7 @@ function mockProvider(): MockProvider {
     connectionState: {
       provider: 'mock',
       account_id: ACCOUNT,
+      account_label: '合成の口座（user@example.com）',
       status: 'active',
       access: 'read_write',
     },
@@ -126,6 +127,9 @@ function mockProvider(): MockProvider {
               source_revision: '7',
               mailbox: 'INBOX',
               labels: ['inbox'],
+              subject: '合成の件名',
+              sender: 'sender@example.com',
+              received_at: '2026-10-04T18:30:00+09:00',
             }
           : null,
       );
@@ -378,8 +382,86 @@ test(
       shown.json?.['intent'],
       JSON.parse(labelCanonical(operationId)),
     );
+    // 承認画面で口座と対象のメールを見分ける表示用の値（provider から読む。確定 intent・hash には入らない）。
+    assert.deepEqual(shown.json?.['display'], {
+      account_label: '合成の口座（user@example.com）',
+      target: {
+        subject: '合成の件名',
+        sender: 'sender@example.com',
+        received_at: '2026-10-04T18:30:00+09:00',
+      },
+    });
     const previewId = String(shown.json?.['preview_id']);
 
+    // 内容の表示用の読み取り（B04-05）: preview と同じ確定 intent と表示用の値を、preview_id なしで返す。preview は発行せず、
+    // 先に出した preview を失効させない（下の承認が通る）。
+    const displayPath = `/v1/operations/${operationId}/display`;
+    const shownDisplay = await postJson(core, one, displayPath, {
+      request_id: randomUUID(),
+      command_scope_id: scope1,
+    });
+    assert.equal(shownDisplay.status, 200, shownDisplay.text);
+    assert(
+      contract.valid('OperationDisplay', shownDisplay.json),
+      shownDisplay.text,
+    );
+    assert.deepEqual(
+      shownDisplay.json?.['intent'],
+      JSON.parse(labelCanonical(operationId)),
+    );
+    assert.equal(shownDisplay.json?.['content_version'], '1');
+    assert.equal(shownDisplay.json?.['content_hash'], expectedHash);
+    assert.deepEqual(shownDisplay.json?.['display'], shown.json?.['display']);
+    assert.equal('preview_id' in (shownDisplay.json ?? {}), false);
+    // 別の端末も、自分の接続範囲で読める。他の端末の接続範囲・存在しない操作では内容を返さない。
+    const otherDisplay = await postJson(core, two, displayPath, {
+      request_id: randomUUID(),
+      command_scope_id: scope2,
+    });
+    assert.equal(otherDisplay.status, 200, otherDisplay.text);
+    for (const refused of [
+      await postJson(core, one, displayPath, {
+        request_id: randomUUID(),
+        command_scope_id: scope2,
+      }),
+      await postJson(core, one, `/v1/operations/${randomUUID()}/display`, {
+        request_id: randomUUID(),
+        command_scope_id: scope1,
+      }),
+    ]) {
+      assert.notEqual(refused.status, 200, refused.text);
+      assert.equal(refused.text.includes('follow-up'), false);
+      assert.equal(refused.text.includes('mail-001'), false);
+    }
+    // 接続先（アカウント）を別のものに替えた後は、同じ remote_id でも別のアカウントのメールを読まない（A で保存 → B に
+    // 切り替え → 同じ remote_id）。display は対象・口座の表示名を null にして内容だけを返し、preview は 409。
+    const savedConnection = provider.connectionState;
+    assert(savedConnection !== null);
+    provider.connectionState = {
+      ...savedConnection,
+      account_id: '00000000-0000-4000-8000-0000000000b2',
+      account_label: '別のアカウント（other@example.com）',
+    };
+    const readsBefore = provider.calls.filter(
+      (call) => call === 'readTarget',
+    ).length;
+    const switched = await postJson(core, one, displayPath, {
+      request_id: randomUUID(),
+      command_scope_id: scope1,
+    });
+    assert.equal(switched.status, 200, switched.text);
+    assert.deepEqual(switched.json?.['display'], {
+      account_label: null,
+      target: null,
+    });
+    assert.equal(switched.text.includes('合成の件名'), false);
+    assert.equal(switched.text.includes('other@example.com'), false);
+    assert.equal(
+      provider.calls.filter((call) => call === 'readTarget').length,
+      readsBefore,
+    );
+    assert.equal((await preview(core, one, operationId, scope1)).status, 409);
+    provider.connectionState = savedConnection;
     // 別の端末が、端末 1 に出した preview で承認する: 409。
     const other = await approve(
       core,
@@ -400,6 +482,14 @@ test(
     const after = await snapshotOperations(core, two);
     assert.equal(after[0]?.['state'], 'approved');
     assert.equal(after[0]?.['approval_state'], 'valid');
+    // 承認待ち以外（承認済み）の操作の内容も読める（取消の確認に出す見出しを、ロック・切断の後に取り直すため）。
+    const approvedDisplay = await postJson(core, two, displayPath, {
+      request_id: randomUUID(),
+      command_scope_id: scope2,
+    });
+    assert.equal(approvedDisplay.status, 200, approvedDisplay.text);
+    assert.equal(approvedDisplay.json?.['content_hash'], expectedHash);
+    assert.notEqual(approvedDisplay.json?.['state_revision'], '1');
   },
 );
 

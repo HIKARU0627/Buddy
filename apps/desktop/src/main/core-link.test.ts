@@ -1497,6 +1497,10 @@ test(
     // 止めていた古い一覧が届いても、表示に返さず、参照も戻さない。
     gates[0]?.();
     assert.equal((await stale)['reason'], 'list_superseded');
+    // 失効の後に本人が始めた一覧は、失効の中の取り直しより大きい番号（画面はこの番号で新旧を比べる）。
+    const after = await admin('desktop.devices_list', null);
+    assert.equal(after['outcome'], 'ok');
+    assert(Number(after['list_seq']) > Number(revoked['list_seq']));
     assert.equal(
       (await admin('desktop.device_revoke', { ref }))['reason'],
       'entry_not_found',
@@ -1548,6 +1552,8 @@ test(
     const revoked = await revoking;
     assert.equal(revoked['outcome'], 'ok');
     assert.equal(revoked['list_refreshed'], false);
+    // 画面に渡す境目は、最初の一覧（1）・失効の前の境目（2）・最中の一覧（3）の後の 4。
+    assert.equal(revoked['list_seq'], 4);
     // 失効の前の内容を取った一覧が遅れて届いても、返さず、参照も戻さない。
     gates[1]?.();
     assert.equal((await during)['reason'], 'list_superseded');
@@ -1594,10 +1600,15 @@ test(
     const early = admin('desktop.devices_list', null);
     await waitUntil(() => gates.length === 2, 'list stalled');
     gates[0]?.();
-    assert.equal((await revoking)['reason'], 'outcome_unknown');
-    // 結果が分かる前に始めた端末の一覧が届いても、保留は解かない。
+    const unknown = await revoking;
+    assert.equal(unknown['reason'], 'outcome_unknown');
+    // 保留の時点の番号（最初の一覧 1・失効の前の境目 2・最中の一覧 3 の後の 4）を画面にも渡す。
+    assert.equal(unknown['list_seq'], 4);
+    // 結果が分かる前に始めた端末の一覧が届いても、保留は解かない（番号 3 は保留の時点より前）。
     gates[1]?.();
-    assert.equal((await early)['outcome'], 'ok');
+    const earlyList = await early;
+    assert.equal(earlyList['outcome'], 'ok');
+    assert.equal(earlyList['list_seq'], 3);
     assert.equal(
       (await admin('desktop.device_revoke', { ref }))['reason'],
       'entry_not_found',

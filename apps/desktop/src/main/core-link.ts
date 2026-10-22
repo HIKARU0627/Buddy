@@ -728,8 +728,11 @@ export class DesktopCoreLink {
   }
 
   // 結果が分からなかった参照を、同じ種類の一覧で照合できるまで保留にする。
-  #hold(pane: 'claims' | 'devices', ref: string): void {
-    this.#held[pane].set(ref, ++this.#listSeq[pane]);
+  // 返すのは保留を付けた時点の通し番号（画面にも渡し、同じ番号で保留を解く）。
+  #hold(pane: 'claims' | 'devices', ref: string): number {
+    const after = ++this.#listSeq[pane];
+    this.#held[pane].set(ref, after);
+    return after;
   }
 
   // 一覧（通し番号 seq）を反映した: それより前に結果が分かった保留だけを解く。
@@ -778,19 +781,25 @@ export class DesktopCoreLink {
         // 古い世代の処理は、今の世代の参照・順序の状態を進めない（応答も返さない）。
         const stale = this.#staleReason(generation);
         if (stale !== null) return this.#reject(requestId, raw.channel, stale);
+        if (failed === 'outcome_unknown')
+          return this.#unknown(
+            requestId,
+            raw.channel,
+            this.#hold('claims', raw.payload.ref),
+          );
         if (failed !== null) {
-          if (failed === 'outcome_unknown')
-            this.#hold('claims', raw.payload.ref);
-          else this.#claimRefs.delete(raw.payload.ref);
+          this.#claimRefs.delete(raw.payload.ref);
           return this.#reject(requestId, raw.channel, failed);
         }
         this.#log(`hub_claim_decided:${raw.payload.decision}`);
         this.#claimRefs.delete(raw.payload.ref);
         // POST の最中に始めた一覧も古い（取り直しが失敗しても、この境目は保つ）。
         this.#listFloor.claims = ++this.#listSeq.claims;
+        const claimsFloor = this.#listFloor.claims;
         return this.#afterApplied(
           requestId,
           await this.#listClaims(requestId, raw.channel, generation),
+          claimsFloor,
         );
       }
       case 'desktop.device_revoke': {
@@ -817,17 +826,22 @@ export class DesktopCoreLink {
         const failed = this.#adminFailure(outcome, 200);
         const stale = this.#staleReason(generation);
         if (stale !== null) return this.#reject(requestId, raw.channel, stale);
-        if (failed !== null) {
-          if (failed === 'outcome_unknown')
-            this.#hold('devices', raw.payload.ref);
+        if (failed === 'outcome_unknown')
+          return this.#unknown(
+            requestId,
+            raw.channel,
+            this.#hold('devices', raw.payload.ref),
+          );
+        if (failed !== null)
           return this.#reject(requestId, raw.channel, failed);
-        }
         this.#deviceRefs.delete(raw.payload.ref);
         this.#log('hub_device_revoked');
         this.#listFloor.devices = ++this.#listSeq.devices;
+        const devicesFloor = this.#listFloor.devices;
         return this.#afterApplied(
           requestId,
           await this.#listDevices(requestId, raw.channel, generation),
+          devicesFloor,
         );
       }
       case 'desktop.pairing_open': {
@@ -927,6 +941,8 @@ export class DesktopCoreLink {
       channel,
       outcome: 'ok',
       claims,
+      // 画面は届いた順ではなく、この番号で一覧の新旧を比べる。
+      list_seq: seq,
     });
   }
 
@@ -992,14 +1008,17 @@ export class DesktopCoreLink {
       channel,
       outcome: 'ok',
       devices,
+      list_seq: seq,
     });
   }
 
   // 承認・拒否・失効は適用できたが、その後の一覧の取り直しだけが失敗したときは、拒否ではなく
   // 「適用した・一覧は古い」（list_refreshed: false）として返す（CR-L2）。
+  // floor は変更の結果が分かった時点の境目（画面もこれより前の番号の一覧を反映しない）。
   #afterApplied(
     requestId: string,
     outcome: ConnectionIpcOutcome,
+    floor: number,
   ): ConnectionIpcOutcome {
     const response = outcome.response;
     if (
@@ -1014,6 +1033,22 @@ export class DesktopCoreLink {
       channel: response.channel,
       outcome: 'ok',
       list_refreshed: false,
+      list_seq: floor,
+    });
+  }
+
+  // 結果が分からなかった: 保留を付けた時点の通し番号を添える（画面はそれより後の同じ種類の一覧で保留を解く）。
+  #unknown(
+    requestId: string,
+    channel: 'desktop.claim_decide' | 'desktop.device_revoke',
+    after: number,
+  ): ConnectionIpcOutcome {
+    return this.#respond({
+      request_id: requestId,
+      channel,
+      outcome: 'rejected',
+      reason: 'outcome_unknown',
+      list_seq: after,
     });
   }
 

@@ -30,37 +30,24 @@ export function useHubState(
   locked: boolean,
 ): HubStateHandle {
   const [state, setState] = useState<HubViewState>(INITIAL_HUB_STATE);
-  // 要求の通し番号（一覧の順）と、表示の権限の世代（ロック・捨てたときに進め、またいだ応答は捨てる）。
-  const seqRef = useRef(0);
+  // 表示の権限の世代（ロック・接続待ち・捨てたときに進め、またいだ応答は捨てる）。一覧の順は main の list_seq で比べる。
   const epochRef = useRef(0);
 
   const actions = useMemo(
     () =>
       hubActions({
         request: (built, operation) => {
-          seqRef.current += 1;
-          const seq = seqRef.current;
           const epoch = epochRef.current;
-          setState((prev) => markSending(prev, built, operation, seq));
+          setState((prev) => markSending(prev, built, operation));
           api
             .invoke(built)
-            .then((response) => {
-              // 応答が届いた時点の通し番号（これより前に始めた一覧は、変更の操作の結果を知らない）。
-              seqRef.current += 1;
-              const doneSeq = seqRef.current;
+            .then((response) =>
               setState((prev) =>
                 epoch === epochRef.current
-                  ? applyHubResponse(
-                      prev,
-                      built.channel,
-                      response,
-                      Date.now(),
-                      seq,
-                      doneSeq,
-                    )
+                  ? applyHubResponse(prev, built.channel, response, Date.now())
                   : dropStaleResponse(prev, built.channel),
-              );
-            })
+              ),
+            )
             .catch(() =>
               setState((prev) =>
                 epoch === epochRef.current

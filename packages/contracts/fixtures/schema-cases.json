@@ -4554,6 +4554,27 @@
           "expires_at": "2030-10-05T00:06:00Z",
           "claim_check": "0a1b2c3d"
         }
+      ],
+      "list_seq": 3
+    }
+  },
+  {
+    "id": "desktop-response-claims-without-list-seq",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c08",
+      "channel": "desktop.claims_list",
+      "outcome": "ok",
+      "claims": [
+        {
+          "ref": "00000000-0000-4000-8000-000000000c21",
+          "device_name": "合成の端末",
+          "platform": "windows",
+          "claimed_at": "2030-10-05T00:01:00Z",
+          "expires_at": "2030-10-05T00:06:00Z",
+          "claim_check": "0a1b2c3d"
+        }
       ]
     }
   },
@@ -4575,7 +4596,8 @@
           "claim_check": "0a1b2c3d",
           "pairing_code": "12345678"
         }
-      ]
+      ],
+      "list_seq": 3
     }
   },
   {
@@ -4607,7 +4629,8 @@
           "last_seen_at": "2030-10-05T00:10:00Z",
           "revoked_at": null
         }
-      ]
+      ],
+      "list_seq": 3
     }
   },
   {
@@ -4630,7 +4653,8 @@
           "revoked_at": null,
           "device_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         }
-      ]
+      ],
+      "list_seq": 3
     }
   },
   {
@@ -4653,7 +4677,8 @@
           "revoked_at": null,
           "device_id": "00000000-0000-4000-8000-000000000c22"
         }
-      ]
+      ],
+      "list_seq": 3
     }
   },
   {
@@ -4664,7 +4689,8 @@
       "request_id": "00000000-0000-4000-8000-000000000e71",
       "channel": "desktop.claim_decide",
       "outcome": "ok",
-      "list_refreshed": false
+      "list_refreshed": false,
+      "list_seq": 3
     }
   },
   {
@@ -4675,7 +4701,20 @@
       "request_id": "00000000-0000-4000-8000-000000000e71",
       "channel": "desktop.device_revoke",
       "outcome": "ok",
-      "list_refreshed": false
+      "list_refreshed": false,
+      "list_seq": 3
+    }
+  },
+  {
+    "id": "desktop-response-list-stale-zero-seq",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e71",
+      "channel": "desktop.device_revoke",
+      "outcome": "ok",
+      "list_refreshed": false,
+      "list_seq": 0
     }
   },
   {
@@ -4686,7 +4725,8 @@
       "request_id": "00000000-0000-4000-8000-000000000e71",
       "channel": "desktop.claims_list",
       "outcome": "ok",
-      "list_refreshed": false
+      "list_refreshed": false,
+      "list_seq": 3
     }
   },
   {
@@ -4697,7 +4737,8 @@
       "request_id": "00000000-0000-4000-8000-000000000e71",
       "channel": "desktop.claim_decide",
       "outcome": "ok",
-      "list_refreshed": true
+      "list_refreshed": true,
+      "list_seq": 3
     }
   },
   {
@@ -4709,6 +4750,18 @@
       "channel": "desktop.claims_list",
       "outcome": "rejected",
       "reason": "hub_screen_required"
+    }
+  },
+  {
+    "id": "desktop-response-outcome-unknown-with-list-seq",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e72",
+      "channel": "desktop.device_revoke",
+      "outcome": "rejected",
+      "reason": "outcome_unknown",
+      "list_seq": 4
     }
   },
   {

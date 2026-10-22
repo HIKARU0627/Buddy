@@ -144,6 +144,10 @@ export function scheduleOverlaps(
   return overlapping;
 }
 
+// 予定の照会で返す予定の上限。予定 1 件の参照は重なりの参照を含めて高々 2 件（1 件は約 70 文字）なので、
+// 上限まで返しても応答は turn_responses の上限（16,384 文字）に十分収まる。
+export const MAX_SCHEDULE_ITEMS = 50;
+
 type TurnPlan =
   | {
       readonly kind: 'clarify';
@@ -156,6 +160,8 @@ type TurnPlan =
       readonly intent: IntentName;
       readonly items: readonly { readonly kind: string; readonly id: string }[];
       readonly overlaps: boolean;
+      // 上限で切って返さなかった予定の件数（ResultView の more_count）。
+      readonly more: number;
     }
   | {
       readonly kind: 'operation';
@@ -320,17 +326,20 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     items.sort(
       (a, b) => a.start - b.start || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
+    // 重なりは全件で計算し、返す参照は開始の順に上限まで（残りは more_count）。
     const overlapping = scheduleOverlaps(items);
+    const shown = items.slice(0, MAX_SCHEDULE_ITEMS);
     return {
       kind: 'read',
       intent,
       items: [
-        ...items.map((item) => ({ kind: 'calendar_event', id: item.id })),
-        ...items
+        ...shown.map((item) => ({ kind: 'calendar_event', id: item.id })),
+        ...shown
           .filter((item) => overlapping.has(item.id))
           .map((item) => ({ kind: 'calendar_overlap', id: item.id })),
       ],
       overlaps: overlapping.size > 0,
+      more: items.length - shown.length,
     };
   };
 
@@ -617,6 +626,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       kind: string,
       status: string,
       itemRefs: readonly object[],
+      moreCount = 0,
     ) =>
       workflowId === null
         ? null
@@ -627,7 +637,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             kind,
             status,
             item_refs: itemRefs,
-            more_count: 0,
+            more_count: moreCount,
             template_id: null,
             template_version: null,
           };
@@ -662,6 +672,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
                 'schedule_cards',
                 plan.overlaps ? 'needs_review' : 'ready',
                 plan.items,
+                plan.more,
               ),
               null,
             )

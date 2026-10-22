@@ -4,6 +4,7 @@ import test from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { parseStrictJson, root } from './contract-tools.mjs';
+import { assertB04EvidenceSources } from './b04-evidence-sources.mjs';
 
 // 試験 ID の対応表・B04 へ渡す故障点・証拠の形式を検査する（B00-10 #29、ADR 0011）。
 const read = async (path) =>
@@ -26,7 +27,7 @@ const range = (prefix, count) =>
 const ALL = [...range('X', 66), ...range('QA', 45), ...range('MA', 6)];
 const T_CODES = range('T', 10);
 
-test('every test ID has an owner phase, a fixture or follow-up, and an unrun product state', async () => {
+test('全試験 ID の担当・契約例・実施範囲と証拠を追跡する', async () => {
   assert.deepEqual(
     map.tests.map((entry) => entry.id),
     ALL,
@@ -38,6 +39,8 @@ test('every test ID has an owner phase, a fixture or follow-up, and an unrun pro
   assert.deepEqual(Object.keys(map.product_tests).sort(), [
     'deferred',
     'not_run',
+    'simulated',
+    'simulated_partial',
   ]);
   const known = new Set(ALL);
   for (const entry of map.tests) {
@@ -103,6 +106,7 @@ test('X01〜X11 fault points and expected transitions are ready for B04', () => 
     }
     const transition = byId.get(entry.transition_case);
     assert(transition, `${entry.id} → ${entry.transition_case}`);
+    assert.deepEqual(entry.expected.state_history, transition.path, entry.id);
     assert.equal(entry.expected.approvals, transition.approvals, entry.id);
     assert.equal(
       entry.expected.provider_requests,
@@ -158,7 +162,7 @@ test('test evidence records separate mock, device, real API and billing runs', a
   assert(!validate(missing));
 });
 
-test('recorded device evidence follows the evidence format and stays separate from mock runs', async () => {
+test('記録済み証拠は Schema に従い模擬と実機を混ぜない', async () => {
   const { readdir } = await import('node:fs/promises');
   const schema = await read('tests/integration/test-evidence.schema.json');
   const ajv = new Ajv2020({ strict: true, allErrors: true });
@@ -177,7 +181,99 @@ test('recorded device evidence follows the evidence format and stays separate fr
       assert(!ids.has(record.case_id), `${name}: ${record.case_id}`);
       ids.add(record.case_id);
       // 実機の記録の名前の付いたファイルに、模擬の結果を混ぜない。
-      assert.equal(record.kind, 'real_device', `${name}: ${record.case_id}`);
+      assert.equal(
+        record.kind,
+        name.endsWith('-simulated.json') ? 'simulated' : 'real_device',
+        `${name}: ${record.case_id}`,
+      );
     }
+  }
+});
+
+// B04 の部分確認を全体合格に昇格させない。証拠の欠落・架空の実施済み状態も拒否する。
+test('B04 のケース・seed・観測値・対応表の範囲が証拠と一致する', async () => {
+  const evidence = await read('tests/integration/evidence-b04-simulated.json');
+  const cases = [...faults.cases, ...faults.qa_cases];
+  const expectedIds = cases.map((c) => c.id);
+  assert.equal(evidence.runs.length, cases.length * faults.seeds.length);
+  for (const seed of faults.seeds) {
+    const runs = evidence.runs.filter((r) => r.seed === String(seed));
+    assert.deepEqual(
+      runs.map((r) => r.case_id).sort(),
+      [...expectedIds].sort(),
+    );
+    assert.deepEqual(
+      runs.map((r) => r.case_id),
+      runs[0].order,
+    );
+    for (const run of runs) {
+      const spec = cases.find((c) => c.id === run.case_id);
+      const expected = spec.b04_expected ?? spec.expected;
+      assert.equal(run.observed.provider_requests, expected.provider_requests);
+      assert.equal(
+        run.observed.provider_state_changes,
+        expected.provider_state_changes,
+      );
+      assert.equal(run.observed.approval_count, expected.approvals);
+      assert.deepEqual(
+        run.observed.provider_receipts.map((r) => r.applied_change),
+        expected.provider_applied_changes,
+      );
+      assert.deepEqual(run.observed.provider_labels, expected.provider_labels);
+      if (expected.state_history) {
+        assert.deepEqual(
+          run.observed.state_history.map((h) => h.state),
+          expected.state_history,
+        );
+        assert.equal(run.observed.final_state, expected.core_final_state);
+      }
+    }
+  }
+  for (const entry of map.tests) {
+    if (!entry.product_test.startsWith('simulated')) continue;
+    assert(entry.product_scope, entry.id);
+    assert(entry.product_evidence.length > 0, entry.id);
+    for (const ref of entry.product_evidence) {
+      const [file, id] = ref.split('#');
+      const doc = await read(file);
+      const record = doc.records.find((r) => r.case_id === id);
+      assert(record, ref);
+      assert.equal(record.kind, 'simulated');
+      assert.equal(record.outcome, 'matched_expectation');
+    }
+  }
+  for (const id of ['X10', 'QA27']) {
+    assert.equal(
+      map.tests.find((e) => e.id === id).product_test,
+      'simulated_partial',
+    );
+    assert(!evidence.records.some((r) => r.case_id === id));
+  }
+});
+
+test('B04 の証拠は現行ソースの全対象ファイルと hash が一致する', async () => {
+  const evidence = await read('tests/integration/evidence-b04-simulated.json');
+  assertB04EvidenceSources(evidence);
+});
+
+test('B04 の証拠の古い hash・欠落・余分なファイルを拒否する', async () => {
+  const evidence = await read('tests/integration/evidence-b04-simulated.json');
+  for (const mutate of [
+    (sources) => {
+      sources[0].sha256 = '0'.repeat(64);
+    },
+    (sources) => {
+      sources.pop();
+    },
+    (sources) => {
+      sources.push({ path: 'tests/removed.mjs', sha256: '0'.repeat(64) });
+    },
+  ]) {
+    const changed = structuredClone(evidence);
+    mutate(changed.source_sha256);
+    assert.throws(
+      () => assertB04EvidenceSources(changed),
+      /B04 の証拠と現行ソースが不一致/u,
+    );
   }
 });

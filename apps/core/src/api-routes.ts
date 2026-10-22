@@ -66,6 +66,9 @@ export const API_ROUTES: readonly ApiRoute[] = [
   route('previewOperation', 'POST', '/v1/operations/{id}/preview', {
     body: 'PreviewRequest',
   }),
+  route('displayOperation', 'POST', '/v1/operations/{id}/display', {
+    body: 'PreviewRequest',
+  }),
   route('approveOperation', 'POST', '/v1/operations/{id}/approve', {
     body: 'ApprovalRequest',
     ...SCREEN,

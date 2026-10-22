@@ -664,12 +664,13 @@ test(
       assert(sent.includes(`GET /v1/operations/${held}`), label);
       assert(!sent.includes(`GET /v1/operations/${waiting}`), label);
       // 命令（承認・取消・照合・再試行の POST /v1/operations/...）は送っていない。自宅の指紋の報告と、承認待ちの操作の
-      // 内容を読む承認表示の準備（/preview。外部変更ではない）は送る。
+      // 内容を読む内容を読む読み取り（/display・/preview。外部変更ではない）は送る。
       assert(
         sent.every(
           (line) =>
             !line.startsWith('POST /v1/operations/') ||
-            line.endsWith('/preview'),
+            line.endsWith('/preview') ||
+            line.endsWith('/display'),
         ),
         label,
       );
@@ -1573,7 +1574,10 @@ test(
     assert.equal(entry.delivery_unknown, false);
     // 自動では送っていない（再接続の後に POST /v1/operations/... がない）。本人の「照合」で 1 回だけ送る。
     const posts = () =>
-      b.requests.filter((line) => line.startsWith('POST /v1/operations/'));
+      b.requests.filter(
+        (line) =>
+          line.startsWith('POST /v1/operations/') && !line.endsWith('/display'),
+      );
     assert.deepEqual(posts(), []);
     const reconciled = await b.work('desktop.operation_reconcile', {
       ref: entry.ref,

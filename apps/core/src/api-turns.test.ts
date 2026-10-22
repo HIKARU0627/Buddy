@@ -393,6 +393,46 @@ test(
     });
     const previewId = String(shown.json?.['preview_id']);
 
+    // 内容の表示用の読み取り（B04-05）: preview と同じ確定 intent と表示用の値を、preview_id なしで返す。preview は発行せず、
+    // 先に出した preview を失効させない（下の承認が通る）。
+    const displayPath = `/v1/operations/${operationId}/display`;
+    const shownDisplay = await postJson(core, one, displayPath, {
+      request_id: randomUUID(),
+      command_scope_id: scope1,
+    });
+    assert.equal(shownDisplay.status, 200, shownDisplay.text);
+    assert(
+      contract.valid('OperationDisplay', shownDisplay.json),
+      shownDisplay.text,
+    );
+    assert.deepEqual(
+      shownDisplay.json?.['intent'],
+      JSON.parse(labelCanonical(operationId)),
+    );
+    assert.equal(shownDisplay.json?.['content_version'], '1');
+    assert.equal(shownDisplay.json?.['content_hash'], expectedHash);
+    assert.deepEqual(shownDisplay.json?.['display'], shown.json?.['display']);
+    assert.equal('preview_id' in (shownDisplay.json ?? {}), false);
+    // 別の端末も、自分の接続範囲で読める。他の端末の接続範囲・存在しない操作では内容を返さない。
+    const otherDisplay = await postJson(core, two, displayPath, {
+      request_id: randomUUID(),
+      command_scope_id: scope2,
+    });
+    assert.equal(otherDisplay.status, 200, otherDisplay.text);
+    for (const refused of [
+      await postJson(core, one, displayPath, {
+        request_id: randomUUID(),
+        command_scope_id: scope2,
+      }),
+      await postJson(core, one, `/v1/operations/${randomUUID()}/display`, {
+        request_id: randomUUID(),
+        command_scope_id: scope1,
+      }),
+    ]) {
+      assert.notEqual(refused.status, 200, refused.text);
+      assert.equal(refused.text.includes('follow-up'), false);
+      assert.equal(refused.text.includes('mail-001'), false);
+    }
     // 別の端末が、端末 1 に出した preview で承認する: 409。
     const other = await approve(
       core,
@@ -413,6 +453,14 @@ test(
     const after = await snapshotOperations(core, two);
     assert.equal(after[0]?.['state'], 'approved');
     assert.equal(after[0]?.['approval_state'], 'valid');
+    // 承認待ち以外（承認済み）の操作の内容も読める（取消の確認に出す見出しを、ロック・切断の後に取り直すため）。
+    const approvedDisplay = await postJson(core, two, displayPath, {
+      request_id: randomUUID(),
+      command_scope_id: scope2,
+    });
+    assert.equal(approvedDisplay.status, 200, approvedDisplay.text);
+    assert.equal(approvedDisplay.json?.['content_hash'], expectedHash);
+    assert.notEqual(approvedDisplay.json?.['state_revision'], '1');
   },
 );
 

@@ -14,6 +14,7 @@ export type BuddyContract =
   | CommandContext
   | PreviewRequest
   | OperationPreview
+  | OperationDisplay
   | ApprovalRequest
   | StateCommand
   | CommandReceipt
@@ -1317,6 +1318,26 @@ export interface OperationPreview {
    * 承認画面で口座と対象のメールを見分ける表示用の値（B04-05、ADR 0031）。外部変更の preview で Core が provider から読む。読めない項目は null で、画面は対象を確認できないと言い、承認へ進ませない。LocalCommand は両方 null。確定 intent の一部ではなく、content_hash に含めない。
    */
   display?: {
+    account_label: string | null;
+    target: {
+      subject: string | null;
+      sender: string | null;
+      received_at: string | null;
+    } | null;
+  };
+}
+/**
+ * 操作の内容の表示用の読み取り（B04-05、ADR 0031）。取消・再試行の確認に出す見出しを、承認待ち以外の状態でも取り直すための応答。preview と同じ確定 intent と表示用の値を、preview_id なしで返す（preview は発行せず、承認にも使えない）。content_version と content_hash は、画面が今の操作の内容版・hash と照合するための値。認可は preview と同じ。内容はこの応答だけで、イベント・スナップショットには入れない。
+ */
+export interface OperationDisplay {
+  content_version: ContentVersion;
+  content_hash: Hash;
+  state_revision: StateRevision;
+  intent: OperationIntent;
+  /**
+   * 承認画面で口座と対象のメールを見分ける表示用の値（B04-05、ADR 0031）。外部変更の preview で Core が provider から読む。読めない項目は null で、画面は対象を確認できないと言い、承認へ進ませない。LocalCommand は両方 null。確定 intent の一部ではなく、content_hash に含めない。
+   */
+  display: {
     account_label: string | null;
     target: {
       subject: string | null;

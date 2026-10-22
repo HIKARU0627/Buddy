@@ -6956,5 +6956,115 @@
         "account_id": "00000000-0000-4000-8000-0000000000a1"
       }
     }
+  },
+  {
+    "id": "operation-display",
+    "schema": "OperationDisplay",
+    "valid": true,
+    "value": {
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "content_version": "1",
+      "display": {
+        "account_label": "synthetic-user@example.com",
+        "target": {
+          "subject": "（合成）件名",
+          "sender": "synthetic-sender@example.com",
+          "received_at": "2026-10-04T18:30:00+09:00"
+        }
+      }
+    }
+  },
+  {
+    "id": "operation-display-with-preview-id",
+    "schema": "OperationDisplay",
+    "valid": false,
+    "value": {
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "content_version": "1",
+      "display": {
+        "account_label": "synthetic-user@example.com",
+        "target": {
+          "subject": "（合成）件名",
+          "sender": "synthetic-sender@example.com",
+          "received_at": "2026-10-04T18:30:00+09:00"
+        }
+      },
+      "preview_id": "00000000-0000-4000-8000-000000000032"
+    }
+  },
+  {
+    "id": "operation-display-without-display",
+    "schema": "OperationDisplay",
+    "valid": false,
+    "value": {
+      "intent": {
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "action": {
+          "add": ["follow-up"],
+          "kind": "mail.labels.change",
+          "remove": []
+        },
+        "content_version": "1",
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        },
+        "operation_id": "00000000-0000-4000-8000-000000000001",
+        "permission_revision": "1",
+        "provider": "mock",
+        "schema": "buddy.operation.v1",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        }
+      },
+      "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
+      "state_revision": "1",
+      "content_version": "1"
+    }
   }
 ]

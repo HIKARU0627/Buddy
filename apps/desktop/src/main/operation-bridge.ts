@@ -18,6 +18,7 @@ import type {
   DesktopOperationPreview,
   DesktopTurnResult,
   OperationIntent,
+  OperationDisplay,
   OperationPreview,
   OperationSnapshot,
   TurnResponse,
@@ -113,6 +114,7 @@ interface HeldRecord {
 
 const MAX_PREVIEWS = 20;
 const MAX_UNSEEN_REFS = 200;
+const MAX_FETCH = 30;
 
 const newer = (a: string, b: string): boolean => BigInt(a) > BigInt(b);
 
@@ -193,7 +195,6 @@ export class OperationBridge {
     const entries = merged.map((op) => {
       this.#refOf(op.operation_id, true);
       const record = this.#refs.get(op.operation_id) as RefRecord;
-      this.#maybePrefetch(op);
       const content = this.#contentFor(op);
       const entry: DesktopOperationEntry = {
         ref: record.ref,
@@ -209,7 +210,15 @@ export class OperationBridge {
       };
       return { entry, order: record.order };
     });
-    return entries.sort((a, b) => b.order - a.order).map((item) => item.entry);
+    entries.sort((a, b) => b.order - a.order);
+    // 新しい操作から、内容（見出し）を持っていないものを読む（多いときは新しい 30 件まで）。
+    for (const item of entries.slice(0, MAX_FETCH)) {
+      const op = merged.find(
+        (m) => this.#refs.get(m.operation_id)?.ref === item.entry.ref,
+      );
+      if (op !== undefined) this.#maybeFetch(op);
+    }
+    return entries.map((item) => item.entry);
   }
 
   // クライアントの状態と、読み取りで確かめた状態のうち、状態版が新しい方（クライアントが追いついたら読み取りは捨てる）。
@@ -349,9 +358,9 @@ export class OperationBridge {
 
   // --- 承認表示の準備 ---
 
-  // 承認待ちの操作の内容を持っていなければ、準備して読む（見出し用。承認には使わない）。同じ状態版では 1 回だけ。
-  #maybePrefetch(op: OperationSnapshot): void {
-    if (op.state !== 'awaiting_approval') return;
+  // 操作の内容（見出し）を持っていなければ、内容の表示用の読み取り（POST /v1/operations/{id}/display）で読む。
+  // 読み取りだけで preview は発行しないので、表示中の確認を失効させない。同じ状態版では 1 回だけ。
+  #maybeFetch(op: OperationSnapshot): void {
     if (this.#held.has(op.operation_id)) return;
     const key = `${op.content_version}:${op.content_hash}`;
     if (this.#content.get(op.operation_id)?.key === key) return;
@@ -360,19 +369,46 @@ export class OperationBridge {
     this.#prefetched.set(op.operation_id, `${key}:${op.state_revision}`);
     const gen = this.#gen;
     void this.#serial(op.operation_id, async () => {
-      // 待っている間に、本人の確認で内容が読めた・世代が進んだなら、読まない（確認で出した preview を失効させない）。
       if (gen !== this.#gen) return;
       if (this.#content.get(op.operation_id)?.key === key) return;
-      // 見出しを読むだけ。承認用の preview の記録は作らない（表示中の確認の参照を追い出さない）。
-      await this.#issue(op.operation_id, gen, false);
+      await this.#fetchDisplay(op.operation_id, gen);
     }).catch(() => undefined);
+  }
+
+  // 内容の表示用の読み取り。承認待ち以外の操作（取消・再試行ができる状態）も読める。呼び出しは #serial の中だけ。
+  async #fetchDisplay(operationId: string, gen: number): Promise<boolean> {
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return false;
+    const outcome = await connection.request({
+      method: 'POST',
+      path: `/v1/operations/${encodeURIComponent(operationId)}/display`,
+      body: {},
+      scoped: true,
+      expectedScopeId: scope,
+    });
+    if (gen !== this.#gen) return false;
+    if (
+      outcome.kind !== 'response' ||
+      outcome.status !== 200 ||
+      !this.#host.contract.valid('OperationDisplay', outcome.body)
+    )
+      return false;
+    const shown = outcome.body as OperationDisplay;
+    const summary = contentOf(shown.intent, shown.display);
+    this.#content.set(operationId, {
+      key: `${shown.content_version}:${shown.content_hash}`,
+      headline: summary.headline,
+      detail: summary.detail,
+    });
+    this.#host.changed();
+    return true;
   }
 
   // 準備して読み、内容と preview の記録を作る。呼び出しは #serial の中だけ。
   async #issue(
     operationId: string,
     gen: number,
-    record: boolean,
   ): Promise<BridgeOutcome<DesktopOperationPreview>> {
     const connection = this.#host.connection();
     const scope = connection?.state.commandScopeId ?? null;
@@ -397,7 +433,7 @@ export class OperationBridge {
     const preview = outcome.body as OperationPreview;
     const previewRef = this.#host.newRef();
     const view = previewView(preview.intent, previewRef, preview.display);
-    if (record) this.#remember(operationId, previewRef, preview, view, scope);
+    this.#remember(operationId, previewRef, preview, view, scope);
     const summary = contentOf(preview.intent, preview.display);
     this.#content.set(operationId, {
       key: `${preview.intent.content_version}:${preview.content_hash}`,
@@ -459,7 +495,7 @@ export class OperationBridge {
     return this.#serial(target.id, async () => {
       if (gen !== this.#gen) return fail('not_connected');
       if (this.#previewSeq.get(target.id) !== seq) return fail('preview_stale');
-      return this.#issue(target.id, gen, true);
+      return this.#issue(target.id, gen);
     });
   }
 
@@ -600,16 +636,13 @@ export class OperationBridge {
       const io = kind === 'retry' ? this.#host.io() : null;
       if (io !== null && !io.permitted) return fail('input_stopped');
       // 確認に出す見出しは、今の内容版・hash と一致する内容だけ。なければ（ロック・切断の後、別端末での改訂など）、
-      // 承認待ちなら読み取り（承認表示の準備）で取り直し、取れなければ確認へ進ませない。
+      // 内容の表示用の読み取りで取り直し、取れなければ確認へ進ませない。
       let content = this.#contentFor(target.snapshot);
-      if (
-        content === undefined &&
-        target.snapshot.state === 'awaiting_approval'
-      ) {
+      if (content === undefined) {
         await this.#serial(target.id, async () => {
           if (gen !== this.#gen) return;
           if (this.#contentFor(target.snapshot) !== undefined) return;
-          await this.#issue(target.id, gen, false);
+          await this.#fetchDisplay(target.id, gen);
         });
         if (gen !== this.#gen) return fail('not_connected');
         content = this.#contentFor(target.snapshot);
@@ -689,7 +722,22 @@ export class OperationBridge {
     // 期待する状態版で守られ、二重には適用されない）。どちらも保留を解き、本人が今の状態から操作できるようにする。
     const advanced = newer(snapshot.state_revision, held.revision);
     // 読み取った今の状態を一覧に反映する（クライアントの状態が追いつくまで）。到達したかは断定しない。
-    this.#observed.set(id, snapshot);
+    // 保存済みの状態（クライアントの状態・前に読んだ状態）より新しい応答だけを入れる（遅れて届いた古い応答で戻さない）。
+    const known = connection.state.operations.find(
+      (op) => op.operation_id === id,
+    );
+    const latest = this.#observed.get(id);
+    const baseline = [known, latest]
+      .filter((item): item is OperationSnapshot => item !== undefined)
+      .reduce<string | null>(
+        (best, item) =>
+          best === null || newer(item.state_revision, best)
+            ? item.state_revision
+            : best,
+        null,
+      );
+    if (baseline === null || newer(snapshot.state_revision, baseline))
+      this.#observed.set(id, snapshot);
     this.#held.delete(id);
     this.#host.log(
       advanced ? 'operation_hold_released_advanced' : 'operation_hold_released',

@@ -692,3 +692,14 @@ test('a check of a held command reports what was found and never says it was res
     '今は確かめられません。少し待ってから、もう一度「状態を確かめる」を押してください。',
   );
 });
+
+test('when the content of an operation cannot be read, the sentence says how to recover', () => {
+  for (const channel of [
+    'desktop.operation_cancel',
+    'desktop.operation_retry',
+  ] as const)
+    assert.equal(
+      operationFailureText(channel, 'content_unavailable'),
+      '操作の内容を中枢から読めなかったため、確認へ進めません。中枢との接続を確かめて、少し待ってから、もう一度押してください。',
+    );
+});

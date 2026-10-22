@@ -35,6 +35,9 @@
       "$ref": "#/$defs/OperationPreview"
     },
     {
+      "$ref": "#/$defs/OperationDisplay"
+    },
+    {
       "$ref": "#/$defs/ApprovalRequest"
     },
     {
@@ -9795,6 +9798,98 @@
       "required": ["status", "reply_text", "result"],
       "additionalProperties": false,
       "description": "発言への文字の結果（B04-05、ADR 0031）。main が中枢の TurnResponse から作る表示用の値で、会話・発言・依頼・入力の ID と item_refs の ID を含めない。予定の照会は件数だけ（本文は開いたときに許可範囲内で取得する設計で、B04 にその経路はない）、承認が要る操作は operation_ref（desktop.operation_preview に渡す参照）で指す。"
+    },
+    "OperationDisplay": {
+      "type": "object",
+      "properties": {
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/StateRevision"
+        },
+        "intent": {
+          "$ref": "#/$defs/OperationIntent"
+        },
+        "display": {
+          "type": "object",
+          "properties": {
+            "account_label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "subject": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sender": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "received_at": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["subject", "sender", "received_at"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["account_label", "target"],
+          "additionalProperties": false,
+          "description": "承認画面で口座と対象のメールを見分ける表示用の値（B04-05、ADR 0031）。外部変更の preview で Core が provider から読む。読めない項目は null で、画面は対象を確認できないと言い、承認へ進ませない。LocalCommand は両方 null。確定 intent の一部ではなく、content_hash に含めない。"
+        }
+      },
+      "required": [
+        "content_version",
+        "content_hash",
+        "state_revision",
+        "intent",
+        "display"
+      ],
+      "additionalProperties": false,
+      "description": "操作の内容の表示用の読み取り（B04-05、ADR 0031）。取消・再試行の確認に出す見出しを、承認待ち以外の状態でも取り直すための応答。preview と同じ確定 intent と表示用の値を、preview_id なしで返す（preview は発行せず、承認にも使えない）。content_version と content_hash は、画面が今の操作の内容版・hash と照合するための値。認可は preview と同じ。内容はこの応答だけで、イベント・スナップショットには入れない。"
     }
   }
 }

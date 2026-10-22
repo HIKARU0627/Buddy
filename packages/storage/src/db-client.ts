@@ -57,6 +57,14 @@ import type {
   HomeRegistrationRecord,
   HomeReportRecord,
 } from './home-network-store.js';
+import { CONVERSATION_WRITE_OPS } from './conversation-store.js';
+import type {
+  ConversationOp,
+  ConversationOpResult,
+  OperationIntentBlob,
+  SessionRecord,
+  TurnRecordValue,
+} from './conversation-store.js';
 
 const MINT = Symbol('DispatchPermit');
 
@@ -189,6 +197,18 @@ interface PendingHome {
   readonly resolve: (result: HomeNetworkOpResult) => void;
 }
 
+// 会話の命令と照会（ADR 0029）。
+interface PendingConversation {
+  readonly kind: 'conversation';
+  readonly op: ConversationOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: ConversationOpResult) => void;
+}
+
+export type ConversationOpOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | Extract<ConversationOpResult, { ok: false }>;
+
 export type HomeNetworkOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | Extract<HomeNetworkOpResult, { ok: false }>;
@@ -214,7 +234,12 @@ export class DbWorkerClient {
   #nextId = 1;
   #pending = new Map<
     number,
-    PendingCommand | PendingQuery | PendingDevice | PendingPairing | PendingHome
+    | PendingCommand
+    | PendingQuery
+    | PendingDevice
+    | PendingPairing
+    | PendingHome
+    | PendingConversation
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -530,6 +555,42 @@ export class DbWorkerClient {
     });
   }
 
+  // 会話・発言・依頼・入力スナップショットの命令と照会（ADR 0029）。扱いは home と同じ。
+  conversation(
+    op: Extract<ConversationOp, { kind: 'session.create' | 'session.get' }>,
+  ): Promise<ConversationOpOutcome<SessionRecord | null>>;
+  conversation(
+    op: Extract<ConversationOp, { kind: 'turn.record' }>,
+  ): Promise<ConversationOpOutcome<TurnRecordValue>>;
+  conversation(
+    op: Extract<ConversationOp, { kind: 'workflow.operation' }>,
+  ): Promise<ConversationOpOutcome<{ readonly operation_id: string | null }>>;
+  conversation(
+    op: Extract<ConversationOp, { kind: 'operation.intent' }>,
+  ): Promise<ConversationOpOutcome<OperationIntentBlob | null>>;
+  conversation(op: ConversationOp): Promise<ConversationOpResult> {
+    return new Promise<ConversationOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'conversation', op, timer, resolve });
+      const message: MainToWorker = { type: 'conversation', id, op };
+      this.#worker.postMessage(message);
+    });
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -623,6 +684,16 @@ export class DbWorkerClient {
         });
         continue;
       }
+      if (pending.kind === 'conversation') {
+        pending.resolve({
+          ok: false,
+          outcome: CONVERSATION_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
       pending.resolveReceived(false);
       const outcome: DbCommandOutcome = {
         outcome: 'unknown',
@@ -701,6 +772,18 @@ export class DbWorkerClient {
     if (message.type === 'home_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'home') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'conversation_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'conversation') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

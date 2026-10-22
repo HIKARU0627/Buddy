@@ -412,7 +412,7 @@ export class ClientConnection {
   // 中枢の画面の操作など、live のときだけ送る要求（B03-06）。scoped なら request_id と今の接続範囲を本文に入れる。
   // live でなければ送らずに返し、ためない。送った後に結果が分からなければ unknown（自動で再送しない）。
   async request(request: {
-    readonly method: 'GET' | 'POST';
+    readonly method: 'GET' | 'POST' | 'PUT';
     readonly path: string;
     readonly body?: Readonly<Record<string, unknown>>;
     readonly screenOperation?: boolean;

@@ -21,6 +21,8 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.devices_list',
   'desktop.device_revoke',
   'desktop.pairing_open',
+  'desktop.home_status',
+  'desktop.home_register',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

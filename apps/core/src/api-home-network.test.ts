@@ -38,6 +38,7 @@ import type {
   PinnedTarget,
   TestDevice,
 } from './api-test-support.js';
+import type { JsonObject } from './strict-json.js';
 import { loadOrCreateTlsIdentity } from './tls-identity.js';
 
 const CORE_INSTANCE = '00000000-0000-4000-8000-0000000000c1';
@@ -78,7 +79,12 @@ const validRegistration = ajv.getSchema(
   `${schema.$id}#/$defs/HomeRegistration`,
 );
 const validApiError = ajv.getSchema(`${schema.$id}#/$defs/ApiError`);
-assert(validStatus && validRegistration && validApiError);
+const validRegistrationState = ajv.getSchema(
+  `${schema.$id}#/$defs/HomeRegistrationState`,
+);
+assert(
+  validStatus && validRegistration && validApiError && validRegistrationState,
+);
 
 // 合成の Tailscale の状態。peer が null なら接続元のピアはない。exit が 0 でなければ取得できない。
 interface TailscaleState {
@@ -98,7 +104,8 @@ interface Started {
   readonly port: number;
   readonly certificatePem: string;
   readonly fingerprint: string;
-  readonly clock: { now: number };
+  // step は読むたびに進める量（ミリ秒。既定 0 は止まった時計）。中枢の時計が判定の途中で進む場合を試す。
+  readonly clock: { now: number; step: number };
   readonly tailscale: TailscaleState;
   readonly sameMachine: { value: boolean };
   readonly denied: { deviceId: string; reasons: readonly string[] }[];
@@ -116,7 +123,12 @@ async function start(t: test.TestContext): Promise<Started> {
     now: new Date(),
   });
   const store = await startTestStore(t);
-  const clock = { now: T0 };
+  const clock = { now: T0, step: 0 };
+  const readClock = () => {
+    const value = clock.now;
+    clock.now += clock.step;
+    return value;
+  };
   const tailscale: TailscaleState = {
     exit: 0,
     backend: 'Running',
@@ -155,7 +167,7 @@ async function start(t: test.TestContext): Promise<Started> {
     }),
     sameMachine: (remote) =>
       sameMachine.value && isSameMachine(remote, '127.0.0.1'),
-    now: () => clock.now,
+    now: readClock,
     log: (message) => logs.push(message),
   });
   const denied: { deviceId: string; reasons: readonly string[] }[] = [];
@@ -176,7 +188,7 @@ async function start(t: test.TestContext): Promise<Started> {
     },
     handlers: gate.handlers,
     limits: { preAuthMaxRequests: 1000 },
-    now: () => clock.now,
+    now: readClock,
   });
   await api.listen();
   onCleanup(t, () => api.close(0));
@@ -546,6 +558,83 @@ test(
 );
 
 test(
+  'the hub screen reads whether the home is registered and when it was last updated, without MAC, SSID, their HMAC or the device (B03-08)',
+  { timeout: 30_000 },
+  async (t) => {
+    const started = await start(t);
+    const read = (token: string | null) =>
+      pinnedRequest(started.target, {
+        method: 'GET',
+        path: '/v1/home-network/registration',
+        headers: token === null ? {} : bearer(token),
+      });
+    const before = await read(started.hub.token);
+    assert.equal(before.status, 200);
+    assert(validRegistrationState?.(before.json), before.text);
+    assert.deepEqual(before.json, { registration: null });
+    assert.equal((await register(started)).status, 200);
+    const after = await read(started.hub.token);
+    assert(validRegistrationState?.(after.json), after.text);
+    assert.deepEqual(after.json, {
+      registration: {
+        subnet: '192.0.2.0/24',
+        ssid_registered: true,
+        registered_at: '2030-10-05T00:00:00.000Z',
+      },
+    });
+    // 登録し直すと置き換わり、最終更新の時刻も変わる。
+    started.clock.now = T0 + 90_000;
+    assert.equal(
+      (await register(started, { ...HOME, ssid: null })).status,
+      200,
+    );
+    const replaced = await read(started.hub.token);
+    assert.deepEqual(replaced.json, {
+      registration: {
+        subnet: '192.0.2.0/24',
+        ssid_registered: false,
+        registered_at: '2030-10-05T00:01:30.000Z',
+      },
+    });
+    // 応答・記録に MAC・SSID・その HMAC・登録した端末を出さない。
+    for (const text of [
+      before.text,
+      after.text,
+      replaced.text,
+      ...started.logs,
+    ])
+      for (const secret of [
+        HOME.gateway_mac,
+        HOME.ssid,
+        MAC_HMAC,
+        SSID_HMAC,
+        started.hub.device.device_id,
+      ])
+        assert(!text.includes(secret), 'leaked a home value');
+    // トークンなしは 401。自宅で許可された端末でも、中枢の画面でなければ 403（hub_screen_required）。
+    assertRejected(await read(null), 401, 'unauthenticated', 'no token', []);
+    const reported = await report(started, started.remote.token, HOME);
+    assert.equal(reported.json?.['allowed'], true);
+    assertRejected(
+      await read(started.remote.token),
+      403,
+      'hub_screen_required',
+      'remote device reads the registration',
+      [HOME.gateway_mac, MAC_HMAC],
+    );
+    // 自宅の外の端末は自宅判定で先に 403。
+    started.tailscale.peer = { Relay: 'tok' };
+    assertRejected(
+      await read(started.remote.token),
+      403,
+      'outside_home_network',
+      'remote device outside the home',
+      [],
+    );
+  },
+);
+
+test(
   'SSID is compared only when both sides have it, and MAC and subnet are required',
   { timeout: 30_000 },
   async (t) => {
@@ -733,6 +822,84 @@ test(
     );
     // 端末がないので失効・通知はない。
     assert.deepEqual(started.denied, []);
+  },
+);
+
+// B03-08 の 2 クライアントの試験（実際の時計）で見つかった不具合の再発防止: 認証前の経路の本文の指紋は、要求を
+// 受け取った時刻の報告として扱う。判定の途中で時計が進んでも「中枢の時計が受け取りより前」にならない。
+test(
+  'the fingerprint in a pre-auth body counts as received when the request arrives, so a clock that moves during the check still allows it',
+  { timeout: 30_000 },
+  async (t) => {
+    const started = await start(t);
+    assert.equal((await register(started)).status, 200);
+    started.sameMachine.value = false;
+    // 時計を読むたびに 1 ms 進める（判定の中で DB を読む間に時計が進む実機の状況）。
+    started.clock.step = 1;
+    // 判定そのもの（経路の検査が使う homeNetwork）を直接呼んで、通る・通らないを確かめる。HTTP の 503（自宅判定の
+    // 後の処理がこの試験の中枢にない）だけに頼らない（PR #79 のコードレビュー Low-4）。
+    const judge = (operationId: string, fingerprint: JsonObject) =>
+      started.gate.homeNetwork({
+        operationId,
+        device: null,
+        remoteAddress: '127.0.0.1',
+        params: {},
+        body: { home_fingerprint: fingerprint },
+        declaredLockState: null,
+      });
+    for (const operationId of ['claimPairing', 'pickupPairingToken']) {
+      assert.equal(await judge(operationId, HOME), true, operationId);
+      assert.equal(
+        await judge(operationId, { ...HOME, gateway_mac: '00:00:5e:00:53:02' }),
+        false,
+        `${operationId} with another fingerprint`,
+      );
+    }
+    const claim = (fingerprint: Record<string, unknown>) =>
+      pinnedRequest(started.target, {
+        method: 'POST',
+        path: '/v1/pairing/claims',
+        headers: json,
+        body: JSON.stringify({
+          request_id: randomUUID(),
+          pairing_code: '12345678',
+          device_name: '合成の端末',
+          platform: 'windows',
+          claim_secret_hash: 'c'.repeat(64),
+          home_fingerprint: fingerprint,
+        }),
+      });
+    const pickup = (fingerprint: Record<string, unknown>) =>
+      pinnedRequest(started.target, {
+        method: 'POST',
+        path: `/v1/pairing/claims/${randomUUID()}/token`,
+        headers: json,
+        body: JSON.stringify({
+          claim_secret: 'B'.repeat(43),
+          home_fingerprint: fingerprint,
+        }),
+      });
+    for (const [send, label] of [
+      [claim, 'claim'],
+      [pickup, 'pickup'],
+    ] as const) {
+      // 自宅判定を通った後の処理は B03-02（この試験の中枢では 503）。403 なら自宅判定で止まっている。
+      assertRejected(
+        await send(HOME),
+        503,
+        'dependency_unavailable',
+        `${label} at home with a moving clock`,
+        [],
+      );
+      // 同じ進む時計で、指紋の違う要求は自宅判定で 403 になる（判定そのものは動いている）。
+      assertRejected(
+        await send({ ...HOME, gateway_mac: '00:00:5e:00:53:02' }),
+        403,
+        'outside_home_network',
+        `${label} with another fingerprint and a moving clock`,
+        [],
+      );
+    }
   },
 );
 

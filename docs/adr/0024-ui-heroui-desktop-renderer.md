@@ -56,10 +56,11 @@ src/renderer/
   app/                    画面全体の共通: AppProviders（Provider）・theme（配色）・AppShell（骨格）
   components/             画面をまたぐ部品: StatusBand（状態帯）・StatusText（記号＋文言）・Section（見出しと区切り線の欄）・
                           FingerprintGrid（指紋の 4 × 4 の格子）・AppFooter（閉じる・終了）
-  state/                  純粋な関数（desktop-state・connection-state・hub-state・status-lines）と、限定 API とつなぐフック
+  state/                  純粋な関数（desktop-state・connection-state・hub-state・home-state・status-lines）と、限定 API とつなぐフック
   screens/device/         端末の画面: DeviceScreen・StopBanner（停止中の帯）・ConnectionSection・PowerLogDetails
   screens/pairing/        登録の画面: PairingScreen・PairingPanel（手順 1〜4）
-  screens/hub/            中枢の画面の本体: HubPanels（Tabs・申請・端末）。承認・拒否・失効の確認は main の OS の確認ダイアログ（ADR 0026）
+  screens/hub/            中枢の画面の本体: HubPanels（Tabs・申請・端末）。承認・拒否・失効の確認は main の OS の確認ダイアログ（ADR 0026）・
+                          HomeNetworkPanel（自宅のネットワーク。登録の確認も main の OS の確認ダイアログ。B03-08、ADR 0022 の追記）
 ```
 
 - 画面の部品は状態と操作を引数で受け取り、限定 API を直接呼ばない。限定 API とつなぐのは `state/` のフックだけ。
@@ -131,7 +132,7 @@ ADR 0014 は状態欄（DesktopStatusBar）を設計 01「いつも見える状�
 3. **--danger を文字に使う部品**: `--danger` は塗りのボタンの面の色で、ダークの面の上の文字としては 3.45:1 に届かない（`--danger` 1 つの値では白文字の面と面の上の文字を両立できない）。FieldError・無効なラベル・必須の * の文字は、`styles.css` の components 層で `--danger-soft-foreground` に寄せる。必須の * は読み上げで「必須」と読ませる（`content: '*' / '必須'`）。
 4. **角丸**: Tabs（一覧・タブ・選ばれた印）と確認のダイアログ・その記号も `--radius-lg` にそろえ、錠剤型と影をやめる。
 5. **中枢の画面**: 申請が 1 件以上あるときは「承認待ちの申請」を「新しい端末を登録する」より先に置く。確認コード（`text-2xl font-semibold`）はワンタイムコード（`text-xl`）より目立たせ、それぞれに役割（「承認の前に、申請した端末の画面と見比べる 8 桁」「登録する端末に入力する 8 桁」）を添える。期限切れ・申請に使われたコードは表示に残さない。操作の結果の文言は押した行のすぐ下に出し、タブの切り替えと「一覧を更新」で消す（定期の取り直しでは消さない）。「一覧を更新」は outline の小さなボタンにする。
-6. **確認のダイアログ**: 本文は `text-foreground`。承認では確認コードを大きな等幅（`text-2xl`）の別の段に出し、題に OS と申請の時刻を入れる。ボタンの読み上げの名前に端末名を入れる（「『合成の端末』を失効する」など）。
+6. **確認のダイアログ**: 本文は `text-foreground`。前に進む操作で元に戻せないもの（自宅の登録し直し）は accent のままにし、元に戻せないことは ⚠（`StatusMark`）と太字の段で示す（danger は失効・拒否のような取り消す操作に使う。B03-08 の UI レビュー L5）。承認では確認コードを大きな等幅（`text-2xl`）の別の段に出し、題に OS と申請の時刻を入れる。ボタンの読み上げの名前に端末名を入れる（「『合成の端末』を失効する」など）。
 7. **登録の画面**: 端末の画面の指紋の格子では最後の組を伏せる（ADR 0025）。失敗の画面でも「手順 n / 4」を残し、ボタンは「最初からやり直す」「宛先を直す」「確かめたので、もう一度登録する」のように何が起きるかを書く。接続できないときは試した宛先を、受取りの結果が分からないときは申請した端末名を本文に入れる。手順名は欄のラベルと重ねない（手順 1 は「宛先の入力」）。
 8. **文言と記号**: 失効済みは中立の ○（muted、新しい tone `muted`）、自宅の判定は `StatusText`（記号は対応表）、電源とロックの記録の出どころは「OS の通知」「Buddy が確かめた」、表示している件数より多いときは「直近 5 件を表示しています（ほか n 件）」。開発の語（main）を出さない（「画面と Buddy の本体の間で通信できませんでした。Buddy を終了して、開き直してください。」）。段落は `text-wrap: pretty` にして、文節の折り返しの凸凹を減らす。
 

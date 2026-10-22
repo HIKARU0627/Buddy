@@ -1040,6 +1040,34 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
   /v1/home-network/registration:
+    get:
+      operationId: getHomeRegistration
+      summary: 自宅の登録の状態
+      description: 中枢の画面（ロック解除済み・hub_local の端末・中枢と同じマシン）だけ。登録済みかと、登録したサブネット・SSID を登録したか・最終更新の時刻を返す。未登録なら registration は null。MAC・SSID・その HMAC・登録した端末は返さない（B03-08、ADR 0022）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+        - hub_screen
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 自宅の登録の状態。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HomeRegistrationState
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
     put:
       operationId: registerHome
       summary: 自宅の登録

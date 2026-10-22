@@ -1,7 +1,7 @@
 // 承認・拒否・失効の前の OS の確認ダイアログの文言（本人の判断 2026-10-22、ADR 0026）。Electron に依存しない純粋な関数で、
 // 値は main が中枢から受け取った一覧の値だけを使う。端末名・OS は申請者の自己申告なので、制御文字・書字方向の制御文字を
 // 取り除き、長さを切る。確認コードの見比べを求める文を必ず入れる。
-import type { AdminConfirmRequest } from './core-link.js';
+import type { AdminConfirmRequest, HomeConfirmRequest } from './core-link.js';
 
 const PLATFORMS: Readonly<Record<string, string>> = {
   macos: 'macOS',
@@ -47,9 +47,56 @@ export interface AdminConfirmText {
   readonly buttons: readonly [string, string];
 }
 
+// 自宅の登録・登録し直しの確認（B03-08）。出すのは伏せた値（MAC は最後の 2 組、SSID は先頭の 1 文字と文字数）
+// だけ。何と見比べるかと、Wi-Fi 名を確かめるかどうか、置き換えて元に戻せないことを書く。
+export function homeConfirmText(request: HomeConfirmRequest): AdminConfirmText {
+  // 数字と単位の間・「MAC アドレス」の間は改行しない空白（U+00A0。画面の文言と同じ。UI レビュー M6）。
+  const nb = '\u00a0';
+  const macAddress = `MAC${nb}アドレス`;
+  const mask = '·';
+  const mac = `${mask.repeat(2)}:${mask.repeat(2)}:${mask.repeat(2)}:${mask.repeat(2)}:${displayText(request.macTail, 5)}`;
+  const ssid =
+    request.includeSsid && request.ssidHint !== null
+      ? `確かめる（${request.ssidHint.first === null ? '' : displayText(request.ssidHint.first, 1)}${mask.repeat(request.ssidHint.length - (request.ssidHint.first === null ? 0 : 1))}・${request.ssidHint.length}${nb}文字）`
+      : '確かめない（Wi-Fi 名は送りません）';
+  const lines = [
+    `ルーターの ${macAddress}（最後の${nb}2${nb}組）: ${mac}`,
+    `ルーターのラベルや管理画面の ${macAddress}の、最後の${nb}2${nb}組と同じかを確かめてください。`,
+    `サブネット: ${displayText(request.subnet, 18)}`,
+    'ルーターの管理画面の、LAN 側のアドレスの範囲です。',
+    `Wi-Fi 名（SSID）: ${ssid}`,
+    ...(request.includeSsid
+      ? []
+      : [
+          `Wi-Fi 名は確かめず、ルーターの ${macAddress}・サブネット・Tailscale の直接経路で判定します。`,
+        ]),
+    '',
+    '登録すると、ほかのマシンの端末は、このネットワークにつながっていて Tailscale で直接つながっているときだけ中枢に接続できます。',
+  ];
+  if (request.ssidChange === 'removed')
+    lines.push('登録し直すと、Wi-Fi 名は確かめなくなります。');
+  if (request.ssidChange === 'added')
+    lines.push(
+      '登録し直すと、Wi-Fi 名も確かめるようになります（Wi-Fi 名の違う端末は接続できなくなります）。',
+    );
+  if (request.replacing)
+    lines.push(
+      '今の登録は置き換わり、元に戻せません。前のネットワークにいる端末は接続できなくなります。',
+    );
+  return {
+    title: request.replacing ? '自宅の登録し直し' : '自宅の登録',
+    message: request.replacing
+      ? '自宅の登録を今のネットワークで置き換えますか'
+      : 'このネットワークを自宅として登録しますか',
+    detail: lines.join('\n'),
+    buttons: ['やめる', request.replacing ? '登録し直す' : '登録する'],
+  };
+}
+
 export function adminConfirmText(
   request: AdminConfirmRequest,
 ): AdminConfirmText {
+  if (request.action === 'register_home') return homeConfirmText(request);
   const name = displayText(request.deviceName) || '（名前なし）';
   const platform =
     PLATFORMS[request.platform] ?? displayText(request.platform, 20);

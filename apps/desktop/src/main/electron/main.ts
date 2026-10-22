@@ -188,6 +188,9 @@ function createWindow(): BrowserWindow {
       window.hide();
     }
   });
+  // 隠れた・最小化された（前面でなくなった）ら、表示している本人の確認（承認・失効・自宅の登録）を閉じて送らない。
+  window.on('hide', () => link?.closeConfirm());
+  window.on('minimize', () => link?.closeConfirm());
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null;
     rendererReady = false;
@@ -392,15 +395,19 @@ function createLink(
     protector: secretProtector(),
     clock: systemClock(),
     platform: devicePlatformOf(process.platform),
+    // 指紋の値は main の中だけで使う（中枢への報告・登録の本文）。画面へは伏せた表示だけを渡す（B03-08）。
     collectHome: async () => {
       const observation = await collector.collect();
       return {
         gateway_mac: observation.gateway_mac,
         subnet: observation.subnet,
         ssid: observation.ssid,
+        unavailable: observation.unavailable,
       };
     },
     networkSignature: () => networkSignatureOf(networkInterfaces()),
+    // 自宅の登録の送る直前に、前面かを確かめ直す（受付の判定と同じ条件）。
+    windowFocused,
     onChange: pushConnection,
     log,
     confirmAdmin: confirmAdminWithDialog,
@@ -417,7 +424,11 @@ async function confirmAdminWithDialog(
   if (window === null || window.isDestroyed() || signal.aborted) return false;
   const text = adminConfirmText(request);
   const result = await dialog.showMessageBox(window, {
-    type: request.action === 'approve' ? 'question' : 'warning',
+    type:
+      request.action === 'approve' ||
+      (request.action === 'register_home' && !request.replacing)
+        ? 'question'
+        : 'warning',
     title: text.title,
     message: text.message,
     detail: text.detail,

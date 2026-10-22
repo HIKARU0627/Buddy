@@ -4903,6 +4903,359 @@
     }
   },
   {
+    "id": "desktop-ipc-home-status",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.home_status",
+      "request_id": "00000000-0000-4000-8000-000000000e51",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-home-status-with-payload",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.home_status",
+      "request_id": "00000000-0000-4000-8000-000000000e52",
+      "payload": {
+        "refresh": true
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e53",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61",
+        "include_ssid": true
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register-with-raw-values",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e54",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61",
+        "include_ssid": true,
+        "gateway_mac": "00:00:5e:00:53:01",
+        "subnet": "192.0.2.0/24",
+        "ssid": "合成の自宅"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register-without-ref",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e55",
+      "payload": {
+        "include_ssid": true,
+        "gateway_mac": "00:00:5e:00:53:01",
+        "subnet": "192.0.2.0/24"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register-without-ssid",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e63",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61",
+        "include_ssid": false
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register-requires-ssid-choice",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e64",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register-ssid-choice-not-boolean",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e65",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61",
+        "include_ssid": "yes"
+      }
+    }
+  },
+  {
+    "id": "desktop-response-home-unregistered",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e56",
+      "channel": "desktop.home_status",
+      "outcome": "ok",
+      "home": {
+        "registration": null,
+        "observation": {
+          "ref": "00000000-0000-4000-8000-000000000e61",
+          "collected_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_tail": "53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid_hint": {
+            "first": "合",
+            "length": 5
+          },
+          "ssid_unavailable_reason": null
+        }
+      },
+      "list_seq": 2
+    }
+  },
+  {
+    "id": "desktop-response-home-registered-wired",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e57",
+      "channel": "desktop.home_register",
+      "outcome": "ok",
+      "home": {
+        "registration": {
+          "subnet": "192.0.2.0/24",
+          "ssid_registered": false,
+          "registered_at": "2030-10-05T00:00:00Z"
+        },
+        "observation": {
+          "ref": "00000000-0000-4000-8000-000000000e61",
+          "collected_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_tail": "53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid_hint": null,
+          "ssid_unavailable_reason": "unavailable"
+        }
+      },
+      "list_seq": 3
+    }
+  },
+  {
+    "id": "desktop-response-home-register-outcome-unknown-with-seq",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e57",
+      "channel": "desktop.home_register",
+      "outcome": "rejected",
+      "reason": "outcome_unknown",
+      "list_seq": 5
+    }
+  },
+  {
+    "id": "desktop-response-home-mac-unavailable",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e58",
+      "channel": "desktop.home_status",
+      "outcome": "ok",
+      "home": {
+        "registration": {
+          "subnet": "192.0.2.0/24",
+          "ssid_registered": true,
+          "registered_at": "2030-10-05T00:00:00Z"
+        },
+        "observation": {
+          "ref": null,
+          "collected_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_tail": null,
+          "subnet": "192.0.2.0/24",
+          "ssid_hint": null,
+          "ssid_unavailable_reason": "redacted"
+        }
+      },
+      "list_seq": 4
+    }
+  },
+  {
+    "id": "desktop-response-home-short-ssid",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e59",
+      "channel": "desktop.home_status",
+      "outcome": "ok",
+      "home": {
+        "registration": null,
+        "observation": {
+          "ref": "00000000-0000-4000-8000-000000000e61",
+          "collected_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_tail": "53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid_hint": {
+            "first": null,
+            "length": 3
+          },
+          "ssid_unavailable_reason": null
+        }
+      },
+      "list_seq": 5
+    }
+  },
+  {
+    "id": "desktop-response-home-read-failed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e5a",
+      "channel": "desktop.home_status",
+      "outcome": "ok",
+      "home": {
+        "registration": {
+          "subnet": "192.0.2.0/24",
+          "ssid_registered": true,
+          "registered_at": "2030-10-05T00:00:00Z"
+        },
+        "observation": null
+      },
+      "list_seq": 6
+    }
+  },
+  {
+    "id": "desktop-response-home-full-mac",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e5b",
+      "channel": "desktop.home_status",
+      "outcome": "ok",
+      "home": {
+        "registration": null,
+        "observation": {
+          "ref": "00000000-0000-4000-8000-000000000e61",
+          "collected_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_tail": "00:00:5e:00:53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid_hint": {
+            "first": "合",
+            "length": 5
+          },
+          "ssid_unavailable_reason": null
+        }
+      },
+      "list_seq": 7
+    }
+  },
+  {
+    "id": "desktop-response-home-raw-ssid",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e5c",
+      "channel": "desktop.home_status",
+      "outcome": "ok",
+      "home": {
+        "registration": null,
+        "observation": {
+          "ref": "00000000-0000-4000-8000-000000000e61",
+          "collected_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_tail": "53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid_hint": {
+            "first": "合",
+            "length": 5
+          },
+          "ssid_unavailable_reason": null,
+          "ssid": "合成の自宅"
+        }
+      },
+      "list_seq": 8
+    }
+  },
+  {
+    "id": "desktop-response-home-ssid-two-characters",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e5d",
+      "channel": "desktop.home_status",
+      "outcome": "ok",
+      "home": {
+        "registration": null,
+        "observation": {
+          "ref": "00000000-0000-4000-8000-000000000e61",
+          "collected_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_tail": "53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid_hint": {
+            "first": "合成",
+            "length": 5
+          },
+          "ssid_unavailable_reason": null
+        }
+      },
+      "list_seq": 9
+    }
+  },
+  {
+    "id": "desktop-response-home-registration-with-hash",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e5e",
+      "channel": "desktop.home_status",
+      "outcome": "ok",
+      "home": {
+        "registration": {
+          "subnet": "192.0.2.0/24",
+          "ssid_registered": true,
+          "registered_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_hmac": "abababababababababababababababababababababababababababababababab"
+        },
+        "observation": {
+          "ref": "00000000-0000-4000-8000-000000000e61",
+          "collected_at": "2030-10-05T00:00:00Z",
+          "gateway_mac_tail": "53:01",
+          "subnet": "192.0.2.0/24",
+          "ssid_hint": {
+            "first": "合",
+            "length": 5
+          },
+          "ssid_unavailable_reason": null
+        }
+      },
+      "list_seq": 10
+    }
+  },
+  {
+    "id": "desktop-response-home-network-changed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e5f",
+      "channel": "desktop.home_register",
+      "outcome": "rejected",
+      "reason": "home_network_changed"
+    }
+  },
+  {
     "id": "desktop-status-locked",
     "schema": "DesktopStatusBar",
     "valid": true,
@@ -5457,6 +5810,52 @@
       "ssid_registered": false,
       "registered_at": "2030-10-05T00:00:00Z",
       "gateway_mac": "00:00:5e:00:53:01"
+    }
+  },
+  {
+    "id": "home-registration-state-unregistered",
+    "schema": "HomeRegistrationState",
+    "valid": true,
+    "value": {
+      "registration": null
+    }
+  },
+  {
+    "id": "home-registration-state-registered",
+    "schema": "HomeRegistrationState",
+    "valid": true,
+    "value": {
+      "registration": {
+        "subnet": "192.0.2.0/24",
+        "ssid_registered": true,
+        "registered_at": "2030-10-05T00:00:00Z"
+      }
+    }
+  },
+  {
+    "id": "home-registration-state-hides-hash",
+    "schema": "HomeRegistrationState",
+    "valid": false,
+    "value": {
+      "registration": {
+        "subnet": "192.0.2.0/24",
+        "ssid_registered": true,
+        "registered_at": "2030-10-05T00:00:00Z"
+      },
+      "ssid_hmac": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+    }
+  },
+  {
+    "id": "home-registration-state-hides-device",
+    "schema": "HomeRegistrationState",
+    "valid": false,
+    "value": {
+      "registration": {
+        "subnet": "192.0.2.0/24",
+        "ssid_registered": true,
+        "registered_at": "2030-10-05T00:00:00Z",
+        "registered_by_device_id": "00000000-0000-4000-8000-000000000e62"
+      }
     }
   },
   {

@@ -1,7 +1,7 @@
 // UI レンダラーの画面の切り替え（ADR 0014・0015・0024・0025・0026）。
 // 限定 API（preload の invoke・onNotification）を読めなければ、その旨だけを出す。
 // 未登録・再登録が必要・登録の途中なら登録の画面、それ以外は端末の画面。中枢の画面の端末（main が中枢に確かめた
-// hub_screen）なら、端末の画面の本体を「承認待ちの申請」「登録済みの端末」「この端末」の Tabs にする。
+// hub_screen）なら、端末の画面の本体を「端末の登録」「登録済みの端末」「自宅のネットワーク」「このマシンの接続」の Tabs にする。
 // ロック中・ロック状態不明では main が接続の内容を隠すので、端末の画面（内容を隠した状態帯）になる。
 // 画面を足すときは screens/<名前>/ に置き、ここで切り替える。
 import { useEffect, useState } from 'react';
@@ -12,6 +12,7 @@ import { desktopApi } from './desktop-api.js';
 import type { BuddyDesktopApi } from './desktop-api.js';
 import { ConnectionSection } from './screens/device/ConnectionSection.js';
 import { DeviceScreen } from './screens/device/DeviceScreen.js';
+import { HomeNetworkPanel } from './screens/hub/HomeNetworkPanel.js';
 import { HubTabs } from './screens/hub/HubPanels.js';
 import { PairingScreen } from './screens/pairing/PairingScreen.js';
 import {
@@ -21,6 +22,7 @@ import {
   shownConnection,
 } from './state/connection-state.js';
 import { useDesktopState, useNow } from './state/use-desktop-state.js';
+import { useHomeState } from './state/use-home-state.js';
 import { useHubState } from './state/use-hub-state.js';
 
 function ApiUnavailable() {
@@ -54,6 +56,10 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   const hubScreen = mode !== 'off';
   const locked = state.status?.visibility !== 'shown';
   const hub = useHubState(api, mode, locked);
+  // 自宅のネットワーク（B03-08）。接続を待つ間も最後の表示を残し、操作だけを止める。
+  const home = useHomeState(api, hubScreen);
+  const stopped =
+    state.status?.visibility === 'shown' && state.status.stop_scope !== 'none';
   if (connection !== null && needsPairing(connection))
     return (
       <PairingScreen
@@ -91,14 +97,20 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
                   }
                 : null
             }
-            stopped={
-              state.status?.visibility === 'shown' &&
-              state.status.stop_scope !== 'none'
-            }
+            stopped={stopped}
             thisDevice={
               <ConnectionSection
                 connection={connection}
                 title="このマシンと中枢の接続"
+              />
+            }
+            home={
+              <HomeNetworkPanel
+                state={home.state}
+                actions={home.actions}
+                now={now}
+                paused={mode === 'paused'}
+                stopped={stopped}
               />
             }
           />

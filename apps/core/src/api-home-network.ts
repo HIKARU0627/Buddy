@@ -121,6 +121,7 @@ export interface HomeNetworkGate {
   homeNetwork(input: EnvironmentInput): Promise<boolean>;
   readonly handlers: {
     readonly reportHomeFingerprint: ApiRouteHandler;
+    readonly getHomeRegistration: ApiRouteHandler;
     readonly registerHome: ApiRouteHandler;
   };
   // 認証済みの端末が自宅判定で不成立になったときの通知（接続範囲を失効させた後）。WSS を閉じるのに使う。
@@ -304,6 +305,10 @@ export function createHomeNetworkGate(
 
   const homeNetwork = async (input: EnvironmentInput): Promise<boolean> => {
     const fromBody = BODY_FINGERPRINT_ROUTES.has(input.operationId);
+    // 本文の指紋は要求を受け取った時刻の報告として扱う。判定の時刻（decide の中で読む）より後の時刻にすると、
+    // DB を読む間に時計が進んだだけで「中枢の時計が受け取りより前」（report_clock_inconsistent）になる
+    // （B03-08 の 2 クライアントの試験で見つかった。ADR 0022 の追記）。
+    const receivedAt = options.now();
     const decision = await decide(
       input.device,
       input.remoteAddress,
@@ -312,7 +317,7 @@ export function createHomeNetworkGate(
           const fingerprint = fingerprintOf(input.body?.['home_fingerprint']);
           return fingerprint === null
             ? null
-            : { ...hashed(fingerprint), received_at_ms: options.now() };
+            : { ...hashed(fingerprint), received_at_ms: receivedAt };
         }
         if (input.device === null) return null;
         const found = await options.store.home({
@@ -379,6 +384,28 @@ export function createHomeNetworkGate(
     };
   };
 
+  // 登録の状態（B03-08）。経路の検査（hub_screen）を通った中枢の画面だけが来る。サブネット・SSID を登録したか・
+  // 最終更新の時刻だけを返し、MAC・SSID の HMAC・登録した端末は返さない。
+  const getHomeRegistration: ApiRouteHandler = async () => {
+    const found = await options.store.home({ kind: 'home.get' });
+    if (!found.ok) return rejectWith(503, 'dependency_unavailable', null);
+    return {
+      status: 200,
+      body: {
+        registration:
+          found.value === null
+            ? null
+            : {
+                subnet: found.value.subnet,
+                ssid_registered: found.value.ssid_hmac !== null,
+                registered_at: new Date(
+                  found.value.registered_at,
+                ).toISOString(),
+              },
+      },
+    };
+  };
+
   const registerHome: ApiRouteHandler = async (request) => {
     const requestId = requestIdOf(request.body);
     const device = request.device;
@@ -425,7 +452,7 @@ export function createHomeNetworkGate(
 
   return {
     homeNetwork,
-    handlers: { reportHomeFingerprint, registerHome },
+    handlers: { reportHomeFingerprint, getHomeRegistration, registerHome },
     onDenied(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

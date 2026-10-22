@@ -12,9 +12,14 @@ import { randomUUID, X509Certificate } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createMockTlsKeyStore } from '@buddy/platform';
+import {
+  createMockCommandRunner,
+  createMockTlsKeyStore,
+  createTailscaleStatusSource,
+} from '@buddy/platform';
 import type {
   DesktopConnectionView,
+  DesktopHomeView,
   DesktopIpcResponse,
 } from '@buddy/contracts';
 import type { DesktopIoState } from '@buddy/domain';
@@ -22,6 +27,7 @@ import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
 import type { AdminConfirmRequest } from './core-link.js';
 import { CREDENTIAL_FILE, parseCredential } from './credential-store.js';
+import type { HomeObservation } from './home-reporter.js';
 import { createHubTransport, hubRequest } from './hub-transport.js';
 import type { PinnedHub } from './hub-transport.js';
 import {
@@ -50,6 +56,13 @@ const HOME = {
   gateway_mac: '00:00:5e:00:53:01',
   subnet: '192.0.2.0/24',
   ssid: null,
+};
+// 自宅の Wi-Fi の指紋（文書用の合成値。B03-08 の試験で中枢と B が同じ自宅の LAN にいるとき）。
+const HOME_WIFI: HomeObservation = {
+  gateway_mac: '00:00:5e:00:53:01',
+  subnet: '192.0.2.0/24',
+  ssid: '合成の自宅',
+  unavailable: [],
 };
 
 interface Client {
@@ -86,6 +99,9 @@ async function createClient(
     readonly pollIntervalMs?: number;
     // 受取り（トークンの要求）を送る前に待つ（試験で受取りの時点を決める）。
     readonly beforePickup?: () => Promise<void>;
+    // このマシンのネットワークの指紋（模擬の読み取り。既定は SSID なしの HOME）。関数なら読み取りのたびに呼ぶ
+    // （試験の途中で端末のネットワークを変える）。
+    readonly home?: HomeObservation | (() => HomeObservation);
   } = {},
 ): Promise<Client> {
   const dir = options.dir ?? (await tempDir(t, `bd${name}-`));
@@ -103,7 +119,12 @@ async function createClient(
     protector,
     clock: systemClock(),
     platform: 'windows',
-    collectHome: () => Promise.resolve(HOME),
+    collectHome: () =>
+      Promise.resolve(
+        typeof options.home === 'function'
+          ? options.home()
+          : (options.home ?? HOME),
+      ),
     networkSignature: () => 'fixed',
     onChange: () => {
       if (link) ipc.push(link.view('unlocked'));
@@ -753,11 +774,11 @@ test(
       });
       // main は確認に、中枢から受け取った端末名と確認コード（端末の画面と同じ値）を出した。
       assert.deepEqual(
-        a.confirms.map((entry) => [
-          entry.action,
-          entry.deviceName,
-          entry.claimCheck,
-        ]),
+        a.confirms.flatMap((entry) =>
+          entry.action === 'register_home'
+            ? []
+            : [[entry.action, entry.deviceName, entry.claimCheck]],
+        ),
         [['approve', '合成の端末 B', check]],
       );
       // 受取りの前に「中枢と別のマシン」へ切り替え、B を hub_local でない端末として登録させる。
@@ -848,5 +869,342 @@ test(
       assert.equal(JSON.stringify(b.ipc).includes(secret), false);
     }
     assertNoSecrets([a], [a.token()]);
+  },
+);
+
+// 中枢の Tailscale の状態（模擬の `tailscale status --json`。実機の tailscale は呼ばない）。試験のクライアントは
+// 127.0.0.1 から接続するので、合成のピアのアドレスを 127.0.0.1 にする。direct は直接経路（CurAddr）が自宅の
+// LAN（192.0.2.0/24）の中、derp は中継（CurAddr なし）。
+function mockTailscale(state: { path: 'direct' | 'derp' }) {
+  const runner = createMockCommandRunner(() => ({
+    exitCode: 0,
+    stderr: '',
+    stdout: JSON.stringify({
+      BackendState: 'Running',
+      Self: { TailscaleIPs: ['100.64.0.1'] },
+      Peer: {
+        'nodekey:synthetic': {
+          TailscaleIPs: ['127.0.0.1'],
+          ...(state.path === 'direct'
+            ? { CurAddr: '192.0.2.23:41641', Relay: 'tok' }
+            : { Relay: 'tok' }),
+        },
+      },
+    }),
+  }));
+  return createTailscaleStatusSource({
+    runner,
+    commands: ['tailscale'],
+    ttlMs: 0,
+  });
+}
+
+function homeOf(response: DesktopIpcResponse): DesktopHomeView {
+  assert(
+    response.outcome === 'ok' && 'home' in response,
+    JSON.stringify(response),
+  );
+  return response.home;
+}
+
+// 申請までの画面の流れ（指紋の確認 → コード）を進め、申請が拒否されたときの失敗を返す。
+async function claimRefused(
+  client: Client,
+  hub: TestHub,
+  code: string,
+): Promise<string | null> {
+  const begin = client.invoke('desktop.pairing_begin', {
+    host: '127.0.0.1',
+    port: hub.port,
+  });
+  assert.equal(begin.outcome, 'ok');
+  await waitUntil(
+    () => client.view().pairing?.step === 'fingerprint_check',
+    `${client.name} fingerprint`,
+  );
+  const fingerprint = fingerprintOf(hub);
+  const confirmed = client.invoke('desktop.pairing_confirm', {
+    fingerprint,
+    fingerprint_tail: fingerprint.slice(-4),
+  });
+  assert.equal(confirmed.outcome, 'ok');
+  const submitted = client.invoke('desktop.pairing_submit', {
+    pairing_code: code,
+    device_name: `合成の端末 ${client.name}`,
+  });
+  assert.equal(submitted.outcome, 'ok');
+  await waitUntil(
+    () => client.view().pairing?.step === 'failed',
+    `${client.name} refused`,
+  );
+  return client.view().pairing?.failure ?? null;
+}
+
+test(
+  'the hub screen registers the home network through the IPC; a device on another machine is refused before and passes the home check after (B03-08)',
+  { timeout: 90_000 },
+  async (t) => {
+    const dir = await tempDir(t, 'bdn-');
+    // 接続元が中枢と同じマシンか。2 クライアントはどちらも 127.0.0.1 から接続するので、B の申請・受取りの間だけ
+    // 「別のマシン」に切り替えて、B を中枢と別のマシンの端末（hub_local でない）として登録させる。
+    const machine = { same: true };
+    const tailscale: { path: 'direct' | 'derp' } = { path: 'direct' };
+    const hub = await startHub(t, {
+      dataDir: join(dir, 'd'),
+      port: await freePort(),
+      sameMachine: () => machine.same,
+      tailscale: mockTailscale(tailscale),
+    });
+    const a = await createClient(t, 'A', { home: HOME_WIFI });
+    // B の受取りは、A が承認して「別のマシン」に切り替えるまで送らせない。
+    let openGate: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    // B のネットワーク（試験の途中で Wi-Fi 名・ルーターを変える）。
+    let bNetwork: HomeObservation = HOME_WIFI;
+    const b = await createClient(t, 'B', {
+      home: () => bNetwork,
+      beforePickup: () => gate,
+    });
+    a.link.start('unlocked');
+    b.link.start('unlocked');
+    const pairing = hub.handle.pairing;
+    assert(pairing !== null);
+    const first = await pairing.startFirstDevice();
+    assert(first.ok);
+    await pair(a, hub, first.pairing_code, async () => {
+      await waitUntil(() => a.claims.length === 1, 'A claim');
+      const approved = await pairing.approveFirstDevice(first.pairing_id);
+      assert(approved.ok);
+    });
+    const hubScreenReady = () =>
+      waitUntil(
+        () => a.view().link === 'connected' && a.view().hub_screen,
+        'A is the hub screen',
+      );
+    await hubScreenReady();
+    // A が落ち着くまで待つ: 接続中・中枢の画面で、自宅判定による切断（outside_home_network のログ）が
+    // 600 ms（中枢の ping の 3 回分）新しく起きていない。固定の待ち時間に頼らず、「別のマシン」の間に始まった
+    // 判定の失効が後から来ても、その後の再接続（新しい接続範囲）まで待つ。
+    const hubScreenSettled = async () => {
+      const denials = () =>
+        a.logs.filter((code) => code.includes('outside_home_network')).length;
+      let seen = denials();
+      let quietSince = Date.now();
+      await waitUntil(
+        () => {
+          const count = denials();
+          if (count !== seen) {
+            seen = count;
+            quietSince = Date.now();
+          }
+          return (
+            Date.now() - quietSince >= 600 &&
+            a.view().link === 'connected' &&
+            a.view().hub_screen
+          );
+        },
+        'A settled as the hub screen',
+        20_000,
+      );
+    };
+
+    // 登録の前: 中枢の画面は未登録。このマシンのネットワークは伏せて見せる（生の値は main だけが持つ）。
+    const before = homeOf(await a.admin('desktop.home_status', null));
+    assert.equal(before.registration, null);
+    assert.equal(before.observation?.gateway_mac_tail, '53:01');
+    assert.equal(before.observation?.subnet, '192.0.2.0/24');
+    assert.deepEqual(before.observation?.ssid_hint, {
+      first: '合',
+      length: 5,
+    });
+    assert.equal(before.observation?.ssid_unavailable_reason, null);
+
+    // 登録の前に、中枢と別のマシンの B が申請すると、自宅判定（未登録）で拒否され、申請は中枢に届かない。
+    const opened = await a.admin('desktop.pairing_open', null);
+    assert.equal(opened.outcome, 'ok');
+    const code = (opened as { session: { pairing_code: string } }).session
+      .pairing_code;
+    machine.same = false;
+    const refused = await claimRefused(b, hub, code);
+    machine.same = true;
+    assert.equal(refused, 'outside_home_network');
+    assert.equal(b.claims.length, 0);
+    // 「別のマシン」の間に A の購読が自宅判定で閉じられていても、同じマシンに戻れば接続し直す。
+    await hubScreenSettled();
+    const noClaims = await a.admin('desktop.claims_list', null);
+    assert.deepEqual((noClaims as unknown as { claims: unknown[] }).claims, []);
+
+    // 中枢の画面で、確かめた参照を使って自宅を登録する（確認の Dialog は画面の試験で確かめる）。
+    const shown = homeOf(await a.admin('desktop.home_status', null));
+    const ref = shown.observation?.ref;
+    assert(typeof ref === 'string');
+    const registered = homeOf(
+      await a.admin('desktop.home_register', { ref, include_ssid: true }),
+    );
+    assert.equal(registered.registration?.subnet, '192.0.2.0/24');
+    // 登録は、承認・失効と同じ OS の確認（main の confirmAdmin）を経た。出したのは伏せた値だけ。
+    assert.deepEqual(a.confirms.at(-1), {
+      action: 'register_home',
+      replacing: false,
+      macTail: '53:01',
+      subnet: '192.0.2.0/24',
+      includeSsid: true,
+      ssidHint: { first: '合', length: 5 },
+      ssidChange: null,
+    });
+    assert.equal(registered.registration?.ssid_registered, true);
+    assert.equal(typeof registered.registration?.registered_at, 'string');
+    // 中枢は MAC・SSID を HMAC にして保存する（平文を保存しない）。
+    const stored = await hub.handle.store.home({ kind: 'home.get' });
+    assert(stored.ok && stored.value !== null);
+    assert.match(stored.value.gateway_mac_hmac, /^[0-9a-f]{64}$/u);
+    assert.match(String(stored.value.ssid_hmac), /^[0-9a-f]{64}$/u);
+    assert.equal(stored.value.subnet, '192.0.2.0/24');
+    const again = homeOf(await a.admin('desktop.home_status', null));
+    assert.deepEqual(again.registration, registered.registration);
+
+    // 登録の後: B は中枢と別のマシンのまま、自宅の指紋と Tailscale の直接経路で申請・受取り・接続できる。
+    const reopened = await a.admin('desktop.pairing_open', null);
+    assert.equal(reopened.outcome, 'ok');
+    const code2 = (reopened as { session: { pairing_code: string } }).session
+      .pairing_code;
+    machine.same = false;
+    await pair(b, hub, code2, async () => {
+      await waitUntil(() => b.claims.length === 1, 'B claim at home');
+      // 承認は中枢の画面（同じマシン）から。
+      machine.same = true;
+      await hubScreenReady();
+      const listed = await a.admin('desktop.claims_list', null);
+      const claims = (
+        listed as unknown as { claims: { ref: string; claim_check: string }[] }
+      ).claims;
+      assert.equal(claims.length, 1);
+      assert.equal(claims[0]?.claim_check, b.view().pairing?.claim_check);
+      const decided = await a.admin('desktop.claim_decide', {
+        ref: claims[0]?.ref,
+        decision: 'approve',
+      });
+      assert.equal(decided.outcome, 'ok');
+      machine.same = false;
+      openGate();
+    });
+    machine.same = true;
+    // B は中枢と別のマシンの端末（hub_local でない）で、免除ではなく自宅判定を通って接続している。
+    const bView = b.view();
+    assert.equal(bView.link, 'connected');
+    assert.equal(bView.hub_screen, false);
+    assert.equal(bView.home_network?.allowed, true);
+    assert.equal(bView.home_network?.exempt, false);
+    assert.deepEqual(bView.home_network?.reasons, []);
+    const devices = (
+      (await a.admin('desktop.devices_list', null)) as unknown as {
+        devices: Record<string, unknown>[];
+      }
+    ).devices;
+    assert.deepEqual(
+      devices.map((device) => [device['device_name'], device['hub_local']]),
+      [
+        ['合成の端末 A', true],
+        ['合成の端末 B', false],
+      ],
+    );
+    // B は中枢の画面ではないので、自宅のネットワークの画面も経路もない。
+    const bHome = await adminWhenLive(b, 'desktop.home_status', null);
+    assert.equal((bHome as { reason?: string }).reason, 'hub_screen_required');
+
+    // 指紋が同じでも直接経路でなければ通さない: Tailscale が中継（DERP）に変わると B の購読は閉じ、
+    // A（中枢と同じマシン）は接続したまま。直接経路に戻れば B は接続し直す。
+    tailscale.path = 'derp';
+    await waitUntil(
+      () =>
+        b.view().link !== 'connected' &&
+        b.view().link_reason === 'outside_home_network',
+      'B outside the home',
+    );
+    assert.equal(a.view().link, 'connected');
+    tailscale.path = 'direct';
+    await waitUntil(() => b.view().link === 'connected', 'B back at home');
+
+    // Wi-Fi 名（SSID）も確かめるか（本人の判断 2026-10-22。既定は確かめる）。
+    // 確かめる登録では、ルーター・サブネットが同じでも Wi-Fi 名の違う B は拒否される。
+    const reasonsOfB = () => b.view().home_network?.reasons ?? [];
+    bNetwork = { ...HOME_WIFI, ssid: '合成の別の家' };
+    b.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        reasonsOfB().includes('ssid_mismatch') && b.view().link !== 'connected',
+      'B refused by the Wi-Fi name',
+    );
+    assert.deepEqual(reasonsOfB(), ['ssid_mismatch']);
+    assert.equal(a.view().link, 'connected');
+    // 中枢の画面で「Wi-Fi 名も確かめる」を切って登録し直すと、B は自宅判定を通る。
+    const offRef = homeOf(await a.admin('desktop.home_status', null))
+      .observation?.ref;
+    const off = homeOf(
+      await a.admin('desktop.home_register', {
+        ref: offRef,
+        include_ssid: false,
+      }),
+    );
+    assert.equal(off.registration?.ssid_registered, false);
+    b.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        b.view().link === 'connected' &&
+        b.view().home_network?.allowed === true,
+      'B passes without the Wi-Fi name',
+    );
+    assert.deepEqual(reasonsOfB(), []);
+    // 切っていても、ルーターの MAC アドレスが違えば拒否される（残りの指紋と直接経路は確かめる）。
+    bNetwork = {
+      ...HOME_WIFI,
+      gateway_mac: '00:00:5e:00:53:02',
+      ssid: '合成の別の家',
+    };
+    b.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        reasonsOfB().includes('gateway_mac_mismatch') &&
+        b.view().link !== 'connected',
+      'B refused by the router',
+    );
+    assert.deepEqual(reasonsOfB(), ['gateway_mac_mismatch']);
+    // 確かめるように登録し直すと、Wi-Fi 名の違う B はまた拒否される。
+    bNetwork = { ...HOME_WIFI, ssid: '合成の別の家' };
+    const onRef = homeOf(await a.admin('desktop.home_status', null)).observation
+      ?.ref;
+    const on = homeOf(
+      await a.admin('desktop.home_register', {
+        ref: onRef,
+        include_ssid: true,
+      }),
+    );
+    assert.equal(on.registration?.ssid_registered, true);
+    b.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        reasonsOfB().includes('ssid_mismatch') && b.view().link !== 'connected',
+      'B refused again by the Wi-Fi name',
+    );
+    assert.deepEqual(reasonsOfB(), ['ssid_mismatch']);
+    assert.equal(a.view().link, 'connected');
+
+    // MAC・SSID の生の値は、どちらの端末の画面・IPC・ログにも出ない（伏せた表示だけ）。
+    for (const client of [a, b]) {
+      const ipc = JSON.stringify(client.ipc);
+      const logs = client.logs.join('\n');
+      for (const raw of [
+        '00:00:5e:00:53:01',
+        '00:00:5e:00:53:02',
+        '合成の自宅',
+        '合成の別の家',
+      ]) {
+        assert.equal(ipc.includes(raw), false, `${client.name} IPC`);
+        assert.equal(logs.includes(raw), false, `${client.name} log`);
+      }
+    }
+    assertNoSecrets([a, b], [a.token(), b.token()]);
   },
 );

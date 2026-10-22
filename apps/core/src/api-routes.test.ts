@@ -165,7 +165,7 @@ test(
       .map(([id]) => id)
       .sort();
     assert.deepEqual(declared, expected);
-    assert.equal(declared.length, 23);
+    assert.equal(declared.length, 24);
   },
 );
 

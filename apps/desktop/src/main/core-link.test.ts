@@ -1152,6 +1152,31 @@ test(
   },
 );
 
+// ペアリングの開始が 2xx でも本文が契約に合わなければ、始まった（前のコードは使えなくなった）かもしれない。
+// 外部の変更なので outcome_unknown にし、自動で送り直さない（本人の判断 2026-10-22、B03-08 のレビュー）。
+test(
+  'a pairing start answered 2xx with an unexpected body is outcome_unknown and is not sent again',
+  { timeout: 30_000 },
+  async (t) => {
+    const { admin, sent, logs } = await liveHub(t, (request) => {
+      if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+        return ok({ claims: [] });
+      if (request.method === 'POST' && request.path === '/v1/pairing/sessions')
+        return { kind: 'response', status: 201, body: { unexpected: true } };
+      return null;
+    });
+    const opened = await admin('desktop.pairing_open', null);
+    assert.equal(opened['outcome'], 'rejected');
+    assert.equal(opened['reason'], 'outcome_unknown');
+    assert(logs.includes('hub_pairing_open_failed:outcome_unknown'));
+    const starts = () =>
+      sent.filter((entry) => entry === 'POST /v1/pairing/sessions').length;
+    assert.equal(starts(), 1);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(starts(), 1);
+  },
+);
+
 // CR-L2: 承認・失効は適用できたが、その後の一覧の取り直しだけが失敗したときは、拒否ではなく list_refreshed: false。
 test(
   'an applied decision or revocation whose list could not be refreshed is ok with list_refreshed false',

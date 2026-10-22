@@ -269,6 +269,9 @@
       "$ref": "#/$defs/HomeRegistration"
     },
     {
+      "$ref": "#/$defs/HomeRegistrationState"
+    },
+    {
       "$ref": "#/$defs/ConnectionList"
     },
     {
@@ -7279,6 +7282,24 @@
       "additionalProperties": false,
       "description": "登録した自宅（ADR 0022）。MAC と SSID は HMAC だけを保存するので返さない。"
     },
+    "HomeRegistrationState": {
+      "type": "object",
+      "properties": {
+        "registration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HomeRegistration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["registration"],
+      "additionalProperties": false,
+      "description": "自宅の登録の状態（中枢の画面だけ。B03-08、ADR 0022）。未登録なら registration は null。登録済みならサブネット・SSID を登録したか・最終更新の時刻だけを返し、MAC・SSID・その HMAC・登録した端末は返さない。"
+    },
     "ConnectionTargets": {
       "type": "object",
       "properties": {
@@ -7474,7 +7495,9 @@
         "desktop.claim_decide",
         "desktop.devices_list",
         "desktop.device_revoke",
-        "desktop.pairing_open"
+        "desktop.pairing_open",
+        "desktop.home_status",
+        "desktop.home_register"
       ],
       "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。"
     },
@@ -7810,6 +7833,52 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "中枢の画面の端末で、新しい端末のペアリングを始める（ワンタイムコードを出す。B03-06、ADR 0026）。ロック解除済みの画面操作だけ。前のコードは使えなくなる。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.home_status"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "中枢の画面の端末で、自宅の登録の状態と、このマシンが今つながっているネットワークの指紋の伏せた表示を取得する（B03-08、ADR 0022・0026）。main は呼ばれるたびに指紋を集め直し、登録できる（ゲートウェイの MAC とサブネットが取れた）ときだけ参照（ref）を作る。ロック解除済みのときだけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.home_register"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                },
+                "include_ssid": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["ref", "include_ssid"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "直前の desktop.home_status で main が渡した参照のネットワークを自宅として登録する（登録し直すと置き換える。B03-08）。画面は MAC・SSID の値を送らない。include_ssid は Wi-Fi 名（SSID）も確かめるか（本人の判断 2026-10-22。画面の既定は true）で、false なら SSID を送らずに登録する（中枢は SSID を比べない。ルーターの MAC・サブネット・Tailscale の直接経路は確かめる）。SSID が読み取れないときは true でも SSID なしで登録する。main は指紋を集め直し、参照を作ったときと同じときだけ中枢へ送る（違う・読み取れなければ home_network_changed）。ロック解除済みの画面操作だけ（送る直前にもロックと前面を確かめ直す）。画面で確認を挟んでから送る。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -8363,6 +8432,129 @@
       "additionalProperties": false,
       "description": "中枢の画面に出すワンタイムコードと中枢の証明書の指紋（B03-06、ADR 0026）。コードは本人が登録する端末に入力するための表示で、中枢の画面の端末の画面にだけ返す（申請の一覧・端末の一覧・ログには出さない）。hub_endpoint は端末で入力する中枢の宛先（表示用）。"
     },
+    "DesktopHomeView": {
+      "type": "object",
+      "properties": {
+        "registration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HomeRegistration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DesktopHomeObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["registration", "observation"],
+      "additionalProperties": false,
+      "description": "中枢の画面の「自宅のネットワーク」（B03-08、ADR 0022）。registration は中枢の登録（未登録は null）。observation はこのマシンが今つながっているネットワークの伏せた表示で、読み取れなかった（失敗・時間切れ・どの要素も取れない）ときは null。MAC・SSID の生の値とその HMAC を含めない。"
+    },
+    "DesktopHomeObservation": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "collected_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "gateway_mac_tail": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{2}:[0-9a-f]{2}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subnet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HomeSubnet"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ssid_hint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DesktopSsidHint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ssid_unavailable_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["redacted", "ambiguous", "unavailable"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "collected_at",
+        "gateway_mac_tail",
+        "subnet",
+        "ssid_hint",
+        "ssid_unavailable_reason"
+      ],
+      "additionalProperties": false,
+      "description": "このマシン（中枢）が今つながっているネットワークの指紋の伏せた表示（B03-08）。ゲートウェイの MAC は最後の 2 組だけ、サブネットはそのまま、SSID は先頭の 1 文字と文字数だけ。取れない要素は null。ref は登録に使う main の参照で、ゲートウェイの MAC とサブネットの両方が取れたときだけある。ssid_unavailable_reason は SSID が取れない理由（redacted は OS の位置情報の許可がなく伏せられた、ambiguous は無線の接続口が複数、unavailable はそれ以外・有線）で、SSID が取れたときは null。"
+    },
+    "DesktopSsidHint": {
+      "type": "object",
+      "properties": {
+        "first": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        }
+      },
+      "required": ["first", "length"],
+      "additionalProperties": false,
+      "description": "SSID の伏せた表示（B03-08）。length は文字数（Unicode のコードポイントの数）。first は先頭の 1 文字で、SSID が 3 文字以下なら null（短い SSID は先頭の文字で大半が分かるため、文字数だけを出す）。"
+    },
     "DesktopIpcResponse": {
       "oneOf": [
         {
@@ -8571,6 +8763,33 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.home_status", "desktop.home_register"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "home": {
+              "$ref": "#/$defs/DesktopHomeView"
+            },
+            "list_seq": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "main が付ける自宅の要求の通し番号（読み取りはその番号、登録は成功の後の境目）。画面はこれより小さい番号の自宅の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0022・0026）。"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "home", "list_seq"],
+          "additionalProperties": false,
+          "description": "受け付けた。自宅の登録の状態と、このマシンのネットワークの伏せた表示を返す（登録の後は登録した後の状態）。今のネットワークの表示・参照は登録の成否と別で、読み取れなければ登録の後でも null になれる。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -8615,13 +8834,14 @@
                 "pairing_host_not_allowed",
                 "confirmation_declined",
                 "confirmation_pending",
-                "list_superseded"
+                "list_superseded",
+                "home_network_changed"
               ]
             },
             "list_seq": {
               "type": "integer",
               "minimum": 1,
-              "description": "outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号。画面はこれより大きい番号の同じ種類の一覧を受け取るまで、その行を操作させない（ADR 0026）。"
+              "description": "outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。"
             }
           },
           "required": ["request_id", "channel", "outcome", "reason"],

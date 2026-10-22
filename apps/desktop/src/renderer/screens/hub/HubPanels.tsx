@@ -1,5 +1,5 @@
-// 中枢の画面の端末だけに出す本体（設計 02 端末登録と接続、ADR 0024・0026）。Tabs で「承認待ちの申請」
-// 「登録済みの端末」「このマシンの接続」を分ける（状態帯は全画面で共通）。承認・拒否・失効は重い操作として、
+// 中枢の画面の端末だけに出す本体（設計 02 端末登録と接続、ADR 0024・0026）。Tabs で「端末の登録」
+// 「登録済みの端末」「自宅のネットワーク」（B03-08）「このマシンの接続」を分ける（状態帯は全画面で共通）。承認・拒否・失効は重い操作として、
 // main が OS の確認ダイアログで本人に確かめてから送る（本人の判断 2026-10-22、ADR 0026。画面の中の確認は使わない）。
 // 状態と操作は引数で受け取り、限定 API を直接呼ばない。
 // 画面に来るのは main の参照（ref）と表示用の値だけで、申請 ID・端末 ID・申請用の秘密・トークンはない。
@@ -14,6 +14,7 @@ import type {
   DesktopPairingSession,
 } from '@buddy/contracts';
 import { FingerprintGrid } from '../../components/FingerprintGrid.js';
+import { InlineNotice } from '../../components/InlineNotice.js';
 import { Section } from '../../components/Section.js';
 import { StatusText } from '../../components/StatusText.js';
 import { clockOf, remainingOf, splitInFour } from '../../format.js';
@@ -28,6 +29,7 @@ import type { StatusLine } from '../../tones.js';
 
 export const HUB_LABELS = {
   thisMachine: 'このマシンの接続',
+  homeTitle: '自宅のネットワーク',
   registerTab: '端末の登録',
   claimsTitle: '承認待ちの申請',
   devicesTitle: '登録済みの端末',
@@ -65,17 +67,10 @@ function platformOf(platform: string): string {
   return PLATFORM_LABELS[platform] ?? platform;
 }
 
-// 欄・行・ボタンの下に出す操作の結果（失敗は warning の色で role="alert"、適用できたときは success の色で
-// role="status"。R1-M1）。
+// 欄・行・ボタンの下に出す操作の結果（失敗は warning の色と ⚠ で role="alert"、適用できたときは success の色と
+// ● で role="status"。R1-M1。記号は自宅のネットワークのタブと共通の InlineNotice。B03-08 の UI レビュー L8）。
 function NoticeText({ notice }: { readonly notice: HubNotice }) {
-  return (
-    <p
-      role={notice.tone === 'success' ? 'status' : 'alert'}
-      className={`text-sm leading-6 ${notice.tone === 'success' ? 'text-success-soft-foreground' : 'text-warning-soft-foreground'}`}
-    >
-      {notice.text}
-    </p>
-  );
+  return <InlineNotice tone={notice.tone} text={notice.text} />;
 }
 
 const noticeAt = (
@@ -410,7 +405,7 @@ export function DevicesPanel({
   );
 }
 
-export type HubTab = 'device' | 'claims' | 'devices';
+export type HubTab = 'device' | 'claims' | 'devices' | 'home';
 
 // 最小の幅（480px）でもタブの名前を 1 行に収める（折り返さず、狭いときは字と余白を小さくする。UI レビュー 3 回目の未確認）。
 const TAB_CLASS = 'whitespace-nowrap px-1.5 text-xs sm:px-4 sm:text-sm';
@@ -420,6 +415,7 @@ export function HubTabs({
   actions,
   now,
   thisDevice,
+  home,
   initialTab = 'claims',
   paused = null,
   stopped = false,
@@ -436,6 +432,8 @@ export function HubTabs({
   readonly stopped?: boolean;
   // 「このマシンの接続」のタブの中身（中枢との接続の欄）。
   readonly thisDevice: ReactNode;
+  // 「自宅のネットワーク」のタブの中身（B03-08。HomeNetworkPanel）。渡さなければタブを出さない。
+  readonly home?: ReactNode;
   readonly initialTab?: HubTab;
 }) {
   const [tab, setTab] = useState<HubTab>(initialTab);
@@ -501,6 +499,12 @@ export function HubTabs({
               {HUB_LABELS.devicesTitle}
               <Tabs.Indicator />
             </Tabs.Tab>
+            {home === undefined ? null : (
+              <Tabs.Tab id="home" className={TAB_CLASS}>
+                {HUB_LABELS.homeTitle}
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            )}
             <Tabs.Tab id="device" className={TAB_CLASS}>
               {HUB_LABELS.thisMachine}
               <Tabs.Indicator />
@@ -522,6 +526,11 @@ export function HubTabs({
             actions={actions}
           />
         </Tabs.Panel>
+        {home === undefined ? null : (
+          <Tabs.Panel id="home" className="flex flex-col gap-6 pt-4">
+            {home}
+          </Tabs.Panel>
+        )}
         <Tabs.Panel id="device" className="flex flex-col gap-6 pt-4">
           {thisDevice}
         </Tabs.Panel>

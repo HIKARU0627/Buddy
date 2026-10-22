@@ -205,7 +205,7 @@ test('a failed operation is shown under the row that was pressed, and only there
   // 押した行（合成の申請）の中、次の行（別の申請）より前に出る。
   assert.match(
     listed,
-    /合成の申請.*role="alert"[^>]*>中枢に「合成の申請」の承認を送れませんでした。.*別の申請/su,
+    /合成の申請.*role="alert"[^>]*>(?:<[^>]+>)*中枢に「合成の申請」の承認を送れませんでした。.*別の申請/su,
   );
   assert.equal(listed.match(/role="alert"/gu)?.length, 1);
   // 他の欄（登録済みの端末）には出さない。
@@ -580,7 +580,10 @@ test('hub state: a successful decision or revocation is announced at the top of 
       thisDevice={null}
     />,
   );
-  assert.match(shown, /role="status"[^>]*>中枢で「合成の申請」を承認しました/u);
+  assert.match(
+    shown,
+    /role="status"[^>]*>(?:<[^>]+>|●)*中枢で「合成の申請」を承認しました/u,
+  );
   assert.doesNotMatch(shown, /role="alert"/u);
   // 次の操作を送ると消える。
   assert.equal(markSending(approved, decide, approving).notice, null);
@@ -901,6 +904,6 @@ test('hub tabs: the success notice for the claims stays at the top of the tab ev
   // 申請が 0 件で「新しい端末を登録する」が先に来ても、知らせはその上（タブの本文の先頭）。
   assert.match(
     tabs,
-    /role="status"[^>]*>中枢で「合成の申請」を承認しました.*hub-open-heading.*hub-claims-heading/su,
+    /role="status"[^>]*>(?:<[^>]+>|●)*中枢で「合成の申請」を承認しました.*hub-open-heading.*hub-claims-heading/su,
   );
 });

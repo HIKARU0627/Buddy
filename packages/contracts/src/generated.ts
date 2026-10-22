@@ -92,6 +92,7 @@ export type BuddyContract =
   | HomeNetworkStatus
   | HomeRegistrationRequest
   | HomeRegistration
+  | HomeRegistrationState
   | ConnectionList
   | ConnectionSummary
   | OAuthStartRequest
@@ -694,6 +695,19 @@ export type DesktopIpcRequest =
       channel: 'desktop.pairing_open';
       request_id: Id;
       payload: null;
+    }
+  | {
+      channel: 'desktop.home_status';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.home_register';
+      request_id: Id;
+      payload: {
+        ref: Id;
+        include_ssid: boolean;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -763,6 +777,16 @@ export type DesktopIpcResponse =
       session: DesktopPairingSession;
     }
   | {
+      request_id: Id;
+      channel: 'desktop.home_status' | 'desktop.home_register';
+      outcome: 'ok';
+      home: DesktopHomeView;
+      /**
+       * main が付ける自宅の要求の通し番号（読み取りはその番号、登録は成功の後の境目）。画面はこれより小さい番号の自宅の応答を反映しない（届いた順ではなく main の順で比べる。ADR 0022・0026）。
+       */
+      list_seq: number;
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -785,9 +809,10 @@ export type DesktopIpcResponse =
         | 'pairing_host_not_allowed'
         | 'confirmation_declined'
         | 'confirmation_pending'
-        | 'list_superseded';
+        | 'list_superseded'
+        | 'home_network_changed';
       /**
-       * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号。画面はこれより大きい番号の同じ種類の一覧を受け取るまで、その行を操作させない（ADR 0026）。
+       * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。
        */
       list_seq?: number;
     };
@@ -928,7 +953,9 @@ export type DesktopIpcChannel =
   | 'desktop.claim_decide'
   | 'desktop.devices_list'
   | 'desktop.device_revoke'
-  | 'desktop.pairing_open';
+  | 'desktop.pairing_open'
+  | 'desktop.home_status'
+  | 'desktop.home_register';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -3035,6 +3062,12 @@ export interface HomeRegistration {
   ssid_registered: boolean;
   registered_at: UtcTime;
 }
+/**
+ * 自宅の登録の状態（中枢の画面だけ。B03-08、ADR 0022）。未登録なら registration は null。登録済みならサブネット・SSID を登録したか・最終更新の時刻だけを返し、MAC・SSID・その HMAC・登録した端末は返さない。
+ */
+export interface HomeRegistrationState {
+  registration: HomeRegistration | null;
+}
 export interface ConnectionList {
   connections: ConnectionSummary[];
 }
@@ -3124,4 +3157,29 @@ export interface DesktopPairingSession {
   certificate_fingerprint: Hash;
   expires_at: UtcTime;
   hub_endpoint: HubEndpoint;
+}
+/**
+ * 中枢の画面の「自宅のネットワーク」（B03-08、ADR 0022）。registration は中枢の登録（未登録は null）。observation はこのマシンが今つながっているネットワークの伏せた表示で、読み取れなかった（失敗・時間切れ・どの要素も取れない）ときは null。MAC・SSID の生の値とその HMAC を含めない。
+ */
+export interface DesktopHomeView {
+  registration: HomeRegistration | null;
+  observation: DesktopHomeObservation | null;
+}
+/**
+ * このマシン（中枢）が今つながっているネットワークの指紋の伏せた表示（B03-08）。ゲートウェイの MAC は最後の 2 組だけ、サブネットはそのまま、SSID は先頭の 1 文字と文字数だけ。取れない要素は null。ref は登録に使う main の参照で、ゲートウェイの MAC とサブネットの両方が取れたときだけある。ssid_unavailable_reason は SSID が取れない理由（redacted は OS の位置情報の許可がなく伏せられた、ambiguous は無線の接続口が複数、unavailable はそれ以外・有線）で、SSID が取れたときは null。
+ */
+export interface DesktopHomeObservation {
+  ref: Id | null;
+  collected_at: UtcTime;
+  gateway_mac_tail: string | null;
+  subnet: HomeSubnet | null;
+  ssid_hint: DesktopSsidHint | null;
+  ssid_unavailable_reason: ('redacted' | 'ambiguous' | 'unavailable') | null;
+}
+/**
+ * SSID の伏せた表示（B03-08）。length は文字数（Unicode のコードポイントの数）。first は先頭の 1 文字で、SSID が 3 文字以下なら null（短い SSID は先頭の文字で大半が分かるため、文字数だけを出す）。
+ */
+export interface DesktopSsidHint {
+  first: string | null;
+  length: number;
 }

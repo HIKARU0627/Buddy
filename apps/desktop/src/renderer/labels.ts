@@ -49,6 +49,8 @@ export const REJECT_MESSAGES: Readonly<Record<RejectReason, string>> = {
   list_superseded: '一覧は新しい結果に置き換わりました。',
   pairing_host_not_allowed:
     'Tailscale のアドレス（100.x.x.x）か、〜.ts.net の名前を入れてください。',
+  home_network_changed:
+    '確かめている間に、このマシンのネットワークが変わった（または読み取れなくなった）ため、登録しませんでした。「読み取り直す」を押して内容を確かめてから、もう一度登録してください。',
 };
 
 // 操作ごとに言い方を変える拒否（何が拒否されたかと、次の行動）。

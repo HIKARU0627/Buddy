@@ -169,8 +169,8 @@ DB worker に `type: 'home'` のメッセージで `home.register`・`home.get`�
 | 中枢の画面でない端末                                         | main の管理の入口（ADR 0026 の `hub_screen`）で `hub_screen_required`。画面にタブを出さない                                                                                                                                                                                                                                                                                                                      |
 
 - 登録の直前の読み取りの間に切断・登録し直しがあれば `not_connected`、ロックした・不明になったら `device_locked`、ウィンドウが前面でなくなったら `screen_operation_required` で送らない（ロックでは参照も捨て、前面でないときは参照を残す。前面の判定は Electron の層が `windowFocused` として注入する）。読み取れなくなったときも `home_network_changed`（文言は「変わった（または読み取れなくなった）」）。PUT が 2xx でも本文が契約に合わなければ、登録が反映されたかもしれないので `outcome_unknown`。
-- 同時の読み取りは進行中の 1 回にまとめる（route・arp・ipconfig などを並行に何組も動かさない）。画面は、main が参照を捨てる拒否（`home_network_changed`・`entry_not_found`・`device_locked`）の後、読み取り直すまで登録のボタンを置かない。中枢の画面でなくなった後に届いた応答は使わない。
-- 指紋の読み取りは 20 秒（`HOME_COLLECT_TIMEOUT_MS`）で打ち切る。失敗・時間切れ・どの要素も取れないときは `observation: null`（画面は「読み取れませんでした」）。読み取りの結果のログは理由のコード（`hub_home_read_failed`・`hub_home_read_timeout`・`hub_home_read_empty`）だけ。
+- 同時の読み取りは進行中の収集（route・arp・ipconfig などの連鎖）を待つ。収集は、読み取りを時間切れで見限っても終わる（settle する）まで残し、その間の要求も同じ収集を待つ（連鎖を重ねない。PR #79 のコードレビュー Low-1）。登録の直前の読み取り直しは、進行中の収集が終わるのを待ってから新しく 1 回読む（確認の後に始めた読み取りの値と比べる。Low-2）。画面は、main が参照を捨てる拒否（`home_network_changed`・`entry_not_found`・`device_locked`）の後、読み取り直すまで登録のボタンを置かない。中枢の画面でなくなった後に届いた応答は使わない。
+- 指紋の読み取りは 20 秒（`HOME_COLLECT_TIMEOUT_MS`）で見限る（コマンドは止めない。各コマンドは runner の 10 秒で止まる）。失敗・時間切れ・どの要素も取れないときは `observation: null`（画面は「読み取れませんでした」）。読み取りの結果のログは理由のコード（`hub_home_read_failed`・`hub_home_read_timeout`・`hub_home_read_empty`）だけ。
 - `@buddy/client` の要求（`ClientApiRequest`・`ClientConnection.request`）とデスクトップの `hubRequest` に PUT を足した。
 
 ### 伏せ方（画面・IPC に出す値）
@@ -181,6 +181,7 @@ DB worker に `type: 'home'` のメッセージで `home.register`・`home.get`�
 | サブネット         | そのまま                                                                                                                               | 中枢も平文で保存し、端末の判定の理由（`subnet_mismatch`）にも出る値で、秘密ではない |
 | SSID               | 文字数（コードポイントの数）と、4 文字以上なら先頭の 1 文字（`ssid_hint`）。取れなければ理由（`redacted`・`ambiguous`・`unavailable`） | 3 文字以下の SSID は先頭の文字で大半が分かるため、文字数だけにする                  |
 
+- 残るリスク（本人の承認済みの伏せ方を保つ。2026-10-22）: MAC の最後の 2 組と SSID の先頭 1 文字・文字数を並べると、MAC の末尾を含む既定の SSID のルーターでは SSID がほぼ推し量れるが、SSID は電波で、MAC は LAN の中で見える値なので、画面を見られたときの追加の害は小さいと判断した（PR #79 のコードレビューの要確認）。
 - 生の値（MAC・SSID）は main の中だけで使う（中枢への報告・登録の本文）。画面・IPC・ログに出さない。意味検査（`scripts/contract-tools.mjs`・`main/contract.ts`）で、参照は MAC とサブネットがあるときだけ、SSID は伏せた表示か理由のどちらか一方、3 文字以下で先頭の文字を出さない、どの要素もない表示を作らない、を確かめる。
 - 画面（HeroUI、ADR 0024 の約束）は中枢の画面の Tabs の「自宅のネットワーク」（ADR 0026）。登録・登録し直しは確認の AlertDialog を挟む。UI レビュー 2 回目の約束（ADR 0024 の追記）に合わせ、読み取りの失敗は warning の Alert（⚠ の記号）、「読み取り直す」は outline の小さなボタン、操作の結果の文言は押したボタンのすぐ下、確認のダイアログでは確かめる値を大きな等幅で値ごとの段に出す。
 

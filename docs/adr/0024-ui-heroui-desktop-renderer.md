@@ -55,10 +55,11 @@ src/renderer/
   app/                    画面全体の共通: AppProviders（Provider）・theme（配色）・AppShell（骨格）
   components/             画面をまたぐ部品: StatusBand（状態帯）・StatusText（記号＋文言）・Section（見出しと区切り線の欄）・
                           FingerprintGrid（指紋の 4 × 4 の格子）・AppFooter（閉じる・終了）
-  state/                  純粋な関数（desktop-state・connection-state・hub-state・status-lines）と、限定 API とつなぐフック
+  state/                  純粋な関数（desktop-state・connection-state・hub-state・home-state・status-lines）と、限定 API とつなぐフック
   screens/device/         端末の画面: DeviceScreen・StopBanner（停止中の帯）・ConnectionSection・PowerLogDetails
   screens/pairing/        登録の画面: PairingScreen・PairingPanel（手順 1〜4）
-  screens/hub/            中枢の画面の本体: HubPanels（Tabs・申請・端末）・ConfirmDialog（ADR 0026）
+  screens/hub/            中枢の画面の本体: HubPanels（Tabs・申請・端末）・ConfirmDialog（ADR 0026）・
+                          HomeNetworkPanel（自宅のネットワーク。B03-08、ADR 0022 の追記）
 ```
 
 - 画面の部品は状態と操作を引数で受け取り、限定 API を直接呼ばない。限定 API とつなぐのは `state/` のフックだけ。

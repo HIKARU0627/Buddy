@@ -1017,3 +1017,73 @@ test(
     );
   },
 );
+
+test(
+  'listening hosts are normalized before the check and only loopback and Tailscale addresses are accepted',
+  { timeout: 30_000 },
+  async (t) => {
+    const store = await startTestStore(t);
+    const identity = await identityFor(t);
+    const create = (host: string) =>
+      createApiServer({
+        host,
+        port: 0,
+        identity,
+        store,
+        coreInstanceId: CORE_INSTANCE,
+      });
+    // 手書きの期待値（B03-07 M2）。全アドレスの別の書き方（IPv4-mapped の 16 進・省略なし・IPv4 の表記）は
+    // すり抜けない。許可する範囲（ループバック・Tailscale）の外と zone つきも拒否する。
+    const refused: readonly (readonly [string, string])[] = [
+      ['::ffff:0:0', 'https_host_unspecified'],
+      ['0:0:0:0:0:ffff:0:0', 'https_host_unspecified'],
+      ['::ffff:0.0.0.0', 'https_host_unspecified'],
+      ['::', 'https_host_unspecified'],
+      ['0.0.0.0', 'https_host_unspecified'],
+      ['192.168.1.10', 'https_host_not_allowed'],
+      ['::ffff:192.168.1.10', 'https_host_not_allowed'],
+      ['::ffff:c0a8:10a', 'https_host_not_allowed'],
+      ['100.128.0.1', 'https_host_not_allowed'],
+      ['fe80::1', 'https_host_not_allowed'],
+      ['fe80::1%en0', 'https_host_not_allowed'],
+      ['::1%lo0', 'https_host_not_allowed'],
+      ['localhost', 'https_host_not_ip_address'],
+      ['', 'https_host_not_ip_address'],
+    ];
+    for (const [host, reason] of refused)
+      assert.throws(
+        () => create(host),
+        (error: unknown) =>
+          error instanceof ApiListenError && error.reason === reason,
+        host,
+      );
+    // 許可するアドレスは正規化した形（IPv4-mapped は IPv4、IPv6 は RFC 5952 の形）で待ち受ける。
+    const accepted: readonly (readonly [string, string])[] = [
+      ['127.0.0.1', '127.0.0.1'],
+      ['::ffff:127.0.0.1', '127.0.0.1'],
+      ['::ffff:7f00:1', '127.0.0.1'],
+      ['0:0:0:0:0:ffff:7f00:1', '127.0.0.1'],
+      ['::1', '::1'],
+      ['100.64.0.1', '100.64.0.1'],
+      ['::ffff:100.100.1.2', '100.100.1.2'],
+      ['FD7A:115C:A1E0:0000:0000:0000:0000:0001', 'fd7a:115c:a1e0::1'],
+    ];
+    for (const [host, normalized] of accepted)
+      assert.equal(create(host).host, normalized, host);
+    // 16 進の IPv4-mapped で渡しても 127.0.0.1 で待ち受け、要求を受け付ける。
+    const api = create('::ffff:7f00:1');
+    await api.listen();
+    onCleanup(t, () => api.close(0));
+    const hub = await insertDevice(store, { hubLocal: true });
+    const response = await pinnedRequest(
+      {
+        host: '127.0.0.1',
+        port: api.port,
+        certificatePem: identity.certificatePem,
+        fingerprint: identity.fingerprint,
+      },
+      { method: 'GET', path: '/v1/bootstrap', headers: bearer(hub.token) },
+    );
+    assert.equal(response.status, 200);
+  },
+);

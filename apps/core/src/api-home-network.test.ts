@@ -834,3 +834,124 @@ test(
     assert.equal(response.json?.['code'], 'dependency_unavailable');
   },
 );
+
+test(
+  'L1: repeated failures of the same device revoke its scopes once until the check passes again (B03-07)',
+  { timeout: 30_000 },
+  async (t) => {
+    const started = await start(t);
+    // 自宅を登録し、遠隔の端末の一致する報告を入れる（HTTP。報告の時刻は T0）。
+    assert.equal((await register(started)).status, 200);
+    assert.equal(
+      (await report(started, started.remote.token, HOME)).status,
+      200,
+    );
+    // DB への失効の書込み（home.revoke_scopes）を数える store。他の命令はそのまま渡す。
+    const revokes: string[] = [];
+    const counting = new Proxy(started.store, {
+      get(target, property) {
+        const value: unknown = Reflect.get(target, property);
+        if (typeof value !== 'function') return value;
+        const method = value as (
+          this: DbWorkerClient,
+          ...args: unknown[]
+        ) => unknown;
+        if (property !== 'home') return method.bind(target);
+        return (op: { readonly kind: string; readonly device_id?: string }) => {
+          if (op.kind === 'home.revoke_scopes')
+            revokes.push(String(op.device_id));
+          return method.call(target, op);
+        };
+      },
+    });
+    const path = { direct: true };
+    const clock = { now: T0 };
+    const gate = createHomeNetworkGate({
+      store: counting,
+      key: HomeNetworkKey.fromDataKey(DATA_KEY),
+      tailscale: createTailscaleStatusSource({
+        runner: createMockCommandRunner(() => ({
+          exitCode: 0,
+          stderr: '',
+          stdout: JSON.stringify({
+            BackendState: 'Running',
+            Self: { TailscaleIPs: ['100.64.0.1'] },
+            Peer: {
+              'nodekey:synthetic': {
+                TailscaleIPs: ['127.0.0.1'],
+                ...(path.direct ? DIRECT : { CurAddr: '', Relay: 'tok' }),
+              },
+            },
+          }),
+        })),
+        commands: ['tailscale'],
+        ttlMs: 0,
+      }),
+      sameMachine: () => false,
+      now: () => clock.now,
+    });
+    const denied: string[] = [];
+    gate.onDenied((deviceId) => denied.push(deviceId));
+    const check = (device: TestDevice) =>
+      Promise.resolve(
+        gate.homeNetwork({
+          operationId: 'getBootstrap',
+          device: device.device,
+          remoteAddress: '127.0.0.1',
+          params: {},
+          body: null,
+          declaredLockState: null,
+        }),
+      );
+    const issue = async (device: TestDevice) => {
+      const id = randomUUID();
+      const issued = await started.store.device({
+        kind: 'scope.issue',
+        command_scope_id: id,
+        device_id: device.device.device_id,
+        core_instance_id: CORE_INSTANCE,
+        issued_at: clock.now,
+        expires_at: clock.now + 3_600_000,
+      });
+      assert(issued.ok);
+      return id;
+    };
+    const remote = started.remote;
+
+    assert.equal(await check(remote), true);
+    const first = await issue(remote);
+    // DERP に変わった（不成立）。続けて 5 回拒否しても、失効の書込みは 1 回だけ。WSS を閉じる通知は毎回。
+    path.direct = false;
+    for (let i = 0; i < 5; i += 1) {
+      assert.equal(await check(remote), false, `denial ${i + 1}`);
+      clock.now += 1_000;
+    }
+    assert.deepEqual(revokes, [remote.device.device_id]);
+    assert.equal(denied.length, 5);
+    assert.equal(await scopeRevoked(started, first), true);
+
+    // 自宅判定が成り立った後に発行した接続範囲は、次の不成立で失効させる。
+    path.direct = true;
+    assert.equal(await check(remote), true);
+    const second = await issue(remote);
+    path.direct = false;
+    assert.equal(await check(remote), false);
+    assert.equal(revokes.length, 2);
+    assert.equal(await scopeRevoked(started, second), true);
+
+    // 間引く間隔（手書きの値 60 秒）を過ぎたら、もう一度書く。
+    clock.now += 59_999;
+    assert.equal(await check(remote), false);
+    assert.equal(revokes.length, 2);
+    clock.now += 1;
+    assert.equal(await check(remote), false);
+    assert.equal(revokes.length, 3);
+    // 時計が戻ったときは書く（安全側）。
+    clock.now -= 10_000;
+    assert.equal(await check(remote), false);
+    assert.equal(revokes.length, 4);
+    // 別の端末は別に数える。
+    assert.equal(await check(started.hub), false);
+    assert.deepEqual(revokes.slice(4), [started.hub.device.device_id]);
+  },
+);

@@ -643,7 +643,7 @@ paths:
     get:
       operationId: streamEvents
       summary: イベントの購読（WSS）
-      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
+      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。同じ端末の同時の購読は上限（4）までで、超えれば切り替えずに 429、同時の切り替えで後から開いたものは理由つきで閉じる。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
       x-buddy-core-checks: *id001
       parameters:
         - $ref: '#/components/parameters/Cursor'
@@ -670,6 +670,7 @@ paths:
         '1003': 端末からメッセージを受け取った（unsupported_data）。端末から送るメッセージは定義していない
         '1011': 中枢の DB を読めない（dependency_unavailable）
         '1013': 送り先の詰まり（slow_consumer）。cursor から接続し直す
+        '4429': 同じ端末の同時の購読の数の上限（too_many_streams）。開いている購読を閉じてから接続し直す
   /v1/live/sessions:
     post:
       operationId: createLiveSession
@@ -967,13 +968,14 @@ paths:
     post:
       operationId: revokeDevice
       summary: 端末の失効
-      description: 登録済み・ロック解除済み端末の画面操作だけ。失効した端末の接続範囲・リースを無効にし、開いている接続（WSS）を閉じる（02、01）。存在しない端末は 409。失効済みの端末は失効の時刻を変えずに返す（ADR 0021）。
+      description: 中枢のロック解除済みの画面だけ（乗っ取られた端末に他の端末を締め出させないため。中枢の画面が使えないときは中枢のマシンの CLI で失効する）。失効した端末の接続範囲・リースを無効にし、開いている接続（WSS）を閉じる（02、01）。存在しない端末は 409。失効済みの端末は失効の時刻を変えずに返す（ADR 0021）。
       x-buddy-core-checks:
         - device_token
         - home_network
         - command_scope
         - unlocked
         - screen_operation
+        - hub_screen
       parameters:
         - $ref: '#/components/parameters/DeviceId'
         - $ref: '#/components/parameters/InputOrigin'

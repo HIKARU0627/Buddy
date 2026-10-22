@@ -1074,6 +1074,71 @@ test(
 );
 
 test(
+  'revocation is accepted only from the hub screen, so another device cannot lock devices out (B03-07)',
+  { timeout: 60_000 },
+  async (t) => {
+    const dataDir = join(await tempDir(t, 'buddy-pairing-hubrv-'), 'data');
+    const hub = await startHub(t, dataDir);
+    const first = await pairFirstDevice(hub);
+    const firstScope = await bootstrapScope(hub, first.token);
+    // 中枢の外から受け取った端末（hub_local ではない）を 2 台。
+    const other = await pairDevice(hub, first.token, firstScope, {
+      remote: true,
+    });
+    const otherScope = await bootstrapScope(hub, other.token);
+    const third = await pairDevice(hub, first.token, firstScope, {
+      remote: true,
+    });
+    const revoke = (token: string, scope: string, deviceId: string) =>
+      screenRequest(
+        hub.target,
+        token,
+        'POST',
+        `/v1/devices/${deviceId}/revoke`,
+        { request_id: randomUUID(), command_scope_id: scope },
+      );
+    const active = async (deviceId: string) => {
+      const found = await hub.handle.store.pairing({
+        kind: 'devices.find',
+        device_id: deviceId,
+      });
+      assert(found.ok && found.value !== null);
+      return found.value.revoked_at === null;
+    };
+
+    // 中枢の画面でない端末は、他の端末・中枢の画面の端末・自分を失効できない（403）。
+    for (const [target, label] of [
+      [third.deviceId, 'another device'],
+      [first.deviceId, 'the hub screen device'],
+      [other.deviceId, 'itself'],
+    ] as const)
+      assertRejected(
+        await revoke(other.token, otherScope, target),
+        403,
+        'hub_screen_required',
+        `revoke ${label} from a remote device`,
+      );
+    // hub_local の端末のトークンでも、中枢の外からの接続なら 403。
+    hub.machine.same = false;
+    assertRejected(
+      await revoke(first.token, firstScope, third.deviceId),
+      403,
+      'hub_screen_required',
+      'hub token from outside',
+    );
+    hub.machine.same = true;
+    for (const deviceId of [first.deviceId, other.deviceId, third.deviceId])
+      assert.equal(await active(deviceId), true, deviceId);
+    // 中枢の画面からは失効できる。
+    const revoked = await revoke(first.token, firstScope, third.deviceId);
+    assert.equal(revoked.status, 200);
+    assert.equal(revoked.json?.['device_id'], third.deviceId);
+    assert.equal(await active(third.deviceId), false);
+    assert.equal(await active(other.deviceId), true);
+  },
+);
+
+test(
   'a regenerated certificate is refused by existing devices and nothing is re-registered automatically',
   { timeout: 60_000 },
   async (t) => {

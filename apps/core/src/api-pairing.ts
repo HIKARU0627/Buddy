@@ -6,7 +6,7 @@
 // - 申請では端末が作った申請用の秘密の SHA-256 だけを受け取り、トークン（256 ビット）は承認の後に秘密と
 //   交換で 1 回だけ渡す。DB にはトークンの hash（ASCII の 43 文字の SHA-256）だけを置く。
 // - 照合（コード・秘密）は DB worker の transaction の中で timingSafeEqual で行う（pairing-store.ts）。
-// - 開始・承認は中枢の画面（hub_local の端末で、接続元が中枢と同じマシン）だけ。
+// - 開始・承認・失効は中枢の画面（hub_local の端末で、接続元が中枢と同じマシン）だけ（失効は B03-07）。
 // - 中枢の証明書が変わったら自動で承認しない。ペアリングの開始時の指紋と今の指紋が違う申請は承認・受取りが
 //   できず、違う指紋で登録した端末は起動時に失効する（再登録にする）。
 // - ログ・例外・応答の拒否にコード・秘密・トークン・hash を入れない（ID と理由コードだけ）。
@@ -19,7 +19,7 @@ import {
   randomUUID,
 } from 'node:crypto';
 import { isIP } from 'node:net';
-import { tokenPickup } from '@buddy/domain';
+import { listenAddressDecision, tokenPickup } from '@buddy/domain';
 import {
   PAIRING_CLAIM_TTL_MS,
   PAIRING_MAX_ATTEMPTS,
@@ -66,6 +66,11 @@ export function isSameMachine(
   if (isIP(remote) === 0) return false;
   if (remote === '::1' || (isIP(remote) === 4 && remote.startsWith('127.')))
     return true;
+  // 待ち受けのアドレスは、待ち受けと同じ正規化（ADR 0020、B03-07 M2）をした形と比べる。
+  // 接続元のアドレスも同じ正規化にかけ、IPv6 の書き方の違いで食い違わないようにする。
+  const listen = listenAddressDecision(listenHost);
+  const peer = listenAddressDecision(remote);
+  if (listen.ok && peer.ok) return peer.address === listen.address;
   return remote === normalize(listenHost);
 }
 

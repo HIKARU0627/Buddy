@@ -5,6 +5,7 @@
 //   homeNetworkDecision）。端末認証の代わりではなく追加の条件で、端末トークンの照合はこの前に済んでいる。
 // - 不成立（取得できない・確認できないを含む）は 403 outside_home_network。認証済みの端末なら、その端末の有効な
 //   接続範囲（command_scope）を失効させ、onDenied で知らせる（WSS を閉じる差し込み口。配信は B03-04）。
+//   同じ端末を直近（60 秒以内）に失効させ、その後に自宅判定が成り立っていなければ DB へは書かない（B03-07 L1）。
 //   指紋だけの許可に切り替えない。
 // - 端末の報告は受け取った時刻（中枢の時計）から 6 分の間だけ使う。認証前の経路（申請・受取り）は、本文の
 //   home_fingerprint をその時点の報告として使う（登録前の端末は報告を持たない）。
@@ -39,6 +40,9 @@ import type { EnvironmentInput } from './api-environment.js';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiErrorCode, ApiRouteHandler } from './api-server.js';
 import type { JsonObject } from './strict-json.js';
+
+// 自宅判定の不成立で、同じ端末の接続範囲を続けて失効させない間隔（B03-07 L1、仮の値。理由は ADR 0022）。
+export const HOME_REVOKE_SUPPRESS_MS = 60_000;
 
 // データ鍵から自宅の HMAC の鍵を導く文脈。データ鍵が変われば DB を開けない（ADR 0019）ので、鍵の版は持たない。
 export const HOME_NETWORK_KEY_CONTEXT = 'buddy.home_network.hmac.v1';
@@ -247,23 +251,48 @@ export function createHomeNetworkGate(
     });
   };
 
+  // 端末ごとの直近の失効の時刻（中枢の時計、B03-07 L1）。自宅判定が成り立ったら消す。
+  const recentlyRevoked = new Map<string, number>();
+  const passed = (device: DeviceRecord | null) => {
+    if (device !== null) recentlyRevoked.delete(device.device_id);
+  };
+
   // 不成立の後始末: 接続範囲の失効（リースは接続範囲に結び付くので一緒に無効になる）と通知。
+  // 同じ端末を直近（HOME_REVOKE_SUPPRESS_MS の内）に失効させ、その後に自宅判定が成り立っていなければ書かない
+  // （接続範囲の発行（bootstrap）も自宅判定を求めるので、新しい接続範囲はない）。不成立のたびに DB へ書かない。
+  // 時計が戻ったとき・前の失効を書けなかったときは書く（安全側）。WSS を閉じる通知は毎回行う。
   const deny = async (
     device: DeviceRecord,
     reasons: readonly HomeNetworkReason[],
   ): Promise<void> => {
-    const revoked = await options.store.home({
-      kind: 'home.revoke_scopes',
-      device_id: device.device_id,
-      revoked_at: options.now(),
-    });
-    log(
-      `自宅判定が成り立ちません（端末 ${device.device_id}、理由: ${reasons.join(', ')}）。${
-        revoked.ok
-          ? `接続範囲を ${revoked.value.revoked_scopes} 件失効させました。`
-          : `接続範囲を失効できませんでした（${revoked.reasons.join(', ')}）。`
-      }`,
-    );
+    const at = options.now();
+    const last = recentlyRevoked.get(device.device_id);
+    if (
+      last === undefined ||
+      at < last ||
+      at - last >= HOME_REVOKE_SUPPRESS_MS
+    ) {
+      const revoked = await options.store.home({
+        kind: 'home.revoke_scopes',
+        device_id: device.device_id,
+        revoked_at: at,
+      });
+      if (revoked.ok) {
+        recentlyRevoked.set(device.device_id, at);
+        // 古い記録を片付ける（端末の数を際限なく増やさない）。
+        if (recentlyRevoked.size > 1024)
+          for (const [key, value] of recentlyRevoked)
+            if (at < value || at - value >= HOME_REVOKE_SUPPRESS_MS)
+              recentlyRevoked.delete(key);
+      }
+      log(
+        `自宅判定が成り立ちません（端末 ${device.device_id}、理由: ${reasons.join(', ')}）。${
+          revoked.ok
+            ? `接続範囲を ${revoked.value.revoked_scopes} 件失効させました。`
+            : `接続範囲を失効できませんでした（${revoked.reasons.join(', ')}）。`
+        }`,
+      );
+    }
     for (const listener of listeners) {
       try {
         listener(device.device_id, reasons);
@@ -295,8 +324,8 @@ export function createHomeNetworkGate(
       },
       fromBody,
     );
-    if (!decision.allowed && input.device !== null)
-      await deny(input.device, decision.reasons);
+    if (decision.allowed) passed(input.device);
+    else if (input.device !== null) await deny(input.device, decision.reasons);
     return decision.allowed;
   };
 
@@ -335,7 +364,8 @@ export function createHomeNetworkGate(
     const decision = await decide(device, request.remoteAddress, () =>
       Promise.resolve(reportView(stored.value)),
     );
-    if (!decision.allowed) await deny(device, decision.reasons);
+    if (decision.allowed) passed(device);
+    else await deny(device, decision.reasons);
     return {
       status: 200,
       body: {

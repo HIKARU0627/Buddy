@@ -53,22 +53,24 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [端末側の接続とデスクトップの中枢への接続・2 クライアントの試験](docs/adr/0025-b03-client-desktop-connection.md)
 - [中枢の画面の端末で申請の承認と端末の失効を行う](docs/adr/0026-b03-hub-screen-approval.md)
 - [下書き・用事の intent、内容版の更新、LocalCommand の遷移、connector の能力と工程の型](docs/adr/0027-b04-operation-kinds-and-transitions.md)
+- [模擬 provider・故障注入・Core 側のアダプター（B04-02）](docs/adr/0028-b04-mock-provider.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成
 
-| 場所                 | 責務・現在の状態                                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `packages/contracts` | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続                                          |
-| `packages/domain`    | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成                                                |
-| `packages/client`    | 端末側の接続の状態機械（bootstrap・スナップショット・購読・再接続）。Node・DOM・Electron なし（B03）       |
-| `packages/storage`   | Core の保存アダプター。SQLite・暗号化・DB worker・内容 hash（B02）                                         |
-| `packages/platform`  | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う                                          |
-| `apps/core`          | Electron から独立した Node.js 中枢。起動・停止・排他・制御・DB（B01・B02）・HTTPS の受付（B03）            |
-| `apps/desktop`       | Electron / React（HeroUI）クライアント。トレイ常駐・端末状態の記録（B01）、中枢への接続・ペアリング（B03） |
-| `tests`              | 合成データ・統合試験の配置先。製品試験は未実装                                                             |
-| `scripts`            | 環境確認、設計資料の整合検査、試験実行                                                                     |
-| `docs/design`        | 公開できる設計概要と非公開原本の参照手順                                                                   |
+| 場所                  | 責務・現在の状態                                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `packages/contracts`  | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続                                          |
+| `packages/domain`     | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成                                                |
+| `packages/client`     | 端末側の接続の状態機械（bootstrap・スナップショット・購読・再接続）。Node・DOM・Electron なし（B03）       |
+| `packages/storage`    | Core の保存アダプター。SQLite・暗号化・DB worker・内容 hash（B02）                                         |
+| `packages/connectors` | 模擬 provider（合成メール・予定）・故障注入・Core 側のアダプター（B04-02。実 provider は B08・B09）        |
+| `packages/platform`   | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う                                          |
+| `apps/core`           | Electron から独立した Node.js 中枢。起動・停止・排他・制御・DB（B01・B02）・HTTPS の受付（B03）            |
+| `apps/desktop`        | Electron / React（HeroUI）クライアント。トレイ常駐・端末状態の記録（B01）、中枢への接続・ペアリング（B03） |
+| `tests`               | 合成データ・統合試験の配置先。製品試験は未実装                                                             |
+| `scripts`             | 環境確認、設計資料の整合検査、試験実行                                                                     |
+| `docs/design`         | 公開できる設計概要と非公開原本の参照手順                                                                   |
 
 ## コマンド
 

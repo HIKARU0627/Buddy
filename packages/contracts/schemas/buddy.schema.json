@@ -7844,15 +7844,18 @@
               "properties": {
                 "ref": {
                   "$ref": "#/$defs/Id"
+                },
+                "include_ssid": {
+                  "type": "boolean"
                 }
               },
-              "required": ["ref"],
+              "required": ["ref", "include_ssid"],
               "additionalProperties": false
             }
           },
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
-          "description": "直前の desktop.home_status で main が渡した参照のネットワークを自宅として登録する（登録し直すと置き換える。B03-08）。画面は MAC・SSID の値を送らない。main は指紋を集め直し、参照を作ったときと同じときだけ中枢へ送る（違う・読み取れなければ home_network_changed）。ロック解除済みの画面操作だけ。画面で確認を挟んでから送る。"
+          "description": "直前の desktop.home_status で main が渡した参照のネットワークを自宅として登録する（登録し直すと置き換える。B03-08）。画面は MAC・SSID の値を送らない。include_ssid は Wi-Fi 名（SSID）も確かめるか（本人の判断 2026-10-22。画面の既定は true）で、false なら SSID を送らずに登録する（中枢は SSID を比べない。ルーターの MAC・サブネット・Tailscale の直接経路は確かめる）。SSID が読み取れないときは true でも SSID なしで登録する。main は指紋を集め直し、参照を作ったときと同じときだけ中枢へ送る（違う・読み取れなければ home_network_changed）。ロック解除済みの画面操作だけ（送る直前にもロックと前面を確かめ直す）。画面で確認を挟んでから送る。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"

@@ -400,6 +400,8 @@ function createLink(
       };
     },
     networkSignature: () => networkSignatureOf(networkInterfaces()),
+    // 自宅の登録の送る直前に、前面かを確かめ直す（受付の判定と同じ条件）。
+    windowFocused,
     onChange: pushConnection,
     log,
   });

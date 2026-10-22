@@ -4815,7 +4815,10 @@
     "value": {
       "channel": "desktop.home_register",
       "request_id": "00000000-0000-4000-8000-000000000e53",
-      "payload": { "ref": "00000000-0000-4000-8000-000000000e61" }
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61",
+        "include_ssid": true
+      }
     }
   },
   {
@@ -4827,6 +4830,7 @@
       "request_id": "00000000-0000-4000-8000-000000000e54",
       "payload": {
         "ref": "00000000-0000-4000-8000-000000000e61",
+        "include_ssid": true,
         "gateway_mac": "00:00:5e:00:53:01",
         "subnet": "192.0.2.0/24",
         "ssid": "合成の自宅"
@@ -4841,8 +4845,45 @@
       "channel": "desktop.home_register",
       "request_id": "00000000-0000-4000-8000-000000000e55",
       "payload": {
+        "include_ssid": true,
         "gateway_mac": "00:00:5e:00:53:01",
         "subnet": "192.0.2.0/24"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register-without-ssid",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e63",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61",
+        "include_ssid": false
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register-requires-ssid-choice",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e64",
+      "payload": { "ref": "00000000-0000-4000-8000-000000000e61" }
+    }
+  },
+  {
+    "id": "desktop-ipc-home-register-ssid-choice-not-boolean",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.home_register",
+      "request_id": "00000000-0000-4000-8000-000000000e65",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000e61",
+        "include_ssid": "yes"
       }
     }
   },

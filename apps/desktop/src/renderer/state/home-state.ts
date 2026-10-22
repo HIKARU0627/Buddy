@@ -137,8 +137,9 @@ export function applyHomeFailure(
 export interface HomeActions {
   // このマシンのネットワークを読み取り直し、登録の状態を取り直す。
   readonly refresh: () => void;
-  // 確認の後に、読み取った内容（ref）を自宅として登録する。
-  readonly register: (ref: string) => void;
+  // 確認の後に、読み取った内容（ref）を自宅として登録する。includeSsid は Wi-Fi 名（SSID）も確かめるか
+  // （本人の判断 2026-10-22。画面の既定は確かめる）。
+  readonly register: (ref: string, includeSsid: boolean) => void;
   // 登録の知らせを閉じる。
   readonly dismiss: () => void;
 }
@@ -149,7 +150,10 @@ export function homeActions(
 ): HomeActions {
   return {
     refresh: () => send(request('desktop.home_status', null)),
-    register: (ref) => send(request('desktop.home_register', { ref })),
+    register: (ref, includeSsid) =>
+      send(
+        request('desktop.home_register', { ref, include_ssid: includeSsid }),
+      ),
     dismiss,
   };
 }

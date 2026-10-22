@@ -161,6 +161,8 @@ async function liveLink(
   const shown: unknown[] = [];
   const logs: string[] = [];
   // 試験が決めるこのマシンの指紋（'throw' は読み取りの失敗、'hang' は応答しない、'gate' は release まで待つ）。
+  // ウィンドウが前面か（送る直前の確かめ直しに使う。試験が切り替える）。
+  const focus = { value: true };
   const network: {
     value: HomeObservation | 'throw' | 'hang' | 'gate';
     collects: number;
@@ -269,6 +271,7 @@ async function liveLink(
     onChange: () => shown.push(link.view('unlocked')),
     log: (code) => logs.push(code),
     homeReportIntervalMs: 600_000,
+    windowFocused: () => focus.value,
     ...(options.homeCollectTimeoutMs === undefined
       ? {}
       : { homeCollectTimeoutMs: options.homeCollectTimeoutMs }),
@@ -323,7 +326,7 @@ async function liveLink(
         request.method === 'PUT' &&
         request.path === '/v1/home-network/registration',
     );
-  return { link, hub, network, sent, shown, logs, admin, puts };
+  return { link, hub, network, focus, sent, shown, logs, admin, puts };
 }
 
 function assertNoRawValues(shown: unknown[], logs: string[]): void {
@@ -355,14 +358,19 @@ test(
 
     // 知らない参照・画面操作でない・ロック中は送らない。
     assert.equal(
-      (await admin('desktop.home_register', { ref: randomUUID() })).reason,
+      (
+        await admin('desktop.home_register', {
+          ref: randomUUID(),
+          include_ssid: true,
+        })
+      ).reason,
       'entry_not_found',
     );
     assert.equal(
       (
         await admin(
           'desktop.home_register',
-          { ref: observation['ref'] },
+          { ref: observation['ref'], include_ssid: true },
           UNLOCKED,
           {
             trustedSender: true,
@@ -376,7 +384,7 @@ test(
       (
         await admin(
           'desktop.home_register',
-          { ref: observation['ref'] },
+          { ref: observation['ref'], include_ssid: true },
           {
             ...UNLOCKED,
             lockState: 'locked',
@@ -399,6 +407,7 @@ test(
       (
         await admin('desktop.home_register', {
           ref: observation['ref'],
+          include_ssid: true,
           gateway_mac: HOME.gateway_mac,
         })
       ).reason,
@@ -413,14 +422,22 @@ test(
       unavailable: [],
     };
     assert.equal(
-      (await admin('desktop.home_register', { ref: observation['ref'] }))
-        .reason,
+      (
+        await admin('desktop.home_register', {
+          ref: observation['ref'],
+          include_ssid: true,
+        })
+      ).reason,
       'home_network_changed',
     );
     network.value = { ...HOME, unavailable: [] };
     assert.equal(
-      (await admin('desktop.home_register', { ref: observation['ref'] }))
-        .reason,
+      (
+        await admin('desktop.home_register', {
+          ref: observation['ref'],
+          include_ssid: true,
+        })
+      ).reason,
       'entry_not_found',
     );
     assert.equal(puts().length, 0);
@@ -429,7 +446,10 @@ test(
     const fresh = await admin('desktop.home_status', null);
     const ref = fresh.home?.observation?.['ref'];
     assert.notEqual(ref, observation['ref']);
-    const registered = await admin('desktop.home_register', { ref });
+    const registered = await admin('desktop.home_register', {
+      ref,
+      include_ssid: true,
+    });
     assert.equal(registered['outcome'], 'ok');
     assert.deepEqual(registered.home?.registration, {
       subnet: '192.0.2.0/24',
@@ -445,7 +465,7 @@ test(
     assert.equal(put?.body?.['ssid'], HOME.ssid);
     assert.equal(put?.body?.['command_scope_id'], SCOPE);
     assert.match(String(put?.body?.['request_id']), /^[0-9a-f-]{36}$/u);
-    assert(logs.includes('hub_home_registered'));
+    assert(logs.includes('hub_home_registered:with_ssid'));
     // 登録の後は登録済み（最終更新の時刻）を返す。
     const after = await admin('desktop.home_status', null);
     assert.equal(
@@ -455,7 +475,10 @@ test(
 
     // 結果が分からないときは outcome_unknown で、自動では送り直さない。
     hub.dropPut = true;
-    const unknown = await admin('desktop.home_register', { ref });
+    const unknown = await admin('desktop.home_register', {
+      ref,
+      include_ssid: true,
+    });
     assert.equal(unknown.reason, 'outcome_unknown');
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(puts().length, 2);
@@ -501,7 +524,12 @@ test(
       ssid_unavailable_reason: 'redacted',
     });
     assert.equal(
-      (await admin('desktop.home_register', { ref: oldRef })).reason,
+      (
+        await admin('desktop.home_register', {
+          ref: oldRef,
+          include_ssid: true,
+        })
+      ).reason,
       'entry_not_found',
     );
     // 読み取りの失敗・時間切れ・どの要素も取れない: observation は null。登録の状態は出す。
@@ -563,14 +591,15 @@ test(
     // 送る直前の読み取りの間にロックした: 送らず、参照も捨てる。
     network.value = 'gate';
     const gated = network.collects;
-    const locked = admin('desktop.home_register', { ref });
+    const locked = admin('desktop.home_register', { ref, include_ssid: true });
     await waitUntil(() => network.collects > gated, 'register read started');
     link.setLockState('locked');
     network.release();
     assert.equal((await locked).reason, 'device_locked');
     link.setLockState('unlocked');
     assert.equal(
-      (await admin('desktop.home_register', { ref })).reason,
+      (await admin('desktop.home_register', { ref, include_ssid: true }))
+        .reason,
       'entry_not_found',
     );
 
@@ -580,7 +609,8 @@ test(
     ];
     network.value = 'throw';
     assert.equal(
-      (await admin('desktop.home_register', { ref: ref2 })).reason,
+      (await admin('desktop.home_register', { ref: ref2, include_ssid: true }))
+        .reason,
       'home_network_changed',
     );
     assert(logs.includes('hub_home_unreadable'));
@@ -593,7 +623,8 @@ test(
     ];
     hub.badPutBody = true;
     assert.equal(
-      (await admin('desktop.home_register', { ref: ref3 })).reason,
+      (await admin('desktop.home_register', { ref: ref3, include_ssid: true }))
+        .reason,
       'outcome_unknown',
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -603,11 +634,66 @@ test(
     hub.badPutBody = false;
     network.value = 'gate';
     const beforeCut = network.collects;
-    const cut = admin('desktop.home_register', { ref: ref3 });
+    const cut = admin('desktop.home_register', {
+      ref: ref3,
+      include_ssid: true,
+    });
     await waitUntil(() => network.collects > beforeCut, 'read before cut');
     link.stop();
     network.release();
     assert.equal((await cut).reason, 'not_connected');
     assert.equal(puts().length, 1);
+  },
+);
+
+test(
+  'turning the Wi-Fi name off registers without the SSID; losing focus before sending sends nothing and keeps the reference (B03-08)',
+  { timeout: 30_000 },
+  async (t) => {
+    const { hub, network, focus, logs, admin, puts } = await liveLink(t);
+    const ref = (await admin('desktop.home_status', null)).home?.observation?.[
+      'ref'
+    ];
+    // 確かめない（include_ssid: false）: 中枢へ SSID を送らない（null）。登録は SSID なし。
+    const off = await admin('desktop.home_register', {
+      ref,
+      include_ssid: false,
+    });
+    assert.equal(off['outcome'], 'ok');
+    assert.equal(off.home?.registration?.['ssid_registered'], false);
+    assert.equal(puts().length, 1);
+    assert.equal(puts()[0]?.body?.['ssid'], null);
+    assert.equal(puts()[0]?.body?.['gateway_mac'], HOME.gateway_mac);
+    assert.equal(puts()[0]?.body?.['subnet'], HOME.subnet);
+    assert(logs.includes('hub_home_registered:without_ssid'));
+    // 確かめる（include_ssid: true）: SSID を送る。
+    const on = await admin('desktop.home_register', {
+      ref,
+      include_ssid: true,
+    });
+    assert.equal(on.home?.registration?.['ssid_registered'], true);
+    assert.equal(puts()[1]?.body?.['ssid'], HOME.ssid);
+    assert.equal(hub.registration?.['ssid_registered'], true);
+
+    // 送る直前の読み取りの間に、ウィンドウが前面でなくなった: 送らない。参照は残す。
+    network.value = 'gate';
+    const before = network.collects;
+    const unfocused = admin('desktop.home_register', {
+      ref,
+      include_ssid: true,
+    });
+    await waitUntil(() => network.collects > before, 'register read started');
+    focus.value = false;
+    network.release();
+    assert.equal((await unfocused).reason, 'screen_operation_required');
+    assert.equal(puts().length, 2);
+    // 前面に戻せば、同じ参照で登録できる。
+    focus.value = true;
+    const again = await admin('desktop.home_register', {
+      ref,
+      include_ssid: true,
+    });
+    assert.equal(again['outcome'], 'ok');
+    assert.equal(puts().length, 3);
   },
 );

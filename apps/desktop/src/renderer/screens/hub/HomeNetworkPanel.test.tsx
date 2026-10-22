@@ -28,6 +28,7 @@ import type { ConfirmRequest } from './ConfirmDialog.js';
 import {
   CurrentNetworkSection,
   HOME_LABELS,
+  confirmRequest,
   HomeNetworkPanel,
   RegistrationSection,
 } from './HomeNetworkPanel.js';
@@ -176,11 +177,65 @@ test(
     request.onConfirm();
     assert.deepEqual(
       sent.map((built) => [built.channel, built.payload]),
-      [['desktop.home_register', { ref: REF }]],
+      [['desktop.home_register', { ref: REF, include_ssid: true }]],
     );
     // 読み取り直すは確認なしで送る。
     buttons.get(HOME_LABELS.reread)?.();
     assert.equal(sent.at(-1)?.channel, 'desktop.home_status');
+  },
+);
+
+test(
+  'the Wi-Fi name choice is on by default; turning it off says what is still checked and registers without the SSID',
+  { timeout: 10_000 },
+  () => {
+    const { sent, asked, actions, onAsk } = capture();
+    const home = { registration: null, observation: OBSERVATION };
+    // 既定は「確かめる」（パネルの初期値）。
+    const markup = html(
+      <HomeNetworkPanel state={state({ home })} actions={actions} now={NOW} />,
+    );
+    assert.match(markup, /Wi-Fi 名（SSID）も確かめる/u);
+    assert.match(markup, /data-selected="true"/u);
+    assert.match(markup, /同じときだけ通します/u);
+    // 切ったとき: 補足を出し、確認でも分かるようにし、SSID を送らないで登録する（include_ssid: false）。
+    const off = html(
+      <CurrentNetworkSection
+        state={state({ home })}
+        actions={actions}
+        now={NOW}
+        onAsk={onAsk}
+        includeSsid={false}
+      />,
+    );
+    assert.doesNotMatch(off, /data-selected="true"/u);
+    assert.match(
+      off,
+      /切っても、ルーターの MAC アドレス・サブネット・Tailscale の直接経路は確かめます。/u,
+    );
+    pressables(
+      CurrentNetworkSection({
+        state: state({ home }),
+        actions,
+        now: NOW,
+        onAsk,
+        includeSsid: false,
+      }),
+    ).get(HOME_LABELS.register)?.();
+    const request = asked[0];
+    assert(request);
+    const body = html(request.body);
+    assert.match(body, /確かめない（Wi-Fi 名は送りません）/u);
+    assert.match(body, /Wi-Fi 名は確かめません。/u);
+    assert.doesNotMatch(body, /合••••/u);
+    request.onConfirm();
+    assert.deepEqual(sent[0]?.payload, { ref: REF, include_ssid: false });
+    // 入れたときの確認には、伏せた Wi-Fi 名を大きく出す。
+    const on = html(
+      confirmRequest(OBSERVATION, REF, null, NOW, actions, true).body,
+    );
+    assert.match(on, /合••••/u);
+    assert.doesNotMatch(on, /Wi-Fi 名は確かめません/u);
   },
 );
 
@@ -199,13 +254,15 @@ test(
       <HomeNetworkPanel state={state({ home })} actions={actions} now={NOW} />,
     );
     assert.match(markup, /<span>登録済み<\/span>/u);
-    assert.match(markup, /登録しています（判定で比べます）/u);
+    assert.match(markup, /確かめる（登録した Wi-Fi 名と比べます）/u);
     assert.match(markup, /最終更新/u);
     // 登録の時刻は「今」の前の日（地域時間で 10/3〜10/4）なので月日を付ける。
     assert.match(markup, /10\/[34] \d\d:\d\d:\d\d/u);
     assert.match(markup, /照合用の値（HMAC）だけ/u);
     assert.match(markup, /ありません（有線の接続、または読み取れません）/u);
-    assert.match(markup, /SSID なしで登録します。/u);
+    assert.match(markup, /Wi-Fi 名なしで登録します。/u);
+    // Wi-Fi 名が読み取れないときは、確かめるかの選択肢を出さない。
+    assert.doesNotMatch(markup, /Wi-Fi 名（SSID）も確かめる/u);
     const tag = buttonTag(markup, HOME_LABELS.reregister);
     assert(tag !== null, markup);
     assert.match(tag, /button--secondary/u);
@@ -225,7 +282,7 @@ test(
     assert.equal(request.confirmLabel, '登録し直す');
     assert.match(html(request.body), /置き換わり、元に戻せません/u);
     request.onConfirm();
-    assert.deepEqual(sent[0]?.payload, { ref: REF });
+    assert.deepEqual(sent[0]?.payload, { ref: REF, include_ssid: true });
     // SSID を登録していない登録。
     assert.match(
       html(
@@ -235,7 +292,7 @@ test(
           now={NOW}
         />,
       ),
-      /登録していません（判定で比べません）/u,
+      /確かめない（ルーターの MAC アドレス・サブネット・Tailscale の直接経路で判定します）/u,
     );
   },
 );
@@ -443,7 +500,7 @@ test(
     const register: DesktopIpcRequest = {
       channel: 'desktop.home_register',
       request_id: '00000000-0000-4000-8000-000000000e72',
-      payload: { ref: REF },
+      payload: { ref: REF, include_ssid: true },
     };
     const home = { registration: null, observation: OBSERVATION };
     const reading = markHomeSending(

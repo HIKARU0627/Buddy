@@ -132,6 +132,9 @@ export interface DesktopCoreLinkOptions {
   readonly networkWatchIntervalMs?: number;
   // 中枢の画面の自宅の登録で、このマシンの指紋を読み取る上限（既定 HOME_COLLECT_TIMEOUT_MS）。
   readonly homeCollectTimeoutMs?: number;
+  // ウィンドウが表示中かつ前面か（Electron の層が注入する）。自宅の登録の送る直前に確かめ直す（受付から送るまでに
+  // 読み取りの時間が入るため）。省略すると受付の判定だけを使う（試験）。
+  readonly windowFocused?: () => boolean;
   // 中枢の画面の端末かの判定の再試行の間隔の単位（試験で短くする）。
   readonly hubScreenProbeRetryMs?: number;
 }
@@ -716,8 +719,12 @@ export class DesktopCoreLink {
             raw.channel,
             failed ?? 'not_connected',
           );
-        if (!this.#options.contract.valid('PairingSession', outcome.body))
-          return this.#reject(requestId, raw.channel, 'core_rejected');
+        // 2xx で本文が契約に合わなければ、ペアリングは始まった（前のコードは使えなくなった）かもしれない。
+        // 外部の変更なので結果不明として扱い、自動では送り直さない。
+        if (!this.#options.contract.valid('PairingSession', outcome.body)) {
+          this.#log('hub_pairing_open_failed:outcome_unknown');
+          return this.#reject(requestId, raw.channel, 'outcome_unknown');
+        }
         const session = outcome.body as PairingSession;
         this.#log('hub_pairing_opened');
         return this.#respond({
@@ -734,7 +741,12 @@ export class DesktopCoreLink {
       case 'desktop.home_status':
         return this.#homeStatus(requestId, raw.channel);
       case 'desktop.home_register':
-        return this.#homeRegister(requestId, raw.channel, raw.payload.ref);
+        return this.#homeRegister(
+          requestId,
+          raw.channel,
+          raw.payload.ref,
+          raw.payload.include_ssid,
+        );
       default:
         return this.#reject(requestId, raw.channel, 'invalid_request');
     }
@@ -869,12 +881,14 @@ export class DesktopCoreLink {
   }
 
   // 画面で確かめた指紋を自宅として登録する（B03-08）。参照の指紋と、送る直前に読み取り直した指紋が同じときだけ
-  // 中枢へ送る（違う・読み取れなければ home_network_changed）。読み取りの間に切断・ロックがあれば送らない。
+  // 中枢へ送る（違う・読み取れなければ home_network_changed）。読み取りの間に切断・ロック・前面でなくなったら送らない。
+  // includeSsid が false なら Wi-Fi 名（SSID）を送らずに登録する（中枢は SSID を比べない。本人の判断 2026-10-22）。
   // 結果が分からない（2xx で本文が契約に合わないときを含む）なら outcome_unknown で、自動では送り直さない。
   async #homeRegister(
     requestId: string,
     channel: 'desktop.home_register',
     ref: string,
+    includeSsid: boolean,
   ): Promise<ConnectionIpcOutcome> {
     const connection = this.#connection;
     if (connection === null)
@@ -889,6 +903,9 @@ export class DesktopCoreLink {
       this.#homeRef = null;
       return this.#reject(requestId, channel, 'device_locked');
     }
+    // 前面でなくなったら送らない。参照は残す（前面に戻して、もう一度押せる）。
+    if (this.#options.windowFocused?.() === false)
+      return this.#reject(requestId, channel, 'screen_operation_required');
     if (
       reading === null ||
       !sameFingerprint(reading.fingerprint, pending.fingerprint)
@@ -904,7 +921,7 @@ export class DesktopCoreLink {
       body: {
         gateway_mac: pending.fingerprint.gateway_mac,
         subnet: pending.fingerprint.subnet,
-        ssid: pending.fingerprint.ssid,
+        ssid: includeSsid ? pending.fingerprint.ssid : null,
       },
       screenOperation: true,
       scoped: true,
@@ -919,7 +936,9 @@ export class DesktopCoreLink {
       this.#log('hub_home_register_failed:outcome_unknown');
       return this.#reject(requestId, channel, 'outcome_unknown');
     }
-    this.#log('hub_home_registered');
+    this.#log(
+      `hub_home_registered:${includeSsid && pending.fingerprint.ssid !== null ? 'with_ssid' : 'without_ssid'}`,
+    );
     return this.#homeResponse(
       requestId,
       channel,

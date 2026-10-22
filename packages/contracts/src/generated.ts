@@ -706,6 +706,7 @@ export type DesktopIpcRequest =
       request_id: Id;
       payload: {
         ref: Id;
+        include_ssid: boolean;
       };
     };
 export type DesktopHubHost = string;

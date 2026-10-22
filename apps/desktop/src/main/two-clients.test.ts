@@ -96,8 +96,9 @@ async function createClient(
     readonly pollIntervalMs?: number;
     // 受取り（トークンの要求）を送る前に待つ（試験で受取りの時点を決める）。
     readonly beforePickup?: () => Promise<void>;
-    // このマシンのネットワークの指紋（模擬の読み取り。既定は SSID なしの HOME）。
-    readonly home?: HomeObservation;
+    // このマシンのネットワークの指紋（模擬の読み取り。既定は SSID なしの HOME）。関数なら読み取りのたびに呼ぶ
+    // （試験の途中で端末のネットワークを変える）。
+    readonly home?: HomeObservation | (() => HomeObservation);
   } = {},
 ): Promise<Client> {
   const dir = options.dir ?? (await tempDir(t, `bd${name}-`));
@@ -114,7 +115,12 @@ async function createClient(
     protector,
     clock: systemClock(),
     platform: 'windows',
-    collectHome: () => Promise.resolve(options.home ?? HOME),
+    collectHome: () =>
+      Promise.resolve(
+        typeof options.home === 'function'
+          ? options.home()
+          : (options.home ?? HOME),
+      ),
     networkSignature: () => 'fixed',
     onChange: () => {
       if (link) ipc.push(link.view('unlocked'));
@@ -929,8 +935,10 @@ test(
     const gate = new Promise<void>((resolve) => {
       openGate = resolve;
     });
+    // B のネットワーク（試験の途中で Wi-Fi 名・ルーターを変える）。
+    let bNetwork: HomeObservation = HOME_WIFI;
     const b = await createClient(t, 'B', {
-      home: HOME_WIFI,
+      home: () => bNetwork,
       beforePickup: () => gate,
     });
     a.link.start('unlocked');
@@ -1006,7 +1014,9 @@ test(
     const shown = homeOf(await a.admin('desktop.home_status', null));
     const ref = shown.observation?.ref;
     assert(typeof ref === 'string');
-    const registered = homeOf(await a.admin('desktop.home_register', { ref }));
+    const registered = homeOf(
+      await a.admin('desktop.home_register', { ref, include_ssid: true }),
+    );
     assert.equal(registered.registration?.subnet, '192.0.2.0/24');
     assert.equal(registered.registration?.ssid_registered, true);
     assert.equal(typeof registered.registration?.registered_at, 'string');
@@ -1081,11 +1091,80 @@ test(
     tailscale.path = 'direct';
     await waitUntil(() => b.view().link === 'connected', 'B back at home');
 
+    // Wi-Fi 名（SSID）も確かめるか（本人の判断 2026-10-22。既定は確かめる）。
+    // 確かめる登録では、ルーター・サブネットが同じでも Wi-Fi 名の違う B は拒否される。
+    const reasonsOfB = () => b.view().home_network?.reasons ?? [];
+    bNetwork = { ...HOME_WIFI, ssid: '合成の別の家' };
+    b.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        reasonsOfB().includes('ssid_mismatch') && b.view().link !== 'connected',
+      'B refused by the Wi-Fi name',
+    );
+    assert.deepEqual(reasonsOfB(), ['ssid_mismatch']);
+    assert.equal(a.view().link, 'connected');
+    // 中枢の画面で「Wi-Fi 名も確かめる」を切って登録し直すと、B は自宅判定を通る。
+    const offRef = homeOf(await a.admin('desktop.home_status', null))
+      .observation?.ref;
+    const off = homeOf(
+      await a.admin('desktop.home_register', {
+        ref: offRef,
+        include_ssid: false,
+      }),
+    );
+    assert.equal(off.registration?.ssid_registered, false);
+    b.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        b.view().link === 'connected' &&
+        b.view().home_network?.allowed === true,
+      'B passes without the Wi-Fi name',
+    );
+    assert.deepEqual(reasonsOfB(), []);
+    // 切っていても、ルーターの MAC アドレスが違えば拒否される（残りの指紋と直接経路は確かめる）。
+    bNetwork = {
+      ...HOME_WIFI,
+      gateway_mac: '00:00:5e:00:53:02',
+      ssid: '合成の別の家',
+    };
+    b.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        reasonsOfB().includes('gateway_mac_mismatch') &&
+        b.view().link !== 'connected',
+      'B refused by the router',
+    );
+    assert.deepEqual(reasonsOfB(), ['gateway_mac_mismatch']);
+    // 確かめるように登録し直すと、Wi-Fi 名の違う B はまた拒否される。
+    bNetwork = { ...HOME_WIFI, ssid: '合成の別の家' };
+    const onRef = homeOf(await a.admin('desktop.home_status', null)).observation
+      ?.ref;
+    const on = homeOf(
+      await a.admin('desktop.home_register', {
+        ref: onRef,
+        include_ssid: true,
+      }),
+    );
+    assert.equal(on.registration?.ssid_registered, true);
+    b.link.networkMayHaveChanged('test');
+    await waitUntil(
+      () =>
+        reasonsOfB().includes('ssid_mismatch') && b.view().link !== 'connected',
+      'B refused again by the Wi-Fi name',
+    );
+    assert.deepEqual(reasonsOfB(), ['ssid_mismatch']);
+    assert.equal(a.view().link, 'connected');
+
     // MAC・SSID の生の値は、どちらの端末の画面・IPC・ログにも出ない（伏せた表示だけ）。
     for (const client of [a, b]) {
       const ipc = JSON.stringify(client.ipc);
       const logs = client.logs.join('\n');
-      for (const raw of ['00:00:5e:00:53:01', '合成の自宅']) {
+      for (const raw of [
+        '00:00:5e:00:53:01',
+        '00:00:5e:00:53:02',
+        '合成の自宅',
+        '合成の別の家',
+      ]) {
         assert.equal(ipc.includes(raw), false, `${client.name} IPC`);
         assert.equal(logs.includes(raw), false, `${client.name} log`);
       }

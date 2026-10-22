@@ -6,7 +6,15 @@
 // 操作の結果の文言は押したボタンのすぐ下に出す。確認のダイアログでは、確かめる値を大きな等幅で別の段に出す。
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Alert, Button, CloseButton, Spinner } from '@heroui/react';
+import {
+  Alert,
+  Button,
+  Checkbox,
+  CloseButton,
+  Description,
+  Label,
+  Spinner,
+} from '@heroui/react';
 import type {
   DesktopHomeObservation,
   HomeRegistration,
@@ -34,14 +42,23 @@ export const HOME_LABELS = {
   unregisteredBody:
     'まだ自宅を登録していません。登録するまで、中枢と別のマシンの端末は接続できません。',
   hashNote:
-    'ルーターの MAC と SSID は、照合用の値（HMAC）だけを中枢に保存しています。元の値は表示できません。',
+    'ルーターの MAC アドレスと Wi-Fi 名は、照合用の値（HMAC）だけを中枢に保存しています。元の値は表示できません。',
   readFailedTitle: 'このマシンのネットワークを読み取れませんでした',
   readFailedBody:
     'ネットワークにつながっているかを確かめてから、「読み取り直す」を押してください。',
   notRegistrable:
     'ルーターの MAC とサブネットの両方が読み取れないと登録できません。ネットワークにつながっているかを確かめてから、読み取り直してください。',
   noSsid:
-    'SSID なしで登録します。判定では、ルーターの MAC とサブネットだけを比べます。',
+    'このマシンの Wi-Fi 名を読み取れないため、Wi-Fi 名なしで登録します。判定では、ルーターの MAC アドレス・サブネット・Tailscale の直接経路を確かめます。',
+  // Wi-Fi 名（SSID）も確かめるか（本人の判断 2026-10-22。既定は確かめる）。
+  includeSsid: 'Wi-Fi 名（SSID）も確かめる',
+  includeSsidOn:
+    '端末の Wi-Fi 名が、このネットワークの Wi-Fi 名と同じときだけ通します（有線の端末は Wi-Fi 名を比べません）。',
+  includeSsidOff:
+    '切っても、ルーターの MAC アドレス・サブネット・Tailscale の直接経路は確かめます。',
+  ssidChecked: '確かめる（登録した Wi-Fi 名と比べます）',
+  ssidNotChecked:
+    '確かめない（ルーターの MAC アドレス・サブネット・Tailscale の直接経路で判定します）',
   doneTitle: '自宅のネットワークを登録しました。',
 } as const;
 
@@ -154,7 +171,7 @@ export function observationRows(
       ),
     ],
     [
-      'Wi-Fi の名前（SSID）',
+      'Wi-Fi 名（SSID）',
       observation.ssid_hint !== null ? (
         <MaskedSsid hint={observation.ssid_hint} />
       ) : (
@@ -201,10 +218,10 @@ export function RegistrationSection({
                     </span>,
                   ],
                   [
-                    'Wi-Fi の名前（SSID）',
+                    'Wi-Fi 名（SSID）',
                     registration.ssid_registered
-                      ? '登録しています（判定で比べます）'
-                      : '登録していません（判定で比べません）',
+                      ? HOME_LABELS.ssidChecked
+                      : HOME_LABELS.ssidNotChecked,
                   ],
                   [
                     '最終更新',
@@ -232,11 +249,16 @@ export function CurrentNetworkSection({
   actions,
   now,
   onAsk,
+  includeSsid = true,
+  onIncludeSsidChange = () => undefined,
 }: {
   readonly state: HomeViewState;
   readonly actions: HomeActions;
   readonly now: number;
   readonly onAsk: (request: ConfirmRequest) => void;
+  // Wi-Fi 名（SSID）も確かめるか（既定は確かめる）。SSID が読み取れないときは選択肢を出さない。
+  readonly includeSsid?: boolean;
+  readonly onIncludeSsidChange?: (include: boolean) => void;
 }) {
   const home = state.home;
   const observation = home?.observation ?? null;
@@ -298,7 +320,25 @@ export function CurrentNetworkSection({
                 <p className="max-w-prose text-xs leading-5 text-muted">
                   {HOME_LABELS.noSsid}
                 </p>
-              ) : null}
+              ) : (
+                <Checkbox
+                  isSelected={includeSsid}
+                  onChange={onIncludeSsidChange}
+                  className="max-w-prose"
+                >
+                  <Checkbox.Content>
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    <Label>{HOME_LABELS.includeSsid}</Label>
+                  </Checkbox.Content>
+                  <Description className="text-xs leading-5 text-muted">
+                    {includeSsid
+                      ? HOME_LABELS.includeSsidOn
+                      : HOME_LABELS.includeSsidOff}
+                  </Description>
+                </Checkbox>
+              )}
               <div>
                 <Button
                   variant={registration === null ? 'primary' : 'secondary'}
@@ -311,6 +351,7 @@ export function CurrentNetworkSection({
                         registration,
                         now,
                         actions,
+                        includeSsid,
                       ),
                     )
                   }
@@ -347,8 +388,10 @@ function MessageText({ text }: { readonly text: string | null }) {
 // 確認のダイアログで確かめる値（大きな等幅で、値ごとに別の段に出す。ADR 0024 の UI レビュー 2 回目の追記 6）。
 function ConfirmValues({
   observation,
+  includeSsid,
 }: {
   readonly observation: DesktopHomeObservation;
+  readonly includeSsid: boolean;
 }) {
   const value = 'text-2xl font-semibold tracking-wider';
   const items: [string, ReactNode][] = [
@@ -365,9 +408,11 @@ function ConfirmValues({
       </span>,
     ],
     [
-      'Wi-Fi の名前（SSID）',
-      observation.ssid_hint !== null ? (
+      'Wi-Fi 名（SSID）',
+      observation.ssid_hint !== null && includeSsid ? (
         <MaskedSsid hint={observation.ssid_hint} className={value} />
+      ) : observation.ssid_hint !== null ? (
+        <span className="text-sm">確かめない（Wi-Fi 名は送りません）</span>
       ) : (
         <span className="text-sm">
           {
@@ -398,7 +443,9 @@ export function confirmRequest(
   registration: HomeRegistration | null,
   now: number,
   actions: HomeActions,
+  includeSsid = true,
 ): ConfirmRequest {
+  const ssidOff = observation.ssid_hint !== null && !includeSsid;
   return {
     title:
       registration === null
@@ -406,11 +453,16 @@ export function confirmRequest(
         : '自宅の登録を今のネットワークで置き換えますか',
     body: (
       <div className="flex flex-col gap-4">
-        <ConfirmValues observation={observation} />
+        <ConfirmValues observation={observation} includeSsid={includeSsid} />
         <p className="text-sm leading-6">
           登録すると、中枢と別のマシンの端末は、このネットワークにつながっていて
           Tailscale で直接つながっているときだけ中枢に接続できます。
         </p>
+        {ssidOff ? (
+          <p className="text-sm leading-6">
+            Wi-Fi 名は確かめません。{HOME_LABELS.includeSsidOff}
+          </p>
+        ) : null}
         {registration === null ? null : (
           <p className="text-sm leading-6">
             今の登録（
@@ -425,7 +477,7 @@ export function confirmRequest(
     ),
     confirmLabel: registration === null ? '登録する' : '登録し直す',
     tone: 'accent',
-    onConfirm: () => actions.register(ref),
+    onConfirm: () => actions.register(ref, includeSsid),
   };
 }
 
@@ -439,6 +491,8 @@ export function HomeNetworkPanel({
   readonly now: number;
 }) {
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  // Wi-Fi 名（SSID）も確かめるか（本人の判断 2026-10-22。既定は確かめる）。
+  const [includeSsid, setIncludeSsid] = useState(true);
   // タブを開いたときに、このマシンのネットワークを読み取り直す（前に読んだ値を今の値として使わない）。
   useEffect(() => {
     actions.refresh();
@@ -469,6 +523,8 @@ export function HomeNetworkPanel({
         actions={actions}
         now={now}
         onAsk={setConfirm}
+        includeSsid={includeSsid}
+        onIncludeSsidChange={setIncludeSsid}
       />
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </div>

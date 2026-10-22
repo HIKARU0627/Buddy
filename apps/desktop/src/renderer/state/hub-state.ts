@@ -58,10 +58,19 @@ export interface HubViewState {
   readonly notice: HubNotice | null;
   // 承認・拒否・失効・ペアリングの開始を送って結果を待っている（二重に押させない）。
   readonly pending: PendingOperation | null;
-  // 結果が分からなかった行の参照。一覧を更新するまで操作させない。
-  readonly held: readonly string[];
+  // 結果が分からなかった行の参照（申請・端末ごと）と、結果が分かったときの通し番号（after）。それより後に始めた
+  // 同じ種類の一覧を反映するまで操作させない（別の種類の一覧・結果が分かる前に始めた一覧では解かない）。
+  readonly held: {
+    readonly claims: readonly HeldRef[];
+    readonly devices: readonly HeldRef[];
+  };
   // 一覧の要求の順: これより前に始めた一覧の応答は古いので反映しない（変更の操作・新しい一覧で進む）。
   readonly listFloor: { readonly claims: number; readonly devices: number };
+}
+
+export interface HeldRef {
+  readonly ref: string;
+  readonly after: number;
 }
 
 export const INITIAL_HUB_STATE: HubViewState = {
@@ -72,7 +81,7 @@ export const INITIAL_HUB_STATE: HubViewState = {
   sessionCleared: null,
   notice: null,
   pending: null,
-  held: [],
+  held: { claims: [], devices: [] },
   listFloor: { claims: 0, devices: 0 },
 };
 
@@ -150,13 +159,15 @@ function usedBy(
   return claims.some((claim) => Date.parse(claim.claimed_at) >= opened);
 }
 
-// main の応答を反映する。一覧の応答は置き換え、拒否は文言だけを出して一覧を変えない。
+// main の応答を反映する。一覧の応答は置き換え、拒否は文言だけを出して一覧を変えない。seq は要求を始めたときの
+// 通し番号、doneSeq は応答が届いたときの通し番号（変更の操作の結果が分かった時点。これより前に始めた一覧は古い）。
 export function applyHubResponse(
   state: HubViewState,
   sent: Channel,
   response: DesktopIpcResponse,
   now: number = Date.now(),
   seq?: number,
+  doneSeq?: number,
 ): HubViewState {
   const heavy = HEAVY.has(sent);
   const operation = heavy ? state.pending : null;
@@ -181,8 +192,16 @@ export function applyHubResponse(
         ...state,
         pending,
         held:
-          response.reason === 'outcome_unknown' && operation.ref !== null
-            ? [...state.held, operation.ref]
+          response.reason === 'outcome_unknown' &&
+          operation.ref !== null &&
+          sent !== 'desktop.pairing_open'
+            ? {
+                ...state.held,
+                [paneOf(sent)]: [
+                  ...state.held[paneOf(sent)],
+                  { ref: operation.ref, after: doneSeq ?? 0 },
+                ],
+              }
             : state.held,
         notice: {
           pane: paneOf(sent),
@@ -242,6 +261,8 @@ export function applyHubResponse(
     return {
       ...state,
       pending,
+      // POST の最中に始めた一覧も古い（取り直しが失敗しても、この境目を保つ）。
+      listFloor: advanceFloor(state.listFloor, paneOf(sent), doneSeq),
       claims:
         sent === 'desktop.claim_decide' && state.claims !== null
           ? state.claims.filter((claim) => claim.ref !== ref)
@@ -266,10 +287,18 @@ export function applyHubResponse(
       },
     };
   }
+  // 変更の操作の後の一覧（main が POST の後に取り直した）は、応答が届いた時点を境目にする。
+  const at = heavy ? (doneSeq ?? seq) : seq;
   const listed = (pane: HubPane) => ({
-    held: [],
-    listFloor:
-      seq === undefined ? state.listFloor : { ...state.listFloor, [pane]: seq },
+    // 結果が分かった後に始めた同じ種類の一覧だけが、その保留を解く。
+    held:
+      at === undefined
+        ? state.held
+        : {
+            ...state.held,
+            [pane]: state.held[pane].filter((held) => held.after >= at),
+          },
+    listFloor: advanceFloor(state.listFloor, pane, at),
   });
   if ('claims' in response)
     return {
@@ -405,6 +434,16 @@ export function hubActions(send: HubSend): HubActions {
     },
     clearNotice: () => send.update((state) => clearNotice(state)),
   };
+}
+
+// 一覧の境目を進める（戻さない）。
+function advanceFloor(
+  floor: HubViewState['listFloor'],
+  pane: HubPane,
+  seq: number | undefined,
+): HubViewState['listFloor'] {
+  if (seq === undefined || seq <= floor[pane]) return floor;
+  return { ...floor, [pane]: seq };
 }
 
 // 送る前の状態（重い操作は結果を待つ間ボタンを止め、その行の前の文言を消す）。

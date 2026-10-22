@@ -44,7 +44,10 @@ export function useHubState(
           setState((prev) => markSending(prev, built, operation, seq));
           api
             .invoke(built)
-            .then((response) =>
+            .then((response) => {
+              // 応答が届いた時点の通し番号（これより前に始めた一覧は、変更の操作の結果を知らない）。
+              seqRef.current += 1;
+              const doneSeq = seqRef.current;
               setState((prev) =>
                 epoch === epochRef.current
                   ? applyHubResponse(
@@ -53,10 +56,11 @@ export function useHubState(
                       response,
                       Date.now(),
                       seq,
+                      doneSeq,
                     )
                   : dropStaleResponse(prev, built.channel),
-              ),
-            )
+              );
+            })
             .catch(() =>
               setState((prev) =>
                 epoch === epochRef.current
@@ -76,7 +80,11 @@ export function useHubState(
       setState(INITIAL_HUB_STATE);
       return undefined;
     }
-    if (mode === 'paused') return undefined;
+    // paused（中枢との接続を待っている）に移るときも世代を進め、接続をまたいだ応答を捨てる。
+    if (mode === 'paused') {
+      epochRef.current += 1;
+      return undefined;
+    }
     actions.pollClaims();
     actions.refresh('devices');
     const timer = window.setInterval(actions.pollClaims, CLAIMS_REFRESH_MS);

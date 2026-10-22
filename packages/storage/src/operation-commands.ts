@@ -96,6 +96,8 @@ export interface ApproveOperationCommand extends DbCommandBase<'operation.approv
 export interface PrepareOperationCommand extends DbCommandBase<'operation.prepare'> {
   // 新しい試行の ID（呼び出し側が作る）。再到着でも同じ ID になる。
   readonly attempt_id: string;
+  // 本人の明示の再試行（ADR 0030）。true なら未実行が確定した（not_executed）操作からだけ始める。
+  readonly retry?: boolean;
 }
 
 // 送出の直前に Core が provider から読み直した接続（ADR 0030）。DB の connections に行のない接続（B04 の模擬
@@ -362,6 +364,8 @@ export function commandShapeReasons(command: DbCommand): string[] {
       break;
     case 'operation.prepare':
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');
+      if (command.retry !== undefined && typeof command.retry !== 'boolean')
+        reasons.push('retry_invalid');
       break;
     case 'operation.dispatch_intent':
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');

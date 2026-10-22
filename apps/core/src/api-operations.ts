@@ -203,6 +203,7 @@ const CONFLICT_REASONS = new Set([
   'preview_invalid',
   'operation_finished',
   'transition_not_allowed',
+  'retry_not_allowed',
   'request_revision_changed',
   'permission_changed',
   'forgetting_generation_changed',
@@ -487,7 +488,11 @@ export function createOperationRoutes(
       base.request,
       base.command_id,
     );
-    if (outcome === null) return apiErrorResponse(409, 'conflict', requestId);
+    if (outcome === null) {
+      // 同じ要求が先に照合していた場合は、その保存済みの受付を返す。
+      const after = await storedReceipt(request, view);
+      return after ?? apiErrorResponse(409, 'conflict', requestId);
+    }
     return receiptResponse(requestId, outcome);
   };
 
@@ -502,6 +507,7 @@ export function createOperationRoutes(
         ...commandBase(request, view),
         kind: 'operation.prepare',
         attempt_id: randomUUID(),
+        retry: true,
       }),
     );
     if (response.status === 202) runner.start(request.params['id'] ?? '');

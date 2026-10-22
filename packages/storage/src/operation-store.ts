@@ -831,6 +831,9 @@ function prepareOperation(
 ): StoreOutcome {
   const operation = requireOperation(db, command);
   requireStateRevision(command, operation);
+  // 本人の再試行は未実行の確定の後だけ（初回の実行・照合中の操作を横取りしない）。
+  if (command.retry === true && operation.state !== 'not_executed')
+    throw new CommandRejection(['retry_not_allowed']);
   if (!canTransition(operation.state, 'preparing', operation.effect_route))
     throw new CommandRejection(['transition_not_allowed']);
   guard(

@@ -30,7 +30,7 @@
 
 B04-03 が 0004 を `turn_responses` に使ったため 0005 にした。
 
-- `operation_attempts` を作り直し、状態に `superseded` を足す。`superseded` は送出意図も結果も持たない（CHECK）。operation_steps が参照しているので `PRAGMA defer_foreign_keys = ON` で外部キーの検査を COMMIT まで遅らせ、同じ名前に戻してから索引（一つの実行中の試行・一つの承認に一つの試行）を作り直す。
+- `operation_attempts` を作り直し、状態に `superseded` を足す。`superseded` は送出意図も結果も持たない（CHECK）。参照する operation_steps も新しい試行の表を指す形で作り直し、子・親の順に消してから改名し、索引（一つの実行中の試行・一つの承認に一つの試行）を作り直す。外部キーの検査を COMMIT まで遅らせる方法（`defer_foreign_keys`）は、DROP の暗黙の削除で数えた違反が取り消されず、試行・工程のある DB で COMMIT に失敗したため使わない（レビュー P1。試行・工程の入った版 4 の DB の更新を試験する）。
 - `tasks`（task_id・operation_id（一意）・content_version・list_id・status・created_at）。題名・期限・本文は確定 intent（operation_versions の暗号文）を参照し、複製しない。
 
 ## 試験
@@ -38,6 +38,17 @@ B04-03 が 0004 を `turn_responses` に使ったため 0005 にした。
 - storage: `operation-store.test.ts` に apply_local（一つの transaction・再到着・照合値の違い・二度目の拒否・経路の違い）、observed_connection（なし・読み取りだけ・許可の版の違い・形の不正・成功）。`conversation-store.test.ts` の D1 に preparing の試行の superseded と dispatching の拒否。`storage-cases.json` に 0005 の制約（superseded の CHECK・tasks の一意と外部キー）。
 - Core: `operation-runner.test.ts`（9 件）。X01・X02・X05（送出の前と後）・X06・結果の保存の前の停止・X07・X08・X09（対象の版と許可）・D5/QA28。provider の要求回数・状態の変更回数・最終状態は fault-points.json の値を読んで照合する。待ち合わせは故障点の関門と `runner.idle()` で、固定時間の sleep を使わない。
 - 承認の件数（fault-points.json の `approvals`）は、HTTP の経路から数えられないため照合していない（approval_state で代えた）。
+
+## レビュー（Codex、PR の P1 1 件・P2 3 件）の反映
+
+| 指摘                                                           | 対応                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0005 が参照データのある DB で COMMIT に失敗する                | operation_steps も作り直す手順に変えた（上の「マイグレーション 0005」）。版 4 の DB に試行・工程を入れて更新し、全行・索引・外部キーを試験で確かめる                                                                                           |
+| retry が approved にも効く                                     | 再試行の準備は `operation.prepare` の `retry: true` とし、DB worker の transaction の中で not_executed 以外を `retry_not_allowed`（409）で拒否する。各状態の拒否を storage と Core で試験する                                                  |
+| 本人の照合で found でも、取消の受付があると reconciling に残る | 自動の照合と本人の照合を分け、本人の照合で found なら成功として確定する。「結果不明 → 取消の受付 → 遅れた適用 → 本人の照合」を試験する                                                                                                         |
+| 照合の排他の登録が遅い                                         | 操作ごとの排他を最初の await より前に取り、終わったら自分の登録だけを外す。実行中の操作への照合は終わるのを待ち、同じ要求なら保存済みの受付を返す。同時に届いた同じ要求で照合が 1 回になることを試験する                                       |
+| （再確認）照合の排他が retry の実行開始を捨てる                | 排他の間に届いた実行の開始は預かり、排他を外した後に始める。別の要求の照合・通常の実行と重なる照合はすぐに断る（409）。同じ要求の照合だけを 10 秒まで待つ（打ち切っても実行の排他は外さない）。偽物の store で競合を再現する単体の試験を足した |
+| （CI の Windows）停止で WSS が 1006 になる                     | 停止で購読に close を送った直後に HTTPS の層が接続を切っていた。`closeAll()` が close の往復（または 2 秒の打ち切り）を待ってから下の層を閉じる順にした                                                                                        |
 
 ## 判断してほしい点
 

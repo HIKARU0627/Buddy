@@ -158,7 +158,14 @@ export function createOperationRunner(
   options: OperationRunnerOptions,
 ): OperationRunner {
   const { store, faults, log } = options;
-  const running = new Map<string, Promise<void>>();
+  // 操作ごとの排他。照合（reconcile）の登録は、どの要求の照合かを持つ（同じ要求だけを待たせるため）。
+  interface Held {
+    readonly done: Promise<void>;
+    readonly reconcileCommandId: string | null;
+  }
+  const running = new Map<string, Held>();
+  // 排他の間に届いた実行の開始（afterApproval なら true）。排他を外した後に始める（要求を捨てない）。
+  const pendingStarts = new Map<string, boolean>();
   let closed = false;
 
   const loadKey = async (): Promise<DataKeyMaterial | null> => {
@@ -320,10 +327,12 @@ export function createOperationRunner(
 
   // 照合の観測を記録する。成功の証拠（found）だけを succeeded にし、他は unknown_held に留める。
   // 送出境界の後に取消を受け付けた操作は reconciling で止める（X05、本人の照合へ）。
+  // byUser: 本人が要求した照合。found なら、取消の受付があっても成功として確定する（本人が結果を見て決めた）。
   const recordObservation = async (
     operationId: string,
     attemptId: string,
     observation: ReconcileObservation,
+    byUser = false,
   ): Promise<void> => {
     let current = await view(operationId);
     if (current === null || current.attempt_id !== attemptId) return;
@@ -357,7 +366,7 @@ export function createOperationRunner(
       if (current === null) return;
     }
     if (current.state !== 'reconciling') return;
-    if (current.cancel_requested) {
+    if (current.cancel_requested && !byUser) {
       log(
         `操作 ${operationId} は送出の後に取消を受け付けたため、照合中のまま本人の確認を待ちます。`,
       );
@@ -587,28 +596,97 @@ export function createOperationRunner(
     else await runRemote(current);
   };
 
+  // 操作ごとの排他。最初の await より前に登録し、終わったら自分の登録だけを外す。
+  const hold = (
+    operationId: string,
+    task: Promise<unknown>,
+    reconcileCommandId: string | null,
+  ): void => {
+    const held: Held = {
+      done: task.then(
+        () => undefined,
+        () => undefined,
+      ),
+      reconcileCommandId,
+    };
+    running.set(operationId, held);
+    void held.done.then(() => {
+      if (running.get(operationId) !== held) return;
+      running.delete(operationId);
+      // 排他の間に届いた開始を、ここで始める。
+      const pending = pendingStarts.get(operationId);
+      if (pending !== undefined) {
+        pendingStarts.delete(operationId);
+        launch(operationId, pending);
+      }
+    });
+  };
+
   const launch = (operationId: string, afterApproval: boolean): void => {
-    if (closed || running.has(operationId)) return;
-    const task = run(operationId, afterApproval)
-      .catch((error: unknown) => {
+    if (closed) return;
+    if (running.has(operationId)) {
+      // 実行・照合の最中に届いた開始（retry の保存の後など）は捨てずに預かる。始めた実行は状態を読み直すので、
+      // 進める必要がなければ何もせずに終わる。
+      pendingStarts.set(
+        operationId,
+        (pendingStarts.get(operationId) ?? false) || afterApproval,
+      );
+      return;
+    }
+    hold(
+      operationId,
+      run(operationId, afterApproval).catch((error: unknown) => {
         // 故障の注入・停止の後の DB worker の拒否など。状態は DB の正本に残る（起動時に再開・回復する）。
         log(
           `操作 ${operationId} の実行を中断しました: ${error instanceof Error ? error.name : 'unknown'}`,
         );
-      })
-      .finally(() => {
-        running.delete(operationId);
-      });
-    running.set(operationId, task);
+      }),
+      null,
+    );
   };
 
+  // 同じ照合の要求を待つ上限。打ち切っても実行そのものの排他は外さない（HTTP の応答だけを返す）。
+  const RECONCILE_WAIT_MS = 10_000;
+
+  // 本人の照合。別の要求・通常の実行と重なれば、すぐに null（呼び出し側は 409）。同じ要求の照合が進んでいれば、
+  // 期限つきで終わるのを待ってから null を返す（呼び出し側が保存済みの受付を読み直す。照合は 1 回）。
   const reconcile = async (
     operationId: string,
     expectedStateRevision: string,
     request: DeviceRequestRef,
     commandId: string,
   ): Promise<DbCommandOutcome | null> => {
-    if (closed || running.has(operationId)) return null;
+    if (closed) return null;
+    const busy = running.get(operationId);
+    if (busy !== undefined) {
+      if (busy.reconcileCommandId !== commandId) return null;
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        busy.done,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, RECONCILE_WAIT_MS);
+          timer.unref();
+        }),
+      ]);
+      clearTimeout(timer);
+      return null;
+    }
+    const task = reconcileWork(
+      operationId,
+      expectedStateRevision,
+      request,
+      commandId,
+    );
+    hold(operationId, task, commandId);
+    return task;
+  };
+
+  const reconcileWork = async (
+    operationId: string,
+    expectedStateRevision: string,
+    request: DeviceRequestRef,
+    commandId: string,
+  ): Promise<DbCommandOutcome | null> => {
     const current = await view(operationId);
     if (
       current === null ||
@@ -635,7 +713,7 @@ export function createOperationRunner(
         if (accepted.outcome !== 'durable' || accepted.replayed)
           return accepted;
         const observation = await lookup(intent);
-        await recordObservation(operationId, attemptId, observation);
+        await recordObservation(operationId, attemptId, observation, true);
         return accepted;
       }
       // 照合中（X05 の取消の後など）: 参照で照合し、結果を本人の要求として記録する。
@@ -651,19 +729,7 @@ export function createOperationRunner(
         commandId,
       );
     };
-    const task = work();
-    running.set(
-      operationId,
-      task.then(
-        () => undefined,
-        () => undefined,
-      ),
-    );
-    try {
-      return await task;
-    } finally {
-      running.delete(operationId);
-    }
+    return work();
   };
 
   return {
@@ -671,7 +737,10 @@ export function createOperationRunner(
     start: (operationId) => launch(operationId, false),
     reconcile,
     async idle() {
-      while (running.size > 0) await Promise.allSettled([...running.values()]);
+      while (running.size > 0)
+        await Promise.allSettled(
+          [...running.values()].map((held) => held.done),
+        );
     },
     close() {
       closed = true;

@@ -981,3 +981,44 @@ test('dispatch intent without a DB connection row needs the re-read connection a
     );
   });
 });
+
+test('a retry prepare starts only from not_executed (review P2)', async () => {
+  await withStore((db) => {
+    const retry = (id: string, expected: string): DbCommand =>
+      ({ ...prepareCommand(id, expected), retry: true }) as DbCommand;
+    // 承認待ち・承認済み・準備中・結果不明からは始めない（初回の実行や照合を横取りしない）。
+    committed(run(db, createCommand('op-ra')));
+    assert.deepEqual(reasons(run(db, retry('op-ra', '1'))), [
+      'retry_not_allowed',
+    ]);
+    committed(run(db, createCommand('op-rb')));
+    committed(run(db, approveCommand('op-rb', '1')));
+    assert.deepEqual(reasons(run(db, retry('op-rb', '2'))), [
+      'retry_not_allowed',
+    ]);
+    assert.deepEqual(operationState(db, 'op-rb'), {
+      state: 'approved',
+      state_revision: 2,
+    });
+    toPreparing(db, 'op-rc');
+    assert.deepEqual(reasons(run(db, retry('op-rc', '3'))), [
+      'retry_not_allowed',
+    ]);
+    const held = toPreparing(db, 'op-rd');
+    committed(run(db, dispatchCommand('op-rd', '3', held)));
+    committed(run(db, resultCommand('op-rd', '4', held, 'unknown_held')));
+    assert.deepEqual(reasons(run(db, retry('op-rd', '5'))), [
+      'retry_not_allowed',
+    ]);
+    // 未実行が確定した操作だけ、新しい試行で準備へ戻せる。
+    const failed = toPreparing(db, 'op-re');
+    committed(run(db, dispatchCommand('op-re', '3', failed)));
+    committed(run(db, resultCommand('op-re', '4', failed, 'reconciling')));
+    committed(run(db, resultCommand('op-re', '5', failed, 'not_executed')));
+    assert.equal(committed(run(db, retry('op-re', '6'))), '7');
+    assert.deepEqual(operationState(db, 'op-re'), {
+      state: 'preparing',
+      state_revision: 7,
+    });
+  });
+});

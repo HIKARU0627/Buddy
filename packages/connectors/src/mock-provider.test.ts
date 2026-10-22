@@ -1,0 +1,377 @@
+// 模擬 provider とアダプターの試験。期待値は手で書いた値で、実装の処理から作らない。
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createMockMailConnector } from './index.js';
+import { startProvider, TEST_TIMEOUT_MS } from './test-support.js';
+
+const OPTIONS = { timeout: TEST_TIMEOUT_MS };
+const CLOCK = '2026-10-05T09:00:00+09:00';
+
+// H01（packages/contracts/fixtures/h01.json）と同じ値を手で写した。
+const H01 = {
+  operation_id: '00000000-0000-4000-8000-000000000001',
+  account_id: '00000000-0000-4000-8000-000000000002',
+};
+
+test(
+  '合成データ: mail-001（r1・INBOX）と、13:30〜14:00 が重なる event-001・002 を読める',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t);
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+
+    assert.deepEqual(await connector.readTarget('mail-001'), {
+      remote_id: 'mail-001',
+      source_revision: 'r1',
+      mailbox: 'INBOX',
+      labels: [],
+    });
+    assert.equal(await connector.readTarget('mail-999'), null);
+    assert.deepEqual(await connector.listEvents(), [
+      {
+        event_id: 'event-001',
+        title: '（合成）定例の打ち合わせ',
+        start: '2026-10-05T13:00:00+09:00',
+        end: '2026-10-05T14:00:00+09:00',
+      },
+      {
+        event_id: 'event-002',
+        title: '（合成）歯科の予約',
+        start: '2026-10-05T13:30:00+09:00',
+        end: '2026-10-05T14:30:00+09:00',
+      },
+    ]);
+    assert.deepEqual(await connector.readPermission(H01.account_id), {
+      account_id: H01.account_id,
+      permission_revision: '1',
+      scopes: [
+        'mail.read',
+        'calendar.read',
+        'mail.labels.change',
+        'mail.drafts.create',
+        'mail.drafts.send',
+      ],
+    });
+    assert.equal(await connector.readPermission('other-account'), null);
+    // 読み取りは要求にも状態の変更にも数えない。
+    assert.equal(provider.truth.requestCount(), 0);
+    assert.equal(provider.truth.stateChangeCount(), 0);
+  },
+);
+
+test(
+  'H01 のラベルの追加を適用し、受信記録に識別・順・適用した変更・応答を残す',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t, { now: () => CLOCK });
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+
+    const outcome = await connector.changeLabels(
+      { operation_id: H01.operation_id, attempt_id: 'attempt-1' },
+      { remote_id: 'mail-001', add: ['follow-up'], remove: [] },
+    );
+    assert.deepEqual(outcome, {
+      kind: 'applied',
+      status: 200,
+      value: {
+        remote_id: 'mail-001',
+        source_revision: 'r1',
+        mailbox: '',
+        labels: ['follow-up'],
+      },
+    });
+    assert.deepEqual(provider.truth.receipts(), [
+      {
+        receive_order: 1,
+        received_at: CLOCK,
+        route: 'mail.labels.change',
+        operation_id: H01.operation_id,
+        attempt_id: 'attempt-1',
+        step_id: null,
+        applied_change: {
+          kind: 'mail.labels.change',
+          remote_id: 'mail-001',
+          add: ['follow-up'],
+          remove: [],
+          labels_after: ['follow-up'],
+        },
+        responded: true,
+        response_status: 200,
+      },
+    ]);
+    assert.equal(provider.truth.requestCount(), 1);
+    assert.equal(provider.truth.stateChangeCount(), 1);
+    assert.deepEqual((await connector.readTarget('mail-001'))?.labels, [
+      'follow-up',
+    ]);
+  },
+);
+
+test(
+  '中枢（アダプター）を作り直しても、provider を作り直しても、受信記録と状態が残る',
+  OPTIONS,
+  async (t) => {
+    const first = await startProvider(t, { now: () => CLOCK });
+    const before = createMockMailConnector({ baseUrl: first.url });
+    await before.changeLabels(
+      { operation_id: 'op-1', attempt_id: 'attempt-1' },
+      { remote_id: 'mail-001', add: ['follow-up'], remove: [] },
+    );
+
+    // 中枢の再起動: アダプターを作り直す。provider の記録は影響を受けない。
+    const afterCoreRestart = createMockMailConnector({ baseUrl: first.url });
+    assert.equal(first.truth.requestCount(), 1);
+    assert.deepEqual((await afterCoreRestart.readTarget('mail-001'))?.labels, [
+      'follow-up',
+    ]);
+
+    // provider のプロセスの作り直し: 同じディレクトリから状態と記録を読み戻す。
+    await first.close();
+    const second = await startProvider(t, { dir: first.dir, now: () => CLOCK });
+    assert.equal(second.truth.requestCount(), 1);
+    assert.equal(second.truth.stateChangeCount(), 1);
+    const [receipt] = second.truth.receipts();
+    assert.equal(receipt?.operation_id, 'op-1');
+    assert.equal(receipt?.attempt_id, 'attempt-1');
+    assert.equal(receipt?.responded, true);
+
+    // 続きの受信順は引き継ぐ。
+    const connector = createMockMailConnector({ baseUrl: second.url });
+    await connector.changeLabels(
+      { operation_id: 'op-2', attempt_id: 'attempt-1' },
+      { remote_id: 'mail-001', add: ['later'], remove: [] },
+    );
+    assert.deepEqual(
+      second.truth.receipts().map((r) => [r.receive_order, r.operation_id]),
+      [
+        [1, 'op-1'],
+        [2, 'op-2'],
+      ],
+    );
+    assert.deepEqual((await connector.readTarget('mail-001'))?.labels, [
+      'follow-up',
+      'later',
+    ]);
+  },
+);
+
+test(
+  '同じ要求を 2 回送ると、要求 2 件・状態の変更 2 件として記録し、重複を消さない',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t);
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+    const identity = { operation_id: 'op-dup', attempt_id: 'attempt-1' };
+    const change = { remote_id: 'mail-001', add: ['follow-up'], remove: [] };
+
+    assert.equal(
+      (await connector.changeLabels(identity, change)).kind,
+      'applied',
+    );
+    assert.equal(
+      (await connector.changeLabels(identity, change)).kind,
+      'applied',
+    );
+
+    assert.equal(provider.truth.requestCount(), 2);
+    assert.equal(provider.truth.stateChangeCount(), 2);
+    assert.deepEqual(
+      provider.truth
+        .receipts()
+        .map((r) => [r.receive_order, r.operation_id, r.attempt_id]),
+      [
+        [1, 'op-dup', 'attempt-1'],
+        [2, 'op-dup', 'attempt-1'],
+      ],
+    );
+    // ラベルそのものは 1 つだが、サービスは二重の送出を隠さず 2 回の変更として数える。
+    assert.deepEqual(provider.truth.snapshot().mails['mail-001']?.labels, [
+      'follow-up',
+    ]);
+  },
+);
+
+test(
+  '拒否・不正な要求は、要求として記録するが状態を変えない',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t);
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+    const identity = { operation_id: 'op-reject', attempt_id: 'attempt-1' };
+
+    assert.deepEqual(
+      await connector.changeLabels(identity, {
+        remote_id: 'mail-999',
+        add: ['follow-up'],
+        remove: [],
+      }),
+      { kind: 'rejected', status: 404, code: 'not_found' },
+    );
+
+    provider.truth.setPermission({
+      permission_revision: '2',
+      scopes: ['mail.read'],
+    });
+    assert.deepEqual(
+      await connector.changeLabels(identity, {
+        remote_id: 'mail-001',
+        add: ['follow-up'],
+        remove: [],
+      }),
+      { kind: 'rejected', status: 403, code: 'permission_denied' },
+    );
+
+    // 識別のない不正な本文（直接送る）。
+    const response = await fetch(
+      `${provider.url}/v1/mail/messages/mail-001/labels`,
+      { method: 'POST', body: '{broken' },
+    );
+    assert.equal(response.status, 400);
+
+    assert.equal(provider.truth.requestCount(), 3);
+    assert.equal(provider.truth.stateChangeCount(), 0);
+    assert.deepEqual(
+      provider.truth
+        .receipts()
+        .map((r) => [r.operation_id, r.applied_change, r.response_status]),
+      [
+        ['op-reject', null, 404],
+        ['op-reject', null, 403],
+        [null, null, 400],
+      ],
+    );
+    assert.deepEqual(provider.truth.snapshot().mails['mail-001']?.labels, []);
+  },
+);
+
+test(
+  '下書きの作成と送信は step_id つきで記録し、operation_id で正確に lookup できる',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t);
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+
+    const created = await connector.createDraft(
+      {
+        operation_id: 'op-x10',
+        attempt_id: 'attempt-1',
+        step_id: 'create_draft',
+      },
+      {
+        to: ['synthetic-recipient'],
+        subject: '（合成）件名',
+        body: '（合成）本文',
+      },
+    );
+    assert.deepEqual(created, {
+      kind: 'applied',
+      status: 201,
+      value: { draft_id: 'draft-001' },
+    });
+    assert.deepEqual(
+      await connector.lookupDrafts({
+        operation_id: 'op-x10',
+        step_id: 'create_draft',
+      }),
+      [
+        {
+          draft_id: 'draft-001',
+          operation_id: 'op-x10',
+          attempt_id: 'attempt-1',
+          step_id: 'create_draft',
+          status: 'draft',
+        },
+      ],
+    );
+    assert.deepEqual(
+      await connector.lookupDrafts({ operation_id: 'op-other' }),
+      [],
+    );
+
+    const sent = await connector.sendDraft(
+      { operation_id: 'op-x10', attempt_id: 'attempt-1', step_id: 'send' },
+      'draft-001',
+    );
+    assert.deepEqual(sent, {
+      kind: 'applied',
+      status: 200,
+      value: { draft_id: 'draft-001' },
+    });
+    assert.deepEqual(
+      provider.truth
+        .receipts()
+        .map((r) => [r.receive_order, r.route, r.step_id]),
+      [
+        [1, 'mail.draft.create', 'create_draft'],
+        [2, 'mail.draft.send', 'send'],
+      ],
+    );
+    assert.equal(provider.truth.requestCount(), 2);
+    assert.equal(provider.truth.stateChangeCount(), 2);
+    const draft = provider.truth.snapshot().drafts['draft-001'];
+    assert.equal(draft?.status, 'sent');
+    assert.equal(draft?.send_count, 1);
+
+    // 存在しない下書きの送信は拒否される。
+    assert.deepEqual(
+      await connector.sendDraft(
+        { operation_id: 'op-x10', attempt_id: 'a2' },
+        'draft-404',
+      ),
+      { kind: 'rejected', status: 404, code: 'not_found' },
+    );
+  },
+);
+
+test(
+  '試験の状況づくり（対象の版・許可）は変更の回数に数えず、アダプターから読める',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t);
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+    provider.truth.setSourceRevision('mail-001', 'r2');
+    provider.truth.setPermission({
+      permission_revision: '2',
+      scopes: ['mail.read'],
+    });
+
+    assert.equal(
+      (await connector.readTarget('mail-001'))?.source_revision,
+      'r2',
+    );
+    assert.deepEqual(await connector.readPermission(H01.account_id), {
+      account_id: H01.account_id,
+      permission_revision: '2',
+      scopes: ['mail.read'],
+    });
+    assert.equal(provider.truth.stateChangeCount(), 0);
+    assert.equal(provider.truth.requestCount(), 0);
+  },
+);
+
+test(
+  'アダプターは能力を持ち、真の結果を見る窓口を持たない',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t);
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+    assert.deepEqual(
+      connector.capability.writes.map((w) => [
+        w.action_kind,
+        w.effect_kind,
+        w.automatic_http_retries,
+      ]),
+      [
+        ['mail.labels.change', 'RemoteMutation', 0],
+        ['mail.draft.create', 'RemoteMutation', 0],
+        ['mail.draft.send', 'RemoteMutation', 0],
+      ],
+    );
+    assert.ok(
+      connector.capability.reads.every((r) => r.effect_kind === 'Read'),
+    );
+    assert.equal('truth' in connector, false);
+    const exported = Object.keys(await import('./index.js'));
+    assert.equal(exported.includes('createMockProvider'), false);
+  },
+);

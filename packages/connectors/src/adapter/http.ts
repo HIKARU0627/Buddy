@@ -56,7 +56,7 @@ export function callOnce(call: HttpCall): Promise<HttpOutcome> {
         res.on('data', (chunk: Buffer) => chunks.push(chunk));
         res.on('end', () => {
           const text = Buffer.concat(chunks).toString('utf8');
-          let body: unknown = null;
+          let body: unknown;
           try {
             body = text.length === 0 ? null : JSON.parse(text);
           } catch {

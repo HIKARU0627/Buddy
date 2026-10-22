@@ -2,7 +2,12 @@
 // 期待値は fault-points.json の手書きの値を写した。Core の状態機械の合格は B04 の後続の Issue で試験する。
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import type { AddressInfo } from 'node:net';
 import test from 'node:test';
 import {
@@ -251,11 +256,7 @@ test(
 
 async function countingServer(
   t: test.TestContext,
-  onRequest: (
-    count: number,
-    req: import('node:http').IncomingMessage,
-    res: import('node:http').ServerResponse,
-  ) => void,
+  onRequest: (count: number, req: IncomingMessage, res: ServerResponse) => void,
 ): Promise<{ readonly url: string; readonly count: () => number }> {
   let count = 0;
   const server: Server = createServer((req, res) => {

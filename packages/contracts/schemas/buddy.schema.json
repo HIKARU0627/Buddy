@@ -32,7 +32,7 @@
       "$ref": "#/$defs/PreviewRequest"
     },
     {
-      "$ref": "#/$defs/LabelPreview"
+      "$ref": "#/$defs/OperationPreview"
     },
     {
       "$ref": "#/$defs/ApprovalRequest"
@@ -3984,13 +3984,226 @@
       "additionalProperties": false,
       "description": "H01のラベル変更のみ。content_hashはこの確定intent全体のJCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。"
     },
+    "DraftReplyOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph"]
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "remote_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_revision": {
+              "$ref": "#/$defs/SourceRevision"
+            }
+          },
+          "required": ["remote_id", "source_revision"],
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "mail.draft.create"
+            },
+            "to": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "cc": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "subject": {
+              "type": "string",
+              "minLength": 1
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["kind", "to", "cc", "subject", "body"],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 0
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "operation_marker"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "provider",
+        "account_id",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "返信の下書きの作成（draft_reply、RemoteMutation、ADR 0027）。target は返信元のメール。下書きは送らないので external_recipients は空。宛先は返信元から Core が決め、モデルに作らせない（ADR 0004）。結果不明は操作の目印（operation_id と content_version）でアカウント内を照合する。"
+    },
+    "TaskOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "list_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["list_id"],
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "task.create"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DateOrDateTime"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["kind", "title", "due", "body"],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 0
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "local_transaction"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "Buddy 内の用事の登録（create_task、LocalCommand、ADR 0027）。外部 HTTP を使わず、承認の後に一つの transaction で適用する。target.list_id は登録先の一覧、permission_revision は Buddy 内の用事の保存先の許可の版。"
+    },
+    "OperationKind": {
+      "type": "string",
+      "enum": ["mail.labels.change", "mail.draft.create", "task.create"],
+      "description": "操作の種類。確定 intent の action.kind と同じ値（ADR 0027）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。"
+    },
     "OperationIntent": {
       "oneOf": [
         {
           "$ref": "#/$defs/LabelOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/DraftReplyOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/TaskOperationIntent"
         }
       ],
-      "description": "承認対象として確定した変更内容。B00 時点はラベル変更（H01）だけ。他の操作は後続で追加する。"
+      "description": "承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。"
     },
     "CommandContext": {
       "type": "object",
@@ -4018,14 +4231,14 @@
       "required": ["request_id", "command_scope_id"],
       "additionalProperties": false
     },
-    "LabelPreview": {
+    "OperationPreview": {
       "type": "object",
       "properties": {
         "preview_id": {
           "$ref": "#/$defs/Id"
         },
         "intent": {
-          "$ref": "#/$defs/LabelOperationIntent"
+          "$ref": "#/$defs/OperationIntent"
         },
         "content_hash": {
           "$ref": "#/$defs/Hash"
@@ -4035,7 +4248,8 @@
         }
       },
       "required": ["preview_id", "intent", "content_hash", "state_revision"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "承認表示の準備の応答。確定 intent（種類は action.kind）と content_hash。承認ではない（ADR 0027 で LabelPreview を一般化）。"
     },
     "ApprovalRequest": {
       "type": "object",
@@ -4162,6 +4376,9 @@
         "operation_id": {
           "$ref": "#/$defs/Id"
         },
+        "operation_kind": {
+          "$ref": "#/$defs/OperationKind"
+        },
         "content_version": {
           "$ref": "#/$defs/ContentVersion"
         },
@@ -4234,6 +4451,7 @@
       },
       "required": [
         "operation_id",
+        "operation_kind",
         "content_version",
         "content_hash",
         "state_revision",
@@ -4243,7 +4461,7 @@
         "result"
       ],
       "additionalProperties": false,
-      "description": "最初のラベル変更用状態投影。allowed_actionsは表示補助であり、実行時の認可ではない。"
+      "description": "操作の状態投影。operation_kind は確定 intent の action.kind（ADR 0027）。allowed_actionsは表示補助であり、実行時の認可ではない。"
     },
     "EventEnvelope": {
       "type": "object",

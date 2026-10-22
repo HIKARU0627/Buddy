@@ -52,6 +52,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [デスクトップの UI を HeroUI で作る](docs/adr/0024-ui-heroui-desktop-renderer.md)
 - [端末側の接続とデスクトップの中枢への接続・2 クライアントの試験](docs/adr/0025-b03-client-desktop-connection.md)
 - [中枢の画面の端末で申請の承認と端末の失効を行う](docs/adr/0026-b03-hub-screen-approval.md)
+- [下書き・用事の intent、内容版の更新、LocalCommand の遷移、connector の能力と工程の型](docs/adr/0027-b04-operation-kinds-and-transitions.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

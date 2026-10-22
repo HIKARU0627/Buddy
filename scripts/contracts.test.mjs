@@ -81,8 +81,35 @@ for (const [name, text] of [
     assert.throws(() => parseStrictJson(text)));
 
 test('all explicit positive and negative schema fixtures', () => {
-  for (const entry of cases)
+  for (const entry of cases) {
     assert.equal(validators[entry.schema](entry.value), entry.valid, entry.id);
+    if (entry.valid)
+      assert.deepEqual(
+        semanticErrors(entry.schema, entry.value),
+        entry.semantic_errors ?? [],
+        entry.id,
+      );
+  }
+});
+
+test('task due dates that do not exist are rejected in intents and previews', () => {
+  for (const id of [
+    'intent-task-create-impossible-due',
+    'intent-task-create-impossible-due-as-operation',
+    'preview-task-create-impossible-due',
+  ]) {
+    const entry = cases.find((c) => c.id === id);
+    assert.deepEqual(entry.semantic_errors, ['invalid_local_datetime'], id);
+  }
+  const task = fixture('intent-task-create');
+  task.action.due = '2030-02-28T23:59';
+  assert.deepEqual(semanticErrors('OperationIntent', task), []);
+  task.action.due = '2030-02-29T00:00';
+  assert.deepEqual(semanticErrors('OperationIntent', task), [
+    'invalid_local_datetime',
+  ]);
+  task.action.due = null;
+  assert.deepEqual(semanticErrors('TaskOperationIntent', task), []);
 });
 
 test('large revisions are strings without floating-point loss', () => {

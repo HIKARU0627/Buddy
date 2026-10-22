@@ -90,6 +90,7 @@ test(
         assert.deepEqual(byId.get('op-wait'), {
           operation_id: 'op-wait',
           workflow_id: null,
+          operation_kind: 'mail.labels.change',
           effect_route: 'remote_mutation',
           state: 'approved',
           state_revision: '2',

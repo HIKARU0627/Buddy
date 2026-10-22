@@ -1,5 +1,5 @@
 {
-  "description": "内容 hash（JCS＋SHA-256）の期待値。正規形は手書きのリテラル、SHA-256 は OS の shasum で計算し、検査対象の canonicalize と Node.js crypto では生成していない。",
+  "description": "内容 hash（JCS＋SHA-256）の期待値。正規形は手書きのリテラル、SHA-256 は OS の shasum で計算し、検査対象の canonicalize と Node.js crypto では生成していない。draft-reply・task-create の系列（ADR 0027）は、正規形を Python の json.dumps（キーの並べ替え・空白なし・非 ASCII のまま。値は文字列・配列・null だけ）、SHA-256 を Python の hashlib で計算し、基準の 2 件を shasum でも照合した。",
   "cases": [
     {
       "id": "h01",
@@ -77,6 +77,83 @@
       "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000001\",\n \"effects\": {\n  \"reconcile_scope\": \"exact_target\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"remove\": [],\n  \"kind\": \"mail.labels.change\",\n  \"add\": [\n   \"a\\\"b\\\\c\\u001f\"\n  ]\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
       "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"add\":[\"a\\\"b\\\\c\\u001f\"],\"kind\":\"mail.labels.change\",\"remove\":[]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"exact_target\"},\"operation_id\":\"00000000-0000-4000-8000-000000000001\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
       "expected_sha256": "b16d3e655be9fe0f9d82bf397d120e4e8eb7de8e95ddb5dcfdaeca2ee6b761a2"
+    },
+    {
+      "id": "draft-reply",
+      "note": "返信の下書き（mail.draft.create）。入力はキー順を逆にし空白を入れた",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000101\",\n \"effects\": {\n  \"reconcile_scope\": \"operation_marker\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"to\": [\n   \"sender@example.invalid\"\n  ],\n  \"subject\": \"Re: \\u6253\\u3061\\u5408\\u308f\\u305b\\u306e\\u4ef6\",\n  \"kind\": \"mail.draft.create\",\n  \"cc\": [],\n  \"body\": \"\\u627f\\u77e5\\u3057\\u307e\\u3057\\u305f\\u3002\\u6728\\u66dc\\u306e10\\u6642\\u306b\\u4f3a\\u3044\\u307e\\u3059\\u3002\"\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"body\":\"承知しました。木曜の10時に伺います。\",\"cc\":[],\"kind\":\"mail.draft.create\",\"subject\":\"Re: 打ち合わせの件\",\"to\":[\"sender@example.invalid\"]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"operation_marker\"},\"operation_id\":\"00000000-0000-4000-8000-000000000101\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "96725cbc3de99f181e8dfb533ea99578dcf1a765c9abd1d16201debac99d1e5d"
+    },
+    {
+      "id": "draft-reply-body-changed",
+      "note": "下書きの本文だけ変更。draft-reply と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000101\",\n \"effects\": {\n  \"reconcile_scope\": \"operation_marker\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"to\": [\n   \"sender@example.invalid\"\n  ],\n  \"subject\": \"Re: \\u6253\\u3061\\u5408\\u308f\\u305b\\u306e\\u4ef6\",\n  \"kind\": \"mail.draft.create\",\n  \"cc\": [],\n  \"body\": \"\\u627f\\u77e5\\u3057\\u307e\\u3057\\u305f\\u3002\\u91d1\\u66dc\\u306e10\\u6642\\u306b\\u4f3a\\u3044\\u307e\\u3059\\u3002\"\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"body\":\"承知しました。金曜の10時に伺います。\",\"cc\":[],\"kind\":\"mail.draft.create\",\"subject\":\"Re: 打ち合わせの件\",\"to\":[\"sender@example.invalid\"]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"operation_marker\"},\"operation_id\":\"00000000-0000-4000-8000-000000000101\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "a73b88b09d0c0cbfc50c81fa8ad483e9cd532bcb33f0678f8a0e72082dfdfe60"
+    },
+    {
+      "id": "draft-reply-recipient-changed",
+      "note": "下書きの宛先だけ変更。draft-reply と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000101\",\n \"effects\": {\n  \"reconcile_scope\": \"operation_marker\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"to\": [\n   \"other@example.invalid\"\n  ],\n  \"subject\": \"Re: \\u6253\\u3061\\u5408\\u308f\\u305b\\u306e\\u4ef6\",\n  \"kind\": \"mail.draft.create\",\n  \"cc\": [],\n  \"body\": \"\\u627f\\u77e5\\u3057\\u307e\\u3057\\u305f\\u3002\\u6728\\u66dc\\u306e10\\u6642\\u306b\\u4f3a\\u3044\\u307e\\u3059\\u3002\"\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"body\":\"承知しました。木曜の10時に伺います。\",\"cc\":[],\"kind\":\"mail.draft.create\",\"subject\":\"Re: 打ち合わせの件\",\"to\":[\"other@example.invalid\"]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"operation_marker\"},\"operation_id\":\"00000000-0000-4000-8000-000000000101\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "f307e3dda126fff1530e9759195d82c6748f4beb0c64e390481f961a8ad25e51"
+    },
+    {
+      "id": "draft-reply-target-different",
+      "note": "返信元のメール（対象 ID）だけ変更。draft-reply と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-002\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000101\",\n \"effects\": {\n  \"reconcile_scope\": \"operation_marker\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"to\": [\n   \"sender@example.invalid\"\n  ],\n  \"subject\": \"Re: \\u6253\\u3061\\u5408\\u308f\\u305b\\u306e\\u4ef6\",\n  \"kind\": \"mail.draft.create\",\n  \"cc\": [],\n  \"body\": \"\\u627f\\u77e5\\u3057\\u307e\\u3057\\u305f\\u3002\\u6728\\u66dc\\u306e10\\u6642\\u306b\\u4f3a\\u3044\\u307e\\u3059\\u3002\"\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"body\":\"承知しました。木曜の10時に伺います。\",\"cc\":[],\"kind\":\"mail.draft.create\",\"subject\":\"Re: 打ち合わせの件\",\"to\":[\"sender@example.invalid\"]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"operation_marker\"},\"operation_id\":\"00000000-0000-4000-8000-000000000101\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-002\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "09c09d10d3b80afad409e2173d34daacb0d0eb0e291159f9da20027be1e6e61f"
+    },
+    {
+      "id": "draft-reply-permission-revision-2",
+      "note": "許可版だけ変更。draft-reply と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"2\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000101\",\n \"effects\": {\n  \"reconcile_scope\": \"operation_marker\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"to\": [\n   \"sender@example.invalid\"\n  ],\n  \"subject\": \"Re: \\u6253\\u3061\\u5408\\u308f\\u305b\\u306e\\u4ef6\",\n  \"kind\": \"mail.draft.create\",\n  \"cc\": [],\n  \"body\": \"\\u627f\\u77e5\\u3057\\u307e\\u3057\\u305f\\u3002\\u6728\\u66dc\\u306e10\\u6642\\u306b\\u4f3a\\u3044\\u307e\\u3059\\u3002\"\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"body\":\"承知しました。木曜の10時に伺います。\",\"cc\":[],\"kind\":\"mail.draft.create\",\"subject\":\"Re: 打ち合わせの件\",\"to\":[\"sender@example.invalid\"]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"operation_marker\"},\"operation_id\":\"00000000-0000-4000-8000-000000000101\",\"permission_revision\":\"2\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "ec40f84d73256b8b52e9610974544d9227981b4988d4270c0bf06518da8df8e1"
+    },
+    {
+      "id": "draft-reply-content-version-2",
+      "note": "内容版だけ変更（D1 の内容版の更新）。draft-reply と別の値",
+      "input_json": "{\n \"target\": {\n  \"source_revision\": \"r1\",\n  \"remote_id\": \"mail-001\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"provider\": \"mock\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000101\",\n \"effects\": {\n  \"reconcile_scope\": \"operation_marker\",\n  \"external_recipients\": []\n },\n \"content_version\": \"2\",\n \"action\": {\n  \"to\": [\n   \"sender@example.invalid\"\n  ],\n  \"subject\": \"Re: \\u6253\\u3061\\u5408\\u308f\\u305b\\u306e\\u4ef6\",\n  \"kind\": \"mail.draft.create\",\n  \"cc\": [],\n  \"body\": \"\\u627f\\u77e5\\u3057\\u307e\\u3057\\u305f\\u3002\\u6728\\u66dc\\u306e10\\u6642\\u306b\\u4f3a\\u3044\\u307e\\u3059\\u3002\"\n },\n \"account_id\": \"00000000-0000-4000-8000-000000000002\"\n}",
+      "expected_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"body\":\"承知しました。木曜の10時に伺います。\",\"cc\":[],\"kind\":\"mail.draft.create\",\"subject\":\"Re: 打ち合わせの件\",\"to\":[\"sender@example.invalid\"]},\"content_version\":\"2\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"operation_marker\"},\"operation_id\":\"00000000-0000-4000-8000-000000000101\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}",
+      "expected_sha256": "1fb66c9cd952e8285384d9c171473a2c9cc9bbea095c28c2a64391ee6b522a15"
+    },
+    {
+      "id": "task-create",
+      "note": "用事の登録（task.create）。入力はキー順を逆にし空白を入れた。body は明示の null",
+      "input_json": "{\n \"target\": {\n  \"list_id\": \"default\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000201\",\n \"effects\": {\n  \"reconcile_scope\": \"local_transaction\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"title\": \"\\u8acb\\u6c42\\u66f8\\u3092\\u9001\\u308b\",\n  \"kind\": \"task.create\",\n  \"due\": \"2030-10-07\",\n  \"body\": null\n }\n}",
+      "expected_canonical": "{\"action\":{\"body\":null,\"due\":\"2030-10-07\",\"kind\":\"task.create\",\"title\":\"請求書を送る\"},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"local_transaction\"},\"operation_id\":\"00000000-0000-4000-8000-000000000201\",\"permission_revision\":\"1\",\"schema\":\"buddy.operation.v1\",\"target\":{\"list_id\":\"default\"}}",
+      "expected_sha256": "dbd43e0637bfbdbd2e03ec4063f4e476c1c287434724bb8919707866d859b5a3"
+    },
+    {
+      "id": "task-create-title-changed",
+      "note": "用事の題名だけ変更。task-create と別の値",
+      "input_json": "{\n \"target\": {\n  \"list_id\": \"default\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000201\",\n \"effects\": {\n  \"reconcile_scope\": \"local_transaction\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"title\": \"\\u8acb\\u6c42\\u66f8\\u3092\\u78ba\\u8a8d\\u3059\\u308b\",\n  \"kind\": \"task.create\",\n  \"due\": \"2030-10-07\",\n  \"body\": null\n }\n}",
+      "expected_canonical": "{\"action\":{\"body\":null,\"due\":\"2030-10-07\",\"kind\":\"task.create\",\"title\":\"請求書を確認する\"},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"local_transaction\"},\"operation_id\":\"00000000-0000-4000-8000-000000000201\",\"permission_revision\":\"1\",\"schema\":\"buddy.operation.v1\",\"target\":{\"list_id\":\"default\"}}",
+      "expected_sha256": "49609e2b521c3ba2917f776d056ac0f771d7876de439ebf22efaab27b3b2ba57"
+    },
+    {
+      "id": "task-create-body-set",
+      "note": "本文を null から文字列へ変更。task-create と別の値",
+      "input_json": "{\n \"target\": {\n  \"list_id\": \"default\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000201\",\n \"effects\": {\n  \"reconcile_scope\": \"local_transaction\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"title\": \"\\u8acb\\u6c42\\u66f8\\u3092\\u9001\\u308b\",\n  \"kind\": \"task.create\",\n  \"due\": \"2030-10-07\",\n  \"body\": \"\\u5148\\u65b9\\u306e\\u62c5\\u5f53\\u8005\\u306b\\u9001\\u308b\"\n }\n}",
+      "expected_canonical": "{\"action\":{\"body\":\"先方の担当者に送る\",\"due\":\"2030-10-07\",\"kind\":\"task.create\",\"title\":\"請求書を送る\"},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"local_transaction\"},\"operation_id\":\"00000000-0000-4000-8000-000000000201\",\"permission_revision\":\"1\",\"schema\":\"buddy.operation.v1\",\"target\":{\"list_id\":\"default\"}}",
+      "expected_sha256": "bdb00a3d3f3254dd5df73500b2b96237b6b6ad2edb5103a8b9eea7d21ae3d78c"
+    },
+    {
+      "id": "task-create-target-different",
+      "note": "登録先の一覧（対象）だけ変更。task-create と別の値",
+      "input_json": "{\n \"target\": {\n  \"list_id\": \"work\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"permission_revision\": \"1\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000201\",\n \"effects\": {\n  \"reconcile_scope\": \"local_transaction\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"title\": \"\\u8acb\\u6c42\\u66f8\\u3092\\u9001\\u308b\",\n  \"kind\": \"task.create\",\n  \"due\": \"2030-10-07\",\n  \"body\": null\n }\n}",
+      "expected_canonical": "{\"action\":{\"body\":null,\"due\":\"2030-10-07\",\"kind\":\"task.create\",\"title\":\"請求書を送る\"},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"local_transaction\"},\"operation_id\":\"00000000-0000-4000-8000-000000000201\",\"permission_revision\":\"1\",\"schema\":\"buddy.operation.v1\",\"target\":{\"list_id\":\"work\"}}",
+      "expected_sha256": "dc375b3fccedcab506500d65160158f241cde4530a31584acfc1e2b87abbc7ba"
+    },
+    {
+      "id": "task-create-permission-revision-2",
+      "note": "許可版だけ変更。task-create と別の値",
+      "input_json": "{\n \"target\": {\n  \"list_id\": \"default\"\n },\n \"schema\": \"buddy.operation.v1\",\n \"permission_revision\": \"2\",\n \"operation_id\": \"00000000-0000-4000-8000-000000000201\",\n \"effects\": {\n  \"reconcile_scope\": \"local_transaction\",\n  \"external_recipients\": []\n },\n \"content_version\": \"1\",\n \"action\": {\n  \"title\": \"\\u8acb\\u6c42\\u66f8\\u3092\\u9001\\u308b\",\n  \"kind\": \"task.create\",\n  \"due\": \"2030-10-07\",\n  \"body\": null\n }\n}",
+      "expected_canonical": "{\"action\":{\"body\":null,\"due\":\"2030-10-07\",\"kind\":\"task.create\",\"title\":\"請求書を送る\"},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"local_transaction\"},\"operation_id\":\"00000000-0000-4000-8000-000000000201\",\"permission_revision\":\"2\",\"schema\":\"buddy.operation.v1\",\"target\":{\"list_id\":\"default\"}}",
+      "expected_sha256": "45747b353f76402ef3dca4c1e02323529b36347af83919ef401f4a1ea6c98e0d"
     }
   ]
 }

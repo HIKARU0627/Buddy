@@ -140,7 +140,7 @@ test('test evidence records separate mock, device, real API and billing runs', a
     provider_state_changes: 0,
     approvals: 1,
     final_state: 'unknown_held',
-    observed_at: '2030-10-05T00:00:00Z',
+    observed_at: '2026-10-05T09:00:00+09:00',
     deviation: null,
     voice_stop_ms: null,
     outcome: 'matched_expectation',

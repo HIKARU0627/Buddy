@@ -227,7 +227,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: ./schemas/buddy.schema.json#/$defs/LabelPreview
+                $ref: ./schemas/buddy.schema.json#/$defs/OperationPreview
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':

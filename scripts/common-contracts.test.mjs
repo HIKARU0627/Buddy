@@ -200,6 +200,81 @@ test('content hashes match independently fixed canonical text and SHA-256', asyn
   );
 });
 
+// キーの並びだけを入れ替える（中身は変えない）。期待値の計算には使わず、入力の別の並びを作るだけ。
+function rotateKeys(value) {
+  if (Array.isArray(value)) return value.map(rotateKeys);
+  if (value === null || typeof value !== 'object') return value;
+  const keys = Object.keys(value);
+  const rotated = [...keys.slice(1), ...keys.slice(0, 1)];
+  return Object.fromEntries(
+    rotated.map((key) => [key, rotateKeys(value[key])]),
+  );
+}
+
+test('draft and task intents: key order keeps the hash; body, target and permission revision change it (ADR 0027)', async () => {
+  const { cases } = await read(
+    'packages/contracts/fixtures/content-hash-cases.json',
+  );
+  const byId = new Map(cases.map((entry) => [entry.id, entry]));
+  const series = {
+    'draft-reply': [
+      'draft-reply-body-changed',
+      'draft-reply-recipient-changed',
+      'draft-reply-target-different',
+      'draft-reply-permission-revision-2',
+      'draft-reply-content-version-2',
+    ],
+    'task-create': [
+      'task-create-title-changed',
+      'task-create-body-set',
+      'task-create-target-different',
+      'task-create-permission-revision-2',
+    ],
+  };
+  for (const [baseId, variants] of Object.entries(series)) {
+    const base = byId.get(baseId);
+    for (const id of [baseId, ...variants]) {
+      const entry = byId.get(id);
+      const intent = parseStrictJson(entry.input_json);
+      assert(validators.OperationIntent(intent), id);
+      assert.deepEqual(semanticErrors('OperationIntent', intent), [], id);
+      // 入力の並び（逆順）と、さらに入れ替えた並びの両方で同じ手書きの期待値になる。
+      const reordered = JSON.stringify(rotateKeys(intent), null, 3);
+      assert.notEqual(reordered, entry.input_json, id);
+      assert.equal(canonicalJson(reordered), entry.expected_canonical, id);
+      assert.equal(contentHash(reordered), entry.expected_sha256, id);
+      if (id !== baseId)
+        assert.notEqual(entry.expected_sha256, base.expected_sha256, id);
+    }
+  }
+});
+
+test('draft intents reject the same address in to and cc; previews check the intent by kind', async () => {
+  const cases = await read('packages/contracts/fixtures/schema-cases.json');
+  const value = (id) =>
+    structuredClone(cases.find((entry) => entry.id === id).value);
+  const draft = value('intent-draft-reply');
+  draft.action.cc = ['sender@example.invalid'];
+  assert(validators.OperationIntent(draft));
+  assert.deepEqual(semanticErrors('OperationIntent', draft), [
+    'duplicate_recipient',
+  ]);
+  const preview = value('preview-draft-reply');
+  preview.intent = draft;
+  assert(validators.OperationPreview(preview));
+  assert.deepEqual(semanticErrors('OperationPreview', preview), [
+    'duplicate_recipient',
+  ]);
+  const label = value('preview-label');
+  label.intent.action.add = [];
+  assert.deepEqual(semanticErrors('OperationPreview', label), ['empty_change']);
+  // 種類ごとの intent は、他の種類の形を受け付けない（oneOf がちょうど一つに一致する）。
+  assert(!validators.LabelOperationIntent(value('intent-draft-reply')));
+  assert(!validators.DraftReplyOperationIntent(value('intent-task-create')));
+  assert(!validators.TaskOperationIntent(value('intent-h01')));
+  assert(validators.OperationIntent(value('intent-h01')));
+});
+
 test('time zones are checked against the runtime database, not only the pattern', () => {
   assert(validators.TimeZone('Asia/Tokyo'));
   assert.deepEqual(semanticErrors('TimeZone', 'Asia/Tokyo'), []);

@@ -79,7 +79,7 @@
   },
   {
     "id": "preview-label",
-    "schema": "LabelPreview",
+    "schema": "OperationPreview",
     "valid": true,
     "value": {
       "preview_id": "00000000-0000-4000-8000-000000000032",
@@ -153,6 +153,7 @@
     "valid": true,
     "value": {
       "operation_id": "00000000-0000-4000-8000-000000000001",
+      "operation_kind": "mail.labels.change",
       "content_version": "1",
       "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
       "state_revision": "3",
@@ -4032,6 +4033,7 @@
       "operations": [
         {
           "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "operation_kind": "mail.labels.change",
           "content_version": "1",
           "content_hash": "abababababababababababababababababababababababababababababababab",
           "state_revision": "2",
@@ -4134,6 +4136,7 @@
       "operations": [
         {
           "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "operation_kind": "mail.labels.change",
           "content_version": "1",
           "content_hash": "abababababababababababababababababababababababababababababababab",
           "state_revision": "2",
@@ -4172,6 +4175,7 @@
       "operations": [
         {
           "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "operation_kind": "mail.labels.change",
           "content_version": "1",
           "content_hash": "abababababababababababababababababababababababababababababababab",
           "state_revision": "2",
@@ -4211,6 +4215,7 @@
       "operations": [
         {
           "operation_id": "00000000-0000-4000-8000-000000000c01",
+          "operation_kind": "mail.labels.change",
           "content_version": "1",
           "content_hash": "abababababababababababababababababababababababababababababababab",
           "state_revision": "2",
@@ -4417,6 +4422,7 @@
         "operations": [
           {
             "operation_id": "00000000-0000-4000-8000-000000000c01",
+            "operation_kind": "mail.labels.change",
             "content_version": "1",
             "content_hash": "abababababababababababababababababababababababababababababababab",
             "state_revision": "2",
@@ -5893,6 +5899,514 @@
     "valid": false,
     "value": {
       "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    }
+  },
+  {
+    "id": "intent-draft-reply",
+    "schema": "DraftReplyOperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      },
+      "action": {
+        "kind": "mail.draft.create",
+        "to": ["sender@example.invalid"],
+        "cc": [],
+        "subject": "Re: 打ち合わせの件",
+        "body": "承知しました。木曜の10時に伺います。"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-reply-as-operation",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      },
+      "action": {
+        "kind": "mail.draft.create",
+        "to": ["sender@example.invalid"],
+        "cc": [],
+        "subject": "Re: 打ち合わせの件",
+        "body": "承知しました。木曜の10時に伺います。"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-task-create",
+    "schema": "TaskOperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-10-07",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "intent-task-create-as-operation",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-10-07",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "intent-task-create-datetime-due",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-10-07T17:00",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "preview-draft-reply",
+    "schema": "OperationPreview",
+    "valid": true,
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000132",
+      "intent": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000101",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        },
+        "action": {
+          "kind": "mail.draft.create",
+          "to": ["sender@example.invalid"],
+          "cc": [],
+          "subject": "Re: 打ち合わせの件",
+          "body": "承知しました。木曜の10時に伺います。"
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "operation_marker"
+        }
+      },
+      "content_hash": "96725cbc3de99f181e8dfb533ea99578dcf1a765c9abd1d16201debac99d1e5d",
+      "state_revision": "1"
+    }
+  },
+  {
+    "id": "preview-task-create",
+    "schema": "OperationPreview",
+    "valid": true,
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000232",
+      "intent": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000201",
+        "content_version": "1",
+        "permission_revision": "1",
+        "target": {
+          "list_id": "default"
+        },
+        "action": {
+          "kind": "task.create",
+          "title": "請求書を送る",
+          "due": "2030-10-07",
+          "body": null
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "local_transaction"
+        }
+      },
+      "content_hash": "dbd43e0637bfbdbd2e03ec4063f4e476c1c287434724bb8919707866d859b5a3",
+      "state_revision": "1"
+    }
+  },
+  {
+    "id": "intent-draft-reply-with-recipients-effect",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      },
+      "action": {
+        "kind": "mail.draft.create",
+        "to": ["sender@example.invalid"],
+        "cc": [],
+        "subject": "Re: 打ち合わせの件",
+        "body": "承知しました。木曜の10時に伺います。"
+      },
+      "effects": {
+        "external_recipients": ["sender@example.invalid"],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-reply-without-to",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      },
+      "action": {
+        "kind": "mail.draft.create",
+        "to": [],
+        "cc": [],
+        "subject": "Re: 打ち合わせの件",
+        "body": "承知しました。木曜の10時に伺います。"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-reply-empty-body",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      },
+      "action": {
+        "kind": "mail.draft.create",
+        "to": ["sender@example.invalid"],
+        "cc": [],
+        "subject": "Re: 打ち合わせの件",
+        "body": ""
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-reply-exact-target-scope",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      },
+      "action": {
+        "kind": "mail.draft.create",
+        "to": ["sender@example.invalid"],
+        "cc": [],
+        "subject": "Re: 打ち合わせの件",
+        "body": "承知しました。木曜の10時に伺います。"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-reply-send-kind",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      },
+      "action": {
+        "kind": "mail.send",
+        "to": ["sender@example.invalid"],
+        "cc": [],
+        "subject": "Re: 打ち合わせの件",
+        "body": "承知しました。木曜の10時に伺います。"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-reply-extra-field",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "mail-001",
+        "source_revision": "r1"
+      },
+      "action": {
+        "kind": "mail.draft.create",
+        "to": ["sender@example.invalid"],
+        "cc": [],
+        "subject": "Re: 打ち合わせの件",
+        "body": "承知しました。木曜の10時に伺います。",
+        "bcc": ["hidden@example.invalid"]
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-task-create-missing-body",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-10-07"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "intent-task-create-with-provider",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-10-07",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      },
+      "provider": "mock"
+    }
+  },
+  {
+    "id": "intent-task-create-remote-scope",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-10-07",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-task-create-zoned-due",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "請求書を送る",
+        "due": "2030-10-07T17:00Z",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "intent-task-create-empty-title",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000201",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "default"
+      },
+      "action": {
+        "kind": "task.create",
+        "title": "",
+        "due": "2030-10-07",
+        "body": null
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "preview-label-unknown-kind",
+    "schema": "OperationPreview",
+    "valid": false,
+    "value": {
+      "preview_id": "00000000-0000-4000-8000-000000000332",
+      "intent": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000201",
+        "content_version": "1",
+        "permission_revision": "1",
+        "target": {
+          "list_id": "default"
+        },
+        "action": {
+          "kind": "task.delete",
+          "title": "請求書を送る",
+          "due": "2030-10-07",
+          "body": null
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "local_transaction"
+        }
+      },
+      "content_hash": "dbd43e0637bfbdbd2e03ec4063f4e476c1c287434724bb8919707866d859b5a3",
+      "state_revision": "1"
     }
   }
 ]

@@ -162,7 +162,7 @@ export function createCommand(
     ...commandBase(operationId, '0'),
     kind: 'operation.create',
     workflow_id: null,
-    operation_kind: 'synthetic.local_change',
+    operation_kind: 'mail.labels.change',
     effect_route: 'local_command',
     content_hash: sealed.content_hash,
     intent: sealed.intent,

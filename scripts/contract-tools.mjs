@@ -290,6 +290,24 @@ export function semanticErrors(name, value) {
     if (add.some((label) => remove.includes(label)))
       errors.push('conflicting_labels');
   }
+  // 宛先と CC に同じ相手を重ねない（ADR 0027）。
+  if (
+    name === 'DraftReplyOperationIntent' &&
+    value.action.cc.some((address) => value.action.to.includes(address))
+  )
+    errors.push('duplicate_recipient');
+  // 一般化した intent と preview は、action.kind で種類ごとの意味検査へ回す（ADR 0027）。
+  if (name === 'OperationIntent') {
+    const byKind = {
+      'mail.labels.change': 'LabelOperationIntent',
+      'mail.draft.create': 'DraftReplyOperationIntent',
+      'task.create': 'TaskOperationIntent',
+    };
+    const kind = byKind[value.action.kind];
+    if (kind) errors.push(...semanticErrors(kind, value));
+  }
+  if (name === 'OperationPreview')
+    errors.push(...semanticErrors('OperationIntent', value.intent));
   if (name === 'WireResponse' || name === 'Interpretation') {
     if ((value.relation === 'new') !== (value.target_workflow_id === null))
       errors.push('relation_target');

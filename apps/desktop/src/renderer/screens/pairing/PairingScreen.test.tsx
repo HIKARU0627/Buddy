@@ -465,6 +465,7 @@ test('the connection section shows reason, home check and operations without sec
     operations: [
       {
         operation_id: '00000000-0000-4000-8000-000000000501',
+        operation_kind: 'mail.labels.change',
         content_version: '1',
         content_hash: 'ab'.repeat(32),
         state_revision: '4',

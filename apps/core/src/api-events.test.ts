@@ -67,6 +67,7 @@ test(
       ),
       {
         operation_id: H01_OPERATION,
+        operation_kind: 'mail.labels.change',
         content_version: '1',
         content_hash: H01_SHA256,
         state_revision: '1',

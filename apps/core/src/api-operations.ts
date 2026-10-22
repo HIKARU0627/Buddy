@@ -103,6 +103,7 @@ export function operationSnapshot(view: OperationView): object {
       : null;
   return {
     operation_id: view.operation_id,
+    operation_kind: view.operation_kind,
     content_version: view.current_content_version,
     content_hash: view.content_hash,
     state_revision: view.state_revision,

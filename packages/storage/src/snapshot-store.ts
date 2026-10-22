@@ -26,6 +26,8 @@ export type ApprovalStatus =
 export interface OperationView {
   readonly operation_id: string;
   readonly workflow_id: string | null;
+  // 操作の種類（operations.kind。確定 intent の action.kind と同じ値、ADR 0027）。
+  readonly operation_kind: string;
   readonly effect_route: string;
   readonly state: OperationState;
   readonly state_revision: string;
@@ -55,6 +57,7 @@ export interface SnapshotRead {
 interface OperationRow {
   operation_id: string;
   workflow_id: string | null;
+  kind: string;
   effect_route: string;
   current_content_version: number;
   state: OperationState;
@@ -64,7 +67,7 @@ interface OperationRow {
 }
 
 const OPERATION_COLUMNS =
-  'o.operation_id, o.workflow_id, o.effect_route, o.current_content_version, o.state, o.state_revision, o.created_at, v.content_hash';
+  'o.operation_id, o.workflow_id, o.kind, o.effect_route, o.current_content_version, o.state, o.state_revision, o.created_at, v.content_hash';
 const OPERATION_FROM =
   'FROM operations o LEFT JOIN operation_versions v ON v.operation_id = o.operation_id AND v.content_version = o.current_content_version';
 
@@ -115,6 +118,7 @@ function toView(
   return {
     operation_id: row.operation_id,
     workflow_id: row.workflow_id,
+    operation_kind: row.kind,
     effect_route: row.effect_route,
     state: row.state,
     state_revision: text(row.state_revision),

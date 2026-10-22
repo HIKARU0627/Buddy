@@ -3,6 +3,7 @@
 // 0001 の制約から手で書いた値（state_revision は作成で 1、状態の更新ごとに 1 ずつ増える）。
 
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import {
   BULK_WRITE_LIMITS,
@@ -737,6 +738,14 @@ test('recovery after a restart moves only dispatching attempts to unknown_held a
         current_content_version: '1',
         attempt_id: dispatchingAttempt,
       },
+      // 承認済みで実行の前の操作も、起動時の再開の対象（ADR 0030）。試行はまだない。
+      {
+        operation_id: 'op-a',
+        state: 'approved',
+        state_revision: '2',
+        current_content_version: '1',
+        attempt_id: null,
+      },
     ]);
     const eventsBefore = eventRows(db).length;
     const receiptsBefore = receiptRows(db).length;
@@ -792,12 +801,224 @@ test('recovery after a restart moves only dispatching attempts to unknown_held a
     assert.equal(replay.outcome === 'durable' && replay.replayed, true);
     assert.deepEqual(
       listInterruptedOperations(db).map((entry) => entry.operation_id),
-      ['op-p'],
+      ['op-p', 'op-a'],
     );
     // unknown_held からは自動で送出意図に戻れない（照合・本人の判断は B04 以降）。
     assert.deepEqual(
       reasons(run(db, dispatchCommand('op-d', '5', dispatchingAttempt))),
       ['transition_not_allowed'],
     );
+  });
+});
+
+// --- B04-04（ADR 0030）: LocalCommand の適用と、送出の直前の接続の照合 ---
+
+const applyLocalCommand = (
+  operationId: string,
+  expected: string,
+  options: { readonly command_id?: string; readonly list_id?: string } = {},
+): DbCommand => ({
+  command_id: options.command_id ?? randomUUID(),
+  kind: 'operation.apply_local',
+  operation_id: operationId,
+  expected_state_revision: expected,
+  request_revision: null,
+  permission_revision: '0',
+  forgetting_generation: '0',
+  connection_id: null,
+  request: null,
+  attempt_id: randomUUID(),
+  task_id: randomUUID(),
+  list_id: options.list_id ?? 'inbox',
+});
+
+const count = (db: SqliteDatabase, sql: string): number =>
+  db.prepare(sql).pluck().get() as number;
+
+test('D5: apply_local writes the task, attempt, approval use, final state, event and receipt once (QA28)', async () => {
+  await withStore((db) => {
+    const local = {
+      effect_route: 'local_command',
+      connection_id: null,
+    } as const;
+    committed(run(db, createCommand('op-l', local)));
+    committed(run(db, approveCommand('op-l', '1', { connection_id: null })));
+    const eventsBefore = eventRows(db).length;
+    const receiptsBefore = receiptRows(db).length;
+    const command = applyLocalCommand('op-l', '2');
+    // 承認待ち（1）→ 承認済み（2）→ 成功（3）。
+    assert.equal(committed(run(db, command)), '3');
+    assert.deepEqual(operationState(db, 'op-l'), {
+      state: 'succeeded',
+      state_revision: 3,
+    });
+    assert.equal(
+      count(db, "SELECT count(*) FROM tasks WHERE operation_id = 'op-l'"),
+      1,
+    );
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT status, result_status, dispatch_intent_at IS NOT NULL AS intent, external_id = (SELECT task_id FROM tasks WHERE operation_id = 'op-l') AS task FROM operation_attempts WHERE operation_id = 'op-l'",
+        )
+        .all(),
+      [
+        {
+          status: 'succeeded',
+          result_status: 'confirmed_success',
+          intent: 1,
+          task: 1,
+        },
+      ],
+    );
+    assert.equal(
+      db
+        .prepare("SELECT status FROM approvals WHERE operation_id = 'op-l'")
+        .pluck()
+        .get(),
+      'consumed',
+    );
+    assert.equal(eventRows(db).length, eventsBefore + 1);
+    assert.equal(receiptRows(db).length, receiptsBefore + 1);
+    // 同じ命令の再到着: 保存済みの結果を返し、DB は変えない。
+    const replay = run(db, command);
+    assert.equal(committed(replay), '3');
+    assert.equal(replay.outcome === 'durable' && replay.replayed, true);
+    // 同じ command_id で内容（照合値）が違えば拒否する。
+    assert.deepEqual(
+      reasons(run(db, { ...command, list_id: 'other' } as DbCommand)),
+      ['command_id_reused'],
+    );
+    // 別の命令での二度目の適用は、状態で拒否する。
+    assert.deepEqual(reasons(run(db, applyLocalCommand('op-l', '3'))), [
+      'transition_not_allowed',
+    ]);
+    assert.equal(
+      count(db, "SELECT count(*) FROM tasks WHERE operation_id = 'op-l'"),
+      1,
+    );
+    assert.equal(eventRows(db).length, eventsBefore + 1);
+    // 外部変更（remote_mutation）と、承認のない LocalCommand には使えない。
+    committed(run(db, createCommand('op-r')));
+    committed(run(db, approveCommand('op-r', '1')));
+    assert.deepEqual(reasons(run(db, applyLocalCommand('op-r', '2'))), [
+      'route_mismatch',
+    ]);
+    committed(run(db, createCommand('op-w', local)));
+    assert.deepEqual(reasons(run(db, applyLocalCommand('op-w', '1'))), [
+      'transition_not_allowed',
+    ]);
+    assert.equal(count(db, 'SELECT count(*) FROM tasks'), 1);
+  });
+});
+
+test('dispatch intent without a DB connection row needs the re-read connection and the same permission revision', async () => {
+  await withStore((db) => {
+    const none = { connection_id: null } as const;
+    committed(run(db, createCommand('op-o', none)));
+    committed(run(db, approveCommand('op-o', '1', none)));
+    const attempt = randomUUID();
+    committed(
+      run(db, prepareCommand('op-o', '2', { ...none, attempt_id: attempt })),
+    );
+    const dispatch = (observed: unknown): DbCommand =>
+      ({
+        ...dispatchCommand('op-o', '3', attempt, none),
+        observed_connection: observed,
+      }) as DbCommand;
+    assert.deepEqual(reasons(run(db, dispatch(null))), ['connection_required']);
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          dispatch({
+            status: 'active',
+            access: 'read',
+            permission_revision: '1',
+          }),
+        ),
+      ),
+      ['connection_not_writable'],
+    );
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          dispatch({
+            status: 'active',
+            access: 'read_write',
+            permission_revision: '2',
+          }),
+        ),
+      ),
+      ['permission_changed'],
+    );
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          dispatch({
+            status: 'active',
+            access: 'write',
+            permission_revision: '1',
+          }),
+        ),
+      ),
+      ['observed_connection_invalid'],
+    );
+    const ok = run(
+      db,
+      dispatch({
+        status: 'active',
+        access: 'read_write',
+        permission_revision: '1',
+      }),
+    );
+    assert.equal(committed(ok), '4');
+    assert.equal(
+      ok.outcome === 'durable' && ok.dispatched?.attempt_id,
+      attempt,
+    );
+  });
+});
+
+test('a retry prepare starts only from not_executed (review P2)', async () => {
+  await withStore((db) => {
+    const retry = (id: string, expected: string): DbCommand =>
+      ({ ...prepareCommand(id, expected), retry: true }) as DbCommand;
+    // 承認待ち・承認済み・準備中・結果不明からは始めない（初回の実行や照合を横取りしない）。
+    committed(run(db, createCommand('op-ra')));
+    assert.deepEqual(reasons(run(db, retry('op-ra', '1'))), [
+      'retry_not_allowed',
+    ]);
+    committed(run(db, createCommand('op-rb')));
+    committed(run(db, approveCommand('op-rb', '1')));
+    assert.deepEqual(reasons(run(db, retry('op-rb', '2'))), [
+      'retry_not_allowed',
+    ]);
+    assert.deepEqual(operationState(db, 'op-rb'), {
+      state: 'approved',
+      state_revision: 2,
+    });
+    toPreparing(db, 'op-rc');
+    assert.deepEqual(reasons(run(db, retry('op-rc', '3'))), [
+      'retry_not_allowed',
+    ]);
+    const held = toPreparing(db, 'op-rd');
+    committed(run(db, dispatchCommand('op-rd', '3', held)));
+    committed(run(db, resultCommand('op-rd', '4', held, 'unknown_held')));
+    assert.deepEqual(reasons(run(db, retry('op-rd', '5'))), [
+      'retry_not_allowed',
+    ]);
+    // 未実行が確定した操作だけ、新しい試行で準備へ戻せる。
+    const failed = toPreparing(db, 'op-re');
+    committed(run(db, dispatchCommand('op-re', '3', failed)));
+    committed(run(db, resultCommand('op-re', '4', failed, 'reconciling')));
+    committed(run(db, resultCommand('op-re', '5', failed, 'not_executed')));
+    assert.equal(committed(run(db, retry('op-re', '6'))), '7');
+    assert.deepEqual(operationState(db, 'op-re'), {
+      state: 'preparing',
+      state_revision: 7,
+    });
   });
 });

@@ -1,4 +1,4 @@
-// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022、0004 の表は ADR 0029）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
+// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022、0004 の表は ADR 0029、0005 の表は ADR 0030）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
 // retention は domain の RETENTION_RULES の ID、または期限の持ち方の説明。body は本文の置き場所。
 // transaction は同じ短い transaction で書く表の組（08 §3・§5、11 §1A・§9）。
 
@@ -99,6 +99,12 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     transaction: 'operation',
   },
   operation_attempts: {
+    body: 'none',
+    retention: 'operation_receipt',
+    transaction: 'operation',
+  },
+  // 0005（ADR 0030）: 用事。題名・期限・本文は確定 intent の暗号文を参照し、複製しない。
+  tasks: {
     body: 'none',
     retention: 'operation_receipt',
     transaction: 'operation',

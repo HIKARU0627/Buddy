@@ -38,6 +38,7 @@ import type {
   RecordResultCommand,
   RecoverAfterRestartCommand,
   ReviseContentCommand,
+  ApplyLocalCommand,
   SealedBlobInput,
   StoreOutcome,
 } from './operation-commands.js';
@@ -397,10 +398,11 @@ export function readCommandReceipt(
   return row === undefined ? null : receiptToRecord(row);
 }
 
-// 起動時に回復の対象になる操作（08 §4、ADR 0019）。送出境界の手前（preparing）と、送出意図の記録の後（dispatching）。
+// 起動時に回復の対象になる操作（08 §4、ADR 0019・0030）。承認済みで実行の前（approved）、送出境界の手前
+// （preparing）と、送出意図の記録の後（dispatching）。
 export interface InterruptedOperation {
   readonly operation_id: string;
-  readonly state: 'preparing' | 'dispatching';
+  readonly state: 'approved' | 'preparing' | 'dispatching';
   readonly state_revision: string;
   readonly current_content_version: string;
   // 操作と同じ状態の実行中の試行。見つからなければ null（0001 の制約上は起きない）。
@@ -412,11 +414,11 @@ export function listInterruptedOperations(
 ): InterruptedOperation[] {
   const rows = db
     .prepare(
-      "SELECT o.operation_id, o.state, o.state_revision, o.current_content_version, a.attempt_id FROM operations o LEFT JOIN operation_attempts a ON a.operation_id = o.operation_id AND a.status = o.state WHERE o.state IN ('preparing', 'dispatching') ORDER BY o.created_at, o.operation_id",
+      "SELECT o.operation_id, o.state, o.state_revision, o.current_content_version, a.attempt_id FROM operations o LEFT JOIN operation_attempts a ON a.operation_id = o.operation_id AND a.status = o.state WHERE o.state IN ('approved', 'preparing', 'dispatching') ORDER BY o.created_at, o.operation_id",
     )
     .all() as {
     operation_id: string;
-    state: 'preparing' | 'dispatching';
+    state: 'approved' | 'preparing' | 'dispatching';
     state_revision: number;
     current_content_version: number;
     attempt_id: string | null;
@@ -829,6 +831,9 @@ function prepareOperation(
 ): StoreOutcome {
   const operation = requireOperation(db, command);
   requireStateRevision(command, operation);
+  // 本人の再試行は未実行の確定の後だけ（初回の実行・照合中の操作を横取りしない）。
+  if (command.retry === true && operation.state !== 'not_executed')
+    throw new CommandRejection(['retry_not_allowed']);
   if (!canTransition(operation.state, 'preparing', operation.effect_route))
     throw new CommandRejection(['transition_not_allowed']);
   guard(
@@ -899,8 +904,17 @@ function recordDispatchIntent(
   )
     reasons.push('approval_not_valid');
   if (operation.effect_route === 'remote_mutation') {
-    if (command.connection_id === null) reasons.push('connection_required');
-    else {
+    const observed = command.observed_connection ?? null;
+    if (command.connection_id === null) {
+      // DB に行のない接続（B04 の模擬 provider）は、Core が送出の直前に読み直した値で確かめる（ADR 0030）。
+      if (observed === null) reasons.push('connection_required');
+      else {
+        if (observed.status !== 'active' || observed.access !== 'read_write')
+          reasons.push('connection_not_writable');
+        if (observed.permission_revision !== command.permission_revision)
+          reasons.push('permission_changed');
+      }
+    } else {
       const connection = db
         .prepare(
           'SELECT status, access FROM connections WHERE connection_id = ?',
@@ -934,6 +948,16 @@ function recordDispatchIntent(
     .run(context.now, attempt.attempt_id);
   if (updated.changes !== 1)
     throw new CommandRejection(['attempt_not_preparing']);
+  // 工程の送出意図（D3）。同じ工程の二度目の送出意図は主キーで拒否する（再送しない最終の保証）。
+  if (command.step !== undefined && command.step !== null)
+    db.prepare(
+      'INSERT INTO operation_steps (attempt_id, step_id, step_kind, external_id, dispatch_intent_at, result_status) VALUES (?, ?, ?, NULL, ?, NULL)',
+    ).run(
+      attempt.attempt_id,
+      command.step.step_id,
+      command.step.step_kind,
+      context.now,
+    );
   const committed = advance(db, context, command, operation, 'dispatching');
   return durable(command, committed, {
     dispatched: {
@@ -974,6 +998,11 @@ function recordResult(
   db.prepare(
     'UPDATE operation_attempts SET status = ?, result_status = coalesce(?, result_status), external_id = coalesce(?, external_id) WHERE attempt_id = ?',
   ).run(command.to, resultStatus, command.external_id, attempt.attempt_id);
+  // 送出意図のある工程のうち、結果が確定していないものに同じ結果を記録する（D3。1 工程の操作）。
+  if (resultStatus !== null)
+    db.prepare(
+      "UPDATE operation_steps SET result_status = ?, external_id = coalesce(?, external_id) WHERE attempt_id = ? AND dispatch_intent_at IS NOT NULL AND coalesce(result_status, 'unknown') = 'unknown'",
+    ).run(resultStatus, command.external_id, attempt.attempt_id);
   // 成功した送出で承認を使い終える。未実行の確定では同じ承認を本人の明示再試行へ戻せる（08 §4）。
   if (command.to === 'succeeded')
     db.prepare(
@@ -1040,15 +1069,18 @@ function recoverAfterRestart(
     .run(attempt.attempt_id);
   if (updated.changes !== 1)
     throw new CommandRejection(['attempt_not_dispatched']);
+  // 送出意図のある工程も結果不明にする（D3。再送せず照合だけにする）。
+  db.prepare(
+    "UPDATE operation_steps SET result_status = 'unknown' WHERE attempt_id = ? AND dispatch_intent_at IS NOT NULL AND result_status IS NULL",
+  ).run(attempt.attempt_id);
   return durable(
     command,
     advance(db, context, command, operation, 'unknown_held'),
   );
 }
 
-// 内容版の更新（D1、ADR 0027・0029）。domain の planContentRevision で決め、旧版の有効な承認の失効・新しい版の
-// 保存・承認待ちへの遷移を一つの transaction で行う。実行中の試行がある操作は試行の superseded（0001 の CHECK に
-// ない状態）が要るため、B04-04 まで拒否する。
+// 内容版の更新（D1、ADR 0027・0029・0030）。domain の planContentRevision で決め、旧版の有効な承認の失効・
+// 送出意図の前の試行の superseded・新しい版の保存・承認待ちへの遷移を一つの transaction で行う。
 function reviseContent(
   db: SqliteDatabase,
   context: StoreContext,
@@ -1073,7 +1105,6 @@ function reviseContent(
     has_active_attempt: active.value > 0,
   });
   if (!plan.ok) throw new CommandRejection(plan.reasons);
-  if (plan.supersede_attempt) throw new CommandRejection(['attempt_active']);
   if (command.content_version !== plan.next_content_version)
     throw new CommandRejection(['content_version_changed']);
   guard(
@@ -1096,6 +1127,17 @@ function reviseContent(
     db.prepare(
       "UPDATE approvals SET status = 'revoked' WHERE operation_id = ? AND content_version = ? AND status = 'valid'",
     ).run(operation.operation_id, current);
+  // 送出意図の前の試行（preparing）は旧版のまま送らない（X09、ADR 0030）。送出境界を越えた試行はここに来ない
+  // （planContentRevision が dispatch_boundary_crossed で拒否する）。
+  if (plan.supersede_attempt) {
+    const superseded = db
+      .prepare(
+        "UPDATE operation_attempts SET status = 'superseded' WHERE operation_id = ? AND status = 'preparing' AND dispatch_intent_at IS NULL",
+      )
+      .run(operation.operation_id);
+    if (superseded.changes !== active.value)
+      throw new CommandRejection(['attempt_not_preparing']);
+  }
   const updated = db
     .prepare(
       'UPDATE operations SET current_content_version = ? WHERE operation_id = ? AND state_revision = ?',
@@ -1106,6 +1148,72 @@ function reviseContent(
   return durable(
     command,
     advance(db, context, command, operation, plan.next_state),
+  );
+}
+
+// LocalCommand の適用（D5、ADR 0030）。外部 HTTP を使わず、承認済みの操作から用事の行・成功の試行・承認の使用・
+// 最終状態（approved → succeeded）・イベント・受付を一つの transaction で書く。同じ命令の再到着は command_receipts で
+// 保存済みの結果を返し（findReplay）、別の命令で二度目を適用しようとしても状態版・tasks の一意制約で拒否する。
+function applyLocal(
+  db: SqliteDatabase,
+  context: StoreContext,
+  command: ApplyLocalCommand,
+): StoreOutcome {
+  const operation = requireOperation(db, command);
+  requireStateRevision(command, operation);
+  if (operation.effect_route !== 'local_command')
+    throw new CommandRejection(['route_mismatch']);
+  if (
+    operation.state !== 'approved' ||
+    !canTransition(operation.state, 'succeeded', operation.effect_route)
+  )
+    throw new CommandRejection(['transition_not_allowed']);
+  guard(
+    db,
+    command,
+    toText(operation.state_revision),
+    operation.workflow_id,
+    null,
+  );
+  const contentVersion = operation.current_content_version;
+  const hash = versionHash(db, operation.operation_id, contentVersion);
+  const approval = effectiveApproval(
+    db,
+    operation.operation_id,
+    contentVersion,
+  );
+  if (
+    approval === undefined ||
+    approval.status !== 'valid' ||
+    approval.content_hash !== hash
+  )
+    throw new CommandRejection(['approval_not_valid']);
+  db.prepare(
+    "INSERT INTO operation_attempts (attempt_id, operation_id, content_version, approval_id, status, dispatch_intent_at, external_id, result_status, created_at) VALUES (?, ?, ?, ?, 'succeeded', ?, ?, 'confirmed_success', ?)",
+  ).run(
+    command.attempt_id,
+    operation.operation_id,
+    contentVersion,
+    approval.approval_id,
+    context.now,
+    command.task_id,
+    context.now,
+  );
+  db.prepare(
+    "INSERT INTO tasks (task_id, operation_id, content_version, list_id, status, created_at) VALUES (?, ?, ?, ?, 'open', ?)",
+  ).run(
+    command.task_id,
+    operation.operation_id,
+    contentVersion,
+    command.list_id,
+    context.now,
+  );
+  db.prepare(
+    "UPDATE approvals SET status = 'consumed' WHERE approval_id = ? AND status = 'valid'",
+  ).run(approval.approval_id);
+  return durable(
+    command,
+    advance(db, context, command, operation, 'succeeded'),
   );
 }
 
@@ -1131,6 +1239,8 @@ function applyCommand(
       return reviseContent(db, context, command);
     case 'operation.recover_after_restart':
       return recoverAfterRestart(db, context, command);
+    case 'operation.apply_local':
+      return applyLocal(db, context, command);
   }
 }
 

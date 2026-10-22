@@ -30,7 +30,10 @@ import {
   encodeEventCursor,
 } from './event-cursor.js';
 import type { EventFeed, EventQueryStore } from './event-feed.js';
+import type { OperationRunner } from './operation-runner.js';
 import type { JsonObject, JsonValue } from './strict-json.js';
+import { NO_FAULTS } from './turn-ports.js';
+import type { FaultHook } from './turn-ports.js';
 
 export interface OperationRouteStore extends EventQueryStore {
   submit(command: DbCommand): DbSubmission;
@@ -55,6 +58,10 @@ export interface OperationRoutesOptions {
   readonly environment: RequestEnvironment;
   readonly now?: () => number;
   readonly previewValid?: PreviewCheck;
+  // 実行担当（ADR 0030）。null なら承認の後に実行せず、照合・再試行は 503。
+  readonly runner?: OperationRunner | null;
+  // 故障点（試験用）。製品では何もしない。
+  readonly faults?: FaultHook;
   // 承認の命令を送る直前（同期）に preview がまだ無効化されていないか（ADR 0029）。previewValid の非同期の
   // 照合の後にロック・接続の終了が起きても取り逃さないため、命令の送信と同じ同期の区間で確かめる。
   readonly previewCurrent?: (previewId: string) => boolean;
@@ -64,6 +71,8 @@ export interface OperationRoutesOptions {
 export const REVISION_CHECKED_ROUTES: ReadonlySet<string> = new Set([
   'approveOperation',
   'cancelOperation',
+  'reconcileOperation',
+  'retryOperation',
 ]);
 
 // 表示の補助（allowed_actions）。認可ではない（実行の可否は経路の検査と DB worker の命令が決める）。
@@ -72,7 +81,8 @@ const ALLOWED_ACTIONS: Readonly<Record<string, readonly string[]>> = {
   approved: ['cancel'],
   preparing: ['cancel'],
   dispatching: [],
-  reconciling: [],
+  // 送出の後に取消を受け付けた操作は、照合中のまま本人の照合を待つ（X05、ADR 0030）。
+  reconciling: ['reconcile'],
   unknown_held: ['reconcile'],
   not_executed: ['retry'],
   succeeded: [],
@@ -193,6 +203,7 @@ const CONFLICT_REASONS = new Set([
   'preview_invalid',
   'operation_finished',
   'transition_not_allowed',
+  'retry_not_allowed',
   'request_revision_changed',
   'permission_changed',
   'forgetting_generation_changed',
@@ -255,6 +266,8 @@ export function createOperationRoutes(
   const { store, feed, environment } = options;
   const now = options.now ?? (() => Date.now());
   const previewValid: PreviewCheck = options.previewValid ?? (() => false);
+  const runner = options.runner ?? null;
+  const faults = options.faults ?? NO_FAULTS;
   const previewCurrent = options.previewCurrent ?? (() => true);
 
   const lockStateOf = async (request: ApiHandlerRequest) =>
@@ -381,7 +394,19 @@ export function createOperationRoutes(
     return receiptResponse(requestId, outcome);
   };
 
-  const approveOperation: ApiRouteHandler = (request) =>
+  const approveOperation: ApiRouteHandler = async (request) => {
+    const operationId = request.params['id'] ?? '';
+    // 同時承認の境目（X02）と承認の保存の前の故障点。
+    await faults.hit('approval_barrier', { operation_id: operationId });
+    await faults.hit('before_approval_save', { operation_id: operationId });
+    const response = await approveSubmit(request);
+    // 承認が保存された（新しく、または既存の有効な承認）なら実行担当へ渡す。実行中・実行済みなら何もしない。
+    if (response.status === 202 && runner !== null)
+      runner.afterApproval(operationId);
+    return response;
+  };
+
+  const approveSubmit: ApiRouteHandler = (request) =>
     submit(request, async (view): Promise<ApproveOperationCommand> => {
       const device = request.device;
       const body = request.body;
@@ -421,6 +446,74 @@ export function createOperationRoutes(
       kind: 'operation.cancel',
     }));
 
+  // 保存済みの受付（同じ接続範囲・request_id）の結果を返す。DB worker は受付の照合を適用の前に行うため、
+  // 同じ命令 ID・要求の照合値の命令を送れば保存済みの結果だけが返る（状態は変えない）。
+  const storedReceipt = async (
+    request: ApiHandlerRequest,
+    view: OperationView,
+  ) => {
+    const base = commandBase(request, view);
+    const stored = await store.query({
+      kind: 'receipt_exists',
+      command_scope_id: base.request.command_scope_id,
+      request_id: base.request.request_id,
+    });
+    if (!stored) return null;
+    const outcome = await store.submit({
+      ...base,
+      kind: 'operation.record_result',
+      attempt_id: view.attempt_id ?? randomUUID(),
+      to: 'reconciling',
+      external_id: null,
+    }).result;
+    return receiptResponse(base.request.request_id, outcome);
+  };
+
+  // 本人の照合（D4）。参照だけで、書込みを増やさない。unknown_held・reconciling の操作だけ。
+  const reconcileOperation: ApiRouteHandler = async (request) => {
+    const requestId = stringOf(request.body, 'request_id');
+    if (runner === null)
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    const view = await store.query({
+      kind: 'operation_view',
+      operation_id: request.params['id'] ?? '',
+    });
+    if (view === null) return apiErrorResponse(409, 'conflict', requestId);
+    const stored = await storedReceipt(request, view);
+    if (stored !== null) return stored;
+    const base = commandBase(request, view);
+    const outcome = await runner.reconcile(
+      view.operation_id,
+      base.expected_state_revision,
+      base.request,
+      base.command_id,
+    );
+    if (outcome === null) {
+      // 同じ要求が先に照合していた場合は、その保存済みの受付を返す。
+      const after = await storedReceipt(request, view);
+      return after ?? apiErrorResponse(409, 'conflict', requestId);
+    }
+    return receiptResponse(requestId, outcome);
+  };
+
+  // 本人の明示の再試行。未実行が確定した（not_executed）同じ内容だけを、新しい試行で準備へ戻す（自動では行わない）。
+  const retryOperation: ApiRouteHandler = async (request) => {
+    const requestId = stringOf(request.body, 'request_id');
+    if (runner === null)
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    const response = await submit(
+      request,
+      async (view): Promise<DbCommand> => ({
+        ...commandBase(request, view),
+        kind: 'operation.prepare',
+        attempt_id: randomUUID(),
+        retry: true,
+      }),
+    );
+    if (response.status === 202) runner.start(request.params['id'] ?? '');
+    return response;
+  };
+
   // 版の照合。保存済みの受付（同じ接続範囲・request_id）があれば DB worker の再送の判定に任せる（同じ内容は
   // 保存済みの結果、違えば 409）。承認では、同じ内容版・hash の有効な承認がすでにあれば DB worker が現在の版を
   // 返す（X02、approvalDecision の existing）ので、状態版が進んでいても 409 にしない。
@@ -459,6 +552,8 @@ export function createOperationRoutes(
       getOperation,
       approveOperation,
       cancelOperation,
+      reconcileOperation,
+      retryOperation,
     },
     revisionMatches,
   };

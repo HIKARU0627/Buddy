@@ -229,7 +229,7 @@ test(
     const first = await start(t, dataDir);
     assert.equal(first.storeGenerationSource, 'created');
     assert.equal(first.dataKeyCheck, 'stored');
-    assert.equal(first.schemaVersion, 4);
+    assert.equal(first.schemaVersion, 5);
     assert.deepEqual(first.recovery, { held: [], resumable: [] });
 
     const plans: Record<string, DbCommand[]> = {
@@ -277,10 +277,10 @@ test(
     assert.equal(second.storeGeneration, first.storeGeneration);
     assert.equal(second.storeGenerationSource, 'database');
     assert.equal(second.dataKeyCheck, 'matched');
-    // dispatching は unknown_held へ回し、preparing は残す（参照確認からの再開は B04）。
+    // dispatching は unknown_held へ回し、approved・preparing は残す（実行担当が確かめ直しから再開する。ADR 0030）。
     assert.deepEqual(second.recovery, {
       held: [H01_OPERATION],
-      resumable: ['op-preparing'],
+      resumable: ['op-preparing', 'op-approved'],
     });
     for (const id of ['op-preparing', 'op-succeeded', 'op-approved'])
       assert.deepEqual(
@@ -352,7 +352,10 @@ test(
 
     // 三度目の起動では回復するものがない（回復は一度だけ記録される）。
     const third = await start(t, dataDir);
-    assert.deepEqual(third.recovery, { held: [], resumable: ['op-preparing'] });
+    assert.deepEqual(third.recovery, {
+      held: [],
+      resumable: ['op-preparing', 'op-approved'],
+    });
     assert.equal(third.storeGeneration, first.storeGeneration);
     await third.stop('test');
 
@@ -697,7 +700,7 @@ test(
     const crashed = await startCli(t, dataDir);
     assert.deepEqual(crashed.events['store_opened'], {
       event: 'store_opened',
-      schema_version: 4,
+      schema_version: 5,
       store_generation: generation,
       store_generation_source: 'database',
       data_key_check: 'matched',

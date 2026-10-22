@@ -21,6 +21,7 @@ import {
   approveCommand,
   createCommand,
   databasePath,
+  dispatchCommand,
   effectiveApprovals,
   openSeededDatabase,
   operationState,
@@ -519,17 +520,52 @@ test(
         reasons(run(db, revise('op-c', '1', { version: '1' }))),
         ['content_version_invalid'],
       );
-      // 実行中の試行がある操作は、試行の superseded（B04-04）まで更新しない。
+      // 送出意図の前の試行（preparing）がある操作: 試行は superseded、旧版の承認は revoked、承認待ちへ（X09、ADR 0030）。
       committed(run(db, createCommand('op-d')));
       committed(run(db, approveCommand('op-d', '1')));
       committed(run(db, prepareCommand('op-d', '2')));
-      assert.deepEqual(reasons(run(db, revise('op-d', '3'))), [
-        'attempt_active',
-      ]);
+      assert.equal(committed(run(db, revise('op-d', '3'))), '4');
       assert.deepEqual(operationState(db, 'op-d'), {
-        state: 'preparing',
-        state_revision: 3,
+        state: 'awaiting_approval',
+        state_revision: 4,
       });
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT status, dispatch_intent_at, result_status FROM operation_attempts WHERE operation_id = 'op-d'",
+          )
+          .all(),
+        [
+          {
+            status: 'superseded',
+            dispatch_intent_at: null,
+            result_status: null,
+          },
+        ],
+      );
+      assert.deepEqual(
+        db
+          .prepare("SELECT status FROM approvals WHERE operation_id = 'op-d'")
+          .pluck()
+          .all(),
+        ['revoked'],
+      );
+      // 送出意図を記録した試行（dispatching）がある操作は更新しない（送出境界を越えた）。
+      committed(run(db, createCommand('op-e')));
+      committed(run(db, approveCommand('op-e', '1')));
+      committed(run(db, prepareCommand('op-e', '2')));
+      const attemptE = db
+        .prepare(
+          "SELECT attempt_id FROM operation_attempts WHERE operation_id = 'op-e'",
+        )
+        .pluck()
+        .get() as string;
+      committed(run(db, dispatchCommand('op-e', '3', attemptE)));
+      assert.ok(
+        reasons(run(db, revise('op-e', '4'))).includes(
+          'dispatch_boundary_crossed',
+        ),
+      );
     });
   },
 );

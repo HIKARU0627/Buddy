@@ -94,6 +94,10 @@ export function operationFailureText(
     case 'not_connected':
       return `${target}を中枢に送れませんでした。中枢との接続が戻ってから、もう一度押してください。自動では送り直しません。`;
     case 'outcome_unknown':
+      // ペアリングの開始は一覧に出ないので、コードを出し直してもらう（前のコードは使えなくなっているかもしれない。
+      // PR #79 のコードレビュー Low-5）。
+      if (operation.channel === 'desktop.pairing_open')
+        return `${target}が中枢に届いたか確かめられませんでした。自動では送り直しません。前のコードは使えなくなっている可能性があります。もう一度コードを出してください。`;
       return `${target}が中枢に届いたか確かめられませんでした。自動では送り直しません。「一覧を更新」を押して、結果を確かめてください。`;
     case 'entry_not_found':
       return `${target}ができませんでした。一覧が古くなっています。「一覧を更新」を押してから、もう一度操作してください。`;

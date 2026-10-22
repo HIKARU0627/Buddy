@@ -193,8 +193,9 @@ export class DesktopCoreLink {
     readonly ref: string;
     readonly fingerprint: HomeFingerprint;
   } | null = null;
-  // 進行中のこのマシンの指紋の読み取り（同時の要求は一度の読み取りにまとめる）。
-  #homeReading: Promise<HubHomeReading | null> | null = null;
+  // 進行中のこのマシンの指紋の収集（コマンドの連鎖）。読み取りを時間切れで見限っても、収集が終わる（settle する）
+  // まで残し、その間の要求は同じ収集を待つ（コマンドの連鎖を重ねない。コマンドそのものは runner の時間切れで止まる）。
+  #homeCollect: Promise<HomeObservation | 'failed'> | null = null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -896,7 +897,8 @@ export class DesktopCoreLink {
     const pending = this.#homeRef;
     if (pending === null || pending.ref !== ref)
       return this.#reject(requestId, channel, 'entry_not_found');
-    const reading = await this.#readHubHome();
+    // 確認の後に始めた読み取りの値と比べる（進行中の読み取りに相乗りしない）。
+    const reading = await this.#readHubHome(true);
     if (connection !== this.#connection)
       return this.#reject(requestId, channel, 'not_connected');
     if (this.#lockState !== 'unlocked') {
@@ -974,16 +976,27 @@ export class DesktopCoreLink {
     });
   }
 
-  // このマシンの指紋を読み取る。同時の要求は進行中の読み取りにまとめる（コマンドを並行に何組も動かさない）。
-  #readHubHome(): Promise<HubHomeReading | null> {
-    this.#homeReading ??= this.#collectHubHome().finally(() => {
-      this.#homeReading = null;
+  // 指紋の収集を始める（進行中の収集があれば、それを返す）。
+  #startHomeCollect(): Promise<HomeObservation | 'failed'> {
+    const running = this.#homeCollect;
+    if (running !== null) return running;
+    let started: Promise<HomeObservation | 'failed'>;
+    try {
+      started = this.#options.collectHome().catch(() => 'failed' as const);
+    } catch {
+      started = Promise.resolve('failed' as const);
+    }
+    const tracked: Promise<HomeObservation | 'failed'> = started.finally(() => {
+      if (this.#homeCollect === tracked) this.#homeCollect = null;
     });
-    return this.#homeReading;
+    this.#homeCollect = tracked;
+    return tracked;
   }
 
+  // このマシンの指紋を読み取る。同時の要求は進行中の収集を待つ。HOME_COLLECT_TIMEOUT_MS で見限る（コマンドは
+  // 止めない）。fresh なら、進行中の収集が終わるのを待ってから新しく 1 回読む（登録の直前の読み取り直し）。
   // 失敗・時間切れ・どの要素も取れないときは null（値は記録しない）。
-  async #collectHubHome(): Promise<HubHomeReading | null> {
+  async #readHubHome(fresh = false): Promise<HubHomeReading | null> {
     let cancel: () => void = () => undefined;
     const timeout = new Promise<'timeout'>((resolve) => {
       cancel = this.#options.clock.setTimer(
@@ -991,12 +1004,17 @@ export class DesktopCoreLink {
         () => resolve('timeout'),
       );
     });
-    let observation: HomeObservation | 'timeout' | 'failed';
+    let observation: HomeObservation | 'timeout' | 'failed' | null = null;
     try {
-      observation = await Promise.race([
-        this.#options.collectHome().catch(() => 'failed' as const),
-        timeout,
-      ]);
+      const running = this.#homeCollect;
+      if (fresh && running !== null) {
+        const waited = await Promise.race([
+          running.then(() => 'settled' as const),
+          timeout,
+        ]);
+        if (waited === 'timeout') observation = 'timeout';
+      }
+      observation ??= await Promise.race([this.#startHomeCollect(), timeout]);
     } catch {
       observation = 'failed';
     } finally {

@@ -538,10 +538,11 @@ test(
       ssid_registered: false,
       registered_at: '2030-10-05T00:10:00Z',
     };
+    // 応答しない収集は終わるまで残る（次の要求もそれを待つ）ので、最後に試す。
     for (const value of [
       'throw',
-      'hang',
       { gateway_mac: null, subnet: null, ssid: null, unavailable: [] },
+      'hang',
     ] as const) {
       network.value = value;
       const failed = await admin('desktop.home_status', null);
@@ -695,5 +696,57 @@ test(
     });
     assert.equal(again['outcome'], 'ok');
     assert.equal(puts().length, 3);
+  },
+);
+
+test(
+  'a read that timed out keeps its collection for later requests; registering waits for a running read and reads once more (B03-08 review)',
+  { timeout: 30_000 },
+  async (t) => {
+    {
+      // 時間切れで見限っても、収集（コマンドの連鎖）が終わるまで次の要求はそれを待つ（連鎖を重ねない）。
+      const { network, admin, logs } = await liveLink(t, {
+        homeCollectTimeoutMs: 100,
+      });
+      network.value = 'gate';
+      const before = network.collects;
+      const first = await admin('desktop.home_status', null);
+      assert.equal(first.home?.observation, null);
+      const second = await admin('desktop.home_status', null);
+      assert.equal(second.home?.observation, null);
+      assert.equal(network.collects - before, 1);
+      assert.equal(
+        logs.filter((code) => code === 'hub_home_read_timeout').length,
+        2,
+      );
+      // 収集が終われば、次の要求は新しく読む。
+      network.release();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const third = await admin('desktop.home_status', null);
+      assert.equal(third.home?.observation?.['gateway_mac_tail'], '53:01');
+      assert.equal(network.collects - before, 2);
+    }
+    {
+      // 登録は、進行中の読み取りに相乗りせず、それが終わるのを待ってから新しく 1 回読む。
+      const { network, admin, puts } = await liveLink(t);
+      const ref = (await admin('desktop.home_status', null)).home
+        ?.observation?.['ref'];
+      network.value = 'gate';
+      const before = network.collects;
+      const status = admin('desktop.home_status', null);
+      await waitUntil(() => network.collects > before, 'status read started');
+      const register = admin('desktop.home_register', {
+        ref,
+        include_ssid: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      assert.equal(network.collects - before, 1);
+      assert.equal(puts().length, 0);
+      network.release();
+      assert.equal((await status)['outcome'], 'ok');
+      assert.equal((await register)['outcome'], 'ok');
+      assert.equal(network.collects - before, 2);
+      assert.equal(puts().length, 1);
+    }
   },
 );

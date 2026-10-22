@@ -14,6 +14,7 @@ import type {
   DesktopPairingSession,
 } from '@buddy/contracts';
 import { FingerprintGrid } from '../../components/FingerprintGrid.js';
+import { InlineNotice } from '../../components/InlineNotice.js';
 import { Section } from '../../components/Section.js';
 import { StatusText } from '../../components/StatusText.js';
 import { clockOf, remainingOf, splitInFour } from '../../format.js';
@@ -55,16 +56,10 @@ function platformOf(platform: string): string {
   return PLATFORM_LABELS[platform] ?? platform;
 }
 
-// 欄・行・ボタンの下に出す操作の結果（警告は warning、適用できたときは success の文字色）。
+// 欄・行・ボタンの下に出す操作の結果（警告は warning の ⚠、適用できたときは success の ●。InlineNotice は
+// 自宅のネットワークのタブと共通。B03-08 のレビュー L8）。
 function NoticeText({ notice }: { readonly notice: HubNotice }) {
-  return (
-    <p
-      role="alert"
-      className={`text-sm leading-6 ${notice.tone === 'success' ? 'text-success-soft-foreground' : 'text-warning-soft-foreground'}`}
-    >
-      {notice.text}
-    </p>
-  );
+  return <InlineNotice tone={notice.tone} text={notice.text} />;
 }
 
 const noticeAt = (

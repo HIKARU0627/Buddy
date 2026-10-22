@@ -129,16 +129,19 @@ test(
     assert.match(markup, /<span>未登録<\/span>/u);
     assert.match(markup, /まだ自宅を登録していません。/u);
     // MAC は最後の 2 組、サブネットはそのまま、SSID は先頭の 1 文字と文字数。
-    assert.match(markup, /••:••:••:••:53:01/u);
-    assert.match(markup, /最後の 2 組が 53:01（ほかは伏せています）/u);
+    assert.match(markup, /··:··:··:··:53:01/u);
+    assert.match(
+      markup,
+      /最後の\u00a02\u00a0組が 53 と 01（ほかは伏せています）/u,
+    );
     assert.match(markup, />192\.0\.2\.0\/24</u);
-    assert.match(markup, /合••••/u);
-    assert.match(markup, /（5 文字）/u);
+    assert.match(markup, /合····/u);
+    assert.match(markup, /（5\u00a0文字）/u);
     assert.match(markup, /先頭が「合」で、ほかは伏せています/u);
     // 時刻は端末の地域時間（今日でなければ月日を付ける）。
     assert.match(
       markup,
-      /(?:10\/\d )?\d\d:\d\d:\d\d に読み取りました。一部を伏せて表示しています。/u,
+      /(?:10\/\d )?\d\d:\d\d:\d\d に読み取りました。ルーターの MAC\u00a0アドレスは最後の\u00a02\u00a0組だけ、Wi-Fi 名は先頭の\u00a01\u00a0文字と文字数だけを表示しています。/u,
     );
     const tag = buttonTag(markup, HOME_LABELS.register);
     assert(tag !== null, markup);
@@ -162,16 +165,16 @@ test(
     assert.equal(request.tone, 'accent');
     assert.equal(request.confirmLabel, '登録する');
     const body = html(request.body);
-    assert.match(body, /••:••:••:••:53:01/u);
+    assert.match(body, /··:··:··:··:53:01/u);
     assert.match(body, /Tailscale\s*で直接つながっているときだけ/u);
     // 確かめる値は、値ごとに別の段の大きな等幅で出す。
     assert.match(
       body,
-      /ルーターの MAC（最後の 2 組）<\/p><p><span aria-hidden="true" class="font-mono tabular-nums text-2xl[^"]*">••:••:••:••:53:01/u,
+      /ルーターの MAC\u00a0アドレス（最後の\u00a02\u00a0組）<\/p><p><span aria-hidden="true" class="font-mono whitespace-nowrap tabular-nums text-2xl[^"]*">··:··:··:··:53:01/u,
     );
     assert.match(
       body,
-      /class="font-mono tabular-nums text-2xl[^"]*">192\.0\.2\.0\/24/u,
+      /class="font-mono whitespace-nowrap tabular-nums text-2xl[^"]*">192\.0\.2\.0\/24/u,
     );
     assert.doesNotMatch(body, /置き換わり/u);
     request.onConfirm();
@@ -211,7 +214,7 @@ test(
     assert.doesNotMatch(off, /data-selected="true"/u);
     assert.match(
       off,
-      /切っても、ルーターの MAC アドレス・サブネット・Tailscale の直接経路は確かめます。/u,
+      /切っても、ルーターの MAC\u00a0アドレス・サブネット・Tailscale の直接経路は確かめます。/u,
     );
     pressables(
       CurrentNetworkSection({
@@ -226,16 +229,16 @@ test(
     assert(request);
     const body = html(request.body);
     assert.match(body, /確かめない（Wi-Fi 名は送りません）/u);
-    assert.match(body, /Wi-Fi 名は確かめません。/u);
-    assert.doesNotMatch(body, /合••••/u);
+    assert.match(body, /Wi-Fi 名は確かめず、/u);
+    assert.doesNotMatch(body, /合····/u);
     request.onConfirm();
     assert.deepEqual(sent[0]?.payload, { ref: REF, include_ssid: false });
     // 入れたときの確認には、伏せた Wi-Fi 名を大きく出す。
     const on = html(
       confirmRequest(OBSERVATION, REF, null, NOW, actions, true).body,
     );
-    assert.match(on, /合••••/u);
-    assert.doesNotMatch(on, /Wi-Fi 名は確かめません/u);
+    assert.match(on, /合····/u);
+    assert.doesNotMatch(on, /Wi-Fi 名は確かめず/u);
   },
 );
 
@@ -255,10 +258,10 @@ test(
     );
     assert.match(markup, /<span>登録済み<\/span>/u);
     assert.match(markup, /確かめる（登録した Wi-Fi 名と比べます）/u);
-    assert.match(markup, /最終更新/u);
+    assert.match(markup, /<dt[^>]*>登録<\/dt>/u);
     // 登録の時刻は「今」の前の日（地域時間で 10/3〜10/4）なので月日を付ける。
     assert.match(markup, /10\/[34] \d\d:\d\d:\d\d/u);
-    assert.match(markup, /照合用の値（HMAC）だけ/u);
+    assert.match(markup, /照合用の値（元の値に戻せない形）だけ/u);
     assert.match(markup, /ありません（有線の接続、または読み取れません）/u);
     assert.match(markup, /Wi-Fi 名なしで登録します。/u);
     // Wi-Fi 名が読み取れないときは、確かめるかの選択肢を出さない。
@@ -292,7 +295,7 @@ test(
           now={NOW}
         />,
       ),
-      /確かめない（ルーターの MAC アドレス・サブネット・Tailscale の直接経路で判定します）/u,
+      /確かめない（ルーターの MAC\u00a0アドレス・サブネット・Tailscale の直接経路で判定します）/u,
     );
   },
 );
@@ -317,8 +320,11 @@ test(
       />,
     );
     assert.match(markup, /<span>読み取れません<\/span>/u);
-    assert.match(markup, /位置情報の許可がないため伏せられています/u);
-    assert.match(markup, /両方が読み取れないと登録できません/u);
+    assert.match(markup, /読み取れません（位置情報の許可がありません）/u);
+    assert.match(
+      markup,
+      /ルーターの MAC\u00a0アドレスを読み取れないため、登録できません。/u,
+    );
     assert.equal(buttonTag(markup, HOME_LABELS.register), null);
     assert.equal(buttonTag(markup, HOME_LABELS.reregister), null);
     // 3 文字以下の SSID は文字数だけ。
@@ -338,8 +344,8 @@ test(
         onAsk={() => undefined}
       />,
     );
-    assert.match(short, /•••/u);
-    assert.match(short, /（3 文字）/u);
+    assert.match(short, /···/u);
+    assert.match(short, /（3\u00a0文字）/u);
     assert.doesNotMatch(short, /先頭が/u);
     assert.match(
       html(
@@ -396,7 +402,10 @@ test(
         now={NOW}
       />,
     );
-    assert.match(loading, /読み込んでいます…/u);
+    assert.match(
+      loading,
+      /<p class="flex items-center gap-2 text-sm text-muted">(?:<[^>]+>)*読み取っています…/u,
+    );
     assert.match(loading, /role="status"[^>]*>[\s\S]*読み取っています…/u);
     // 登録の結果を待つ間は押せない。
     const busy = html(
@@ -424,7 +433,10 @@ test(
       />,
     );
     assert.equal(buttonTag(stale, HOME_LABELS.register), null);
-    assert.match(stale, /role="alert"[^>]*>読み取り直してください/u);
+    assert.match(
+      stale,
+      /role="alert"[^>]*>(?:<[^>]+>)*読み取り直してください/u,
+    );
     // 拒否は押したボタンのすぐ下に alert で出す（登録のボタンの下・欄の見出しの「読み取り直す」の下）。
     const registerRejected = html(
       <HomeNetworkPanel
@@ -440,7 +452,7 @@ test(
     assert.match(
       registerRejected,
       new RegExp(
-        `>${HOME_LABELS.register}</button></div><p role="alert"[^>]*>拒否の文言`,
+        `>${HOME_LABELS.register}</button></div><p role="alert"[^>]*>(?:<[^>]+>)*拒否の文言`,
         'u',
       ),
     );
@@ -458,7 +470,7 @@ test(
     assert.match(
       statusRejected,
       new RegExp(
-        `>${HOME_LABELS.reread}</button></div><p role="alert"[^>]*>読み取りの拒否`,
+        `>${HOME_LABELS.reread}</button></div><p role="alert"[^>]*>(?:<[^>]+>)*読み取りの拒否`,
         'u',
       ),
     );
@@ -656,5 +668,280 @@ test(
       />,
     );
     assert.doesNotMatch(without, /自宅のネットワーク/u);
+  },
+);
+
+// PR #79 の見た目のレビュー（M1〜M7・L1〜L9）とコードレビュー（Low-2・Low-3）で直した表示。
+test(
+  'review: the Wi-Fi name choice follows the registration, missing elements and hidden Wi-Fi names say what to do next',
+  { timeout: 10_000 },
+  () => {
+    const { actions } = capture();
+    // M1: 登録済みでは、Checkbox の初期値は今の登録に合わせ、登録し直すときに反映されると書く。
+    const checkedOff = html(
+      <HomeNetworkPanel
+        state={state({
+          home: {
+            registration: { ...REGISTRATION, ssid_registered: false },
+            observation: OBSERVATION,
+          },
+        })}
+        actions={actions}
+        now={NOW}
+      />,
+    );
+    assert.doesNotMatch(checkedOff, /data-selected="true"/u);
+    assert.match(checkedOff, /登録し直すときに反映されます。/u);
+    const checkedOn = html(
+      <HomeNetworkPanel
+        state={state({
+          home: { registration: REGISTRATION, observation: OBSERVATION },
+        })}
+        actions={actions}
+        now={NOW}
+      />,
+    );
+    assert.match(checkedOn, /data-selected="true"/u);
+    // 未登録では「登録し直すとき」を書かない。
+    assert.doesNotMatch(
+      html(
+        <HomeNetworkPanel
+          state={state({
+            home: { registration: null, observation: OBSERVATION },
+          })}
+          actions={actions}
+          now={NOW}
+        />,
+      ),
+      /登録し直すときに反映されます/u,
+    );
+    // M2: 足りない要素を名指しする（両方とも読めないとき）。
+    const neither = html(
+      <CurrentNetworkSection
+        state={state({
+          home: {
+            registration: null,
+            observation: {
+              ...OBSERVATION,
+              ref: null,
+              gateway_mac_tail: null,
+              subnet: null,
+            },
+          },
+        })}
+        actions={actions}
+        now={NOW}
+        onAsk={() => undefined}
+      />,
+    );
+    assert.match(
+      neither,
+      /ルーターの MAC\u00a0アドレスとサブネットを読み取れないため、登録できません。/u,
+    );
+    // M3: 位置情報の許可で伏せられたときは、許可の場所と、そのまま登録したときの結果を本文の重さで書く。
+    const redacted = html(
+      <CurrentNetworkSection
+        state={state({
+          home: {
+            registration: null,
+            observation: {
+              ...OBSERVATION,
+              ssid_hint: null,
+              ssid_unavailable_reason: 'redacted',
+            },
+          },
+        })}
+        actions={actions}
+        now={NOW}
+        onAsk={() => undefined}
+      />,
+    );
+    assert.match(
+      redacted,
+      /<p class="max-w-prose text-sm leading-6 text-foreground">Wi-Fi 名を読み取るには、macOS のシステム設定の「プライバシーとセキュリティ」&gt;「位置情報サービス」で Buddy を許可してから、「読み取り直す」を押してください。このまま登録すると、Wi-Fi 名は確かめません/u,
+    );
+    // 登録できないときは「このまま登録すると」を書かない。
+    const redactedNoMac = html(
+      <CurrentNetworkSection
+        state={state({
+          home: {
+            registration: null,
+            observation: {
+              ...OBSERVATION,
+              ref: null,
+              gateway_mac_tail: null,
+              ssid_hint: null,
+              ssid_unavailable_reason: 'redacted',
+            },
+          },
+        })}
+        actions={actions}
+        now={NOW}
+        onAsk={() => undefined}
+      />,
+    );
+    assert.match(redactedNoMac, /位置情報サービス/u);
+    assert.doesNotMatch(redactedNoMac, /このまま登録すると/u);
+    // L2: 伏せたものがない（MAC も Wi-Fi 名も出ていない）ときは「表示しています」と書かない。
+    assert.match(redactedNoMac, /に読み取りました。<\/p>/u);
+    assert.match(
+      html(
+        <CurrentNetworkSection
+          state={state({
+            home: {
+              registration: null,
+              observation: {
+                ...OBSERVATION,
+                ssid_hint: null,
+                ssid_unavailable_reason: 'ambiguous',
+              },
+            },
+          })}
+          actions={actions}
+          now={NOW}
+          onAsk={() => undefined}
+        />,
+      ),
+      /無線の接続が複数あるため、Wi-Fi 名を決められません。使わない Wi-Fi を切ってから/u,
+    );
+  },
+);
+
+test(
+  'review: the re-register confirmation says when the Wi-Fi check changes, shows what to compare against and marks the replacement',
+  { timeout: 10_000 },
+  () => {
+    const { actions } = capture();
+    const wired: DesktopHomeObservation = {
+      ...OBSERVATION,
+      ssid_hint: null,
+      ssid_unavailable_reason: 'unavailable',
+    };
+    // M4: 確かめる登録を、Wi-Fi 名なしで登録し直すと外れる。
+    const off = html(
+      confirmRequest(wired, REF, REGISTRATION, NOW, actions).body,
+    );
+    assert.match(off, /登録し直すと、Wi-Fi 名は確かめなくなります。/u);
+    // 確かめない登録に、Wi-Fi 名を入れて登録し直すと付く。
+    const on = html(
+      confirmRequest(
+        OBSERVATION,
+        REF,
+        { ...REGISTRATION, ssid_registered: false },
+        NOW,
+        actions,
+        true,
+      ).body,
+    );
+    assert.match(on, /登録し直すと、Wi-Fi 名も確かめるようになります/u);
+    // 変わらないときは書かない。
+    assert.doesNotMatch(
+      html(confirmRequest(OBSERVATION, REF, REGISTRATION, NOW, actions).body),
+      /登録し直すと、Wi-Fi 名/u,
+    );
+    // M5: 何と見比べるかを添える。L5: 置き換えの段は ⚠ と太字。
+    assert.match(
+      on,
+      /ルーターのラベルや管理画面の MAC\u00a0アドレスの、最後の\u00a02\u00a0組と同じかを確かめてください。/u,
+    );
+    assert.match(on, /ルーターの管理画面の、LAN 側のアドレスの範囲です。/u);
+    assert.match(
+      on,
+      /<p class="flex items-start gap-1\.5 text-sm leading-6 font-medium">(?:<[^>]+>)*<span>今の登録/u,
+    );
+    // L1: 確かめないときの文は「切っても」を使わない。
+    const ssidOff = html(
+      confirmRequest(OBSERVATION, REF, null, NOW, actions, false).body,
+    );
+    assert.match(
+      ssidOff,
+      /Wi-Fi 名は確かめず、ルーターの MAC\u00a0アドレス・サブネット・Tailscale の直接経路で判定します。/u,
+    );
+    assert.doesNotMatch(ssidOff, /切っても/u);
+  },
+);
+
+test(
+  'review: reading and registering do not overlap, the done notice is announced and a newer reading is kept',
+  { timeout: 10_000 },
+  () => {
+    const { actions } = capture();
+    const home = { registration: null, observation: OBSERVATION };
+    // Low-2: 読み取りの最中は登録のボタンを押せない。
+    const reading = html(
+      <CurrentNetworkSection
+        state={state({ home, reading: true })}
+        actions={actions}
+        now={NOW}
+        onAsk={() => undefined}
+      />,
+    );
+    assert.match(String(buttonTag(reading, HOME_LABELS.register)), /disabled/u);
+    // Low-3: 登録の結果を待つ間は読み取り直せない。
+    const busy = html(
+      <CurrentNetworkSection
+        state={state({ home, busy: true })}
+        actions={actions}
+        now={NOW}
+        onAsk={() => undefined}
+      />,
+    );
+    assert.match(String(buttonTag(busy, HOME_LABELS.reread)), /disabled/u);
+    // L6: 受け取る前の 2 つの欄は同じ言葉で、ライブ領域は 1 つだけ。
+    const loading = html(
+      <HomeNetworkPanel
+        state={state({ reading: true })}
+        actions={actions}
+        now={NOW}
+      />,
+    );
+    assert.equal(loading.match(/読み取っています…/gu)?.length, 2);
+    // Spinner は aria-hidden（記号は読み上げない）。ライブ領域の段は下の欄の 1 つだけ。
+    assert.equal(loading.match(/<p role="status"/gu)?.length, 1);
+    // M7: 登録の知らせは role="status"。
+    assert.match(
+      html(
+        <HomeNetworkPanel
+          state={state({ registered: true, home })}
+          actions={actions}
+          now={NOW}
+        />,
+      ),
+      /role="status"[\s\S]*自宅のネットワークを登録しました。/u,
+    );
+    // Low-3: 登録の応答より新しい読み取りが届いていれば、表示（と参照）は新しい方を残す。
+    const newer: DesktopHomeObservation = {
+      ...OBSERVATION,
+      ref: '00000000-0000-4000-8000-000000000e66',
+      collected_at: '2030-10-05T03:00:05Z',
+    };
+    const applied = applyHomeResponse(
+      state({ busy: true, home: { registration: null, observation: newer } }),
+      'desktop.home_register',
+      {
+        request_id: '00000000-0000-4000-8000-000000000e73',
+        channel: 'desktop.home_register',
+        outcome: 'ok',
+        home: { registration: REGISTRATION, observation: OBSERVATION },
+      },
+    );
+    assert.deepEqual(applied.home, {
+      registration: REGISTRATION,
+      observation: newer,
+    });
+    // 読み取りの応答は、いつも置き換える。
+    assert.deepEqual(
+      applyHomeResponse(
+        state({ home: { registration: null, observation: newer } }),
+        'desktop.home_status',
+        {
+          request_id: '00000000-0000-4000-8000-000000000e74',
+          channel: 'desktop.home_status',
+          outcome: 'ok',
+          home: { registration: null, observation: OBSERVATION },
+        },
+      ).home?.observation,
+      OBSERVATION,
+    );
   },
 );

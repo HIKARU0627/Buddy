@@ -38,6 +38,7 @@ import type {
   PinnedTarget,
   TestDevice,
 } from './api-test-support.js';
+import type { JsonObject } from './strict-json.js';
 import { loadOrCreateTlsIdentity } from './tls-identity.js';
 
 const CORE_INSTANCE = '00000000-0000-4000-8000-0000000000c1';
@@ -835,6 +836,25 @@ test(
     started.sameMachine.value = false;
     // 時計を読むたびに 1 ms 進める（判定の中で DB を読む間に時計が進む実機の状況）。
     started.clock.step = 1;
+    // 判定そのもの（経路の検査が使う homeNetwork）を直接呼んで、通る・通らないを確かめる。HTTP の 503（自宅判定の
+    // 後の処理がこの試験の中枢にない）だけに頼らない（PR #79 のコードレビュー Low-4）。
+    const judge = (operationId: string, fingerprint: JsonObject) =>
+      started.gate.homeNetwork({
+        operationId,
+        device: null,
+        remoteAddress: '127.0.0.1',
+        params: {},
+        body: { home_fingerprint: fingerprint },
+        declaredLockState: null,
+      });
+    for (const operationId of ['claimPairing', 'pickupPairingToken']) {
+      assert.equal(await judge(operationId, HOME), true, operationId);
+      assert.equal(
+        await judge(operationId, { ...HOME, gateway_mac: '00:00:5e:00:53:02' }),
+        false,
+        `${operationId} with another fingerprint`,
+      );
+    }
     const claim = (fingerprint: Record<string, unknown>) =>
       pinnedRequest(started.target, {
         method: 'POST',

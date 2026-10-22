@@ -227,7 +227,7 @@ test('a failed operation is shown under the row that was pressed, and only there
   // 押した行（合成の申請）の中、次の行（別の申請）より前に出る。
   assert.match(
     listed,
-    /合成の申請.*role="alert"[^>]*>「合成の申請」の承認を中枢に送れませんでした。.*別の申請/su,
+    /合成の申請.*role="alert"[^>]*>(<[^>]+>)*「合成の申請」の承認を中枢に送れませんでした。.*別の申請/su,
   );
   assert.equal(listed.match(/role="alert"/gu)?.length, 1);
   // 他の欄（登録済みの端末）には出さない。

@@ -89,6 +89,25 @@ const STALE_REASONS: ReadonlySet<RejectReason> = new Set([
   'device_locked',
 ]);
 
+// 登録の応答は、登録の前に読み取った表示を持つ。その間に読み取り直した、より新しい表示があれば、表示（と参照）は
+// 新しい方を残し、登録の状態だけを置き換える（古い表示・参照を画面に戻さない。PR #79 のレビュー Low-3）。
+function newerHome(
+  current: DesktopHomeView | null,
+  sent: DesktopIpcRequest['channel'],
+  received: DesktopHomeView,
+): DesktopHomeView {
+  const kept = current?.observation ?? null;
+  const incoming = received.observation;
+  if (
+    sent !== 'desktop.home_register' ||
+    kept === null ||
+    incoming === null ||
+    Date.parse(kept.collected_at) <= Date.parse(incoming.collected_at)
+  )
+    return received;
+  return { registration: received.registration, observation: kept };
+}
+
 // main の応答を反映する。読み取り・登録の応答は表示を置き換え、拒否は文言だけを出して表示を変えない。
 export function applyHomeResponse(
   state: HomeViewState,
@@ -115,7 +134,7 @@ export function applyHomeResponse(
     ...state,
     busy,
     reading,
-    home: response.home,
+    home: newerHome(state.home, sent, response.home),
     registered: sent === 'desktop.home_register',
     stale: false,
   };

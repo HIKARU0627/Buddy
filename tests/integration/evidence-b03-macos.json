@@ -1,0 +1,50 @@
+{
+  "status": "recorded",
+  "description": "B03 の実機確認の記録（#66・#10）。手順は docs/b03/device-check.md。本人の依頼で、司令塔（Claude）が本人の Mac（開発機の MacBook Air）で A（A1〜A5）と C（C1〜C6・C8・C9）を実行し、出力・画面（CDP で読み取り）を観測したもの（2026-10-22 JST）。C7（画面のロックと解除）は本人の操作待ちで未実施。B・D・E（Mac mini・Tailscale 越しの 2 台・Windows）は未実施。指紋・宛先・トークン・ID・時刻の値は記録していない。開発機での確認は参考で、中枢の Mac mini での確認ではない。",
+  "records": [
+    {
+      "kind": "real_device",
+      "commit": "e8d6971",
+      "contract_version": "1.0.0",
+      "db_version": "3",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["macOS のデスクトップ（中枢と同じマシン）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B03-mac-hub-tls-key",
+      "observed_at": "2026-10-22T05:05:00Z",
+      "final_state": "created（キーチェーンに TLS の鍵。事前は missing、作成後は exists。証明書の PEM は 0600 で秘密鍵を含まず、再起動で既存の鍵・証明書を使い指紋は同じ。Tailscale の IPv4 のアドレスで待ち受け）"
+    },
+    {
+      "kind": "real_device",
+      "commit": "e8d6971",
+      "contract_version": "1.0.0",
+      "db_version": "3",
+      "environment": {
+        "os": "macOS 27.0.1",
+        "hub": "MacBook Air（開発機。中枢の Mac mini ではない）",
+        "devices": ["macOS のデスクトップ（中枢と同じマシン）"]
+      },
+      "seed": null,
+      "fault_point": null,
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "deviation": null,
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation",
+      "case_id": "B03-mac-first-device-pairing",
+      "observed_at": "2026-10-22T05:10:30Z",
+      "final_state": "connected（未登録の画面→証明書の受取りで中枢に要求の記録なし→指紋 4×4・最後の組は伏せ、画面の 15 組は CLI と一致→違う 4 桁は拒否・申請を送らない→正しい 4 桁・コード・CLI の承認で接続中、中枢の画面のタブ 4 つ→safeStorage に保存〔キーチェーンに Buddy Desktop Safe Storage、device-credential.bin は 0600・v10 の暗号文・平文のトークンなし〕→起動し直しでペアリングなしに接続→device list は 1 台・hub_local true・失効なし・値は出ない）"
+    }
+  ]
+}

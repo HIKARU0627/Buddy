@@ -19,7 +19,7 @@ import {
   randomUUID,
 } from 'node:crypto';
 import { isIP } from 'node:net';
-import { tokenPickup } from '@buddy/domain';
+import { listenAddressDecision, tokenPickup } from '@buddy/domain';
 import {
   PAIRING_CLAIM_TTL_MS,
   PAIRING_MAX_ATTEMPTS,
@@ -66,6 +66,11 @@ export function isSameMachine(
   if (isIP(remote) === 0) return false;
   if (remote === '::1' || (isIP(remote) === 4 && remote.startsWith('127.')))
     return true;
+  // 待ち受けのアドレスは、待ち受けと同じ正規化（ADR 0020、B03-07 M2）をした形と比べる。
+  // 接続元のアドレスも同じ正規化にかけ、IPv6 の書き方の違いで食い違わないようにする。
+  const listen = listenAddressDecision(listenHost);
+  const peer = listenAddressDecision(remote);
+  if (listen.ok && peer.ok) return peer.address === listen.address;
   return remote === normalize(listenHost);
 }
 

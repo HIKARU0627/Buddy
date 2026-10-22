@@ -12,6 +12,8 @@
 //   待ち受ける（入力の書き方によらず、同じアドレスに同じ形で結び付く）。
 
 import { parseIpv4 } from './home-network.js';
+// IPv6 の読み方は、ペアリングの宛先の判定（hub-host.ts）と同じものを使う（B03-05 と B03-07 の統合で一本化）。
+import { parseIpv6 } from './hub-host.js';
 
 export type ListenAddressReason =
   // IP アドレスの文字列ではない（名前・空・形の不正）。
@@ -30,50 +32,10 @@ export type ListenAddressDecision =
     }
   | { readonly ok: false; readonly reason: ListenAddressReason };
 
-const HEX_GROUP = /^[0-9A-Fa-f]{1,4}$/u;
-
 function formatIpv4(value: number): string {
   return [24, 16, 8, 0]
     .map((shift) => Math.floor(value / 2 ** shift) % 256)
     .join('.');
-}
-
-// `:` で区切った 16 進の組を読む。空の文字列は 0 個の組。
-function hexGroups(part: string): number[] | null {
-  if (part === '') return [];
-  const groups: number[] = [];
-  for (const group of part.split(':')) {
-    if (!HEX_GROUP.test(group)) return null;
-    groups.push(Number.parseInt(group, 16));
-  }
-  return groups;
-}
-
-// IPv6 の表記を 8 つの 16 ビットの組に。読めなければ null。
-export function parseIpv6(text: string): readonly number[] | null {
-  let hex = text;
-  const lastColon = text.lastIndexOf(':');
-  if (lastColon === -1) return null;
-  const last = text.slice(lastColon + 1);
-  if (last.includes('.')) {
-    // 末尾の IPv4 の表記は、下位 32 ビットの 2 つの組に置き換えてから読む。
-    const v4 = parseIpv4(last);
-    if (v4 === null) return null;
-    hex = `${text.slice(0, lastColon + 1)}${Math.floor(v4 / 65_536).toString(16)}:${(v4 % 65_536).toString(16)}`;
-  }
-  const halves = hex.split('::');
-  if (halves.length > 2) return null;
-  if (halves.length === 1) {
-    const groups = hexGroups(hex);
-    return groups !== null && groups.length === 8 ? groups : null;
-  }
-  const left = hexGroups(halves[0] as string);
-  const right = hexGroups(halves[1] as string);
-  if (left === null || right === null) return null;
-  // `::` は 1 つ以上の 0 の組を表す。
-  const missing = 8 - left.length - right.length;
-  if (missing < 1) return null;
-  return [...left, ...new Array<number>(missing).fill(0), ...right];
 }
 
 // RFC 5952 の形（小文字・先頭の 0 なし・2 つ以上続く 0 の組の最長の並びを `::` にする。同じ長さなら先のもの）。

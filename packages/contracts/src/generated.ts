@@ -13,7 +13,7 @@ export type BuddyContract =
   | OperationIntent
   | CommandContext
   | PreviewRequest
-  | LabelPreview
+  | OperationPreview
   | ApprovalRequest
   | StateCommand
   | CommandReceipt
@@ -298,9 +298,10 @@ export type SessionEpoch = string;
  */
 export type AnalysisRevision = string;
 /**
- * 承認対象として確定した変更内容。B00 時点はラベル変更（H01）だけ。他の操作は後続で追加する。
+ * 承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。
  */
-export type OperationIntent = LabelOperationIntent;
+export type OperationIntent =
+  LabelOperationIntent | DraftReplyOperationIntent | TaskOperationIntent;
 /**
  * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
  */
@@ -329,6 +330,11 @@ export type CommandReceipt =
       status: 'durable';
       committed_state_revision: StateRevision;
     };
+/**
+ * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
+ */
+export type OperationKind =
+  'mail.labels.change' | 'mail.draft.create' | 'task.create';
 /**
  * DB の世代。通常の再起動では維持し、バックアップ復元・新規作成で新しい値にする。等値比較だけに使う（設計 07 §1・§4、ADR 0003）。
  */
@@ -1144,6 +1150,63 @@ export interface LabelOperationIntent {
     reconcile_scope: 'exact_target';
   };
 }
+/**
+ * 返信の下書きの作成（draft_reply、RemoteMutation、ADR 0027）。target は返信元のメール。下書きは送らないので external_recipients は空。宛先は返信元から Core が決め、モデルに作らせない（ADR 0004）。結果不明は操作の目印（operation_id と content_version）でアカウント内を照合する。
+ */
+export interface DraftReplyOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  };
+  action: {
+    kind: 'mail.draft.create';
+    /**
+     * @minItems 1
+     */
+    to: [string, ...string[]];
+    cc: string[];
+    subject: string;
+    body: string;
+  };
+  effects: {
+    /**
+     * @maxItems 0
+     */
+    external_recipients: [];
+    reconcile_scope: 'operation_marker';
+  };
+}
+/**
+ * Buddy 内の用事の登録（create_task、LocalCommand、ADR 0027）。外部 HTTP を使わず、承認の後に一つの transaction で適用する。target.list_id は登録先の一覧、permission_revision は Buddy 内の用事の保存先の許可の版。
+ */
+export interface TaskOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  target: {
+    list_id: string;
+  };
+  action: {
+    kind: 'task.create';
+    title: string;
+    due: DateOrDateTime | null;
+    body: string | null;
+  };
+  effects: {
+    /**
+     * @maxItems 0
+     */
+    external_recipients: [];
+    reconcile_scope: 'local_transaction';
+  };
+}
 export interface CommandContext {
   request_id: Id;
   command_scope_id: Id;
@@ -1152,9 +1215,12 @@ export interface PreviewRequest {
   request_id: Id;
   command_scope_id: Id;
 }
-export interface LabelPreview {
+/**
+ * 承認表示の準備の応答。確定 intent（種類は action.kind）と content_hash。承認ではない（ADR 0027 で LabelPreview を一般化）。
+ */
+export interface OperationPreview {
   preview_id: Id;
-  intent: LabelOperationIntent;
+  intent: OperationIntent;
   content_hash: Hash;
   state_revision: StateRevision;
 }
@@ -1172,10 +1238,11 @@ export interface StateCommand {
   expected_state_revision: StateRevision;
 }
 /**
- * 最初のラベル変更用状態投影。allowed_actionsは表示補助であり、実行時の認可ではない。
+ * 操作の状態投影。operation_kind は確定 intent の action.kind（ADR 0027）。allowed_actionsは表示補助であり、実行時の認可ではない。
  */
 export interface OperationSnapshot {
   operation_id: Id;
+  operation_kind: OperationKind;
   content_version: ContentVersion;
   content_hash: Hash;
   state_revision: StateRevision;

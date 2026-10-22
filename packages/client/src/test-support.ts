@@ -104,6 +104,7 @@ export function operation(
 ): Record<string, unknown> {
   return {
     operation_id: id,
+    operation_kind: 'mail.labels.change',
     content_version: '1',
     content_hash: HASH,
     state_revision: revision,

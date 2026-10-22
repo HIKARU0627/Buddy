@@ -11,7 +11,9 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `intents.ts`: 24 意図ごとの経路（Read / LocalCommand / RemoteMutation）・承認・方式 C の可否・必須と許可の引数
 - `readiness.ts`: 変更を伴う意図の実行可否（blocked / needs_approval / auto_eligible）を決める純粋関数
 - `notification.ts`: 通知の配信と一覧の分離（再取得・再接続・端末移動・ACK 喪失で鳴らし直さない）
-- `operations.ts`: 操作の内部状態と許される遷移（設計 08 §3・§4）
+- `operations.ts`: 操作の内部状態と許される遷移（設計 08 §3・§4）。内容版の更新（D1）と LocalCommand だけの approved → succeeded（D5）は ADR 0027
+- `connectors.ts`: 操作の種類ごとの規則、connector の能力の型と検査、照合の結果の扱い、作成物の目印（ADR 0027）
+- `operation-steps.ts`: 操作の工程（operation_steps）の進め方（D3、ADR 0027）
 - `approval.ts`: 承認の受付（同じ内容版の承認は一つ・方針の版）と DB worker の命令の再検査（[ADR 0010](../../docs/adr/0010-domain-boundary-and-storage-draft.md)）
 - `audio.ts`: 停止理由ごとの動作と再開条件、遅着した結果の受け入れ、出力先の決定（[ADR 0005](../../docs/adr/0005-conversation-and-voice-control.md)）
 - `desktop.ts`: デスクトップの限定 IPC の受付（送信元・ロック・画面操作・停止の範囲・io_epoch）、状態欄の非表示、入出力・ロックの状態遷移（[ADR 0014](../../docs/adr/0014-b01-desktop-ipc-contract.md)）

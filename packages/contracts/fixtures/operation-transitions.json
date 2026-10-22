@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "X01〜X11 の操作の期待遷移（設計 09 §5、08 §3・§4）。実行済みの試験記録ではない。external_writes は模擬サービスが受け取る外部変更要求の期待回数、approvals は有効な承認の件数。",
+  "description": "X01〜X11 の操作の期待遷移（設計 09 §5、08 §3・§4、ADR 0027）。実行済みの試験記録ではない。external_writes は模擬サービスが受け取る外部変更要求の期待回数、approvals は記録された承認の件数（D1 で失効した旧版の承認を含む。失効した件数は revoked_approvals）。route を書かない例は RemoteMutation。content_versions は path の各状態の内容版（D1 の内容版の更新を含む例だけ）。",
   "cases": [
     {
       "id": "X01",
@@ -34,17 +34,47 @@
     },
     {
       "id": "X03",
-      "title": "承認待ちで内容（宛先・本文・ラベル・許可版）が変わる",
-      "path": ["awaiting_approval", "superseded"],
-      "next_version": "awaiting_approval",
+      "title": "承認待ちで内容（宛先・本文・ラベル・許可版）が変わる。同じ operation_id で内容版を上げて承認待ちに戻す（D1）",
+      "path": ["awaiting_approval", "awaiting_approval"],
+      "content_versions": ["1", "2"],
+      "old_version": {
+        "approval": "none",
+        "attempt": "none"
+      },
       "approvals": 0,
+      "revoked_approvals": 0,
       "external_writes": 0
+    },
+    {
+      "id": "X03-after-approval",
+      "title": "承認の後・送出準備の前に内容が変わる。旧版の承認を失効させ、新しい版に承認し直して一度だけ送る（D1）",
+      "path": [
+        "awaiting_approval",
+        "approved",
+        "awaiting_approval",
+        "approved",
+        "preparing",
+        "dispatching",
+        "reconciling",
+        "succeeded"
+      ],
+      "content_versions": ["1", "1", "2", "2", "2", "2", "2", "2"],
+      "old_version": {
+        "approval": "revoked",
+        "attempt": "none"
+      },
+      "approvals": 2,
+      "revoked_approvals": 1,
+      "external_writes": 1
     },
     {
       "id": "X04",
       "title": "同じ request_id を別内容で再利用、再接続後の古い command_scope_id",
       "path": ["awaiting_approval"],
-      "responses": { "request_id_reused": 409, "old_scope": 410 },
+      "responses": {
+        "request_id_reused": 409,
+        "old_scope": 410
+      },
       "approvals": 0,
       "external_writes": 0
     },
@@ -115,10 +145,20 @@
     },
     {
       "id": "X09",
-      "title": "承認後に元対象が r2 へ変わる、または権限が失効する",
-      "path": ["awaiting_approval", "approved", "preparing", "superseded"],
-      "next_version": "awaiting_approval",
+      "title": "承認後に元対象が r2 へ変わる、または権限が失効する。送出せず内容版を上げて承認待ちに戻す（D1）",
+      "path": [
+        "awaiting_approval",
+        "approved",
+        "preparing",
+        "awaiting_approval"
+      ],
+      "content_versions": ["1", "1", "1", "2"],
+      "old_version": {
+        "approval": "revoked",
+        "attempt": "superseded"
+      },
       "approvals": 1,
+      "revoked_approvals": 1,
       "external_writes": 0
     },
     {
@@ -133,7 +173,10 @@
         "reconciling",
         "succeeded"
       ],
-      "steps": { "create_draft": 1, "send": 1 },
+      "steps": {
+        "create_draft": 1,
+        "send": 1
+      },
       "approvals": 1,
       "external_writes": 2
     },
@@ -149,6 +192,15 @@
       ],
       "approvals": 1,
       "external_writes": 1
+    },
+    {
+      "id": "D5-local-command",
+      "title": "LocalCommand（用事の登録）は画面承認の後に一つの transaction で適用し、送出境界を通らない（D5）",
+      "route": "local_command",
+      "path": ["awaiting_approval", "approved", "succeeded"],
+      "approvals": 1,
+      "external_writes": 0,
+      "local_transactions": 1
     }
   ],
   "event_ordering": {

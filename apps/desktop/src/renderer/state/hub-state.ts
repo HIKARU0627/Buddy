@@ -58,6 +58,10 @@ export interface HubViewState {
   readonly notice: HubNotice | null;
   // 承認・拒否・失効・ペアリングの開始を送って結果を待っている（二重に押させない）。
   readonly pending: PendingOperation | null;
+  // 結果が分からなかった行の参照。一覧を更新するまで操作させない。
+  readonly held: readonly string[];
+  // 一覧の要求の順: これより前に始めた一覧の応答は古いので反映しない（変更の操作・新しい一覧で進む）。
+  readonly listFloor: { readonly claims: number; readonly devices: number };
 }
 
 export const INITIAL_HUB_STATE: HubViewState = {
@@ -68,6 +72,8 @@ export const INITIAL_HUB_STATE: HubViewState = {
   sessionCleared: null,
   notice: null,
   pending: null,
+  held: [],
+  listFloor: { claims: 0, devices: 0 },
 };
 
 export const HUB_IPC_FAILURE_MESSAGE =
@@ -150,15 +156,34 @@ export function applyHubResponse(
   sent: Channel,
   response: DesktopIpcResponse,
   now: number = Date.now(),
+  seq?: number,
 ): HubViewState {
   const heavy = HEAVY.has(sent);
   const operation = heavy ? state.pending : null;
   const pending = heavy ? null : state.pending;
+  // 後から始めた一覧・変更の操作に追い越された一覧の応答は、表示を戻さないよう捨てる。
+  if (
+    !heavy &&
+    seq !== undefined &&
+    sent !== 'desktop.pairing_open' &&
+    seq < state.listFloor[paneOf(sent)]
+  )
+    return state;
   if (response.outcome === 'rejected') {
+    // 確認で「やめる」を選んだ・main が古い一覧として捨てたときは、何も出さない。
+    if (
+      response.reason === 'confirmation_declined' ||
+      response.reason === 'list_superseded'
+    )
+      return { ...state, pending };
     if (operation !== null)
       return {
         ...state,
         pending,
+        held:
+          response.reason === 'outcome_unknown' && operation.ref !== null
+            ? [...state.held, operation.ref]
+            : state.held,
         notice: {
           pane: paneOf(sent),
           place: placeOf(operation),
@@ -241,9 +266,15 @@ export function applyHubResponse(
       },
     };
   }
+  const listed = (pane: HubPane) => ({
+    held: [],
+    listFloor:
+      seq === undefined ? state.listFloor : { ...state.listFloor, [pane]: seq },
+  });
   if ('claims' in response)
     return {
       ...state,
+      ...listed('claims'),
       pending,
       notice,
       claims: response.claims,
@@ -252,8 +283,22 @@ export function applyHubResponse(
         (state.session !== null && usedBy(state.session, response.claims)),
     };
   if ('devices' in response)
-    return { ...state, pending, notice, devices: response.devices };
+    return {
+      ...state,
+      ...listed('devices'),
+      pending,
+      notice,
+      devices: response.devices,
+    };
   return { ...state, pending, notice };
+}
+
+// ロック・接続の切り替えをまたいだ応答は内容を捨て、重い操作の待ちだけを外す。
+export function dropStaleResponse(
+  state: HubViewState,
+  sent: Channel,
+): HubViewState {
+  return HEAVY.has(sent) ? { ...state, pending: null } : state;
 }
 
 export function applyHubFailure(
@@ -367,10 +412,17 @@ export function markSending(
   state: HubViewState,
   built: DesktopIpcRequest,
   operation?: PendingOperation,
+  seq?: number,
 ): HubViewState {
   if (!HEAVY.has(built.channel)) return state;
+  // 変更の操作より前に始めた一覧は古い（決めた申請・失効した端末を戻さない）。
+  const pane = paneOf(built.channel);
   return {
     ...state,
+    listFloor:
+      seq === undefined || built.channel === 'desktop.pairing_open'
+        ? state.listFloor
+        : { ...state.listFloor, [pane]: seq },
     pending: operation ?? {
       channel: built.channel,
       ref: null,

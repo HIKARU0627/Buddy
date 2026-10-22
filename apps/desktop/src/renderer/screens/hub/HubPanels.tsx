@@ -1,6 +1,7 @@
 // 中枢の画面の端末だけに出す本体（設計 02 端末登録と接続、ADR 0024・0026）。Tabs で「承認待ちの申請」
 // 「登録済みの端末」「このマシンの接続」を分ける（状態帯は全画面で共通）。承認・拒否・失効は重い操作として、
-// 確認（ConfirmDialog）を挟んでから送る。状態と操作は引数で受け取り、限定 API を直接呼ばない。
+// main が OS の確認ダイアログで本人に確かめてから送る（本人の判断 2026-10-22、ADR 0026。画面の中の確認は使わない）。
+// 状態と操作は引数で受け取り、限定 API を直接呼ばない。
 // 画面に来るのは main の参照（ref）と表示用の値だけで、申請 ID・端末 ID・申請用の秘密・トークンはない。
 // 申請が 1 件以上あるときは申請の一覧を先に置く（いちばん押すボタンを上に。UI レビュー 2 回目 R1-M1）。
 // 操作の結果の文言は、押した行のすぐ下に出す（R1-M2）。
@@ -24,8 +25,6 @@ import type {
   HubViewState,
 } from '../../state/hub-state.js';
 import type { StatusLine } from '../../tones.js';
-import { ConfirmDialog } from './ConfirmDialog.js';
-import type { ConfirmRequest } from './ConfirmDialog.js';
 
 export const HUB_LABELS = {
   thisMachine: 'このマシンの接続',
@@ -211,40 +210,13 @@ export function PairingOpenPanel({
   );
 }
 
-// 承認の確認（確認コードを大きな等幅で別の段に出し、題に OS と申請の時刻を入れる。R1-M4）。
-export function approveRequest(
-  claim: DesktopClaimEntry,
-  now: number,
-  onConfirm: () => void,
-): ConfirmRequest {
-  return {
-    title: `「${claim.device_name}」（${platformOf(claim.platform)}・${clockOf(claim.claimed_at, now)} の申請）を承認しますか`,
-    body: (
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium">
-            この申請の{HUB_LABELS.claimCheck}
-          </p>
-          <p className="font-mono text-2xl font-semibold tracking-wider tabular-nums">
-            {splitInFour(claim.claim_check)}
-          </p>
-        </div>
-        <p className="text-sm leading-6">{HUB_LABELS.approveNote}</p>
-      </div>
-    ),
-    confirmLabel: HUB_LABELS.approve,
-    tone: 'accent',
-    onConfirm,
-  };
-}
-
 export function ClaimsPanel({
   claims,
   busy,
   refreshDisabled = false,
   now,
   notice,
-  onAsk,
+  held = [],
   actions,
 }: {
   readonly claims: readonly DesktopClaimEntry[] | null;
@@ -252,10 +224,11 @@ export function ClaimsPanel({
   readonly refreshDisabled?: boolean;
   readonly now: number;
   readonly notice: HubNotice | null;
-  readonly onAsk: (request: ConfirmRequest) => void;
+  // 結果が分からなかった行（一覧を更新するまで操作させない）。
+  readonly held?: readonly string[];
   readonly actions: HubActions;
 }) {
-  const top = noticeAt(notice, 'claims', 'section');
+  // 欄の先頭の知らせは、並べ替えで動かないようタブの本文の先頭に出す（HubTabs）。
   return (
     <Section
       id="hub-claims-heading"
@@ -267,7 +240,6 @@ export function ClaimsPanel({
         />
       }
     >
-      {top === null ? null : <NoticeText notice={top} />}
       {claims !== null && claims.length > 0 ? (
         <p className="max-w-prose text-sm leading-6">{HUB_LABELS.claimsNote}</p>
       ) : null}
@@ -306,15 +278,9 @@ export function ClaimsPanel({
                     <Button
                       variant="secondary"
                       size="sm"
-                      isDisabled={busy}
+                      isDisabled={busy || held.includes(claim.ref)}
                       aria-label={`「${claim.device_name}」の申請を承認する`}
-                      onPress={() =>
-                        onAsk(
-                          approveRequest(claim, now, () =>
-                            actions.decide(claim, 'approve'),
-                          ),
-                        )
-                      }
+                      onPress={() => actions.decide(claim, 'approve')}
                     >
                       {HUB_LABELS.approve}
                     </Button>
@@ -322,21 +288,9 @@ export function ClaimsPanel({
                       variant="tertiary"
                       size="sm"
                       className="text-danger-soft-foreground"
-                      isDisabled={busy}
+                      isDisabled={busy || held.includes(claim.ref)}
                       aria-label={`「${claim.device_name}」の申請を拒否する`}
-                      onPress={() =>
-                        onAsk({
-                          title: `「${claim.device_name}」（${platformOf(claim.platform)}・${clockOf(claim.claimed_at, now)} の申請）を拒否しますか`,
-                          body: (
-                            <p className="text-sm leading-6">
-                              拒否した申請は使えなくなります。登録するには、端末側でペアリングを最初からやり直します。
-                            </p>
-                          ),
-                          confirmLabel: HUB_LABELS.reject,
-                          tone: 'danger',
-                          onConfirm: () => actions.decide(claim, 'reject'),
-                        })
-                      }
+                      onPress={() => actions.decide(claim, 'reject')}
                     >
                       {HUB_LABELS.reject}
                     </Button>
@@ -367,7 +321,7 @@ export function DevicesPanel({
   refreshDisabled = false,
   now,
   notice,
-  onAsk,
+  held = [],
   actions,
 }: {
   readonly devices: readonly DesktopDeviceEntry[] | null;
@@ -375,7 +329,8 @@ export function DevicesPanel({
   readonly refreshDisabled?: boolean;
   readonly now: number;
   readonly notice: HubNotice | null;
-  readonly onAsk: (request: ConfirmRequest) => void;
+  // 結果が分からなかった行（一覧を更新するまで操作させない）。
+  readonly held?: readonly string[];
   readonly actions: HubActions;
 }) {
   const top = noticeAt(notice, 'devices', 'section');
@@ -434,21 +389,10 @@ export function DevicesPanel({
                       <Button
                         variant="danger-soft"
                         size="sm"
-                        isDisabled={busy}
+                        isDisabled={busy || held.includes(ref)}
                         aria-label={`「${device.device_name}」を失効する`}
                         onPress={() =>
-                          onAsk({
-                            title: `「${device.device_name}」（${platformOf(device.platform)}・${clockOf(device.registered_at, now, { date: true })} の登録）を失効しますか`,
-                            body: (
-                              <p className="text-sm leading-6">
-                                失効すると、その端末はすぐに切断され、元に戻せません。もう一度使うには、端末側で登録し直します。他の端末には影響しません。
-                              </p>
-                            ),
-                            confirmLabel: HUB_LABELS.revoke,
-                            tone: 'danger',
-                            onConfirm: () =>
-                              actions.revoke({ ref, name: device.device_name }),
-                          })
+                          actions.revoke({ ref, name: device.device_name })
                         }
                       >
                         {HUB_LABELS.revoke}
@@ -494,10 +438,10 @@ export function HubTabs({
   readonly thisDevice: ReactNode;
   readonly initialTab?: HubTab;
 }) {
-  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [tab, setTab] = useState<HubTab>(initialTab);
   const claimCount = state.claims?.length ?? 0;
   const busy = state.pending !== null || paused !== null;
+  const claimsTop = noticeAt(state.notice, 'claims', 'section');
   const pausedText =
     paused === null
       ? null
@@ -523,7 +467,7 @@ export function HubTabs({
       refreshDisabled={paused !== null}
       now={now}
       notice={state.notice}
-      onAsk={setConfirm}
+      held={state.held}
       actions={actions}
     />
   );
@@ -564,6 +508,7 @@ export function HubTabs({
           </Tabs.List>
         </Tabs.ListContainer>
         <Tabs.Panel id="claims" className="flex flex-col gap-6 pt-4">
+          {claimsTop === null ? null : <NoticeText notice={claimsTop} />}
           {claimCount > 0 ? [claims, open] : [open, claims]}
         </Tabs.Panel>
         <Tabs.Panel id="devices" className="flex flex-col gap-6 pt-4">
@@ -573,7 +518,7 @@ export function HubTabs({
             refreshDisabled={paused !== null}
             now={now}
             notice={state.notice}
-            onAsk={setConfirm}
+            held={state.held}
             actions={actions}
           />
         </Tabs.Panel>
@@ -581,7 +526,6 @@ export function HubTabs({
           {thisDevice}
         </Tabs.Panel>
       </Tabs>
-      <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </>
   );
 }

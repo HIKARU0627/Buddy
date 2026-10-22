@@ -20,6 +20,7 @@ import type {
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
+import type { AdminConfirmRequest } from './core-link.js';
 import { CREDENTIAL_FILE, parseCredential } from './credential-store.js';
 import { createHubTransport, hubRequest } from './hub-transport.js';
 import type { PinnedHub } from './hub-transport.js';
@@ -60,6 +61,8 @@ interface Client {
   readonly ipc: unknown[];
   readonly logs: string[];
   readonly claims: string[];
+  // main が出した本人の確認（OS の確認ダイアログの代わりに、試験は内容を控えて「確定」を返す）。
+  readonly confirms: AdminConfirmRequest[];
   // 登録した端末として中枢へ送った要求（方法とパス。本文・ヘッダーは記録しない）。
   readonly requests: string[];
   view(): Extract<DesktopConnectionView, { visibility: 'shown' }>;
@@ -92,6 +95,7 @@ async function createClient(
   const logs: string[] = [];
   const claims: string[] = [];
   const requests: string[] = [];
+  const confirms: AdminConfirmRequest[] = [];
   let link: DesktopCoreLink | null = null;
   link = new DesktopCoreLink({
     contract,
@@ -105,6 +109,10 @@ async function createClient(
       if (link) ipc.push(link.view('unlocked'));
     },
     log: (code) => logs.push(code),
+    confirmAdmin: (request) => {
+      confirms.push(request);
+      return Promise.resolve(true);
+    },
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     aliveTimeoutMs: 3_000,
     pairingPollIntervalMs: options.pollIntervalMs ?? 50,
@@ -147,6 +155,7 @@ async function createClient(
     ipc,
     logs,
     claims,
+    confirms,
     requests,
     view() {
       const view = created.view('unlocked');
@@ -740,6 +749,15 @@ test(
         ref: claims[0]?.['ref'],
         decision: 'approve',
       });
+      // main は確認に、中枢から受け取った端末名と確認コード（端末の画面と同じ値）を出した。
+      assert.deepEqual(
+        a.confirms.map((entry) => [
+          entry.action,
+          entry.deviceName,
+          entry.claimCheck,
+        ]),
+        [['approve', '合成の端末 B', check]],
+      );
       // 受取りの前に「中枢と別のマシン」へ切り替え、B を hub_local でない端末として登録させる。
       machine.same = false;
       openGate();

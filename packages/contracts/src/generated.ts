@@ -770,7 +770,10 @@ export type DesktopIpcResponse =
         | 'core_rejected'
         | 'outcome_unknown'
         | 'fingerprint_tail_mismatch'
-        | 'pairing_host_not_allowed';
+        | 'pairing_host_not_allowed'
+        | 'confirmation_declined'
+        | 'confirmation_pending'
+        | 'list_superseded';
     };
 /**
  * 上部の状態欄の値（設計 01 いつも見える状態、07 §2）。main が端末状態から作り、UI レンダラーは表示するだけ。端末 ID・端末名・トークン・本文を含めない。

@@ -1,13 +1,13 @@
 {
   "status": "specification_only",
-  "description": "リースの更新の受付（中枢）と応答の適用（端末）の期待値（設計 07 §5、10 §2A、X13・X25・X28、ADR 0038）。手で書いたもので、domain の実装から生成していない。request・context・stored は base を上書きする項目だけを書く（stored が null のときは初回で、前に受け付けた nonce がない）。単調時計の値は端末の時計で、中枢の時刻とは比べない。",
+  "description": "リースの更新の受付（中枢）と応答の適用（端末）の期待値（設計 07 §5、10 §2A、X13・X25・X28、ADR 0038）。手で書いたもので、domain の実装から生成していない。request・context・stored は base を上書きする項目だけを書く（stored が null のときは初回で、前に受け付けた nonce がない）。stored の used_nonces は中枢がそのリースで受け付けた nonce を古い順に全て持つ。単調時計の値は端末の時計で、中枢の時刻とは比べない。",
   "base": {
     "stored": {
       "lease_id": "00000000-0000-4000-8000-000000000080",
       "kind": "audio",
       "device_id": "00000000-0000-4000-8000-000000000050",
-      "last_nonce": "nonce-0001",
-      "last_requested_at_mono_ms": 1000
+      "last_requested_at_mono_ms": 1000,
+      "used_nonces": ["nonce-0001"]
     },
     "context": {
       "core_instance_id": "00000000-0000-4000-8000-000000000060",
@@ -41,21 +41,30 @@
       "id": "initial-lease-accepted",
       "refs": ["07 §5"],
       "stored": null,
-      "request": { "previous_nonce": null, "nonce": "nonce-0001" },
-      "context": { "control": "none" },
+      "request": {
+        "previous_nonce": null,
+        "nonce": "nonce-0001"
+      },
+      "context": {
+        "control": "none"
+      },
       "expected": []
     },
     {
       "id": "initial-lease-with-previous-nonce",
       "refs": ["07 §5"],
       "stored": null,
-      "request": { "previous_nonce": "nonce-0000" },
+      "request": {
+        "previous_nonce": "nonce-0000"
+      },
       "expected": ["unexpected_previous_nonce"]
     },
     {
       "id": "core-restarted-between-requests",
       "refs": ["07 §5", "X28"],
-      "request": { "core_instance_id": "00000000-0000-4000-8000-000000000061" },
+      "request": {
+        "core_instance_id": "00000000-0000-4000-8000-000000000061"
+      },
       "expected": ["core_restarted"]
     },
     {
@@ -69,37 +78,49 @@
     {
       "id": "older-io-epoch",
       "refs": ["07 §5", "X13"],
-      "request": { "io_epoch": "3" },
+      "request": {
+        "io_epoch": "3"
+      },
       "expected": ["stale_io_epoch"]
     },
     {
       "id": "io-epoch-the-core-never-issued",
       "refs": ["07 §5"],
-      "request": { "io_epoch": "5" },
+      "request": {
+        "io_epoch": "5"
+      },
       "expected": ["unknown_io_epoch"]
     },
     {
       "id": "io-stopped-on-the-device",
       "refs": ["07 §5", "X13"],
-      "context": { "io_suspended": true },
+      "context": {
+        "io_suspended": true
+      },
       "expected": ["io_suspended"]
     },
     {
       "id": "device-revoked",
       "refs": ["07 §5"],
-      "context": { "device_revoked": true },
+      "context": {
+        "device_revoked": true
+      },
       "expected": ["device_revoked"]
     },
     {
       "id": "sideband-lost-stops-the-audio-lease-even-if-heartbeat-is-fine",
       "refs": ["10 §2A", "X25"],
-      "context": { "control": "lost" },
+      "context": {
+        "control": "lost"
+      },
       "expected": ["sideband_lost"]
     },
     {
       "id": "sideband-closing-stops-the-audio-lease",
       "refs": ["10 §2A"],
-      "context": { "control": "closing" },
+      "context": {
+        "control": "closing"
+      },
       "expected": ["sideband_lost"]
     },
     {
@@ -109,69 +130,110 @@
         "lease_id": "00000000-0000-4000-8000-000000000081",
         "kind": "display",
         "device_id": "00000000-0000-4000-8000-000000000050",
-        "last_nonce": "nonce-0001",
-        "last_requested_at_mono_ms": 1000
+        "last_requested_at_mono_ms": 1000,
+        "used_nonces": ["nonce-0001"]
       },
       "request": {
         "lease_id": "00000000-0000-4000-8000-000000000081",
         "kind": "display"
       },
-      "context": { "control": "lost" },
+      "context": {
+        "control": "lost"
+      },
       "expected": []
     },
     {
       "id": "same-nonce-again",
       "refs": ["07 §5"],
-      "request": { "nonce": "nonce-0001" },
+      "request": {
+        "nonce": "nonce-0001"
+      },
+      "expected": ["nonce_reused"]
+    },
+    {
+      "id": "nonce-used-two-requests-ago-comes-back",
+      "refs": ["07 §5", "ADR 0038"],
+      "stored": {
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "kind": "audio",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "used_nonces": ["nonce-0001", "nonce-0002"],
+        "last_requested_at_mono_ms": 3000
+      },
+      "request": {
+        "nonce": "nonce-0001",
+        "previous_nonce": "nonce-0002",
+        "requested_at_mono_ms": 5000
+      },
       "expected": ["nonce_reused"]
     },
     {
       "id": "replayed-request-with-an-old-previous-nonce",
       "refs": ["07 §5"],
-      "request": { "previous_nonce": "nonce-0000" },
+      "request": {
+        "previous_nonce": "nonce-0000"
+      },
       "expected": ["nonce_replayed"]
     },
     {
       "id": "monotonic-clock-did-not-advance",
       "refs": ["07 §5"],
-      "request": { "requested_at_mono_ms": 1000 },
+      "request": {
+        "requested_at_mono_ms": 1000
+      },
       "expected": ["mono_clock_regressed"]
     },
     {
       "id": "monotonic-clock-went-back",
       "refs": ["07 §5"],
-      "request": { "requested_at_mono_ms": 500 },
+      "request": {
+        "requested_at_mono_ms": 500
+      },
       "expected": ["mono_clock_regressed"]
     },
     {
       "id": "expiry-not-after-heartbeat",
       "refs": ["07 §5", "10 §2A"],
-      "request": { "heartbeat_ms": 6000, "ttl_ms": 2000 },
+      "request": {
+        "heartbeat_ms": 6000,
+        "ttl_ms": 2000
+      },
       "expected": ["heartbeat_not_shorter_than_ttl"]
     },
     {
       "id": "expiry-equal-to-heartbeat",
       "refs": ["07 §5", "10 §2A"],
-      "request": { "heartbeat_ms": 2000, "ttl_ms": 2000 },
+      "request": {
+        "heartbeat_ms": 2000,
+        "ttl_ms": 2000
+      },
       "expected": ["heartbeat_not_shorter_than_ttl"]
     },
     {
       "id": "another-device",
       "refs": ["07 §5"],
-      "request": { "device_id": "00000000-0000-4000-8000-000000000051" },
+      "request": {
+        "device_id": "00000000-0000-4000-8000-000000000051"
+      },
       "expected": ["device_mismatch"]
     },
     {
       "id": "kind-changed",
       "refs": ["07 §5"],
-      "request": { "kind": "display" },
+      "request": {
+        "kind": "display"
+      },
       "expected": ["lease_kind_mismatch"]
     },
     {
       "id": "restart-and-io-stop-together",
       "refs": ["07 §5", "X28"],
-      "request": { "core_instance_id": "00000000-0000-4000-8000-000000000061" },
-      "context": { "io_suspended": true },
+      "request": {
+        "core_instance_id": "00000000-0000-4000-8000-000000000061"
+      },
+      "context": {
+        "io_suspended": true
+      },
       "expected": ["core_restarted", "io_suspended"]
     }
   ],
@@ -179,89 +241,85 @@
     {
       "id": "response-in-time",
       "refs": ["07 §5"],
-      "pending": {
-        "nonce": "nonce-0002",
-        "requested_at_mono_ms": 3000,
-        "heartbeat_ms": 2000
-      },
-      "response": {
-        "nonce": "nonce-0002",
-        "result": "renewed",
-        "ttl_ms": 6000
-      },
-      "now_mono_ms": 3100,
-      "clock_consistent": true,
-      "expected": { "expires_at_mono_ms": 9000, "reasons": [] }
+      "expected": {
+        "expires_at_mono_ms": 9000,
+        "reasons": []
+      }
     },
     {
       "id": "late-response-does-not-restart-the-six-seconds",
       "refs": ["07 §5", "X13"],
-      "pending": {
-        "nonce": "nonce-0002",
-        "requested_at_mono_ms": 3000,
-        "heartbeat_ms": 2000
-      },
-      "response": {
-        "nonce": "nonce-0002",
-        "result": "renewed",
-        "ttl_ms": 6000
-      },
       "now_mono_ms": 8999,
-      "clock_consistent": true,
-      "expected": { "expires_at_mono_ms": 9000, "reasons": [] }
+      "expected": {
+        "expires_at_mono_ms": 9000,
+        "reasons": []
+      }
     },
     {
       "id": "response-after-the-expiry",
       "refs": ["07 §5", "X13"],
-      "pending": {
-        "nonce": "nonce-0002",
-        "requested_at_mono_ms": 3000,
-        "heartbeat_ms": 2000
-      },
-      "response": {
-        "nonce": "nonce-0002",
-        "result": "renewed",
-        "ttl_ms": 6000
-      },
       "now_mono_ms": 9000,
-      "clock_consistent": true,
       "expected": {
         "expires_at_mono_ms": null,
         "reasons": ["expired_before_applied"]
       }
     },
     {
-      "id": "response-for-another-request",
+      "id": "response-with-another-nonce",
       "refs": ["07 §5"],
+      "response": {
+        "nonce": "nonce-0001"
+      },
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["nonce_mismatch"]
+      }
+    },
+    {
+      "id": "old-success-response-with-a-reused-nonce-for-another-request",
+      "refs": ["07 §5", "ADR 0038"],
       "pending": {
-        "nonce": "nonce-0002",
-        "requested_at_mono_ms": 3000,
-        "heartbeat_ms": 2000
+        "request_id": "00000000-0000-4000-8000-0000000000c3",
+        "nonce": "nonce-0001",
+        "requested_at_mono_ms": 5000
       },
       "response": {
-        "nonce": "nonce-0001",
-        "result": "renewed",
-        "ttl_ms": 6000
+        "request_id": "00000000-0000-4000-8000-0000000000c1",
+        "nonce": "nonce-0001"
       },
-      "now_mono_ms": 3100,
-      "clock_consistent": true,
-      "expected": { "expires_at_mono_ms": null, "reasons": ["nonce_mismatch"] }
+      "now_mono_ms": 5100,
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["request_id_mismatch"]
+      }
+    },
+    {
+      "id": "response-for-another-lease",
+      "refs": ["07 §5"],
+      "response": {
+        "lease_id": "00000000-0000-4000-8000-000000000081"
+      },
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["lease_id_mismatch"]
+      }
+    },
+    {
+      "id": "response-after-the-pending-request-was-dropped",
+      "refs": ["07 §5", "X13", "X30"],
+      "pending": null,
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["no_pending_request"]
+      }
     },
     {
       "id": "response-rejected",
       "refs": ["10 §2A", "X25"],
-      "pending": {
-        "nonce": "nonce-0002",
-        "requested_at_mono_ms": 3000,
-        "heartbeat_ms": 2000
-      },
       "response": {
-        "nonce": "nonce-0002",
         "result": "rejected",
         "ttl_ms": null
       },
-      "now_mono_ms": 3100,
-      "clock_consistent": true,
       "expected": {
         "expires_at_mono_ms": null,
         "reasons": ["renewal_rejected"]
@@ -270,17 +328,6 @@
     {
       "id": "clock-after-sleep-is-not-trusted",
       "refs": ["07 §5"],
-      "pending": {
-        "nonce": "nonce-0002",
-        "requested_at_mono_ms": 3000,
-        "heartbeat_ms": 2000
-      },
-      "response": {
-        "nonce": "nonce-0002",
-        "result": "renewed",
-        "ttl_ms": 6000
-      },
-      "now_mono_ms": 3100,
       "clock_consistent": false,
       "expected": {
         "expires_at_mono_ms": null,
@@ -290,22 +337,96 @@
     {
       "id": "granted-expiry-is-not-after-the-heartbeat",
       "refs": ["07 §5", "10 §2A"],
-      "pending": {
-        "nonce": "nonce-0002",
-        "requested_at_mono_ms": 3000,
-        "heartbeat_ms": 2000
-      },
       "response": {
-        "nonce": "nonce-0002",
-        "result": "renewed",
         "ttl_ms": 2000
       },
-      "now_mono_ms": 3100,
-      "clock_consistent": true,
       "expected": {
         "expires_at_mono_ms": null,
         "reasons": ["heartbeat_not_shorter_than_ttl"]
       }
+    },
+    {
+      "id": "core-restarted-after-the-request",
+      "refs": ["07 §5", "X28"],
+      "current": {
+        "core_instance_id": "00000000-0000-4000-8000-000000000061"
+      },
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["core_restarted"]
+      }
+    },
+    {
+      "id": "command-scope-changed-after-the-request",
+      "refs": ["07 §5", "X04"],
+      "current": {
+        "command_scope_id": "00000000-0000-4000-8000-000000000071"
+      },
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["scope_changed"]
+      }
+    },
+    {
+      "id": "io-stop-advanced-the-epoch-after-the-request",
+      "refs": ["07 §5", "X13", "QA43"],
+      "current": {
+        "io_epoch": "5"
+      },
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["stale_io_epoch"]
+      }
+    },
+    {
+      "id": "io-stopped-on-the-device-after-the-request",
+      "refs": ["07 §5", "X13"],
+      "current": {
+        "io_suspended": true
+      },
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["io_suspended"]
+      }
+    },
+    {
+      "id": "restart-and-io-stop-together",
+      "refs": ["07 §5", "X28"],
+      "current": {
+        "core_instance_id": "00000000-0000-4000-8000-000000000061",
+        "io_suspended": true
+      },
+      "expected": {
+        "expires_at_mono_ms": null,
+        "reasons": ["core_restarted", "io_suspended"]
+      }
     }
-  ]
+  ],
+  "response_base": {
+    "pending": {
+      "request_id": "00000000-0000-4000-8000-0000000000c2",
+      "lease_id": "00000000-0000-4000-8000-000000000080",
+      "nonce": "nonce-0002",
+      "core_instance_id": "00000000-0000-4000-8000-000000000060",
+      "command_scope_id": "00000000-0000-4000-8000-000000000070",
+      "io_epoch": "4",
+      "requested_at_mono_ms": 3000,
+      "heartbeat_ms": 2000
+    },
+    "response": {
+      "request_id": "00000000-0000-4000-8000-0000000000c2",
+      "lease_id": "00000000-0000-4000-8000-000000000080",
+      "nonce": "nonce-0002",
+      "result": "renewed",
+      "ttl_ms": 6000
+    },
+    "current": {
+      "core_instance_id": "00000000-0000-4000-8000-000000000060",
+      "command_scope_id": "00000000-0000-4000-8000-000000000070",
+      "io_epoch": "4",
+      "io_suspended": false
+    },
+    "now_mono_ms": 3100,
+    "clock_consistent": true
+  }
 }

@@ -212,6 +212,75 @@ export function voiceAckErrors(
   return errors;
 }
 
+// main が今持っている世代（io・output は main が進めた値、audio・session は中枢が発行した値）。
+export interface VoiceCurrentState extends VoiceEpochs {
+  readonly io_suspended: boolean;
+}
+
+// 要求の世代が今の世代と一致するか。送った後に世代が進んだ（停止・再接続・端末交代）要求は古い、
+// 今の世代より新しい要求は main が出していないので不明として、どちらも使わない。
+export function voiceRequestFreshness(
+  request: VoiceRendererRequestLike,
+  current: VoiceEpochs,
+): string[] {
+  const errors: string[] = [];
+  for (const key of EPOCH_KEYS) {
+    const given = request.payload[key];
+    if (given == null) continue;
+    const now = current[key];
+    if (now == null) errors.push('no_current_epoch');
+    else if (BigInt(given) < BigInt(now)) errors.push('request_epoch_stale');
+    else if (BigInt(given) > BigInt(now)) errors.push('request_epoch_unknown');
+  }
+  return [...new Set(errors)];
+}
+
+// 音を出す・始める命令。端末の入出力が止まっている間は待たせない（停止の命令だけが待ちに残る）。
+const AUDIBLE_CHANNELS: readonly string[] = [
+  'voice.start',
+  'voice.play',
+  'voice.set_silence_timeout',
+];
+
+// 停止・失効・世代の更新の後に、まだ待ってよい（ACK を待つ）要求だけを残す。世代が今の世代と一致しない要求と、
+// 入出力の停止中の start・play・set_silence_timeout は捨てる（10 §1・§1A）。捨てた要求の ACK は
+// 後から届いても使わない（acceptVoiceAck は pending にない要求の ACK を拒否する）。
+export function retainPendingVoiceRequests(
+  pending: readonly VoiceRendererRequestLike[],
+  current: VoiceCurrentState,
+): VoiceRendererRequestLike[] {
+  return pending.filter(
+    (request) =>
+      voiceRequestFreshness(request, current).length === 0 &&
+      !(current.io_suspended && AUDIBLE_CHANNELS.includes(request.channel)),
+  );
+}
+
+export interface VoiceAckDecision {
+  readonly accepted: boolean;
+  readonly errors: string[];
+}
+
+// 遅れて届いた ACK を使ってよいかの最終判定。待っている要求（pending）に対応し、ACK の世代が戻っておらず、
+// 要求の世代が今の世代と一致し、入出力が止まっている間は音を出す命令の ACK を使わない。受け付けた ACK だけが
+// 命令の完了になる。これで、停止の後に届いた古い applied の ACK は、再開や完了として扱われない（X30、QA43）。
+// 中枢側で遅着の結果・音声・ACK を受けるときは acceptDelivery（audio.ts）を使い、この関数は main の側で使う。
+export function acceptVoiceAck(
+  pending: readonly VoiceRendererRequestLike[],
+  ack: VoiceRendererAckLike,
+  current: VoiceCurrentState,
+): VoiceAckDecision {
+  const request = pending.find((entry) => entry.request_id === ack.request_id);
+  if (!request) return { accepted: false, errors: ['no_pending_request'] };
+  const errors = [
+    ...voiceAckErrors(request, ack),
+    ...voiceRequestFreshness(request, current),
+  ];
+  if (current.io_suspended && AUDIBLE_CHANNELS.includes(request.channel))
+    errors.push('io_suspended');
+  return { accepted: errors.length === 0, errors: [...new Set(errors)] };
+}
+
 // ---- stop_playback の後の再開（10 §1A、ADR 0038） --------------------------------------------------------------
 
 export type PlaybackResume = 'new_live_connection' | 'same_connection';
@@ -310,7 +379,15 @@ export function nextLiveControl(
         ? to({ control_state: 'closing', closure: 'close_requested' })
         : no('invalid_transition');
     case 'session_closed_received':
-      if (s !== 'closing' || closure !== 'close_requested')
+      // こちらが閉じる要求を出した後（closing）のほか、provider が先に閉じた場合（connecting・ready・lost のまま
+      // 使用秒数つきで届く）と、終了を待つ時間が切れて close_unconfirmed になった後に届いた場合も、そのまま受け付ける
+      // （usage_reconciled と同じ結果）。確認済みになった後の重複は受け付けない。
+      if (!(
+        (s === 'closing' && closure === 'close_requested') ||
+        ((s === 'connecting' || s === 'ready' || s === 'lost') &&
+          closure === 'open') ||
+        (s === 'closed' && closure === 'close_unconfirmed')
+      ))
         return no('invalid_transition');
       if (
         usageSeconds === null ||
@@ -368,7 +445,8 @@ export interface StoredLease {
   readonly lease_id: string;
   readonly kind: 'audio' | 'display';
   readonly device_id: string;
-  readonly last_nonce: string;
+  // このリースで中枢が受け付けた nonce を古い順に全て持つ（最後が直前の nonce）。リースの寿命の間だけ RAM に持つ。
+  readonly used_nonces: readonly string[];
   readonly last_requested_at_mono_ms: number;
 }
 
@@ -429,12 +507,13 @@ export function leaseRenewalReasons(
   } else {
     if (stored.device_id !== request.device_id) reasons.push('device_mismatch');
     if (stored.kind !== request.kind) reasons.push('lease_kind_mismatch');
+    // 使い済みの nonce は、直前でなくても拒否する（A → B → A で、最初の A の遅着の応答を最後の A に当てさせない）。
     if (
-      request.nonce === stored.last_nonce ||
+      stored.used_nonces.includes(request.nonce) ||
       request.nonce === request.previous_nonce
     )
       reasons.push('nonce_reused');
-    if (request.previous_nonce !== stored.last_nonce)
+    if (request.previous_nonce !== (stored.used_nonces.at(-1) ?? null))
       reasons.push('nonce_replayed');
     if (request.requested_at_mono_ms <= stored.last_requested_at_mono_ms)
       reasons.push('mono_clock_regressed');
@@ -442,32 +521,67 @@ export function leaseRenewalReasons(
   return [...new Set(reasons)];
 }
 
+// 端末が送って応答を待っている更新要求（1 つのリースにつき最新の 1 件だけ）。
 export interface PendingLeaseRequest {
+  readonly request_id: string;
+  readonly lease_id: string;
   readonly nonce: string;
+  readonly core_instance_id: string;
+  readonly command_scope_id: string;
+  readonly io_epoch: string;
   readonly requested_at_mono_ms: number;
   readonly heartbeat_ms: number;
 }
 
 export interface LeaseRenewalResponseLike {
+  readonly request_id: string;
+  readonly lease_id: string;
   readonly nonce: string;
   readonly result: 'renewed' | 'rejected';
   readonly ttl_ms: number | null;
 }
 
+// 応答を受けた時点で端末が持つ今の状態。
+export interface LeaseCurrentState {
+  readonly core_instance_id: string;
+  readonly command_scope_id: string;
+  readonly io_epoch: string;
+  readonly io_suspended: boolean;
+}
+
 // 端末が応答を受けたときの判定。期限は要求を送った時点の単調時計から数え、応答の受信時刻から足し直さない。
 // 応答が遅れて、数え直した期限がすでに過ぎていれば（expired_before_applied）リースを延ばさない。
+// - 待っている要求（pending）がなければ（停止・失効・拒否・適用済みで捨てた後）使わない（no_pending_request）。
+// - 要求 ID・リース ID・nonce が待っている要求と全て一致するときだけ見る。古い要求の成功の応答や、
+//   同じ nonce を使い回した別の要求の応答は使わない。
+// - 要求を送った後に、中枢の起動 ID・接続範囲・入出力の世代が変わった、または端末の入出力が止まったなら使わない。
 export function applyLeaseResponse(
-  pending: PendingLeaseRequest,
+  pending: PendingLeaseRequest | null,
   response: LeaseRenewalResponseLike,
   nowMonoMs: number,
   clockConsistent: boolean,
+  current: LeaseCurrentState,
 ): { readonly expires_at_mono_ms: number | null; readonly reasons: string[] } {
   const none = (...reasons: string[]) => ({
     expires_at_mono_ms: null,
     reasons,
   });
-  // 自分の要求の応答でなければ、他の項目は見ない。拒否の応答はリースを延ばさない。
+  if (pending === null) return none('no_pending_request');
+  if (response.request_id !== pending.request_id)
+    return none('request_id_mismatch');
+  if (response.lease_id !== pending.lease_id) return none('lease_id_mismatch');
   if (response.nonce !== pending.nonce) return none('nonce_mismatch');
+  const stale: string[] = [];
+  if (pending.core_instance_id !== current.core_instance_id)
+    stale.push('core_restarted');
+  if (pending.command_scope_id !== current.command_scope_id)
+    stale.push('scope_changed');
+  if (BigInt(pending.io_epoch) < BigInt(current.io_epoch))
+    stale.push('stale_io_epoch');
+  else if (BigInt(pending.io_epoch) > BigInt(current.io_epoch))
+    stale.push('unknown_io_epoch');
+  if (current.io_suspended) stale.push('io_suspended');
+  if (stale.length > 0) return none(...stale);
   if (response.result !== 'renewed' || response.ttl_ms === null)
     return none('renewal_rejected');
   const reasons: string[] = [];

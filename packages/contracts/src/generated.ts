@@ -1492,7 +1492,7 @@ export type LiveControlTrigger =
   | 'close_unconfirmed'
   | 'usage_reconciled';
 /**
- * リースの更新の応答（設計 07 §5）。端末は nonce が自分の要求と一致するときだけ受け取る。遅れて届いても、受信時刻から期限を足し直さない。
+ * リースの更新の応答（設計 07 §5）。端末は nonce が自分の要求と一致するときだけ受け取る。遅れて届いても、受信時刻から期限を足し直さない。 使う前に、待っている要求（要求 ID・リース ID・nonce）と今の中枢の起動 ID・接続範囲・入出力の世代・端末の停止の状態を照合する（domain の applyLeaseResponse）。使い済みの nonce は中枢が拒否する。
  */
 export type LeaseRenewalResponse =
   | {
@@ -5032,7 +5032,7 @@ export interface CanvasContentResponse {
   content: CanvasContent;
 }
 /**
- * 音声レンダラーから main への ACK（設計 10 §1・§1A、X30）。applied は要求の世代をそのまま返す（世代を進めるのは main）。ignored_stale_epoch は音声レンダラーの現在の世代（要求より新しい）を返す。遅れて届いた古い世代の ACK で再開しない。
+ * 音声レンダラーから main への ACK（設計 10 §1・§1A、X30）。applied は要求の世代をそのまま返す（世代を進めるのは main）。ignored_stale_epoch は音声レンダラーの現在の世代（要求より新しい）を返す。遅れて届いた古い世代の ACK で再開しない。 使う前に、待っている要求との対応と今の世代・入出力の状態を照合する（domain の acceptVoiceAck）。停止・失効・世代の更新で捨てた要求の ACK は、後から届いても使わない。
  */
 export interface VoiceRendererAck {
   request_id: Id;
@@ -5045,7 +5045,7 @@ export interface VoiceRendererAck {
   acked_at: UtcTime;
 }
 /**
- * 制御接続の状態の遷移の記録（設計 10 §2A）。lost・closing・closed から ready へは戻らず、lost へ入るとき control_epoch を進める。使用秒数が確認できるまで予約を精算済みにしない。遷移の可否は domain の表（nextLiveControl）。
+ * 制御接続の状態の遷移の記録（設計 10 §2A）。lost・closing・closed から ready へは戻らず、lost へ入るとき control_epoch を進める。使用秒数が確認できるまで予約を精算済みにしない。遷移の可否は domain の表（nextLiveControl）。 使用秒数つきの session.closed は、こちらが閉じる要求を出した後のほか、provider が先に閉じた場合と、終了を待つ時間が切れた後に届いた場合も受け付ける。
  */
 export interface LiveControlTransition {
   live_session_id: Id;

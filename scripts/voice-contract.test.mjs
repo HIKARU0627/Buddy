@@ -14,6 +14,7 @@ import {
   VOICE_IPC_TIMEOUTS,
   admitInputKind,
   admitLiveStart,
+  acceptVoiceAck,
   applyLeaseResponse,
   consentChangeErrors,
   consentRecordErrors,
@@ -24,6 +25,7 @@ import {
   matchSessionControl,
   nextLiveControl,
   rendererEpochDecision,
+  retainPendingVoiceRequests,
   resolvePlaybackResume,
   voiceAckErrors,
   voiceRequestErrors,
@@ -221,6 +223,37 @@ test('renderer applies only commands for the current epoch, and acks never move 
       entry.expected,
       entry.id,
     );
+  const currentOf = (entry) => ({ ...ipc.current_base, ...entry.current });
+  for (const entry of ipc.accept_ack_cases)
+    assert.deepEqual(
+      acceptVoiceAck(entry.pending, entry.ack, currentOf(entry)),
+      entry.expected,
+      entry.id,
+    );
+  for (const entry of ipc.retain_cases)
+    assert.deepEqual(
+      retainPendingVoiceRequests(entry.pending, currentOf(entry)).map(
+        (request) => request.request_id,
+      ),
+      entry.expected,
+      entry.id,
+    );
+  // 停止の後に届く遅着: 停止で pending の start を捨てると、その ACK は後から届いても使えない。
+  const start = ipc.accept_ack_cases.find(
+    (entry) =>
+      entry.id === 'late-applied-ack-after-an-io-stop-advanced-the-epoch',
+  );
+  const stopped = { ...ipc.current_base, io_epoch: '5', io_suspended: true };
+  assert.equal(
+    acceptVoiceAck(start.pending, start.ack, ipc.current_base).accepted,
+    true,
+  );
+  const kept = retainPendingVoiceRequests(start.pending, stopped);
+  assert.deepEqual(kept, []);
+  assert.deepEqual(acceptVoiceAck(kept, start.ack, stopped), {
+    accepted: false,
+    errors: ['no_pending_request'],
+  });
   // 世代が 1 つでも戻った ACK は、どの結果でも受け付けない。
   const request = ipc.ack_cases[0].request;
   for (const outcome of defs.VoiceRendererAck.properties.outcome.enum)
@@ -387,15 +420,56 @@ test('lease renewal binds the Core instance, device, scope, epoch and nonce', ()
   const known = new Set(defs.LeaseRenewalRejectReason.enum);
   for (const entry of lease.cases)
     for (const reason of entry.expected) assert(known.has(reason), reason);
+  const resp = lease.response_base;
   for (const entry of lease.response_cases) {
+    const pending =
+      'pending' in entry
+        ? entry.pending === null
+          ? null
+          : { ...resp.pending, ...entry.pending }
+        : resp.pending;
     const result = applyLeaseResponse(
-      entry.pending,
-      entry.response,
-      entry.now_mono_ms,
-      entry.clock_consistent,
+      pending,
+      { ...resp.response, ...entry.response },
+      entry.now_mono_ms ?? resp.now_mono_ms,
+      entry.clock_consistent ?? resp.clock_consistent,
+      { ...resp.current, ...entry.current },
     );
     assert.deepEqual(result, entry.expected, entry.id);
   }
+  // 使い済みの nonce は、直前でなくても受け付けない（A → B → A）。
+  const stored = {
+    ...base.stored,
+    used_nonces: ['nonce-0001', 'nonce-0002'],
+    last_requested_at_mono_ms: 3000,
+  };
+  assert.deepEqual(
+    leaseRenewalReasons(
+      stored,
+      {
+        ...base.request,
+        nonce: 'nonce-0001',
+        previous_nonce: 'nonce-0002',
+        requested_at_mono_ms: 5000,
+      },
+      base.context,
+    ),
+    ['nonce_reused'],
+  );
+  // 新しい nonce なら、同じ状態から受け付ける。
+  assert.deepEqual(
+    leaseRenewalReasons(
+      stored,
+      {
+        ...base.request,
+        nonce: 'nonce-0003',
+        previous_nonce: 'nonce-0002',
+        requested_at_mono_ms: 5000,
+      },
+      base.context,
+    ),
+    [],
+  );
 });
 
 test('input_kind rules: which route, and what is needed', () => {

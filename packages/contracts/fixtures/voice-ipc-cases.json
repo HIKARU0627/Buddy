@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "音声レンダラーへの限定 IPC の ACK・タイムアウト・世代の期待値（設計 10 §1・§1A、X13・X30・QA43、ADR 0038）。手で書いたもので、domain の実装から生成していない。basis が provisional の値は原本に決めがなく、T04 の実測まで置く仮の値で、合格値ではない。",
+  "description": "音声レンダラーへの限定 IPC の ACK・タイムアウト・世代の期待値（設計 10 §1・§1A、X13・X30・QA43、ADR 0038）。手で書いたもので、domain の実装から生成していない。basis が provisional の値は原本に決めがなく、T04 の実測まで置く仮の値で、合格値ではない。 accept_ack_cases と retain_cases は、停止・失効・再接続の後に届く遅着の ACK を使わないことの期待値（current は current_base を上書きする項目）。",
   "timeouts": {
     "voice.start": {
       "max_ack_timeout_ms": 3000,
@@ -67,49 +67,100 @@
     {
       "id": "same-epochs",
       "refs": ["10 §1A"],
-      "command": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "12" },
-      "renderer": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "12" },
+      "command": {
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "12"
+      },
+      "renderer": {
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "12"
+      },
       "expected": "apply"
     },
     {
       "id": "stop-playback-with-advanced-output-epoch",
       "refs": ["10 §1A", "QA43"],
-      "command": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "13" },
-      "renderer": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "12" },
+      "command": {
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "13"
+      },
+      "renderer": {
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "12"
+      },
       "expected": "apply"
     },
     {
       "id": "late-stop-for-an-older-output-epoch",
       "refs": ["10 §1A", "X30", "QA43"],
-      "command": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "11" },
-      "renderer": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "12" },
+      "command": {
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "11"
+      },
+      "renderer": {
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "12"
+      },
       "expected": "ignore_stale"
     },
     {
       "id": "play-after-suspend-io-advanced-io-epoch",
       "refs": ["10 §1A", "X13"],
-      "command": { "io_epoch": "4", "output_epoch": "12" },
-      "renderer": { "io_epoch": "5", "audio_epoch": "7", "output_epoch": "12" },
+      "command": {
+        "io_epoch": "4",
+        "output_epoch": "12"
+      },
+      "renderer": {
+        "io_epoch": "5",
+        "audio_epoch": "7",
+        "output_epoch": "12"
+      },
       "expected": "ignore_stale"
     },
     {
       "id": "close-for-the-connection-before-reconnect",
       "refs": ["10 §1A", "10 §5A", "QA06"],
-      "command": { "io_epoch": "4", "audio_epoch": "6", "output_epoch": "12" },
-      "renderer": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "12" },
+      "command": {
+        "io_epoch": "4",
+        "audio_epoch": "6",
+        "output_epoch": "12"
+      },
+      "renderer": {
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "12"
+      },
       "expected": "ignore_stale"
     },
     {
       "id": "suspend-with-newer-io-epoch",
       "refs": ["10 §1 第 1 層", "X13"],
-      "command": { "io_epoch": "5", "audio_epoch": null, "output_epoch": "12" },
-      "renderer": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "12" },
+      "command": {
+        "io_epoch": "5",
+        "audio_epoch": null,
+        "output_epoch": "12"
+      },
+      "renderer": {
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "12"
+      },
       "expected": "apply"
     },
     {
       "id": "no-audio-epoch-yet",
       "refs": ["10 §1A"],
-      "command": { "io_epoch": "4", "audio_epoch": null, "output_epoch": "12" },
+      "command": {
+        "io_epoch": "4",
+        "audio_epoch": null,
+        "output_epoch": "12"
+      },
       "renderer": {
         "io_epoch": "4",
         "audio_epoch": null,
@@ -125,7 +176,11 @@
       "request": {
         "channel": "voice.stop_playback",
         "request_id": "00000000-0000-4000-8000-0000000000a2",
-        "payload": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "13" }
+        "payload": {
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
       },
       "ack": {
         "request_id": "00000000-0000-4000-8000-0000000000a2",
@@ -143,7 +198,11 @@
       "request": {
         "channel": "voice.suspend_io",
         "request_id": "00000000-0000-4000-8000-0000000000a5",
-        "payload": { "io_epoch": "5", "audio_epoch": "7", "output_epoch": "13" }
+        "payload": {
+          "io_epoch": "5",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
       },
       "ack": {
         "request_id": "00000000-0000-4000-8000-0000000000a2",
@@ -161,7 +220,11 @@
       "request": {
         "channel": "voice.suspend_io",
         "request_id": "00000000-0000-4000-8000-0000000000a5",
-        "payload": { "io_epoch": "5", "audio_epoch": "7", "output_epoch": "13" }
+        "payload": {
+          "io_epoch": "5",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
       },
       "ack": {
         "request_id": "00000000-0000-4000-8000-0000000000a5",
@@ -179,7 +242,11 @@
       "request": {
         "channel": "voice.suspend_io",
         "request_id": "00000000-0000-4000-8000-0000000000a5",
-        "payload": { "io_epoch": "5", "audio_epoch": "7", "output_epoch": "13" }
+        "payload": {
+          "io_epoch": "5",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
       },
       "ack": {
         "request_id": "00000000-0000-4000-8000-0000000000a5",
@@ -197,7 +264,11 @@
       "request": {
         "channel": "voice.stop_playback",
         "request_id": "00000000-0000-4000-8000-0000000000a2",
-        "payload": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "13" }
+        "payload": {
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
       },
       "ack": {
         "request_id": "00000000-0000-4000-8000-0000000000a2",
@@ -239,7 +310,11 @@
       "request": {
         "channel": "voice.stop_playback",
         "request_id": "00000000-0000-4000-8000-0000000000a2",
-        "payload": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "11" }
+        "payload": {
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "11"
+        }
       },
       "ack": {
         "request_id": "00000000-0000-4000-8000-0000000000a2",
@@ -257,7 +332,11 @@
       "request": {
         "channel": "voice.stop_playback",
         "request_id": "00000000-0000-4000-8000-0000000000a2",
-        "payload": { "io_epoch": "4", "audio_epoch": "7", "output_epoch": "13" }
+        "payload": {
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
       },
       "ack": {
         "request_id": "00000000-0000-4000-8000-0000000000a2",
@@ -268,6 +347,335 @@
         "output_epoch": "13"
       },
       "expected": ["stale_ack_without_newer_epoch"]
+    }
+  ],
+  "current_base": {
+    "io_epoch": "4",
+    "audio_epoch": "7",
+    "output_epoch": "13",
+    "session_epoch": "3",
+    "io_suspended": false
+  },
+  "accept_ack_cases": [
+    {
+      "id": "current-stop-playback-ack-is-used",
+      "refs": ["10 §1A", "X30"],
+      "pending": [
+        {
+          "channel": "voice.stop_playback",
+          "request_id": "00000000-0000-4000-8000-0000000000a2",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13"
+          }
+        }
+      ],
+      "ack": {
+        "request_id": "00000000-0000-4000-8000-0000000000a2",
+        "channel": "voice.stop_playback",
+        "outcome": "applied",
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "13"
+      },
+      "expected": {
+        "accepted": true,
+        "errors": []
+      }
+    },
+    {
+      "id": "late-applied-ack-after-an-io-stop-advanced-the-epoch",
+      "refs": ["10 §1A", "X13", "X30", "QA43"],
+      "pending": [
+        {
+          "channel": "voice.start",
+          "request_id": "00000000-0000-4000-8000-0000000000a1",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13",
+            "session_epoch": "3"
+          }
+        }
+      ],
+      "ack": {
+        "request_id": "00000000-0000-4000-8000-0000000000a1",
+        "channel": "voice.start",
+        "outcome": "applied",
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "13",
+        "session_epoch": "3"
+      },
+      "current": {
+        "io_epoch": "5",
+        "io_suspended": true
+      },
+      "expected": {
+        "accepted": false,
+        "errors": ["request_epoch_stale", "io_suspended"]
+      }
+    },
+    {
+      "id": "late-applied-ack-after-a-reconnect-advanced-the-audio-epoch",
+      "refs": ["10 §5A", "QA06"],
+      "pending": [
+        {
+          "channel": "voice.start",
+          "request_id": "00000000-0000-4000-8000-0000000000a1",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13",
+            "session_epoch": "3"
+          }
+        }
+      ],
+      "ack": {
+        "request_id": "00000000-0000-4000-8000-0000000000a1",
+        "channel": "voice.start",
+        "outcome": "applied",
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "13",
+        "session_epoch": "3"
+      },
+      "current": {
+        "audio_epoch": "8"
+      },
+      "expected": {
+        "accepted": false,
+        "errors": ["request_epoch_stale"]
+      }
+    },
+    {
+      "id": "ack-of-a-request-that-is-no-longer-pending",
+      "refs": ["10 §1A", "X30"],
+      "pending": [],
+      "ack": {
+        "request_id": "00000000-0000-4000-8000-0000000000a1",
+        "channel": "voice.start",
+        "outcome": "applied",
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "13",
+        "session_epoch": "3"
+      },
+      "expected": {
+        "accepted": false,
+        "errors": ["no_pending_request"]
+      }
+    },
+    {
+      "id": "ack-for-an-epoch-main-never-issued",
+      "refs": ["10 §1A"],
+      "pending": [
+        {
+          "channel": "voice.start",
+          "request_id": "00000000-0000-4000-8000-0000000000a1",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13",
+            "session_epoch": "3"
+          }
+        }
+      ],
+      "ack": {
+        "request_id": "00000000-0000-4000-8000-0000000000a1",
+        "channel": "voice.start",
+        "outcome": "applied",
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "13",
+        "session_epoch": "3"
+      },
+      "current": {
+        "io_epoch": "3"
+      },
+      "expected": {
+        "accepted": false,
+        "errors": ["request_epoch_unknown"]
+      }
+    },
+    {
+      "id": "suspend-ack-is-used-while-io-is-stopped",
+      "refs": ["10 §1 第 2 層", "X30"],
+      "pending": [
+        {
+          "channel": "voice.suspend_io",
+          "request_id": "00000000-0000-4000-8000-0000000000a5",
+          "payload": {
+            "io_epoch": "5",
+            "audio_epoch": "7",
+            "output_epoch": "13"
+          }
+        }
+      ],
+      "ack": {
+        "request_id": "00000000-0000-4000-8000-0000000000a5",
+        "channel": "voice.suspend_io",
+        "outcome": "applied",
+        "io_epoch": "5",
+        "audio_epoch": "7",
+        "output_epoch": "13"
+      },
+      "current": {
+        "io_epoch": "5",
+        "io_suspended": true
+      },
+      "expected": {
+        "accepted": true,
+        "errors": []
+      }
+    },
+    {
+      "id": "play-ack-is-not-used-while-io-is-stopped",
+      "refs": ["10 §1A", "X13"],
+      "pending": [
+        {
+          "channel": "voice.play",
+          "request_id": "00000000-0000-4000-8000-0000000000a6",
+          "payload": {
+            "io_epoch": "4",
+            "output_epoch": "13"
+          }
+        }
+      ],
+      "ack": {
+        "request_id": "00000000-0000-4000-8000-0000000000a6",
+        "channel": "voice.play",
+        "outcome": "applied",
+        "io_epoch": "4",
+        "output_epoch": "13"
+      },
+      "current": {
+        "io_suspended": true
+      },
+      "expected": {
+        "accepted": false,
+        "errors": ["io_suspended"]
+      }
+    }
+  ],
+  "retain_cases": [
+    {
+      "id": "stop-drops-start-and-play-but-keeps-the-stop-itself",
+      "refs": ["10 §1", "X13", "X30"],
+      "pending": [
+        {
+          "channel": "voice.start",
+          "request_id": "00000000-0000-4000-8000-0000000000a1",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13",
+            "session_epoch": "3"
+          }
+        },
+        {
+          "channel": "voice.play",
+          "request_id": "00000000-0000-4000-8000-0000000000a6",
+          "payload": {
+            "io_epoch": "4",
+            "output_epoch": "13"
+          }
+        },
+        {
+          "channel": "voice.suspend_io",
+          "request_id": "00000000-0000-4000-8000-0000000000a5",
+          "payload": {
+            "io_epoch": "5",
+            "audio_epoch": "7",
+            "output_epoch": "13"
+          }
+        }
+      ],
+      "current": {
+        "io_epoch": "5",
+        "io_suspended": true
+      },
+      "expected": ["00000000-0000-4000-8000-0000000000a5"]
+    },
+    {
+      "id": "revoked-device-drops-a-start-even-at-the-same-epoch",
+      "refs": ["07 §5", "X13"],
+      "pending": [
+        {
+          "channel": "voice.start",
+          "request_id": "00000000-0000-4000-8000-0000000000a1",
+          "payload": {
+            "io_epoch": "5",
+            "audio_epoch": "7",
+            "output_epoch": "13",
+            "session_epoch": "3"
+          }
+        }
+      ],
+      "current": {
+        "io_epoch": "5",
+        "io_suspended": true
+      },
+      "expected": []
+    },
+    {
+      "id": "nothing-changed",
+      "refs": ["10 §1A"],
+      "pending": [
+        {
+          "channel": "voice.start",
+          "request_id": "00000000-0000-4000-8000-0000000000a1",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13",
+            "session_epoch": "3"
+          }
+        },
+        {
+          "channel": "voice.stop_playback",
+          "request_id": "00000000-0000-4000-8000-0000000000a2",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13"
+          }
+        }
+      ],
+      "expected": [
+        "00000000-0000-4000-8000-0000000000a1",
+        "00000000-0000-4000-8000-0000000000a2"
+      ]
+    },
+    {
+      "id": "reconnect-drops-requests-for-the-old-connection",
+      "refs": ["10 §5A", "QA06"],
+      "pending": [
+        {
+          "channel": "voice.start",
+          "request_id": "00000000-0000-4000-8000-0000000000a1",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13",
+            "session_epoch": "3"
+          }
+        },
+        {
+          "channel": "voice.stop_playback",
+          "request_id": "00000000-0000-4000-8000-0000000000a2",
+          "payload": {
+            "io_epoch": "4",
+            "audio_epoch": "7",
+            "output_epoch": "13"
+          }
+        }
+      ],
+      "current": {
+        "audio_epoch": "8"
+      },
+      "expected": []
     }
   ]
 }

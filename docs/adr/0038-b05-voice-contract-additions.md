@@ -6,16 +6,16 @@
 
 ## 本人の判断（#15 のコメント、2026-10-23）
 
-| 項目                        | 本人の判断                                                                                                                                                                   | この作業での反映                                                                                                                                                                                                           |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 呼びかけ                    | 端末内の sherpa-onnx で、語を指定する方式で "Hey Buddy" を検知する（学習なし）。ショートカットと「続ける」ボタンでも起動できる。誤起動が多ければ、後で専用のモデルを学習する | 契約に KWS のモデルは入れない（起動の経路は音声リースと `voice.start` だけ）。KWS のモデルと語の指定は「原本に決めなし」の表へ。ショートカット・ボタンの起動の画面は UI-08（#100）                                         |
-| 実 API の試し方             | 2 段階。まず合成の音声で接続・停止・精算、その後で本人の声で日本語の品質                                                                                                     | 試験の区分を `docs/b00/contract-map.md` と test-map の説明に追記（この ADR は模擬だけ）。2 段階の実施は B05-0x                                                                                                             |
-| 実 API の試験の費用         | 本番の音声の枠とは別に、小さな上限の試験用の枠。接続の回数と合計の時間にも上限。金額は本人がリポジトリの外の設定ファイルで決める                                             | 金額・回数・時間は契約にも fixture にも入れない。試験用の枠の置き方は「原本に決めなし」の表へ（枠の木の別の根にするか。ADR 0006・0037 の音声の枠との関係を B05-03・B07 で確かめる）                                        |
-| 外部へ送ることへの同意      | 初めて使うときに main の OS の確認ダイアログで 1 回だけ取って記録する。いつでも取り消せる。会話中は端の印と効果音で常に示す                                                  | `ExternalSendConsent`・`ExternalSendConsentChange`。同意は中枢が正本（下の「外部への送信の同意」）。取り消しで Live を閉じる理由 `consent_revoked` を足した。会話中の印は UI-04 の「音声を外部へ送っている」記号に既にある |
-| 人名のヒント（hotwords）    | 最初は使わない。実測で誤認識が多ければ、一時ファイルで渡して直後に消す方式を足す                                                                                             | 契約に hotwords の項目を入れない。人名はこの ADR の対象外（設計 10 §6A の「RAM だけ・一時ファイル」は B05 の実測の後）                                                                                                     |
-| UI-08（#100）との分担       | B05 は状態・IPC・最小の「続ける」まで。入力バーの見た目と AquaVoice は UI-08                                                                                                 | 契約は状態と IPC だけ。入力バー・AquaVoice の契約は作らない                                                                                                                                                                |
-| stop_playback の後の再開    | 設計 10 §1A に従い、新しい Live 接続を既定にする。同じ接続で再生に戻る方式は、実機で検証できたら有効にする設定として持つ                                                     | `resolvePlaybackResume`（既定は `new_live_connection`）と、設定 `voice.same_connection_playback_resume`（既定 false）。ADR 0005 との関係は下の「ADR 0005 との関係」                                                        |
-| 読み上げの定型句（質問 99） | 読み上げは定型句を使わず、効果音だけにする                                                                                                                                   | `VoiceClipId` は効果音の 6 つだけで、話し言葉の識別子を持たない。`voice.play` に定型句の識別子を渡すと Schema が拒否する                                                                                                   |
+| 項目                        | 本人の判断                                                                                                                                                                   | この作業での反映                                                                                                                                                                                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 呼びかけ                    | 端末内の sherpa-onnx で、語を指定する方式で "Hey Buddy" を検知する（学習なし）。ショートカットと「続ける」ボタンでも起動できる。誤起動が多ければ、後で専用のモデルを学習する | 契約に KWS のモデルは入れない（起動の経路は音声リースと `voice.start` だけ）。KWS のモデルと語の指定は「原本に決めなし」の表へ。最小の起動の操作（ショートカットと「続ける」ボタン）は B05（B05-02 以降）で作る。入力バーの見た目と AquaVoice は UI-08（#100） |
+| 実 API の試し方             | 2 段階。まず合成の音声で接続・停止・精算、その後で本人の声で日本語の品質                                                                                                     | 試験の区分を `docs/b00/contract-map.md` と test-map の説明に追記（この ADR は模擬だけ）。2 段階の実施は B05-0x                                                                                                                                                 |
+| 実 API の試験の費用         | 本番の音声の枠とは別に、小さな上限の試験用の枠。接続の回数と合計の時間にも上限。金額は本人がリポジトリの外の設定ファイルで決める                                             | 金額・回数・時間は契約にも fixture にも入れない。試験用の枠の置き方は「原本に決めなし」の表へ（枠の木の別の根にするか。ADR 0006・0037 の音声の枠との関係を B05-03・B07 で確かめる）                                                                            |
+| 外部へ送ることへの同意      | 初めて使うときに main の OS の確認ダイアログで 1 回だけ取って記録する。いつでも取り消せる。会話中は端の印と効果音で常に示す                                                  | `ExternalSendConsent`・`ExternalSendConsentChange`。同意は中枢が正本（下の「外部への送信の同意」）。取り消しで Live を閉じる理由 `consent_revoked` を足した。会話中の印は UI-04 の「音声を外部へ送っている」記号に既にある                                     |
+| 人名のヒント（hotwords）    | 最初は使わない。実測で誤認識が多ければ、一時ファイルで渡して直後に消す方式を足す                                                                                             | 契約に hotwords の項目を入れない。人名はこの ADR の対象外（設計 10 §6A の「RAM だけ・一時ファイル」は B05 の実測の後）                                                                                                                                         |
+| UI-08（#100）との分担       | B05 は状態・IPC・最小の「続ける」まで。入力バーの見た目と AquaVoice は UI-08                                                                                                 | 契約は状態・IPC・起動の経路（音声リースと `voice.start`）まで。最小の「続ける」の実装は B05-02 以降。入力バーの見た目・AquaVoice の契約は作らない                                                                                                              |
+| stop_playback の後の再開    | 設計 10 §1A に従い、新しい Live 接続を既定にする。同じ接続で再生に戻る方式は、実機で検証できたら有効にする設定として持つ                                                     | `resolvePlaybackResume`（既定は `new_live_connection`）と、設定 `voice.same_connection_playback_resume`（既定 false）。ADR 0005 との関係は下の「ADR 0005 との関係」                                                                                            |
+| 読み上げの定型句（質問 99） | 読み上げは定型句を使わず、効果音だけにする                                                                                                                                   | `VoiceClipId` は効果音の 6 つだけで、話し言葉の識別子を持たない。`voice.play` に定型句の識別子を渡すと Schema が拒否する                                                                                                                                       |
 
 ## 音声レンダラーへの限定 IPC（`VoiceRendererRequest`・`VoiceRendererAck`）
 
@@ -35,31 +35,34 @@ main から音声レンダラーへの命令は、`voice.start`・`voice.stop_pl
 | `voice.play`                | 500 ms               | 何もしない（効果音の欠落は安全に影響しない）           | **原本に決めなし**（仮置き）                                                                 |
 | `voice.set_silence_timeout` | 500 ms               | 何もしない（無音の判定は main が持つ）                 | **原本に決めなし**（仮置き）                                                                 |
 
+- **ACK は今の状態と照合してから使う**: 要求との対応だけでは、ADR 0005 の「現在の世代との一致」を保証できません。main は待っている要求の一覧（pending）を持ち、停止・失効・世代の更新の後に `retainPendingVoiceRequests` で、世代が今の世代と一致しない要求と、入出力の停止中の `start`・`play`・`set_silence_timeout` を捨てます（停止の命令そのものは ACK を待ちます）。ACK は `acceptVoiceAck(pending, ack, current)` が、(1) pending にある要求に対応する、(2) ACK の世代が戻っていない、(3) 要求の世代が今の世代と一致する（古い `request_epoch_stale`・main が出していない新しい `request_epoch_unknown`）、(4) 入出力の停止中に音を出す命令の ACK ではない、の全てを満たすときだけ使います。捨てた要求の ACK は後から届いても `no_pending_request` で使いません。中枢側で遅着の結果・音声・ACK を受けるときは、既存の `acceptDelivery`（audio.ts）を使います。この 2 つは別の層で、どちらも必須です。
+
 仮置きの値は T04 の実測まで置く値で、合格値ではありません。要求の `ack_timeout_ms` が表の上限を超えると意味検査が拒否します。`set_silence_timeout` の範囲は 1000〜60000 ms（原本の 10 秒・20 秒・60 秒を含む）です。
 
 ## Live の制御接続（サイドバンド。`LiveControlTransition`・`nextLiveControl`）
 
 `control_state`（connecting・ready・lost・closing・closed）と `closure`（open・close_requested・close_confirmed・close_unconfirmed）の遷移を表にしました（10 §2A）。
 
-| 出来事                                  | 遷移                                                                                         |
-| --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `sideband_connected`                    | connecting → ready                                                                           |
-| `sideband_connect_failed`               | connecting → lost（control_epoch を 1 進める。3 秒を超えたとき。X54）                        |
-| `sideband_disconnected`・`ping_timeout` | ready → lost（control_epoch を 1 進める。ping 2 秒間隔・6 秒期限は設計初期値）               |
-| `core_restarted`                        | connecting・ready → lost（control_epoch を 1 進める。再起動した中枢が残った接続を扱う。X28） |
-| `close_requested`                       | connecting・ready・lost → closing（closure は close_requested）                              |
-| `session_closed_received`               | closing → closed、closure は close_confirmed、使用秒数（0 以上の整数）が要る。予約は settled |
-| `close_unconfirmed`                     | closing → closed、closure は close_unconfirmed、使用秒数は null。予約は held（解放しない）   |
-| `usage_reconciled`                      | closed（close_unconfirmed）→ close_confirmed、使用秒数が要る。予約は settled                 |
+| 出来事                                  | 遷移                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sideband_connected`                    | connecting → ready                                                                                                                                                                                                                                                                                                                         |
+| `sideband_connect_failed`               | connecting → lost（control_epoch を 1 進める。3 秒を超えたとき。X54）                                                                                                                                                                                                                                                                      |
+| `sideband_disconnected`・`ping_timeout` | ready → lost（control_epoch を 1 進める。ping 2 秒間隔・6 秒期限は設計初期値）                                                                                                                                                                                                                                                             |
+| `core_restarted`                        | connecting・ready → lost（control_epoch を 1 進める。再起動した中枢が残った接続を扱う。X28）                                                                                                                                                                                                                                               |
+| `close_requested`                       | connecting・ready・lost → closing（closure は close_requested）                                                                                                                                                                                                                                                                            |
+| `session_closed_received`               | 使用秒数（0 以上の整数）が要る。closing → closed のほか、**provider が先に閉じた場合**（connecting・ready・lost のまま届く）と、**終了を待つ時間が切れた後に届いた場合**（closed の close_unconfirmed）も、そのまま closed・close_confirmed・予約 settled にする（後者は `usage_reconciled` と同じ結果）。確認済みの後の重複は受け付けない |
+| `close_unconfirmed`                     | closing → closed、closure は close_unconfirmed、使用秒数は null。予約は held（解放しない）                                                                                                                                                                                                                                                 |
+| `usage_reconciled`                      | closed（close_unconfirmed）→ close_confirmed、使用秒数が要る。予約は settled                                                                                                                                                                                                                                                               |
 
-lost・closing・closed から ready へは戻りません（同じ Live セッションへ再接続して会話を継続しない）。lost の間は新規の委譲・結果の読み上げ・送出前の音声依頼の変更を止め（`controlAllowsVoiceWork`）、端末とのハートビートが正常でも音声リースを更新しません（`controlAllowsAudioLease`）。精算済みにできるのは、確認した使用秒数があるときだけです。ready・lost の遷移の表は期待値（`live-control-cases.json`）で手書きし、全ての状態・出来事・使用秒数の組でも「世代は戻らない」「lost 以降から ready へ戻らない」「精算済みは確認済みだけ」を試験で確かめました。
+lost・closing・closed から ready へは戻りません（同じ Live セッションへ再接続して会話を継続しない）。provider が先に閉じて使用秒数つきの `session.closed` が届いたときは、状態を closed へ更新するので、音声処理・リースの更新の許可も残りません。中枢は端末へ `close_voice_session`（理由は既存の `provider_failure`）を送ります。使用秒数のない終了は、`sideband_disconnected` などで lost にして、閉じる要求・確認できなければ `close_unconfirmed` の順に進みます。lost の間は新規の委譲・結果の読み上げ・送出前の音声依頼の変更を止め（`controlAllowsVoiceWork`）、端末とのハートビートが正常でも音声リースを更新しません（`controlAllowsAudioLease`）。精算済みにできるのは、確認した使用秒数があるときだけです。ready・lost の遷移の表は期待値（`live-control-cases.json`）で手書きし、全ての状態・出来事・使用秒数の組でも「世代は戻らない」「lost 以降から ready へ戻らない」「精算済みは確認済みだけ」を試験で確かめました。
 
 ## リースの更新（`LeaseRenewalRequest`・`LeaseRenewalResponse`）
 
 更新の入力は、`lease_id`・種類（audio・display）・端末 ID・**中枢の起動 ID**・接続範囲・入出力の世代・`nonce`・`previous_nonce`・**要求を送った時点の端末の単調時計**（`requested_at_mono_ms`）・`heartbeat_ms`・`ttl_ms`です（07 §5、10 §2A）。
 
 - 中枢は、起動 ID・接続範囲・端末・種類・入出力の世代（古い・中枢が発行していない新しい）・端末の停止・端末の失効・音声リースでは制御接続が lost 以降であること・nonce の再利用と再送（`previous_nonce` が前に受け付けた nonce と一致しない）・同じリースの中で単調時計が増えないこと・`heartbeat_ms` が `ttl_ms` より短いこと、を見て拒否する理由を返します（`leaseRenewalReasons`）。端末の単調時計は中枢の時刻とは比べません。
-- 端末は、応答の nonce が自分の要求と一致するときだけ受け取り、期限を**要求を送った時点の単調時計**から数えます。遅れて届いた応答の受信時刻から足し直しません。数え直した期限がすでに過ぎていれば延ばさず（`expired_before_applied`）、時計の不整合ではリースを捨てます（`applyLeaseResponse`）。
+- **使い済みの nonce は拒否**します。中枢はそのリースで受け付けた nonce を古い順に全て持ち（RAM。リースの寿命の間だけ）、直前でなくても再利用を `nonce_reused` で拒否します（A → B → A で、最初の A の遅着の応答を最後の A に当てさせない）。
+- 端末は、待っている更新要求（pending。1 つのリースにつき最新の 1 件）の**要求 ID・リース ID・nonce が全て一致する**応答だけを受け取ります。さらに、要求を送った後に中枢の起動 ID・接続範囲・入出力の世代が変わった、または端末の入出力が止まったなら使いません（`core_restarted`・`scope_changed`・`stale_io_epoch`・`io_suspended`）。停止・失効・拒否・適用済みで pending を捨てた後に届いた応答は `no_pending_request` で使いません。期限は**要求を送った時点の単調時計**から数え、遅れて届いた応答の受信時刻から足し直しません。数え直した期限がすでに過ぎていれば延ばさず（`expired_before_applied`）、時計の不整合ではリースを捨てます（`applyLeaseResponse`）。
 - 原本は「nonce と単調時計を付ける」までです。`previous_nonce` で更新の連鎖を確かめることと、同じリースの中の単調時計の増加の検査は、再送と時計の巻き戻しを拒否するための**原本に決めなし**の追加です。
 
 ## input_kind の受付（`InputKindRule`・`admitInputKind`）
@@ -166,11 +169,12 @@ CREATE TABLE voice_consents (
 
 `scripts/voice-contract.test.mjs`、`packages/contracts/fixtures/` の `voice-contract-cases.json`・`voice-ipc-cases.json`・`live-control-cases.json`・`lease-renewal-cases.json`・`input-kind-cases.json`・`consent-cases.json`・`session-control-phrases.json`（X58）・`audio-control-cases.json`（consent_revoked）。期待値は手書きで、実装から生成していません。
 
+- 遅着・再利用・終了の順序: nonce の A → B → A と古い成功応答の遅着（要求 ID の不一致）、停止・失効・再接続の後に届く ACK とリース応答（pending を捨てた後の拒否）、provider が先に閉じた接続と終了を待つ時間が切れた後の通知（どちらも確認済み・精算済みにする）。
 - 正常例と拒否例: **世代の逆行**（ACK・音声レンダラーの古い命令・遅着）、**リースの期限の逆転**（期限が確認の間隔以下・数え直した期限が過ぎた応答）、**許されない理由と範囲の組**（os_lock に global・global_stop に local）、**知らない IPC の名前**（`voice.get_device_token` ほか）、**同意のない外部への送信**（同意なし・取り消し・文面の版が古い・別の端末・同意の確認を作れない表）、定型句の再生（`phrase_hai`）、Live の文字起こしを HTTP で名乗ること。
 - 実際の音声・実 API・実機・実請求の試験は**未実施**です。契約 CI の成功を製品の試験の合格として扱いません。
 
 ## 残ること
 
 - B05-02（音声レンダラー・main・KWS・ASR・限定 IPC の実装、設定の置き場所）、B05-03（マイグレーション 0008 の SQL・Core の Live 接続・サイドバンド・リース・同意の経路）、B05 の実機・実 API の 2 段階の試験。
-- UI-08（#100）の入力バー・「続ける」ボタン・同意の画面・AquaVoice。
+- 最小の「続ける」（ショートカットとボタンでの起動）は B05-02 以降。UI-08（#100）は入力バーの見た目・同意の画面・AquaVoice。
 - `admitLiveStart` を `POST /v1/live/sessions` の後段へつなぐこと（OpenAPI の説明に 403 の理由を追記した。経路の検査の表は変えていない）。

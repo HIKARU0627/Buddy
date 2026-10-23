@@ -195,7 +195,9 @@
         "packages/contracts/fixtures/desktop-ipc-cases.json#x13-resume-stale-io-epoch",
         "packages/contracts/fixtures/voice-ipc-cases.json#play-after-suspend-io-advanced-io-epoch",
         "packages/contracts/fixtures/lease-renewal-cases.json#older-io-epoch",
-        "packages/contracts/fixtures/lease-renewal-cases.json#late-response-does-not-restart-the-six-seconds"
+        "packages/contracts/fixtures/lease-renewal-cases.json#late-response-does-not-restart-the-six-seconds",
+        "packages/contracts/fixtures/voice-ipc-cases.json#late-applied-ack-after-an-io-stop-advanced-the-epoch",
+        "packages/contracts/fixtures/lease-renewal-cases.json#io-stop-advanced-the-epoch-after-the-request"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -326,7 +328,9 @@
         "packages/contracts/fixtures/live-control-cases.json#ping-timeout-goes-lost",
         "packages/contracts/fixtures/live-control-cases.json#lost-cannot-return-to-ready",
         "packages/contracts/fixtures/lease-renewal-cases.json#sideband-lost-stops-the-audio-lease-even-if-heartbeat-is-fine",
-        "packages/contracts/fixtures/live-control-cases.json#close-unconfirmed-holds-the-reservation"
+        "packages/contracts/fixtures/live-control-cases.json#close-unconfirmed-holds-the-reservation",
+        "packages/contracts/fixtures/live-control-cases.json#provider-closed-while-ready-with-usage",
+        "packages/contracts/fixtures/live-control-cases.json#session-closed-after-the-wait-expired-is-accepted-as-reconciliation"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -356,7 +360,8 @@
       "contract_fixtures": [
         "packages/contracts/fixtures/live-control-cases.json#core-restart-orphan-goes-lost",
         "packages/contracts/fixtures/lease-renewal-cases.json#core-restarted-between-requests",
-        "packages/contracts/fixtures/live-control-cases.json#usage-reconciled-after-unconfirmed"
+        "packages/contracts/fixtures/live-control-cases.json#usage-reconciled-after-unconfirmed",
+        "packages/contracts/fixtures/lease-renewal-cases.json#core-restarted-after-the-request"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -379,7 +384,10 @@
       "contract_fixtures": [
         "packages/contracts/fixtures/delivery-cases.json#late-stop-ack-cannot-resume",
         "packages/contracts/fixtures/voice-ipc-cases.json#late-ack-with-older-io-epoch-does-not-resume",
-        "packages/contracts/fixtures/voice-ipc-cases.json#late-stop-for-an-older-output-epoch"
+        "packages/contracts/fixtures/voice-ipc-cases.json#late-stop-for-an-older-output-epoch",
+        "packages/contracts/fixtures/voice-ipc-cases.json#ack-of-a-request-that-is-no-longer-pending",
+        "packages/contracts/fixtures/voice-ipc-cases.json#stop-drops-start-and-play-but-keeps-the-stop-itself",
+        "packages/contracts/fixtures/lease-renewal-cases.json#response-after-the-pending-request-was-dropped"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -815,7 +823,8 @@
       "phases": ["B05", "B10"],
       "contract_fixtures": [
         "packages/contracts/fixtures/delivery-cases.json#late-asr-after-reconnect",
-        "packages/contracts/fixtures/input-kind-cases.json#voice-live-from-an-older-audio-epoch"
+        "packages/contracts/fixtures/input-kind-cases.json#voice-live-from-an-older-audio-epoch",
+        "packages/contracts/fixtures/voice-ipc-cases.json#late-applied-ack-after-a-reconnect-advanced-the-audio-epoch"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -1014,7 +1023,8 @@
       "id": "QA24",
       "phases": ["B05", "B07"],
       "contract_fixtures": [
-        "packages/contracts/fixtures/live-control-cases.json#close-unconfirmed-holds-the-reservation"
+        "packages/contracts/fixtures/live-control-cases.json#close-unconfirmed-holds-the-reservation",
+        "packages/contracts/fixtures/live-control-cases.json#session-closed-after-the-wait-expired-is-accepted-as-reconciliation"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -1258,7 +1268,8 @@
         "packages/contracts/fixtures/desktop-ipc-cases.json#qa43-unlock-does-not-resume",
         "packages/contracts/fixtures/voice-ipc-cases.json#late-stop-for-an-older-output-epoch",
         "packages/contracts/fixtures/voice-ipc-cases.json#setting-on-but-the-old-stream-is-not-confirmed-gone",
-        "packages/contracts/fixtures/session-control-phrases.json#stop-reading-aloud"
+        "packages/contracts/fixtures/session-control-phrases.json#stop-reading-aloud",
+        "packages/contracts/fixtures/lease-renewal-cases.json#io-stop-advanced-the-epoch-after-the-request"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

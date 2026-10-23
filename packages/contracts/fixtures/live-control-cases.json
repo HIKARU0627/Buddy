@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "Live の制御接続（サイドバンド）の遷移の期待値（設計 10 §2・§2A、X25・X28・X31・X54、ADR 0038）。手で書いたもので、domain の実装から生成していない。lost へ入るとき control_epoch を進める。lost・closing・closed から ready へは戻らない（同じ Live セッションへ再接続して会話を継続しない）。使用秒数が確認できるまで予約を精算済みにしない。",
+  "description": "Live の制御接続（サイドバンド）の遷移の期待値（設計 10 §2・§2A、X25・X28・X31・X54、ADR 0038）。手で書いたもので、domain の実装から生成していない。lost へ入るとき control_epoch を進める。lost・closing・closed から ready へは戻らない（同じ Live セッションへ再接続して会話を継続しない）。使用秒数が確認できるまで予約を精算済みにしない。 provider が先に閉じた場合（使用秒数つきの session.closed が connecting・ready・lost で届く）と、終了を待つ時間が切れた（close_unconfirmed）後に届いた場合は、そのまま確認済み・精算済みにする（usage_reconciled と同じ結果）。確認済みの後の重複は受け付けない。",
   "live_session_id": "00000000-0000-4000-8000-000000000090",
   "transitions": [
     {
@@ -234,6 +234,132 @@
       }
     },
     {
+      "id": "provider-closed-while-ready-with-usage",
+      "refs": ["10 §2", "10 §2A", "X28"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "2",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 41,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "2",
+          "closure": "close_confirmed",
+          "usage_seconds": 41,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "provider-closed-while-connecting-with-usage",
+      "refs": ["10 §2", "X31"],
+      "from": {
+        "control_state": "connecting",
+        "control_epoch": "1",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 15,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "1",
+          "closure": "close_confirmed",
+          "usage_seconds": 15,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "provider-closed-while-lost-with-usage",
+      "refs": ["10 §2A", "X25"],
+      "from": {
+        "control_state": "lost",
+        "control_epoch": "3",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 27,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "3",
+          "closure": "close_confirmed",
+          "usage_seconds": 27,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "session-closed-after-the-wait-expired-is-accepted-as-reconciliation",
+      "refs": ["10 §2A", "X25", "QA24"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "3",
+        "closure": "close_unconfirmed",
+        "usage_seconds": null,
+        "reservation_state": "held"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 15,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "3",
+          "closure": "close_confirmed",
+          "usage_seconds": 15,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "provider-closed-while-ready-without-usage",
+      "refs": ["10 §2A", "X25"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "2",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "usage_required"
+      }
+    },
+    {
+      "id": "session-closed-again-after-it-was-confirmed",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "2",
+        "closure": "close_confirmed",
+        "usage_seconds": 27,
+        "reservation_state": "settled"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 30,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
       "id": "lost-cannot-return-to-ready",
       "refs": ["10 §2A", "X25"],
       "from": {
@@ -245,7 +371,10 @@
       },
       "trigger": "sideband_connected",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
     },
     {
       "id": "closing-cannot-return-to-ready",
@@ -259,7 +388,10 @@
       },
       "trigger": "sideband_connected",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
     },
     {
       "id": "closed-cannot-reconnect",
@@ -273,7 +405,10 @@
       },
       "trigger": "sideband_connected",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
     },
     {
       "id": "ready-cannot-connect-again",
@@ -287,7 +422,10 @@
       },
       "trigger": "sideband_connected",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
     },
     {
       "id": "lost-does-not-advance-the-epoch-twice",
@@ -301,7 +439,10 @@
       },
       "trigger": "ping_timeout",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
     },
     {
       "id": "session-closed-without-usage-is-not-confirmed",
@@ -315,7 +456,10 @@
       },
       "trigger": "session_closed_received",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "usage_required" }
+      "expected": {
+        "ok": false,
+        "reason": "usage_required"
+      }
     },
     {
       "id": "session-closed-with-negative-usage",
@@ -329,21 +473,10 @@
       },
       "trigger": "session_closed_received",
       "usage_seconds": -1,
-      "expected": { "ok": false, "reason": "usage_required" }
-    },
-    {
-      "id": "session-closed-while-ready",
-      "refs": ["10 §2A"],
-      "from": {
-        "control_state": "ready",
-        "control_epoch": "2",
-        "closure": "open",
-        "usage_seconds": null,
-        "reservation_state": "reserved"
-      },
-      "trigger": "session_closed_received",
-      "usage_seconds": 10,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "usage_required"
+      }
     },
     {
       "id": "unconfirmed-needs-closing-first",
@@ -357,7 +490,10 @@
       },
       "trigger": "close_unconfirmed",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
     },
     {
       "id": "reconcile-needs-an-unconfirmed-close",
@@ -371,7 +507,10 @@
       },
       "trigger": "usage_reconciled",
       "usage_seconds": 30,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
     },
     {
       "id": "reconcile-without-usage",
@@ -385,7 +524,10 @@
       },
       "trigger": "usage_reconciled",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "usage_required" }
+      "expected": {
+        "ok": false,
+        "reason": "usage_required"
+      }
     },
     {
       "id": "closed-cannot-be-closed-again",
@@ -399,7 +541,10 @@
       },
       "trigger": "close_requested",
       "usage_seconds": null,
-      "expected": { "ok": false, "reason": "invalid_transition" }
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
     }
   ],
   "permits": [
@@ -408,9 +553,25 @@
       "voice_work": false,
       "audio_lease": true
     },
-    { "control_state": "ready", "voice_work": true, "audio_lease": true },
-    { "control_state": "lost", "voice_work": false, "audio_lease": false },
-    { "control_state": "closing", "voice_work": false, "audio_lease": false },
-    { "control_state": "closed", "voice_work": false, "audio_lease": false }
+    {
+      "control_state": "ready",
+      "voice_work": true,
+      "audio_lease": true
+    },
+    {
+      "control_state": "lost",
+      "voice_work": false,
+      "audio_lease": false
+    },
+    {
+      "control_state": "closing",
+      "voice_work": false,
+      "audio_lease": false
+    },
+    {
+      "control_state": "closed",
+      "voice_work": false,
+      "audio_lease": false
+    }
   ]
 }

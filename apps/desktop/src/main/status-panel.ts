@@ -66,8 +66,12 @@ export interface StatusPanelOptions {
   readonly reducedMotion: () => boolean;
   // パネルをしまうとき、表示している本人の確認（OS の確認ダイアログ）を閉じて送らない。
   readonly closeConfirm: () => void;
+  // 全体のショートカットで出すとき、ほかのアプリが前面にあっても Buddy を前面にする（macOS の app.focus({ steal: true })）。
+  readonly activateApp?: () => void;
   readonly log: (code: string) => void;
 }
+
+export type StatusPanelOpenSource = 'tab' | 'shortcut';
 
 // 出す・しまうの手順。二重に出しても・しまっても何もしない。確認を出している間の blur ではしまわない。
 export class StatusPanel {
@@ -90,15 +94,15 @@ export class StatusPanel {
 
   // つまみの要求（desktop.status_panel）。
   request(open: boolean): 'expand' | 'collapse' | 'none' {
-    return open ? this.show() : this.hide('tab');
+    return open ? this.show('tab') : this.hide('tab');
   }
 
   // 全体のショートカット: 出ていればしまい、しまっていれば出す。
   toggle(): 'expand' | 'collapse' | 'none' {
-    return this.#open ? this.hide('shortcut') : this.show();
+    return this.#open ? this.hide('shortcut') : this.show('shortcut');
   }
 
-  show(): 'expand' | 'none' {
+  show(source: StatusPanelOpenSource): 'expand' | 'none' {
     const window = this.#options.window();
     if (window === null) {
       this.#options.log('status_panel_unavailable');
@@ -113,6 +117,8 @@ export class StatusPanel {
         !this.#options.reducedMotion(),
       );
     if (!window.isVisible()) window.show();
+    // ショートカットはほかのアプリが前面のときに押される。Buddy を前面にしてから窓にフォーカスを渡す（Esc を受けるため）。
+    if (source === 'shortcut') this.#options.activateApp?.();
     window.focus();
     return expand ? 'expand' : 'none';
   }
@@ -149,4 +155,43 @@ export class StatusPanel {
     this.#open = false;
     this.#confirming = 0;
   }
+}
+
+// パネルを親にした確認を出さなかった（パネルが出ていない・既に閉じられた）。core-link は screen_operation_required にする
+// （本人が「やめる」を選んだのではないので confirmation_declined にしない）。
+export const CONFIRM_NOT_SHOWN = 'not_shown';
+
+export interface PanelConfirmPorts {
+  // 親付きの OS の確認ダイアログを出し、押したボタンの番号を返す（main は dialog.showMessageBox を渡すだけ）。
+  readonly showDialog: () => Promise<{ readonly response: number }>;
+  // 確認が終わった時点で、状態の層の窓が前面にあるか。
+  readonly windowFocused: () => boolean;
+  // 確認の後の前面の確かめを、フォーカスの移動が落ち着いてから行う（main は短い時間の後に呼ぶ）。
+  readonly defer: (task: () => void) => void;
+}
+
+// パネルを親にした確認の手順（3 つの窓の組み立て）。Electron に依存しない。
+// - パネルが出ていない・既に閉じられた（signal）なら確認を出さない（CONFIRM_NOT_SHOWN）。
+// - 確認を出している間は、確認へフォーカスが移った blur でパネルをしまわない（beginConfirm〜endConfirm。例外でも終える）。
+// - 「承認する」（番号 1）を選び、閉じられておらず、パネルが出たままのときだけ true。
+// - 確認の間にほかのアプリへ移っていたら（確認が終わった時点で窓が前面でない）、パネルをしまう。しまうのは結果を
+//   返した後（承認の確定を、フォーカスの移動の途中の状態で取り消さない）。
+export async function runPanelConfirm(
+  panel: StatusPanel,
+  signal: AbortSignal,
+  ports: PanelConfirmPorts,
+): Promise<boolean | typeof CONFIRM_NOT_SHOWN> {
+  if (signal.aborted || !panel.beginConfirm()) return CONFIRM_NOT_SHOWN;
+  let response: number;
+  try {
+    response = (await ports.showDialog()).response;
+  } finally {
+    panel.endConfirm();
+  }
+  const confirmed = !signal.aborted && panel.open && response === 1;
+  ports.defer(() => {
+    if (panel.open && !panel.confirming && !ports.windowFocused())
+      panel.hide('blur');
+  });
+  return confirmed;
 }

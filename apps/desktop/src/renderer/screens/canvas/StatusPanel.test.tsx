@@ -20,6 +20,8 @@ import {
   privacyMarks,
   statusItems,
   stopControl,
+  stopShortcutKeys,
+  stopShortcutMark,
   voiceSendsExternally,
 } from '../../state/status-panel-state.js';
 import { INITIAL_WORK_STATE } from '../../state/work-state.js';
@@ -118,6 +120,8 @@ function panel(
   status: DesktopStatusBar | null,
   connection: DesktopConnectionView | null,
   message: string | null = null,
+  stopShortcut: 'registered' | 'unavailable' | null = null,
+  now: number = NOW,
 ) {
   const live = operationsShown(status, connection);
   const operations =
@@ -127,10 +131,12 @@ function panel(
       tab={<span data-tab="kept" />}
       status={status}
       ioLine={statusTabView(status, connection).line}
-      items={statusItems(status, connection, NOW)}
+      items={statusItems(status, connection, now)}
       message={message}
       onStop={noop}
       onResume={noop}
+      stopShortcut={stopShortcut}
+      stopKeys="⌘⌥⇧X"
       operations={
         live ? (
           <WorkOperations
@@ -140,6 +146,7 @@ function panel(
             stopped={
               status?.visibility === 'shown' && status.stop_scope !== 'none'
             }
+            previewEntry={undefined}
           />
         ) : null
       }
@@ -169,22 +176,22 @@ test('the eight items of ADR 0014 keep a fixed order, and each carries a mark an
   const items = statusItems(shown(), connected([]), NOW);
   assert(items !== null);
   assert.deepEqual(
-    items.map((item) => [item.label, item.line.text, item.missing]),
+    items.map((item) => [item.label, item.line.text, item.shape]),
     [
-      ['入出力', '受付中', false],
+      ['入出力', '受付中', 'value'],
       // 中枢の項目は接続の状態だけ。時刻は最終確認の項目に分ける。
-      ['中枢', '接続中', false],
+      ['中枢', '接続中', 'value'],
       [
         '最終確認',
         new Date('2026-10-23T02:59:30Z').toTimeString().slice(0, 8),
-        false,
+        'value',
       ],
-      // 中枢がまだ配っていない値は —（ADR 0014 が常に見せる項目として定めているので畳まない）。
-      ['表示先', '—', true],
-      ['音声', '—', true],
-      ['保存モード', '—', true],
-      ['予算の保留', '—', true],
-      ['安全停止', '—', true],
+      // 中枢がまだ配っていない値は「未受信」の形（点線の枠。ADR 0014 が常に見せる項目として定めているので畳まない）。
+      ['表示先', '未受信', 'missing'],
+      ['音声', '未受信', 'missing'],
+      ['保存モード', '未受信', 'missing'],
+      ['予算の保留', '未受信', 'missing'],
+      ['安全停止', '未受信', 'missing'],
     ],
   );
   const filled = statusItems(
@@ -202,16 +209,29 @@ test('the eight items of ADR 0014 keep a fixed order, and each carries a mark an
   );
   assert(filled !== null);
   assert.deepEqual(
-    filled.map((item) => [item.line.text, item.line.tone]),
+    filled.map((item) => [
+      item.line.text,
+      item.line.tone,
+      item.line.mark,
+      item.shape,
+    ]),
     [
-      ['停止中', 'neutral'],
-      ['接続中', 'success'],
-      [new Date('2026-10-23T02:59:30Z').toTimeString().slice(0, 8), 'neutral'],
-      ['他の端末', 'neutral'],
-      ['会話中', 'warning'],
-      ['記録しない', 'warning'],
-      ['保留あり', 'warning'],
-      ['安全停止中', 'danger'],
+      // 本人が止めた停止は警告ではない（■）。
+      ['停止中', 'neutral', 'square', 'value'],
+      ['接続中', 'success', 'dot', 'value'],
+      [
+        new Date('2026-10-23T02:59:30Z').toTimeString().slice(0, 8),
+        'neutral',
+        'dot',
+        'value',
+      ],
+      ['他の端末', 'neutral', 'dot', 'value'],
+      // 音声を外部へ送っている・予算の保留・安全停止は、塗りと ⚠ の形（色だけで区別しない）。
+      ['会話中', 'warning', 'warning', 'alert'],
+      // 記録しないモードは警告ではないが、面を塗る（つまみと同じ）。
+      ['記録しない', 'neutral', 'square', 'notice'],
+      ['保留あり', 'warning', 'warning', 'alert'],
+      ['安全停止中', 'danger', 'warning', 'alert'],
     ],
   );
   // ロック中・不明・受け取る前は内容を出さない。
@@ -321,7 +341,25 @@ test('the open panel: the kept tab, the IO line with stop, eight tiles and the o
     STATUS_ITEM_KEYS,
   );
   assert.match(html, /aria-label="入出力: 受付中"/u);
-  assert.match(html, /aria-label="保存モード: —"/u);
+  assert.match(html, /aria-label="保存モード: 未受信"/u);
+  assert.doesNotMatch(html, /aria-label="[^"]*—/u);
+  // 値のある項目は実線、未受信は点線の枠（形で分ける）。
+  assert.deepEqual(
+    [...html.matchAll(/data-item="([a-z_]+)" data-shape="([a-z]+)"/gu)].map(
+      (match) => `${match[1]}:${match[2]}`,
+    ),
+    [
+      'io:value',
+      'hub:value',
+      'last_confirmed:value',
+      'display_target:missing',
+      'voice:missing',
+      'storage_mode:missing',
+      'budget:missing',
+      'safety:missing',
+    ],
+  );
+  assert.equal((html.match(/border-dashed/gu) ?? []).length, 5);
   // 押せるのは、停止と、確認が必要な操作の行のボタンだけ（承認そのものは確認の欄から main の OS の確認で 1 回）。
   assert.deepEqual(buttonTexts(html), [
     '■ 停止',
@@ -341,7 +379,9 @@ test('the open panel: the kept tab, the IO line with stop, eight tiles and the o
 test('while locked the panel keeps the stop and the tile positions, and shows no values or operations', () => {
   const html = panel(LOCKED, connected([entry(1, { headline: '牛乳を買う' })]));
   assert.deepEqual(buttonTexts(html), ['■ 停止']);
-  assert.equal((html.match(/border-dashed/gu) ?? []).length, 8);
+  // 隠している項目は、未受信の点線とは別の形（記号のない灰色の面）。
+  assert.equal((html.match(/data-shape="hidden"/gu) ?? []).length, 8);
+  assert.doesNotMatch(html, /border-dashed/u);
   assert.match(html, /aria-label="入出力: 隠しています"/u);
   assert.doesNotMatch(html, /牛乳を買う|確認が必要な操作|受付中/u);
 });
@@ -400,4 +440,52 @@ test('spoofing: approval-like external text stays text on the canvas and never b
     assert.doesNotMatch(text, /承認しました/u);
   // 操作の一覧がなければ、パネルに操作のボタンは 1 つもない（キャンバスの記述はパネルへ届かない）。
   assert.deepEqual(buttonTexts(panel(shown(), connected([]))), ['■ 停止']);
+});
+
+test('an old last confirmation turns into the warning shape', () => {
+  const items = (now: number) =>
+    statusItems(shown(), connected([]), now)?.find(
+      (item) => item.key === 'last_confirmed',
+    );
+  const confirmed = Date.parse('2026-10-23T02:59:30Z');
+  // 45 秒まではそのまま。それより古ければ警告の形（塗りと ⚠）。
+  assert.equal(items(confirmed + 45_000)?.shape, 'value');
+  const old = items(confirmed + 45_001);
+  assert.equal(old?.shape, 'alert');
+  assert.equal(old?.line.mark, 'warning');
+  assert.match(old?.line.text ?? '', /（古い）$/u);
+  const html = panel(shown(), connected([]), null, null, confirmed + 60_000);
+  assert.match(html, /data-item="last_confirmed" data-shape="alert"/u);
+  assert.match(html, /bg-warning-soft/u);
+});
+
+test('the stop shortcut mark: the keys next to stop, or the keys struck through with a warning when it could not be registered', () => {
+  const registered = panel(shown(), connected([]), null, 'registered');
+  assert.match(registered, /data-stop-shortcut="registered"/u);
+  assert.match(registered, /aria-label="停止のショートカット ⌘⌥⇧X"/u);
+  assert.doesNotMatch(registered, /line-through/u);
+  const unavailable = panel(shown(), connected([]), null, 'unavailable');
+  assert.match(unavailable, /data-stop-shortcut="unavailable"/u);
+  assert.match(
+    unavailable,
+    /aria-label="停止のショートカット ⌘⌥⇧X は使えません"/u,
+  );
+  assert.match(unavailable, /line-through/u);
+  // 停止そのものはどちらでも押せる。印は説明文ではない（見える文字はキーだけ）。
+  assert.deepEqual(buttonTexts(unavailable), ['■ 停止']);
+  // ロック中も停止の横に出す。値がなければ何も出さない。
+  assert.match(panel(LOCKED, null, null, 'unavailable'), /data-stop-shortcut/u);
+  assert.doesNotMatch(panel(shown(), connected([])), /data-stop-shortcut/u);
+  assert.equal(stopShortcutMark('registered'), 'registered');
+  assert.equal(stopShortcutMark('unavailable'), 'unavailable');
+  assert.equal(stopShortcutMark('yes'), null);
+  assert.equal(stopShortcutMark(undefined), null);
+  assert.equal(
+    stopShortcutKeys('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'),
+    '⌘⌥⇧X',
+  );
+  assert.equal(
+    stopShortcutKeys('Mozilla/5.0 (Windows NT 10.0; Win64; x64)'),
+    'Ctrl+Alt+Shift+X',
+  );
 });

@@ -2,7 +2,7 @@
 // ボタン（中に、入出力の記号・確認が必要な操作の数・プライバシーと権限の専用の記号 3 つ）・キャンバスを前に出すボタン
 // （入力バーと同じ 4 つの四角の記号）を縦に並べる。説明文は置かず、読み上げの名前だけを付ける（本人の判断 2026-10-22）。
 // 専用の記号 3 つ（音声を外部へ送っている・記録しないモード・安全停止中）は、いつも同じ位置に出す。その状態にあれば
-// 塗った面の上の記号、ないなら薄い記号、値がまだない（またはロック中で隠す）なら点線の枠だけ。
+// 塗った面と濃い記号、ないなら線だけ、値がまだないなら点線の枠と薄い記号、ロック中で隠すなら記号のない灰色の面。
 // パネルを出している間は、同じつまみがパネルの左の縁に残り、押すとしまう（ボタンの aria-expanded）。
 // ロック中・不明はキャンバスのボタンを押せない（キャンバスの中身を出さない）。パネルはロック中でも出せる（停止へ届く）。
 import { Button, Chip } from '@heroui/react';
@@ -13,29 +13,44 @@ import type { PrivacyMark } from '../../state/status-panel-state.js';
 import type { StatusTabView } from '../../state/window-role-state.js';
 
 const ON_CLASS: Readonly<Record<PrivacyMark['key'], string>> = {
-  voice_external: 'bg-warning-soft text-warning-soft-foreground',
-  private_mode: 'bg-accent-soft text-accent-soft-foreground',
-  safety_stop: 'bg-danger-soft text-danger-soft-foreground',
+  voice_external:
+    'border-warning-soft-foreground bg-warning-soft text-warning-soft-foreground',
+  private_mode:
+    'border-accent-soft-foreground bg-accent-soft text-accent-soft-foreground',
+  safety_stop:
+    'border-danger-soft-foreground bg-danger-soft text-danger-soft-foreground',
+};
+
+// 状態ごとの形（色だけに頼らない。UI-04 のレビュー P2-3）。
+// on: 塗った面と濃い記号（実線の枠も同じ色）。off: 線だけ（実線の枠と記号）。unknown（未受信）: 点線の枠と薄い記号。
+// hidden（ロック中・不明・受け取る前）: 記号を出さない灰色の面（隠していることを、未受信の点線と別の形で示す）。
+const SHAPE_CLASS: Readonly<
+  Record<Exclude<PrivacyMark['state'], 'on'>, string>
+> = {
+  off: 'border border-separator text-muted',
+  unknown: 'border border-dashed border-muted text-muted',
+  hidden: 'bg-default',
 };
 
 function PrivacySlot({ mark }: { readonly mark: PrivacyMark }) {
   const base =
     'flex size-7 items-center justify-center rounded-md transition-colors';
-  if (mark.state === 'unknown' || mark.state === 'hidden')
-    return (
-      <span
-        data-privacy={mark.key}
-        data-state={mark.state}
-        className={`${base} border border-dashed border-separator`}
-      />
-    );
+  const shape =
+    mark.state === 'on'
+      ? `border ${ON_CLASS[mark.key]}`
+      : SHAPE_CLASS[mark.state];
   return (
     <span
       data-privacy={mark.key}
       data-state={mark.state}
-      className={`${base} ${mark.state === 'on' ? ON_CLASS[mark.key] : 'text-muted opacity-50'}`}
+      className={`${base} ${shape}`}
     >
-      <PrivacyIcon mark={mark.key} className="size-4" />
+      {mark.state === 'hidden' ? null : (
+        <PrivacyIcon
+          mark={mark.key}
+          className={`size-4 ${mark.state === 'unknown' ? 'opacity-40' : ''}`}
+        />
+      )}
     </span>
   );
 }

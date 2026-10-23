@@ -50,10 +50,20 @@ import {
 } from '../canvas-presence.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
 import {
-  GLOBAL_SHORTCUTS,
+  STOP_SHORTCUT_ARG,
+  registerGlobalShortcuts,
+  shortcutsForMode,
+  stopShortcutState,
+  trayMenuEntries,
   type GlobalShortcutId,
+  type StopShortcutState,
 } from '../global-shortcuts.js';
-import { StatusPanel, confirmDialogParent } from '../status-panel.js';
+import {
+  CONFIRM_NOT_SHOWN,
+  StatusPanel,
+  confirmDialogParent,
+  runPanelConfirm,
+} from '../status-panel.js';
 import type { SecretProtector } from '../credential-store.js';
 import { DesktopDeviceController } from '../device-controller.js';
 import { networkSignatureOf } from '../home-reporter.js';
@@ -174,8 +184,14 @@ const statusPanel = new StatusPanel({
   },
   // パネルをしまうときは、パネルを親にした確認を閉じて送らない。
   closeConfirm: () => link?.closeConfirm(),
+  // 全体のショートカットで出すとき、ほかのアプリが前面でも Buddy を前面にする（macOS）。
+  activateApp: () => {
+    if (process.platform === 'darwin') app.focus({ steal: true });
+  },
   log: (code) => log(code),
 });
+// 全体の停止のショートカットを登録できたか（窓とトレイに印を出す。登録は start で窓を作る前に行う）。
+let stopShortcut: StopShortcutState = 'registered';
 // main が作った窓の webContents と役割の対応。送信元の検査と通知の宛先はこれだけで決める。
 const windows = new UiWindowRegistry<BrowserWindow>();
 let tray: Tray | null = null;
@@ -310,7 +326,11 @@ function createWindow(role: UiWindowRole): BrowserWindow {
     ...spec.options,
     webPreferences: {
       ...spec.options.webPreferences,
-      additionalArguments: [...spec.options.webPreferences.additionalArguments],
+      // 停止のショートカットを登録できたか（画面の印だけに使う。受付には使わない）。
+      additionalArguments: [
+        ...spec.options.webPreferences.additionalArguments,
+        `${STOP_SHORTCUT_ARG}${stopShortcut}`,
+      ],
     },
   });
   const contentsId = window.webContents.id;
@@ -421,11 +441,15 @@ function createTray(): Tray {
     io_stop: () => controller?.stopFromMain(),
     client_quit: requestQuit,
   };
+  // 停止の項目には、登録できた停止のショートカットを出す（登録できなければ ⚠ の印。global-shortcuts.ts）。
   created.setContextMenu(
     Menu.buildFromTemplate(
-      TRAY_MENU.map((item) => ({
+      trayMenuEntries(TRAY_MENU, stopShortcut).map((item) => ({
         label: item.label,
         click: run[item.action],
+        ...(item.accelerator === null
+          ? {}
+          : { accelerator: item.accelerator, registerAccelerator: false }),
       })),
     ),
   );
@@ -640,10 +664,12 @@ function createLink(
 async function confirmAdminWithDialog(
   request: AdminConfirmRequest,
   signal: AbortSignal,
-): Promise<boolean> {
+): Promise<boolean | typeof CONFIRM_NOT_SHOWN> {
   const parent = confirmDialogParent(uiMode, statusPanel.open);
   const window = parent === null ? null : liveWindow(parent);
-  if (window === null || signal.aborted) return false;
+  // 確認を出せない（親の窓・パネルがない）。「やめる」ではないので、画面操作からやり直させる。
+  if (window === null) return CONFIRM_NOT_SHOWN;
+  if (signal.aborted) return false;
   const text = adminConfirmText(request);
   const options: Electron.MessageBoxOptions = {
     type:
@@ -664,13 +690,12 @@ async function confirmAdminWithDialog(
     const result = await dialog.showMessageBox(window, options);
     return !signal.aborted && result.response === 1;
   }
-  if (!statusPanel.beginConfirm()) return false;
-  try {
-    const result = await dialog.showMessageBox(window, options);
-    return !signal.aborted && statusPanel.open && result.response === 1;
-  } finally {
-    statusPanel.endConfirm();
-  }
+  // パネルを親にした確認の手順は status-panel.ts の runPanelConfirm（試験で守る）。main はダイアログを渡すだけ。
+  return runPanelConfirm(statusPanel, signal, {
+    showDialog: () => dialog.showMessageBox(window, options),
+    windowFocused: () => isWindowFocused(liveWindow('status')),
+    defer: (task) => setTimeout(task, 150),
+  });
 }
 
 function start(): void {
@@ -718,29 +743,29 @@ function start(): void {
   registerAppProtocol();
   registerIpc();
   registerPowerMonitor();
-  tray = createTray();
-  updateTray();
   // 起動直後のロック状態は unknown。OS へ問い合わせて確かめる。
   queryLockState();
   link.start(controller.state.lockState);
+  // 全体のショートカット（global-shortcuts.ts）。全体の停止（トレイの停止と同じ処理）はどの組み立てでも、状態の層の
+  // パネル・キャンバスを呼ぶは 3 つの窓の組み立てのときだけ。ほかのアプリが使っていれば登録できず、ショートカットなしで
+  // 続ける（トレイ・つまみ・パネル・入力バーから同じ操作ができる）。停止を登録できなければ、トレイと画面に印を出すので、
+  // 窓とトレイを作る前に登録する。
+  const run: Record<GlobalShortcutId, () => void> = {
+    stop: () => controller?.stopFromMain(),
+    status_panel: () => statusPanel.toggle(),
+    canvas: () => summonCanvas('shortcut'),
+  };
+  stopShortcut = stopShortcutState(
+    registerGlobalShortcuts(
+      shortcutsForMode(uiMode),
+      (accelerator, callback) => globalShortcut.register(accelerator, callback),
+      run,
+      log,
+    ),
+  );
+  tray = createTray();
+  updateTray();
   for (const role of rolesForMode(uiMode)) createWindow(role);
-  // 全体のショートカット（3 つの窓の組み立てのときだけ。global-shortcuts.ts）: 全体の停止（トレイの停止と同じ処理）・
-  // 状態の層のパネル・キャンバスを呼ぶ。ほかのアプリが使っていれば登録できず、ショートカットなしで続ける
-  // （トレイ・つまみ・パネル・入力バーから同じ操作ができる）。
-  if (uiMode === 'canvas') {
-    const run: Record<GlobalShortcutId, () => void> = {
-      stop: () => controller?.stopFromMain(),
-      status_panel: () => statusPanel.toggle(),
-      canvas: () => summonCanvas('shortcut'),
-    };
-    for (const shortcut of GLOBAL_SHORTCUTS)
-      try {
-        if (!globalShortcut.register(shortcut.accelerator, run[shortcut.id]))
-          log(shortcut.unavailableLog);
-      } catch {
-        log(shortcut.unavailableLog);
-      }
-  }
 }
 
 if (!app.requestSingleInstanceLock()) {

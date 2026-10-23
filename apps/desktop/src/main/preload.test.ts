@@ -60,17 +60,36 @@ function loadPreload(argv?: readonly string[]) {
   return { exposed, invoked, listeners, requested };
 }
 
-test('the preload requires only electron and exposes only invoke, onNotification and the window role', () => {
+test('the preload requires only electron and exposes only invoke, onNotification, the window role and the stop shortcut mark', () => {
   const { exposed, requested } = loadPreload();
   assert.deepEqual(requested, ['electron']);
   assert.deepEqual([...exposed.keys()], ['buddyDesktop']);
   assert.deepEqual(Object.keys(exposed.get('buddyDesktop') ?? {}).sort(), [
     'invoke',
     'onNotification',
+    'stopShortcut',
     'windowRole',
   ]);
-  // 役割の引数がなければ従来の窓。
+  // 役割の引数がなければ従来の窓。停止のショートカットの引数がなければ印を出さない（null）。
   assert.equal(exposed.get('buddyDesktop')?.['windowRole'], 'legacy');
+  assert.equal(exposed.get('buddyDesktop')?.['stopShortcut'], null);
+});
+
+// UI-04: 全体の停止のショートカットを登録できたか（印だけに使う）。知らない値・2 つ以上は null。
+test('the stop shortcut argument is passed through only when it is a known value', () => {
+  const read = (argv: string[]) =>
+    loadPreload(argv).exposed.get('buddyDesktop')?.['stopShortcut'];
+  assert.equal(read(['--buddy-stop-shortcut=registered']), 'registered');
+  assert.equal(
+    read(['--buddy-window-role=status', '--buddy-stop-shortcut=unavailable']),
+    'unavailable',
+  );
+  for (const argv of [
+    ['--buddy-stop-shortcut=yes'],
+    ['--buddy-stop-shortcut='],
+    ['--buddy-stop-shortcut=registered', '--buddy-stop-shortcut=unavailable'],
+  ])
+    assert.equal(read(argv), null, argv.join(' '));
 });
 
 test('requests go only to the contract channels', async () => {

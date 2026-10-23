@@ -30,7 +30,7 @@ pnpm --filter @buddy/desktop dev
 
 ### 状態と停止の層（UI-04）
 
-同じフラグのとき、端のつまみ（入出力の記号・確認が必要な操作の数・専用の記号 3 つ）を押すか ⌘⌥⇧P（Windows は Ctrl+Alt+Shift+P）で、main が状態の層の窓を画面の右の端から広げてパネルを出します（`desktop.status_panel`。`src/main/status-panel.ts`）。パネルには、入出力と停止・再開、ADR 0014 の 8 項目、確認が必要な操作の一覧と確認の欄（従来の窓の WorkPanel と同じ部品）を出します。Esc・つまみ・外へのクリックでしまいます。承認・取消・再試行・照合は、パネルの窓を親にした OS の確認ダイアログで 1 回行います。⌘⌥⇧X（Windows は Ctrl+Alt+Shift+X）は全体の停止で、トレイの「入出力を停止」と同じ処理です（`src/main/global-shortcuts.ts`）。試した範囲は [docs/ui/status-layer.md](../../docs/ui/status-layer.md) です。
+同じフラグのとき、端のつまみ（入出力の記号・確認が必要な操作の数・専用の記号 3 つ）を押すか ⌘⌥⇧P（Windows は Ctrl+Alt+Shift+P）で、main が状態の層の窓を画面の右の端から広げてパネルを出します（`desktop.status_panel`。`src/main/status-panel.ts`）。パネルには、入出力と停止・再開、ADR 0014 の 8 項目、確認が必要な操作の一覧と確認の欄（従来の窓の WorkPanel と同じ部品）を出します。Esc・つまみ・外へのクリックでしまいます。承認・取消・再試行・照合は、パネルの窓を親にした OS の確認ダイアログで 1 回行います。⌘⌥⇧X（Windows は Ctrl+Alt+Shift+X）は全体の停止で、トレイの「入出力を停止」と同じ処理です。これは既定の従来の窓（配布版を含む）でも登録し、登録できなければトレイの停止の項目と停止のボタンの横に ⚠ を出します（`src/main/global-shortcuts.ts`）。試した範囲は [docs/ui/status-layer.md](../../docs/ui/status-layer.md) です。
 
 ## 確かめられること
 

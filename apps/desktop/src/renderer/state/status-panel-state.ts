@@ -8,7 +8,6 @@ import type { DesktopConnectionView, DesktopStatusBar } from '@buddy/contracts';
 import { clockOf } from '../format.js';
 import {
   DISPLAY_TARGET_LABELS,
-  NOT_RECEIVED,
   STORAGE_MODE_LABELS,
   VOICE_STATE_LABELS,
 } from '../labels.js';
@@ -57,27 +56,54 @@ export const STATUS_ITEM_LABELS: Readonly<Record<StatusItemKey, string>> = {
   safety: '安全停止',
 };
 
+// 項目の形（色だけに頼らない。UI-04 のレビュー P2-4）。
+// - value: 値がある（実線の枠・項目の記号・状態の記号）。
+// - missing: まだ受け取っていない（点線の枠・薄い記号・状態の記号なし。読み上げは「未受信」）。点線の枠の意味は
+//   つまみの専用の記号と同じ「未受信」だけにする（ロック中は別の形。ItemShape は使わず、パネルが別に描く）。
+// - alert: 本人が気にかけるべき状態（警告・危険）。面を塗り、状態の記号を ⚠ にする。
+// - notice: 権限・プライバシーに関わるが警告ではない状態（記録しないモード）。面を塗る。
+export type ItemShape = 'value' | 'missing' | 'alert' | 'notice';
+
 export interface StatusItem {
   readonly key: StatusItemKey;
   readonly label: string;
   // 記号と値（値は名前と一緒にフォーカス・ポインターで出す。読み上げは label と value）。
   readonly line: StatusLine;
-  // 値を受け取っていない（—）。
-  readonly missing: boolean;
+  readonly shape: ItemShape;
 }
+
+// 受け取っていない値の文言（読み上げ・ツールチップ）。画面の「—」の代わり。
+export const NOT_RECEIVED_TEXT = '未受信';
+
+// 中枢の最終確認がこれより古ければ警告の形にする（購読の生存の時間切れ 45 秒と同じ。packages/client の
+// DEFAULT_ALIVE_TIMEOUT_MS。中枢は 15 秒ごとに ping を送る）。
+export const STALE_CONFIRM_MS = 45_000;
 
 const missingLine: StatusLine = {
   tone: 'neutral',
   mark: 'none',
-  text: NOT_RECEIVED,
+  text: NOT_RECEIVED_TEXT,
 };
 
-function item(key: StatusItemKey, line: StatusLine | null): StatusItem {
+function item(
+  key: StatusItemKey,
+  line: StatusLine | null,
+  shape?: ItemShape,
+): StatusItem {
+  if (line === null)
+    return {
+      key,
+      label: STATUS_ITEM_LABELS[key],
+      line: missingLine,
+      shape: 'missing',
+    };
+  // 警告・危険の色の値は、面を塗り、記号を ⚠ にする（色だけで区別しない）。
+  const alert = line.tone === 'warning' || line.tone === 'danger';
   return {
     key,
     label: STATUS_ITEM_LABELS[key],
-    line: line ?? missingLine,
-    missing: line === null,
+    line: alert ? { ...line, mark: 'warning' } : line,
+    shape: shape ?? (alert ? 'alert' : 'value'),
   };
 }
 
@@ -100,6 +126,11 @@ export function statusItems(
   );
   const confirmedAt =
     shownConnection?.last_confirmed_at ?? status.hub_last_confirmed_at;
+  const confirmedMs = confirmedAt === null ? null : Date.parse(confirmedAt);
+  const stale =
+    confirmedMs !== null &&
+    !Number.isNaN(confirmedMs) &&
+    now - confirmedMs > STALE_CONFIRM_MS;
   return [
     item('io', ioLine(status)),
     item('hub', hub),
@@ -107,7 +138,13 @@ export function statusItems(
       'last_confirmed',
       confirmedAt === null
         ? null
-        : { tone: 'neutral', mark: 'dot', text: clockOf(confirmedAt, now) },
+        : stale
+          ? {
+              tone: 'warning',
+              mark: 'warning',
+              text: `${clockOf(confirmedAt, now)}（古い）`,
+            }
+          : { tone: 'neutral', mark: 'dot', text: clockOf(confirmedAt, now) },
     ),
     item(
       'display_target',
@@ -127,11 +164,13 @@ export function statusItems(
       status.storage_mode === null
         ? null
         : {
-            tone: status.storage_mode === 'private' ? 'warning' : 'neutral',
+            tone: 'neutral',
             mark: status.storage_mode === 'private' ? 'square' : 'dot',
             text:
               STORAGE_MODE_LABELS[status.storage_mode] ?? status.storage_mode,
           },
+      // 記録しないモードは警告ではないが、権限・プライバシーに関わるので面を塗る（つまみの専用の記号と同じ）。
+      status.storage_mode === 'private' ? 'notice' : undefined,
     ),
     item(
       'budget',
@@ -156,7 +195,7 @@ function voiceLine(status: Shown): StatusLine | null {
   if (status.voice_state === null) return null;
   const text = VOICE_STATE_LABELS[status.voice_state] ?? status.voice_state;
   return voiceSendsExternally(status.voice_state)
-    ? { tone: 'warning', mark: 'dot', text }
+    ? { tone: 'warning', mark: 'warning', text }
     : { tone: 'neutral', mark: 'circle', text };
 }
 
@@ -262,4 +301,16 @@ export function operationsShown(
     connection.registration === 'registered' &&
     connection.link === 'connected'
   );
+}
+
+// 全体の停止のショートカット（UI-04）の印。preload が渡す値（登録できたか）から決める。値がなければ印を出さない。
+export type StopShortcutMark = 'registered' | 'unavailable' | null;
+
+export function stopShortcutMark(value: unknown): StopShortcutMark {
+  return value === 'registered' || value === 'unavailable' ? value : null;
+}
+
+// 停止のショートカットのキーの表し方（main の STOP_ACCELERATOR と同じ組み合わせ）。
+export function stopShortcutKeys(userAgent: string): string {
+  return /Mac OS X|Macintosh/u.test(userAgent) ? '⌘⌥⇧X' : 'Ctrl+Alt+Shift+X';
 }

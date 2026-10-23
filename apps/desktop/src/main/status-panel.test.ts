@@ -10,11 +10,17 @@ import {
   STATUS_PANEL_ACCELERATOR,
   STOP_ACCELERATOR,
   normalizeAccelerator,
+  registerGlobalShortcuts,
+  shortcutsForMode,
+  stopShortcutState,
+  trayMenuEntries,
 } from './global-shortcuts.js';
 import {
+  CONFIRM_NOT_SHOWN,
   STATUS_PANEL_WIDTH,
   StatusPanel,
   confirmDialogParent,
+  runPanelConfirm,
   statusWindowBounds,
 } from './status-panel.js';
 import type { Rect } from './window-roles.js';
@@ -113,9 +119,9 @@ test('the shortcut toggles the panel and brings back a hidden window', () => {
 
 test('a click outside (blur) or hiding puts the panel away; hiding does not animate', () => {
   const { panel, window } = setup();
-  panel.show();
+  panel.show('tab');
   assert.equal(panel.hide('blur'), 'collapse');
-  panel.show();
+  panel.show('tab');
   window.calls.length = 0;
   assert.equal(panel.hide('hidden'), 'collapse');
   assert.deepEqual(window.calls, ['bounds:1456,355,56,232:instant']);
@@ -123,7 +129,7 @@ test('a click outside (blur) or hiding puts the panel away; hiding does not anim
 
 test('with reduced motion the panel opens and closes without animation', () => {
   const { panel, window } = setup({ reducedMotion: true });
-  panel.show();
+  panel.show('tab');
   panel.hide('escape');
   assert.deepEqual(window.calls, [
     'bounds:1072,33,440,875:instant',
@@ -137,7 +143,7 @@ test('while the OS confirmation is attached to the panel, its blur does not put 
   // パネルが出ていなければ確認を出さない。
   assert.equal(panel.beginConfirm(), false);
   assert.equal(panel.confirming, false);
-  panel.show();
+  panel.show('tab');
   assert.equal(panel.beginConfirm(), true);
   assert.equal(panel.confirming, true);
   // 確認（シート・モーダル）へフォーカスが移った blur ではしまわない。確認も閉じない。
@@ -150,13 +156,13 @@ test('while the OS confirmation is attached to the panel, its blur does not put 
   panel.endConfirm();
   assert.equal(panel.confirming, false);
   // 確認が終われば、blur でまたしまう。
-  panel.show();
+  panel.show('tab');
   assert.equal(panel.hide('blur'), 'collapse');
 });
 
 test('without a status window nothing happens and the reason is logged', () => {
   const { panel, logs } = setup({ window: false });
-  assert.equal(panel.show(), 'none');
+  assert.equal(panel.show('tab'), 'none');
   assert.equal(panel.open, false);
   assert.deepEqual(logs, ['status_panel_unavailable']);
   panel.reset();
@@ -220,5 +226,249 @@ test('the global shortcuts use three modifiers and a letter, are distinct, and a
     RESERVED_ACCELERATORS.win32.includes(
       normalizeAccelerator('Ctrl+Shift+Escape', 'win32'),
     ),
+  );
+});
+
+// UI-04 のレビュー P2-1: パネルを親にした確認の手順（main はダイアログを渡すだけ）。
+function confirmSetup(options: { focused?: boolean } = {}) {
+  const base = setup();
+  const deferred: (() => void)[] = [];
+  let shown = 0;
+  let answer: (response: number) => void = () => undefined;
+  let fail: (error: unknown) => void = () => undefined;
+  const ports = {
+    showDialog: () => {
+      shown += 1;
+      return new Promise<{ response: number }>((resolve, reject) => {
+        answer = (response) => resolve({ response });
+        fail = reject;
+      });
+    },
+    windowFocused: () => options.focused ?? true,
+    defer: (task: () => void) => deferred.push(task),
+  };
+  return {
+    ...base,
+    ports,
+    shown: () => shown,
+    answer: (response: number) => answer(response),
+    fail: (error: unknown) => fail(error),
+    runDeferred: () => {
+      for (const task of deferred.splice(0)) task();
+    },
+  };
+}
+
+test('the panel confirmation: shown once while the panel is open, true only for the approve button', async () => {
+  const c = confirmSetup();
+  c.panel.show('tab');
+  const signal = new AbortController().signal;
+  const pending = runPanelConfirm(c.panel, signal, c.ports);
+  assert.equal(c.shown(), 1);
+  assert.equal(c.panel.confirming, true);
+  // 確認の間の blur ではしまわない。
+  assert.equal(c.panel.hide('blur'), 'none');
+  c.answer(1);
+  assert.equal(await pending, true);
+  assert.equal(c.panel.confirming, false);
+  // 「やめる」（0）は false。
+  const declined = runPanelConfirm(c.panel, signal, c.ports);
+  c.answer(0);
+  assert.equal(await declined, false);
+  assert.equal(c.shown(), 2);
+});
+
+test('the panel confirmation is not shown while the panel is put away or the signal is already closed', async () => {
+  const c = confirmSetup();
+  assert.equal(
+    await runPanelConfirm(c.panel, new AbortController().signal, c.ports),
+    CONFIRM_NOT_SHOWN,
+  );
+  c.panel.show('tab');
+  const aborted = new AbortController();
+  aborted.abort();
+  assert.equal(
+    await runPanelConfirm(c.panel, aborted.signal, c.ports),
+    CONFIRM_NOT_SHOWN,
+  );
+  assert.equal(c.shown(), 0);
+  assert.equal(c.panel.confirming, false);
+});
+
+test('putting the panel away or closing the signal during the confirmation makes it false', async () => {
+  const hidden = confirmSetup();
+  hidden.panel.show('tab');
+  const pendingHidden = runPanelConfirm(
+    hidden.panel,
+    new AbortController().signal,
+    hidden.ports,
+  );
+  // 確認の間に窓を隠す（パネルをしまう。確認も閉じる）→「承認する」が返っても false。
+  assert.equal(hidden.panel.hide('hidden'), 'collapse');
+  assert.equal(hidden.closedConfirms(), 1);
+  hidden.answer(1);
+  assert.equal(await pendingHidden, false);
+  const aborted = confirmSetup();
+  aborted.panel.show('tab');
+  const controller = new AbortController();
+  const pendingAborted = runPanelConfirm(
+    aborted.panel,
+    controller.signal,
+    aborted.ports,
+  );
+  // ロック・停止で core-link が確認を閉じる（signal）→ false。
+  controller.abort();
+  aborted.answer(1);
+  assert.equal(await pendingAborted, false);
+  assert.equal(aborted.panel.confirming, false);
+});
+
+test('a dialog that throws still ends the confirmation, so a later blur puts the panel away', async () => {
+  const c = confirmSetup();
+  c.panel.show('tab');
+  const pending = runPanelConfirm(
+    c.panel,
+    new AbortController().signal,
+    c.ports,
+  );
+  c.fail(new Error('dialog failed'));
+  await assert.rejects(pending, /dialog failed/u);
+  assert.equal(c.panel.confirming, false);
+  assert.equal(c.panel.hide('blur'), 'collapse');
+});
+
+test('if the user moved to another app during the confirmation, the panel is put away after it ends (not before the result)', async () => {
+  const away = confirmSetup({ focused: false });
+  away.panel.show('tab');
+  const pending = runPanelConfirm(
+    away.panel,
+    new AbortController().signal,
+    away.ports,
+  );
+  away.answer(1);
+  // 結果は確定してから返す（フォーカスの移動の途中で取り消さない）。しまうのは後。
+  assert.equal(await pending, true);
+  assert.equal(away.panel.open, true);
+  assert.equal(away.closedConfirms(), 0);
+  away.runDeferred();
+  assert.equal(away.panel.open, false);
+  // 前面のままなら、しまわない。
+  const front = confirmSetup({ focused: true });
+  front.panel.show('tab');
+  const kept = runPanelConfirm(
+    front.panel,
+    new AbortController().signal,
+    front.ports,
+  );
+  front.answer(0);
+  await kept;
+  front.runDeferred();
+  assert.equal(front.panel.open, true);
+});
+
+test('opening the panel with the shortcut brings Buddy to the front first; the tab does not', () => {
+  const calls: string[] = [];
+  const panel = new StatusPanel({
+    window: () => ({
+      setBounds: () => calls.push('bounds'),
+      isVisible: () => true,
+      show: () => calls.push('show'),
+      focus: () => calls.push('focus'),
+    }),
+    workArea: () => AREA,
+    reducedMotion: () => true,
+    closeConfirm: () => undefined,
+    activateApp: () => calls.push('activate'),
+    log: () => undefined,
+  });
+  panel.toggle();
+  assert.deepEqual(calls, ['bounds', 'activate', 'focus']);
+  panel.hide('escape');
+  calls.length = 0;
+  panel.request(true);
+  assert.deepEqual(calls, ['bounds', 'focus']);
+});
+
+// UI-04 のレビュー P2-1・P3-d: 全体のショートカットの登録（停止を先に。登録できなくても続ける）とトレイの印。
+test('the stop shortcut is registered first and in every mode; failures are logged and the rest go on', () => {
+  assert.deepEqual(
+    shortcutsForMode('legacy').map((shortcut) => shortcut.id),
+    ['stop'],
+  );
+  assert.deepEqual(
+    shortcutsForMode('canvas').map((shortcut) => shortcut.id),
+    ['stop', 'status_panel', 'canvas'],
+  );
+  const order: string[] = [];
+  const logs: string[] = [];
+  const run = {
+    stop: () => undefined,
+    status_panel: () => undefined,
+    canvas: () => undefined,
+  };
+  const failed = registerGlobalShortcuts(
+    shortcutsForMode('canvas'),
+    (accelerator) => {
+      order.push(accelerator);
+      if (accelerator === STOP_ACCELERATOR) return false;
+      if (accelerator === STATUS_PANEL_ACCELERATOR) throw new Error('taken');
+      return true;
+    },
+    run,
+    (code) => logs.push(code),
+  );
+  assert.deepEqual(order, [
+    STOP_ACCELERATOR,
+    STATUS_PANEL_ACCELERATOR,
+    CANVAS_SUMMON_ACCELERATOR,
+  ]);
+  assert.deepEqual(failed, ['stop', 'status_panel']);
+  assert.deepEqual(logs, [
+    'stop_shortcut_unavailable',
+    'status_panel_shortcut_unavailable',
+  ]);
+  assert.equal(stopShortcutState(failed), 'unavailable');
+  assert.equal(stopShortcutState(['canvas']), 'registered');
+  // 登録した操作は渡した関数そのもの（停止はトレイと同じ処理を main が渡す）。
+  const callbacks: unknown[] = [];
+  registerGlobalShortcuts(
+    shortcutsForMode('legacy'),
+    (_accelerator, callback) => {
+      callbacks.push(callback);
+      return true;
+    },
+    run,
+    () => undefined,
+  );
+  assert.deepEqual(callbacks, [run.stop]);
+});
+
+test('the tray stop item shows the shortcut when registered and a warning mark when not', () => {
+  const items = [
+    { action: 'show_window', label: 'Buddy を表示' },
+    { action: 'io_stop', label: 'この端末の入出力を停止' },
+    { action: 'client_quit', label: 'Buddy を終了（中枢は止めません）' },
+  ] as const;
+  assert.deepEqual(
+    trayMenuEntries(items, 'registered').map((item) => [
+      item.label,
+      item.accelerator,
+    ]),
+    [
+      ['Buddy を表示', null],
+      ['この端末の入出力を停止', 'CommandOrControl+Alt+Shift+X'],
+      ['Buddy を終了（中枢は止めません）', null],
+    ],
+  );
+  assert.deepEqual(
+    trayMenuEntries(items, 'unavailable').map((item) => [
+      item.label,
+      item.accelerator,
+    ]),
+    [
+      ['Buddy を表示', null],
+      ['⚠ この端末の入出力を停止', null],
+      ['Buddy を終了（中枢は止めません）', null],
+    ],
   );
 });

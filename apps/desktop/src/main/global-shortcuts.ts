@@ -1,4 +1,4 @@
-// 3 つの窓の組み立てで登録する全体のショートカット（UI-02・UI-04、ADR 0032）。Electron に依存しない（node:test で試験する）。
+// 全体のショートカット（UI-02・UI-04、ADR 0032）。Electron に依存しない（node:test で試験する）。
 // - 全体の停止（UI-04）: どこからでも 1 回でこの端末の入出力を止める。トレイの「入出力を停止」と同じ処理
 //   （DesktopDeviceController.stopFromMain）を呼ぶ。パネルの停止（desktop.io_stop）も同じ状態の遷移（io_stop）を通る。
 // - 状態の層のパネル（UI-04）: パネルを出す・しまう。
@@ -7,6 +7,7 @@
 // （⌘⌥⇧ / Ctrl+Alt+Shift）と英字 1 つにする。ほかのアプリが使っていて登録できなければ、ログを出してほかの入口
 // （トレイ・つまみ・パネル）で続ける。設定で変えられるようにするのは後の Issue。
 import { CANVAS_SUMMON_ACCELERATOR } from './canvas-presence.js';
+import type { TrayMenuItem } from './window-policy.js';
 
 export const STOP_ACCELERATOR = 'CommandOrControl+Alt+Shift+X';
 export const STATUS_PANEL_ACCELERATOR = 'CommandOrControl+Alt+Shift+P';
@@ -38,6 +39,72 @@ export const GLOBAL_SHORTCUTS: readonly GlobalShortcut[] = [
     unavailableLog: 'canvas_shortcut_unavailable',
   },
 ];
+
+// 組み立てごとに登録するショートカット。全体の停止は安全に関わるので、既定の従来の窓（配布版を含む）でも登録する
+// （本人の判断 2026-10-23、UI-04 のレビュー）。パネルとキャンバスは 3 つの窓の組み立てのときだけ。
+export function shortcutsForMode(
+  mode: 'legacy' | 'canvas',
+): readonly GlobalShortcut[] {
+  return mode === 'canvas'
+    ? GLOBAL_SHORTCUTS
+    : GLOBAL_SHORTCUTS.filter((shortcut) => shortcut.id === 'stop');
+}
+
+// 全体のショートカットを登録の順（停止が先）に登録する。登録できない（false）・例外のときはログを出して次へ進む。
+// 戻り値は登録できなかったものの ID（停止を登録できなければ、トレイと画面に印を出す）。main は Electron の
+// globalShortcut.register を渡すだけ。
+export function registerGlobalShortcuts(
+  shortcuts: readonly GlobalShortcut[],
+  register: (accelerator: string, callback: () => void) => boolean,
+  run: Readonly<Record<GlobalShortcutId, () => void>>,
+  log: (code: string) => void,
+): readonly GlobalShortcutId[] {
+  const failed: GlobalShortcutId[] = [];
+  for (const shortcut of shortcuts) {
+    let ok: boolean;
+    try {
+      ok = register(shortcut.accelerator, run[shortcut.id]);
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      log(shortcut.unavailableLog);
+      failed.push(shortcut.id);
+    }
+  }
+  return failed;
+}
+
+// 全体の停止のショートカットを登録できたか。登録できなければ、トレイの停止の項目と画面の停止のボタンの近くに印を出す
+// （説明文に頼らない。UI-04 のレビュー P3-d）。画面へは窓を作るときの引数で渡す（表示だけに使い、受付には使わない）。
+export type StopShortcutState = 'registered' | 'unavailable';
+export const STOP_SHORTCUT_ARG = '--buddy-stop-shortcut=';
+
+export function stopShortcutState(
+  failed: readonly GlobalShortcutId[],
+): StopShortcutState {
+  return failed.includes('stop') ? 'unavailable' : 'registered';
+}
+
+export interface TrayMenuEntry extends TrayMenuItem {
+  // メニューの右に出すショートカット（表示だけ。登録は globalShortcut が持つ）。なければ null。
+  readonly accelerator: string | null;
+}
+
+// トレイのメニュー。停止の項目に、登録できた停止のショートカットを出す。登録できなければショートカットを出さず、
+// 項目に ⚠ の印を付ける。
+export function trayMenuEntries(
+  items: readonly TrayMenuItem[],
+  stop: StopShortcutState,
+): readonly TrayMenuEntry[] {
+  return items.map((item) =>
+    item.action !== 'io_stop'
+      ? { ...item, accelerator: null }
+      : stop === 'registered'
+        ? { ...item, accelerator: STOP_ACCELERATOR }
+        : { ...item, label: `⚠ ${item.label}`, accelerator: null },
+  );
+}
 
 const MODIFIER_ORDER = ['Alt', 'Command', 'Control', 'Shift', 'Super'];
 

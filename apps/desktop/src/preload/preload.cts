@@ -87,6 +87,21 @@ function windowRole(): string | null {
     : null;
 }
 
+// 全体の停止のショートカットを登録できたか（UI-04）。main が窓を作るときに --buddy-stop-shortcut=<値> を渡す。
+// 停止のボタンの近くの印だけに使う（受付には使わない）。知らない値・なしは null。
+const STOP_SHORTCUT_ARG = '--buddy-stop-shortcut=';
+function stopShortcut(): string | null {
+  const argv = typeof process === 'undefined' ? [] : (process.argv ?? []);
+  const given = argv
+    .filter((arg) => arg.startsWith(STOP_SHORTCUT_ARG))
+    .map((arg) => arg.slice(STOP_SHORTCUT_ARG.length));
+  const [value] = given;
+  return given.length === 1 &&
+    (value === 'registered' || value === 'unavailable')
+    ? value
+    : null;
+}
+
 const role = windowRole();
 const roleChannels = role === null ? [] : (ROLE_CHANNELS[role] ?? []);
 const roleNotifications = role === null ? [] : (ROLE_NOTIFICATIONS[role] ?? []);
@@ -120,6 +135,7 @@ function onNotification(listener: (notification: unknown) => void): () => void {
 contextBridge.exposeInMainWorld('buddyDesktop', {
   // 画面の切り替えに使う窓の役割（知らない役割なら null）。受付の判断には使わない。
   windowRole: role,
+  stopShortcut: stopShortcut(),
   invoke,
   onNotification,
 });

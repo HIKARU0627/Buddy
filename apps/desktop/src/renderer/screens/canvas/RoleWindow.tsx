@@ -11,6 +11,8 @@ import {
   panelShownFor,
   privacyMarks,
   statusItems,
+  stopShortcutKeys,
+  stopShortcutMark,
 } from '../../state/status-panel-state.js';
 import { useNow } from '../../state/use-desktop-state.js';
 import {
@@ -19,7 +21,7 @@ import {
   useWindowWidth,
 } from '../../state/use-role-window-state.js';
 import { useWorkState } from '../../state/use-work-state.js';
-import { WorkOperations } from '../work/WorkPanel.js';
+import { WorkOperations, usePreviewFocus } from '../work/WorkPanel.js';
 import {
   canSummonCanvas,
   canvasContentShown,
@@ -63,6 +65,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const live = operationsShown(state.status, connection);
   const operations = connection?.operations ?? NO_OPERATIONS;
   const work = useWorkState(api, live, operations);
+  const previewEntry = usePreviewFocus(work.state, operations);
   const view = statusTabView(state.status, state.connection);
   const stopped =
     state.status?.visibility === 'shown' && state.status.stop_scope !== 'none';
@@ -111,6 +114,8 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
       message={messageFor(state, ['desktop.io_stop', 'desktop.io_resume'])}
       onStop={stop}
       onResume={resume}
+      stopShortcut={stopShortcutMark(api.stopShortcut)}
+      stopKeys={stopShortcutKeys(navigator.userAgent)}
       operations={
         live ? (
           <WorkOperations
@@ -118,6 +123,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
             actions={work.actions}
             operations={operations}
             stopped={stopped}
+            previewEntry={previewEntry}
           />
         ) : null
       }

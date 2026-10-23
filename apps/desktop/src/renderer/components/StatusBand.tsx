@@ -5,6 +5,7 @@
 // 停止のボタンは、main が止まっていることを確かめた後（停止の範囲が none でない）は出さない。止まっている端末で押しても
 // 何も変わらず（domain の stopLocally）、主状態の「■ 停止中」と取り違えるため（UI レビュー 2 回目 R1-M3）。
 // ロック中・ロック状態不明・未受信では、内容を出さずにその旨だけを出し、停止は押せるままにする（ADR 0014）。
+import type { ReactNode } from 'react';
 import type { DesktopConnectionView, DesktopStatusBar } from '@buddy/contracts';
 import { Button, Card, InfoIcon, WarningIcon } from '@heroui/react';
 import { NOT_RECEIVED_NOTE } from '../labels.js';
@@ -27,11 +28,14 @@ export function StatusBand({
   connection,
   now,
   onStop,
+  stopShortcut = null,
 }: {
   readonly status: DesktopStatusBar | null;
   readonly connection: DesktopConnectionView | null;
   readonly now: number;
   readonly onStop: () => void;
+  // 全体の停止のショートカットの印（UI-04。停止のボタンの横に置く）。
+  readonly stopShortcut?: ReactNode;
 }) {
   if (status === null || status.visibility === 'hidden') {
     const text =
@@ -56,7 +60,10 @@ export function StatusBand({
             )}
             <span>{text}</span>
           </p>
-          <StopButton onStop={onStop} />
+          <span className="flex items-center gap-2">
+            {stopShortcut}
+            <StopButton onStop={onStop} />
+          </span>
         </Card.Content>
       </Card>
     );
@@ -83,7 +90,12 @@ export function StatusBand({
               <StatusText line={hub} className="tabular-nums" />
             </p>
           </div>
-          {status.stop_scope === 'none' ? <StopButton onStop={onStop} /> : null}
+          {status.stop_scope === 'none' ? (
+            <span className="flex items-center gap-2">
+              {stopShortcut}
+              <StopButton onStop={onStop} />
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-separator pt-3 text-xs">
           <dl className="contents">

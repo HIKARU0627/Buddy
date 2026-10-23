@@ -17,6 +17,8 @@
 import { randomUUID } from 'node:crypto';
 import type {
   CanvasCell,
+  CanvasContentRequest,
+  CanvasContentResponse,
   CanvasDocument,
   CanvasItem,
   CanvasOpBatch,
@@ -31,6 +33,7 @@ import {
   applyCanvasBatch,
   applyCanvasUserOp,
   canvasBatchPlacementTargets,
+  canvasContentErrors,
   streamSegmentErrors,
 } from '@buddy/domain';
 import type { ApiContract } from './api-contract.js';
@@ -38,6 +41,7 @@ import { createApiContract } from './api-contract.js';
 import { API_ROUTES } from './api-routes.js';
 import type { ApiRoute } from './api-routes.js';
 import { apiErrorResponse } from './api-server.js';
+import { mockCanvasContent } from './canvas-content.js';
 import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import type { JsonObject } from './strict-json.js';
 
@@ -487,5 +491,55 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     return Promise.resolve(response);
   };
 
-  return { handlers: { postStreamTurn, getCanvas, postCanvasUserOp } };
+  // 物の中身の読み取り（UI-07）。読み取りだけで、記述・イベントの記録・保存を変えない。版が今と同じでなければ 409
+  // （中身は参照と同じ順の位置で結び付くので、版がずれた中身は渡さない）。中身は模擬の合成データ（実データは B08・B09・B11）。
+  const postCanvasContent: ApiRouteHandler = (request) => {
+    if (request.device === null)
+      return Promise.resolve(apiErrorResponse(401, 'unauthenticated'));
+    const body = request.body as unknown as CanvasContentRequest;
+    const document = options.canvas.document;
+    const conflict = () =>
+      Promise.resolve(apiErrorResponse(409, 'conflict', body.request_id));
+    if (body.expected_canvas_revision !== document.canvas_revision)
+      return conflict();
+    const item = document.items.find((entry) => entry.item_id === body.item_id);
+    if (item === undefined) return conflict();
+    // 本文を開けるのはメールだけ。行の位置（item_refs）の範囲の中。
+    if (
+      body.open_index !== null &&
+      (item.component !== 'mail_card' ||
+        body.open_index >= item.data.item_refs.length)
+    )
+      return conflict();
+    const content = mockCanvasContent(item, body.open_index);
+    const response: CanvasContentResponse = {
+      request_id: body.request_id,
+      canvas_revision: document.canvas_revision,
+      item_id: item.item_id,
+      open_index: body.open_index,
+      content,
+    };
+    // 自分で作った中身も、形式と意味の検査を通ったものだけを返す（通らなければ中枢の不具合として 503）。
+    if (
+      !contract.valid('CanvasContentResponse', response) ||
+      canvasContentErrors(content, {
+        component: item.component,
+        refCount: item.data.item_refs.length,
+        openIndex: body.open_index,
+      }).length > 0
+    )
+      return Promise.resolve(
+        apiErrorResponse(503, 'dependency_unavailable', body.request_id),
+      );
+    return Promise.resolve({ status: 200, body: response });
+  };
+
+  return {
+    handlers: {
+      postStreamTurn,
+      getCanvas,
+      postCanvasUserOp,
+      postCanvasContent,
+    },
+  };
 }

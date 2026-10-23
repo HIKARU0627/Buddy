@@ -97,7 +97,7 @@ export interface CanvasLayoutGrid {
 }
 
 export interface CanvasLayoutResult {
-  // minimal は作業領域が最小の高さに満たない（物を置かず、すべて小さな棚の札にする）。
+  // minimal は作業領域が最小の高さ、または置ける幅が見出しを読める最小の幅に満たない（物を置かず、すべて小さな棚の札にする）。
   readonly mode: 'grid' | 'column' | 'minimal';
   // 置いた物（読む順）。
   readonly boxes: readonly CanvasLayoutBox[];
@@ -108,7 +108,7 @@ export interface CanvasLayoutResult {
   readonly shelf: {
     readonly rect: CanvasRect;
     readonly items: readonly string[];
-    // 小さな棚（最小の高さに満たないとき。作業領域の上の端に置く）。
+    // 小さな棚（最小の高さ・幅に満たないとき。作業領域の上の端に置く）。
     readonly compact: boolean;
   };
   readonly reserved: {
@@ -356,9 +356,10 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       ? undefined
       : visible.find((item) => item.item_id === input.revealed);
 
-  if (frame.safe.height < L.minHeight) {
-    // 最小の高さに満たない: 物は置かず、すべて入りきらない物にする。棚は作業領域の上の端の小さな帯にする
-    // （棚の上の端が作業領域の中にあるように）。
+  if (frame.safe.height < L.minHeight || frame.width < L.minCardWidth) {
+    // 最小の高さに満たない、または置ける幅が見出しを読める最小のカードの幅（minCardWidth）に満たない（1 列でも 160 を
+    // 守れない。UI-07 に持ち越した PR #121 の P3）: 物は置かず、すべて入りきらない物にする。棚は作業領域の上の端の
+    // 小さな帯にする（棚の上の端が作業領域の中にあるように）。
     return {
       mode: 'minimal',
       boxes: [],

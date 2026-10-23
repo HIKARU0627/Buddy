@@ -244,6 +244,47 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/canvas/content:
+    post:
+      operationId: postCanvasContent
+      summary: キャンバスの物の中身の読み取り
+      description: キャンバスの物 1 つの中身（行・セル・予定・メールの件名・出典など。CanvasContent。UI-07、ADR 0032）を許可範囲内で返す。記述（getCanvas）は参照だけで本文を持たないので、端末は描くときにこれで取る。読み取りだけで記述も外部の状態も変えず、イベントの記録に入れない。expected_canvas_revision が今と同じでなければ 409（中身と参照の位置がずれるため。端末は記述を取り直す）。物がない・open_index が範囲外・mail_card 以外で開く指定は 409。中身は物の部品に合った形で、行は物の item_refs と同じ順・同じ件数で返し、中枢の識別子を含まない。メールの本文は open_index の 1 通だけ。UI-07 の中身は模擬の合成データで、実データの取得は B08・B09・B11。ロック中・不明は 403。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/CanvasContentRequest
+      responses:
+        '200':
+          description: 物の中身。端末のメモリーだけに置き、保存しない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CanvasContentResponse
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/sessions/{session_id}/handoff:
     post:
       operationId: handoffSession

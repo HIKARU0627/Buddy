@@ -23,6 +23,7 @@ const LEGACY_EXCLUDED_CHANNELS: readonly string[] = [
   'desktop.canvas_summon',
   'desktop.status_panel',
   'desktop.canvas_user_op',
+  'desktop.canvas_content',
   // 予算の確認（B07-05）は状態の層だけ。従来の窓には予算の画面がない。
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',

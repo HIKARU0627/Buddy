@@ -14,6 +14,8 @@
 //   有効で、古い応答で新しい記述を戻さない。版は戻さない（同じ世代の中で小さい版を受けない）。
 // Electron に依存しない（node:test で試験する）。
 import type {
+  CanvasContent,
+  CanvasContentResponse,
   CanvasDocument,
   CanvasUserOp,
   CanvasUserOpResponse,
@@ -22,10 +24,18 @@ import type {
   StreamTurnResponse,
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
-import { canvasDocumentErrors } from '@buddy/domain';
+import { canvasContentErrors, canvasDocumentErrors } from '@buddy/domain';
 import type { DesktopIpcRejectReason } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 import type { BridgeOutcome } from './operation-bridge.js';
+
+// 物の中身の読み取りの結果（UI-07）。この値だけが本文を運び、画面へは desktop.canvas_content の応答でだけ返す。
+export interface CanvasContentValue {
+  readonly canvas_revision: string;
+  readonly item_id: string;
+  readonly open_index: number | null;
+  readonly content: CanvasContent;
+}
 
 export interface CanvasHost {
   readonly contract: DesktopContract;
@@ -67,6 +77,12 @@ export class CanvasBridge {
   readonly #inflight = new Set<Promise<void>>();
   // 画面に渡した参照 → 中枢の識別子（main の中だけ。物を開くときに main が解決する。UI-07 以降）。
   #refs = new Map<string, { readonly kind: string; readonly id: string }>();
+  // 物・対象・同じ対象の何番目か → 画面へ渡した参照。同じ世代の中では、同じ物の同じ対象に同じ参照を保つ（配置だけが変わった版で、
+  // 画面が持つ本文・開いたメールを取り直さないため）。記述にない対象の参照は次の記述で捨てる。世代が進む（reset）と全部作り直す。
+  #refKeys = new Map<string, string>();
+  // キャンバスの窓そのものが隠れている（hide・最小化。UI-07）。隠れている間は、版の知らせ・再接続・ロックの解除・入出力の再開が
+  // あっても、記述も本文も取らず、送り直さない。show・restore（show）で取り直す。後ろにあるが表示している間は隠れていない。
+  #hidden = false;
 
   constructor(host: CanvasHost) {
     this.#host = host;
@@ -88,9 +104,23 @@ export class CanvasBridge {
     this.#gen += 1;
     this.#fetchSeq += 1;
     this.#refs = new Map();
+    this.#refKeys = new Map();
     if (this.#view === null) return;
     this.#view = null;
     this.#host.publish(null);
+  }
+
+  // 窓そのものが隠れた: 記述・参照・取っている途中の答えを捨て（reset）、表示し直されるまで取らない。
+  hide(): void {
+    this.#hidden = true;
+    this.reset();
+  }
+
+  // 窓が表示し直された: 取れるようにして、今の記述を取り直す。
+  show(): void {
+    if (!this.#hidden) return;
+    this.#hidden = false;
+    this.resend();
   }
 
   // 入出力の状態（停止・io_epoch）が変わった。停止中・世代が進んだときは記述と参照を捨てる（ロックと同じ。ADR 0032 の
@@ -115,6 +145,7 @@ export class CanvasBridge {
   // 画面が通知を受け取る準備を終えた（キャンバスの窓が読み込み直した・購読を始めた）。今の記述を送り直す。記述がなければ
   // 取り直す。通知が購読より先に来て取り逃した画面を、次の変更まで空のままにしない。
   resend(): void {
+    if (this.#hidden) return;
     if (this.#view !== null) this.#host.publish(this.#view);
     else void this.refresh();
   }
@@ -145,6 +176,7 @@ export class CanvasBridge {
   }
 
   async #refresh(): Promise<void> {
+    if (this.#hidden) return;
     const connection = this.#host.connection();
     if (connection === null || !this.#host.unlocked()) return;
     // 停止中は取らない。停止をまたいだ（世代が進んだ）記述は捨てる。
@@ -194,6 +226,7 @@ export class CanvasBridge {
   // 参照を不透明な参照に置き換えて画面へ渡す。
   #adopt(document: CanvasDocument): void {
     const refs = new Map<string, { kind: string; id: string }>();
+    const refKeys = new Map<string, string>();
     const view: DesktopCanvasView = {
       canvas_revision: document.canvas_revision,
       reading_order: [...document.reading_order],
@@ -211,7 +244,12 @@ export class CanvasBridge {
         data: {
           more_count: item.data.more_count,
           item_refs: item.data.item_refs.map((entry) => {
-            const ref = this.#host.newRef();
+            // 同じ物の同じ対象（同じ対象が複数あれば出てきた順）には、前の記述と同じ参照を使う。
+            const base = `${item.item_id}|${entry.kind}|${entry.id}`;
+            let key = base;
+            for (let n = 1; refKeys.has(key); n += 1) key = `${base}|${n}`;
+            const ref = this.#refKeys.get(key) ?? this.#host.newRef();
+            refKeys.set(key, ref);
             refs.set(ref, { kind: entry.kind, id: entry.id });
             return { kind: entry.kind, ref };
           }),
@@ -224,6 +262,7 @@ export class CanvasBridge {
       return;
     }
     this.#refs = refs;
+    this.#refKeys = refKeys;
     this.#view = view;
     this.#host.publish(view);
   }
@@ -268,6 +307,97 @@ export class CanvasBridge {
     // 版の知らせも届くが、先に取る（画面の送信中の位置を早く解く）。
     void this.refresh();
     return { ok: true, value: applied.canvas_revision };
+  }
+
+  // 物の中身（本文）の読み取り（キャンバスの窓から。UI-07）。画面が描いている版（expected）の物について、中枢から許可範囲内で
+  // 取り、形式（CanvasContentResponse）と意味（canvasContentErrors）の両方を通ったものだけを返す。本文は呼び出しの間の
+  // メモリーにだけ置き、main は保存も記録もしない（中身は応答で画面へ返し、通知・ログに載せない）。openRef は本文を開く行の
+  // 不透明な参照（画面に渡した ref）で、main が item_refs の位置にして中枢へ送る（中枢の識別子は画面にも中枢の要求にも
+  // 出ない）。画面が描いている版と食い違う（物がない・版が違う・取得の間に版が進んだ）ときは canvas_conflict にして、
+  // 取り直しは画面が新しい記述で行う。世代（ロック・停止・切断）が変わったら中身を渡さない。
+  async content(
+    itemId: string,
+    expected: string,
+    openRef: string | null,
+  ): Promise<BridgeOutcome<CanvasContentValue>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    if (!this.#host.unlocked()) return fail('device_locked');
+    if (!this.#host.io().permitted) return fail('input_stopped');
+    const view = this.#view;
+    if (view === null || expected !== view.canvas_revision)
+      return fail('canvas_conflict');
+    const item = view.items.find((entry) => entry.item_id === itemId);
+    if (item === undefined) return fail('canvas_conflict');
+    let openIndex: number | null = null;
+    if (openRef !== null) {
+      openIndex = item.data.item_refs.findIndex(
+        (entry) => entry.ref === openRef,
+      );
+      // 本文を開けるのはメールだけ。画面に渡した参照でなければ送らない。
+      if (openIndex < 0 || item.component !== 'mail_card')
+        return fail('canvas_conflict');
+    }
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/canvas/content',
+      body: {
+        expected_canvas_revision: expected,
+        item_id: itemId,
+        open_index: openIndex,
+      },
+      scoped: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    // 世代が変わった（ロック・停止・切断）: 中身を渡さない。読み取りなので送り直してよいが、自動ではしない。
+    if (gen !== this.#gen || !this.#host.unlocked())
+      return fail(this.#host.unlocked() ? 'not_connected' : 'device_locked');
+    const after = this.#host.io();
+    if (!after.permitted) return fail('input_stopped');
+    if (outcome.kind === 'unknown') return fail('not_connected');
+    if (outcome.status === 409) {
+      // 中枢の記述が先に進んでいた（参照の位置がずれる）。今の記述を取り直す。
+      void this.refresh();
+      return fail('canvas_conflict');
+    }
+    if (
+      outcome.status !== 200 ||
+      !this.#host.contract.valid('CanvasContentResponse', outcome.body)
+    )
+      return fail('core_rejected');
+    const response = outcome.body as CanvasContentResponse;
+    // 取っている間に画面の記述が進んだ・別の物の中身が返った: 渡さない。
+    if (
+      this.#view === null ||
+      this.#view.canvas_revision !== expected ||
+      response.canvas_revision !== expected ||
+      response.item_id !== itemId ||
+      response.open_index !== openIndex
+    )
+      return fail('canvas_conflict');
+    if (
+      canvasContentErrors(response.content, {
+        component: item.component,
+        refCount: item.data.item_refs.length,
+        openIndex,
+      }).length > 0
+    ) {
+      // 契約か意味の検査に反した。画面へは渡さない（ログは理由の種類だけ。中身を出さない）。
+      this.#host.log('canvas_content_rejected');
+      return fail('core_rejected');
+    }
+    return {
+      ok: true,
+      value: {
+        canvas_revision: response.canvas_revision,
+        item_id: response.item_id,
+        open_index: response.open_index,
+        content: response.content,
+      },
+    };
   }
 
   // 発言（入力バーから）。流れへ送り、文字の結果を返す。キャンバスの記述は版の知らせと取得で渡す

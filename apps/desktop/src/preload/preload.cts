@@ -33,6 +33,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.canvas_summon',
   'desktop.status_panel',
   'desktop.canvas_user_op',
+  'desktop.canvas_content',
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',
@@ -58,13 +59,20 @@ const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
       channel !== 'desktop.status_panel' &&
       channel !== 'desktop.canvas_user_op' &&
       // 予算の確認（B07-05）は状態の層だけ（従来の窓には予算の画面がない）。
-      !channel.startsWith('desktop.budget_'),
+      !channel.startsWith('desktop.budget_') &&
+      channel !== 'desktop.canvas_content',
   ),
-  // キャンバスは状態の取得と、物のユーザーの操作だけ（UI-06。承認・停止を使えない）。
-  canvas: ['desktop.get_state', 'desktop.canvas_user_op'],
+  // キャンバスは状態の取得と、物のユーザーの操作・物の中身の読み取りだけ（UI-06・UI-07。承認・停止を使えない）。
+  canvas: [
+    'desktop.get_state',
+    'desktop.canvas_user_op',
+    'desktop.canvas_content',
+  ],
   status: REQUEST_CHANNELS.filter(
     (channel) =>
-      channel !== 'desktop.turn_submit' && channel !== 'desktop.canvas_user_op',
+      channel !== 'desktop.turn_submit' &&
+      channel !== 'desktop.canvas_user_op' &&
+      channel !== 'desktop.canvas_content',
   ),
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

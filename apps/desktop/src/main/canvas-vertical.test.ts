@@ -554,13 +554,13 @@ test(
     await waitUntil(() => latest(client)?.canvas_revision === '2', 'rev 2');
     // 描いている版を添える。
     assert.equal(client.streamBodies[1]?.['expected_canvas_revision'], '1');
-    // 同じカードの中身の更新（物は 1 枚のまま）。参照は新しい記述ごとに作り直す（前の参照を使い回さない）。
+    // 同じカードの中身の更新（物は 1 枚のまま）。同じ世代の中で同じ対象（同じ予定）なら、同じ参照を保つ（UI-07 の PR #124 の
+    // レビュー。画面が持つ本文を、対象が変わらないのに取り直さないため）。
     const view = latest(client) as DesktopCanvasView;
     assert.equal(view.items.length, 1);
     const secondRefs = view.items[0]?.data.item_refs ?? [];
     assert.equal(secondRefs.length, 4);
-    for (const ref of secondRefs)
-      assert(!firstRefs.some((old) => old.ref === ref.ref));
+    assert.deepEqual(secondRefs, firstRefs);
     // 知らない文は聞き返し（文字の結果）。キャンバスは変わらない。固定の待ちは使わず、順序で確かめる: 聞き返しの後に本物の
     // 変更（版 3）を行い、その知らせ（購読は順番どおり）が届くまでに、版 3 より前の知らせが 1 つも出ていないこと。
     const seen: string[] = [];
@@ -883,12 +883,12 @@ test(
         false,
         channel,
       );
-    // キャンバスが使えるのは状態の取得と、物のユーザーの操作（UI-06）だけ（すべてのチャネルのうちの 2 つ）。
+    // キャンバスが使えるのは状態の取得と、物のユーザーの操作（UI-06）・物の中身の読み取り（UI-07）だけ（すべてのチャネルのうちの 3 つ）。
     assert.deepEqual(
       DESKTOP_IPC_CHANNELS.filter((channel) =>
         desktopChannelAllowedForRole('canvas', channel),
       ),
-      ['desktop.get_state', 'desktop.canvas_user_op'],
+      ['desktop.get_state', 'desktop.canvas_user_op', 'desktop.canvas_content'],
     );
     assert.equal(client.requests.length, requestsBefore);
 
@@ -1499,5 +1499,301 @@ test(
           false,
           `${file.path} ${needle}`,
         );
+  },
+);
+
+// UI-07（#99）: 物の中身（本文）。キャンバスの窓（11）が main に求め、main が中枢から許可範囲内で取って返す。期待値（件数・題名・
+// 拒否の理由）は手で書いた（中枢の模擬の中身は apps/core/src/canvas-content.ts の合成データ）。
+const contentOp = (
+  client: Client,
+  expected: string,
+  itemId: string,
+  openRef: string | null = null,
+  webContentsId = 11,
+) =>
+  client.ipc(webContentsId, 'desktop.canvas_content', {
+    item_id: itemId,
+    expected_canvas_revision: expected,
+    open_ref: openRef,
+  });
+
+const CONTENT_TITLES = [
+  '歯医者の予約を入れる',
+  '書類を郵送する',
+  '電球を買う',
+  '週のメモを整える',
+];
+
+test(
+  'UI-07: the canvas window gets the content of its card through main, also while it is in the background; the body reaches no other window, no notification and no log',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const front = { value: false };
+    const client = await startClient(t, hub, { front });
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const contentRequests = () =>
+      client.requests.filter((line) => line === 'POST /v1/canvas/content');
+    assert.equal(contentRequests().length, 0);
+
+    // 後ろにある間（前に出ていない）も、描いている物の中身を取れる。
+    const ok = await contentOp(client, '1', 'errands');
+    assert.equal(ok.outcome, 'ok', JSON.stringify(ok));
+    assert.equal(field(ok, 'canvas_revision'), '1');
+    assert.equal(field(ok, 'item_id'), 'errands');
+    assert.equal(field(ok, 'open_index'), null);
+    assert(contract.valid('DesktopIpcResponse', ok));
+    const content = field(ok, 'content') as {
+      component: string;
+      rows: { title: string; state: string }[];
+    };
+    assert.equal(content.component, 'list');
+    assert.deepEqual(
+      content.rows.map((row) => row.title),
+      CONTENT_TITLES,
+    );
+    assert.equal(contentRequests().length, 1);
+
+    // 中枢の識別子（予定の参照）も、画面の参照（ref）も、本文には入らない。
+    const core = await client.coreCanvas();
+    const realIds = core.items[0]?.data.item_refs.map((ref) => ref.id) ?? [];
+    assert.equal(realIds.length, 4);
+    const body = JSON.stringify(ok);
+    for (const real of realIds) assert(!body.includes(real), real);
+    for (const ref of latest(client)?.items[0]?.data.item_refs ?? [])
+      assert(!body.includes(ref.ref), ref.ref);
+
+    // 状態の層（12）・入力バー（13）は、本文を求められない（役割の表）。中枢へも送らない。
+    for (const id of [12, 13]) {
+      const refused = await contentOp(client, '1', 'errands', null, id);
+      assert.equal(refused.outcome, 'rejected', String(id));
+      assert.equal(field(refused, 'reason'), 'untrusted_sender', String(id));
+      assert(!JSON.stringify(refused).includes('歯医者'));
+    }
+    assert.equal(contentRequests().length, 1);
+
+    // 本文は通知（キャンバスの窓へ渡す記述）にもログにも載らない。
+    for (const needle of ['歯医者', '書類を郵送', '電球']) {
+      assert(!JSON.stringify(client.canvasNotices).includes(needle), needle);
+      assert(!client.logs.join('\n').includes(needle), needle);
+    }
+
+    // 版が違う・物がない: canvas_conflict（本文は返さない）。古い版・新しい版のどちらも中枢へは送らない。
+    for (const [label, expected, item] of [
+      ['stale', '0', 'errands'],
+      ['newer', '2', 'errands'],
+      ['missing', '1', 'ghost'],
+    ] as const) {
+      const refused = await contentOp(client, expected, item);
+      assert.equal(refused.outcome, 'rejected', label);
+      assert.equal(field(refused, 'reason'), 'canvas_conflict', label);
+    }
+    assert.equal(contentRequests().length, 1);
+
+    // メールの本文を開くのは本人の操作なので、前に出ていないと拒否される（中枢へ送らない）。前に出ていても、
+    // 画面に渡した参照でなければ canvas_conflict。
+    const open = randomUUID();
+    const background = await contentOp(client, '1', 'errands', open);
+    assert.equal(field(background, 'reason'), 'screen_operation_required');
+    front.value = true;
+    const unknownRef = await contentOp(client, '1', 'errands', open);
+    assert.equal(field(unknownRef, 'reason'), 'canvas_conflict');
+    // 本文を開けないのはメール以外の物（用事の list の参照でも開けない）。
+    const listRef = latest(client)?.items[0]?.data.item_refs[0]?.ref ?? '';
+    const notMail = await contentOp(client, '1', 'errands', listRef);
+    assert.equal(field(notMail, 'reason'), 'canvas_conflict');
+    assert.equal(contentRequests().length, 1);
+  },
+);
+
+test(
+  'UI-07: no content while locked, stopped or after the lock; an answer that arrives after the lock is not shown; nothing of the body stays on the device',
+  { timeout: 60_000 },
+  async (t) => {
+    const gates: (() => void)[] = [];
+    let hold = false;
+    const io = { state: UNLOCKED };
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub, {
+      io,
+      holdResponse: (method, path) => {
+        if (!hold || method !== 'POST' || path !== '/v1/canvas/content')
+          return undefined;
+        return new Promise<void>((resolve) => gates.push(resolve));
+      },
+    });
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const sentContent = () =>
+      client.requests.filter((line) => line === 'POST /v1/canvas/content')
+        .length;
+
+    // 入出力の停止中は取らない（本文を渡さない）。
+    io.state = { lockState: 'unlocked', stopScope: 'local', ioEpoch: '0' };
+    const stopped = await contentOp(client, '1', 'errands');
+    assert.equal(field(stopped, 'reason'), 'input_stopped');
+    assert.equal(sentContent(), 0);
+    io.state = UNLOCKED;
+
+    // ふつうに取れる。端末のディレクトリには何も残らない（端末トークンの保存だけ）。
+    const ok = await contentOp(client, '1', 'errands');
+    assert.equal(ok.outcome, 'ok');
+    assert.equal(sentContent(), 1);
+    const core = await client.coreCanvas();
+    const ids = core.items.flatMap((entry) =>
+      entry.data.item_refs.map((refEntry) => refEntry.id),
+    );
+    const files = filesUnder(client.dir);
+    assert.deepEqual(
+      files.map((file) => file.path.slice(client.dir.length + 1)).sort(),
+      ['device-credential.bin'],
+    );
+    for (const file of files)
+      for (const needle of [...CONTENT_TITLES, '今日の用事', 'errands', ...ids])
+        assert.equal(
+          file.bytes.includes(Buffer.from(needle, 'utf8')),
+          false,
+          `${file.path} ${needle}`,
+        );
+
+    // 中枢の答えを保っている間にロックすると、答えが届いても本文を返さない。
+    hold = true;
+    const pending = contentOp(client, '1', 'errands');
+    await waitUntil(() => gates.length === 1, 'content gate');
+    client.link.setLockState('locked');
+    hold = false;
+    gates[0]?.();
+    const dropped = await pending;
+    assert.equal(dropped.outcome, 'rejected');
+    assert.equal(field(dropped, 'reason'), 'device_locked');
+    assert(!JSON.stringify(dropped).includes('歯医者'));
+
+    // ロック中は求められない（中枢へも送らない）。記述も捨てた。
+    const before = sentContent();
+    const locked = await client.ipc(11, 'desktop.canvas_content', {
+      item_id: 'errands',
+      expected_canvas_revision: '1',
+      open_ref: null,
+    });
+    assert.equal(locked.outcome, 'rejected');
+    assert.equal(sentContent(), before);
+    assert.equal(client.link.canvasView(), null);
+  },
+);
+
+test(
+  'UI-07 (review): moving the card keeps the opaque refs (so the screen keeps its content); hiding the canvas window drops the description, the refs and an answer on the way, and showing it again fetches a fresh one',
+  { timeout: 60_000 },
+  async (t) => {
+    const gates: (() => void)[] = [];
+    let hold = false;
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub, {
+      holdResponse: (method, path) => {
+        if (!hold || method !== 'POST' || path !== '/v1/canvas/content')
+          return undefined;
+        return new Promise<void>((resolve) => gates.push(resolve));
+      },
+    });
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const refsNow = () =>
+      latest(client)?.items[0]?.data.item_refs.map((entry) => entry.ref) ?? [];
+    const first = refsNow();
+    assert.equal(first.length, 4);
+    // 配置だけが変わる（動かす）。版は 2 に進むが、物のデータは同じなので、参照も同じ。
+    assert.equal(
+      (
+        await userOp(client, '1', {
+          kind: 'move',
+          item_id: 'errands',
+          cell: MOVED,
+        })
+      ).outcome,
+      'ok',
+    );
+    await waitUntil(() => latest(client)?.canvas_revision === '2', 'rev 2');
+    assert.deepEqual(refsNow(), first);
+    // 本文を取っている途中で、窓そのものが隠れた: 記述と参照を捨て、画面へ空を通知し、答えが届いても本文を返さない。
+    hold = true;
+    const pending = contentOp(client, '2', 'errands');
+    await waitUntil(() => gates.length === 1, 'content gate');
+    client.link.canvasHidden();
+    hold = false;
+    gates[0]?.();
+    const dropped = await pending;
+    assert.equal(dropped.outcome, 'rejected');
+    assert(!JSON.stringify(dropped).includes('歯医者'));
+    assert.equal(client.link.canvasView(), null);
+    assert.equal(client.canvasNotices.at(-1)?.canvas ?? null, null);
+    // 隠れている間は求められない（記述がない）。
+    const hidden = await contentOp(client, '2', 'errands');
+    assert.equal(field(hidden, 'reason'), 'canvas_conflict');
+    // 表示し直したら、今の記述を取り直して送る。参照は作り直す（世代が進んだ）。
+    client.link.canvasShown();
+    await waitUntil(
+      () => latest(client)?.canvas_revision === '2',
+      'shown again',
+    );
+    const again = refsNow();
+    assert.equal(again.length, 4);
+    for (const ref of first) assert(!again.includes(ref));
+    const ok = await contentOp(client, '2', 'errands');
+    assert.equal(ok.outcome, 'ok');
+  },
+);
+
+test(
+  'UI-07 (review 2): while the canvas window is hidden nothing is fetched or sent again (revision notices, lock and unlock), and showing it fetches the current description',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub);
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const canvasGets = () =>
+      client.requests.filter((line) => line === 'GET /v1/canvas').length;
+    client.link.canvasHidden();
+    assert.equal(client.link.canvasView(), null);
+    assert.equal(client.canvasNotices.at(-1)?.canvas ?? null, null);
+    const noticesBefore = client.canvasNotices.length;
+    const gets = canvasGets();
+    // 隠れている間に中枢の版が進む（版の知らせが届く）。main は取りに行かない。
+    const notice = nextNotice(client, (revision) => revision === '2');
+    assert.equal((await client.coreTurn('今日の予定を見せて')).status, 200);
+    await notice;
+    await client.link.canvasIdle();
+    assert.equal(canvasGets(), gets);
+    // ロックして解除しても取らない。
+    client.link.setLockState('locked');
+    client.link.setLockState('unlocked');
+    await client.link.canvasIdle();
+    assert.equal(canvasGets(), gets);
+    assert.equal(client.link.canvasView(), null);
+    // 通知を受け取る準備の合図（読み込み直し）でも送り直さない。
+    client.link.canvasSubscribed();
+    await client.link.canvasIdle();
+    assert.equal(canvasGets(), gets);
+    assert.equal(client.canvasNotices.length, noticesBefore);
+    // 本文も取れない。
+    const hidden = await contentOp(client, '2', 'errands');
+    assert.equal(hidden.outcome, 'rejected');
+    // 表示し直したら、今の記述（版 2）を取り直して送る。
+    client.link.canvasShown();
+    await waitUntil(
+      () => latest(client)?.canvas_revision === '2',
+      'shown again',
+    );
+    assert.equal(canvasGets(), gets + 1);
+    assert.equal((await contentOp(client, '2', 'errands')).outcome, 'ok');
   },
 );

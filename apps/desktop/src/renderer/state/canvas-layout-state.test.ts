@@ -14,6 +14,7 @@ import {
   endDrag,
   heldOf,
   interactionAfterView,
+  interactionAfterViewport,
   keyOp,
   layoutForView,
   reveal,
@@ -416,4 +417,44 @@ test('keyboard: arrows move one cell, Shift+arrows resize, Delete closes, Alt+Do
     kind: 'close',
     item_id: 'a',
   });
+});
+
+// UI-07（Issue #99 の持ち越し、PR #121 の P3）: ドラッグの途中に画面の幅が変わったときは、ドラッグを中断する。
+test('a change of the screen size in the middle of a drag stops the drag and keeps the selection and the sent position', () => {
+  const canvas = view('3', [item('a')]);
+  const wide = layoutForView(
+    canvas,
+    { width: 1280, height: 800 },
+    NO_INSETS,
+    NO_INTERACTION,
+  );
+  const box = wide.boxes[0];
+  assert(box);
+  const dragging = dragTo(
+    beginDrag(NO_INTERACTION, box, 'move', { x: 60, y: 40 }),
+    wide.grid,
+    { x: 158, y: 40 },
+  );
+  assert.notEqual(dragging.drag, null);
+  const stopped = interactionAfterViewport(dragging);
+  assert.equal(stopped.drag, null);
+  // 選んだ物は残る。守る物（エンジンに守らせる位置）はなくなる。
+  assert.equal(stopped.selected, 'a');
+  assert.equal(heldOf(stopped), null);
+  // 離しても操作は出ない。
+  assert.deepEqual(endDrag(stopped), { state: stopped, op: null });
+  // ドラッグしていなければ何も変えない（同じ値を返す）。
+  assert.equal(interactionAfterViewport(NO_INTERACTION), NO_INTERACTION);
+  // 送信中の位置は、マスで持っていてエンジンが今の格子へ収めるので残す。
+  const pending = sent(
+    NO_INTERACTION,
+    {
+      kind: 'move',
+      item_id: 'a',
+      cell: { column: 3, row: 1, span: 4, rows: 2 },
+    },
+    '3',
+    { opId: 1, generation: 0 },
+  );
+  assert.equal(interactionAfterViewport(pending), pending);
 });

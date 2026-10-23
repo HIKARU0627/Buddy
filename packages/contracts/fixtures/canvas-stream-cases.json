@@ -6877,5 +6877,1975 @@
       "schema_version": 1,
       "target": "all"
     }
+  },
+  {
+    "id": "content-list-valid",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "歯医者の予約を入れる",
+          "due_at": "2026-10-24T01:00:00Z",
+          "state": "open"
+        },
+        {
+          "title": "書類を郵送する",
+          "due_at": null,
+          "state": "done"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "list",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-list-refs-mismatch",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "歯医者の予約を入れる",
+          "due_at": "2026-10-24T01:00:00Z",
+          "state": "open"
+        },
+        {
+          "title": "書類を郵送する",
+          "due_at": null,
+          "state": "done"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "list",
+      "ref_count": 3,
+      "open_index": null
+    },
+    "content_errors": ["refs_mismatch"]
+  },
+  {
+    "id": "content-list-component-mismatch",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "歯医者の予約を入れる",
+          "due_at": "2026-10-24T01:00:00Z",
+          "state": "open"
+        },
+        {
+          "title": "書類を郵送する",
+          "due_at": null,
+          "state": "done"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "table",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": ["component_mismatch"]
+  },
+  {
+    "id": "content-list-51-rows",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-list-50-rows",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        },
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "list",
+      "ref_count": 50,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-list-row-extra-field",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "open",
+          "ref": "x"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-list-state-unknown",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "用事",
+          "due_at": null,
+          "state": "blocked"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-list-title-rlo",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "用事‮abc",
+          "due_at": null,
+          "state": "open"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-list-title-newline",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "用事\n二行目",
+          "due_at": null,
+          "state": "open"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-list-markup-as-plain-text",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "list",
+      "rows": [
+        {
+          "title": "<b>太字</b> https://example.com",
+          "due_at": null,
+          "state": "open"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "list",
+      "ref_count": 1,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-table-valid",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "table",
+      "columns": ["項目", "場所", "期限"],
+      "rows": [
+        {
+          "cells": ["電球を買う", "駅前", "10 日"]
+        },
+        {
+          "cells": ["本を返す", "図書館", ""]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "table",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-table-cells-mismatch",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "table",
+      "columns": ["項目", "場所", "期限"],
+      "rows": [
+        {
+          "cells": ["電球を買う", "駅前"]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "table",
+      "ref_count": 1,
+      "open_index": null
+    },
+    "content_errors": ["columns_mismatch"]
+  },
+  {
+    "id": "content-table-9-columns",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "table",
+      "columns": ["c", "c", "c", "c", "c", "c", "c", "c", "c"],
+      "rows": []
+    }
+  },
+  {
+    "id": "content-table-8-columns-50-rows",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "table",
+      "columns": ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7"],
+      "rows": [
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        },
+        {
+          "cells": ["v", "v", "v", "v", "v", "v", "v", "v"]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "table",
+      "ref_count": 50,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-table-51-rows",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "table",
+      "columns": ["項目", "場所", "期限"],
+      "rows": [
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        },
+        {
+          "cells": ["a", "b", "c"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-timeline-valid",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "schedule_timeline",
+      "day_start_minute": 480,
+      "day_end_minute": 1200,
+      "events": [
+        {
+          "title": "打ち合わせ",
+          "start_minute": 540,
+          "end_minute": 600
+        },
+        {
+          "title": "資料づくり",
+          "start_minute": 570,
+          "end_minute": 660
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "schedule_timeline",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-timeline-outside-range",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "schedule_timeline",
+      "day_start_minute": 480,
+      "day_end_minute": 1200,
+      "events": [
+        {
+          "title": "早朝",
+          "start_minute": 420,
+          "end_minute": 500
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "schedule_timeline",
+      "ref_count": 1,
+      "open_index": null
+    },
+    "content_errors": ["range_invalid"]
+  },
+  {
+    "id": "content-timeline-start-after-end",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "schedule_timeline",
+      "day_start_minute": 480,
+      "day_end_minute": 1200,
+      "events": [
+        {
+          "title": "逆",
+          "start_minute": 700,
+          "end_minute": 600
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "schedule_timeline",
+      "ref_count": 1,
+      "open_index": null
+    },
+    "content_errors": ["range_invalid"]
+  },
+  {
+    "id": "content-timeline-axis-reversed",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "schedule_timeline",
+      "day_start_minute": 900,
+      "day_end_minute": 600,
+      "events": []
+    },
+    "content_expect": {
+      "component": "schedule_timeline",
+      "ref_count": 0,
+      "open_index": null
+    },
+    "content_errors": ["range_invalid"]
+  },
+  {
+    "id": "content-timeline-minute-1441",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "schedule_timeline",
+      "day_start_minute": 480,
+      "day_end_minute": 1441,
+      "events": [
+        {
+          "title": "打ち合わせ",
+          "start_minute": 540,
+          "end_minute": 600
+        },
+        {
+          "title": "資料づくり",
+          "start_minute": 570,
+          "end_minute": 660
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-mail-closed",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "mail_card",
+      "mails": [
+        {
+          "from": "山田 花子",
+          "subject": "来週の予定について",
+          "received_at": "2026-10-24T00:30:00Z",
+          "labels": ["連絡"],
+          "body": null
+        },
+        {
+          "from": "町の図書館",
+          "subject": "貸出期限のお知らせ",
+          "received_at": "2026-10-24T01:07:00Z",
+          "labels": [],
+          "body": null
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "mail_card",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-mail-opened",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "mail_card",
+      "mails": [
+        {
+          "from": "山田 花子",
+          "subject": "来週の予定について",
+          "received_at": "2026-10-24T00:30:00Z",
+          "labels": ["連絡"],
+          "body": null
+        },
+        {
+          "from": "町の図書館",
+          "subject": "貸出期限のお知らせ",
+          "received_at": "2026-10-24T01:07:00Z",
+          "labels": [],
+          "body": "貸出期限が近づいています。\n返却をお願いします。"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "mail_card",
+      "ref_count": 2,
+      "open_index": 1
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-mail-body-without-open",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "mail_card",
+      "mails": [
+        {
+          "from": "山田 花子",
+          "subject": "来週の予定について",
+          "received_at": "2026-10-24T00:30:00Z",
+          "labels": ["連絡"],
+          "body": null
+        },
+        {
+          "from": "町の図書館",
+          "subject": "貸出期限のお知らせ",
+          "received_at": "2026-10-24T01:07:00Z",
+          "labels": [],
+          "body": "貸出期限が近づいています。\n返却をお願いします。"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "mail_card",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": ["body_not_opened"]
+  },
+  {
+    "id": "content-mail-body-of-another-row",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "mail_card",
+      "mails": [
+        {
+          "from": "山田 花子",
+          "subject": "来週の予定について",
+          "received_at": "2026-10-24T00:30:00Z",
+          "labels": ["連絡"],
+          "body": null
+        },
+        {
+          "from": "町の図書館",
+          "subject": "貸出期限のお知らせ",
+          "received_at": "2026-10-24T01:07:00Z",
+          "labels": [],
+          "body": "貸出期限が近づいています。\n返却をお願いします。"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "mail_card",
+      "ref_count": 2,
+      "open_index": 0
+    },
+    "content_errors": ["body_not_opened"]
+  },
+  {
+    "id": "content-mail-open-without-body",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "mail_card",
+      "mails": [
+        {
+          "from": "山田 花子",
+          "subject": "来週の予定について",
+          "received_at": "2026-10-24T00:30:00Z",
+          "labels": ["連絡"],
+          "body": null
+        },
+        {
+          "from": "町の図書館",
+          "subject": "貸出期限のお知らせ",
+          "received_at": "2026-10-24T01:07:00Z",
+          "labels": [],
+          "body": null
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "mail_card",
+      "ref_count": 2,
+      "open_index": 1
+    },
+    "content_errors": ["body_not_opened"]
+  },
+  {
+    "id": "content-mail-6-labels",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "mail_card",
+      "mails": [
+        {
+          "from": "山田 花子",
+          "subject": "来週の予定について",
+          "received_at": "2026-10-24T00:30:00Z",
+          "labels": ["a", "b", "c", "d", "e", "f"],
+          "body": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-mail-body-too-long",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "mail_card",
+      "mails": [
+        {
+          "from": "山田 花子",
+          "subject": "来週の予定について",
+          "received_at": "2026-10-24T00:30:00Z",
+          "labels": ["連絡"],
+          "body": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-compare-valid",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "compare",
+      "columns": ["案 A", "案 B"],
+      "rows": [
+        {
+          "label": "場所",
+          "values": ["駅から近い", "駅から遠い"]
+        },
+        {
+          "label": "時間",
+          "values": ["午前", "午前"]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "compare",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-compare-three-columns",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "compare",
+      "columns": ["A", "B", "C"],
+      "rows": [
+        {
+          "label": "費用",
+          "values": ["安い", "高い", "普通"]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "compare",
+      "ref_count": 5,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-compare-values-mismatch",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "compare",
+      "columns": ["案 A", "案 B"],
+      "rows": [
+        {
+          "label": "場所",
+          "values": ["駅から近い", "駅から遠い"]
+        },
+        {
+          "label": "時間",
+          "values": ["午前", "午前"]
+        },
+        {
+          "label": "費用",
+          "values": ["安い"]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "compare",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": ["columns_mismatch"]
+  },
+  {
+    "id": "content-compare-values-three-for-two-columns",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "compare",
+      "columns": ["案 A", "案 B"],
+      "rows": [
+        {
+          "label": "費用",
+          "values": ["a", "b", "c"]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "compare",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": ["columns_mismatch"]
+  },
+  {
+    "id": "content-compare-one-column",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "compare",
+      "columns": ["A"],
+      "rows": []
+    },
+    "content_expect": {
+      "component": "compare",
+      "ref_count": 1,
+      "open_index": null
+    },
+    "content_errors": ["limit_exceeded"]
+  },
+  {
+    "id": "content-compare-four-columns",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "compare",
+      "columns": ["A", "B", "C", "D"],
+      "rows": []
+    }
+  },
+  {
+    "id": "content-progress-valid",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "progress",
+      "steps": [
+        {
+          "label": "書類を集める",
+          "done": 4,
+          "total": 5
+        },
+        {
+          "label": "支払いを済ませる",
+          "done": 0,
+          "total": 1
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "progress",
+      "ref_count": 1,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-progress-over",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "progress",
+      "steps": [
+        {
+          "label": "超過",
+          "done": 6,
+          "total": 5
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "progress",
+      "ref_count": 1,
+      "open_index": null
+    },
+    "content_errors": ["progress_invalid"]
+  },
+  {
+    "id": "content-progress-total-zero",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "progress",
+      "steps": [
+        {
+          "label": "ゼロ",
+          "done": 0,
+          "total": 0
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-progress-13-steps",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "progress",
+      "steps": [
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        },
+        {
+          "label": "s",
+          "done": 0,
+          "total": 1
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-chart-valid",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "chart",
+      "x_labels": ["月", "火", "水"],
+      "series": [
+        {
+          "label": "今週",
+          "mark": "bar",
+          "values": [3, 5.5, 2]
+        },
+        {
+          "label": "目標",
+          "mark": "line",
+          "values": [4, 4, 4]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "chart",
+      "ref_count": 0,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-chart-values-mismatch",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "chart",
+      "x_labels": ["月", "火", "水"],
+      "series": [
+        {
+          "label": "今週",
+          "mark": "bar",
+          "values": [3, 5]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "chart",
+      "ref_count": 0,
+      "open_index": null
+    },
+    "content_errors": ["chart_invalid"]
+  },
+  {
+    "id": "content-chart-mark-area",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "chart",
+      "x_labels": ["月", "火", "水"],
+      "series": [
+        {
+          "label": "今週",
+          "mark": "area",
+          "values": [3, 5, 2]
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-chart-4-series",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "chart",
+      "x_labels": ["月", "火", "水"],
+      "series": [
+        {
+          "label": "s0",
+          "mark": "line",
+          "values": [1, 2, 3]
+        },
+        {
+          "label": "s1",
+          "mark": "line",
+          "values": [1, 2, 3]
+        },
+        {
+          "label": "s2",
+          "mark": "line",
+          "values": [1, 2, 3]
+        },
+        {
+          "label": "s3",
+          "mark": "line",
+          "values": [1, 2, 3]
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-chart-one-point",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "chart",
+      "x_labels": ["月"],
+      "series": [
+        {
+          "label": "今週",
+          "mark": "bar",
+          "values": [3]
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "chart",
+      "ref_count": 0,
+      "open_index": null
+    },
+    "content_errors": ["limit_exceeded"]
+  },
+  {
+    "id": "content-sources-valid",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "source_list",
+      "sources": [
+        {
+          "title": "公共の案内ページ",
+          "url": "https://www.example.com/guide/overview"
+        },
+        {
+          "title": "よくある質問",
+          "url": "https://support.example.net/faq?topic=schedule"
+        }
+      ]
+    },
+    "content_expect": {
+      "component": "source_list",
+      "ref_count": 2,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-sources-http",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "source_list",
+      "sources": [
+        {
+          "title": "平文",
+          "url": "http://www.example.com/"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-sources-javascript",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "source_list",
+      "sources": [
+        {
+          "title": "スクリプト",
+          "url": "javascript:alert(1)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-sources-credentials",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "source_list",
+      "sources": [
+        {
+          "title": "認証つき",
+          "url": "https://user@example.com/"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-sources-space",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "source_list",
+      "sources": [
+        {
+          "title": "空白",
+          "url": "https://example.com/a b"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-sources-no-host",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "source_list",
+      "sources": [
+        {
+          "title": "空",
+          "url": "https:///path"
+        }
+      ]
+    }
+  },
+  {
+    "id": "content-text-valid",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "text",
+      "text": "今日の予定は 3 件です。\n午後は資料づくりに時間を取れます。"
+    },
+    "content_expect": {
+      "component": "text",
+      "ref_count": 0,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-text-markup-as-text",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "text",
+      "text": "<script>alert(1)</script>\nhttps://example.com/"
+    },
+    "content_expect": {
+      "component": "text",
+      "ref_count": 0,
+      "open_index": null
+    },
+    "content_errors": []
+  },
+  {
+    "id": "content-text-blank",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": true,
+    "value": {
+      "component": "text",
+      "text": "   "
+    },
+    "content_expect": {
+      "component": "text",
+      "ref_count": 0,
+      "open_index": null
+    },
+    "content_errors": ["text_invalid"]
+  },
+  {
+    "id": "content-text-rlo",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "text",
+      "text": "ab‮cd"
+    }
+  },
+  {
+    "id": "content-text-empty",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "text",
+      "text": ""
+    }
+  },
+  {
+    "id": "content-text-unknown-field",
+    "refs": ["ADR 0032 UI-07 部品のカタログ"],
+    "schema": "CanvasContent",
+    "valid": false,
+    "value": {
+      "component": "text",
+      "text": "本文",
+      "html": "<b>x</b>"
+    }
   }
 ]

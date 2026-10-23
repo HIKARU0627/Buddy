@@ -118,6 +118,9 @@ export type BuddyContract =
   | StreamTurnResponse
   | CanvasUserOpRequest
   | CanvasUserOpResponse
+  | CanvasContent
+  | CanvasContentRequest
+  | CanvasContentResponse
   | DesktopCanvasDisplaySettings;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
@@ -864,6 +867,15 @@ export type DesktopIpcRequest =
       };
     }
   | {
+      channel: 'desktop.canvas_content';
+      request_id: Id;
+      payload: {
+        item_id: CanvasItemId;
+        expected_canvas_revision: CanvasRevision;
+        open_ref: Id | null;
+      };
+    }
+  | {
       channel: 'desktop.budget_overage_decide';
       request_id: Id;
       payload: {
@@ -1032,6 +1044,15 @@ export type DesktopIpcResponse =
       canvas_revision: CanvasRevision;
     }
   | {
+      request_id: Id;
+      channel: 'desktop.canvas_content';
+      outcome: 'ok';
+      canvas_revision: CanvasRevision;
+      item_id: CanvasItemId;
+      open_index: CanvasOpenIndex | null;
+      content: CanvasContent;
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -1186,6 +1207,47 @@ export type DesktopPairingFailure =
   | 'storage_failed'
   | 'protocol_error';
 /**
+ * 物のデータの参照（item_refs）の位置（UI-07）。メールの本文を開く行。
+ */
+export type CanvasOpenIndex = number;
+/**
+ * キャンバスの物の中身（UI-07、ADR 0032）。記述（CanvasDocument）は参照だけで本文を持たず、中身は物ごとに、描くときに許可範囲内で取る（postCanvasContent）。中枢の識別子を含まない（行は item_refs と同じ順の位置で参照に結び付ける）。端末に保存せず、イベントにも入れない。ロック・停止・切断・世代の変化で捨てる。
+ */
+export type CanvasContent =
+  | CanvasContentList
+  | CanvasContentTable
+  | CanvasContentTimeline
+  | CanvasContentMail
+  | CanvasContentCompare
+  | CanvasContentProgress
+  | CanvasContentChart
+  | CanvasContentSources
+  | CanvasContentPlain;
+/**
+ * キャンバスの部品の本文の 1 行の文字列（UI-07、ADR 0032）。プレーンテキストとしてだけ描く（React の文字列の子。HTML として解釈せず、リンクにしない）。制御文字・改行・双方向の制御文字を拒否する。マークアップや URL の文字は文字として見えるだけ。
+ */
+export type CanvasContentText = string;
+/**
+ * 表・見比べるの値（UI-07）。空の文字列は値がないことを表す。1 行のプレーンテキスト。
+ */
+export type CanvasContentCell = string;
+/**
+ * キャンバスの部品の短い名前（ラベル・列の名前・軸の名前。UI-07）。24 文字まで、1 行のプレーンテキスト。
+ */
+export type CanvasContentLabel = string;
+/**
+ * 話の本体・メールの本文（UI-07）。改行（U+000A）だけを許すプレーンテキストで、2000 文字（UTF-16 の単位）まで。HTML として解釈せず、リンクにしない。
+ */
+export type CanvasContentBody = string;
+/**
+ * グラフの値（UI-07）。有限の数。
+ */
+export type CanvasChartValue = number;
+/**
+ * 出典の URL（UI-07）。https だけ。ユーザー名・パスワードを含まない。画面は外部のブラウザーで開く（main の window.open の規則。アプリの中では開かない）。
+ */
+export type CanvasContentUrl = string;
+/**
  * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。
  */
 export type DesktopIpcChannel =
@@ -1216,6 +1278,7 @@ export type DesktopIpcChannel =
   | 'desktop.canvas_summon'
   | 'desktop.status_panel'
   | 'desktop.canvas_user_op'
+  | 'desktop.canvas_content'
   | 'desktop.budget_overage_decide'
   | 'desktop.budget_overrun_review'
   | 'desktop.budget_manual_settle';
@@ -3937,6 +4000,490 @@ export interface DesktopOperationPreview {
   approvable: boolean;
 }
 /**
+ * list の中身（UI-07）。rows は物のデータの参照（item_refs）と同じ順・同じ件数（意味の検査）。
+ */
+export interface CanvasContentList {
+  component: 'list';
+  /**
+   * @maxItems 50
+   */
+  rows: CanvasContentListRow[];
+}
+/**
+ * 用事・気づきの行（UI-07）。題名・期限・状態（open は未了、done は済み、attention は気づき）。
+ */
+export interface CanvasContentListRow {
+  title: CanvasContentText;
+  due_at: UtcTime | null;
+  state: 'open' | 'done' | 'attention';
+}
+/**
+ * table の中身（UI-07）。列は 8 まで、行は 50 まで。rows は item_refs と同じ順・同じ件数で、各行の cells の数は columns と同じ（意味の検査）。
+ */
+export interface CanvasContentTable {
+  component: 'table';
+  /**
+   * @maxItems 8
+   */
+  columns:
+    | []
+    | [CanvasContentText]
+    | [CanvasContentText, CanvasContentText]
+    | [CanvasContentText, CanvasContentText, CanvasContentText]
+    | [
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+      ]
+    | [
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+      ]
+    | [
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+      ]
+    | [
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+      ]
+    | [
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+        CanvasContentText,
+      ];
+  /**
+   * @maxItems 50
+   */
+  rows: CanvasContentTableRow[];
+}
+/**
+ * 表の 1 行（UI-07）。cells の数は columns と同じ（意味の検査）。
+ */
+export interface CanvasContentTableRow {
+  /**
+   * @maxItems 8
+   */
+  cells:
+    | []
+    | [CanvasContentCell]
+    | [CanvasContentCell, CanvasContentCell]
+    | [CanvasContentCell, CanvasContentCell, CanvasContentCell]
+    | [
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+      ]
+    | [
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+      ]
+    | [
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+      ]
+    | [
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+      ]
+    | [
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+        CanvasContentCell,
+      ];
+}
+/**
+ * schedule_timeline の中身（UI-07）。時間の軸は 0 時からの分で day_start_minute から day_end_minute まで。events は item_refs と同じ順・同じ件数で、軸の範囲の中・開始が終了より前（意味の検査）。重なりは画面が位置で示す（決まった順に列を割り当てる）。
+ */
+export interface CanvasContentTimeline {
+  component: 'schedule_timeline';
+  day_start_minute: number;
+  day_end_minute: number;
+  /**
+   * @maxItems 50
+   */
+  events: CanvasContentEvent[];
+}
+/**
+ * 予定の 1 件（UI-07）。0 時からの分で開始と終了（開始が終了より前。意味の検査）。
+ */
+export interface CanvasContentEvent {
+  title: CanvasContentText;
+  start_minute: number;
+  end_minute: number;
+}
+/**
+ * mail_card の中身（UI-07）。差出人・件名・受信の時刻・ラベル。本文（body）は開いたときだけ（open_index の 1 通だけが非 null。ほかは null。意味の検査）。mails は item_refs と同じ順・同じ件数。
+ */
+export interface CanvasContentMail {
+  component: 'mail_card';
+  /**
+   * @maxItems 50
+   */
+  mails: CanvasContentMailEntry[];
+}
+/**
+ * メールの 1 通（UI-07）。差出人・件名・受信の時刻・ラベル。本文は開いた 1 通だけ（それ以外は null）。
+ */
+export interface CanvasContentMailEntry {
+  from: CanvasContentText;
+  subject: CanvasContentText;
+  received_at: UtcTime;
+  /**
+   * @maxItems 5
+   */
+  labels:
+    | []
+    | [CanvasContentLabel]
+    | [CanvasContentLabel, CanvasContentLabel]
+    | [CanvasContentLabel, CanvasContentLabel, CanvasContentLabel]
+    | [
+        CanvasContentLabel,
+        CanvasContentLabel,
+        CanvasContentLabel,
+        CanvasContentLabel,
+      ]
+    | [
+        CanvasContentLabel,
+        CanvasContentLabel,
+        CanvasContentLabel,
+        CanvasContentLabel,
+        CanvasContentLabel,
+      ];
+  body: CanvasContentBody | null;
+}
+/**
+ * compare の中身（UI-07）。2〜3 列を横に並べ、行ごとの値を比べる。各行の values の数は columns と同じ（意味の検査。参照の数とは結び付けない）。違いは画面が位置で示す（同じ値は 1 つにまとめ、違う値は列ごとに分ける）。
+ */
+export interface CanvasContentCompare {
+  component: 'compare';
+  /**
+   * @maxItems 3
+   */
+  columns:
+    | []
+    | [CanvasContentText]
+    | [CanvasContentText, CanvasContentText]
+    | [CanvasContentText, CanvasContentText, CanvasContentText];
+  /**
+   * @maxItems 12
+   */
+  rows:
+    | []
+    | [CanvasContentCompareRow]
+    | [CanvasContentCompareRow, CanvasContentCompareRow]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ]
+    | [
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+        CanvasContentCompareRow,
+      ];
+}
+/**
+ * 見比べるの 1 行（UI-07）。values の数は columns と同じ（意味の検査）。
+ */
+export interface CanvasContentCompareRow {
+  label: CanvasContentLabel;
+  /**
+   * @maxItems 3
+   */
+  values:
+    | []
+    | [CanvasContentCell]
+    | [CanvasContentCell, CanvasContentCell]
+    | [CanvasContentCell, CanvasContentCell, CanvasContentCell];
+}
+/**
+ * progress の中身（UI-07）。進み具合（done / total）。done が total を超えない（意味の検査。参照の数とは結び付けない）。
+ */
+export interface CanvasContentProgress {
+  component: 'progress';
+  /**
+   * @maxItems 12
+   */
+  steps:
+    | []
+    | [CanvasContentStep]
+    | [CanvasContentStep, CanvasContentStep]
+    | [CanvasContentStep, CanvasContentStep, CanvasContentStep]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ]
+    | [
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+        CanvasContentStep,
+      ];
+}
+/**
+ * 進み具合の 1 つ（UI-07）。done が total を超えない（意味の検査）。
+ */
+export interface CanvasContentStep {
+  label: CanvasContentText;
+  done: number;
+  total: number;
+}
+/**
+ * chart の中身（UI-07）。棒（bar）と折れ線（line）の系列。値の数は x_labels と同じ（意味の検査）。画面は SVG を React で描き、系列を色だけでなく形（棒の模様・線の種類・印）と直接のラベルで分ける。
+ */
+export interface CanvasContentChart {
+  component: 'chart';
+  /**
+   * @maxItems 24
+   */
+  x_labels: CanvasContentLabel[];
+  /**
+   * @maxItems 3
+   */
+  series:
+    | []
+    | [CanvasContentSeries]
+    | [CanvasContentSeries, CanvasContentSeries]
+    | [CanvasContentSeries, CanvasContentSeries, CanvasContentSeries];
+}
+/**
+ * グラフの系列（UI-07）。棒（bar）か折れ線（line）。values の数は x_labels と同じ（意味の検査）。
+ */
+export interface CanvasContentSeries {
+  label: CanvasContentLabel;
+  mark: 'bar' | 'line';
+  /**
+   * @maxItems 24
+   */
+  values: CanvasChartValue[];
+}
+/**
+ * source_list の中身（UI-07）。出典の題名と https の URL。sources は item_refs と同じ順・同じ件数。
+ */
+export interface CanvasContentSources {
+  component: 'source_list';
+  /**
+   * @maxItems 50
+   */
+  sources: CanvasContentSource[];
+}
+/**
+ * 出典の 1 件（UI-07）。題名と https の URL。
+ */
+export interface CanvasContentSource {
+  title: CanvasContentText;
+  url: CanvasContentUrl;
+}
+/**
+ * text の中身（UI-07）。話の本体（プレーンテキスト）。1 回の答えにつき 1 つまで（キャンバスの意味の検査）。
+ */
+export interface CanvasContentPlain {
+  component: 'text';
+  text: CanvasContentBody;
+}
+/**
  * 画面へ渡すキャンバスの今の記述（ADR 0032）。main が中枢から取り、形式（CanvasDocument）と意味（domain）の検査を通してから、参照を不透明な参照に置き換えて渡す。ロック・切断・世代の変化では渡した記述を捨てる（canvas を null にして通知する）。
  */
 export interface DesktopCanvasView {
@@ -4005,7 +4552,7 @@ export interface DesktopCanvasData {
   more_count: number;
 }
 /**
- * 画面へ渡す表示対象の参照（ADR 0032）。中枢の識別子（予定・メールの ID など）を main の中に持ち、画面には main が作った不透明な参照だけを渡す。ref は中枢の識別子から作らず、1 つの記述ごとに作り直す。
+ * 画面へ渡す表示対象の参照（ADR 0032）。中枢の識別子（予定・メールの ID など）を main の中に持ち、画面には main が作った不透明な参照だけを渡す。ref は中枢の識別子から作らず、同じ世代の中では同じ物の同じ対象に同じ参照を保ち（配置だけが変わった版で画面の本文を取り直さないため）、世代が進むと作り直す。
  */
 export interface DesktopCanvasRef {
   kind: string;
@@ -4239,4 +4786,24 @@ export interface CanvasUserOpRequest {
 export interface CanvasUserOpResponse {
   request_id: Id;
   canvas_revision: CanvasRevision;
+}
+/**
+ * 物の中身の読み取り（UI-07、ADR 0032）。expected_canvas_revision は端末が描いている版で、今と同じでなければ 409（中身と参照の位置がずれるため）。open_index は mail_card の本文を開く行（item_refs の位置）。null は本文を開かない。
+ */
+export interface CanvasContentRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_canvas_revision: CanvasRevision;
+  item_id: CanvasItemId;
+  open_index: CanvasOpenIndex | null;
+}
+/**
+ * 物の中身（UI-07、ADR 0032）。canvas_revision は中身を作ったときの版（要求の版と同じ）。
+ */
+export interface CanvasContentResponse {
+  request_id: Id;
+  canvas_revision: CanvasRevision;
+  item_id: CanvasItemId;
+  open_index: CanvasOpenIndex | null;
+  content: CanvasContent;
 }

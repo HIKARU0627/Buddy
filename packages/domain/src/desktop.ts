@@ -38,6 +38,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.status_panel',
   // UI-06: キャンバスの物を動かす・大きさを変える・閉じる・棚へ片付ける・棚から出す（キャンバスの窓からだけ。ADR 0032）。
   'desktop.canvas_user_op',
+  // UI-07: キャンバスの物の中身（本文）を main に求める（キャンバスの窓からだけ。ADR 0032）。
+  'desktop.canvas_content',
   // B07-05: 超過枠の承認・見送り、M 超過の確認、不明な費用の手での精算（状態の層からだけ。ADR 0039）。
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
@@ -170,6 +172,9 @@ export const DESKTOP_UNLOCKED_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.devices_list',
   // 自宅の登録の状態とこのマシンのネットワークの伏せた表示（B03-08）。
   'desktop.home_status',
+  // キャンバスの物の中身（UI-07）。内容なので、ロック中・不明は出さない。描いている物の中身は後ろにある間も取るので、
+  // 前面は求めない（メールの本文を開くときだけ、main が前に出ていることを別に確かめる）。
+  'desktop.canvas_content',
 ];
 
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
@@ -220,10 +225,15 @@ export type DesktopWindowRole = (typeof DESKTOP_WINDOW_ROLES)[number];
 // 状態の層のパネルを出す・しまう（UI-04）も状態の層だけ。キャンバスは状態の層を隠せない・動かせない。
 // 予算の確認（超過枠の承認・見送り、M 超過の確認、手での精算。B07-05）も状態の層だけ。
 // キャンバスの物のユーザーの操作（UI-06）はキャンバスの窓だけ。承認・停止のチャネルとは別で、物の置き場所だけを変える。
+// キャンバスの物の中身（UI-07）もキャンバスの窓だけ。読み取りだけで、状態の層・入力バー・従来の窓には本文を渡さない。
 export const DESKTOP_ROLE_CHANNELS: Readonly<
   Record<DesktopWindowRole, readonly DesktopIpcChannel[]>
 > = {
-  canvas: ['desktop.get_state', 'desktop.canvas_user_op'],
+  canvas: [
+    'desktop.get_state',
+    'desktop.canvas_user_op',
+    'desktop.canvas_content',
+  ],
   status: [
     'desktop.get_state',
     'desktop.io_stop',

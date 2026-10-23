@@ -1,7 +1,8 @@
 // キャンバスの物を配置のエンジンの結果どおりに置く（UI-03・UI-06、ADR 0032）。置く物は main が検査した記述
 // （DesktopCanvasView）だけで、位置と大きさは @buddy/domain の layoutCanvas（state/canvas-layout-state.ts）が決める。
 // DOM の順は読む順（読み上げ・キーボードの移動の順）。AI はコード・HTML・CSS・座標を出さず、描画は決まった部品だけで行う。
-// 今の部品は list の 1 種類で、そのほかの部品・フローティングウィンドウは UI-07（同じカードで描く）。
+// 9 つの部品（list・table・schedule_timeline・mail_card・compare・progress・chart・source_list・text）は ItemCard が描く（UI-07）。
+// 本文の中身は main から取り（useCanvasContents）、画面のメモリーだけに持つ。
 // - 下の中央（入力バー）と右の端（状態の層）はエンジンが空ける。棚は下の帯（入力バーの左、狭ければ入力バーの上）。
 // - キャンバスが前に出ている間（front）だけ操作を受ける: 見出しの帯を掴んで動かす、右下の角で大きさを変える、×で閉じる、
 //   下向きの矢印で棚へ片付ける、棚の物を押して出す。キーボードは Tab で選び、矢印・Shift ＋ 矢印・Delete・Alt ＋ ↓。
@@ -28,6 +29,7 @@ import {
   dragTo,
   endDrag,
   interactionAfterView,
+  interactionAfterViewport,
   keyOp,
   layoutForView,
   reveal,
@@ -39,7 +41,12 @@ import type {
   CanvasLayoutBox,
 } from '../../state/canvas-layout-state.js';
 import type { CanvasViewItem } from '../../state/canvas-state.js';
-import { ListCard } from './ListCard.js';
+import { useCanvasContents } from '../../state/use-canvas-contents.js';
+import type {
+  CanvasContents,
+  ContentLoader,
+} from '../../state/use-canvas-contents.js';
+import { ItemCard } from './ItemCard.js';
 
 const rectStyle = (rect: CanvasRect): CSSProperties => ({
   left: rect.x,
@@ -47,11 +54,6 @@ const rectStyle = (rect: CanvasRect): CSSProperties => ({
   width: rect.width,
   height: rect.height,
 });
-
-// これより低い箱（1 行分 = 72）は、行の代わりに件数の札だけを出す。
-const COMPACT_HEIGHT = 120;
-// これより狭い箱は、見出しを 1 行目に置き、件数と操作の印をその下の行へ移す（見出しを優先する）。
-const NARROW_WIDTH = 240;
 
 // 受け付けたら中枢が当てた後の版、拒否・結果不明は null。
 export type CanvasUserOpSender = (
@@ -65,6 +67,8 @@ function PlacedCard({
   front,
   selected,
   dragging,
+  contents,
+  now,
   onSelect,
   onKey,
   onGrab,
@@ -73,6 +77,8 @@ function PlacedCard({
   readonly item: CanvasViewItem;
   readonly box: CanvasLayoutBox;
   readonly front: boolean;
+  readonly contents: CanvasContents;
+  readonly now: number;
   readonly selected: boolean;
   readonly dragging: boolean;
   readonly onSelect: (id: string) => void;
@@ -106,10 +112,14 @@ function PlacedCard({
         dragging ? 'z-10 shadow-overlay' : ''
       } ${front && selected ? 'ring-2 ring-focus ring-offset-2 ring-offset-background' : ''}`}
     >
-      <ListCard
+      <ItemCard
         item={item}
-        compact={box.rect.height < COMPACT_HEIGHT}
-        narrow={box.rect.width < NARROW_WIDTH}
+        entry={contents.of(item.item_id)}
+        size={{ width: box.rect.width, height: box.rect.height }}
+        now={now}
+        front={front}
+        onOpenMail={(index) => contents.openMail(item.item_id, index)}
+        onCloseMail={() => contents.closeMail(item.item_id)}
         {...(movable ? { onGrab: (event) => onGrab(event, box, 'move') } : {})}
         controls={
           front ? (
@@ -301,6 +311,8 @@ export function CanvasBoard({
   viewport,
   insets = NO_INSETS,
   onUserOp,
+  loadContent,
+  now: nowOverride,
 }: {
   readonly view: DesktopCanvasView | null;
   // キャンバスが前に出ている（操作を受ける）。
@@ -308,9 +320,16 @@ export function CanvasBoard({
   readonly viewport: { readonly width: number; readonly height: number };
   readonly insets?: CanvasInsets;
   readonly onUserOp?: CanvasUserOpSender;
+  // 物の中身（本文）を main に求める（UI-07）。ない（試験・中身の経路がない）ときは取らず、取っている間の形で描く。
+  readonly loadContent?: ContentLoader;
+  // 時刻の書き方の基準（試験が固定する）。省略は今。
+  readonly now?: number;
 }) {
   const [interaction, setInteraction] =
     useState<CanvasInteraction>(NO_INTERACTION);
+  // 物の中身（本文）は画面のメモリーだけに持つ。記述がなくなる（ロック・停止・切断）と捨て、窓ごと隠れると状態ごと消える。
+  const contents = useCanvasContents(view, view !== null, loadContent);
+  const now = nowOverride ?? Date.now();
   const interactionRef = useRef(interaction);
   interactionRef.current = interaction;
   const viewRef = useRef(view);
@@ -324,6 +343,12 @@ export function CanvasBoard({
     if (view === null) generation.current += 1;
     setInteraction((prev) => interactionAfterView(prev, view));
   }, [view]);
+  // 窓の大きさ・作業領域の外の幅が変わった: ドラッグの途中なら中断する（掴んだときの格子で動かす先を決めているので。
+  // PR #121 の P3 の持ち越し）。
+  const viewportKey = `${viewport.width}x${viewport.height}:${insets.top},${insets.right},${insets.bottom},${insets.left}`;
+  useEffect(() => {
+    setInteraction((prev) => interactionAfterViewport(prev));
+  }, [viewportKey]);
   // 後ろへ戻った（Esc・ほかのアプリへの移動・ロック）: 選択・ドラッグ・送信中の位置・札からの切り替えを捨てる。
   useEffect(() => {
     if (front) return;
@@ -493,6 +518,8 @@ export function CanvasBoard({
             front={front}
             selected={interaction.selected === box.item_id}
             dragging={interaction.drag?.item_id === box.item_id}
+            contents={contents}
+            now={now}
             onSelect={select}
             onKey={onKey}
             onGrab={onGrab}

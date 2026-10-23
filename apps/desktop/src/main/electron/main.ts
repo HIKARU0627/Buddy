@@ -439,6 +439,12 @@ function createWindow(role: UiWindowRole): BrowserWindow {
     window.on('blur', () => dismissCanvas('blur'));
     // 窓の大きさが変わった（Windows の最大化など）: 作業領域の外の幅を送り直す（UI-06）。
     window.on('resize', pushCanvasWorkArea);
+    // 窓そのものが隠れた（hide・最小化）: 本文（物の中身）と参照を捨てる。取っている途中の答えも渡さない（UI-07）。後ろにあるが
+    // 表示している間（デスクトップの層・ほかの窓の後ろ）は捨てない。表示し直したら、今の記述を取り直して送る。
+    window.on('hide', () => link?.canvasHidden());
+    window.on('minimize', () => link?.canvasHidden());
+    window.on('show', () => link?.canvasShown());
+    window.on('restore', () => link?.canvasShown());
     window.webContents.on('before-input-event', (event, input) => {
       if (presence.layer === 'front' && isDismissKey(input)) {
         event.preventDefault();

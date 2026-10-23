@@ -1426,3 +1426,63 @@ test('the max liability of a reservation admitted with an overage approval canno
     );
   });
 });
+
+// B07-03 の Codex のレビュー P1（2 回目）: 設定から枠を消した後、その月に経路を解けない予約が残っていれば、その使用量を
+// 親の枠に数えられないので、残った兄弟の枠への受付・追加予約と利用状況を閉じた側に倒して拒否する。
+test('usage left in a removed pool blocks admission and top-up into sibling pools and the usage summary', async () => {
+  await withBudget((db) => {
+    // 削除の前: llm に M 80、search に M 20（llm_search は 100 ちょうど）。
+    admit(db, admitOp(1, { reserved: '10', max: '80' }));
+    admit(db, admitOp(2, { reserved: '5', max: '20' }, { pool_id: 'search' }));
+    const withoutLlm = {
+      ...SETTINGS,
+      pools: SETTINGS.pools.filter(
+        (pool) => pool.poolId !== 'llm' && pool.poolId !== 'llm.background',
+      ),
+    };
+    // 削除の後に search へ M 15 を足すと、消えた llm の 80 を数えなければ llm_search は 35 ≦ 100 に見えるが、本当は 115。
+    // search の自分の上限（40）には 20＋15＝35 で収まる。追加予約の 20 も search は 40 ちょうどで、本当の llm_search は 120。
+    const sibling = admit(
+      db,
+      admitOp(
+        3,
+        { reserved: '5', max: '15' },
+        { pool_id: 'search', settings: withoutLlm },
+      ),
+    );
+    assert.deepEqual(
+      [sibling.admitted, sibling.reason_codes],
+      [false, ['reservation_pool_unknown']],
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'budget.top_up',
+          reservation_id: reservationId(2),
+          expected_revision: '1',
+          delta_reserved: '0',
+          delta_max_liability: '20',
+          settings: withoutLlm,
+          now: OCT_15,
+        }),
+      ),
+      ['reservation_pool_unknown'],
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'budget.summary',
+          settings: withoutLlm,
+          config_valid: true,
+          now: OCT_15 + 5000,
+        }),
+      ),
+      ['unknown_pool'],
+    );
+    assert.equal(count(db, 'SELECT count(*) FROM budget_reservations'), 2);
+    assert.deepEqual(
+      reservationRow(db, reservationId(2))?.['max_liability'],
+      '20',
+    );
+  });
+});

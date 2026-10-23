@@ -95,7 +95,10 @@ async function startApi(
     coreInstanceId: CORE_INSTANCE,
     environment: PASSING,
     deviceConnections,
-    pingIntervalMs: options.pingIntervalMs ?? 100,
+    // 通常の購読は製品既定。heartbeat の短縮による切断を可用性の試験へ持ち込まない。
+    ...(options.pingIntervalMs === undefined
+      ? {}
+      : { pingIntervalMs: options.pingIntervalMs }),
   });
   const clock = { mono: 1_000 };
   const api = createApiServer({
@@ -373,15 +376,21 @@ test(
   async (t) => {
     const started = await startApi(t, {
       limits: { headersTimeoutMs: 300, requestTimeoutMs: 1_000 },
-      pingIntervalMs: 100,
+      // 試験全体の期限より長くし、通信で idle の期限が延びることによる見かけの成功を防ぐ。
+      pingIntervalMs: 60_000,
     });
     const device = await insertDevice(started.store);
     assert.equal((await bootstrap(started, device)).status, 200);
     const stream = openStream(t, started, device);
+    let pings = 0;
+    stream.socket.on('ping', () => {
+      pings += 1;
+    });
     assert.deepEqual(await stream.opened, { ok: true });
     await registered(started, device, 1);
-    // 期限の数倍の間、購読は開いたまま（ping・接続範囲の確かめ直しが続く）。
+    // 最初の要求の期限を超えて無通信でも、切り替え済みの購読は開いたまま。
     await sleep(1_200);
+    assert.equal(pings, 0);
     assert.equal(stream.socket.readyState, WebSocket.OPEN);
     assert.equal(started.deviceConnections.count(device.device.device_id), 1);
     stream.socket.close();

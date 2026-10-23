@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { applyEvents } from '@buddy/domain';
 import { createApiContract } from './api-contract.js';
+import { withTimeout } from './api-test-support.js';
 import { decodeEventCursor, encodeEventCursor } from './event-cursor.js';
 import {
   H01_OPERATION,
@@ -462,7 +463,8 @@ test(
   'the stream is closed with a reason on reconnection, revocation, home network failure, client messages and shutdown',
   { timeout: 30_000 },
   async (t) => {
-    const core = await startEventCore(t, { pingIntervalMs: 100 });
+    // 接続範囲・自宅判定の定期再検査を試すためだけに短縮し、pong の処理に余裕を持たせる。
+    const core = await startEventCore(t, { pingIntervalMs: 1_000 });
     const device = await insertDevice(core.handle.store);
     const cursor = () =>
       encodeEventCursor({
@@ -488,10 +490,10 @@ test(
     // 再接続（新しい接続範囲）で古い接続は scope_expired。
     const first = await opened();
     await bootstrap(core, device);
-    assert.deepEqual(await first.closed, {
-      code: 4410,
-      reason: 'scope_expired',
-    });
+    assert.deepEqual(
+      await withTimeout(first.closed, 5_000, 'reconnected scope closed'),
+      { code: 4410, reason: 'scope_expired' },
+    );
     assert.deepEqual(first.messages.at(-1), {
       type: 'resnapshot_required',
       reason: 'scope_expired',
@@ -525,10 +527,10 @@ test(
     // 差し込み口を呼ばなくても、ping ごとの自宅判定の引き直しで閉じる。
     const fourth = await opened();
     core.env.home = false;
-    assert.deepEqual(await fourth.closed, {
-      code: 4403,
-      reason: 'outside_home_network',
-    });
+    assert.deepEqual(
+      await withTimeout(fourth.closed, 5_000, 'home recheck closed'),
+      { code: 4403, reason: 'outside_home_network' },
+    );
     core.env.home = true;
 
     // 端末から送るメッセージは定義していない。
@@ -547,10 +549,10 @@ test(
       revoked_at: Date.now(),
     });
     assert(revoked.ok);
-    assert.deepEqual(await sixth.closed, {
-      code: 4410,
-      reason: 'scope_expired',
-    });
+    assert.deepEqual(
+      await withTimeout(sixth.closed, 5_000, 'revoked scope closed'),
+      { code: 4410, reason: 'scope_expired' },
+    );
     assert.equal(core.handle.deviceConnections.count(), 0);
 
     // 中枢の停止は 1001。
@@ -589,8 +591,16 @@ test(
       }),
       { autoPong: false },
     );
+    let pings = 0;
+    stream.socket.on('ping', () => {
+      pings += 1;
+    });
     assert.deepEqual(await stream.opened, { ok: true });
     // 閉じる手順なしに切られる（1006）。
-    assert.equal((await stream.closed).code, 1006);
+    assert.equal(
+      (await withTimeout(stream.closed, 5_000, 'unanswered ping closed')).code,
+      1006,
+    );
+    assert(pings > 0, 'client received a ping but did not send a pong');
   },
 );

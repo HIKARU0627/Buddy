@@ -22,6 +22,8 @@ const UTC_TIME =
 const YEAR_MONTH = /^[0-9]{4}-(0[1-9]|1[0-2])$/u;
 const TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/u;
 const MICRO = 1_000_000n;
+const MIN_YEAR = 1970;
+const MAX_YEAR = 9999;
 
 const toInteger = (text: string | null | undefined): bigint | null =>
   typeof text === 'string' && INTEGER.test(text) ? BigInt(text) : null;
@@ -34,10 +36,11 @@ const toMicros = (text: string): bigint | null => {
 
 // 暦にない日付（2 月 30 日・4 月 31 日）や 24:00 は、Date.parse が別の時刻へずらすので拒否する。
 // 秒までを toISOString と往復して比べる（小数秒はミリ秒より細かい桁を Date が捨てる。ADR 0034）。
+// 扱う時刻は 1970-01-01T00:00:00Z 以降（暦年の範囲 1970〜9999 と合わせる。ADR 0035）。
 const toMillis = (text: string): number | null => {
   if (!UTC_TIME.test(text)) return null;
   const value = Date.parse(text);
-  if (Number.isNaN(value)) return null;
+  if (Number.isNaN(value) || value < 0) return null;
   return new Date(value).toISOString().slice(0, 19) === text.slice(0, 19)
     ? value
     : null;
@@ -159,42 +162,77 @@ function coveringVersions(
   return hits;
 }
 
-interface InputPrice {
+// 入力の 1 つの版の単価（非命中と命中）。版に cached の単価がなければ、命中した分も入力の単価で課金する。
+interface InputTerm {
+  readonly quantity: bigint;
   readonly price: bigint;
   readonly per: bigint;
   readonly minimum: bigint;
+  readonly cachedPrice: bigint;
+  readonly cachedPer: bigint;
+  readonly cachedMinimum: bigint;
+  readonly factor: Rational;
 }
 
-// 送る量 total のうち uncached を非命中、残りを命中（cached）として課金したときの、換算前の最大の費用。
-// 区分ごとの課金量は「量が 1 以上なら最低課金量との大きい方、0 なら 0」。費用は分け方について区分的に
-// 線形なので、端（0・1・total−1・total）と、最低課金量の折れ目（非命中＝最低課金量、命中＝最低課金量）
-// だけを比べれば最大が分かる。
-function worstInputSplit(
-  total: bigint,
-  input: InputPrice,
-  cached: InputPrice,
+const addRational = (a: Rational, b: Rational): Rational => ({
+  n: a.n * b.d + b.n * a.d,
+  d: a.d * b.d,
+});
+
+// 課金量は「1 単位以上あれば最低課金量との大きい方、0 なら 0」。
+const billedAmount = (amount: bigint, minimum: bigint): bigint =>
+  amount <= 0n ? 0n : amount > minimum ? amount : minimum;
+
+// 区分ごと・版ごとの高い方（換算と安全係数を掛けた後）の、丸める前の費用。
+function maxTermCost(
+  terms: readonly InputTerm[],
+  amount: bigint,
+  cached: boolean,
 ): Rational {
-  const billed = (amount: bigint, minimum: bigint): bigint =>
-    amount <= 0n ? 0n : amount > minimum ? amount : minimum;
-  const candidates = [
-    0n,
-    1n,
-    total - 1n,
-    total,
-    input.minimum,
-    total - cached.minimum,
-  ].filter((value) => value >= 0n && value <= total);
   let worst: Rational = { n: 0n, d: 1n };
-  for (const uncached of candidates) {
+  for (const term of terms) {
+    const billed = billedAmount(
+      amount,
+      cached ? term.cachedMinimum : term.minimum,
+    );
     const cost: Rational = {
-      n:
-        billed(uncached, input.minimum) * input.price * cached.per +
-        billed(total - uncached, cached.minimum) * cached.price * input.per,
-      d: input.per * cached.per,
+      n: billed * (cached ? term.cachedPrice : term.price) * term.factor.n,
+      d: (cached ? term.cachedPer : term.per) * term.factor.d,
     };
     if (greater(cost, worst)) worst = cost;
   }
   return worst;
+}
+
+// 送る量のうち何 token がキャッシュに当たっても下回らない、入力（非命中＋命中）の M の上限。
+// 分け方 a（非命中 a、命中 q−a）の本当の費用は ⌈FI(a)⌉＋⌈FC(q−a)⌉（区分ごとに版の高い方を選んで切り上げる）。
+// - 端（a＝q・a＝0）は片方だけなので、⌈FI(q)⌉・⌈FC(q)⌉ をそのまま比べる。
+// - 両方が 1 以上の分け方（1 ≦ a ≦ q−1）では、FI(a) は max(a, 最低課金量)×単価 の版ごとの最大で a について
+//   凸、FC(q−a) も同じく a について凸なので、和は凸で、最大は a＝1 か a＝q−1 にある。⌈x⌉＋⌈y⌉ ≦ ⌈x＋y⌉＋1 な
+//   ので、⌈max(FI(1)＋FC(q−1), FI(q−1)＋FC(1))⌉＋1 はどの分け方の費用も下回らない（多くても 1 単位多いだけ）。
+// 版ごとに送る量の上限が違えば、大きい方の量で見積もる（費用は量について増えるだけなので少なくならない）。
+function inputSplitBound(terms: readonly InputTerm[]): bigint {
+  const total = terms.reduce(
+    (max, term) => (term.quantity > max ? term.quantity : max),
+    0n,
+  );
+  if (total === 0n) return 0n;
+  const ceil = (value: Rational): bigint => ceilDiv(value.n, value.d);
+  let bound = ceil(maxTermCost(terms, total, false));
+  const allCached = ceil(maxTermCost(terms, total, true));
+  if (allCached > bound) bound = allCached;
+  if (total >= 2n)
+    for (const uncached of [1n, total - 1n]) {
+      const mixed =
+        ceil(
+          addRational(
+            maxTermCost(terms, uncached, false),
+            maxTermCost(terms, total - uncached, true),
+          ),
+        ) + 1n;
+      if (mixed > bound) bound = mixed;
+    }
+  return bound;
 }
 
 // outputCap は予約 R の算出（p95 × 1.2）で出力の量だけを絞るときに使う。M では使わない。
@@ -248,6 +286,8 @@ function estimate(
     }
     let highest: Rational | null = null;
     let billedQuantity = 0n;
+    const inputTerms: InputTerm[] = [];
+    let hasCachedRate = false;
     for (const version of versions) {
       const rate = version.rates.find((item) => item.category === category);
       if (rate === undefined) {
@@ -290,24 +330,29 @@ function estimate(
       const billed = quantity > minimum ? quantity : minimum;
       const rateMicros = toMicros(version.conversion.rate) ?? 0n;
       const safetyMicros = toMicros(version.conversion.safety_factor) ?? 0n;
-      let cost: Rational = {
+      const cost: Rational = {
         n: billed * unitPrice * rateMicros * safetyMicros,
         d: perQuantity * MICRO * MICRO,
       };
       // 入力はキャッシュなしの単価で見積もる前提（05 固定部分の節）。版に cached の単価があれば、
-      // 送る量のうち何 token がキャッシュに当たっても少なく見積もらないよう、非命中と命中の分け方の
-      // うち費用が最大になるものを使う。各区分の最低課金量は、その区分に 1 単位以上あるときに掛ける
+      // 何 token がキャッシュに当たっても少なく見積もらないよう、後で inputSplitBound の上限も比べる
       // （cached の単価が高い版・cached の最低課金量が大きい版も含む。ADR 0035）。
-      const cachedRate =
-        category === 'input_tokens'
-          ? version.rates.find(
-              (item) => item.category === 'cached_input_tokens',
-            )
-          : undefined;
-      if (cachedRate !== undefined) {
-        const cachedPrice = toInteger(cachedRate.unit_price);
-        const cachedPer = toInteger(cachedRate.per_quantity);
-        const cachedMinimum = toInteger(cachedRate.minimum_quantity);
+      if (category === 'input_tokens') {
+        const cachedRate = version.rates.find(
+          (item) => item.category === 'cached_input_tokens',
+        );
+        const cachedPrice =
+          cachedRate === undefined
+            ? unitPrice
+            : toInteger(cachedRate.unit_price);
+        const cachedPer =
+          cachedRate === undefined
+            ? perQuantity
+            : toInteger(cachedRate.per_quantity);
+        const cachedMinimum =
+          cachedRate === undefined
+            ? minimum
+            : toInteger(cachedRate.minimum_quantity);
         if (
           cachedPrice === null ||
           cachedPer === null ||
@@ -316,16 +361,17 @@ function estimate(
         ) {
           reasons.push('invalid_price:cached_input_tokens');
         } else {
-          const split = worstInputSplit(
+          if (cachedRate !== undefined) hasCachedRate = true;
+          inputTerms.push({
             quantity,
-            { price: unitPrice, per: perQuantity, minimum },
-            { price: cachedPrice, per: cachedPer, minimum: cachedMinimum },
-          );
-          const mixed: Rational = {
-            n: split.n * rateMicros * safetyMicros,
-            d: split.d * MICRO * MICRO,
-          };
-          if (greater(mixed, cost)) cost = mixed;
+            price: unitPrice,
+            per: perQuantity,
+            minimum,
+            cachedPrice,
+            cachedPer,
+            cachedMinimum,
+            factor: { n: rateMicros * safetyMicros, d: MICRO * MICRO },
+          });
         }
       }
       // 境界を跨ぐ要求は、換算と安全係数を掛けた後の高い方を使う（05 F02）。
@@ -334,7 +380,11 @@ function estimate(
     }
     if (highest === null) continue;
     // 丸めは区分ごとに切り上げる（少なく見積もらない。原本に決めなし、ADR 0035）。
-    const amount = ceilDiv(highest.n, highest.d);
+    let amount = ceilDiv(highest.n, highest.d);
+    if (hasCachedRate) {
+      const split = inputSplitBound(inputTerms);
+      if (split > amount) amount = split;
+    }
     total += amount;
     lines.push({
       category,
@@ -464,6 +514,7 @@ export function budgetMonthOf(time: string, timeZone: string): string | null {
   return monthAtMillis(millis, formatter);
 }
 
+// 扱う暦年は 1970〜9999（ADR 0035）。範囲の外は null。
 function monthAtMillis(
   millis: number,
   formatter: Intl.DateTimeFormat,
@@ -471,18 +522,24 @@ function monthAtMillis(
   const parts = formatter.formatToParts(new Date(millis));
   const year = Number(parts.find((part) => part.type === 'year')?.value);
   const month = parts.find((part) => part.type === 'month')?.value;
-  if (!Number.isInteger(year) || year < 1 || year > 9999 || month === undefined)
+  if (
+    !Number.isInteger(year) ||
+    year < MIN_YEAR ||
+    year > MAX_YEAR ||
+    month === undefined
+  )
     return null;
   return `${String(year).padStart(4, '0')}-${month}`;
 }
 
-// 使っている予算月・その月の境目に使うタイムゾーン・その月が実際に始まった時刻（UTC、ミリ秒まで）。
-// 月ごとに Core が記録する（ADR 0034・0035）。monthStart は、前の月のタイムゾーンでこの月に入った境目
-// （最初の月は、そのタイムゾーンでの月の初め）。
+// 使っている予算月・その月の境目に使うタイムゾーン・その月が実際に始まった時刻（UTC、ミリ秒まで）と、
+// 始まりを決めたタイムゾーン。月ごとに Core が記録する（ADR 0034・0035）。monthStart は、monthStartTimeZone
+// でこの月に初めてなった時刻（前の月のタイムゾーンでの境目。最初の月は、そのタイムゾーンでの月の初め）。
 export interface BudgetCalendarState {
   readonly month: string;
   readonly timeZone: string;
   readonly monthStart: string;
+  readonly monthStartTimeZone: string;
 }
 
 export type BudgetCalendarResult =
@@ -494,6 +551,9 @@ export type BudgetCalendarResult =
   | Failure;
 
 const MONTH_SEARCH_SPAN = 33 * 24 * 60 * 60 * 1000;
+// 暦月が一時的に戻る区間を探す幅と刻み（夏時間の終わりが月の初めに重なるタイムゾーン）。
+const REGRESSION_SCAN_SPAN = 6 * 60 * 60 * 1000;
+const REGRESSION_SCAN_STEP = 60 * 1000;
 
 const monthBefore = (month: string): string => {
   const [year = 0, value = 1] = month.split('-').map(Number);
@@ -502,9 +562,14 @@ const monthBefore = (month: string): string => {
     : `${String(year).padStart(4, '0')}-${String(value - 1).padStart(2, '0')}`;
 };
 
-// formatter のタイムゾーンで month より後の月になる最初の時刻（ミリ秒）。lo では month 以前、hi では
-// month より後であること。暦月は時刻とともに減らないので二分探索で求まる。
-function firstMillisAfter(
+const isAfter = (
+  formatter: Intl.DateTimeFormat,
+  millis: number,
+  month: string,
+): boolean => (monthAtMillis(millis, formatter) ?? '') > month;
+
+// lo では month 以前、hi では month より後のとき、その間で month 以前から後へ変わる時刻の 1 つ。
+function bisectMonth(
   formatter: Intl.DateTimeFormat,
   month: string,
   lo: number,
@@ -514,10 +579,54 @@ function firstMillisAfter(
   let high = hi;
   while (high - low > 1) {
     const middle = Math.floor((low + high) / 2);
-    if ((monthAtMillis(middle, formatter) ?? '') > month) high = middle;
+    if (isAfter(formatter, middle, month)) high = middle;
     else low = middle;
   }
   return high;
+}
+
+// formatter のタイムゾーンで month より後の月に初めてなった時刻（ミリ秒）。夏時間の終わりで暦月が一時的に
+// 戻るタイムゾーン（例: America/St_Johns の 2009-11-01）では二分探索が後の方の境目を返し得るので、見つけた
+// 境目の前 6 時間を 1 分刻みで調べ、より早く後の月になっている時刻があれば、そこまでで探し直す。1 分より短い
+// 戻りは見つけられない（ADR 0035 の制限）。
+function firstMillisAfter(
+  formatter: Intl.DateTimeFormat,
+  month: string,
+  lo: number,
+  hi: number,
+): number {
+  let high = hi;
+  for (;;) {
+    const found = bisectMonth(formatter, month, lo, high);
+    let earlier: number | null = null;
+    for (
+      let probe = found - REGRESSION_SCAN_STEP;
+      probe > lo && probe >= found - REGRESSION_SCAN_SPAN;
+      probe -= REGRESSION_SCAN_STEP
+    )
+      if (isAfter(formatter, probe, month)) earlier = probe;
+    if (earlier === null) return found;
+    high = earlier;
+  }
+}
+
+// 記録した状態の中身が食い違っていないか。monthStart は、monthStartTimeZone で month の最初のミリ秒
+// （その 1 ミリ秒前は前の月）。今の月のタイムゾーン（timeZone）が始まりを決めたタイムゾーンと違うのは、
+// タイムゾーンを変えた月の正当なずれ。
+function validCalendarState(state: BudgetCalendarState): number | null {
+  const startMillis = toMillis(state.monthStart);
+  const startFormatter = monthFormatter(state.monthStartTimeZone);
+  if (
+    monthFormatter(state.timeZone) === null ||
+    startFormatter === null ||
+    !YEAR_MONTH.test(state.month) ||
+    startMillis === null
+  )
+    return null;
+  if (monthAtMillis(startMillis, startFormatter) !== state.month) return null;
+  const before = monthAtMillis(startMillis - 1, startFormatter);
+  if (before !== null && before >= state.month) return null;
+  return startMillis;
 }
 
 // 現在の時刻で予算月を進める。設定のタイムゾーンを変えても、今の月の境目は今の月のタイムゾーンで決め、
@@ -525,6 +634,7 @@ function firstMillisAfter(
 // 越えた境目ごとに 1 か月ずつ進め、2 つ目からは新しいタイムゾーンの境目を使う。時計が今の月の始まり
 // （monthStart）より前へ戻ったら clock_regressed を返し、予算月を戻さずに有料の受付を保留する（原本に
 // 決めなし、ADR 0035）。進んだタイムゾーン・遅れたタイムゾーンのどちらへ変えた後も、実際の始まりで比べる。
+// 中身の食い違った状態は invalid_calendar_state。扱う時刻は 1970 年以降で、暦年 1970〜9999 の外は invalid_time。
 export function advanceBudgetMonth(
   state: BudgetCalendarState | null,
   now: string,
@@ -552,15 +662,12 @@ export function advanceBudgetMonth(
         month,
         timeZone: configuredTimeZone,
         monthStart: new Date(start).toISOString(),
+        monthStartTimeZone: configuredTimeZone,
       },
     };
   }
-  const startMillis = toMillis(state.monthStart);
-  if (
-    monthFormatter(state.timeZone) === null ||
-    !YEAR_MONTH.test(state.month) ||
-    startMillis === null
-  )
+  const startMillis = validCalendarState(state);
+  if (startMillis === null)
     return { ok: false, reasonCodes: ['invalid_calendar_state'] };
   if (nowMillis < startMillis)
     return { ok: false, reasonCodes: ['clock_regressed'] };
@@ -571,7 +678,7 @@ export function advanceBudgetMonth(
     const shown = monthAtMillis(nowMillis, formatter);
     if (shown === null) return { ok: false, reasonCodes: ['invalid_time'] };
     if (shown <= current.month) break;
-    // 今の月のタイムゾーンで、今の月より後になる最初の時刻が次の月の始まり。
+    // 今の月のタイムゾーンで、今の月より後に初めてなる時刻が次の月の始まり。
     const boundary = firstMillisAfter(
       formatter,
       current.month,
@@ -582,6 +689,7 @@ export function advanceBudgetMonth(
       month: monthAtMillis(boundary, formatter) as string,
       timeZone: configuredTimeZone,
       monthStart: new Date(boundary).toISOString(),
+      monthStartTimeZone: current.timeZone,
     };
     currentStart = boundary;
   }

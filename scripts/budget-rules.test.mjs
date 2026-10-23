@@ -112,10 +112,11 @@ test('the synthetic runtime config is valid and has no personal amounts', () => 
 
 for (const entry of spec.liability_cases)
   test(`computeLiability: ${entry.id}`, () => {
-    assert.deepEqual(
-      computeLiability(liabilityRequest(entry.request)),
-      entry.expected,
-    );
+    const actual = computeLiability(liabilityRequest(entry.request));
+    assert.deepEqual(actual, entry.expected);
+    // 手で求めた本当の最大（区分ごとに版を選んで切り上げた、最も高い分け方の費用）を下回らない。
+    if (entry.true_max !== undefined)
+      assert(BigInt(actual.maxLiability) >= BigInt(entry.true_max), entry.id);
   });
 
 for (const entry of spec.reservation_cases)
@@ -275,4 +276,78 @@ test('the amount limit is the 18-figure contract maximum', () => {
   const amount = new RegExp(schema.$defs.Amount.pattern, 'u');
   assert(amount.test(BUDGET_AMOUNT_MAX.toString()));
   assert(!amount.test((BUDGET_AMOUNT_MAX + 1n).toString()));
+});
+
+// 入力と cached の分け方の上限を、すべての分け方を数え上げた本当の最大と比べる（固定の seed の合成の単価）。
+// 本当の最大は、分け方ごとに区分ごと・版ごとの高い方を選んで切り上げた費用で、実装とは別の数え上げで求める。
+// 上限はそれを下回らず、多くても 1 単位だけ多い（ADR 0035）。
+test('the input split bound never falls below the enumerated maximum', () => {
+  let seed = 20261023;
+  const next = (limit) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed % limit;
+  };
+  const ceil = (n, d) => (n + d - 1n) / d;
+  const billed = (amount, minimum) =>
+    amount === 0n ? 0n : amount > minimum ? amount : minimum;
+  const randomRate = (category) => ({
+    category,
+    unit_price: String(1 + next(9)),
+    per_quantity: String(1 + next(9)),
+    minimum_quantity: String(next(4) === 0 ? next(20) : 0),
+    max_quantity_per_request: null,
+  });
+  for (let round = 0; round < 300; round += 1) {
+    const versions = [0, 1].map((index) => ({
+      price_version: `p-random-${index + 1}`,
+      price_key: 'synthetic.random',
+      currency: 'XTS',
+      effective_from:
+        index === 0 ? '2030-10-01T00:00:00.000Z' : '2030-11-01T00:00:00.000Z',
+      effective_to: index === 0 ? '2030-11-01T00:00:00.000Z' : null,
+      rates: [randomRate('input_tokens'), randomRate('cached_input_tokens')],
+      conversion: {
+        conversion_version: 'xts-same-1',
+        to_currency: 'XTS',
+        rate: '1',
+        safety_factor: next(2) === 0 ? '1' : '1.2',
+      },
+    }));
+    const total = BigInt(1 + next(12));
+    const result = computeLiability({
+      budgetCurrency: 'XTS',
+      priceKey: 'synthetic.random',
+      priceVersions: versions,
+      verifiedPriceVersions: ['p-random-1', 'p-random-2'],
+      billableFrom: '2030-10-31T23:59:50.000Z',
+      billableUntil: '2030-11-01T00:00:20.000Z',
+      quantities: { input_tokens: String(total) },
+    });
+    assert.equal(result.ok, true);
+    // 区分ごと・版ごとの高い方を切り上げた費用（安全係数 1 / 1.2 を 10 / 12 の 10 分の 1 で扱う）。
+    const categoryCost = (amount, index) => {
+      let best = 0n;
+      for (const version of versions) {
+        const rate = version.rates[index];
+        const safety = version.conversion.safety_factor === '1' ? 10n : 12n;
+        const value = ceil(
+          billed(amount, BigInt(rate.minimum_quantity)) *
+            BigInt(rate.unit_price) *
+            safety,
+          BigInt(rate.per_quantity) * 10n,
+        );
+        if (value > best) best = value;
+      }
+      return best;
+    };
+    let trueMax = 0n;
+    for (let uncached = 0n; uncached <= total; uncached += 1n) {
+      const cost =
+        categoryCost(uncached, 0) + categoryCost(total - uncached, 1);
+      if (cost > trueMax) trueMax = cost;
+    }
+    const m = BigInt(result.maxLiability);
+    assert(m >= trueMax, `round ${round}: M ${m} < ${trueMax}`);
+    assert(m <= trueMax + 1n, `round ${round}: M ${m} > ${trueMax} + 1`);
+  }
 });

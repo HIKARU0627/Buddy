@@ -588,48 +588,221 @@
         "rate": "1",
         "safety_factor": "1.2"
       }
+    },
+    {
+      "price_version": "p-split-1",
+      "price_key": "synthetic.splitround",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "7",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "3",
+          "per_quantity": "8",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1"
+      }
+    },
+    {
+      "price_version": "p-split-fx-1",
+      "price_key": "synthetic.splitroundfx",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": "2030-11-01T00:00:00.000Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "1",
+          "per_quantity": "7",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "8",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    {
+      "price_version": "p-split-fx-2",
+      "price_key": "synthetic.splitroundfx",
+      "currency": "XXX",
+      "effective_from": "2030-11-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "1",
+          "per_quantity": "7",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "8",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xxx-to-xts-1",
+        "to_currency": "XTS",
+        "rate": "2.5",
+        "safety_factor": "1.2"
+      }
+    },
+    {
+      "price_version": "p-split-v-1",
+      "price_key": "synthetic.splitversions",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": "2030-11-01T00:00:00.000Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "10",
+          "per_quantity": "1",
+          "minimum_quantity": "100",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1"
+      }
+    },
+    {
+      "price_version": "p-split-v-2",
+      "price_key": "synthetic.splitversions",
+      "currency": "XTS",
+      "effective_from": "2030-11-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "2",
+          "per_quantity": "1",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "2",
+          "per_quantity": "1",
+          "minimum_quantity": "1000",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1"
+      }
     }
   ],
   "liability_cases": [
     {
       "id": "qa20-within-one-version",
-      "title": "1 つの版の中。入力 1500×2/1000×1.2=3.6→4、出力 500×10/1000×1.2=6、ツール 2×3×1.2=7.2→8。キャッシュの区分は M に入れない",
+      "title": "1 つの版の中。入力 1500 は、非命中だけ 3.6→4・命中だけ 1.8→2、両方ある分け方は ⌈非命中 1499＋命中 1＝3.5988⌉＋1＝5（分け方の上限）。出力 500×10/1000×1.2=6、ツール 2×3×1.2=7.2→8 で 19",
       "request": {
         "price_key": "synthetic.text",
         "from": "2030-10-15T00:00:00.000Z",
         "until": "2030-10-15T00:01:00.000Z",
-        "quantities": { "input_tokens": "1500" }
+        "quantities": {
+          "input_tokens": "1500"
+        }
       },
       "expected": {
         "ok": true,
-        "maxLiability": "18",
+        "maxLiability": "19",
         "priceVersion": "p-text-1",
         "priceVersions": ["p-text-1"],
         "lines": [
-          { "category": "input_tokens", "quantity": "1500", "amount": "4" },
-          { "category": "output_tokens", "quantity": "500", "amount": "6" },
-          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+          {
+            "category": "input_tokens",
+            "quantity": "1500",
+            "amount": "5"
+          },
+          {
+            "category": "output_tokens",
+            "quantity": "500",
+            "amount": "6"
+          },
+          {
+            "category": "tool_calls",
+            "quantity": "2",
+            "amount": "8"
+          }
         ]
       }
     },
     {
       "id": "qa42-price-boundary-higher-rate",
-      "title": "QA42 単価の境界。入力は新しい版（3）、出力は古い版（10）が高い。区分ごとに高い方: 入力 5.4→6、出力 6、ツール 8 で 20（どちらかの版だけなら 18・19）",
+      "title": "QA42 単価の境界。入力は新しい版（3）、出力は古い版（10）が高い。入力は ⌈1499×3/1000×1.2＋1×1/1000×1.2＝5.3976⌉＋1＝7、出力 6、ツール 8 で 21（どちらかの版だけなら 19・20）",
       "request": {
         "price_key": "synthetic.text",
         "from": "2030-10-31T23:59:50.000Z",
         "until": "2030-11-01T00:00:20.000Z",
-        "quantities": { "input_tokens": "1500" }
+        "quantities": {
+          "input_tokens": "1500"
+        }
       },
       "expected": {
         "ok": true,
-        "maxLiability": "20",
+        "maxLiability": "21",
         "priceVersion": "p-text-1",
         "priceVersions": ["p-text-1", "p-text-2"],
         "lines": [
-          { "category": "input_tokens", "quantity": "1500", "amount": "6" },
-          { "category": "output_tokens", "quantity": "500", "amount": "6" },
-          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+          {
+            "category": "input_tokens",
+            "quantity": "1500",
+            "amount": "7"
+          },
+          {
+            "category": "output_tokens",
+            "quantity": "500",
+            "amount": "6"
+          },
+          {
+            "category": "tool_calls",
+            "quantity": "2",
+            "amount": "8"
+          }
         ]
       }
     },
@@ -640,17 +813,31 @@
         "price_key": "synthetic.text",
         "from": "2030-10-31T23:59:00.000Z",
         "until": "2030-11-01T00:00:00.000Z",
-        "quantities": { "input_tokens": "1500" }
+        "quantities": {
+          "input_tokens": "1500"
+        }
       },
       "expected": {
         "ok": true,
-        "maxLiability": "20",
+        "maxLiability": "21",
         "priceVersion": "p-text-1",
         "priceVersions": ["p-text-1", "p-text-2"],
         "lines": [
-          { "category": "input_tokens", "quantity": "1500", "amount": "6" },
-          { "category": "output_tokens", "quantity": "500", "amount": "6" },
-          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+          {
+            "category": "input_tokens",
+            "quantity": "1500",
+            "amount": "7"
+          },
+          {
+            "category": "output_tokens",
+            "quantity": "500",
+            "amount": "6"
+          },
+          {
+            "category": "tool_calls",
+            "quantity": "2",
+            "amount": "8"
+          }
         ]
       }
     },
@@ -661,38 +848,66 @@
         "price_key": "synthetic.text",
         "from": "2030-10-31T23:59:00.000Z",
         "until": "2030-10-31T23:59:59.999Z",
-        "quantities": { "input_tokens": "1500" }
+        "quantities": {
+          "input_tokens": "1500"
+        }
       },
       "expected": {
         "ok": true,
-        "maxLiability": "18",
+        "maxLiability": "19",
         "priceVersion": "p-text-1",
         "priceVersions": ["p-text-1"],
         "lines": [
-          { "category": "input_tokens", "quantity": "1500", "amount": "4" },
-          { "category": "output_tokens", "quantity": "500", "amount": "6" },
-          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+          {
+            "category": "input_tokens",
+            "quantity": "1500",
+            "amount": "5"
+          },
+          {
+            "category": "output_tokens",
+            "quantity": "500",
+            "amount": "6"
+          },
+          {
+            "category": "tool_calls",
+            "quantity": "2",
+            "amount": "8"
+          }
         ]
       }
     },
     {
       "id": "qa42-price-boundary-from-at-start",
-      "title": "受付がちょうど新しい版の開始なら古い版は掛からない（終わりは含まない）。入力 6、出力 4.8→5、ツール 8 で 19",
+      "title": "受付がちょうど新しい版の開始なら古い版は掛からない（終わりは含まない）。入力 ⌈5.3976⌉＋1＝7、出力 4.8→5、ツール 8 で 20",
       "request": {
         "price_key": "synthetic.text",
         "from": "2030-11-01T00:00:00.000Z",
         "until": "2030-11-01T00:01:00.000Z",
-        "quantities": { "input_tokens": "1500" }
+        "quantities": {
+          "input_tokens": "1500"
+        }
       },
       "expected": {
         "ok": true,
-        "maxLiability": "19",
+        "maxLiability": "20",
         "priceVersion": "p-text-2",
         "priceVersions": ["p-text-2"],
         "lines": [
-          { "category": "input_tokens", "quantity": "1500", "amount": "6" },
-          { "category": "output_tokens", "quantity": "500", "amount": "5" },
-          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+          {
+            "category": "input_tokens",
+            "quantity": "1500",
+            "amount": "7"
+          },
+          {
+            "category": "output_tokens",
+            "quantity": "500",
+            "amount": "5"
+          },
+          {
+            "category": "tool_calls",
+            "quantity": "2",
+            "amount": "8"
+          }
         ]
       }
     },
@@ -797,43 +1012,73 @@
     },
     {
       "id": "qa20-profile-output-cap",
-      "title": "profile の出力上限 100 を使う。出力 100×10/1000×1.2=1.2→2",
+      "title": "profile の出力上限 100 を使う。入力 5、出力 100×10/1000×1.2=1.2→2、ツール 8 で 15",
       "request": {
         "price_key": "synthetic.text",
         "from": "2030-10-15T00:00:00.000Z",
         "until": "2030-10-15T00:01:00.000Z",
-        "quantities": { "input_tokens": "1500", "output_tokens": "100" }
+        "quantities": {
+          "input_tokens": "1500",
+          "output_tokens": "100"
+        }
       },
       "expected": {
         "ok": true,
-        "maxLiability": "14",
+        "maxLiability": "15",
         "priceVersion": "p-text-1",
         "priceVersions": ["p-text-1"],
         "lines": [
-          { "category": "input_tokens", "quantity": "1500", "amount": "4" },
-          { "category": "output_tokens", "quantity": "100", "amount": "2" },
-          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+          {
+            "category": "input_tokens",
+            "quantity": "1500",
+            "amount": "5"
+          },
+          {
+            "category": "output_tokens",
+            "quantity": "100",
+            "amount": "2"
+          },
+          {
+            "category": "tool_calls",
+            "quantity": "2",
+            "amount": "8"
+          }
         ]
       }
     },
     {
       "id": "qa20-tools-disabled",
-      "title": "ツールを使わない profile はツールの量 0",
+      "title": "ツールを使わない profile はツールの量 0。入力 5・出力 6 で 11",
       "request": {
         "price_key": "synthetic.text",
         "from": "2030-10-15T00:00:00.000Z",
         "until": "2030-10-15T00:01:00.000Z",
-        "quantities": { "input_tokens": "1500", "tool_calls": "0" }
+        "quantities": {
+          "input_tokens": "1500",
+          "tool_calls": "0"
+        }
       },
       "expected": {
         "ok": true,
-        "maxLiability": "10",
+        "maxLiability": "11",
         "priceVersion": "p-text-1",
         "priceVersions": ["p-text-1"],
         "lines": [
-          { "category": "input_tokens", "quantity": "1500", "amount": "4" },
-          { "category": "output_tokens", "quantity": "500", "amount": "6" },
-          { "category": "tool_calls", "quantity": "0", "amount": "0" }
+          {
+            "category": "input_tokens",
+            "quantity": "1500",
+            "amount": "5"
+          },
+          {
+            "category": "output_tokens",
+            "quantity": "500",
+            "amount": "6"
+          },
+          {
+            "category": "tool_calls",
+            "quantity": "0",
+            "amount": "0"
+          }
         ]
       }
     },
@@ -951,7 +1196,7 @@
     },
     {
       "id": "qa20-cached-above-input",
-      "title": "cached の単価（5）が入力（2）より高い版（設定の意味検査は cached_price_above_input で拒否する）。入力の量に高い方を当て 1500×5/1000×1.2=9、出力 6 で 15",
+      "title": "cached の単価（5）が入力（2）より高い版（設定の意味検査は cached_price_above_input で拒否する）。入力は、命中だけ 9、両方ある分け方は ⌈非命中 1＋命中 1499＝0.0024＋8.994⌉＋1＝10。出力 6 で 16",
       "request": {
         "price_key": "synthetic.cachedhigh",
         "from": "2030-10-15T00:00:00.000Z",
@@ -964,14 +1209,14 @@
       },
       "expected": {
         "ok": true,
-        "maxLiability": "15",
+        "maxLiability": "16",
         "priceVersion": "p-cached-high",
         "priceVersions": ["p-cached-high"],
         "lines": [
           {
             "category": "input_tokens",
             "quantity": "1500",
-            "amount": "9"
+            "amount": "10"
           },
           {
             "category": "output_tokens",
@@ -1182,7 +1427,7 @@
     },
     {
       "id": "qa20-cached-minimum-0",
-      "title": "cached の最低課金量 0。すべて非命中 1000×2/1000=2.0 が最大で ×1.2=2.4→3",
+      "title": "cached の最低課金量 0。非命中だけ 2.4→3、両方ある分け方は ⌈2.3976＋0.0012⌉＋1＝4",
       "request": {
         "price_key": "synthetic.cachedmin.none",
         "from": "2030-10-15T00:00:00.000Z",
@@ -1194,21 +1439,21 @@
       },
       "expected": {
         "ok": true,
-        "maxLiability": "3",
+        "maxLiability": "4",
         "priceVersion": "p-cmin-0",
         "priceVersions": ["p-cmin-0"],
         "lines": [
           {
             "category": "input_tokens",
             "quantity": "1000",
-            "amount": "3"
+            "amount": "4"
           }
         ]
       }
     },
     {
       "id": "qa20-cached-minimum-600",
-      "title": "cached の最低課金量 600。非命中 999・命中 1（600 として課金）が最大: 1.998+0.6=2.598、×1.2=3.1176→4",
+      "title": "cached の最低課金量 600。両方ある分け方は ⌈非命中 999（2.3976）＋命中 1（600 として 0.72）＝3.1176⌉＋1＝5",
       "request": {
         "price_key": "synthetic.cachedmin.small",
         "from": "2030-10-15T00:00:00.000Z",
@@ -1220,21 +1465,21 @@
       },
       "expected": {
         "ok": true,
-        "maxLiability": "4",
+        "maxLiability": "5",
         "priceVersion": "p-cmin-600",
         "priceVersions": ["p-cmin-600"],
         "lines": [
           {
             "category": "input_tokens",
             "quantity": "1000",
-            "amount": "4"
+            "amount": "5"
           }
         ]
       }
     },
     {
       "id": "qa20-cached-minimum-above-quantity",
-      "title": "cached の最低課金量 1500（送る量 1000 より大きい）。非命中 999・命中 1 が最大: 1.998+1.5=3.498、×1.2=4.1976→5",
+      "title": "cached の最低課金量 1500（送る量 1000 より大きい）。⌈2.3976＋1.8＝4.1976⌉＋1＝6",
       "request": {
         "price_key": "synthetic.cachedmin.large",
         "from": "2030-10-15T00:00:00.000Z",
@@ -1246,21 +1491,21 @@
       },
       "expected": {
         "ok": true,
-        "maxLiability": "5",
+        "maxLiability": "6",
         "priceVersion": "p-cmin-1500",
         "priceVersions": ["p-cmin-1500"],
         "lines": [
           {
             "category": "input_tokens",
             "quantity": "1000",
-            "amount": "5"
+            "amount": "6"
           }
         ]
       }
     },
     {
       "id": "qa20-cached-minimum-10000",
-      "title": "cached の最低課金量 10000。非命中 999・命中 1 が最大: 1.998+10=11.998、×1.2=14.3976→15（非命中の料金だけなら 3）",
+      "title": "cached の最低課金量 10000。⌈2.3976＋12＝14.3976⌉＋1＝16（非命中の料金だけなら 3）",
       "request": {
         "price_key": "synthetic.cachedmin.huge",
         "from": "2030-10-15T00:00:00.000Z",
@@ -1272,21 +1517,21 @@
       },
       "expected": {
         "ok": true,
-        "maxLiability": "15",
+        "maxLiability": "16",
         "priceVersion": "p-cmin-10000",
         "priceVersions": ["p-cmin-10000"],
         "lines": [
           {
             "category": "input_tokens",
             "quantity": "1000",
-            "amount": "15"
+            "amount": "16"
           }
         ]
       }
     },
     {
       "id": "qa20-cached-minimum-small-input",
-      "title": "レビューの例。入力 100、cached の最低課金量 10000。非命中 99・命中 1 が最大: 0.198+10=10.198、×1.2=12.2376→13（すべて命中なら 10×1.2=12、非命中だけなら 0.24→1）",
+      "title": "レビューの例。入力 100、cached の最低課金量 10000。⌈非命中 99＋命中 1＝0.2376＋12⌉＋1＝14（すべて命中なら 12、非命中だけなら 1）",
       "request": {
         "price_key": "synthetic.cachedmin.huge",
         "from": "2030-10-15T00:00:00.000Z",
@@ -1298,21 +1543,21 @@
       },
       "expected": {
         "ok": true,
-        "maxLiability": "13",
+        "maxLiability": "14",
         "priceVersion": "p-cmin-10000",
         "priceVersions": ["p-cmin-10000"],
         "lines": [
           {
             "category": "input_tokens",
             "quantity": "100",
-            "amount": "13"
+            "amount": "14"
           }
         ]
       }
     },
     {
       "id": "qa20-input-minimum-with-cache",
-      "title": "入力の最低課金量 2000。非命中 1（2000 として課金）・命中 999 が最大: 4+0.999=4.999、×1.2=5.9988→6",
+      "title": "入力の最低課金量 2000。⌈非命中 1（2000 として 4.8）＋命中 999（1.1988）＝5.9988⌉＋1＝7（区分ごとに切り上げた本当の最大も 5＋2＝7）",
       "request": {
         "price_key": "synthetic.inputmin",
         "from": "2030-10-15T00:00:00.000Z",
@@ -1324,14 +1569,95 @@
       },
       "expected": {
         "ok": true,
-        "maxLiability": "6",
+        "maxLiability": "7",
         "priceVersion": "p-imin-2000",
         "priceVersions": ["p-imin-2000"],
         "lines": [
           {
             "category": "input_tokens",
             "quantity": "2000",
-            "amount": "6"
+            "amount": "7"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-split-rounding-counterexample",
+      "title": "Codex の反例。入力 8、通常 3/7、cached 3/8。区分ごとに切り上げた本当の最大は非命中 5・命中 3 の ⌈15/7⌉＋⌈9/8⌉＝5。上限は ⌈非命中 7＋命中 1＝3＋0.375⌉＋1＝5",
+      "request": {
+        "price_key": "synthetic.splitround",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "8"
+        },
+        "versions": "extra"
+      },
+      "true_max": "5",
+      "expected": {
+        "ok": true,
+        "maxLiability": "5",
+        "priceVersion": "p-split-1",
+        "priceVersions": ["p-split-1"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "8",
+            "amount": "5"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-split-rounding-across-boundary",
+      "title": "Codex の反例（版の境界と為替）。境界後は 1/7・1/8 に為替 2.5×安全係数 1.2 で 3/7・3/8 と同じ。本当の最大 5、上限 5",
+      "request": {
+        "price_key": "synthetic.splitroundfx",
+        "from": "2030-10-31T23:59:50.000Z",
+        "until": "2030-11-01T00:00:20.000Z",
+        "quantities": {
+          "input_tokens": "8"
+        },
+        "versions": "extra"
+      },
+      "true_max": "5",
+      "expected": {
+        "ok": true,
+        "maxLiability": "5",
+        "priceVersion": "p-split-fx-1",
+        "priceVersions": ["p-split-fx-1", "p-split-fx-2"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "8",
+            "amount": "5"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-split-version-per-category",
+      "title": "Codex の反例（区分ごとに版を選ぶ）。入力 2。非命中 1 は旧版（最低 100×10＝1000）、命中 1 は新版（最低 1000×2＝2000）で本当の最大 3000。上限は ⌈1000＋2000⌉＋1＝3001",
+      "request": {
+        "price_key": "synthetic.splitversions",
+        "from": "2030-10-31T23:59:50.000Z",
+        "until": "2030-11-01T00:00:20.000Z",
+        "quantities": {
+          "input_tokens": "2"
+        },
+        "versions": "extra"
+      },
+      "true_max": "3000",
+      "expected": {
+        "ok": true,
+        "maxLiability": "3001",
+        "priceVersion": "p-split-v-1",
+        "priceVersions": ["p-split-v-1", "p-split-v-2"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "100",
+            "amount": "3001"
           }
         ]
       }
@@ -1349,7 +1675,7 @@
   "reservation_cases": [
     {
       "id": "qa42-p95-designated",
-      "title": "指定の profile で p95=200 を測定済み。出力 240×10/1000×1.2=2.88→3、R=4+3+8=15、M=18",
+      "title": "指定の profile で p95=200 を測定済み。出力 240×10/1000×1.2=2.88→3、R=5+3+8=16、M=19",
       "request": {
         "measurement": {
           "profileId": "synthetic.intent.v1",
@@ -1359,8 +1685,8 @@
       },
       "expected": {
         "ok": true,
-        "reserved": "15",
-        "maxLiability": "18",
+        "reserved": "16",
+        "maxLiability": "19",
         "basis": "p95"
       }
     },
@@ -1376,14 +1702,14 @@
       },
       "expected": {
         "ok": true,
-        "reserved": "18",
-        "maxLiability": "18",
+        "reserved": "19",
+        "maxLiability": "19",
         "basis": "p95"
       }
     },
     {
       "id": "qa42-p95-rounds-up",
-      "title": "p95=1 は 1.2→2 token に切り上げ、金額 0.024→1。R=4+1+8=13",
+      "title": "p95=1 は 1.2→2 token に切り上げ、金額 0.024→1。R=5+1+8=14",
       "request": {
         "measurement": {
           "profileId": "synthetic.intent.v1",
@@ -1393,19 +1719,21 @@
       },
       "expected": {
         "ok": true,
-        "reserved": "13",
-        "maxLiability": "18",
+        "reserved": "14",
+        "maxLiability": "19",
         "basis": "p95"
       }
     },
     {
       "id": "qa42-p95-unmeasured",
       "title": "QA42 未測定の p95。指定の profile でも測っていなければ最大額で予約する",
-      "request": { "measurement": null },
+      "request": {
+        "measurement": null
+      },
       "expected": {
         "ok": true,
-        "reserved": "18",
-        "maxLiability": "18",
+        "reserved": "19",
+        "maxLiability": "19",
         "basis": "p95_unmeasured"
       }
     },
@@ -1421,8 +1749,8 @@
       },
       "expected": {
         "ok": true,
-        "reserved": "18",
-        "maxLiability": "18",
+        "reserved": "19",
+        "maxLiability": "19",
         "basis": "p95_unmeasured"
       }
     },
@@ -1438,8 +1766,8 @@
       },
       "expected": {
         "ok": true,
-        "reserved": "18",
-        "maxLiability": "18",
+        "reserved": "19",
+        "maxLiability": "19",
         "basis": "profile_changed"
       }
     },
@@ -1456,14 +1784,14 @@
       },
       "expected": {
         "ok": true,
-        "reserved": "18",
-        "maxLiability": "18",
+        "reserved": "19",
+        "maxLiability": "19",
         "basis": "not_designated"
       }
     },
     {
       "id": "qa42-p95-across-price-boundary",
-      "title": "境界を跨ぐ要求の R も高い方の単価。出力 240×10 で 3、入力 6、ツール 8 で R=17、M=20",
+      "title": "境界を跨ぐ要求の R も高い方の単価。入力 7、出力 240×10 で 3、ツール 8 で R=18、M=21",
       "request": {
         "from": "2030-10-31T23:59:50.000Z",
         "until": "2030-11-01T00:00:20.000Z",
@@ -1475,16 +1803,19 @@
       },
       "expected": {
         "ok": true,
-        "reserved": "17",
-        "maxLiability": "20",
+        "reserved": "18",
+        "maxLiability": "21",
         "basis": "p95"
       }
     },
     {
       "id": "qa42-p95-profile-output-below-p95",
-      "title": "profile の出力上限 100 が p95×1.2=240 より小さければ 100 を使い、R=M=14",
+      "title": "profile の出力上限 100 が p95×1.2=240 より小さければ 100 を使い、R=M=15",
       "request": {
-        "quantities": { "input_tokens": "1500", "output_tokens": "100" },
+        "quantities": {
+          "input_tokens": "1500",
+          "output_tokens": "100"
+        },
         "measurement": {
           "profileId": "synthetic.intent.v1",
           "profileRevision": "r1",
@@ -1493,8 +1824,8 @@
       },
       "expected": {
         "ok": true,
-        "reserved": "14",
-        "maxLiability": "14",
+        "reserved": "15",
+        "maxLiability": "15",
         "basis": "p95"
       }
     },
@@ -1620,12 +1951,30 @@
       "time": "2030-04-31T12:00:00Z",
       "time_zone": "UTC",
       "expected": null
+    },
+    {
+      "id": "qa42-month-1970-utc",
+      "time": "1970-01-01T00:00:00Z",
+      "time_zone": "UTC",
+      "expected": "1970-01"
+    },
+    {
+      "id": "qa42-month-before-1970-local",
+      "time": "1970-01-01T00:00:00Z",
+      "time_zone": "America/New_York",
+      "expected": null
+    },
+    {
+      "id": "qa42-month-year-0001",
+      "time": "0001-01-01T00:00:00Z",
+      "time_zone": "UTC",
+      "expected": null
     }
   ],
   "calendar_cases": [
     {
       "id": "qa42-calendar-first-start",
-      "title": "初めての起動は設定のタイムゾーンで今の月を決め、その月の初め（東京の 10 月 1 日 0 時）を記録する",
+      "title": "初めての起動は設定のタイムゾーンで今の月を決め、その月の初め（東京の 10 月 1 日 0 時）と、それを決めたタイムゾーンを記録する",
       "state": null,
       "now": "2030-10-15T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1635,7 +1984,8 @@
         "state": {
           "month": "2030-10",
           "timeZone": "Asia/Tokyo",
-          "monthStart": "2030-09-30T15:00:00.000Z"
+          "monthStart": "2030-09-30T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
         }
       }
     },
@@ -1651,7 +2001,8 @@
         "state": {
           "month": "2030-10",
           "timeZone": "Pacific/Auckland",
-          "monthStart": "2030-09-30T11:00:00.000Z"
+          "monthStart": "2030-09-30T11:00:00.000Z",
+          "monthStartTimeZone": "Pacific/Auckland"
         }
       }
     },
@@ -1661,7 +2012,8 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-09-30T15:00:00.000Z"
+        "monthStart": "2030-09-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-10-31T14:00:00.000Z",
       "configured": "UTC",
@@ -1671,17 +2023,19 @@
         "state": {
           "month": "2030-10",
           "timeZone": "Asia/Tokyo",
-          "monthStart": "2030-09-30T15:00:00.000Z"
+          "monthStart": "2030-09-30T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
         }
       }
     },
     {
       "id": "qa42-calendar-rollover-applies-new-zone",
-      "title": "今の月の境目は元のタイムゾーン（東京の 11 月 1 日 0 時）。翌月から UTC を使い、11 月の始まりはその境目",
+      "title": "今の月の境目は元のタイムゾーン（東京の 11 月 1 日 0 時）。翌月から UTC を使い、11 月の始まりは東京で決めた境目",
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-09-30T15:00:00.000Z"
+        "monthStart": "2030-09-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-10-31T15:00:00.000Z",
       "configured": "UTC",
@@ -1691,7 +2045,8 @@
         "state": {
           "month": "2030-11",
           "timeZone": "UTC",
-          "monthStart": "2030-10-31T15:00:00.000Z"
+          "monthStart": "2030-10-31T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
         }
       }
     },
@@ -1701,7 +2056,8 @@
       "state": {
         "month": "2030-11",
         "timeZone": "UTC",
-        "monthStart": "2030-10-31T15:00:00.000Z"
+        "monthStart": "2030-10-31T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-10-31T16:00:00.000Z",
       "configured": "UTC",
@@ -1711,7 +2067,8 @@
         "state": {
           "month": "2030-11",
           "timeZone": "UTC",
-          "monthStart": "2030-10-31T15:00:00.000Z"
+          "monthStart": "2030-10-31T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
         }
       }
     },
@@ -1721,7 +2078,8 @@
       "state": {
         "month": "2030-11",
         "timeZone": "UTC",
-        "monthStart": "2030-10-31T15:00:00.000Z"
+        "monthStart": "2030-10-31T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-10-31T14:00:00.000Z",
       "configured": "UTC",
@@ -1736,7 +2094,8 @@
       "state": {
         "month": "2030-10",
         "timeZone": "UTC",
-        "monthStart": "2030-10-01T00:00:00.000Z"
+        "monthStart": "2030-10-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
       },
       "now": "2030-11-01T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1746,7 +2105,8 @@
         "state": {
           "month": "2030-11",
           "timeZone": "Asia/Tokyo",
-          "monthStart": "2030-11-01T00:00:00.000Z"
+          "monthStart": "2030-11-01T00:00:00.000Z",
+          "monthStartTimeZone": "UTC"
         }
       }
     },
@@ -1756,7 +2116,8 @@
       "state": {
         "month": "2030-11",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-11-01T00:00:00.000Z"
+        "monthStart": "2030-11-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
       },
       "now": "2030-10-31T16:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1771,7 +2132,8 @@
       "state": {
         "month": "2030-11",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-11-01T00:00:00.000Z"
+        "monthStart": "2030-11-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
       },
       "now": "2030-10-31T23:59:59.999Z",
       "configured": "Asia/Tokyo",
@@ -1786,7 +2148,8 @@
       "state": {
         "month": "2030-11",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-11-01T00:00:00.000Z"
+        "monthStart": "2030-11-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
       },
       "now": "2030-11-01T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1796,7 +2159,8 @@
         "state": {
           "month": "2030-11",
           "timeZone": "Asia/Tokyo",
-          "monthStart": "2030-11-01T00:00:00.000Z"
+          "monthStart": "2030-11-01T00:00:00.000Z",
+          "monthStartTimeZone": "UTC"
         }
       }
     },
@@ -1806,7 +2170,8 @@
       "state": {
         "month": "2030-10",
         "timeZone": "UTC",
-        "monthStart": "2030-10-01T00:00:00.000Z"
+        "monthStart": "2030-10-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
       },
       "now": "2030-11-30T16:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1816,7 +2181,8 @@
         "state": {
           "month": "2030-12",
           "timeZone": "Asia/Tokyo",
-          "monthStart": "2030-11-30T15:00:00.000Z"
+          "monthStart": "2030-11-30T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
         }
       }
     },
@@ -1826,7 +2192,8 @@
       "state": {
         "month": "2030-12",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-11-30T15:00:00.000Z"
+        "monthStart": "2030-11-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-11-30T16:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1836,7 +2203,8 @@
         "state": {
           "month": "2030-12",
           "timeZone": "Asia/Tokyo",
-          "monthStart": "2030-11-30T15:00:00.000Z"
+          "monthStart": "2030-11-30T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
         }
       }
     },
@@ -1846,7 +2214,8 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-09-30T15:00:00.000Z"
+        "monthStart": "2030-09-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-12-01T00:00:00.000Z",
       "configured": "UTC",
@@ -1856,7 +2225,8 @@
         "state": {
           "month": "2030-12",
           "timeZone": "UTC",
-          "monthStart": "2030-12-01T00:00:00.000Z"
+          "monthStart": "2030-12-01T00:00:00.000Z",
+          "monthStartTimeZone": "UTC"
         }
       }
     },
@@ -1866,7 +2236,8 @@
       "state": {
         "month": "2030-11",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-10-31T15:00:00.000Z"
+        "monthStart": "2030-10-31T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-10-20T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1881,7 +2252,8 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-09-30T15:00:00.000Z"
+        "monthStart": "2030-09-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-10-01T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1891,7 +2263,8 @@
         "state": {
           "month": "2030-10",
           "timeZone": "Asia/Tokyo",
-          "monthStart": "2030-09-30T15:00:00.000Z"
+          "monthStart": "2030-09-30T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
         }
       }
     },
@@ -1901,7 +2274,8 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-09-30T15:00:00.000Z"
+        "monthStart": "2030-09-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2031-01-05T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1911,7 +2285,8 @@
         "state": {
           "month": "2031-01",
           "timeZone": "Asia/Tokyo",
-          "monthStart": "2030-12-31T15:00:00.000Z"
+          "monthStart": "2030-12-31T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
         }
       }
     },
@@ -1921,7 +2296,8 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-09-30T15:00:00.000Z"
+        "monthStart": "2030-09-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-10-15T00:00:00.000Z",
       "configured": "Mars/Base",
@@ -1936,7 +2312,8 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-09-30T15:00:00.000Z"
+        "monthStart": "2030-09-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-02-30T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1947,17 +2324,270 @@
     },
     {
       "id": "qa42-calendar-invalid-state",
-      "title": "記録した月の始まりが壊れていれば進めない",
+      "title": "記録した月の始まりが暦にない日付なら進めない",
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "monthStart": "2030-09-31T15:00:00.000Z"
+        "monthStart": "2030-09-31T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
       },
       "now": "2030-10-15T00:00:00.000Z",
       "configured": "Asia/Tokyo",
       "expected": {
         "ok": false,
         "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-inconsistent-start",
+      "title": "レビューの例。月は 11 月なのに始まりが 10 月 1 日（東京では 10 月）。食い違った状態は進めない",
+      "state": {
+        "month": "2030-11",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-10-01T00:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-start-not-first-millisecond",
+      "title": "始まりの 1 ミリ秒前がもう同じ月（始まりが最初のミリ秒でない）なら進めない",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-09-30T15:00:00.001Z",
+        "monthStartTimeZone": "Asia/Tokyo"
+      },
+      "now": "2030-10-15T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-start-zone-mismatch",
+      "title": "始まりを決めたタイムゾーン（UTC）では、その時刻はまだ 10 月なので食い違い",
+      "state": {
+        "month": "2030-11",
+        "timeZone": "UTC",
+        "monthStart": "2030-10-31T15:00:00.000Z",
+        "monthStartTimeZone": "UTC"
+      },
+      "now": "2030-11-15T00:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-start-zone-unknown",
+      "title": "始まりを決めたタイムゾーンが実在しなければ進めない",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-09-30T15:00:00.000Z",
+        "monthStartTimeZone": "Mars/Base"
+      },
+      "now": "2030-10-15T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-rollover-late",
+      "title": "レビューの例。St_Johns の 2009-11-01 は 02:30Z に 11 月、02:31Z に夏時間が終わって 10 月に戻り、03:30Z に再び 11 月。正午に呼んでも始まりは最初の 02:30Z",
+      "state": {
+        "month": "2009-10",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-10-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T12:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-rollover-early",
+      "title": "最初の境目の直後（02:30:30Z）に呼んでも同じ始まり",
+      "state": {
+        "month": "2009-10",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-10-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T02:30:30.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-first-start",
+      "title": "初めての起動でも、月の始まりは最初に 11 月になった 02:30Z",
+      "state": null,
+      "now": "2009-11-01T12:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-two-boundaries",
+      "title": "9 月から止まったまま 11 月の正午に再開しても、11 月の始まりは 02:30Z",
+      "state": {
+        "month": "2009-09",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-09-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T12:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-dip-is-not-regression",
+      "title": "夏時間の終わりで現地が 10 月に戻っている間（03:00Z）は、11 月の始まりより後なので保留しない",
+      "state": {
+        "month": "2009-11",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-11-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T03:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-before-1970",
+      "title": "レビューの例。扱う時刻は 1970 年以降。0000 年は拒否",
+      "state": null,
+      "now": "0000-01-01T00:00:00Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_time"]
+      }
+    },
+    {
+      "id": "qa42-calendar-just-before-1970",
+      "title": "1970 年の直前も拒否",
+      "state": null,
+      "now": "1969-12-31T23:59:59.999Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_time"]
+      }
+    },
+    {
+      "id": "qa42-calendar-first-month-1970",
+      "title": "1970 年 1 月は扱える。始まりは 1970-01-01T00:00:00Z",
+      "state": null,
+      "now": "1970-01-15T00:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "1970-01",
+          "timeZone": "UTC",
+          "monthStart": "1970-01-01T00:00:00.000Z",
+          "monthStartTimeZone": "UTC"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-first-month-1970-reread",
+      "title": "作った 1970 年 1 月の状態を同じ時刻で読み直せる",
+      "state": {
+        "month": "1970-01",
+        "timeZone": "UTC",
+        "monthStart": "1970-01-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
+      },
+      "now": "1970-01-15T00:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "1970-01",
+          "timeZone": "UTC",
+          "monthStart": "1970-01-01T00:00:00.000Z",
+          "monthStartTimeZone": "UTC"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-local-year-1969",
+      "title": "UTC では 1970 年でも、現地（New York）では 1969 年なら拒否",
+      "state": null,
+      "now": "1970-01-01T00:00:00.000Z",
+      "configured": "America/New_York",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_time"]
+      }
+    },
+    {
+      "id": "qa42-calendar-local-year-10000",
+      "title": "UTC では 9999 年でも、現地（東京）では 10000 年なら拒否",
+      "state": null,
+      "now": "9999-12-31T15:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_time"]
       }
     }
   ],

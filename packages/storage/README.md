@@ -44,6 +44,10 @@ B03-04 でスナップショット・イベント・操作の表示用の照会�
 
 - `src/home-network-store.ts`: `executeHomeNetworkOp`。`home.register`（家ごとに 1 つ、置き換え）・`home.get`・`home.report`（端末ごとに最新の 1 件）・`home.find_report`・`home.revoke_scopes`（自宅判定の不成立で端末の有効な接続範囲を失効）。MAC・SSID は Core が HMAC にした 16 進 64 桁だけを受け取り、32 バイトの BLOB で置く。`DbWorkerClient.home(op)`（`type: 'home'` のメッセージ）。
 
+B07-03 で予算の受付・精算・超過の承認・予算月の保存を作りました（[ADR 0036](../../docs/adr/0036-b07-budget-storage-and-db-worker.md)、マイグレーション 0006）。
+
+- `src/budget-store.ts`: `executeBudgetOp`。`budget.admit`（予算月の状態・同じ月の行・M 超過の確認待ち・承認を transaction の中で読み、domain の判定で決めてから挿入。超過枠なら承認を同じ transaction で consumed）・`budget.top_up`（版の CAS）・`budget.settle`（照合 ID は provider の名前を前に付ける）・`budget.mark_unknown`・`budget.release_unsent`・`budget.review_overrun`・`budget.settle_manual`（端末の要求は command_receipts を同じ transaction で）・`budget.request_overage`・`budget.approve_overage`・`budget.summary`・`budget.calendar_advance`・`budget.calendar_read` と照会。金額は BigInt で読む。provider への通信は transaction に入れない。`DbWorkerClient.budget(op)`（`type: 'budget'` のメッセージ）。
+
 依存は better-sqlite3 13.0.3（ビルド済みバイナリを同梱。pnpm のビルドの許可は不要）、canonicalize 5.1.0（開発ツールと同じ版）と、workspace の `@buddy/domain` です。KeyStore は `@buddy/platform` にあります。
 
 試験は `src/*.test.ts`（一時ファイル・メモリ上の DB、worker_threads の故障注入、公開テストベクトルとの照合・改ざんの注入・鍵が取れないときの停止）と、開発ツールの `node:sqlite` で同じ保存案を検査する `scripts/storage.test.mjs` です。X60 相当（書込み中のプロセスの強制終了の後の整合）は `crash-recovery.test.ts` で確かめています。外部送出（B04）、削除ジョブ、電源断の耐久性（X60 の本体・T07）は未実装・未検証です。

@@ -741,6 +741,15 @@ export function advanceBudgetMonth(
       monthStartTimeZone: current.timeZone,
     };
   }
+  // 保存した状態がない経路（budgetMonthAt）と同じく、今の月のタイムゾーンで現地の暦年が範囲（1970〜9999）の
+  // 外になる時刻は invalid_time（9999 年 12 月の次の月へは進まないので、ここで拒否しないと 9999 年 12 月の
+  // まま受け付けてしまう。Codex のレビュー P3、B07-03 で修正）。
+  const currentFormatter = monthFormatter(current.timeZone);
+  if (
+    currentFormatter === null ||
+    monthAtMillis(nowMillis, currentFormatter) === null
+  )
+    return { ok: false, reasonCodes: ['invalid_time'] };
   return current === state
     ? { ok: true, rolledOver: false, state }
     : { ok: true, rolledOver: true, state: current };

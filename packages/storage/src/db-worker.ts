@@ -22,7 +22,6 @@ import type {
 } from './db-protocol.js';
 import { StorageError } from './errors.js';
 import { applyMigrations, initStoreGeneration } from './migrations.js';
-import type { DbCommand } from './operation-commands.js';
 import {
   executeCommand,
   listInterruptedOperations,
@@ -35,6 +34,7 @@ import { executePairingOp } from './pairing-store.js';
 import { executeEventQuery, isEventQuery } from './event-store.js';
 import { executeHomeNetworkOp } from './home-network-store.js';
 import { executeConversationOp } from './conversation-store.js';
+import { executeBudgetOp } from './budget-store.js';
 import { bindStore } from './store-binding.js';
 import type { StoreBindingResult } from './store-binding.js';
 
@@ -88,14 +88,14 @@ function main(): void {
   // 指定した種類の命令で一度だけ起こす故障。
   const takeFault = (
     name: keyof DbWorkerFaults,
-    command: DbCommand,
+    command: { readonly kind: string },
   ): boolean => {
     if (faults[name] !== command.kind) return false;
     delete faults[name];
     return true;
   };
 
-  const beforeCommit = (command: DbCommand): void => {
+  const beforeCommit = (command: { readonly kind: string }): void => {
     if (takeFault('throwBeforeCommit', command))
       throw new Error('注入した失敗（COMMIT の前）');
     if (takeFault('exitBeforeCommit', command)) process.exit(70);
@@ -283,6 +283,35 @@ function main(): void {
     post({ type: 'conversation_result', id: message.id, result, halted });
   };
 
+  // 予算の命令と照会（ADR 0036）。COMMIT の前後の故障注入は操作の命令と同じ。
+  const handleBudget = (
+    message: Extract<MainToWorker, { type: 'budget' }>,
+  ): void => {
+    const op = message.op;
+    if (takeFault('ignore', op)) return;
+    if (takeFault('weakenDurability', op))
+      connection.pragma('synchronous = NORMAL');
+    let result;
+    try {
+      const run = executeBudgetOp(connection, op, {
+        platform: data.platform,
+        halted,
+        beforeCommit,
+      });
+      if (run.halt) halted = true;
+      result = run.result;
+    } catch {
+      // 照会の想定外の失敗。書込みは executeBudgetOp の中で巻き戻している。
+      result = {
+        ok: false as const,
+        outcome: 'rejected' as const,
+        reasons: ['budget_op_failed'],
+      };
+    }
+    if (result.ok && takeFault('exitAfterCommit', op)) process.exit(71);
+    post({ type: 'budget_result', id: message.id, result, halted });
+  };
+
   port.on('message', (message: MainToWorker) => {
     if (message.type === 'command') handleCommand(message);
     else if (message.type === 'query') handleQuery(message);
@@ -290,6 +319,7 @@ function main(): void {
     else if (message.type === 'pairing') handlePairing(message);
     else if (message.type === 'home') handleHome(message);
     else if (message.type === 'conversation') handleConversation(message);
+    else if (message.type === 'budget') handleBudget(message);
     else if (message.type === 'close') {
       halted = true;
       connection.close();

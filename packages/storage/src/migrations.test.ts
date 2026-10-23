@@ -47,6 +47,9 @@ const fourthSha = createHash('sha256').update(fourthBytes).digest('hex');
 // 0005（ADR 0030）: 試行の superseded と用事の表。
 const fifthBytes = readFileSync(new URL('0005_runner.sql', MIGRATIONS_DIR));
 const fifthSha = createHash('sha256').update(fifthBytes).digest('hex');
+// 0006（ADR 0036）: 予算の予約の作り直し・超過の承認・予算月の状態。
+const sixthBytes = readFileSync(new URL('0006_budget.sql', MIGRATIONS_DIR));
+const sixthSha = createHash('sha256').update(sixthBytes).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -107,7 +110,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0005 apply to a temporary file DB: 46 STRICT tables, version 5 and the content hashes', () => {
+test('0001 to 0006 apply to a temporary file DB: 48 STRICT tables, version 6 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -115,18 +118,18 @@ test('0001 to 0005 apply to a temporary file DB: 46 STRICT tables, version 5 and
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 5,
-        applied: [1, 2, 3, 4, 5],
+        to: 6,
+        applied: [1, 2, 3, 4, 5, 6],
       });
       const tables = tableNames(db);
-      assert.equal(tables.length, 46);
+      assert.equal(tables.length, 48);
       assert.deepEqual(tables, Object.keys(TABLE_POLICIES).sort());
       const strict = db
         .prepare(
           "SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'",
         )
         .all() as { name: string; strict: number }[];
-      assert.equal(strict.length, 46);
+      assert.equal(strict.length, 48);
       for (const row of strict) assert.equal(row.strict, 1, row.name);
       assert.deepEqual(meta(db), {
         'migration_sha256:0001': initialSha,
@@ -134,20 +137,21 @@ test('0001 to 0005 apply to a temporary file DB: 46 STRICT tables, version 5 and
         'migration_sha256:0003': thirdSha,
         'migration_sha256:0004': fourthSha,
         'migration_sha256:0005': fifthSha,
-        schema_version: '5',
+        'migration_sha256:0006': sixthSha,
+        schema_version: '6',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 5 のまま、適用するものはない。
+    // 開き直しても版は 6 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 5);
+      assert.equal(readSchemaVersion(reopened), 6);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 5,
-        to: 5,
+        from: 6,
+        to: 6,
         applied: [],
       });
     } finally {
@@ -319,6 +323,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [3, '0003_home_network.sql'],
       [4, '0004_turn_responses.sql'],
       [5, '0005_runner.sql'],
+      [6, '0006_budget.sql'],
     ],
   );
   withTempDir((dir) => {
@@ -468,7 +473,7 @@ test('0005 upgrades a version 4 DB holding attempts and steps and keeps every ro
         "INSERT INTO operation_steps VALUES ('at-1', '1-apply_labels', 'apply_labels', NULL, 1200, 'unknown')",
       ])
         db.exec(sql);
-      assert.deepEqual(applyMigrations(db), {
+      assert.deepEqual(applyMigrations(db, bundled.slice(0, 5)), {
         from: 4,
         to: 5,
         applied: [5],
@@ -542,6 +547,205 @@ test('0005 upgrades a version 4 DB holding attempts and steps and keeps every ro
         /UNIQUE/u,
       );
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// 0006（ADR 0036）: 予約（各状態）と会話の接続が入った版 5 の DB を更新しても、全行・外部キーが残り、新しい列は
+// 0001 の行から求められる値（手での精算の印）か NULL（記録のない時刻）、profile は記録なしの印になる。
+// 期待値は手で書いた値。金額は合成の通貨 XTS と縮めた値（18 桁の上限の 1 行を含む）。
+test('0006 upgrades a version 5 DB holding reservations and a live session and keeps every row and foreign key', () => {
+  withTempDir((dir) => {
+    const path = join(dir, 'buddy.sqlite');
+    const db = openWriteConnection(path, { platform: 'macos' });
+    try {
+      const bundled = loadMigrations();
+      applyMigrations(db, bundled.slice(0, 5));
+      const columns =
+        'reservation_id, request_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, credit_cycle_id, overrun_reviewed, created_at';
+      for (const sql of [
+        "INSERT INTO devices (device_id, device_name, platform, hub_local, token_hash, registered_at) VALUES ('dev-1', 'd', 'macos', 0, X'0000000000000000000000000000000000000000000000000000000000000000', 1000)",
+        "INSERT INTO sessions VALUES ('s-1', 'normal', 'dev-1', 1, NULL, 1000, NULL)",
+        `INSERT INTO budget_reservations (${columns}) VALUES ('r-1', 'q-1', 'llm', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, 0, 1100)`,
+        `INSERT INTO budget_reservations (${columns}) VALUES ('r-2', 'q-2', 'llm', '2030-10', 'XTS', 'price-1', 10, 20, 'usage_unknown', 2, NULL, NULL, NULL, NULL, NULL, NULL, 0, 1200)`,
+        `INSERT INTO budget_reservations (${columns}) VALUES ('r-3', 'q-3', 'llm', '2030-09', 'XTS', 'price-1', 10, 20, 'settled', 1, NULL, 15, 0, 15, 'p-3', NULL, 0, 1300)`,
+        `INSERT INTO budget_reservations (${columns}) VALUES ('r-4', 'q-4', 'overage', '2030-09', 'XTS', 'price-1', 10, 20, 'settled', 1, 'ap-4', 30, 0, 30, 'manual:inv-4', NULL, 1, 1400)`,
+        `INSERT INTO budget_reservations (${columns}) VALUES ('r-5', 'q-5', 'voice', '2030-10', 'XTS', 'price-1', 0, 999999999999999999, 'released', 1, NULL, NULL, NULL, NULL, NULL, NULL, 0, 1500)`,
+        "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'ready', 1, 'open', NULL, 'r-1', 1100, NULL, NULL)",
+      ])
+        db.exec(sql);
+      assert.deepEqual(applyMigrations(db), {
+        from: 5,
+        to: 6,
+        applied: [6],
+      });
+      const rows = db
+        .prepare(
+          'SELECT reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at FROM budget_reservations ORDER BY reservation_id',
+        )
+        .safeIntegers(true)
+        .all();
+      const base = {
+        profile_id: 'legacy:unrecorded',
+        currency: 'XTS',
+        price_version: 'price-1',
+        credit_cycle_id: null,
+        settled_at: null,
+        overrun_reviewed_at: null,
+      };
+      const open = {
+        approval_id: null,
+        actual_gross: null,
+        credit_applied: null,
+        additional_spend: null,
+        provider_reconciliation_id: null,
+        settlement_kind: null,
+        overrun_reviewed: 0n,
+      };
+      assert.deepEqual(rows, [
+        {
+          ...base,
+          ...open,
+          reservation_id: 'r-1',
+          request_id: 'q-1',
+          pool_id: 'llm',
+          budget_month: '2030-10',
+          reserved_amount: 10n,
+          max_liability: 20n,
+          status: 'reserved',
+          reservation_revision: 1n,
+          created_at: 1100n,
+        },
+        {
+          ...base,
+          ...open,
+          reservation_id: 'r-2',
+          request_id: 'q-2',
+          pool_id: 'llm',
+          budget_month: '2030-10',
+          reserved_amount: 10n,
+          max_liability: 20n,
+          status: 'usage_unknown',
+          reservation_revision: 2n,
+          created_at: 1200n,
+        },
+        {
+          ...base,
+          reservation_id: 'r-3',
+          request_id: 'q-3',
+          pool_id: 'llm',
+          budget_month: '2030-09',
+          reserved_amount: 10n,
+          max_liability: 20n,
+          status: 'settled',
+          reservation_revision: 1n,
+          approval_id: null,
+          actual_gross: 15n,
+          credit_applied: 0n,
+          additional_spend: 15n,
+          provider_reconciliation_id: 'p-3',
+          settlement_kind: 'provider',
+          overrun_reviewed: 0n,
+          created_at: 1300n,
+        },
+        {
+          ...base,
+          reservation_id: 'r-4',
+          request_id: 'q-4',
+          pool_id: 'overage',
+          budget_month: '2030-09',
+          reserved_amount: 10n,
+          max_liability: 20n,
+          status: 'settled',
+          reservation_revision: 1n,
+          approval_id: 'ap-4',
+          actual_gross: 30n,
+          credit_applied: 0n,
+          additional_spend: 30n,
+          provider_reconciliation_id: 'manual:inv-4',
+          settlement_kind: 'manual',
+          overrun_reviewed: 1n,
+          created_at: 1400n,
+        },
+        {
+          ...base,
+          ...open,
+          reservation_id: 'r-5',
+          request_id: 'q-5',
+          pool_id: 'voice',
+          budget_month: '2030-10',
+          reserved_amount: 0n,
+          max_liability: 999999999999999999n,
+          status: 'released',
+          reservation_revision: 1n,
+          created_at: 1500n,
+        },
+      ]);
+      assert.deepEqual(db.prepare('SELECT * FROM live_sessions').all(), [
+        {
+          live_session_id: 'ls-1',
+          device_id: 'dev-1',
+          session_id: 's-1',
+          purpose: 'conversation',
+          control_state: 'ready',
+          control_epoch: 1,
+          closure: 'open',
+          usage_seconds: null,
+          reservation_id: 'r-1',
+          started_at: 1100,
+          ended_at: null,
+          end_reason: null,
+        },
+      ]);
+      // 外部キーは作り直した予約の表を指す（存在しない予約の接続は拒否）。
+      assert.deepEqual(
+        db
+          .prepare('PRAGMA foreign_key_list(live_sessions)')
+          .all()
+          .map((row) => (row as { table: string }).table)
+          .sort(),
+        ['budget_reservations', 'devices', 'sessions'],
+      );
+      assert.throws(
+        () =>
+          db.exec(
+            "INSERT INTO live_sessions VALUES ('ls-2', 'dev-1', 's-1', 'conversation', 'ready', 1, 'open', NULL, 'r-x', 1100, NULL, NULL)",
+          ),
+        /FOREIGN KEY/u,
+      );
+      // 0001 の索引と trigger、0006 の索引も働く。
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT name FROM sqlite_schema WHERE type = 'index' AND tbl_name = 'budget_reservations' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+          )
+          .pluck()
+          .all(),
+        [
+          'budget_reservations_month',
+          'budget_reservations_one_per_approval',
+          'budget_reservations_open',
+        ],
+      );
+      assert.throws(
+        () =>
+          db.exec(
+            "UPDATE budget_reservations SET budget_month = '2030-11' WHERE reservation_id = 'r-1'",
+          ),
+        /budget_month_fixed/u,
+      );
+      // 解放済みの予約は精算できない。
+      assert.throws(
+        () =>
+          db.exec(
+            "UPDATE budget_reservations SET status = 'settled', actual_gross = 1, credit_applied = 0, additional_spend = 1, provider_reconciliation_id = 'p-5', settlement_kind = 'provider' WHERE reservation_id = 'r-5'",
+          ),
+        /budget_reservation_released/u,
+      );
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }

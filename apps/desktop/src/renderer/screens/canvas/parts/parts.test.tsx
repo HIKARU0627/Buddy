@@ -53,6 +53,7 @@ const ready = (
   status: 'ready',
   content,
   signature: 's',
+  requestSeq: 1,
   revision: '1',
   opened: null,
   opening: null,
@@ -648,10 +649,10 @@ test('timeline: dense events are limited to lanes that stay readable (the rest i
   assert.equal(count(dense, /data-event="/gu), 2);
   assert.equal(count(dense, /data-lanes="2"/gu), 2);
   assert.match(dense, new RegExp(`aria-label="ほか${NB}48${NB}件"`, 'u'));
-  // 広い 640 × 400: 本文 606 − 36 = 570 → 10 列まで。50 件の同時でも 10 件、残り 40 件は札。
+  // 広い 640 × 400: 本文 606 − 36 = 570 → 570 ÷ 58（読める幅 56 ＋ 列の間 2）→ 9 列まで。50 件の同時でも 9 件、残り 41 件は札。
   const wide = card(ready(same), item('schedule_timeline', 50), SIZES.wide);
-  assert.equal(count(wide, /data-event="/gu), 10);
-  assert.match(wide, new RegExp(`aria-label="ほか${NB}40${NB}件"`, 'u'));
+  assert.equal(count(wide, /data-event="/gu), 9);
+  assert.match(wide, new RegExp(`aria-label="ほか${NB}41${NB}件"`, 'u'));
   // 軸の終わり（20:00）の直前の 10 分の予定: 最小の高さ 20 を取ると下にはみ出すので、下の端にそろえる。
   // 本文の高さ 322 → top = 322 − 20 = 302。
   const last: CanvasContent = {
@@ -672,4 +673,80 @@ test('chart: the table for readers keeps the exact values, apart from the rounde
   };
   const html = card(ready(fine), item('chart', 0), SIZES.wide);
   assert.match(html, /<td>0\.001<\/td><td>0\.002<\/td>/u);
+});
+
+// 描いた予定（style の top・height と、列）を取り出す。
+const drawnEvents = (html: string) =>
+  [
+    ...html.matchAll(
+      /data-event="(\d+)" data-lane="(\d+)" data-lanes="(\d+)"[^>]*style="top:([\d.]+)px;height:([\d.]+)px/gu,
+    ),
+  ].map((m) => ({
+    index: Number(m[1]),
+    lane: Number(m[2]),
+    top: Number(m[4]),
+    height: Number(m[5]),
+  }));
+
+test('timeline: the end-of-axis correction is decided before the lanes, so no drawn event covers another in its lane', () => {
+  // 幅 160・高さ 248 → 本文 126 × 170。軸は 8:00〜20:00（720 分）。18:20〜19:10 と 19:50〜20:00。読める列は 1 つ
+  // （(126 − 36) ÷ 58 → 1）。補正後の描く区間（最小の高さ 20 を取り、軸の終わりにそろえる）で、2 つ目は 1 つ目と重なるので省く。
+  const content: CanvasContent = {
+    component: 'schedule_timeline',
+    day_start_minute: 480,
+    day_end_minute: 1200,
+    events: [
+      { title: '夕方', start_minute: 1100, end_minute: 1150 },
+      { title: '終わり際', start_minute: 1190, end_minute: 1200 },
+    ],
+  };
+  const html = card(ready(content), item('schedule_timeline', 2), {
+    width: 160,
+    height: 248,
+  });
+  const drawn = drawnEvents(html);
+  assert.deepEqual(
+    drawn.map((event) => event.index),
+    [0],
+  );
+  assert.match(html, new RegExp(`aria-label="ほか${NB}1${NB}件"`, 'u'));
+  // 札の高さ 32 を空けた軸（170 − 32 = 138）の中に収まる。1 つ目も最小の高さ 20 で下にはみ出す（620 ÷ 720 × 138 = 118.8 から
+  // 20 を足すと 138.8）ので、下の端にそろえて top = 138 − 20 = 118。2 つ目も同じ [118, 138] になり重なるので省く。
+  assert.match(html, /data-event="0"[^>]*style="top:118px;height:20px/u);
+  for (const event of drawn) assert(event.top + event.height <= 138 + 1e-6);
+  // 広い 640 × 400（本文の高さ 322）なら、2 つとも別の位置に収まる（同じ列で重ならない）。
+  const wide = drawnEvents(
+    card(ready(content), item('schedule_timeline', 2), SIZES.wide),
+  );
+  assert.equal(wide.length, 2);
+  for (const a of wide)
+    for (const b of wide)
+      if (a.index < b.index && a.lane === b.lane)
+        assert(a.top + a.height <= b.top + 1e-6, 'same lane, no cover');
+});
+
+test('timeline: the lane count leaves the gap between lanes out of the minimum width, so a drawn lane is never narrower than 56', () => {
+  const same: CanvasContent = {
+    component: 'schedule_timeline',
+    day_start_minute: 480,
+    day_end_minute: 1200,
+    events: [0, 1, 2].map((index) => ({
+      title: `予定${index}`,
+      start_minute: 540,
+      end_minute: 600,
+    })),
+  };
+  // 幅 182 → 本文 148 − 軸 36 = 112。2 列だと各 56 − 2 = 54 で足りないので 1 列（112 ÷ 58）。1 件だけ描き、残り 2 件は札。
+  const narrow = card(ready(same), item('schedule_timeline', 3), {
+    width: 182,
+    height: 300,
+  });
+  assert.equal(count(narrow, /data-event="/gu), 1);
+  assert.match(narrow, new RegExp(`aria-label="ほか${NB}2${NB}件"`, 'u'));
+  // 幅 196 → 本文 162 − 36 = 126 → 126 ÷ 58 → 2 列。各列は 63 − 2 = 61 以上。
+  const two = card(ready(same), item('schedule_timeline', 3), {
+    width: 196,
+    height: 300,
+  });
+  assert.equal(count(two, /data-event="/gu), 2);
 });

@@ -443,8 +443,8 @@ function createWindow(role: UiWindowRole): BrowserWindow {
     // 表示している間（デスクトップの層・ほかの窓の後ろ）は捨てない。表示し直したら、今の記述を取り直して送る。
     window.on('hide', () => link?.canvasHidden());
     window.on('minimize', () => link?.canvasHidden());
-    window.on('show', () => link?.canvasSubscribed());
-    window.on('restore', () => link?.canvasSubscribed());
+    window.on('show', () => link?.canvasShown());
+    window.on('restore', () => link?.canvasShown());
     window.webContents.on('before-input-event', (event, input) => {
       if (presence.layer === 'front' && isDismissKey(input)) {
         event.preventDefault();

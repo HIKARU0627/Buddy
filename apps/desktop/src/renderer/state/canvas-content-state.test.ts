@@ -96,6 +96,7 @@ test('a new item is requested once; a revision that does not change its data kee
     signature: itemSignature(item('a', [1, 2])),
     revision: '1',
     epoch: 0,
+    seq: 1,
   });
   assert.equal(first.store.items['a']?.status, 'loading');
   const arrived = contentArrived(first.store, first.requests[0]!, LIST);
@@ -506,4 +507,37 @@ test('lanes with a limit: an event that finds every lane busy is left out (null)
   const placed = assignLanesWithin(fifty, 3).filter((slot) => slot !== null);
   assert.equal(placed.length, 3);
   assert(placed.every((slot) => slot.lanes === 3 && slot.lane < 3));
+});
+
+test('every fetch has its own number: a failure or an answer of an older fetch of the same data cannot spoil a newer fetch (shelf and back)', () => {
+  const card = (revision: string, placement: 'canvas' | 'shelf') =>
+    view(revision, [item('a', [1, 2], { placement })]);
+  // 版 1 で取得を始める（番号 1）→ 版 2 で棚へ（項目を捨てる）→ 版 3 で戻して取得を始める（番号 2。参照は同じなので印も同じ）。
+  const first = syncContents(EMPTY_STORE, card('1', 'canvas'), true);
+  const old = first.requests[0]!;
+  assert.equal(old.seq, 1);
+  const shelved = syncContents(first.store, card('2', 'shelf'), true);
+  assert.deepEqual(shelved.store.items, {});
+  const back = syncContents(shelved.store, card('3', 'canvas'), true);
+  const current = back.requests[0]!;
+  assert.equal(current.seq, 2);
+  assert.equal(current.signature, old.signature);
+  assert.equal(current.epoch, old.epoch);
+  // 版 1 の失敗が届いても、版 3 の取得は loading のまま。そのあと版 3 の成功が届けば ready になる。
+  const afterOldFailure = contentFailed(back.store, old);
+  assert.equal(afterOldFailure, back.store);
+  assert.equal(afterOldFailure.items['a']?.status, 'loading');
+  const done = contentArrived(afterOldFailure, current, LIST);
+  assert.equal(done.items['a']?.status, 'ready');
+  // 版 1 の成功が先に届いても、版 3 の取得を終わらせない（古い取得の中身を使わない）。
+  assert.equal(contentArrived(back.store, old, MAIL), back.store);
+  // 数は捨てても戻らない（ロックで全部捨てた後の取得も新しい番号）。
+  const cleared = syncContents(done, null, true);
+  const again = syncContents(cleared.store, card('4', 'canvas'), true);
+  assert.equal(again.requests[0]?.seq, 3);
+  // 失敗した物の取り直しも新しい番号。
+  const failed = contentFailed(again.store, again.requests[0]!);
+  const retry = syncContents(failed, card('5', 'canvas'), true);
+  assert.equal(retry.requests[0]?.seq, 4);
+  assert.equal(contentFailed(retry.store, again.requests[0]!), retry.store);
 });

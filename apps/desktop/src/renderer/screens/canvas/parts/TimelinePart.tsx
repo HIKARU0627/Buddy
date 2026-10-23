@@ -22,6 +22,8 @@ const AXIS_WIDTH = 36;
 const MIN_EVENT_HEIGHT = 20;
 // 予定の列の最小の幅（これより細い列は作らない。題名の頭と時刻が読める幅）。置けない予定は描かず、数の札に数える。
 const MIN_LANE_WIDTH = 56;
+// 列と列の間（と上下の予定の間）の余白（ピクセル）。
+const LANE_GAP = 2;
 
 export function TimelinePart({
   item,
@@ -30,29 +32,43 @@ export function TimelinePart({
 }: PartProps<TimelineContent>) {
   const start = content.day_start_minute;
   const range = content.day_end_minute - start;
-  // 列は見える長さで決める（短い予定は最小の高さまで伸ばして描くので、その分も重なりとして別の列へ）。重なりの印は
-  // 実際の時刻の重なりだけに付ける。列の数は読める幅（MIN_LANE_WIDTH）で抑え、置けない予定は描かず、省いた件数の札に数える。
+  // 列の数は、読める幅（MIN_LANE_WIDTH。列の間の LANE_GAP を除いた描く幅）で抑える。置けない予定は描かず、省いた件数の札に数える。
   const maxLanes = Math.max(
     1,
-    Math.floor((box.width - AXIS_WIDTH) / MIN_LANE_WIDTH),
+    Math.floor((box.width - AXIS_WIDTH) / (MIN_LANE_WIDTH + LANE_GAP)),
   );
+  // 最後に描く区間（上の位置と高さ）を先に決め、その区間（ピクセル）で列の割り当てと省くかどうかを決める。短い予定は最小の高さまで
+  // 伸ばし、軸の終わりの直前の予定は箱の下の端にそろえるので、その分も重なりとして別の列へ（置けなければ省く）。重なりの印は
+  // 実際の時刻の重なりだけに付ける。
   const arrange = (axisHeight: number) => {
-    const minMinutes = (MIN_EVENT_HEIGHT / axisHeight) * range;
-    return assignLanesWithin(
-      content.events.map((event) => ({
-        start_minute: event.start_minute,
-        end_minute: Math.max(event.end_minute, event.start_minute + minMinutes),
+    const rects = content.events.map((event) => {
+      const at = (minute: number) => ((minute - start) / range) * axisHeight;
+      const eventHeight = Math.max(
+        MIN_EVENT_HEIGHT,
+        at(event.end_minute) - at(event.start_minute) - LANE_GAP,
+      );
+      return {
+        top: Math.min(at(event.start_minute), axisHeight - eventHeight),
+        height: eventHeight,
+      };
+    });
+    const slots = assignLanesWithin(
+      rects.map((rect) => ({
+        start_minute: rect.top,
+        end_minute: rect.top + rect.height,
       })),
       maxLanes,
     );
+    return { rects, slots };
   };
   // 札（省いた予定・more_count）を出すときは、その高さを先に空けて並べ直す。
   let height = Math.max(MIN_EVENT_HEIGHT, box.height);
-  let slots = arrange(height);
-  if (slots.some((slot) => slot === null) || item.data.more_count > 0) {
+  let layout = arrange(height);
+  if (layout.slots.some((slot) => slot === null) || item.data.more_count > 0) {
     height = Math.max(MIN_EVENT_HEIGHT, box.height - MORE_RESERVE);
-    slots = arrange(height);
+    layout = arrange(height);
   }
+  const { rects, slots } = layout;
   const omitted = slots.filter((slot) => slot === null).length;
   const overlaps = assignLanes(content.events);
   const ticks = hourTicks(start, content.day_end_minute, height);
@@ -85,12 +101,9 @@ export function TimelinePart({
           const slot = slots[index];
           if (slot === undefined || slot === null) return null;
           const overlapping = overlaps[index]?.overlaps === true;
-          const eventHeight = Math.max(
-            MIN_EVENT_HEIGHT,
-            at(event.end_minute) - at(event.start_minute) - 2,
-          );
-          // 軸の終わりの直前の予定は、最小の高さで箱からはみ出さないよう、下の端にそろえる。
-          const top = Math.min(at(event.start_minute), height - eventHeight);
+          const rect = rects[index];
+          if (rect === undefined) return null;
+          const { top, height: eventHeight } = rect;
           // 予定を描ける幅（軸の文字の右）を、重なりの塊の列の数で等分する。
           const laneWidth = 100 / slot.lanes;
           return (
@@ -106,7 +119,7 @@ export function TimelinePart({
                 top,
                 height: eventHeight,
                 left: `calc(${AXIS_WIDTH}px + (100% - ${AXIS_WIDTH}px) * ${slot.lane} / ${slot.lanes})`,
-                width: `calc((100% - ${AXIS_WIDTH}px) * ${laneWidth} / 100 - 2px)`,
+                width: `calc((100% - ${AXIS_WIDTH}px) * ${laneWidth} / 100 - ${LANE_GAP}px)`,
               }}
               className={`absolute overflow-hidden rounded-md border-l-4 bg-accent-soft px-1.5 py-0.5 text-accent-soft-foreground ${
                 overlapping ? 'border-l-accent' : 'border-l-separator'

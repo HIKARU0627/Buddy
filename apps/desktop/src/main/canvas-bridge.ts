@@ -80,6 +80,9 @@ export class CanvasBridge {
   // 物・対象・同じ対象の何番目か → 画面へ渡した参照。同じ世代の中では、同じ物の同じ対象に同じ参照を保つ（配置だけが変わった版で、
   // 画面が持つ本文・開いたメールを取り直さないため）。記述にない対象の参照は次の記述で捨てる。世代が進む（reset）と全部作り直す。
   #refKeys = new Map<string, string>();
+  // キャンバスの窓そのものが隠れている（hide・最小化。UI-07）。隠れている間は、版の知らせ・再接続・ロックの解除・入出力の再開が
+  // あっても、記述も本文も取らず、送り直さない。show・restore（show）で取り直す。後ろにあるが表示している間は隠れていない。
+  #hidden = false;
 
   constructor(host: CanvasHost) {
     this.#host = host;
@@ -107,6 +110,19 @@ export class CanvasBridge {
     this.#host.publish(null);
   }
 
+  // 窓そのものが隠れた: 記述・参照・取っている途中の答えを捨て（reset）、表示し直されるまで取らない。
+  hide(): void {
+    this.#hidden = true;
+    this.reset();
+  }
+
+  // 窓が表示し直された: 取れるようにして、今の記述を取り直す。
+  show(): void {
+    if (!this.#hidden) return;
+    this.#hidden = false;
+    this.resend();
+  }
+
   // 入出力の状態（停止・io_epoch）が変わった。停止中・世代が進んだときは記述と参照を捨てる（ロックと同じ。ADR 0032 の
   // 「停止で隠す」）。再開して記述がなければ取り直す。
   ioChanged(): void {
@@ -129,6 +145,7 @@ export class CanvasBridge {
   // 画面が通知を受け取る準備を終えた（キャンバスの窓が読み込み直した・購読を始めた）。今の記述を送り直す。記述がなければ
   // 取り直す。通知が購読より先に来て取り逃した画面を、次の変更まで空のままにしない。
   resend(): void {
+    if (this.#hidden) return;
     if (this.#view !== null) this.#host.publish(this.#view);
     else void this.refresh();
   }
@@ -159,6 +176,7 @@ export class CanvasBridge {
   }
 
   async #refresh(): Promise<void> {
+    if (this.#hidden) return;
     const connection = this.#host.connection();
     if (connection === null || !this.#host.unlocked()) return;
     // 停止中は取らない。停止をまたいだ（世代が進んだ）記述は捨てる。

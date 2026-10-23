@@ -22,6 +22,9 @@ export interface ItemContent {
   readonly signature: string;
   // 取り始めた・失敗した版（失敗した版と同じ間は取り直さない）。
   readonly revision: string;
+  // 今の取得の通し番号（取得ごとに新しい番号。応答は、この番号の取得のものだけ反映する。物が棚へ行って戻るなど、参照が
+  // 変わらず signature が同じまま新しい取得が始まったとき、古い取得の応答で新しい取得を壊さないため）。
+  readonly requestSeq: number;
   // 開いているメールの本文（1 通だけ）。開く途中の行は opening。
   readonly opened: MailBody | null;
   readonly opening: number | null;
@@ -30,10 +33,12 @@ export interface ItemContent {
 export interface ContentStore {
   // 捨てるたびに進める。古い世代に始めた取得の応答は反映しない。
   readonly epoch: number;
+  // 取得の通し番号の数え（捨てても戻さない）。
+  readonly seq: number;
   readonly items: Readonly<Record<string, ItemContent>>;
 }
 
-export const EMPTY_STORE: ContentStore = { epoch: 0, items: {} };
+export const EMPTY_STORE: ContentStore = { epoch: 0, seq: 0, items: {} };
 
 // 物のデータの印。部品・参照（不透明な参照の並び）・more_count が同じなら同じ中身。
 export function itemSignature(item: CanvasViewItem): string {
@@ -49,6 +54,8 @@ export interface ContentRequest {
   readonly signature: string;
   readonly revision: string;
   readonly epoch: number;
+  // 取得の通し番号（ItemContent.requestSeq と照合する）。
+  readonly seq: number;
 }
 
 // 記述が変わった（または描く条件が変わった）。見える物の中身を整える: 物がない・データが変わった中身は捨て、取っていない物と
@@ -62,12 +69,13 @@ export function syncContents(
     // すでに空なら何も変えない（進行中の取得は、取った物の項目が残っていないので反映されない）。
     if (Object.keys(store.items).length === 0) return { store, requests: [] };
     return {
-      store: { epoch: store.epoch + 1, items: {} },
+      store: { epoch: store.epoch + 1, seq: store.seq, items: {} },
       requests: [],
     };
   }
   const items: Record<string, ItemContent> = {};
   const requests: ContentRequest[] = [];
+  let seq = store.seq;
   let changed = false;
   for (const item of view.items) {
     if (item.placement !== 'canvas') continue;
@@ -79,26 +87,31 @@ export function syncContents(
         previous.status === 'failed' &&
         previous.revision !== view.canvas_revision
       ) {
+        seq += 1;
         items[item.item_id] = {
           ...previous,
           status: 'loading',
           revision: view.canvas_revision,
+          requestSeq: seq,
         };
         requests.push({
           item_id: item.item_id,
           signature,
           revision: view.canvas_revision,
           epoch: store.epoch,
+          seq,
         });
         changed = true;
       } else items[item.item_id] = previous;
       continue;
     }
+    seq += 1;
     items[item.item_id] = {
       status: 'loading',
       content: null,
       signature,
       revision: view.canvas_revision,
+      requestSeq: seq,
       opened: null,
       opening: null,
     };
@@ -107,18 +120,19 @@ export function syncContents(
       signature,
       revision: view.canvas_revision,
       epoch: store.epoch,
+      seq,
     });
     changed = true;
   }
   if (Object.keys(items).length !== Object.keys(store.items).length)
     changed = true;
   return {
-    store: changed ? { epoch: store.epoch, items } : store,
+    store: changed ? { epoch: store.epoch, seq, items } : store,
     requests,
   };
 }
 
-// 取れた中身を置く。取り始めたときの世代・データの印と同じときだけ（それ以外は捨てる）。
+// 取れた中身を置く。取り始めたときの世代・データの印・取得の通し番号と同じときだけ（それ以外は捨てる）。
 export function contentArrived(
   store: ContentStore,
   request: ContentRequest,
@@ -129,6 +143,7 @@ export function contentArrived(
     store.epoch !== request.epoch ||
     current === undefined ||
     current.signature !== request.signature ||
+    current.requestSeq !== request.seq ||
     current.status !== 'loading'
   )
     return store;
@@ -141,7 +156,7 @@ export function contentArrived(
   };
 }
 
-// 取れなかった。同じ条件のときだけ失敗にする。
+// 取れなかった。同じ条件（世代・データの印・取得の通し番号）のときだけ失敗にする。
 export function contentFailed(
   store: ContentStore,
   request: ContentRequest,
@@ -151,6 +166,7 @@ export function contentFailed(
     store.epoch !== request.epoch ||
     current === undefined ||
     current.signature !== request.signature ||
+    current.requestSeq !== request.seq ||
     current.status !== 'loading'
   )
     return store;

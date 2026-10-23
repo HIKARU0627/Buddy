@@ -1718,7 +1718,7 @@ test(
     const hidden = await contentOp(client, '2', 'errands');
     assert.equal(field(hidden, 'reason'), 'canvas_conflict');
     // 表示し直したら、今の記述を取り直して送る。参照は作り直す（世代が進んだ）。
-    client.link.canvasSubscribed();
+    client.link.canvasShown();
     await waitUntil(
       () => latest(client)?.canvas_revision === '2',
       'shown again',
@@ -1728,5 +1728,53 @@ test(
     for (const ref of first) assert(!again.includes(ref));
     const ok = await contentOp(client, '2', 'errands');
     assert.equal(ok.outcome, 'ok');
+  },
+);
+
+test(
+  'UI-07 (review 2): while the canvas window is hidden nothing is fetched or sent again (revision notices, lock and unlock), and showing it fetches the current description',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub);
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const canvasGets = () =>
+      client.requests.filter((line) => line === 'GET /v1/canvas').length;
+    client.link.canvasHidden();
+    assert.equal(client.link.canvasView(), null);
+    assert.equal(client.canvasNotices.at(-1)?.canvas ?? null, null);
+    const noticesBefore = client.canvasNotices.length;
+    const gets = canvasGets();
+    // 隠れている間に中枢の版が進む（版の知らせが届く）。main は取りに行かない。
+    const notice = nextNotice(client, (revision) => revision === '2');
+    assert.equal((await client.coreTurn('今日の予定を見せて')).status, 200);
+    await notice;
+    await client.link.canvasIdle();
+    assert.equal(canvasGets(), gets);
+    // ロックして解除しても取らない。
+    client.link.setLockState('locked');
+    client.link.setLockState('unlocked');
+    await client.link.canvasIdle();
+    assert.equal(canvasGets(), gets);
+    assert.equal(client.link.canvasView(), null);
+    // 通知を受け取る準備の合図（読み込み直し）でも送り直さない。
+    client.link.canvasSubscribed();
+    await client.link.canvasIdle();
+    assert.equal(canvasGets(), gets);
+    assert.equal(client.canvasNotices.length, noticesBefore);
+    // 本文も取れない。
+    const hidden = await contentOp(client, '2', 'errands');
+    assert.equal(hidden.outcome, 'rejected');
+    // 表示し直したら、今の記述（版 2）を取り直して送る。
+    client.link.canvasShown();
+    await waitUntil(
+      () => latest(client)?.canvas_revision === '2',
+      'shown again',
+    );
+    assert.equal(canvasGets(), gets + 1);
+    assert.equal((await contentOp(client, '2', 'errands')).outcome, 'ok');
   },
 );

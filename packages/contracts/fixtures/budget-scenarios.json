@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "予約 R・最大負担 M・精算の期待値（設計 05 予約と最大負担の区別 F02、QA42・QA20・X18・X26・X34・X53）。合成設定（通貨 XTS は ISO の試験用コード、上限は合成値）で、本人の金額を含まない。期待値は設計本文から手で書き、domain の実装から生成していない。admit が受け付けられたら予約を reserved・版 0 で追加する。",
+  "description": "予約 R・最大負担 M・精算の期待値（設計 05 予約と最大負担の区別 F02、QA42・QA20・X18・X26・X34・X53）。合成設定（通貨 XTS は ISO の試験用コード、上限は合成値）で、本人の金額を含まない。期待値は設計本文から手で書き、domain の実装から生成していない。admit が受け付けられたら予約を reserved・版 0 で追加する。B07-02（ADR 0035）で、超過枠への経路（admit_route。本人の依頼・上限だけの拒否・音声でない・承認が request_id と M に一致し期限内）、手での精算（manual_settle）、M 超過の確認（review）の手順と、QA42 の残り（usage の重複・欠落・timeout・月替わり・承認のない超過枠・音声の予算からの融通 0）・X53・X18 の予算の行を足した。単価の境界・未測定の p95・予算月は budget-rules.json。",
   "config": {
     "schema": "buddy.budget-config.v1",
     "currency": "XTS",
@@ -53,7 +53,9 @@
   "defaults": {
     "month": "2030-10",
     "price": "p1",
-    "profile": "synthetic.text.v1"
+    "profile": "synthetic.text.v1",
+    "now": "2030-10-20T00:05:00Z",
+    "routable_pools": ["llm", "search"]
   },
   "scenarios": [
     {
@@ -486,6 +488,825 @@
           "expected": {
             "admitted": false,
             "reasonCodes": ["duplicate_request"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "qa42-usage-duplicate-missing-timeout",
+      "title": "QA42 の usage の重複・欠落・timeout。重複は一度だけ計上し、別の照合 ID は競合。欠落・timeout は M を保持して解放せず、遅れた usage は元の月に精算する",
+      "initial": [
+        {
+          "id": "base",
+          "pool": "llm",
+          "r": "92",
+          "m": "92",
+          "status": "settled",
+          "actual": "92",
+          "receipt": "p-base"
+        }
+      ],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "A",
+          "pool": "llm",
+          "r": "1",
+          "m": "4",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "B",
+          "pool": "llm",
+          "r": "1",
+          "m": "4",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "settle",
+          "id": "A",
+          "actual": "3",
+          "receipt": "p-A",
+          "expected": { "ok": true, "duplicate": false, "overrun": false }
+        },
+        {
+          "op": "settle",
+          "id": "A",
+          "actual": "3",
+          "receipt": "p-A2",
+          "expected": { "ok": false, "reasonCodes": ["settlement_conflict"] }
+        },
+        {
+          "op": "settle",
+          "id": "A",
+          "actual": "3",
+          "receipt": "p-A",
+          "expected": { "ok": true, "duplicate": true, "overrun": false },
+          "record": { "actualGross": "3", "providerReconciliationId": "p-A" }
+        },
+        {
+          "op": "mark_unknown",
+          "id": "B",
+          "expected": { "ok": true },
+          "record": { "status": "usage_unknown", "maxLiability": "4" }
+        },
+        {
+          "op": "admit",
+          "id": "C",
+          "pool": "llm",
+          "r": "1",
+          "m": "2",
+          "expected": { "admitted": false, "reasonCodes": ["m_limit:llm"] }
+        },
+        {
+          "op": "release",
+          "id": "B",
+          "sent": true,
+          "expected": { "ok": false, "reasonCodes": ["possibly_sent"] }
+        },
+        {
+          "op": "settle",
+          "id": "B",
+          "actual": "2",
+          "receipt": "p-B",
+          "expected": { "ok": true, "duplicate": false, "overrun": false },
+          "record": { "status": "settled", "budgetMonth": "2030-10" }
+        },
+        {
+          "op": "admit",
+          "id": "C2",
+          "pool": "llm",
+          "r": "1",
+          "m": "3",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "settle",
+          "id": "B",
+          "actual": "3",
+          "receipt": "p-B",
+          "expected": { "ok": false, "reasonCodes": ["settlement_conflict"] }
+        }
+      ]
+    },
+    {
+      "id": "qa42-unknown-month-manual-settlement",
+      "title": "QA42 の月替わり。前の月の usage 不明は今月に数えず、前の月に M のまま残す。手での精算（manual:）で元の月・元の枠に一度だけ精算し、provider の遅れた精算・別の金額は拒否する",
+      "initial": [
+        {
+          "id": "u2",
+          "pool": "llm",
+          "r": "10",
+          "m": "40",
+          "status": "usage_unknown",
+          "month": "2030-09"
+        }
+      ],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "P",
+          "pool": "llm",
+          "r": "10",
+          "m": "60",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "P2",
+          "pool": "llm",
+          "r": "1",
+          "m": "61",
+          "month": "2030-09",
+          "expected": { "admitted": false, "reasonCodes": ["m_limit:llm"] }
+        },
+        {
+          "op": "settle",
+          "id": "u2",
+          "actual": "15",
+          "receipt": "manual:inv-2030-09",
+          "expected": {
+            "ok": false,
+            "reasonCodes": ["manual_prefix_reserved"]
+          },
+          "record": { "status": "usage_unknown" }
+        },
+        {
+          "op": "manual_settle",
+          "id": "u2",
+          "receipt": "p-guess",
+          "actual": "15",
+          "expected": { "ok": false, "reasonCodes": ["manual_id_invalid"] }
+        },
+        {
+          "op": "manual_settle",
+          "id": "u2",
+          "receipt": "manual:inv-2030-09",
+          "actual": "15",
+          "expected": { "ok": true, "duplicate": false, "overrun": false },
+          "record": {
+            "status": "settled",
+            "budgetMonth": "2030-09",
+            "poolId": "llm",
+            "actualGross": "15",
+            "providerReconciliationId": "manual:inv-2030-09"
+          }
+        },
+        {
+          "op": "manual_settle",
+          "id": "u2",
+          "receipt": "manual:inv-2030-09",
+          "actual": "15",
+          "expected": { "ok": true, "duplicate": true, "overrun": false }
+        },
+        {
+          "op": "settle",
+          "id": "u2",
+          "actual": "15",
+          "receipt": "p-u2",
+          "expected": { "ok": false, "reasonCodes": ["settlement_conflict"] }
+        },
+        {
+          "op": "manual_settle",
+          "id": "u2",
+          "receipt": "manual:inv-2030-09",
+          "actual": "16",
+          "expected": { "ok": false, "reasonCodes": ["already_settled"] }
+        },
+        {
+          "op": "admit",
+          "id": "P3",
+          "pool": "llm",
+          "r": "1",
+          "m": "85",
+          "month": "2030-09",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "manual_settle",
+          "id": "P",
+          "receipt": "manual:inv-p",
+          "actual": "5",
+          "expected": { "ok": false, "reasonCodes": ["not_usage_unknown"] }
+        }
+      ]
+    },
+    {
+      "id": "qa42-manual-overrun-review",
+      "title": "手で精算した実費が M を超えたら、その枠と子孫の受付を止め、本人が実費と M を確かめるまで解かない。祖先の枠は止めない",
+      "initial": [
+        {
+          "id": "u3",
+          "pool": "llm.background",
+          "r": "2",
+          "m": "5",
+          "status": "usage_unknown"
+        }
+      ],
+      "steps": [
+        {
+          "op": "manual_settle",
+          "id": "u3",
+          "receipt": "manual:inv-u3",
+          "actual": "9",
+          "expected": { "ok": true, "duplicate": false, "overrun": true }
+        },
+        {
+          "op": "admit",
+          "id": "G",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "1",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["overrun_hold:llm.background"]
+          }
+        },
+        {
+          "op": "admit",
+          "id": "G2",
+          "pool": "llm",
+          "r": "1",
+          "m": "1",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "review",
+          "id": "u3",
+          "actual": "8",
+          "m": "5",
+          "expected": { "ok": false, "reasonCodes": ["review_mismatch"] }
+        },
+        {
+          "op": "review",
+          "id": "u3",
+          "actual": "9",
+          "m": "5",
+          "expected": { "ok": true, "duplicate": false },
+          "record": { "overrunReviewed": true, "actualGross": "9" }
+        },
+        {
+          "op": "admit",
+          "id": "G3",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "1",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "review",
+          "id": "u3",
+          "actual": "9",
+          "m": "5",
+          "expected": { "ok": true, "duplicate": true }
+        }
+      ]
+    },
+    {
+      "id": "qa42-overage-requires-owner-approval",
+      "title": "QA42 の承認のない超過枠の利用と音声の予算からの融通。超過枠へ回すのは本人の依頼で、通常の枠が上限だけで落ち、承認が request_id と M に一致し期限内のときだけ。自発的な解析・音声・承認の再利用は回さない",
+      "approvals": [
+        { "id": "ap1", "request": "req-O1", "m": "10" },
+        { "id": "ap2", "request": "req-O1", "m": "10", "status": "pending" },
+        { "id": "ap3", "request": "req-O2", "m": "16" },
+        { "id": "ap4", "request": "req-V1", "m": "3" },
+        { "id": "ap5", "request": "req-A0", "m": "3" }
+      ],
+      "initial": [
+        {
+          "id": "base",
+          "pool": "llm",
+          "r": "98",
+          "m": "98",
+          "status": "settled",
+          "actual": "98",
+          "receipt": "p-base"
+        },
+        {
+          "id": "vbase",
+          "pool": "voice",
+          "r": "48",
+          "m": "48",
+          "status": "settled",
+          "actual": "48",
+          "receipt": "p-vbase"
+        }
+      ],
+      "steps": [
+        {
+          "op": "admit_route",
+          "id": "A0",
+          "origin": "autonomous_analysis",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "3",
+          "approval": "ap5",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "m_limit:llm",
+              "not_owner_request",
+              "pool_not_routable"
+            ]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "O1",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "10",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": ["m_limit:llm", "approval_required"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "O1",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "9",
+          "approval": "ap1",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": ["m_limit:llm", "approval_m_mismatch"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "O1",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "10",
+          "approval": "ap2",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": ["m_limit:llm", "approval_pending"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "O1",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "10",
+          "approval": "ap1",
+          "now": "2030-10-20T00:10:00Z",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": ["m_limit:llm", "approval_expired"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "O1",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "10",
+          "approval": "ap1",
+          "expected": {
+            "admitted": true,
+            "poolId": "overage",
+            "approvalId": "ap1",
+            "routed": true,
+            "reasonCodes": []
+          },
+          "record": { "poolId": "overage", "approvalId": "ap1" }
+        },
+        {
+          "op": "admit_route",
+          "id": "O1-again",
+          "request": "req-O1",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "10",
+          "approval": "ap1",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "duplicate_request",
+              "m_limit:llm",
+              "not_limit_only"
+            ]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "O2",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "16",
+          "approval": "ap3",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": true,
+            "reasonCodes": ["m_limit:llm", "m_limit:overage"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "V1",
+          "origin": "owner_request",
+          "pool": "voice",
+          "r": "1",
+          "m": "3",
+          "approval": "ap4",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": ["m_limit:voice", "pool_not_routable"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "x53-conversation-after-autonomous-exhausted",
+      "title": "X53。自発的な解析で会話の保護分を除いた上限（llm.background）を使い切っても、会話（本人の依頼）は個別承認なしで LLM の上限まで続く。会話の分も使い切ったら個別承認の扱いになり、自発・自動実行は承認があっても超過枠を使わない",
+      "approvals": [
+        { "id": "apx", "request": "req-C3", "m": "2" },
+        { "id": "apy", "request": "req-A3", "m": "1" },
+        { "id": "apz", "request": "req-A4", "m": "1" }
+      ],
+      "initial": [
+        {
+          "id": "bg",
+          "pool": "llm.background",
+          "r": "80",
+          "m": "80",
+          "status": "settled",
+          "actual": "80",
+          "receipt": "p-bg"
+        }
+      ],
+      "steps": [
+        {
+          "op": "admit_route",
+          "id": "A1",
+          "origin": "autonomous_analysis",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "1",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "r_limit:llm.background",
+              "m_limit:llm.background",
+              "not_owner_request",
+              "pool_not_routable"
+            ]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "A2",
+          "origin": "shadow_mode",
+          "pool": "llm.background.campaign",
+          "r": "1",
+          "m": "1",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "r_limit:llm.background",
+              "m_limit:llm.background",
+              "not_owner_request",
+              "pool_not_routable"
+            ]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "C1",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "2",
+          "m": "5",
+          "expected": {
+            "admitted": true,
+            "poolId": "llm",
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": []
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "C2",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "5",
+          "m": "15",
+          "expected": {
+            "admitted": true,
+            "poolId": "llm",
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": []
+          }
+        },
+        {
+          "op": "settle",
+          "id": "C1",
+          "actual": "4",
+          "receipt": "p-C1",
+          "expected": { "ok": true, "duplicate": false, "overrun": false }
+        },
+        {
+          "op": "admit_route",
+          "id": "C3",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "2",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": ["m_limit:llm", "approval_required"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "C3",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "2",
+          "approval": "apx",
+          "expected": {
+            "admitted": true,
+            "poolId": "overage",
+            "approvalId": "apx",
+            "routed": true,
+            "reasonCodes": []
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "A3",
+          "origin": "auto_execution",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "1",
+          "approval": "apy",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "r_limit:llm.background",
+              "m_limit:llm.background",
+              "not_owner_request",
+              "pool_not_routable"
+            ]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "A4",
+          "origin": "owner_request",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "1",
+          "approval": "apz",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "r_limit:llm.background",
+              "m_limit:llm.background",
+              "pool_not_routable"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "x18-boundary-concurrency-month-and-pools",
+      "title": "X18 の予算の行。境界での同時 2 要求は 1 件だけ受け付ける。応答喪失・結果の破棄は M を保持し、月替わりで消さない。音声と LLM・検索は互いに埋めない。超過枠は本人の承認済みの依頼だけが上限ちょうどまで使い、超える予約と自発的な解析の利用は拒否する",
+      "approvals": [
+        { "id": "apa", "request": "req-X6", "m": "25" },
+        { "id": "apb", "request": "req-X7", "m": "1" },
+        { "id": "apc", "request": "req-X8", "m": "1" }
+      ],
+      "initial": [
+        {
+          "id": "base",
+          "pool": "llm",
+          "r": "90",
+          "m": "90",
+          "status": "settled",
+          "actual": "90",
+          "receipt": "p-base"
+        }
+      ],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "X1",
+          "pool": "llm",
+          "r": "1",
+          "m": "6",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "X2",
+          "pool": "llm",
+          "r": "1",
+          "m": "6",
+          "expected": { "admitted": false, "reasonCodes": ["m_limit:llm"] }
+        },
+        {
+          "op": "mark_unknown",
+          "id": "X1",
+          "expected": { "ok": true },
+          "record": { "status": "usage_unknown" }
+        },
+        {
+          "op": "admit",
+          "id": "X3",
+          "pool": "llm",
+          "r": "1",
+          "m": "4",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "mark_unknown",
+          "id": "X3",
+          "expected": { "ok": true },
+          "record": { "status": "usage_unknown" }
+        },
+        {
+          "op": "release",
+          "id": "X3",
+          "sent": true,
+          "expected": { "ok": false, "reasonCodes": ["possibly_sent"] }
+        },
+        {
+          "op": "admit",
+          "id": "X4",
+          "pool": "llm",
+          "r": "1",
+          "m": "100",
+          "month": "2030-11",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "X5",
+          "pool": "llm",
+          "r": "1",
+          "m": "1",
+          "expected": { "admitted": false, "reasonCodes": ["m_limit:llm"] }
+        },
+        {
+          "op": "admit",
+          "id": "V1",
+          "pool": "voice",
+          "r": "50",
+          "m": "50",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "V2",
+          "pool": "voice",
+          "r": "1",
+          "m": "1",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["r_limit:voice", "m_limit:voice"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "V3",
+          "origin": "owner_request",
+          "pool": "voice",
+          "r": "1",
+          "m": "1",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "r_limit:voice",
+              "m_limit:voice",
+              "pool_not_routable"
+            ]
+          }
+        },
+        {
+          "op": "admit",
+          "id": "S1",
+          "pool": "search",
+          "r": "30",
+          "m": "30",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        },
+        {
+          "op": "admit",
+          "id": "S2",
+          "pool": "search",
+          "r": "1",
+          "m": "1",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["r_limit:search", "m_limit:search"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "X6",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "5",
+          "m": "25",
+          "approval": "apa",
+          "expected": {
+            "admitted": true,
+            "poolId": "overage",
+            "approvalId": "apa",
+            "routed": true,
+            "reasonCodes": []
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "X7",
+          "origin": "owner_request",
+          "pool": "llm",
+          "r": "1",
+          "m": "1",
+          "approval": "apb",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": true,
+            "reasonCodes": ["m_limit:llm", "m_limit:overage"]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "X8",
+          "origin": "autonomous_analysis",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "1",
+          "approval": "apc",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "m_limit:llm",
+              "not_owner_request",
+              "pool_not_routable"
+            ]
           }
         }
       ]

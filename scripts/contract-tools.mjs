@@ -142,6 +142,21 @@ export function semanticErrors(name, value) {
       !categories.includes('input_tokens')
     )
       errors.push('cache_without_input');
+    // M は入力をキャッシュなしの単価で見積もる（05 固定部分の節）。cached の 1 単位あたりの単価が入力より高い版は、
+    // 前提が崩れて M を少なく見積もり得るので拒否する（ADR 0035。domain も高い方を使って二重に守る）。
+    const inputRate = value.rates.find(
+      (rate) => rate.category === 'input_tokens',
+    );
+    const cachedRate = value.rates.find(
+      (rate) => rate.category === 'cached_input_tokens',
+    );
+    if (
+      inputRate &&
+      cachedRate &&
+      BigInt(cachedRate.unit_price) * BigInt(inputRate.per_quantity) >
+        BigInt(inputRate.unit_price) * BigInt(cachedRate.per_quantity)
+    )
+      errors.push('cached_price_above_input');
     for (const rate of value.rates) {
       const input = ['input_tokens', 'cached_input_tokens'].includes(
         rate.category,

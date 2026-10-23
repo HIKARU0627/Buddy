@@ -498,6 +498,8 @@ test('the macOS canvas sits on the desktop layer over the whole screen, on every
 test('the Windows canvas is a frameless maximized window kept off the taskbar', () => {
   const spec = uiWindowSpec('canvas', 'win32', DISPLAY, PRELOAD);
   assert.equal(spec.options.type, undefined);
+  // Windows でも、後ろにある間はフォーカスを受けない（クリックしても前面に来ず、キー入力を受けない）。
+  assert.equal(spec.options.focusable, false);
   assert.equal(spec.options.frame, false);
   assert.equal(spec.options.skipTaskbar, true);
   assert.equal(spec.options.thickFrame, false);

@@ -345,6 +345,8 @@ export function uiWindowSpec(
         fullscreenable: false,
         skipTaskbar: true,
         hasShadow: false,
+        // どの OS でも、後ろにある間はキー入力を受けない。呼んだときだけ受けるようにする（canvas-presence.ts）。
+        focusable: false,
         webPreferences: prefs,
       };
       if (platform === 'darwin')
@@ -354,8 +356,6 @@ export function uiWindowSpec(
           options: {
             ...common,
             type: 'desktop',
-            // 後ろにある間はキー入力を受けない。前に出すときだけ受けるようにする（canvas-presence.ts）。
-            focusable: false,
             ...display.bounds,
             roundedCorners: false,
             enableLargerThanScreen: true,

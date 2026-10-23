@@ -3,25 +3,9 @@
 // 打てるか（enabled）と内容を出せるか（value は呼び出し側が inputDraftAfter で決める）は別。ロック中・不明は値を描かない。
 // 送る（desktop.turn_submit）・大きくなる・聞き返しは UI-03・UI-08。
 import { Button, Input, TextField } from '@heroui/react';
+import { CanvasIcon } from '../../components/CanvasIcon.js';
 import { StatusMark } from '../../components/StatusText.js';
 import type { StatusLine } from '../../tones.js';
-
-// キャンバスの記号（4 つの四角）。色は文字色に従う。
-function CanvasIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 16 16"
-      className="size-4"
-      fill="currentColor"
-    >
-      <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1" />
-      <rect x="9" y="1.5" width="5.5" height="5.5" rx="1" />
-      <rect x="1.5" y="9" width="5.5" height="5.5" rx="1" />
-      <rect x="9" y="9" width="5.5" height="5.5" rx="1" />
-    </svg>
-  );
-}
 
 export function InputBar({
   line,
@@ -58,7 +42,7 @@ export function InputBar({
       </TextField>
       <Button
         isIconOnly
-        variant="ghost"
+        variant="outline"
         size="sm"
         aria-label="キャンバスを前に出す"
         isDisabled={!canSummon}

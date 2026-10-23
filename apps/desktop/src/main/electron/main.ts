@@ -42,7 +42,7 @@ import {
 import {
   CANVAS_SUMMON_ACCELERATOR,
   CanvasPresence,
-  canvasLayerOps,
+  CanvasSummoner,
   isDismissKey,
   MAC_DESKTOP_RELATIVE_LEVEL,
   type CanvasDismissReason,
@@ -111,6 +111,40 @@ const uiMode = uiWindowMode(process.argv, process.env, {
 });
 // キャンバスを前に出しているか（UI-02、本人の判断 2026-10-22）。正本は main。
 const presence = new CanvasPresence();
+// 呼ぶ・戻すの手順（canvas-presence.ts）。窓の操作は BrowserWindow へ渡す。
+const summoner = new CanvasSummoner({
+  platform: process.platform,
+  presence,
+  canvas: () => {
+    const canvas = liveWindow('canvas');
+    if (canvas === null) return null;
+    return {
+      setFocusable: (value) => canvas.setFocusable(value),
+      setLevel: (level) => {
+        if (level === 'normal') canvas.setAlwaysOnTop(false);
+        else canvas.setAlwaysOnTop(true, 'normal', MAC_DESKTOP_RELATIVE_LEVEL);
+      },
+      show: () => canvas.show(),
+      focus: () => canvas.focus(),
+      blur: () => canvas.blur(),
+    };
+  },
+  companions: () =>
+    (['status', 'input'] as const).flatMap((role) => {
+      const window = liveWindow(role);
+      return window === null
+        ? []
+        : [
+            {
+              isVisible: () => window.isVisible(),
+              showInactive: () => window.showInactive(),
+            },
+          ];
+    }),
+  lockState: () => controller?.state.lockState ?? 'unknown',
+  // log は後で宣言するので、呼ぶときに引く。
+  log: (code) => log(code),
+});
 // main が作った窓の webContents と役割の対応。送信元の検査と通知の宛先はこれだけで決める。
 const windows = new UiWindowRegistry<BrowserWindow>();
 let tray: Tray | null = null;
@@ -203,37 +237,13 @@ function senderFacts(event: IpcMainInvokeEvent, ui: BrowserWindow | null) {
   );
 }
 
-// キャンバスの窓に、前に出す・後ろへ戻す操作を当てる（canvasLayerOps の列のとおり）。
-function applyCanvasLayer(layer: 'front' | 'behind'): void {
-  const canvas = liveWindow('canvas');
-  if (canvas === null) return;
-  for (const step of canvasLayerOps(process.platform, layer)) {
-    if (step.op === 'set_focusable') canvas.setFocusable(step.value);
-    else if (step.op === 'set_level')
-      if (step.level === 'normal') canvas.setAlwaysOnTop(false);
-      else canvas.setAlwaysOnTop(true, 'normal', MAC_DESKTOP_RELATIVE_LEVEL);
-    else if (step.op === 'show_focus') {
-      canvas.show();
-      canvas.focus();
-    } else canvas.blur();
-  }
-}
-
 // キャンバスを前に出す（全体のショートカット・端のつまみ・入力バー）。ロック中・不明は出さない。
 function summonCanvas(source: CanvasSummonSource): void {
-  const result = presence.summon(source, {
-    lockState: controller?.state.lockState ?? 'unknown',
-    canvasAvailable: liveWindow('canvas') !== null,
-  });
-  if (!result.ok) {
-    log(`canvas_summon_refused:${result.reason}`);
-    return;
-  }
-  if (result.effect === 'raise') applyCanvasLayer('front');
+  summoner.summon(source);
 }
 
 function dismissCanvas(reason: CanvasDismissReason): void {
-  if (presence.dismiss(reason) === 'lower') applyCanvasLayer('behind');
+  summoner.dismiss(reason);
 }
 
 function isWindowFocused(window: BrowserWindow | null): boolean {
@@ -627,8 +637,7 @@ function start(): void {
           if (controller.state.stopScope !== 'none') link.closeConfirm();
           link.setLockState(controller.state.lockState);
           // ロック中・不明になったら、前に出したキャンバスを後ろへ戻す（中身を出したままにしない）。
-          if (presence.lockChanged(controller.state.lockState) === 'lower')
-            applyCanvasLayer('behind');
+          summoner.lockChanged(controller.state.lockState);
           pushConnection();
         }
       }

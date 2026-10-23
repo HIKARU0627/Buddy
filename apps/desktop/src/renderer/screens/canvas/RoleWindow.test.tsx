@@ -168,8 +168,13 @@ test('the status tab draws a mark and a count with no visible sentence', () => {
     html,
     /aria-label="Buddy の状態: 受付中、確認が必要な操作 2\u00a0件"/u,
   );
-  // つまみ全体がキャンバスを前に出すボタン（読み上げの名前だけ。見える説明文はない）。
+  // つまみの下に、入力バーと同じキャンバスの記号のボタン（縁つき）がある。読み上げの名前だけで、見える説明文はない。
   assert.match(html, /<button[^>]*aria-label="キャンバスを前に出す"/u);
+  assert.match(html, /button--outline/u);
+  assert.equal((html.match(/<rect\b/gu) ?? []).length, 4);
+  // 状態を見る部分（記号と数）はボタンの外にある（押せるのは縁のあるボタンだけ）。
+  const button = /<button[\s\S]*?<\/button>/u.exec(html)?.[0] ?? '';
+  assert.doesNotMatch(button, /●/u);
   assert.doesNotMatch(html, /<button[^>]*\bdisabled/u);
   // 見える文字は記号と数だけ。
   assert.equal(visibleText(html), '● 2');
@@ -214,6 +219,9 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
   assert.doesNotMatch(enabled, /<input[^>]*\bdisabled/u);
   assert.doesNotMatch(enabled, /placeholder=/u);
   assert.match(enabled, /<button[^>]*aria-label="キャンバスを前に出す"/u);
+  // つまみと同じキャンバスの記号（4 つの四角）と、押せる縁。
+  assert.equal((enabled.match(/<rect\b/gu) ?? []).length, 4);
+  assert.match(enabled, /button--outline/u);
   const disabled = render(
     <InputBar
       line={{ tone: 'neutral', mark: 'square', text: '停止中' }}
@@ -281,9 +289,15 @@ test('the canvas is an empty ground; in front it shows an accent frame; locked i
   assert.match(behind, /data-front="false"/u);
   assert.doesNotMatch(behind, /ring-accent/u);
   assert.equal(behind.replace(/<[^>]+>/gu, '').trim(), '');
+  // 後ろにある間は Esc のキーの形を出さない。
+  assert.doesNotMatch(behind, /<kbd\b/u);
   const front = render(<CanvasGround front shown />);
   assert.match(front, /data-front="true"/u);
   assert.match(front, /ring-accent/u);
+  // 前に出ている間は、枠の右上に Esc のキーの形（⎋ esc）を出して戻し方を示す。
+  assert.match(front, /<kbd\b[^>]*aria-hidden="true"/u);
+  assert.match(front, /⎋/u);
+  assert.match(front, />esc</u);
   // ロック中・不明は中身（UI-03 以降のカード）を描かない。
   const hidden = render(
     <CanvasGround front={false} shown={false}>

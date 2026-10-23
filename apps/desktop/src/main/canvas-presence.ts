@@ -103,7 +103,7 @@ export function isDismissKey(input: {
 }
 
 export type CanvasLayerOp =
-  // キー入力を受けるか（BrowserWindow.setFocusable）。
+  // キー入力を受けるか（BrowserWindow.setFocusable。Windows では WS_EX_NOACTIVATE の切り替え）。
   | { readonly op: 'set_focusable'; readonly value: boolean }
   // macOS の窓の段。normal: 通常の窓の段（setAlwaysOnTop(false)）。desktop: デスクトップの段に戻す。
   | { readonly op: 'set_level'; readonly level: 'normal' | 'desktop' }
@@ -114,8 +114,11 @@ export type CanvasLayerOp =
 // 試作の実機（macOS 27.0.1）で、作ったときの段と、この値で戻したときの段が同じ（−2147483624）ことを確かめた。
 export const MAC_DESKTOP_RELATIVE_LEVEL = -2147483624;
 
-// 前に出す・後ろへ戻すときの窓の操作。macOS は段を通常の窓まで上げてキー入力を受けるようにし、戻すときは
-// デスクトップの段へ戻してキー入力を受けないようにする。Windows（とその他）は通常の前面にするだけ（未実施）。
+// 前に出す・後ろへ戻すときの窓の操作。どの OS でも、後ろにある間はキー入力を受けない（フォーカスを受けない）。
+// macOS: 段を通常の窓まで上げてキー入力を受けるようにし、戻すときはデスクトップの段へ戻してキー入力を受けないようにする。
+// Windows（とその他）: 段はない。前に出すときにフォーカスを受けるようにして前面にし、戻すときはフォーカスを受けない
+// ようにしてから前面を外す。重なりは「次の窓を前面にする」（blur）までで、その後は OS の重なりに任せる。フォーカスを
+// 受けない窓はクリックしても前面に来ないので、ほかのアプリを使えばキャンバスはその後ろになる（Windows の実機は未実施）。
 export function canvasLayerOps(
   platform: string,
   layer: CanvasLayer,
@@ -132,5 +135,95 @@ export function canvasLayerOps(
           { op: 'set_focusable', value: false },
           { op: 'blur' },
         ];
-  return layer === 'front' ? [{ op: 'show_focus' }] : [{ op: 'blur' }];
+  return layer === 'front'
+    ? [{ op: 'set_focusable', value: true }, { op: 'show_focus' }]
+    : [{ op: 'set_focusable', value: false }, { op: 'blur' }];
+}
+
+// キャンバスの窓の操作（Electron のアダプターが BrowserWindow で実装する）。
+export interface CanvasWindowPort {
+  setFocusable(value: boolean): void;
+  setLevel(level: 'normal' | 'desktop'): void;
+  show(): void;
+  focus(): void;
+  blur(): void;
+}
+
+// 状態の層・入力バーの窓の操作。
+export interface CompanionWindowPort {
+  isVisible(): boolean;
+  // 前面を奪わずに表示する（キャンバスのフォーカスを外さない）。
+  showInactive(): void;
+}
+
+export interface CanvasSummonerOptions {
+  readonly platform: string;
+  readonly presence: CanvasPresence;
+  // キャンバスの窓（なければ null）。
+  readonly canvas: () => CanvasWindowPort | null;
+  // 状態の層と入力バー（あるものだけ）。
+  readonly companions: () => readonly CompanionWindowPort[];
+  readonly lockState: () => DesktopIoState['lockState'];
+  readonly log: (code: string) => void;
+}
+
+// 呼ぶ・戻すの手順（main の状態 CanvasPresence と窓の操作をつなぐ）。Electron に依存しない。
+// 呼ぶときは、隠れている状態の層・入力バーを前面を奪わずに表示し直してから、最後にキャンバスを前に出してフォーカスする
+// （小さな窓を後から表示してキャンバスが blur しない順序）。前に出す手順の途中に来た blur では戻さない。
+export class CanvasSummoner {
+  readonly #options: CanvasSummonerOptions;
+  #raising = false;
+
+  constructor(options: CanvasSummonerOptions) {
+    this.#options = options;
+  }
+
+  summon(source: CanvasSummonSource): CanvasSummonResult {
+    const canvas = this.#options.canvas();
+    const result = this.#options.presence.summon(source, {
+      lockState: this.#options.lockState(),
+      canvasAvailable: canvas !== null,
+    });
+    if (!result.ok) {
+      this.#options.log(`canvas_summon_refused:${result.reason}`);
+      return result;
+    }
+    if (canvas === null) return result;
+    this.#raising = true;
+    try {
+      for (const companion of this.#options.companions())
+        if (!companion.isVisible()) companion.showInactive();
+      if (result.effect === 'raise') this.#apply(canvas, 'front');
+      else canvas.focus();
+    } finally {
+      this.#raising = false;
+    }
+    return result;
+  }
+
+  dismiss(reason: CanvasDismissReason): 'lower' | 'none' {
+    // 前に出す手順の途中の blur（小さな窓の表示・前面の切り替えの途中）では戻さない。
+    if (reason === 'blur' && this.#raising) return 'none';
+    const effect = this.#options.presence.dismiss(reason);
+    if (effect === 'lower') {
+      const canvas = this.#options.canvas();
+      if (canvas !== null) this.#apply(canvas, 'behind');
+    }
+    return effect;
+  }
+
+  lockChanged(lockState: DesktopIoState['lockState']): 'lower' | 'none' {
+    return lockState === 'unlocked' ? 'none' : this.dismiss('lock');
+  }
+
+  #apply(canvas: CanvasWindowPort, layer: CanvasLayer): void {
+    for (const step of canvasLayerOps(this.#options.platform, layer)) {
+      if (step.op === 'set_focusable') canvas.setFocusable(step.value);
+      else if (step.op === 'set_level') canvas.setLevel(step.level);
+      else if (step.op === 'show_focus') {
+        canvas.show();
+        canvas.focus();
+      } else canvas.blur();
+    }
+  }
 }

@@ -112,6 +112,26 @@ function limitReasons(
   return reasons;
 }
 
+// 受付・追加予約の集計の対象（その月の解放していない行と、月を問わず M 超過の確認待ちの行）に、今の設定で経路を
+// 解けない予約（設定から枠を消した後など）があるか。あれば、その使用量を親の枠に数えられず上限を超え得るので、
+// 閉じた側に倒して受け付けない（B07-03 の Codex のレビュー P1。記録した経路で数える方法は採らない）。
+function unresolvedReasons(
+  settings: BudgetSettings,
+  reservations: readonly ReservationRecord[],
+  month: string,
+): string[] {
+  const unresolved = reservations.some(
+    (item) =>
+      item.status !== 'released' &&
+      (item.budgetMonth === month ||
+        (item.status === 'settled' &&
+          !item.overrunReviewed &&
+          BigInt(item.actualGross ?? '0') > BigInt(item.maxLiability))) &&
+      poolPath(settings, item.poolId) === null,
+  );
+  return unresolved ? ['reservation_pool_unknown'] : [];
+}
+
 // M を超えた実費が確認されるまで、その枠と子孫の枠への新規受付を止める。
 function overrunHolds(
   reservations: readonly ReservationRecord[],
@@ -149,6 +169,9 @@ export function admitBudget(
   );
   if (needsApproval && request.approvalId === null)
     reasons.push('approval_required');
+  reasons.push(
+    ...unresolvedReasons(settings, reservations, request.budgetMonth),
+  );
   reasons.push(...overrunHolds(reservations, path));
   reasons.push(
     ...limitReasons(
@@ -182,9 +205,13 @@ export function topUpReservation(
     return { ok: false, reasonCodes: ['not_active'] };
   const reserved = BigInt(current.reserved) + BigInt(deltaReserved);
   const maxLiability = BigInt(current.maxLiability) + BigInt(deltaMaxLiability);
-  const path = poolPath(settings, current.poolId) ?? [];
+  // 予約の枠から根までの経路が今の設定で解けなければ（設定から枠を消した後など）、上限を検査できないので
+  // 拒否する（閉じた側に倒す。B07-03 の Codex のレビュー P1）。
+  const path = poolPath(settings, current.poolId);
+  if (path === null) return { ok: false, reasonCodes: ['unknown_pool'] };
   const reasons = [
     ...(reserved > maxLiability ? ['reservation_exceeds_max'] : []),
+    ...unresolvedReasons(settings, reservations, current.budgetMonth),
     ...overrunHolds(reservations, path),
     ...limitReasons(
       settings,

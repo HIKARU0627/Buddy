@@ -378,6 +378,94 @@
       ]
     },
     {
+      "id": "top-up-removed-pool",
+      "title": "設定から枠を消した後は、その枠の予約の経路が解けないので、追加予約を上限の検査なしに通さず拒否する（B07-03 の Codex のレビュー P1）",
+      "initial": [{ "id": "G", "pool": "retired", "r": "5", "m": "20" }],
+      "steps": [
+        {
+          "op": "top_up",
+          "id": "G",
+          "revision": "0",
+          "dr": "0",
+          "dm": "500",
+          "expected": { "ok": false, "reasonCodes": ["unknown_pool"] }
+        }
+      ]
+    },
+    {
+      "id": "removed-pool-usage-blocks-the-month",
+      "title": "設定から枠を消した後、その月に経路を解けない予約が残っていれば、その使用量を親の枠に数えられないので、受付と追加予約を閉じた側に倒して拒否する（total の 200 に消えた枠の M 180 があるのに search の M 30 を受け付けて 210 にしない。B07-03 の Codex のレビュー P1）",
+      "initial": [
+        { "id": "O", "pool": "retired", "r": "180", "m": "180" },
+        { "id": "S", "pool": "search", "r": "1", "m": "10" }
+      ],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "N",
+          "pool": "search",
+          "r": "1",
+          "m": "20",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["reservation_pool_unknown"]
+          }
+        },
+        {
+          "op": "admit",
+          "id": "V",
+          "pool": "voice",
+          "r": "1",
+          "m": "1",
+          "expected": {
+            "admitted": false,
+            "reasonCodes": ["reservation_pool_unknown"]
+          }
+        },
+        {
+          "op": "top_up",
+          "id": "S",
+          "revision": "0",
+          "dr": "0",
+          "dm": "1",
+          "expected": {
+            "ok": false,
+            "reasonCodes": ["reservation_pool_unknown"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "removed-pool-released-or-other-month",
+      "title": "経路を解けない予約でも、解放済み（使用量 0）と、前の月の未精算（今月に数えない）は今月の受付を止めない",
+      "initial": [
+        {
+          "id": "OR",
+          "pool": "retired",
+          "r": "180",
+          "m": "180",
+          "status": "released"
+        },
+        {
+          "id": "OP",
+          "pool": "retired",
+          "r": "180",
+          "m": "180",
+          "month": "2030-09"
+        }
+      ],
+      "steps": [
+        {
+          "op": "admit",
+          "id": "N",
+          "pool": "search",
+          "r": "1",
+          "m": "20",
+          "expected": { "admitted": true, "reasonCodes": [] }
+        }
+      ]
+    },
+    {
       "id": "top-up-release-and-price",
       "title": "追加予約は同じ行の版を上げる。未送信が確実な予約だけを解放する。価格未確認の版は受け付けない",
       "initial": [],

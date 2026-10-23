@@ -65,6 +65,13 @@ import type {
   SessionRecord,
   TurnRecordValue,
 } from './conversation-store.js';
+import { BUDGET_WRITE_OPS } from './budget-store.js';
+import type {
+  BudgetOp,
+  BudgetOpKind,
+  BudgetOpResult,
+  BudgetOpValues,
+} from './budget-store.js';
 
 const MINT = Symbol('DispatchPermit');
 
@@ -205,6 +212,18 @@ interface PendingConversation {
   readonly resolve: (result: ConversationOpResult) => void;
 }
 
+// 予算の命令と照会（ADR 0036）。
+interface PendingBudget {
+  readonly kind: 'budget';
+  readonly op: BudgetOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: BudgetOpResult) => void;
+}
+
+export type BudgetOpOutcome<K extends BudgetOpKind> =
+  | { readonly ok: true; readonly value: BudgetOpValues[K] }
+  | Extract<BudgetOpResult, { ok: false }>;
+
 export type ConversationOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | Extract<ConversationOpResult, { ok: false }>;
@@ -240,6 +259,7 @@ export class DbWorkerClient {
     | PendingPairing
     | PendingHome
     | PendingConversation
+    | PendingBudget
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -591,6 +611,33 @@ export class DbWorkerClient {
     });
   }
 
+  // 予算の命令と照会（ADR 0036）。扱いは home と同じ（使えなければ送らずに rejected、書込みの応答を失えば
+  // 成否不明で broken。成否不明の受付は、新しい worker で同じ request_id を送り直すと保存済みの予約を返す）。
+  budget<K extends BudgetOpKind>(
+    op: Extract<BudgetOp, { kind: K }>,
+  ): Promise<BudgetOpOutcome<K>> {
+    return new Promise<BudgetOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'budget', op, timer, resolve });
+      const message: MainToWorker = { type: 'budget', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<BudgetOpOutcome<K>>;
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -678,6 +725,16 @@ export class DbWorkerClient {
         pending.resolve({
           ok: false,
           outcome: HOME_NETWORK_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'budget') {
+        pending.resolve({
+          ok: false,
+          outcome: BUDGET_WRITE_OPS.has(pending.op.kind)
             ? 'unknown'
             : 'rejected',
           reasons: [reason],
@@ -784,6 +841,18 @@ export class DbWorkerClient {
     if (message.type === 'conversation_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'conversation') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'budget_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'budget') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

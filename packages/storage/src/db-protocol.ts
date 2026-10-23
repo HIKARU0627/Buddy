@@ -28,24 +28,29 @@ import type {
   ConversationOp,
   ConversationOpResult,
 } from './conversation-store.js';
+// B07-03: 予算の受付・精算・承認・利用状況・予算月（ADR 0036）。
+import type { BudgetOp, BudgetOpKind, BudgetOpResult } from './budget-store.js';
+
+// 故障注入の対象（操作の命令と予算の命令の種類）。
+export type DbFaultKind = DbCommandKind | BudgetOpKind;
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
   // transaction の本体の後・COMMIT の前に例外を投げる（巻き戻し）。
-  readonly throwBeforeCommit?: DbCommandKind;
+  readonly throwBeforeCommit?: DbFaultKind;
   // 遅延の外部キー違反を足し、COMMIT を失敗させる（成否不明の扱い）。
-  readonly failCommit?: DbCommandKind;
+  readonly failCommit?: DbFaultKind;
   // COMMIT の前に worker を終了する（未 commit のまま接続が閉じる）。
-  readonly exitBeforeCommit?: DbCommandKind;
+  readonly exitBeforeCommit?: DbFaultKind;
   // COMMIT の後・応答の前に worker を終了する（durable ACK の喪失）。
-  readonly exitAfterCommit?: DbCommandKind;
+  readonly exitAfterCommit?: DbFaultKind;
   // 命令を受け取っても処理も応答もしない（応答なし）。
-  readonly ignore?: DbCommandKind;
+  readonly ignore?: DbFaultKind;
   // 命令の前に synchronous を NORMAL へ下げる（耐久設定の不一致）。
-  readonly weakenDurability?: DbCommandKind;
+  readonly weakenDurability?: DbFaultKind;
   // transaction の本体の後・COMMIT の前で止まり続ける（プロセスの強制終了の試験用、ADR 0019）。
   // 止まる直前に標準出力へ DB_WORKER_STALL_MARKER の 1 行を同期で書く。
-  readonly stallBeforeCommit?: DbCommandKind;
+  readonly stallBeforeCommit?: DbFaultKind;
 }
 
 // stallBeforeCommit で止まったことを知らせる標準出力の 1 行。
@@ -103,7 +108,9 @@ export type MainToWorker =
       readonly type: 'conversation';
       readonly id: number;
       readonly op: ConversationOp;
-    };
+    }
+  // 予算の命令と照会（ADR 0036）。
+  | { readonly type: 'budget'; readonly id: number; readonly op: BudgetOp };
 
 export interface WorkerTimings extends StoreTimings {
   // Core main が送ってから worker が処理を始めるまで（IPC と待ち行列の待ち）。
@@ -166,6 +173,12 @@ export type WorkerToMain =
       readonly type: 'conversation_result';
       readonly id: number;
       readonly result: ConversationOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'budget_result';
+      readonly id: number;
+      readonly result: BudgetOpResult;
       readonly halted: boolean;
     };
 

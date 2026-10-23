@@ -1,4 +1,4 @@
-// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022、0004 の表は ADR 0029、0005 の表は ADR 0030）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
+// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022、0004 の表は ADR 0029、0005 の表は ADR 0030、0006 の表は ADR 0036）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
 // retention は domain の RETENTION_RULES の ID、または期限の持ち方の説明。body は本文の置き場所。
 // transaction は同じ短い transaction で書く表の組（08 §3・§5、11 §1A・§9）。
 
@@ -157,6 +157,17 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
   live_sessions: {
     body: 'none',
     retention: 'until_settled',
+    transaction: 'budget',
+  },
+  // 0006（B07-03、ADR 0036）: 超過枠の個別の承認と、予算月の状態（月ごとに 1 行、書き換えない）。
+  budget_overage_approvals: {
+    body: 'none',
+    retention: 'until_consumed_or_expired_and_month_closed',
+    transaction: 'budget',
+  },
+  budget_months: {
+    body: 'none',
+    retention: 'permanent',
     transaction: 'budget',
   },
   sync_scopes: {

@@ -773,6 +773,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   };
 
   const postTurn: ApiRouteHandler = async (request) => {
+    // 入力の時点の口座と許可の版は、最初の await より前に Core のメモリーから控える（外部へ問い合わせない）。
+    // DB の照会を待つ間に別の要求が値を更新しても、発言を受けた時点の値で比べる（PR #107 の再々レビュー）。
+    const input = observedPermission;
     const device = request.device;
     const body = request.body as JsonObject;
     const requestId = stringOf(body, 'request_id');
@@ -795,9 +798,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (found.value !== null)
       return storedResponse(found.value.response_json, requestId);
     const text = stringOf(body, 'text');
-    // 入力の時点の許可の版は、解釈の前に Core のメモリーから控える（外部へ問い合わせない）。記録するのは provider
-    // を使う意図だけで、連携の接続がない・使わないなら 0 として記録する。
-    const planned = await planTurn(text, observedPermission);
+    // 記録する入力の時点の許可の版は provider を使う意図だけで、連携の接続がない・使わないなら 0 として記録する。
+    const planned = await planTurn(text, input);
     let plan = planned.plan;
     const permissionAtInput = planned.permissionAtInput;
     const key = await loadKey();

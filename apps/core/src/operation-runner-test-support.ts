@@ -103,11 +103,17 @@ function counted(reader: ProviderReader, writer: ProviderWriter): Counted {
           ? connection
           : { ...connection, account_id: box.accountOverride };
       },
-      readPermission: (id) => (
-        box.calls++,
-        counts.read++,
-        reader.readPermission(id)
-      ),
+      // 差し替えた接続先のアカウントの許可は、合成の口座の許可をそのアカウントのものとして見せる。
+      async readPermission(id) {
+        box.calls++;
+        counts.read++;
+        if (box.accountOverride === null || id !== box.accountOverride)
+          return reader.readPermission(id);
+        const permission = await reader.readPermission(SYNTHETIC_ACCOUNT_ID);
+        return permission === null
+          ? null
+          : { ...permission, account_id: box.accountOverride };
+      },
       readTarget: (id) => (box.calls++, counts.read++, reader.readTarget(id)),
       listEvents: () => (box.calls++, counts.read++, reader.listEvents()),
       findDrafts: (marker) => {

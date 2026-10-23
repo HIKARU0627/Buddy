@@ -32,8 +32,74 @@ import {
   turn,
 } from './operation-runner-test-support.js';
 import { createMockInterpreter } from './turn-ports.js';
+import { withTimeout } from './api-test-support.js';
 
 const TIMEOUT = 60_000;
+
+// 発言の DB の照会（turn.find）を 1 回だけ止める関門。止まったことを reached で知らせ、release で再開する。
+function holdTurnFind(t: test.TestContext, store: object) {
+  const target = store as {
+    conversation: (op: { readonly kind: string }) => Promise<unknown>;
+  };
+  const original = target.conversation.bind(target);
+  let armed: { reached: () => void; released: Promise<void> } | null = null;
+  t.mock.method(target, 'conversation', async (op: { kind: string }) => {
+    if (op.kind === 'turn.find' && armed !== null) {
+      const gate = armed;
+      armed = null;
+      gate.reached();
+      await gate.released;
+    }
+    return original(op);
+  });
+  return () => {
+    let reached!: () => void;
+    let release!: () => void;
+    const reachedPromise = new Promise<void>((resolve) => (reached = resolve));
+    const released = new Promise<void>((resolve) => (release = resolve));
+    armed = { reached, released };
+    return {
+      reached: withTimeout(reachedPromise, 20_000, 'turn.find の関門'),
+      release,
+    };
+  };
+}
+
+test(
+  'label and draft: when another request updates the remembered permission while the message waits for the DB, the message is asked back (revision and account)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const LABEL_TEXT = 'mail-001 に follow-up を付けて';
+    for (const text of [DRAFT_TEXT, LABEL_TEXT])
+      for (const change of ['revision', 'account'] as const) {
+        const name = `${text} / ${change}`;
+        const rig = await startRig(t);
+        const core = await startCore(t, rig);
+        const who = await session(core);
+        const arm = holdTurnFind(t, core.handle.store);
+        const gate = arm();
+        // 発言を受け、DB の照会（turn.find）で止める。入力の時点の値は口座 A・版 1。
+        const held = turn(core, who, text);
+        await gate.reached;
+        // 待っている間に、版（1 → 2）か接続先のアカウント（A → B）が変わり、別の要求が覚えている値を更新する。
+        if (change === 'revision')
+          rig.provider.truth.setPermission({ permission_revision: '2' });
+        else rig.ports.accountOverride = '00000000-0000-4000-8000-0000000000bb';
+        const other = await turn(core, who, LABEL_TEXT);
+        assert.equal(other['status'], 'clarification', name);
+        gate.release();
+        const asked = await held;
+        assert.equal(asked['status'], 'clarification', name);
+        assert.equal(
+          asked['reply_text'],
+          '今は進められません。少し待ってからもう一度お願いします。',
+          name,
+        );
+        assert.equal(await snapshotOperations(core, who), 0, name);
+        assert.equal(rig.provider.truth.requestCount(), 0, name);
+      }
+  },
+);
 
 test(
   'label and draft: a permission revision that changes from 1 to 2 while the message is interpreted is asked back and makes no operation',

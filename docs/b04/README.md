@@ -66,7 +66,7 @@ pnpm run contracts:check
 
 | 検証                                         | 結果                                                                            |
 | -------------------------------------------- | ------------------------------------------------------------------------------- |
-| `node scripts/clean.mjs && pnpm run check`   | 成功、893 件・失敗 0。書式・lint・ビルド・型・契約・公開情報検査を含む          |
+| `node scripts/clean.mjs && pnpm run check`   | 成功、933 件・失敗 0。書式・lint・ビルド・型・契約・公開情報検査を含む          |
 | `pnpm run contracts:check`                   | 成功。生成型の直接変更なし                                                      |
 | `node --test tests/integration/b04.test.mjs` | 69 回の観測が期待値に一致（親試験を含む 70 件）。範囲は本書のケース別表のとおり |
 

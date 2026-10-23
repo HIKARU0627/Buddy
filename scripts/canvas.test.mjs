@@ -319,7 +319,20 @@ test('window roles: the canvas cannot use stop, resume, approval or quit channel
   assert.deepEqual([...DESKTOP_ROLE_CHANNELS.canvas], ['desktop.get_state']);
   assert.deepEqual(
     [...DESKTOP_ROLE_CHANNELS.input],
-    ['desktop.get_state', 'desktop.turn_submit'],
+    ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
+  );
+  // キャンバスを前に出す（UI-02）のは状態の層と入力バーだけ。キャンバスは自分を前に出せない。
+  assert.equal(
+    desktopChannelAllowedForRole('canvas', 'desktop.canvas_summon'),
+    false,
+  );
+  assert.equal(
+    desktopChannelAllowedForRole('status', 'desktop.canvas_summon'),
+    true,
+  );
+  assert.equal(
+    desktopChannelAllowedForRole('input', 'desktop.canvas_summon'),
+    true,
   );
   // 発言は入力バーだけ（キャンバスと状態の層は使えない）。
   assert.equal(
@@ -369,9 +382,9 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 24 個。B04-05 の 7 個を含む）。
-  assert.equal(channels.size, 24);
-  assert.equal(CANVAS_FORBIDDEN.length + 2, 24);
+  // 手で数えた数（現在の DesktopIpcChannel は 25 個。B04-05 の 7 個と UI-02 の canvas_summon を含む）。
+  assert.equal(channels.size, 25);
+  assert.equal(CANVAS_FORBIDDEN.length + 3, 25);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

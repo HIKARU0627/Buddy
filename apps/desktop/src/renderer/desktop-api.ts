@@ -7,6 +7,9 @@ import type {
 } from '@buddy/contracts';
 
 export interface BuddyDesktopApi {
+  // 窓の役割（UI-02、ADR 0032）。画面の切り替えだけに使う（受付は main が送信元の窓で決める）。
+  // 古い preload・試験の模擬では無い（従来の窓）。知らない役割なら null。
+  readonly windowRole?: string | null;
   invoke(request: DesktopIpcRequest): Promise<DesktopIpcResponse>;
   onNotification(
     listener: (notification: DesktopIpcNotification) => void,

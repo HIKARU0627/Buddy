@@ -50,7 +50,11 @@
     ],
     "verified_price_versions": ["p1"]
   },
-  "defaults": { "month": "2030-10", "price": "p1" },
+  "defaults": {
+    "month": "2030-10",
+    "price": "p1",
+    "profile": "synthetic.text.v1"
+  },
   "scenarios": [
     {
       "id": "qa42-scaled",

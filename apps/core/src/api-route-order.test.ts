@@ -228,7 +228,10 @@ test(
 
     let requests = 0;
     for (const route of API_ROUTES) {
-      const checks = ROUTE_CHECKS[route.operationId] ?? [];
+      // 未実装の経路（pending、ADR 0034）は版を照合しない。認可の検査の後に 503 で閉じる。
+      const checks = (ROUTE_CHECKS[route.operationId] ?? []).filter(
+        (check) => !(route.pending && check === 'expected_revision'),
+      );
       const id = route.operationId;
       // 全部を満たす。
       failing = new Set();

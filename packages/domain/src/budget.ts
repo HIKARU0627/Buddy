@@ -17,9 +17,14 @@ export interface BudgetSettings {
 export type ReservationStatus =
   'reserved' | 'usage_unknown' | 'settled' | 'released';
 
+// 契約の BudgetReservation に対応する（ADR 0034 の対応表）。profile と単価の版は受付時に固定し、
+// 精算・追加予約で変えない。クレジットの区分（credit_applied・additional_spend・credit_cycle_id）は
+// B07-07 で分け方を決めてから足す。それまで精算は通常料金の実費（actualGross）だけを持つ。
 export interface ReservationRecord {
   readonly reservationId: string;
   readonly requestId: string;
+  readonly profileId: string;
+  readonly priceVersion: string;
   readonly poolId: string;
   readonly budgetMonth: string;
   readonly currency: string;
@@ -35,6 +40,7 @@ export interface ReservationRecord {
 
 export interface AdmissionRequest {
   readonly requestId: string;
+  readonly profileId: string;
   readonly poolId: string;
   readonly budgetMonth: string;
   readonly priceVersion: string;

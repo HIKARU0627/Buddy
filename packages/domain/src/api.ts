@@ -69,6 +69,12 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   getHomeRegistration: [...READ, 'unlocked', 'hub_screen'],
   // 自宅の登録は中枢の画面からだけ（家ごとに 1 つ）。
   registerHome: [...SCREEN, 'hub_screen'],
+  // 予算（07 §2 にない経路の追加、ADR 0034）。利用状況は金額を含むのでロック解除を求める。
+  getBudgetUsage: [...READ, 'unlocked'],
+  // 超過枠の承認は登録済みでロック解除済みの画面から（01 承認画面）。予算の要求と M に固定する。
+  decideBudgetOverage: SCREEN,
+  reviewBudgetOverrun: [...SCREEN, 'expected_revision'],
+  settleBudgetManually: [...SCREEN, 'expected_revision'],
 };
 
 export interface RequestContext {

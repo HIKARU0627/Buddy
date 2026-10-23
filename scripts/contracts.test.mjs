@@ -206,7 +206,7 @@ test('budget facts distinguish R/M, uncertain usage and credit settlement', () =
   assert(
     semanticErrors('BudgetReservation', value).includes('missing_credit_cycle'),
   );
-  value.credit_cycle_id = 'synthetic-cycle';
+  value.credit_cycle_id = 'anthropic:2030-10-01';
   assert.deepEqual(semanticErrors('BudgetReservation', value), []);
   value.additional_spend = money('1');
   assert(semanticErrors('BudgetReservation', value).includes('settlement_sum'));

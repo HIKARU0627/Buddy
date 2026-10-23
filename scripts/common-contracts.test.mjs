@@ -44,6 +44,8 @@ const VERSION_FIELDS = {
   active_generation: 'PublishedGeneration',
   analysis_plan_complete_generation: 'PublishedGeneration',
   expected_reservation_revision: 'ReservationRevision',
+  // 単価の版の ID（ADR 0034）。不透明で順序比較しない（ADR 0006）が、型は一つにそろえる。
+  price_version: 'PriceVersionId',
   route_revision: 'RouteRevision',
   expected_route_revision: 'RouteRevision',
   // キャンバスの記述の版（ADR 0032）。
@@ -61,11 +63,11 @@ const VERSION_FIELDS = {
   end_sample: 'Sequence',
 };
 // 型の決定を後続 Issue に残す版。決めたら VERSION_FIELDS へ移す。
-// price_version は不透明な単価の版の ID（設定で決める）で、順序比較しない（ADR 0006）。
+// conversion_version は為替と安全係数の版の ID（設定で決める）で、一致だけを見る（ADR 0034）。
 // api_version・sdk_version・runtime_version は provider・runtime の版の文字列、suite_version は評価セットの版で、
 // どれも一致だけを見る（ADR 0008）。
 const OPAQUE_VERSION_FIELDS = new Set([
-  'price_version',
+  'conversion_version',
   'api_version',
   'sdk_version',
   'runtime_version',

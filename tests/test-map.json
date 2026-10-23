@@ -913,7 +913,10 @@
       "id": "QA20",
       "phases": ["B07", "B10"],
       "contract_fixtures": [
-        "packages/contracts/fixtures/evaluation-cases.json#qa20-spend-limit-first"
+        "packages/contracts/fixtures/evaluation-cases.json#qa20-spend-limit-first",
+        "packages/contracts/fixtures/schema-cases.json#qa20-price-version-text",
+        "packages/contracts/fixtures/schema-cases.json#qa20-price-version-unbounded-output",
+        "packages/contracts/fixtures/schema-cases.json#qa20-runtime-config-period-overlap"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -1150,7 +1153,11 @@
       "phases": ["B04", "B07"],
       "contract_fixtures": [
         "packages/contracts/fixtures/budget-scenarios.json#qa42-scaled",
-        "tests/fixtures/storage-cases.json#budget-settlement-is-consistent-and-once"
+        "tests/fixtures/storage-cases.json#budget-settlement-is-consistent-and-once",
+        "packages/contracts/fixtures/schema-cases.json#qa42-usage-summary",
+        "packages/contracts/fixtures/schema-cases.json#qa42-overage-approval-pending",
+        "packages/contracts/fixtures/schema-cases.json#qa42-overrun-review",
+        "packages/contracts/fixtures/schema-cases.json#qa42-manual-settlement"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

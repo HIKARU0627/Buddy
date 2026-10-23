@@ -38,6 +38,8 @@ const settings = {
 const record = (entry) => ({
   reservationId: entry.id,
   requestId: entry.request ?? `req-${entry.id}`,
+  profileId: entry.profile ?? spec.defaults.profile,
+  priceVersion: entry.price ?? spec.defaults.price,
   poolId: entry.pool,
   budgetMonth: entry.month ?? spec.defaults.month,
   currency: spec.config.currency,
@@ -65,9 +67,10 @@ function run(scenario) {
       const entry = record(step);
       actual = admitBudget(settings, state, {
         requestId: entry.requestId,
+        profileId: entry.profileId,
         poolId: entry.poolId,
         budgetMonth: entry.budgetMonth,
-        priceVersion: step.price ?? spec.defaults.price,
+        priceVersion: entry.priceVersion,
         currency: entry.currency,
         reserved: entry.reserved,
         maxLiability: entry.maxLiability,

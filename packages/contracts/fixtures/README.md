@@ -1,6 +1,6 @@
 # 契約の検証データ
 
-- `schema-cases.json`: スキーマ名・期待する正常／拒否と合成入力。`contracts:check` で実行します。
+- `schema-cases.json`: スキーマ名・期待する正常／拒否と合成入力。`contracts:check` で実行します。予算の単価の版・実行時の設定・利用状況・超過の承認・M 超過の確認・手での精算の例（ADR 0034）も含み、通貨は XTS（拒否例の別通貨は XXX）、金額は縮めた合成値です。
 - `h01.json`: 設計 08 にある合成ラベル変更と独立した期待 SHA-256。期待値を実装から再生成しません。
 - `content-hash-cases.json`: 内容 hash の差分ケース。正規形は手書き、SHA-256 は OS の shasum で計算し、実装から生成していません。下書き・用事の系列（ADR 0027）は Python の json.dumps と hashlib で計算しました。
 - `readiness-cases.json`: 変更を伴う意図の実行可否の期待値（QA41 ほか）。手書きの表で、domain の実装から生成していません。

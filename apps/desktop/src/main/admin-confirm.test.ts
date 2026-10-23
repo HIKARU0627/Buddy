@@ -234,6 +234,9 @@ const xts = (amount: string) => ({ currency: 'XTS', amount });
 test('the overage approval confirmation shows the request M, the remaining overage, the month and the limit, with cancel first', () => {
   const text = adminConfirmText({
     action: 'approve_overage',
+    origin: null,
+    profileId: null,
+    occurredAt: new Date(2030, 9, 15, 9, 2, 0).toISOString(),
     poolId: 'llm',
     budgetMonth: '2030-10',
     maxLiability: xts('40000000'),
@@ -250,7 +253,8 @@ test('the overage approval confirmation shows the request M, the remaining overa
   assert.equal(
     text.detail,
     [
-      '枠: llm（2030-10）',
+      '枠: 会話（2030-10）',
+      '発生: 10/15 09:02:00',
       '最大負担 M: XTS 40.00',
       '超過枠の残り: XTS 60.00',
       '承認の期限: 10/15 09:10:00',
@@ -264,6 +268,9 @@ test('the overage approval confirmation shows the request M, the remaining overa
 test('the overrun review confirmation shows the recorded actual cost, M and the part over M', () => {
   const text = adminConfirmText({
     action: 'review_overrun',
+    origin: 'autonomous_analysis',
+    profileId: 'synthetic.text.v1',
+    occurredAt: new Date(2030, 9, 14, 9, 30, 0).toISOString(),
     poolId: 'llm.background',
     budgetMonth: '2030-10',
     maxLiability: xts('40000000'),
@@ -276,7 +283,10 @@ test('the overrun review confirmation shows the recorded actual cost, M and the 
   assert.equal(
     text.detail,
     [
-      '枠: llm.background（2030-10）',
+      '枠: 自動の解析（2030-10）',
+      '発生: 10/14 09:30:00',
+      '用途: 自動の解析',
+      'モデル: synthetic.text.v1',
       '記録した実費: XTS 55.00',
       '最大負担 M: XTS 40.00',
       '超過: XTS 15.00',
@@ -290,6 +300,9 @@ test('the overrun review confirmation shows the recorded actual cost, M and the 
 test('the manual settlement confirmation shows the typed actual cost and reconciliation id, cleaned of control characters', () => {
   const text = adminConfirmText({
     action: 'settle_manual',
+    origin: 'owner_request',
+    profileId: 'synthetic.live.v1',
+    occurredAt: new Date(2030, 8, 28, 22, 15, 0).toISOString(),
     poolId: 'llm',
     budgetMonth: '2030-09',
     maxLiability: xts('40000000'),
@@ -303,7 +316,10 @@ test('the manual settlement confirmation shows the typed actual cost and reconci
   assert.equal(
     text.detail,
     [
-      '枠: llm（2030-09）',
+      '枠: 会話（2030-09）',
+      '発生: 9/28 22:15:00',
+      '用途: 本人の依頼',
+      'モデル: synthetic.live.v1',
       '保持している最大負担 M: XTS 40.00',
       '入力した実費: XTS 3.50',
       '照合 ID: manual:invoice-a',
@@ -312,4 +328,24 @@ test('the manual settlement confirmation shows the typed actual cost and reconci
     ].join('\n'),
   );
   assert.deepEqual(text.buttons, ['やめる', '精算する']);
+});
+
+test('the confirmation never shows an internal pool ID: a pool outside the table is shown as another pool', () => {
+  const text = adminConfirmText({
+    action: 'settle_manual',
+    origin: null,
+    profileId: null,
+    occurredAt: null,
+    poolId: 'llm.experiment-internal',
+    budgetMonth: '2030-09',
+    maxLiability: xts('40000000'),
+    overageRemaining: null,
+    expiresAt: null,
+    actualGross: xts('3500000'),
+    reconciliationId: 'manual:invoice-a',
+  });
+  assert.match(text.detail, /^枠: 別の枠（2030-09）\n/u);
+  assert.doesNotMatch(text.detail, /llm|experiment/u);
+  // 記録のない日時・用途・モデルの行は出さない。
+  assert.doesNotMatch(text.detail, /発生|用途|モデル/u);
 });

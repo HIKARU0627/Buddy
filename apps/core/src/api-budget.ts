@@ -174,7 +174,8 @@ export function createBudgetRoutes(options: BudgetRoutesOptions): BudgetRoutes {
   };
 
   // 版の照合。保存済みの受付（同じ接続範囲・request_id）があれば再送の判定に任せる（同じ内容は保存済みの結果、違えば
-  // 409）。なければ、予約の今の版と本文の版を比べる（予約がない・読めないときは合わない。閉じた側）。
+  // 409）。なければ、予約の今の版と本文の版を比べる。予約がない・実際に版が違うときは合わない（409）。予約を読めない障害
+  // は、版の不一致ではないので例外にし、経路の検査が 503 で閉じる（「内容が変わりました」と見せない。Codex のレビュー P2）。
   const revisionMatches = async (input: EnvironmentInput): Promise<boolean> => {
     const body = input.body;
     const scopeId = stringOf(body?.['command_scope_id']);
@@ -182,7 +183,9 @@ export function createBudgetRoutes(options: BudgetRoutesOptions): BudgetRoutes {
     const current = await gate.reservationRevision(
       input.params['reservation_id'] ?? '',
     );
-    if (current === 'unavailable' || current === null) return false;
+    if (current === 'unavailable')
+      throw new Error('budget_reservation_unavailable');
+    if (current === null) return false;
     if (scopeId !== '' && requestId !== '') {
       if (await options.receiptExists(scopeId, requestId)) return true;
     }

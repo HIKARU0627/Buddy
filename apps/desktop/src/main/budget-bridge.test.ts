@@ -46,6 +46,8 @@ const reservation = (fields: Record<string, unknown>) => ({
   credit_cycle_id: null,
   approval_id: null,
   overrun_reviewed: false,
+  created_at: '2030-10-14T09:30:00.000Z',
+  origin: 'owner_request',
   ...fields,
 });
 
@@ -112,6 +114,7 @@ function usageBody(options: UsageOptions = {}) {
               reservation_id: UNKNOWN_RESERVATION,
               budget_month: '2030-09',
               status: 'usage_unknown',
+              created_at: '2030-09-28T22:15:00.000Z',
             }),
           ]
         : []),
@@ -120,6 +123,7 @@ function usageBody(options: UsageOptions = {}) {
             reservation({
               reservation_id: OVERRUN_RESERVATION,
               pool_id: 'llm.background',
+              origin: 'autonomous_analysis',
               status: 'settled',
               provider_reconciliation_id: 'synthetic-usage-1',
               actual_gross: xts('55000000'),
@@ -249,6 +253,10 @@ function rig(): Rig {
 
 const APPROVAL_CONFIRM: BudgetConfirmRequest = {
   action: 'approve_overage',
+  // 承認には、対象の依頼の名前の記録がない（求めた時刻だけ）。
+  origin: null,
+  profileId: null,
+  occurredAt: '2030-10-15T00:00:00Z',
   poolId: 'llm',
   budgetMonth: '2030-10',
   maxLiability: xts('40000000'),
@@ -290,6 +298,9 @@ test('refresh builds the entries in a fixed order from the usage, and the screen
         kind: 'overage_approval',
         pool_id: 'llm',
         budget_month: '2030-10',
+        origin: null,
+        profile_id: null,
+        occurred_at: '2030-10-15T00:00:00Z',
         max_liability: xts('40000000'),
         overage_remaining: xts('60000000'),
         actual_gross: null,
@@ -301,6 +312,9 @@ test('refresh builds the entries in a fixed order from the usage, and the screen
         kind: 'overrun_review',
         pool_id: 'llm.background',
         budget_month: '2030-10',
+        origin: 'autonomous_analysis',
+        profile_id: 'synthetic.text.v1',
+        occurred_at: '2030-10-14T09:30:00.000Z',
         max_liability: xts('40000000'),
         overage_remaining: null,
         actual_gross: xts('55000000'),
@@ -312,6 +326,9 @@ test('refresh builds the entries in a fixed order from the usage, and the screen
         kind: 'manual_settlement',
         pool_id: 'llm',
         budget_month: '2030-09',
+        origin: 'owner_request',
+        profile_id: 'synthetic.text.v1',
+        occurred_at: '2030-09-28T22:15:00.000Z',
         max_liability: xts('40000000'),
         overage_remaining: null,
         actual_gross: null,
@@ -623,6 +640,9 @@ test('the overrun review shows the recorded actual cost and M, and sends the ver
   assert.deepEqual(r.confirms, [
     {
       action: 'review_overrun',
+      origin: 'autonomous_analysis',
+      profileId: 'synthetic.text.v1',
+      occurredAt: '2030-10-14T09:30:00.000Z',
       poolId: 'llm.background',
       budgetMonth: '2030-10',
       maxLiability: xts('40000000'),
@@ -658,6 +678,9 @@ test('the manual settlement shows the typed values and sends the initial credit 
   assert.deepEqual(r.confirms, [
     {
       action: 'settle_manual',
+      origin: 'owner_request',
+      profileId: 'synthetic.text.v1',
+      occurredAt: '2030-09-28T22:15:00.000Z',
       poolId: 'llm',
       budgetMonth: '2030-09',
       maxLiability: xts('40000000'),
@@ -757,12 +780,11 @@ test('a read that fails keeps the hold: nothing says the command did not arrive'
   );
 });
 
-test('the core refusing a stale value asks to read again (409), and other refusals are plain refusals; both read the usage again', async () => {
+test('the core refusing a stale value asks to read again (409), and other definite refusals are plain refusals; both read the usage again', async () => {
   for (const [status, reason] of [
     [409, 'preview_stale'],
     [403, 'core_rejected'],
     [422, 'core_rejected'],
-    [503, 'core_rejected'],
   ] as const) {
     const r = rig();
     await r.bridge.refresh();
@@ -792,6 +814,8 @@ test('a 2xx answer that does not fit the contract is an unknown outcome, not a s
   await r.bridge.refresh();
   const ref = refOf(r, 'overage_approval');
   r.post = () => applied({ nonsense: true });
+  // 読み直しが続けて失敗する間は、保留のまま（正常に読み直せたときだけ解ける）。
+  r.usage = () => ({ kind: 'unknown' });
   assert.deepEqual(
     await r.bridge.decide(ref, 'approve'),
     fail('outcome_unknown'),
@@ -854,4 +878,111 @@ test('a refusal from the core (a closed scope) drops nothing the screen shows an
     r.bridge.entries().find((entry) => entry.ref === ref)?.delivery_unknown,
     false,
   );
+});
+
+test('a 503 may mean the save outcome is unknown: it is held, not shown as a refusal, and only a normal read releases it', async () => {
+  const r = rig();
+  await r.bridge.refresh();
+  const ref = refOf(r, 'overage_approval');
+  r.post = () => ({
+    kind: 'response',
+    status: 503,
+    body: { code: 'dependency_unavailable', message: 'x', request_id: null },
+  });
+  // 保存の成否が分からない 503 の後は、読み直しも失敗する（中枢の障害が続いている）。
+  r.usage = () => ({
+    kind: 'response',
+    status: 503,
+    body: { code: 'dependency_unavailable', message: 'x', request_id: null },
+  });
+  assert.deepEqual(
+    await r.bridge.decide(ref, 'approve'),
+    fail('outcome_unknown'),
+  );
+  await r.bridge.refresh();
+  assert.equal(
+    r.bridge.entries().find((entry) => entry.ref === ref)?.delivery_unknown,
+    true,
+    'a failed read does not release the hold',
+  );
+  // 保留の間は、確認も送信もさせない。
+  assert.deepEqual(
+    await r.bridge.decide(ref, 'approve'),
+    fail('entry_not_found'),
+  );
+  assert.equal(r.confirms.length, 1);
+  assert.equal(r.posts().length, 1);
+  // 正常に読み直せたら（項目が残っている＝適用されていない）保留が解け、本人がもう一度確かめて送れる。
+  r.usage = () => applied(usageBody());
+  await r.bridge.refresh();
+  assert.equal(
+    r.bridge.entries().find((entry) => entry.ref === ref)?.delivery_unknown,
+    false,
+  );
+});
+
+test('items with the same month, pool and M are told apart by when they happened, and each command goes to the item that was confirmed', async () => {
+  const r = rig();
+  const twin = (n: number, createdAt: string, profile: string) =>
+    reservation({
+      reservation_id: uuid(0xc0 + n),
+      budget_month: '2030-09',
+      status: 'usage_unknown',
+      created_at: createdAt,
+      profile_id: profile,
+    });
+  const first = twin(1, '2030-09-28T22:15:00.000Z', 'synthetic.text.v1');
+  const second = twin(2, '2030-09-29T01:40:00.000Z', 'synthetic.live.v1');
+  r.usage = () =>
+    applied({
+      ...usageBody({ approval: false, overrun: false, unknown: false }),
+      // 同じ月・枠・M・版。順序は中枢の並びと逆にして、日時で並べ直すことも確かめる。
+      pending_reservations: [second, first],
+    });
+  await r.bridge.refresh();
+  const entries = r.bridge.entries();
+  assert.deepEqual(
+    entries.map((entry) => [entry.occurred_at, entry.profile_id]),
+    [
+      ['2030-09-28T22:15:00.000Z', 'synthetic.text.v1'],
+      ['2030-09-29T01:40:00.000Z', 'synthetic.live.v1'],
+    ],
+  );
+  assert.notEqual(entries[0]?.ref, entries[1]?.ref);
+  // 2 つ目を精算する: 確認には 2 つ目の日時とモデルの名前が出て、送るのは 2 つ目の予約。
+  r.post = () => applied(reservation({ status: 'settled' }));
+  assert.deepEqual(
+    await r.bridge.settleManually(
+      entries[1]?.ref as string,
+      'manual:invoice-b',
+      '3000000',
+    ),
+    ok,
+  );
+  assert.equal(r.confirms[0]?.occurredAt, '2030-09-29T01:40:00.000Z');
+  assert.equal(r.confirms[0]?.profileId, 'synthetic.live.v1');
+  assert.equal(
+    r.posts()[0]?.path,
+    `/v1/budget/reservations/${uuid(0xc2)}/manual-settlement`,
+  );
+  // 1 つ目は残っていて、1 つ目の日時で確かめられる。
+  assert(r.bridge.entries().some((entry) => entry.ref === entries[0]?.ref));
+});
+
+test('a reservation without a recorded time or origin shows no time or origin (null), never a guess', async () => {
+  const r = rig();
+  const bare = reservation({ reservation_id: uuid(0xd1) });
+  delete (bare as Record<string, unknown>)['created_at'];
+  delete (bare as Record<string, unknown>)['origin'];
+  r.usage = () =>
+    applied({
+      ...usageBody({ approval: false, overrun: false, unknown: false }),
+      pending_reservations: [bare],
+    });
+  await r.bridge.refresh();
+  const [entry] = r.bridge.entries();
+  assert.equal(entry?.occurred_at, null);
+  assert.equal(entry?.origin, null);
+  assert.equal(entry?.profile_id, 'synthetic.text.v1');
+  assert(contract.valid('DesktopBudgetEntry', entry));
 });

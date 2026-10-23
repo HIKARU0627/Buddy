@@ -3,6 +3,7 @@
 // 浮動小数点数を使わず、BigInt と文字列だけで変換する（丸めない。小数点以下 6 桁を超える入力は受け付けない）。
 
 import { BUDGET_AMOUNT_MAX } from './budget-rules.js';
+import type { BudgetOrigin } from './budget-rules.js';
 
 const MICRO = 1_000_000n;
 // 数と単位の間は改行しない空白（U+00A0。画面の文言の約束）。
@@ -40,4 +41,38 @@ export function amountFromDecimal(text: string): string | null {
   const fraction = BigInt((match[2] ?? '').padEnd(6, '0') || '0');
   const value = whole * MICRO + fraction;
   return value > BUDGET_AMOUNT_MAX ? null : value.toString();
+}
+
+// 枠の表示名（B07-05、ADR 0039）。枠の ID は設定で決める内部の名前（llm・llm.background など）で、本人に見せる名前では
+// ない。枠の木（ADR 0006）の枠を、決まった対応表で用途の名前にする。対応表にない枠（設定で足した枠）は、内部の ID を
+// 出さずに「別の枠」と言う（設定に表示名を持たせるのは、設定の編集の画面ができてから）。
+export const BUDGET_POOL_LABELS: Readonly<Record<string, string>> = {
+  total: '全体',
+  llm_search: '会話と検索の合計',
+  llm: '会話',
+  'llm.background': '自動の解析',
+  search: '検索',
+  voice: '音声',
+  overage: '超過枠',
+};
+
+export const BUDGET_POOL_UNKNOWN_LABEL = '別の枠';
+
+export function budgetPoolLabel(poolId: string): string {
+  return Object.hasOwn(BUDGET_POOL_LABELS, poolId)
+    ? (BUDGET_POOL_LABELS[poolId] as string)
+    : BUDGET_POOL_UNKNOWN_LABEL;
+}
+
+// 処理の起点の表示名（用途）。
+export const BUDGET_ORIGIN_LABELS: Readonly<Record<BudgetOrigin, string>> = {
+  owner_request: '本人の依頼',
+  autonomous_analysis: '自動の解析',
+  auto_execution: '自動の実行',
+  initial_import: '初回の読み込み',
+  shadow_mode: '影モード',
+};
+
+export function budgetOriginLabel(origin: BudgetOrigin): string {
+  return BUDGET_ORIGIN_LABELS[origin];
 }

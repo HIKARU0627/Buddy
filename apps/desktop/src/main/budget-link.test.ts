@@ -17,7 +17,7 @@ import type { BudgetGate } from '@buddy/core';
 import type { DesktopIpcResponse } from '@buddy/contracts';
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
-import { DesktopCoreLink } from './core-link.js';
+import { BUDGET_POLL_INTERVAL_MS, DesktopCoreLink } from './core-link.js';
 import type { AdminConfirmRequest } from './core-link.js';
 import { SecretText, saveCredential } from './credential-store.js';
 import {
@@ -179,9 +179,14 @@ interface Rig {
   answer: { current: (request: AdminConfirmRequest) => Promise<boolean> };
   ipc(channel: string, payload: unknown): Promise<DesktopIpcResponse>;
   view(): ReturnType<DesktopCoreLink['view']>;
+  // 予算の読み直しの次の予約（30 秒の timer）が、今いくつ残っているか。
+  pollTimers(): number;
 }
 
-async function start(t: test.TestContext): Promise<Rig> {
+async function start(
+  t: test.TestContext,
+  options: { readonly auto?: boolean } = {},
+): Promise<Rig> {
   const dir = await tempDir(t, 'bbl-');
   const dataDir = join(dir, 'data');
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -230,12 +235,32 @@ async function start(t: test.TestContext): Promise<Rig> {
   });
   const requests: string[] = [];
   const confirms: AdminConfirmRequest[] = [];
+  // 予算の読み直しの timer の数を数える（ほかの timer は数えない）。
+  const base = systemClock();
+  const polls = new Set<number>();
+  let nextTimer = 0;
+  const countingClock: typeof base = {
+    ...base,
+    setTimer: (ms, run) => {
+      if (ms !== BUDGET_POLL_INTERVAL_MS) return base.setTimer(ms, run);
+      const id = (nextTimer += 1);
+      polls.add(id);
+      const cancel = base.setTimer(ms, () => {
+        polls.delete(id);
+        run();
+      });
+      return () => {
+        polls.delete(id);
+        cancel();
+      };
+    },
+  };
   const answer: Rig['answer'] = { current: () => Promise.resolve(true) };
   const link = new DesktopCoreLink({
     contract,
     credentialPath,
     protector,
-    clock: systemClock(),
+    clock: countingClock,
     platform: 'macos',
     collectHome: () =>
       Promise.resolve({ gateway_mac: null, subnet: null, ssid: null }),
@@ -243,7 +268,7 @@ async function start(t: test.TestContext): Promise<Rig> {
     onChange: () => undefined,
     log: () => undefined,
     // 読み取りは試験が決めた時だけ（中枢への要求を数えるため）。
-    budgetAuto: false,
+    budgetAuto: options.auto === true,
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     confirmAdmin: (request) => {
       confirms.push(request);
@@ -282,6 +307,7 @@ async function start(t: test.TestContext): Promise<Rig> {
       );
       return response;
     },
+    pollTimers: () => polls.size,
     view() {
       const view = link.view('unlocked');
       assert.equal(view.visibility, 'shown');
@@ -348,6 +374,10 @@ test(
         kind: 'overage_approval',
         pool_id: 'overage',
         budget_month: '2030-10',
+        // 承認の対象の依頼の名前は中枢が記録していない（求めた時刻だけ）。
+        origin: null,
+        profile_id: null,
+        occurred_at: '2030-10-15T00:00:00.000Z',
         max_liability: xts('40000000'),
         overage_remaining: xts('60000000'),
         actual_gross: null,
@@ -398,6 +428,9 @@ test(
     assert.deepEqual(r.confirms, [
       {
         action: 'approve_overage',
+        origin: null,
+        profileId: null,
+        occurredAt: '2030-10-15T00:00:00.000Z',
         poolId: 'overage',
         budgetMonth: '2030-10',
         maxLiability: xts('40000000'),
@@ -591,6 +624,9 @@ test(
     assert.equal(reviewed.outcome, 'ok');
     assert.deepEqual(r.confirms[0], {
       action: 'review_overrun',
+      origin: 'owner_request',
+      profileId: 'intent.synthetic.v1',
+      occurredAt: '2030-10-15T00:00:00.000Z',
       poolId: 'llm',
       budgetMonth: '2030-10',
       maxLiability: xts('40000000'),
@@ -635,6 +671,9 @@ test(
     assert.equal(settled.outcome, 'ok');
     assert.deepEqual(r.confirms[1], {
       action: 'settle_manual',
+      origin: 'owner_request',
+      profileId: 'intent.synthetic.v1',
+      occurredAt: '2030-10-15T00:00:00.000Z',
       poolId: 'llm',
       budgetMonth: '2030-10',
       maxLiability: xts('40000000'),
@@ -661,5 +700,115 @@ test(
     assert.equal(found.value.budgetMonth, '2030-10');
     // 確認の後、予算保留は解ける。
     assert.equal(r.link.hubStatus().budgetHeld, false);
+  },
+);
+
+test(
+  'two unknown costs with the same pool, month and M are told apart by when they happened, and the settlement goes to the one that was confirmed',
+  { timeout: 60_000 },
+  async (t) => {
+    const r = await start(t);
+    r.provider.plan(uuid(1), 'unknown');
+    assert.equal(
+      (await r.gate.run(paid(uuid(1)), r.provider.send)).kind,
+      'usage_unknown',
+    );
+    // 1 時間後（同じ月）に、同じ枠・同じ M の 2 つ目。
+    r.clock.now = OCT_15 + 60 * MINUTE;
+    r.provider.plan(uuid(2), 'unknown');
+    assert.equal(
+      (await r.gate.run(paid(uuid(2)), r.provider.send)).kind,
+      'usage_unknown',
+    );
+    await r.link.refreshBudget();
+    const listed = items(r);
+    assert.deepEqual(
+      listed.map((entry) => [
+        entry.kind,
+        entry.pool_id,
+        entry.max_liability,
+        entry.occurred_at,
+      ]),
+      [
+        [
+          'manual_settlement',
+          'llm',
+          xts('40000000'),
+          '2030-10-15T00:00:00.000Z',
+        ],
+        [
+          'manual_settlement',
+          'llm',
+          xts('40000000'),
+          '2030-10-15T01:00:00.000Z',
+        ],
+      ],
+    );
+    const second = listed[1];
+    assert(second !== undefined);
+    const settled = await r.ipc('desktop.budget_manual_settle', {
+      ref: second.ref,
+      reconciliation_id: 'manual:invoice-b',
+      actual_amount: '2000000',
+    });
+    assert.equal(settled.outcome, 'ok');
+    // 確認には 2 つ目の日時を出した。精算されたのは 2 つ目だけで、1 つ目は usage 不明のまま。
+    const confirmed = r.confirms[0];
+    assert(confirmed !== undefined && 'poolId' in confirmed);
+    assert.equal(confirmed.occurredAt, '2030-10-15T01:00:00.000Z');
+    const find = async (requestId: string) => {
+      const found = await r.hub.handle.store.budget({
+        kind: 'budget.reservation_find',
+        reservation_id: null,
+        request_id: requestId,
+      });
+      assert(found.ok && found.value !== null);
+      return found.value;
+    };
+    const one = await find(uuid(1));
+    const two = await find(uuid(2));
+    assert.equal(one.status, 'usage_unknown');
+    assert.equal(two.status, 'settled');
+    assert.equal(two.providerReconciliationId, 'manual:invoice-b');
+    await r.link.refreshBudget();
+    assert.deepEqual(
+      items(r).map((entry) => entry.occurred_at),
+      ['2030-10-15T00:00:00.000Z'],
+    );
+  },
+);
+
+test(
+  'overlapping reads leave exactly one next-read timer, and locking leaves none',
+  { timeout: 60_000 },
+  async (t) => {
+    const r = await start(t, { auto: true });
+    // 接続したときの自動の読み取りが済んで、予約が 1 つになるまで待つ。
+    await waitUntil(
+      () => r.pollTimers() === 1,
+      'the first read arms one timer',
+    );
+    // 読み取りを重ねて呼ぶ（パネルを開く・接続の直後など）。どの順に終わっても、次の予約は 1 つ。
+    await Promise.all([
+      r.link.refreshBudget(),
+      r.link.refreshBudget(),
+      r.link.refreshBudget(),
+    ]);
+    assert.equal(r.pollTimers(), 1);
+    await r.link.refreshBudget();
+    assert.equal(r.pollTimers(), 1);
+    // ロックすると予約を取り消す（ロック中は読まない）。
+    r.link.setLockState('locked');
+    assert.equal(r.pollTimers(), 0);
+    await r.link.refreshBudget();
+    assert.equal(r.pollTimers(), 0);
+    // 解除すると読み取りを再開し、予約は 1 つに戻る。
+    r.link.setLockState('unlocked');
+    await waitUntil(
+      () => r.pollTimers() === 1,
+      'the read resumes after unlock',
+    );
+    await Promise.all([r.link.refreshBudget(), r.link.refreshBudget()]);
+    assert.equal(r.pollTimers(), 1);
   },
 );

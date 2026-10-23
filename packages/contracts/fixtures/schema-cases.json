@@ -6856,6 +6856,9 @@
       "kind": "overage_approval",
       "pool_id": "llm",
       "budget_month": "2030-10",
+      "origin": null,
+      "profile_id": null,
+      "occurred_at": "2030-10-15T00:02:00Z",
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6878,6 +6881,9 @@
       "kind": "overrun_review",
       "pool_id": "llm.background",
       "budget_month": "2030-10",
+      "origin": "autonomous_analysis",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "2030-10-14T09:30:00Z",
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6900,6 +6906,9 @@
       "kind": "manual_settlement",
       "pool_id": "llm",
       "budget_month": "2030-09",
+      "origin": "owner_request",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "2030-09-28T22:15:00Z",
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6919,6 +6928,9 @@
       "kind": "overage_approval",
       "pool_id": "llm",
       "budget_month": "2030-10",
+      "origin": null,
+      "profile_id": null,
+      "occurred_at": "2030-10-15T00:02:00Z",
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6942,6 +6954,9 @@
       "kind": "overrun_review",
       "pool_id": "llm.background",
       "budget_month": "2030-10",
+      "origin": "autonomous_analysis",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "2030-10-14T09:30:00Z",
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6987,6 +7002,9 @@
       "kind": "overage_approval",
       "pool_id": "llm",
       "budget_month": "2030-10",
+      "origin": null,
+      "profile_id": null,
+      "occurred_at": "2030-10-15T00:02:00Z",
       "max_liability": {
         "currency": "XTS",
         "amount": "40.5"
@@ -6998,6 +7016,187 @@
       "actual_gross": null,
       "expires_at": "2030-10-15T00:10:00.000Z",
       "delivery_unknown": false
+    }
+  },
+  {
+    "id": "desktop-budget-entry-unknown-origin",
+    "schema": "DesktopBudgetEntry",
+    "valid": false,
+    "value": {
+      "ref": "00000000-0000-4000-8000-000000000b72",
+      "kind": "manual_settlement",
+      "pool_id": "llm",
+      "budget_month": "2030-09",
+      "origin": "someone",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "2030-09-28T22:15:00Z",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "overage_remaining": null,
+      "actual_gross": null,
+      "expires_at": null,
+      "delivery_unknown": true
+    }
+  },
+  {
+    "id": "desktop-budget-entry-profile-with-space",
+    "schema": "DesktopBudgetEntry",
+    "valid": false,
+    "value": {
+      "ref": "00000000-0000-4000-8000-000000000b72",
+      "kind": "manual_settlement",
+      "pool_id": "llm",
+      "budget_month": "2030-09",
+      "origin": "owner_request",
+      "profile_id": "some model",
+      "occurred_at": "2030-09-28T22:15:00Z",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "overage_remaining": null,
+      "actual_gross": null,
+      "expires_at": null,
+      "delivery_unknown": true
+    }
+  },
+  {
+    "id": "desktop-budget-entry-bad-time",
+    "schema": "DesktopBudgetEntry",
+    "valid": false,
+    "value": {
+      "ref": "00000000-0000-4000-8000-000000000b72",
+      "kind": "manual_settlement",
+      "pool_id": "llm",
+      "budget_month": "2030-09",
+      "origin": "owner_request",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "yesterday",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "overage_remaining": null,
+      "actual_gross": null,
+      "expires_at": null,
+      "delivery_unknown": true
+    }
+  },
+  {
+    "id": "desktop-budget-entry-without-occurred-at",
+    "schema": "DesktopBudgetEntry",
+    "valid": false,
+    "value": {
+      "ref": "00000000-0000-4000-8000-000000000b72",
+      "kind": "manual_settlement",
+      "pool_id": "llm",
+      "budget_month": "2030-09",
+      "origin": "owner_request",
+      "profile_id": "synthetic.text.v1",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "overage_remaining": null,
+      "actual_gross": null,
+      "expires_at": null,
+      "delivery_unknown": true
+    }
+  },
+  {
+    "id": "reservation-with-created-at-and-origin",
+    "schema": "BudgetReservation",
+    "valid": true,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-000000000050",
+      "reservation_revision": "0",
+      "request_id": "00000000-0000-4000-8000-000000000051",
+      "profile_id": "synthetic.intent.v1",
+      "price_version": "synthetic-v1",
+      "budget_month": "2030-01",
+      "pool_id": "llm.background",
+      "reserved_amount": {
+        "currency": "USD",
+        "amount": "100"
+      },
+      "max_liability": {
+        "currency": "USD",
+        "amount": "400"
+      },
+      "status": "usage_unknown",
+      "provider_reconciliation_id": null,
+      "actual_gross": null,
+      "credit_applied": null,
+      "additional_spend": null,
+      "credit_cycle_id": null,
+      "approval_id": null,
+      "overrun_reviewed": false,
+      "created_at": "2030-10-15T00:00:00.000Z",
+      "origin": "owner_request"
+    }
+  },
+  {
+    "id": "reservation-with-unknown-origin",
+    "schema": "BudgetReservation",
+    "valid": false,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-000000000050",
+      "reservation_revision": "0",
+      "request_id": "00000000-0000-4000-8000-000000000051",
+      "profile_id": "synthetic.intent.v1",
+      "price_version": "synthetic-v1",
+      "budget_month": "2030-01",
+      "pool_id": "llm.background",
+      "reserved_amount": {
+        "currency": "USD",
+        "amount": "100"
+      },
+      "max_liability": {
+        "currency": "USD",
+        "amount": "400"
+      },
+      "status": "usage_unknown",
+      "provider_reconciliation_id": null,
+      "actual_gross": null,
+      "credit_applied": null,
+      "additional_spend": null,
+      "credit_cycle_id": null,
+      "approval_id": null,
+      "overrun_reviewed": false,
+      "origin": "someone"
+    }
+  },
+  {
+    "id": "reservation-with-bad-created-at",
+    "schema": "BudgetReservation",
+    "valid": false,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-000000000050",
+      "reservation_revision": "0",
+      "request_id": "00000000-0000-4000-8000-000000000051",
+      "profile_id": "synthetic.intent.v1",
+      "price_version": "synthetic-v1",
+      "budget_month": "2030-01",
+      "pool_id": "llm.background",
+      "reserved_amount": {
+        "currency": "USD",
+        "amount": "100"
+      },
+      "max_liability": {
+        "currency": "USD",
+        "amount": "400"
+      },
+      "status": "usage_unknown",
+      "provider_reconciliation_id": null,
+      "actual_gross": null,
+      "credit_applied": null,
+      "additional_spend": null,
+      "credit_cycle_id": null,
+      "approval_id": null,
+      "overrun_reviewed": false,
+      "created_at": "2030-10-15"
     }
   },
   {
@@ -7059,6 +7258,9 @@
           "kind": "overage_approval",
           "pool_id": "llm",
           "budget_month": "2030-10",
+          "origin": null,
+          "profile_id": null,
+          "occurred_at": "2030-10-15T00:02:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7076,6 +7278,9 @@
           "kind": "overrun_review",
           "pool_id": "llm.background",
           "budget_month": "2030-10",
+          "origin": "autonomous_analysis",
+          "profile_id": "synthetic.text.v1",
+          "occurred_at": "2030-10-14T09:30:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7093,6 +7298,9 @@
           "kind": "manual_settlement",
           "pool_id": "llm",
           "budget_month": "2030-09",
+          "origin": "owner_request",
+          "profile_id": "synthetic.text.v1",
+          "occurred_at": "2030-09-28T22:15:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7148,6 +7356,9 @@
           "kind": "overage_approval",
           "pool_id": "llm",
           "budget_month": "2030-10",
+          "origin": null,
+          "profile_id": null,
+          "occurred_at": "2030-10-15T00:02:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7234,6 +7445,9 @@
           "kind": "overage_approval",
           "pool_id": "llm",
           "budget_month": "2030-10",
+          "origin": null,
+          "profile_id": null,
+          "occurred_at": "2030-10-15T00:02:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7251,6 +7465,9 @@
           "kind": "overrun_review",
           "pool_id": "llm.background",
           "budget_month": "2030-10",
+          "origin": "autonomous_analysis",
+          "profile_id": "synthetic.text.v1",
+          "occurred_at": "2030-10-14T09:30:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7268,6 +7485,9 @@
           "kind": "manual_settlement",
           "pool_id": "llm",
           "budget_month": "2030-09",
+          "origin": "owner_request",
+          "profile_id": "synthetic.text.v1",
+          "occurred_at": "2030-09-28T22:15:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7324,6 +7544,9 @@
           "kind": "overage_approval",
           "pool_id": "llm",
           "budget_month": "2030-10",
+          "origin": null,
+          "profile_id": null,
+          "occurred_at": "2030-10-15T00:02:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7383,6 +7606,9 @@
           "kind": "overrun_review",
           "pool_id": "llm.background",
           "budget_month": "2030-10",
+          "origin": "autonomous_analysis",
+          "profile_id": "synthetic.text.v1",
+          "occurred_at": "2030-10-14T09:30:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7439,6 +7665,9 @@
           "kind": "manual_settlement",
           "pool_id": "llm",
           "budget_month": "2030-09",
+          "origin": "owner_request",
+          "profile_id": "synthetic.text.v1",
+          "occurred_at": "2030-09-28T22:15:00Z",
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"

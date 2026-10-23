@@ -19,7 +19,10 @@ import {
   inputOf,
   manualProblems,
   moneyText,
+  occurredText,
+  originText,
   overAmount,
+  poolText,
 } from '../../state/budget-state.js';
 import type {
   BudgetActions,
@@ -58,7 +61,8 @@ export function barStep(percent: number): number {
 
 // ボタンの読み上げの名前（見える文字に枠と金額を足す。「承認する（llm・XTS 40.00）」）。
 export function itemLabel(verb: string, entry: DesktopBudgetEntry): string {
-  return `${verb}（${entry.pool_id}・${moneyText(entry.max_liability)}）`;
+  const when = occurredText(entry);
+  return `${verb}（${poolText(entry)}・${moneyText(entry.max_liability)}${when === null ? '' : `・${when}`}）`;
 }
 
 function Value({
@@ -185,7 +189,7 @@ function ItemRow({
         <span className="rounded-md border border-separator px-1.5 py-0.5 text-xs font-semibold">
           {KIND_LABELS[entry.kind]}
         </span>
-        <span className="font-mono text-xs">{entry.pool_id}</span>
+        <span className="text-xs font-semibold">{poolText(entry)}</span>
         <span className="text-xs tabular-nums text-muted">
           {entry.budget_month}
         </span>
@@ -197,6 +201,19 @@ function ItemRow({
           </span>
         )}
       </div>
+      {occurredText(entry) === null &&
+      originText(entry) === null &&
+      entry.profile_id === null ? null : (
+        <p className="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
+          {occurredText(entry) === null ? null : (
+            <span className="tabular-nums">{occurredText(entry)}</span>
+          )}
+          {originText(entry) === null ? null : <span>{originText(entry)}</span>}
+          {entry.profile_id === null ? null : (
+            <span className="font-mono">{entry.profile_id}</span>
+          )}
+        </p>
+      )}
       {entry.kind === 'overage_approval' && entry.overage_remaining !== null ? (
         <>
           <dl className="flex items-end justify-between gap-4">

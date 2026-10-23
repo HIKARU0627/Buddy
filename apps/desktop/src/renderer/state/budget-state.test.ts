@@ -18,6 +18,9 @@ import {
   budgetFailureText,
   entryExpired,
   expiryText,
+  occurredText,
+  originText,
+  poolText,
   manualProblems,
   manualReady,
   markBusy,
@@ -41,6 +44,9 @@ const approval = (
   kind: 'overage_approval',
   pool_id: 'llm',
   budget_month: '2030-10',
+  origin: null,
+  profile_id: null,
+  occurred_at: '2030-10-15T00:02:00.000Z',
   max_liability: xts('40000000'),
   overage_remaining: xts('60000000'),
   actual_gross: null,
@@ -55,6 +61,9 @@ const overrun = (
   kind: 'overrun_review',
   pool_id: 'llm.background',
   budget_month: '2030-10',
+  origin: 'autonomous_analysis',
+  profile_id: 'synthetic.text.v1',
+  occurred_at: '2030-10-14T09:30:00.000Z',
   max_liability: xts('40000000'),
   overage_remaining: null,
   actual_gross: xts('55000000'),
@@ -69,6 +78,9 @@ const manual = (
   kind: 'manual_settlement',
   pool_id: 'llm',
   budget_month: '2030-09',
+  origin: 'owner_request',
+  profile_id: 'synthetic.text.v1',
+  occurred_at: '2030-09-28T22:15:00.000Z',
   max_liability: xts('40000000'),
   overage_remaining: null,
   actual_gross: null,
@@ -359,4 +371,28 @@ test('a response that arrives after the store was hidden (lock or disconnect) is
   );
   // 読み上げのための見出しの名前は、画面の固定の文言（理由のコードではない）。
   assert.equal(BUDGET_LABELS.section, '予算の確認');
+});
+
+test('the pool, the origin and the time are shown by names the person can read, never by an internal ID', () => {
+  assert.equal(poolText(approval()), '会話');
+  assert.equal(poolText(overrun()), '自動の解析');
+  assert.equal(poolText(manual({ pool_id: 'search' })), '検索');
+  assert.equal(poolText(manual({ pool_id: 'voice' })), '音声');
+  assert.equal(poolText(manual({ pool_id: 'overage' })), '超過枠');
+  // 対応表にない枠（設定で足した枠）は内部の ID を出さない。
+  assert.equal(
+    poolText(manual({ pool_id: 'llm.secret-experiment' })),
+    '別の枠',
+  );
+  assert.equal(originText(approval()), null);
+  assert.equal(originText(overrun()), '自動の解析');
+  assert.equal(originText(manual()), '本人の依頼');
+  assert.equal(occurredText(approval({ occurred_at: null })), null);
+  // 端末の地域時間の「月/日 時:分」（今日でも月日を付ける）。
+  const local = new Date('2030-10-14T09:30:00.000Z');
+  const pad = (n: number) => String(n).padStart(2, '0');
+  assert.equal(
+    occurredText(overrun()),
+    `${local.getMonth() + 1}/${local.getDate()} ${pad(local.getHours())}:${pad(local.getMinutes())}`,
+  );
 });

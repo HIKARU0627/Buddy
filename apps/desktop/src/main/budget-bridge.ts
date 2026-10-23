@@ -21,7 +21,7 @@ import type {
   Snapshot,
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
-import type { DesktopIpcRejectReason } from '@buddy/domain';
+import type { BudgetOrigin, DesktopIpcRejectReason } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 
 interface Money {
@@ -29,8 +29,17 @@ interface Money {
   readonly amount: string;
 }
 
+// 対象を本人が見分けるための表示用の値（同じ月・枠・金額の項目が複数あっても取り違えないため。依頼の本文は含めない）。
+// 中枢が記録していない値は null。
+export interface BudgetIdentity {
+  readonly origin: BudgetOrigin | null;
+  readonly profileId: string | null;
+  // 対象が発生した日時（承認は求めた時刻、予約は受け付けた時刻。UTC）。
+  readonly occurredAt: string | null;
+}
+
 // 本人の確認（OS の確認ダイアログ）に出す値。main が中枢の利用状況から作る（手での精算の実費・照合 ID は本人の入力）。
-export interface BudgetConfirmRequest {
+export interface BudgetConfirmRequest extends BudgetIdentity {
   readonly action: 'approve_overage' | 'review_overrun' | 'settle_manual';
   readonly poolId: string;
   readonly budgetMonth: string;
@@ -76,38 +85,40 @@ const fail = (
 });
 
 // 項目の中身（main の中にだけ持つ。画面へは DesktopBudgetEntry の表示用の値だけを渡す）。
-type BudgetRecord =
-  | {
-      readonly kind: 'overage_approval';
-      readonly key: string;
-      readonly approvalId: string;
-      // 承認する予算の要求（BudgetOverageApproval.request_id）。承認はこの依頼と M に固定する。
-      readonly budgetRequestId: string;
-      readonly poolId: string;
-      readonly budgetMonth: string;
-      readonly maxLiability: Money;
-      readonly overageRemaining: Money;
-      readonly expiresAt: string;
-    }
-  | {
-      readonly kind: 'overrun_review';
-      readonly key: string;
-      readonly reservationId: string;
-      readonly revision: string;
-      readonly poolId: string;
-      readonly budgetMonth: string;
-      readonly maxLiability: Money;
-      readonly actualGross: Money;
-    }
-  | {
-      readonly kind: 'manual_settlement';
-      readonly key: string;
-      readonly reservationId: string;
-      readonly revision: string;
-      readonly poolId: string;
-      readonly budgetMonth: string;
-      readonly maxLiability: Money;
-    };
+type BudgetRecord = BudgetIdentity &
+  (
+    | {
+        readonly kind: 'overage_approval';
+        readonly key: string;
+        readonly approvalId: string;
+        // 承認する予算の要求（BudgetOverageApproval.request_id）。承認はこの依頼と M に固定する。
+        readonly budgetRequestId: string;
+        readonly poolId: string;
+        readonly budgetMonth: string;
+        readonly maxLiability: Money;
+        readonly overageRemaining: Money;
+        readonly expiresAt: string;
+      }
+    | {
+        readonly kind: 'overrun_review';
+        readonly key: string;
+        readonly reservationId: string;
+        readonly revision: string;
+        readonly poolId: string;
+        readonly budgetMonth: string;
+        readonly maxLiability: Money;
+        readonly actualGross: Money;
+      }
+    | {
+        readonly kind: 'manual_settlement';
+        readonly key: string;
+        readonly reservationId: string;
+        readonly revision: string;
+        readonly poolId: string;
+        readonly budgetMonth: string;
+        readonly maxLiability: Money;
+      }
+  );
 
 const sameMoney = (a: Money, b: Money): boolean =>
   a.currency === b.currency && a.amount === b.amount;
@@ -116,6 +127,12 @@ const sameMoney = (a: Money, b: Money): boolean =>
 function sameRecord(a: BudgetRecord, b: BudgetRecord): boolean {
   if (a.kind !== b.kind || a.key !== b.key) return false;
   if (a.poolId !== b.poolId || a.budgetMonth !== b.budgetMonth) return false;
+  if (
+    a.origin !== b.origin ||
+    a.profileId !== b.profileId ||
+    a.occurredAt !== b.occurredAt
+  )
+    return false;
   if (!sameMoney(a.maxLiability, b.maxLiability)) return false;
   if (a.kind === 'overage_approval' && b.kind === 'overage_approval')
     return (
@@ -135,6 +152,17 @@ const money = (value: Money): Money => ({
   amount: value.amount,
 });
 
+// 予約の表示用の値（中枢が記録していなければ null）。
+const identityOf = (reservation: {
+  readonly origin?: BudgetOrigin;
+  readonly profile_id: string;
+  readonly created_at?: string;
+}): BudgetIdentity => ({
+  origin: reservation.origin ?? null,
+  profileId: reservation.profile_id,
+  occurredAt: reservation.created_at ?? null,
+});
+
 function recordsOf(summary: BudgetUsageSummary): BudgetRecord[] {
   const records: BudgetRecord[] = [];
   for (const approval of summary.overage_approvals)
@@ -149,6 +177,10 @@ function recordsOf(summary: BudgetUsageSummary): BudgetRecord[] {
         maxLiability: money(approval.max_liability),
         overageRemaining: money(approval.overage_remaining),
         expiresAt: approval.expires_at,
+        // 承認の対象の依頼の名前は中枢が記録していない（承認を求めた時刻だけ）。
+        origin: null,
+        profileId: null,
+        occurredAt: approval.requested_at,
       });
   for (const reservation of summary.pending_reservations) {
     if (reservation.status === 'usage_unknown')
@@ -160,6 +192,7 @@ function recordsOf(summary: BudgetUsageSummary): BudgetRecord[] {
         poolId: reservation.pool_id,
         budgetMonth: reservation.budget_month,
         maxLiability: money(reservation.max_liability),
+        ...identityOf(reservation),
       });
     else if (
       reservation.status === 'settled' &&
@@ -177,6 +210,7 @@ function recordsOf(summary: BudgetUsageSummary): BudgetRecord[] {
         budgetMonth: reservation.budget_month,
         maxLiability: money(reservation.max_liability),
         actualGross: money(reservation.actual_gross),
+        ...identityOf(reservation),
       });
   }
   return records;
@@ -235,6 +269,7 @@ export class BudgetBridge {
         (a, b) =>
           KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
           a.budgetMonth.localeCompare(b.budgetMonth) ||
+          (a.occurredAt ?? '').localeCompare(b.occurredAt ?? '') ||
           (a.kind === 'overage_approval' && b.kind === 'overage_approval'
             ? a.expiresAt.localeCompare(b.expiresAt)
             : 0) ||
@@ -246,6 +281,9 @@ export class BudgetBridge {
         ref,
         pool_id: record.poolId,
         budget_month: record.budgetMonth,
+        origin: record.origin,
+        profile_id: record.profileId,
+        occurred_at: record.occurredAt,
         max_liability: money(record.maxLiability),
         delivery_unknown: this.#held.has(record.key),
       };
@@ -335,13 +373,9 @@ export class BudgetBridge {
       this.#host.contract.valid('BudgetUsageSummary', usage.body)
     ) {
       this.#apply(recordsOf(usage.body as BudgetUsageSummary), seq);
-    } else if (
-      usage.kind === 'response' &&
-      (usage.status === 503 || usage.status === 403)
-    ) {
-      // 中枢が利用状況を返せない（設定が使えない・ロック中）。古い項目を残さない。
-      this.#apply([], seq);
     }
+    // 読めなかった（接続の失敗・503・形の違う応答）ときは、前の項目と保留のまま（読めなかったことを「項目なし」「命令は
+    // 適用されていない」の証拠にしない）。
     if (
       snapshot.kind === 'response' &&
       snapshot.status === 200 &&
@@ -459,11 +493,17 @@ export class BudgetBridge {
       void this.refresh();
       return { ok: true, value: 'durable' };
     }
-    // 2xx でも形が契約に合わなければ結果は分からない（自動では送り直さない）。
-    if (outcome.status >= 200 && outcome.status < 300) {
+    // 2xx でも形が契約に合わなければ、また 5xx（中枢は保存の成否が分からないときも 503 を返す）も、結果は分からない
+    // （断定せず、正常に読み直せるまで保留にする。自動では送り直さない）。
+    if (
+      outcome.status >= 500 ||
+      (outcome.status >= 200 && outcome.status < 300)
+    ) {
       if (gen === this.#gen) {
         this.#held.set(record.key, this.#seq);
+        this.#host.log('budget_command_outcome_unknown');
         this.#host.changed();
+        void this.refresh();
       }
       return fail('outcome_unknown');
     }
@@ -496,6 +536,9 @@ export class BudgetBridge {
       if (!io.permitted) return fail('input_stopped');
       const confirmed = await this.#host.confirm({
         action: 'approve_overage',
+        origin: record.origin,
+        profileId: record.profileId,
+        occurredAt: record.occurredAt,
         poolId: record.poolId,
         budgetMonth: record.budgetMonth,
         maxLiability: record.maxLiability,
@@ -544,6 +587,9 @@ export class BudgetBridge {
     if (!io.permitted) return fail('input_stopped');
     const confirmed = await this.#host.confirm({
       action: 'review_overrun',
+      origin: record.origin,
+      profileId: record.profileId,
+      occurredAt: record.occurredAt,
       poolId: record.poolId,
       budgetMonth: record.budgetMonth,
       maxLiability: record.maxLiability,
@@ -594,6 +640,9 @@ export class BudgetBridge {
     const actual: Money = { currency: record.maxLiability.currency, amount };
     const confirmed = await this.#host.confirm({
       action: 'settle_manual',
+      origin: record.origin,
+      profileId: record.profileId,
+      occurredAt: record.occurredAt,
       poolId: record.poolId,
       budgetMonth: record.budgetMonth,
       maxLiability: record.maxLiability,

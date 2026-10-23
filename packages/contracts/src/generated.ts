@@ -1207,6 +1207,15 @@ export type DesktopPairingFailure =
   | 'storage_failed'
   | 'protocol_error';
 /**
+ * 有料処理の起点（本人の判断 2026-10-23）。owner_request は本人の依頼（本人が頼んだ背景の処理を含む）で本人の依頼の枠を使う。自発的な解析・自動実行・初回の読み込み・影モードは自発の枠を使う。
+ */
+export type BudgetOrigin =
+  | 'owner_request'
+  | 'autonomous_analysis'
+  | 'auto_execution'
+  | 'initial_import'
+  | 'shadow_mode';
+/**
  * 物のデータの参照（item_refs）の位置（UI-07）。メールの本文を開く行。
  */
 export type CanvasOpenIndex = number;
@@ -1780,6 +1789,19 @@ export interface BudgetReservation {
   credit_cycle_id: CreditCycleId | null;
   approval_id: Id | null;
   overrun_reviewed: boolean;
+  /**
+   * UTC の RFC 3339 表現。区切りは大文字の T と Z だけ。JavaScript の Date で扱えないうるう秒は拒否する。元の地域時間と終日は別に扱う。
+   */
+  created_at?: string;
+  /**
+   * 予約の処理の起点（本人の依頼か、自発の処理か。表示用）。記録のない古い行では省く。
+   */
+  origin?:
+    | 'owner_request'
+    | 'autonomous_analysis'
+    | 'auto_execution'
+    | 'initial_import'
+    | 'shadow_mode';
 }
 export interface Money {
   currency: string;
@@ -3860,13 +3882,25 @@ export interface DesktopOperationEntry {
   detail: string | null;
 }
 /**
- * 状態の層の確認の一覧に出す予算の確認（B07-05、ADR 0039）。ref は main が項目ごとに作る参照で、承認 ID・予算の要求 ID・予約 ID・予約の版・照合値を含めない。kind: overage_approval は超過枠の個別の承認（max_liability は承認する依頼の M、overage_remaining は承認を求めた時点の超過枠の残り、expires_at は承認の期限。actual_gross は null）、overrun_review は M 超過の確認（actual_gross は記録した実費、max_liability は M。overage_remaining・expires_at は null）、manual_settlement は不明な費用の手での精算（max_liability は保持している M。actual_gross・overage_remaining・expires_at は null で、本人が実費を入力する）。金額は本人の設定に基づく実行時の値で、契約・fixture・撮影には合成の通貨 XTS だけを使う。
+ * 状態の層の確認の一覧に出す予算の確認（B07-05、ADR 0039）。ref は main が項目ごとに作る参照で、承認 ID・予算の要求 ID・予約 ID・予約の版・照合値を含めない。kind: overage_approval は超過枠の個別の承認（max_liability は承認する依頼の M、overage_remaining は承認を求めた時点の超過枠の残り、expires_at は承認の期限。actual_gross は null）、overrun_review は M 超過の確認（actual_gross は記録した実費、max_liability は M。overage_remaining・expires_at は null）、manual_settlement は不明な費用の手での精算（max_liability は保持している M。actual_gross・overage_remaining・expires_at は null で、本人が実費を入力する）。金額は本人の設定に基づく実行時の値で、契約・fixture・撮影には合成の通貨 XTS だけを使う。 origin・profile_id・occurred_at は、同じ月・枠・金額の項目を本人が見分けるための表示用の値で、依頼の本文は含めない。
  */
 export interface DesktopBudgetEntry {
   ref: Id;
   kind: 'overage_approval' | 'overrun_review' | 'manual_settlement';
   pool_id: BudgetPoolId;
   budget_month: YearMonth;
+  /**
+   * 処理の起点（本人の依頼・自動の解析など。表示の用途）。中枢が記録していなければ null。
+   */
+  origin: BudgetOrigin | null;
+  /**
+   * 予約したモデルの名前（profile の ID。表示用）。承認待ちには記録がないので null。
+   */
+  profile_id: ProfileId | null;
+  /**
+   * 対象が発生した日時（承認は求めた時刻、予約は受け付けた時刻）。本人が同じ金額・同じ枠の項目を見分けるために出す。中枢が記録していなければ null。
+   */
+  occurred_at: UtcTime | null;
   max_liability: Money;
   overage_remaining: Money | null;
   actual_gross: Money | null;

@@ -22,6 +22,13 @@ import { BudgetItems, barStep, itemLabel } from './BudgetItems.js';
 const id = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 const xts = (amount: string) => ({ currency: 'XTS', amount });
+// 端末の地域時間の「月/日 時:分」（画面と同じ書き方。期待値は時刻から手で求める）。
+const APPROVAL_AT = '2030-10-15T00:02:00.000Z';
+const hm = (iso: string): string => {
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 const NOW = Date.parse('2030-10-15T00:00:00.000Z');
 
 const approval = (
@@ -31,6 +38,9 @@ const approval = (
   kind: 'overage_approval',
   pool_id: 'llm',
   budget_month: '2030-10',
+  origin: null,
+  profile_id: null,
+  occurred_at: '2030-10-15T00:02:00.000Z',
   max_liability: xts('40000000'),
   overage_remaining: xts('60000000'),
   actual_gross: null,
@@ -45,6 +55,9 @@ const overrun = (
   kind: 'overrun_review',
   pool_id: 'llm.background',
   budget_month: '2030-10',
+  origin: 'autonomous_analysis',
+  profile_id: 'synthetic.text.v1',
+  occurred_at: '2030-10-14T09:30:00.000Z',
   max_liability: xts('40000000'),
   overage_remaining: null,
   actual_gross: xts('55000000'),
@@ -59,6 +72,9 @@ const manual = (
   kind: 'manual_settlement',
   pool_id: 'llm',
   budget_month: '2030-09',
+  origin: 'owner_request',
+  profile_id: 'synthetic.text.v1',
+  occurred_at: '2030-09-28T22:15:00.000Z',
   max_liability: xts('40000000'),
   overage_remaining: null,
   actual_gross: null,
@@ -124,7 +140,7 @@ test('the approval row puts the request M beside the remaining overage, with a b
   for (const expected of [
     '予算の確認',
     '超過枠の承認',
-    'llm',
+    '会話',
     '2030-10',
     '最大負担',
     'XTS 40.00',
@@ -142,8 +158,8 @@ test('the approval row puts the request M beside the remaining overage, with a b
   assert(text.includes('最大負担 XTS 40.00 / 超過枠の残り XTS 60.00'));
   // ボタンは見送る（secondary）と承認する（primary）。読み上げの名前に枠と金額を足す。
   assert.deepEqual(buttonTexts(html), ['見送る', '承認する']);
-  assert(text.includes('承認する（llm・XTS 40.00）'));
-  assert(text.includes('見送る（llm・XTS 40.00）'));
+  assert(text.includes(`承認する（会話・XTS\u00a040.00・${hm(APPROVAL_AT)}）`));
+  assert(text.includes(`見送る（会話・XTS\u00a040.00・${hm(APPROVAL_AT)}）`));
 });
 
 test('the overrun row shows the actual cost, M and the part over M in the danger color with a plus sign, and one button', () => {
@@ -151,7 +167,7 @@ test('the overrun row shows the actual cost, M and the part over M in the danger
   const text = readable(html);
   for (const expected of [
     'M 超過',
-    'llm.background',
+    '自動の解析',
     '最大負担',
     'XTS 40.00',
     '実費',
@@ -172,7 +188,7 @@ test('the manual settlement row has the id and amount fields with the manual: pr
   const text = readable(html);
   for (const expected of [
     '不明な費用',
-    'llm',
+    '会話',
     '2030-09',
     '最大負担',
     'XTS 40.00',
@@ -270,7 +286,39 @@ test('the bar widths come from a fixed table (no inline style), and the label na
   assert.equal(barStep(73), 75);
   assert.equal(barStep(100), 100);
   assert.equal(barStep(150), 100);
-  assert.equal(itemLabel('承認する', approval()), '承認する（llm・XTS 40.00）');
+  assert.equal(
+    itemLabel('承認する', approval()),
+    `承認する（会話・XTS\u00a040.00・${hm(APPROVAL_AT)}）`,
+  );
   const html = list([approval(), overrun()]);
   assert.doesNotMatch(html, /style="/u);
+});
+
+test('each row shows when it happened, its purpose and the model name under the first line; a missing record shows nothing', () => {
+  const html = list([approval(), overrun(), manual()]);
+  const text = readable(html);
+  assert(text.includes(hm(APPROVAL_AT)));
+  assert(text.includes(hm('2030-10-14T09:30:00.000Z')));
+  assert(text.includes(hm('2030-09-28T22:15:00.000Z')));
+  // 承認には用途・モデルの記録がない。予約には起点の名前とモデルの名前を出す。
+  assert(text.includes('自動の解析'));
+  assert(text.includes('本人の依頼'));
+  assert.equal(text.filter((item) => item === 'synthetic.text.v1').length, 2);
+  const bare = list([
+    approval({ origin: null, profile_id: null, occurred_at: null }),
+  ]);
+  assert.doesNotMatch(
+    bare,
+    /-mt-1/u,
+    'no empty line when nothing was recorded',
+  );
+  // 内部の枠の ID は出さない（読み上げの名前にも）。
+  for (const item of readable(html))
+    assert.doesNotMatch(item, /\bllm\b|llm\./u, item);
+});
+
+test('two items with the same pool, month and amount have different spoken button names', () => {
+  const a = approval({ ref: id(11), occurred_at: '2030-10-15T00:02:00.000Z' });
+  const b = approval({ ref: id(12), occurred_at: '2030-10-15T00:05:00.000Z' });
+  assert.notEqual(itemLabel('承認する', a), itemLabel('承認する', b));
 });

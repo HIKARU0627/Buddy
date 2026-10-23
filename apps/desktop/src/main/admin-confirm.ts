@@ -1,7 +1,7 @@
 // 承認・拒否・失効の前の OS の確認ダイアログの文言（本人の判断 2026-10-22、ADR 0026）。Electron に依存しない純粋な関数で、
 // 値は main が中枢から受け取った一覧の値だけを使う。端末名・OS は申請者の自己申告なので、制御文字・書字方向の制御文字を
 // 取り除き、長さを切る。確認コードの見比べを求める文を必ず入れる。
-import { formatMoney } from '@buddy/domain';
+import { budgetOriginLabel, budgetPoolLabel, formatMoney } from '@buddy/domain';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
 import type { AdminConfirmRequest, HomeConfirmRequest } from './core-link.js';
 import type { OperationConfirmRequest } from './operation-bridge.js';
@@ -205,7 +205,18 @@ export function operationConfirmText(
 export function budgetConfirmText(
   request: BudgetConfirmRequest,
 ): AdminConfirmText {
-  const pool = `枠: ${displayText(request.poolId, 40)}（${displayText(request.budgetMonth, 7)}）`;
+  // 枠の内部の ID は出さず、用途の名前で言う。対象を見分けられるよう、発生した日時・用途・モデルの名前も出す
+  // （中枢が記録していない値は出さない）。
+  const pool = `枠: ${budgetPoolLabel(request.poolId)}（${displayText(request.budgetMonth, 7)}）`;
+  const identity: (string | null)[] = [
+    request.occurredAt === null ? null : `発生: ${clock(request.occurredAt)}`,
+    request.origin === null
+      ? null
+      : `用途: ${budgetOriginLabel(request.origin)}`,
+    request.profileId === null
+      ? null
+      : `モデル: ${displayText(request.profileId, 60)}`,
+  ];
   const detail = (lines: readonly (string | null)[]): string =>
     lines.filter((line): line is string => line !== null).join('\n');
   const actual =
@@ -217,6 +228,7 @@ export function budgetConfirmText(
         message: `この依頼の最大負担 ${formatMoney(request.maxLiability)} を、超過枠から使うことを承認しますか`,
         detail: detail([
           pool,
+          ...identity,
           `最大負担 M: ${formatMoney(request.maxLiability)}`,
           request.overageRemaining === null
             ? null
@@ -235,6 +247,7 @@ export function budgetConfirmText(
         message: '最大負担を超えた実費を確認しましたか',
         detail: detail([
           pool,
+          ...identity,
           actual === null ? null : `記録した実費: ${actual}`,
           `最大負担 M: ${formatMoney(request.maxLiability)}`,
           request.actualGross === null
@@ -257,6 +270,7 @@ export function budgetConfirmText(
         message: `不明な費用を ${actual ?? ''} で精算しますか`,
         detail: detail([
           pool,
+          ...identity,
           `保持している最大負担 M: ${formatMoney(request.maxLiability)}`,
           actual === null ? null : `入力した実費: ${actual}`,
           request.reconciliationId === null

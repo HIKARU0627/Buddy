@@ -12,6 +12,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { openWriteConnection, storagePlatform } from '@buddy/storage';
 import { createApiContract } from './api-contract.js';
+import { createBudgetRoutes } from './api-budget.js';
+import type { BudgetGate } from './budget-gate.js';
 import { API_ROUTES } from './api-routes.js';
 import { pinnedRequest, tempDir } from './api-test-support.js';
 import type { TestDevice } from './api-test-support.js';
@@ -142,7 +144,7 @@ const decide = (
     SCREEN,
   );
 
-const review = (
+const reviewRoute = (
   h: Harness,
   reservationId: string,
   fields: Record<string, unknown>,
@@ -554,6 +556,8 @@ test(
     const pending = first(held['pending_reservations']);
     assert.equal(pending['status'], 'settled');
     assert.equal(pending['reservation_revision'], '1');
+    assert.equal(pending['created_at'], '2030-10-15T00:00:00.000Z');
+    assert.equal(pending['origin'], 'owner_request');
     assert.deepEqual(pending['actual_gross'], xts('55'));
     assert.deepEqual(pending['max_liability'], xts('40'));
     assert.equal(pending['overrun_reviewed'], false);
@@ -576,10 +580,13 @@ test(
       { actual_gross: xts('54') },
       { max_liability: xts('41') },
     ]) {
-      const response = await review(h, reservationId, { ...body, ...wrong });
+      const response = await reviewRoute(h, reservationId, {
+        ...body,
+        ...wrong,
+      });
       assert.equal(response.status, 409, response.text);
     }
-    const unknown = await review(h, uuid(0x98), body);
+    const unknown = await reviewRoute(h, uuid(0x98), body);
     assert.equal(unknown.status, 409, unknown.text);
     assert.equal(
       (await usage(h))['pending_reservations'].length,
@@ -588,7 +595,7 @@ test(
     );
 
     const command = randomUUID();
-    const reviewed = await review(h, reservationId, body, command);
+    const reviewed = await reviewRoute(h, reservationId, body, command);
     assert.equal(reviewed.status, 200, reviewed.text);
     assert(contract.valid('BudgetReservation', reviewed.json), reviewed.text);
     assert.equal(reviewed.json?.['overrun_reviewed'], true);
@@ -597,7 +604,7 @@ test(
     assert.equal(reviewed.json?.['budget_month'], '2030-10');
     // 同じ命令の再送と、新しい命令での同じ確認は、同じ結果。実費・枠・月は変わらない。
     for (const requestId of [command, randomUUID()]) {
-      const repeated = await review(h, reservationId, body, requestId);
+      const repeated = await reviewRoute(h, reservationId, body, requestId);
       assert.equal(repeated.status, 200, repeated.text);
       assert.deepEqual(repeated.json, reviewed.json);
     }
@@ -692,6 +699,9 @@ test(
       credit_cycle_id: null,
       approval_id: null,
       overrun_reviewed: false,
+      // 対象を見分ける表示用の値（受付の時刻と処理の起点）。
+      created_at: '2030-10-15T00:00:00.000Z',
+      origin: 'owner_request',
     });
     // 同じ命令の再送・同じ値の再適用は同じ結果。別の値・別の照合 ID は 409（二度は精算しない）。
     for (const requestId of [command, randomUUID()]) {
@@ -748,3 +758,97 @@ test('the budget fixtures use only the synthetic currency XTS (no personal amoun
   }
   assert.deepEqual([...currencies], ['XTS']);
 });
+
+test('a failure to read the reservation is a 503 (an exception for the route check), not a stale revision; a missing reservation and a real mismatch stay 409', async () => {
+  let revision: string | null | 'unavailable' = 'unavailable';
+  let receipt = false;
+  const routes = createBudgetRoutes({
+    gate: {
+      reservationRevision: () => Promise.resolve(revision),
+    } as unknown as BudgetGate,
+    receiptExists: () => Promise.resolve(receipt),
+  });
+  const input = (operationId: string, expected: string) => ({
+    operationId,
+    device: null,
+    remoteAddress: '127.0.0.1',
+    params: { reservation_id: uuid(0xb1) },
+    body: {
+      request_id: uuid(1),
+      command_scope_id: uuid(2),
+      expected_reservation_revision: expected,
+    },
+    declaredLockState: null,
+  });
+  for (const operationId of ['reviewBudgetOverrun', 'settleBudgetManually']) {
+    // 読めない障害: 版の不一致（false）にせず、例外にする（サーバーは 503 で閉じる）。
+    revision = 'unavailable';
+    await assert.rejects(
+      routes.revisionMatches(input(operationId, '1')),
+      /budget_reservation_unavailable/u,
+      operationId,
+    );
+    // 予約がない・実際に版が違う: 合わない（409）。
+    revision = null;
+    assert.equal(await routes.revisionMatches(input(operationId, '1')), false);
+    revision = '2';
+    assert.equal(await routes.revisionMatches(input(operationId, '1')), false);
+    // 版が合う・保存済みの受付がある（再送）: 通す。
+    assert.equal(await routes.revisionMatches(input(operationId, '2')), true);
+    receipt = true;
+    assert.equal(await routes.revisionMatches(input(operationId, '1')), true);
+    receipt = false;
+  }
+});
+
+test(
+  'over HTTPS, a failure to read the reservation answers 503 for the overrun review and the manual settlement, while a missing reservation and a stale revision answer 409',
+  { timeout: 60_000 },
+  async (t) => {
+    const h = await start(t);
+    // 予約を作る（usage 不明。版 1）。
+    h.provider.plan(uuid(1), { kind: 'drop', actual: '3' });
+    await h.core.handle.budget.run(textRequest(uuid(1)), h.provider.send);
+    const reservationId = first((await usage(h))['pending_reservations'])[
+      'reservation_id'
+    ] as string;
+    const review = {
+      expected_reservation_revision: '1',
+      actual_gross: xts('55'),
+      max_liability: xts('40'),
+    };
+    const send = (route: 'review' | 'settle', id: string, revision = '1') =>
+      route === 'review'
+        ? reviewRoute(h, id, {
+            ...review,
+            expected_reservation_revision: revision,
+          })
+        : settle(h, id, { expected_reservation_revision: revision });
+    // 読み取りの障害を注入する: 予約の検索だけが失敗する（ほかの命令は動く）。
+    const store = h.core.handle.store;
+    const original = store.budget.bind(store);
+    let failing = true;
+    (store as { budget: unknown }).budget = (op: { kind: string }) =>
+      failing && op.kind === 'budget.reservation_find'
+        ? Promise.resolve({
+            ok: false as const,
+            outcome: 'rejected' as const,
+            reasons: ['worker_unavailable'],
+          })
+        : original(op as never);
+    for (const route of ['review', 'settle'] as const) {
+      const response = await send(route, reservationId);
+      assert.equal(response.status, 503, `${route} ${response.text}`);
+      assert.equal(response.json?.['code'], 'dependency_unavailable');
+    }
+    // 障害がなくなれば、同じ予約が読め、版の不一致は 409、予約がなければ 409（内容が変わった）。
+    failing = false;
+    for (const route of ['review', 'settle'] as const) {
+      assert.equal((await send(route, reservationId, '9')).status, 409, route);
+      assert.equal((await send(route, uuid(0xb1))).status, 409, route);
+    }
+    // 障害の間に何も記録していない。
+    const after = first((await usage(h))['pending_reservations']);
+    assert.equal(after['status'], 'usage_unknown');
+  },
+);

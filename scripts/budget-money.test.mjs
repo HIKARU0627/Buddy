@@ -3,8 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   amountFromDecimal,
+  budgetOriginLabel,
+  budgetPoolLabel,
   formatAmount,
   formatMoney,
+  toReservationView,
 } from '../packages/domain/dist/index.js';
 import { parseStrictJson, root } from './contract-tools.mjs';
 
@@ -105,4 +108,67 @@ test('the budget entries and requests in the contract fixtures use only the synt
   for (const entry of budgetCases)
     if (entry.valid && entry.value.payload?.actual_amount !== undefined)
       assert.match(entry.value.payload.actual_amount, /^[0-9]{1,18}$/u);
+});
+
+test('pools and origins are shown by names a person can read; a pool outside the table never leaks its internal ID', () => {
+  // 手で書いた対応表（枠の木。ADR 0006・0039）。
+  const pools = {
+    total: '全体',
+    llm_search: '会話と検索の合計',
+    llm: '会話',
+    'llm.background': '自動の解析',
+    search: '検索',
+    voice: '音声',
+    overage: '超過枠',
+  };
+  for (const [id, label] of Object.entries(pools))
+    assert.equal(budgetPoolLabel(id), label, id);
+  for (const id of [
+    'llm.experiment',
+    'custom',
+    '',
+    'constructor',
+    '__proto__',
+  ]) {
+    assert.equal(budgetPoolLabel(id), '別の枠', id);
+  }
+  const origins = {
+    owner_request: '本人の依頼',
+    autonomous_analysis: '自動の解析',
+    auto_execution: '自動の実行',
+    initial_import: '初回の読み込み',
+    shadow_mode: '影モード',
+  };
+  for (const [id, label] of Object.entries(origins))
+    assert.equal(budgetOriginLabel(id), label, id);
+});
+
+test('the reservation view carries the time and origin only when they are recorded', () => {
+  const record = {
+    reservationId: '00000000-0000-4000-8000-0000000000b1',
+    requestId: '00000000-0000-4000-8000-0000000000b2',
+    profileId: 'synthetic.text.v1',
+    priceVersion: 'xts.text.v1',
+    poolId: 'llm',
+    budgetMonth: '2030-10',
+    currency: 'XTS',
+    reserved: '40',
+    maxLiability: '40',
+    status: 'usage_unknown',
+    actualGross: null,
+    providerReconciliationId: null,
+    approvalId: null,
+    revision: '1',
+    overrunReviewed: false,
+  };
+  const plain = toReservationView(record);
+  assert(!('created_at' in plain) && !('origin' in plain));
+  assert(!('origin' in toReservationView({ ...record, origin: null })));
+  const shown = toReservationView({
+    ...record,
+    createdAt: Date.parse('2030-10-15T00:00:00.000Z'),
+    origin: 'autonomous_analysis',
+  });
+  assert.equal(shown.created_at, '2030-10-15T00:00:00.000Z');
+  assert.equal(shown.origin, 'autonomous_analysis');
 });

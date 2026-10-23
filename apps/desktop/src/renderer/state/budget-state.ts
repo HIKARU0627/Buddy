@@ -7,7 +7,12 @@ import type {
   DesktopIpcRequest,
   DesktopIpcResponse,
 } from '@buddy/contracts';
-import { amountFromDecimal, formatMoney } from '@buddy/domain';
+import {
+  amountFromDecimal,
+  budgetOriginLabel,
+  budgetPoolLabel,
+  formatMoney,
+} from '@buddy/domain';
 import { request } from '../desktop-api.js';
 import { clockOf } from '../format.js';
 import { REJECT_MESSAGES } from '../labels.js';
@@ -124,6 +129,21 @@ export function entryExpired(entry: DesktopBudgetEntry, now: number): boolean {
 }
 
 export const moneyText = formatMoney;
+
+// 枠の表示名（内部の ID は出さない。対応表にない枠は「別の枠」）。
+export const poolText = (entry: DesktopBudgetEntry): string =>
+  budgetPoolLabel(entry.pool_id);
+
+// 対象が発生した日時（「10/15 09:00」。端末の地域時間。中枢が記録していなければ null）。
+export function occurredText(entry: DesktopBudgetEntry): string | null {
+  return entry.occurred_at === null
+    ? null
+    : clockOf(entry.occurred_at, 0, { seconds: false, date: true });
+}
+
+// 用途（処理の起点）の表示名。
+export const originText = (entry: DesktopBudgetEntry): string | null =>
+  entry.origin === null ? null : budgetOriginLabel(entry.origin);
 
 // 手での精算の入力（照合 ID と実費）。
 export interface ManualInput {

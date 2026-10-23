@@ -1892,7 +1892,9 @@ export class DesktopCoreLink {
       connection.state.phase === 'live' &&
       this.#lockState === 'unlocked' &&
       this.#started
-    )
+    ) {
+      // 読み取りが重なっても、次の予約は常に 1 つ（予約の直前に前の予約を取り消す）。
+      this.#cancelBudgetPoll();
       this.#budgetPoll = this.#options.clock.setTimer(
         BUDGET_POLL_INTERVAL_MS,
         () => {
@@ -1900,6 +1902,7 @@ export class DesktopCoreLink {
           void this.refreshBudget();
         },
       );
+    }
   }
 
   #cancelBudgetPoll(): void {

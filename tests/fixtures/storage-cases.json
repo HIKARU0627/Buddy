@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "保存案 0001〜0006 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022・0030・0036）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
+  "description": "保存案 0001〜0006 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022・0030・0036・0036）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
   "seed": [
     "INSERT INTO devices VALUES ('dev-1', '合成の端末', 'windows', 0, X'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000, NULL, NULL)",
     "INSERT INTO devices VALUES ('dev-hub', '合成の中枢', 'macos', 1, X'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000, NULL, NULL)",
@@ -172,23 +172,23 @@
       "refs": ["ADR 0006", "QA42", "ADR 0036"],
       "steps": [
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1', 'q-1', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1', 'q-1', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "ok"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-2', 'q-1', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-2', 'q-1', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "unique"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-3', 'q-3', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 300, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-3', 'q-3', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 300, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "check"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-4', 'q-4', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, 100, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-4', 'q-4', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, 100, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "check"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-5', 'q-5', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 150, 100, 40, 'anthropic:p-5', 'provider', NULL, 2000, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-5', 'q-5', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 150, 100, 40, 'anthropic:p-5', 'provider', NULL, 2000, 0, NULL, 1000)",
           "check"
         ],
         [
@@ -196,7 +196,7 @@
           "ok"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-6', 'q-6', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'anthropic:p-1', 'provider', NULL, 2000, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-6', 'q-6', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'anthropic:p-1', 'provider', NULL, 2000, 0, NULL, 1000)",
           "unique"
         ],
         [
@@ -208,7 +208,7 @@
           "trigger:budget_month_fixed"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-7', 'q-7', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'released', 1, NULL, NULL, NULL, NULL, 'anthropic:p-7', NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-7', 'q-7', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'released', 1, NULL, NULL, NULL, NULL, 'anthropic:p-7', NULL, NULL, NULL, 0, NULL, 1000)",
           "check"
         ],
         [
@@ -224,32 +224,52 @@
           "trigger:budget_settlement_fixed"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-8', 'q-8', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'anthropic:p-8', 'manual', NULL, 2000, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-8', 'q-8', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'anthropic:p-8', 'manual', NULL, 2000, 0, NULL, 1000)",
           "check"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-9', 'q-9', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'manual:inv-9', 'provider', NULL, 2000, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-9', 'q-9', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'manual:inv-9', 'provider', NULL, 2000, 0, NULL, 1000)",
           "check"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-10', 'q-10', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'anthropic:p-10', NULL, NULL, 2000, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-10', 'q-10', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'anthropic:p-10', NULL, NULL, 2000, 0, NULL, 1000)",
           "check"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-11', 'q-11', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, 'provider', NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-11', 'q-11', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, 'provider', NULL, NULL, 0, NULL, 1000)",
           "check"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-12', 'q-12', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'manual:inv-12', 'manual', NULL, 2000, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-12', 'q-12', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'manual:inv-12', 'manual', NULL, 2000, 0, NULL, 1000)",
           "ok"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-13', 'q-13', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 0, 999999999999999999, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-13', 'q-13', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 0, 999999999999999999, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "ok"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-14', 'q-14', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 0, 1000000000000000000, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-14', 'q-14', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 0, 1000000000000000000, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "check"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-15', 'q-15', 'intent.luna.v1', 'llm', 'llm', 'someone_else', '2030-10', 'XTS', 'price-1', 1, 2, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-16', 'q-16', 'intent.luna.v1', 'llm', 'llm', NULL, '2030-10', 'XTS', 'price-1', 1, 2, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-17', 'q-17', 'legacy:unrecorded', 'llm', 'llm', NULL, '2030-10', 'XTS', 'price-1', 1, 2, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "ok"
+        ],
+        [
+          "UPDATE budget_reservations SET requested_pool_id = 'voice' WHERE reservation_id = 'r-13'",
+          "trigger:budget_reservation_fixed"
+        ],
+        [
+          "UPDATE budget_reservations SET origin = 'shadow_mode' WHERE reservation_id = 'r-13'",
+          "trigger:budget_reservation_fixed"
         ]
       ]
     },
@@ -646,7 +666,7 @@
       "refs": ["10 §2A", "QA26"],
       "steps": [
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-live', 'q-live', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-live', 'q-live', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "ok"
         ],
         [
@@ -785,15 +805,15 @@
       "refs": ["ADR 0006", "QA42", "ADR 0036"],
       "steps": [
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1', 'q-1', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1', 'q-1', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "ok"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-2', 'q-2', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-2', 'q-2', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "ok"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-3', 'q-3', 'intent.luna.v1', 'llm', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-3', 'q-3', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
           "ok"
         ],
         [
@@ -911,7 +931,7 @@
           "trigger:budget_approval_transition"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-x', 'q-x', 'intent.luna.v1', 'overage', '2030-10', 'XTS', 'price-1', 20, 20, 'reserved', 1, 'ap-x', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1600)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-x', 'q-x', 'intent.luna.v1', 'overage', 'overage', 'owner_request', '2030-10', 'XTS', 'price-1', 20, 20, 'reserved', 1, 'ap-x', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1600)",
           "ok"
         ],
         [
@@ -919,11 +939,11 @@
           "trigger:budget_approval_mismatch"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1', 'q-1', 'intent.luna.v1', 'overage', '2030-10', 'XTS', 'price-1', 20, 20, 'reserved', 1, 'ap-1', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1600)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1', 'q-1', 'intent.luna.v1', 'overage', 'overage', 'owner_request', '2030-10', 'XTS', 'price-1', 20, 20, 'reserved', 1, 'ap-1', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1600)",
           "ok"
         ],
         [
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1b', 'q-1b', 'intent.luna.v1', 'overage', '2030-10', 'XTS', 'price-1', 20, 20, 'reserved', 1, 'ap-1', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1600)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1b', 'q-1b', 'intent.luna.v1', 'overage', 'overage', 'owner_request', '2030-10', 'XTS', 'price-1', 20, 20, 'reserved', 1, 'ap-1', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1600)",
           "unique"
         ],
         [
@@ -933,6 +953,14 @@
         [
           "UPDATE budget_overage_approvals SET status = 'consumed', consumed_at = 1600, consumed_reservation_id = 'r-1' WHERE approval_id = 'ap-1'",
           "ok"
+        ],
+        [
+          "UPDATE budget_reservations SET max_liability = 21, reservation_revision = 2 WHERE reservation_id = 'r-1'",
+          "trigger:budget_approval_fixes_max_liability"
+        ],
+        [
+          "UPDATE budget_reservations SET max_liability = 19 WHERE reservation_id = 'r-1'",
+          "trigger:budget_approval_fixes_max_liability"
         ],
         [
           "UPDATE budget_overage_approvals SET status = 'approved' WHERE approval_id = 'ap-1'",

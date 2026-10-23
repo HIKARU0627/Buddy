@@ -261,7 +261,7 @@ test('every admission reason in the scenarios is either a limit, a hold or a nam
   for (const reason of reasons)
     assert.match(
       reason,
-      /^(?:[rm]_limit:[a-z.]+|overrun_hold:[a-z.]+|approval_required|approval_(?:pending|expired|m_mismatch|request_mismatch)|price_unverified|duplicate_request|settlement_conflict|revision_conflict|possibly_sent|released|not_active|not_owner_request|pool_not_routable|not_limit_only|manual_id_invalid|manual_prefix_reserved|already_settled|not_usage_unknown|review_mismatch)$/u,
+      /^(?:[rm]_limit:[a-z.]+|overrun_hold:[a-z.]+|approval_required|approval_(?:pending|expired|m_mismatch|request_mismatch)|price_unverified|duplicate_request|settlement_conflict|revision_conflict|possibly_sent|released|not_active|not_owner_request|pool_not_routable|not_limit_only|manual_id_invalid|manual_prefix_reserved|already_settled|not_usage_unknown|review_mismatch|unknown_pool)$/u,
     );
   assert(reasons.some((reason) => reason.startsWith('m_limit:')));
   assert(reasons.some((reason) => reason.startsWith('overrun_hold:')));

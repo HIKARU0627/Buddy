@@ -284,6 +284,8 @@ test('admission is decided inside the transaction against every pool on the path
         settledAt: null,
         overrunReviewedAt: null,
         createdAt: OCT_15,
+        requestedPoolId: 'llm',
+        origin: 'owner_request',
       },
     });
     // llm は 30＋50＝80 で上限ちょうど。次の M 1 は llm の上限を超える（R は 31 で収まる）。
@@ -596,6 +598,7 @@ test('a top-up is a compare-and-set on the reservation revision and checks only 
         delta_reserved: deltaR,
         delta_max_liability: deltaM,
         settings: SETTINGS,
+        now: OCT_15,
       });
     const first = value('budget.top_up', topUp('1', '5', '10')).reservation;
     assert.deepEqual(
@@ -626,6 +629,7 @@ test('a top-up is a compare-and-set on the reservation revision and checks only 
           delta_reserved: '0',
           delta_max_liability: '0',
           settings: SETTINGS,
+          now: OCT_15,
         }),
       ),
       ['unknown_reservation'],
@@ -1023,6 +1027,7 @@ test('an overage approval is fixed to one request and M, a double press keeps on
           delta_reserved: '0',
           delta_max_liability: '1',
           settings: SETTINGS,
+          now: OCT_15,
         }),
       ),
       ['approval_fixes_max_liability'],
@@ -1192,6 +1197,232 @@ test('two admissions aligned at a barrier on two connections never exceed the li
         "SELECT count(*) FROM budget_overage_approvals WHERE status = 'approved'",
       ),
       1,
+    );
+  });
+});
+
+// B07-03 の Codex のレビュー P1: 設定から枠を消した後は、その枠の予約の経路が解けないので、追加予約を上限の検査なしに
+// 通さず拒否する。
+test('a top-up of a reservation whose pool was removed from the settings is refused without changing the row', async () => {
+  await withBudget((db) => {
+    admit(db, admitOp(1, { reserved: '5', max: '20' }));
+    const withoutLlm = {
+      ...SETTINGS,
+      pools: SETTINGS.pools.filter(
+        (pool) => pool.poolId !== 'llm' && pool.poolId !== 'llm.background',
+      ),
+    };
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'budget.top_up',
+          reservation_id: reservationId(1),
+          expected_revision: '1',
+          delta_reserved: '0',
+          delta_max_liability: '500',
+          settings: withoutLlm,
+          now: OCT_15,
+        }),
+      ),
+      ['unknown_pool'],
+    );
+    const row = reservationRow(db, reservationId(1));
+    assert.deepEqual(
+      [row?.['max_liability'], row?.['reservation_revision']],
+      ['20', '1'],
+    );
+  });
+});
+
+// B07-03 の Codex のレビュー P2: 超過枠へ回した予約の送り直しは、計上先だけでなく要求した枠と起点でも照合する。
+test('a resend of a routed admission with another requested pool or origin is a conflict', async () => {
+  await withBudget((db) => {
+    admit(db, admitOp(1, { reserved: '10', max: '80' }));
+    value(
+      'budget.request_overage',
+      run(db, {
+        kind: 'budget.request_overage',
+        approval_id: approvalId(1),
+        request_id: budgetRequestId(2),
+        pool_id: 'overage',
+        budget_month: '2030-10',
+        currency: 'XTS',
+        max_liability: '20',
+        overage_remaining: '60',
+        now: OCT_15,
+        expires_at: OCT_15 + 600_000,
+      }),
+    );
+    value(
+      'budget.approve_overage',
+      run(db, {
+        kind: 'budget.approve_overage',
+        approval_id: approvalId(1),
+        budget_request_id: budgetRequestId(2),
+        currency: 'XTS',
+        max_liability: '20',
+        decision: 'approve',
+        now: OCT_15 + 1000,
+        request: null,
+      }),
+    );
+    const routed = (overrides: Parameters<typeof admitOp>[2] = {}) =>
+      run(
+        db,
+        admitOp(
+          2,
+          { reserved: '5', max: '20' },
+          { overage: OWNER_ROUTE, now: OCT_15 + 2000, ...overrides },
+        ),
+      );
+    const first = value('budget.admit', routed());
+    assert.deepEqual(
+      [
+        first.admitted,
+        first.reservation?.poolId,
+        first.reservation?.requestedPoolId,
+        first.reservation?.origin,
+      ],
+      [true, 'overage', 'llm', 'owner_request'],
+    );
+    assert.equal(value('budget.admit', routed()).duplicate, true);
+    assert.deepEqual(reasons(routed({ pool_id: 'voice' })), [
+      'request_conflict',
+    ]);
+    assert.deepEqual(reasons(routed({ origin: 'autonomous_analysis' })), [
+      'request_conflict',
+    ]);
+    // 超過枠へ回さない送り直し（経路なし）は、計上先が超過枠なので一致しない。
+    assert.deepEqual(reasons(routed({ overage: null })), ['request_conflict']);
+    assert.equal(count(db, 'SELECT count(*) FROM budget_reservations'), 2);
+  });
+});
+
+// B07-03 の Codex のレビュー P2: 予算月の状態が食い違う（U23）・時計が戻った・月の終わりを越えて進めていないときは、
+// 追加予約も止める。進めた後は、前の月の予約の追加予約は元の月に計上する。
+test('a top-up is held like an admission when the budget month is inconsistent, regressed or stale', async () => {
+  await withBudget(
+    (db) => {
+      // 古い tz データで作った記録の模擬（東京の 10 月の始まりより 1 時間遅い）と、その月の予約。
+      db.prepare(
+        "INSERT INTO budget_months (month, time_zone, month_start, month_start_time_zone, recorded_at) VALUES ('2030-10', 'Asia/Tokyo', 1917014400000, 'Asia/Tokyo', 1917014400000)",
+      ).run();
+      db.prepare(
+        "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, created_at) VALUES (?, ?, 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, ?)",
+      ).run(reservationId(1), budgetRequestId(1), OCT_15);
+      assert.deepEqual(
+        reasons(
+          run(db, {
+            kind: 'budget.top_up',
+            reservation_id: reservationId(1),
+            expected_revision: '1',
+            delta_reserved: '0',
+            delta_max_liability: '10',
+            settings: SETTINGS,
+            now: OCT_15,
+          }),
+        ),
+        ['invalid_calendar_state'],
+      );
+      assert.deepEqual(
+        reservationRow(db, reservationId(1))?.['max_liability'],
+        '20',
+      );
+    },
+    { calendar: false },
+  );
+  await withBudget((db) => {
+    admit(db, admitOp(1, { reserved: '10', max: '20' }));
+    const topUp = (now: number, expected = '1') =>
+      run(db, {
+        kind: 'budget.top_up',
+        reservation_id: reservationId(1),
+        expected_revision: expected,
+        delta_reserved: '0',
+        delta_max_liability: '10',
+        settings: SETTINGS,
+        now,
+      });
+    assert.deepEqual(reasons(topUp(Date.parse('2030-09-30T14:59:59.999Z'))), [
+      'clock_regressed',
+    ]);
+    assert.deepEqual(reasons(topUp(NOV_02)), ['calendar_stale']);
+    assert.deepEqual(
+      reservationRow(db, reservationId(1))?.['max_liability'],
+      '20',
+    );
+    value('budget.calendar_advance', advance(db, NOV_02));
+    // 11 月の予約で llm を満たしても、10 月の予約の追加予約は 10 月の上限（20＋10＝30 ≦ 80）で検査する。
+    admit(
+      db,
+      admitOp(
+        2,
+        { reserved: '0', max: '80' },
+        { budget_month: '2030-11', now: NOV_02 },
+      ),
+    );
+    const grown = value('budget.top_up', topUp(NOV_02)).reservation;
+    assert.deepEqual(
+      [grown.budgetMonth, grown.maxLiability, grown.revision],
+      ['2030-10', '30', '2'],
+    );
+  });
+});
+
+// B07-03 の Codex のレビュー P2: 承認した M の固定は DB の trigger でも守る（直接の SQL で版を上げても変えられない）。
+test('the max liability of a reservation admitted with an overage approval cannot be changed by SQL', async () => {
+  await withBudget((db) => {
+    admit(db, admitOp(1, { reserved: '10', max: '80' }));
+    value(
+      'budget.request_overage',
+      run(db, {
+        kind: 'budget.request_overage',
+        approval_id: approvalId(1),
+        request_id: budgetRequestId(2),
+        pool_id: 'overage',
+        budget_month: '2030-10',
+        currency: 'XTS',
+        max_liability: '20',
+        overage_remaining: '60',
+        now: OCT_15,
+        expires_at: OCT_15 + 600_000,
+      }),
+    );
+    value(
+      'budget.approve_overage',
+      run(db, {
+        kind: 'budget.approve_overage',
+        approval_id: approvalId(1),
+        budget_request_id: budgetRequestId(2),
+        currency: 'XTS',
+        max_liability: '20',
+        decision: 'approve',
+        now: OCT_15 + 1000,
+        request: null,
+      }),
+    );
+    assert.equal(
+      admit(
+        db,
+        admitOp(
+          2,
+          { reserved: '5', max: '20' },
+          { overage: OWNER_ROUTE, now: OCT_15 + 2000 },
+        ),
+      ).routed,
+      true,
+    );
+    for (const sql of [
+      'UPDATE budget_reservations SET max_liability = 21, reservation_revision = 2 WHERE reservation_id = ?',
+      'UPDATE budget_reservations SET max_liability = 19 WHERE reservation_id = ?',
+    ])
+      assert.throws(
+        () => db.prepare(sql).run(reservationId(2)),
+        /budget_approval_fixes_max_liability/u,
+      );
+    assert.deepEqual(
+      reservationRow(db, reservationId(2))?.['max_liability'],
+      '20',
     );
   });
 });

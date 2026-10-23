@@ -51,7 +51,6 @@ export const SETTINGS: BudgetSettings = {
 
 // 本人の依頼の枠（超過枠へ回せる枠の許可リスト）。
 export const OWNER_ROUTE = {
-  origin: 'owner_request',
   routable_pool_ids: ['llm'],
   overage_pool_id: 'overage',
 } as const;
@@ -86,6 +85,7 @@ export function admitOp(
     request_id: uuid(0xb00000 + n),
     profile_id: 'intent.luna.v1',
     pool_id: 'llm',
+    origin: 'owner_request',
     budget_month: '2030-10',
     price_version: 'price-1',
     currency: 'XTS',

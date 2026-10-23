@@ -182,7 +182,10 @@ export function topUpReservation(
     return { ok: false, reasonCodes: ['not_active'] };
   const reserved = BigInt(current.reserved) + BigInt(deltaReserved);
   const maxLiability = BigInt(current.maxLiability) + BigInt(deltaMaxLiability);
-  const path = poolPath(settings, current.poolId) ?? [];
+  // 予約の枠から根までの経路が今の設定で解けなければ（設定から枠を消した後など）、上限を検査できないので
+  // 拒否する（閉じた側に倒す。B07-03 の Codex のレビュー P1）。
+  const path = poolPath(settings, current.poolId);
+  if (path === null) return { ok: false, reasonCodes: ['unknown_pool'] };
   const reasons = [
     ...(reserved > maxLiability ? ['reservation_exceeds_max'] : []),
     ...overrunHolds(reservations, path),

@@ -683,6 +683,21 @@ test('0006 upgrades a version 5 DB holding reservations and a live session and k
           created_at: 1500n,
         },
       ]);
+      // 受付の要求の識別: 0001 の行は計上した枠を要求した枠とし、起点は記録なし（NULL）。
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT reservation_id, requested_pool_id, origin FROM budget_reservations ORDER BY reservation_id',
+          )
+          .all(),
+        [
+          { reservation_id: 'r-1', requested_pool_id: 'llm', origin: null },
+          { reservation_id: 'r-2', requested_pool_id: 'llm', origin: null },
+          { reservation_id: 'r-3', requested_pool_id: 'llm', origin: null },
+          { reservation_id: 'r-4', requested_pool_id: 'overage', origin: null },
+          { reservation_id: 'r-5', requested_pool_id: 'voice', origin: null },
+        ],
+      );
       assert.deepEqual(db.prepare('SELECT * FROM live_sessions').all(), [
         {
           live_session_id: 'ls-1',

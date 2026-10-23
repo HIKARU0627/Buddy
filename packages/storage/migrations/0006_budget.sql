@@ -6,6 +6,8 @@
 --    0001 の行には profile が記録されていないので、profile_id は 'legacy:unrecorded'（実在の profile ではない印）にする。
 --    精算の時刻・確認の時刻は 0001 の行には記録がないので NULL のまま移す（推測の値を入れない）。
 --    手での精算の印（settlement_kind）は 0001 の行の照合 ID の manual: から求める。
+--    受付の要求の識別（要求した枠 requested_pool_id と起点 origin）を足す。同じ request_id の送り直しを、計上した枠
+--    （超過枠へ回したなら超過枠）だけでなく、要求した枠と起点でも照合するため。0001 の行は計上した枠と NULL にする。
 -- 2. 超過枠の個別の承認（1 つの request_id と M に固定。1 回だけ使える）。
 -- 3. 予算月の状態（月・その月のタイムゾーン・月の始まり・始まりを決めたタイムゾーン）。月ごとに 1 行を足していく。
 CREATE TABLE budget_reservations_0006 (
@@ -13,6 +15,9 @@ CREATE TABLE budget_reservations_0006 (
   request_id TEXT NOT NULL UNIQUE,
   profile_id TEXT NOT NULL CHECK (length(profile_id) BETWEEN 1 AND 128),
   pool_id TEXT NOT NULL,
+  -- 受付の要求の枠（超過枠へ回したときは pool_id が超過枠、requested_pool_id が元の枠）と処理の起点。
+  requested_pool_id TEXT NOT NULL,
+  origin TEXT CHECK (origin IN ('owner_request', 'autonomous_analysis', 'auto_execution', 'initial_import', 'shadow_mode')),
   budget_month TEXT NOT NULL CHECK (budget_month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
   currency TEXT NOT NULL CHECK (length(currency) = 3),
   price_version TEXT NOT NULL,
@@ -42,11 +47,13 @@ CREATE TABLE budget_reservations_0006 (
   CHECK ((status = 'settled') = (settlement_kind IS NOT NULL)),
   CHECK (settlement_kind IS NULL OR (settlement_kind = 'manual') = (provider_reconciliation_id GLOB 'manual:*')),
   CHECK (settled_at IS NULL OR status = 'settled'),
-  CHECK (overrun_reviewed_at IS NULL OR overrun_reviewed = 1)
+  CHECK (overrun_reviewed_at IS NULL OR overrun_reviewed = 1),
+  -- 起点の記録がないのは 0001 から移した行だけ。
+  CHECK (origin IS NOT NULL OR profile_id = 'legacy:unrecorded')
 ) STRICT;
 
-INSERT INTO budget_reservations_0006 (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at)
-  SELECT reservation_id, request_id, 'legacy:unrecorded', pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id,
+INSERT INTO budget_reservations_0006 (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at)
+  SELECT reservation_id, request_id, 'legacy:unrecorded', pool_id, pool_id, NULL, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id,
     CASE WHEN status = 'settled' THEN (CASE WHEN provider_reconciliation_id GLOB 'manual:*' THEN 'manual' ELSE 'provider' END) END,
     credit_cycle_id, NULL, overrun_reviewed, NULL, created_at
   FROM budget_reservations;
@@ -96,9 +103,10 @@ BEGIN
 END;
 
 -- 受付時に固定する項目（ADR 0034・0035）。
-CREATE TRIGGER budget_reservations_fixed_fields BEFORE UPDATE OF reservation_id, request_id, profile_id, price_version, currency, approval_id, created_at ON budget_reservations
+CREATE TRIGGER budget_reservations_fixed_fields BEFORE UPDATE OF reservation_id, request_id, profile_id, requested_pool_id, origin, price_version, currency, approval_id, created_at ON budget_reservations
   WHEN OLD.status <> 'released'
     AND (NEW.reservation_id <> OLD.reservation_id OR NEW.request_id <> OLD.request_id OR NEW.profile_id <> OLD.profile_id
+      OR NEW.requested_pool_id <> OLD.requested_pool_id OR NEW.origin IS NOT OLD.origin
       OR NEW.price_version <> OLD.price_version OR NEW.currency <> OLD.currency
       OR NEW.approval_id IS NOT OLD.approval_id OR NEW.created_at <> OLD.created_at)
 BEGIN
@@ -153,14 +161,23 @@ END;
 CREATE TRIGGER budget_reservations_top_up_only BEFORE UPDATE OF reserved_amount, max_liability ON budget_reservations
   WHEN OLD.status <> 'released' AND NEW.reservation_revision = OLD.reservation_revision
     AND (NEW.reserved_amount <> OLD.reserved_amount OR NEW.max_liability <> OLD.max_liability)
+    AND (OLD.approval_id IS NULL OR NEW.max_liability = OLD.max_liability)
 BEGIN
   SELECT RAISE(ABORT, 'budget_top_up_invalid');
 END;
 CREATE TRIGGER budget_reservations_no_decrease BEFORE UPDATE OF reserved_amount, max_liability ON budget_reservations
   WHEN OLD.status <> 'released' AND NEW.reservation_revision = OLD.reservation_revision + 1
     AND (NEW.reserved_amount < OLD.reserved_amount OR NEW.max_liability < OLD.max_liability)
+    AND (OLD.approval_id IS NULL OR NEW.max_liability = OLD.max_liability)
 BEGIN
   SELECT RAISE(ABORT, 'budget_amount_decrease');
+END;
+-- 超過の承認は 1 つの M に固定する（本人の判断 2026-10-23）。承認で受け付けた予約の M は、版を上げても変えない
+-- （B07-03 の Codex のレビュー P2。DB の最終の保証）。
+CREATE TRIGGER budget_reservations_approval_fixes_max BEFORE UPDATE OF max_liability ON budget_reservations
+  WHEN OLD.status <> 'released' AND OLD.approval_id IS NOT NULL AND NEW.max_liability <> OLD.max_liability
+BEGIN
+  SELECT RAISE(ABORT, 'budget_approval_fixes_max_liability');
 END;
 
 -- 超過枠の個別の承認（本人の判断 2026-10-23、ADR 0034）。1 つの request_id（予算の要求）と M・枠・予算月に固定し、

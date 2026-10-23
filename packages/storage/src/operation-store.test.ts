@@ -299,7 +299,7 @@ test('stale revisions and changed versions are rejected without writing anything
           reservation_id: 'res-1',
         }),
         setup:
-          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, created_at) VALUES ('res-1', 'breq-1', 'intent.luna.v1', 'pool-1', '2030-10', 'XTS', 'p1', 0, 0, 'released', 1, 1000)",
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, created_at) VALUES ('res-1', 'breq-1', 'intent.luna.v1', 'pool-1', 'pool-1', 'owner_request', '2030-10', 'XTS', 'p1', 0, 0, 'released', 1, 1000)",
         expected: ['reservation_invalid'],
       },
       {

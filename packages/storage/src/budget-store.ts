@@ -79,6 +79,9 @@ export interface BudgetRequestRef {
 
 // 保存した予約。domain の ReservationRecord に、0006 で足した列を加えたもの。
 export interface BudgetReservationValue extends ReservationRecord {
+  // 受付の要求の枠（超過枠へ回したときの元の枠）と処理の起点。0001 から移した行の起点は null。
+  readonly requestedPoolId: string;
+  readonly origin: BudgetOrigin | null;
   readonly settlementKind: 'provider' | 'manual' | null;
   readonly settledAt: number | null;
   readonly overrunReviewedAt: number | null;
@@ -91,9 +94,8 @@ export interface BudgetApprovalValue {
   readonly consumed_reservation_id: string | null;
 }
 
-// 超過枠へ回す経路（domain の OverageRoute から承認と時刻を除いたもの。承認は DB から読む）。
+// 超過枠へ回す経路（domain の OverageRoute から起点・承認・時刻を除いたもの。起点は受付の命令に、承認は DB にある）。
 export interface BudgetOverageRouteInput {
-  readonly origin: BudgetOrigin;
   readonly routable_pool_ids: readonly string[];
   readonly overage_pool_id: string;
 }
@@ -106,6 +108,8 @@ export type BudgetOp =
       readonly request_id: string;
       readonly profile_id: string;
       readonly pool_id: string;
+      // 処理の起点（本人の依頼か、自発の処理か）。予約に保存し、送り直しの照合に使う。
+      readonly origin: BudgetOrigin;
       readonly budget_month: string;
       readonly price_version: string;
       readonly currency: string;
@@ -123,6 +127,8 @@ export type BudgetOp =
       readonly delta_reserved: string;
       readonly delta_max_liability: string;
       readonly settings: BudgetSettings;
+      // 予算月の状態の検査に使う時刻（計上先は予約の元の月のまま）。
+      readonly now: number;
     }
   // provider の usage による精算。照合 ID は provider の名前を前に付けて保存する。
   | {
@@ -393,6 +399,7 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
         'profile_id_invalid',
       );
       check(isName(op.pool_id), 'pool_id_invalid');
+      check(BUDGET_ORIGINS.includes(op.origin), 'origin_invalid');
       check(isMonth(op.budget_month), 'budget_month_invalid');
       check(isName(op.price_version), 'price_version_invalid');
       check(isCurrency(op.currency), 'currency_invalid');
@@ -404,7 +411,6 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       if (
         route !== null &&
         (typeof route !== 'object' ||
-          !BUDGET_ORIGINS.includes(route.origin) ||
           !Array.isArray(route.routable_pool_ids) ||
           !route.routable_pool_ids.every(isName) ||
           !isName(route.overage_pool_id))
@@ -417,6 +423,7 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       check(isRevision(op.expected_revision), 'revision_invalid');
       check(isAmount(op.delta_reserved), 'amount_invalid');
       check(isAmount(op.delta_max_liability), 'amount_invalid');
+      check(isTime(op.now), 'now_invalid');
       reasons.push(...settingsReasons(op.settings));
       break;
     case 'budget.settle':
@@ -529,13 +536,15 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
 // --- 読み取り ---
 
 const RESERVATION_COLUMNS =
-  'reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, provider_reconciliation_id, settlement_kind, settled_at, overrun_reviewed, overrun_reviewed_at, created_at';
+  'reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, provider_reconciliation_id, settlement_kind, settled_at, overrun_reviewed, overrun_reviewed_at, created_at';
 
 interface ReservationRow {
   reservation_id: string;
   request_id: string;
   profile_id: string;
   pool_id: string;
+  requested_pool_id: string;
+  origin: BudgetOrigin | null;
   budget_month: string;
   currency: string;
   price_version: string;
@@ -577,6 +586,8 @@ function toReservation(row: ReservationRow): BudgetReservationValue {
     settledAt: timeOrNull(row.settled_at),
     overrunReviewedAt: timeOrNull(row.overrun_reviewed_at),
     createdAt: Number(row.created_at),
+    requestedPoolId: row.requested_pool_id,
+    origin: row.origin,
   };
 }
 
@@ -814,8 +825,10 @@ function requireReconciliationFree(
     throw new BudgetRejection(['reconciliation_id_used']);
 }
 
-// 同じ受付の送り直しか。計上した枠は通常の枠か、超過枠へ回したなら超過枠。追加予約の後は R と M が変わるので、
-// 最初の受付の送り直しは request_conflict になる（呼び出し側は reservation_find で予約を読む）。
+// 同じ受付の送り直しか。要求した枠と起点は保存した値と完全に一致し、計上した枠は要求した枠か、超過枠へ回したなら
+// 送り直しの経路の超過枠（B07-03 の Codex のレビュー P2: 計上先だけを比べると、元の枠や起点を変えた送り直しを
+// 見逃す）。追加予約の後は R と M が変わるので、最初の受付の送り直しは request_conflict になる（呼び出し側は
+// reservation_find で予約を読む）。
 function sameAdmission(
   existing: BudgetReservationValue,
   op: Extract<BudgetOp, { kind: 'budget.admit' }>,
@@ -823,6 +836,8 @@ function sameAdmission(
   const pools = [op.pool_id];
   if (op.overage !== null) pools.push(op.overage.overage_pool_id);
   return (
+    existing.requestedPoolId === op.pool_id &&
+    existing.origin === op.origin &&
     existing.profileId === op.profile_id &&
     existing.priceVersion === op.price_version &&
     existing.currency === op.currency &&
@@ -890,7 +905,7 @@ function admit(
         op.request_id,
       )[0] ?? null;
     const decision = admitWithOverage(op.settings, rows, request, {
-      origin: op.overage.origin,
+      origin: op.origin,
       routablePoolIds: op.overage.routable_pool_ids,
       overagePoolId: op.overage.overage_pool_id,
       approval: approvalRow === null ? null : toApproval(approvalRow).approval,
@@ -909,12 +924,14 @@ function admit(
     routed = decision.routed;
   }
   db.prepare(
-    "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved', 1, ?, ?)",
+    "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved', 1, ?, ?)",
   ).run(
     op.reservation_id,
     op.request_id,
     op.profile_id,
     poolId,
+    op.pool_id,
+    op.origin,
     op.budget_month,
     op.currency,
     op.price_version,
@@ -946,6 +963,9 @@ function topUp(
   db: SqliteDatabase,
   op: Extract<BudgetOp, { kind: 'budget.top_up' }>,
 ): BudgetReservationChange {
+  // 予算月の状態が食い違う（U23）・時計が戻った・月の終わりを越えて進めていないときは、受付と同じく追加予約も
+  // 止める（B07-03 の Codex のレビュー P2）。計上先は予約の元の月のまま。
+  currentMonth(db, op.now);
   const current = requireReservation(db, op.reservation_id);
   // 超過の承認は 1 つの M に固定する（本人の判断 2026-10-23）。承認した M を追加予約で増やさない。
   if (current.approvalId !== null)

@@ -130,6 +130,9 @@ export function snapshotBody(
     event_cursor: options.cursor ?? 'cursor-snapshot',
     view: lock === 'unlocked' ? 'full' : 'management_only',
     io_state: ioState(lock),
+    // 予算保留（ADR 0037）。management_only では null。
+    budget_hold:
+      lock === 'unlocked' ? { held: false, reasons: [], held_pools: [] } : null,
     sessions: [],
     candidates: [],
     operations: lock === 'unlocked' ? (options.operations ?? []) : [],

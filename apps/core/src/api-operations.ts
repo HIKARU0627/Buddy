@@ -32,6 +32,7 @@ import {
   decodeEventCursor,
   encodeEventCursor,
 } from './event-cursor.js';
+import type { BudgetHoldStateView } from './budget-gate.js';
 import type { EventFeed, EventQueryStore } from './event-feed.js';
 import type { OperationRunner } from './operation-runner.js';
 import type { JsonObject, JsonValue } from './strict-json.js';
@@ -73,7 +74,16 @@ export interface OperationRoutesOptions {
   // 承認の命令を送る直前（同期）に preview がまだ無効化されていないか（ADR 0029）。previewValid の非同期の
   // 照合の後にロック・接続の終了が起きても取り逃さないため、命令の送信と同じ同期の区間で確かめる。
   readonly previewCurrent?: (previewId: string) => boolean;
+  // 状態欄の「予算保留」（予算の門の holdState、ADR 0037）。渡さなければ null（中枢が正本を持たない）。
+  readonly budgetHold?: () => Promise<BudgetHoldStateView>;
 }
+
+// 予算保留を読めないときは、受付も止まっているとみなして保留として見せる（閉じた側）。
+const UNAVAILABLE_BUDGET_HOLD: BudgetHoldStateView = {
+  held: true,
+  reasons: ['calendar_unavailable'],
+  held_pools: [],
+};
 
 // 版の照合（expected_revision）をこのファイルで行う経路。
 export const REVISION_CHECKED_ROUTES: ReadonlySet<string> = new Set([
@@ -305,6 +315,12 @@ export function createOperationRoutes(
     const lockState = await lockStateOf(request);
     const full = lockState === 'unlocked';
     const snapshot = await store.query({ kind: 'snapshot' });
+    // 予算保留は表示の範囲が full のときだけ（management_only は管理情報だけ）。
+    let budgetHold: BudgetHoldStateView | null = null;
+    if (full && options.budgetHold !== undefined)
+      budgetHold = await options
+        .budgetHold()
+        .catch(() => UNAVAILABLE_BUDGET_HOLD);
     return {
       status: 200,
       body: {
@@ -317,6 +333,7 @@ export function createOperationRoutes(
         }),
         view: full ? 'full' : 'management_only',
         io_state: ioState(device.device_id, lockState),
+        budget_hold: budgetHold,
         // 会話・候補の正本は後の工程（B05・B10）。今は空。
         sessions: [],
         candidates: [],

@@ -170,6 +170,12 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'permanent',
     transaction: 'budget',
   },
+  // 0007（B07-04、ADR 0037）: 本人による予算月の確かめ直し（書き換えない）。
+  budget_month_confirmations: {
+    body: 'none',
+    retention: 'permanent',
+    transaction: 'budget',
+  },
   sync_scopes: {
     body: 'none',
     retention: 'until_disconnected',

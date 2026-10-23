@@ -6,6 +6,8 @@ export * from './audio.js';
 export * from './budget.js';
 // B07-02: M と R の計算・予算月・利用状況・超過枠への経路・手での精算（ADR 0035）。
 export * from './budget-rules.js';
+// B07-04: 起点から計上する枠・実行時の設定の意味検査・タイムゾーンの正規化・送る前の検査（ADR 0037）。
+export * from './budget-gate.js';
 // UI-01: キャンバスの記述と流れの区切りの意味の検査（ADR 0032）。
 export * from './canvas.js';
 export * from './conversation.js';

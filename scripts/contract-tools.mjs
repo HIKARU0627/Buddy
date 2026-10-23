@@ -77,6 +77,60 @@ function decimalMicros(text) {
   return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
 }
 
+// 起点から計上する枠と超過枠（B07-04、ADR 0037）。各理由は 1 回だけ返す。
+// - unknown_route_pool: 経路・超過枠に設定にない枠がある。
+// - route_pool_requires_approval / route_under_approval_pool: 通常の経路の枠かその祖先が承認の要る枠。
+// - overage_pool_invalid: 超過枠が承認の要る枠でない。
+// - autonomous_shares_owner_pool: 自発の起点の LLM の枠が本人の依頼の LLM の枠と同じ（本人の判断で分ける）。
+// - voice_pool_shared: 音声の枠の経路が LLM・検索の枠の経路と重なる（J17。融通しない）。
+function routingErrors(budget, routing) {
+  const errors = new Set();
+  const pools = new Map(budget.pools.map((pool) => [pool.pool_id, pool]));
+  const path = (id) => {
+    const seen = [];
+    let current = id;
+    while (current !== null && pools.has(current) && !seen.includes(current)) {
+      seen.push(current);
+      current = pools.get(current).parent_pool_id;
+    }
+    return seen;
+  };
+  const routes = Object.entries(routing.routes);
+  const textPools = [];
+  const voicePools = [];
+  for (const [, services] of routes)
+    for (const [service, id] of Object.entries(services)) {
+      if (id === null) continue;
+      if (!pools.has(id)) {
+        errors.add('unknown_route_pool');
+        continue;
+      }
+      if (pools.get(id).requires_approval)
+        errors.add('route_pool_requires_approval');
+      else if (path(id).some((item) => pools.get(item).requires_approval))
+        errors.add('route_under_approval_pool');
+      (service === 'voice' ? voicePools : textPools).push(id);
+    }
+  const overage = routing.overage_pool_id;
+  if (overage !== null) {
+    if (!pools.has(overage)) errors.add('unknown_route_pool');
+    else if (!pools.get(overage).requires_approval)
+      errors.add('overage_pool_invalid');
+  }
+  const ownerLlm = routing.routes.owner_request.llm;
+  for (const [origin, services] of routes)
+    if (
+      origin !== 'owner_request' &&
+      ownerLlm !== null &&
+      services.llm === ownerLlm
+    )
+      errors.add('autonomous_shares_owner_pool');
+  const textPaths = new Set(textPools.flatMap(path));
+  if (voicePools.some((id) => path(id).some((item) => textPaths.has(item))))
+    errors.add('voice_pool_shared');
+  return [...errors];
+}
+
 export function semanticErrors(name, value) {
   const errors = [];
   if (name === 'CreditObservation') {
@@ -199,6 +253,7 @@ export function semanticErrors(name, value) {
         )
           errors.push('price_period_overlap');
     }
+    errors.push(...routingErrors(value.budget, value.routing));
   }
   if (name === 'BudgetOverageApproval') {
     if (Date.parse(value.expires_at) <= Date.parse(value.requested_at))
@@ -455,6 +510,16 @@ export function semanticErrors(name, value) {
       value.operations.length > 0)
   )
     errors.push('content_in_management_view');
+  // 予算保留（ADR 0037）。management_only では持たない。held は理由か保留の枠があるときだけ true。
+  if (name === 'Snapshot' && value.budget_hold !== null) {
+    if (value.view === 'management_only')
+      errors.push('budget_hold_in_management_view');
+    const hold = value.budget_hold;
+    if (hold.held !== (hold.reasons.length > 0 || hold.held_pools.length > 0))
+      errors.push('budget_hold_mismatch');
+    const ids = hold.held_pools.map((pool) => pool.pool_id);
+    if (new Set(ids).size !== ids.length) errors.push('duplicate_pool');
+  }
   if (name === 'IoStopResult') {
     const confirmed = value.devices.every((d) => d.stop_state === 'confirmed');
     if (value.all_confirmed !== confirmed)

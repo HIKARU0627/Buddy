@@ -23,6 +23,8 @@ import {
   admitBudget,
   admitWithOverage,
   advanceBudgetMonth,
+  budgetMonthStart,
+  dispatchReasons,
   markUsageUnknown,
   releaseUnsent,
   reviewOverrun,
@@ -33,6 +35,7 @@ import {
 } from '@buddy/domain';
 import type {
   AdmissionRequest,
+  BudgetCalendarResult,
   BudgetCalendarState,
   BudgetOrigin,
   BudgetSettings,
@@ -86,6 +89,8 @@ export interface BudgetReservationValue extends ReservationRecord {
   readonly settledAt: number | null;
   readonly overrunReviewedAt: number | null;
   readonly createdAt: number;
+  // 送出意図の時刻（0007）。provider へ送る直前に記録する。記録した予約は解放しない。
+  readonly dispatchIntentAt: number | null;
 }
 
 // 保存した超過の承認（契約の BudgetOverageApproval の形）と、使った予約。
@@ -205,6 +210,29 @@ export type BudgetOp =
       readonly time_zone: string;
     }
   | { readonly kind: 'budget.calendar_read' }
+  // 予算月の状態の確認（書かない）。時計の戻り・tz データの食い違い・月を進めていないことを、今の月の
+  // タイムゾーンで確かめる（予算保留の表示と、本人が確かめ直す前の表示に使う。0007）。
+  | { readonly kind: 'budget.calendar_check'; readonly now: number }
+  // 本人による予算月の確かめ直し（0007、ADR 0037）。本人が見た月と始まりが今の状態と一致するときだけ記録する。
+  // invalid_calendar_state: 求め直した始まりを今の月の始まりにする。clock_regressed: 予算月を戻さずに今の月のまま
+  // 受け付けを続け、今の時計を下限にする。
+  | {
+      readonly kind: 'budget.calendar_confirm';
+      readonly confirmation_id: string;
+      readonly reason: 'invalid_calendar_state' | 'clock_regressed';
+      readonly month: string;
+      readonly month_start: number;
+      readonly now: number;
+    }
+  // 送る直前の最終検査と送出意図の記録（08 §3 P01 の reservation_valid、0007）。予約が reserved で、まだ送出意図が
+  // なく、安全停止していないときだけ記録する。記録できたときだけ provider へ一度送ってよい。
+  | {
+      readonly kind: 'budget.dispatch_intent';
+      readonly reservation_id: string;
+      readonly now: number;
+    }
+  // 精算していない受付中（reserved）の予約。再起動の照合に使う（X28 の仕組み）。
+  | { readonly kind: 'budget.unsettled_list' }
   | {
       readonly kind: 'budget.reservation_find';
       readonly reservation_id: string | null;
@@ -241,6 +269,25 @@ export interface BudgetCalendarValue {
   readonly recorded: boolean;
 }
 
+// 予算月の状態の確認の結果。state は今の月（確かめ直しを重ねたもの）。reasons が空なら受付できる。
+export interface BudgetCalendarCheck {
+  readonly state: BudgetCalendarState | null;
+  readonly reasons: readonly string[];
+  // 今の月のタイムゾーンで次の月の始まりを越えている（calendar_advance で進める）。
+  readonly stale: boolean;
+  // 予算月の記録（budget_months）の始まりと、tz データで求め直した始まり（本人が確かめ直すときに見せる）。
+  readonly recorded_month_start: string | null;
+  readonly recomputed_month_start: string | null;
+  // 時計の戻りを受け入れた下限。なければ null。
+  readonly regression_floor: string | null;
+}
+
+export interface BudgetUnsettledItem {
+  readonly reservation: BudgetReservationValue;
+  // 会話の接続（live_sessions）を作った予約。送った可能性がある。
+  readonly live_session: boolean;
+}
+
 export interface BudgetOpValues {
   'budget.admit': BudgetAdmitValue;
   'budget.top_up': BudgetReservationChange;
@@ -263,6 +310,12 @@ export interface BudgetOpValues {
   'budget.summary': BudgetUsageSummaryView;
   'budget.calendar_advance': BudgetCalendarValue;
   'budget.calendar_read': BudgetCalendarState | null;
+  'budget.calendar_check': BudgetCalendarCheck;
+  'budget.calendar_confirm': BudgetCalendarCheck & {
+    readonly confirmation_id: string;
+  };
+  'budget.dispatch_intent': BudgetReservationChange;
+  'budget.unsettled_list': readonly BudgetUnsettledItem[];
   'budget.reservation_find': BudgetReservationValue | null;
   'budget.approval_find': BudgetApprovalValue | null;
 }
@@ -295,6 +348,8 @@ export const BUDGET_WRITE_OPS: ReadonlySet<BudgetOpKind> = new Set([
   'budget.request_overage',
   'budget.approve_overage',
   'budget.calendar_advance',
+  'budget.calendar_confirm',
+  'budget.dispatch_intent',
 ]);
 
 class BudgetRejection extends Error {
@@ -515,6 +570,25 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       );
       break;
     case 'budget.calendar_read':
+    case 'budget.unsettled_list':
+      break;
+    case 'budget.calendar_check':
+      check(isTime(op.now), 'now_invalid');
+      break;
+    case 'budget.calendar_confirm':
+      check(isUuid(op.confirmation_id), 'confirmation_id_invalid');
+      check(
+        op.reason === 'invalid_calendar_state' ||
+          op.reason === 'clock_regressed',
+        'confirmation_reason_invalid',
+      );
+      check(isMonth(op.month), 'budget_month_invalid');
+      check(isTime(op.month_start), 'month_start_invalid');
+      check(isTime(op.now), 'now_invalid');
+      break;
+    case 'budget.dispatch_intent':
+      check(isUuid(op.reservation_id), 'reservation_id_invalid');
+      check(isTime(op.now), 'now_invalid');
       break;
     case 'budget.reservation_find':
       check(
@@ -536,7 +610,7 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
 // --- 読み取り ---
 
 const RESERVATION_COLUMNS =
-  'reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, provider_reconciliation_id, settlement_kind, settled_at, overrun_reviewed, overrun_reviewed_at, created_at';
+  'reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, provider_reconciliation_id, settlement_kind, settled_at, overrun_reviewed, overrun_reviewed_at, created_at, dispatch_intent_at';
 
 interface ReservationRow {
   reservation_id: string;
@@ -560,6 +634,7 @@ interface ReservationRow {
   overrun_reviewed: bigint;
   overrun_reviewed_at: bigint | null;
   created_at: bigint;
+  dispatch_intent_at: bigint | null;
 }
 
 const timeOrNull = (value: bigint | null): number | null =>
@@ -588,6 +663,7 @@ function toReservation(row: ReservationRow): BudgetReservationValue {
     createdAt: Number(row.created_at),
     requestedPoolId: row.requested_pool_id,
     origin: row.origin,
+    dispatchIntentAt: timeOrNull(row.dispatch_intent_at),
   };
 }
 
@@ -711,16 +787,88 @@ function readCalendar(db: SqliteDatabase): BudgetCalendarState | null {
   };
 }
 
+// 今の月の状態（0007）。最も新しい月の行に、同じ月の最も新しい確かめ直し（本人が確かめた始まりと時計の戻りの
+// 下限）を重ねる。記録の始まり（budget_months.month_start）は書き換えない。
+interface EffectiveCalendar {
+  readonly state: BudgetCalendarState;
+  readonly recordedStart: string;
+  readonly floor: number | null;
+}
+
+function readEffectiveCalendar(db: SqliteDatabase): EffectiveCalendar | null {
+  const base = readCalendar(db);
+  if (base === null) return null;
+  const row = db
+    .prepare(
+      'SELECT month_start, regression_floor FROM budget_month_confirmations WHERE month = ? ORDER BY rowid DESC LIMIT 1',
+    )
+    .get(base.month) as
+    { month_start: number; regression_floor: number | null } | undefined;
+  if (row === undefined)
+    return { state: base, recordedStart: base.monthStart, floor: null };
+  return {
+    state: { ...base, monthStart: iso(row.month_start) },
+    recordedStart: base.monthStart,
+    floor: row.regression_floor,
+  };
+}
+
+// advanceBudgetMonth に、本人が受け入れた時計の戻り（下限以上で、今の月の始まりより前）を重ねる。受け入れた
+// 間は予算月を戻さず、今の月のまま受け付ける（下限よりさらに戻れば clock_regressed のまま）。
+function evaluateCalendar(
+  effective: EffectiveCalendar,
+  now: number,
+  timeZone: string,
+): BudgetCalendarResult {
+  const result = advanceBudgetMonth(effective.state, iso(now), timeZone);
+  if (
+    !result.ok &&
+    result.reasonCodes.length === 1 &&
+    result.reasonCodes[0] === 'clock_regressed' &&
+    effective.floor !== null &&
+    now >= effective.floor
+  )
+    return { ok: true, rolledOver: false, state: effective.state };
+  return result;
+}
+
 // 今の予算月。保存した状態を今の月のタイムゾーンで確かめ、次の月の始まりを越えていれば calendar_stale
 // （先に calendar_advance で進める）。tz データの更新などで保存した始まりと求め直した始まりが食い違えば
 // invalid_calendar_state（記録は書き換えず、有料の受付を止める。ADR 0036）。時計の戻りは clock_regressed。
+// 本人が確かめ直した値（0007）を重ねて判定する。
 function currentMonth(db: SqliteDatabase, now: number): BudgetCalendarState {
-  const state = readCalendar(db);
-  if (state === null) throw new BudgetRejection(['calendar_not_initialized']);
-  const checked = advanceBudgetMonth(state, iso(now), state.timeZone);
+  const effective = readEffectiveCalendar(db);
+  if (effective === null)
+    throw new BudgetRejection(['calendar_not_initialized']);
+  const checked = evaluateCalendar(effective, now, effective.state.timeZone);
   if (!checked.ok) throw new BudgetRejection(checked.reasonCodes);
   if (checked.rolledOver) throw new BudgetRejection(['calendar_stale']);
-  return state;
+  return effective.state;
+}
+
+function checkCalendar(db: SqliteDatabase, now: number): BudgetCalendarCheck {
+  const effective = readEffectiveCalendar(db);
+  if (effective === null)
+    return {
+      state: null,
+      reasons: ['calendar_not_initialized'],
+      stale: false,
+      recorded_month_start: null,
+      recomputed_month_start: null,
+      regression_floor: null,
+    };
+  const checked = evaluateCalendar(effective, now, effective.state.timeZone);
+  return {
+    state: effective.state,
+    reasons: checked.ok ? [] : checked.reasonCodes,
+    stale: checked.ok && checked.rolledOver,
+    recorded_month_start: effective.recordedStart,
+    recomputed_month_start: budgetMonthStart(
+      effective.state.month,
+      effective.state.monthStartTimeZone,
+    ),
+    regression_floor: effective.floor === null ? null : iso(effective.floor),
+  };
 }
 
 // --- 端末の要求の受付（command_receipts） ---
@@ -1064,7 +1212,14 @@ function release(
     db
       .prepare('SELECT 1 FROM live_sessions WHERE reservation_id = ?')
       .get(op.reservation_id) !== undefined;
-  const decision = releaseUnsent(current, op.provider_request_sent || live);
+  // 送出意図を記録した予約と、記録のない 0001 から移した行（起点がない）も、送った可能性がある（0007）。
+  const decision = releaseUnsent(
+    current,
+    op.provider_request_sent ||
+      live ||
+      current.dispatchIntentAt !== null ||
+      current.origin === null,
+  );
   if (!decision.ok) throw new BudgetRejection(decision.reasonCodes);
   const updated = db
     .prepare(
@@ -1259,8 +1414,11 @@ function advanceCalendar(
   db: SqliteDatabase,
   op: Extract<BudgetOp, { kind: 'budget.calendar_advance' }>,
 ): BudgetCalendarValue {
-  const stored = readCalendar(db);
-  const result = advanceBudgetMonth(stored, iso(op.now), op.time_zone);
+  const stored = readEffectiveCalendar(db);
+  const result =
+    stored === null
+      ? advanceBudgetMonth(null, iso(op.now), op.time_zone)
+      : evaluateCalendar(stored, op.now, op.time_zone);
   if (!result.ok) throw new BudgetRejection(result.reasonCodes);
   const recorded = stored === null || result.rolledOver;
   if (recorded)
@@ -1274,6 +1432,92 @@ function advanceCalendar(
       op.now,
     );
   return { state: result.state, rolled_over: result.rolledOver, recorded };
+}
+
+// 本人による予算月の確かめ直し（0007、ADR 0037）。本人が見た月と始まりが今の状態と一致し、今の状態がその理由で
+// 止まっているときだけ記録する。記録の後の状態を返す（始まりを確かめ直した後に時計の戻りが残れば、その理由を返す）。
+function confirmCalendar(
+  db: SqliteDatabase,
+  op: Extract<BudgetOp, { kind: 'budget.calendar_confirm' }>,
+): BudgetOpValues['budget.calendar_confirm'] {
+  const effective = readEffectiveCalendar(db);
+  if (effective === null)
+    throw new BudgetRejection(['calendar_not_initialized']);
+  const state = effective.state;
+  if (state.month !== op.month)
+    throw new BudgetRejection(['confirmation_mismatch']);
+  const checked = evaluateCalendar(effective, op.now, state.timeZone);
+  const reasons = checked.ok ? [] : checked.reasonCodes;
+  if (reasons.length !== 1 || reasons[0] !== op.reason)
+    throw new BudgetRejection(['nothing_to_confirm']);
+  const currentStart = Date.parse(state.monthStart);
+  if (op.reason === 'invalid_calendar_state') {
+    const recomputed = budgetMonthStart(state.month, state.monthStartTimeZone);
+    if (recomputed === null) throw new BudgetRejection(['invalid_time']);
+    if (Date.parse(recomputed) !== op.month_start)
+      throw new BudgetRejection(['confirmation_mismatch']);
+    // 前の月の始まりより後でなければならない（月は前へだけ進む）。
+    const previous = db
+      .prepare('SELECT max(month_start) FROM budget_months WHERE month < ?')
+      .pluck()
+      .get(state.month) as number | null;
+    if (previous !== null && previous >= op.month_start)
+      throw new BudgetRejection(['month_start_not_after_previous']);
+    db.prepare(
+      "INSERT INTO budget_month_confirmations (confirmation_id, month, kind, previous_month_start, month_start, regression_floor, confirmed_at) VALUES (?, ?, 'start_reverified', ?, ?, NULL, ?)",
+    ).run(
+      op.confirmation_id,
+      state.month,
+      currentStart,
+      op.month_start,
+      op.now,
+    );
+  } else {
+    if (currentStart !== op.month_start)
+      throw new BudgetRejection(['confirmation_mismatch']);
+    db.prepare(
+      "INSERT INTO budget_month_confirmations (confirmation_id, month, kind, previous_month_start, month_start, regression_floor, confirmed_at) VALUES (?, ?, 'clock_regression_accepted', ?, ?, ?, ?)",
+    ).run(
+      op.confirmation_id,
+      state.month,
+      currentStart,
+      currentStart,
+      op.now,
+      op.now,
+    );
+  }
+  return {
+    ...checkCalendar(db, op.now),
+    confirmation_id: op.confirmation_id,
+  };
+}
+
+// 送る直前の最終検査と送出意図の記録。記録できたときだけ provider へ一度送ってよい（自動の再送はしない）。
+function dispatchIntent(
+  db: SqliteDatabase,
+  op: Extract<BudgetOp, { kind: 'budget.dispatch_intent' }>,
+): BudgetReservationChange {
+  const current = requireReservation(db, op.reservation_id);
+  const breaker = db
+    .prepare('SELECT state FROM safety_breaker WHERE singleton = 1')
+    .get() as { state: string } | undefined;
+  const reasons = dispatchReasons({
+    status: current.status,
+    // 起点のない 0001 から移した行は、送出の記録がないので送った可能性があるとみなす。
+    dispatched: current.dispatchIntentAt !== null || current.origin === null,
+    safetyStopped: breaker?.state === 'stopped',
+  });
+  if (reasons.length > 0) throw new BudgetRejection(reasons);
+  const updated = db
+    .prepare(
+      "UPDATE budget_reservations SET dispatch_intent_at = ? WHERE reservation_id = ? AND status = 'reserved' AND dispatch_intent_at IS NULL",
+    )
+    .run(op.now, op.reservation_id);
+  if (updated.changes !== 1) throw new BudgetRejection(['reservation_invalid']);
+  return {
+    reservation: requireReservation(db, op.reservation_id),
+    duplicate: false,
+  };
 }
 
 function applyWrite(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
@@ -1298,6 +1542,10 @@ function applyWrite(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
       return decideOverage(db, op);
     case 'budget.calendar_advance':
       return advanceCalendar(db, op);
+    case 'budget.calendar_confirm':
+      return confirmCalendar(db, op);
+    case 'budget.dispatch_intent':
+      return dispatchIntent(db, op);
     default:
       throw new BudgetRejection(['kind_invalid']);
   }
@@ -1309,7 +1557,7 @@ function summary(
   db: SqliteDatabase,
   op: Extract<BudgetOp, { kind: 'budget.summary' }>,
 ): BudgetUsageSummaryView {
-  const state = readCalendar(db);
+  const state = readEffectiveCalendar(db)?.state ?? null;
   if (state === null) throw new BudgetRejection(['calendar_not_initialized']);
   // 今月と、未精算か M 超過の確認待ちが残る前の月の行。今月より後の月の行があれば future_month で拒否する。
   const months = db
@@ -1347,7 +1595,20 @@ function readOnly(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
     case 'budget.summary':
       return db.transaction(() => summary(db, op))();
     case 'budget.calendar_read':
-      return readCalendar(db);
+      return readEffectiveCalendar(db)?.state ?? null;
+    case 'budget.calendar_check':
+      return db.transaction(() => checkCalendar(db, op.now))();
+    case 'budget.unsettled_list':
+      return selectReservations(
+        db,
+        "WHERE status = 'reserved' ORDER BY created_at, reservation_id",
+      ).map((reservation) => ({
+        reservation,
+        live_session:
+          db
+            .prepare('SELECT 1 FROM live_sessions WHERE reservation_id = ?')
+            .get(reservation.reservationId) !== undefined,
+      }));
     case 'budget.reservation_find':
       return op.reservation_id !== null
         ? findReservation(db, op.reservation_id)

@@ -15,6 +15,7 @@ export {
   parseControlRequest,
 } from './control-protocol.js';
 export type {
+  ControlBudgetCalendar,
   ControlOp,
   ControlParseResult,
   ControlRejectReason,
@@ -45,7 +46,30 @@ export {
 } from './preflight.js';
 export type { KeyProtectionMode, PreflightCheck } from './preflight.js';
 export { CoreStartError, startCore } from './core.js';
+// B07-04: 予算の門と設定ファイルの読み込み（ADR 0037）。
+export { BudgetGate } from './budget-gate.js';
 export type {
+  AdmitResult,
+  BudgetGateHoldReason,
+  BudgetHoldStateView,
+  BudgetResumeEvent,
+  BudgetTicket,
+  PaidOutcome,
+  PaidRequest,
+  PaidSendContext,
+  PaidUsage,
+  ReconcileReport,
+  RunResult,
+  UsageReconciler,
+} from './budget-gate.js';
+export {
+  BUDGET_CONFIG_FILE,
+  checkBudgetConfigText,
+  loadBudgetConfig,
+} from './budget-config.js';
+export type { LoadedBudgetConfig } from './budget-config.js';
+export type {
+  CoreBudgetOptions,
   CoreHandle,
   CoreHttpsInfo,
   CoreHttpsOptions,

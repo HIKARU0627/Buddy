@@ -186,8 +186,17 @@ test('each endpoint has a valid request and response and rejects missing auth, s
 test('local invariants of API responses are checked semantically', () => {
   const snapshot = cases.operations.getSnapshot.response;
   assert.deepEqual(
-    semanticErrors('Snapshot', { ...snapshot, view: 'management_only' }),
+    semanticErrors('Snapshot', {
+      ...snapshot,
+      view: 'management_only',
+      budget_hold: null,
+    }),
     ['content_in_management_view'],
+  );
+  // 予算保留も management_only では持たない（ADR 0037）。
+  assert.deepEqual(
+    semanticErrors('Snapshot', { ...snapshot, view: 'management_only' }),
+    ['content_in_management_view', 'budget_hold_in_management_view'],
   );
   const stop = cases.operations.stopIo.response;
   assert.deepEqual(

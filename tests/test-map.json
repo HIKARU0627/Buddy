@@ -77,9 +77,10 @@
       "t": ["T03"],
       "product_evidence": [
         "tests/integration/evidence-b04-simulated.json#X05-before-dispatch",
-        "tests/integration/evidence-b04-simulated.json#X05-after-dispatch"
+        "tests/integration/evidence-b04-simulated.json#X05-after-dispatch",
+        "tests/integration/evidence-b04-simulated.json#X05-after-dispatch-draft"
       ],
-      "product_scope": "B04-06 の固定 seed 3 回・合成データ・同一プロセスの Core と独立 provider。実機・実 API・実請求は未実施。"
+      "product_scope": "B04-06・07 の固定 seed 3 回・合成データ・同一プロセスの Core と独立 provider。ラベルの変更と外部の下書きの保存（目印での照合）の両方。実機・実 API・実請求は未実施。"
     },
     {
       "id": "X06",
@@ -91,8 +92,11 @@
       "status": "contract_fixture",
       "product_test": "simulated",
       "t": ["T02", "T07"],
-      "product_evidence": ["tests/integration/evidence-b04-simulated.json#X06"],
-      "product_scope": "B04-06 の固定 seed 3 回・合成データ・同一プロセスの Core と独立 provider。実機・実 API・実請求は未実施。"
+      "product_evidence": [
+        "tests/integration/evidence-b04-simulated.json#X06",
+        "tests/integration/evidence-b04-simulated.json#X06-draft"
+      ],
+      "product_scope": "B04-06・07 の固定 seed 3 回・合成データ・同一プロセスの Core と独立 provider。ラベルの変更と外部の下書きの保存（目印での照合）の両方。実機・実 API・実請求は未実施。"
     },
     {
       "id": "X07",
@@ -103,8 +107,11 @@
       "status": "contract_fixture",
       "product_test": "simulated",
       "t": ["T02", "T07"],
-      "product_evidence": ["tests/integration/evidence-b04-simulated.json#X07"],
-      "product_scope": "B04-06 の固定 seed 3 回・合成データ・同一プロセスの Core と独立 provider。実機・実 API・実請求は未実施。"
+      "product_evidence": [
+        "tests/integration/evidence-b04-simulated.json#X07",
+        "tests/integration/evidence-b04-simulated.json#X07-draft"
+      ],
+      "product_scope": "B04-06・07 の固定 seed 3 回・合成データ・同一プロセスの Core と独立 provider。ラベルの変更と外部の下書きの保存（目印での照合）の両方。実機・実 API・実請求は未実施。"
     },
     {
       "id": "X08",
@@ -115,8 +122,11 @@
       "status": "contract_fixture",
       "product_test": "simulated",
       "t": ["T02", "T07"],
-      "product_evidence": ["tests/integration/evidence-b04-simulated.json#X08"],
-      "product_scope": "B04-06 の固定 seed 3 回・合成データ・同一プロセスの Core と独立 provider。実機・実 API・実請求は未実施。"
+      "product_evidence": [
+        "tests/integration/evidence-b04-simulated.json#X08",
+        "tests/integration/evidence-b04-simulated.json#X08-draft"
+      ],
+      "product_scope": "B04-06・07 の固定 seed 3 回・合成データ・同一プロセスの Core と独立 provider。ラベルの変更と外部の下書きの保存（目印での照合）の両方。実機・実 API・実請求は未実施。"
     },
     {
       "id": "X09",
@@ -981,15 +991,17 @@
       "phases": ["B04", "B10", "B13"],
       "contract_fixtures": [],
       "status": "specified",
-      "product_test": "simulated_partial",
+      "product_test": "simulated",
       "targets": ["H01", "H02"],
       "related": ["X21"],
       "product_evidence": [
         "tests/integration/evidence-b04-simulated.json#QA27-read",
         "tests/integration/evidence-b04-simulated.json#QA27-local",
-        "tests/integration/evidence-b04-simulated.json#QA27-remote"
+        "tests/integration/evidence-b04-simulated.json#QA27-remote",
+        "tests/integration/evidence-b04-simulated.json#QA27-auth",
+        "tests/integration/evidence-b04-simulated.json#QA27-expiry"
       ],
-      "product_scope": "予定参照・用事登録・ラベル変更の 3 経路を Core の API で確認。原本の外部下書き保存は作成・実行経路が未実装。同じ Electron 画面での 3 種比較も未実施。ケース全体は未合格。"
+      "product_scope": "B04-07: 予定の参照（Read）・用事の登録（LocalCommand）・外部の下書きの保存（RemoteMutation）を Core の API で確認（Read は操作・承認・試行 0、LocalCommand は発言から完了までアダプターの呼出し 0、送出の境界は下書きだけ）。全経路の権限（失効した端末は 401、予定・メールの読み取りと種類ごとの書込みの範囲）と期限（接続範囲の 24 時間で 410）。同じ画面からの 3 経路はデスクトップの main の部品の試験（two-clients.test.ts、OS の確認ダイアログは模擬）で別に確認。Electron の画面の操作・本物の OS 確認ダイアログ・実機・実 API・実請求は未実施。"
     },
     {
       "id": "QA28",

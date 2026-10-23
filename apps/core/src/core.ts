@@ -735,6 +735,8 @@ async function startHttps(
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
   });
+  // 連携の口座と許可の版を一度確かめておく（発言の入力の時点の版を外部へ問い合わせずに持つ。B04-07）。
+  await turns.prime().catch(() => undefined);
   // 流れへの発言とキャンバスの記述（UI-03、ADR 0032）。キャンバスの正本は Core（RAM）。発言は既存の発言の処理を呼ぶ。
   const canvas = new CanvasHub();
   const stream = createStreamRoutes({

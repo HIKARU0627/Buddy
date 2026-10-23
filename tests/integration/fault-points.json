@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "B04 の故障点と手書きの期待値。状態履歴は operation-transitions.json と整合検査する。実行結果ではない。X10 の expected は B14 の完了期待で、B04 は b04_expected の工程保存・照合判断だけを検査する。approvals は失効分を含む保存件数。",
+  "description": "B04 の故障点と手書きの期待値。状態履歴は operation-transitions.json と整合検査する。実行結果ではない。X10 の expected は B14 の完了期待で、B04 は b04_expected の工程保存・照合判断だけを検査する。approvals は失効分を含む保存件数。 B04-07: QA27-remote は外部の下書きの保存、QA27-auth・QA27-expiry は全経路の権限と期限、X05-after-dispatch-draft・X06-draft・X07-draft・X08-draft は下書きの保存の結果不明・再起動・取消（照合は目印）。provider_drafts と content_canonical の {operation_id} は、その試行の操作 ID に置き換えて照合する。",
   "mock_service": {
     "persists_across_core_restart": true,
     "deduplicates_requests": false,
@@ -620,6 +620,218 @@
           "mail-001": ["follow-up"]
         }
       }
+    },
+    {
+      "id": "X05-after-dispatch-draft",
+      "transition_case": "X05-after-dispatch",
+      "faults": ["after_dispatch_intent_before_send"],
+      "actions": ["cancel_at_fault", "release_send"],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "reconciling",
+        "provider_truth": "draft_saved_once",
+        "core_observed": "cancel_accepted_not_cancelled",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "reconciling"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-create_draft": 1
+        },
+        "provider_responses": [true],
+        "stored_steps": [
+          {
+            "step_id": "1-create_draft",
+            "intent": true,
+            "result_status": null
+          }
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.draft.create",
+            "draft_id": "draft-001"
+          }
+        ],
+        "provider_labels": {
+          "mail-001": []
+        },
+        "provider_drafts": [
+          {
+            "marker": "buddy-op:{operation_id}:1",
+            "in_reply_to": "mail-001",
+            "to": ["synthetic-sender@example.com"],
+            "cc": [],
+            "subject": "Re: （合成）来週の打ち合わせの日程",
+            "body": "（合成）承知しました。",
+            "status": "draft"
+          }
+        ]
+      },
+      "operation": "draft_reply"
+    },
+    {
+      "id": "X06-draft",
+      "transition_case": "X06",
+      "faults": ["after_dispatch_intent_before_send", "core_restart"],
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 1,
+        "core_final_state": "unknown_held",
+        "automatic_retry": false,
+        "provider_truth": "not_applied",
+        "core_observed": "unknown_held",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "unknown_held"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {},
+        "provider_responses": [],
+        "stored_steps": [
+          {
+            "step_id": "1-create_draft",
+            "intent": true,
+            "result_status": "unknown"
+          }
+        ],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        },
+        "provider_drafts": []
+      },
+      "operation": "draft_reply"
+    },
+    {
+      "id": "X07-draft",
+      "transition_case": "X07",
+      "faults": ["after_external_apply_before_response"],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "succeeded",
+        "provider_truth": "draft_saved_once",
+        "core_observed": "succeeded_after_marker_reconcile",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-create_draft": 1
+        },
+        "automatic_lookups": 1,
+        "provider_responses": [false],
+        "stored_steps": [
+          {
+            "step_id": "1-create_draft",
+            "intent": true,
+            "result_status": "confirmed_success"
+          }
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.draft.create",
+            "draft_id": "draft-001"
+          }
+        ],
+        "provider_labels": {
+          "mail-001": []
+        },
+        "provider_drafts": [
+          {
+            "marker": "buddy-op:{operation_id}:1",
+            "in_reply_to": "mail-001",
+            "to": ["synthetic-sender@example.com"],
+            "cc": [],
+            "subject": "Re: （合成）来週の打ち合わせの日程",
+            "body": "（合成）承知しました。",
+            "status": "draft"
+          }
+        ]
+      },
+      "operation": "draft_reply"
+    },
+    {
+      "id": "X08-draft",
+      "transition_case": "X08",
+      "faults": ["response_timeout_then_late_apply"],
+      "expected": {
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 1,
+        "core_final_state": "succeeded",
+        "automatic_retry": false,
+        "provider_truth": "draft_saved_once_late",
+        "core_observed": "unknown_held_then_succeeded",
+        "state_history": [
+          "awaiting_approval",
+          "approved",
+          "preparing",
+          "dispatching",
+          "unknown_held",
+          "reconciling",
+          "succeeded"
+        ],
+        "attempts": 1,
+        "revoked_approvals": 0,
+        "step_receives": {
+          "1-create_draft": 1
+        },
+        "before_late_apply": {
+          "state": "unknown_held",
+          "provider_requests": 1,
+          "provider_state_changes": 0
+        },
+        "automatic_lookups": 1,
+        "provider_responses": [false],
+        "stored_steps": [
+          {
+            "step_id": "1-create_draft",
+            "intent": true,
+            "result_status": "confirmed_success"
+          }
+        ],
+        "provider_applied_changes": [
+          {
+            "kind": "mail.draft.create",
+            "draft_id": "draft-001"
+          }
+        ],
+        "provider_labels": {
+          "mail-001": []
+        },
+        "provider_drafts": [
+          {
+            "marker": "buddy-op:{operation_id}:1",
+            "in_reply_to": "mail-001",
+            "to": ["synthetic-sender@example.com"],
+            "cc": [],
+            "subject": "Re: （合成）来週の打ち合わせの日程",
+            "body": "（合成）承知しました。",
+            "status": "draft"
+          }
+        ]
+      },
+      "operation": "draft_reply"
     }
   ],
   "seeds": [86, 1406, 20261022],
@@ -680,28 +892,83 @@
           "succeeded"
         ],
         "step_receives": {
-          "1-apply_labels": 1
+          "1-create_draft": 1
         },
         "provider_responses": [true],
         "stored_steps": [
           {
-            "step_id": "1-apply_labels",
+            "step_id": "1-create_draft",
             "intent": true,
             "result_status": "confirmed_success"
           }
         ],
         "provider_applied_changes": [
           {
-            "kind": "mail.labels.change",
-            "remote_id": "mail-001",
-            "add": ["follow-up"],
-            "remove": [],
-            "labels_after": ["follow-up"]
+            "kind": "mail.draft.create",
+            "draft_id": "draft-001"
           }
         ],
         "provider_labels": {
-          "mail-001": ["follow-up"]
-        }
+          "mail-001": []
+        },
+        "provider_drafts": [
+          {
+            "marker": "buddy-op:{operation_id}:1",
+            "in_reply_to": "mail-001",
+            "to": ["synthetic-sender@example.com"],
+            "cc": [],
+            "subject": "Re: （合成）来週の打ち合わせの日程",
+            "body": "（合成）承知しました。",
+            "status": "draft"
+          }
+        ],
+        "content_canonical": "{\"account_id\":\"00000000-0000-4000-8000-000000000002\",\"action\":{\"body\":\"（合成）承知しました。\",\"cc\":[],\"kind\":\"mail.draft.create\",\"subject\":\"Re: （合成）来週の打ち合わせの日程\",\"to\":[\"synthetic-sender@example.com\"]},\"content_version\":\"1\",\"effects\":{\"external_recipients\":[],\"reconcile_scope\":\"operation_marker\"},\"operation_id\":\"{operation_id}\",\"permission_revision\":\"1\",\"provider\":\"mock\",\"schema\":\"buddy.operation.v1\",\"target\":{\"remote_id\":\"mail-001\",\"source_revision\":\"r1\"}}"
+      },
+      "operation": "draft_reply"
+    },
+    {
+      "id": "QA27-auth",
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "attempts": 0,
+        "operations": 2,
+        "operation_states": ["awaiting_approval", "awaiting_approval"],
+        "adapter_writes": 0,
+        "provider_responses": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        },
+        "provider_drafts": [],
+        "turn_status": 401,
+        "approve_status": 401,
+        "read_scope_missing_reply": "連携の接続が使えません。接続を確かめてください。",
+        "note": "失効した端末の 3 種の発言・2 種の承認は 401。予定の読み取りの範囲がなければ Read も聞き返す。"
+      }
+    },
+    {
+      "id": "QA27-expiry",
+      "expected": {
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "attempts": 0,
+        "operations": 2,
+        "operation_states": ["awaiting_approval", "awaiting_approval"],
+        "adapter_writes": 0,
+        "provider_responses": [],
+        "provider_applied_changes": [],
+        "provider_labels": {
+          "mail-001": []
+        },
+        "provider_drafts": [],
+        "clock_advance_ms": 86400001,
+        "turn_status": 410,
+        "approve_status": 410,
+        "error_code": "expired_scope",
+        "note": "接続範囲の期限（24 時間）の 1 ミリ秒後。3 種の発言・2 種の承認は 410。"
       }
     },
     {

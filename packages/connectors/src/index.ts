@@ -3,6 +3,7 @@ export {
   createMockMailConnector,
   type CalendarEvent,
   type MailTarget,
+  type MarkedDraft,
   type MockMailConnector,
   type MockMailConnectorOptions,
   type PermissionState,

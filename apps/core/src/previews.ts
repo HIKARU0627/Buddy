@@ -18,6 +18,8 @@ export interface PreviewBinding {
   readonly account: {
     readonly account_id: string;
     readonly permission_revision: string;
+    // 操作の種類（承認のときに、この種類の書込みの範囲が残っているかを確かめる。B04-07）。
+    readonly operation_kind: string;
   } | null;
   readonly issued_at: number;
 }

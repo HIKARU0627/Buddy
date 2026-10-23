@@ -23,6 +23,12 @@ import type {
   DesktopIpcResponse,
 } from '@buddy/contracts';
 import type { DesktopIoState } from '@buddy/domain';
+import { createMockMailConnector } from '@buddy/connectors';
+import {
+  SYNTHETIC_ACCOUNT_ID,
+  createMockProvider,
+} from '@buddy/connectors/testing';
+import { mockMailPorts } from '@buddy/core';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
 import type { AdminConfirmRequest } from './core-link.js';
@@ -1672,5 +1678,209 @@ test(
     );
     await waitUntil(() => a.view().operations.length === 1, 'A sees it');
     assert.equal(a.view().operations.length, 1);
+  },
+);
+
+// --- B04-07: 外部の下書きの保存と QA27 の 3 経路（Issue #106） ---
+
+const DRAFT_TEXT =
+  'mail-001 に「（合成）承知しました。」と返信の下書きを保存して';
+
+test(
+  'QA27 from the same screen: a schedule read makes no operation, a task is applied with no provider request, and a reply draft is saved once after one confirmed approval',
+  { timeout: 90_000 },
+  async (t) => {
+    const dir = await tempDir(t, 'bdq-');
+    // 模擬 provider（中枢と別のディレクトリ）。真の結果（truth）は試験だけが見る。
+    const provider = await createMockProvider({ dir: join(dir, 'p') });
+    onCleanup(t, () => provider.close());
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+    const ports = mockMailPorts({
+      accountId: SYNTHETIC_ACCOUNT_ID,
+      read: connector,
+    });
+    const hub = await startHub(t, {
+      dataDir: join(dir, 'd'),
+      port: await freePort(),
+      turns: {
+        provider: ports.reader,
+        writer: ports.writer,
+        candidates: {
+          mailCandidates: () =>
+            Promise.resolve([
+              {
+                candidate_id: '00000000-0000-4000-8000-0000000000c1',
+                remote_id: 'mail-001',
+              },
+            ]),
+        },
+        utcOffset: '+09:00',
+      },
+    });
+    const { a, b } = await pairTwoClients(t, hub);
+
+    // Read: 予定の照会。承認のいる操作を作らず、provider への書込みもない。
+    const read = await a.work('desktop.turn_submit', {
+      text: '今日の予定を見せて',
+    });
+    assert.equal(read.outcome, 'ok', JSON.stringify(read));
+    const readResult = field(read, 'turn') as {
+      status: string;
+      result: { kind: string; operation_ref: string | null };
+    };
+    assert.equal(readResult.status, 'answered');
+    assert.equal(readResult.result.kind, 'schedule_cards');
+    assert.equal(readResult.result.operation_ref, null);
+    assert.equal(a.view().operations.length, 0);
+    assert.equal(provider.truth.requestCount(), 0);
+
+    // LocalCommand: 用事の登録。B の確認 1 回で適用し、provider への要求は 0。
+    const task = await a.work('desktop.turn_submit', { text: TASK_TEXT });
+    assert.equal(task.outcome, 'ok', JSON.stringify(task));
+    await waitUntil(() => b.view().operations.length === 1, 'B sees the task');
+    const taskEntry = b.view().operations[0];
+    assert(taskEntry !== undefined);
+    const taskPreview = await b.work('desktop.operation_preview', {
+      ref: taskEntry.ref,
+    });
+    assert.equal(taskPreview.outcome, 'ok', JSON.stringify(taskPreview));
+    const taskApproved = await b.work('desktop.operation_approve', {
+      ref: (field(taskPreview, 'preview') as { preview_ref: string })
+        .preview_ref,
+    });
+    assert.equal(taskApproved.outcome, 'ok', JSON.stringify(taskApproved));
+    await waitUntil(
+      () =>
+        b.view().operations.find((op) => op.ref === taskEntry.ref)?.state ===
+        'succeeded',
+      'the task succeeded',
+    );
+    assert.equal(provider.truth.requestCount(), 0);
+
+    // RemoteMutation: 返信の下書きの保存。確認画面に保存先のアカウント・返信元・本文が出る。
+    const turned = await a.work('desktop.turn_submit', { text: DRAFT_TEXT });
+    assert.equal(turned.outcome, 'ok', JSON.stringify(turned));
+    assert.equal(
+      (field(turned, 'turn') as { result: { kind: string } }).result.kind,
+      'approval_link',
+    );
+    await waitUntil(() => b.view().operations.length === 2, 'B sees the draft');
+    const draftEntry = b
+      .view()
+      .operations.find((op) => op.operation_kind === 'mail.draft.create');
+    assert(draftEntry !== undefined);
+    assert.equal(draftEntry.state, 'awaiting_approval');
+    // 作っただけでは送らない。
+    assert.equal(provider.truth.requestCount(), 0);
+    const prepared = await b.work('desktop.operation_preview', {
+      ref: draftEntry.ref,
+    });
+    assert.equal(prepared.outcome, 'ok', JSON.stringify(prepared));
+    const draftPreview = field(prepared, 'preview') as Record<string, unknown>;
+    assert.deepEqual(
+      {
+        kind: draftPreview['operation_kind'],
+        service: draftPreview['service'],
+        target: draftPreview['target'],
+        fields: draftPreview['fields'],
+        account_label: draftPreview['account_label'],
+        target_detail: draftPreview['target_detail'],
+        approvable: draftPreview['approvable'],
+      },
+      {
+        kind: 'mail.draft.create',
+        service: 'mock',
+        target: 'mail-001',
+        fields: [
+          { field: 'draft_to', values: ['synthetic-sender@example.com'] },
+          {
+            field: 'draft_subject',
+            values: ['Re: （合成）来週の打ち合わせの日程'],
+          },
+          { field: 'draft_body', values: ['（合成）承知しました。'] },
+        ],
+        account_label: 'synthetic-user@example.com',
+        target_detail: {
+          subject: '（合成）来週の打ち合わせの日程',
+          sender: 'synthetic-sender@example.com',
+          received_at: '2026-10-04T18:30:00+09:00',
+        },
+        approvable: true,
+      },
+    );
+    const confirmsBefore = b.confirms.length;
+    const approved = await b.work('desktop.operation_approve', {
+      ref: String(draftPreview['preview_ref']),
+    });
+    assert.equal(approved.outcome, 'ok', JSON.stringify(approved));
+    // main の確認（模擬の confirmAdmin）は 1 回だけで、値は main が中枢の preview から作ったもの。
+    assert.equal(b.confirms.length, confirmsBefore + 1);
+    assert.deepEqual(b.confirms.at(-1), {
+      action: 'approve_operation',
+      operationKind: 'mail.draft.create',
+      service: 'mock',
+      target: 'mail-001',
+      accountLabel: 'synthetic-user@example.com',
+      targetDetail: {
+        subject: '（合成）来週の打ち合わせの日程',
+        sender: 'synthetic-sender@example.com',
+        received_at: '2026-10-04T18:30:00+09:00',
+      },
+      fields: [
+        { field: 'draft_to', values: ['synthetic-sender@example.com'] },
+        {
+          field: 'draft_subject',
+          values: ['Re: （合成）来週の打ち合わせの日程'],
+        },
+        { field: 'draft_body', values: ['（合成）承知しました。'] },
+      ],
+    });
+    await waitUntil(
+      () =>
+        a
+          .view()
+          .operations.find((op) => op.operation_kind === 'mail.draft.create')
+          ?.state === 'succeeded' &&
+        b.view().operations.find((op) => op.ref === draftEntry.ref)?.state ===
+          'succeeded',
+      'both see the draft saved',
+    );
+    // provider への要求は下書きの 1 回だけ。内容は手で決めた値と同じ。
+    assert.equal(provider.truth.requestCount(), 1);
+    assert.equal(provider.truth.stateChangeCount(), 1);
+    const drafts = Object.values(provider.truth.snapshot().drafts);
+    const stored = a.link.linkState?.operations.find(
+      (op) => op.operation_kind === 'mail.draft.create',
+    );
+    assert(stored !== undefined);
+    assert.deepEqual(
+      drafts.map((d) => ({
+        marker: d.marker,
+        in_reply_to: d.in_reply_to,
+        to: d.to,
+        cc: d.cc,
+        subject: d.subject,
+        body: d.body,
+        status: d.status,
+      })),
+      [
+        {
+          marker: `buddy-op:${stored.operation_id}:1`,
+          in_reply_to: 'mail-001',
+          to: ['synthetic-sender@example.com'],
+          cc: [],
+          subject: 'Re: （合成）来週の打ち合わせの日程',
+          body: '（合成）承知しました。',
+          status: 'draft',
+        },
+      ],
+    );
+    assert.equal(
+      b.requests.filter((line) => line.endsWith('/approve')).length,
+      2,
+    );
+    // 画面へは操作 ID・hash を出していない（参照だけ）。
+    assertNoOperationValues([a, b], [stored.operation_id, stored.content_hash]);
+    assertNoSecrets([a, b], [a.token(), b.token()]);
   },
 );

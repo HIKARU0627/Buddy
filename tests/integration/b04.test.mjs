@@ -13,7 +13,7 @@ const ids = cases.map((c) => c.id);
 assert.equal(new Set(ids).size, ids.length);
 
 test(
-  'B04-06: 全故障点・QA27 の実装済み経路・QA28 を固定 seed で反復照合する',
+  'B04-06・07: 全故障点・下書きの保存の故障・QA27 の 3 経路と権限・期限・QA28 を固定 seed で反復照合する',
   { timeout: 300000 },
   async (t) => {
     const runs = [];
@@ -76,7 +76,7 @@ test(
           deviation: partial
             ? spec.b04_expected.scope
             : spec.id.startsWith('QA27')
-              ? 'QA27 の部分検証。外部下書き保存・同じ Electron 画面での比較は未実施。'
+              ? 'Core の API で確認。同じ画面からの 3 経路はデスクトップの main の部品の試験（two-clients.test.ts）で別に確認。Electron の画面と本物の OS 確認ダイアログは未実施。'
               : null,
           voice_stop_ms: null,
           outcome: 'matched_expectation',
@@ -85,7 +85,7 @@ test(
       const evidence = {
         status: 'recorded',
         description:
-          'B04-06 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。X10 は工程の仕組みだけ（B14 で縦断合格）、QA27 は部分検証。実機・実 API・実請求・handoff は未実施。',
+          'B04-06・07 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。X10 は工程の仕組みだけ（B14 で縦断合格）。QA27 は外部の下書きの保存を含む 3 経路と全経路の権限・期限を Core の API で確認。実機・実 API・実請求・handoff・Electron の画面は未実施。',
         command: 'node --test tests/integration/b04.test.mjs',
         source_sha256: sourceSha256,
         records,

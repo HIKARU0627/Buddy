@@ -149,7 +149,6 @@ async function createClient(
       return Promise.resolve(options.confirm?.(request) ?? true);
     },
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
-    aliveTimeoutMs: 3_000,
     pairingPollIntervalMs: options.pollIntervalMs ?? 50,
     transportFor: (hub, token) => {
       const transport = createHubTransport({ hub, token });
@@ -213,43 +212,20 @@ async function createClient(
       ipc.push(response);
       return response;
     },
-    // 接続の取り直し（resnapshot）の最中は main が送らずに not_connected を返す（送っていないので、live に戻るのを
-    // 待って送り直しても二重に届かない）。条件（live）を待って送り直す。時間では待たない。
+    // 最初の live を待った後は一度だけ呼ぶ。再接続や未送信の拒否を再試行で隠さない（Issue #108）。
     async work(channel, payload) {
-      for (let attempt = 0; ; attempt += 1) {
-        await waitUntil(
-          () => created.linkState?.phase === 'live',
-          `${name} live for ${channel}`,
-        );
-        const before = requests.length;
-        const { response } = await created.handleOperationIpc(
-          channel,
-          { channel, request_id: randomUUID(), payload },
-          SCREEN,
-          UNLOCKED,
-        );
-        if (
-          attempt < 20 &&
-          response.outcome === 'rejected' &&
-          response.reason === 'not_connected'
-        ) {
-          // 送り直すのは、未送信が確かなとき（送る前の not_connected）だけ。この呼び出しで命令・発言の要求を中枢へ
-          // 出していたら、送り直さずに試験を失敗させる（二重に届かせない）。
-          const sentNow = requests
-            .slice(before)
-            .filter((line) =>
-              /^POST .*\/(turns|approve|cancel|retry|reconcile)$/u.test(line),
-            );
-          assert.deepEqual(
-            sentNow,
-            [],
-            `${name} ${channel} sent and then said not_connected`,
-          );
-          continue;
-        }
-        ipc.push(response);
-        return response;
-      }
+      await waitUntil(
+        () => created.linkState?.phase === 'live',
+        `${name} live for ${channel}`,
+      );
+      const { response } = await created.handleOperationIpc(
+        channel,
+        { channel, request_id: randomUUID(), payload },
+        SCREEN,
+        UNLOCKED,
+      );
+      ipc.push(response);
+      return response;
     },
     async admin(channel, payload, adminOptions = {}) {
       const { response } = await created.handleAdminIpc(
@@ -741,6 +717,8 @@ test(
     const hub = await startHub(t, {
       dataDir: join(dir, 'd'),
       port: await freePort(),
+      // この 2 ケースだけは自宅・接続範囲の定期再検査も試す。
+      pingIntervalMs: 200,
       sameMachine: () => machine.same,
       homeNetwork: true,
     });
@@ -1018,6 +996,8 @@ test(
     const hub = await startHub(t, {
       dataDir: join(dir, 'd'),
       port: await freePort(),
+      // この 2 ケースだけは自宅・接続範囲の定期再検査も試す。
+      pingIntervalMs: 200,
       sameMachine: () => machine.same,
       tailscale: mockTailscale(tailscale),
     });
@@ -1312,6 +1292,20 @@ test(
     // A の発言（文字入力）から、承認待ちの操作ができる。外部変更の完了ではなく、まだ何も実行していない。
     const turn = await a.work('desktop.turn_submit', { text: TASK_TEXT });
     assert.equal(turn.outcome, 'ok', JSON.stringify(turn));
+    // ペアリング直後の最初の発言が一度の接続・一度の送信で受理される。
+    assert.equal(
+      a.requests.filter((line) => line === 'GET /v1/bootstrap').length,
+      1,
+    );
+    assert.equal(
+      a.requests.filter((line) => line === 'WSS /v1/events/stream').length,
+      1,
+    );
+    assert.equal(
+      a.requests.filter((line) => /^POST .*\/turns$/u.test(line)).length,
+      1,
+    );
+
     const result = (
       field(turn, 'turn') as {
         status: string;

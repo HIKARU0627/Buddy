@@ -182,6 +182,8 @@ export async function startHub(
     readonly turns?: CoreTurnOptions;
     // 中枢の時計（今日の日付を決める。省略すると実時間）。
     readonly now?: () => Date;
+    // heartbeat 自体を試す場合だけ短縮する。通常の統合は製品の既定を使う（Issue #108）。
+    readonly pingIntervalMs?: number;
   },
 ): Promise<TestHub> {
   const tlsKeyStore = options.tlsKeyStore ?? createMockTlsKeyStore();
@@ -194,7 +196,9 @@ export async function startHub(
       host: '127.0.0.1',
       port: options.port,
       tlsKeyStore,
-      eventStream: { pingIntervalMs: 200 },
+      ...(options.pingIntervalMs === undefined
+        ? {}
+        : { eventStream: { pingIntervalMs: options.pingIntervalMs } }),
       ...(options.sameMachine === undefined
         ? {}
         : { sameMachine: options.sameMachine }),

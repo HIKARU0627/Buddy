@@ -4,16 +4,15 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createMockKeyStore } from '@buddy/platform';
 import { onCleanup, pinnedRequest, tempDir } from './api-test-support.js';
 import { parseControlRequest } from './control-protocol.js';
 import { startCore } from './core.js';
+import { startCli } from './cli-test-support.js';
 import {
   claimPairing,
   containsAny,
@@ -52,21 +51,12 @@ const lastJson = (stdout: string): Record<string, unknown> =>
     unknown
   >;
 
-// Core を子プロセスで起動し、running までの機械向けの出力を返す。標準エラー（人向けの記録）を集める。
-async function startCli(
-  t: test.TestContext,
-  dataDir: string,
-): Promise<{
-  readonly child: ChildProcess;
-  readonly events: Record<string, unknown>[];
-  readonly stderr: () => string;
-  readonly exited: Promise<number | null>;
-}> {
-  const child = spawn(
-    process.execPath,
-    [
-      CLI,
-      'start',
+test(
+  'buddy-core first-device registers the first device only while none is registered',
+  { timeout: 90_000 },
+  async (t) => {
+    const dataDir = join(await tempDir(t, 'buddy-first-cli-'), 'data');
+    const core = await startCli(t, [
       '--mock-key-protection',
       '--https-host',
       '127.0.0.1',
@@ -74,44 +64,7 @@ async function startCli(
       '0',
       '--data-dir',
       dataDir,
-    ],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  onCleanup(t, () => {
-    if (child.exitCode === null && child.signalCode === null) child.kill();
-  });
-  let stderr = '';
-  child.stderr.setEncoding('utf8').on('data', (text: string) => {
-    stderr += text;
-  });
-  const exited = new Promise<number | null>((resolve) =>
-    child.on('close', resolve),
-  );
-  const events: Record<string, unknown>[] = [];
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('start timeout')), 15_000);
-    createInterface({ input: child.stdout }).on('line', (line) => {
-      const event = JSON.parse(line) as Record<string, unknown>;
-      events.push(event);
-      if (event['event'] === 'running') {
-        clearTimeout(timer);
-        resolve();
-      }
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      reject(new Error(`exited ${code}`));
-    });
-  });
-  return { child, events, stderr: () => stderr, exited };
-}
-
-test(
-  'buddy-core first-device registers the first device only while none is registered',
-  { timeout: 90_000 },
-  async (t) => {
-    const dataDir = join(await tempDir(t, 'buddy-first-cli-'), 'data');
-    const core = await startCli(t, dataDir);
+    ]);
     const listening = core.events.find(
       (event) => event['event'] === 'https_listening',
     );
@@ -265,7 +218,7 @@ test(
     );
 
     assert.equal((await runCli(['stop', '--data-dir', dataDir])).code, 0);
-    assert.equal(await core.exited, 0);
+    assert.equal((await core.exited).code, 0);
     // Core のログ（標準エラー）・機械向けの出力にコード・秘密・トークンを出さない。
     const coreOutput = `${core.stderr()}\n${JSON.stringify(core.events)}`;
     assert.equal(

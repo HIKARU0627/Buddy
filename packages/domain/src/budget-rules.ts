@@ -38,7 +38,7 @@ const toMicros = (text: string): bigint | null => {
 // 秒までを toISOString と往復して比べる（小数秒はミリ秒より細かい桁を Date が捨てる。ADR 0034）。
 // 扱う時刻は 1970-01-01T00:00:00Z 以降（暦年の範囲 1970〜9999 と合わせる。ADR 0035）。
 const toMillis = (text: string): number | null => {
-  if (!UTC_TIME.test(text)) return null;
+  if (typeof text !== 'string' || !UTC_TIME.test(text)) return null;
   const value = Date.parse(text);
   if (Number.isNaN(value) || value < 0) return null;
   return new Date(value).toISOString().slice(0, 19) === text.slice(0, 19)
@@ -327,7 +327,14 @@ function estimate(
       }
       if (category === 'output_tokens' && outputCap !== null)
         quantity = quantity < outputCap ? quantity : outputCap;
-      const billed = quantity > minimum ? quantity : minimum;
+      // 入力の量が 0 なら入力の費用は 0（最低課金量を掛けない。分け方の上限と同じ数え方。ADR 0035）。
+      // 会話の秒などは、使った量が 0 でも 1 回の最低課金量が掛かり得るので、最低課金量を掛ける。
+      const billed =
+        category === 'input_tokens' && quantity === 0n
+          ? 0n
+          : quantity > minimum
+            ? quantity
+            : minimum;
       const rateMicros = toMicros(version.conversion.rate) ?? 0n;
       const safetyMicros = toMicros(version.conversion.safety_factor) ?? 0n;
       const cost: Rational = {
@@ -485,34 +492,50 @@ export function computeReservation(
 // 3. 予算月（budgetMonthOf・advanceBudgetMonth）
 
 const formatters = new Map<string, Intl.DateTimeFormat | null>();
+const clockFormatters = new Map<string, Intl.DateTimeFormat | null>();
 
-function monthFormatter(timeZone: string): Intl.DateTimeFormat | null {
-  if (!TIME_ZONE.test(timeZone)) return null;
-  if (!formatters.has(timeZone)) {
+// タイムゾーンは空でない文字列で、IANA の名前の形のときだけ受ける。欠けた値（undefined）を文字列
+// "undefined" として扱ったり、Intl が OS の既定のタイムゾーンへ置き換えたりしないよう、形を先に確かめる。
+const isTimeZoneName = (value: unknown): value is string =>
+  typeof value === 'string' && value !== '' && TIME_ZONE.test(value);
+
+function cachedFormatter(
+  cache: Map<string, Intl.DateTimeFormat | null>,
+  timeZone: unknown,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat | null {
+  if (!isTimeZoneName(timeZone)) return null;
+  if (!cache.has(timeZone)) {
     let formatter: Intl.DateTimeFormat | null;
     try {
       formatter = new Intl.DateTimeFormat('en-US', {
         timeZone,
         calendar: 'gregory',
         numberingSystem: 'latn',
-        year: 'numeric',
-        month: '2-digit',
+        ...options,
       });
     } catch {
       formatter = null;
     }
-    formatters.set(timeZone, formatter);
+    cache.set(timeZone, formatter);
   }
-  return formatters.get(timeZone) ?? null;
+  return cache.get(timeZone) ?? null;
 }
 
-// UTC の時刻が、IANA タイムゾーンで何年何月か（YYYY-MM）。時刻・タイムゾーンが不正なら null。
-export function budgetMonthOf(time: string, timeZone: string): string | null {
-  const millis = toMillis(time);
-  const formatter = monthFormatter(timeZone);
-  if (millis === null || formatter === null) return null;
-  return monthAtMillis(millis, formatter);
-}
+const monthFormatter = (timeZone: unknown): Intl.DateTimeFormat | null =>
+  cachedFormatter(formatters, timeZone, { year: 'numeric', month: '2-digit' });
+
+// 現地の時計（年月日時分秒）。時差を求めるのに使う。
+const clockFormatter = (timeZone: unknown): Intl.DateTimeFormat | null =>
+  cachedFormatter(clockFormatters, timeZone, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
 
 // 扱う暦年は 1970〜9999（ADR 0035）。範囲の外は null。
 function monthAtMillis(
@@ -532,9 +555,106 @@ function monthAtMillis(
   return `${String(year).padStart(4, '0')}-${month}`;
 }
 
-// 使っている予算月・その月の境目に使うタイムゾーン・その月が実際に始まった時刻（UTC、ミリ秒まで）と、
-// 始まりを決めたタイムゾーン。月ごとに Core が記録する（ADR 0034・0035）。monthStart は、monthStartTimeZone
-// でこの月に初めてなった時刻（前の月のタイムゾーンでの境目。最初の月は、そのタイムゾーンでの月の初め）。
+// 現地の時計の値を、UTC と同じ数え方のミリ秒にしたもの（時差を足した値）。
+function localMillis(millis: number, formatter: Intl.DateTimeFormat): number {
+  const parts = formatter.formatToParts(new Date(millis));
+  const value = (type: string): number =>
+    Number(parts.find((part) => part.type === type)?.value);
+  const subsecond = ((millis % 1000) + 1000) % 1000;
+  return (
+    Date.UTC(
+      value('year'),
+      value('month') - 1,
+      value('day'),
+      value('hour'),
+      value('minute'),
+      value('second'),
+    ) + subsecond
+  );
+}
+
+const monthBefore = (month: string): string => {
+  const [year = 0, value = 1] = month.split('-').map(Number);
+  return value === 1
+    ? `${String(year - 1).padStart(4, '0')}-12`
+    : `${String(year).padStart(4, '0')}-${String(value - 1).padStart(2, '0')}`;
+};
+
+const monthAfter = (month: string): string => {
+  const [year = 0, value = 1] = month.split('-').map(Number);
+  return value === 12
+    ? `${String(year + 1).padStart(4, '0')}-01`
+    : `${String(year).padStart(4, '0')}-${String(value + 1).padStart(2, '0')}`;
+};
+
+// 時差は ±18 時間に収まる（現在の tz データの最大は +14 時間・−12 時間）。
+const OFFSET_LIMIT = 18 * 60 * 60 * 1000;
+
+// timeZone での予算月 month の始まり（UTC のミリ秒）。始まりは「現地の暦月が month になり、それ以後は
+// 前の月に戻らない最後の切り替わりの時刻」（ADR 0035）。夏時間の終わりが月の初めに重なり、暦月が一時的に
+// 前の月へ戻るタイムゾーン（例: America/St_Johns の 2009-11-01）では、戻っている区間は前の月に数える。
+// 求め方: 現地の月の初め（0 時）を W とすると、切り替わりは「現地の時計が W になる時刻」。W の 18 時間後
+// （必ず month に入っている）の時差 o を使った W − o で現地の時計がちょうど W なら、それが最後の切り替わり
+// （その後に時差が変わってまた戻ることはない前提。月の初めの前後 18 時間に 2 回の切り替えがある tz データ
+// はない）。現地の 0 時がない（夏時間の始まりで飛ぶ）ときは、前後 18 時間を二分探索する（その区間は単調）。
+// 範囲（1970 年以降）より前なら null。
+function monthStartMillis(month: string, timeZone: string): number | null {
+  const formatter = clockFormatter(timeZone);
+  if (formatter === null || !YEAR_MONTH.test(month)) return null;
+  const [year = 0, value = 1] = month.split('-').map(Number);
+  const wall = Date.UTC(year, value - 1, 1);
+  const after = wall + OFFSET_LIMIT;
+  const offset = localMillis(after, formatter) - after;
+  const candidate = wall - offset;
+  let start: number;
+  if (
+    localMillis(candidate, formatter) === wall &&
+    localMillis(candidate - 1, formatter) < wall
+  )
+    start = candidate;
+  else {
+    let low = wall - OFFSET_LIMIT;
+    let high = after;
+    while (high - low > 1) {
+      const middle = Math.floor((low + high) / 2);
+      if (localMillis(middle, formatter) >= wall) high = middle;
+      else low = middle;
+    }
+    start = high;
+  }
+  return start < 0 ? null : start;
+}
+
+// 時刻 millis の予算月と、その始まり。現地の暦月が month でも、month の始まり（最後の切り替わり）より前なら
+// 前の月。範囲の外（暦年 1970〜9999 の外、月の始まりが 1970 年より前）なら null。
+function budgetMonthAt(
+  millis: number,
+  timeZone: string,
+): { readonly month: string; readonly start: number } | null {
+  const formatter = monthFormatter(timeZone);
+  if (formatter === null) return null;
+  const shown = monthAtMillis(millis, formatter);
+  if (shown === null) return null;
+  const shownStart = monthStartMillis(shown, timeZone);
+  if (shownStart !== null && shownStart <= millis)
+    return { month: shown, start: shownStart };
+  const previous = monthBefore(shown);
+  const previousStart = monthStartMillis(previous, timeZone);
+  if (previousStart === null || previousStart > millis) return null;
+  return { month: previous, start: previousStart };
+}
+
+// UTC の時刻の予算月（YYYY-MM）。IANA タイムゾーンの暦月で決め、暦月が一時的に戻る区間は前の月
+// （monthStartMillis）。時刻・タイムゾーンが不正、または範囲の外なら null。
+export function budgetMonthOf(time: string, timeZone: string): string | null {
+  const millis = toMillis(time);
+  if (millis === null) return null;
+  return budgetMonthAt(millis, timeZone)?.month ?? null;
+}
+
+// 使っている予算月・その月の境目に使うタイムゾーン・その月の始まり（UTC、ミリ秒まで）と、始まりを決めた
+// タイムゾーン。月ごとに Core が記録する（ADR 0034・0035）。monthStart は、monthStartTimeZone での month の
+// 始まり（monthStartMillis。前の月のタイムゾーンでの境目、最初の月はそのタイムゾーンでの始まり）。
 export interface BudgetCalendarState {
   readonly month: string;
   readonly timeZone: string;
@@ -550,118 +670,53 @@ export type BudgetCalendarResult =
     }
   | Failure;
 
-const MONTH_SEARCH_SPAN = 33 * 24 * 60 * 60 * 1000;
-// 暦月が一時的に戻る区間を探す幅と刻み（夏時間の終わりが月の初めに重なるタイムゾーン）。
-const REGRESSION_SCAN_SPAN = 6 * 60 * 60 * 1000;
-const REGRESSION_SCAN_STEP = 60 * 1000;
-
-const monthBefore = (month: string): string => {
-  const [year = 0, value = 1] = month.split('-').map(Number);
-  return value === 1
-    ? `${String(year - 1).padStart(4, '0')}-12`
-    : `${String(year).padStart(4, '0')}-${String(value - 1).padStart(2, '0')}`;
-};
-
-const isAfter = (
-  formatter: Intl.DateTimeFormat,
-  millis: number,
-  month: string,
-): boolean => (monthAtMillis(millis, formatter) ?? '') > month;
-
-// lo では month 以前、hi では month より後のとき、その間で month 以前から後へ変わる時刻の 1 つ。
-function bisectMonth(
-  formatter: Intl.DateTimeFormat,
-  month: string,
-  lo: number,
-  hi: number,
-): number {
-  let low = lo;
-  let high = hi;
-  while (high - low > 1) {
-    const middle = Math.floor((low + high) / 2);
-    if (isAfter(formatter, middle, month)) high = middle;
-    else low = middle;
-  }
-  return high;
-}
-
-// formatter のタイムゾーンで month より後の月に初めてなった時刻（ミリ秒）。夏時間の終わりで暦月が一時的に
-// 戻るタイムゾーン（例: America/St_Johns の 2009-11-01）では二分探索が後の方の境目を返し得るので、見つけた
-// 境目の前 6 時間を 1 分刻みで調べ、より早く後の月になっている時刻があれば、そこまでで探し直す。1 分より短い
-// 戻りは見つけられない（ADR 0035 の制限）。
-function firstMillisAfter(
-  formatter: Intl.DateTimeFormat,
-  month: string,
-  lo: number,
-  hi: number,
-): number {
-  let high = hi;
-  for (;;) {
-    const found = bisectMonth(formatter, month, lo, high);
-    let earlier: number | null = null;
-    for (
-      let probe = found - REGRESSION_SCAN_STEP;
-      probe > lo && probe >= found - REGRESSION_SCAN_SPAN;
-      probe -= REGRESSION_SCAN_STEP
-    )
-      if (isAfter(formatter, probe, month)) earlier = probe;
-    if (earlier === null) return found;
-    high = earlier;
-  }
-}
-
-// 記録した状態の中身が食い違っていないか。monthStart は、monthStartTimeZone で month の最初のミリ秒
-// （その 1 ミリ秒前は前の月）。今の月のタイムゾーン（timeZone）が始まりを決めたタイムゾーンと違うのは、
-// タイムゾーンを変えた月の正当なずれ。
+// 記録した状態の中身が食い違っていないか。各項目が空でない文字列としてあり、monthStart が
+// monthStartTimeZone での month の始まりと一致すること（形だけ正しい状態・2 回目の切り替わりを始まりにした
+// 状態を拒否する）。今の月のタイムゾーン（timeZone）が始まりを決めたタイムゾーンと違うのは、タイムゾーンを
+// 変えた月の正当なずれ。
 function validCalendarState(state: BudgetCalendarState): number | null {
-  const startMillis = toMillis(state.monthStart);
-  const startFormatter = monthFormatter(state.monthStartTimeZone);
   if (
-    monthFormatter(state.timeZone) === null ||
-    startFormatter === null ||
-    !YEAR_MONTH.test(state.month) ||
-    startMillis === null
+    typeof state !== 'object' ||
+    state === null ||
+    typeof state.month !== 'string' ||
+    typeof state.monthStart !== 'string' ||
+    !isTimeZoneName(state.timeZone) ||
+    !isTimeZoneName(state.monthStartTimeZone) ||
+    monthFormatter(state.timeZone) === null
   )
     return null;
-  if (monthAtMillis(startMillis, startFormatter) !== state.month) return null;
-  const before = monthAtMillis(startMillis - 1, startFormatter);
-  if (before !== null && before >= state.month) return null;
-  return startMillis;
+  const startMillis = toMillis(state.monthStart);
+  if (startMillis === null) return null;
+  const expected = monthStartMillis(state.month, state.monthStartTimeZone);
+  return expected === startMillis ? startMillis : null;
 }
 
-// 現在の時刻で予算月を進める。設定のタイムゾーンを変えても、今の月の境目は今の月のタイムゾーンで決め、
-// 新しいタイムゾーンは翌月から使う（本人の判断 2026-10-23）。止まっている間に境目を 2 つ以上越えていたら、
-// 越えた境目ごとに 1 か月ずつ進め、2 つ目からは新しいタイムゾーンの境目を使う。時計が今の月の始まり
-// （monthStart）より前へ戻ったら clock_regressed を返し、予算月を戻さずに有料の受付を保留する（原本に
-// 決めなし、ADR 0035）。進んだタイムゾーン・遅れたタイムゾーンのどちらへ変えた後も、実際の始まりで比べる。
-// 中身の食い違った状態は invalid_calendar_state。扱う時刻は 1970 年以降で、暦年 1970〜9999 の外は invalid_time。
+// 現在の時刻で予算月を進める。設定のタイムゾーンを変えても、今の月の終わり（次の月の始まり）は今の月の
+// タイムゾーンで決め、新しいタイムゾーンは翌月から使う（本人の判断 2026-10-23）。止まっている間に境目を
+// 2 つ以上越えていたら、越えた境目ごとに 1 か月ずつ進め、2 つ目からは新しいタイムゾーンの境目を使う。
+// 次の月へ進むかは、現在の暦月の表示ではなく、次の月の始まりを越えたかで決めるので、呼ぶ順序によらない。
+// 時計が今の月の始まり（monthStart）より前へ戻ったら clock_regressed を返し、予算月を戻さずに有料の受付を
+// 保留する（原本に決めなし、ADR 0035）。中身の食い違った状態は invalid_calendar_state。扱う時刻は 1970 年
+// 以降で、暦年 1970〜9999 の外や、月の始まりが 1970 年より前になる時刻は invalid_time。
 export function advanceBudgetMonth(
   state: BudgetCalendarState | null,
   now: string,
   configuredTimeZone: string,
 ): BudgetCalendarResult {
-  const configured = monthFormatter(configuredTimeZone);
-  if (configured === null)
+  if (monthFormatter(configuredTimeZone) === null)
     return { ok: false, reasonCodes: ['invalid_time_zone'] };
   const nowMillis = toMillis(now);
   if (nowMillis === null) return { ok: false, reasonCodes: ['invalid_time'] };
   if (state === null) {
-    const month = monthAtMillis(nowMillis, configured);
-    if (month === null) return { ok: false, reasonCodes: ['invalid_time'] };
-    // この月の初め（前の月より後になる最初の時刻）。33 日前は必ず前の月以前なので、そこから今までを探す。
-    const start = firstMillisAfter(
-      configured,
-      monthBefore(month),
-      nowMillis - MONTH_SEARCH_SPAN,
-      nowMillis,
-    );
+    const first = budgetMonthAt(nowMillis, configuredTimeZone);
+    if (first === null) return { ok: false, reasonCodes: ['invalid_time'] };
     return {
       ok: true,
       rolledOver: false,
       state: {
-        month,
+        month: first.month,
         timeZone: configuredTimeZone,
-        monthStart: new Date(start).toISOString(),
+        monthStart: new Date(first.start).toISOString(),
         monthStartTimeZone: configuredTimeZone,
       },
     };
@@ -672,26 +727,19 @@ export function advanceBudgetMonth(
   if (nowMillis < startMillis)
     return { ok: false, reasonCodes: ['clock_regressed'] };
   let current: BudgetCalendarState = state;
-  let currentStart = startMillis;
   for (;;) {
-    const formatter = monthFormatter(current.timeZone) as Intl.DateTimeFormat;
-    const shown = monthAtMillis(nowMillis, formatter);
-    if (shown === null) return { ok: false, reasonCodes: ['invalid_time'] };
-    if (shown <= current.month) break;
-    // 今の月のタイムゾーンで、今の月より後に初めてなる時刻が次の月の始まり。
-    const boundary = firstMillisAfter(
-      formatter,
-      current.month,
-      currentStart,
-      nowMillis,
-    );
+    const next = monthAfter(current.month);
+    // 9999 年 12 月の次の月は扱わない（その月のまま）。
+    if (!YEAR_MONTH.test(next)) break;
+    const nextStart = monthStartMillis(next, current.timeZone);
+    if (nextStart === null) return { ok: false, reasonCodes: ['invalid_time'] };
+    if (nowMillis < nextStart) break;
     current = {
-      month: monthAtMillis(boundary, formatter) as string,
+      month: next,
       timeZone: configuredTimeZone,
-      monthStart: new Date(boundary).toISOString(),
+      monthStart: new Date(nextStart).toISOString(),
       monthStartTimeZone: current.timeZone,
     };
-    currentStart = boundary;
   }
   return current === state
     ? { ok: true, rolledOver: false, state }

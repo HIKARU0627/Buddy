@@ -733,6 +733,35 @@
         "rate": "1",
         "safety_factor": "1"
       }
+    },
+    {
+      "price_version": "p-input-min-4",
+      "price_key": "synthetic.inputminfour",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1",
+          "minimum_quantity": "4",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1"
+      }
     }
   ],
   "liability_cases": [
@@ -1661,6 +1690,60 @@
           }
         ]
       }
+    },
+    {
+      "id": "qa20-input-zero-quantity",
+      "title": "レビューの例。入力 0 なら入力の費用は 0（入力の最低課金量 4 を掛けない）。本当の最大も 0",
+      "request": {
+        "price_key": "synthetic.inputminfour",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "0"
+        },
+        "versions": "extra"
+      },
+      "true_max": "0",
+      "expected": {
+        "ok": true,
+        "maxLiability": "0",
+        "priceVersion": "p-input-min-4",
+        "priceVersions": ["p-input-min-4"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "0",
+            "amount": "0"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-input-one-quantity",
+      "title": "入力 1 は「非命中 1（最低 4 として 4）」か「命中 1（1）」の 2 通りだけ。両方ある分け方はないので +1 しない。M=4",
+      "request": {
+        "price_key": "synthetic.inputminfour",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "1"
+        },
+        "versions": "extra"
+      },
+      "true_max": "4",
+      "expected": {
+        "ok": true,
+        "maxLiability": "4",
+        "priceVersion": "p-input-min-4",
+        "priceVersions": ["p-input-min-4"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "4",
+            "amount": "4"
+          }
+        ]
+      }
     }
   ],
   "reservation_defaults": {
@@ -1968,6 +2051,35 @@
       "id": "qa42-month-year-0001",
       "time": "0001-01-01T00:00:00Z",
       "time_zone": "UTC",
+      "expected": null
+    },
+    {
+      "id": "qa42-month-st-johns-dip",
+      "time": "2009-11-01T02:30:30Z",
+      "time_zone": "America/St_Johns",
+      "expected": "2009-10"
+    },
+    {
+      "id": "qa42-month-st-johns-before-last-switch",
+      "time": "2009-11-01T03:29:59.999Z",
+      "time_zone": "America/St_Johns",
+      "expected": "2009-10"
+    },
+    {
+      "id": "qa42-month-st-johns-last-switch",
+      "time": "2009-11-01T03:30:00Z",
+      "time_zone": "America/St_Johns",
+      "expected": "2009-11"
+    },
+    {
+      "id": "qa42-month-tokyo-1970-start-before-range",
+      "time": "1970-01-01T12:00:00Z",
+      "time_zone": "Asia/Tokyo",
+      "expected": null
+    },
+    {
+      "id": "qa42-month-missing-zone",
+      "time": "2030-10-15T00:00:00Z",
       "expected": null
     }
   ],
@@ -2403,111 +2515,6 @@
       }
     },
     {
-      "id": "qa42-calendar-st-johns-rollover-late",
-      "title": "レビューの例。St_Johns の 2009-11-01 は 02:30Z に 11 月、02:31Z に夏時間が終わって 10 月に戻り、03:30Z に再び 11 月。正午に呼んでも始まりは最初の 02:30Z",
-      "state": {
-        "month": "2009-10",
-        "timeZone": "America/St_Johns",
-        "monthStart": "2009-10-01T02:30:00.000Z",
-        "monthStartTimeZone": "America/St_Johns"
-      },
-      "now": "2009-11-01T12:00:00.000Z",
-      "configured": "America/St_Johns",
-      "expected": {
-        "ok": true,
-        "rolledOver": true,
-        "state": {
-          "month": "2009-11",
-          "timeZone": "America/St_Johns",
-          "monthStart": "2009-11-01T02:30:00.000Z",
-          "monthStartTimeZone": "America/St_Johns"
-        }
-      }
-    },
-    {
-      "id": "qa42-calendar-st-johns-rollover-early",
-      "title": "最初の境目の直後（02:30:30Z）に呼んでも同じ始まり",
-      "state": {
-        "month": "2009-10",
-        "timeZone": "America/St_Johns",
-        "monthStart": "2009-10-01T02:30:00.000Z",
-        "monthStartTimeZone": "America/St_Johns"
-      },
-      "now": "2009-11-01T02:30:30.000Z",
-      "configured": "America/St_Johns",
-      "expected": {
-        "ok": true,
-        "rolledOver": true,
-        "state": {
-          "month": "2009-11",
-          "timeZone": "America/St_Johns",
-          "monthStart": "2009-11-01T02:30:00.000Z",
-          "monthStartTimeZone": "America/St_Johns"
-        }
-      }
-    },
-    {
-      "id": "qa42-calendar-st-johns-first-start",
-      "title": "初めての起動でも、月の始まりは最初に 11 月になった 02:30Z",
-      "state": null,
-      "now": "2009-11-01T12:00:00.000Z",
-      "configured": "America/St_Johns",
-      "expected": {
-        "ok": true,
-        "rolledOver": false,
-        "state": {
-          "month": "2009-11",
-          "timeZone": "America/St_Johns",
-          "monthStart": "2009-11-01T02:30:00.000Z",
-          "monthStartTimeZone": "America/St_Johns"
-        }
-      }
-    },
-    {
-      "id": "qa42-calendar-st-johns-two-boundaries",
-      "title": "9 月から止まったまま 11 月の正午に再開しても、11 月の始まりは 02:30Z",
-      "state": {
-        "month": "2009-09",
-        "timeZone": "America/St_Johns",
-        "monthStart": "2009-09-01T02:30:00.000Z",
-        "monthStartTimeZone": "America/St_Johns"
-      },
-      "now": "2009-11-01T12:00:00.000Z",
-      "configured": "America/St_Johns",
-      "expected": {
-        "ok": true,
-        "rolledOver": true,
-        "state": {
-          "month": "2009-11",
-          "timeZone": "America/St_Johns",
-          "monthStart": "2009-11-01T02:30:00.000Z",
-          "monthStartTimeZone": "America/St_Johns"
-        }
-      }
-    },
-    {
-      "id": "qa42-calendar-st-johns-dip-is-not-regression",
-      "title": "夏時間の終わりで現地が 10 月に戻っている間（03:00Z）は、11 月の始まりより後なので保留しない",
-      "state": {
-        "month": "2009-11",
-        "timeZone": "America/St_Johns",
-        "monthStart": "2009-11-01T02:30:00.000Z",
-        "monthStartTimeZone": "America/St_Johns"
-      },
-      "now": "2009-11-01T03:00:00.000Z",
-      "configured": "America/St_Johns",
-      "expected": {
-        "ok": true,
-        "rolledOver": false,
-        "state": {
-          "month": "2009-11",
-          "timeZone": "America/St_Johns",
-          "monthStart": "2009-11-01T02:30:00.000Z",
-          "monthStartTimeZone": "America/St_Johns"
-        }
-      }
-    },
-    {
       "id": "qa42-calendar-before-1970",
       "title": "レビューの例。扱う時刻は 1970 年以降。0000 年は拒否",
       "state": null,
@@ -2588,6 +2595,310 @@
       "expected": {
         "ok": false,
         "reasonCodes": ["invalid_time"]
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-rollover-late",
+      "title": "St_Johns の 2009-11-01 は 02:30Z に現地が 11 月、02:31Z に夏時間が終わって 10 月に戻り、03:30Z に再び 11 月。11 月の始まりは戻らない最後の切り替わりの 03:30Z（ADR 0035）",
+      "state": {
+        "month": "2009-10",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-10-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T12:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T03:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-first-switch",
+      "title": "最初の切り替わりの直後（02:30:30Z）は、まだ 10 月（戻る区間は前の月に数える）",
+      "state": {
+        "month": "2009-10",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-10-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T02:30:30.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2009-10",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-10-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-dip",
+      "title": "レビューの例。現地が 10 月に戻っている 03:00Z も 10 月。02:30:30Z に呼んだ後でも、直接呼んでも同じ（呼ぶ順序によらない）",
+      "state": {
+        "month": "2009-10",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-10-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T03:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2009-10",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-10-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-before-last-switch",
+      "title": "最後の切り替わりの 1 ミリ秒前も 10 月",
+      "state": {
+        "month": "2009-10",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-10-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T03:29:59.999Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2009-10",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-10-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-at-last-switch",
+      "title": "最後の切り替わりちょうどで 11 月",
+      "state": {
+        "month": "2009-10",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-10-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T03:30:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T03:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-first-start",
+      "title": "初めての起動でも、11 月の始まりは 03:30Z",
+      "state": null,
+      "now": "2009-11-01T12:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T03:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-first-start-in-first-switch",
+      "title": "初めての起動が 02:45Z（現地は 11 月の表示）でも、予算月は 10 月",
+      "state": null,
+      "now": "2009-11-01T02:45:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2009-10",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-10-01T02:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-two-boundaries",
+      "title": "9 月から止まったまま 11 月の正午に再開しても、11 月の始まりは 03:30Z",
+      "state": {
+        "month": "2009-09",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-09-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T12:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2009-11",
+          "timeZone": "America/St_Johns",
+          "monthStart": "2009-11-01T03:30:00.000Z",
+          "monthStartTimeZone": "America/St_Johns"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-regression",
+      "title": "11 月（03:30Z 始まり）に入った後に 03:00Z へ戻ったら保留",
+      "state": {
+        "month": "2009-11",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-11-01T03:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T03:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["clock_regressed"]
+      }
+    },
+    {
+      "id": "qa42-calendar-st-johns-first-switch-state",
+      "title": "レビューの例。最初の切り替わり（02:30Z）を始まりにした状態は、月の始まりと食い違うので進めない",
+      "state": {
+        "month": "2009-11",
+        "timeZone": "America/St_Johns",
+        "monthStart": "2009-11-01T02:30:00.000Z",
+        "monthStartTimeZone": "America/St_Johns"
+      },
+      "now": "2009-11-01T04:00:00.000Z",
+      "configured": "America/St_Johns",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-tokyo-1970-start-before-range",
+      "title": "レビューの例。東京の 1970 年 1 月の始まりは 1969-12-31T15:00Z で範囲より前なので、初めての起動を拒否する",
+      "state": null,
+      "now": "1970-01-01T12:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_time"]
+      }
+    },
+    {
+      "id": "qa42-calendar-tokyo-1970-february",
+      "title": "東京の 1970 年 2 月は扱える。始まりは 1970-01-31T15:00Z",
+      "state": null,
+      "now": "1970-02-15T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "1970-02",
+          "timeZone": "Asia/Tokyo",
+          "monthStart": "1970-01-31T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-tokyo-1970-february-reread",
+      "title": "作った東京の 1970 年 2 月の状態を、同じ時刻で読み直せる",
+      "state": {
+        "month": "1970-02",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "1970-01-31T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
+      },
+      "now": "1970-02-15T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "1970-02",
+          "timeZone": "Asia/Tokyo",
+          "monthStart": "1970-01-31T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-missing-start-zone",
+      "title": "レビューの例。始まりを決めたタイムゾーンが欠けた状態は、OS の既定のタイムゾーンで補わずに拒否する",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "UTC",
+        "monthStart": "2030-10-01T00:00:00.000Z"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-missing-zone",
+      "title": "今の月のタイムゾーンが欠けた状態も拒否する",
+      "state": {
+        "month": "2030-10",
+        "monthStart": "2030-10-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
+      },
+      "now": "2030-10-31T16:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-empty-zone",
+      "title": "空の文字列のタイムゾーンも拒否する",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "",
+        "monthStart": "2030-10-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
+      }
+    },
+    {
+      "id": "qa42-calendar-missing-configured-zone",
+      "title": "設定のタイムゾーンが欠けていれば、OS の既定で補わずに有料処理を始めない",
+      "state": null,
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_time_zone"]
       }
     }
   ],

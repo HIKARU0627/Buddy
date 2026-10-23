@@ -2598,6 +2598,66 @@
       }
     },
     {
+      "id": "qa42-calendar-stored-local-year-10000",
+      "title": "保存した状態（東京の 9999 年 12 月）があっても、現地（東京）で 10000 年になる時刻は拒否する（B07-02 の Codex のレビュー P3）",
+      "state": {
+        "month": "9999-12",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "9999-11-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
+      },
+      "now": "9999-12-31T15:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_time"]
+      }
+    },
+    {
+      "id": "qa42-calendar-stored-local-year-9999-last-millisecond",
+      "title": "保存した状態（東京の 9999 年 12 月）で、現地で 10000 年になる 1 ミリ秒前は 9999 年 12 月のまま",
+      "state": {
+        "month": "9999-12",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "9999-11-30T15:00:00.000Z",
+        "monthStartTimeZone": "Asia/Tokyo"
+      },
+      "now": "9999-12-31T14:59:59.999Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "9999-12",
+          "timeZone": "Asia/Tokyo",
+          "monthStart": "9999-11-30T15:00:00.000Z",
+          "monthStartTimeZone": "Asia/Tokyo"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-stored-utc-month-uses-current-time-zone",
+      "title": "今の月のタイムゾーンが UTC なら、設定を東京へ変えていても、UTC で 9999 年の時刻は 9999 年 12 月のまま（範囲は今の月のタイムゾーンで見る）",
+      "state": {
+        "month": "9999-12",
+        "timeZone": "UTC",
+        "monthStart": "9999-12-01T00:00:00.000Z",
+        "monthStartTimeZone": "UTC"
+      },
+      "now": "9999-12-31T15:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "9999-12",
+          "timeZone": "UTC",
+          "monthStart": "9999-12-01T00:00:00.000Z",
+          "monthStartTimeZone": "UTC"
+        }
+      }
+    },
+    {
       "id": "qa42-calendar-st-johns-rollover-late",
       "title": "St_Johns の 2009-11-01 は 02:30Z に現地が 11 月、02:31Z に夏時間が終わって 10 月に戻り、03:30Z に再び 11 月。11 月の始まりは戻らない最後の切り替わりの 03:30Z（ADR 0035）",
       "state": {

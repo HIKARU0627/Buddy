@@ -1170,7 +1170,13 @@
       "phases": ["B04", "B07"],
       "contract_fixtures": [
         "packages/contracts/fixtures/budget-scenarios.json#qa42-scaled",
+        "packages/contracts/fixtures/budget-scenarios.json#top-up-removed-pool",
+        "packages/contracts/fixtures/budget-scenarios.json#removed-pool-usage-blocks-the-month",
+        "packages/contracts/fixtures/budget-scenarios.json#removed-pool-released-or-other-month",
         "tests/fixtures/storage-cases.json#budget-settlement-is-consistent-and-once",
+        "tests/fixtures/storage-cases.json#0006-reservation-flow-revision-and-release",
+        "tests/fixtures/storage-cases.json#0006-overage-approval-is-single-and-used-once",
+        "tests/fixtures/storage-cases.json#0006-budget-month-records-only-move-forward",
         "packages/contracts/fixtures/schema-cases.json#qa42-usage-summary",
         "packages/contracts/fixtures/schema-cases.json#qa42-overage-approval-pending",
         "packages/contracts/fixtures/schema-cases.json#qa42-overrun-review",
@@ -1193,7 +1199,8 @@
         "packages/contracts/fixtures/budget-rules.json#qa42-calendar-inconsistent-start",
         "packages/contracts/fixtures/budget-rules.json#qa42-calendar-st-johns-rollover-late",
         "packages/contracts/fixtures/budget-rules.json#qa42-calendar-st-johns-dip",
-        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-missing-start-zone"
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-missing-start-zone",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-stored-local-year-10000"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

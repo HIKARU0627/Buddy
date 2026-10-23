@@ -201,6 +201,7 @@ export function semanticErrors(name, value) {
       errors.push('decided_outside_period');
   }
   if (name === 'BudgetUsageSummary') {
+    errors.push(...semanticErrors('TimeZone', value.time_zone));
     const months = value.months.map((item) => item.budget_month);
     if (new Set(months).size !== months.length) errors.push('duplicate_month');
     if (!months.includes(value.current_month))
@@ -210,17 +211,35 @@ export function semanticErrors(name, value) {
     for (const month of value.months) {
       const pools = month.pools.map((pool) => pool.pool_id);
       if (new Set(pools).size !== pools.length) errors.push('duplicate_pool');
-      // 親の枠の数は子孫の枠の分を含む（ADR 0006）。子が親を超えることはない。
+      // 親の枠の数は子孫の枠の分を含む（ADR 0006）。直下の子の合計が、精算済み・未精算の R・未精算の M の
+      // それぞれで親を超えることはない。親子は循環しない。この月に出ていない親の枠は比べない。
       const byId = new Map(month.pools.map((pool) => [pool.pool_id, pool]));
       for (const pool of month.pools) {
-        const parent = byId.get(pool.parent_pool_id);
+        const seen = new Set([pool.pool_id]);
+        let parent = pool.parent_pool_id;
+        while (parent !== null && byId.has(parent)) {
+          if (seen.has(parent)) {
+            errors.push('pool_cycle');
+            break;
+          }
+          seen.add(parent);
+          parent = byId.get(parent).parent_pool_id;
+        }
+      }
+      for (const parent of month.pools) {
+        const children = month.pools.filter(
+          (pool) => pool.parent_pool_id === parent.pool_id,
+        );
         if (
-          parent &&
           ['settled', 'unsettled_reserved', 'unsettled_max_liability'].some(
-            (key) => BigInt(pool[key].amount) > BigInt(parent[key].amount),
+            (key) =>
+              children.reduce(
+                (sum, pool) => sum + BigInt(pool[key].amount),
+                0n,
+              ) > BigInt(parent[key].amount),
           )
         )
-          errors.push('child_usage_exceeds_parent');
+          errors.push('children_exceed_parent');
       }
       for (const pool of month.pools) {
         const amounts = [
@@ -247,6 +266,23 @@ export function semanticErrors(name, value) {
       errors.push(...semanticErrors('BudgetOverageApproval', approval));
       if (approval.status !== 'pending') errors.push('decided_approval_listed');
       if (approval.max_liability.currency !== value.currency)
+        errors.push('currency_mismatch');
+    }
+    // 本人の操作を待つ予約（手での精算を待つ usage 不明と、M 超過の確認待ち）だけを並べる。
+    const ids = value.pending_reservations.map((item) => item.reservation_id);
+    if (new Set(ids).size !== ids.length) errors.push('duplicate_reservation');
+    for (const item of value.pending_reservations) {
+      errors.push(...semanticErrors('BudgetReservation', item));
+      const overrun =
+        item.status === 'settled' &&
+        !item.overrun_reviewed &&
+        item.actual_gross !== null &&
+        BigInt(item.actual_gross.amount) > BigInt(item.max_liability.amount);
+      if (item.status !== 'usage_unknown' && !overrun)
+        errors.push('reservation_not_pending');
+      if (!months.includes(item.budget_month))
+        errors.push('reservation_month_missing');
+      if (item.max_liability.currency !== value.currency)
         errors.push('currency_mismatch');
     }
   }

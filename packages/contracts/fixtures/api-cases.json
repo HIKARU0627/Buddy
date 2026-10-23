@@ -1700,6 +1700,67 @@
             "expires_at": "2030-11-02T00:10:00Z",
             "decided_at": null
           }
+        ],
+        "pending_reservations": [
+          {
+            "reservation_id": "00000000-0000-4000-8000-000000000740",
+            "reservation_revision": "0",
+            "request_id": "00000000-0000-4000-8000-000000000741",
+            "profile_id": "synthetic.text.v1",
+            "price_version": "xts.text.2030a",
+            "budget_month": "2030-10",
+            "pool_id": "llm",
+            "reserved_amount": {
+              "currency": "XTS",
+              "amount": "1"
+            },
+            "max_liability": {
+              "currency": "XTS",
+              "amount": "4"
+            },
+            "status": "usage_unknown",
+            "provider_reconciliation_id": null,
+            "actual_gross": null,
+            "credit_applied": null,
+            "additional_spend": null,
+            "credit_cycle_id": null,
+            "approval_id": null,
+            "overrun_reviewed": false
+          },
+          {
+            "reservation_id": "00000000-0000-4000-8000-000000000742",
+            "reservation_revision": "1",
+            "request_id": "00000000-0000-4000-8000-000000000743",
+            "profile_id": "synthetic.text.v1",
+            "price_version": "xts.text.2030a",
+            "budget_month": "2030-11",
+            "pool_id": "llm.background",
+            "reserved_amount": {
+              "currency": "XTS",
+              "amount": "1"
+            },
+            "max_liability": {
+              "currency": "XTS",
+              "amount": "4"
+            },
+            "status": "settled",
+            "provider_reconciliation_id": "synthetic-usage-6",
+            "actual_gross": {
+              "currency": "XTS",
+              "amount": "6"
+            },
+            "credit_applied": {
+              "currency": "XTS",
+              "amount": "0"
+            },
+            "additional_spend": {
+              "currency": "XTS",
+              "amount": "6"
+            },
+            "credit_cycle_id": null,
+            "approval_id": null,
+            "overrun_reviewed": false
+          }
         ]
       },
       "rejections": [

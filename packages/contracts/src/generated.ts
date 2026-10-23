@@ -376,9 +376,13 @@ export type YearMonth = string;
  */
 export type BudgetPoolId = string;
 /**
- * 通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。
+ * 通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。18 桁まで（SQLite の 64 ビット整数に収まる。ADR 0034）。合計の桁あふれは保存・集計の側で検査する。
  */
 export type Amount = string;
+/**
+ * 付帯クレジットの更新周期の ID。provider と周期の開始日（UTC の日付）を : でつなぐ（例: anthropic:2030-10-01）。予算月とは別。メールアドレス・自由文・キーを入れない（ADR 0034）。
+ */
+export type CreditCycleId = string;
 /**
  * 入力と出力の組み合わせ（設計 10 §6A、D14）。④文字→音声は作らない。
  */
@@ -507,6 +511,10 @@ export type VoiceState =
  */
 export type PriceKey = string;
 /**
+ * 単価の適用期間の境目の時刻。UTC の RFC 3339 で、小数秒はミリ秒（3 桁）まで。期間の重なりと隣接をミリ秒で正確に比べるため（ADR 0034）。
+ */
+export type PriceTime = string;
+/**
  * 課金区分（設計 05 費用の計算 D15・F02）。output_tokens は思考を含む。cached_input_tokens は精算だけに使い、M は非命中の input_tokens の単価で見積もる。search_requests は検索、live_seconds は会話の接続時間。
  */
 export type PriceCategory =
@@ -517,7 +525,7 @@ export type PriceCategory =
   | 'search_requests'
   | 'live_seconds';
 /**
- * 課金量（token・秒・回）を表す負でない整数の文字列。
+ * 課金量（token・秒・回）を表す負でない整数の文字列。18 桁まで（ADR 0034）。
  */
 export type QuantityString = string;
 /**
@@ -1586,7 +1594,7 @@ export interface BudgetReservation {
   actual_gross: Money | null;
   credit_applied: Money | null;
   additional_spend: Money | null;
-  credit_cycle_id: string | null;
+  credit_cycle_id: CreditCycleId | null;
   approval_id: Id | null;
   overrun_reviewed: boolean;
 }
@@ -1600,7 +1608,7 @@ export interface Money {
 export interface CreditObservation {
   provider: 'anthropic';
   organization_ref: string;
-  cycle_id: string;
+  cycle_id: CreditCycleId;
   observed_at: UtcTime;
   expires_at: UtcTime;
   balance: Money | null;
@@ -2483,7 +2491,7 @@ export interface BudgetSettlement {
   actual_gross: Money;
   credit_applied: Money;
   additional_spend: Money;
-  credit_cycle_id: string | null;
+  credit_cycle_id: CreditCycleId | null;
 }
 /**
  * 単価の版（設計 05 費用の計算 D15・F02、ADR 0034）。適用期間は effective_from 以上 effective_to 未満（null は終わりを決めていない）。適用期間の境界を跨ぐ要求は、跨ぐ版のうち高い方の単価で M を出す。価格が確認されていない版（BudgetConfig.verified_price_versions にない版）の profile は受け付けない。単価は実行時の設定ファイルに置き、リポジトリに置かない。
@@ -2492,8 +2500,8 @@ export interface PriceVersion {
   price_version: PriceVersionId;
   price_key: PriceKey;
   currency: string;
-  effective_from: UtcTime;
-  effective_to: UtcTime | null;
+  effective_from: PriceTime;
+  effective_to: PriceTime | null;
   /**
    * @minItems 1
    */
@@ -2535,7 +2543,7 @@ export interface BudgetRuntimeConfig {
   price_versions: PriceVersion[];
 }
 /**
- * 予算の利用状況（GET /v1/budget/usage、ADR 0034）。months は今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月。time_zone は今月の予算月の境目に使っているタイムゾーン。overage_approvals は承認待ちの超過枠の承認。表示はキャンバス UI で作る。
+ * 予算の利用状況（GET /v1/budget/usage、ADR 0034）。months は今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月。time_zone は今月の予算月の境目に使っているタイムゾーン。overage_approvals は承認待ちの超過枠の承認。pending_reservations は本人の操作を待つ予約（usage 不明で手での精算を待つものと、M 超過の確認を待つもの）で、手での精算・M 超過の確認の要求に使う reservation_id・予約の版・個別の R と M・実費・月・枠を持つ。表示はキャンバス UI で作る。
  */
 export interface BudgetUsageSummary {
   currency: string;
@@ -2547,6 +2555,7 @@ export interface BudgetUsageSummary {
    */
   months: [BudgetMonthUsage, ...BudgetMonthUsage[]];
   overage_approvals: BudgetOverageApproval[];
+  pending_reservations: BudgetReservation[];
 }
 /**
  * 予算月ごとの利用状況。
@@ -2621,7 +2630,7 @@ export interface BudgetManualSettlement {
   actual_gross: Money;
   credit_applied: Money;
   additional_spend: Money;
-  credit_cycle_id: string | null;
+  credit_cycle_id: CreditCycleId | null;
 }
 /**
  * メール 1 通の抽出でモデルが返す生の出力（設計 11 §3・§5B）。未読・切り詰め・位置・依頼 ID を持たない。依頼 0 件だけで取消・完了の解析を省かない。

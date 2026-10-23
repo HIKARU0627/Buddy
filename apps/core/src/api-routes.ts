@@ -19,6 +19,10 @@ export interface ApiRoute {
   readonly inputOrigin: boolean;
   // WebSocket へ切り替える経路（101）。
   readonly websocket: boolean;
+  // 処理が未実装の経路（ADR 0034）。認可の検査（端末・自宅・接続範囲・ロック・画面操作）の後に 503 で閉じる。
+  // 版を照合する先（予約の行など）がまだないので expected_revision は照合しない（実装した後の版の不一致 409 と
+  // 区別する）。処理を足すときはこの印を外す（印のある経路に処理を渡すと createApiServer が拒否する）。
+  readonly pending: boolean;
 }
 
 const route = (
@@ -30,6 +34,7 @@ const route = (
     readonly inputOrigin?: boolean;
     readonly query?: Readonly<Record<string, string>>;
     readonly websocket?: boolean;
+    readonly pending?: boolean;
   } = {},
 ): ApiRoute => {
   const pathParams: Record<string, string> = {};
@@ -44,10 +49,12 @@ const route = (
     body: options.body ?? null,
     inputOrigin: options.inputOrigin ?? false,
     websocket: options.websocket ?? false,
+    pending: options.pending ?? false,
   };
 };
 
 const SCREEN = { inputOrigin: true } as const;
+const PENDING = { pending: true } as const;
 
 export const API_ROUTES: readonly ApiRoute[] = [
   route('getBootstrap', 'GET', '/v1/bootstrap'),
@@ -165,25 +172,25 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/connections/{connection_id}/disconnect',
     { body: 'ConnectionDisconnectRequest', ...SCREEN },
   ),
-  // 予算（ADR 0034）。処理は B07-05 で足す。それまでは検査の後に 503。
-  route('getBudgetUsage', 'GET', '/v1/budget/usage'),
+  // 予算（ADR 0034）。処理は B07-05 で足す。それまでは認可の検査の後に 503（pending）。
+  route('getBudgetUsage', 'GET', '/v1/budget/usage', PENDING),
   route(
     'decideBudgetOverage',
     'POST',
     '/v1/budget/overage-approvals/{approval_id}/decision',
-    { body: 'BudgetOverageDecision', ...SCREEN },
+    { body: 'BudgetOverageDecision', ...SCREEN, ...PENDING },
   ),
   route(
     'reviewBudgetOverrun',
     'POST',
     '/v1/budget/reservations/{reservation_id}/overrun-review',
-    { body: 'BudgetOverrunReview', ...SCREEN },
+    { body: 'BudgetOverrunReview', ...SCREEN, ...PENDING },
   ),
   route(
     'settleBudgetManually',
     'POST',
     '/v1/budget/reservations/{reservation_id}/manual-settlement',
-    { body: 'BudgetManualSettlement', ...SCREEN },
+    { body: 'BudgetManualSettlement', ...SCREEN, ...PENDING },
   ),
 ];
 
@@ -238,3 +245,8 @@ export function matchRoute(method: string, pathname: string): RouteMatch {
     return { ok: true, route: best.route, params: best.params };
   return { ok: false, status: pathMatched ? 405 : 404 };
 }
+
+// 処理が未実装の経路（pending）の operationId。
+export const PENDING_ROUTE_IDS: ReadonlySet<string> = new Set(
+  API_ROUTES.filter((route) => route.pending).map((route) => route.operationId),
+);

@@ -498,8 +498,8 @@
     },
     "Amount": {
       "type": "string",
-      "pattern": "^(0|[1-9][0-9]*)$",
-      "description": "通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。"
+      "pattern": "^(0|[1-9][0-9]{0,17})$",
+      "description": "通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。18 桁まで（SQLite の 64 ビット整数に収まる。ADR 0034）。合計の桁あふれは保存・集計の側で検査する。"
     },
     "Money": {
       "type": "object",
@@ -1844,8 +1844,19 @@
     },
     "QuantityString": {
       "type": "string",
-      "pattern": "^(0|[1-9][0-9]*)$",
-      "description": "課金量（token・秒・回）を表す負でない整数の文字列。"
+      "pattern": "^(0|[1-9][0-9]{0,17})$",
+      "description": "課金量（token・秒・回）を表す負でない整数の文字列。18 桁まで（ADR 0034）。"
+    },
+    "PriceTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9](\\.[0-9]{1,3})?Z$",
+      "description": "単価の適用期間の境目の時刻。UTC の RFC 3339 で、小数秒はミリ秒（3 桁）まで。期間の重なりと隣接をミリ秒で正確に比べるため（ADR 0034）。"
+    },
+    "CreditCycleId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*:[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+      "description": "付帯クレジットの更新周期の ID。provider と周期の開始日（UTC の日付）を : でつなぐ（例: anthropic:2030-10-01）。予算月とは別。メールアドレス・自由文・キーを入れない（ADR 0034）。"
     },
     "ExecutorGeneration": {
       "type": "string",
@@ -4781,8 +4792,7 @@
         "credit_cycle_id": {
           "anyOf": [
             {
-              "type": "string",
-              "minLength": 1
+              "$ref": "#/$defs/CreditCycleId"
             },
             {
               "type": "null"
@@ -5011,8 +5021,7 @@
         "credit_cycle_id": {
           "anyOf": [
             {
-              "type": "string",
-              "minLength": 1
+              "$ref": "#/$defs/CreditCycleId"
             },
             {
               "type": "null"
@@ -5055,7 +5064,7 @@
         },
         "per_quantity": {
           "type": "string",
-          "pattern": "^[1-9][0-9]*$",
+          "pattern": "^[1-9][0-9]{0,17}$",
           "description": "unit_price が何単位あたりか（例: 1000000 token）。"
         },
         "minimum_quantity": {
@@ -5124,12 +5133,12 @@
           "pattern": "^[A-Z]{3}$"
         },
         "effective_from": {
-          "$ref": "#/$defs/UtcTime"
+          "$ref": "#/$defs/PriceTime"
         },
         "effective_to": {
           "anyOf": [
             {
-              "$ref": "#/$defs/UtcTime"
+              "$ref": "#/$defs/PriceTime"
             },
             {
               "type": "null"
@@ -5361,6 +5370,12 @@
           "items": {
             "$ref": "#/$defs/BudgetOverageApproval"
           }
+        },
+        "pending_reservations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BudgetReservation"
+          }
         }
       },
       "required": [
@@ -5369,10 +5384,11 @@
         "current_month",
         "generated_at",
         "months",
-        "overage_approvals"
+        "overage_approvals",
+        "pending_reservations"
       ],
       "additionalProperties": false,
-      "description": "予算の利用状況（GET /v1/budget/usage、ADR 0034）。months は今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月。time_zone は今月の予算月の境目に使っているタイムゾーン。overage_approvals は承認待ちの超過枠の承認。表示はキャンバス UI で作る。"
+      "description": "予算の利用状況（GET /v1/budget/usage、ADR 0034）。months は今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月。time_zone は今月の予算月の境目に使っているタイムゾーン。overage_approvals は承認待ちの超過枠の承認。pending_reservations は本人の操作を待つ予約（usage 不明で手での精算を待つものと、M 超過の確認を待つもの）で、手での精算・M 超過の確認の要求に使う reservation_id・予約の版・個別の R と M・実費・月・枠を持つ。表示はキャンバス UI で作る。"
     },
     "BudgetOverageDecision": {
       "type": "object",
@@ -5462,8 +5478,7 @@
         "credit_cycle_id": {
           "anyOf": [
             {
-              "type": "string",
-              "minLength": 1
+              "$ref": "#/$defs/CreditCycleId"
             },
             {
               "type": "null"
@@ -5496,8 +5511,7 @@
           "minLength": 1
         },
         "cycle_id": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/CreditCycleId"
         },
         "observed_at": {
           "$ref": "#/$defs/UtcTime"

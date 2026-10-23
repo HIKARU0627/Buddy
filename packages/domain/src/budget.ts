@@ -223,6 +223,9 @@ export function settleReservation(
       readonly overrun: boolean;
     }
   | Failure {
+  // manual: で始まる照合 ID は手での精算（settleManually）の印で、provider の精算には使わない（ADR 0034・0035）。
+  if (settlement.providerReconciliationId.startsWith('manual:'))
+    return { ok: false, reasonCodes: ['manual_prefix_reserved'] };
   if (settlement.requestId !== reservation.requestId)
     return { ok: false, reasonCodes: ['request_mismatch'] };
   if (reservation.status === 'released')

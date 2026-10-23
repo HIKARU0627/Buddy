@@ -54,7 +54,8 @@
     "month": "2030-10",
     "price": "p1",
     "profile": "synthetic.text.v1",
-    "now": "2030-10-20T00:05:00Z"
+    "now": "2030-10-20T00:05:00Z",
+    "routable_pools": ["llm", "search"]
   },
   "scenarios": [
     {
@@ -621,6 +622,17 @@
           "expected": { "admitted": false, "reasonCodes": ["m_limit:llm"] }
         },
         {
+          "op": "settle",
+          "id": "u2",
+          "actual": "15",
+          "receipt": "manual:inv-2030-09",
+          "expected": {
+            "ok": false,
+            "reasonCodes": ["manual_prefix_reserved"]
+          },
+          "record": { "status": "usage_unknown" }
+        },
+        {
           "op": "manual_settle",
           "id": "u2",
           "receipt": "p-guess",
@@ -795,7 +807,11 @@
             "poolId": null,
             "approvalId": null,
             "routed": false,
-            "reasonCodes": ["m_limit:llm", "not_owner_request"]
+            "reasonCodes": [
+              "m_limit:llm",
+              "not_owner_request",
+              "pool_not_routable"
+            ]
           }
         },
         {
@@ -929,7 +945,7 @@
             "poolId": null,
             "approvalId": null,
             "routed": false,
-            "reasonCodes": ["m_limit:voice", "voice_not_routable"]
+            "reasonCodes": ["m_limit:voice", "pool_not_routable"]
           }
         }
       ]
@@ -939,7 +955,8 @@
       "title": "X53。自発的な解析で会話の保護分を除いた上限（llm.background）を使い切っても、会話（本人の依頼）は個別承認なしで LLM の上限まで続く。会話の分も使い切ったら個別承認の扱いになり、自発・自動実行は承認があっても超過枠を使わない",
       "approvals": [
         { "id": "apx", "request": "req-C3", "m": "2" },
-        { "id": "apy", "request": "req-A3", "m": "1" }
+        { "id": "apy", "request": "req-A3", "m": "1" },
+        { "id": "apz", "request": "req-A4", "m": "1" }
       ],
       "initial": [
         {
@@ -968,7 +985,8 @@
             "reasonCodes": [
               "r_limit:llm.background",
               "m_limit:llm.background",
-              "not_owner_request"
+              "not_owner_request",
+              "pool_not_routable"
             ]
           }
         },
@@ -987,7 +1005,8 @@
             "reasonCodes": [
               "r_limit:llm.background",
               "m_limit:llm.background",
-              "not_owner_request"
+              "not_owner_request",
+              "pool_not_routable"
             ]
           }
         },
@@ -1075,7 +1094,28 @@
             "reasonCodes": [
               "r_limit:llm.background",
               "m_limit:llm.background",
-              "not_owner_request"
+              "not_owner_request",
+              "pool_not_routable"
+            ]
+          }
+        },
+        {
+          "op": "admit_route",
+          "id": "A4",
+          "origin": "owner_request",
+          "pool": "llm.background",
+          "r": "1",
+          "m": "1",
+          "approval": "apz",
+          "expected": {
+            "admitted": false,
+            "poolId": null,
+            "approvalId": null,
+            "routed": false,
+            "reasonCodes": [
+              "r_limit:llm.background",
+              "m_limit:llm.background",
+              "pool_not_routable"
             ]
           }
         }
@@ -1194,7 +1234,7 @@
             "reasonCodes": [
               "r_limit:voice",
               "m_limit:voice",
-              "voice_not_routable"
+              "pool_not_routable"
             ]
           }
         },
@@ -1262,7 +1302,11 @@
             "poolId": null,
             "approvalId": null,
             "routed": false,
-            "reasonCodes": ["m_limit:llm", "not_owner_request"]
+            "reasonCodes": [
+              "m_limit:llm",
+              "not_owner_request",
+              "pool_not_routable"
+            ]
           }
         }
       ]

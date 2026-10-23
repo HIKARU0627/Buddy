@@ -85,6 +85,14 @@ test('the synthetic runtime config is valid and has no personal amounts', () => 
   assert(
     semanticErrors('PriceVersion', unbounded).includes('unbounded_category'),
   );
+  // cached の単価が入力より高い版・安全係数が 1 未満の版も、設定の検査で拒否される。
+  const invalid = (id) =>
+    semanticErrors(
+      'PriceVersion',
+      spec.invalid_price_versions.find((item) => item.price_version === id),
+    );
+  assert(invalid('p-cached-high').includes('cached_price_above_input'));
+  assert(invalid('p-bad-conversion').includes('safety_factor_below_one'));
 });
 
 for (const entry of spec.liability_cases)
@@ -138,7 +146,7 @@ for (const entry of spec.route_cases)
         origin: entry.origin,
         normalPoolId: entry.pool,
         normalReasonCodes: entry.reasons,
-        voicePoolIds: ['voice'],
+        routablePoolIds: entry.routable ?? spec.routable_pools,
         overagePoolId: entry.overage_pool ?? 'overage',
       }),
       entry.expected,
@@ -151,7 +159,14 @@ for (const entry of spec.approval_cases)
       entry.approval === null
         ? null
         : { ...spec.approval_base, ...(entry.approval ?? {}) };
-    if (approval !== null) {
+    // contract_invalid の例は、契約の意味検査でも拒否される記録を domain でも拒否することを確かめる。
+    if (approval !== null && entry.contract_invalid)
+      assert.notDeepEqual(
+        semanticErrors('BudgetOverageApproval', approval),
+        [],
+        entry.id,
+      );
+    if (approval !== null && !entry.contract_invalid) {
       assert(validators.BudgetOverageApproval(approval), entry.id);
       assert.deepEqual(
         semanticErrors('BudgetOverageApproval', approval),

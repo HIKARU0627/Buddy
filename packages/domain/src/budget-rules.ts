@@ -32,10 +32,15 @@ const toMicros = (text: string): bigint | null => {
   return BigInt(whole) * MICRO + BigInt(fraction.padEnd(6, '0'));
 };
 
+// 暦にない日付（2 月 30 日・4 月 31 日）や 24:00 は、Date.parse が別の時刻へずらすので拒否する。
+// 秒までを toISOString と往復して比べる（小数秒はミリ秒より細かい桁を Date が捨てる。ADR 0034）。
 const toMillis = (text: string): number | null => {
   if (!UTC_TIME.test(text)) return null;
   const value = Date.parse(text);
-  return Number.isNaN(value) ? null : value;
+  if (Number.isNaN(value)) return null;
+  return new Date(value).toISOString().slice(0, 19) === text.slice(0, 19)
+    ? value
+    : null;
 };
 
 const unique = (items: readonly string[]): string[] =>
@@ -247,10 +252,32 @@ function estimate(
       const billed = quantity > minimum ? quantity : minimum;
       const rateMicros = toMicros(version.conversion.rate) ?? 0n;
       const safetyMicros = toMicros(version.conversion.safety_factor) ?? 0n;
-      const cost: Rational = {
+      let cost: Rational = {
         n: billed * unitPrice * rateMicros * safetyMicros,
         d: perQuantity * MICRO * MICRO,
       };
+      // 入力はキャッシュなしの単価で見積もる前提（05 固定部分の節）。cached の単価が入力より高い版
+      // （設定の意味検査は cached_price_above_input で拒否する）でも少なく見積もらないよう、入力の量に
+      // cached の単価も当てて高い方を使う（ADR 0035）。
+      const cachedRate =
+        category === 'input_tokens'
+          ? version.rates.find(
+              (item) => item.category === 'cached_input_tokens',
+            )
+          : undefined;
+      if (cachedRate !== undefined) {
+        const cachedPrice = toInteger(cachedRate.unit_price);
+        const cachedPer = toInteger(cachedRate.per_quantity);
+        if (cachedPrice === null || cachedPer === null || cachedPer === 0n) {
+          reasons.push('invalid_price:cached_input_tokens');
+        } else {
+          const cachedCost: Rational = {
+            n: billed * cachedPrice * rateMicros * safetyMicros,
+            d: cachedPer * MICRO * MICRO,
+          };
+          if (greater(cachedCost, cost)) cost = cachedCost;
+        }
+      }
       // 境界を跨ぐ要求は、換算と安全係数を掛けた後の高い方を使う（05 F02）。
       if (highest === null || greater(cost, highest)) highest = cost;
       if (billed > billedQuantity) billedQuantity = billed;
@@ -726,18 +753,20 @@ export interface OverageRouteInput {
   readonly origin: BudgetOrigin;
   readonly normalPoolId: string;
   readonly normalReasonCodes: readonly string[];
-  // 音声の枠（LLM・検索と融通しない。J17）。経路にこの枠を含む要求は超過枠へ回さない。
-  readonly voicePoolIds: readonly string[];
+  // 超過枠へ回せる通常の枠（本人の依頼の枠の ID）の許可リスト。完全一致で照合し、子孫の枠
+  // （自発の llm.background など）は含めない。音声の枠は入れない（LLM・検索と融通しない。J17）。
+  // 空なら何も回さない（閉じた側に倒す）。どの起点をどの枠に計上するかは B07-04 の門で決める。
+  readonly routablePoolIds: readonly string[];
   readonly overagePoolId: string;
 }
 
-// 超過枠へ回せない理由。空なら回せる。本人の依頼で、通常の受付が上限（m_limit）だけで落ち、音声ではないときだけ。
+// 超過枠へ回せない理由。空なら回せる。本人の依頼で、許可リストの枠の通常の受付が上限（m_limit）だけで落ちたときだけ。
 export function overageRouteReasons(input: OverageRouteInput): string[] {
   const reasons: string[] = [];
   if (input.origin !== 'owner_request') reasons.push('not_owner_request');
   const path = poolPath(input.settings, input.normalPoolId) ?? [];
-  if (path.some((id) => input.voicePoolIds.includes(id)))
-    reasons.push('voice_not_routable');
+  if (!input.routablePoolIds.includes(input.normalPoolId))
+    reasons.push('pool_not_routable');
   if (input.normalReasonCodes.length === 0) reasons.push('normal_admitted');
   else if (
     !input.normalReasonCodes.every((code) => /^[rm]_limit:/u.test(code)) ||
@@ -747,7 +776,11 @@ export function overageRouteReasons(input: OverageRouteInput): string[] {
   const overage = input.settings.pools.find(
     (pool) => pool.poolId === input.overagePoolId,
   );
-  if (!overage?.requiresApproval || path.includes(input.overagePoolId))
+  if (
+    !overage?.requiresApproval ||
+    path.includes(input.overagePoolId) ||
+    input.routablePoolIds.includes(input.overagePoolId)
+  )
     reasons.push('overage_pool_invalid');
   return reasons;
 }
@@ -778,6 +811,20 @@ export function matchOverageApproval(
   const expires = toMillis(approval.expires_at);
   if (now === null || expires === null || now >= expires)
     reasons.push('approval_expired');
+  // 承認済みなら、承認を求めた後・期限の前に決めた記録がある（requested_at ≦ decided_at < expires_at）。
+  if (approval.status === 'approved') {
+    const requested = toMillis(approval.requested_at);
+    const decided =
+      approval.decided_at === null ? null : toMillis(approval.decided_at);
+    if (
+      requested === null ||
+      decided === null ||
+      expires === null ||
+      decided < requested ||
+      decided >= expires
+    )
+      reasons.push('approval_decision_invalid');
+  }
   if (approval.request_id !== expected.requestId)
     reasons.push('approval_request_mismatch');
   if (
@@ -794,7 +841,7 @@ export function matchOverageApproval(
 
 export interface OverageRoute {
   readonly origin: BudgetOrigin;
-  readonly voicePoolIds: readonly string[];
+  readonly routablePoolIds: readonly string[];
   readonly overagePoolId: string;
   readonly approval: OverageApprovalRecord | null;
   readonly now: string;
@@ -841,7 +888,7 @@ export function admitWithOverage(
     origin: route.origin,
     normalPoolId: request.poolId,
     normalReasonCodes: normal.reasonCodes,
-    voicePoolIds: route.voicePoolIds,
+    routablePoolIds: route.routablePoolIds,
     overagePoolId: route.overagePoolId,
   });
   if (routeReasons.length > 0) return reject(routeReasons);

@@ -14,6 +14,7 @@ export const AUDIO_ACTION_REASONS = {
     'device_move',
     'provider_failure',
     'sideband_lost',
+    'consent_revoked',
   ],
   suspend_io: [
     'device_io_stop',
@@ -33,6 +34,7 @@ export type AudioReason = (typeof AUDIO_ACTION_REASONS)[AudioAction][number];
 // wake_word_new_session: 会話（session_id）を終え、次の呼びかけは新しい会話。
 // wake_word_on_new_device: 移動先の端末の呼びかけで新しい Live を開く。
 // local_asr_or_wake_word: ③は使える。①は次の呼びかけで新しい接続（同じ接続は復活させない）。
+// local_asr_until_consent: 外部への送信の同意を取り直すまで③。①は開かない（ADR 0038。原本に決めなし）。
 // explicit_screen_resume: 登録済み・ロック解除済みの端末の画面で明示再開し、許可とリースを再検査する。
 export type ResumeCondition =
   | 'playback_queue'
@@ -43,6 +45,7 @@ export type ResumeCondition =
   | 'wake_word_new_session'
   | 'wake_word_on_new_device'
   | 'local_asr_or_wake_word'
+  | 'local_asr_until_consent'
   | 'explicit_screen_resume';
 
 export interface AudioControlRule {
@@ -100,6 +103,7 @@ export const AUDIO_CONTROL_RULES: Readonly<
   device_move: close('wake_word_on_new_device'),
   provider_failure: close('local_asr_or_wake_word'),
   sideband_lost: close('local_asr_or_wake_word'),
+  consent_revoked: close('local_asr_until_consent'),
   device_io_stop: suspend('local'),
   os_lock: suspend('local'),
   guest_mode: suspend('guest'),

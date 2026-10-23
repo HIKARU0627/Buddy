@@ -357,6 +357,30 @@
     },
     {
       "$ref": "#/$defs/DesktopCanvasDisplaySettings"
+    },
+    {
+      "$ref": "#/$defs/VoiceRendererRequest"
+    },
+    {
+      "$ref": "#/$defs/VoiceRendererAck"
+    },
+    {
+      "$ref": "#/$defs/LiveControlTransition"
+    },
+    {
+      "$ref": "#/$defs/LeaseRenewalRequest"
+    },
+    {
+      "$ref": "#/$defs/LeaseRenewalResponse"
+    },
+    {
+      "$ref": "#/$defs/InputKindRule"
+    },
+    {
+      "$ref": "#/$defs/ExternalSendConsent"
+    },
+    {
+      "$ref": "#/$defs/ExternalSendConsentChange"
     }
   ],
   "$defs": {
@@ -399,7 +423,7 @@
     "PolicyVersion": {
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)$",
-      "description": "自動実行などの方針の版（設計 08 §1）。"
+      "description": "自動実行などの方針の版（設計 08 §1）。外部への送信の同意の文面の版にも使う（ADR 0038）。"
     },
     "PermissionRevision": {
       "type": "string",
@@ -2167,7 +2191,8 @@
                 "conversation_ended",
                 "device_move",
                 "provider_failure",
-                "sideband_lost"
+                "sideband_lost",
+                "consent_revoked"
               ]
             },
             "device_id": {
@@ -2413,7 +2438,8 @@
             "guest_mode",
             "global_stop",
             "device_revoked",
-            "core_lease_lost"
+            "core_lease_lost",
+            "consent_revoked"
           ]
         },
         "audio_epoch": {
@@ -2472,6 +2498,1111 @@
       ],
       "additionalProperties": false,
       "description": "Live のサイドバンド制御の状態（設計 10 §2A）。lost では新規委譲・読み上げ・送出前の変更を止める。終了や使用量が確認できなければ予約を保持する。"
+    },
+    "VoiceIpcChannel": {
+      "type": "string",
+      "enum": [
+        "voice.start",
+        "voice.stop_playback",
+        "voice.close_voice_session",
+        "voice.suspend_io",
+        "voice.play",
+        "voice.set_silence_timeout"
+      ],
+      "description": "main から音声レンダラーへの限定 IPC のチャネル（設計 10 §1、ADR 0038）。start・stop_playback・close_voice_session・suspend_io・play・set_silence_timeout の 6 つだけ。これ以外の名前は拒否する。音声レンダラーは中枢・端末トークン・OpenAI の資格情報を持たず、中枢への通信もしない。"
+    },
+    "VoiceClipId": {
+      "type": "string",
+      "enum": [
+        "wake_detected",
+        "listening_started",
+        "still_connecting",
+        "refused",
+        "text_reply_wake",
+        "notification_wake"
+      ],
+      "description": "音声レンダラーが再生してよい効果音の識別子（設計 10 §2、質問 99）。定型句（話し言葉）の識別子は持たない。呼びかけの検知・聞き取り開始・まだ接続中・条件を満たさず開けない・文字で返す呼びかけ・通知の呼びかけ。"
+    },
+    "VoiceRendererRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "voice.start"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "ack_timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "live_session_id": {
+                  "$ref": "#/$defs/Id"
+                },
+                "purpose": {
+                  "type": "string",
+                  "enum": ["conversation", "notification"]
+                },
+                "sdp_answer": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 65536
+                },
+                "io_epoch": {
+                  "$ref": "#/$defs/IoEpoch"
+                },
+                "audio_epoch": {
+                  "$ref": "#/$defs/AudioEpoch"
+                },
+                "output_epoch": {
+                  "$ref": "#/$defs/OutputEpoch"
+                },
+                "session_epoch": {
+                  "$ref": "#/$defs/SessionEpoch"
+                }
+              },
+              "required": [
+                "live_session_id",
+                "purpose",
+                "sdp_answer",
+                "io_epoch",
+                "audio_epoch",
+                "output_epoch",
+                "session_epoch"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "ack_timeout_ms", "payload"],
+          "additionalProperties": false,
+          "description": "中枢の SDP answer を適用して Live を始める。マイクの送信トラックは無効のまま待ち、session.started と中枢のサイドバンド接続済みの両方が揃うまで有効にしない（設計 10 §2）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "voice.stop_playback"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "ack_timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "enum": ["user_stop", "barge_in"]
+                },
+                "scope": {
+                  "type": "null"
+                },
+                "io_epoch": {
+                  "$ref": "#/$defs/IoEpoch"
+                },
+                "audio_epoch": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/AudioEpoch"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "output_epoch": {
+                  "$ref": "#/$defs/OutputEpoch"
+                }
+              },
+              "required": [
+                "reason",
+                "scope",
+                "io_epoch",
+                "audio_epoch",
+                "output_epoch"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "ack_timeout_ms", "payload"],
+          "additionalProperties": false,
+          "description": "再生だけを止める。output_epoch は main が進めた後の世代で、これより古い世代の音声を捨てる。マイク・Live 入力・VAD は維持し、session.close を送らない（設計 10 §1A）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "voice.close_voice_session"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "ack_timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "silence",
+                    "output_mode_text",
+                    "budget_reached",
+                    "private_conversation",
+                    "conversation_ended",
+                    "device_move",
+                    "provider_failure",
+                    "sideband_lost",
+                    "consent_revoked"
+                  ]
+                },
+                "scope": {
+                  "type": "null"
+                },
+                "io_epoch": {
+                  "$ref": "#/$defs/IoEpoch"
+                },
+                "audio_epoch": {
+                  "$ref": "#/$defs/AudioEpoch"
+                },
+                "output_epoch": {
+                  "$ref": "#/$defs/OutputEpoch"
+                }
+              },
+              "required": [
+                "reason",
+                "scope",
+                "io_epoch",
+                "audio_epoch",
+                "output_epoch"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "ack_timeout_ms", "payload"],
+          "additionalProperties": false,
+          "description": "session.close を送り、session.closed を 1 秒まで待ってから WebRTC を閉じる（設計 10 §2）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "voice.suspend_io"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "ack_timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "device_io_stop",
+                    "os_lock",
+                    "guest_mode",
+                    "global_stop",
+                    "device_revoked",
+                    "core_lease_lost"
+                  ]
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": ["local", "guest", "global"]
+                },
+                "io_epoch": {
+                  "$ref": "#/$defs/IoEpoch"
+                },
+                "audio_epoch": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/AudioEpoch"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "output_epoch": {
+                  "$ref": "#/$defs/OutputEpoch"
+                }
+              },
+              "required": [
+                "reason",
+                "scope",
+                "io_epoch",
+                "audio_epoch",
+                "output_epoch"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "ack_timeout_ms", "payload"],
+          "additionalProperties": false,
+          "description": "再生を mute して待機音声を破棄し、Live 送信を無効にして収音元の track を止め、PCM とリングを消去し、WebRTC を閉じる。session.close や ACK を待ってローカル停止を遅らせない（設計 10 §1 第 1 層）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "voice.play"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "ack_timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "clip_id": {
+                  "$ref": "#/$defs/VoiceClipId"
+                },
+                "io_epoch": {
+                  "$ref": "#/$defs/IoEpoch"
+                },
+                "output_epoch": {
+                  "$ref": "#/$defs/OutputEpoch"
+                }
+              },
+              "required": ["clip_id", "io_epoch", "output_epoch"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "ack_timeout_ms", "payload"],
+          "additionalProperties": false,
+          "description": "ローカルの効果音を再生する。古い世代の命令は再生しない（設計 10 §2）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "voice.set_silence_timeout"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "ack_timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "timeout_ms": {
+                  "type": "integer",
+                  "minimum": 1000,
+                  "maximum": 60000
+                },
+                "audio_epoch": {
+                  "$ref": "#/$defs/AudioEpoch"
+                }
+              },
+              "required": ["timeout_ms", "audio_epoch"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "ack_timeout_ms", "payload"],
+          "additionalProperties": false,
+          "description": "無音の猶予を伝える。10 秒・質問の後は 20 秒・「ちょっと待って」で 60 秒（設計 10 §3）。無音の判定そのものは main が持つ。"
+        }
+      ],
+      "description": "main から音声レンダラーへの限定 IPC の要求（設計 10 §1、ADR 0038）。ack_timeout_ms は ACK の待ち時間で、チャネルごとの上限と、ACK が来ないときの動作は domain の表（VOICE_IPC_TIMEOUTS）。理由と範囲の組・世代の新旧は意味検査。"
+    },
+    "VoiceRendererAck": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "channel": {
+          "$ref": "#/$defs/VoiceIpcChannel"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "applied",
+            "ignored_stale_epoch",
+            "rejected_invalid",
+            "failed"
+          ]
+        },
+        "io_epoch": {
+          "$ref": "#/$defs/IoEpoch"
+        },
+        "audio_epoch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioEpoch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_epoch": {
+          "$ref": "#/$defs/OutputEpoch"
+        },
+        "session_epoch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionEpoch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acked_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "request_id",
+        "channel",
+        "outcome",
+        "io_epoch",
+        "audio_epoch",
+        "output_epoch",
+        "session_epoch",
+        "acked_at"
+      ],
+      "additionalProperties": false,
+      "description": "音声レンダラーから main への ACK（設計 10 §1・§1A、X30）。applied は要求の世代をそのまま返す（世代を進めるのは main）。ignored_stale_epoch は音声レンダラーの現在の世代（要求より新しい）を返す。遅れて届いた古い世代の ACK で再開しない。"
+    },
+    "LiveControlTrigger": {
+      "type": "string",
+      "enum": [
+        "sideband_connected",
+        "sideband_connect_failed",
+        "sideband_disconnected",
+        "ping_timeout",
+        "core_restarted",
+        "close_requested",
+        "session_closed_received",
+        "close_unconfirmed",
+        "usage_reconciled"
+      ],
+      "description": "Live の制御接続（サイドバンド）の状態を動かす出来事（設計 10 §2A、ADR 0038）。session_closed_received と usage_reconciled は OpenAI が数えた使用秒数を伴う。"
+    },
+    "LiveControlTransition": {
+      "type": "object",
+      "properties": {
+        "live_session_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "trigger": {
+          "$ref": "#/$defs/LiveControlTrigger"
+        },
+        "usage_seconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "before": {
+          "$ref": "#/$defs/LiveControlState"
+        },
+        "after": {
+          "$ref": "#/$defs/LiveControlState"
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "live_session_id",
+        "trigger",
+        "usage_seconds",
+        "before",
+        "after",
+        "occurred_at"
+      ],
+      "additionalProperties": false,
+      "description": "制御接続の状態の遷移の記録（設計 10 §2A）。lost・closing・closed から ready へは戻らず、lost へ入るとき control_epoch を進める。使用秒数が確認できるまで予約を精算済みにしない。遷移の可否は domain の表（nextLiveControl）。"
+    },
+    "LeaseRenewalRejectReason": {
+      "type": "string",
+      "enum": [
+        "core_restarted",
+        "scope_changed",
+        "stale_io_epoch",
+        "unknown_io_epoch",
+        "device_revoked",
+        "io_suspended",
+        "sideband_lost",
+        "unexpected_previous_nonce",
+        "device_mismatch",
+        "lease_kind_mismatch",
+        "nonce_reused",
+        "nonce_replayed",
+        "mono_clock_regressed",
+        "heartbeat_not_shorter_than_ttl"
+      ],
+      "description": "リースの更新を中枢が拒否する理由（設計 07 §5、10 §2A）。"
+    },
+    "LeaseRenewalRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "lease_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["audio", "display"]
+        },
+        "device_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "core_instance_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "io_epoch": {
+          "$ref": "#/$defs/IoEpoch"
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "previous_nonce": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requested_at_mono_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "heartbeat_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ttl_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "request_id",
+        "lease_id",
+        "kind",
+        "device_id",
+        "core_instance_id",
+        "command_scope_id",
+        "io_epoch",
+        "nonce",
+        "previous_nonce",
+        "requested_at_mono_ms",
+        "heartbeat_ms",
+        "ttl_ms"
+      ],
+      "additionalProperties": false,
+      "description": "リースの更新の入力（設計 07 §5、10 §2A）。リースは中枢の起動 ID・端末・接続範囲・入出力の世代に結び付ける。nonce は更新ごとに新しく、previous_nonce は前に受け付けられた nonce（初回は null）。requested_at_mono_ms は要求を送った時点の端末の単調時計で、期限はここから数える。初回と更新で形は同じ。heartbeat_ms は ttl_ms より短い。"
+    },
+    "LeaseRenewalResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "lease_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "nonce": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "result": {
+              "type": "string",
+              "const": "renewed"
+            },
+            "reasons": {
+              "type": "array",
+              "maxItems": 0
+            },
+            "ttl_ms": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "request_id",
+            "lease_id",
+            "nonce",
+            "result",
+            "reasons",
+            "ttl_ms"
+          ],
+          "additionalProperties": false,
+          "description": "更新した。端末は要求を送った時点の単調時計から ttl_ms を数える。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "lease_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "nonce": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "result": {
+              "type": "string",
+              "const": "rejected"
+            },
+            "reasons": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/LeaseRenewalRejectReason"
+              }
+            },
+            "ttl_ms": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "request_id",
+            "lease_id",
+            "nonce",
+            "result",
+            "reasons",
+            "ttl_ms"
+          ],
+          "additionalProperties": false,
+          "description": "拒否した。リースを延ばさず、端末は期限で止まる。"
+        }
+      ],
+      "description": "リースの更新の応答（設計 07 §5）。端末は nonce が自分の要求と一致するときだけ受け取る。遅れて届いても、受信時刻から期限を足し直さない。"
+    },
+    "InputCondition": {
+      "type": "string",
+      "enum": [
+        "device_authenticated",
+        "home_network",
+        "command_scope_current",
+        "device_unlocked",
+        "io_permitted",
+        "local_asr_on_device",
+        "live_control_ready",
+        "audio_epoch_current",
+        "session_epoch_current",
+        "audio_lease_valid",
+        "voice_output_mode",
+        "not_private_conversation",
+        "external_send_consent",
+        "budget_reserved"
+      ],
+      "description": "入力を受け付けるために満たす条件（設計 07 §2・§5、10 §6・§6A、ADR 0038）。"
+    },
+    "InputKindRule": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "input_kind": {
+              "type": "string",
+              "const": "text"
+            },
+            "route": {
+              "type": "string",
+              "const": "http_turn"
+            },
+            "origin": {
+              "type": "string",
+              "const": "client"
+            },
+            "output_mode": {
+              "type": "string",
+              "const": "text"
+            },
+            "requires": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/InputCondition"
+              },
+              "allOf": [
+                {
+                  "contains": {
+                    "const": "device_authenticated"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "home_network"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "command_scope_current"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "device_unlocked"
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "input_kind",
+            "route",
+            "origin",
+            "output_mode",
+            "requires"
+          ],
+          "additionalProperties": false,
+          "description": "②文字→文字。POST /v1/sessions/{id}/turns と /v1/stream/turns。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "input_kind": {
+              "type": "string",
+              "const": "voice_local"
+            },
+            "route": {
+              "type": "string",
+              "const": "http_turn"
+            },
+            "origin": {
+              "type": "string",
+              "const": "client"
+            },
+            "output_mode": {
+              "type": "string",
+              "const": "text"
+            },
+            "requires": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/InputCondition"
+              },
+              "allOf": [
+                {
+                  "contains": {
+                    "const": "device_authenticated"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "home_network"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "command_scope_current"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "device_unlocked"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "io_permitted"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "local_asr_on_device"
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "input_kind",
+            "route",
+            "origin",
+            "output_mode",
+            "requires"
+          ],
+          "additionalProperties": false,
+          "description": "③端末内で文字にした声。同じ HTTP 経路で、収音の許可と端末内の認識が要る。音声は端末の外へ出さず、同意は要らない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "input_kind": {
+              "type": "string",
+              "const": "voice_live"
+            },
+            "route": {
+              "type": "string",
+              "const": "sideband_transcript"
+            },
+            "origin": {
+              "type": "string",
+              "const": "core"
+            },
+            "output_mode": {
+              "type": "string",
+              "const": "voice"
+            },
+            "requires": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/InputCondition"
+              },
+              "allOf": [
+                {
+                  "contains": {
+                    "const": "live_control_ready"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "audio_epoch_current"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "session_epoch_current"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "audio_lease_valid"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "io_permitted"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "not_private_conversation"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "voice_output_mode"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "external_send_consent"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "budget_reserved"
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "input_kind",
+            "route",
+            "origin",
+            "output_mode",
+            "requires"
+          ],
+          "additionalProperties": false,
+          "description": "①Live の文字起こし。中枢がサイドバンドで受け取る入力で、端末の HTTP 経路では名乗れない。外部への送信の同意・有効な制御接続と世代・リース・予算が要る。"
+        }
+      ],
+      "description": "input_kind の受付の規則（設計 10 §4・§6・§6A、ADR 0038）。どの経路で受け付け、何が必要か。表の値は domain の INPUT_KIND_RULES と一致する。"
+    },
+    "ExternalSendConsent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "consent_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "device_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["voice_live_audio"]
+            },
+            "provider": {
+              "type": "string",
+              "enum": ["openai_live"]
+            },
+            "policy_version": {
+              "$ref": "#/$defs/PolicyVersion"
+            },
+            "confirmation": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": ["os_dialog_main"]
+                },
+                "confirmed_at": {
+                  "$ref": "#/$defs/UtcTime"
+                }
+              },
+              "required": ["method", "confirmed_at"],
+              "additionalProperties": false
+            },
+            "state": {
+              "type": "string",
+              "const": "granted"
+            },
+            "granted_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "revoked_at": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "consent_id",
+            "device_id",
+            "kind",
+            "provider",
+            "policy_version",
+            "confirmation",
+            "state",
+            "granted_at",
+            "revoked_at"
+          ],
+          "additionalProperties": false,
+          "description": "有効な同意。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "consent_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "device_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["voice_live_audio"]
+            },
+            "provider": {
+              "type": "string",
+              "enum": ["openai_live"]
+            },
+            "policy_version": {
+              "$ref": "#/$defs/PolicyVersion"
+            },
+            "confirmation": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": ["os_dialog_main"]
+                },
+                "confirmed_at": {
+                  "$ref": "#/$defs/UtcTime"
+                }
+              },
+              "required": ["method", "confirmed_at"],
+              "additionalProperties": false
+            },
+            "state": {
+              "type": "string",
+              "const": "revoked"
+            },
+            "granted_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "revoked_at": {
+              "$ref": "#/$defs/UtcTime"
+            }
+          },
+          "required": [
+            "consent_id",
+            "device_id",
+            "kind",
+            "provider",
+            "policy_version",
+            "confirmation",
+            "state",
+            "granted_at",
+            "revoked_at"
+          ],
+          "additionalProperties": false,
+          "description": "取り消した同意。取り消し以後は外部へ送らず、開いている Live を閉じる。"
+        }
+      ],
+      "description": "外部への送信の同意の記録（本人の判断 2026-10-23、ADR 0038）。端末ごと・送り先ごとに、初めて使うときに main の OS の確認ダイアログで 1 回だけ取り、中枢が正本として保存する。送り先か同意の文面の版（policy_version）が変わったら取り直す。音声・文字起こし・認証情報を含めない。"
+    },
+    "ExternalSendConsentChange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "command_scope_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["voice_live_audio"]
+            },
+            "provider": {
+              "type": "string",
+              "enum": ["openai_live"]
+            },
+            "policy_version": {
+              "$ref": "#/$defs/PolicyVersion"
+            },
+            "action": {
+              "type": "string",
+              "const": "grant"
+            },
+            "confirmation": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": ["os_dialog_main"]
+                },
+                "confirmed_at": {
+                  "$ref": "#/$defs/UtcTime"
+                }
+              },
+              "required": ["method", "confirmed_at"],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "request_id",
+            "command_scope_id",
+            "kind",
+            "provider",
+            "policy_version",
+            "action",
+            "confirmation"
+          ],
+          "additionalProperties": false,
+          "description": "同意する。main の OS の確認ダイアログの結果が要る（Renderer・LLM は作れない）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "command_scope_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["voice_live_audio"]
+            },
+            "provider": {
+              "type": "string",
+              "enum": ["openai_live"]
+            },
+            "policy_version": {
+              "$ref": "#/$defs/PolicyVersion"
+            },
+            "action": {
+              "type": "string",
+              "const": "revoke"
+            },
+            "confirmation": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": "string",
+                      "enum": ["os_dialog_main"]
+                    },
+                    "confirmed_at": {
+                      "$ref": "#/$defs/UtcTime"
+                    }
+                  },
+                  "required": ["method", "confirmed_at"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "request_id",
+            "command_scope_id",
+            "kind",
+            "provider",
+            "policy_version",
+            "action",
+            "confirmation"
+          ],
+          "additionalProperties": false,
+          "description": "取り消す。確認なしでいつでもできる。"
+        }
+      ],
+      "description": "外部への送信の同意の変更の要求（ADR 0038）。main が中枢へ送る。経路の追加は B05-02 以降。"
     },
     "LockState": {
       "type": "string",

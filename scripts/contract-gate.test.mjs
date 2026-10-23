@@ -25,6 +25,7 @@ const FILES = [
   'packages/contracts/schemas/buddy.schema.json',
   'packages/contracts/fixtures/schema-cases.json',
   'packages/contracts/fixtures/canvas-stream-cases.json',
+  'packages/contracts/fixtures/voice-contract-cases.json',
   'packages/contracts/openapi.yaml',
   'packages/contracts/model-evaluation.json',
   'packages/contracts/src/generated.ts',

@@ -60,6 +60,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [実行担当（一度だけの送出・照合・LocalCommand・再起動からの再開）](docs/adr/0030-b04-runner-dispatch-reconcile-local-command.md)
 - [デスクトップの会話・変更の確認・処理状況の画面（発言・承認・取消・照合の IPC）](docs/adr/0031-b04-desktop-conversation-approval-screen.md)
 - [キャンバスの UI への作り直し（窓の役割・宣言的なキャンバスの記述・流れと区切り）](docs/adr/0032-ui-canvas-stream-and-window-roles.md)
+- [B05 の音声の契約の補い（音声レンダラーの限定 IPC・制御接続・リース・世代の永続・input_kind・外部への送信の同意）](docs/adr/0038-b05-voice-contract-additions.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

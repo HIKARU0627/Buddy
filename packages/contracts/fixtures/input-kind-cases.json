@@ -1,0 +1,354 @@
+{
+  "status": "specification_only",
+  "description": "input_kind の受付の規則の期待値（設計 10 §4・§6・§6A、07 §2、X46・X47・X49、ADR 0038）。手で書いたもので、domain の実装から生成していない。rules は S:InputKindRule の値と一致する表。cases の satisfied は sets の名前、satisfied_list は条件の列挙で、どちらも呼び出し側が満たしていると渡す条件（両方あれば合わせる）。渡さなかった条件は満たされていないものとして扱う。missing は表の順。",
+  "rules": [
+    {
+      "input_kind": "text",
+      "route": "http_turn",
+      "origin": "client",
+      "output_mode": "text",
+      "requires": [
+        "device_authenticated",
+        "home_network",
+        "command_scope_current",
+        "device_unlocked"
+      ]
+    },
+    {
+      "input_kind": "voice_local",
+      "route": "http_turn",
+      "origin": "client",
+      "output_mode": "text",
+      "requires": [
+        "device_authenticated",
+        "home_network",
+        "command_scope_current",
+        "device_unlocked",
+        "io_permitted",
+        "local_asr_on_device"
+      ]
+    },
+    {
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "origin": "core",
+      "output_mode": "voice",
+      "requires": [
+        "live_control_ready",
+        "audio_epoch_current",
+        "session_epoch_current",
+        "audio_lease_valid",
+        "io_permitted",
+        "not_private_conversation",
+        "voice_output_mode",
+        "external_send_consent",
+        "budget_reserved"
+      ]
+    }
+  ],
+  "sets": {
+    "http": [
+      "device_authenticated",
+      "home_network",
+      "command_scope_current",
+      "device_unlocked"
+    ],
+    "voice_local": [
+      "device_authenticated",
+      "home_network",
+      "command_scope_current",
+      "device_unlocked",
+      "io_permitted",
+      "local_asr_on_device"
+    ],
+    "voice_live": [
+      "live_control_ready",
+      "audio_epoch_current",
+      "session_epoch_current",
+      "audio_lease_valid",
+      "io_permitted",
+      "not_private_conversation",
+      "voice_output_mode",
+      "external_send_consent",
+      "budget_reserved"
+    ]
+  },
+  "cases": [
+    {
+      "id": "text-accepted",
+      "refs": ["10 §6"],
+      "input_kind": "text",
+      "route": "http_turn",
+      "satisfied": ["http"],
+      "expected": { "decision": "accept" }
+    },
+    {
+      "id": "text-while-locked-and-away-from-home",
+      "refs": ["07 §2"],
+      "input_kind": "text",
+      "route": "http_turn",
+      "satisfied_list": ["device_authenticated", "command_scope_current"],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["home_network", "device_unlocked"]
+      }
+    },
+    {
+      "id": "text-does-not-need-the-microphone-permission",
+      "refs": ["10 §6", "X49"],
+      "input_kind": "text",
+      "route": "http_turn",
+      "satisfied": ["http"],
+      "expected": { "decision": "accept" }
+    },
+    {
+      "id": "voice-local-accepted-without-consent-or-lease",
+      "refs": ["10 §6A", "X46", "ADR 0038"],
+      "input_kind": "voice_local",
+      "route": "http_turn",
+      "satisfied": ["voice_local"],
+      "expected": { "decision": "accept" }
+    },
+    {
+      "id": "voice-local-while-io-is-stopped",
+      "refs": ["07 §2", "QA43"],
+      "input_kind": "voice_local",
+      "route": "http_turn",
+      "satisfied_list": [
+        "device_authenticated",
+        "home_network",
+        "command_scope_current",
+        "device_unlocked",
+        "local_asr_on_device"
+      ],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["io_permitted"]
+      }
+    },
+    {
+      "id": "voice-local-without-the-device-recognizer",
+      "refs": ["10 §6A", "X46", "X50"],
+      "input_kind": "voice_local",
+      "route": "http_turn",
+      "satisfied_list": [
+        "device_authenticated",
+        "home_network",
+        "command_scope_current",
+        "device_unlocked",
+        "io_permitted"
+      ],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["local_asr_on_device"]
+      }
+    },
+    {
+      "id": "voice-local-over-the-sideband",
+      "refs": ["10 §6A", "ADR 0038"],
+      "input_kind": "voice_local",
+      "route": "sideband_transcript",
+      "satisfied": ["voice_local", "voice_live"],
+      "expected": {
+        "decision": "reject",
+        "reason": "route_not_allowed",
+        "missing": []
+      }
+    },
+    {
+      "id": "voice-live-accepted",
+      "refs": ["10 §6A", "X49", "ADR 0038"],
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "satisfied": ["voice_live"],
+      "expected": { "decision": "accept" }
+    },
+    {
+      "id": "voice-live-claimed-over-the-http-turn",
+      "refs": ["10 §6", "X49", "ADR 0038"],
+      "input_kind": "voice_live",
+      "route": "http_turn",
+      "satisfied": ["http", "voice_live"],
+      "expected": {
+        "decision": "reject",
+        "reason": "route_not_allowed",
+        "missing": []
+      }
+    },
+    {
+      "id": "text-over-the-sideband",
+      "refs": ["10 §6", "X49"],
+      "input_kind": "text",
+      "route": "sideband_transcript",
+      "satisfied": ["http", "voice_live"],
+      "expected": {
+        "decision": "reject",
+        "reason": "route_not_allowed",
+        "missing": []
+      }
+    },
+    {
+      "id": "unknown-input-kind",
+      "refs": ["10 §6A"],
+      "input_kind": "voice_remote",
+      "route": "http_turn",
+      "satisfied": ["http", "voice_local"],
+      "expected": {
+        "decision": "reject",
+        "reason": "route_not_allowed",
+        "missing": []
+      }
+    },
+    {
+      "id": "voice-live-without-external-send-consent",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "satisfied_list": [
+        "live_control_ready",
+        "audio_epoch_current",
+        "session_epoch_current",
+        "audio_lease_valid",
+        "io_permitted",
+        "not_private_conversation",
+        "voice_output_mode",
+        "budget_reserved"
+      ],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["external_send_consent"]
+      }
+    },
+    {
+      "id": "voice-live-in-a-private-conversation",
+      "refs": ["10 §6A", "質問 94", "X17"],
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "satisfied_list": [
+        "live_control_ready",
+        "audio_epoch_current",
+        "session_epoch_current",
+        "audio_lease_valid",
+        "io_permitted",
+        "voice_output_mode",
+        "external_send_consent",
+        "budget_reserved"
+      ],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["not_private_conversation"]
+      }
+    },
+    {
+      "id": "voice-live-after-the-sideband-was-lost",
+      "refs": ["10 §2A", "X25"],
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "satisfied_list": [
+        "audio_epoch_current",
+        "session_epoch_current",
+        "audio_lease_valid",
+        "io_permitted",
+        "not_private_conversation",
+        "voice_output_mode",
+        "external_send_consent",
+        "budget_reserved"
+      ],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["live_control_ready"]
+      }
+    },
+    {
+      "id": "voice-live-from-an-older-audio-epoch",
+      "refs": ["10 §5A", "QA06"],
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "satisfied_list": [
+        "live_control_ready",
+        "session_epoch_current",
+        "audio_lease_valid",
+        "io_permitted",
+        "not_private_conversation",
+        "voice_output_mode",
+        "external_send_consent",
+        "budget_reserved"
+      ],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["audio_epoch_current"]
+      }
+    },
+    {
+      "id": "voice-live-while-the-reply-mode-is-text",
+      "refs": ["10 §6A", "X47"],
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "satisfied_list": [
+        "live_control_ready",
+        "audio_epoch_current",
+        "session_epoch_current",
+        "audio_lease_valid",
+        "io_permitted",
+        "not_private_conversation",
+        "external_send_consent",
+        "budget_reserved"
+      ],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["voice_output_mode"]
+      }
+    },
+    {
+      "id": "voice-live-without-a-budget-reservation",
+      "refs": ["10 §3", "X26"],
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "satisfied_list": [
+        "live_control_ready",
+        "audio_epoch_current",
+        "session_epoch_current",
+        "audio_lease_valid",
+        "io_permitted",
+        "not_private_conversation",
+        "voice_output_mode",
+        "external_send_consent"
+      ],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": ["budget_reserved"]
+      }
+    },
+    {
+      "id": "voice-live-with-nothing-satisfied",
+      "refs": ["ADR 0038"],
+      "input_kind": "voice_live",
+      "route": "sideband_transcript",
+      "satisfied_list": [],
+      "expected": {
+        "decision": "reject",
+        "reason": "condition_not_met",
+        "missing": [
+          "live_control_ready",
+          "audio_epoch_current",
+          "session_epoch_current",
+          "audio_lease_valid",
+          "io_permitted",
+          "not_private_conversation",
+          "voice_output_mode",
+          "external_send_consent",
+          "budget_reserved"
+        ]
+      }
+    }
+  ]
+}

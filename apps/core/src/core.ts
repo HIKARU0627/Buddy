@@ -760,7 +760,7 @@ async function startHttps(
     },
   };
   let routes: ReturnType<typeof createOperationRoutes> | null = null;
-  // 予算の 4 経路（ADR 0038）。M 超過の確認・手での精算の版は予約の行の現在値で照合する。
+  // 予算の 4 経路（ADR 0039）。M 超過の確認・手での精算の版は予約の行の現在値で照合する。
   const budgetRoutes = createBudgetRoutes({
     gate: budget,
     receiptExists: (commandScopeId, requestId) =>

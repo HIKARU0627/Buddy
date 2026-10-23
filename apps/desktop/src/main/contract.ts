@@ -196,7 +196,7 @@ export function desktopSemanticErrors(
       operations.length > 0
     )
       errors.push('operations_without_connection');
-    // 予算の確認の項目（B07-05、ADR 0038）。接続している間だけ。種類ごとに持つ値が決まっている。
+    // 予算の確認の項目（B07-05、ADR 0039）。接続している間だけ。種類ごとに持つ値が決まっている。
     const items = value['budget_items'];
     if (Array.isArray(items)) {
       if (link !== 'connected' && items.length > 0)

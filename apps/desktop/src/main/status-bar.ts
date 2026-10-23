@@ -1,6 +1,6 @@
 // 端末状態から上部の状態欄の値を作る（設計 01 いつも見える状態、07 §2、ADR 0014・0025）。
 // 中枢との接続（connected・unreachable・not_connected）と最終確認時刻は core-link から受け取る（B03-05）。
-// 中枢が正本の値のうち、予算保留は中枢のスナップショットの budget_hold から読む（B07-05、ADR 0038）。表示先・保存モード・
+// 中枢が正本の値のうち、予算保留は中枢のスナップショットの budget_hold から読む（B07-05、ADR 0039）。表示先・保存モード・
 // 安全停止は中枢がまだ配っていないので、接続中でも null（不明）。
 // 音声状態は null（B05 まで音声機能がない）。
 import type { DesktopStatusBar } from '@buddy/contracts';

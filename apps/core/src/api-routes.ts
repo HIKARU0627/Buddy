@@ -172,7 +172,7 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/connections/{connection_id}/disconnect',
     { body: 'ConnectionDisconnectRequest', ...SCREEN },
   ),
-  // 予算（ADR 0034・0038）。処理は api-budget.ts（B07-05）。
+  // 予算（ADR 0034・0039）。処理は api-budget.ts（B07-05）。
   route('getBudgetUsage', 'GET', '/v1/budget/usage'),
   route(
     'decideBudgetOverage',

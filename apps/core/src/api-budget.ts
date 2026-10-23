@@ -1,5 +1,5 @@
 // 予算の 4 経路（利用状況・超過の承認・M 超過の確認・不明な費用の手での精算。設計 05 F02、01 設定・運用・承認画面、
-// ADR 0034・0038、本人の判断 2026-10-23）。
+// ADR 0034・0039、本人の判断 2026-10-23）。
 //
 // - 経路の検査（ROUTE_CHECKS）は api-server.ts が先に行う（未登録・失効した端末は 401、ロック・画面操作・接続範囲・
 //   版の照合）。ここは検査を通った要求の処理だけ。
@@ -150,7 +150,7 @@ export function createBudgetRoutes(options: BudgetRoutesOptions): BudgetRoutes {
     const credit = moneyOf(body['credit_applied']);
     const additional = moneyOf(body['additional_spend']);
     // クレジットの区分の決め方（MA03〜MA06）は B07-07。それまでは初期の規則（クレジット 0・追加の支出＝実費・周期なし）
-    // だけを受け付け、推測の区分を記録しない（ADR 0034・0038）。
+    // だけを受け付け、推測の区分を記録しない（ADR 0034・0039）。
     if (
       !MANUAL_RECONCILIATION_ID.test(
         stringOf(body['manual_reconciliation_id']),

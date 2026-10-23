@@ -1,4 +1,4 @@
-// 予算の確認（超過枠の承認・M 超過の確認・不明な費用の手での精算。B07-05、ADR 0038）を、127.0.0.1 の Core と main の部品
+// 予算の確認（超過枠の承認・M 超過の確認・不明な費用の手での精算。B07-05、ADR 0039）を、127.0.0.1 の Core と main の部品
 // （DesktopCoreLink・BudgetBridge・限定 IPC の受付）で通す統合の試験（two-clients.test.ts と同じ形）。
 // - 中枢は同じプロセスの startCore（HTTPS は 127.0.0.1、鍵は模擬、予算の設定は合成の通貨 XTS・縮めた上限）。有料の provider は
 //   試験の中の模擬（usage を返す・返さない）。端末は中枢の DB に直接登録し、トークンは模擬の safeStorage に保存する。

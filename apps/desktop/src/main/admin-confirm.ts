@@ -200,7 +200,7 @@ export function operationConfirmText(
   };
 }
 
-// 予算の確認（B07-05、ADR 0038）の確認。値は main が中枢の利用状況から読んだもので、手での精算の実費・照合 ID だけは本人が
+// 予算の確認（B07-05、ADR 0039）の確認。値は main が中枢の利用状況から読んだもので、手での精算の実費・照合 ID だけは本人が
 // 入力した値。金額は本人の設定に基づく実行時の値（個人の金額なので、試験・撮影には合成の XTS だけを使う）。
 export function budgetConfirmText(
   request: BudgetConfirmRequest,

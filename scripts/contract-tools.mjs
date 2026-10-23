@@ -741,7 +741,7 @@ export function semanticErrors(name, value) {
       errors.push('hub_screen_without_connection');
     if (value.link !== 'connected' && value.operations.length > 0)
       errors.push('operations_without_connection');
-    // 予算の確認の項目（B07-05、ADR 0038）。接続している間だけ。種類ごとに持つ値が決まっている。
+    // 予算の確認の項目（B07-05、ADR 0039）。接続している間だけ。種類ごとに持つ値が決まっている。
     if (value.link !== 'connected' && value.budget_items.length > 0)
       errors.push('budget_items_without_connection');
     if (

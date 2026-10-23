@@ -1,4 +1,4 @@
-// 予算の確認の一覧（BudgetItems。B07-05、ADR 0038）の試験。サーバー描画（react-dom/server）で、見出し・金額・枠・帯・ボタン・
+// 予算の確認の一覧（BudgetItems。B07-05、ADR 0039）の試験。サーバー描画（react-dom/server）で、見出し・金額・枠・帯・ボタン・
 // 入力欄・結果不明・期限切れ・停止中の出し分けと、説明の文章・理由のコード・API の名前を出さないことを確かめる。期待値は手で書く。
 // 実際の見た目・クリック・OS の確認ダイアログは Electron の画面で確かめる（docs/ui/status-layer.md）。
 import assert from 'node:assert/strict';

@@ -8,7 +8,7 @@ import {
 } from '../packages/domain/dist/index.js';
 import { parseStrictJson, root } from './contract-tools.mjs';
 
-// 金額（契約の Money。通貨単位の百万分の一の整数文字列）の表示と小数の入力の変換（B07-05、ADR 0038）。
+// 金額（契約の Money。通貨単位の百万分の一の整数文字列）の表示と小数の入力の変換（B07-05、ADR 0039）。
 // 期待値は手で書いた値。浮動小数点数を使わないので、18 桁の端でも桁を失わない。
 
 test('an amount is shown with grouped whole digits and at least two decimals, trimming trailing zeros', () => {

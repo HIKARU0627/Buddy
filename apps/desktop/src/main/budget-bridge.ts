@@ -1,4 +1,4 @@
-// デスクトップの main の予算の確認の経路（B07-05、ADR 0038。設計 05 F02、01 設定・運用・承認画面、本人の判断 2026-10-23）。
+// デスクトップの main の予算の確認の経路（B07-05、ADR 0039。設計 05 F02、01 設定・運用・承認画面、本人の判断 2026-10-23）。
 //
 // - 画面へ渡すのは参照（ref）だけ。承認 ID・予算の要求 ID・予約 ID・予約の版は main の中に持ち、画面へも IPC へもログへも
 //   出さない（画面から送られた ref を main が解決する。解決できなければ entry_not_found）。金額・枠・予算月・期限は本人が
@@ -608,7 +608,7 @@ export class BudgetBridge {
     if (typeof confirmed === 'string') return fail(confirmed);
     const after = this.#fresh(record);
     if (after !== null) return fail(after);
-    // クレジットの区分は B07-07 まで初期の規則（クレジット 0・追加の支出＝実費・周期なし。ADR 0034・0038）。
+    // クレジットの区分は B07-07 まで初期の規則（クレジット 0・追加の支出＝実費・周期なし。ADR 0034・0039）。
     return this.#send(
       gen,
       scope,

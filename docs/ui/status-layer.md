@@ -83,7 +83,7 @@
 
 ## 追記（B07-05、2026-10-23）: 予算の確認と「予算の保留」
 
-[ADR 0038](../adr/0038-b07-budget-api-and-desktop-confirmations.md)。確認の一覧の先頭に「予算の確認」（超過枠の承認・M 超過の確認・不明な費用の手での精算）を足した（項目があるときだけ出る）。承認・確認・精算は、ボタンを押すと main が OS の確認ダイアログを 1 回だけ出す（パネルを親にする）。8 項目の「予算の保留」は、中枢のスナップショットの予算保留（`budget_hold.held`）から出す（保留あり＝⚠ の塗り、なし、不明＝点線の枠）。
+[ADR 0039](../adr/0039-b07-budget-api-and-desktop-confirmations.md)。確認の一覧の先頭に「予算の確認」（超過枠の承認・M 超過の確認・不明な費用の手での精算）を足した（項目があるときだけ出る）。承認・確認・精算は、ボタンを押すと main が OS の確認ダイアログを 1 回だけ出す（パネルを親にする）。8 項目の「予算の保留」は、中枢のスナップショットの予算保留（`budget_hold.held`）から出す（保留あり＝⚠ の塗り、なし、不明＝点線の枠）。
 
 - **模擬**: `budget-bridge.test.ts`・`budget-link.test.ts`（実際の Core）・`budget-state.test.ts`・`BudgetItems.test.tsx`・`admin-confirm.test.ts`・`device-controller.test.ts`。
 - **スクリーンショット**: 撮影用の模擬の preload で描いた（ライト・ダーク。コミットしない）。OS の確認ダイアログ・実機は通っていない。

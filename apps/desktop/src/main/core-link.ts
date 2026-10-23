@@ -110,7 +110,7 @@ export const OPERATION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.operation_reconcile',
   'desktop.operation_retry',
   'desktop.operation_check',
-  // 予算の確認（B07-05、ADR 0038）。超過枠の承認・見送り、M 超過の確認、不明な費用の手での精算。
+  // 予算の確認（B07-05、ADR 0039）。超過枠の承認・見送り、M 超過の確認、不明な費用の手での精算。
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',
@@ -342,7 +342,7 @@ export class DesktopCoreLink {
   readonly #operations: OperationBridge;
   // キャンバスの記述と流れへの発言（キャンバスのモードだけ。UI-03）。
   readonly #canvas: CanvasBridge;
-  // 予算の確認（超過枠の承認・M 超過の確認・手での精算）と予算保留（B07-05、ADR 0038）。
+  // 予算の確認（超過枠の承認・M 超過の確認・手での精算）と予算保留（B07-05、ADR 0039）。
   readonly #budget: BudgetBridge;
   // 予算の利用状況を読み直す次の時刻の timer（接続している間だけ。ロック・切断で止める）。
   #budgetPoll: (() => void) | null = null;
@@ -1837,7 +1837,7 @@ export class DesktopCoreLink {
     this.#options.onCanvas?.(notification);
   }
 
-  // 予算の利用状況と予算保留を読み直す（接続・ロック解除・パネルを出したとき・一定の間隔。B07-05、ADR 0038）。
+  // 予算の利用状況と予算保留を読み直す（接続・ロック解除・パネルを出したとき・一定の間隔。B07-05、ADR 0039）。
   // 読めた値だけを反映し、画面に出す値が変わったときだけ知らせる。次の読み取りを予約する。
   async refreshBudget(): Promise<void> {
     this.#cancelBudgetPoll();

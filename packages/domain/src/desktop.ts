@@ -38,7 +38,7 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.status_panel',
   // UI-06: キャンバスの物を動かす・大きさを変える・閉じる・棚へ片付ける・棚から出す（キャンバスの窓からだけ。ADR 0032）。
   'desktop.canvas_user_op',
-  // B07-05: 超過枠の承認・見送り、M 超過の確認、不明な費用の手での精算（状態の層からだけ。ADR 0038）。
+  // B07-05: 超過枠の承認・見送り、M 超過の確認、不明な費用の手での精算（状態の層からだけ。ADR 0039）。
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',

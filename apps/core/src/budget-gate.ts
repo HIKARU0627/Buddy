@@ -185,7 +185,7 @@ export interface CalendarStatus {
 
 export type CalendarConfirmReason = 'clock_regressed' | 'calendar_mismatch';
 
-// 超過枠の承認の期限の長さ（ADR 0038。原本に決めなし。承認の画面を開いて OS の確認で 1 回決めるのに足りる 10 分。
+// 超過枠の承認の期限の長さ（ADR 0039。原本に決めなし。承認の画面を開いて OS の確認で 1 回決めるのに足りる 10 分。
 // 期限を過ぎた承認は使えず、新しく求め直す）。
 export const OVERAGE_APPROVAL_TTL_MS = 10 * 60_000;
 
@@ -778,7 +778,7 @@ export class BudgetGate {
     return { released, settled, usage_unknown: unknown, failed };
   }
 
-  // --- 本人の操作と利用状況（B07-05、ADR 0038） ---
+  // --- 本人の操作と利用状況（B07-05、ADR 0039） ---
 
   // 利用状況（契約の BudgetUsageSummary）。先に予算月を進める（月替わりの受付を待たずに今月を見せる）。設定が使えない
   // ときは返さない。

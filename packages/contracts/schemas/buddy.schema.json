@@ -339,6 +339,15 @@
     },
     {
       "$ref": "#/$defs/StreamTurnResponse"
+    },
+    {
+      "$ref": "#/$defs/CanvasUserOpRequest"
+    },
+    {
+      "$ref": "#/$defs/CanvasUserOpResponse"
+    },
+    {
+      "$ref": "#/$defs/DesktopCanvasDisplaySettings"
     }
   ],
   "$defs": {
@@ -8495,9 +8504,10 @@
         "desktop.operation_retry",
         "desktop.operation_check",
         "desktop.canvas_summon",
-        "desktop.status_panel"
+        "desktop.status_panel",
+        "desktop.canvas_user_op"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -9097,6 +9107,34 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "状態の層の端のつまみから、パネルを画面の端からスライドで出す（open: true）・しまう（open: false）（UI-04、ADR 0032）。窓の大きさと位置は main が決め、画面は窓の幅に合わせて描く。停止へいつでも届くよう、ロック中・不明・停止中でも受け付ける（パネルの中身は、ロック中・不明なら隠す）。状態の層だけが使え、キャンバス・入力バー・従来の窓は使えない（窓の役割の表）。入出力の状態は変えない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.canvas_user_op"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "expected_canvas_revision": {
+                  "$ref": "#/$defs/CanvasRevision"
+                },
+                "op": {
+                  "$ref": "#/$defs/CanvasUserOp"
+                }
+              },
+              "required": ["expected_canvas_revision", "op"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "キャンバスの物を動かす・大きさを変える・閉じる・棚へ片付ける・棚から出す（UI-06、ADR 0032）。キャンバスの窓だけが使え、キャンバスが前に出ていて前面のときだけ受け付ける（ロック解除済み・入出力が止まっていない）。main は中枢へ操作を記録し、中枢は記述に当てて版を進める。expected_canvas_revision は画面が描いている版。承認・停止とは別のチャネル。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -10109,6 +10147,28 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.canvas_user_op"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "canvas_revision": {
+              "$ref": "#/$defs/CanvasRevision"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "canvas_revision"],
+          "additionalProperties": false,
+          "description": "受け付けた。中枢が操作を当てた後のキャンバスの版を返す（記述は desktop.canvas_changed で届く）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -10157,7 +10217,8 @@
                 "home_network_changed",
                 "preview_stale",
                 "input_stopped",
-                "content_unavailable"
+                "content_unavailable",
+                "canvas_conflict"
               ]
             },
             "list_seq": {
@@ -10255,6 +10316,45 @@
           "required": ["channel", "canvas"],
           "additionalProperties": false,
           "description": "キャンバスの記述が変わった・捨てた（ADR 0032）。キャンバスの窓だけに送る。canvas が null のときは描いている物をすべて捨てる（ロック・切断・世代の変化・まだ取れていない）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.canvas_work_area"
+            },
+            "insets": {
+              "type": "object",
+              "properties": {
+                "top": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "right": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "bottom": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "left": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000
+                }
+              },
+              "required": ["top", "right", "bottom", "left"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "insets"],
+          "additionalProperties": false,
+          "description": "キャンバスの窓の大きさに対する作業領域の外の幅（メニューバー・Dock など。ピクセル。UI-06、ADR 0032）。main が窓を置いた画面の作業領域から決め、画面の追加・取り外し・作業領域の変化（Dock の大きさなど）のたびに送る。画面は配置のエンジンの空ける場所（入力バー・状態の層・棚）をこれで計算し直す。キャンバスの窓だけに送る。本文を含めない。"
         }
       ],
       "description": "main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。"
@@ -11027,6 +11127,48 @@
       "additionalProperties": false,
       "description": "1 回の答えのキャンバスの変更（ADR 0032）。操作は 12 個まで。reading_order は適用した後の見える物の読む順で、見える物をちょうど 1 回ずつ含む（意味の検査）。canvas_revision は base_canvas_revision + 1。"
     },
+    "CanvasCell": {
+      "type": "object",
+      "properties": {
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 48
+        },
+        "span": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        }
+      },
+      "required": ["column", "row", "span", "rows"],
+      "additionalProperties": false,
+      "description": "配置のエンジンの格子のマス（UI-06、ADR 0032）。12 列で、列・行は 1 から。column + span − 1 が 12 を超えないこと（意味の検査）。ピクセル・座標は持たない。ユーザーの置き場所と、ユーザーの操作の置く先に使う。"
+    },
+    "CanvasUserPin": {
+      "type": "object",
+      "properties": {
+        "item_id": {
+          "$ref": "#/$defs/CanvasItemId"
+        },
+        "cell": {
+          "$ref": "#/$defs/CanvasCell"
+        }
+      },
+      "required": ["item_id", "cell"],
+      "additionalProperties": false,
+      "description": "ユーザーが動かした・大きさを変えた物の置き場所（UI-06、ADR 0032）。配置のエンジンはこのマスにそのまま置く。AI の束がその物を動かす（move）・閉じる・置き直す（relayout）・棚へ移すと消える（AI が優先）。見える物だけが持ち、1 つの物に 1 つ（意味の検査）。"
+    },
     "CanvasDocument": {
       "type": "object",
       "properties": {
@@ -11046,11 +11188,94 @@
             "$ref": "#/$defs/CanvasItemId"
           },
           "maxItems": 24
+        },
+        "user_pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasUserPin"
+          },
+          "maxItems": 24,
+          "description": "ユーザーの置き場所（UI-06）。省略は空と同じ（UI-05 までの記述との互換）。"
         }
       },
       "required": ["canvas_revision", "items", "reading_order"],
       "additionalProperties": false,
-      "description": "キャンバスの今の記述（ADR 0032）。見える物（placement が canvas）は 24 個まで、棚を含めて 48 個まで。reading_order は見える物をちょうど 1 回ずつ含む（意味の検査）。"
+      "description": "キャンバスの今の記述（ADR 0032）。見える物（placement が canvas）は 24 個まで、棚を含めて 48 個まで。reading_order は見える物をちょうど 1 回ずつ含む（意味の検査）。 user_pins はユーザーの置き場所（UI-06）。"
+    },
+    "CanvasUserOp": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["move", "resize"]
+            },
+            "item_id": {
+              "$ref": "#/$defs/CanvasItemId"
+            },
+            "cell": {
+              "$ref": "#/$defs/CanvasCell"
+            }
+          },
+          "required": ["kind", "item_id", "cell"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["close", "shelve", "unshelve"]
+            },
+            "item_id": {
+              "$ref": "#/$defs/CanvasItemId"
+            }
+          },
+          "required": ["kind", "item_id"],
+          "additionalProperties": false
+        }
+      ],
+      "description": "ユーザーのキャンバスの操作（UI-06、ADR 0032）。move（動かす）・resize（大きさを変える）は置く先のマス（配置のエンジンの格子のマス）、close は閉じる、shelve は下の棚へ片付ける、unshelve は棚から出す。ピクセル・座標・本文を持たない。キャンバスが前に出ている間の本人の操作だけ。"
+    },
+    "CanvasUserOpRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        },
+        "op": {
+          "$ref": "#/$defs/CanvasUserOp"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_canvas_revision",
+        "op"
+      ],
+      "additionalProperties": false,
+      "description": "ユーザーのキャンバスの操作の記録（UI-06、ADR 0032）。expected_canvas_revision は端末が描いている版。版が今と同じか、古くてもその物の置き場所・存在がその版より後に変わっていなければ当てる。それ以外は 409（conflict）で捨てる（自動では送り直さない）。"
+    },
+    "CanvasUserOpResponse": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        }
+      },
+      "required": ["request_id", "canvas_revision"],
+      "additionalProperties": false,
+      "description": "ユーザーの操作を当てた後のキャンバスの版（UI-06、ADR 0032）。記述そのものは getCanvas で取る（購読の canvas の知らせも届く）。"
     },
     "SegmentBoundaryReason": {
       "type": "string",
@@ -11342,11 +11567,59 @@
             "$ref": "#/$defs/CanvasItemId"
           },
           "maxItems": 24
+        },
+        "user_pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasUserPin"
+          },
+          "maxItems": 24,
+          "description": "ユーザーの置き場所（UI-06）。省略は空と同じ（UI-05 までの記述との互換）。"
         }
       },
       "required": ["canvas_revision", "items", "reading_order"],
       "additionalProperties": false,
       "description": "画面へ渡すキャンバスの今の記述（ADR 0032）。main が中枢から取り、形式（CanvasDocument）と意味（domain）の検査を通してから、参照を不透明な参照に置き換えて渡す。ロック・切断・世代の変化では渡した記述を捨てる（canvas を null にして通知する）。"
+    },
+    "DesktopCanvasDisplaySettings": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "integer",
+              "const": 1
+            },
+            "target": {
+              "type": "string",
+              "const": "primary"
+            }
+          },
+          "required": ["schema_version", "target"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "integer",
+              "const": 1
+            },
+            "target": {
+              "type": "string",
+              "const": "display"
+            },
+            "display_id": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": ["schema_version", "target", "display_id"],
+          "additionalProperties": false
+        }
+      ],
+      "description": "キャンバスを置く画面の設定（UI-06、ADR 0032）。端末に保存してよい配置の設定はこれだけで、キャンバスの本文・見出し・参照・置き場所を持たない。primary（既定）は主の画面、display は OS の画面の ID の画面（なければ主の画面）。キャンバス・状態の層・入力バーを同じ画面に置く。すべての画面を 1 枚につなぐ形はない。"
     }
   }
 }

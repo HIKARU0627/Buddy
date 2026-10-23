@@ -48,7 +48,9 @@ const LEGACY_CHANNELS = [
 const SUMMON = 'desktop.canvas_summon';
 // UI-04 で足した、状態の層のパネルを出す・しまうチャネル（状態の層だけ。従来の窓は使わない）。
 const PANEL = 'desktop.status_panel';
-const ALL_CHANNELS = [...LEGACY_CHANNELS, SUMMON, PANEL];
+// UI-06 で足した、キャンバスの物のユーザーの操作のチャネル（キャンバスの窓だけ。従来の窓は使わない）。
+const USER_OP = 'desktop.canvas_user_op';
+const ALL_CHANNELS = [...LEGACY_CHANNELS, SUMMON, PANEL, USER_OP];
 
 const UNLOCKED = {
   lockState: 'unlocked',
@@ -193,8 +195,9 @@ test('the legacy window keeps every existing channel and the same sender decisio
       windowFocused: true,
     });
   }
-  // 従来の窓はキャンバスを前に出さない・状態の層のパネルを使わない（従来の窓の組み立てにはどちらもない）。
-  for (const channel of [SUMMON, PANEL]) {
+  // 従来の窓はキャンバスを前に出さない・状態の層のパネルを使わない・キャンバスの物を操作しない（従来の窓の組み立てには
+  // どちらもない）。
+  for (const channel of [SUMMON, PANEL, USER_OP]) {
     assert.equal(channelAllowedForWindow('legacy', channel), false, channel);
     assert.deepEqual(
       admitDesktopRequest(
@@ -214,11 +217,26 @@ test('the legacy window keeps every existing channel and the same sender decisio
     'desktop.connection_changed',
   ])
     assert.equal(notificationAllowedForWindow('legacy', channel), true);
-  // キャンバスの記述（UI-03）は従来の窓へ送らない。
+  // キャンバスの記述（UI-03）と作業領域の外の幅（UI-06）は従来の窓へ送らない。
   assert.equal(
     notificationAllowedForWindow('legacy', 'desktop.canvas_changed'),
     false,
   );
+  assert.equal(
+    notificationAllowedForWindow('legacy', 'desktop.canvas_work_area'),
+    false,
+  );
+  // 作業領域の外の幅はキャンバスの窓だけ（状態の層・入力バーへは送らない）。
+  assert.equal(
+    notificationAllowedForWindow('canvas', 'desktop.canvas_work_area'),
+    true,
+  );
+  for (const role of ['status', 'input'] as const)
+    assert.equal(
+      notificationAllowedForWindow(role, 'desktop.canvas_work_area'),
+      false,
+      role,
+    );
 });
 
 // UI-03（ADR 0032）: キャンバスの記述の通知はキャンバスの窓だけ。読み込みが終わっていない窓へは送らない。
@@ -262,9 +280,11 @@ test('the canvas description notification goes to the canvas window only, and on
 test('each role admits only its own channels; the rest are untrusted senders', () => {
   const registry = threeWindows();
   const allowed: Record<Exclude<UiWindowRole, 'legacy'>, readonly string[]> = {
-    canvas: ['desktop.get_state'],
+    canvas: ['desktop.get_state', USER_OP],
     input: ['desktop.get_state', 'desktop.turn_submit', SUMMON],
-    status: ALL_CHANNELS.filter((channel) => channel !== 'desktop.turn_submit'),
+    status: ALL_CHANNELS.filter(
+      (channel) => channel !== 'desktop.turn_submit' && channel !== USER_OP,
+    ),
   };
   const ids = { canvas: 11, status: 12, input: 13 } as const;
   for (const role of ['canvas', 'status', 'input'] as const)
@@ -314,6 +334,10 @@ test('each role admits only its own channels; the rest are untrusted senders', (
   assert.equal(senderFor(registry, 11, PANEL).trustedSender, false);
   assert.equal(senderFor(registry, 13, PANEL).trustedSender, false);
   assert.equal(senderFor(registry, 12, PANEL).trustedSender, true);
+  // キャンバスの物のユーザーの操作はキャンバスの窓だけ（状態の層・入力バーは物を動かせない。UI-06）。
+  assert.equal(senderFor(registry, 11, USER_OP).trustedSender, true);
+  assert.equal(senderFor(registry, 12, USER_OP).trustedSender, false);
+  assert.equal(senderFor(registry, 13, USER_OP).trustedSender, false);
   // キャンバスは自分を前に出せない。状態の層と入力バーは呼べる。
   assert.equal(senderFor(registry, 11, SUMMON).trustedSender, false);
   assert.equal(senderFor(registry, 12, SUMMON).trustedSender, true);

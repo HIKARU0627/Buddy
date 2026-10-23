@@ -16,6 +16,7 @@ import {
 } from '../../state/status-panel-state.js';
 import { useNow } from '../../state/use-desktop-state.js';
 import {
+  useCanvasViewport,
   useRoleWindowState,
   useWindowFocused,
   useWindowWidth,
@@ -39,11 +40,21 @@ import { StatusPanel } from './StatusPanel.js';
 import { StatusTab } from './StatusTab.js';
 
 function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
-  const { state } = useRoleWindowState(api, 'canvas');
+  const { state, canvasUserOp } = useRoleWindowState(api, 'canvas');
   const focused = useWindowFocused();
+  const viewport = useCanvasViewport();
+  const shown = canvasContentShown(state.status);
+  // ロック中・停止中は CanvasGround が中身を描かない（配置・選択・ドラッグも捨てる）。操作は前に出ている間だけ。
+  // 作業領域の外の幅は main が送る値（desktop.canvas_work_area）を使い、受け取る前は window.screen から求める。
   return (
-    <CanvasGround front={focused} shown={canvasContentShown(state.status)}>
-      <CanvasBoard view={state.canvas} />
+    <CanvasGround front={focused} shown={shown}>
+      <CanvasBoard
+        view={state.canvas}
+        front={focused && shown}
+        viewport={viewport.size}
+        insets={state.canvasInsets ?? viewport.insets}
+        onUserOp={canvasUserOp}
+      />
     </CanvasGround>
   );
 }

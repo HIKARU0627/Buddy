@@ -7,12 +7,16 @@
 //   反すれば捨て、前に渡した版が残る（画面の記述は変えない）。
 // - 画面へ渡す記述: 表示対象の参照（予定・メールの ID）は、main が作った不透明な参照に置き換える。中枢の識別子は
 //   main の中にだけ持ち、画面・ログに出さない。記述はキャンバスの窓だけに通知する（役割の表）。
+// - ユーザーの操作（UI-06）: 画面が描いている版を添えて POST /v1/canvas/user-ops へ送る。物の名前（キャンバスの中だけの
+//   名前）とマスだけで、中枢の識別子・本文は送らない。古い版で物が変わっていれば canvas_conflict にして記述を取り直す。
 // - 世代（ロック・停止・切断・世代の変化）: reset で記述と参照を捨て、画面へ「空」を通知する。非同期の取得・発言は各 await の
 //   後に世代・取得の順・ロック状態を照合する（ADR 0031 と同じ。またいだ応答は何も変えない）。取得は後に始めたものだけが
 //   有効で、古い応答で新しい記述を戻さない。版は戻さない（同じ世代の中で小さい版を受けない）。
 // Electron に依存しない（node:test で試験する）。
 import type {
   CanvasDocument,
+  CanvasUserOp,
+  CanvasUserOpResponse,
   DesktopCanvasView,
   DesktopTurnResult,
   StreamTurnResponse,
@@ -193,6 +197,15 @@ export class CanvasBridge {
     const view: DesktopCanvasView = {
       canvas_revision: document.canvas_revision,
       reading_order: [...document.reading_order],
+      // ユーザーの置き場所（UI-06）。物の名前とマスだけ。
+      ...(document.user_pins === undefined
+        ? {}
+        : {
+            user_pins: document.user_pins.map((pin) => ({
+              item_id: pin.item_id,
+              cell: { ...pin.cell },
+            })),
+          }),
       items: document.items.map((item) => ({
         ...item,
         data: {
@@ -213,6 +226,48 @@ export class CanvasBridge {
     this.#refs = refs;
     this.#view = view;
     this.#host.publish(view);
+  }
+
+  // ユーザーの操作（キャンバスの窓から。UI-06）。画面が描いている版（expected）を添えて中枢へ記録する。当てた後の版を返す。
+  // 画面へ渡していない版（今の版より新しい・記述がない）は送らない。
+  async userOp(
+    expected: string,
+    op: CanvasUserOp,
+  ): Promise<BridgeOutcome<string>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    if (!this.#host.unlocked()) return fail('device_locked');
+    if (!this.#host.io().permitted) return fail('input_stopped');
+    if (this.#view === null || newer(expected, this.#view.canvas_revision))
+      return fail('canvas_conflict');
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/canvas/user-ops',
+      body: { expected_canvas_revision: expected, op },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    // 送った後に世代が変わった・結果が分からない: 結果不明（自動では送り直さない）。
+    if (gen !== this.#gen || outcome.kind === 'unknown')
+      return fail('outcome_unknown');
+    if (outcome.status === 409) {
+      // 古い版への操作で物が変わっていた（捨てた）。今の記述を取り直す。
+      void this.refresh();
+      return fail('canvas_conflict');
+    }
+    if (
+      outcome.status !== 200 ||
+      !this.#host.contract.valid('CanvasUserOpResponse', outcome.body)
+    )
+      return fail('core_rejected');
+    const applied = outcome.body as CanvasUserOpResponse;
+    // 版の知らせも届くが、先に取る（画面の送信中の位置を早く解く）。
+    void this.refresh();
+    return { ok: true, value: applied.canvas_revision };
   }
 
   // 発言（入力バーから）。流れへ送り、文字の結果を返す。キャンバスの記述は版の知らせと取得で渡す

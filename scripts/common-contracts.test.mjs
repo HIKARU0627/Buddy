@@ -72,6 +72,8 @@ const OPAQUE_VERSION_FIELDS = new Set([
   'sdk_version',
   'runtime_version',
   'suite_version',
+  // 端末に保存するキャンバスを置く画面の設定の形式の番号（定数 1。UI-06、ADR 0032）。順序を比べる版ではない。
+  'schema_version',
 ]);
 // 抽出した依頼の版を使う定義。RequestEntity 等を追加した時点で登録する（U04）。
 const REQUEST_ENTITY_DEFS = new Set([

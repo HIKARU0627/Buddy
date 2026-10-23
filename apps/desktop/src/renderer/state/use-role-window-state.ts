@@ -1,7 +1,9 @@
 // 3 つの窓（UI-02 の試作）の画面と限定 API をつなぐフック。窓の役割の表にあるチャネルだけを送る（ADR 0032）。
 // 画面の部品はこのフックが返す値と操作だけを使い、限定 API を直接呼ばない。
 import { useCallback, useEffect, useState } from 'react';
-import type { DesktopIpcRequest } from '@buddy/contracts';
+import type { CanvasUserOp, DesktopIpcRequest } from '@buddy/contracts';
+import type { CanvasInsets } from '@buddy/domain';
+import { canvasInsetsFrom } from './canvas-layout-state.js';
 import type { BuddyDesktopApi } from '../desktop-api.js';
 import { request } from '../desktop-api.js';
 import {
@@ -23,6 +25,12 @@ export interface RoleWindowHandle {
   // この端末の入出力を止める・再開する（状態の層だけ。止めるは確認を挟まずいつでも。再開の条件は main が検査する）。
   readonly stop: () => void;
   readonly resume: (expectedIoEpoch: string) => void;
+  // キャンバスの物のユーザーの操作（キャンバスの窓だけ。UI-06）。受け付けたら中枢が当てた後の版、拒否・失敗は null
+  // （記述は main が取り直す）。
+  readonly canvasUserOp: (
+    op: CanvasUserOp,
+    expectedRevision: string,
+  ) => Promise<string | null>;
 }
 
 export function useRoleWindowState(
@@ -82,7 +90,46 @@ export function useRoleWindowState(
       ),
     [send],
   );
-  return { state, summonCanvas, setPanel, stop, resume };
+  const canvasUserOp = useCallback(
+    (op: CanvasUserOp, expectedRevision: string) =>
+      api
+        .invoke(
+          request('desktop.canvas_user_op', {
+            expected_canvas_revision: expectedRevision,
+            op,
+          }),
+        )
+        .then((response) =>
+          response.outcome === 'ok' &&
+          response.channel === 'desktop.canvas_user_op'
+            ? response.canvas_revision
+            : null,
+        )
+        .catch(() => null),
+    [api],
+  );
+  return { state, summonCanvas, setPanel, stop, resume, canvasUserOp };
+}
+
+export interface CanvasViewport {
+  readonly size: { readonly width: number; readonly height: number };
+  readonly insets: CanvasInsets;
+}
+
+const viewportNow = (): CanvasViewport => ({
+  size: { width: window.innerWidth, height: window.innerHeight },
+  insets: canvasInsetsFrom(window.screen, window),
+});
+
+// キャンバスの窓の大きさと、作業領域の外の幅（配置のエンジンの入力。UI-06）。窓の大きさが変わったら読み直す。
+export function useCanvasViewport(): CanvasViewport {
+  const [viewport, setViewport] = useState(viewportNow);
+  useEffect(() => {
+    const onResize = () => setViewport(viewportNow());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return viewport;
 }
 
 // 窓の幅（状態の層は、main が変えた窓の幅でパネルを描くか決める。UI-04）。

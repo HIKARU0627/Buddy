@@ -71,6 +71,11 @@ export const API_ROUTES: readonly ApiRoute[] = [
   }),
   // キャンバスの今の記述の読み取り（ADR 0032）。イベントの canvas の知らせ（版だけ）を受けた端末が取る。
   route('getCanvas', 'GET', '/v1/canvas'),
+  // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。
+  route('postCanvasUserOp', 'POST', '/v1/canvas/user-ops', {
+    body: 'CanvasUserOpRequest',
+    ...SCREEN,
+  }),
   route('handoffSession', 'POST', '/v1/sessions/{session_id}/handoff', {
     body: 'HandoffRequest',
     ...SCREEN,

@@ -8,19 +8,31 @@
 //   呼ぶ。会話は Core が 1 つだけ持つ（今の区切り。流れの最初の発言で作る。自動の区切りの規則は UI-05）。応答の
 //   文字の結果（result_view）から、模擬の配置者（コードの規則。placeCanvasForTurn）が変更の束を作る。
 //   LLM・端末は配置を決めない。承認・停止・取消はキャンバスに置かない。
-// - 端末の expected_canvas_revision は、今の UI-03 では束の元の版に使わない（Core の今の版から作る）。
-//   ユーザーが動かした・閉じたことを前の状態として返す仕組みは UI-06。
+// - 端末の expected_canvas_revision は、束の元の版に使わない（Core の今の版から作る。AI が優先）。発言は版が古くても
+//   受け付け、添えた版は配置者の入力（本人が見ていた版）として渡す（UI-06）。
+// - ユーザーの操作（UI-06、ADR 0032）: 動かす・大きさを変える・閉じる・棚へ片付ける・棚から出すを postCanvasUserOp で
+//   記録し、記述に当てる（applyCanvasUserOp）。古い版への操作は、その物の置き場所・存在が後から変わっていなければ当て、
+//   変わっていれば 409 で捨てる。記録（RAM に 64 件まで）は次の配置者の入力にする。保存は UI-05。
 
 import { randomUUID } from 'node:crypto';
 import type {
+  CanvasCell,
   CanvasDocument,
   CanvasItem,
   CanvasOpBatch,
+  CanvasUserOp,
+  CanvasUserOpRequest,
+  CanvasUserOpResponse,
   StreamSegment,
   StreamTurnResponse,
   TurnResponse,
 } from '@buddy/contracts';
-import { applyCanvasBatch, streamSegmentErrors } from '@buddy/domain';
+import {
+  applyCanvasBatch,
+  applyCanvasUserOp,
+  canvasBatchPlacementTargets,
+  streamSegmentErrors,
+} from '@buddy/domain';
 import type { ApiContract } from './api-contract.js';
 import { createApiContract } from './api-contract.js';
 import { API_ROUTES } from './api-routes.js';
@@ -39,11 +51,33 @@ export type CanvasApplyOutcome =
   | { readonly ok: true; readonly revision: string }
   | { readonly ok: false; readonly reason: 'schema' | 'semantic' };
 
+export type CanvasUserApplyOutcome =
+  | { readonly ok: true; readonly revision: string }
+  | {
+      readonly ok: false;
+      readonly reason: 'stale' | 'not_applicable' | 'schema';
+    };
+
+// ユーザーの操作の記録（UI-06）。次の配置者の入力にする。本文・見出しを持たない（物の名前とマスだけ）。
+export interface CanvasUserRecordEntry {
+  readonly kind: CanvasUserOp['kind'];
+  readonly item_id: string;
+  readonly cell: CanvasCell | null;
+  // 当てた後の版。
+  readonly canvas_revision: string;
+}
+
+// 記録の上限（Core の RAM。保存は UI-05）。
+export const CANVAS_USER_RECORD_LIMIT = 64;
+
 // キャンバスの正本（Core の RAM）。1 人に 1 本の流れの、今の記述。
 export class CanvasHub {
   readonly #contract: ApiContract;
   readonly #listeners = new Set<(revision: string) => void>();
   #document: CanvasDocument = EMPTY_CANVAS;
+  // 物ごとの、置き場所・存在が最後に変わった版（UI-06。古い版へのユーザーの操作を当ててよいかに使う）。
+  #placedAt = new Map<string, string>();
+  #record: CanvasUserRecordEntry[] = [];
 
   constructor(contract: ApiContract = createApiContract()) {
     this.#contract = contract;
@@ -51,6 +85,16 @@ export class CanvasHub {
 
   get document(): CanvasDocument {
     return this.#document;
+  }
+
+  // ユーザーの操作の記録（古い順。最大 CANVAS_USER_RECORD_LIMIT 件）。
+  get record(): readonly CanvasUserRecordEntry[] {
+    return this.#record;
+  }
+
+  // 物の置き場所・存在が最後に変わった版（試験用）。
+  placedAt(itemId: string): string | null {
+    return this.#placedAt.get(itemId) ?? null;
   }
 
   // 変更の束を当てる。Schema・意味の検査・当てた後の記述の Schema のどれかに反すれば何も当てない（前の版が残る）。
@@ -62,6 +106,46 @@ export class CanvasHub {
     const next = result.canvas as CanvasDocument;
     if (!this.#contract.valid('CanvasDocument', next))
       return { ok: false, reason: 'schema' };
+    // 置き場所・存在が変わった物の版を進める（relayout はすべて。中身だけの update は進めない）。
+    const targets = canvasBatchPlacementTargets(batch);
+    for (const id of targets ?? next.items.map((item) => item.item_id))
+      this.#placedAt.set(id, next.canvas_revision);
+    this.#commit(next);
+    return { ok: true, revision: next.canvas_revision };
+  }
+
+  // ユーザーの操作を当てる（UI-06）。添えた版の照合と当て方は domain の applyCanvasUserOp。当てた後の記述も Schema で
+  // 検査し、反すれば何も当てない。当てたら記録に足し、購読へ版を知らせる。
+  applyUser(
+    op: CanvasUserOp,
+    expectedRevision: string,
+  ): CanvasUserApplyOutcome {
+    const result = applyCanvasUserOp({
+      canvas: this.#document,
+      op,
+      expected_revision: expectedRevision,
+      placed_at: this.#placedAt.get(op.item_id) ?? null,
+    });
+    if (!result.ok) return { ok: false, reason: result.reason };
+    const next = result.canvas as CanvasDocument;
+    if (!this.#contract.valid('CanvasDocument', next))
+      return { ok: false, reason: 'schema' };
+    if (op.kind === 'close') this.#placedAt.delete(op.item_id);
+    else this.#placedAt.set(op.item_id, next.canvas_revision);
+    this.#record = [
+      ...this.#record,
+      {
+        kind: op.kind,
+        item_id: op.item_id,
+        cell: 'cell' in op ? { ...op.cell } : null,
+        canvas_revision: next.canvas_revision,
+      },
+    ].slice(-CANVAS_USER_RECORD_LIMIT);
+    this.#commit(next);
+    return { ok: true, revision: next.canvas_revision };
+  }
+
+  #commit(next: CanvasDocument): void {
     this.#document = next;
     for (const listener of [...this.#listeners]) {
       try {
@@ -70,7 +154,6 @@ export class CanvasHub {
         // 1 つの購読の失敗で他の購読と、当てた記述を止めない。
       }
     }
-    return { ok: true, revision: next.canvas_revision };
   }
 
   // 版が進んだことを知らせる購読（WSS の購読ごと）。版だけを渡す。
@@ -103,9 +186,16 @@ export interface ScheduleViewLike {
   readonly more_count: number;
 }
 
+// 配置者の入力（UI-06）。ユーザーの操作の記録と、本人が見ていた版（発言に添えた expected_canvas_revision）。
+export interface PlacerContext {
+  readonly record: readonly CanvasUserRecordEntry[];
+  readonly seen_revision: string;
+}
+
 export function placeCanvasForTurn(
   canvas: CanvasDocument,
   view: ScheduleViewLike | null,
+  context?: PlacerContext,
 ): CanvasOpBatch | null {
   if (
     view === null ||
@@ -143,6 +233,19 @@ export function placeCanvasForTurn(
       ],
       reading_order: [...canvas.reading_order],
     };
+  // 本人が前に同じ物を動かした・大きさを変えたなら、最後のマスの列・幅・行数を格子のヒントにする（記録を次の配置の
+  // 入力にする。UI-06）。なければ左から 2 列目から 4 列分・3 行分（最後の位置は端末の配置のエンジンが決める）。
+  const last = [...(context?.record ?? [])]
+    .reverse()
+    .find((entry) => entry.item_id === ERRANDS_ITEM_ID && entry.cell !== null);
+  const grid =
+    last?.cell === null || last?.cell === undefined
+      ? { column: 2, span: 4, rows: 3 }
+      : {
+          column: last.cell.column,
+          span: last.cell.span,
+          rows: last.cell.rows,
+        };
   const item: CanvasItem = {
     item_id: ERRANDS_ITEM_ID,
     kind: 'card',
@@ -151,8 +254,7 @@ export function placeCanvasForTurn(
     emphasis,
     group: null,
     relations: [],
-    // 左から 2 列目から 4 列分・3 行分（最後の位置は端末の配置が決める）。
-    grid: { column: 2, span: 4, rows: 3 },
+    grid,
     placement: 'canvas',
     data,
   };
@@ -296,6 +398,10 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       const batch = (options.place ?? placeCanvasForTurn)(
         options.canvas.document,
         turn.result_view,
+        {
+          record: options.canvas.record,
+          seen_revision: stringOf(body, 'expected_canvas_revision'),
+        },
       );
       // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。
       canvas = batch !== null && options.canvas.apply(batch).ok ? batch : null;
@@ -330,5 +436,56 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         : { status: 200, body: options.canvas.document },
     );
 
-  return { handlers: { postStreamTurn, getCanvas } };
+  // ユーザーの操作の記録（UI-06）。同じ request_id の再送は同じ結果を返し、内容が違えば 409（07 §3）。
+  const userOps = new Map<
+    string,
+    {
+      readonly key: string;
+      readonly response: { status: number; body: object };
+    }
+  >();
+  const postCanvasUserOp: ApiRouteHandler = (request) => {
+    if (request.device === null)
+      return Promise.resolve(apiErrorResponse(401, 'unauthenticated'));
+    const body = request.body as unknown as CanvasUserOpRequest;
+    const key = JSON.stringify([
+      request.device.device_id,
+      body.command_scope_id,
+      body.expected_canvas_revision,
+      body.op,
+    ]);
+    const replay = userOps.get(body.request_id);
+    if (replay !== undefined)
+      return Promise.resolve(
+        replay.key === key
+          ? replay.response
+          : apiErrorResponse(409, 'conflict', body.request_id),
+      );
+    const outcome = options.canvas.applyUser(
+      body.op,
+      body.expected_canvas_revision,
+    );
+    let response: { status: number; body: object };
+    if (outcome.ok) {
+      const ok: CanvasUserOpResponse = {
+        request_id: body.request_id,
+        canvas_revision: outcome.revision,
+      };
+      response = contract.valid('CanvasUserOpResponse', ok)
+        ? { status: 200, body: ok }
+        : apiErrorResponse(503, 'dependency_unavailable', body.request_id);
+    } else
+      response =
+        outcome.reason === 'schema'
+          ? apiErrorResponse(503, 'dependency_unavailable', body.request_id)
+          : apiErrorResponse(409, 'conflict', body.request_id);
+    userOps.set(body.request_id, { key, response });
+    for (const old of userOps.keys()) {
+      if (userOps.size <= MAX_REPLAYS) break;
+      userOps.delete(old);
+    }
+    return Promise.resolve(response);
+  };
+
+  return { handlers: { postStreamTurn, getCanvas, postCanvasUserOp } };
 }

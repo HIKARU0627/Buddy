@@ -1280,6 +1280,67 @@
         ["lock_unknown", 403, "device_locked"]
       ]
     },
+    "postCanvasUserOp": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009101",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_canvas_revision": "4",
+        "op": {
+          "kind": "move",
+          "item_id": "errands",
+          "cell": { "column": 7, "row": 2, "span": 4, "rows": 3 }
+        }
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000009101",
+        "canvas_revision": "5"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "4",
+          "op": {
+            "kind": "move",
+            "item_id": "errands",
+            "cell": { "column": 7, "row": 2, "span": 4, "rows": 3 },
+            "x": 120
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "4",
+          "op": { "kind": "close", "item_id": "errands", "heading": "今日" }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "04",
+          "op": { "kind": "shelve", "item_id": "errands" }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "4",
+          "op": {
+            "kind": "resize",
+            "item_id": "errands",
+            "cell": { "column": 0, "row": 2, "span": 4, "rows": 9 }
+          }
+        }
+      ]
+    },
     "listDevices": {
       "response": {
         "devices": [

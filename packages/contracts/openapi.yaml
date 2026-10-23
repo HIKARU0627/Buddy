@@ -201,6 +201,49 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/canvas/user-ops:
+    post:
+      operationId: postCanvasUserOp
+      summary: キャンバスのユーザーの操作の記録
+      description: 本人がキャンバスの物を動かす・大きさを変える・閉じる・棚へ片付ける・棚から出した操作を記録し、記述に当てて版を 1 進める（CanvasUserOpRequest。UI-06、ADR 0032）。動かす・大きさを変えるはユーザーの置き場所（格子のマス）として持ち、AI の次の束が置き直してよい（AI が優先）。記録は次の配置者の入力になる。expected_canvas_revision が今と同じか、古くてもその物の置き場所・存在がその版より後に変わっていなければ当て、それ以外（物がない・今より新しい版・見える数の上限）は 409（conflict）で捨てる。同じ request_id と同じ内容の再送は保存済みの同じ結果を返し、内容が違えば 409。承認・停止とは別の経路で、外部変更を起こさない。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/CanvasUserOpRequest
+      responses:
+        '200':
+          description: 操作を当てた後のキャンバスの版。記述は getCanvas で取る。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CanvasUserOpResponse
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/sessions/{session_id}/handoff:
     post:
       operationId: handoffSession

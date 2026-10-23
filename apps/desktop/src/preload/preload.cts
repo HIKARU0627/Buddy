@@ -31,6 +31,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.operation_retry',
   'desktop.operation_check',
   'desktop.canvas_summon',
+  'desktop.status_panel',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',
@@ -44,9 +45,11 @@ const NOTIFICATION_CHANNELS: readonly string[] = [
 // packages/domain の DESKTOP_ROLE_CHANNELS・DESKTOP_ROLE_NOTIFICATIONS と同じ表（一致は preload.test で確かめる）。
 const ROLE_ARG = '--buddy-window-role=';
 const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
-  // 従来の窓はキャンバスを前に出すチャネルを使わない（従来の窓の組み立てにはキャンバスがない）。
+  // 従来の窓はキャンバスを前に出すチャネルと状態の層のパネルのチャネルを使わない（従来の窓の組み立てには
+  // キャンバスも状態の層もない）。
   legacy: REQUEST_CHANNELS.filter(
-    (channel) => channel !== 'desktop.canvas_summon',
+    (channel) =>
+      channel !== 'desktop.canvas_summon' && channel !== 'desktop.status_panel',
   ),
   canvas: ['desktop.get_state'],
   status: REQUEST_CHANNELS.filter(

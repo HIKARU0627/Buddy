@@ -108,10 +108,11 @@ test('requests go only to the contract channels', async () => {
     'desktop.operation_retry',
     'desktop.operation_check',
   ];
-  // preload の一覧は domain の一覧と同じ（UI-02 の canvas_summon は従来の窓では使わないので、最後に別に足す）。
+  // preload の一覧は domain の一覧と同じ（UI-02 の canvas_summon と UI-04 の status_panel は従来の窓では使わないので、
+  // 最後に別に足す）。
   assert.deepEqual(
     [...DESKTOP_IPC_CHANNELS],
-    [...channels, 'desktop.canvas_summon'],
+    [...channels, 'desktop.canvas_summon', 'desktop.status_panel'],
   );
   for (const channel of channels) {
     const request = { channel, request_id: 'r', payload: null };
@@ -122,8 +123,9 @@ test('requests go only to the contract channels', async () => {
     channels,
   );
   for (const bad of [
-    // 従来の窓（役割の引数なし）はキャンバスを前に出さない。
+    // 従来の窓（役割の引数なし）はキャンバスを前に出さない・状態の層のパネルを使わない。
     { channel: 'desktop.canvas_summon' },
+    { channel: 'desktop.status_panel' },
     { channel: 'desktop.hub_stop' },
     { channel: 'desktop.power_event' },
     { channel: 'desktop.connection_changed' },
@@ -205,6 +207,7 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.operation_retry',
     'desktop.operation_check',
     'desktop.canvas_summon',
+    'desktop.status_panel',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
@@ -288,7 +291,10 @@ test('the legacy role argument keeps every existing channel and notification', a
   const api = apiOf(loaded);
   assert.equal(api.windowRole, 'legacy');
   for (const channel of DESKTOP_IPC_CHANNELS)
-    if (channel === 'desktop.canvas_summon')
+    if (
+      channel === 'desktop.canvas_summon' ||
+      channel === 'desktop.status_panel'
+    )
       await assert.rejects(
         api.invoke({ channel, request_id: 'r', payload: null }),
         /desktop_unknown_channel/u,

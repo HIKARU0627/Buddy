@@ -28,6 +28,10 @@ pnpm --filter @buddy/desktop dev
 
 同じフラグのとき、入力バーの発言（`desktop.turn_submit`）は会話ではなく流れ（`POST /v1/stream/turns`）へ送り、中枢のキャンバスの記述（`GET /v1/canvas`）を取って、形式（Ajv）と意味（domain）を検査し、参照を不透明な参照に置き換えて、キャンバスの窓だけへ通知します（`desktop.canvas_changed`。`src/main/canvas-bridge.ts`）。ロック・切断・世代の変化では記述を捨てます。キャンバスの窓は、受け取った記述から用事の list のカードを描きます（`src/renderer/screens/canvas/`）。試した範囲は [docs/ui/canvas-vertical.md](../../docs/ui/canvas-vertical.md) です。
 
+### 状態と停止の層（UI-04）
+
+同じフラグのとき、端のつまみ（入出力の記号・確認が必要な操作の数・専用の記号 3 つ）を押すか ⌘⌥⇧P（Windows は Ctrl+Alt+Shift+P）で、main が状態の層の窓を画面の右の端から広げてパネルを出します（`desktop.status_panel`。`src/main/status-panel.ts`）。パネルには、入出力と停止・再開、ADR 0014 の 8 項目、確認が必要な操作の一覧と確認の欄（従来の窓の WorkPanel と同じ部品）を出します。Esc・つまみ・外へのクリックでしまいます。承認・取消・再試行・照合は、パネルの窓を親にした OS の確認ダイアログで 1 回行います。⌘⌥⇧X（Windows は Ctrl+Alt+Shift+X）は全体の停止で、トレイの「入出力を停止」と同じ処理です（`src/main/global-shortcuts.ts`）。試した範囲は [docs/ui/status-layer.md](../../docs/ui/status-layer.md) です。
+
 ## 確かめられること
 
 - ウィンドウを閉じてもトレイ（macOS はメニューバー）に残ります。終了はトレイの「Buddy を終了」か画面のボタンです。どちらも中枢を止めません。

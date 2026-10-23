@@ -29,7 +29,14 @@ export type PowerEventNotification = Extract<
 >;
 
 // summon_canvas: デスクトップの層のキャンバスを前に出す（UI-02。前に出す・戻すの状態は canvas-presence が持つ）。
-export type DesktopEffect = 'none' | 'hide_window' | 'quit' | 'summon_canvas';
+// status_panel_open・status_panel_close: 状態の層のパネルを出す・しまう（UI-04。状態は status-panel が持つ）。
+export type DesktopEffect =
+  | 'none'
+  | 'hide_window'
+  | 'quit'
+  | 'summon_canvas'
+  | 'status_panel_open'
+  | 'status_panel_close';
 
 export interface DesktopIpcOutcome {
   readonly response: DesktopIpcResponse;
@@ -142,6 +149,11 @@ export class DesktopDeviceController {
           { request_id: raw.request_id, channel: raw.channel, outcome: 'ok' },
           'summon_canvas',
         );
+      case 'desktop.status_panel':
+        return this.#respond(
+          { request_id: raw.request_id, channel: raw.channel, outcome: 'ok' },
+          raw.payload.open ? 'status_panel_open' : 'status_panel_close',
+        );
       default:
         // 接続・ペアリングのチャネルは core-link が受け付ける（ここへ渡さない。ADR 0025）。
         return this.#reject(raw.request_id, raw.channel, 'invalid_request');
@@ -176,8 +188,9 @@ export class DesktopDeviceController {
     this.#refreshStatus();
   }
 
-  // トレイからのこの端末の入出力停止（main の中の本人の操作）。いつでも受け付ける。
-  stopFromTray(): void {
+  // main の中の本人の操作（トレイの「入出力を停止」・全体の停止のショートカット。UI-04）からのこの端末の入出力停止。
+  // いつでも受け付ける。画面の停止（desktop.io_stop）と同じ状態の遷移（io_stop）を通る。
+  stopFromMain(): void {
     this.#apply({ kind: 'io_stop' });
   }
 

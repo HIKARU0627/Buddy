@@ -782,6 +782,13 @@ export type DesktopIpcRequest =
       channel: 'desktop.canvas_summon';
       request_id: Id;
       payload: null;
+    }
+  | {
+      channel: 'desktop.status_panel';
+      request_id: Id;
+      payload: {
+        open: boolean;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -798,7 +805,10 @@ export type DesktopIpcResponse =
   | {
       request_id: Id;
       channel:
-        'desktop.window_hide' | 'desktop.client_quit' | 'desktop.canvas_summon';
+        | 'desktop.window_hide'
+        | 'desktop.client_quit'
+        | 'desktop.canvas_summon'
+        | 'desktop.status_panel';
       outcome: 'ok';
     }
   | {
@@ -1045,7 +1055,7 @@ export type DesktopPairingFailure =
   | 'storage_failed'
   | 'protocol_error';
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -1072,7 +1082,8 @@ export type DesktopIpcChannel =
   | 'desktop.operation_reconcile'
   | 'desktop.operation_retry'
   | 'desktop.operation_check'
-  | 'desktop.canvas_summon';
+  | 'desktop.canvas_summon'
+  | 'desktop.status_panel';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */

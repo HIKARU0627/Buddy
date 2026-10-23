@@ -7822,9 +7822,10 @@
         "desktop.operation_reconcile",
         "desktop.operation_retry",
         "desktop.operation_check",
-        "desktop.canvas_summon"
+        "desktop.canvas_summon",
+        "desktop.status_panel"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -8399,6 +8400,31 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "デスクトップの層に置いたキャンバスを前に出し、カードを動かす・閉じる操作を受けられるようにする（UI-02、ADR 0032）。Esc・ほかのアプリへの移動・ロックで後ろへ戻る。ロック解除済みの画面操作だけ。キャンバス自身と従来の窓は使えない（窓の役割の表）。入出力の状態は変えない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.status_panel"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "open": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["open"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "状態の層の端のつまみから、パネルを画面の端からスライドで出す（open: true）・しまう（open: false）（UI-04、ADR 0032）。窓の大きさと位置は main が決め、画面は窓の幅に合わせて描く。停止へいつでも届くよう、ロック中・不明・停止中でも受け付ける（パネルの中身は、ロック中・不明なら隠す）。状態の層だけが使え、キャンバス・入力バー・従来の窓は使えない（窓の役割の表）。入出力の状態は変えない。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -9114,7 +9140,8 @@
               "enum": [
                 "desktop.window_hide",
                 "desktop.client_quit",
-                "desktop.canvas_summon"
+                "desktop.canvas_summon",
+                "desktop.status_panel"
               ]
             },
             "outcome": {
@@ -9124,7 +9151,7 @@
           },
           "required": ["request_id", "channel", "outcome"],
           "additionalProperties": false,
-          "description": "受け付けた。ウィンドウを閉じる・クライアントを終了する・キャンバスを前に出す。"
+          "description": "受け付けた。ウィンドウを閉じる・クライアントを終了する・キャンバスを前に出す・状態の層のパネルを出す／しまう。"
         },
         {
           "type": "object",

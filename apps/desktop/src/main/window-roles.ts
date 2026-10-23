@@ -15,10 +15,14 @@ import {
 import { isTrustedSender, type SenderFacts } from './window-policy.js';
 
 // 従来の窓（legacy）は、今の 1 つの窓（B03・B04 の画面）。今と同じく全チャネル・全通知を使う。
-// ただし UI-02 で足したキャンバスを前に出すチャネルは使わない（従来の窓の組み立てにはキャンバスがない）。
+// ただし UI-02 で足したキャンバスを前に出すチャネルと、UI-04 で足した状態の層のパネルのチャネルは使わない
+// （従来の窓の組み立てにはキャンバスも状態の層もない）。
 export type UiWindowRole = DesktopWindowRole | 'legacy';
 
-const LEGACY_EXCLUDED_CHANNELS: readonly string[] = ['desktop.canvas_summon'];
+const LEGACY_EXCLUDED_CHANNELS: readonly string[] = [
+  'desktop.canvas_summon',
+  'desktop.status_panel',
+];
 
 // 窓の組み立て方。既定は従来の 1 つの窓。canvas は 3 つの役割の窓（試作）。
 export type UiWindowMode = 'legacy' | 'canvas';
@@ -277,7 +281,9 @@ export interface UiWindowSpec {
   readonly focusOnShow: boolean;
 }
 
-export const STATUS_TAB_SIZE = { width: 56, height: 128 } as const;
+// 端のつまみ（UI-04 で、プライバシーと権限の専用の記号 3 つの分だけ高くした）。パネルを出したときの大きさは
+// status-panel.ts の statusWindowBounds。
+export const STATUS_TAB_SIZE = { width: 56, height: 232 } as const;
 export const INPUT_BAR_SIZE = { width: 560, height: 56 } as const;
 // 入力バーと作業領域の下端の間。
 export const INPUT_BAR_MARGIN = 16;

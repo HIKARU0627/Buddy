@@ -653,6 +653,40 @@ function useFocusRestore(openRef: string | null, loaded: boolean) {
   }, [openRef, loaded]);
 }
 
+// 確認が必要な操作の一覧と、確認の欄（変更の確認）。従来の窓の WorkPanel と、3 つの窓の組み立ての状態の層のパネル
+// （UI-04、ADR 0032）が同じ部品を使う（承認・取消・再試行・照合は、どちらも main の OS の確認ダイアログで 1 回）。
+// 中枢に接続している間だけ描く（呼び出し側が決める）。
+export function WorkOperations({
+  state,
+  actions,
+  operations,
+  stopped,
+}: {
+  readonly state: WorkViewState;
+  readonly actions: WorkActions;
+  readonly operations: readonly DesktopOperationEntry[];
+  // この端末の入出力が止まっている（承認の準備・再試行を出さない。取消と照合は止まっていても使える）。
+  readonly stopped: boolean;
+}) {
+  const previewEntry = operations.find(
+    (entry) => entry.ref === state.preview?.ref,
+  );
+  const previewOpen = state.preview !== null && previewEntry !== undefined;
+  useFocusRestore(
+    previewOpen ? (state.preview?.ref ?? null) : null,
+    state.preview !== null && state.preview.preview !== null,
+  );
+  return (
+    <OperationSections
+      state={state}
+      actions={actions}
+      operations={operations}
+      stopped={stopped}
+      previewEntry={previewEntry}
+    />
+  );
+}
+
 export function WorkPanel({
   state,
   actions,
@@ -674,14 +708,9 @@ export function WorkPanel({
     : stopped
       ? WORK_LABELS.stopped
       : null;
-  const previewEntry = operations.find(
-    (entry) => entry.ref === state.preview?.ref,
-  );
-  const previewOpen = state.preview !== null && previewEntry !== undefined;
-  useFocusRestore(
-    previewOpen ? (state.preview?.ref ?? null) : null,
-    state.preview !== null && state.preview.preview !== null,
-  );
+  const previewOpen =
+    state.preview !== null &&
+    operations.some((entry) => entry.ref === state.preview?.ref);
   return (
     <>
       <Conversation
@@ -692,12 +721,11 @@ export function WorkPanel({
         previewOpen={previewOpen && state.preview?.preview?.approvable === true}
       />
       {connected ? (
-        <OperationSections
+        <WorkOperations
           state={state}
           actions={actions}
           operations={operations}
           stopped={stopped}
-          previewEntry={previewEntry}
         />
       ) : null}
     </>

@@ -34,6 +34,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.operation_check',
   // UI-02: デスクトップの層のキャンバスを前に出す（状態の層と入力バーから。ADR 0032）。
   'desktop.canvas_summon',
+  // UI-04: 状態の層のパネルを出す・しまう（状態の層からだけ。ADR 0032）。
+  'desktop.status_panel',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -155,7 +157,8 @@ export const DESKTOP_UNLOCKED_CHANNELS: readonly DesktopIpcChannel[] = [
 ];
 
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
-// 状態欄・接続の状態の取得・入出力停止・ウィンドウを閉じる・クライアント終了・ペアリングをやめるは、
+// 状態欄・接続の状態の取得・入出力停止・ウィンドウを閉じる・クライアント終了・ペアリングをやめる・状態の層のパネルを
+// 出す／しまう（UI-04。ロック中でも停止へ届くように。中身はロック中・不明なら main と画面が隠す）は、
 // ロック中・不明・停止中でも受け付ける。ペアリングの手順は ロック解除済み → 画面操作 の順に検査する
 // （手順の順序は main が検査する）。
 // 再開は ロック解除済み → 画面操作 → この端末の停止 → 期待する io_epoch の一致 の順に検査する。
@@ -198,6 +201,7 @@ export type DesktopWindowRole = (typeof DESKTOP_WINDOW_ROLES)[number];
 // （AI の部品が状態や停止を隠す・承認の画面に見せかけることを、構造で防ぐ）。入力バーは状態の取得と発言
 // （B04-05 の desktop.turn_submit）と、キャンバスを前に出す（UI-02）だけ。承認表示の準備・承認・取消・照合・再試行・
 // 状態の確認は状態の層だけ。キャンバスは自分を前に出せない（呼ぶのは本人の操作: 全体のショートカット・つまみ・入力バー）。
+// 状態の層のパネルを出す・しまう（UI-04）も状態の層だけ。キャンバスは状態の層を隠せない・動かせない。
 export const DESKTOP_ROLE_CHANNELS: Readonly<
   Record<DesktopWindowRole, readonly DesktopIpcChannel[]>
 > = {
@@ -227,6 +231,7 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.operation_retry',
     'desktop.operation_check',
     'desktop.canvas_summon',
+    'desktop.status_panel',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

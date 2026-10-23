@@ -40,7 +40,10 @@ import { StatusPanel } from './StatusPanel.js';
 import { StatusTab } from './StatusTab.js';
 
 function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
-  const { state, canvasUserOp } = useRoleWindowState(api, 'canvas');
+  const { state, canvasUserOp, canvasContent } = useRoleWindowState(
+    api,
+    'canvas',
+  );
   const focused = useWindowFocused();
   const viewport = useCanvasViewport();
   const shown = canvasContentShown(state.status);
@@ -54,6 +57,7 @@ function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
         viewport={viewport.size}
         insets={state.canvasInsets ?? viewport.insets}
         onUserOp={canvasUserOp}
+        loadContent={canvasContent}
       />
     </CanvasGround>
   );

@@ -1340,6 +1340,82 @@
         }
       ]
     },
+    "postCanvasContent": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009201",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_canvas_revision": "4",
+        "item_id": "errands",
+        "open_index": null
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000009201",
+        "canvas_revision": "4",
+        "item_id": "errands",
+        "open_index": null,
+        "content": {
+          "component": "list",
+          "rows": [
+            {
+              "title": "歯医者の予約を入れる",
+              "due_at": "2026-10-24T01:00:00Z",
+              "state": "open"
+            },
+            {
+              "title": "書類を郵送する",
+              "due_at": null,
+              "state": "done"
+            }
+          ]
+        }
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009201",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "4",
+          "item_id": "errands",
+          "open_index": 50
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009201",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "4",
+          "item_id": "Errands",
+          "open_index": null
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009201",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "4",
+          "item_id": "errands",
+          "open_index": null,
+          "body": "本文"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009201",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "04",
+          "item_id": "errands",
+          "open_index": null
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009201",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_canvas_revision": "4",
+          "item_id": "errands"
+        }
+      ]
+    },
     "listDevices": {
       "response": {
         "devices": [

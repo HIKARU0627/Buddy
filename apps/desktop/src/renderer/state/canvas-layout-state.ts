@@ -158,6 +158,15 @@ export function interactionAfterView(
   return { selected, drag, pending, revealed };
 }
 
+// 窓の大きさ・作業領域の外の幅が変わった（ドラッグの途中に画面の幅が変わった。PR #121 の P3 の持ち越し）。ドラッグは掴んだ
+// ときの格子（列の幅・行の送り・1 列かどうか）で動かす先を決めているので、格子が変わったら中断する（送らない。物は記述の
+// 位置のまま）。選択・送信中の位置は、マスで持っていてエンジンが今の格子へ収めるので残す。
+export function interactionAfterViewport(
+  state: CanvasInteraction,
+): CanvasInteraction {
+  return state.drag === null ? state : { ...state, drag: null };
+}
+
 // エンジンに守らせる物（ドラッグ中が先、次に送信中）。
 export function heldOf(state: CanvasInteraction): CanvasUserPinLike | null {
   if (state.drag !== null)

@@ -76,6 +76,10 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'CanvasUserOpRequest',
     ...SCREEN,
   }),
+  // キャンバスの物の中身の読み取り（UI-07、ADR 0032）。許可範囲内で本文を返す。読み取りだけで、イベントの記録に入れない。
+  route('postCanvasContent', 'POST', '/v1/canvas/content', {
+    body: 'CanvasContentRequest',
+  }),
   route('handoffSession', 'POST', '/v1/sessions/{session_id}/handoff', {
     body: 'HandoffRequest',
     ...SCREEN,

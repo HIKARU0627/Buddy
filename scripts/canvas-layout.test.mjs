@@ -819,3 +819,59 @@ test('a card is never narrower than the width to read its heading: at 840 the mi
   assert.deepEqual(cellOf(thin, 't'), cell(1, 1, 3, 1));
   assert.equal(rectOf(thin, 't').width, 168);
 });
+
+// UI-07（Issue #99 の持ち越し、PR #121 の P3）: 1 列の表示でも、カードの最小の幅 160 を守る。置ける幅は
+// 画面の幅 − 状態の層 72 − 左右の余白 24 × 2 = 画面の幅 − 120（作業領域の外なし）。160 に満たない画面は最小の表示にする。
+test('the 1-column layout never makes a card narrower than 160: a narrower screen shows the minimal layout (nothing placed, tags on the small shelf)', () => {
+  const items = [item('a'), item('b', { emphasis: 'high' }), item('c')];
+  // 画面の幅 279 → 置ける幅 159（手計算）: 最小の表示。物は置かず、すべて札。
+  const narrow = layout(items, { viewport: { width: 279, height: 800 } });
+  assert.equal(narrow.mode, 'minimal');
+  assert.deepEqual(narrow.boxes, []);
+  assert.deepEqual(narrow.overflow, ['a', 'b', 'c']);
+  assert.equal(narrow.shelf.compact, true);
+  assert.equal(narrow.grid, null);
+  // 画面の幅 280 → 置ける幅 160: 1 列で、どの物も幅 160（ちょうど）。
+  const edge = layout(items, { viewport: { width: 280, height: 800 } });
+  assert.equal(edge.mode, 'column');
+  assert(edge.boxes.length > 0);
+  for (const box of edge.boxes) assert.equal(box.rect.width, 160, box.item_id);
+  // 画面の幅 100・1・0 でも壊れず最小の表示。
+  for (const width of [100, 1, 0]) {
+    const tiny = layout(items, { viewport: { width, height: 800 } });
+    assert.equal(tiny.mode, 'minimal', String(width));
+    assert.deepEqual(tiny.boxes, [], String(width));
+  }
+  // 280〜839 のどの幅でも、置いた物は幅 160 以上（1 列。格子は minSpan が守る）。
+  for (let width = 280; width < 840; width += 7) {
+    const result = layout(items, { viewport: { width, height: 800 } });
+    for (const box of result.boxes)
+      assert(
+        box.rect.width >= 160,
+        `${width} ${box.item_id} ${box.rect.width}`,
+      );
+    assert.notEqual(result.mode, 'minimal', String(width));
+  }
+  // 作業領域の外（メニューバー・Dock の左右）を除いた幅で数える: 窓 400・左 60・右 60 → 安全な幅 280（置ける幅 160）は
+  // 1 列、左を 61 にすると安全な幅 279（置ける幅 159）で最小の表示。
+  const okInsets = layout(items, {
+    viewport: { width: 400, height: 800 },
+    insets: { top: 0, right: 60, bottom: 0, left: 60 },
+  });
+  assert.equal(okInsets.mode, 'column');
+  assert.equal(okInsets.boxes[0].rect.width, 160);
+  const tooNarrow = layout(items, {
+    viewport: { width: 400, height: 800 },
+    insets: { top: 0, right: 60, bottom: 0, left: 61 },
+  });
+  assert.equal(tooNarrow.mode, 'minimal');
+  // 最小の表示では、札から見せる選択でも物を置けない（高さが足りないときと同じ）。
+  const revealed = layoutCanvas({
+    items,
+    reading_order: ['a', 'b', 'c'],
+    viewport: { width: 200, height: 800 },
+    revealed: 'b',
+  });
+  assert.equal(revealed.mode, 'minimal');
+  assert.deepEqual(revealed.boxes, []);
+});

@@ -14,6 +14,8 @@
 //   有効で、古い応答で新しい記述を戻さない。版は戻さない（同じ世代の中で小さい版を受けない）。
 // Electron に依存しない（node:test で試験する）。
 import type {
+  CanvasContent,
+  CanvasContentResponse,
   CanvasDocument,
   CanvasUserOp,
   CanvasUserOpResponse,
@@ -22,10 +24,18 @@ import type {
   StreamTurnResponse,
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
-import { canvasDocumentErrors } from '@buddy/domain';
+import { canvasContentErrors, canvasDocumentErrors } from '@buddy/domain';
 import type { DesktopIpcRejectReason } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 import type { BridgeOutcome } from './operation-bridge.js';
+
+// 物の中身の読み取りの結果（UI-07）。この値だけが本文を運び、画面へは desktop.canvas_content の応答でだけ返す。
+export interface CanvasContentValue {
+  readonly canvas_revision: string;
+  readonly item_id: string;
+  readonly open_index: number | null;
+  readonly content: CanvasContent;
+}
 
 export interface CanvasHost {
   readonly contract: DesktopContract;
@@ -268,6 +278,97 @@ export class CanvasBridge {
     // 版の知らせも届くが、先に取る（画面の送信中の位置を早く解く）。
     void this.refresh();
     return { ok: true, value: applied.canvas_revision };
+  }
+
+  // 物の中身（本文）の読み取り（キャンバスの窓から。UI-07）。画面が描いている版（expected）の物について、中枢から許可範囲内で
+  // 取り、形式（CanvasContentResponse）と意味（canvasContentErrors）の両方を通ったものだけを返す。本文は呼び出しの間の
+  // メモリーにだけ置き、main は保存も記録もしない（中身は応答で画面へ返し、通知・ログに載せない）。openRef は本文を開く行の
+  // 不透明な参照（画面に渡した ref）で、main が item_refs の位置にして中枢へ送る（中枢の識別子は画面にも中枢の要求にも
+  // 出ない）。画面が描いている版と食い違う（物がない・版が違う・取得の間に版が進んだ）ときは canvas_conflict にして、
+  // 取り直しは画面が新しい記述で行う。世代（ロック・停止・切断）が変わったら中身を渡さない。
+  async content(
+    itemId: string,
+    expected: string,
+    openRef: string | null,
+  ): Promise<BridgeOutcome<CanvasContentValue>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    if (!this.#host.unlocked()) return fail('device_locked');
+    if (!this.#host.io().permitted) return fail('input_stopped');
+    const view = this.#view;
+    if (view === null || expected !== view.canvas_revision)
+      return fail('canvas_conflict');
+    const item = view.items.find((entry) => entry.item_id === itemId);
+    if (item === undefined) return fail('canvas_conflict');
+    let openIndex: number | null = null;
+    if (openRef !== null) {
+      openIndex = item.data.item_refs.findIndex(
+        (entry) => entry.ref === openRef,
+      );
+      // 本文を開けるのはメールだけ。画面に渡した参照でなければ送らない。
+      if (openIndex < 0 || item.component !== 'mail_card')
+        return fail('canvas_conflict');
+    }
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/canvas/content',
+      body: {
+        expected_canvas_revision: expected,
+        item_id: itemId,
+        open_index: openIndex,
+      },
+      scoped: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    // 世代が変わった（ロック・停止・切断）: 中身を渡さない。読み取りなので送り直してよいが、自動ではしない。
+    if (gen !== this.#gen || !this.#host.unlocked())
+      return fail(this.#host.unlocked() ? 'not_connected' : 'device_locked');
+    const after = this.#host.io();
+    if (!after.permitted) return fail('input_stopped');
+    if (outcome.kind === 'unknown') return fail('not_connected');
+    if (outcome.status === 409) {
+      // 中枢の記述が先に進んでいた（参照の位置がずれる）。今の記述を取り直す。
+      void this.refresh();
+      return fail('canvas_conflict');
+    }
+    if (
+      outcome.status !== 200 ||
+      !this.#host.contract.valid('CanvasContentResponse', outcome.body)
+    )
+      return fail('core_rejected');
+    const response = outcome.body as CanvasContentResponse;
+    // 取っている間に画面の記述が進んだ・別の物の中身が返った: 渡さない。
+    if (
+      this.#view === null ||
+      this.#view.canvas_revision !== expected ||
+      response.canvas_revision !== expected ||
+      response.item_id !== itemId ||
+      response.open_index !== openIndex
+    )
+      return fail('canvas_conflict');
+    if (
+      canvasContentErrors(response.content, {
+        component: item.component,
+        refCount: item.data.item_refs.length,
+        openIndex,
+      }).length > 0
+    ) {
+      // 契約か意味の検査に反した。画面へは渡さない（ログは理由の種類だけ。中身を出さない）。
+      this.#host.log('canvas_content_rejected');
+      return fail('core_rejected');
+    }
+    return {
+      ok: true,
+      value: {
+        canvas_revision: response.canvas_revision,
+        item_id: response.item_id,
+        open_index: response.open_index,
+        content: response.content,
+      },
+    };
   }
 
   // 発言（入力バーから）。流れへ送り、文字の結果を返す。キャンバスの記述は版の知らせと取得で渡す

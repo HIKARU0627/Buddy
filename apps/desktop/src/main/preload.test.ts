@@ -136,6 +136,7 @@ test('requests go only to the contract channels', async () => {
       'desktop.canvas_summon',
       'desktop.status_panel',
       'desktop.canvas_user_op',
+      'desktop.canvas_content',
     ],
   );
   for (const channel of channels) {
@@ -152,6 +153,8 @@ test('requests go only to the contract channels', async () => {
     { channel: 'desktop.status_panel' },
     // キャンバスの物のユーザーの操作も使わない（UI-06）。
     { channel: 'desktop.canvas_user_op' },
+    // キャンバスの物の中身の読み取りも使わない（UI-07）。
+    { channel: 'desktop.canvas_content' },
     { channel: 'desktop.hub_stop' },
     { channel: 'desktop.power_event' },
     { channel: 'desktop.connection_changed' },
@@ -209,7 +212,11 @@ const apiOf = (loaded: ReturnType<typeof loadPreload>) =>
 // 期待する表は手で書き、domain の表とも一致することを確かめる。
 const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
   // キャンバスは状態の取得と物のユーザーの操作だけ（UI-06）。
-  canvas: ['desktop.get_state', 'desktop.canvas_user_op'],
+  canvas: [
+    'desktop.get_state',
+    'desktop.canvas_user_op',
+    'desktop.canvas_content',
+  ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
   status: [
     'desktop.get_state',
@@ -328,7 +335,8 @@ test('the legacy role argument keeps every existing channel and notification', a
     if (
       channel === 'desktop.canvas_summon' ||
       channel === 'desktop.status_panel' ||
-      channel === 'desktop.canvas_user_op'
+      channel === 'desktop.canvas_user_op' ||
+      channel === 'desktop.canvas_content'
     )
       await assert.rejects(
         api.invoke({ channel, request_id: 'r', payload: null }),

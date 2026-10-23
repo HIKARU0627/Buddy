@@ -1,5 +1,6 @@
 // UI レンダラーが端末に何も保存しないことの試験（UI-06、ADR 0032 の「端末に保存してよいのは配置の設定だけ」）。
-// キャンバスの本文・見出し・参照・ユーザーの置き場所は Core の RAM にだけ持ち、画面は Web の保存の API を使わない。
+// キャンバスの記述（見出し・参照・ユーザーの置き場所）は Core の RAM にだけ持ち、物の中身（本文。UI-07）は Core の RAM と
+// main・画面のメモリーにだけ置く。画面は Web の保存の API を使わない。
 // 配置の設定（複数のモニターの設定）は main が保存する（apps/desktop/src/main/canvas-display.ts。保存の試験は main の試験）。
 // 画面のソース（試験を除く）と、ビルドした画面（dist/renderer の JavaScript。依存のライブラリを含む）の両方を調べる。
 import assert from 'node:assert/strict';
@@ -34,7 +35,7 @@ function files(directory, accept) {
   });
 }
 
-test('the renderer source never uses web storage (the canvas content stays in the core RAM)', () => {
+test('the renderer source never uses web storage (the canvas description stays in the core RAM, the content in memory only)', () => {
   const sources = files(
     rendererDir,
     (name) => /\.tsx?$/u.test(name) && !/\.test\.tsx?$/u.test(name),

@@ -319,10 +319,23 @@ const CANVAS_FORBIDDEN = [
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
   assert.deepEqual([...DESKTOP_WINDOW_ROLES], ['canvas', 'status', 'input']);
-  // キャンバスは状態の取得と、物のユーザーの操作（UI-06）だけ。
+  // キャンバスは状態の取得と、物のユーザーの操作（UI-06）・物の中身の読み取り（UI-07）だけ。
   assert.deepEqual(
     [...DESKTOP_ROLE_CHANNELS.canvas],
-    ['desktop.get_state', 'desktop.canvas_user_op'],
+    ['desktop.get_state', 'desktop.canvas_user_op', 'desktop.canvas_content'],
+  );
+  // 物の中身（本文）の読み取りもキャンバスの窓だけ（状態の層・入力バーへ本文を渡さない）。
+  assert.equal(
+    desktopChannelAllowedForRole('canvas', 'desktop.canvas_content'),
+    true,
+  );
+  assert.equal(
+    desktopChannelAllowedForRole('status', 'desktop.canvas_content'),
+    false,
+  );
+  assert.equal(
+    desktopChannelAllowedForRole('input', 'desktop.canvas_content'),
+    false,
   );
   // 物のユーザーの操作はキャンバスの窓だけ（状態の層・入力バーは使えない）。
   assert.equal(
@@ -415,11 +428,11 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 27 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
-  // status_panel、UI-06 の canvas_user_op を含む）。禁止の一覧 23 ＋ 全員の get_state ＋ 入力バーの turn_submit・
-  // canvas_summon ＋ キャンバスの canvas_user_op。
-  assert.equal(channels.size, 27);
-  assert.equal(CANVAS_FORBIDDEN.length + 4, 27);
+  // 手で数えた数（現在の DesktopIpcChannel は 28 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
+  // status_panel、UI-06 の canvas_user_op、UI-07 の canvas_content を含む）。禁止の一覧 23 ＋ 全員の get_state ＋
+  // 入力バーの turn_submit・canvas_summon ＋ キャンバスの canvas_user_op・canvas_content。
+  assert.equal(channels.size, 28);
+  assert.equal(CANVAS_FORBIDDEN.length + 5, 28);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

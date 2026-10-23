@@ -113,7 +113,11 @@ export async function startEventCore(
       tlsKeyStore,
       environment,
       ...(options.previewValid === false ? {} : { previewValid: () => true }),
-      eventStream: { pingIntervalMs: options.pingIntervalMs ?? 200 },
+      // 通常の購読は製品既定の heartbeat を使う。短縮すると、負荷で pong の処理が遅れただけでも切断する。
+      // heartbeat・定期再検査を試すケースだけ明示して短くする（Issue #108）。
+      ...(options.pingIntervalMs === undefined
+        ? {}
+        : { eventStream: { pingIntervalMs: options.pingIntervalMs } }),
       ...(options.turns === undefined ? {} : { turns: options.turns }),
     },
     ...(options.events === undefined ? {} : { events: options.events }),

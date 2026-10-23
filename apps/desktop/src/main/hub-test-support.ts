@@ -182,6 +182,8 @@ export async function startHub(
     readonly turns?: CoreTurnOptions;
     // 中枢の時計（今日の日付を決める。省略すると実時間）。
     readonly now?: () => Date;
+    // heartbeat 自体を試す場合だけ短縮する。通常の統合は製品の既定を使う（Issue #108）。
+    readonly pingIntervalMs?: number;
   },
 ): Promise<TestHub> {
   const tlsKeyStore = options.tlsKeyStore ?? createMockTlsKeyStore();
@@ -194,7 +196,9 @@ export async function startHub(
       host: '127.0.0.1',
       port: options.port,
       tlsKeyStore,
-      eventStream: { pingIntervalMs: 200 },
+      ...(options.pingIntervalMs === undefined
+        ? {}
+        : { eventStream: { pingIntervalMs: options.pingIntervalMs } }),
       ...(options.sameMachine === undefined
         ? {}
         : { sameMachine: options.sameMachine }),
@@ -296,4 +300,22 @@ export async function submitDurable(
     `submit ${command.kind}`,
   );
   assert.equal(outcome.outcome, 'durable', JSON.stringify(outcome));
+}
+
+// 厳密な件数・遷移の検査が失敗したときの文言。中枢へ送った要求（方法とパスだけ。UUID とクエリは伏せる）と
+// link: の遷移（固定のコード）だけを出し、本文・ヘッダー・トークン・生の例外は含めない。
+export function describeExchange(client: {
+  readonly requests: readonly string[];
+  readonly logs: readonly string[];
+}): string {
+  const requests = client.requests.map((line) =>
+    line
+      .replace(/\?.*$/u, '')
+      .replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu,
+        ':id',
+      ),
+  );
+  const links = client.logs.filter((line) => line.startsWith('link:'));
+  return `requests=${JSON.stringify(requests)}; links=${JSON.stringify(links)}`;
 }

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
 import {
   mkdtemp,
   readFile,
@@ -11,10 +10,11 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { controlEndpoint } from './paths.js';
+import { onCleanup } from './api-test-support.js';
+import { startCli } from './cli-test-support.js';
 
 // ビルド済みの dist/cli.js を子プロセスで動かすヘッドレス起動の試験（Electron は使わない）。
 // Windows では子プロセスへの SIGTERM が即時終了になるため、停止は制御チャネルの stop で行う。
@@ -33,7 +33,7 @@ type Json = Record<string, unknown>;
 
 async function tempDataDir(t: test.TestContext): Promise<string> {
   const base = await mkdtemp(join(tmpdir(), 'buddy-cli-'));
-  t.after(() =>
+  onCleanup(t, () =>
     rm(base, {
       recursive: true,
       force: true,
@@ -68,58 +68,9 @@ const lastJson = (text: string): Json => {
   return JSON.parse(lines[lines.length - 1] as string) as Json;
 };
 
-interface Background {
-  readonly child: ChildProcess;
-  readonly running: Json;
-  readonly exited: Promise<Result>;
-}
-
-// start を常駐させ、running の行が出るまで待つ。試験の終わりに必ず片付ける。
-async function startBackground(
-  t: test.TestContext,
-  dataDir: string,
-): Promise<Background> {
-  const child = spawn(
-    process.execPath,
-    [CLI, 'start', '--mock-key-protection', '--data-dir', dataDir],
-    {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  );
-  t.after(() => {
-    if (child.exitCode === null && child.signalCode === null) child.kill();
-  });
-  let stdout = '';
-  let stderr = '';
-  child.stderr
-    ?.setEncoding('utf8')
-    .on('data', (text: string) => (stderr += text));
-  const exited = new Promise<Result>((resolve) =>
-    child.on('close', (code) => resolve({ code, stdout, stderr })),
-  );
-  const running = await new Promise<Json>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`起動待ちの期限切れ: ${stderr}`)),
-      TIMEOUT_MS,
-    );
-    const lines = createInterface({
-      input: child.stdout as NodeJS.ReadableStream,
-    });
-    lines.on('line', (line) => {
-      stdout += `${line}\n`;
-      const message = JSON.parse(line) as Json;
-      if (message['event'] === 'running') {
-        clearTimeout(timer);
-        resolve(message);
-      }
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      reject(new Error(`起動前に終了しました（${code}）: ${stderr}`));
-    });
-  });
-  return { child, running, exited };
-}
+// running は全ての待受けが完了した後の CLI の通知。上限は各試験の signal だけ。
+const startBackground = (t: test.TestContext, dataDir: string) =>
+  startCli(t, ['--mock-key-protection', '--data-dir', dataDir]);
 
 test(
   'headless start, duplicate refusal, client exit, stop, and restart keep the generation',

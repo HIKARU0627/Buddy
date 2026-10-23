@@ -4,6 +4,8 @@ export * from './api.js';
 export * from './approval.js';
 export * from './audio.js';
 export * from './budget.js';
+// B07-02: M と R の計算・予算月・利用状況・超過枠への経路・手での精算（ADR 0035）。
+export * from './budget-rules.js';
 // UI-01: キャンバスの記述と流れの区切りの意味の検査（ADR 0032）。
 export * from './canvas.js';
 // UI-06: キャンバスの配置のエンジン（ADR 0032）。

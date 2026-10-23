@@ -251,8 +251,12 @@
     {
       "id": "X18",
       "phases": ["B07"],
-      "contract_fixtures": [],
-      "status": "specified",
+      "contract_fixtures": [
+        "packages/contracts/fixtures/budget-scenarios.json#x18-boundary-concurrency-month-and-pools",
+        "packages/contracts/fixtures/budget-rules.json#x18-route-auto-execution",
+        "packages/contracts/fixtures/budget-rules.json#qa42-x18-usage-summary"
+      ],
+      "status": "contract_fixture",
       "product_test": "not_run",
       "t": ["T08"]
     },
@@ -584,8 +588,10 @@
     {
       "id": "X53",
       "phases": ["B07"],
-      "contract_fixtures": [],
-      "status": "specified",
+      "contract_fixtures": [
+        "packages/contracts/fixtures/budget-scenarios.json#x53-conversation-after-autonomous-exhausted"
+      ],
+      "status": "contract_fixture",
       "product_test": "not_run",
       "t": ["T08"]
     },
@@ -916,7 +922,18 @@
         "packages/contracts/fixtures/evaluation-cases.json#qa20-spend-limit-first",
         "packages/contracts/fixtures/schema-cases.json#qa20-price-version-text",
         "packages/contracts/fixtures/schema-cases.json#qa20-price-version-unbounded-output",
-        "packages/contracts/fixtures/schema-cases.json#qa20-runtime-config-period-overlap"
+        "packages/contracts/fixtures/schema-cases.json#qa20-runtime-config-period-overlap",
+        "packages/contracts/fixtures/budget-rules.json#qa20-within-one-version",
+        "packages/contracts/fixtures/budget-rules.json#qa20-conversion-and-ceiling",
+        "packages/contracts/fixtures/budget-rules.json#qa20-price-not-covered",
+        "packages/contracts/fixtures/budget-rules.json#qa20-cached-input-not-estimated",
+        "packages/contracts/fixtures/schema-cases.json#qa20-price-version-cached-above-input",
+        "packages/contracts/fixtures/budget-rules.json#qa20-cached-above-input",
+        "packages/contracts/fixtures/budget-rules.json#qa20-three-versions",
+        "packages/contracts/fixtures/budget-rules.json#qa20-cached-minimum-10000",
+        "packages/contracts/fixtures/budget-rules.json#qa20-split-rounding-counterexample",
+        "packages/contracts/fixtures/budget-rules.json#qa20-split-version-per-category",
+        "packages/contracts/fixtures/budget-rules.json#qa20-input-zero-quantity"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -1157,7 +1174,26 @@
         "packages/contracts/fixtures/schema-cases.json#qa42-usage-summary",
         "packages/contracts/fixtures/schema-cases.json#qa42-overage-approval-pending",
         "packages/contracts/fixtures/schema-cases.json#qa42-overrun-review",
-        "packages/contracts/fixtures/schema-cases.json#qa42-manual-settlement"
+        "packages/contracts/fixtures/schema-cases.json#qa42-manual-settlement",
+        "packages/contracts/fixtures/budget-scenarios.json#qa42-usage-duplicate-missing-timeout",
+        "packages/contracts/fixtures/budget-scenarios.json#qa42-unknown-month-manual-settlement",
+        "packages/contracts/fixtures/budget-scenarios.json#qa42-manual-overrun-review",
+        "packages/contracts/fixtures/budget-scenarios.json#qa42-overage-requires-owner-approval",
+        "packages/contracts/fixtures/budget-rules.json#qa42-price-boundary-higher-rate",
+        "packages/contracts/fixtures/budget-rules.json#qa42-p95-unmeasured",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-rollover-applies-new-zone",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-clock-regressed",
+        "packages/contracts/fixtures/budget-rules.json#qa42-x18-usage-summary",
+        "packages/contracts/fixtures/budget-rules.json#qa42-manual-settles-unknown",
+        "packages/contracts/fixtures/budget-rules.json#qa42-route-voice",
+        "packages/contracts/fixtures/budget-rules.json#qa42-approval-smaller-m",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-two-boundaries-while-stopped",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-ahead-zone-regression",
+        "packages/contracts/fixtures/budget-rules.json#qa42-approval-now-before-decision",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-inconsistent-start",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-st-johns-rollover-late",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-st-johns-dip",
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-missing-start-zone"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

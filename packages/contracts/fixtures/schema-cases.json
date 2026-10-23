@@ -7467,6 +7467,89 @@
     "semantic_errors": ["unbounded_category"]
   },
   {
+    "id": "qa20-price-version-cached-above-input",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030c",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "4",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["cached_price_above_input"]
+  },
+  {
+    "id": "qa20-price-version-cached-equal-input",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030c",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "3000",
+          "per_quantity": "1000000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
     "id": "price-version-duplicate-category",
     "schema": "PriceVersion",
     "valid": true,

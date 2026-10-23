@@ -3,6 +3,7 @@
 - 日付: 2026-10-19
 - 状態: B00-04（#19）の判断。端末の音声処理・Live 接続・中枢の配信処理は未実装。
 - 根拠: 設計 10 §1・§1A（F03）・§2・§2A・§3〜§8、07 §2・§5、02 停止、01 いつも見える状態、決定事項 D06・D14。原本の参照手順は docs/design/README.md。下の 3 点は本人の回答（2026-10-19、いずれも推奨案）で決定。
+- 追記（2026-10-23、ADR 0038）: stop_playback の再開は、`playback_queue`（再生キューと現在の output_epoch の照合。表のとおり変更なし）に加えて、どの接続で再開するかを決めた（既定は新しい Live 接続、同じ接続は設定を実機で検証して有効にしたときだけ）。close_voice_session に `consent_revoked`（外部への送信の同意の取り消し）を足した。音声レンダラーの限定 IPC・制御接続の遷移・リースの更新・input_kind の受付・同意の契約を足した。
 
 ## 決めたこと
 
@@ -26,6 +27,7 @@
 |                     | conversation_ended                                                                                            | 同上。会話（session_id）を終える                                  | 次の呼びかけで新しい会話                                       |
 |                     | device_move                                                                                                   | 同上                                                              | 移動先の端末の呼びかけ                                         |
 |                     | provider_failure、sideband_lost                                                                               | 同上。同じ接続は復活させない                                      | ③は使える。①は次の呼びかけで新しい接続                         |
+|                     | consent_revoked（ADR 0038 で追加）                                                                            | 同上                                                              | 外部への送信の同意を取り直すまで③                              |
 | suspend_io          | device_io_stop・os_lock・device_revoked・core_lease_lost（local）、guest_mode（guest）、global_stop（global） | 収音元・KWS / ASR・再生を止め、PCM とリングを破棄し Live を閉じる | 登録済み・解除済み端末の画面で明示再開し、許可とリースを再検査 |
 
 停止が重なったときは強い方（suspend_io ＞ close_voice_session ＞ stop_playback）を優先します。理由と対象範囲（scope）の組は domain の表で検査します。
@@ -49,5 +51,5 @@
 
 ## 残ること
 
-- 端末と中枢の実装、停止の 3 層の時間測定（T04）、同じ Live 接続での再生復帰の検証（B05）は未実施です。
+- 端末と中枢の実装、停止の 3 層の時間測定（T04）、同じ Live 接続での再生復帰の検証（B05）は未実施です。同じ接続での再生復帰は、検証して設定を有効にするまで使わず、既定は新しい Live 接続です（ADR 0038）。
 - 定型文の文面と照合表の言い回しは B05・B10 で調整します。

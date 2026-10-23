@@ -1,0 +1,891 @@
+{
+  "status": "specification_only",
+  "description": "音声の契約（音声レンダラーへの限定 IPC・リースの更新・外部への送信の同意・input_kind の受付の規則・制御接続の遷移の記録）の正常例と拒否例（設計 07 §5、10 §1・§1A・§2・§2A・§6A、ADR 0038、X13・X30・X31・X54・QA43）。手で書いた期待値で、実装から生成していない。valid は Schema の形、semantic_errors は意味検査（VoiceRendererRequest は domain の voiceRequestErrors、LeaseRenewalRequest と ExternalSendConsent は契約の検証ツールと domain の同じ関数）の期待値。実際の音声・資格情報・URL は含めない。",
+  "cases": [
+    {
+      "id": "voice-ipc-start",
+      "refs": ["10 §1", "10 §2", "X31", "X54"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "channel": "voice.start",
+        "request_id": "00000000-0000-4000-8000-0000000000a1",
+        "ack_timeout_ms": 3000,
+        "payload": {
+          "live_session_id": "00000000-0000-4000-8000-000000000090",
+          "purpose": "conversation",
+          "sdp_answer": "synthetic-answer",
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "12",
+          "session_epoch": "3"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-stop-playback-user-stop",
+      "refs": ["10 §1A", "QA43", "X30"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "channel": "voice.stop_playback",
+        "request_id": "00000000-0000-4000-8000-0000000000a2",
+        "ack_timeout_ms": 300,
+        "payload": {
+          "reason": "user_stop",
+          "scope": null,
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-close-silence",
+      "refs": ["10 §2", "10 §3", "X25"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "channel": "voice.close_voice_session",
+        "request_id": "00000000-0000-4000-8000-0000000000a3",
+        "ack_timeout_ms": 1500,
+        "payload": {
+          "reason": "silence",
+          "scope": null,
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-close-consent-revoked",
+      "refs": ["ADR 0038", "本人の判断 2026-10-23"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "channel": "voice.close_voice_session",
+        "request_id": "00000000-0000-4000-8000-0000000000a4",
+        "ack_timeout_ms": 1500,
+        "payload": {
+          "reason": "consent_revoked",
+          "scope": null,
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-suspend-os-lock",
+      "refs": ["10 §1 第 1 層", "X13", "X30"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "channel": "voice.suspend_io",
+        "request_id": "00000000-0000-4000-8000-0000000000a5",
+        "ack_timeout_ms": 300,
+        "payload": {
+          "reason": "os_lock",
+          "scope": "local",
+          "io_epoch": "5",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-play-wake-clip",
+      "refs": ["10 §2", "質問 99"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "channel": "voice.play",
+        "request_id": "00000000-0000-4000-8000-0000000000a6",
+        "ack_timeout_ms": 500,
+        "payload": {
+          "clip_id": "wake_detected",
+          "io_epoch": "4",
+          "output_epoch": "12"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-silence-timeout-60s",
+      "refs": ["10 §3", "X58"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "channel": "voice.set_silence_timeout",
+        "request_id": "00000000-0000-4000-8000-0000000000a7",
+        "ack_timeout_ms": 500,
+        "payload": { "timeout_ms": 60000, "audio_epoch": "7" }
+      }
+    },
+    {
+      "id": "voice-ipc-suspend-os-lock-with-global-scope",
+      "refs": ["10 §1A", "ADR 0005", "QA43"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": ["scope_mismatch"],
+      "value": {
+        "channel": "voice.suspend_io",
+        "request_id": "00000000-0000-4000-8000-0000000000a8",
+        "ack_timeout_ms": 300,
+        "payload": {
+          "reason": "os_lock",
+          "scope": "global",
+          "io_epoch": "5",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-suspend-global-stop-with-local-scope",
+      "refs": ["10 §1A", "ADR 0005", "QA43"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": ["scope_mismatch"],
+      "value": {
+        "channel": "voice.suspend_io",
+        "request_id": "00000000-0000-4000-8000-0000000000a9",
+        "ack_timeout_ms": 300,
+        "payload": {
+          "reason": "global_stop",
+          "scope": "local",
+          "io_epoch": "5",
+          "audio_epoch": null,
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-suspend-ack-wait-too-long",
+      "refs": ["10 §1 第 2 層", "X30"],
+      "schema": "VoiceRendererRequest",
+      "valid": true,
+      "semantic_errors": ["ack_timeout_exceeds_limit"],
+      "value": {
+        "channel": "voice.suspend_io",
+        "request_id": "00000000-0000-4000-8000-0000000000aa",
+        "ack_timeout_ms": 1000,
+        "payload": {
+          "reason": "device_io_stop",
+          "scope": "local",
+          "io_epoch": "5",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-unknown-channel",
+      "refs": ["10 §1"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.get_device_token",
+        "request_id": "00000000-0000-4000-8000-0000000000b1",
+        "ack_timeout_ms": 300,
+        "payload": {}
+      }
+    },
+    {
+      "id": "voice-ipc-unknown-channel-http",
+      "refs": ["10 §1"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.fetch",
+        "request_id": "00000000-0000-4000-8000-0000000000b2",
+        "ack_timeout_ms": 300,
+        "payload": { "url": "https://example.invalid/" }
+      }
+    },
+    {
+      "id": "voice-ipc-play-spoken-phrase",
+      "refs": ["10 §2", "質問 99"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.play",
+        "request_id": "00000000-0000-4000-8000-0000000000b3",
+        "ack_timeout_ms": 500,
+        "payload": {
+          "clip_id": "phrase_hai",
+          "io_epoch": "4",
+          "output_epoch": "12"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-stop-playback-with-close-reason",
+      "refs": ["10 §1A", "ADR 0005"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.stop_playback",
+        "request_id": "00000000-0000-4000-8000-0000000000b4",
+        "ack_timeout_ms": 300,
+        "payload": {
+          "reason": "silence",
+          "scope": null,
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-suspend-with-playback-reason",
+      "refs": ["10 §1A", "ADR 0005"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.suspend_io",
+        "request_id": "00000000-0000-4000-8000-0000000000b5",
+        "ack_timeout_ms": 300,
+        "payload": {
+          "reason": "user_stop",
+          "scope": "local",
+          "io_epoch": "5",
+          "audio_epoch": "7",
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-start-without-audio-epoch",
+      "refs": ["10 §1"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.start",
+        "request_id": "00000000-0000-4000-8000-0000000000b6",
+        "ack_timeout_ms": 3000,
+        "payload": {
+          "live_session_id": "00000000-0000-4000-8000-000000000090",
+          "purpose": "conversation",
+          "sdp_answer": "synthetic-answer",
+          "io_epoch": "4",
+          "output_epoch": "12",
+          "session_epoch": "3"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-start-carries-credential",
+      "refs": ["10 §1"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.start",
+        "request_id": "00000000-0000-4000-8000-0000000000b7",
+        "ack_timeout_ms": 3000,
+        "payload": {
+          "live_session_id": "00000000-0000-4000-8000-000000000090",
+          "purpose": "conversation",
+          "sdp_answer": "synthetic-answer",
+          "io_epoch": "4",
+          "audio_epoch": "7",
+          "output_epoch": "12",
+          "session_epoch": "3",
+          "device_token": "synthetic"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-epoch-not-a-version-string",
+      "refs": ["07 §1"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.stop_playback",
+        "request_id": "00000000-0000-4000-8000-0000000000b8",
+        "ack_timeout_ms": 300,
+        "payload": {
+          "reason": "barge_in",
+          "scope": null,
+          "io_epoch": "-1",
+          "audio_epoch": null,
+          "output_epoch": "13"
+        }
+      }
+    },
+    {
+      "id": "voice-ipc-silence-timeout-too-short",
+      "refs": ["10 §3"],
+      "schema": "VoiceRendererRequest",
+      "valid": false,
+      "value": {
+        "channel": "voice.set_silence_timeout",
+        "request_id": "00000000-0000-4000-8000-0000000000b9",
+        "ack_timeout_ms": 500,
+        "payload": { "timeout_ms": 500, "audio_epoch": "7" }
+      }
+    },
+    {
+      "id": "voice-ack-applied",
+      "refs": ["10 §1A", "X30"],
+      "schema": "VoiceRendererAck",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000a2",
+        "channel": "voice.stop_playback",
+        "outcome": "applied",
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "13",
+        "session_epoch": null,
+        "acked_at": "2030-10-05T00:00:00.120Z"
+      }
+    },
+    {
+      "id": "voice-ack-unknown-outcome",
+      "refs": ["10 §1A", "X30"],
+      "schema": "VoiceRendererAck",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000a2",
+        "channel": "voice.stop_playback",
+        "outcome": "resumed",
+        "io_epoch": "4",
+        "audio_epoch": "7",
+        "output_epoch": "13",
+        "session_epoch": null,
+        "acked_at": "2030-10-05T00:00:00.120Z"
+      }
+    },
+    {
+      "id": "lease-renewal-initial",
+      "refs": ["07 §5", "X13"],
+      "schema": "LeaseRenewalRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c1",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "kind": "audio",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "core_instance_id": "00000000-0000-4000-8000-000000000060",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "io_epoch": "4",
+        "nonce": "nonce-0001",
+        "previous_nonce": null,
+        "requested_at_mono_ms": 1000,
+        "heartbeat_ms": 2000,
+        "ttl_ms": 6000
+      }
+    },
+    {
+      "id": "lease-renewal-next",
+      "refs": ["07 §5", "10 §2A"],
+      "schema": "LeaseRenewalRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c2",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "kind": "audio",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "core_instance_id": "00000000-0000-4000-8000-000000000060",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "io_epoch": "4",
+        "nonce": "nonce-0002",
+        "previous_nonce": "nonce-0001",
+        "requested_at_mono_ms": 3000,
+        "heartbeat_ms": 2000,
+        "ttl_ms": 6000
+      }
+    },
+    {
+      "id": "lease-renewal-expiry-before-heartbeat",
+      "refs": ["07 §5", "10 §2A"],
+      "schema": "LeaseRenewalRequest",
+      "valid": true,
+      "semantic_errors": ["heartbeat_not_shorter_than_ttl"],
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c3",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "kind": "audio",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "core_instance_id": "00000000-0000-4000-8000-000000000060",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "io_epoch": "4",
+        "nonce": "nonce-0003",
+        "previous_nonce": "nonce-0002",
+        "requested_at_mono_ms": 5000,
+        "heartbeat_ms": 6000,
+        "ttl_ms": 2000
+      }
+    },
+    {
+      "id": "lease-renewal-without-nonce",
+      "refs": ["07 §5"],
+      "schema": "LeaseRenewalRequest",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c4",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "kind": "audio",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "core_instance_id": "00000000-0000-4000-8000-000000000060",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "io_epoch": "4",
+        "previous_nonce": null,
+        "requested_at_mono_ms": 1000,
+        "heartbeat_ms": 2000,
+        "ttl_ms": 6000
+      }
+    },
+    {
+      "id": "lease-renewal-without-core-instance",
+      "refs": ["07 §5"],
+      "schema": "LeaseRenewalRequest",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c5",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "kind": "audio",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "io_epoch": "4",
+        "nonce": "nonce-0001",
+        "previous_nonce": null,
+        "requested_at_mono_ms": 1000,
+        "heartbeat_ms": 2000,
+        "ttl_ms": 6000
+      }
+    },
+    {
+      "id": "lease-response-renewed",
+      "refs": ["07 §5"],
+      "schema": "LeaseRenewalResponse",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c2",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "nonce": "nonce-0002",
+        "result": "renewed",
+        "reasons": [],
+        "ttl_ms": 6000
+      }
+    },
+    {
+      "id": "lease-response-rejected-sideband-lost",
+      "refs": ["10 §2A", "X25"],
+      "schema": "LeaseRenewalResponse",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c2",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "nonce": "nonce-0002",
+        "result": "rejected",
+        "reasons": ["sideband_lost"],
+        "ttl_ms": null
+      }
+    },
+    {
+      "id": "lease-response-renewed-with-reasons",
+      "refs": ["07 §5"],
+      "schema": "LeaseRenewalResponse",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c2",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "nonce": "nonce-0002",
+        "result": "renewed",
+        "reasons": ["io_suspended"],
+        "ttl_ms": 6000
+      }
+    },
+    {
+      "id": "lease-response-rejected-without-reason",
+      "refs": ["07 §5"],
+      "schema": "LeaseRenewalResponse",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000c2",
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "nonce": "nonce-0002",
+        "result": "rejected",
+        "reasons": [],
+        "ttl_ms": null
+      }
+    },
+    {
+      "id": "consent-granted",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "schema": "ExternalSendConsent",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "consent_id": "00000000-0000-4000-8000-0000000000d1",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "confirmation": {
+          "method": "os_dialog_main",
+          "confirmed_at": "2030-10-05T00:00:00Z"
+        },
+        "state": "granted",
+        "granted_at": "2030-10-05T00:00:00Z",
+        "revoked_at": null
+      }
+    },
+    {
+      "id": "consent-revoked",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "schema": "ExternalSendConsent",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "consent_id": "00000000-0000-4000-8000-0000000000d1",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "confirmation": {
+          "method": "os_dialog_main",
+          "confirmed_at": "2030-10-05T00:00:00Z"
+        },
+        "state": "revoked",
+        "granted_at": "2030-10-05T00:00:00Z",
+        "revoked_at": "2030-10-06T00:00:00Z"
+      }
+    },
+    {
+      "id": "consent-revoked-before-granted",
+      "refs": ["ADR 0038"],
+      "schema": "ExternalSendConsent",
+      "valid": true,
+      "semantic_errors": ["revoked_before_granted"],
+      "value": {
+        "consent_id": "00000000-0000-4000-8000-0000000000d1",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "confirmation": {
+          "method": "os_dialog_main",
+          "confirmed_at": "2030-10-05T00:00:00Z"
+        },
+        "state": "revoked",
+        "granted_at": "2030-10-05T00:00:00Z",
+        "revoked_at": "2030-10-04T00:00:00Z"
+      }
+    },
+    {
+      "id": "consent-granted-without-os-confirmation",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "schema": "ExternalSendConsent",
+      "valid": false,
+      "value": {
+        "consent_id": "00000000-0000-4000-8000-0000000000d1",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "state": "granted",
+        "granted_at": "2030-10-05T00:00:00Z",
+        "revoked_at": null
+      }
+    },
+    {
+      "id": "consent-granted-with-revoked-time",
+      "refs": ["ADR 0038"],
+      "schema": "ExternalSendConsent",
+      "valid": false,
+      "value": {
+        "consent_id": "00000000-0000-4000-8000-0000000000d1",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "confirmation": {
+          "method": "os_dialog_main",
+          "confirmed_at": "2030-10-05T00:00:00Z"
+        },
+        "state": "granted",
+        "granted_at": "2030-10-05T00:00:00Z",
+        "revoked_at": "2030-10-06T00:00:00Z"
+      }
+    },
+    {
+      "id": "consent-confirmed-by-renderer",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "schema": "ExternalSendConsent",
+      "valid": false,
+      "value": {
+        "consent_id": "00000000-0000-4000-8000-0000000000d1",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "confirmation": {
+          "method": "renderer_button",
+          "confirmed_at": "2030-10-05T00:00:00Z"
+        },
+        "state": "granted",
+        "granted_at": "2030-10-05T00:00:00Z",
+        "revoked_at": null
+      }
+    },
+    {
+      "id": "consent-change-grant",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "schema": "ExternalSendConsentChange",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000d2",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "action": "grant",
+        "confirmation": {
+          "method": "os_dialog_main",
+          "confirmed_at": "2030-10-05T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "consent-change-revoke-without-confirmation",
+      "refs": ["#15 本人の判断"],
+      "schema": "ExternalSendConsentChange",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000d3",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "action": "revoke",
+        "confirmation": null
+      }
+    },
+    {
+      "id": "consent-change-grant-without-confirmation",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "schema": "ExternalSendConsentChange",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000d4",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "kind": "voice_live_audio",
+        "provider": "openai_live",
+        "policy_version": "1",
+        "action": "grant",
+        "confirmation": null
+      }
+    },
+    {
+      "id": "consent-change-other-provider",
+      "refs": ["ADR 0038"],
+      "schema": "ExternalSendConsentChange",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-0000000000d5",
+        "command_scope_id": "00000000-0000-4000-8000-000000000070",
+        "kind": "voice_live_audio",
+        "provider": "unknown_provider",
+        "policy_version": "1",
+        "action": "grant",
+        "confirmation": {
+          "method": "os_dialog_main",
+          "confirmed_at": "2030-10-05T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "input-rule-voice-live",
+      "refs": ["10 §6A", "X49", "ADR 0038"],
+      "schema": "InputKindRule",
+      "valid": true,
+      "value": {
+        "input_kind": "voice_live",
+        "route": "sideband_transcript",
+        "origin": "core",
+        "output_mode": "voice",
+        "requires": [
+          "live_control_ready",
+          "audio_epoch_current",
+          "session_epoch_current",
+          "audio_lease_valid",
+          "io_permitted",
+          "not_private_conversation",
+          "voice_output_mode",
+          "external_send_consent",
+          "budget_reserved"
+        ]
+      }
+    },
+    {
+      "id": "input-rule-voice-local",
+      "refs": ["10 §6A", "X46", "ADR 0038"],
+      "schema": "InputKindRule",
+      "valid": true,
+      "value": {
+        "input_kind": "voice_local",
+        "route": "http_turn",
+        "origin": "client",
+        "output_mode": "text",
+        "requires": [
+          "device_authenticated",
+          "home_network",
+          "command_scope_current",
+          "device_unlocked",
+          "io_permitted",
+          "local_asr_on_device"
+        ]
+      }
+    },
+    {
+      "id": "input-rule-voice-live-without-consent",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "schema": "InputKindRule",
+      "valid": false,
+      "value": {
+        "input_kind": "voice_live",
+        "route": "sideband_transcript",
+        "origin": "core",
+        "output_mode": "voice",
+        "requires": [
+          "live_control_ready",
+          "audio_epoch_current",
+          "session_epoch_current",
+          "audio_lease_valid",
+          "io_permitted",
+          "not_private_conversation",
+          "voice_output_mode",
+          "budget_reserved"
+        ]
+      }
+    },
+    {
+      "id": "input-rule-voice-live-over-http-turn",
+      "refs": ["10 §6", "X49", "ADR 0038"],
+      "schema": "InputKindRule",
+      "valid": false,
+      "value": {
+        "input_kind": "voice_live",
+        "route": "http_turn",
+        "origin": "client",
+        "output_mode": "voice",
+        "requires": [
+          "live_control_ready",
+          "audio_epoch_current",
+          "session_epoch_current",
+          "audio_lease_valid",
+          "io_permitted",
+          "not_private_conversation",
+          "voice_output_mode",
+          "external_send_consent",
+          "budget_reserved"
+        ]
+      }
+    },
+    {
+      "id": "input-rule-voice-local-without-local-asr",
+      "refs": ["10 §6A", "X46", "ADR 0038"],
+      "schema": "InputKindRule",
+      "valid": false,
+      "value": {
+        "input_kind": "voice_local",
+        "route": "http_turn",
+        "origin": "client",
+        "output_mode": "text",
+        "requires": [
+          "device_authenticated",
+          "home_network",
+          "command_scope_current",
+          "device_unlocked",
+          "io_permitted"
+        ]
+      }
+    },
+    {
+      "id": "input-rule-text-to-voice",
+      "refs": ["D14", "10 §6", "X49"],
+      "schema": "InputKindRule",
+      "valid": false,
+      "value": {
+        "input_kind": "text",
+        "route": "http_turn",
+        "origin": "client",
+        "output_mode": "voice",
+        "requires": [
+          "device_authenticated",
+          "home_network",
+          "command_scope_current",
+          "device_unlocked"
+        ]
+      }
+    },
+    {
+      "id": "control-transition-ready-to-lost",
+      "refs": ["10 §2A", "X25"],
+      "schema": "LiveControlTransition",
+      "valid": true,
+      "value": {
+        "live_session_id": "00000000-0000-4000-8000-000000000090",
+        "trigger": "ping_timeout",
+        "usage_seconds": null,
+        "before": {
+          "live_session_id": "00000000-0000-4000-8000-000000000090",
+          "control_state": "ready",
+          "control_epoch": "2",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        },
+        "after": {
+          "live_session_id": "00000000-0000-4000-8000-000000000090",
+          "control_state": "lost",
+          "control_epoch": "3",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        },
+        "occurred_at": "2030-10-05T00:00:06Z"
+      }
+    },
+    {
+      "id": "control-transition-unknown-trigger",
+      "refs": ["10 §2A"],
+      "schema": "LiveControlTransition",
+      "valid": false,
+      "value": {
+        "live_session_id": "00000000-0000-4000-8000-000000000090",
+        "trigger": "reconnected",
+        "usage_seconds": null,
+        "before": {
+          "live_session_id": "00000000-0000-4000-8000-000000000090",
+          "control_state": "lost",
+          "control_epoch": "3",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        },
+        "after": {
+          "live_session_id": "00000000-0000-4000-8000-000000000090",
+          "control_state": "ready",
+          "control_epoch": "3",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        },
+        "occurred_at": "2030-10-05T00:00:07Z"
+      }
+    }
+  ]
+}

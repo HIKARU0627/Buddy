@@ -1,0 +1,248 @@
+{
+  "status": "specification_only",
+  "description": "外部への送信の同意と Live の接続の受付の期待値（本人の判断 2026-10-23、設計 07 §2・10 §2・§6A、X17・X26・X31、ADR 0038）。手で書いたもので、domain の実装から生成していない。同意は端末ごと・送り先ごとで、同意の文面の版が現在のものと一致するときだけ有効。同意がなければ、他の条件が揃っても Live を開かない。",
+  "expected": {
+    "device_id": "00000000-0000-4000-8000-000000000050",
+    "kind": "voice_live_audio",
+    "provider": "openai_live",
+    "policy_version": "1"
+  },
+  "record": {
+    "device_id": "00000000-0000-4000-8000-000000000050",
+    "kind": "voice_live_audio",
+    "provider": "openai_live",
+    "policy_version": "1",
+    "state": "granted",
+    "granted_at": "2030-10-05T00:00:00Z",
+    "revoked_at": null
+  },
+  "status_cases": [
+    {
+      "id": "granted",
+      "refs": ["#15 本人の判断"],
+      "record": {},
+      "expected": "granted"
+    },
+    {
+      "id": "never-asked",
+      "refs": ["#15 本人の判断"],
+      "record": null,
+      "expected": "missing"
+    },
+    {
+      "id": "revoked-by-the-owner",
+      "refs": ["#15 本人の判断"],
+      "record": { "state": "revoked", "revoked_at": "2030-10-06T00:00:00Z" },
+      "expected": "revoked"
+    },
+    {
+      "id": "consent-text-changed",
+      "refs": ["ADR 0038"],
+      "record": { "policy_version": "0" },
+      "expected": "policy_outdated"
+    },
+    {
+      "id": "consent-given-on-another-device",
+      "refs": ["ADR 0038"],
+      "record": { "device_id": "00000000-0000-4000-8000-000000000051" },
+      "expected": "other_device"
+    },
+    {
+      "id": "consent-for-another-destination",
+      "refs": ["ADR 0038"],
+      "record": { "provider": "another_provider" },
+      "expected": "missing"
+    }
+  ],
+  "change_cases": [
+    {
+      "id": "grant-with-the-os-dialog",
+      "refs": ["#15 本人の判断"],
+      "change": {
+        "action": "grant",
+        "confirmation": {
+          "method": "os_dialog_main",
+          "confirmed_at": "2030-10-05T00:00:00Z"
+        }
+      },
+      "expected": []
+    },
+    {
+      "id": "grant-without-the-os-dialog",
+      "refs": ["#15 本人の判断"],
+      "change": { "action": "grant", "confirmation": null },
+      "expected": ["grant_without_os_confirmation"]
+    },
+    {
+      "id": "revoke-needs-no-confirmation",
+      "refs": ["#15 本人の判断"],
+      "change": { "action": "revoke", "confirmation": null },
+      "expected": []
+    }
+  ],
+  "record_cases": [
+    {
+      "id": "granted-record",
+      "record": {},
+      "expected": []
+    },
+    {
+      "id": "revoked-record",
+      "record": { "state": "revoked", "revoked_at": "2030-10-06T00:00:00Z" },
+      "expected": []
+    },
+    {
+      "id": "revoked-state-without-a-time",
+      "record": { "state": "revoked", "revoked_at": null },
+      "expected": ["revoked_at_mismatch"]
+    },
+    {
+      "id": "granted-state-with-a-time",
+      "record": { "revoked_at": "2030-10-06T00:00:00Z" },
+      "expected": ["revoked_at_mismatch"]
+    },
+    {
+      "id": "revoked-before-granted",
+      "record": { "state": "revoked", "revoked_at": "2030-10-04T00:00:00Z" },
+      "expected": ["revoked_before_granted"]
+    }
+  ],
+  "live_start_base": {
+    "purpose": "conversation",
+    "audioOwner": "self",
+    "ioSuspended": false,
+    "audioLeaseValid": true,
+    "outputMode": "voice",
+    "privateConversation": false,
+    "consent": "granted",
+    "budgetReservable": true
+  },
+  "live_start_cases": [
+    {
+      "id": "all-conditions-met",
+      "refs": ["07 §2", "10 §2"],
+      "context": {},
+      "expected": { "ok": true }
+    },
+    {
+      "id": "never-consented-to-send-voice-outside",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "context": { "consent": "missing" },
+      "expected": {
+        "ok": false,
+        "status": 403,
+        "code": "external_send_consent_required"
+      }
+    },
+    {
+      "id": "consent-revoked",
+      "refs": ["#15 本人の判断", "ADR 0038"],
+      "context": { "consent": "revoked" },
+      "expected": {
+        "ok": false,
+        "status": 403,
+        "code": "external_send_consent_required"
+      }
+    },
+    {
+      "id": "consent-text-is-outdated",
+      "refs": ["ADR 0038"],
+      "context": { "consent": "policy_outdated" },
+      "expected": {
+        "ok": false,
+        "status": 403,
+        "code": "external_send_consent_required"
+      }
+    },
+    {
+      "id": "consent-was-given-on-another-device",
+      "refs": ["ADR 0038"],
+      "context": { "consent": "other_device" },
+      "expected": {
+        "ok": false,
+        "status": 403,
+        "code": "external_send_consent_required"
+      }
+    },
+    {
+      "id": "notification-also-needs-consent",
+      "refs": ["10 §7", "ADR 0038"],
+      "context": {
+        "purpose": "notification",
+        "outputMode": "text",
+        "consent": "missing"
+      },
+      "expected": {
+        "ok": false,
+        "status": 403,
+        "code": "external_send_consent_required"
+      }
+    },
+    {
+      "id": "notification-ignores-the-reply-mode",
+      "refs": ["10 §7"],
+      "context": { "purpose": "notification", "outputMode": "text" },
+      "expected": { "ok": true }
+    },
+    {
+      "id": "audio-owned-by-another-device",
+      "refs": ["10 §8", "X32"],
+      "context": { "audioOwner": "other" },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "code": "audio_owned_elsewhere"
+      }
+    },
+    {
+      "id": "no-audio-ownership",
+      "refs": ["07 §2"],
+      "context": { "audioOwner": "none" },
+      "expected": {
+        "ok": false,
+        "status": 403,
+        "code": "audio_ownership_required"
+      }
+    },
+    {
+      "id": "io-stopped-comes-before-consent",
+      "refs": ["X13", "X31"],
+      "context": { "ioSuspended": true, "consent": "missing" },
+      "expected": { "ok": false, "status": 403, "code": "io_suspended" }
+    },
+    {
+      "id": "audio-lease-expired",
+      "refs": ["07 §5", "X13"],
+      "context": { "audioLeaseValid": false },
+      "expected": { "ok": false, "status": 403, "code": "audio_lease_invalid" }
+    },
+    {
+      "id": "private-conversation",
+      "refs": ["07 §2", "質問 94", "X17"],
+      "context": { "privateConversation": true, "consent": "missing" },
+      "expected": { "ok": false, "status": 409, "code": "private_conversation" }
+    },
+    {
+      "id": "reply-mode-is-text",
+      "refs": ["10 §6A", "X47"],
+      "context": { "outputMode": "text" },
+      "expected": { "ok": false, "status": 409, "code": "output_mode_text" }
+    },
+    {
+      "id": "budget-held",
+      "refs": ["07 §2", "X26"],
+      "context": { "budgetReservable": false },
+      "expected": { "ok": false, "status": 422, "code": "budget_held" }
+    },
+    {
+      "id": "consent-is-checked-before-the-budget-is-reserved",
+      "refs": ["ADR 0038"],
+      "context": { "consent": "missing", "budgetReservable": false },
+      "expected": {
+        "ok": false,
+        "status": 403,
+        "code": "external_send_consent_required"
+      }
+    }
+  ]
+}

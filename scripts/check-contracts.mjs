@@ -57,6 +57,32 @@ for (const entry of canvasCases) {
   );
   if (!entry.valid) assert.equal(entry.semantic_errors, undefined, entry.id);
 }
+// 音声の契約の例（B05-01、ADR 0038）。形式と、契約の検証ツールが持つ意味検査（リースの期限・同意の時刻）を確かめる。
+// VoiceRendererRequest の意味検査（理由と範囲の組・ACK の待ち時間）は domain の関数で scripts/voice-contract.test.mjs が確かめる。
+const voiceCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/voice-contract-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of voiceCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (!entry.valid) assert.equal(entry.semantic_errors, undefined, entry.id);
+  else if (entry.schema !== 'VoiceRendererRequest')
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+}
 const plan = parseStrictJson(
   await readFile(
     new URL('packages/contracts/model-evaluation.json', root),
@@ -74,5 +100,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length + canvasCases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length + voiceCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

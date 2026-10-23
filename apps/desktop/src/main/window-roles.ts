@@ -72,9 +72,11 @@ export function notificationAllowedForWindow(
   role: UiWindowRole,
   channel: string,
 ): boolean {
+  // 従来の窓はキャンバスの記述を受けない（UI-03。キャンバスの窓だけ）。
   if (role === 'legacy')
-    return (DESKTOP_NOTIFICATION_CHANNELS as readonly string[]).includes(
-      channel,
+    return (
+      (DESKTOP_NOTIFICATION_CHANNELS as readonly string[]).includes(channel) &&
+      channel !== 'desktop.canvas_changed'
     );
   return (DESKTOP_ROLE_NOTIFICATIONS[role] as readonly string[]).includes(
     channel,

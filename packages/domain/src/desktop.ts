@@ -42,6 +42,8 @@ export const DESKTOP_NOTIFICATION_CHANNELS = [
   'desktop.state_changed',
   'desktop.power_event',
   'desktop.connection_changed',
+  // UI-03: キャンバスの記述が変わった・捨てた（キャンバスの窓だけ。ADR 0032）。
+  'desktop.canvas_changed',
 ] as const;
 
 export const DESKTOP_POWER_EVENTS = [
@@ -229,14 +231,15 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };
 
-// 役割ごとに main から送る通知。電源・ロックの記録と接続の状態は状態の層だけ。
+// 役割ごとに main から送る通知。電源・ロックの記録と接続の状態は状態の層だけ。キャンバスの記述はキャンバスの窓だけ。
 export const DESKTOP_ROLE_NOTIFICATIONS: Readonly<
   Record<
     DesktopWindowRole,
     readonly (typeof DESKTOP_NOTIFICATION_CHANNELS)[number][]
   >
 > = {
-  canvas: ['desktop.state_changed'],
+  // キャンバスの記述はキャンバスの窓だけに送る（状態の層・入力バーへは送らない）。
+  canvas: ['desktop.state_changed', 'desktop.canvas_changed'],
   status: [
     'desktop.state_changed',
     'desktop.power_event',

@@ -210,6 +210,9 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
       enabled
       value=""
       onChange={noop}
+      onSubmit={noop}
+      sending={false}
+      attention={false}
       canSummon
       onSummon={noop}
     />,
@@ -228,6 +231,9 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
       enabled={false}
       value=""
       onChange={noop}
+      onSubmit={noop}
+      sending={false}
+      attention={false}
       canSummon={false}
       onSummon={noop}
     />,
@@ -270,6 +276,9 @@ test('typed text disappears when the device locks or the lock state becomes unkn
         enabled={inputBarEnabled(status)}
         value={inputDraftAfter(typed, status)}
         onChange={noop}
+        onSubmit={noop}
+        sending={false}
+        attention={false}
         canSummon={canSummonCanvas(status)}
         onSummon={noop}
       />,

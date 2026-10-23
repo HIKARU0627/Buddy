@@ -2,6 +2,7 @@
 // （ADR 0014・0015・0024・0025）。React と DOM に依存しない純粋な関数だけを置き、node:test で試験する。
 // 受付の規則は main が持ち、ここは表示と要求の組み立てだけ。
 import type {
+  DesktopCanvasView,
   DesktopConnectionView,
   DesktopIpcNotification,
   DesktopIpcRequest,
@@ -49,6 +50,9 @@ export interface DesktopViewState {
   // 最後に入力した宛先（失敗の後も入力を残す）と、申請した端末名。
   readonly lastTarget: { readonly host: string; readonly port: number } | null;
   readonly submittedName: string | null;
+  // キャンバスの窓が描く記述（main が検査して参照を置き換えたもの。ADR 0032）。null は受け取っていない・捨てた。
+  // ロック中・不明になったら、main の通知を待たずに捨てる（解除しても main が送り直すまで戻さない）。
+  readonly canvas: DesktopCanvasView | null;
 }
 
 export const INITIAL_VIEW_STATE: DesktopViewState = {
@@ -60,6 +64,7 @@ export const INITIAL_VIEW_STATE: DesktopViewState = {
   justRegistered: false,
   lastTarget: null,
   submittedName: null,
+  canvas: null,
 };
 
 export const IPC_FAILURE_MESSAGE =
@@ -94,6 +99,8 @@ export function applyNotification(
     return {
       ...state,
       status,
+      // ロック中・状態が不明になったら、描いている記述を捨てる（解除しても戻さない）。
+      canvas: status.visibility === 'shown' ? state.canvas : null,
       // 再開したら止まった理由を消す。入出力の状態が変わったら、入出力の拒否の文言も消す。
       stopCause: resumed ? null : state.stopCause,
       message:
@@ -116,6 +123,8 @@ export function applyNotification(
         (after === 'registered' && before !== null && before !== 'registered'),
     };
   }
+  if (notification.channel === 'desktop.canvas_changed')
+    return { ...state, canvas: notification.canvas };
   return {
     ...state,
     powerLog: [notification, ...state.powerLog].slice(0, POWER_LOG_LIMIT),

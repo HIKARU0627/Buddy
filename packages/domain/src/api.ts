@@ -35,6 +35,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   postTurn: COMMAND,
   // 流れへの発言（ADR 0032）。会話への発言と同じ検査。区切りは Core が選ぶ。
   postStreamTurn: COMMAND,
+  // キャンバスの今の記述（ADR 0032）。内容なので、ロック中・不明は出さない。読み取りなので接続範囲は求めない。
+  getCanvas: [...READ, 'unlocked'],
   handoffSession: [...SCREEN, 'expected_revision'],
   previewOperation: COMMAND,
   displayOperation: COMMAND,

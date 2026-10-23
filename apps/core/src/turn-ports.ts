@@ -183,7 +183,7 @@ const EMPTY_ARGS = {
 
 // 合成の入力と決まった応答。表にない文は聞き返し（unclear）。
 // - 「mail-001 に follow-up を付けて」→ label_mail（対象は候補の対応から。候補がなければ対象なし）
-// - 「今日の予定を見せて」→ query_schedule（今日）
+// - 「今日の予定を見せて」「今日の用事を見せて」→ query_schedule（今日。UI-03 の用事の一覧のカードは後者でも置く）
 // - 「「牛乳を買う」を用事に登録して」→ create_task（題名つき）
 // - 「用事を登録して」→ create_task（題名なし。必須の不足で聞き返し）
 export function createMockInterpreter(): Interpreter {
@@ -205,7 +205,7 @@ export function createMockInterpreter(): Interpreter {
           },
         });
       }
-      if (text === '今日の予定を見せて')
+      if (text === '今日の予定を見せて' || text === '今日の用事を見せて')
         return Promise.resolve({
           kind: 'intent',
           intent: 'query_schedule',

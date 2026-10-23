@@ -373,3 +373,44 @@ test('the typed address and device name are kept for the form', () => {
   assert.equal(submitted.submittedName, '合成の端末');
   assert.deepEqual(submitted.lastTarget, begun.lastTarget);
 });
+
+// UI-03: キャンバスの記述の反映。通知で受け取り、ロック中・不明の状態の通知で捨てる（解除しても戻さない）。
+test('the canvas notification sets the description; null discards it; a locked state discards it for good', () => {
+  const view = {
+    canvas_revision: '4',
+    items: [],
+    reading_order: [],
+  };
+  const received = applyNotification(INITIAL_VIEW_STATE, {
+    channel: 'desktop.canvas_changed',
+    canvas: view,
+  });
+  assert.deepEqual(received.canvas, view);
+  // 状態が変わっても（解除済みのまま）記述は残る。
+  const running = applyNotification(received, {
+    channel: 'desktop.state_changed',
+    status: shown('none'),
+  });
+  assert.deepEqual(running.canvas, view);
+  // ロック中・不明になったら main の通知を待たずに捨て、解除しても戻らない。
+  for (const lock_state of ['locked', 'unknown'] as const) {
+    const hidden = applyNotification(running, {
+      channel: 'desktop.state_changed',
+      status: { visibility: 'hidden', lock_state },
+    });
+    assert.equal(hidden.canvas, null);
+    const unlocked = applyNotification(hidden, {
+      channel: 'desktop.state_changed',
+      status: shown('none'),
+    });
+    assert.equal(unlocked.canvas, null);
+  }
+  // main が空を通知したら捨てる。
+  assert.equal(
+    applyNotification(running, {
+      channel: 'desktop.canvas_changed',
+      canvas: null,
+    }).canvas,
+    null,
+  );
+});

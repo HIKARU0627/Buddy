@@ -3440,19 +3440,19 @@
     "id": "canvas-heading-rlo",
     "schema": "CanvasHeading",
     "valid": false,
-    "value": "請求書\u202Efdp.exe"
+    "value": "請求書‮fdp.exe"
   },
   {
     "id": "canvas-heading-lri",
     "schema": "CanvasHeading",
     "valid": false,
-    "value": "予定\u2066a\u2069"
+    "value": "予定⁦a⁩"
   },
   {
     "id": "canvas-heading-rlm",
     "schema": "CanvasHeading",
     "valid": false,
-    "value": "予定\u200F"
+    "value": "予定‏"
   },
   {
     "id": "canvas-heading-newline",
@@ -3464,7 +3464,7 @@
     "id": "canvas-heading-line-separator",
     "schema": "CanvasHeading",
     "valid": false,
-    "value": "1 行目\u20282 行目"
+    "value": "1 行目 2 行目"
   },
   {
     "id": "canvas-heading-bell",
@@ -3476,7 +3476,7 @@
     "id": "canvas-heading-c1",
     "schema": "CanvasHeading",
     "valid": false,
-    "value": "予定\u0085"
+    "value": "予定"
   },
   {
     "id": "canvas-heading-empty",
@@ -3495,7 +3495,7 @@
           "item_id": "blank",
           "kind": "card",
           "component": "list",
-          "heading": "\u3000 ",
+          "heading": "　 ",
           "emphasis": "normal",
           "group": null,
           "relations": [],
@@ -5362,7 +5362,7 @@
     "id": "canvas-heading-kelvin-http",
     "schema": "CanvasHeading",
     "valid": false,
-    "value": "\u212Ahttp://x"
+    "value": "Khttp://x"
   },
   {
     "id": "canvas-heading-tag-without-space",
@@ -5398,7 +5398,7 @@
     "id": "canvas-heading-long-s",
     "schema": "CanvasHeading",
     "valid": true,
-    "value": "http\u017F://x"
+    "value": "httpſ://x"
   },
   {
     "id": "canvas-heading-fullwidth-script",
@@ -5417,5 +5417,437 @@
     "schema": "CanvasHeading",
     "valid": true,
     "value": "java script:x"
+  },
+  {
+    "id": "desktop-canvas-view-valid",
+    "schema": "DesktopCanvasView",
+    "valid": true,
+    "value": {
+      "canvas_revision": "4",
+      "items": [
+        {
+          "item_id": "errands",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 2,
+            "span": 4,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000201"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000202"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["errands"]
+    }
+  },
+  {
+    "id": "desktop-canvas-view-empty",
+    "schema": "DesktopCanvasView",
+    "valid": true,
+    "value": {
+      "canvas_revision": "0",
+      "items": [],
+      "reading_order": []
+    }
+  },
+  {
+    "id": "desktop-canvas-view-raw-id",
+    "schema": "DesktopCanvasView",
+    "valid": false,
+    "value": {
+      "canvas_revision": "4",
+      "items": [
+        {
+          "item_id": "errands",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 2,
+            "span": 4,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "calendar_event",
+                "id": "00000000-0000-4000-8000-000000000080"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000202"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["errands"]
+    }
+  },
+  {
+    "id": "desktop-canvas-view-description",
+    "schema": "DesktopCanvasView",
+    "valid": false,
+    "value": {
+      "canvas_revision": "4",
+      "items": [
+        {
+          "item_id": "errands",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 2,
+            "span": 4,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000201"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000202"
+              }
+            ],
+            "more_count": 0
+          },
+          "description": "今日の予定の一覧"
+        }
+      ],
+      "reading_order": ["errands"]
+    }
+  },
+  {
+    "id": "desktop-canvas-view-refs-51",
+    "schema": "DesktopCanvasView",
+    "valid": false,
+    "value": {
+      "canvas_revision": "4",
+      "items": [
+        {
+          "item_id": "errands",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 2,
+            "span": 4,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000300"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000301"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000302"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000303"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000304"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000305"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000306"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000307"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000308"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000309"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000030a"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000030b"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000030c"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000030d"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000030e"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000030f"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000310"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000311"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000312"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000313"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000314"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000315"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000316"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000317"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000318"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000319"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000031a"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000031b"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000031c"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000031d"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000031e"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000031f"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000320"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000321"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000322"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000323"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000324"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000325"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000326"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000327"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000328"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000329"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000032a"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000032b"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000032c"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000032d"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000032e"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-00000000032f"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000330"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000331"
+              },
+              {
+                "kind": "calendar_event",
+                "ref": "00000000-0000-4000-8000-000000000332"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["errands"]
+    }
+  },
+  {
+    "id": "desktop-canvas-notification-view",
+    "schema": "DesktopIpcNotification",
+    "valid": true,
+    "value": {
+      "channel": "desktop.canvas_changed",
+      "canvas": {
+        "canvas_revision": "4",
+        "items": [
+          {
+            "item_id": "errands",
+            "kind": "card",
+            "component": "list",
+            "heading": "今日の用事",
+            "emphasis": "high",
+            "group": null,
+            "relations": [],
+            "grid": {
+              "column": 2,
+              "span": 4,
+              "rows": 3
+            },
+            "placement": "canvas",
+            "data": {
+              "item_refs": [
+                {
+                  "kind": "calendar_event",
+                  "ref": "00000000-0000-4000-8000-000000000201"
+                },
+                {
+                  "kind": "calendar_event",
+                  "ref": "00000000-0000-4000-8000-000000000202"
+                }
+              ],
+              "more_count": 0
+            }
+          }
+        ],
+        "reading_order": ["errands"]
+      }
+    }
+  },
+  {
+    "id": "desktop-canvas-notification-null",
+    "schema": "DesktopIpcNotification",
+    "valid": true,
+    "value": {
+      "channel": "desktop.canvas_changed",
+      "canvas": null
+    }
+  },
+  {
+    "id": "desktop-canvas-notification-missing-canvas",
+    "schema": "DesktopIpcNotification",
+    "valid": false,
+    "value": {
+      "channel": "desktop.canvas_changed"
+    }
+  },
+  {
+    "id": "desktop-canvas-notification-extra",
+    "schema": "DesktopIpcNotification",
+    "valid": false,
+    "value": {
+      "channel": "desktop.canvas_changed",
+      "canvas": null,
+      "revision": "4"
+    }
   }
 ]

@@ -349,6 +349,13 @@ function createWindow(role: UiWindowRole): BrowserWindow {
       channel: 'desktop.state_changed',
       status: controller.statusBar,
     });
+    // 読み込み直したキャンバスの窓へ、今の記述を送る（役割の表に通知がある窓だけ）。
+    const canvas = link?.canvasView() ?? null;
+    if (canvas !== null)
+      sendHere('desktop.canvas_changed', {
+        channel: 'desktop.canvas_changed',
+        canvas,
+      });
     // 読み込み直した画面は前回の接続の状態を持っていないので、同じ内容でも送る。
     connectionPublisher.reset();
     pushConnection();
@@ -570,6 +577,11 @@ function createLink(
     onChange: pushConnection,
     log,
     confirmAdmin: confirmAdminWithDialog,
+    // キャンバスのモード（開発用のフラグ）では、入力バーの発言を流れへ送り、キャンバスの記述をキャンバスの窓だけへ渡す
+    // （役割の表 DESKTOP_ROLE_NOTIFICATIONS。状態の層・入力バーへは送らない）。
+    canvasMode: uiMode === 'canvas',
+    onCanvas: (notification) =>
+      sendToRenderer(notification.channel, notification),
   });
 }
 

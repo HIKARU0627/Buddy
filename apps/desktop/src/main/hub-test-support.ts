@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type test from 'node:test';
 import { startCore } from '@buddy/core';
-import type { CoreHandle } from '@buddy/core';
+import type { CoreHandle, CoreHttpsOptions } from '@buddy/core';
 import { createMockKeyStore, createMockTlsKeyStore } from '@buddy/platform';
 import type { MockTlsKeyStore, TailscaleStatusSource } from '@buddy/platform';
 import { sealOperationIntent } from '@buddy/storage';
@@ -178,6 +178,10 @@ export async function startHub(
     readonly homeNetwork?: boolean;
     // 中枢の Tailscale の状態（模擬。自宅判定を Core の実装のまま試すとき。B03-08）。
     readonly tailscale?: TailscaleStatusSource;
+    // 発言の解釈・provider・方針（模擬。UI-03 の流れへの発言の統合の試験で予定の照会を使う）。
+    readonly turns?: NonNullable<CoreHttpsOptions['turns']>;
+    // 中枢の時計（今日の日付を決める。省略すると実時間）。
+    readonly now?: () => Date;
   },
 ): Promise<TestHub> {
   const tlsKeyStore = options.tlsKeyStore ?? createMockTlsKeyStore();
@@ -200,8 +204,10 @@ export async function startHub(
       ...(options.tailscale === undefined
         ? {}
         : { tailscale: options.tailscale }),
+      ...(options.turns === undefined ? {} : { turns: options.turns }),
     },
     events: { pollIntervalMs: 100 },
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
   onCleanup(t, () => handle.stop('test').catch(() => undefined));
   assert(handle.https !== null);

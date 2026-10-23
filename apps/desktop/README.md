@@ -24,6 +24,10 @@ pnpm --filter @buddy/desktop dev
 
 `electron . --buddy-ui=canvas`（または環境変数 `BUDDY_DESKTOP_UI=canvas`）で、キャンバス・状態の層（端のつまみ）・入力バーの 3 つの窓を作ります（[ADR 0032](../../docs/adr/0032-ui-canvas-stream-and-window-roles.md)）。既定（フラグなし）と配布版（`app.isPackaged`）は今の 1 つの窓です。main は送信元の窓の役割で受付を絞り（`src/main/window-roles.ts`）、役割に合わない要求を `untrusted_sender` で拒否します。キャンバスは普段はデスクトップの層にあり、⌘⌥⇧B（Windows は Ctrl+Alt+Shift+B）・端のつまみ・入力バーの右端のボタンで前に出て、Esc かほかのアプリへ移ると後ろへ戻ります（`src/main/canvas-presence.ts`）。試作の記録は [docs/ui/window-prototype.md](../../docs/ui/window-prototype.md) です。
 
+### 最小の縦断（UI-03）
+
+同じフラグのとき、入力バーの発言（`desktop.turn_submit`）は会話ではなく流れ（`POST /v1/stream/turns`）へ送り、中枢のキャンバスの記述（`GET /v1/canvas`）を取って、形式（Ajv）と意味（domain）を検査し、参照を不透明な参照に置き換えて、キャンバスの窓だけへ通知します（`desktop.canvas_changed`。`src/main/canvas-bridge.ts`）。ロック・切断・世代の変化では記述を捨てます。キャンバスの窓は、受け取った記述から用事の list のカードを描きます（`src/renderer/screens/canvas/`）。試した範囲は [docs/ui/canvas-vertical.md](../../docs/ui/canvas-vertical.md) です。
+
 ## 確かめられること
 
 - ウィンドウを閉じてもトレイ（macOS はメニューバー）に残ります。終了はトレイの「Buddy を終了」か画面のボタンです。どちらも中枢を止めません。

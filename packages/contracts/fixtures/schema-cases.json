@@ -190,7 +190,7 @@
       "reservation_id": "00000000-0000-4000-8000-000000000050",
       "reservation_revision": "0",
       "request_id": "00000000-0000-4000-8000-000000000051",
-      "profile_id": "00000000-0000-4000-8000-000000000052",
+      "profile_id": "synthetic.intent.v1",
       "price_version": "synthetic-v1",
       "budget_month": "2030-01",
       "pool_id": "llm.background",
@@ -1818,7 +1818,7 @@
       "request_id": "00000000-0000-4000-8000-0000000000a0",
       "pool_id": "llm.background",
       "budget_month": "2030-10",
-      "profile_id": "00000000-0000-4000-8000-0000000000a1",
+      "profile_id": "synthetic.intent.v1",
       "price_version": "p1",
       "reserved_amount": {
         "currency": "XTS",
@@ -1890,7 +1890,7 @@
       "reservation_id": "00000000-0000-4000-8000-000000000050",
       "reservation_revision": "0",
       "request_id": "00000000-0000-4000-8000-000000000051",
-      "profile_id": "00000000-0000-4000-8000-000000000052",
+      "profile_id": "synthetic.intent.v1",
       "price_version": "synthetic-v1",
       "budget_month": "2030-01",
       "pool_id": "llm.background",
@@ -1920,7 +1920,7 @@
       "reservation_id": "00000000-0000-4000-8000-000000000050",
       "reservation_revision": "0",
       "request_id": "00000000-0000-4000-8000-000000000051",
-      "profile_id": "00000000-0000-4000-8000-000000000052",
+      "profile_id": "synthetic.intent.v1",
       "price_version": "synthetic-v1",
       "budget_month": "2030-01",
       "pool_id": "llm.background",
@@ -7065,6 +7065,4577 @@
       "content_hash": "72c8a8c172bda32f8df7933dca1c490198a0f3670ce03adc40445d55a68b00bf",
       "state_revision": "1",
       "content_version": "1"
+    }
+  },
+  {
+    "id": "qa20-price-version-text",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
+    "id": "qa20-price-version-live-minimum",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.live.2030",
+      "price_key": "synthetic.live",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "live_seconds",
+          "unit_price": "1",
+          "per_quantity": "60",
+          "minimum_quantity": "15",
+          "max_quantity_per_request": "600"
+        },
+        {
+          "category": "tool_calls",
+          "unit_price": "2",
+          "per_quantity": "1",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "3"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
+    "id": "price-version-period-inverted",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-07-01T00:00:00Z",
+      "effective_to": "2030-01-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["effective_period_order"]
+  },
+  {
+    "id": "price-version-empty-period",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-01-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["effective_period_order"]
+  },
+  {
+    "id": "price-version-negative-price",
+    "schema": "PriceVersion",
+    "valid": false,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "-3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
+    "id": "price-version-zero-per-quantity",
+    "schema": "PriceVersion",
+    "valid": false,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "0",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
+    "id": "price-version-unknown-category",
+    "schema": "PriceVersion",
+    "valid": false,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "reasoning_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
+    "id": "price-version-local-time",
+    "schema": "PriceVersion",
+    "valid": false,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T09:00:00+09:00",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
+    "id": "qa20-price-version-unbounded-output",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["unbounded_category"]
+  },
+  {
+    "id": "price-version-duplicate-category",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "input_tokens",
+          "unit_price": "4",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["duplicate_category"]
+  },
+  {
+    "id": "price-version-cache-without-input",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["cache_without_input"]
+  },
+  {
+    "id": "price-version-minimum-exceeds-max",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.live.2030",
+      "price_key": "synthetic.live",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "live_seconds",
+          "unit_price": "1",
+          "per_quantity": "60",
+          "minimum_quantity": "15",
+          "max_quantity_per_request": "10"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["minimum_exceeds_max"]
+  },
+  {
+    "id": "price-version-same-currency-rate",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "2",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["same_currency_rate"]
+  },
+  {
+    "id": "price-version-zero-rate",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XXX",
+        "rate": "0",
+        "safety_factor": "1.2"
+      }
+    },
+    "semantic_errors": ["non_positive_rate"]
+  },
+  {
+    "id": "price-version-safety-below-one",
+    "schema": "PriceVersion",
+    "valid": true,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "0.9"
+      }
+    },
+    "semantic_errors": ["safety_factor_below_one"]
+  },
+  {
+    "id": "price-version-negative-rate",
+    "schema": "PriceVersion",
+    "valid": false,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "-1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
+    "id": "price-version-float-safety",
+    "schema": "PriceVersion",
+    "valid": false,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "XTS",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": 1.2
+      }
+    }
+  },
+  {
+    "id": "price-version-lowercase-currency",
+    "schema": "PriceVersion",
+    "valid": false,
+    "value": {
+      "price_version": "xts.text.2030a",
+      "price_key": "synthetic.text",
+      "currency": "xts",
+      "effective_from": "2030-01-01T00:00:00Z",
+      "effective_to": "2030-07-01T00:00:00Z",
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "3",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "12",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "500"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts.same.v1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  },
+  {
+    "id": "budget-runtime-config-synthetic",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "budget-runtime-config-os-time-zone",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": null,
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": []
+      },
+      "price_versions": []
+    }
+  },
+  {
+    "id": "qa20-runtime-config-period-overlap",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-06-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["price_period_overlap"]
+  },
+  {
+    "id": "budget-runtime-config-open-overlap",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["price_period_overlap"]
+  },
+  {
+    "id": "budget-runtime-config-currency-mismatch",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XXX",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["currency_mismatch"]
+  },
+  {
+    "id": "budget-runtime-config-pool-currency",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XXX",
+              "amount": "200"
+            },
+            "requires_approval": false
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["currency_mismatch"]
+  },
+  {
+    "id": "budget-runtime-config-unknown-verified",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": ["xts.text.2030a", "xts.missing"]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["unknown_verified_price_version"]
+  },
+  {
+    "id": "budget-runtime-config-duplicate-version",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": ["xts.text.2030a", "xts.text.2030b"]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["duplicate_price_version"]
+  },
+  {
+    "id": "budget-runtime-config-unknown-time-zone",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Mars/Olympus_Mons",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["unknown_time_zone"]
+  },
+  {
+    "id": "budget-runtime-config-utc-offset",
+    "schema": "BudgetRuntimeConfig",
+    "valid": false,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "+09:00",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "budget-runtime-config-negative-limit",
+    "schema": "BudgetRuntimeConfig",
+    "valid": false,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "-200"
+            },
+            "requires_approval": false
+          }
+        ],
+        "verified_price_versions": []
+      },
+      "price_versions": []
+    }
+  },
+  {
+    "id": "budget-runtime-config-secret-field",
+    "schema": "BudgetRuntimeConfig",
+    "valid": false,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ],
+      "api_key": "x"
+    }
+  },
+  {
+    "id": "budget-runtime-config-personal-field",
+    "schema": "BudgetRuntimeConfig",
+    "valid": false,
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ],
+      "owner_email": "someone@example.com"
+    }
+  },
+  {
+    "id": "budget-runtime-config-old-schema",
+    "schema": "BudgetRuntimeConfig",
+    "valid": false,
+    "value": {
+      "schema": "buddy.budget-config.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          }
+        ],
+        "verified_price_versions": [
+          "xts.text.2030a",
+          "xts.text.2030b",
+          "xts.live.2030"
+        ]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.text.2030b",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-07-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "6",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "24",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        },
+        {
+          "price_version": "xts.live.2030",
+          "price_key": "synthetic.live",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": null,
+          "rates": [
+            {
+              "category": "live_seconds",
+              "unit_price": "1",
+              "per_quantity": "60",
+              "minimum_quantity": "15",
+              "max_quantity_per_request": "600"
+            },
+            {
+              "category": "tool_calls",
+              "unit_price": "2",
+              "per_quantity": "1",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "3"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "qa42-usage-summary",
+    "schema": "BudgetUsageSummary",
+    "valid": true,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "usage-summary-currency-mismatch",
+    "schema": "BudgetUsageSummary",
+    "valid": true,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XXX",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    },
+    "semantic_errors": ["currency_mismatch"]
+  },
+  {
+    "id": "usage-summary-negative",
+    "schema": "BudgetUsageSummary",
+    "valid": false,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "-1"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "usage-summary-fractional",
+    "schema": "BudgetUsageSummary",
+    "valid": false,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "9.8"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "usage-summary-r-exceeds-m",
+    "schema": "BudgetUsageSummary",
+    "valid": true,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "5"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    },
+    "semantic_errors": ["reservation_exceeds_max"]
+  },
+  {
+    "id": "usage-summary-overrun-without-hold",
+    "schema": "BudgetUsageSummary",
+    "valid": true,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    },
+    "semantic_errors": ["overrun_without_hold"]
+  },
+  {
+    "id": "usage-summary-missing-current-month",
+    "schema": "BudgetUsageSummary",
+    "valid": true,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    },
+    "semantic_errors": ["missing_current_month"]
+  },
+  {
+    "id": "usage-summary-future-month",
+    "schema": "BudgetUsageSummary",
+    "valid": true,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-12",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    },
+    "semantic_errors": ["future_month"]
+  },
+  {
+    "id": "usage-summary-decided-approval",
+    "schema": "BudgetUsageSummary",
+    "valid": true,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "expired",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    },
+    "semantic_errors": ["decided_approval_listed"]
+  },
+  {
+    "id": "usage-summary-child-exceeds-parent",
+    "schema": "BudgetUsageSummary",
+    "valid": true,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "3"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "3"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    },
+    "semantic_errors": ["child_usage_exceeds_parent"]
+  },
+  {
+    "id": "usage-summary-unknown-hold-reason",
+    "schema": "BudgetUsageSummary",
+    "valid": false,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": ["budget_low"]
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": 1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "usage-summary-negative-count",
+    "schema": "BudgetUsageSummary",
+    "valid": false,
+    "value": {
+      "currency": "XTS",
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "months": [
+        {
+          "budget_month": "2030-11",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "98"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            },
+            {
+              "pool_id": "llm.background",
+              "parent_pool_id": "llm",
+              "limit": {
+                "currency": "XTS",
+                "amount": "80"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "6"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 1,
+              "hold_reasons": ["overrun_review_pending"]
+            },
+            {
+              "pool_id": "overage",
+              "parent_pool_id": null,
+              "limit": {
+                "currency": "XTS",
+                "amount": "25"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "0"
+              },
+              "usage_unknown_count": 0,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        },
+        {
+          "budget_month": "2030-10",
+          "pools": [
+            {
+              "pool_id": "llm",
+              "parent_pool_id": "total",
+              "limit": {
+                "currency": "XTS",
+                "amount": "100"
+              },
+              "settled": {
+                "currency": "XTS",
+                "amount": "92"
+              },
+              "unsettled_reserved": {
+                "currency": "XTS",
+                "amount": "1"
+              },
+              "unsettled_max_liability": {
+                "currency": "XTS",
+                "amount": "4"
+              },
+              "usage_unknown_count": -1,
+              "overrun_review_count": 0,
+              "hold_reasons": []
+            }
+          ]
+        }
+      ],
+      "overage_approvals": [
+        {
+          "approval_id": "00000000-0000-4000-8000-000000000701",
+          "request_id": "00000000-0000-4000-8000-000000000702",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "4"
+          },
+          "overage_remaining": {
+            "currency": "XTS",
+            "amount": "25"
+          },
+          "status": "pending",
+          "requested_at": "2030-11-02T00:00:00Z",
+          "expires_at": "2030-11-02T00:10:00Z",
+          "decided_at": null
+        }
+      ]
+    }
+  },
+  {
+    "id": "qa42-overage-approval-pending",
+    "schema": "BudgetOverageApproval",
+    "valid": true,
+    "value": {
+      "approval_id": "00000000-0000-4000-8000-000000000701",
+      "request_id": "00000000-0000-4000-8000-000000000702",
+      "pool_id": "overage",
+      "budget_month": "2030-11",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "overage_remaining": {
+        "currency": "XTS",
+        "amount": "25"
+      },
+      "status": "pending",
+      "requested_at": "2030-11-02T00:00:00Z",
+      "expires_at": "2030-11-02T00:10:00Z",
+      "decided_at": null
+    }
+  },
+  {
+    "id": "overage-approval-approved",
+    "schema": "BudgetOverageApproval",
+    "valid": true,
+    "value": {
+      "approval_id": "00000000-0000-4000-8000-000000000701",
+      "request_id": "00000000-0000-4000-8000-000000000702",
+      "pool_id": "overage",
+      "budget_month": "2030-11",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "overage_remaining": {
+        "currency": "XTS",
+        "amount": "25"
+      },
+      "status": "approved",
+      "requested_at": "2030-11-02T00:00:00Z",
+      "expires_at": "2030-11-02T00:10:00Z",
+      "decided_at": "2030-11-02T00:01:00Z"
+    }
+  },
+  {
+    "id": "overage-approval-expiry-inverted",
+    "schema": "BudgetOverageApproval",
+    "valid": true,
+    "value": {
+      "approval_id": "00000000-0000-4000-8000-000000000701",
+      "request_id": "00000000-0000-4000-8000-000000000702",
+      "pool_id": "overage",
+      "budget_month": "2030-11",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "overage_remaining": {
+        "currency": "XTS",
+        "amount": "25"
+      },
+      "status": "pending",
+      "requested_at": "2030-11-02T00:00:00Z",
+      "expires_at": "2030-11-01T23:50:00Z",
+      "decided_at": null
+    },
+    "semantic_errors": ["expires_before_requested"]
+  },
+  {
+    "id": "overage-approval-currency-mismatch",
+    "schema": "BudgetOverageApproval",
+    "valid": true,
+    "value": {
+      "approval_id": "00000000-0000-4000-8000-000000000701",
+      "request_id": "00000000-0000-4000-8000-000000000702",
+      "pool_id": "overage",
+      "budget_month": "2030-11",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "overage_remaining": {
+        "currency": "XXX",
+        "amount": "25"
+      },
+      "status": "pending",
+      "requested_at": "2030-11-02T00:00:00Z",
+      "expires_at": "2030-11-02T00:10:00Z",
+      "decided_at": null
+    },
+    "semantic_errors": ["currency_mismatch"]
+  },
+  {
+    "id": "overage-approval-pending-with-decision",
+    "schema": "BudgetOverageApproval",
+    "valid": true,
+    "value": {
+      "approval_id": "00000000-0000-4000-8000-000000000701",
+      "request_id": "00000000-0000-4000-8000-000000000702",
+      "pool_id": "overage",
+      "budget_month": "2030-11",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "overage_remaining": {
+        "currency": "XTS",
+        "amount": "25"
+      },
+      "status": "pending",
+      "requested_at": "2030-11-02T00:00:00Z",
+      "expires_at": "2030-11-02T00:10:00Z",
+      "decided_at": "2030-11-02T00:01:00Z"
+    },
+    "semantic_errors": ["decided_at_mismatch"]
+  },
+  {
+    "id": "overage-approval-decided-after-expiry",
+    "schema": "BudgetOverageApproval",
+    "valid": true,
+    "value": {
+      "approval_id": "00000000-0000-4000-8000-000000000701",
+      "request_id": "00000000-0000-4000-8000-000000000702",
+      "pool_id": "overage",
+      "budget_month": "2030-11",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "overage_remaining": {
+        "currency": "XTS",
+        "amount": "25"
+      },
+      "status": "approved",
+      "requested_at": "2030-11-02T00:00:00Z",
+      "expires_at": "2030-11-02T00:10:00Z",
+      "decided_at": "2030-11-02T00:11:00Z"
+    },
+    "semantic_errors": ["decided_outside_period"]
+  },
+  {
+    "id": "overage-approval-negative-m",
+    "schema": "BudgetOverageApproval",
+    "valid": false,
+    "value": {
+      "approval_id": "00000000-0000-4000-8000-000000000701",
+      "request_id": "00000000-0000-4000-8000-000000000702",
+      "pool_id": "overage",
+      "budget_month": "2030-11",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "-4"
+      },
+      "overage_remaining": {
+        "currency": "XTS",
+        "amount": "25"
+      },
+      "status": "pending",
+      "requested_at": "2030-11-02T00:00:00Z",
+      "expires_at": "2030-11-02T00:10:00Z",
+      "decided_at": null
+    }
+  },
+  {
+    "id": "overage-approval-without-request",
+    "schema": "BudgetOverageApproval",
+    "valid": false,
+    "value": {
+      "approval_id": "00000000-0000-4000-8000-000000000701",
+      "pool_id": "overage",
+      "budget_month": "2030-11",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "overage_remaining": {
+        "currency": "XTS",
+        "amount": "25"
+      },
+      "status": "pending",
+      "requested_at": "2030-11-02T00:00:00Z",
+      "expires_at": "2030-11-02T00:10:00Z",
+      "decided_at": null
+    }
+  },
+  {
+    "id": "overage-decision-approve",
+    "schema": "BudgetOverageDecision",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000710",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "budget_request_id": "00000000-0000-4000-8000-000000000702",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "decision": "approve"
+    }
+  },
+  {
+    "id": "overage-decision-reject",
+    "schema": "BudgetOverageDecision",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000710",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "budget_request_id": "00000000-0000-4000-8000-000000000702",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "decision": "reject"
+    }
+  },
+  {
+    "id": "overage-decision-without-m",
+    "schema": "BudgetOverageDecision",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000710",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "budget_request_id": "00000000-0000-4000-8000-000000000702",
+      "decision": "approve"
+    }
+  },
+  {
+    "id": "overage-decision-unknown-choice",
+    "schema": "BudgetOverageDecision",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000710",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "budget_request_id": "00000000-0000-4000-8000-000000000702",
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "decision": "approve_all"
+    }
+  },
+  {
+    "id": "qa42-overrun-review",
+    "schema": "BudgetOverrunReview",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000720",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "1",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "6"
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      }
+    }
+  },
+  {
+    "id": "overrun-review-no-overrun",
+    "schema": "BudgetOverrunReview",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000720",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "1",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      }
+    },
+    "semantic_errors": ["no_overrun"]
+  },
+  {
+    "id": "overrun-review-currency-mismatch",
+    "schema": "BudgetOverrunReview",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000720",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "1",
+      "actual_gross": {
+        "currency": "XXX",
+        "amount": "6"
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      }
+    },
+    "semantic_errors": ["currency_mismatch"]
+  },
+  {
+    "id": "overrun-review-without-revision",
+    "schema": "BudgetOverrunReview",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000720",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "6"
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      }
+    }
+  },
+  {
+    "id": "qa42-manual-settlement",
+    "schema": "BudgetManualSettlement",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000730",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "0",
+      "manual_reconciliation_id": "manual:invoice-2030-10-a",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_cycle_id": null
+    }
+  },
+  {
+    "id": "manual-settlement-email-reference",
+    "schema": "BudgetManualSettlement",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000730",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "0",
+      "manual_reconciliation_id": "manual:someone@example.com",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_cycle_id": null
+    }
+  },
+  {
+    "id": "manual-settlement-free-text",
+    "schema": "BudgetManualSettlement",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000730",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "0",
+      "manual_reconciliation_id": "manual:10月の請求 山田",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_cycle_id": null
+    }
+  },
+  {
+    "id": "manual-settlement-provider-form",
+    "schema": "BudgetManualSettlement",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000730",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "0",
+      "manual_reconciliation_id": "synthetic-usage-1",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_cycle_id": null
+    }
+  },
+  {
+    "id": "manual-settlement-sum",
+    "schema": "BudgetManualSettlement",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000730",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "0",
+      "manual_reconciliation_id": "manual:invoice-2030-10-a",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "2"
+      },
+      "credit_cycle_id": null
+    },
+    "semantic_errors": ["settlement_sum"]
+  },
+  {
+    "id": "manual-settlement-currency-mismatch",
+    "schema": "BudgetManualSettlement",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000730",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "0",
+      "manual_reconciliation_id": "manual:invoice-2030-10-a",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XXX",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_cycle_id": null
+    },
+    "semantic_errors": ["currency_mismatch"]
+  },
+  {
+    "id": "manual-settlement-credit-without-cycle",
+    "schema": "BudgetManualSettlement",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000730",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "0",
+      "manual_reconciliation_id": "manual:invoice-2030-10-a",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "1"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "2"
+      },
+      "credit_cycle_id": null
+    },
+    "semantic_errors": ["missing_credit_cycle"]
+  },
+  {
+    "id": "manual-settlement-negative",
+    "schema": "BudgetManualSettlement",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000730",
+      "command_scope_id": "00000000-0000-4000-8000-000000000711",
+      "expected_reservation_revision": "0",
+      "manual_reconciliation_id": "manual:invoice-2030-10-a",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "-3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_cycle_id": null
+    }
+  },
+  {
+    "id": "budget-settlement-manual-prefix",
+    "schema": "BudgetSettlement",
+    "valid": true,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-0000000000a2",
+      "request_id": "00000000-0000-4000-8000-0000000000a0",
+      "provider_reconciliation_id": "manual:invoice-2030-10-a",
+      "actual_gross": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_applied": {
+        "currency": "XTS",
+        "amount": "0"
+      },
+      "additional_spend": {
+        "currency": "XTS",
+        "amount": "3"
+      },
+      "credit_cycle_id": null
+    },
+    "semantic_errors": ["manual_prefix_reserved"]
+  },
+  {
+    "id": "budget-reservation-uuid-profile",
+    "schema": "BudgetReservation",
+    "valid": false,
+    "value": {
+      "reservation_id": "00000000-0000-4000-8000-000000000050",
+      "reservation_revision": "0",
+      "request_id": "00000000-0000-4000-8000-000000000051",
+      "profile_id": "00000000-0000-4000-8000-000000000052",
+      "price_version": "synthetic-v1",
+      "budget_month": "2030-01",
+      "pool_id": "llm.background",
+      "reserved_amount": {
+        "currency": "USD",
+        "amount": "100"
+      },
+      "max_liability": {
+        "currency": "USD",
+        "amount": "400"
+      },
+      "status": "usage_unknown",
+      "provider_reconciliation_id": null,
+      "actual_gross": null,
+      "credit_applied": null,
+      "additional_spend": null,
+      "credit_cycle_id": null,
+      "approval_id": null,
+      "overrun_reviewed": false
+    }
+  },
+  {
+    "id": "budget-admission-price-version-space",
+    "schema": "BudgetAdmissionRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000000a0",
+      "pool_id": "llm.background",
+      "budget_month": "2030-10",
+      "profile_id": "synthetic.intent.v1",
+      "price_version": "p 1",
+      "reserved_amount": {
+        "currency": "XTS",
+        "amount": "1"
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "4"
+      },
+      "approval_id": null
     }
   }
 ]

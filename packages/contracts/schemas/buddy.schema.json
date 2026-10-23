@@ -128,6 +128,27 @@
       "$ref": "#/$defs/BudgetSettlement"
     },
     {
+      "$ref": "#/$defs/PriceVersion"
+    },
+    {
+      "$ref": "#/$defs/BudgetRuntimeConfig"
+    },
+    {
+      "$ref": "#/$defs/BudgetUsageSummary"
+    },
+    {
+      "$ref": "#/$defs/BudgetOverageApproval"
+    },
+    {
+      "$ref": "#/$defs/BudgetOverageDecision"
+    },
+    {
+      "$ref": "#/$defs/BudgetOverrunReview"
+    },
+    {
+      "$ref": "#/$defs/BudgetManualSettlement"
+    },
+    {
       "$ref": "#/$defs/ExtractionWire"
     },
     {
@@ -1800,6 +1821,31 @@
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)$",
       "description": "予約行の版。追加予約（top-up）ごとに上がる（ADR 0006）。"
+    },
+    "ProfileId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$",
+      "description": "モデル・endpoint 別の profile の ID（ModelProfile.profile_id、設計 05 P02）。予約・受付で同じ型を使う（ADR 0034）。"
+    },
+    "PriceVersionId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$",
+      "description": "単価の版の ID（設計 05 費用の計算 D15）。設定で決める不透明な ID で、順序比較しない（ADR 0006・0034）。"
+    },
+    "PriceKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$",
+      "description": "同じ課金対象（provider・モデル・endpoint・課金の種類）の単価の系列。同じ price_key の版は適用期間が重ならない（ADR 0034）。"
+    },
+    "DecimalString": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,6})?$",
+      "description": "負でない 10 進の小数（小数点以下 6 桁まで）。為替・安全係数に使う。浮動小数点数にしない（ADR 0034）。"
+    },
+    "QuantityString": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "課金量（token・秒・回）を表す負でない整数の文字列。"
     },
     "ExecutorGeneration": {
       "type": "string",
@@ -4670,11 +4716,10 @@
           "$ref": "#/$defs/Id"
         },
         "profile_id": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/ProfileId"
         },
         "price_version": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/PriceVersionId"
         },
         "budget_month": {
           "$ref": "#/$defs/YearMonth"
@@ -4828,8 +4873,7 @@
         "verified_price_versions": {
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/$defs/PriceVersionId"
           },
           "uniqueItems": true
         }
@@ -4851,11 +4895,10 @@
           "$ref": "#/$defs/YearMonth"
         },
         "profile_id": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/ProfileId"
         },
         "price_version": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/PriceVersionId"
         },
         "reserved_amount": {
           "$ref": "#/$defs/Money"
@@ -4987,7 +5030,459 @@
         "credit_cycle_id"
       ],
       "additionalProperties": false,
-      "description": "確定した usage による精算。request_id と provider の照合 ID で一度だけ適用し、元の月・元の枠に計上する。同じ値の再適用は変化なし、異なる値は競合。"
+      "description": "確定した usage による精算。request_id と provider の照合 ID で一度だけ適用し、元の月・元の枠に計上する。同じ値の再適用は変化なし、異なる値は競合。 provider_reconciliation_id は manual: で始めない（手での精算と区別する、ADR 0034）。"
+    },
+    "PriceCategory": {
+      "type": "string",
+      "enum": [
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "tool_calls",
+        "search_requests",
+        "live_seconds"
+      ],
+      "description": "課金区分（設計 05 費用の計算 D15・F02）。output_tokens は思考を含む。cached_input_tokens は精算だけに使い、M は非命中の input_tokens の単価で見積もる。search_requests は検索、live_seconds は会話の接続時間。"
+    },
+    "PriceRate": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/PriceCategory"
+        },
+        "unit_price": {
+          "$ref": "#/$defs/Amount"
+        },
+        "per_quantity": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "description": "unit_price が何単位あたりか（例: 1000000 token）。"
+        },
+        "minimum_quantity": {
+          "$ref": "#/$defs/QuantityString"
+        },
+        "max_quantity_per_request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QuantityString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "category",
+        "unit_price",
+        "per_quantity",
+        "minimum_quantity",
+        "max_quantity_per_request"
+      ],
+      "additionalProperties": false,
+      "description": "課金区分ごとの単価。unit_price は版の通貨の百万分の一で、per_quantity 単位あたり。minimum_quantity は 1 回の最低課金量（会話の接続の 15 秒など。なければ 0）。max_quantity_per_request は 1 要求で課金され得る最大量で、M の算出に使う。null は入力（送る量が要求の時点で決まる）だけに許し、他の区分で null なら M を有限にできないので profile を有効にしない（設計 05 F02）。"
+    },
+    "CurrencyConversion": {
+      "type": "object",
+      "properties": {
+        "conversion_version": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$",
+          "description": "為替と安全係数の版の ID。"
+        },
+        "to_currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "rate": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "safety_factor": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "conversion_version",
+        "to_currency",
+        "rate",
+        "safety_factor"
+      ],
+      "additionalProperties": false,
+      "description": "単価の通貨から予算の通貨への換算（設計 05 費用の計算）。rate は 1 単位あたりの予算の通貨の量、safety_factor は換算・税・見積りの誤差の係数で 1 以上。値は本人の設定で、契約・試験には合成値だけを使う。同じ通貨なら rate は 1。"
+    },
+    "PriceVersion": {
+      "type": "object",
+      "properties": {
+        "price_version": {
+          "$ref": "#/$defs/PriceVersionId"
+        },
+        "price_key": {
+          "$ref": "#/$defs/PriceKey"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "effective_from": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/PriceRate"
+          }
+        },
+        "conversion": {
+          "$ref": "#/$defs/CurrencyConversion"
+        }
+      },
+      "required": [
+        "price_version",
+        "price_key",
+        "currency",
+        "effective_from",
+        "effective_to",
+        "rates",
+        "conversion"
+      ],
+      "additionalProperties": false,
+      "description": "単価の版（設計 05 費用の計算 D15・F02、ADR 0034）。適用期間は effective_from 以上 effective_to 未満（null は終わりを決めていない）。適用期間の境界を跨ぐ要求は、跨ぐ版のうち高い方の単価で M を出す。価格が確認されていない版（BudgetConfig.verified_price_versions にない版）の profile は受け付けない。単価は実行時の設定ファイルに置き、リポジトリに置かない。"
+    },
+    "BudgetRuntimeConfig": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.budget-runtime.v1"
+        },
+        "time_zone": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeZone"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "budget": {
+          "$ref": "#/$defs/BudgetConfig"
+        },
+        "price_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PriceVersion"
+          }
+        }
+      },
+      "required": ["schema", "time_zone", "budget", "price_versions"],
+      "additionalProperties": false,
+      "description": "予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。秘密情報（API キーなど）を含めない。"
+    },
+    "BudgetHoldReason": {
+      "type": "string",
+      "enum": [
+        "limit_reached",
+        "overrun_review_pending",
+        "ancestor_held",
+        "config_invalid"
+      ],
+      "description": "枠の予算保留の理由（01 いつも見える状態の「予算保留」）。limit_reached は精算済み額＋未精算の M が上限に達した、overrun_review_pending は M 超過の確認待ち、ancestor_held は祖先の枠の保留、config_invalid は設定の検査に失敗して有料処理を止めている。理由のコードを利用者に見せない。"
+    },
+    "BudgetPoolUsage": {
+      "type": "object",
+      "properties": {
+        "pool_id": {
+          "$ref": "#/$defs/BudgetPoolId"
+        },
+        "parent_pool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetPoolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "$ref": "#/$defs/Money"
+        },
+        "settled": {
+          "$ref": "#/$defs/Money"
+        },
+        "unsettled_reserved": {
+          "$ref": "#/$defs/Money"
+        },
+        "unsettled_max_liability": {
+          "$ref": "#/$defs/Money"
+        },
+        "usage_unknown_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overrun_review_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hold_reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/BudgetHoldReason"
+          }
+        }
+      },
+      "required": [
+        "pool_id",
+        "parent_pool_id",
+        "limit",
+        "settled",
+        "unsettled_reserved",
+        "unsettled_max_liability",
+        "usage_unknown_count",
+        "overrun_review_count",
+        "hold_reasons"
+      ],
+      "additionalProperties": false,
+      "description": "月と枠ごとの利用状況。settled は精算済みの実費（クレジット適用前の通常料金）、unsettled_reserved と unsettled_max_liability は reserved と usage_unknown の R と M の合計。子孫の枠の分を含む（ADR 0006 の数え方）。usage_unknown_count は手で精算するまで保持している件数。"
+    },
+    "BudgetMonthUsage": {
+      "type": "object",
+      "properties": {
+        "budget_month": {
+          "$ref": "#/$defs/YearMonth"
+        },
+        "pools": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/BudgetPoolUsage"
+          }
+        }
+      },
+      "required": ["budget_month", "pools"],
+      "additionalProperties": false,
+      "description": "予算月ごとの利用状況。"
+    },
+    "BudgetOverageApproval": {
+      "type": "object",
+      "properties": {
+        "approval_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "pool_id": {
+          "$ref": "#/$defs/BudgetPoolId"
+        },
+        "budget_month": {
+          "$ref": "#/$defs/YearMonth"
+        },
+        "max_liability": {
+          "$ref": "#/$defs/Money"
+        },
+        "overage_remaining": {
+          "$ref": "#/$defs/Money"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected", "expired", "consumed"]
+        },
+        "requested_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "decided_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "approval_id",
+        "request_id",
+        "pool_id",
+        "budget_month",
+        "max_liability",
+        "overage_remaining",
+        "status",
+        "requested_at",
+        "expires_at",
+        "decided_at"
+      ],
+      "additionalProperties": false,
+      "description": "超過枠の個別の承認（設計 05 F02、01 承認画面、本人の判断 2026-10-23、ADR 0034）。1 つの request_id（予算の要求）と M に固定し、承認は main の OS の確認ダイアログで 1 回だけ行う。overage_remaining は承認を求めた時点の超過枠の残り（画面に M と並べて見せる値）。consumed はその承認で予約を受け付けた後。期限を過ぎた承認・別の M の予約には使わない。自発的な解析・自動実行には作らない。"
+    },
+    "BudgetUsageSummary": {
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "time_zone": {
+          "$ref": "#/$defs/TimeZone"
+        },
+        "current_month": {
+          "$ref": "#/$defs/YearMonth"
+        },
+        "generated_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "months": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/BudgetMonthUsage"
+          }
+        },
+        "overage_approvals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BudgetOverageApproval"
+          }
+        }
+      },
+      "required": [
+        "currency",
+        "time_zone",
+        "current_month",
+        "generated_at",
+        "months",
+        "overage_approvals"
+      ],
+      "additionalProperties": false,
+      "description": "予算の利用状況（GET /v1/budget/usage、ADR 0034）。months は今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月。time_zone は今月の予算月の境目に使っているタイムゾーン。overage_approvals は承認待ちの超過枠の承認。表示はキャンバス UI で作る。"
+    },
+    "BudgetOverageDecision": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "budget_request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "max_liability": {
+          "$ref": "#/$defs/Money"
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["approve", "reject"]
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "budget_request_id",
+        "max_liability",
+        "decision"
+      ],
+      "additionalProperties": false,
+      "description": "超過枠の承認・拒否（POST /v1/budget/overage-approvals/{approval_id}/decision、ADR 0034）。request_id はこの命令の ID で、budget_request_id は承認する予算の要求（BudgetOverageApproval.request_id）。budget_request_id と M が承認待ちの記録と一致しなければ拒否する。同じ命令の再送は同じ結果を返し、二度押しで承認を 2 件にしない。"
+    },
+    "BudgetOverrunReview": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_reservation_revision": {
+          "$ref": "#/$defs/ReservationRevision"
+        },
+        "actual_gross": {
+          "$ref": "#/$defs/Money"
+        },
+        "max_liability": {
+          "$ref": "#/$defs/Money"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_reservation_revision",
+        "actual_gross",
+        "max_liability"
+      ],
+      "additionalProperties": false,
+      "description": "M 超過の確認（POST /v1/budget/reservations/{reservation_id}/overrun-review、設計 05 F02、ADR 0006・0034）。本人が見た実費と M を送り、記録と一致して実費が M を超えるときだけ overrun_reviewed にする。確認しても実費は変えず、他の枠へ振り替えない。"
+    },
+    "BudgetManualSettlement": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_reservation_revision": {
+          "$ref": "#/$defs/ReservationRevision"
+        },
+        "manual_reconciliation_id": {
+          "type": "string",
+          "pattern": "^manual:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "description": "手で入力した照合 ID。manual: で始め、provider の照合 ID と区別する。英数字と . _ - だけで、メールアドレス・氏名・自由文を入れない。"
+        },
+        "actual_gross": {
+          "$ref": "#/$defs/Money"
+        },
+        "credit_applied": {
+          "$ref": "#/$defs/Money"
+        },
+        "additional_spend": {
+          "$ref": "#/$defs/Money"
+        },
+        "credit_cycle_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_reservation_revision",
+        "manual_reconciliation_id",
+        "actual_gross",
+        "credit_applied",
+        "additional_spend",
+        "credit_cycle_id"
+      ],
+      "additionalProperties": false,
+      "description": "不明な費用の手での精算（POST /v1/budget/reservations/{reservation_id}/manual-settlement、本人の判断 2026-10-23、ADR 0034）。usage_unknown の予約だけに、元の月・元の枠のまま一度だけ適用する。推測の値を実費として記録しない。請求の照合（B15）で結び付けた実額を入れる。"
     },
     "CreditObservation": {
       "type": "object",
@@ -5439,8 +5934,7 @@
       "type": "object",
       "properties": {
         "profile_id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_.:-]*$"
+          "$ref": "#/$defs/ProfileId"
         },
         "role": {
           "type": "string",
@@ -5523,8 +6017,7 @@
         "price_version": {
           "anyOf": [
             {
-              "type": "string",
-              "minLength": 1
+              "$ref": "#/$defs/PriceVersionId"
             },
             {
               "type": "null"

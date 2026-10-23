@@ -2,7 +2,7 @@ openapi: 3.1.2
 info:
   title: Buddy Core HTTP API (B00)
   version: 1.0.0
-  description: 設計 07 §2 の経路と、端末の登録・失効・連携の接続（U10、ADR 0009）。形式は OpenAPI と JSON Schema が正本で、認証・自宅判定・接続範囲・ロック・画面操作・音声所有権・版の検査は x-buddy-core-checks の順に Core が行う（domain の api.ts）。対象の存在・所有・状態遷移の可否はその後に domain の各規則で判定する。サーバー実装・DB transaction は未実装。
+  description: 設計 07 §2 の経路と、端末の登録・失効・連携の接続（U10、ADR 0009）、予算の利用状況・超過枠の承認・M 超過の確認・不明な費用の手での精算（ADR 0034）。形式は OpenAPI と JSON Schema が正本で、認証・自宅判定・接続範囲・ロック・画面操作・音声所有権・版の検査は x-buddy-core-checks の順に Core が行う（domain の api.ts）。対象の存在・所有・状態遷移の可否はその後に domain の各規則で判定する。サーバー実装・DB transaction は未実装。
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 security:
   - deviceToken: []
@@ -1346,6 +1346,168 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/budget/usage:
+    get:
+      operationId: getBudgetUsage
+      summary: 予算の利用状況
+      description: 今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月の、枠ごとの精算済み額・未精算の R と M・usage 不明の件数・予算保留の理由と、承認待ちの超過枠の承認を返す（01 設定・運用・いつも見える状態、05 F02。07 §2 にない経路の追加、ADR 0034）。月は Core が決め、クエリーで選ばない。金額は本人の設定に基づく実行時の値で、表示はキャンバス UI で作る。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 利用状況。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/BudgetUsageSummary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/budget/overage-approvals/{approval_id}/decision:
+    post:
+      operationId: decideBudgetOverage
+      summary: 超過枠の個別の承認
+      description: 承認待ちの超過枠の承認を、本人がロック解除済みの画面で承認・拒否する。承認は端末の main が OS の確認ダイアログで 1 回確かめてから送る（本人の判断 2026-10-23）。budget_request_id と M が記録と一致しなければ 409、期限切れ・決定済みは 409。同じ命令の再送は保存済みの結果を返し、二度押しで承認を 2 件にしない（05 F02、01 承認画面。07 §2 にない経路の追加、ADR 0034）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/BudgetOverageDecision
+      responses:
+        '200':
+          description: 決定後の承認の記録。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/BudgetOverageApproval
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/budget/reservations/{reservation_id}/overrun-review:
+    post:
+      operationId: reviewBudgetOverrun
+      summary: M 超過の確認
+      description: M を超えた実費を本人が確認し、その枠と子孫の枠の新規受付の停止（overrun_hold）を解く。実費・予算月・枠は変えず、他の枠へ振り替えない。本文の実費と M が記録と一致しない、または超過していなければ 409（05 F02、ADR 0006。07 §2 にない経路の追加、ADR 0034）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/BudgetOverrunReview
+      responses:
+        '200':
+          description: 確認後の予約。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/BudgetReservation
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/budget/reservations/{reservation_id}/manual-settlement:
+    post:
+      operationId: settleBudgetManually
+      summary: 不明な費用の手での精算
+      description: usage 不明のまま保持している予約を、本人が請求の照合で得た実額で一度だけ精算する（本人の判断 2026-10-23）。元の月・元の枠に計上し、照合 ID の先頭は「manual:」。usage 不明でない予約、同じ照合 ID の別の値は 409。推測の値を入れない（05 F02。07 §2 にない経路の追加、ADR 0034）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+        - expected_revision
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/BudgetManualSettlement
+      responses:
+        '200':
+          description: 精算後の予約。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/BudgetReservation
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     deviceToken:
@@ -1395,6 +1557,20 @@ components:
       schema:
         $ref: ./schemas/buddy.schema.json#/$defs/Id
       description: 連携の接続 ID。
+    ApprovalId:
+      name: approval_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 超過枠の承認の ID。
+    ReservationId:
+      name: reservation_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 予算の予約の ID。
     Cursor:
       name: cursor
       in: query

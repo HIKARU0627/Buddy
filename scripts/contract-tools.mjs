@@ -71,6 +71,12 @@ export async function loadContracts() {
 }
 
 // 文書に明記した局所的不変条件だけ。認可・DB状態・外部照合は検証しない。
+// DecimalString（小数点以下 6 桁まで）を百万分の一の整数にする。浮動小数点数を使わない。
+function decimalMicros(text) {
+  const [whole, fraction = ''] = text.split('.');
+  return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+}
+
 export function semanticErrors(name, value) {
   const errors = [];
   if (name === 'CreditObservation') {
@@ -110,6 +116,165 @@ export function semanticErrors(name, value) {
       if (direct && BigInt(pool.limit.amount) > BigInt(direct.limit.amount))
         errors.push('child_limit_exceeds_parent');
     }
+  }
+  // 単価・為替・実行時の設定・利用状況・超過の承認・手での精算（ADR 0034）。
+  if (
+    name === 'BudgetSettlement' &&
+    value.provider_reconciliation_id.startsWith('manual:')
+  )
+    errors.push('manual_prefix_reserved');
+  if (name === 'CurrencyConversion') {
+    if (decimalMicros(value.rate) === 0n) errors.push('non_positive_rate');
+    if (decimalMicros(value.safety_factor) < 1_000_000n)
+      errors.push('safety_factor_below_one');
+  }
+  if (name === 'PriceVersion') {
+    if (
+      value.effective_to !== null &&
+      Date.parse(value.effective_from) >= Date.parse(value.effective_to)
+    )
+      errors.push('effective_period_order');
+    const categories = value.rates.map((rate) => rate.category);
+    if (new Set(categories).size !== categories.length)
+      errors.push('duplicate_category');
+    if (
+      categories.includes('cached_input_tokens') &&
+      !categories.includes('input_tokens')
+    )
+      errors.push('cache_without_input');
+    for (const rate of value.rates) {
+      const input = ['input_tokens', 'cached_input_tokens'].includes(
+        rate.category,
+      );
+      if (rate.max_quantity_per_request === null && !input)
+        errors.push('unbounded_category');
+      if (
+        rate.max_quantity_per_request !== null &&
+        BigInt(rate.minimum_quantity) > BigInt(rate.max_quantity_per_request)
+      )
+        errors.push('minimum_exceeds_max');
+    }
+    if (
+      value.currency === value.conversion.to_currency &&
+      decimalMicros(value.conversion.rate) !== 1_000_000n
+    )
+      errors.push('same_currency_rate');
+    errors.push(...semanticErrors('CurrencyConversion', value.conversion));
+  }
+  if (name === 'BudgetRuntimeConfig') {
+    if (value.time_zone !== null)
+      errors.push(...semanticErrors('TimeZone', value.time_zone));
+    errors.push(...semanticErrors('BudgetConfig', value.budget));
+    const ids = value.price_versions.map((item) => item.price_version);
+    if (new Set(ids).size !== ids.length)
+      errors.push('duplicate_price_version');
+    for (const id of value.budget.verified_price_versions)
+      if (!ids.includes(id)) errors.push('unknown_verified_price_version');
+    for (const [index, item] of value.price_versions.entries()) {
+      errors.push(...semanticErrors('PriceVersion', item));
+      if (item.conversion.to_currency !== value.budget.currency)
+        errors.push('currency_mismatch');
+      const end = (v) =>
+        v.effective_to === null ? Infinity : Date.parse(v.effective_to);
+      for (const other of value.price_versions.slice(index + 1))
+        if (
+          other.price_key === item.price_key &&
+          Date.parse(item.effective_from) < end(other) &&
+          Date.parse(other.effective_from) < end(item)
+        )
+          errors.push('price_period_overlap');
+    }
+  }
+  if (name === 'BudgetOverageApproval') {
+    if (Date.parse(value.expires_at) <= Date.parse(value.requested_at))
+      errors.push('expires_before_requested');
+    if (value.max_liability.currency !== value.overage_remaining.currency)
+      errors.push('currency_mismatch');
+    const decided = ['approved', 'rejected', 'consumed'].includes(value.status);
+    if (decided !== (value.decided_at !== null))
+      errors.push('decided_at_mismatch');
+    if (
+      value.decided_at !== null &&
+      (Date.parse(value.decided_at) < Date.parse(value.requested_at) ||
+        Date.parse(value.decided_at) > Date.parse(value.expires_at))
+    )
+      errors.push('decided_outside_period');
+  }
+  if (name === 'BudgetUsageSummary') {
+    const months = value.months.map((item) => item.budget_month);
+    if (new Set(months).size !== months.length) errors.push('duplicate_month');
+    if (!months.includes(value.current_month))
+      errors.push('missing_current_month');
+    if (months.some((month) => month > value.current_month))
+      errors.push('future_month');
+    for (const month of value.months) {
+      const pools = month.pools.map((pool) => pool.pool_id);
+      if (new Set(pools).size !== pools.length) errors.push('duplicate_pool');
+      // 親の枠の数は子孫の枠の分を含む（ADR 0006）。子が親を超えることはない。
+      const byId = new Map(month.pools.map((pool) => [pool.pool_id, pool]));
+      for (const pool of month.pools) {
+        const parent = byId.get(pool.parent_pool_id);
+        if (
+          parent &&
+          ['settled', 'unsettled_reserved', 'unsettled_max_liability'].some(
+            (key) => BigInt(pool[key].amount) > BigInt(parent[key].amount),
+          )
+        )
+          errors.push('child_usage_exceeds_parent');
+      }
+      for (const pool of month.pools) {
+        const amounts = [
+          pool.limit,
+          pool.settled,
+          pool.unsettled_reserved,
+          pool.unsettled_max_liability,
+        ];
+        if (amounts.some((item) => item.currency !== value.currency))
+          errors.push('currency_mismatch');
+        if (
+          BigInt(pool.unsettled_reserved.amount) >
+          BigInt(pool.unsettled_max_liability.amount)
+        )
+          errors.push('reservation_exceeds_max');
+        if (
+          pool.overrun_review_count > 0 &&
+          !pool.hold_reasons.includes('overrun_review_pending')
+        )
+          errors.push('overrun_without_hold');
+      }
+    }
+    for (const approval of value.overage_approvals) {
+      errors.push(...semanticErrors('BudgetOverageApproval', approval));
+      if (approval.status !== 'pending') errors.push('decided_approval_listed');
+      if (approval.max_liability.currency !== value.currency)
+        errors.push('currency_mismatch');
+    }
+  }
+  if (name === 'BudgetOverrunReview') {
+    if (value.actual_gross.currency !== value.max_liability.currency)
+      errors.push('currency_mismatch');
+    if (BigInt(value.actual_gross.amount) <= BigInt(value.max_liability.amount))
+      errors.push('no_overrun');
+  }
+  if (name === 'BudgetManualSettlement') {
+    const amounts = [
+      value.actual_gross,
+      value.credit_applied,
+      value.additional_spend,
+    ];
+    if (amounts.some((item) => item.currency !== value.actual_gross.currency))
+      errors.push('currency_mismatch');
+    else if (
+      BigInt(value.actual_gross.amount) !==
+      BigInt(value.credit_applied.amount) +
+        BigInt(value.additional_spend.amount)
+    )
+      errors.push('settlement_sum');
+    if (
+      BigInt(value.credit_applied.amount) > 0n &&
+      value.credit_cycle_id === null
+    )
+      errors.push('missing_credit_cycle');
   }
   if (name === 'SourceRef' && value.start >= value.end)
     errors.push('quote_range');

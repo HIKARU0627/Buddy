@@ -165,6 +165,26 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/connections/{connection_id}/disconnect',
     { body: 'ConnectionDisconnectRequest', ...SCREEN },
   ),
+  // 予算（ADR 0034）。処理は B07-05 で足す。それまでは検査の後に 503。
+  route('getBudgetUsage', 'GET', '/v1/budget/usage'),
+  route(
+    'decideBudgetOverage',
+    'POST',
+    '/v1/budget/overage-approvals/{approval_id}/decision',
+    { body: 'BudgetOverageDecision', ...SCREEN },
+  ),
+  route(
+    'reviewBudgetOverrun',
+    'POST',
+    '/v1/budget/reservations/{reservation_id}/overrun-review',
+    { body: 'BudgetOverrunReview', ...SCREEN },
+  ),
+  route(
+    'settleBudgetManually',
+    'POST',
+    '/v1/budget/reservations/{reservation_id}/manual-settlement',
+    { body: 'BudgetManualSettlement', ...SCREEN },
+  ),
 ];
 
 export type RouteMatch =

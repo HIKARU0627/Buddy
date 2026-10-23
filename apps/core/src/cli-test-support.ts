@@ -12,7 +12,12 @@ import { onCleanup } from './api-test-support.js';
 type Json = Record<string, unknown>;
 const CLI = fileURLToPath(new URL('./cli.js', import.meta.url));
 
-export function observeCliStart(child: ChildProcess, signal: AbortSignal) {
+// onRunning は起動に成功したときだけ、起動からの経過時間（ms）を渡して呼ぶ。
+export function observeCliStart(
+  child: ChildProcess,
+  signal: AbortSignal,
+  onRunning?: (elapsedMs: number) => void,
+) {
   if (child.stdout === null || child.stderr === null)
     throw new Error('起動の観測には stdout と stderr の pipe が必要です。');
   const started = performance.now();
@@ -70,6 +75,7 @@ export function observeCliStart(child: ChildProcess, signal: AbortSignal) {
       }
       stage = 'running';
       signal.removeEventListener('abort', aborted);
+      onRunning?.(Math.round(performance.now() - started));
       resolveRunning(message);
     }
   });
@@ -94,7 +100,10 @@ export async function startCli(t: test.TestContext, args: readonly string[]) {
   const child = spawn(process.execPath, [CLI, 'start', ...args], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const observed = observeCliStart(child, t.signal);
+  // 成功時も起動にかかった時間を残し、CI の記録から推移を追えるようにする。
+  const observed = observeCliStart(child, t.signal, (elapsedMs) =>
+    t.diagnostic(`CLI 起動 elapsed_ms=${elapsedMs}`),
+  );
   onCleanup(t, async () => {
     if (child.exitCode === null && child.signalCode === null)
       child.kill('SIGKILL');

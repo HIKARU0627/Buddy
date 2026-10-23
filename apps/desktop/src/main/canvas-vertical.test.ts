@@ -43,6 +43,7 @@ import {
   tempDir,
   waitUntil,
 } from './hub-test-support.js';
+import { describeExchange } from './hub-test-support.js';
 import type { TestHub } from './hub-test-support.js';
 import { hubRequest, createHubTransport } from './hub-transport.js';
 import type { PinnedHub } from './hub-transport.js';
@@ -401,6 +402,7 @@ test(
     assert.equal(
       client.requests.filter((line) => line === 'GET /v1/bootstrap').length,
       1,
+      describeExchange(client),
     );
     assert.deepEqual(
       client.logs.filter((line) => line.startsWith('link:')),
@@ -410,6 +412,7 @@ test(
         'link:subscribing',
         'link:live',
       ],
+      describeExchange(client),
     );
 
     const turn = field(response, 'turn') as {

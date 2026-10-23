@@ -604,3 +604,37 @@ test(
     assert(pings > 0, 'client received a ping but did not send a pong');
   },
 );
+
+test(
+  'a client that answers pings stays connected across many heartbeats',
+  { timeout: 30_000 },
+  async (t) => {
+    // 健全な接続は、何度も ping と pong を繰り返しても切られない。実時間は 1 秒未満（100ms 間隔）。
+    const core = await startEventCore(t, { pingIntervalMs: 100 });
+    const device = await insertDevice(core.handle.store);
+    await bootstrap(core, device);
+    const stream = openStream(
+      t,
+      core,
+      device,
+      encodeEventCursor({
+        storeGeneration: core.handle.storeGeneration,
+        sequence: 0,
+        issuedAt: Date.now(),
+      }),
+    );
+    let pings = 0;
+    stream.socket.on('ping', () => {
+      pings += 1;
+    });
+    assert.deepEqual(await stream.opened, { ok: true });
+    // 5 回目の ping は、前の 4 回の ping に pong があったかの判定の後に出る。
+    const deadline = Date.now() + 5_000;
+    while (pings < 5 && stream.socket.readyState === stream.socket.OPEN) {
+      assert(Date.now() < deadline, `pings=${pings}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(pings >= 5, `closed after pings=${pings}`);
+    assert.equal(stream.socket.readyState, stream.socket.OPEN);
+  },
+);

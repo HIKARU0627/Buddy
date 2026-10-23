@@ -301,3 +301,21 @@ export async function submitDurable(
   );
   assert.equal(outcome.outcome, 'durable', JSON.stringify(outcome));
 }
+
+// 厳密な件数・遷移の検査が失敗したときの文言。中枢へ送った要求（方法とパスだけ。UUID とクエリは伏せる）と
+// link: の遷移（固定のコード）だけを出し、本文・ヘッダー・トークン・生の例外は含めない。
+export function describeExchange(client: {
+  readonly requests: readonly string[];
+  readonly logs: readonly string[];
+}): string {
+  const requests = client.requests.map((line) =>
+    line
+      .replace(/\?.*$/u, '')
+      .replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu,
+        ':id',
+      ),
+  );
+  const links = client.logs.filter((line) => line.startsWith('link:'));
+  return `requests=${JSON.stringify(requests)}; links=${JSON.stringify(links)}`;
+}

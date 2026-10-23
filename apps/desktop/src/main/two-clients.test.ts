@@ -38,6 +38,7 @@ import { createHubTransport, hubRequest } from './hub-transport.js';
 import type { PinnedHub } from './hub-transport.js';
 import {
   createCommand,
+  describeExchange,
   dispatchCommand,
   freePort,
   mockProtector,
@@ -392,24 +393,18 @@ async function pairTwoClients(
   return { a, b };
 }
 
-// 接続している（live）ときの管理の入口の応答。接続した直後は、届いたイベントで取り直し（resnapshot）が
-// 起きて一時的に live でなくなることがあり、その間の要求は not_connected になる（負荷の高い CI で見た）。
-// 試験は live に戻るのを待って送り直す（main は送っていないので、送り直しで中枢に二重に届くことはない）。
+// 接続している（live）ときの管理の入口の応答。live を待った後は一度だけ送る。再接続や未送信の拒否
+// （not_connected）を送り直しで隠さない（Issue #108）。work() と同じ方針。
 async function adminWhenLive(
   client: Client,
   channel: string,
   payload: unknown,
 ): Promise<DesktopIpcResponse> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    await waitUntil(
-      () => client.link.linkState?.phase === 'live',
-      `${client.name} live`,
-    );
-    const response = await client.admin(channel, payload);
-    if ((response as { reason?: string }).reason !== 'not_connected')
-      return response;
-  }
-  throw new Error(`${client.name} did not stay live for ${channel}`);
+  await waitUntil(
+    () => client.link.linkState?.phase === 'live',
+    `${client.name} live for ${channel}`,
+  );
+  return client.admin(channel, payload);
 }
 
 const opsOf = (client: Client) =>
@@ -717,8 +712,9 @@ test(
     const hub = await startHub(t, {
       dataDir: join(dir, 'd'),
       port: await freePort(),
-      // この 2 ケースだけは自宅・接続範囲の定期再検査も試す。
-      pingIntervalMs: 200,
+      // この 2 ケースだけは自宅・接続範囲の定期再検査も試す。既定の 15 秒を待たないよう短くするが、
+      // pong の処理が間に合わず未応答で切断されないよう 1 秒にする（200ms は使わない。Issue #108）。
+      pingIntervalMs: 1_000,
       sameMachine: () => machine.same,
       homeNetwork: true,
     });
@@ -996,8 +992,9 @@ test(
     const hub = await startHub(t, {
       dataDir: join(dir, 'd'),
       port: await freePort(),
-      // この 2 ケースだけは自宅・接続範囲の定期再検査も試す。
-      pingIntervalMs: 200,
+      // この 2 ケースだけは自宅・接続範囲の定期再検査も試す。既定の 15 秒を待たないよう短くするが、
+      // pong の処理が間に合わず未応答で切断されないよう 1 秒にする（200ms は使わない。Issue #108）。
+      pingIntervalMs: 1_000,
       sameMachine: () => machine.same,
       tailscale: mockTailscale(tailscale),
     });
@@ -1296,14 +1293,17 @@ test(
     assert.equal(
       a.requests.filter((line) => line === 'GET /v1/bootstrap').length,
       1,
+      describeExchange(a),
     );
     assert.equal(
       a.requests.filter((line) => line === 'WSS /v1/events/stream').length,
       1,
+      describeExchange(a),
     );
     assert.equal(
       a.requests.filter((line) => /^POST .*\/turns$/u.test(line)).length,
       1,
+      describeExchange(a),
     );
 
     const result = (

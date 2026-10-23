@@ -46,7 +46,9 @@ const LEGACY_CHANNELS = [
 ];
 // UI-02 で足した、キャンバスを前に出すチャネル（状態の層と入力バーだけ。従来の窓は使わない）。
 const SUMMON = 'desktop.canvas_summon';
-const ALL_CHANNELS = [...LEGACY_CHANNELS, SUMMON];
+// UI-04 で足した、状態の層のパネルを出す・しまうチャネル（状態の層だけ。従来の窓は使わない）。
+const PANEL = 'desktop.status_panel';
+const ALL_CHANNELS = [...LEGACY_CHANNELS, SUMMON, PANEL];
 
 const UNLOCKED = {
   lockState: 'unlocked',
@@ -191,12 +193,20 @@ test('the legacy window keeps every existing channel and the same sender decisio
       windowFocused: true,
     });
   }
-  // 従来の窓はキャンバスを前に出さない（従来の窓の組み立てにはキャンバスがない）。
-  assert.equal(channelAllowedForWindow('legacy', SUMMON), false);
-  assert.deepEqual(
-    admitDesktopRequest(SUMMON, null, UNLOCKED, senderFor(registry, 7, SUMMON)),
-    { ok: false, reason: 'untrusted_sender' },
-  );
+  // 従来の窓はキャンバスを前に出さない・状態の層のパネルを使わない（従来の窓の組み立てにはどちらもない）。
+  for (const channel of [SUMMON, PANEL]) {
+    assert.equal(channelAllowedForWindow('legacy', channel), false, channel);
+    assert.deepEqual(
+      admitDesktopRequest(
+        channel,
+        null,
+        UNLOCKED,
+        senderFor(registry, 7, channel),
+      ),
+      { ok: false, reason: 'untrusted_sender' },
+      channel,
+    );
+  }
   assert.equal(channelAllowedForWindow('legacy', 'desktop.hub_stop'), false);
   for (const channel of [
     'desktop.state_changed',
@@ -300,6 +310,10 @@ test('each role admits only its own channels; the rest are untrusted senders', (
       false,
       channel,
     );
+  // キャンバスと入力バーは状態の層のパネルを出す・しまうことができない（AI が状態の層を隠す・動かすことを構造で防ぐ）。
+  assert.equal(senderFor(registry, 11, PANEL).trustedSender, false);
+  assert.equal(senderFor(registry, 13, PANEL).trustedSender, false);
+  assert.equal(senderFor(registry, 12, PANEL).trustedSender, true);
   // キャンバスは自分を前に出せない。状態の層と入力バーは呼べる。
   assert.equal(senderFor(registry, 11, SUMMON).trustedSender, false);
   assert.equal(senderFor(registry, 12, SUMMON).trustedSender, true);
@@ -573,7 +587,7 @@ test('the status tab and the input bar are small, frameless, always-on-top windo
       assert.equal(spec.alwaysOnTopLevel, 'floating');
       assert.deepEqual(spec.allWorkspaces, { visibleOnFullScreen: true });
     }
-    // 右の端の中ほどのつまみ（56 × 128）。
+    // 右の端の中ほどのつまみ（56 × 232。UI-04 で専用の記号の分だけ高くした）。
     assert.deepEqual(
       [
         status.options.x,
@@ -581,7 +595,7 @@ test('the status tab and the input bar are small, frameless, always-on-top windo
         status.options.width,
         status.options.height,
       ],
-      [1512 - 56, 33 + Math.round((875 - 128) / 2), 56, 128],
+      [1512 - 56, 33 + Math.round((875 - 232) / 2), 56, 232],
     );
     // 下の中ほどの帯（560 × 56、下端から 16）。
     assert.deepEqual(

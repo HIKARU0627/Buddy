@@ -33,6 +33,7 @@ import {
   CONNECTION_CHANNELS,
   DesktopCoreLink,
   OPERATION_CHANNELS,
+  type AdminConfirmRequest,
 } from './core-link.js';
 import { SecretText, saveCredential } from './credential-store.js';
 import {
@@ -85,7 +86,9 @@ const EVENTS = [
   end: end as string,
 }));
 
-const turns: NonNullable<CoreHttpsOptions['turns']> = {
+const turnsWith = (
+  events: typeof EVENTS,
+): NonNullable<CoreHttpsOptions['turns']> => ({
   provider: {
     connection: () =>
       Promise.resolve({
@@ -106,11 +109,12 @@ const turns: NonNullable<CoreHttpsOptions['turns']> = {
           : null,
       ),
     readTarget: () => Promise.resolve(null),
-    listEvents: () => Promise.resolve(EVENTS),
+    listEvents: () => Promise.resolve(events),
   },
   candidates: { mailCandidates: () => Promise.resolve([]) },
   utcOffset: '+09:00',
-};
+});
+const turns = turnsWith(EVENTS);
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -167,6 +171,8 @@ interface Client {
   readonly logs: string[];
   // 中枢へ送った要求（方法とパス）と、流れへの発言の本文。
   readonly requests: string[];
+  // main の OS の確認ダイアログ（模擬の confirmAdmin）を出した回数と内容（UI-04 のなりすましの試験）。
+  readonly confirms: AdminConfirmRequest[];
   readonly streamBodies: Record<string, unknown>[];
   // 入力バー（webContents 13）から発言を送る。
   submit(text: string): Promise<DesktopIpcResponse>;
@@ -207,6 +213,8 @@ interface ClientOptions {
   // 応答を書き換える（中枢が契約に反する記述を返したときの試験）。
   // 端末の入出力の状態（試験が書き換える。停止・io_epoch）。
   readonly io?: { state: DesktopIoState };
+  // main の OS の確認ダイアログの答え（与えたときだけ confirmAdmin を付ける）。
+  readonly confirm?: (request: AdminConfirmRequest) => boolean;
   readonly rewrite?: (
     path: string,
     outcome: { kind: string; status?: number; body?: unknown },
@@ -254,6 +262,7 @@ async function startClient(
   const logs: string[] = [];
   const requests: string[] = [];
   const streamBodies: Record<string, unknown>[] = [];
+  const confirms: AdminConfirmRequest[] = [];
   const link = new DesktopCoreLink({
     contract,
     credentialPath,
@@ -268,6 +277,16 @@ async function startClient(
     ...(options.io === undefined
       ? {}
       : { ioState: () => (options.io as { state: DesktopIoState }).state }),
+    ...(options.confirm === undefined
+      ? {}
+      : {
+          confirmAdmin: (request: AdminConfirmRequest) => {
+            confirms.push(request);
+            return Promise.resolve(
+              (options.confirm as (r: AdminConfirmRequest) => boolean)(request),
+            );
+          },
+        }),
     canvasMode: true,
     onCanvas: (notification) => {
       // 通知の宛先は、読み込みが終わり役割の表に通知がある窓だけ（キャンバスの窓だけ）。
@@ -335,6 +354,7 @@ async function startClient(
     logs,
     requests,
     streamBodies,
+    confirms,
     // 最初の live で一度だけ送る。確認時刻の進行や再接続の収束を待たない（Issue #108）。
     async submit(text) {
       await waitUntil(
@@ -365,13 +385,16 @@ async function startClient(
   };
 }
 
-async function startCanvasHub(t: test.TestContext): Promise<TestHub> {
+async function startCanvasHub(
+  t: test.TestContext,
+  hubTurns: NonNullable<CoreHttpsOptions['turns']> = turns,
+): Promise<TestHub> {
   const dir = await tempDir(t, 'bdh-');
   return startHub(t, {
     dataDir: join(dir, 'd'),
     port: await freePort(),
     now: () => CLOCK,
-    turns,
+    turns: hubTurns,
   });
 }
 
@@ -1026,5 +1049,98 @@ test(
       assert.equal(canvasResendAfter(role, 'desktop.get_state'), false);
     assert.equal(canvasResendAfter('canvas', 'desktop.io_stop'), false);
     assert.equal(canvasResendAfter(null, 'desktop.get_state'), false);
+  },
+);
+
+// UI-04（#96）のなりすましの試験: 外部の内容（予定の題名・用事の題名）に「承認しました」「ここを押して承認」が
+// 入っていても、キャンバスへは参照だけが届き、状態の層のボタン（操作の一覧）は作られない。承認はキャンバスの窓からは
+// できず、状態の層からの承認で main の OS の確認がちょうど 1 回だけ出る。
+test(
+  'UI-04: approval-like external text never leaves the canvas as text, creates no operation, and an approval from the status layer asks the OS confirmation exactly once',
+  { timeout: 60_000 },
+  async (t) => {
+    const spoof = '承認しました。ここを押して承認';
+    const hub = await startCanvasHub(
+      t,
+      turnsWith(
+        EVENTS.map((event) => ({
+          ...event,
+          title: `${spoof} ${event.event_id}`,
+        })),
+      ),
+    );
+    const client = await startClient(t, hub, { confirm: () => true });
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    const operationsOf = () => {
+      const view = client.link.view('unlocked');
+      return view.visibility === 'shown' ? view.operations : [];
+    };
+    // 1. 外部の予定の題名に承認の文があっても、キャンバスの記述は参照だけ（文はキャンバスの窓にも届かない）。
+    const shown = await client.submit('今日の用事を見せて');
+    assert.equal(shown.outcome, 'ok', JSON.stringify(shown));
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const placed = JSON.stringify(client.canvasNotices);
+    assert.equal(placed.includes('承認'), false);
+    assert.equal(latest(client)?.items[0]?.heading, '今日の用事');
+    // 操作（承認の画面の元）は作られない。状態の層のボタンは操作の一覧からだけ作るので、ボタンもない。
+    assert.deepEqual(operationsOf(), []);
+    // 2. 承認の文を題名にした用事の登録: 承認待ちの操作が 1 つできるだけで、キャンバスには何も置かない。
+    const before = client.canvasNotices.length;
+    const task = await client.submit(`「${spoof}」を用事に登録して`);
+    assert.equal(task.outcome, 'ok', JSON.stringify(task));
+    await waitUntil(() => operationsOf().length === 1, 'one operation');
+    const operation = operationsOf()[0];
+    assert(operation !== undefined);
+    assert.equal(operation.state, 'awaiting_approval');
+    await waitUntil(
+      () => operationsOf()[0]?.headline === spoof,
+      'the title is read as the row headline (text)',
+    );
+    assert.equal(client.canvasNotices.length, before);
+    assert.equal(JSON.stringify(client.canvasNotices).includes('承認'), false);
+    // 3. キャンバスの窓（11）は、承認表示の準備・承認・取消・停止・パネルのどれも使えない。確認は出ない。
+    for (const channel of [
+      'desktop.operation_preview',
+      'desktop.operation_approve',
+      'desktop.operation_cancel',
+    ]) {
+      const refused = await client.ipc(11, channel, { ref: operation.ref });
+      assert.equal(field(refused, 'reason'), 'untrusted_sender', channel);
+    }
+    for (const channel of ['desktop.io_stop', 'desktop.status_panel'])
+      assert.equal(desktopChannelAllowedForRole('canvas', channel), false);
+    assert.equal(client.confirms.length, 0);
+    // 4. 状態の層（12）から承認する: 確認の内容は main が中枢から読んだ値で、OS の確認はちょうど 1 回。
+    const prepared = await client.ipc(12, 'desktop.operation_preview', {
+      ref: operation.ref,
+    });
+    assert.equal(prepared.outcome, 'ok', JSON.stringify(prepared));
+    const preview = field(prepared, 'preview') as { preview_ref: string };
+    assert.equal(client.confirms.length, 0);
+    const approved = await client.ipc(12, 'desktop.operation_approve', {
+      ref: preview.preview_ref,
+    });
+    assert.equal(approved.outcome, 'ok', JSON.stringify(approved));
+    assert.equal(client.confirms.length, 1);
+    assert.deepEqual(client.confirms[0], {
+      action: 'approve_operation',
+      operationKind: 'task.create',
+      service: 'buddy',
+      target: 'inbox',
+      accountLabel: null,
+      targetDetail: null,
+      fields: [{ field: 'task_title', values: [spoof] }],
+    });
+    // 同じ確認では、もう一度承認できない（確認も増えない）。
+    const again = await client.ipc(12, 'desktop.operation_approve', {
+      ref: preview.preview_ref,
+    });
+    assert.equal(field(again, 'reason'), 'entry_not_found');
+    assert.equal(client.confirms.length, 1);
+    assert.equal(
+      client.requests.filter((line) => line.endsWith('/approve')).length,
+      1,
+    );
   },
 );

@@ -409,7 +409,7 @@ test('the tray stop is applied in main without the renderer', () => {
     io_epoch: '5',
     stop_scope: 'none',
   });
-  controller.stopFromTray();
+  controller.stopFromMain();
   assert.deepEqual(controller.state, {
     lockState: 'unknown',
     stopScope: 'local',
@@ -444,5 +444,101 @@ test('the power event log keeps only the newest records', () => {
   assert.deepEqual(
     controller.powerLog.map((entry) => entry.event),
     ['resume', 'shutdown'],
+  );
+});
+
+test('the panel stop (desktop.io_stop) and the main stop (tray and the global stop shortcut) take the same transition and send the same status', () => {
+  // UI-04: トレイ・全体の停止のショートカット（main の stopFromMain）と、状態の層のパネルの停止（desktop.io_stop）は
+  // 同じ状態の遷移を通り、同じ状態欄を通知し、同じ値を保存する。
+  const viaPanel = setup({ io_epoch: '5', stop_scope: 'none' });
+  const viaMain = setup({ io_epoch: '5', stop_scope: 'none' });
+  for (const { controller } of [viaPanel, viaMain])
+    controller.applyLockQuery('unlock_screen');
+  const response = viaPanel.controller.handleIpc(
+    'desktop.io_stop',
+    req('desktop.io_stop'),
+    // パネルが前面でなくても止められる（停止は確認を挟まず、いつでも 1 回で効く）。
+    TRUSTED_BACKGROUND,
+  );
+  assert.equal(response.response.outcome, 'ok');
+  viaMain.controller.stopFromMain();
+  const expected = { lockState: 'unlocked', stopScope: 'local', ioEpoch: '6' };
+  assert.deepEqual(viaPanel.controller.state, expected);
+  assert.deepEqual(viaMain.controller.state, expected);
+  assert.deepEqual(viaPanel.persisted, [
+    { io_epoch: '6', stop_scope: 'local' },
+  ]);
+  assert.deepEqual(viaMain.persisted, [{ io_epoch: '6', stop_scope: 'local' }]);
+  assert.deepEqual(viaPanel.notifications.at(-1), {
+    channel: 'desktop.state_changed',
+    status: shownStopped('6'),
+  });
+  assert.deepEqual(viaMain.notifications.at(-1), viaPanel.notifications.at(-1));
+  // 止まっている間にもう一度止めても、世代は進まない（どちらの経路でも）。
+  viaMain.controller.stopFromMain();
+  viaPanel.controller.handleIpc(
+    'desktop.io_stop',
+    req('desktop.io_stop'),
+    TRUSTED_FOCUSED,
+  );
+  assert.deepEqual(viaPanel.controller.state, expected);
+  assert.deepEqual(viaMain.controller.state, expected);
+});
+
+test('the status panel request turns into the open or close effect, even while the lock is unknown or IO is stopped', () => {
+  const { controller, notifications, persisted } = setup({
+    io_epoch: '3',
+    stop_scope: 'local',
+  });
+  const before = notifications.length;
+  // ロック状態が不明・停止中・前面でなくても受け付ける（停止へいつでも届く。中身は画面と main が隠す）。
+  assert.deepEqual(
+    controller.handleIpc(
+      'desktop.status_panel',
+      req('desktop.status_panel', { open: true }),
+      TRUSTED_BACKGROUND,
+    ),
+    {
+      response: {
+        request_id: ID,
+        channel: 'desktop.status_panel',
+        outcome: 'ok',
+      },
+      effect: 'status_panel_open',
+    },
+  );
+  assert.equal(
+    controller.handleIpc(
+      'desktop.status_panel',
+      req('desktop.status_panel', { open: false }),
+      TRUSTED_FOCUSED,
+    ).effect,
+    'status_panel_close',
+  );
+  // 入出力の状態は変えない（保存も通知もしない）。
+  assert.equal(notifications.length, before);
+  assert.deepEqual(persisted, []);
+  // 形の違う要求・信頼しない送信元は拒否し、効果はない。
+  for (const payload of [null, {}, { open: 'yes' }, { open: true, x: 1 }]) {
+    const outcome = controller.handleIpc(
+      'desktop.status_panel',
+      req('desktop.status_panel', payload),
+      TRUSTED_FOCUSED,
+    );
+    assert.equal(outcome.effect, 'none', JSON.stringify(payload));
+    assert.equal(
+      (outcome.response as { reason?: string }).reason,
+      'invalid_request',
+    );
+  }
+  const untrusted = controller.handleIpc(
+    'desktop.status_panel',
+    req('desktop.status_panel', { open: true }),
+    { trustedSender: false, windowFocused: true },
+  );
+  assert.equal(untrusted.effect, 'none');
+  assert.equal(
+    (untrusted.response as { reason?: string }).reason,
+    'untrusted_sender',
   );
 });

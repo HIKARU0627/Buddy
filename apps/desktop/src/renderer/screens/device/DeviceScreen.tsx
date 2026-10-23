@@ -30,6 +30,7 @@ export function DeviceScreen({
   role = 'この端末',
   hub,
   work,
+  stopShortcut,
   onDismissRegistered,
 }: {
   readonly state: DesktopViewState;
@@ -40,6 +41,8 @@ export function DeviceScreen({
   readonly hub?: ReactNode;
   // 会話・変更の確認・処理状況（登録済みの端末。B04-05）。本体の先頭に置く。
   readonly work?: ReactNode;
+  // 全体の停止のショートカットの印（UI-04。停止のボタンの横に置く）。なければ出さない。
+  readonly stopShortcut?: ReactNode;
   readonly onDismissRegistered?: () => void;
 }) {
   const shown = shownStatus(state.status);
@@ -55,6 +58,7 @@ export function DeviceScreen({
           connection={state.connection}
           now={now}
           onStop={actions.stop}
+          stopShortcut={stopShortcut}
         />
       }
       todo={

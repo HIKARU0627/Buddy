@@ -1,12 +1,27 @@
-// 3 つの窓の画面の切り替え（UI-02 の試作、ADR 0032）。preload が渡した窓の役割で、キャンバス・状態の層・入力バーの
+// 3 つの窓の画面の切り替え（UI-02 の試作・UI-04、ADR 0032）。preload が渡した窓の役割で、キャンバス・状態の層・入力バーの
 // どれを描くかを決める。役割で使えるチャネルは main が決め、画面は役割の表にある要求だけを送る。
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { DesktopOperationEntry } from '@buddy/contracts';
 import type { BuddyDesktopApi } from '../../desktop-api.js';
 import { request } from '../../desktop-api.js';
+import { shownConnection } from '../../state/connection-state.js';
+import { messageFor } from '../../state/desktop-state.js';
+import {
+  operationsShown,
+  panelShownFor,
+  privacyMarks,
+  statusItems,
+  stopShortcutKeys,
+  stopShortcutMark,
+} from '../../state/status-panel-state.js';
+import { useNow } from '../../state/use-desktop-state.js';
 import {
   useRoleWindowState,
   useWindowFocused,
+  useWindowWidth,
 } from '../../state/use-role-window-state.js';
+import { useWorkState } from '../../state/use-work-state.js';
+import { WorkOperations, usePreviewFocus } from '../work/WorkPanel.js';
 import {
   canSummonCanvas,
   canvasContentShown,
@@ -20,6 +35,7 @@ import { canSubmit, submitResult } from '../../state/input-bar-state.js';
 import { CanvasBoard } from './CanvasBoard.js';
 import { CanvasGround } from './CanvasGround.js';
 import { InputBar } from './InputBar.js';
+import { StatusPanel } from './StatusPanel.js';
 import { StatusTab } from './StatusTab.js';
 
 function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
@@ -32,13 +48,85 @@ function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
   );
 }
 
+// 操作がないときの空の配列（描画のたびに新しい配列を作らない）。
+const NO_OPERATIONS: readonly DesktopOperationEntry[] = [];
+
+// 状態の層（UI-04）。窓の幅が main の決めたパネルの幅ならパネル、つまみの幅ならつまみだけを描く。
 function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
-  const { state, summonCanvas } = useRoleWindowState(api, 'status');
-  return (
+  const { state, summonCanvas, setPanel, stop, resume } = useRoleWindowState(
+    api,
+    'status',
+  );
+  const now = useNow();
+  const width = useWindowWidth();
+  const panelOpen = panelShownFor(width);
+  const connection = shownConnection(state.connection);
+  // 確認が必要な操作の一覧（WorkPanel と同じ持ち方。ロック・切断で内容を捨てる。ADR 0031）。
+  const live = operationsShown(state.status, connection);
+  const operations = connection?.operations ?? NO_OPERATIONS;
+  const work = useWorkState(api, live, operations);
+  const previewEntry = usePreviewFocus(work.state, operations);
+  const view = statusTabView(state.status, state.connection);
+  const stopped =
+    state.status?.visibility === 'shown' && state.status.stop_scope !== 'none';
+  // パネルの中の Esc: 確認の欄を開いていれば閉じ、それ以外はパネルをしまう（IME の変換中・ほかの部品が受けた Esc は除く）。
+  const previewOpen = work.state.preview !== null;
+  const approving = work.state.preview?.approving === true;
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented)
+        return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+        return;
+      event.preventDefault();
+      if (previewOpen) {
+        if (!approving) work.actions.closePreview();
+        return;
+      }
+      setPanel(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [panelOpen, previewOpen, approving, work.actions, setPanel]);
+  // パネルをしまったら確認の欄も閉じる（次に出したときは一覧から始める。main は確認のダイアログを閉じている）。
+  useEffect(() => {
+    if (!panelOpen && previewOpen && !approving) work.actions.closePreview();
+  }, [panelOpen, previewOpen, approving, work.actions]);
+  const tab = (
     <StatusTab
-      view={statusTabView(state.status, state.connection)}
+      view={view}
+      privacy={privacyMarks(state.status)}
+      panelOpen={panelOpen}
+      onTogglePanel={() => setPanel(!panelOpen)}
       canSummon={canSummonCanvas(state.status)}
       onSummon={summonCanvas}
+      className={panelOpen ? 'h-[232px] w-14' : 'h-screen w-screen'}
+    />
+  );
+  if (!panelOpen) return tab;
+  return (
+    <StatusPanel
+      tab={tab}
+      status={state.status}
+      ioLine={view.line}
+      items={statusItems(state.status, state.connection, now)}
+      message={messageFor(state, ['desktop.io_stop', 'desktop.io_resume'])}
+      onStop={stop}
+      onResume={resume}
+      stopShortcut={stopShortcutMark(api.stopShortcut)}
+      stopKeys={stopShortcutKeys(navigator.userAgent)}
+      operations={
+        live ? (
+          <WorkOperations
+            state={work.state}
+            actions={work.actions}
+            operations={operations}
+            stopped={stopped}
+            previewEntry={previewEntry}
+          />
+        ) : null
+      }
     />
   );
 }

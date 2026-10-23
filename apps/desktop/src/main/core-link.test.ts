@@ -1152,6 +1152,36 @@ test(
   },
 );
 
+// UI-04: 確認を出せなかった（親のパネル・窓が出ていない）ときは、「やめる」ではなく画面操作からやり直す。何も送らない。
+test(
+  'a confirmation that could not be shown is screen_operation_required, not declined, and sends nothing',
+  { timeout: 30_000 },
+  async (t) => {
+    const { admin, sent } = await liveHub(
+      t,
+      (request) => {
+        if (request.method === 'GET' && request.path === '/v1/pairing/claims')
+          return ok(CLAIM_LIST);
+        return null;
+      },
+      { confirmAdmin: () => Promise.resolve('not_shown' as const) },
+    );
+    const listed = await admin('desktop.claims_list', null);
+    const ref = String(
+      (listed['claims'] as Record<string, unknown>[])[0]?.['ref'],
+    );
+    const refused = await admin('desktop.claim_decide', {
+      ref,
+      decision: 'approve',
+    });
+    assert.equal(refused['reason'], 'screen_operation_required');
+    assert.deepEqual(
+      sent.filter((entry) => entry.startsWith('POST /v1/pairing/claims/')),
+      [],
+    );
+  },
+);
+
 // ペアリングの開始が 2xx でも本文が契約に合わなければ、始まった（前のコードは使えなくなった）かもしれない。
 // 外部の変更なので outcome_unknown にし、自動で送り直さない（本人の判断 2026-10-22、B03-08 のレビュー）。
 test(

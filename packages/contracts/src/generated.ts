@@ -45,6 +45,13 @@ export type BuddyContract =
   | BudgetAdmissionResult
   | BudgetTopUp
   | BudgetSettlement
+  | PriceVersion
+  | BudgetRuntimeConfig
+  | BudgetUsageSummary
+  | BudgetOverageApproval
+  | BudgetOverageDecision
+  | BudgetOverrunReview
+  | BudgetManualSettlement
   | ExtractionWire
   | ExtractionResult
   | RequestEntity
@@ -354,6 +361,14 @@ export type EventCursor = string;
  */
 export type ReservationRevision = string;
 /**
+ * モデル・endpoint 別の profile の ID（ModelProfile.profile_id、設計 05 P02）。予約・受付で同じ型を使う（ADR 0034）。
+ */
+export type ProfileId = string;
+/**
+ * 単価の版の ID（設計 05 費用の計算 D15）。設定で決める不透明な ID で、順序比較しない（ADR 0006・0034）。
+ */
+export type PriceVersionId = string;
+/**
  * 暦月（予算月など）。
  */
 export type YearMonth = string;
@@ -362,9 +377,13 @@ export type YearMonth = string;
  */
 export type BudgetPoolId = string;
 /**
- * 通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。
+ * 通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。18 桁まで（SQLite の 64 ビット整数に収まる。ADR 0034）。合計の桁あふれは保存・集計の側で検査する。
  */
 export type Amount = string;
+/**
+ * 付帯クレジットの更新周期の ID。provider と周期の開始日（UTC の日付）を : でつなぐ（例: anthropic:2030-10-01）。予算月とは別。メールアドレス・自由文・キーを入れない（ADR 0034）。
+ */
+export type CreditCycleId = string;
 /**
  * 入力と出力の組み合わせ（設計 10 §6A、D14）。④文字→音声は作らない。
  */
@@ -489,6 +508,44 @@ export type VoiceState =
   | 'private_voice_off'
   | 'listening_text_reply';
 /**
+ * 同じ課金対象（provider・モデル・endpoint・課金の種類）の単価の系列。同じ price_key の版は適用期間が重ならない（ADR 0034）。
+ */
+export type PriceKey = string;
+/**
+ * 単価の適用期間の境目の時刻。UTC の RFC 3339 で、小数秒はミリ秒（3 桁）まで。期間の重なりと隣接をミリ秒で正確に比べるため（ADR 0034）。
+ */
+export type PriceTime = string;
+/**
+ * 課金区分（設計 05 費用の計算 D15・F02）。output_tokens は思考を含む。cached_input_tokens は精算だけに使い、M は非命中の input_tokens の単価で見積もる。search_requests は検索、live_seconds は会話の接続時間。
+ */
+export type PriceCategory =
+  | 'input_tokens'
+  | 'cached_input_tokens'
+  | 'output_tokens'
+  | 'tool_calls'
+  | 'search_requests'
+  | 'live_seconds';
+/**
+ * 課金量（token・秒・回）を表す負でない整数の文字列。18 桁まで（ADR 0034）。
+ */
+export type QuantityString = string;
+/**
+ * 負でない 10 進の小数（小数点以下 6 桁まで）。為替・安全係数に使う。浮動小数点数にしない（ADR 0034）。
+ */
+export type DecimalString = string;
+/**
+ * IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。
+ */
+export type TimeZone = string;
+/**
+ * 枠の予算保留の理由（01 いつも見える状態の「予算保留」）。limit_reached は精算済み額＋未精算の M が上限に達した、overrun_review_pending は M 超過の確認待ち、ancestor_held は祖先の枠の保留、config_invalid は設定の検査に失敗して有料処理を止めている。理由のコードを利用者に見せない。
+ */
+export type BudgetHoldReason =
+  | 'limit_reached'
+  | 'overrun_review_pending'
+  | 'ancestor_held'
+  | 'config_invalid';
+/**
  * 期限（設計 11 §3 D15、§5 D15、修正案 R03）。
  */
 export type Deadline =
@@ -516,10 +573,6 @@ export type Deadline =
   | {
       kind: 'none';
     };
-/**
- * IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。
- */
-export type TimeZone = string;
 /**
  * 抽出した依頼（request_entity）の版（設計 11 §5A）。本人の依頼の版 RequestRevision と同じ object に並べない。
  */
@@ -1550,8 +1603,8 @@ export interface BudgetReservation {
   reservation_id: Id;
   reservation_revision: ReservationRevision;
   request_id: Id;
-  profile_id: Id;
-  price_version: string;
+  profile_id: ProfileId;
+  price_version: PriceVersionId;
   budget_month: YearMonth;
   pool_id: BudgetPoolId;
   reserved_amount: Money;
@@ -1561,7 +1614,7 @@ export interface BudgetReservation {
   actual_gross: Money | null;
   credit_applied: Money | null;
   additional_spend: Money | null;
-  credit_cycle_id: string | null;
+  credit_cycle_id: CreditCycleId | null;
   approval_id: Id | null;
   overrun_reviewed: boolean;
 }
@@ -1575,7 +1628,7 @@ export interface Money {
 export interface CreditObservation {
   provider: 'anthropic';
   organization_ref: string;
-  cycle_id: string;
+  cycle_id: CreditCycleId;
   observed_at: UtcTime;
   expires_at: UtcTime;
   balance: Money | null;
@@ -2406,7 +2459,7 @@ export interface BudgetConfig {
    * @minItems 1
    */
   pools: [BudgetPool, ...BudgetPool[]];
-  verified_price_versions: string[];
+  verified_price_versions: PriceVersionId[];
 }
 /**
  * 予算の枠。予約は葉の枠に計上し、受付時は祖先の枠もすべて検査する。requires_approval の枠（個別承認の超過枠）は承認 ID のある予約だけが使う。
@@ -2424,8 +2477,8 @@ export interface BudgetAdmissionRequest {
   request_id: Id;
   pool_id: BudgetPoolId;
   budget_month: YearMonth;
-  profile_id: Id;
-  price_version: string;
+  profile_id: ProfileId;
+  price_version: PriceVersionId;
   reserved_amount: Money;
   max_liability: Money;
   approval_id: Id | null;
@@ -2449,7 +2502,7 @@ export interface BudgetTopUp {
   delta_max_liability: Money;
 }
 /**
- * 確定した usage による精算。request_id と provider の照合 ID で一度だけ適用し、元の月・元の枠に計上する。同じ値の再適用は変化なし、異なる値は競合。
+ * 確定した usage による精算。request_id と provider の照合 ID で一度だけ適用し、元の月・元の枠に計上する。同じ値の再適用は変化なし、異なる値は競合。 provider_reconciliation_id は manual: で始めない（手での精算と区別する、ADR 0034）。
  */
 export interface BudgetSettlement {
   reservation_id: Id;
@@ -2458,7 +2511,146 @@ export interface BudgetSettlement {
   actual_gross: Money;
   credit_applied: Money;
   additional_spend: Money;
-  credit_cycle_id: string | null;
+  credit_cycle_id: CreditCycleId | null;
+}
+/**
+ * 単価の版（設計 05 費用の計算 D15・F02、ADR 0034）。適用期間は effective_from 以上 effective_to 未満（null は終わりを決めていない）。適用期間の境界を跨ぐ要求は、跨ぐ版のうち高い方の単価で M を出す。価格が確認されていない版（BudgetConfig.verified_price_versions にない版）の profile は受け付けない。単価は実行時の設定ファイルに置き、リポジトリに置かない。
+ */
+export interface PriceVersion {
+  price_version: PriceVersionId;
+  price_key: PriceKey;
+  currency: string;
+  effective_from: PriceTime;
+  effective_to: PriceTime | null;
+  /**
+   * @minItems 1
+   */
+  rates: [PriceRate, ...PriceRate[]];
+  conversion: CurrencyConversion;
+}
+/**
+ * 課金区分ごとの単価。unit_price は版の通貨の百万分の一で、per_quantity 単位あたり。minimum_quantity は 1 回の最低課金量（会話の接続の 15 秒など。なければ 0）。max_quantity_per_request は 1 要求で課金され得る最大量で、M の算出に使う。null は入力（送る量が要求の時点で決まる）だけに許し、他の区分で null なら M を有限にできないので profile を有効にしない（設計 05 F02）。
+ */
+export interface PriceRate {
+  category: PriceCategory;
+  unit_price: Amount;
+  /**
+   * unit_price が何単位あたりか（例: 1000000 token）。
+   */
+  per_quantity: string;
+  minimum_quantity: QuantityString;
+  max_quantity_per_request: QuantityString | null;
+}
+/**
+ * 単価の通貨から予算の通貨への換算（設計 05 費用の計算）。rate は 1 単位あたりの予算の通貨の量、safety_factor は換算・税・見積りの誤差の係数で 1 以上。値は本人の設定で、契約・試験には合成値だけを使う。同じ通貨なら rate は 1。
+ */
+export interface CurrencyConversion {
+  /**
+   * 為替と安全係数の版の ID。
+   */
+  conversion_version: string;
+  to_currency: string;
+  rate: DecimalString;
+  safety_factor: DecimalString;
+}
+/**
+ * 予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。秘密情報（API キーなど）を含めない。
+ */
+export interface BudgetRuntimeConfig {
+  schema: 'buddy.budget-runtime.v1';
+  time_zone: TimeZone | null;
+  budget: BudgetConfig;
+  price_versions: PriceVersion[];
+}
+/**
+ * 予算の利用状況（GET /v1/budget/usage、ADR 0034）。months は今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月。time_zone は今月の予算月の境目に使っているタイムゾーン。overage_approvals は承認待ちの超過枠の承認。pending_reservations は本人の操作を待つ予約（usage 不明で手での精算を待つものと、M 超過の確認を待つもの）で、手での精算・M 超過の確認の要求に使う reservation_id・予約の版・個別の R と M・実費・月・枠を持つ。表示はキャンバス UI で作る。
+ */
+export interface BudgetUsageSummary {
+  currency: string;
+  time_zone: TimeZone;
+  current_month: YearMonth;
+  generated_at: UtcTime;
+  /**
+   * @minItems 1
+   */
+  months: [BudgetMonthUsage, ...BudgetMonthUsage[]];
+  overage_approvals: BudgetOverageApproval[];
+  pending_reservations: BudgetReservation[];
+}
+/**
+ * 予算月ごとの利用状況。
+ */
+export interface BudgetMonthUsage {
+  budget_month: YearMonth;
+  /**
+   * @minItems 1
+   */
+  pools: [BudgetPoolUsage, ...BudgetPoolUsage[]];
+}
+/**
+ * 月と枠ごとの利用状況。settled は精算済みの実費（クレジット適用前の通常料金）、unsettled_reserved と unsettled_max_liability は reserved と usage_unknown の R と M の合計。子孫の枠の分を含む（ADR 0006 の数え方）。usage_unknown_count は手で精算するまで保持している件数。
+ */
+export interface BudgetPoolUsage {
+  pool_id: BudgetPoolId;
+  parent_pool_id: BudgetPoolId | null;
+  limit: Money;
+  settled: Money;
+  unsettled_reserved: Money;
+  unsettled_max_liability: Money;
+  usage_unknown_count: number;
+  overrun_review_count: number;
+  hold_reasons: BudgetHoldReason[];
+}
+/**
+ * 超過枠の個別の承認（設計 05 F02、01 承認画面、本人の判断 2026-10-23、ADR 0034）。1 つの request_id（予算の要求）と M に固定し、承認は main の OS の確認ダイアログで 1 回だけ行う。overage_remaining は承認を求めた時点の超過枠の残り（画面に M と並べて見せる値）。consumed はその承認で予約を受け付けた後。期限を過ぎた承認・別の M の予約には使わない。自発的な解析・自動実行には作らない。
+ */
+export interface BudgetOverageApproval {
+  approval_id: Id;
+  request_id: Id;
+  pool_id: BudgetPoolId;
+  budget_month: YearMonth;
+  max_liability: Money;
+  overage_remaining: Money;
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'consumed';
+  requested_at: UtcTime;
+  expires_at: UtcTime;
+  decided_at: UtcTime | null;
+}
+/**
+ * 超過枠の承認・拒否（POST /v1/budget/overage-approvals/{approval_id}/decision、ADR 0034）。request_id はこの命令の ID で、budget_request_id は承認する予算の要求（BudgetOverageApproval.request_id）。budget_request_id と M が承認待ちの記録と一致しなければ拒否する。同じ命令の再送は同じ結果を返し、二度押しで承認を 2 件にしない。
+ */
+export interface BudgetOverageDecision {
+  request_id: Id;
+  command_scope_id: Id;
+  budget_request_id: Id;
+  max_liability: Money;
+  decision: 'approve' | 'reject';
+}
+/**
+ * M 超過の確認（POST /v1/budget/reservations/{reservation_id}/overrun-review、設計 05 F02、ADR 0006・0034）。本人が見た実費と M を送り、記録と一致して実費が M を超えるときだけ overrun_reviewed にする。確認しても実費は変えず、他の枠へ振り替えない。
+ */
+export interface BudgetOverrunReview {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_reservation_revision: ReservationRevision;
+  actual_gross: Money;
+  max_liability: Money;
+}
+/**
+ * 不明な費用の手での精算（POST /v1/budget/reservations/{reservation_id}/manual-settlement、本人の判断 2026-10-23、ADR 0034）。usage_unknown の予約だけに、元の月・元の枠のまま一度だけ適用する。推測の値を実費として記録しない。請求の照合（B15）で結び付けた実額を入れる。
+ */
+export interface BudgetManualSettlement {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_reservation_revision: ReservationRevision;
+  /**
+   * 手で入力した照合 ID。manual: で始め、provider の照合 ID と区別する。英数字と . _ - だけで、メールアドレス・氏名・自由文を入れない。
+   */
+  manual_reconciliation_id: string;
+  actual_gross: Money;
+  credit_applied: Money;
+  additional_spend: Money;
+  credit_cycle_id: CreditCycleId | null;
 }
 /**
  * メール 1 通の抽出でモデルが返す生の出力（設計 11 §3・§5B）。未読・切り詰め・位置・依頼 ID を持たない。依頼 0 件だけで取消・完了の解析を省かない。
@@ -2824,7 +3016,7 @@ export interface DeploymentManifest {
  * モデル・endpoint 別の profile（設計 05 P02）。変更の単位はモデル名ではなく profile。verified_capabilities は endpoint ごとに試験で確かめた能力だけで、schema の記載から登録しない。measured_p95 は意図判定の比較 profile だけに使う（05 質問132）。
  */
 export interface ModelProfile {
-  profile_id: string;
+  profile_id: ProfileId;
   role:
     'voice' | 'intent' | 'background_text' | 'advanced_consult' | 'local_asr';
   provider: string;
@@ -2837,7 +3029,7 @@ export interface ModelProfile {
   output_limit_tokens: number | null;
   timeout_ms: number;
   max_concurrency: number;
-  price_version: string | null;
+  price_version: PriceVersionId | null;
   reservation_method: 'max_liability' | 'measured_p95';
   verified_capabilities: string[];
 }

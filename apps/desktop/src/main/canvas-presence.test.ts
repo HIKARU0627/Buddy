@@ -139,12 +139,15 @@ test('macOS switches the level and key input; other platforms switch key input a
     { op: 'blur' },
   ]);
   // Windows も、後ろにある間はフォーカスを受けない（呼んだときだけ受ける）。
+  // setFocusable の後に、タスクバーに出さない設定を当て直す（Electron 44 の setFocusable(true) の副作用）。
   assert.deepEqual(canvasLayerOps('win32', 'front'), [
     { op: 'set_focusable', value: true },
+    { op: 'set_skip_taskbar', value: true },
     { op: 'show_focus' },
   ]);
   assert.deepEqual(canvasLayerOps('win32', 'behind'), [
     { op: 'set_focusable', value: false },
+    { op: 'set_skip_taskbar', value: true },
     { op: 'blur' },
   ]);
   // デスクトップの段（試作の実機で測った値）。
@@ -196,17 +199,30 @@ class FakeDesk {
 class FakeWindow {
   visible = true;
   level: 'normal' | 'desktop' = 'desktop';
+  // タスクバーに出さない（キャンバスは skipTaskbar: true で作る）。
+  skipTaskbar = true;
+  // 前に出ている間に、一度でもタスクバーに出たか（show の時点で skipTaskbar が false だった）。
+  shownOnTaskbar = false;
   onBlur: () => void = () => undefined;
+  // 表示したときに、この窓の blur を知らせる（小さな窓の表示で前面が揺れる場合の模擬）。
+  blurOnShow: FakeWindow | null = null;
 
   constructor(
     readonly desk: FakeDesk,
     readonly name: string,
     public focusable: boolean,
+    // Windows の Electron 44 の setFocusable(true) は、内部でタスクバーに出す設定も呼ぶ（副作用の模擬）。
+    readonly focusableShowsOnTaskbar = false,
   ) {}
 
   setFocusable(value: boolean): void {
     this.focusable = value;
+    if (value && this.focusableShowsOnTaskbar) this.skipTaskbar = false;
     if (!value) this.desk.blur(this);
+  }
+
+  setSkipTaskbar(value: boolean): void {
+    this.skipTaskbar = value;
   }
 
   setLevel(level: 'normal' | 'desktop'): void {
@@ -215,18 +231,14 @@ class FakeWindow {
 
   show(): void {
     this.visible = true;
+    if (!this.skipTaskbar) this.shownOnTaskbar = true;
   }
 
   showInactive(): void {
-    // 前面を奪わない。ただし模擬では、表示の通知で前面の窓に blur が来る場合も確かめる（blurOnShow）。
+    // 前面を奪わない。blurOnShow があれば、その窓に blur を知らせる。
     this.visible = true;
-    if (this.blurOnShow && this.desk.focused !== null) {
-      const before = this.desk.focused;
-      before.onBlur();
-    }
+    this.blurOnShow?.onBlur();
   }
-
-  blurOnShow = false;
 
   focus(): void {
     this.desk.focus(this);
@@ -248,7 +260,7 @@ class FakeWindow {
 
 function setup(platform: string) {
   const desk = new FakeDesk();
-  const canvas = new FakeWindow(desk, 'canvas', false);
+  const canvas = new FakeWindow(desk, 'canvas', false, platform === 'win32');
   const status = new FakeWindow(desk, 'status', true);
   const input = new FakeWindow(desk, 'input', true);
   const other = new FakeWindow(desk, 'other-app', true);
@@ -263,8 +275,9 @@ function setup(platform: string) {
     lockState: () => lockState,
     log: (code) => logs.push(code),
   });
-  // main と同じく、キャンバスの blur で後ろへ戻す。
-  canvas.onBlur = () => summoner.dismiss('blur');
+  // main と同じく、キャンバスの blur で後ろへ戻す。知らせの回数と、そのときの結果を記録する。
+  const blurs: ('lower' | 'none')[] = [];
+  canvas.onBlur = () => blurs.push(summoner.dismiss('blur'));
   return {
     desk,
     canvas,
@@ -274,6 +287,7 @@ function setup(platform: string) {
     presence,
     summoner,
     logs,
+    blurs,
     lock: (state: 'unlocked' | 'locked' | 'unknown') => {
       lockState = state;
       summoner.lockChanged(state);
@@ -285,17 +299,22 @@ for (const platform of ['win32', 'darwin'] as const)
   test(`${platform}: summon, Escape, click again: the canvas gets no key input`, () => {
     const { desk, canvas, other, presence, summoner } = setup(platform);
     desk.click(other);
+    assert.equal(canvas.skipTaskbar, true);
     // 後ろにある間はクリックしても前面にならない。
     desk.click(canvas);
     assert.equal(desk.key('a'), 'other-app');
     summoner.summon('shortcut');
     assert.equal(presence.layer, 'front');
     assert.equal(canvas.focusable, true);
+    // 呼んでいる間もタスクバーに出ない（Windows の setFocusable(true) の副作用を当て直す）。
+    assert.equal(canvas.skipTaskbar, true);
+    assert.equal(canvas.shownOnTaskbar, false);
     assert.equal(desk.key('b'), 'canvas');
     // Esc で戻す。
     assert.equal(summoner.dismiss('escape'), 'lower');
     assert.equal(presence.layer, 'behind');
     assert.equal(canvas.focusable, false);
+    assert.equal(canvas.skipTaskbar, true);
     assert.notEqual(desk.focused, canvas);
     // もう一度クリックしても、キー入力は届かない。
     desk.click(canvas);
@@ -310,14 +329,19 @@ for (const platform of ['win32', 'darwin'] as const)
 
 for (const platform of ['win32', 'darwin'] as const)
   test(`${platform}: after hiding every window, the shortcut shows all three and focuses the canvas`, () => {
-    const { desk, canvas, status, input, presence, summoner } = setup(platform);
+    const { desk, canvas, status, input, presence, summoner, blurs } =
+      setup(platform);
     // すべて隠す（desktop.window_hide。main は先にキャンバスを戻してから隠す）。
     summoner.dismiss('hidden');
     for (const window of [canvas, status, input]) window.hide();
-    // 小さな窓の表示で前面の窓に blur が来ても、前に出す途中では戻さない。
-    status.blurOnShow = true;
-    input.blurOnShow = true;
+    // 前に出す途中（小さな窓を表示し直すとき）に、キャンバスの blur がはっきり来る場合。
+    status.blurOnShow = canvas;
+    input.blurOnShow = canvas;
     summoner.summon('shortcut');
+    // blur は 2 回来たが、前に出す途中なので戻していない（抑えないと 1 回目で戻してしまい、状態は「後ろ」になる）。
+    assert.deepEqual(blurs, ['none', 'none']);
+    status.blurOnShow = null;
+    input.blurOnShow = null;
     assert.deepEqual(
       [canvas.visible, status.visible, input.visible],
       [true, true, true],
@@ -327,6 +351,7 @@ for (const platform of ['win32', 'darwin'] as const)
     assert.equal(desk.key('x'), 'canvas');
     // 前に出した後のほかの窓への移動では、いつもどおり戻る。
     desk.click(input);
+    assert.deepEqual(blurs, ['none', 'none', 'lower']);
     assert.equal(presence.layer, 'behind');
     assert.equal(canvas.focusable, false);
   });

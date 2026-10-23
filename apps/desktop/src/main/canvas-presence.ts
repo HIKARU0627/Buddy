@@ -105,6 +105,9 @@ export function isDismissKey(input: {
 export type CanvasLayerOp =
   // キー入力を受けるか（BrowserWindow.setFocusable。Windows では WS_EX_NOACTIVATE の切り替え）。
   | { readonly op: 'set_focusable'; readonly value: boolean }
+  // タスクバーに出さない（BrowserWindow.setSkipTaskbar）。Windows の Electron 44 の setFocusable(true) は、内部で
+  // タスクバーに出す設定（SetSkipTaskbar(false)）も呼ぶので、setFocusable の後に当て直す（PR #104 の再確認）。
+  | { readonly op: 'set_skip_taskbar'; readonly value: true }
   // macOS の窓の段。normal: 通常の窓の段（setAlwaysOnTop(false)）。desktop: デスクトップの段に戻す。
   | { readonly op: 'set_level'; readonly level: 'normal' | 'desktop' }
   | { readonly op: 'show_focus' }
@@ -136,13 +139,22 @@ export function canvasLayerOps(
           { op: 'blur' },
         ];
   return layer === 'front'
-    ? [{ op: 'set_focusable', value: true }, { op: 'show_focus' }]
-    : [{ op: 'set_focusable', value: false }, { op: 'blur' }];
+    ? [
+        { op: 'set_focusable', value: true },
+        { op: 'set_skip_taskbar', value: true },
+        { op: 'show_focus' },
+      ]
+    : [
+        { op: 'set_focusable', value: false },
+        { op: 'set_skip_taskbar', value: true },
+        { op: 'blur' },
+      ];
 }
 
 // キャンバスの窓の操作（Electron のアダプターが BrowserWindow で実装する）。
 export interface CanvasWindowPort {
   setFocusable(value: boolean): void;
+  setSkipTaskbar(value: boolean): void;
   setLevel(level: 'normal' | 'desktop'): void;
   show(): void;
   focus(): void;
@@ -219,6 +231,8 @@ export class CanvasSummoner {
   #apply(canvas: CanvasWindowPort, layer: CanvasLayer): void {
     for (const step of canvasLayerOps(this.#options.platform, layer)) {
       if (step.op === 'set_focusable') canvas.setFocusable(step.value);
+      else if (step.op === 'set_skip_taskbar')
+        canvas.setSkipTaskbar(step.value);
       else if (step.op === 'set_level') canvas.setLevel(step.level);
       else if (step.op === 'show_focus') {
         canvas.show();

@@ -294,10 +294,11 @@ test('the canvas is an empty ground; in front it shows an accent frame; locked i
   const front = render(<CanvasGround front shown />);
   assert.match(front, /data-front="true"/u);
   assert.match(front, /ring-accent/u);
-  // 前に出ている間は、枠の右上に Esc のキーの形（⎋ esc）を出して戻し方を示す。
+  // 前に出ている間は、枠の右上に Esc のキーの形を出して戻し方を示す。キーの中は「Esc」だけ（⎋ の記号は使わない）。
   assert.match(front, /<kbd\b[^>]*aria-hidden="true"/u);
-  assert.match(front, /⎋/u);
-  assert.match(front, />esc</u);
+  const kbd = /<kbd\b[\s\S]*?<\/kbd>/u.exec(front)?.[0] ?? '';
+  assert.equal(kbd.replace(/<[^>]+>/gu, '').trim(), 'Esc');
+  assert.doesNotMatch(front, /⎋|<abbr\b/u);
   // ロック中・不明は中身（UI-03 以降のカード）を描かない。
   const hidden = render(
     <CanvasGround front={false} shown={false}>

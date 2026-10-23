@@ -120,6 +120,7 @@ const summoner = new CanvasSummoner({
     if (canvas === null) return null;
     return {
       setFocusable: (value) => canvas.setFocusable(value),
+      setSkipTaskbar: (value) => canvas.setSkipTaskbar(value),
       setLevel: (level) => {
         if (level === 'normal') canvas.setAlwaysOnTop(false);
         else canvas.setAlwaysOnTop(true, 'normal', MAC_DESKTOP_RELATIVE_LEVEL);

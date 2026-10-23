@@ -113,6 +113,7 @@ export type BuddyContract =
   | DesktopStatusBar
   | CanvasDocument
   | CanvasOpBatch
+  | DesktopCanvasView
   | StreamTurnRequest
   | StreamTurnResponse;
 /**
@@ -622,9 +623,17 @@ export type EventStreamMessage =
       event: VoiceEvent;
     }
   | {
+      type: 'canvas';
+      canvas_revision: CanvasRevision;
+    }
+  | {
       type: 'resnapshot_required';
       reason: 'store_generation_changed' | 'history_expired' | 'scope_expired';
     };
+/**
+ * キャンバスの記述の版（ADR 0032）。Core が変更の束ごとに 1 進める。state_revision・request_revision とは別。
+ */
+export type CanvasRevision = string;
 export type DevicePlatform = 'windows' | 'macos' | 'linux';
 /**
  * MAC アドレス（小文字の 16 進 2 桁をコロンでつないだ 6 組）。中枢は受け取った値を HMAC にしてから保存し、平文を DB に置かない（ADR 0022）。
@@ -1135,11 +1144,11 @@ export type DesktopIpcNotification =
   | {
       channel: 'desktop.connection_changed';
       connection: DesktopConnectionView;
+    }
+  | {
+      channel: 'desktop.canvas_changed';
+      canvas: DesktopCanvasView | null;
     };
-/**
- * キャンバスの記述の版（ADR 0032）。Core が変更の束ごとに 1 進める。state_revision・request_revision とは別。
- */
-export type CanvasRevision = string;
 /**
  * キャンバスの中の物の名前（ADR 0032）。同じキャンバスの中だけで一意。操作 ID・会話 ID などの内部の識別子を使わない。
  */
@@ -3754,6 +3763,75 @@ export interface DesktopOperationPreview {
   approvable: boolean;
 }
 /**
+ * 画面へ渡すキャンバスの今の記述（ADR 0032）。main が中枢から取り、形式（CanvasDocument）と意味（domain）の検査を通してから、参照を不透明な参照に置き換えて渡す。ロック・切断・世代の変化では渡した記述を捨てる（canvas を null にして通知する）。
+ */
+export interface DesktopCanvasView {
+  canvas_revision: CanvasRevision;
+  /**
+   * @maxItems 48
+   */
+  items: DesktopCanvasItem[];
+  /**
+   * @maxItems 24
+   */
+  reading_order: CanvasItemId[];
+}
+/**
+ * 画面へ渡すキャンバスの物（ADR 0032）。CanvasItem と同じ項目で、データの参照だけを不透明な参照にする。説明文の項目・承認・停止・取消の操作を持たない。見出しはプレーンテキストとしてだけ描く。
+ */
+export interface DesktopCanvasItem {
+  item_id: CanvasItemId;
+  kind: CanvasItemKind;
+  component: CanvasComponent;
+  heading: CanvasHeading;
+  emphasis: CanvasEmphasis;
+  group: CanvasGroupId | null;
+  /**
+   * @maxItems 4
+   */
+  relations:
+    | []
+    | [CanvasRelation]
+    | [CanvasRelation, CanvasRelation]
+    | [CanvasRelation, CanvasRelation, CanvasRelation]
+    | [CanvasRelation, CanvasRelation, CanvasRelation, CanvasRelation];
+  grid: CanvasGrid;
+  placement: CanvasPlacement;
+  data: DesktopCanvasData;
+}
+/**
+ * ほかの物との関係（ADR 0032）。compare は見比べる、sequence は target の次、detail_of は target の詳細。関係はレイアウトで見せ、説明文にしない。
+ */
+export interface CanvasRelation {
+  kind: 'compare' | 'sequence' | 'detail_of';
+  target: CanvasItemId;
+}
+/**
+ * 12 列の格子のヒント（ADR 0032）。column + span − 1 が 12 を超えないこと（意味の検査）。ピクセル・座標・画面の大きさは持たない。最後の配置は配置のエンジンが決める。
+ */
+export interface CanvasGrid {
+  column: number;
+  span: number;
+  rows: number;
+}
+/**
+ * 画面へ渡す物のデータ（ADR 0032）。CanvasData と同じ上限で、参照の ID だけを不透明な参照にする。本文・説明文を持たない。
+ */
+export interface DesktopCanvasData {
+  /**
+   * @maxItems 50
+   */
+  item_refs: DesktopCanvasRef[];
+  more_count: number;
+}
+/**
+ * 画面へ渡す表示対象の参照（ADR 0032）。中枢の識別子（予定・メールの ID など）を main の中に持ち、画面には main が作った不透明な参照だけを渡す。ref は中枢の識別子から作らず、1 つの記述ごとに作り直す。
+ */
+export interface DesktopCanvasRef {
+  kind: string;
+  ref: Id;
+}
+/**
  * キャンバスの今の記述（ADR 0032）。見える物（placement が canvas）は 24 個まで、棚を含めて 48 個まで。reading_order は見える物をちょうど 1 回ずつ含む（意味の検査）。
  */
 export interface CanvasDocument {
@@ -3789,21 +3867,6 @@ export interface CanvasItem {
   grid: CanvasGrid;
   placement: CanvasPlacement;
   data: CanvasData;
-}
-/**
- * ほかの物との関係（ADR 0032）。compare は見比べる、sequence は target の次、detail_of は target の詳細。関係はレイアウトで見せ、説明文にしない。
- */
-export interface CanvasRelation {
-  kind: 'compare' | 'sequence' | 'detail_of';
-  target: CanvasItemId;
-}
-/**
- * 12 列の格子のヒント（ADR 0032）。column + span − 1 が 12 を超えないこと（意味の検査）。ピクセル・座標・画面の大きさは持たない。最後の配置は配置のエンジンが決める。
- */
-export interface CanvasGrid {
-  column: number;
-  span: number;
-  rows: number;
 }
 /**
  * 物が見せるデータの参照（ADR 0032）。50 件まで、残りは more_count（50 件に満たないときは 0。意味の検査）。本文・説明文を持たない。

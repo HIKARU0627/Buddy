@@ -337,7 +337,16 @@ export class OperationBridge {
     return { ok: true, value: this.#turnResult(outcome.body as TurnResponse) };
   }
 
-  #turnResult(turn: TurnResponse): DesktopTurnResult {
+  // 流れへの発言の結果（StreamTurnResponse）も、会話への発言と同じ表示用の値にする（UI-03、ADR 0032）。
+  streamTurnResult(
+    turn: Pick<TurnResponse, 'status' | 'reply_text' | 'result_view'>,
+  ): DesktopTurnResult {
+    return this.#turnResult(turn);
+  }
+
+  #turnResult(
+    turn: Pick<TurnResponse, 'status' | 'reply_text' | 'result_view'>,
+  ): DesktopTurnResult {
     const view = turn.result_view;
     if (view === null)
       return { status: turn.status, reply_text: turn.reply_text, result: null };

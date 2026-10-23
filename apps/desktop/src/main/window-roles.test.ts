@@ -204,6 +204,49 @@ test('the legacy window keeps every existing channel and the same sender decisio
     'desktop.connection_changed',
   ])
     assert.equal(notificationAllowedForWindow('legacy', channel), true);
+  // キャンバスの記述（UI-03）は従来の窓へ送らない。
+  assert.equal(
+    notificationAllowedForWindow('legacy', 'desktop.canvas_changed'),
+    false,
+  );
+});
+
+// UI-03（ADR 0032）: キャンバスの記述の通知はキャンバスの窓だけ。読み込みが終わっていない窓へは送らない。
+test('the canvas description notification goes to the canvas window only, and only once it is loaded', () => {
+  const registry = new UiWindowRegistry<FakeWindow>();
+  registry.register(11, 'canvas', { name: 'canvas' });
+  registry.register(12, 'status', { name: 'status' });
+  registry.register(13, 'input', { name: 'input' });
+  assert.deepEqual(registry.notificationTargets('desktop.canvas_changed'), []);
+  for (const id of [11, 12, 13]) registry.setReady(id, true);
+  assert.deepEqual(
+    registry
+      .notificationTargets('desktop.canvas_changed')
+      .map((entry) => entry.role),
+    ['canvas'],
+  );
+  assert.equal(
+    notificationAllowedForWindow('canvas', 'desktop.canvas_changed'),
+    true,
+  );
+  for (const role of ['status', 'input'] as const)
+    assert.equal(
+      notificationAllowedForWindow(role, 'desktop.canvas_changed'),
+      false,
+      role,
+    );
+  // 電源・ロックの記録と接続の状態は、キャンバスの窓へ送らないまま。
+  for (const channel of ['desktop.power_event', 'desktop.connection_changed'])
+    assert.equal(
+      notificationAllowedForWindow('canvas', channel),
+      false,
+      channel,
+    );
+  // 従来の窓だけの組み立てには、キャンバスの記述の宛先がない。
+  const single = new UiWindowRegistry<FakeWindow>();
+  single.register(7, 'legacy', { name: 'legacy' });
+  single.setReady(7, true);
+  assert.deepEqual(single.notificationTargets('desktop.canvas_changed'), []);
 });
 
 test('each role admits only its own channels; the rest are untrusted senders', () => {

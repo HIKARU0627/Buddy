@@ -13,6 +13,7 @@ import type {
 import { AppProviders } from '../../app/AppProviders.js';
 import {
   canSummonCanvas,
+  canvasContentShown,
   contentShown,
   initialChannelsFor,
   inputBarEnabled,
@@ -210,6 +211,9 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
       enabled
       value=""
       onChange={noop}
+      onSubmit={noop}
+      sending={false}
+      attention={false}
       canSummon
       onSummon={noop}
     />,
@@ -228,6 +232,9 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
       enabled={false}
       value=""
       onChange={noop}
+      onSubmit={noop}
+      sending={false}
+      attention={false}
       canSummon={false}
       onSummon={noop}
     />,
@@ -270,6 +277,9 @@ test('typed text disappears when the device locks or the lock state becomes unkn
         enabled={inputBarEnabled(status)}
         value={inputDraftAfter(typed, status)}
         onChange={noop}
+        onSubmit={noop}
+        sending={false}
+        attention={false}
         canSummon={canSummonCanvas(status)}
         onSummon={noop}
       />,
@@ -312,4 +322,27 @@ test('the canvas is an empty ground; in front it shows an accent frame; locked i
     </CanvasGround>,
   );
   assert.match(visible, /カード/u);
+});
+
+// 停止中はキャンバスの記述を描かない（入力バーの下書きと違い、停止中も隠す）。
+test('the canvas content is shown only while unlocked and not stopped', () => {
+  assert.equal(canvasContentShown(shown()), true);
+  assert.equal(
+    canvasContentShown(shown({ stop_scope: 'local', input_permitted: false })),
+    false,
+  );
+  assert.equal(
+    canvasContentShown(shown({ stop_scope: 'guest', input_permitted: false })),
+    false,
+  );
+  assert.equal(
+    canvasContentShown({ visibility: 'hidden', lock_state: 'locked' }),
+    false,
+  );
+  assert.equal(canvasContentShown(null), false);
+  // 下書きは停止中も残る（打てないだけ）。キャンバスだけが隠れる。
+  assert.equal(
+    contentShown(shown({ stop_scope: 'local', input_permitted: false })),
+    true,
+  );
 });

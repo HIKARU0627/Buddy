@@ -165,9 +165,9 @@ test(
       .map(([id]) => id)
       .sort();
     assert.deepEqual(declared, expected);
-    // 内容の表示用の読み取り（displayOperation、ADR 0031）と流れへの発言（postStreamTurn、ADR 0032）で 2 つ、
-    // 予算の 4 経路（ADR 0034）で 4 つ増えた。
-    assert.equal(declared.length, 30);
+    // 内容の表示用の読み取り（displayOperation、ADR 0031）・流れへの発言（postStreamTurn、ADR 0032）・キャンバスの
+    // 読み取り（getCanvas、UI-03）で 3 つ、予算の 4 経路（ADR 0034）で 4 つ増えた。
+    assert.equal(declared.length, 31);
   },
 );
 

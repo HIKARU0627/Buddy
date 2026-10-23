@@ -306,6 +306,8 @@ export interface StreamMessage {
   readonly type: string;
   readonly event?: Record<string, unknown>;
   readonly reason?: string;
+  // キャンバスの版の知らせ（UI-03、ADR 0032）。
+  readonly canvas_revision?: string;
 }
 
 export interface StreamClient {

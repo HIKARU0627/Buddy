@@ -271,6 +271,8 @@ const byOperationId = (a: OperationSnapshot, b: OperationSnapshot) =>
 export class ClientConnection {
   readonly #options: ClientConnectionOptions;
   readonly #listeners = new Set<(state: LinkState) => void>();
+  // キャンバスの版の知らせ（ADR 0032）。版だけを渡す（本文は getCanvas で取る）。
+  readonly #canvasListeners = new Set<(revision: string) => void>();
   #state: LinkState = INITIAL_STATE;
   // 接続の試み・購読ごとに進める。古い試みの応答・切断は無視する。
   #generation = 0;
@@ -302,6 +304,13 @@ export class ClientConnection {
   onChange(listener: (state: LinkState) => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  // 中枢からキャンバスの記述が新しい版になった知らせ（購読の canvas メッセージ）を受けたとき。版だけを渡し、
+  // 端末は GET /v1/canvas で記述を取る。接続の表示（操作・カーソル）は変えない。
+  onCanvas(listener: (revision: string) => void): () => void {
+    this.#canvasListeners.add(listener);
+    return () => this.#canvasListeners.delete(listener);
   }
 
   start(): void {
@@ -660,12 +669,18 @@ export class ClientConnection {
     const message = event.data as
       | { type: 'event'; event: EventEnvelope }
       | { type: 'voice'; event: unknown }
+      | { type: 'canvas'; canvas_revision: string }
       | { type: 'resnapshot_required'; reason: string };
     if (message.type === 'resnapshot_required') {
       this.#fail(generation, { kind: 'resnapshot' });
       return;
     }
     if (message.type === 'voice') return;
+    if (message.type === 'canvas') {
+      for (const listener of [...this.#canvasListeners])
+        listener(message.canvas_revision);
+      return;
+    }
     this.#applyEvent(generation, message.event);
   }
 

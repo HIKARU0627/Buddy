@@ -32,7 +32,7 @@ import type { TailscaleStatusSource, TlsKeyStore } from '@buddy/platform';
 import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
 import type { HomeNetworkGate } from './api-home-network.js';
 import { ApiListenError, createApiServer } from './api-server.js';
-import type { ApiLimits, ApiServer } from './api-server.js';
+import type { ApiLimits, ApiRouteHandler, ApiServer } from './api-server.js';
 import {
   SAFE_REQUEST_ENVIRONMENT,
   declaredLockState,
@@ -57,6 +57,7 @@ import {
 import type { PreviewCheck } from './api-operations.js';
 import { DeviceConnections } from './device-connections.js';
 import { createTurnRoutes } from './api-turns.js';
+import { CanvasHub, createStreamRoutes } from './canvas-stream.js';
 import { PreviewRegistry } from './previews.js';
 import {
   NO_FAULTS,
@@ -736,6 +737,14 @@ async function startHttps(
   });
   // 連携の口座と許可の版を一度確かめておく（発言の入力の時点の版を外部へ問い合わせずに持つ。B04-07）。
   await turns.prime().catch(() => undefined);
+  // 流れへの発言とキャンバスの記述（UI-03、ADR 0032）。キャンバスの正本は Core（RAM）。発言は既存の発言の処理を呼ぶ。
+  const canvas = new CanvasHub();
+  const stream = createStreamRoutes({
+    canvas,
+    createSession: turns.handlers['createSession'] as ApiRouteHandler,
+    postTurn: turns.handlers['postTurn'] as ApiRouteHandler,
+    now: () => now().getTime(),
+  });
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
   const faults = turnOptions.faults ?? NO_FAULTS;
   const runner = createOperationRunner({
@@ -768,6 +777,7 @@ async function startHttps(
     coreInstanceId,
     environment,
     deviceConnections,
+    canvas,
     now: () => now().getTime(),
     faults,
     ...https.eventStream,
@@ -778,6 +788,7 @@ async function startHttps(
     routes.handlers,
     homeNetwork.handlers,
     turns.handlers,
+    stream.handlers,
   ].flatMap((handlers) => Object.keys(handlers));
   if (new Set(handlerKeys).size !== handlerKeys.length)
     throw new Error('route_handlers_overlap');
@@ -797,6 +808,7 @@ async function startHttps(
         ...routes.handlers,
         ...homeNetwork.handlers,
         ...turns.handlers,
+        ...stream.handlers,
       },
       eventStream: streams,
       ...(https.limits === undefined ? {} : { limits: https.limits }),

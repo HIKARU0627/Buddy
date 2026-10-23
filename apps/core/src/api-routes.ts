@@ -65,10 +65,12 @@ export const API_ROUTES: readonly ApiRoute[] = [
   route('postTurn', 'POST', '/v1/sessions/{session_id}/turns', {
     body: 'TurnRequest',
   }),
-  // 流れへの発言（ADR 0032）。処理は UI-05 で足す。それまでは検査の後に 503。
+  // 流れへの発言（ADR 0032）。UI-03 は区切り 1 つの最小の処理（自動の区切りは UI-05）。
   route('postStreamTurn', 'POST', '/v1/stream/turns', {
     body: 'StreamTurnRequest',
   }),
+  // キャンバスの今の記述の読み取り（ADR 0032）。イベントの canvas の知らせ（版だけ）を受けた端末が取る。
+  route('getCanvas', 'GET', '/v1/canvas'),
   route('handoffSession', 'POST', '/v1/sessions/{session_id}/handoff', {
     body: 'HandoffRequest',
     ...SCREEN,

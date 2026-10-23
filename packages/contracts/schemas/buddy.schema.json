@@ -332,6 +332,9 @@
       "$ref": "#/$defs/CanvasOpBatch"
     },
     {
+      "$ref": "#/$defs/DesktopCanvasView"
+    },
+    {
       "$ref": "#/$defs/StreamTurnRequest"
     },
     {
@@ -7573,6 +7576,21 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "canvas"
+            },
+            "canvas_revision": {
+              "$ref": "#/$defs/CanvasRevision"
+            }
+          },
+          "required": ["type", "canvas_revision"],
+          "additionalProperties": false,
+          "description": "キャンバスの記述が新しい版になった知らせ（ADR 0032）。版だけを持ち、記述の本文・物の見出し・参照を含めない。端末は getCanvas で記述を取る。この知らせはイベントの記録（cursor）に入れず、接続している購読にだけ送る。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "resnapshot_required"
             },
             "reason": {
@@ -10023,6 +10041,28 @@
           "required": ["channel", "connection"],
           "additionalProperties": false,
           "description": "中枢との接続・登録・ペアリングの状態が変わった（ADR 0025）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.canvas_changed"
+            },
+            "canvas": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DesktopCanvasView"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["channel", "canvas"],
+          "additionalProperties": false,
+          "description": "キャンバスの記述が変わった・捨てた（ADR 0032）。キャンバスの窓だけに送る。canvas が null のときは描いている物をすべて捨てる（ロック・切断・世代の変化・まだ取れていない）。"
         }
       ],
       "description": "main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。"
@@ -10996,6 +11036,125 @@
       "required": ["source_segment_ids", "expires_at"],
       "additionalProperties": false,
       "description": "区切りにつないだ要約の由来と期限（ADR 0032）。source_segment_ids は要約の材料になった区切り（要約し直しても前の由来を引き継ぐ）。expires_at は由来の発言のうち最も早い期限で、その時に要約全体を捨てる。本文は持たない。"
+    },
+    "DesktopCanvasRef": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z_]{0,31}$"
+        },
+        "ref": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["kind", "ref"],
+      "additionalProperties": false,
+      "description": "画面へ渡す表示対象の参照（ADR 0032）。中枢の識別子（予定・メールの ID など）を main の中に持ち、画面には main が作った不透明な参照だけを渡す。ref は中枢の識別子から作らず、1 つの記述ごとに作り直す。"
+    },
+    "DesktopCanvasData": {
+      "type": "object",
+      "properties": {
+        "item_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DesktopCanvasRef"
+          },
+          "maxItems": 50
+        },
+        "more_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["item_refs", "more_count"],
+      "additionalProperties": false,
+      "description": "画面へ渡す物のデータ（ADR 0032）。CanvasData と同じ上限で、参照の ID だけを不透明な参照にする。本文・説明文を持たない。"
+    },
+    "DesktopCanvasItem": {
+      "type": "object",
+      "properties": {
+        "item_id": {
+          "$ref": "#/$defs/CanvasItemId"
+        },
+        "kind": {
+          "$ref": "#/$defs/CanvasItemKind"
+        },
+        "component": {
+          "$ref": "#/$defs/CanvasComponent"
+        },
+        "heading": {
+          "$ref": "#/$defs/CanvasHeading"
+        },
+        "emphasis": {
+          "$ref": "#/$defs/CanvasEmphasis"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasGroupId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasRelation"
+          },
+          "maxItems": 4
+        },
+        "grid": {
+          "$ref": "#/$defs/CanvasGrid"
+        },
+        "placement": {
+          "$ref": "#/$defs/CanvasPlacement"
+        },
+        "data": {
+          "$ref": "#/$defs/DesktopCanvasData"
+        }
+      },
+      "required": [
+        "item_id",
+        "kind",
+        "component",
+        "heading",
+        "emphasis",
+        "group",
+        "relations",
+        "grid",
+        "placement",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "画面へ渡すキャンバスの物（ADR 0032）。CanvasItem と同じ項目で、データの参照だけを不透明な参照にする。説明文の項目・承認・停止・取消の操作を持たない。見出しはプレーンテキストとしてだけ描く。"
+    },
+    "DesktopCanvasView": {
+      "type": "object",
+      "properties": {
+        "canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DesktopCanvasItem"
+          },
+          "maxItems": 48
+        },
+        "reading_order": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasItemId"
+          },
+          "maxItems": 24
+        }
+      },
+      "required": ["canvas_revision", "items", "reading_order"],
+      "additionalProperties": false,
+      "description": "画面へ渡すキャンバスの今の記述（ADR 0032）。main が中枢から取り、形式（CanvasDocument）と意味（domain）の検査を通してから、参照を不透明な参照に置き換えて渡す。ロック・切断・世代の変化では渡した記述を捨てる（canvas を null にして通知する）。"
     }
   }
 }

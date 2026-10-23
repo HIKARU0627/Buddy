@@ -197,10 +197,13 @@ export class ManualTimers implements GateTimers {
   // 設定された残り時間（ミリ秒）の記録。
   readonly delays: number[] = [];
   #next = 0;
+  // 設定された直後に呼ぶ（準備の途中で時計を進める・中断する・すぐ発火させる試験）。
+  onSet: ((fire: () => void) => void) | null = null;
   set(ms: number, fn: () => void): () => void {
     this.delays.push(ms);
     const id = this.#next++;
     this.#pending.set(id, fn);
+    this.onSet?.(fn);
     return () => this.#pending.delete(id);
   }
   get size(): number {

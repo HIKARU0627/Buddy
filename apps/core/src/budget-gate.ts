@@ -591,39 +591,39 @@ export class BudgetGate {
     await this.#afterDispatch(ticket);
     // 送出意図を記録した後は解放しない。記録を待つ間に中断された・期限を過ぎたなら送らず、usage 不明として保持する
     // （記録の上では送った可能性があるため。Codex のレビュー P1・P2）。ここから send を呼ぶまでは同期で進める。
-    // 時計は 1 回だけ読み、期限の判定と timer の残り時間に同じ値を使う（読み直した時計で期限を過ぎていても送る
-    // 隙間を作らない。Codex の再確認 P1）。
-    const remaining = ticket.deadline - this.#now();
-    const stopped = callerAborted()
-      ? 'discarded'
-      : remaining <= 0
-        ? 'reservation_expired'
-        : null;
-    if (stopped !== null) {
+    const stop = async (
+      reason: 'discarded' | 'reservation_expired',
+    ): Promise<RunResult> => {
       await this.unknown(ticket);
-      return { kind: 'usage_unknown', ticket, reasons: [stopped, 'not_sent'] };
-    }
+      return { kind: 'usage_unknown', ticket, reasons: [reason, 'not_sent'] };
+    };
+    // 準備の前の判定（期限・中断）。timer の残り時間はこの読みから決める。
+    const planned = ticket.deadline - this.#now();
+    if (callerAborted()) return stop('discarded');
+    if (planned <= 0) return stop('reservation_expired');
+    // 準備: 中断の controller・呼び出し側の中断の listener・timeout の timer。
     const controller = new AbortController();
-    const cancelTimer = this.#timers.set(remaining, () =>
-      controller.abort('timeout'),
-    );
     const discard = () => controller.abort('discarded');
     options.signal?.addEventListener('abort', discard, { once: true });
-    // timer と listener を用意する間に中断された（timer がすぐ発火した・呼び出し側が中断した）なら送らない。
-    if (controller.signal.aborted || callerAborted()) {
+    const cancelTimer = this.#timers.set(planned, () =>
+      controller.abort('timeout'),
+    );
+    const teardown = (): void => {
       cancelTimer();
       options.signal?.removeEventListener('abort', discard);
-      await this.unknown(ticket);
-      return {
-        kind: 'usage_unknown',
-        ticket,
-        reasons: [
-          controller.signal.reason === 'timeout'
-            ? 'reservation_expired'
-            : 'discarded',
-          'not_sent',
-        ],
-      };
+    };
+    // 最後の判定は、準備をすべて終えた後、send を呼ぶ文の直前に置く（間に何も挟まない）。準備の間に時計が進んで
+    // 期限に達した・呼び出し側が中断した・timer がすぐ発火したなら、準備を外して送らない（Codex の再確認 P1・P3）。
+    const sendAt = this.#now();
+    if (
+      controller.signal.aborted ||
+      callerAborted() ||
+      sendAt >= ticket.deadline
+    ) {
+      teardown();
+      const expired =
+        controller.signal.reason === 'timeout' || sendAt >= ticket.deadline;
+      return stop(expired ? 'reservation_expired' : 'discarded');
     }
     let sending: Promise<PaidOutcome>;
     try {

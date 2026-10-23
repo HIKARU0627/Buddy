@@ -33,6 +33,9 @@ export const CANVAS_LAYOUT = {
   // 最小の高さに満たないときの、小さな棚（作業領域の上の端から 4 下・高さ 32）。
   compactShelfTop: 4,
   compactShelfHeight: 32,
+  // 見出しを読める最小のカードの幅（ピクセル）。格子ではこの幅に届く列の数（minSpan）より細くしない
+  // （縮めて入らなければ、置き場所の物を下げて置き直す・入りきらない物にする）。PR #121 の再確認。
+  minCardWidth: 160,
 } as const;
 
 export interface CanvasLayoutItemLike {
@@ -82,6 +85,8 @@ export interface CanvasLayoutBox {
 }
 
 export interface CanvasLayoutGrid {
+  // カードの最小の列の数（見出しを読める最小の幅 minCardWidth に届く列の数）。
+  readonly minSpan: number;
   readonly x: number;
   readonly y: number;
   readonly columnWidth: number;
@@ -286,6 +291,7 @@ function frameOf(input: CanvasLayoutInput): Frame {
 function sizeOf(
   item: CanvasLayoutItemLike,
   gridRows: number,
+  minSpan: number,
 ): { span: number; rows: number } {
   let span = clamp(Math.trunc(item.grid.span), 1, CANVAS_GRID_COLUMNS);
   let rows = clamp(Math.trunc(item.grid.rows), 1, 8);
@@ -297,16 +303,24 @@ function sizeOf(
     span = Math.min(span, 4);
     rows = Math.min(rows, 2);
   }
-  return { span, rows: Math.max(1, Math.min(rows, gridRows)) };
+  return {
+    span: Math.max(span, minSpan),
+    rows: Math.max(1, Math.min(rows, gridRows)),
+  };
 }
 
 // 記録したマスを格子に収める（列・幅は 12 列に、行・行数は作れる行に）。
-function clampCell(cell: CanvasCellLike, gridRows: number): CanvasCellLike {
-  const column = clamp(Math.trunc(cell.column), 1, CANVAS_GRID_COLUMNS);
-  const span = clamp(
-    Math.trunc(cell.span),
+// 幅は見出しを読める最小の列の数（minSpan）より細くしない（はみ出すなら列を左へ寄せる）。
+function clampCell(
+  cell: CanvasCellLike,
+  gridRows: number,
+  minSpan: number,
+): CanvasCellLike {
+  const span = clamp(Math.trunc(cell.span), minSpan, CANVAS_GRID_COLUMNS);
+  const column = clamp(
+    Math.trunc(cell.column),
     1,
-    CANVAS_GRID_COLUMNS - column + 1,
+    CANVAS_GRID_COLUMNS - span + 1,
   );
   const rows = clamp(Math.trunc(cell.rows), 1, Math.max(1, gridRows));
   const row = clamp(Math.trunc(cell.row), 1, Math.max(1, gridRows - rows + 1));
@@ -450,6 +464,13 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
   const columnWidth =
     (frame.width - L.gap * (CANVAS_GRID_COLUMNS - 1)) / CANVAS_GRID_COLUMNS;
   const pitch = columnWidth + L.gap;
+  // 見出しを読める最小の幅に届く列の数（丸めの 1 ピクセルを見込む）。
+  let minSpan = 1;
+  while (
+    minSpan < CANVAS_GRID_COLUMNS &&
+    minSpan * pitch - L.gap < L.minCardWidth + 1
+  )
+    minSpan += 1;
   const rectOf = (cell: CanvasCellLike): CanvasRect => {
     const x = Math.round(frame.left + (cell.column - 1) * pitch);
     const right = Math.round(
@@ -520,7 +541,7 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       if (spot !== null) return { ...spot, span, rows: r };
     }
     if (shrinkSpan)
-      for (let s = span - 1; s >= 2; s -= 1) {
+      for (let s = span - 1; s >= minSpan; s -= 1) {
         const spot = occupancy.nearest(s, 1, want);
         if (spot !== null) return { ...spot, span: s, rows: 1 };
       }
@@ -537,7 +558,7 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       overflow.add(item.item_id);
       return;
     }
-    const fitted = clampCell(cell, gridRows);
+    const fitted = clampCell(cell, gridRows, minSpan);
     if (occupancy.free(fitted)) {
       commit(item, fitted, source);
       return;
@@ -563,7 +584,7 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       return;
     }
     const role = roleOf(item.emphasis);
-    const size = sizeOf(item, gridRows);
+    const size = sizeOf(item, gridRows, minSpan);
     const span = size.span;
     let rows = size.rows;
     const hintColumn = (width: number) =>
@@ -577,13 +598,14 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       if (relation.kind === 'sequence') {
         want = point(target.row + target.rows, target.column);
         const width = Math.min(span, CANVAS_GRID_COLUMNS - target.column + 1);
+        // 真下に見出しを読める幅がなければ、真下は試さない。
         const below = {
           row: target.row + target.rows,
           column: target.column,
           span: width,
           rows,
         };
-        if (occupancy.free(below)) beside = below;
+        if (width >= minSpan && occupancy.free(below)) beside = below;
         break;
       }
       if (relation.kind === 'compare')
@@ -596,11 +618,7 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
           ? right
           : Math.max(1, target.column - span),
       );
-      for (
-        let width = span;
-        width >= Math.min(span, 2) && beside === null;
-        width -= 1
-      )
+      for (let width = span; width >= minSpan && beside === null; width -= 1)
         for (const column of [right, target.column - width]) {
           const candidate = { row: target.row, column, span: width, rows };
           if (occupancy.free(candidate)) {
@@ -744,6 +762,7 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       gap: L.gap,
       columns: CANVAS_GRID_COLUMNS,
       rows: gridRows,
+      minSpan,
     },
     ...common,
   };

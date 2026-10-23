@@ -240,7 +240,8 @@ export function dragTo(
   } else {
     const span = clamp(
       drag.origin.span + Math.round(dx / pitchX),
-      1,
+      // 見出しを読める最小の列の数より細くしない。
+      Math.min(grid.minSpan, grid.columns - drag.origin.column + 1),
       grid.columns - drag.origin.column + 1,
     );
     const rows = clamp(
@@ -377,7 +378,12 @@ export function keyOp(
   if (key.shiftKey)
     next = {
       ...cell,
-      span: clamp(cell.span + step[0], 1, grid.columns - cell.column + 1),
+      // 見出しを読める最小の列の数より細くしない。
+      span: clamp(
+        cell.span + step[0],
+        Math.min(grid.minSpan, grid.columns - cell.column + 1),
+        grid.columns - cell.column + 1,
+      ),
       rows: clamp(
         cell.rows + step[1],
         1,

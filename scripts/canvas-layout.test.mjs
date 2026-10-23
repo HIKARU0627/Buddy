@@ -72,6 +72,7 @@ test('the constants match ADR 0032 (UI-06)', () => {
     minHeight: 272,
     compactShelfTop: 4,
     compactShelfHeight: 32,
+    minCardWidth: 160,
   });
 });
 
@@ -101,6 +102,8 @@ test('meaning decides the place: focus large at the top, compare beside, detail 
     gap: 16,
     columns: 12,
     rows: 7,
+    // 2 列 = 2 × 98 − 16 = 180 ≥ 160 + 1（見出しを読める最小の幅）。1 列（82）では足りない。
+    minSpan: 2,
   });
   // 焦点: 幅 4 → 6、行 2 → 4 に広げ、1 行目・列 1。
   assert.deepEqual(cellOf(result, 'focus'), cell(1, 1, 6, 4));
@@ -408,6 +411,8 @@ test('widths 480 to 1920: the mode switches at 840, and no box overlaps another,
           box.rect.width > 0 && box.rect.height > 0,
           `${label} ${box.item_id}`,
         );
+        // 見出しを読める最小の幅（160）以上。
+        assert(box.rect.width >= 160, `${label} ${box.item_id} width`);
         assert(box.rect.x >= 24, `${label} ${box.item_id} left`);
         assert(box.rect.y >= 24, `${label} ${box.item_id} top`);
         assert(
@@ -750,9 +755,67 @@ test('at every size from the minimum height up, any visible card chosen from the
           viewport: { width, height },
           revealed: id,
         });
-        assert(
-          result.boxes.some((box) => box.item_id === id),
-          `${width}×${height} ${id}`,
-        );
+        const box = result.boxes.find((entry) => entry.item_id === id);
+        assert(box, `${width}×${height} ${id}`);
+        // 選んだ物の見出しを読める幅（160 以上）。
+        assert(box.rect.width >= 160, `${width}×${height} ${id} width`);
       }
+});
+
+test('a card is never narrower than the width to read its heading: at 840 the minimum is 3 columns, so a chosen card makes the user pin step aside instead of shrinking to 2', () => {
+  // 840 × 272: 置ける幅 840 − 120 = 720、列の幅 (720 − 176) / 12 = 45.33…（送り 61.33…）。2 列 = 106.67 では
+  // 160 に足りず、3 列 = 168 で足りるので最小は 3 列。行は 1（下端 272 − 88 − 16 = 168）。
+  const pins = [
+    { item_id: 'p', cell: { column: 1, row: 1, span: 10, rows: 1 } },
+  ];
+  const items = [
+    item('p'),
+    item('x', { emphasis: 'low', grid: { column: 1, span: 4, rows: 2 } }),
+  ];
+  const before = layoutCanvas({
+    items,
+    reading_order: ['p', 'x'],
+    user_pins: pins,
+    viewport: { width: 840, height: 272 },
+  });
+  assert.equal(before.grid.minSpan, 3);
+  assert.equal(before.grid.rows, 1);
+  // 残りの 2 列には入れない（縮めて 2 列にしない）。
+  assert.deepEqual(before.overflow, ['x']);
+  const shown = layoutCanvas({
+    items,
+    reading_order: ['p', 'x'],
+    user_pins: pins,
+    viewport: { width: 840, height: 272 },
+    revealed: 'x',
+  });
+  // x を先に列 1 から 4 列（x 24、右 = round(24 + 4 × 61.33 − 16) = 253、幅 229）に置き、p は縮めて列 5 から 8 列
+  // （x = round(24 + 4 × 61.33) = 269、右 = 24 + 12 × 61.33 − 16 = 744、幅 475）へ下げる。
+  assert.deepEqual(cellOf(shown, 'x'), cell(1, 1, 4, 1));
+  assert.deepEqual(rectOf(shown, 'x'), {
+    x: 24,
+    y: 24,
+    width: 229,
+    height: 72,
+  });
+  assert.deepEqual(cellOf(shown, 'p'), cell(1, 5, 8, 1));
+  assert.deepEqual(rectOf(shown, 'p'), {
+    x: 269,
+    y: 24,
+    width: 475,
+    height: 72,
+  });
+  // ヒントの幅が 1 列の物も、最小の 3 列（168）に広げる。ユーザーの置き場所の幅 1 も、描くときは 3 列にする
+  // （記録は変えない）。列 11 からは 3 列が入らないので列 10 へ寄せる。
+  const thin = layoutCanvas({
+    items: [item('t', { grid: { column: 1, span: 1, rows: 1 } }), item('u')],
+    reading_order: ['t', 'u'],
+    user_pins: [
+      { item_id: 'u', cell: { column: 11, row: 1, span: 1, rows: 1 } },
+    ],
+    viewport: { width: 840, height: 272 },
+  });
+  assert.deepEqual(cellOf(thin, 'u'), cell(1, 10, 3, 1));
+  assert.deepEqual(cellOf(thin, 't'), cell(1, 1, 3, 1));
+  assert.equal(rectOf(thin, 't').width, 168);
 });

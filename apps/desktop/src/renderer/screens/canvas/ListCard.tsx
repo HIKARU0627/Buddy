@@ -4,6 +4,8 @@
 // 残りの件数（more_count）は「+数」の小さな札、強調（high）は accent の枠で伝える。位置と大きさは配置のエンジン
 // （UI-06）が決め、カードは置かれた箱いっぱいに描く。キャンバスが前に出ている間だけ、見出しの帯を掴んで動かせ、
 // 右上に閉じる・棚へ片付けるの印（controls）を出す。箱が低い（1 行分）ときは、行の代わりに件数の札だけを出す（compact）。
+// 箱が狭い（narrow）ときは、見出しを 1 行目に幅いっぱいで置き、件数の札と操作の印をその下の行へ移す（見出しを優先。
+// PR #121 の再確認）。
 import { useId } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { Card, Chip } from '@heroui/react';
@@ -14,17 +16,30 @@ export function ListCard({
   item,
   controls = null,
   compact = false,
+  narrow = false,
   onGrab,
 }: {
   readonly item: CanvasViewItem;
   readonly controls?: ReactNode;
   // 箱が低く、行を描けない。
   readonly compact?: boolean;
+  // 箱が狭く、見出しと操作の印を 1 行に並べると見出しが読めない。
+  readonly narrow?: boolean;
   // 見出しの帯を掴んだ（キャンバスが前に出ているときだけ渡す）。
   readonly onGrab?: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }) {
   const headingId = useId();
   const refs = item.data.item_refs;
+  const count = compact ? (
+    <Chip
+      size="sm"
+      variant="tertiary"
+      data-compact-count="true"
+      className="shrink-0 tabular-nums"
+    >
+      {String(refs.length + item.data.more_count)}
+    </Chip>
+  ) : null;
   return (
     <Card
       aria-labelledby={headingId}
@@ -33,22 +48,31 @@ export function ListCard({
     >
       <Card.Header
         onPointerDown={onGrab}
-        className={`flex flex-row items-start gap-2 ${onGrab === undefined ? '' : 'cursor-grab touch-none'}`}
+        data-header={narrow ? 'stacked' : 'inline'}
+        className={`flex ${narrow ? 'flex-col items-stretch gap-1' : 'flex-row items-start gap-2'} ${onGrab === undefined ? '' : 'cursor-grab touch-none'}`}
       >
-        <Card.Title id={headingId} className="min-w-0 flex-1 truncate">
+        <Card.Title
+          id={headingId}
+          className={narrow ? 'w-full truncate' : 'min-w-0 flex-1 truncate'}
+        >
           {item.heading}
         </Card.Title>
-        {compact ? (
-          <Chip
-            size="sm"
-            variant="tertiary"
-            data-compact-count="true"
-            className="shrink-0 tabular-nums"
-          >
-            {String(refs.length + item.data.more_count)}
-          </Chip>
-        ) : null}
-        {controls}
+        {narrow ? (
+          count === null && controls === null ? null : (
+            <span
+              data-header-tools="true"
+              className="flex items-center justify-end gap-1"
+            >
+              {count}
+              {controls}
+            </span>
+          )
+        ) : (
+          <>
+            {count}
+            {controls}
+          </>
+        )}
       </Card.Header>
       {compact ? null : (
         <Card.Content className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">

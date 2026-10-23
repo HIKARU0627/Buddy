@@ -50,6 +50,8 @@ const rectStyle = (rect: CanvasRect): CSSProperties => ({
 
 // これより低い箱（1 行分 = 72）は、行の代わりに件数の札だけを出す。
 const COMPACT_HEIGHT = 120;
+// これより狭い箱は、見出しを 1 行目に置き、件数と操作の印をその下の行へ移す（見出しを優先する）。
+const NARROW_WIDTH = 240;
 
 // 受け付けたら中枢が当てた後の版、拒否・結果不明は null。
 export type CanvasUserOpSender = (
@@ -107,6 +109,7 @@ function PlacedCard({
       <ListCard
         item={item}
         compact={box.rect.height < COMPACT_HEIGHT}
+        narrow={box.rect.width < NARROW_WIDTH}
         {...(movable ? { onGrab: (event) => onGrab(event, box, 'move') } : {})}
         controls={
           front ? (

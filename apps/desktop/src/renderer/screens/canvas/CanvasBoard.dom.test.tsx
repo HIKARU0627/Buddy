@@ -278,6 +278,52 @@ test('a tag shows its card even when it does not fit as is: a focus card shrinks
   second.unmount();
 });
 
+test('a card shown from its tag at 840 × 272 keeps a readable heading: at least 160 px wide, the heading on its own row above the controls', async () => {
+  const board = await mountBoard();
+  // ユーザーの置き場所 p が列 1 から 10 列を埋め、周辺の x（4 列）は札。最小の幅は 3 列（168）なので、残りの 2 列
+  // （107）には縮めない。見せると x が列 1 から 4 列（幅 229）に出て、p が下がる。
+  await board.render(
+    view(
+      '3',
+      [
+        item('p'),
+        item('x', {
+          emphasis: 'low',
+          grid: { column: 1, span: 4, rows: 2 },
+        }),
+      ],
+      {
+        user_pins: [
+          { item_id: 'p', cell: { column: 1, row: 1, span: 10, rows: 1 } },
+        ],
+      },
+    ),
+    { width: 840, height: 272 },
+  );
+  assert.equal(document.querySelector('[data-item="x"]'), null);
+  await press('見出しxを見せる');
+  assert.equal(card('x').style.width, '229px');
+  assert(Number.parseInt(card('x').style.width, 10) >= 160);
+  // 狭い箱（240 未満）: 見出しは 1 行目に幅いっぱい（操作の印と同じ行に並べない）、件数と操作の印はその下の行。
+  const header = card('x').querySelector('[data-header]');
+  assert(header instanceof HTMLElement);
+  assert.equal(header.getAttribute('data-header'), 'stacked');
+  const title = header.firstElementChild;
+  assert(title instanceof HTMLElement);
+  assert.equal(title.textContent, '見出しx');
+  assert.match(title.className, /w-full/u);
+  const tools = header.querySelector('[data-header-tools]');
+  assert(tools instanceof HTMLElement);
+  assert.notEqual(tools.querySelector('[aria-label="見出しxを閉じる"]'), null);
+  assert.equal(title.contains(tools), false);
+  // 広い箱（p、幅 475）は 1 行に並べる。
+  assert.equal(
+    card('p').querySelector('[data-header]')?.getAttribute('data-header'),
+    'inline',
+  );
+  board.unmount();
+});
+
 test('below the minimum height the tags cannot show a card: no show button, only shelve and close', async () => {
   const board = await mountBoard();
   await board.render(view('3', [item('a'), item('b')]), {

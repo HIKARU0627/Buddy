@@ -30,6 +30,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.operation_reconcile',
   'desktop.operation_retry',
   'desktop.operation_check',
+  'desktop.canvas_summon',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',
@@ -37,12 +38,60 @@ const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.connection_changed',
 ];
 
+// 窓の役割（UI-02、ADR 0032）。main が窓を作るときに --buddy-window-role=<役割> を渡す。引数がなければ従来の窓。
+// 役割の正本は main の対応表で、main が送信元の窓の役割で受付を絞る。ここでの絞り込みは多重の防御と、画面の切り替えのため。
+// packages/domain の DESKTOP_ROLE_CHANNELS・DESKTOP_ROLE_NOTIFICATIONS と同じ表（一致は preload.test で確かめる）。
+const ROLE_ARG = '--buddy-window-role=';
+const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
+  // 従来の窓はキャンバスを前に出すチャネルを使わない（従来の窓の組み立てにはキャンバスがない）。
+  legacy: REQUEST_CHANNELS.filter(
+    (channel) => channel !== 'desktop.canvas_summon',
+  ),
+  canvas: ['desktop.get_state'],
+  status: REQUEST_CHANNELS.filter(
+    (channel) => channel !== 'desktop.turn_submit',
+  ),
+  input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
+};
+const ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> = {
+  legacy: NOTIFICATION_CHANNELS,
+  canvas: ['desktop.state_changed'],
+  status: NOTIFICATION_CHANNELS,
+  input: ['desktop.state_changed'],
+};
+
+// sandbox の preload の process は一部だけ（argv を読める）。
+declare const process: { readonly argv?: readonly string[] } | undefined;
+
+function windowRole(): string | null {
+  const argv = typeof process === 'undefined' ? [] : (process.argv ?? []);
+  const given = argv
+    .filter((arg) => arg.startsWith(ROLE_ARG))
+    .map((arg) => arg.slice(ROLE_ARG.length));
+  if (given.length === 0) return 'legacy';
+  // 引数が 2 つ以上・知らない役割なら、どのチャネルも使わない。
+  const [role] = given;
+  return given.length === 1 &&
+    role !== undefined &&
+    Object.hasOwn(ROLE_CHANNELS, role)
+    ? role
+    : null;
+}
+
+const role = windowRole();
+const roleChannels = role === null ? [] : (ROLE_CHANNELS[role] ?? []);
+const roleNotifications = role === null ? [] : (ROLE_NOTIFICATIONS[role] ?? []);
+
 function invoke(request: unknown): Promise<unknown> {
   const channel =
     typeof request === 'object' && request !== null
       ? (request as { channel?: unknown }).channel
       : undefined;
-  if (typeof channel !== 'string' || !REQUEST_CHANNELS.includes(channel))
+  if (
+    typeof channel !== 'string' ||
+    !REQUEST_CHANNELS.includes(channel) ||
+    !roleChannels.includes(channel)
+  )
     return Promise.reject(new Error('desktop_unknown_channel'));
   return ipcRenderer.invoke(channel, request);
 }
@@ -52,11 +101,16 @@ function onNotification(listener: (notification: unknown) => void): () => void {
   if (typeof listener !== 'function') throw new Error('desktop_listener');
   const forward = (_event: unknown, notification: unknown) =>
     listener(notification);
-  for (const channel of NOTIFICATION_CHANNELS) ipcRenderer.on(channel, forward);
+  for (const channel of roleNotifications) ipcRenderer.on(channel, forward);
   return () => {
-    for (const channel of NOTIFICATION_CHANNELS)
+    for (const channel of roleNotifications)
       ipcRenderer.removeListener(channel, forward);
   };
 }
 
-contextBridge.exposeInMainWorld('buddyDesktop', { invoke, onNotification });
+contextBridge.exposeInMainWorld('buddyDesktop', {
+  // 画面の切り替えに使う窓の役割（知らない役割なら null）。受付の判断には使わない。
+  windowRole: role,
+  invoke,
+  onNotification,
+});

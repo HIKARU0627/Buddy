@@ -293,11 +293,13 @@ function routingErrors(
     const llm = routing.routes[origin].llm;
     if (
       origin !== 'owner_request' &&
-      ownerLlm !== null &&
-      pools.has(ownerLlm) &&
       llm !== null &&
       pools.has(llm) &&
-      (llm === ownerLlm || !path(llm).includes(ownerLlm))
+      // 本人の LLM の経路がないのに自発の LLM の経路があれば、配下に限る制約を確かめられないので拒否する
+      // （閉じた側。Codex の再確認 P2）。本人の枠が設定にないときは unknown_route_pool で拒否済み。
+      (ownerLlm === null ||
+        (pools.has(ownerLlm) &&
+          (llm === ownerLlm || !path(llm).includes(ownerLlm))))
     )
       errors.add('autonomous_not_under_owner_pool');
   }

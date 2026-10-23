@@ -83,7 +83,7 @@ function decimalMicros(text) {
 // - overage_pool_invalid: 超過枠が承認の要る枠でない。
 // - overage_pool_not_independent: 超過枠が根の枠でない（ADR 0006 の独立した枠。音声などの木を消費しない）。
 // - autonomous_not_under_owner_pool: 自発の起点の LLM の枠が、本人の依頼の LLM の枠の子孫でない（同じ枠・枠の外。
-//   本人の判断で分け、自発の枠の上限を迂回させない）。
+//   本人の判断で分け、自発の枠の上限を迂回させない。本人の LLM の経路が null で自発の LLM の経路があるときも拒否）。
 // - voice_pool_shared: 音声の枠の経路が LLM・検索の枠の経路と重なる（J17。融通しない）。
 function routingErrors(budget, routing) {
   const errors = new Set();
@@ -125,11 +125,13 @@ function routingErrors(budget, routing) {
   for (const [origin, services] of routes)
     if (
       origin !== 'owner_request' &&
-      ownerLlm !== null &&
-      pools.has(ownerLlm) &&
       services.llm !== null &&
       pools.has(services.llm) &&
-      (services.llm === ownerLlm || !path(services.llm).includes(ownerLlm))
+      // 本人の LLM の経路がなければ、配下に限る制約を確かめられないので拒否する（閉じた側）。
+      (ownerLlm === null ||
+        (pools.has(ownerLlm) &&
+          (services.llm === ownerLlm ||
+            !path(services.llm).includes(ownerLlm))))
     )
       errors.add('autonomous_not_under_owner_pool');
   const textPaths = new Set(textPools.flatMap(path));

@@ -11586,6 +11586,154 @@
     }
   },
   {
+    "id": "x53-runtime-routing-owner-llm-missing",
+    "schema": "BudgetRuntimeConfig",
+    "valid": true,
+    "semantic_errors": ["autonomous_not_under_owner_pool"],
+    "value": {
+      "schema": "buddy.budget-runtime.v1",
+      "time_zone": "Pacific/Auckland",
+      "budget": {
+        "schema": "buddy.budget-config.v1",
+        "currency": "XTS",
+        "pools": [
+          {
+            "pool_id": "total",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "200"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "100"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "llm.background",
+            "parent_pool_id": "llm",
+            "limit": {
+              "currency": "XTS",
+              "amount": "80"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "search",
+            "parent_pool_id": "total",
+            "limit": {
+              "currency": "XTS",
+              "amount": "30"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "voice",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "50"
+            },
+            "requires_approval": false
+          },
+          {
+            "pool_id": "overage",
+            "parent_pool_id": null,
+            "limit": {
+              "currency": "XTS",
+              "amount": "25"
+            },
+            "requires_approval": true
+          },
+          {
+            "pool_id": "overage.child",
+            "parent_pool_id": "overage",
+            "limit": {
+              "currency": "XTS",
+              "amount": "10"
+            },
+            "requires_approval": false
+          }
+        ],
+        "verified_price_versions": ["xts.text.2030a"]
+      },
+      "price_versions": [
+        {
+          "price_version": "xts.text.2030a",
+          "price_key": "synthetic.text",
+          "currency": "XTS",
+          "effective_from": "2030-01-01T00:00:00Z",
+          "effective_to": "2030-07-01T00:00:00Z",
+          "rates": [
+            {
+              "category": "input_tokens",
+              "unit_price": "3",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "cached_input_tokens",
+              "unit_price": "1",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": null
+            },
+            {
+              "category": "output_tokens",
+              "unit_price": "12",
+              "per_quantity": "1000",
+              "minimum_quantity": "0",
+              "max_quantity_per_request": "500"
+            }
+          ],
+          "conversion": {
+            "conversion_version": "xts.same.v1",
+            "to_currency": "XTS",
+            "rate": "1",
+            "safety_factor": "1.2"
+          }
+        }
+      ],
+      "routing": {
+        "routes": {
+          "owner_request": {
+            "llm": null,
+            "search": "search",
+            "voice": "voice"
+          },
+          "autonomous_analysis": {
+            "llm": "llm.background",
+            "search": "search",
+            "voice": null
+          },
+          "auto_execution": {
+            "llm": "llm.background",
+            "search": "search",
+            "voice": null
+          },
+          "initial_import": {
+            "llm": "llm.background",
+            "search": "search",
+            "voice": null
+          },
+          "shadow_mode": {
+            "llm": "llm.background",
+            "search": null,
+            "voice": null
+          }
+        },
+        "overage_pool_id": "overage"
+      }
+    }
+  },
+  {
     "id": "qa42-runtime-routing-overage-under-voice",
     "schema": "BudgetRuntimeConfig",
     "valid": true,

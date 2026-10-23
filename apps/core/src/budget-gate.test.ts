@@ -977,3 +977,55 @@ async function reservationTicket(
     deadline: OCT_15 + 60_000,
   };
 }
+
+test(
+  'the final deadline check and the timeout use one clock reading, so a clock that moves between them never sends past the deadline (Codex re-check P1)',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      const provider = new MockPaidProvider();
+      const timers = new ManualTimers();
+      // 送出意図の記録の後は、時計を読むたびに進む（1 回目は期限の 1 ミリ秒前、2 回目以降は期限の 5 秒後）。
+      let readings: number[] = [];
+      const now = (): number =>
+        readings.length > 0
+          ? (readings.shift() as number)
+          : harness.clock.now();
+      const deadline = OCT_15 + 60_000;
+      const gate = harness.gate({
+        now,
+        timers,
+        faults: {
+          afterDispatch: () => {
+            readings = [deadline - 1, deadline + 5_000, deadline + 5_000];
+          },
+        },
+      });
+      await gate.start();
+      provider.plan(uuid(1), { kind: 'usage', actual: '30' });
+      const result = await gate.run(textRequest(uuid(1)), provider.send);
+      // 判定に使った 1 回目の読み（残り 1 ミリ秒）で送り、timer にも同じ残り時間を渡す（負の残り時間で送らない）。
+      assert.equal(result.kind, 'settled');
+      assert.deepEqual(timers.delays, [1]);
+      assert.equal(provider.receipts.length, 1);
+      // 残り時間が 0 の読みでは送らない（usage 不明として保持）。
+      readings = [];
+      const stopped = harness.gate({
+        now,
+        timers,
+        faults: {
+          afterDispatch: () => {
+            readings = [deadline, deadline - 10_000];
+          },
+        },
+      });
+      const second = await stopped.run(textRequest(uuid(2)), provider.send);
+      assert.deepEqual(
+        second.kind === 'usage_unknown' ? second.reasons : second,
+        ['reservation_expired', 'not_sent'],
+      );
+      assert.equal(provider.receipts.length, 1);
+      assert.deepEqual(timers.delays, [1]);
+    });
+  },
+);

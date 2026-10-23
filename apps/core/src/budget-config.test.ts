@@ -274,3 +274,30 @@ test('the domain semantic check agrees with the hand-written semantic errors of 
       entry.id,
     );
 });
+
+test('an autonomous LLM route without an owner LLM route is refused, because the limit cannot be checked (Codex re-check P2)', () => {
+  assert.deepEqual(
+    reasonsOf(
+      check(
+        syntheticConfig((config) => {
+          const routing = config['routing'] as {
+            routes: Record<string, { llm: string | null }>;
+          };
+          (routing.routes['owner_request'] as { llm: string | null }).llm =
+            null;
+        }),
+      ),
+    ),
+    ['config_semantic:autonomous_not_under_owner_pool'],
+  );
+  // 自発の LLM の経路もすべて null なら、制約の対象がないので受け付ける。
+  const none = check(
+    syntheticConfig((config) => {
+      const routing = config['routing'] as {
+        routes: Record<string, { llm: string | null }>;
+      };
+      for (const routes of Object.values(routing.routes)) routes.llm = null;
+    }),
+  );
+  assert.equal(none.ok, true, JSON.stringify(none));
+});

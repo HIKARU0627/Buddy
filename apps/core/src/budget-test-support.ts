@@ -194,8 +194,11 @@ export class ManualClock {
 // 手で発火する timer（timeout の試験）。
 export class ManualTimers implements GateTimers {
   readonly #pending = new Map<number, () => void>();
+  // 設定された残り時間（ミリ秒）の記録。
+  readonly delays: number[] = [];
   #next = 0;
-  set(_ms: number, fn: () => void): () => void {
+  set(ms: number, fn: () => void): () => void {
+    this.delays.push(ms);
     const id = this.#next++;
     this.#pending.set(id, fn);
     return () => this.#pending.delete(id);

@@ -116,6 +116,50 @@ test('B07 の突き合わせ: 送出意図があって受信のない予約は u
   }
 });
 
+test('B07 の突き合わせ: 送出意図または受信のある予約の解放を検出し、送っていない予約の解放は許す', () => {
+  const released = {
+    status: 'released',
+    actual_gross: null,
+    reconciliation_id: null,
+    settlement_kind: null,
+  };
+  // 受信があり、送出意図もあり、provider に真の usage がある予約が released（費用を落としている）。
+  const received = findings({
+    rows: [row('a', released)],
+    receipts: [receipt('a')],
+    truth: new Map([['a', '30']]),
+    pools,
+  });
+  assert.deepEqual(received.released_after_send, ['a']);
+  // 受信の記録だけがあり送出意図の記録がない場合も、送出意図のない受信として別に検出する。
+  const receivedOnly = findings({
+    rows: [row('a', { ...released, dispatched: false })],
+    receipts: [receipt('a')],
+    truth: new Map([['a', '30']]),
+    pools,
+  });
+  assert.deepEqual(receivedOnly.released_after_send, ['a']);
+  assert.deepEqual(receivedOnly.receipt_without_dispatched_row, ['a']);
+  // 送出意図だけがあり受信のない予約が released でも拒否する（送った可能性は消えない）。
+  const intentOnly = findings({
+    rows: [row('a', released)],
+    receipts: [],
+    truth: new Map([['a', null]]),
+    pools,
+  });
+  assert.deepEqual(intentOnly.released_after_send, ['a']);
+  // 送出意図も受信もない予約の解放は正しい。
+  assert.deepEqual(
+    findings({
+      rows: [row('a', { ...released, dispatched: false })],
+      receipts: [],
+      truth: new Map([['a', null]]),
+      pools,
+    }),
+    CLEAN,
+  );
+});
+
 test('B07 の突き合わせ: provider の真の usage と違う精算・照合 ID の使い回しを検出する', () => {
   const wrong = findings({
     rows: [row('a')],

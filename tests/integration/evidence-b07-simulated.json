@@ -277,30 +277,30 @@
     },
     {
       "path": "tests/integration/b07-cases.mjs",
-      "sha256": "c0afd8d28b93d607c7075ab400079bbfe63ee4b912698441a3a6bf9e0d6d9b41"
+      "sha256": "fb8c64d69fe6c823a70e76d1a7b9031b2a24ca37b4d3e13c5cc32a37d66f0e32"
     },
     {
       "path": "tests/integration/b07-expectations.json",
-      "sha256": "63d2d05fc2a2731f3e49195ebda450b59d29f83eaef09a4bd0e57b2b90468d2f"
+      "sha256": "c46e3a22069c22ef0627f5e4d014a586064e0dd8d8f6926ca09cbabcaa5e6247"
     },
     {
       "path": "tests/integration/b07-support.mjs",
-      "sha256": "b29681511cdf3593842c6ea41d77a74488e8283499ddbde41d9661617c08f5f3"
+      "sha256": "2f1cb9ca312b4b2785b7ab8e41faeb4cb008dff8e7facb3056217cd0eafd1da4"
     },
     {
       "path": "tests/integration/b07-support.test.mjs",
-      "sha256": "061738d3d3ac68001a1b5d9442c7d7d0f10e698b77d5e142926e76f56c970694"
+      "sha256": "656f0ca89eff05c25b7caea94eda823269b4c83025f56b1cdcd1b9c18b56fb32"
     },
     {
       "path": "tests/integration/b07.test.mjs",
-      "sha256": "cd93f9294cc8f7937c7475b2c8313441b7b96705112970e1984ee9a393b1820b"
+      "sha256": "3d3ee06eacc695d2445dbf55941207ff026c3e7a2cfcdfeaefb08e36b694f197"
     }
   ],
   "records": [
     {
       "case_id": "X18-boundary-concurrency",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -310,11 +310,11 @@
       },
       "seed": "7,1007,20261023",
       "fault_point": "concurrent_admit_barrier",
-      "provider_requests": 3,
-      "provider_state_changes": 3,
+      "provider_requests": 6,
+      "provider_state_changes": 6,
       "approvals": 0,
-      "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -322,7 +322,7 @@
     {
       "case_id": "X18-overage-concurrency",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -336,7 +336,7 @@
       "provider_state_changes": 4,
       "approvals": 3,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -344,7 +344,7 @@
     {
       "case_id": "X18-pools-concurrency",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -358,7 +358,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:2,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -366,7 +366,7 @@
     {
       "case_id": "X18-topup-concurrency",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -376,11 +376,11 @@
       },
       "seed": "7,1007,20261023",
       "fault_point": "concurrent_top_up,stale_revision",
-      "provider_requests": 2,
-      "provider_state_changes": 2,
+      "provider_requests": 4,
+      "provider_state_changes": 4,
       "approvals": 0,
-      "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -388,7 +388,7 @@
     {
       "case_id": "QA42-admission-by-m",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -402,7 +402,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:1,released:0,reserved:1",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -410,7 +410,7 @@
     {
       "case_id": "QA42-usage-duplicate-missing",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -424,7 +424,7 @@
       "provider_state_changes": 2,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:1,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -432,7 +432,7 @@
     {
       "case_id": "QA42-timeout-discard",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -446,7 +446,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -454,7 +454,7 @@
     {
       "case_id": "QA42-month-rollover",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -468,7 +468,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -476,7 +476,7 @@
     {
       "case_id": "QA42-overrun-hold",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -488,9 +488,9 @@
       "fault_point": "actual_above_m",
       "provider_requests": 2,
       "provider_state_changes": 2,
-      "approvals": 0,
+      "approvals": 1,
       "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -498,7 +498,7 @@
     {
       "case_id": "QA42-overage-approval",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -512,7 +512,7 @@
       "provider_state_changes": 4,
       "approvals": 3,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -520,7 +520,7 @@
     {
       "case_id": "QA42-voice-isolation",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -534,7 +534,7 @@
       "provider_state_changes": 8,
       "approvals": 1,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:5,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -542,7 +542,7 @@
     {
       "case_id": "QA20-price-boundary",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -556,7 +556,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "settled:0,usage_unknown:0,released:0,reserved:3 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -564,7 +564,7 @@
     {
       "case_id": "QA20-limit-unknown",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -578,7 +578,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -586,7 +586,7 @@
     {
       "case_id": "X53-autonomous-own-slot",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -600,7 +600,7 @@
       "provider_state_changes": 3,
       "approvals": 1,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -608,7 +608,7 @@
     {
       "case_id": "B07-runtime-config",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -622,7 +622,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -630,7 +630,7 @@
     {
       "case_id": "B07-failure-paths",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -644,7 +644,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:1,released:2,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -652,7 +652,7 @@
     {
       "case_id": "B07-settlement-once",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -666,7 +666,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -674,7 +674,7 @@
     {
       "case_id": "B07-restart-reconcile",
       "kind": "simulated",
-      "commit": "ca68d7f1e60f482986e6676de6151534c3b3028b",
+      "commit": "5e1c6b798bfbadadcf45949c582f4d7733676c81",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -688,7 +688,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:1,released:1,reserved:0",
-      "observed_at": "2026-10-23T14:29:28.868Z",
+      "observed_at": "2026-10-23T14:55:20.737Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -768,6 +768,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -827,6 +828,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -845,6 +847,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -893,6 +896,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -985,47 +989,98 @@
       "faults": ["concurrent_top_up", "stale_revision"],
       "observed": {
         "checked": {
-          "same_version_four_times": {
-            "ok": 1,
-            "rejected": [["revision_conflict"]],
-            "grown": {
-              "reserved": "16",
-              "max": "16",
-              "revision": "2"
+          "v1_then_v2": {
+            "submitted_order": ["v1", "v2"],
+            "same_version_four_times": {
+              "ok": 1,
+              "rejected": [["revision_conflict"]],
+              "grown": {
+                "reserved": "16",
+                "max": "16",
+                "revision": "2"
+              }
+            },
+            "limit_race": {
+              "ok": 1,
+              "rejected": [["r_limit:voice", "m_limit:voice"]]
+            },
+            "voice_before_settlement": {
+              "settled": "0",
+              "reserved": "50",
+              "max": "50",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "settlements": [true, true],
+            "voice_after_settlement": {
+              "settled": "20",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": []
+            },
+            "ledger": {
+              "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 2,
+              "provider_state_changes": 2,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           },
-          "limit_race": {
-            "ok": 1,
-            "rejected": [["r_limit:voice", "m_limit:voice"]]
-          },
-          "voice_before_settlement": {
-            "settled": "0",
-            "reserved": "50",
-            "max": "50",
-            "unknown": 0,
-            "holds": ["limit_reached"]
-          },
-          "settlements": [true, true],
-          "voice_after_settlement": {
-            "settled": "20",
-            "reserved": "0",
-            "max": "0",
-            "unknown": 0,
-            "holds": []
-          },
-          "ledger": {
-            "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
-            "provider_requests": 2,
-            "provider_state_changes": 2,
-            "approvals": 0,
-            "findings": {
-              "duplicate_receipts": [],
-              "receipt_without_dispatched_row": [],
-              "receipt_reservation_mismatch": [],
-              "dispatched_without_receipt_not_unknown": [],
-              "settled_not_matching_truth": [],
-              "reused_reconciliation_ids": [],
-              "over_limit_pools": []
+          "v2_then_v1": {
+            "submitted_order": ["v2", "v1"],
+            "same_version_four_times": {
+              "ok": 1,
+              "rejected": [["revision_conflict"]],
+              "grown": {
+                "reserved": "16",
+                "max": "16",
+                "revision": "2"
+              }
+            },
+            "limit_race": {
+              "ok": 1,
+              "rejected": [["r_limit:voice", "m_limit:voice"]]
+            },
+            "voice_before_settlement": {
+              "settled": "0",
+              "reserved": "50",
+              "max": "50",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "settlements": [true, true],
+            "voice_after_settlement": {
+              "settled": "20",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": []
+            },
+            "ledger": {
+              "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 2,
+              "provider_state_changes": 2,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           }
         },
@@ -1040,6 +1095,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1067,12 +1123,51 @@
               }
             ],
             "receipts": ["v1", "v2"]
+          },
+          {
+            "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+            "provider_requests": 2,
+            "provider_state_changes": 2,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            },
+            "rows": [
+              {
+                "request": "v1",
+                "status": "settled",
+                "pool": "voice",
+                "month": "2030-10",
+                "reserved": "16",
+                "max": "16",
+                "actual": "10",
+                "dispatched": true
+              },
+              {
+                "request": "v2",
+                "status": "settled",
+                "pool": "voice",
+                "month": "2030-10",
+                "reserved": "34",
+                "max": "34",
+                "actual": "10",
+                "dispatched": true
+              }
+            ],
+            "receipts": ["v1", "v2"]
           }
         ],
-        "provider_requests": 2,
-        "provider_state_changes": 2,
+        "provider_requests": 4,
+        "provider_state_changes": 4,
         "approvals": 0,
-        "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+        "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
         "db_version": "7"
       }
     },
@@ -1178,6 +1273,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1195,6 +1291,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1289,6 +1386,13 @@
             "reasons": ["overrun_hold:llm", "not_limit_only"],
             "budget_held": true
           },
+          "owner_run_with_approval_while_held": {
+            "kind": "rejected",
+            "reasons": ["overrun_hold:llm", "not_limit_only"],
+            "budget_held": true
+          },
+          "receipts_while_held": [1, 1],
+          "approval_statuses_while_held": ["approved"],
           "autonomous_held": {
             "ok": false,
             "reasons": [
@@ -1340,6 +1444,7 @@
             "routed": false,
             "overrun": false
           },
+          "approval_statuses_after": ["approved"],
           "hold_state_after": {
             "held": false,
             "reasons": [],
@@ -1356,12 +1461,13 @@
             "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
             "provider_requests": 2,
             "provider_state_changes": 2,
-            "approvals": 0,
+            "approvals": 1,
             "findings": {
               "duplicate_receipts": [],
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1373,12 +1479,13 @@
             "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
             "provider_requests": 2,
             "provider_state_changes": 2,
-            "approvals": 0,
+            "approvals": 1,
             "findings": {
               "duplicate_receipts": [],
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1420,7 +1527,7 @@
         ],
         "provider_requests": 2,
         "provider_state_changes": 2,
-        "approvals": 0,
+        "approvals": 1,
         "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
         "db_version": "7"
       }
@@ -1489,6 +1596,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -1524,6 +1632,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -1546,6 +1655,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -1564,6 +1674,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1612,6 +1723,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1640,6 +1752,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1706,6 +1819,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1723,6 +1837,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1842,6 +1957,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -1874,6 +1990,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -1926,6 +2043,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -1947,6 +2065,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -1985,6 +2104,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2013,6 +2133,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2101,6 +2222,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2118,6 +2240,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2292,6 +2415,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2309,6 +2433,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2493,6 +2618,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2510,6 +2636,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2634,6 +2761,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2651,6 +2779,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2733,45 +2862,102 @@
       "faults": ["concurrent_admit_barrier"],
       "observed": {
         "checked": {
-          "serial": ["settled", "settled"],
-          "concurrent": {
-            "settled": 1,
-            "rejected": [
-              {
-                "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
-                "budget_held": true
+          "c_then_d": {
+            "submitted_order": ["c", "d"],
+            "serial": ["settled", "settled"],
+            "concurrent": {
+              "settled": 1,
+              "rejected": [
+                {
+                  "reasons": [
+                    "r_limit:llm",
+                    "m_limit:llm",
+                    "approval_required"
+                  ],
+                  "budget_held": true
+                }
+              ]
+            },
+            "one_unit_over": {
+              "kind": "rejected",
+              "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
+              "budget_held": true
+            },
+            "llm": {
+              "settled": "100",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "rows": [
+              ["a", "settled", "llm", "2030-10", "40", "30"],
+              ["b", "settled", "llm", "2030-10", "40", "30"]
+            ],
+            "ledger": {
+              "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 3,
+              "provider_state_changes": 3,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
               }
-            ]
+            }
           },
-          "one_unit_over": {
-            "kind": "rejected",
-            "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
-            "budget_held": true
-          },
-          "llm": {
-            "settled": "100",
-            "reserved": "0",
-            "max": "0",
-            "unknown": 0,
-            "holds": ["limit_reached"]
-          },
-          "rows": [
-            ["a", "settled", "llm", "2030-10", "40", "30"],
-            ["b", "settled", "llm", "2030-10", "40", "30"]
-          ],
-          "ledger": {
-            "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-            "provider_requests": 3,
-            "provider_state_changes": 3,
-            "approvals": 0,
-            "findings": {
-              "duplicate_receipts": [],
-              "receipt_without_dispatched_row": [],
-              "receipt_reservation_mismatch": [],
-              "dispatched_without_receipt_not_unknown": [],
-              "settled_not_matching_truth": [],
-              "reused_reconciliation_ids": [],
-              "over_limit_pools": []
+          "d_then_c": {
+            "submitted_order": ["d", "c"],
+            "serial": ["settled", "settled"],
+            "concurrent": {
+              "settled": 1,
+              "rejected": [
+                {
+                  "reasons": [
+                    "r_limit:llm",
+                    "m_limit:llm",
+                    "approval_required"
+                  ],
+                  "budget_held": true
+                }
+              ]
+            },
+            "one_unit_over": {
+              "kind": "rejected",
+              "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
+              "budget_held": true
+            },
+            "llm": {
+              "settled": "100",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "rows": [
+              ["a", "settled", "llm", "2030-10", "40", "30"],
+              ["b", "settled", "llm", "2030-10", "40", "30"]
+            ],
+            "ledger": {
+              "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 3,
+              "provider_state_changes": 3,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           }
         },
@@ -2786,6 +2972,56 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            },
+            "rows": [
+              {
+                "request": "a",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "30",
+                "dispatched": true
+              },
+              {
+                "request": "b",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "30",
+                "dispatched": true
+              },
+              {
+                "request": "c",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "40",
+                "dispatched": true
+              }
+            ],
+            "receipts": ["a", "b", "c"]
+          },
+          {
+            "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+            "provider_requests": 3,
+            "provider_state_changes": 3,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2825,10 +3061,10 @@
             "receipts": ["a", "b", "d"]
           }
         ],
-        "provider_requests": 3,
-        "provider_state_changes": 3,
+        "provider_requests": 6,
+        "provider_state_changes": 6,
         "approvals": 0,
-        "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+        "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
         "db_version": "7"
       }
     },
@@ -2926,6 +3162,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -2943,6 +3180,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3072,6 +3310,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3089,6 +3328,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3219,6 +3459,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3236,6 +3477,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3365,6 +3607,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3382,6 +3625,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3507,6 +3751,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3524,6 +3769,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3678,6 +3924,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -3708,6 +3955,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -3735,6 +3983,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -3753,6 +4002,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3781,6 +4031,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3809,6 +4060,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3908,6 +4160,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -3925,6 +4178,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4032,6 +4286,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4049,6 +4304,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4223,6 +4479,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4240,6 +4497,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4390,6 +4648,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4407,6 +4666,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4479,47 +4739,98 @@
       "faults": ["concurrent_top_up", "stale_revision"],
       "observed": {
         "checked": {
-          "same_version_four_times": {
-            "ok": 1,
-            "rejected": [["revision_conflict"]],
-            "grown": {
-              "reserved": "16",
-              "max": "16",
-              "revision": "2"
+          "v1_then_v2": {
+            "submitted_order": ["v1", "v2"],
+            "same_version_four_times": {
+              "ok": 1,
+              "rejected": [["revision_conflict"]],
+              "grown": {
+                "reserved": "16",
+                "max": "16",
+                "revision": "2"
+              }
+            },
+            "limit_race": {
+              "ok": 1,
+              "rejected": [["r_limit:voice", "m_limit:voice"]]
+            },
+            "voice_before_settlement": {
+              "settled": "0",
+              "reserved": "50",
+              "max": "50",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "settlements": [true, true],
+            "voice_after_settlement": {
+              "settled": "20",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": []
+            },
+            "ledger": {
+              "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 2,
+              "provider_state_changes": 2,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           },
-          "limit_race": {
-            "ok": 1,
-            "rejected": [["r_limit:voice", "m_limit:voice"]]
-          },
-          "voice_before_settlement": {
-            "settled": "0",
-            "reserved": "50",
-            "max": "50",
-            "unknown": 0,
-            "holds": ["limit_reached"]
-          },
-          "settlements": [true, true],
-          "voice_after_settlement": {
-            "settled": "20",
-            "reserved": "0",
-            "max": "0",
-            "unknown": 0,
-            "holds": []
-          },
-          "ledger": {
-            "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
-            "provider_requests": 2,
-            "provider_state_changes": 2,
-            "approvals": 0,
-            "findings": {
-              "duplicate_receipts": [],
-              "receipt_without_dispatched_row": [],
-              "receipt_reservation_mismatch": [],
-              "dispatched_without_receipt_not_unknown": [],
-              "settled_not_matching_truth": [],
-              "reused_reconciliation_ids": [],
-              "over_limit_pools": []
+          "v2_then_v1": {
+            "submitted_order": ["v2", "v1"],
+            "same_version_four_times": {
+              "ok": 1,
+              "rejected": [["revision_conflict"]],
+              "grown": {
+                "reserved": "16",
+                "max": "16",
+                "revision": "2"
+              }
+            },
+            "limit_race": {
+              "ok": 1,
+              "rejected": [["r_limit:voice", "m_limit:voice"]]
+            },
+            "voice_before_settlement": {
+              "settled": "0",
+              "reserved": "50",
+              "max": "50",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "settlements": [true, true],
+            "voice_after_settlement": {
+              "settled": "20",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": []
+            },
+            "ledger": {
+              "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 2,
+              "provider_state_changes": 2,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           }
         },
@@ -4534,6 +4845,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4561,12 +4873,51 @@
               }
             ],
             "receipts": ["v1", "v2"]
+          },
+          {
+            "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+            "provider_requests": 2,
+            "provider_state_changes": 2,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            },
+            "rows": [
+              {
+                "request": "v1",
+                "status": "settled",
+                "pool": "voice",
+                "month": "2030-10",
+                "reserved": "16",
+                "max": "16",
+                "actual": "10",
+                "dispatched": true
+              },
+              {
+                "request": "v2",
+                "status": "settled",
+                "pool": "voice",
+                "month": "2030-10",
+                "reserved": "34",
+                "max": "34",
+                "actual": "10",
+                "dispatched": true
+              }
+            ],
+            "receipts": ["v1", "v2"]
           }
         ],
-        "provider_requests": 2,
-        "provider_state_changes": 2,
+        "provider_requests": 4,
+        "provider_state_changes": 4,
         "approvals": 0,
-        "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+        "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
         "db_version": "7"
       }
     },
@@ -4672,6 +5023,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4689,6 +5041,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4828,6 +5181,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4845,6 +5199,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -4989,6 +5344,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -5019,6 +5375,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -5046,6 +5403,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -5064,6 +5422,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5092,6 +5451,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5120,6 +5480,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5161,45 +5522,102 @@
       "faults": ["concurrent_admit_barrier"],
       "observed": {
         "checked": {
-          "serial": ["settled", "settled"],
-          "concurrent": {
-            "settled": 1,
-            "rejected": [
-              {
-                "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
-                "budget_held": true
+          "c_then_d": {
+            "submitted_order": ["c", "d"],
+            "serial": ["settled", "settled"],
+            "concurrent": {
+              "settled": 1,
+              "rejected": [
+                {
+                  "reasons": [
+                    "r_limit:llm",
+                    "m_limit:llm",
+                    "approval_required"
+                  ],
+                  "budget_held": true
+                }
+              ]
+            },
+            "one_unit_over": {
+              "kind": "rejected",
+              "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
+              "budget_held": true
+            },
+            "llm": {
+              "settled": "100",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "rows": [
+              ["a", "settled", "llm", "2030-10", "40", "30"],
+              ["b", "settled", "llm", "2030-10", "40", "30"]
+            ],
+            "ledger": {
+              "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 3,
+              "provider_state_changes": 3,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
               }
-            ]
+            }
           },
-          "one_unit_over": {
-            "kind": "rejected",
-            "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
-            "budget_held": true
-          },
-          "llm": {
-            "settled": "100",
-            "reserved": "0",
-            "max": "0",
-            "unknown": 0,
-            "holds": ["limit_reached"]
-          },
-          "rows": [
-            ["a", "settled", "llm", "2030-10", "40", "30"],
-            ["b", "settled", "llm", "2030-10", "40", "30"]
-          ],
-          "ledger": {
-            "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-            "provider_requests": 3,
-            "provider_state_changes": 3,
-            "approvals": 0,
-            "findings": {
-              "duplicate_receipts": [],
-              "receipt_without_dispatched_row": [],
-              "receipt_reservation_mismatch": [],
-              "dispatched_without_receipt_not_unknown": [],
-              "settled_not_matching_truth": [],
-              "reused_reconciliation_ids": [],
-              "over_limit_pools": []
+          "d_then_c": {
+            "submitted_order": ["d", "c"],
+            "serial": ["settled", "settled"],
+            "concurrent": {
+              "settled": 1,
+              "rejected": [
+                {
+                  "reasons": [
+                    "r_limit:llm",
+                    "m_limit:llm",
+                    "approval_required"
+                  ],
+                  "budget_held": true
+                }
+              ]
+            },
+            "one_unit_over": {
+              "kind": "rejected",
+              "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
+              "budget_held": true
+            },
+            "llm": {
+              "settled": "100",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "rows": [
+              ["a", "settled", "llm", "2030-10", "40", "30"],
+              ["b", "settled", "llm", "2030-10", "40", "30"]
+            ],
+            "ledger": {
+              "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 3,
+              "provider_state_changes": 3,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           }
         },
@@ -5214,6 +5632,56 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            },
+            "rows": [
+              {
+                "request": "a",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "30",
+                "dispatched": true
+              },
+              {
+                "request": "b",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "30",
+                "dispatched": true
+              },
+              {
+                "request": "c",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "40",
+                "dispatched": true
+              }
+            ],
+            "receipts": ["a", "b", "c"]
+          },
+          {
+            "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+            "provider_requests": 3,
+            "provider_state_changes": 3,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5253,10 +5721,10 @@
             "receipts": ["a", "b", "d"]
           }
         ],
-        "provider_requests": 3,
-        "provider_state_changes": 3,
+        "provider_requests": 6,
+        "provider_state_changes": 6,
         "approvals": 0,
-        "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+        "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
         "db_version": "7"
       }
     },
@@ -5324,6 +5792,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -5359,6 +5828,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -5381,6 +5851,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -5399,6 +5870,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5447,6 +5919,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5475,6 +5948,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5563,6 +6037,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -5622,6 +6097,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -5640,6 +6116,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5688,6 +6165,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5882,6 +6360,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -5899,6 +6378,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6018,6 +6498,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6035,6 +6516,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6129,6 +6611,13 @@
             "reasons": ["overrun_hold:llm", "not_limit_only"],
             "budget_held": true
           },
+          "owner_run_with_approval_while_held": {
+            "kind": "rejected",
+            "reasons": ["overrun_hold:llm", "not_limit_only"],
+            "budget_held": true
+          },
+          "receipts_while_held": [1, 1],
+          "approval_statuses_while_held": ["approved"],
           "autonomous_held": {
             "ok": false,
             "reasons": [
@@ -6180,6 +6669,7 @@
             "routed": false,
             "overrun": false
           },
+          "approval_statuses_after": ["approved"],
           "hold_state_after": {
             "held": false,
             "reasons": [],
@@ -6196,12 +6686,13 @@
             "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
             "provider_requests": 2,
             "provider_state_changes": 2,
-            "approvals": 0,
+            "approvals": 1,
             "findings": {
               "duplicate_receipts": [],
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6213,12 +6704,13 @@
             "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
             "provider_requests": 2,
             "provider_state_changes": 2,
-            "approvals": 0,
+            "approvals": 1,
             "findings": {
               "duplicate_receipts": [],
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6260,7 +6752,7 @@
         ],
         "provider_requests": 2,
         "provider_state_changes": 2,
-        "approvals": 0,
+        "approvals": 1,
         "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
         "db_version": "7"
       }
@@ -6338,6 +6830,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6355,6 +6848,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6480,6 +6974,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6497,6 +6992,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6631,6 +7127,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6648,6 +7145,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6767,6 +7265,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -6799,6 +7298,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -6851,6 +7351,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -6872,6 +7373,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6910,6 +7412,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -6938,6 +7441,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7037,6 +7541,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7054,6 +7559,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7212,6 +7718,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7229,6 +7736,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7383,6 +7891,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -7413,6 +7922,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -7440,6 +7950,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -7458,6 +7969,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7486,6 +7998,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7514,6 +8027,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7567,6 +8081,13 @@
             "reasons": ["overrun_hold:llm", "not_limit_only"],
             "budget_held": true
           },
+          "owner_run_with_approval_while_held": {
+            "kind": "rejected",
+            "reasons": ["overrun_hold:llm", "not_limit_only"],
+            "budget_held": true
+          },
+          "receipts_while_held": [1, 1],
+          "approval_statuses_while_held": ["approved"],
           "autonomous_held": {
             "ok": false,
             "reasons": [
@@ -7618,6 +8139,7 @@
             "routed": false,
             "overrun": false
           },
+          "approval_statuses_after": ["approved"],
           "hold_state_after": {
             "held": false,
             "reasons": [],
@@ -7634,12 +8156,13 @@
             "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
             "provider_requests": 2,
             "provider_state_changes": 2,
-            "approvals": 0,
+            "approvals": 1,
             "findings": {
               "duplicate_receipts": [],
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7651,12 +8174,13 @@
             "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
             "provider_requests": 2,
             "provider_state_changes": 2,
-            "approvals": 0,
+            "approvals": 1,
             "findings": {
               "duplicate_receipts": [],
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7698,7 +8222,7 @@
         ],
         "provider_requests": 2,
         "provider_state_changes": 2,
-        "approvals": 0,
+        "approvals": 1,
         "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
         "db_version": "7"
       }
@@ -7797,6 +8321,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7814,6 +8339,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7943,6 +8469,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -7960,6 +8487,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8124,6 +8652,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8141,6 +8670,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8261,6 +8791,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -8296,6 +8827,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -8318,6 +8850,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -8336,6 +8869,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8384,6 +8918,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8412,6 +8947,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8555,6 +9091,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8572,6 +9109,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8691,6 +9229,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8708,6 +9247,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8780,47 +9320,98 @@
       "faults": ["concurrent_top_up", "stale_revision"],
       "observed": {
         "checked": {
-          "same_version_four_times": {
-            "ok": 1,
-            "rejected": [["revision_conflict"]],
-            "grown": {
-              "reserved": "16",
-              "max": "16",
-              "revision": "2"
+          "v1_then_v2": {
+            "submitted_order": ["v1", "v2"],
+            "same_version_four_times": {
+              "ok": 1,
+              "rejected": [["revision_conflict"]],
+              "grown": {
+                "reserved": "16",
+                "max": "16",
+                "revision": "2"
+              }
+            },
+            "limit_race": {
+              "ok": 1,
+              "rejected": [["r_limit:voice", "m_limit:voice"]]
+            },
+            "voice_before_settlement": {
+              "settled": "0",
+              "reserved": "50",
+              "max": "50",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "settlements": [true, true],
+            "voice_after_settlement": {
+              "settled": "20",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": []
+            },
+            "ledger": {
+              "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 2,
+              "provider_state_changes": 2,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           },
-          "limit_race": {
-            "ok": 1,
-            "rejected": [["r_limit:voice", "m_limit:voice"]]
-          },
-          "voice_before_settlement": {
-            "settled": "0",
-            "reserved": "50",
-            "max": "50",
-            "unknown": 0,
-            "holds": ["limit_reached"]
-          },
-          "settlements": [true, true],
-          "voice_after_settlement": {
-            "settled": "20",
-            "reserved": "0",
-            "max": "0",
-            "unknown": 0,
-            "holds": []
-          },
-          "ledger": {
-            "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
-            "provider_requests": 2,
-            "provider_state_changes": 2,
-            "approvals": 0,
-            "findings": {
-              "duplicate_receipts": [],
-              "receipt_without_dispatched_row": [],
-              "receipt_reservation_mismatch": [],
-              "dispatched_without_receipt_not_unknown": [],
-              "settled_not_matching_truth": [],
-              "reused_reconciliation_ids": [],
-              "over_limit_pools": []
+          "v2_then_v1": {
+            "submitted_order": ["v2", "v1"],
+            "same_version_four_times": {
+              "ok": 1,
+              "rejected": [["revision_conflict"]],
+              "grown": {
+                "reserved": "16",
+                "max": "16",
+                "revision": "2"
+              }
+            },
+            "limit_race": {
+              "ok": 1,
+              "rejected": [["r_limit:voice", "m_limit:voice"]]
+            },
+            "voice_before_settlement": {
+              "settled": "0",
+              "reserved": "50",
+              "max": "50",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "settlements": [true, true],
+            "voice_after_settlement": {
+              "settled": "20",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": []
+            },
+            "ledger": {
+              "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 2,
+              "provider_state_changes": 2,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           }
         },
@@ -8835,6 +9426,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8862,12 +9454,51 @@
               }
             ],
             "receipts": ["v1", "v2"]
+          },
+          {
+            "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+            "provider_requests": 2,
+            "provider_state_changes": 2,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            },
+            "rows": [
+              {
+                "request": "v1",
+                "status": "settled",
+                "pool": "voice",
+                "month": "2030-10",
+                "reserved": "16",
+                "max": "16",
+                "actual": "10",
+                "dispatched": true
+              },
+              {
+                "request": "v2",
+                "status": "settled",
+                "pool": "voice",
+                "month": "2030-10",
+                "reserved": "34",
+                "max": "34",
+                "actual": "10",
+                "dispatched": true
+              }
+            ],
+            "receipts": ["v1", "v2"]
           }
         ],
-        "provider_requests": 2,
-        "provider_state_changes": 2,
+        "provider_requests": 4,
+        "provider_state_changes": 4,
         "approvals": 0,
-        "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
+        "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
         "db_version": "7"
       }
     },
@@ -8949,6 +9580,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -8966,6 +9598,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9095,6 +9728,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -9154,6 +9788,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -9172,6 +9807,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9220,6 +9856,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9312,45 +9949,102 @@
       "faults": ["concurrent_admit_barrier"],
       "observed": {
         "checked": {
-          "serial": ["settled", "settled"],
-          "concurrent": {
-            "settled": 1,
-            "rejected": [
-              {
-                "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
-                "budget_held": true
+          "c_then_d": {
+            "submitted_order": ["c", "d"],
+            "serial": ["settled", "settled"],
+            "concurrent": {
+              "settled": 1,
+              "rejected": [
+                {
+                  "reasons": [
+                    "r_limit:llm",
+                    "m_limit:llm",
+                    "approval_required"
+                  ],
+                  "budget_held": true
+                }
+              ]
+            },
+            "one_unit_over": {
+              "kind": "rejected",
+              "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
+              "budget_held": true
+            },
+            "llm": {
+              "settled": "100",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "rows": [
+              ["a", "settled", "llm", "2030-10", "40", "30"],
+              ["b", "settled", "llm", "2030-10", "40", "30"]
+            ],
+            "ledger": {
+              "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 3,
+              "provider_state_changes": 3,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
               }
-            ]
+            }
           },
-          "one_unit_over": {
-            "kind": "rejected",
-            "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
-            "budget_held": true
-          },
-          "llm": {
-            "settled": "100",
-            "reserved": "0",
-            "max": "0",
-            "unknown": 0,
-            "holds": ["limit_reached"]
-          },
-          "rows": [
-            ["a", "settled", "llm", "2030-10", "40", "30"],
-            ["b", "settled", "llm", "2030-10", "40", "30"]
-          ],
-          "ledger": {
-            "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-            "provider_requests": 3,
-            "provider_state_changes": 3,
-            "approvals": 0,
-            "findings": {
-              "duplicate_receipts": [],
-              "receipt_without_dispatched_row": [],
-              "receipt_reservation_mismatch": [],
-              "dispatched_without_receipt_not_unknown": [],
-              "settled_not_matching_truth": [],
-              "reused_reconciliation_ids": [],
-              "over_limit_pools": []
+          "d_then_c": {
+            "submitted_order": ["d", "c"],
+            "serial": ["settled", "settled"],
+            "concurrent": {
+              "settled": 1,
+              "rejected": [
+                {
+                  "reasons": [
+                    "r_limit:llm",
+                    "m_limit:llm",
+                    "approval_required"
+                  ],
+                  "budget_held": true
+                }
+              ]
+            },
+            "one_unit_over": {
+              "kind": "rejected",
+              "reasons": ["r_limit:llm", "m_limit:llm", "approval_required"],
+              "budget_held": true
+            },
+            "llm": {
+              "settled": "100",
+              "reserved": "0",
+              "max": "0",
+              "unknown": 0,
+              "holds": ["limit_reached"]
+            },
+            "rows": [
+              ["a", "settled", "llm", "2030-10", "40", "30"],
+              ["b", "settled", "llm", "2030-10", "40", "30"]
+            ],
+            "ledger": {
+              "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 3,
+              "provider_state_changes": 3,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
           }
         },
@@ -9365,6 +10059,56 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            },
+            "rows": [
+              {
+                "request": "a",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "30",
+                "dispatched": true
+              },
+              {
+                "request": "b",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "30",
+                "dispatched": true
+              },
+              {
+                "request": "c",
+                "status": "settled",
+                "pool": "llm",
+                "month": "2030-10",
+                "reserved": "40",
+                "max": "40",
+                "actual": "40",
+                "dispatched": true
+              }
+            ],
+            "receipts": ["a", "b", "c"]
+          },
+          {
+            "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+            "provider_requests": 3,
+            "provider_state_changes": 3,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9404,10 +10148,10 @@
             "receipts": ["a", "b", "d"]
           }
         ],
-        "provider_requests": 3,
-        "provider_state_changes": 3,
+        "provider_requests": 6,
+        "provider_state_changes": 6,
         "approvals": 0,
-        "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
+        "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
         "db_version": "7"
       }
     },
@@ -9462,6 +10206,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9479,6 +10224,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9608,6 +10354,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9625,6 +10372,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9760,6 +10508,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9777,6 +10526,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -9896,6 +10646,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -9928,6 +10679,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -9980,6 +10732,7 @@
                 "receipt_without_dispatched_row": [],
                 "receipt_reservation_mismatch": [],
                 "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
                 "settled_not_matching_truth": [],
                 "reused_reconciliation_ids": [],
                 "over_limit_pools": []
@@ -10001,6 +10754,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -10039,6 +10793,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []
@@ -10067,6 +10822,7 @@
               "receipt_without_dispatched_row": [],
               "receipt_reservation_mismatch": [],
               "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
               "settled_not_matching_truth": [],
               "reused_reconciliation_ids": [],
               "over_limit_pools": []

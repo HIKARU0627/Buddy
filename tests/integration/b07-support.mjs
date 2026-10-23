@@ -227,6 +227,14 @@ export function findings({ rows, receipts, truth, pools }) {
         row.status !== 'usage_unknown',
     )
     .map((row) => row.request_id);
+  // 送出意図または provider の受信がある予約を、解放（released）にしてはいけない（送った可能性のある費用を落とす）。
+  const releasedAfterSend = rows
+    .filter(
+      (row) =>
+        row.status === 'released' &&
+        (row.dispatched || count.has(row.request_id)),
+    )
+    .map((row) => row.request_id);
   // provider の usage で精算した予約は、実費が provider 側の真の usage と同じ（二重に数えない・取り違えない）。
   const settledNotMatchingTruth = rows
     .filter(
@@ -271,6 +279,7 @@ export function findings({ rows, receipts, truth, pools }) {
     receipt_without_dispatched_row: receiptWithoutDispatchedRow,
     receipt_reservation_mismatch: receiptReservationMismatch,
     dispatched_without_receipt_not_unknown: dispatchedWithoutReceiptNotUnknown,
+    released_after_send: releasedAfterSend,
     settled_not_matching_truth: settledNotMatchingTruth,
     reused_reconciliation_ids: reusedReconciliation,
     over_limit_pools: overLimit,
@@ -282,6 +291,7 @@ export const CLEAN = {
   receipt_without_dispatched_row: [],
   receipt_reservation_mismatch: [],
   dispatched_without_receipt_not_unknown: [],
+  released_after_send: [],
   settled_not_matching_truth: [],
   reused_reconciliation_ids: [],
   over_limit_pools: [],

@@ -226,46 +226,52 @@ async function fillLlm(env, gate, names) {
 export const cases = {
   // X18: 境界で同時の予約。上限ちょうどまでは受け付け、1 つでも超える予約は受け付けない。
   async 'X18-boundary-concurrency'(ctx) {
-    return world(ctx, { wave: false }, async (env) => {
-      const { provider, labels } = env;
-      const gate = env.gate();
-      await gate.start();
-      const serial = [];
-      for (const label of ['a', 'b']) {
-        provider.plan(labels.id(label), { kind: 'usage', actual: '30' });
-        serial.push(
-          (await gate.run(owner(labels.id(label)), provider.send)).kind,
-        );
-      }
-      // llm の使用は精算の 30 + 30 = 60。M 40 の要求 2 つを関門でそろえて同時に受付へ送る。
-      const racing = env.gate({ faults: { beforeAdmit: barrier(2) } });
-      const order = shuffled(['c', 'd'], ctx.seed);
-      for (const label of order)
-        provider.plan(labels.id(label), { kind: 'usage', actual: '40' });
-      const results = (
-        await Promise.all(
-          order.map((label) =>
-            racing.run(owner(labels.id(label)), provider.send),
-          ),
-        )
-      ).map(outcome);
-      const rejected = results.filter((r) => r.kind === 'rejected');
-      const settled = results.filter((r) => r.kind === 'settled');
-      const over = await gate.run(sized(labels.id('e'), 1, 0), provider.send);
-      return {
-        serial,
-        concurrent: {
-          settled: settled.length,
-          rejected: rejected.map((r) => ({
-            reasons: r.reasons,
-            budget_held: r.budget_held,
-          })),
-        },
-        one_unit_over: outcome(over),
-        llm: await usage(env.harness, '2030-10', 'llm'),
-        rows: rowsView(env).filter((row) => row[0] !== 'c' && row[0] !== 'd'),
-      };
-    });
+    // 競合の勝ち負けは受付の命令の並びで決まる。c → d と d → c の両方の投入順を明示して実行する。
+    const race = (order) =>
+      world(ctx, { wave: false }, async (env) => {
+        const { provider, labels } = env;
+        const gate = env.gate();
+        await gate.start();
+        const serial = [];
+        for (const label of ['a', 'b']) {
+          provider.plan(labels.id(label), { kind: 'usage', actual: '30' });
+          serial.push(
+            (await gate.run(owner(labels.id(label)), provider.send)).kind,
+          );
+        }
+        // llm の使用は精算の 30 + 30 = 60。M 40 の要求 2 つを関門でそろえて同時に受付へ送る。
+        const racing = env.gate({ faults: { beforeAdmit: barrier(2) } });
+        for (const label of order)
+          provider.plan(labels.id(label), { kind: 'usage', actual: '40' });
+        const results = (
+          await Promise.all(
+            order.map((label) =>
+              racing.run(owner(labels.id(label)), provider.send),
+            ),
+          )
+        ).map(outcome);
+        const rejected = results.filter((r) => r.kind === 'rejected');
+        const settled = results.filter((r) => r.kind === 'settled');
+        const over = await gate.run(sized(labels.id('e'), 1, 0), provider.send);
+        return {
+          submitted_order: order,
+          serial,
+          concurrent: {
+            settled: settled.length,
+            rejected: rejected.map((r) => ({
+              reasons: r.reasons,
+              budget_held: r.budget_held,
+            })),
+          },
+          one_unit_over: outcome(over),
+          llm: await usage(env.harness, '2030-10', 'llm'),
+          rows: rowsView(env).filter((row) => row[0] !== 'c' && row[0] !== 'd'),
+        };
+      });
+    return {
+      c_then_d: await race(['c', 'd']),
+      d_then_c: await race(['d', 'c']),
+    };
   },
 
   // X18: 超過枠の同時の予約。承認済みの 2 つの依頼が同時に来ても、超過枠の上限（60）を超える予約は 1 件もできない。
@@ -653,7 +659,25 @@ export const cases = {
       await gate.start();
       provider.plan(labels.id('a'), { kind: 'usage', actual: '55' });
       const a = await gate.run(owner(labels.id('a')), provider.send);
+      // 保留の間に、対象の request_id と M（40）に一致する承認済みの承認を出しても、超過枠へ回さない。
+      const approvalNow = await requestApproval(env, 'b', '40', {
+        approvalId: uuid(931),
+      });
+      const decided = await decide(
+        env,
+        uuid(931),
+        'b',
+        '40',
+        'approve',
+        approvalNow + 1,
+      );
+      assert.equal(decided.ok, true, JSON.stringify(decided));
+      harness.clock.set(approvalNow + 2);
       const ownerHeld = await gate.admit(owner(labels.id('b')));
+      const receiptsBefore = provider.receipts.length;
+      const ownerRunHeld = await gate.run(owner(labels.id('b')), provider.send);
+      const heldReceipts = provider.receipts.length;
+      const heldApprovals = approvalRows(harness).map((row) => row.status);
       const autonomousHeld = await gate.admit(
         owner(labels.id('b2'), { origin: 'auto_execution' }),
       );
@@ -689,6 +713,9 @@ export const cases = {
       return {
         overrun: outcome(a),
         owner_held: admission(ownerHeld),
+        owner_run_with_approval_while_held: outcome(ownerRunHeld),
+        receipts_while_held: [receiptsBefore, heldReceipts],
+        approval_statuses_while_held: heldApprovals,
         autonomous_held: admission(autonomousHeld),
         sibling_search: admission(searchResult),
         hold_state: holding,
@@ -696,6 +723,7 @@ export const cases = {
         review: view(right),
         review_again: view(again),
         after_review: outcome(resumed),
+        approval_statuses_after: approvalRows(harness).map((row) => row.status),
         hold_state_after: await gate.holdState(),
         llm: await usage(harness, '2030-10', 'llm'),
       };
@@ -1129,60 +1157,72 @@ export const cases = {
   // X18: 追加予約（会話の延長）。同じ版の追加予約は 1 つだけ通り、同時の追加予約でも音声の上限（50）を超えない。
   // 追加予約の後も、精算は provider の実費で一度だけ行う。
   async 'X18-topup-concurrency'(ctx) {
-    return world(ctx, { wave: true }, async (env) => {
-      const { provider, labels, harness } = env;
-      const gate = env.gate();
-      await gate.start();
-      // 会話の最低課金 15 秒の予約を 2 つ受け付け、provider へ送る（provider の実費は 10 ずつ）。使用は 15 + 15 = 30。
-      const tickets = [];
-      for (const label of ['v1', 'v2']) {
-        provider.plan(labels.id(label), { kind: 'usage', actual: '10' });
-        tickets.push(
-          await admitAndSend(gate, provider, live(labels.id(label), 15)),
+    // 上限の競合の勝ち負けは命令の並びで決まる。v1 → v2 と v2 → v1 の両方の投入順を明示して実行する。
+    const run = (order) =>
+      world(ctx, { wave: true }, async (env) => {
+        const { provider, labels, harness } = env;
+        const gate = env.gate();
+        await gate.start();
+        // 会話の最低課金 15 秒の予約を 2 つ受け付け、provider へ送る（provider の実費は 10 ずつ）。使用は 15 + 15 = 30。
+        const tickets = [];
+        for (const label of ['v1', 'v2']) {
+          provider.plan(labels.id(label), { kind: 'usage', actual: '10' });
+          tickets.push(
+            await admitAndSend(gate, provider, live(labels.id(label), 15)),
+          );
+        }
+        // 同じ版（1）の追加予約を 4 つ同時に送る。版の CAS で 1 つだけ通る（使用は 31）。
+        const same = await Promise.all(
+          [1, 2, 3, 4].map(() =>
+            gate.topUp(tickets[0].ticket, {
+              reserved: '1',
+              max_liability: '1',
+            }),
+          ),
         );
-      }
-      // 同じ版（1）の追加予約を 4 つ同時に送る。版の CAS で 1 つだけ通る（使用は 31）。
-      const same = await Promise.all(
-        [1, 2, 3, 4].map(() =>
-          gate.topUp(tickets[0].ticket, { reserved: '1', max_liability: '1' }),
-        ),
-      );
-      const winners = same.filter((result) => result.ok);
-      assert.equal(winners.length, 1);
-      const grown = winners[0].ticket;
-      // 残り 19 の枠へ、2 つの予約が同時に +19 を求める。1 つだけ通り、もう 1 つは音声の上限で拒否する。
-      const race = await Promise.all([
-        gate.topUp(grown, { reserved: '19', max_liability: '19' }),
-        gate.topUp(tickets[1].ticket, { reserved: '19', max_liability: '19' }),
-      ]);
-      const before = await usage(harness, '2030-10', 'voice');
-      // 追加予約の後の精算は、provider の実費（10 ずつ）で一度だけ。
-      const settled = [];
-      for (const { ticket, outcome: sent } of tickets)
-        settled.push(await gate.settle(ticket, sent));
-      const unique = (results) =>
-        [
-          ...new Set(results.map((result) => JSON.stringify(result.reasons))),
-        ].map((text) => JSON.parse(text));
-      return {
-        same_version_four_times: {
-          ok: winners.length,
-          rejected: unique(same.filter((result) => !result.ok)),
-          grown: {
-            reserved: grown.reserved,
-            max: grown.max_liability,
-            revision: grown.revision,
+        const winners = same.filter((result) => result.ok);
+        assert.equal(winners.length, 1);
+        const grown = winners[0].ticket;
+        // 残り 19 の枠へ、2 つの予約が同時に +19 を求める。1 つだけ通り、もう 1 つは音声の上限で拒否する。
+        const current = { v1: grown, v2: tickets[1].ticket };
+        const race = await Promise.all(
+          order.map((label) =>
+            gate.topUp(current[label], { reserved: '19', max_liability: '19' }),
+          ),
+        );
+        const before = await usage(harness, '2030-10', 'voice');
+        // 追加予約の後の精算は、provider の実費（10 ずつ）で一度だけ。
+        const settled = [];
+        for (const { ticket, outcome: sent } of tickets)
+          settled.push(await gate.settle(ticket, sent));
+        const unique = (results) =>
+          [
+            ...new Set(results.map((result) => JSON.stringify(result.reasons))),
+          ].map((text) => JSON.parse(text));
+        return {
+          submitted_order: order,
+          same_version_four_times: {
+            ok: winners.length,
+            rejected: unique(same.filter((result) => !result.ok)),
+            grown: {
+              reserved: grown.reserved,
+              max: grown.max_liability,
+              revision: grown.revision,
+            },
           },
-        },
-        limit_race: {
-          ok: race.filter((result) => result.ok).length,
-          rejected: unique(race.filter((result) => !result.ok)),
-        },
-        voice_before_settlement: before,
-        settlements: settled.map((result) => result.ok && !result.duplicate),
-        voice_after_settlement: await usage(harness, '2030-10', 'voice'),
-      };
-    });
+          limit_race: {
+            ok: race.filter((result) => result.ok).length,
+            rejected: unique(race.filter((result) => !result.ok)),
+          },
+          voice_before_settlement: before,
+          settlements: settled.map((result) => result.ok && !result.duplicate),
+          voice_after_settlement: await usage(harness, '2030-10', 'voice'),
+        };
+      });
+    return {
+      v1_then_v2: await run(['v1', 'v2']),
+      v2_then_v1: await run(['v2', 'v1']),
+    };
   },
 
   // 設定値・単価・請求通貨は実行時の入力（設定ファイル）。本番と同じ読み込み（loadBudgetConfig）で読んだ値だけが上限と M を

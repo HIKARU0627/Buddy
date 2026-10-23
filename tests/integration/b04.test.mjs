@@ -43,7 +43,21 @@ test(
       }
     }
     // 通常の CI では書き出さない。全反復の成功時だけ、指定された出力先へ証拠を作る。
-    if (process.env.BUDDY_B04_EVIDENCE_PATH && !failed) {
+    // 子試験の時間切れ・取り消しは catch を通らないので、case と seed のすべての組が実際に完了したことも確かめる
+    // （欠けた実行があれば、前の証拠を今回の成功として上書きしない）。
+    const finished = new Set(runs.map((run) => `${run.case_id}/${run.seed}`));
+    const complete =
+      runs.length === cases.length * specification.seeds.length &&
+      finished.size === runs.length &&
+      cases.every((spec) =>
+        specification.seeds.every((seed) => finished.has(`${spec.id}/${seed}`)),
+      );
+    if (process.env.BUDDY_B04_EVIDENCE_PATH && !failed)
+      assert(
+        complete,
+        '時間切れ・取り消しなどで完了していない実行があるため、証拠を保存しません',
+      );
+    if (process.env.BUDDY_B04_EVIDENCE_PATH && !failed && complete) {
       const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
         encoding: 'utf8',
       }).trim();

@@ -1,0 +1,2118 @@
+{
+  "status": "specification_only",
+  "description": "B07-02 の予算の純粋な規則の期待値（設計 05 F02・D15、09 QA42・QA20・X18・X53、ADR 0035）。最大負担 M（区分ごとの最大量 × 単価、境界を跨げば換算後の高い方、区分ごとに切り上げ）、予約 R（指定の profile だけ p95 × 1.2）、予算月とタイムゾーンの翌月反映・時計の戻り、利用状況の集計、超過枠への経路と承認の照合、手での精算と M 超過の確認。通貨は ISO の試験用コード XTS（換算の例の元の通貨は ISO の通貨なしコード XXX）、金額・単価・為替は縮めた合成値で、本人の金額を含まない。期待値は設計本文と手計算で書き、domain の実装から生成していない。",
+  "runtime": {
+    "schema": "buddy.budget-runtime.v1",
+    "time_zone": "Asia/Tokyo",
+    "budget": {
+      "schema": "buddy.budget-config.v1",
+      "currency": "XTS",
+      "pools": [
+        {
+          "pool_id": "total",
+          "parent_pool_id": null,
+          "limit": { "currency": "XTS", "amount": "200" },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm",
+          "parent_pool_id": "total",
+          "limit": { "currency": "XTS", "amount": "100" },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm.background",
+          "parent_pool_id": "llm",
+          "limit": { "currency": "XTS", "amount": "80" },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "llm.background.campaign",
+          "parent_pool_id": "llm.background",
+          "limit": { "currency": "XTS", "amount": "10" },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "search",
+          "parent_pool_id": "total",
+          "limit": { "currency": "XTS", "amount": "30" },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "voice",
+          "parent_pool_id": null,
+          "limit": { "currency": "XTS", "amount": "50" },
+          "requires_approval": false
+        },
+        {
+          "pool_id": "overage",
+          "parent_pool_id": null,
+          "limit": { "currency": "XTS", "amount": "25" },
+          "requires_approval": true
+        }
+      ],
+      "verified_price_versions": [
+        "p-text-1",
+        "p-text-2",
+        "p-foreign-1",
+        "p-live-1"
+      ]
+    },
+    "price_versions": [
+      {
+        "price_version": "p-text-1",
+        "price_key": "synthetic.text",
+        "currency": "XTS",
+        "effective_from": "2030-10-01T00:00:00.000Z",
+        "effective_to": "2030-11-01T00:00:00.000Z",
+        "rates": [
+          {
+            "category": "input_tokens",
+            "unit_price": "2",
+            "per_quantity": "1000",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": null
+          },
+          {
+            "category": "cached_input_tokens",
+            "unit_price": "1",
+            "per_quantity": "1000",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": null
+          },
+          {
+            "category": "output_tokens",
+            "unit_price": "10",
+            "per_quantity": "1000",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": "500"
+          },
+          {
+            "category": "tool_calls",
+            "unit_price": "3",
+            "per_quantity": "1",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": "2"
+          }
+        ],
+        "conversion": {
+          "conversion_version": "xts-same-1",
+          "to_currency": "XTS",
+          "rate": "1",
+          "safety_factor": "1.2"
+        }
+      },
+      {
+        "price_version": "p-text-2",
+        "price_key": "synthetic.text",
+        "currency": "XTS",
+        "effective_from": "2030-11-01T00:00:00.000Z",
+        "effective_to": null,
+        "rates": [
+          {
+            "category": "input_tokens",
+            "unit_price": "3",
+            "per_quantity": "1000",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": null
+          },
+          {
+            "category": "cached_input_tokens",
+            "unit_price": "1",
+            "per_quantity": "1000",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": null
+          },
+          {
+            "category": "output_tokens",
+            "unit_price": "8",
+            "per_quantity": "1000",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": "500"
+          },
+          {
+            "category": "tool_calls",
+            "unit_price": "3",
+            "per_quantity": "1",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": "2"
+          }
+        ],
+        "conversion": {
+          "conversion_version": "xts-same-1",
+          "to_currency": "XTS",
+          "rate": "1",
+          "safety_factor": "1.2"
+        }
+      },
+      {
+        "price_version": "p-foreign-1",
+        "price_key": "synthetic.foreign",
+        "currency": "XXX",
+        "effective_from": "2030-10-01T00:00:00.000Z",
+        "effective_to": null,
+        "rates": [
+          {
+            "category": "input_tokens",
+            "unit_price": "2",
+            "per_quantity": "1000",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": null
+          },
+          {
+            "category": "output_tokens",
+            "unit_price": "10",
+            "per_quantity": "1000",
+            "minimum_quantity": "0",
+            "max_quantity_per_request": "500"
+          }
+        ],
+        "conversion": {
+          "conversion_version": "xxx-to-xts-1",
+          "to_currency": "XTS",
+          "rate": "2.5",
+          "safety_factor": "1.2"
+        }
+      },
+      {
+        "price_version": "p-live-1",
+        "price_key": "synthetic.live",
+        "currency": "XTS",
+        "effective_from": "2030-10-01T00:00:00.000Z",
+        "effective_to": null,
+        "rates": [
+          {
+            "category": "live_seconds",
+            "unit_price": "4",
+            "per_quantity": "1",
+            "minimum_quantity": "15",
+            "max_quantity_per_request": "60"
+          }
+        ],
+        "conversion": {
+          "conversion_version": "xts-same-1",
+          "to_currency": "XTS",
+          "rate": "1",
+          "safety_factor": "1.2"
+        }
+      }
+    ]
+  },
+  "invalid_price_versions": [
+    {
+      "price_version": "p-unbounded",
+      "price_key": "synthetic.unbounded",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "2",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "output_tokens",
+          "unit_price": "10",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    {
+      "price_version": "p-huge",
+      "price_key": "synthetic.huge",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "tool_calls",
+          "unit_price": "999999999999999999",
+          "per_quantity": "1",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "2"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1"
+      }
+    },
+    {
+      "price_version": "p-edge",
+      "price_key": "synthetic.edge",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "tool_calls",
+          "unit_price": "999999999999999999",
+          "per_quantity": "1",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": "1"
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1"
+      }
+    }
+  ],
+  "liability_cases": [
+    {
+      "id": "qa20-within-one-version",
+      "title": "1 つの版の中。入力 1500×2/1000×1.2=3.6→4、出力 500×10/1000×1.2=6、ツール 2×3×1.2=7.2→8。キャッシュの区分は M に入れない",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1500" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "18",
+        "priceVersion": "p-text-1",
+        "priceVersions": ["p-text-1"],
+        "lines": [
+          { "category": "input_tokens", "quantity": "1500", "amount": "4" },
+          { "category": "output_tokens", "quantity": "500", "amount": "6" },
+          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+        ]
+      }
+    },
+    {
+      "id": "qa42-price-boundary-higher-rate",
+      "title": "QA42 単価の境界。入力は新しい版（3）、出力は古い版（10）が高い。区分ごとに高い方: 入力 5.4→6、出力 6、ツール 8 で 20（どちらかの版だけなら 18・19）",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-31T23:59:50.000Z",
+        "until": "2030-11-01T00:00:20.000Z",
+        "quantities": { "input_tokens": "1500" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "20",
+        "priceVersion": "p-text-1",
+        "priceVersions": ["p-text-1", "p-text-2"],
+        "lines": [
+          { "category": "input_tokens", "quantity": "1500", "amount": "6" },
+          { "category": "output_tokens", "quantity": "500", "amount": "6" },
+          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+        ]
+      }
+    },
+    {
+      "id": "qa42-price-boundary-until-at-boundary",
+      "title": "課金され得る最後の時刻がちょうど新しい版の開始。期間は両端を含むので新しい版も掛かる",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-31T23:59:00.000Z",
+        "until": "2030-11-01T00:00:00.000Z",
+        "quantities": { "input_tokens": "1500" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "20",
+        "priceVersion": "p-text-1",
+        "priceVersions": ["p-text-1", "p-text-2"],
+        "lines": [
+          { "category": "input_tokens", "quantity": "1500", "amount": "6" },
+          { "category": "output_tokens", "quantity": "500", "amount": "6" },
+          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+        ]
+      }
+    },
+    {
+      "id": "qa42-price-boundary-one-millisecond-before",
+      "title": "最後の時刻が境目の 1 ミリ秒前なら古い版だけ",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-31T23:59:00.000Z",
+        "until": "2030-10-31T23:59:59.999Z",
+        "quantities": { "input_tokens": "1500" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "18",
+        "priceVersion": "p-text-1",
+        "priceVersions": ["p-text-1"],
+        "lines": [
+          { "category": "input_tokens", "quantity": "1500", "amount": "4" },
+          { "category": "output_tokens", "quantity": "500", "amount": "6" },
+          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+        ]
+      }
+    },
+    {
+      "id": "qa42-price-boundary-from-at-start",
+      "title": "受付がちょうど新しい版の開始なら古い版は掛からない（終わりは含まない）。入力 6、出力 4.8→5、ツール 8 で 19",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-11-01T00:00:00.000Z",
+        "until": "2030-11-01T00:01:00.000Z",
+        "quantities": { "input_tokens": "1500" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "19",
+        "priceVersion": "p-text-2",
+        "priceVersions": ["p-text-2"],
+        "lines": [
+          { "category": "input_tokens", "quantity": "1500", "amount": "6" },
+          { "category": "output_tokens", "quantity": "500", "amount": "5" },
+          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+        ]
+      }
+    },
+    {
+      "id": "qa42-price-boundary-unverified",
+      "title": "境界を跨ぐ要求で、掛かる版の一方が確認されていなければ開始しない",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-31T23:59:50.000Z",
+        "until": "2030-11-01T00:00:20.000Z",
+        "quantities": { "input_tokens": "1500" },
+        "verified": ["p-text-1"]
+      },
+      "expected": { "ok": false, "reasonCodes": ["price_unverified:p-text-2"] }
+    },
+    {
+      "id": "qa20-price-not-covered",
+      "title": "期間の一部に単価がない（最初の版の開始前）なら開始しない",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-09-30T23:59:59.000Z",
+        "until": "2030-10-01T00:00:01.000Z",
+        "quantities": { "input_tokens": "1500" }
+      },
+      "expected": { "ok": false, "reasonCodes": ["price_not_covered"] }
+    },
+    {
+      "id": "qa20-conversion-and-ceiling",
+      "title": "換算 2.5 と安全係数 1.2。入力 1001×2/1000×2.5×1.2=6.006→7（切り上げ）、出力 500×10/1000×2.5×1.2=15",
+      "request": {
+        "price_key": "synthetic.foreign",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1001" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "22",
+        "priceVersion": "p-foreign-1",
+        "priceVersions": ["p-foreign-1"],
+        "lines": [
+          { "category": "input_tokens", "quantity": "1001", "amount": "7" },
+          { "category": "output_tokens", "quantity": "500", "amount": "15" }
+        ]
+      }
+    },
+    {
+      "id": "qa20-converted-currency-mismatch",
+      "title": "換算後の通貨が予算の通貨と違えば拒否",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1500" },
+        "budget_currency": "XXX"
+      },
+      "expected": { "ok": false, "reasonCodes": ["currency_mismatch"] }
+    },
+    {
+      "id": "qa42-unbounded-input",
+      "title": "入力は上限がなく、送る量も示さなければ M を有限にできない",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {}
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["unbounded_category:input_tokens"]
+      }
+    },
+    {
+      "id": "qa42-unbounded-output",
+      "title": "出力の課金上限が不明な版（設定の意味検査も拒否する）は、domain でも拒否する",
+      "request": {
+        "price_key": "synthetic.unbounded",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1500" },
+        "versions": "invalid",
+        "verified": ["p-unbounded"]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["unbounded_category:output_tokens"]
+      }
+    },
+    {
+      "id": "qa20-quantity-above-rate-max",
+      "title": "要求の出力上限が版の 1 要求の最大量を超えれば拒否（設定の食い違い）",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1500", "output_tokens": "600" }
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["quantity_exceeds_max:output_tokens"]
+      }
+    },
+    {
+      "id": "qa20-profile-output-cap",
+      "title": "profile の出力上限 100 を使う。出力 100×10/1000×1.2=1.2→2",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1500", "output_tokens": "100" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "14",
+        "priceVersion": "p-text-1",
+        "priceVersions": ["p-text-1"],
+        "lines": [
+          { "category": "input_tokens", "quantity": "1500", "amount": "4" },
+          { "category": "output_tokens", "quantity": "100", "amount": "2" },
+          { "category": "tool_calls", "quantity": "2", "amount": "8" }
+        ]
+      }
+    },
+    {
+      "id": "qa20-tools-disabled",
+      "title": "ツールを使わない profile はツールの量 0",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1500", "tool_calls": "0" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "10",
+        "priceVersion": "p-text-1",
+        "priceVersions": ["p-text-1"],
+        "lines": [
+          { "category": "input_tokens", "quantity": "1500", "amount": "4" },
+          { "category": "output_tokens", "quantity": "500", "amount": "6" },
+          { "category": "tool_calls", "quantity": "0", "amount": "0" }
+        ]
+      }
+    },
+    {
+      "id": "qa20-cached-input-not-estimated",
+      "title": "キャッシュの命中を見込んだ量（cached_input_tokens）を M の見積りに渡せば拒否",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1400", "cached_input_tokens": "100" }
+      },
+      "expected": { "ok": false, "reasonCodes": ["cached_input_not_estimated"] }
+    },
+    {
+      "id": "qa20-unpriced-category",
+      "title": "単価のない区分（検索）を使う要求は開始しない",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "input_tokens": "1500", "search_requests": "1" }
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["unpriced_category:search_requests"]
+      }
+    },
+    {
+      "id": "x34-live-minimum-15-seconds",
+      "title": "会話の接続は最低 15 秒を課金する。5 秒の予約でも 15×4×1.2=72",
+      "request": {
+        "price_key": "synthetic.live",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": { "live_seconds": "5" }
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "72",
+        "priceVersion": "p-live-1",
+        "priceVersions": ["p-live-1"],
+        "lines": [
+          { "category": "live_seconds", "quantity": "15", "amount": "72" }
+        ]
+      }
+    },
+    {
+      "id": "x34-live-default-max",
+      "title": "量を示さなければ 1 要求の最大 60 秒で 60×4×1.2=288",
+      "request": {
+        "price_key": "synthetic.live",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {}
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "288",
+        "priceVersion": "p-live-1",
+        "priceVersions": ["p-live-1"],
+        "lines": [
+          { "category": "live_seconds", "quantity": "60", "amount": "288" }
+        ]
+      }
+    },
+    {
+      "id": "qa42-amount-overflow",
+      "title": "合計が Amount の 18 桁を超えれば拒否",
+      "request": {
+        "price_key": "synthetic.huge",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {},
+        "versions": "invalid",
+        "verified": ["p-huge"]
+      },
+      "expected": { "ok": false, "reasonCodes": ["amount_overflow"] }
+    },
+    {
+      "id": "qa42-amount-at-limit",
+      "title": "合計がちょうど 18 桁の最大なら受け付ける",
+      "request": {
+        "price_key": "synthetic.edge",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {},
+        "versions": "invalid",
+        "verified": ["p-edge"]
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "999999999999999999",
+        "priceVersion": "p-edge",
+        "priceVersions": ["p-edge"],
+        "lines": [
+          {
+            "category": "tool_calls",
+            "quantity": "1",
+            "amount": "999999999999999999"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-billable-period-reversed",
+      "title": "課金され得る期間が逆転していれば拒否",
+      "request": {
+        "price_key": "synthetic.text",
+        "from": "2030-10-15T00:01:00.000Z",
+        "until": "2030-10-15T00:00:00.000Z",
+        "quantities": { "input_tokens": "1500" }
+      },
+      "expected": { "ok": false, "reasonCodes": ["invalid_billable_period"] }
+    }
+  ],
+  "reservation_defaults": {
+    "price_key": "synthetic.text",
+    "from": "2030-10-15T00:00:00.000Z",
+    "until": "2030-10-15T00:01:00.000Z",
+    "quantities": { "input_tokens": "1500" },
+    "profile": "synthetic.intent.v1",
+    "profile_revision": "r1",
+    "p95_profiles": ["synthetic.intent.v1"]
+  },
+  "reservation_cases": [
+    {
+      "id": "qa42-p95-designated",
+      "title": "指定の profile で p95=200 を測定済み。出力 240×10/1000×1.2=2.88→3、R=4+3+8=15、M=18",
+      "request": {
+        "measurement": {
+          "profileId": "synthetic.intent.v1",
+          "profileRevision": "r1",
+          "outputP95Tokens": "200"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "reserved": "15",
+        "maxLiability": "18",
+        "basis": "p95"
+      }
+    },
+    {
+      "id": "qa42-p95-capped-at-max-output",
+      "title": "p95×1.2=540 は最大課金出力 500 までに抑え、R=M",
+      "request": {
+        "measurement": {
+          "profileId": "synthetic.intent.v1",
+          "profileRevision": "r1",
+          "outputP95Tokens": "450"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "reserved": "18",
+        "maxLiability": "18",
+        "basis": "p95"
+      }
+    },
+    {
+      "id": "qa42-p95-rounds-up",
+      "title": "p95=1 は 1.2→2 token に切り上げ、金額 0.024→1。R=4+1+8=13",
+      "request": {
+        "measurement": {
+          "profileId": "synthetic.intent.v1",
+          "profileRevision": "r1",
+          "outputP95Tokens": "1"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "reserved": "13",
+        "maxLiability": "18",
+        "basis": "p95"
+      }
+    },
+    {
+      "id": "qa42-p95-unmeasured",
+      "title": "QA42 未測定の p95。指定の profile でも測っていなければ最大額で予約する",
+      "request": { "measurement": null },
+      "expected": {
+        "ok": true,
+        "reserved": "18",
+        "maxLiability": "18",
+        "basis": "p95_unmeasured"
+      }
+    },
+    {
+      "id": "qa42-p95-other-profile-measurement",
+      "title": "別の profile の測定は使わない",
+      "request": {
+        "measurement": {
+          "profileId": "synthetic.other.v1",
+          "profileRevision": "r1",
+          "outputP95Tokens": "200"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "reserved": "18",
+        "maxLiability": "18",
+        "basis": "p95_unmeasured"
+      }
+    },
+    {
+      "id": "qa42-p95-after-profile-change",
+      "title": "測った後に設定を変えた profile（版 r0 の測定、今は r1）は最大額",
+      "request": {
+        "measurement": {
+          "profileId": "synthetic.intent.v1",
+          "profileRevision": "r0",
+          "outputP95Tokens": "200"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "reserved": "18",
+        "maxLiability": "18",
+        "basis": "profile_changed"
+      }
+    },
+    {
+      "id": "qa42-p95-not-designated",
+      "title": "指定していない profile は測定があっても最大額（他の用途へ自動で広げない）",
+      "request": {
+        "profile": "synthetic.text.v1",
+        "measurement": {
+          "profileId": "synthetic.text.v1",
+          "profileRevision": "r1",
+          "outputP95Tokens": "200"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "reserved": "18",
+        "maxLiability": "18",
+        "basis": "not_designated"
+      }
+    },
+    {
+      "id": "qa42-p95-across-price-boundary",
+      "title": "境界を跨ぐ要求の R も高い方の単価。出力 240×10 で 3、入力 6、ツール 8 で R=17、M=20",
+      "request": {
+        "from": "2030-10-31T23:59:50.000Z",
+        "until": "2030-11-01T00:00:20.000Z",
+        "measurement": {
+          "profileId": "synthetic.intent.v1",
+          "profileRevision": "r1",
+          "outputP95Tokens": "200"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "reserved": "17",
+        "maxLiability": "20",
+        "basis": "p95"
+      }
+    },
+    {
+      "id": "qa42-p95-profile-output-below-p95",
+      "title": "profile の出力上限 100 が p95×1.2=240 より小さければ 100 を使い、R=M=14",
+      "request": {
+        "quantities": { "input_tokens": "1500", "output_tokens": "100" },
+        "measurement": {
+          "profileId": "synthetic.intent.v1",
+          "profileRevision": "r1",
+          "outputP95Tokens": "200"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "reserved": "14",
+        "maxLiability": "14",
+        "basis": "p95"
+      }
+    },
+    {
+      "id": "qa42-p95-unbounded",
+      "title": "M を有限にできなければ R も出さない",
+      "request": {
+        "quantities": {},
+        "measurement": {
+          "profileId": "synthetic.intent.v1",
+          "profileRevision": "r1",
+          "outputP95Tokens": "200"
+        }
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["unbounded_category:input_tokens"]
+      }
+    }
+  ],
+  "month_cases": [
+    {
+      "id": "qa42-month-tokyo-last-millisecond",
+      "time": "2030-10-31T14:59:59.999Z",
+      "time_zone": "Asia/Tokyo",
+      "expected": "2030-10"
+    },
+    {
+      "id": "qa42-month-tokyo-next-month",
+      "time": "2030-10-31T15:00:00.000Z",
+      "time_zone": "Asia/Tokyo",
+      "expected": "2030-11"
+    },
+    {
+      "id": "qa42-month-utc-same-instant",
+      "time": "2030-10-31T15:00:00.000Z",
+      "time_zone": "UTC",
+      "expected": "2030-10"
+    },
+    {
+      "id": "qa42-month-auckland-daylight-saving",
+      "time": "2030-10-31T11:00:00.000Z",
+      "time_zone": "Pacific/Auckland",
+      "expected": "2030-11"
+    },
+    {
+      "id": "qa42-month-auckland-before",
+      "time": "2030-10-31T10:59:59.999Z",
+      "time_zone": "Pacific/Auckland",
+      "expected": "2030-10"
+    },
+    {
+      "id": "qa42-month-new-york-standard",
+      "time": "2030-12-01T04:59:59.999Z",
+      "time_zone": "America/New_York",
+      "expected": "2030-11"
+    },
+    {
+      "id": "qa42-month-year-rollover",
+      "time": "2030-12-31T15:00:00.000Z",
+      "time_zone": "Asia/Tokyo",
+      "expected": "2031-01"
+    },
+    {
+      "id": "qa42-month-unknown-zone",
+      "time": "2030-10-31T15:00:00.000Z",
+      "time_zone": "Mars/Base",
+      "expected": null
+    },
+    {
+      "id": "qa42-month-offset-not-iana",
+      "time": "2030-10-31T15:00:00.000Z",
+      "time_zone": "+09:00",
+      "expected": null
+    },
+    {
+      "id": "qa42-month-invalid-time",
+      "time": "2030-10-31 15:00:00",
+      "time_zone": "Asia/Tokyo",
+      "expected": null
+    }
+  ],
+  "calendar_cases": [
+    {
+      "id": "qa42-calendar-first-start",
+      "title": "初めての起動は設定のタイムゾーンで今の月を決める",
+      "state": null,
+      "now": "2030-10-15T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2030-10",
+          "timeZone": "Asia/Tokyo",
+          "previousTimeZone": null
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-change-waits",
+      "title": "月の途中でタイムゾーンを UTC に変えても、今の月は元のタイムゾーンのまま",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "previousTimeZone": null
+      },
+      "now": "2030-10-31T14:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2030-10",
+          "timeZone": "Asia/Tokyo",
+          "previousTimeZone": null
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-rollover-applies-new-zone",
+      "title": "今の月の境目は元のタイムゾーン（東京の 11 月 1 日 0 時）。翌月から UTC を使う",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "previousTimeZone": null
+      },
+      "now": "2030-10-31T15:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2030-11",
+          "timeZone": "UTC",
+          "previousTimeZone": "Asia/Tokyo"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-behind-zone-is-not-regression",
+      "title": "遅れたタイムゾーンへ変えた直後は UTC では 10 月に見えるが、前の月のタイムゾーンで 11 月に入っているので戻りではない",
+      "state": {
+        "month": "2030-11",
+        "timeZone": "UTC",
+        "previousTimeZone": "Asia/Tokyo"
+      },
+      "now": "2030-10-31T16:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2030-11",
+          "timeZone": "UTC",
+          "previousTimeZone": "Asia/Tokyo"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-regression-after-zone-change",
+      "title": "どちらのタイムゾーンでも 10 月の時刻に戻ったら保留",
+      "state": {
+        "month": "2030-11",
+        "timeZone": "UTC",
+        "previousTimeZone": "Asia/Tokyo"
+      },
+      "now": "2030-10-31T14:00:00.000Z",
+      "configured": "UTC",
+      "expected": { "ok": false, "reasonCodes": ["clock_regressed"] }
+    },
+    {
+      "id": "qa42-calendar-clock-regressed",
+      "title": "時計が前の月へ戻ったら、前の月にせず有料の受付を保留する（原本に決めなし、ADR 0035）",
+      "state": {
+        "month": "2030-11",
+        "timeZone": "Asia/Tokyo",
+        "previousTimeZone": "Asia/Tokyo"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": { "ok": false, "reasonCodes": ["clock_regressed"] }
+    },
+    {
+      "id": "qa42-calendar-back-within-month",
+      "title": "同じ月の中で時計が戻っても月は変わらない",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "previousTimeZone": null
+      },
+      "now": "2030-10-01T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2030-10",
+          "timeZone": "Asia/Tokyo",
+          "previousTimeZone": null
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-skipped-months",
+      "title": "中枢が止まっていて数か月後に起動したら、その時刻の月へ進む",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "previousTimeZone": null
+      },
+      "now": "2031-01-05T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2031-01",
+          "timeZone": "Asia/Tokyo",
+          "previousTimeZone": "Asia/Tokyo"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-invalid-configured-zone",
+      "title": "設定のタイムゾーンが実在しなければ有料処理を始めない",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "previousTimeZone": null
+      },
+      "now": "2030-10-15T00:00:00.000Z",
+      "configured": "Mars/Base",
+      "expected": { "ok": false, "reasonCodes": ["invalid_time_zone"] }
+    }
+  ],
+  "route_cases": [
+    {
+      "id": "qa42-route-owner-m-limit",
+      "origin": "owner_request",
+      "pool": "llm",
+      "reasons": ["m_limit:llm"],
+      "expected": []
+    },
+    {
+      "id": "qa42-route-owner-r-and-m-limit",
+      "origin": "owner_request",
+      "pool": "llm",
+      "reasons": ["r_limit:llm", "m_limit:llm"],
+      "expected": []
+    },
+    {
+      "id": "qa42-route-owner-search-total",
+      "origin": "owner_request",
+      "pool": "search",
+      "reasons": ["m_limit:total"],
+      "expected": []
+    },
+    {
+      "id": "qa42-route-autonomous",
+      "origin": "autonomous_analysis",
+      "pool": "llm.background",
+      "reasons": ["m_limit:llm.background"],
+      "expected": ["not_owner_request"]
+    },
+    {
+      "id": "x18-route-auto-execution",
+      "origin": "auto_execution",
+      "pool": "llm.background",
+      "reasons": ["m_limit:llm"],
+      "expected": ["not_owner_request"]
+    },
+    {
+      "id": "x18-route-initial-import",
+      "origin": "initial_import",
+      "pool": "llm.background",
+      "reasons": ["m_limit:llm"],
+      "expected": ["not_owner_request"]
+    },
+    {
+      "id": "qa42-route-voice",
+      "origin": "owner_request",
+      "pool": "voice",
+      "reasons": ["m_limit:voice"],
+      "expected": ["voice_not_routable"]
+    },
+    {
+      "id": "qa42-route-shadow-voice",
+      "origin": "shadow_mode",
+      "pool": "voice",
+      "reasons": ["m_limit:voice"],
+      "expected": ["not_owner_request", "voice_not_routable"]
+    },
+    {
+      "id": "qa42-route-price-unverified",
+      "origin": "owner_request",
+      "pool": "llm",
+      "reasons": ["price_unverified", "m_limit:llm"],
+      "expected": ["not_limit_only"]
+    },
+    {
+      "id": "qa42-route-overrun-hold",
+      "origin": "owner_request",
+      "pool": "llm",
+      "reasons": ["overrun_hold:llm"],
+      "expected": ["not_limit_only"]
+    },
+    {
+      "id": "qa42-route-r-limit-only",
+      "origin": "owner_request",
+      "pool": "llm",
+      "reasons": ["r_limit:llm"],
+      "expected": ["not_limit_only"]
+    },
+    {
+      "id": "qa42-route-normal-admitted",
+      "origin": "owner_request",
+      "pool": "llm",
+      "reasons": [],
+      "expected": ["normal_admitted"]
+    },
+    {
+      "id": "qa42-route-overage-pool-without-approval",
+      "origin": "owner_request",
+      "pool": "search",
+      "reasons": ["m_limit:search"],
+      "overage_pool": "llm",
+      "expected": ["overage_pool_invalid"]
+    }
+  ],
+  "approval_base": {
+    "approval_id": "a0000000-0000-4000-8000-000000000001",
+    "request_id": "b0000000-0000-4000-8000-000000000001",
+    "pool_id": "overage",
+    "budget_month": "2030-10",
+    "max_liability": { "currency": "XTS", "amount": "10" },
+    "overage_remaining": { "currency": "XTS", "amount": "25" },
+    "status": "approved",
+    "requested_at": "2030-10-20T00:00:00Z",
+    "expires_at": "2030-10-20T00:10:00Z",
+    "decided_at": "2030-10-20T00:01:00Z"
+  },
+  "approval_expectation": {
+    "approvalId": "a0000000-0000-4000-8000-000000000001",
+    "requestId": "b0000000-0000-4000-8000-000000000001",
+    "poolId": "overage",
+    "budgetMonth": "2030-10",
+    "currency": "XTS",
+    "maxLiability": "10",
+    "now": "2030-10-20T00:05:00Z"
+  },
+  "approval_cases": [
+    { "id": "qa42-approval-match", "expected": [] },
+    {
+      "id": "qa42-approval-smaller-m",
+      "expectation": { "maxLiability": "9" },
+      "expected": ["approval_m_mismatch"]
+    },
+    {
+      "id": "qa42-approval-larger-m",
+      "expectation": { "maxLiability": "11" },
+      "expected": ["approval_m_mismatch"]
+    },
+    {
+      "id": "qa42-approval-other-request",
+      "expectation": { "requestId": "b0000000-0000-4000-8000-000000000002" },
+      "expected": ["approval_request_mismatch"]
+    },
+    {
+      "id": "qa42-approval-at-expiry",
+      "expectation": { "now": "2030-10-20T00:10:00Z" },
+      "expected": ["approval_expired"]
+    },
+    {
+      "id": "qa42-approval-pending",
+      "approval": { "status": "pending", "decided_at": null },
+      "expected": ["approval_pending"]
+    },
+    {
+      "id": "qa42-approval-rejected",
+      "approval": { "status": "rejected" },
+      "expected": ["approval_rejected"]
+    },
+    {
+      "id": "qa42-approval-consumed",
+      "approval": { "status": "consumed" },
+      "expected": ["approval_consumed"]
+    },
+    {
+      "id": "qa42-approval-expired-status",
+      "approval": { "status": "expired", "decided_at": null },
+      "expectation": { "now": "2030-10-20T00:11:00Z" },
+      "expected": ["approval_expired"]
+    },
+    {
+      "id": "qa42-approval-other-month",
+      "expectation": { "budgetMonth": "2030-11" },
+      "expected": ["approval_month_mismatch"]
+    },
+    {
+      "id": "qa42-approval-other-pool",
+      "expectation": { "poolId": "llm" },
+      "expected": ["approval_pool_mismatch"]
+    },
+    {
+      "id": "qa42-approval-other-id",
+      "expectation": { "approvalId": "a0000000-0000-4000-8000-000000000009" },
+      "expected": ["approval_unknown"]
+    },
+    {
+      "id": "qa42-approval-missing",
+      "approval": null,
+      "expected": ["approval_required"]
+    }
+  ],
+  "manual_cases": [
+    {
+      "id": "qa42-manual-settles-unknown",
+      "title": "usage 不明を手で精算する。元の月（9 月）・元の枠のまま、版は変えない",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-09",
+        "r": "30",
+        "m": "60",
+        "status": "usage_unknown",
+        "revision": "2"
+      },
+      "input": {
+        "expectedRevision": "2",
+        "manualReconciliationId": "manual:inv-2030-09.a",
+        "currency": "XTS",
+        "actualGross": "45"
+      },
+      "expected": { "ok": true, "duplicate": false, "overrun": false },
+      "record": {
+        "status": "settled",
+        "actualGross": "45",
+        "providerReconciliationId": "manual:inv-2030-09.a",
+        "budgetMonth": "2030-09",
+        "poolId": "llm",
+        "revision": "2"
+      }
+    },
+    {
+      "id": "qa42-manual-overrun",
+      "title": "手で精算した実費が M を超えれば M 超過として記録する（切り捨てない）",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-09",
+        "r": "30",
+        "m": "60",
+        "status": "usage_unknown",
+        "revision": "2"
+      },
+      "input": {
+        "expectedRevision": "2",
+        "manualReconciliationId": "manual:inv-2030-09.b",
+        "currency": "XTS",
+        "actualGross": "61"
+      },
+      "expected": { "ok": true, "duplicate": false, "overrun": true },
+      "record": { "status": "settled", "actualGross": "61" }
+    },
+    {
+      "id": "qa42-manual-not-prefixed",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "usage_unknown"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "inv-2030-09",
+        "currency": "XTS",
+        "actualGross": "45"
+      },
+      "expected": { "ok": false, "reasonCodes": ["manual_id_invalid"] }
+    },
+    {
+      "id": "qa42-manual-free-text",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "usage_unknown"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:invoice for september",
+        "currency": "XTS",
+        "actualGross": "45"
+      },
+      "expected": { "ok": false, "reasonCodes": ["manual_id_invalid"] }
+    },
+    {
+      "id": "qa42-manual-empty-suffix",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "usage_unknown"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:",
+        "currency": "XTS",
+        "actualGross": "45"
+      },
+      "expected": { "ok": false, "reasonCodes": ["manual_id_invalid"] }
+    },
+    {
+      "id": "qa42-manual-reserved",
+      "title": "まだ usage 不明でない（送信中の）予約は手で精算しない",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "reserved"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "45"
+      },
+      "expected": { "ok": false, "reasonCodes": ["not_usage_unknown"] }
+    },
+    {
+      "id": "qa42-manual-after-provider",
+      "title": "provider が精算した後の手での精算は二重の精算として拒否",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "settled",
+        "actual": "40",
+        "receipt": "p-1"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "40"
+      },
+      "expected": { "ok": false, "reasonCodes": ["already_settled"] }
+    },
+    {
+      "id": "qa42-manual-replay",
+      "title": "同じ照合 ID・同じ実費の再適用は変化なし",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "settled",
+        "actual": "45",
+        "receipt": "manual:inv-1"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "45"
+      },
+      "expected": { "ok": true, "duplicate": true, "overrun": false },
+      "record": { "status": "settled", "actualGross": "45" }
+    },
+    {
+      "id": "qa42-manual-second-amount",
+      "title": "手で精算した後に別の金額で精算し直すのは拒否",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "settled",
+        "actual": "45",
+        "receipt": "manual:inv-1"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "50"
+      },
+      "expected": { "ok": false, "reasonCodes": ["already_settled"] }
+    },
+    {
+      "id": "qa42-manual-released",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "released"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "0"
+      },
+      "expected": { "ok": false, "reasonCodes": ["released"] }
+    },
+    {
+      "id": "qa42-manual-stale-revision",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "usage_unknown",
+        "revision": "2"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "45"
+      },
+      "expected": { "ok": false, "reasonCodes": ["revision_conflict"] }
+    },
+    {
+      "id": "qa42-manual-currency",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "usage_unknown"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XXX",
+        "actualGross": "45"
+      },
+      "expected": { "ok": false, "reasonCodes": ["currency_mismatch"] }
+    },
+    {
+      "id": "qa42-manual-amount-too-long",
+      "reservation": {
+        "pool": "llm",
+        "r": "30",
+        "m": "60",
+        "status": "usage_unknown"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "1000000000000000000"
+      },
+      "expected": { "ok": false, "reasonCodes": ["invalid_amount"] }
+    }
+  ],
+  "review_cases": [
+    {
+      "id": "qa42-review-overrun",
+      "reservation": {
+        "pool": "llm",
+        "r": "2",
+        "m": "5",
+        "status": "settled",
+        "actual": "7",
+        "receipt": "p-F"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "currency": "XTS",
+        "actualGross": "7",
+        "maxLiability": "5"
+      },
+      "expected": { "ok": true, "duplicate": false },
+      "record": {
+        "overrunReviewed": true,
+        "actualGross": "7",
+        "status": "settled"
+      }
+    },
+    {
+      "id": "qa42-review-other-actual",
+      "reservation": {
+        "pool": "llm",
+        "r": "2",
+        "m": "5",
+        "status": "settled",
+        "actual": "7",
+        "receipt": "p-F"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "currency": "XTS",
+        "actualGross": "6",
+        "maxLiability": "5"
+      },
+      "expected": { "ok": false, "reasonCodes": ["review_mismatch"] }
+    },
+    {
+      "id": "qa42-review-other-m",
+      "reservation": {
+        "pool": "llm",
+        "r": "2",
+        "m": "5",
+        "status": "settled",
+        "actual": "7",
+        "receipt": "p-F"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "currency": "XTS",
+        "actualGross": "7",
+        "maxLiability": "4"
+      },
+      "expected": { "ok": false, "reasonCodes": ["review_mismatch"] }
+    },
+    {
+      "id": "qa42-review-no-overrun",
+      "reservation": {
+        "pool": "llm",
+        "r": "2",
+        "m": "5",
+        "status": "settled",
+        "actual": "5",
+        "receipt": "p-E"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "currency": "XTS",
+        "actualGross": "5",
+        "maxLiability": "5"
+      },
+      "expected": { "ok": false, "reasonCodes": ["no_overrun"] }
+    },
+    {
+      "id": "qa42-review-unknown",
+      "reservation": {
+        "pool": "llm",
+        "r": "2",
+        "m": "5",
+        "status": "usage_unknown"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "currency": "XTS",
+        "actualGross": "7",
+        "maxLiability": "5"
+      },
+      "expected": { "ok": false, "reasonCodes": ["not_settled"] }
+    },
+    {
+      "id": "qa42-review-stale-revision",
+      "reservation": {
+        "pool": "llm",
+        "r": "2",
+        "m": "5",
+        "status": "settled",
+        "actual": "7",
+        "receipt": "p-F",
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "0",
+        "currency": "XTS",
+        "actualGross": "7",
+        "maxLiability": "5"
+      },
+      "expected": { "ok": false, "reasonCodes": ["revision_conflict"] }
+    },
+    {
+      "id": "qa42-review-replay",
+      "reservation": {
+        "pool": "llm",
+        "r": "2",
+        "m": "5",
+        "status": "settled",
+        "actual": "7",
+        "receipt": "p-F",
+        "reviewed": true
+      },
+      "input": {
+        "expectedRevision": "0",
+        "currency": "XTS",
+        "actualGross": "7",
+        "maxLiability": "5"
+      },
+      "expected": { "ok": true, "duplicate": true },
+      "record": { "overrunReviewed": true }
+    }
+  ],
+  "summary_cases": [
+    {
+      "id": "qa42-x18-usage-summary",
+      "title": "今月（11 月）と、usage 不明が残る 10 月だけを出す。精算済みだけの 9 月は出さない。10 月の usage 不明は 11 月に数えない。M 超過の確認待ちはその枠に数え、子孫を ancestor_held にする。音声は精算済み＋未精算の M が上限に達して limit_reached。期限切れ・承認済みの承認は出さない",
+      "current_month": "2030-11",
+      "time_zone": "Asia/Tokyo",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "config_valid": true,
+      "reservations": [
+        {
+          "id": "10000000-0000-4000-8000-000000000001",
+          "request": "20000000-0000-4000-8000-000000000001",
+          "pool": "llm",
+          "month": "2030-11",
+          "price": "p-text-2",
+          "r": "5",
+          "m": "30",
+          "status": "settled",
+          "actual": "20",
+          "receipt": "p-r1"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "request": "20000000-0000-4000-8000-000000000002",
+          "pool": "llm.background",
+          "month": "2030-11",
+          "price": "p-text-2",
+          "r": "3",
+          "m": "10",
+          "status": "reserved"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000003",
+          "request": "20000000-0000-4000-8000-000000000003",
+          "pool": "llm.background",
+          "month": "2030-11",
+          "price": "p-text-2",
+          "r": "5",
+          "m": "8",
+          "status": "settled",
+          "actual": "12",
+          "receipt": "p-r3"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000004",
+          "request": "20000000-0000-4000-8000-000000000004",
+          "pool": "llm",
+          "month": "2030-10",
+          "price": "p-text-1",
+          "r": "4",
+          "m": "9",
+          "status": "usage_unknown"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000005",
+          "request": "20000000-0000-4000-8000-000000000005",
+          "pool": "search",
+          "month": "2030-10",
+          "price": "p-text-1",
+          "r": "5",
+          "m": "6",
+          "status": "settled",
+          "actual": "5",
+          "receipt": "p-r5"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000006",
+          "request": "20000000-0000-4000-8000-000000000006",
+          "pool": "voice",
+          "month": "2030-11",
+          "price": "p-live-1",
+          "r": "10",
+          "m": "10",
+          "status": "released"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000007",
+          "request": "20000000-0000-4000-8000-000000000007",
+          "pool": "voice",
+          "month": "2030-11",
+          "price": "p-live-1",
+          "r": "15",
+          "m": "50",
+          "status": "reserved"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000008",
+          "request": "20000000-0000-4000-8000-000000000008",
+          "pool": "llm",
+          "month": "2030-09",
+          "price": "p-text-1",
+          "r": "3",
+          "m": "5",
+          "status": "settled",
+          "actual": "3",
+          "receipt": "p-r8"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000009",
+          "request": "20000000-0000-4000-8000-000000000009",
+          "pool": "overage",
+          "month": "2030-11",
+          "price": "p-text-2",
+          "r": "4",
+          "m": "10",
+          "status": "settled",
+          "actual": "10",
+          "receipt": "p-r9",
+          "approval": "a0000000-0000-4000-8000-000000000010"
+        }
+      ],
+      "approvals": [
+        {
+          "approval_id": "a0000000-0000-4000-8000-000000000011",
+          "request_id": "20000000-0000-4000-8000-000000000011",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": { "currency": "XTS", "amount": "8" },
+          "overage_remaining": { "currency": "XTS", "amount": "15" },
+          "status": "pending",
+          "requested_at": "2030-11-01T23:58:00Z",
+          "expires_at": "2030-11-02T00:08:00Z",
+          "decided_at": null
+        },
+        {
+          "approval_id": "a0000000-0000-4000-8000-000000000012",
+          "request_id": "20000000-0000-4000-8000-000000000012",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": { "currency": "XTS", "amount": "3" },
+          "overage_remaining": { "currency": "XTS", "amount": "15" },
+          "status": "pending",
+          "requested_at": "2030-11-01T23:00:00Z",
+          "expires_at": "2030-11-01T23:10:00Z",
+          "decided_at": null
+        },
+        {
+          "approval_id": "a0000000-0000-4000-8000-000000000010",
+          "request_id": "20000000-0000-4000-8000-000000000009",
+          "pool_id": "overage",
+          "budget_month": "2030-11",
+          "max_liability": { "currency": "XTS", "amount": "10" },
+          "overage_remaining": { "currency": "XTS", "amount": "25" },
+          "status": "consumed",
+          "requested_at": "2030-11-01T10:00:00Z",
+          "expires_at": "2030-11-01T10:10:00Z",
+          "decided_at": "2030-11-01T10:01:00Z"
+        }
+      ],
+      "expected": {
+        "ok": true,
+        "summary": {
+          "currency": "XTS",
+          "time_zone": "Asia/Tokyo",
+          "current_month": "2030-11",
+          "generated_at": "2030-11-02T00:00:00Z",
+          "months": [
+            {
+              "budget_month": "2030-11",
+              "pools": [
+                {
+                  "pool_id": "total",
+                  "parent_pool_id": null,
+                  "limit": { "currency": "XTS", "amount": "200" },
+                  "settled": { "currency": "XTS", "amount": "32" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "3" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "10"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                },
+                {
+                  "pool_id": "llm",
+                  "parent_pool_id": "total",
+                  "limit": { "currency": "XTS", "amount": "100" },
+                  "settled": { "currency": "XTS", "amount": "32" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "3" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "10"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                },
+                {
+                  "pool_id": "llm.background",
+                  "parent_pool_id": "llm",
+                  "limit": { "currency": "XTS", "amount": "80" },
+                  "settled": { "currency": "XTS", "amount": "12" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "3" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "10"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 1,
+                  "hold_reasons": ["overrun_review_pending"]
+                },
+                {
+                  "pool_id": "llm.background.campaign",
+                  "parent_pool_id": "llm.background",
+                  "limit": { "currency": "XTS", "amount": "10" },
+                  "settled": { "currency": "XTS", "amount": "0" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "0" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "0"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": ["ancestor_held"]
+                },
+                {
+                  "pool_id": "search",
+                  "parent_pool_id": "total",
+                  "limit": { "currency": "XTS", "amount": "30" },
+                  "settled": { "currency": "XTS", "amount": "0" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "0" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "0"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                },
+                {
+                  "pool_id": "voice",
+                  "parent_pool_id": null,
+                  "limit": { "currency": "XTS", "amount": "50" },
+                  "settled": { "currency": "XTS", "amount": "0" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "15" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "50"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": ["limit_reached"]
+                },
+                {
+                  "pool_id": "overage",
+                  "parent_pool_id": null,
+                  "limit": { "currency": "XTS", "amount": "25" },
+                  "settled": { "currency": "XTS", "amount": "10" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "0" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "0"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                }
+              ]
+            },
+            {
+              "budget_month": "2030-10",
+              "pools": [
+                {
+                  "pool_id": "total",
+                  "parent_pool_id": null,
+                  "limit": { "currency": "XTS", "amount": "200" },
+                  "settled": { "currency": "XTS", "amount": "5" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "4" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "9"
+                  },
+                  "usage_unknown_count": 1,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                },
+                {
+                  "pool_id": "llm",
+                  "parent_pool_id": "total",
+                  "limit": { "currency": "XTS", "amount": "100" },
+                  "settled": { "currency": "XTS", "amount": "0" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "4" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "9"
+                  },
+                  "usage_unknown_count": 1,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                },
+                {
+                  "pool_id": "llm.background",
+                  "parent_pool_id": "llm",
+                  "limit": { "currency": "XTS", "amount": "80" },
+                  "settled": { "currency": "XTS", "amount": "0" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "0" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "0"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": ["overrun_review_pending"]
+                },
+                {
+                  "pool_id": "llm.background.campaign",
+                  "parent_pool_id": "llm.background",
+                  "limit": { "currency": "XTS", "amount": "10" },
+                  "settled": { "currency": "XTS", "amount": "0" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "0" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "0"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": ["ancestor_held"]
+                },
+                {
+                  "pool_id": "search",
+                  "parent_pool_id": "total",
+                  "limit": { "currency": "XTS", "amount": "30" },
+                  "settled": { "currency": "XTS", "amount": "5" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "0" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "0"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                },
+                {
+                  "pool_id": "voice",
+                  "parent_pool_id": null,
+                  "limit": { "currency": "XTS", "amount": "50" },
+                  "settled": { "currency": "XTS", "amount": "0" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "0" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "0"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                },
+                {
+                  "pool_id": "overage",
+                  "parent_pool_id": null,
+                  "limit": { "currency": "XTS", "amount": "25" },
+                  "settled": { "currency": "XTS", "amount": "0" },
+                  "unsettled_reserved": { "currency": "XTS", "amount": "0" },
+                  "unsettled_max_liability": {
+                    "currency": "XTS",
+                    "amount": "0"
+                  },
+                  "usage_unknown_count": 0,
+                  "overrun_review_count": 0,
+                  "hold_reasons": []
+                }
+              ]
+            }
+          ],
+          "overage_approvals": [
+            {
+              "approval_id": "a0000000-0000-4000-8000-000000000011",
+              "request_id": "20000000-0000-4000-8000-000000000011",
+              "pool_id": "overage",
+              "budget_month": "2030-11",
+              "max_liability": { "currency": "XTS", "amount": "8" },
+              "overage_remaining": { "currency": "XTS", "amount": "15" },
+              "status": "pending",
+              "requested_at": "2030-11-01T23:58:00Z",
+              "expires_at": "2030-11-02T00:08:00Z",
+              "decided_at": null
+            }
+          ],
+          "pending_reservations": [
+            {
+              "reservation_id": "10000000-0000-4000-8000-000000000004",
+              "reservation_revision": "0",
+              "request_id": "20000000-0000-4000-8000-000000000004",
+              "profile_id": "synthetic.text.v1",
+              "price_version": "p-text-1",
+              "budget_month": "2030-10",
+              "pool_id": "llm",
+              "reserved_amount": { "currency": "XTS", "amount": "4" },
+              "max_liability": { "currency": "XTS", "amount": "9" },
+              "status": "usage_unknown",
+              "provider_reconciliation_id": null,
+              "actual_gross": null,
+              "credit_applied": null,
+              "additional_spend": null,
+              "credit_cycle_id": null,
+              "approval_id": null,
+              "overrun_reviewed": false
+            },
+            {
+              "reservation_id": "10000000-0000-4000-8000-000000000003",
+              "reservation_revision": "0",
+              "request_id": "20000000-0000-4000-8000-000000000003",
+              "profile_id": "synthetic.text.v1",
+              "price_version": "p-text-2",
+              "budget_month": "2030-11",
+              "pool_id": "llm.background",
+              "reserved_amount": { "currency": "XTS", "amount": "5" },
+              "max_liability": { "currency": "XTS", "amount": "8" },
+              "status": "settled",
+              "provider_reconciliation_id": "p-r3",
+              "actual_gross": { "currency": "XTS", "amount": "12" },
+              "credit_applied": { "currency": "XTS", "amount": "0" },
+              "additional_spend": { "currency": "XTS", "amount": "12" },
+              "credit_cycle_id": null,
+              "approval_id": null,
+              "overrun_reviewed": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "qa42-summary-config-invalid",
+      "title": "実行時の設定の検査に失敗していれば、すべての枠を config_invalid で保留する",
+      "current_month": "2030-11",
+      "time_zone": "UTC",
+      "generated_at": "2030-11-02T00:00:00Z",
+      "config_valid": false,
+      "reservations": [],
+      "approvals": [],
+      "expected_hold_reasons": {
+        "total": ["config_invalid"],
+        "llm": ["config_invalid"],
+        "llm.background": ["config_invalid"],
+        "llm.background.campaign": ["config_invalid"],
+        "search": ["config_invalid"],
+        "voice": ["config_invalid"],
+        "overage": ["config_invalid"]
+      },
+      "expected_months": ["2030-11"]
+    },
+    {
+      "id": "qa42-summary-limit-propagates",
+      "title": "親の枠（llm）が上限に達したら子孫は ancestor_held。上限ちょうどでも達した扱い",
+      "current_month": "2030-10",
+      "time_zone": "UTC",
+      "generated_at": "2030-10-20T00:00:00Z",
+      "config_valid": true,
+      "reservations": [
+        {
+          "id": "10000000-0000-4000-8000-000000000021",
+          "request": "20000000-0000-4000-8000-000000000021",
+          "pool": "llm",
+          "month": "2030-10",
+          "r": "60",
+          "m": "60",
+          "status": "settled",
+          "actual": "60",
+          "receipt": "p-r21"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000022",
+          "request": "20000000-0000-4000-8000-000000000022",
+          "pool": "llm",
+          "month": "2030-10",
+          "r": "10",
+          "m": "40",
+          "status": "usage_unknown"
+        }
+      ],
+      "approvals": [],
+      "expected_hold_reasons": {
+        "total": [],
+        "llm": ["limit_reached"],
+        "llm.background": ["ancestor_held"],
+        "llm.background.campaign": ["ancestor_held"],
+        "search": [],
+        "voice": [],
+        "overage": []
+      },
+      "expected_months": ["2030-10"]
+    },
+    {
+      "id": "qa42-summary-overflow",
+      "title": "合計が 18 桁を超えれば集計を拒否する",
+      "current_month": "2030-10",
+      "time_zone": "UTC",
+      "generated_at": "2030-10-20T00:00:00Z",
+      "config_valid": true,
+      "reservations": [
+        {
+          "id": "10000000-0000-4000-8000-000000000031",
+          "request": "20000000-0000-4000-8000-000000000031",
+          "pool": "llm",
+          "month": "2030-10",
+          "r": "1",
+          "m": "1",
+          "status": "settled",
+          "actual": "999999999999999999",
+          "receipt": "p-r31"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000032",
+          "request": "20000000-0000-4000-8000-000000000032",
+          "pool": "search",
+          "month": "2030-10",
+          "r": "1",
+          "m": "1",
+          "status": "settled",
+          "actual": "1",
+          "receipt": "p-r32"
+        }
+      ],
+      "approvals": [],
+      "expected": { "ok": false, "reasonCodes": ["amount_overflow"] }
+    },
+    {
+      "id": "qa42-summary-future-month",
+      "title": "今月より後の月の予約があれば（時計の戻りなど）集計しない",
+      "current_month": "2030-10",
+      "time_zone": "UTC",
+      "generated_at": "2030-10-20T00:00:00Z",
+      "config_valid": true,
+      "reservations": [
+        {
+          "id": "10000000-0000-4000-8000-000000000041",
+          "request": "20000000-0000-4000-8000-000000000041",
+          "pool": "llm",
+          "month": "2030-11",
+          "r": "1",
+          "m": "1",
+          "status": "reserved"
+        }
+      ],
+      "approvals": [],
+      "expected": { "ok": false, "reasonCodes": ["future_month"] }
+    }
+  ]
+}

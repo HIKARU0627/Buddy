@@ -6,9 +6,10 @@ import type { DesktopCanvasView } from '@buddy/contracts';
 
 export type CanvasViewItem = DesktopCanvasView['items'][number];
 
-// 物の強調に応じた枠の色と濃さ。説明文ではなく、枠で「要確認」を伝える（high は accent の枠）。
+// 物の強調に応じた形と濃さ。説明文ではなく形で伝える。high（焦点）は大きさ（配置のエンジンが広げる）と、左の端の
+// accent の太い線。選んだ物・キーボードのフォーカスは外周の輪（CanvasBoard）で、形で区別する（PR #121 のレビュー P3）。
 export function emphasisClass(emphasis: CanvasViewItem['emphasis']): string {
-  if (emphasis === 'high') return 'border-2 border-accent';
+  if (emphasis === 'high') return 'border-l-4 border-l-accent';
   if (emphasis === 'low') return 'opacity-70';
   return '';
 }

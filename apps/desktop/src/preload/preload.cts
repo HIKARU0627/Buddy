@@ -39,6 +39,7 @@ const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.power_event',
   'desktop.connection_changed',
   'desktop.canvas_changed',
+  'desktop.canvas_work_area',
 ];
 
 // 窓の役割（UI-02、ADR 0032）。main が窓を作るときに --buddy-window-role=<役割> を渡す。引数がなければ従来の窓。
@@ -64,12 +65,21 @@ const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
 };
 const ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> = {
   // 従来の窓・状態の層・入力バーはキャンバスの記述を受けない（キャンバスの窓だけ。ADR 0032）。
+  // 作業領域の外の幅（UI-06）もキャンバスの窓だけ。
   legacy: NOTIFICATION_CHANNELS.filter(
-    (channel) => channel !== 'desktop.canvas_changed',
+    (channel) =>
+      channel !== 'desktop.canvas_changed' &&
+      channel !== 'desktop.canvas_work_area',
   ),
-  canvas: ['desktop.state_changed', 'desktop.canvas_changed'],
+  canvas: [
+    'desktop.state_changed',
+    'desktop.canvas_changed',
+    'desktop.canvas_work_area',
+  ],
   status: NOTIFICATION_CHANNELS.filter(
-    (channel) => channel !== 'desktop.canvas_changed',
+    (channel) =>
+      channel !== 'desktop.canvas_changed' &&
+      channel !== 'desktop.canvas_work_area',
   ),
   input: ['desktop.state_changed'],
 };

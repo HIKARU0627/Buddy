@@ -171,11 +171,13 @@ test('notifications pass only the body, never the Electron event', () => {
   };
   const received: unknown[] = [];
   const unsubscribe = api.onNotification((value) => received.push(value));
-  // 役割の引数がない窓（従来の窓）はキャンバスの記述を受けない（UI-03。キャンバスの窓だけ）。
+  // 役割の引数がない窓（従来の窓）はキャンバスの記述（UI-03）と作業領域の外の幅（UI-06）を受けない（キャンバスの窓だけ）。
   assert.deepEqual(
     [...listeners.keys()],
     DESKTOP_NOTIFICATION_CHANNELS.filter(
-      (channel) => channel !== 'desktop.canvas_changed',
+      (channel) =>
+        channel !== 'desktop.canvas_changed' &&
+        channel !== 'desktop.canvas_work_area',
     ),
   );
   assert.deepEqual(
@@ -240,7 +242,12 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
   {
     // キャンバスの記述（UI-03）はキャンバスの窓だけが受ける。
-    canvas: ['desktop.state_changed', 'desktop.canvas_changed'],
+    // 作業領域の外の幅（UI-06）もキャンバスの窓だけ。
+    canvas: [
+      'desktop.state_changed',
+      'desktop.canvas_changed',
+      'desktop.canvas_work_area',
+    ],
     input: ['desktop.state_changed'],
     status: [
       'desktop.state_changed',
@@ -333,12 +340,15 @@ test('the legacy role argument keeps every existing channel and notification', a
         { ok: channel },
       );
   api.onNotification(() => undefined);
-  // 従来の窓はキャンバスの記述を受けない（UI-03）。ほかの通知はすべて受ける。
+  // 従来の窓はキャンバスの記述（UI-03）と作業領域の外の幅（UI-06）を受けない。ほかの通知はすべて受ける。
   assert.deepEqual(
     [...loaded.listeners.keys()],
     DESKTOP_NOTIFICATION_CHANNELS.filter(
-      (channel) => channel !== 'desktop.canvas_changed',
+      (channel) =>
+        channel !== 'desktop.canvas_changed' &&
+        channel !== 'desktop.canvas_work_area',
     ),
   );
   assert(!loaded.listeners.has('desktop.canvas_changed'));
+  assert(!loaded.listeners.has('desktop.canvas_work_area'));
 });

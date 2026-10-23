@@ -45,13 +45,14 @@ function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const viewport = useCanvasViewport();
   const shown = canvasContentShown(state.status);
   // ロック中・停止中は CanvasGround が中身を描かない（配置・選択・ドラッグも捨てる）。操作は前に出ている間だけ。
+  // 作業領域の外の幅は main が送る値（desktop.canvas_work_area）を使い、受け取る前は window.screen から求める。
   return (
     <CanvasGround front={focused} shown={shown}>
       <CanvasBoard
         view={state.canvas}
         front={focused && shown}
         viewport={viewport.size}
-        insets={viewport.insets}
+        insets={state.canvasInsets ?? viewport.insets}
         onUserOp={canvasUserOp}
       />
     </CanvasGround>

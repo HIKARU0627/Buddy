@@ -10,6 +10,7 @@ import {
   CANVAS_DISPLAY_FILE,
   DEFAULT_CANVAS_DISPLAY_SETTINGS,
   canvasInsetsOf,
+  canvasWorkAreaNotification,
   loadCanvasDisplaySettings,
   resolveCanvasDisplay,
   saveCanvasDisplaySettings,
@@ -242,4 +243,51 @@ test('insets of the canvas window are the parts outside the work area', () => {
     right: 0,
     bottom: 0,
   });
+});
+
+test('when only the work area changes (the Dock hides) with the same canvas window, main notifies new insets and the input bar fits the new reserved place only', () => {
+  // 主の画面（macOS のキャンバスは画面全体 1920 × 1080 のまま）。Dock 75 → Dock を隠して 25。
+  const before = { x: 0, y: 25, width: 1920, height: 980 };
+  const after = { x: 0, y: 25, width: 1920, height: 1030 };
+  const first = canvasWorkAreaNotification(PRIMARY.bounds, before);
+  const second = canvasWorkAreaNotification(PRIMARY.bounds, after);
+  assert.deepEqual(first, {
+    channel: 'desktop.canvas_work_area',
+    insets: { top: 25, right: 0, bottom: 75, left: 0 },
+  });
+  assert.deepEqual(second, {
+    channel: 'desktop.canvas_work_area',
+    insets: { top: 25, right: 0, bottom: 25, left: 0 },
+  });
+  assert.deepEqual(contract.notificationErrors(second), []);
+  // main は入力バーの窓を新しい作業領域の下（y 25 + 1030 − 56 − 16 = 983）へ移す。
+  const input = uiWindowSpec(
+    'input',
+    'darwin',
+    { bounds: PRIMARY.bounds, workArea: after },
+    '/p',
+  ).options;
+  const inputRect: Rect = {
+    x: input.x ?? 0,
+    y: input.y ?? 0,
+    width: input.width,
+    height: input.height,
+  };
+  assert.equal(inputRect.y, 983);
+  const reservedWith = (insets: typeof first.insets) =>
+    layoutCanvas({
+      items: [],
+      reading_order: [],
+      viewport: { width: 1920, height: 1080 },
+      insets,
+    }).reserved.input_bar;
+  // 新しい幅で計算し直せば入力バーの窓は空けた場所（y 1055 − 88 = 967 から）に入る。古い幅のまま（y 917〜1005）では入らない。
+  assert.deepEqual(reservedWith(second.insets), {
+    x: 664,
+    y: 967,
+    width: 592,
+    height: 88,
+  });
+  assert(inside(inputRect, reservedWith(second.insets)));
+  assert(!inside(inputRect, reservedWith(first.insets)));
 });

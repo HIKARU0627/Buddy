@@ -27,6 +27,12 @@ export const CANVAS_LAYOUT = {
   // カードを置ける幅がこれ未満なら 1 列にする。
   gridMinWidth: 720,
   maxRows: 48,
+  // 扱う最小の高さ（作業領域）。上の余白 24 ＋ 1 行 72 ＋ 間 16 ＋ 棚 56 ＋ 間 16 ＋ 入力バーの場所 88。これ以上なら、
+  // 少なくとも 1 行（1 列では 1 行分の物 1 つ）を置け、棚と入力バーの場所は重ならず、棚は作業領域の中にある。
+  minHeight: 272,
+  // 最小の高さに満たないときの、小さな棚（作業領域の上の端から 4 下・高さ 32）。
+  compactShelfTop: 4,
+  compactShelfHeight: 32,
 } as const;
 
 export interface CanvasLayoutItemLike {
@@ -62,6 +68,8 @@ export interface CanvasLayoutInput {
   readonly viewport: { readonly width: number; readonly height: number };
   // 作業領域の外（macOS のメニューバー・Dock など）。省略は 0。
   readonly insets?: CanvasInsets;
+  // 札から見せるよう選ばれた物（画面だけが持つ表示の切り替え。記述は変えない）。先に場所を取る。
+  readonly revealed?: string | null;
 }
 
 export interface CanvasLayoutBox {
@@ -84,7 +92,8 @@ export interface CanvasLayoutGrid {
 }
 
 export interface CanvasLayoutResult {
-  readonly mode: 'grid' | 'column';
+  // minimal は作業領域が最小の高さに満たない（物を置かず、すべて小さな棚の札にする）。
+  readonly mode: 'grid' | 'column' | 'minimal';
   // 置いた物（読む順）。
   readonly boxes: readonly CanvasLayoutBox[];
   // 置いた物と入りきらない物の読む順（記述の reading_order のまま）。
@@ -94,6 +103,8 @@ export interface CanvasLayoutResult {
   readonly shelf: {
     readonly rect: CanvasRect;
     readonly items: readonly string[];
+    // 小さな棚（最小の高さに満たないとき。作業領域の上の端に置く）。
+    readonly compact: boolean;
   };
   readonly reserved: {
     readonly input_bar: CanvasRect;
@@ -323,18 +334,49 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
     .filter((item) => item.placement === 'shelf')
     .map((item) => item.item_id);
   const common = {
-    shelf: { rect: frame.shelf, items: shelfItems },
+    shelf: { rect: frame.shelf, items: shelfItems, compact: false },
     reserved: { input_bar: frame.inputBar, status: frame.status },
   };
+  const revealed =
+    input.revealed === undefined || input.revealed === null
+      ? undefined
+      : visible.find((item) => item.item_id === input.revealed);
+
+  if (frame.safe.height < L.minHeight) {
+    // 最小の高さに満たない: 物は置かず、すべて入りきらない物にする。棚は作業領域の上の端の小さな帯にする
+    // （棚の上の端が作業領域の中にあるように）。
+    return {
+      mode: 'minimal',
+      boxes: [],
+      reading_order: visible.map((item) => item.item_id),
+      overflow: visible.map((item) => item.item_id),
+      grid: null,
+      shelf: {
+        rect: {
+          x: frame.left,
+          y: frame.safe.y + Math.min(L.compactShelfTop, frame.safe.height),
+          width: frame.width,
+          height: Math.max(
+            0,
+            Math.min(
+              L.compactShelfHeight,
+              frame.safe.height - L.compactShelfTop,
+            ),
+          ),
+        },
+        items: shelfItems,
+        compact: true,
+      },
+      reserved: common.reserved,
+    };
+  }
   const byOrder = (a: { item_id: string }, b: { item_id: string }) =>
     (orderIndex.get(a.item_id) ?? 0) - (orderIndex.get(b.item_id) ?? 0);
 
   if (frame.width < L.gridMinWidth) {
-    // 1 列: 読む順に上から、幅いっぱいで並べる。下に届いた物から後ろは入りきらない物。
-    const boxes: CanvasLayoutBox[] = [];
-    const overflow: string[] = [];
-    let y = frame.top;
-    for (const item of visible) {
+    // 1 列: 読む順に上から、幅いっぱいで並べる。下に届いた物から後ろは入りきらない物。札から見せるよう選ばれた物が
+    // あれば、先にその物の場所を取り、残りを読む順に入るだけ足す（並べる順は読む順のまま）。
+    const heightOf = (item: CanvasLayoutItemLike) => {
       const role = roleOf(item.emphasis);
       const hinted = clamp(Math.trunc(item.grid.rows), 1, 8);
       const rows =
@@ -343,11 +385,32 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
           : role === 'peripheral'
             ? 1
             : clamp(hinted, 1, 3);
-      const height = rows * L.rowHeight + (rows - 1) * L.gap;
-      if (overflow.length > 0 || y + height > frame.bottom) {
+      return rows * L.rowHeight + (rows - 1) * L.gap;
+    };
+    const room = frame.bottom - frame.top;
+    const shown = new Set<string>();
+    let used = 0;
+    const take = (item: CanvasLayoutItemLike): boolean => {
+      const add = (shown.size > 0 ? L.gap : 0) + heightOf(item);
+      if (used + add > room) return false;
+      used += add;
+      shown.add(item.item_id);
+      return true;
+    };
+    if (revealed !== undefined) take(revealed);
+    for (const item of visible) {
+      if (shown.has(item.item_id)) continue;
+      if (!take(item)) break;
+    }
+    const boxes: CanvasLayoutBox[] = [];
+    const overflow: string[] = [];
+    let y = frame.top;
+    for (const item of visible) {
+      if (!shown.has(item.item_id)) {
         overflow.push(item.item_id);
         continue;
       }
+      const height = heightOf(item);
       boxes.push({
         item_id: item.item_id,
         rect: { x: frame.left, y, width: frame.width, height },
@@ -567,7 +630,14 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
     )
       placeExact(item, cell, 'user');
   }
-  // 3. 焦点（読む順）。
+  // 3. 札から見せるよう選ばれた物（意味の規則で、ほかの物より先に場所を取る）。
+  if (
+    revealed !== undefined &&
+    !placed.has(revealed.item_id) &&
+    !overflow.has(revealed.item_id)
+  )
+    placeBySemantics(revealed);
+  // 4. 焦点（読む順）。
   for (const item of visible)
     if (
       roleOf(item.emphasis) === 'focus' &&
@@ -575,7 +645,7 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       !overflow.has(item.item_id)
     )
       placeBySemantics(item);
-  // 4. 補助、その後に周辺（読む順）。それぞれ、関係を持つ物を先に置く（相手の隣を先に取る）。関係の相手がまだなら、
+  // 5. 補助、その後に周辺（読む順）。それぞれ、関係を持つ物を先に置く（相手の隣を先に取る）。関係の相手がまだなら、
   // 相手の後に回す。
   const tier = (role: Role) => {
     const members = visible.filter((item) => roleOf(item.emphasis) === role);

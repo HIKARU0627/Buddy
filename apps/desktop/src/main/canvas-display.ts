@@ -144,8 +144,8 @@ export function saveCanvasDisplaySettings(
 }
 
 // キャンバスの窓の大きさに対する、作業領域の外の幅（macOS のメニューバー・Dock。Windows は最大化の窓なので 0）。
-// 画面（renderer）は window.screen から同じ値を求める（state/canvas-layout-state.ts の canvasInsetsFrom）。これは main の
-// 試験用（入力バーと状態の層の窓が、配置のエンジンの空けた場所に入ることを確かめる）。
+// main はこれを desktop.canvas_work_area でキャンバスの窓へ送り、画面は配置のエンジンの空ける場所を計算し直す（窓の
+// 大きさが変わらずに作業領域だけが変わったときも。PR #121 のレビュー P2）。受け取る前は、画面が window.screen から求める。
 export function canvasInsetsOf(
   canvas: Rect,
   workArea: Rect,
@@ -158,5 +158,30 @@ export function canvasInsetsOf(
       0,
       canvas.y + canvas.height - (workArea.y + workArea.height),
     ),
+  };
+}
+
+// キャンバスの窓へ送る作業領域の外の幅の通知（UI-06）。値は整数のピクセルに丸める。
+export function canvasWorkAreaNotification(
+  canvas: Rect,
+  workArea: Rect,
+): {
+  readonly channel: 'desktop.canvas_work_area';
+  readonly insets: {
+    readonly top: number;
+    readonly right: number;
+    readonly bottom: number;
+    readonly left: number;
+  };
+} {
+  const insets = canvasInsetsOf(canvas, workArea);
+  return {
+    channel: 'desktop.canvas_work_area',
+    insets: {
+      top: Math.round(insets.top),
+      right: Math.round(insets.right),
+      bottom: Math.round(insets.bottom),
+      left: Math.round(insets.left),
+    },
   };
 }

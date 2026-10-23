@@ -53,6 +53,7 @@ import {
 import {
   CANVAS_DISPLAY_FILE,
   DEFAULT_CANVAS_DISPLAY_SETTINGS,
+  canvasWorkAreaNotification,
   loadCanvasDisplaySettings,
   resolveCanvasDisplay,
 } from '../canvas-display.js';
@@ -361,6 +362,24 @@ function placeRoleWindows(): void {
   liveWindow('status')?.setBounds(
     statusWindowBounds(statusPanel.open, display.workArea),
   );
+  pushCanvasWorkArea();
+}
+
+// キャンバスの窓へ、作業領域の外の幅を送る（UI-06）。画面は配置のエンジンの空ける場所を計算し直す。窓の大きさが
+// 変わらず作業領域だけが変わったとき（Dock の大きさ・表示）も、画面の作業領域の変化（display-metrics-changed）で送る。
+function pushCanvasWorkArea(): void {
+  if (uiMode !== 'canvas' || !contractRef) return;
+  const canvas = liveWindow('canvas');
+  if (canvas === null) return;
+  const notification = canvasWorkAreaNotification(
+    canvas.getBounds(),
+    uiDisplay().workArea,
+  );
+  if (contractRef.notificationErrors(notification).length > 0) {
+    log('canvas_work_area_invalid');
+    return;
+  }
+  sendToRenderer(notification.channel, notification);
 }
 
 // 役割の窓を作る。3 つの窓と従来の窓は、同じ sandbox・contextIsolation・CSP（特権スキームの応答の見出し）・preload を使い、
@@ -418,6 +437,8 @@ function createWindow(role: UiWindowRole): BrowserWindow {
   if (role === 'canvas') {
     // 前に出したキャンバスは、Esc・ほかのアプリへの移動（前面でなくなる）で後ろへ戻る。
     window.on('blur', () => dismissCanvas('blur'));
+    // 窓の大きさが変わった（Windows の最大化など）: 作業領域の外の幅を送り直す（UI-06）。
+    window.on('resize', pushCanvasWorkArea);
     window.webContents.on('before-input-event', (event, input) => {
       if (presence.layer === 'front' && isDismissKey(input)) {
         event.preventDefault();
@@ -564,7 +585,10 @@ function registerIpc(): void {
       // キャンバスの窓は購読を始めてから状態を取る。その取得を、通知を受け取る準備ができた合図にして、今の記述を送り直す
       // （読み込み直しの通知を購読の前に取り逃しても、空のままにしない）。
       if (canvasResendAfter(entry?.role ?? null, channel))
-        setImmediate(() => link?.canvasSubscribed());
+        setImmediate(() => {
+          link?.canvasSubscribed();
+          pushCanvasWorkArea();
+        });
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window') setImmediate(hideWindows);
       // 状態の層のパネルを出す・しまう（つまみ・パネルの中の Esc。UI-04）。応答を返してから窓の大きさを変える。

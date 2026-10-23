@@ -10151,6 +10151,45 @@
           "required": ["channel", "canvas"],
           "additionalProperties": false,
           "description": "キャンバスの記述が変わった・捨てた（ADR 0032）。キャンバスの窓だけに送る。canvas が null のときは描いている物をすべて捨てる（ロック・切断・世代の変化・まだ取れていない）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.canvas_work_area"
+            },
+            "insets": {
+              "type": "object",
+              "properties": {
+                "top": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "right": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "bottom": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "left": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000
+                }
+              },
+              "required": ["top", "right", "bottom", "left"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "insets"],
+          "additionalProperties": false,
+          "description": "キャンバスの窓の大きさに対する作業領域の外の幅（メニューバー・Dock など。ピクセル。UI-06、ADR 0032）。main が窓を置いた画面の作業領域から決め、画面の追加・取り外し・作業領域の変化（Dock の大きさなど）のたびに送る。画面は配置のエンジンの空ける場所（入力バー・状態の層・棚）をこれで計算し直す。キャンバスの窓だけに送る。本文を含めない。"
         }
       ],
       "description": "main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。"

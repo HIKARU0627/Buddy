@@ -25,11 +25,12 @@ export interface RoleWindowHandle {
   // この端末の入出力を止める・再開する（状態の層だけ。止めるは確認を挟まずいつでも。再開の条件は main が検査する）。
   readonly stop: () => void;
   readonly resume: (expectedIoEpoch: string) => void;
-  // キャンバスの物のユーザーの操作（キャンバスの窓だけ。UI-06）。受け付けたら true。拒否・失敗は false（記述は main が取り直す）。
+  // キャンバスの物のユーザーの操作（キャンバスの窓だけ。UI-06）。受け付けたら中枢が当てた後の版、拒否・失敗は null
+  // （記述は main が取り直す）。
   readonly canvasUserOp: (
     op: CanvasUserOp,
     expectedRevision: string,
-  ) => Promise<boolean>;
+  ) => Promise<string | null>;
 }
 
 export function useRoleWindowState(
@@ -98,8 +99,13 @@ export function useRoleWindowState(
             op,
           }),
         )
-        .then((response) => response.outcome === 'ok')
-        .catch(() => false),
+        .then((response) =>
+          response.outcome === 'ok' &&
+          response.channel === 'desktop.canvas_user_op'
+            ? response.canvas_revision
+            : null,
+        )
+        .catch(() => null),
     [api],
   );
   return { state, summonCanvas, setPanel, stop, resume, canvasUserOp };

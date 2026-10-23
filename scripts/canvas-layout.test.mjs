@@ -69,6 +69,9 @@ test('the constants match ADR 0032 (UI-06)', () => {
     shelfMinWidth: 160,
     gridMinWidth: 720,
     maxRows: 48,
+    minHeight: 272,
+    compactShelfTop: 4,
+    compactShelfHeight: 32,
   });
 });
 
@@ -260,6 +263,7 @@ test('the shelf sits left of the input bar; shelved items keep the order of the 
   assert.deepEqual(result.shelf, {
     rect: { x: 24, y: 728, width: 304, height: 56 },
     items: ['s2', 's1'],
+    compact: false,
   });
   assert.deepEqual(result.reserved, {
     input_bar: { x: 344, y: 712, width: 592, height: 88 },
@@ -394,7 +398,7 @@ const MODES = [
 
 test('widths 480 to 1920: the mode switches at 840, and no box overlaps another, the input bar, the status edge or the shelf', () => {
   for (const [width, mode] of MODES)
-    for (const height of [720, 900, 1080]) {
+    for (const height of [272, 300, 720, 900, 1080]) {
       const result = layout(MIXED, { viewport: { width, height } });
       const label = `${width}×${height}`;
       assert.equal(result.mode, mode, label);
@@ -425,6 +429,9 @@ test('widths 480 to 1920: the mode switches at 840, and no box overlaps another,
       assert(!overlaps(result.shelf.rect, bar), `${label} shelf × bar`);
       assert(!overlaps(result.shelf.rect, status), `${label} shelf × status`);
       assert(result.shelf.rect.y + result.shelf.rect.height <= height, label);
+      // 棚の上の端も作業領域の中。
+      assert(result.shelf.rect.y >= 0, `${label} shelf top`);
+      assert.equal(result.shelf.compact, false, label);
       // 見える物はすべて、置かれるか入りきらない物のどちらか 1 回（読む順のまま）。
       const visible = MIXED.filter((entry) => entry.placement === 'canvas').map(
         (entry) => entry.item_id,
@@ -517,4 +524,121 @@ test('related items take the place next to their partner before unrelated ones; 
   ]);
   assert.deepEqual(cellOf(left, 'target'), cell(1, 9, 4, 3));
   assert.deepEqual(cellOf(left, 'other'), cell(1, 5, 4, 3));
+});
+
+test('a card chosen from its overflow tag takes its place first; the others go to tags (1 column keeps the reading order on screen)', () => {
+  // 480 × 800 の 1 列（置ける高さ 624 − 24 = 600）。札から d を選ぶ: d（248）→ a（16 + 160 → 424）→ b（16 + 248 → 688 は
+  // 入らない）。並べる順は読む順なので a が上（y 24）、d がその下（y 24 + 160 + 16 = 200）。
+  const items = [
+    item('a', { grid: { column: 1, span: 4, rows: 2 } }),
+    item('b', { emphasis: 'high', grid: { column: 1, span: 4, rows: 1 } }),
+    item('c', { emphasis: 'low', grid: { column: 1, span: 4, rows: 3 } }),
+    item('d', { grid: { column: 1, span: 4, rows: 3 } }),
+    item('e', { emphasis: 'low' }),
+  ];
+  const narrow = layoutCanvas({
+    items,
+    reading_order: ['a', 'b', 'c', 'd', 'e'],
+    viewport: { width: 480, height: 800 },
+    revealed: 'd',
+  });
+  assert.deepEqual(
+    narrow.boxes.map((box) => [box.item_id, box.rect.y, box.rect.height]),
+    [
+      ['a', 24, 160],
+      ['d', 200, 248],
+    ],
+  );
+  assert.deepEqual(narrow.overflow, ['b', 'c', 'e']);
+  assert.deepEqual(narrow.reading_order, ['a', 'b', 'c', 'd', 'e']);
+  // 格子: 5 つの焦点のうち h5 を選ぶと、h5 が先に左上（行 1・列 1）を取り、h4 が入りきらない物になる。
+  const grid = layoutCanvas({
+    items: ['h1', 'h2', 'h3', 'h4', 'h5'].map((id) =>
+      item(id, { emphasis: 'high' }),
+    ),
+    reading_order: ['h1', 'h2', 'h3', 'h4', 'h5'],
+    viewport: { width: 1280, height: 800 },
+    revealed: 'h5',
+  });
+  assert.deepEqual(cellOf(grid, 'h5'), cell(1, 1, 6, 4));
+  assert.deepEqual(cellOf(grid, 'h1'), cell(1, 7, 6, 4));
+  assert.deepEqual(cellOf(grid, 'h2'), cell(5, 1, 6, 3));
+  assert.deepEqual(cellOf(grid, 'h3'), cell(5, 7, 6, 3));
+  assert.deepEqual(grid.overflow, ['h4']);
+  // 読む順（DOM の順）は記述のまま。
+  assert.deepEqual(
+    grid.boxes.map((box) => box.item_id),
+    ['h1', 'h2', 'h3', 'h5'],
+  );
+  // 棚の物・ない物を選んでも何も変えない。
+  assert.deepEqual(
+    layoutCanvas({
+      items,
+      reading_order: ['a', 'b', 'c', 'd', 'e'],
+      viewport: { width: 480, height: 800 },
+      revealed: 'ghost',
+    }).overflow,
+    ['d', 'e'],
+  );
+});
+
+test('below the minimum height (272) nothing is placed and the shelf becomes a small strip at the top of the work area', () => {
+  for (const [width, height] of [
+    [480, 100],
+    [840, 100],
+    [1280, 200],
+    [1280, 271],
+  ]) {
+    const result = layout([item('a'), item('s', { placement: 'shelf' })], {
+      viewport: { width, height },
+    });
+    const label = `${width}×${height}`;
+    assert.equal(result.mode, 'minimal', label);
+    assert.deepEqual(result.boxes, [], label);
+    assert.deepEqual(result.overflow, ['a'], label);
+    assert.equal(result.grid, null, label);
+    // 小さな棚: 作業領域の上の端から 4 下、高さ 32、置ける幅いっぱい（幅 − 120）。
+    assert.deepEqual(
+      result.shelf,
+      {
+        rect: { x: 24, y: 4, width: width - 120, height: 32 },
+        items: ['s'],
+        compact: true,
+      },
+      label,
+    );
+  }
+  // メニューバーの下（上 25）でも、棚の上の端は作業領域の中（25 + 4）。
+  const inset = layout([item('a')], {
+    viewport: { width: 1280, height: 250 },
+    insets: { top: 25, right: 0, bottom: 0, left: 0 },
+  });
+  assert.equal(inset.mode, 'minimal');
+  assert.equal(inset.shelf.rect.y, 29);
+  // ちょうど 272 なら置ける: 格子 1 行（下端 272 − 88 − 16 = 168）、1 列でも 1 行分の物（72）が入る。
+  const wide = layout([item('a', { grid: { column: 1, span: 4, rows: 1 } })], {
+    viewport: { width: 1280, height: 272 },
+  });
+  assert.equal(wide.mode, 'grid');
+  assert.equal(wide.grid.rows, 1);
+  assert.deepEqual(cellOf(wide, 'a'), cell(1, 1, 4, 1));
+  assert.deepEqual(wide.shelf.rect, { x: 24, y: 200, width: 304, height: 56 });
+  const narrow = layout(
+    [item('a', { emphasis: 'low', grid: { column: 1, span: 4, rows: 1 } })],
+    { viewport: { width: 480, height: 272 } },
+  );
+  assert.equal(narrow.mode, 'column');
+  assert.deepEqual(rectOf(narrow, 'a'), {
+    x: 24,
+    y: 24,
+    width: 360,
+    height: 72,
+  });
+  // 棚は入力バーの上（272 − 88 − 16 − 56 = 112）。
+  assert.deepEqual(narrow.shelf.rect, {
+    x: 24,
+    y: 112,
+    width: 360,
+    height: 56,
+  });
 });

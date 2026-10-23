@@ -217,15 +217,55 @@ test('a heading is drawn as text only: markup in it is escaped and never becomes
   assert.match(html, /&lt;img src=x onerror=1&gt;/u);
 });
 
-test('emphasis is shown by the frame, not by words', () => {
-  assert.equal(emphasisClass('high'), 'border-2 border-accent');
+test('emphasis is shown by shape, not by words: focus is size and a left accent bar, selection is the outer ring', () => {
+  assert.equal(emphasisClass('high'), 'border-l-4 border-l-accent');
   assert.equal(emphasisClass('normal'), '');
   assert.equal(emphasisClass('low'), 'opacity-70');
   const high = board(view([item('x', { emphasis: 'high' })]));
   assert.match(high, /data-emphasis="high"/u);
-  assert.match(high, /border-accent/u);
+  assert.match(high, /border-l-4 border-l-accent/u);
+  // 焦点は外周の輪を使わない（輪は選んだ物・キーボードのフォーカスだけ）。
+  assert.doesNotMatch(high, /ring-focus/u);
   const normal = board(view([item('x')]));
-  assert.doesNotMatch(normal, /border-accent/u);
+  assert.doesNotMatch(normal, /border-l-accent/u);
+});
+
+test('an overflow tag offers show, shelve and close while in front; below the minimum height the shelf is a small strip at the top', () => {
+  // 480 × 800 の 1 列で a・b（3 行ずつ）が入り、c は札。
+  const three = view(
+    ['a', 'b', 'c'].map((id) =>
+      item(id, {
+        heading: `見出し${id}`,
+        grid: { column: 1, span: 4, rows: 3 },
+      }),
+    ),
+  );
+  const front = board(three, {
+    front: true,
+    viewport: { width: 480, height: 800 },
+  });
+  assert.match(front, /data-overflow="c"/u);
+  assert.match(front, /aria-label="見出しcを見せる"/u);
+  assert.match(front, /aria-label="見出しcを棚へ片付ける"/u);
+  assert.match(front, /aria-label="見出しcを閉じる"/u);
+  // 後ろにある間は、見せるボタンは押せず、片付ける・閉じるは出さない。
+  const back = board(three, { viewport: { width: 480, height: 800 } });
+  assert.match(
+    back,
+    /aria-label="見出しcを見せる"[^>]*disabled=""|disabled=""[^>]*aria-label="見出しcを見せる"/u,
+  );
+  assert.doesNotMatch(back, /見出しcを閉じる/u);
+  // 高さ 200（最小の 272 に満たない）: 物は置かず、すべて札。棚は上の端の小さな帯（y 4・高さ 32）。
+  const low = board(three, {
+    front: true,
+    viewport: { width: 1280, height: 200 },
+  });
+  assert.match(low, /data-layout-mode="minimal"/u);
+  assert.doesNotMatch(low, /data-item=/u);
+  assert.match(
+    low,
+    /data-shelf="compact" style="left:24px;top:4px;width:1160px;height:32px"/u,
+  );
 });
 
 test('an empty list shows an empty mark instead of rows', () => {

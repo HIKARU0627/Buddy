@@ -74,22 +74,34 @@ export interface CanvasDrag {
   readonly cell: CanvasCellLike;
 }
 
+export interface CanvasPending {
+  // 操作の ID（画面の中で単調に増やし、使い回さない）と世代（選択・ドラッグ・送信中を捨てるたびに進める）。
+  // 応答はこの 2 つが今の送信中と同じときだけ反映する（前の操作の遅れた応答で、次の操作の保護を外さない）。
+  readonly op_id: number;
+  readonly generation: number;
+  readonly item_id: string;
+  // cell が null なら閉じる・片付けるの送信中。
+  readonly cell: CanvasCellLike | null;
+  // 送ったときに描いていた版。
+  readonly revision: string;
+  // 中枢が当てた後の版（成功の応答の canvas_revision）。null は応答を待っている。
+  readonly applied: string | null;
+}
+
 export interface CanvasInteraction {
   readonly selected: string | null;
   readonly drag: CanvasDrag | null;
-  // 送った操作が当たる（新しい版が届く）か拒否されるまで守る位置。cell が null なら閉じる・片付けるの送信中。
-  readonly pending: {
-    readonly item_id: string;
-    readonly cell: CanvasCellLike | null;
-    // 送ったときに描いていた版。
-    readonly revision: string;
-  } | null;
+  // 送った操作が当たった版の記述が届くか、拒否されるまで守る位置。
+  readonly pending: CanvasPending | null;
+  // 入りきらない物の札から見せるよう選んだ物（画面だけの表示の切り替え。記述・記録は変えない）。
+  readonly revealed: string | null;
 }
 
 export const NO_INTERACTION: CanvasInteraction = {
   selected: null,
   drag: null,
   pending: null,
+  revealed: null,
 };
 
 const visibleIds = (view: DesktopCanvasView | null): Set<string> =>
@@ -110,8 +122,9 @@ const newer = (a: string, b: string): boolean => {
 };
 
 // 新しい記述が届いた。記述がない（ロック・停止・切断で捨てた）ならすべて捨てる。ドラッグしている物がなくなった
-// （AI が閉じた・片付けた）ならドラッグをやめる。送信中の位置は、送ったときより新しい版が届いたら解く（Core が当てた）。
-// ドラッグしている物の位置は変えない（AI の更新から守る）。
+// （AI が閉じた・片付けた）ならドラッグをやめる。送信中の位置は、中枢が当てた版（成功の応答の canvas_revision）以上の
+// 記述が届いたら解く（ほかの物の更新で新しい版が届いただけでは解かない。PR #121 のレビュー P2）。その物が記述から
+// なくなったときも解く。ドラッグしている物の位置は変えない（AI の更新から守る）。
 export function interactionAfterView(
   state: CanvasInteraction,
   view: DesktopCanvasView | null,
@@ -122,7 +135,8 @@ export function interactionAfterView(
     state.drag !== null && visible.has(state.drag.item_id) ? state.drag : null;
   const pending =
     state.pending !== null &&
-    (newer(view.canvas_revision, state.pending.revision) ||
+    ((state.pending.applied !== null &&
+      !newer(state.pending.applied, view.canvas_revision)) ||
       !view.items.some((item) => item.item_id === state.pending?.item_id))
       ? null
       : state.pending;
@@ -130,13 +144,18 @@ export function interactionAfterView(
     state.selected !== null && visible.has(state.selected)
       ? state.selected
       : null;
+  const revealed =
+    state.revealed !== null && visible.has(state.revealed)
+      ? state.revealed
+      : null;
   if (
     drag === state.drag &&
     pending === state.pending &&
-    selected === state.selected
+    selected === state.selected &&
+    revealed === state.revealed
   )
     return state;
-  return { selected, drag, pending };
+  return { selected, drag, pending, revealed };
 }
 
 // エンジンに守らせる物（ドラッグ中が先、次に送信中）。
@@ -165,6 +184,7 @@ export function layoutForView(
     reading_order: (view?.reading_order ?? []).filter((id) => id !== hidden),
     user_pins: view?.user_pins ?? [],
     held: heldOf(interaction),
+    revealed: interaction.revealed,
     viewport,
     insets,
   });
@@ -179,6 +199,7 @@ export function beginDrag(
 ): CanvasInteraction {
   if (box.cell === null || state.pending !== null) return state;
   return {
+    ...state,
     selected: box.item_id,
     pending: null,
     drag: {
@@ -269,26 +290,52 @@ export function sent(
   state: CanvasInteraction,
   op: CanvasUserOp,
   revision: string,
+  id: { readonly opId: number; readonly generation: number },
 ): CanvasInteraction {
+  const removes = op.kind === 'close' || op.kind === 'shelve';
   return {
     selected: op.kind === 'move' || op.kind === 'resize' ? op.item_id : null,
     drag: null,
     pending: {
+      op_id: id.opId,
+      generation: id.generation,
       item_id: op.item_id,
       cell: 'cell' in op ? { ...op.cell } : null,
       revision,
+      applied: null,
     },
+    revealed: removes && state.revealed === op.item_id ? null : state.revealed,
   };
 }
 
-// 送った操作の応答が来た。拒否・結果不明なら守る位置を解く（記述は main が取り直す）。当たったなら新しい版が届くまで守る。
+// 送った操作の応答が来た。操作の ID と世代が今の送信中と違えば何もしない（前の操作の遅れた応答・捨てた後の応答）。
+// 拒否・結果不明（applied が null）なら守る位置を解く（記述は main が取り直す）。当たったなら、当てた版を覚え、
+// その版以上の記述が届くまで守る（今の記述がもうその版以上なら、すぐに解く）。
 export function settled(
   state: CanvasInteraction,
-  accepted: boolean,
+  id: { readonly opId: number; readonly generation: number },
+  applied: string | null,
+  viewRevision: string | null,
 ): CanvasInteraction {
-  return accepted || state.pending === null
-    ? state
-    : { ...state, pending: null };
+  const pending = state.pending;
+  if (
+    pending === null ||
+    pending.op_id !== id.opId ||
+    pending.generation !== id.generation
+  )
+    return state;
+  if (applied === null) return { ...state, pending: null };
+  if (viewRevision !== null && !newer(applied, viewRevision))
+    return { ...state, pending: null };
+  return { ...state, pending: { ...pending, applied } };
+}
+
+// 入りきらない物の札から、その物を見せる（ほかの物が札に回る）。画面だけの切り替えで、記述・記録は変えない。
+export function reveal(
+  state: CanvasInteraction,
+  itemId: string,
+): CanvasInteraction {
+  return { ...state, revealed: itemId, selected: itemId };
 }
 
 export interface KeyLike {

@@ -48,6 +48,8 @@ export const DESKTOP_NOTIFICATION_CHANNELS = [
   'desktop.connection_changed',
   // UI-03: キャンバスの記述が変わった・捨てた（キャンバスの窓だけ。ADR 0032）。
   'desktop.canvas_changed',
+  // UI-06: キャンバスの窓の作業領域の外の幅が変わった（キャンバスの窓だけ。ADR 0032）。
+  'desktop.canvas_work_area',
 ] as const;
 
 export const DESKTOP_POWER_EVENTS = [
@@ -251,7 +253,12 @@ export const DESKTOP_ROLE_NOTIFICATIONS: Readonly<
   >
 > = {
   // キャンバスの記述はキャンバスの窓だけに送る（状態の層・入力バーへは送らない）。
-  canvas: ['desktop.state_changed', 'desktop.canvas_changed'],
+  canvas: [
+    'desktop.state_changed',
+    'desktop.canvas_changed',
+    // 作業領域の外の幅（UI-06）。配置のエンジンの空ける場所の計算し直しに使う。
+    'desktop.canvas_work_area',
+  ],
   status: [
     'desktop.state_changed',
     'desktop.power_event',

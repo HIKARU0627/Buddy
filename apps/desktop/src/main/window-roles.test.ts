@@ -217,11 +217,26 @@ test('the legacy window keeps every existing channel and the same sender decisio
     'desktop.connection_changed',
   ])
     assert.equal(notificationAllowedForWindow('legacy', channel), true);
-  // キャンバスの記述（UI-03）は従来の窓へ送らない。
+  // キャンバスの記述（UI-03）と作業領域の外の幅（UI-06）は従来の窓へ送らない。
   assert.equal(
     notificationAllowedForWindow('legacy', 'desktop.canvas_changed'),
     false,
   );
+  assert.equal(
+    notificationAllowedForWindow('legacy', 'desktop.canvas_work_area'),
+    false,
+  );
+  // 作業領域の外の幅はキャンバスの窓だけ（状態の層・入力バーへは送らない）。
+  assert.equal(
+    notificationAllowedForWindow('canvas', 'desktop.canvas_work_area'),
+    true,
+  );
+  for (const role of ['status', 'input'] as const)
+    assert.equal(
+      notificationAllowedForWindow(role, 'desktop.canvas_work_area'),
+      false,
+      role,
+    );
 });
 
 // UI-03（ADR 0032）: キャンバスの記述の通知はキャンバスの窓だけ。読み込みが終わっていない窓へは送らない。

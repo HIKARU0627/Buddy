@@ -451,7 +451,19 @@ export function applyCanvasUserOp(input: {
       pins.push({ item_id: op.item_id, cell: { ...op.cell } });
       break;
     case 'close':
-      items = items.filter((entry) => entry.item_id !== op.item_id);
+      // 閉じた物への関係（compare・sequence・detail_of）も同じ操作で取り除く（参照先のない関係を残さない）。
+      items = items
+        .filter((entry) => entry.item_id !== op.item_id)
+        .map((entry) =>
+          entry.relations.some((relation) => relation.target === op.item_id)
+            ? {
+                ...entry,
+                relations: entry.relations.filter(
+                  (relation) => relation.target !== op.item_id,
+                ),
+              }
+            : entry,
+        );
       order = order.filter((id) => id !== op.item_id);
       break;
     case 'shelve':

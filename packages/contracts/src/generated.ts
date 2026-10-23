@@ -1195,6 +1195,15 @@ export type DesktopIpcNotification =
   | {
       channel: 'desktop.canvas_changed';
       canvas: DesktopCanvasView | null;
+    }
+  | {
+      channel: 'desktop.canvas_work_area';
+      insets: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+      };
     };
 /**
  * 物の種類（ADR 0032）。card はキャンバスの格子に置くカード、float はキャンバスの窓の中に浮かぶフローティングウィンドウ。どちらもキャンバスの窓の外に出られない。

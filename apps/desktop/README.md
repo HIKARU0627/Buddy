@@ -34,7 +34,7 @@ pnpm --filter @buddy/desktop dev
 
 ### 配置のエンジンとユーザーの操作（UI-06）
 
-同じフラグのとき、キャンバスの窓は物の位置と大きさを配置のエンジン（`@buddy/domain` の `layoutCanvas`）で決めます。意味（強調・まとまり・関係・格子のヒント）から置き、下の中央（入力バー）と右の端（状態の層）を空け、使わない物は下の棚に並べます。幅が 840 未満なら 1 列です。キャンバスを前に出している間だけ、見出しの帯を掴んで動かす・右下の角で大きさを変える・×で閉じる・下向きの矢印で棚へ片付ける・棚の物を押して出すことができ、キーボードでも同じことができます（Tab・矢印・Shift ＋ 矢印・Delete・Alt ＋ ↓）。操作は main を通して中枢に記録します（`desktop.canvas_user_op` → `POST /v1/canvas/user-ops`。`src/main/canvas-bridge.ts`）。キャンバスを置く画面の設定はユーザーのデータの場所の `canvas-display.json` だけで（既定は主の画面。`src/main/canvas-display.ts`）、キャンバスの本文・見出しは端末に保存しません。試した範囲は [docs/ui/canvas-layout.md](../../docs/ui/canvas-layout.md) です。
+同じフラグのとき、キャンバスの窓は物の位置と大きさを配置のエンジン（`@buddy/domain` の `layoutCanvas`）で決めます。意味（強調・まとまり・関係・格子のヒント）から置き、下の中央（入力バー）と右の端（状態の層）を空け、使わない物は下の棚に並べます。幅が 840 未満なら 1 列で、入りきらない物は棚の場所の札になり、札を押すとその物を見せます（作業領域の高さが 272 未満なら物を置かず、棚は上の端の小さな帯です）。作業領域の外の幅（メニューバー・Dock）は main が知らせます（`desktop.canvas_work_area`）。キャンバスを前に出している間だけ、見出しの帯を掴んで動かす・右下の角で大きさを変える・×で閉じる・下向きの矢印で棚へ片付ける・棚の物を押して出すことができ、キーボードでも同じことができます（Tab・矢印・Shift ＋ 矢印・Delete・Alt ＋ ↓）。操作は main を通して中枢に記録します（`desktop.canvas_user_op` → `POST /v1/canvas/user-ops`。`src/main/canvas-bridge.ts`）。キャンバスを置く画面の設定はユーザーのデータの場所の `canvas-display.json` だけで（既定は主の画面。`src/main/canvas-display.ts`）、キャンバスの本文・見出しは端末に保存しません。試した範囲は [docs/ui/canvas-layout.md](../../docs/ui/canvas-layout.md) です。
 
 ## 確かめられること
 

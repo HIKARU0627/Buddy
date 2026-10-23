@@ -53,7 +53,15 @@ export interface DesktopViewState {
   // キャンバスの窓が描く記述（main が検査して参照を置き換えたもの。ADR 0032）。null は受け取っていない・捨てた。
   // ロック中・不明になったら、main の通知を待たずに捨てる（解除しても main が送り直すまで戻さない）。
   readonly canvas: DesktopCanvasView | null;
+  // キャンバスの窓の作業領域の外の幅（main が画面の作業領域から決めて送る。UI-06）。null は受け取っていない
+  // （画面は window.screen から求めた値を使う）。
+  readonly canvasInsets: CanvasWorkAreaInsets | null;
 }
+
+export type CanvasWorkAreaInsets = Extract<
+  DesktopIpcNotification,
+  { channel: 'desktop.canvas_work_area' }
+>['insets'];
 
 export const INITIAL_VIEW_STATE: DesktopViewState = {
   status: null,
@@ -65,6 +73,7 @@ export const INITIAL_VIEW_STATE: DesktopViewState = {
   lastTarget: null,
   submittedName: null,
   canvas: null,
+  canvasInsets: null,
 };
 
 export const IPC_FAILURE_MESSAGE =
@@ -128,6 +137,8 @@ export function applyNotification(
   }
   if (notification.channel === 'desktop.canvas_changed')
     return { ...state, canvas: notification.canvas };
+  if (notification.channel === 'desktop.canvas_work_area')
+    return { ...state, canvasInsets: notification.insets };
   return {
     ...state,
     powerLog: [notification, ...state.powerLog].slice(0, POWER_LOG_LIMIT),

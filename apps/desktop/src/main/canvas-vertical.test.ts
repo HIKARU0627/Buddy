@@ -44,6 +44,7 @@ import {
   tempDir,
   waitUntil,
 } from './hub-test-support.js';
+import { describeExchange } from './hub-test-support.js';
 import type { TestHub } from './hub-test-support.js';
 import { hubRequest, createHubTransport } from './hub-transport.js';
 import type { PinnedHub } from './hub-transport.js';
@@ -273,9 +274,6 @@ async function startClient(
     onChange: () => undefined,
     log: (code) => logs.push(code),
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
-    // 負荷の高い CI で購読が生きていても時間切れにならないよう長くする（中枢は 200 ミリ秒ごとに ping を送る）。
-    // 切れて再接続すると、待っている版の知らせが届かず試験が止まる。
-    aliveTimeoutMs: 30_000,
     ...(options.io === undefined
       ? {}
       : { ioState: () => (options.io as { state: DesktopIoState }).state }),
@@ -322,33 +320,6 @@ async function startClient(
     },
   });
   onCleanup(t, () => link.stop());
-  // 接続が live で安定したことを待つ（live のまま、中枢の確認の時刻が続けて 3 回進む。live でなくなれば数え直す）。
-  // 最初の発言の前に 1 回だけ待つ。
-  let settledOnce: Promise<void> | null = null;
-  const settled = (): Promise<void> => {
-    settledOnce ??= (() => {
-      let last: number | null = null;
-      let changes = 0;
-      return waitUntil(
-        () => {
-          const state = link.linkState;
-          if (state === null || state.phase !== 'live') {
-            last = null;
-            changes = 0;
-            return false;
-          }
-          if (state.lastConfirmedAt !== last) {
-            last = state.lastConfirmedAt;
-            changes += 1;
-          }
-          return changes >= 3;
-        },
-        'stable live',
-        20_000,
-      );
-    })();
-    return settledOnce;
-  };
   const send = async (
     webContentsId: number,
     channel: string,
@@ -384,32 +355,13 @@ async function startClient(
     requests,
     streamBodies,
     confirms,
-    // 入力バー（webContents 13）から発言する。接続が live で安定してから送る（ペアリング直後などの再接続と競合すると、
-    // 送った後に世代が変わって結果不明になる。製品の扱いは正しいので、試験が安定を待つ）。送り直すのは、送っていない
-    // ことが確かな（送る前の not_connected）ときだけ（two-clients.test の work と同じ）。時間では待たない。
+    // 最初の live で一度だけ送る。確認時刻の進行や再接続の収束を待たない（Issue #108）。
     async submit(text) {
-      await settled();
-      for (let attempt = 0; ; attempt += 1) {
-        await waitUntil(
-          () => link.linkState?.phase === 'live',
-          'live before submit',
-        );
-        const before = requests.length;
-        const response = await send(13, 'desktop.turn_submit', { text });
-        if (
-          attempt < 20 &&
-          response.outcome === 'rejected' &&
-          field(response, 'reason') === 'not_connected'
-        ) {
-          assert.deepEqual(
-            requests.slice(before).filter((line) => line.includes('/turns')),
-            [],
-            'a message was sent and then reported as not connected',
-          );
-          continue;
-        }
-        return response;
-      }
+      await waitUntil(
+        () => link.linkState?.phase === 'live',
+        'live before submit',
+      );
+      return send(13, 'desktop.turn_submit', { text });
     },
     ipc: send,
     async coreCanvas() {
@@ -470,6 +422,22 @@ test(
     // 入力バー（webContents 13）から発言する。文字の結果は answered、予定は 4 件（ev-0〜ev-3）で、重なりが 2 件。
     const response = await client.submit('今日の用事を見せて');
     assert.equal(response.outcome, 'ok', JSON.stringify(response));
+    assert.equal(
+      client.requests.filter((line) => line === 'GET /v1/bootstrap').length,
+      1,
+      describeExchange(client),
+    );
+    assert.deepEqual(
+      client.logs.filter((line) => line.startsWith('link:')),
+      [
+        'link:bootstrapping',
+        'link:snapshotting',
+        'link:subscribing',
+        'link:live',
+      ],
+      describeExchange(client),
+    );
+
     const turn = field(response, 'turn') as {
       status: string;
       result: Record<string, unknown>;

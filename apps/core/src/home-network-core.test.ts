@@ -226,7 +226,8 @@ test(
     };
     const { handle, target } = await startWith(t, {
       tailscale: createMockTailscaleStatusSource(() => path),
-      eventStream: { pingIntervalMs: 200 },
+      // DERP への変化を定期再検査で拾うための短縮。切断待ちの 10 秒以内で、pong の処理には余裕を持たせる。
+      eventStream: { pingIntervalMs: 1_000 },
     });
     const hub = await insertDevice(handle.store, { hubLocal: true });
     const leaving = await insertDevice(handle.store, { name: '合成の端末 A' });

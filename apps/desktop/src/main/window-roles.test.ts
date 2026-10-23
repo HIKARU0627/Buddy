@@ -50,7 +50,9 @@ const SUMMON = 'desktop.canvas_summon';
 const PANEL = 'desktop.status_panel';
 // UI-06 で足した、キャンバスの物のユーザーの操作のチャネル（キャンバスの窓だけ。従来の窓は使わない）。
 const USER_OP = 'desktop.canvas_user_op';
-const ALL_CHANNELS = [...LEGACY_CHANNELS, SUMMON, PANEL, USER_OP];
+// UI-07 で足した、キャンバスの物の中身（本文）を求めるチャネル（キャンバスの窓だけ。従来の窓は使わない）。
+const CONTENT = 'desktop.canvas_content';
+const ALL_CHANNELS = [...LEGACY_CHANNELS, SUMMON, PANEL, USER_OP, CONTENT];
 
 const UNLOCKED = {
   lockState: 'unlocked',
@@ -197,7 +199,7 @@ test('the legacy window keeps every existing channel and the same sender decisio
   }
   // 従来の窓はキャンバスを前に出さない・状態の層のパネルを使わない・キャンバスの物を操作しない（従来の窓の組み立てには
   // どちらもない）。
-  for (const channel of [SUMMON, PANEL, USER_OP]) {
+  for (const channel of [SUMMON, PANEL, USER_OP, CONTENT]) {
     assert.equal(channelAllowedForWindow('legacy', channel), false, channel);
     assert.deepEqual(
       admitDesktopRequest(
@@ -280,10 +282,13 @@ test('the canvas description notification goes to the canvas window only, and on
 test('each role admits only its own channels; the rest are untrusted senders', () => {
   const registry = threeWindows();
   const allowed: Record<Exclude<UiWindowRole, 'legacy'>, readonly string[]> = {
-    canvas: ['desktop.get_state', USER_OP],
+    canvas: ['desktop.get_state', USER_OP, CONTENT],
     input: ['desktop.get_state', 'desktop.turn_submit', SUMMON],
     status: ALL_CHANNELS.filter(
-      (channel) => channel !== 'desktop.turn_submit' && channel !== USER_OP,
+      (channel) =>
+        channel !== 'desktop.turn_submit' &&
+        channel !== USER_OP &&
+        channel !== CONTENT,
     ),
   };
   const ids = { canvas: 11, status: 12, input: 13 } as const;
@@ -338,6 +343,10 @@ test('each role admits only its own channels; the rest are untrusted senders', (
   assert.equal(senderFor(registry, 11, USER_OP).trustedSender, true);
   assert.equal(senderFor(registry, 12, USER_OP).trustedSender, false);
   assert.equal(senderFor(registry, 13, USER_OP).trustedSender, false);
+  // 物の中身（本文）もキャンバスの窓だけ（状態の層・入力バーへは本文を渡さない。UI-07）。
+  assert.equal(senderFor(registry, 11, CONTENT).trustedSender, true);
+  assert.equal(senderFor(registry, 12, CONTENT).trustedSender, false);
+  assert.equal(senderFor(registry, 13, CONTENT).trustedSender, false);
   // キャンバスは自分を前に出せない。状態の層と入力バーは呼べる。
   assert.equal(senderFor(registry, 11, SUMMON).trustedSender, false);
   assert.equal(senderFor(registry, 12, SUMMON).trustedSender, true);

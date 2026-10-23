@@ -14,6 +14,7 @@ import {
 } from './desktop-state.js';
 import type { DesktopViewState } from './desktop-state.js';
 import { initialChannelsFor } from './window-role-state.js';
+import type { ContentLoader } from './use-canvas-contents.js';
 import type { RendererWindowRole } from './window-role-state.js';
 
 export interface RoleWindowHandle {
@@ -31,6 +32,9 @@ export interface RoleWindowHandle {
     op: CanvasUserOp,
     expectedRevision: string,
   ) => Promise<string | null>;
+  // キャンバスの物の中身（本文）を main に求める（キャンバスの窓だけ。UI-07）。取れたら中身、拒否・失敗は null。
+  // 本文は応答でだけ届き、画面のメモリーだけに置く（通知・保存に載せない）。
+  readonly canvasContent: ContentLoader;
 }
 
 export function useRoleWindowState(
@@ -108,7 +112,34 @@ export function useRoleWindowState(
         .catch(() => null),
     [api],
   );
-  return { state, summonCanvas, setPanel, stop, resume, canvasUserOp };
+  const canvasContent = useCallback<ContentLoader>(
+    (itemId, expectedRevision, openRef) =>
+      api
+        .invoke(
+          request('desktop.canvas_content', {
+            item_id: itemId,
+            expected_canvas_revision: expectedRevision,
+            open_ref: openRef,
+          }),
+        )
+        .then((response) =>
+          response.outcome === 'ok' &&
+          response.channel === 'desktop.canvas_content'
+            ? { content: response.content, open_index: response.open_index }
+            : null,
+        )
+        .catch(() => null),
+    [api],
+  );
+  return {
+    state,
+    summonCanvas,
+    setPanel,
+    stop,
+    resume,
+    canvasUserOp,
+    canvasContent,
+  };
 }
 
 export interface CanvasViewport {

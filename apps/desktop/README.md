@@ -32,6 +32,10 @@ pnpm --filter @buddy/desktop dev
 
 同じフラグのとき、端のつまみ（入出力の記号・確認が必要な操作の数・専用の記号 3 つ）を押すか ⌘⌥⇧P（Windows は Ctrl+Alt+Shift+P）で、main が状態の層の窓を画面の右の端から広げてパネルを出します（`desktop.status_panel`。`src/main/status-panel.ts`）。パネルには、入出力と停止・再開、ADR 0014 の 8 項目、確認が必要な操作の一覧と確認の欄（従来の窓の WorkPanel と同じ部品）を出します。Esc・つまみ・外へのクリックでしまいます。承認・取消・再試行・照合は、パネルの窓を親にした OS の確認ダイアログで 1 回行います。⌘⌥⇧X（Windows は Ctrl+Alt+Shift+X）は全体の停止で、トレイの「入出力を停止」と同じ処理です。これは既定の従来の窓（配布版を含む）でも登録し、登録できなければトレイの停止の項目と停止のボタンの横に ⚠ を出します（`src/main/global-shortcuts.ts`）。試した範囲は [docs/ui/status-layer.md](../../docs/ui/status-layer.md) です。
 
+### 部品のカタログ（UI-07）
+
+同じフラグのとき、キャンバスの窓は 9 つの部品（list・table・schedule_timeline・mail_card・compare・progress・chart・source_list・text）を HeroUI で描きます（`src/renderer/screens/canvas/ItemCard.tsx` と `parts/`）。説明文は置かず、数・形・位置で伝えます（重なる予定は横に並べる、違う値は列を分ける、系列は色だけでなく塗り方・線の種類・点の形で分ける）。本文（行・セル・予定・メールの件名・出典など）は、描くときにキャンバスの窓が main に求め（`desktop.canvas_content`。`src/main/canvas-bridge.ts` の `content`）、main が中枢から許可範囲内で取って返します（`POST /v1/canvas/content`）。本文は main と画面のメモリーだけに置き、端末に保存せず、イベントにも入れず、キャンバスの窓だけに届け、ロック・停止・切断・世代の変化で捨てます。UI-07 の中身は模擬の合成データです（実データは B08・B09・B11）。試した範囲は [docs/ui/canvas-catalog.md](../../docs/ui/canvas-catalog.md) です。
+
 ### 配置のエンジンとユーザーの操作（UI-06）
 
 同じフラグのとき、キャンバスの窓は物の位置と大きさを配置のエンジン（`@buddy/domain` の `layoutCanvas`）で決めます。意味（強調・まとまり・関係・格子のヒント）から置き、下の中央（入力バー）と右の端（状態の層）を空け、使わない物は下の棚に並べます。幅が 840 未満なら 1 列で、入りきらない物は棚の場所の札になり、札を押すとその物を見せます（作業領域の高さが 272 未満なら物を置かず、棚は上の端の小さな帯です）。作業領域の外の幅（メニューバー・Dock）は main が知らせます（`desktop.canvas_work_area`）。キャンバスを前に出している間だけ、見出しの帯を掴んで動かす・右下の角で大きさを変える・×で閉じる・下向きの矢印で棚へ片付ける・棚の物を押して出すことができ、キーボードでも同じことができます（Tab・矢印・Shift ＋ 矢印・Delete・Alt ＋ ↓）。操作は main を通して中枢に記録します（`desktop.canvas_user_op` → `POST /v1/canvas/user-ops`。`src/main/canvas-bridge.ts`）。キャンバスを置く画面の設定はユーザーのデータの場所の `canvas-display.json` だけで（既定は主の画面。`src/main/canvas-display.ts`）、キャンバスの本文・見出しは端末に保存しません。試した範囲は [docs/ui/canvas-layout.md](../../docs/ui/canvas-layout.md) です。

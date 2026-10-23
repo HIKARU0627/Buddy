@@ -347,6 +347,15 @@
       "$ref": "#/$defs/CanvasUserOpResponse"
     },
     {
+      "$ref": "#/$defs/CanvasContent"
+    },
+    {
+      "$ref": "#/$defs/CanvasContentRequest"
+    },
+    {
+      "$ref": "#/$defs/CanvasContentResponse"
+    },
+    {
       "$ref": "#/$defs/DesktopCanvasDisplaySettings"
     }
   ],
@@ -8505,7 +8514,8 @@
         "desktop.operation_check",
         "desktop.canvas_summon",
         "desktop.status_panel",
-        "desktop.canvas_user_op"
+        "desktop.canvas_user_op",
+        "desktop.canvas_content"
       ],
       "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。"
     },
@@ -9135,6 +9145,44 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "キャンバスの物を動かす・大きさを変える・閉じる・棚へ片付ける・棚から出す（UI-06、ADR 0032）。キャンバスの窓だけが使え、キャンバスが前に出ていて前面のときだけ受け付ける（ロック解除済み・入出力が止まっていない）。main は中枢へ操作を記録し、中枢は記述に当てて版を進める。expected_canvas_revision は画面が描いている版。承認・停止とは別のチャネル。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.canvas_content"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "item_id": {
+                  "$ref": "#/$defs/CanvasItemId"
+                },
+                "expected_canvas_revision": {
+                  "$ref": "#/$defs/CanvasRevision"
+                },
+                "open_ref": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["item_id", "expected_canvas_revision", "open_ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "キャンバスの物の中身（行・セル・メールの件名など）を main に求める（UI-07、ADR 0032）。キャンバスの窓だけが使え、ロック解除済みのときだけ受け付ける（後ろにある間も、描いている物の中身を取る）。open_ref はメールの本文を開く行の不透明な参照（記述の item_refs の ref）で、null なら開かない。開くのは本人の操作なので、キャンバスが前に出ているときだけ。main は中枢から許可範囲内で取り、検査してから、不透明な参照の位置のまま返す。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -10164,6 +10212,52 @@
           "required": ["request_id", "channel", "outcome", "canvas_revision"],
           "additionalProperties": false,
           "description": "受け付けた。中枢が操作を当てた後のキャンバスの版を返す（記述は desktop.canvas_changed で届く）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.canvas_content"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "canvas_revision": {
+              "$ref": "#/$defs/CanvasRevision"
+            },
+            "item_id": {
+              "$ref": "#/$defs/CanvasItemId"
+            },
+            "open_index": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CanvasOpenIndex"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "content": {
+              "$ref": "#/$defs/CanvasContent"
+            }
+          },
+          "required": [
+            "request_id",
+            "channel",
+            "outcome",
+            "canvas_revision",
+            "item_id",
+            "open_index",
+            "content"
+          ],
+          "additionalProperties": false,
+          "description": "物の中身（UI-07）。この応答だけが本文を運び、通知・イベント・状態欄には載せない。画面のメモリーだけに置き、保存しない。"
         },
         {
           "type": "object",
@@ -11277,6 +11371,524 @@
       "additionalProperties": false,
       "description": "ユーザーの操作を当てた後のキャンバスの版（UI-06、ADR 0032）。記述そのものは getCanvas で取る（購読の canvas の知らせも届く）。"
     },
+    "CanvasContentText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u2028-\\u202E\\u2066-\\u2069]+$",
+      "description": "キャンバスの部品の本文の 1 行の文字列（UI-07、ADR 0032）。プレーンテキストとしてだけ描く（React の文字列の子。HTML として解釈せず、リンクにしない）。制御文字・改行・双方向の制御文字を拒否する。マークアップや URL の文字は文字として見えるだけ。"
+    },
+    "CanvasContentLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 24,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u2028-\\u202E\\u2066-\\u2069]+$",
+      "description": "キャンバスの部品の短い名前（ラベル・列の名前・軸の名前。UI-07）。24 文字まで、1 行のプレーンテキスト。"
+    },
+    "CanvasContentCell": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 120,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u2028-\\u202E\\u2066-\\u2069]*$",
+      "description": "表・見比べるの値（UI-07）。空の文字列は値がないことを表す。1 行のプレーンテキスト。"
+    },
+    "CanvasContentBody": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "pattern": "^[^\\u0000-\\u0009\\u000B-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u2028-\\u202E\\u2066-\\u2069]+$",
+      "description": "話の本体・メールの本文（UI-07）。改行（U+000A）だけを許すプレーンテキストで、2000 文字（UTF-16 の単位）まで。HTML として解釈せず、リンクにしない。"
+    },
+    "CanvasContentUrl": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://[^\\s\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u2028-\\u202E\\u2066-\\u2069@/?#]+([/?#][^\\s\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u2028-\\u202E\\u2066-\\u2069]*)?$",
+      "description": "出典の URL（UI-07）。https だけ。ユーザー名・パスワードを含まない。画面は外部のブラウザーで開く（main の window.open の規則。アプリの中では開かない）。"
+    },
+    "CanvasContentListRow": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/CanvasContentText"
+        },
+        "due_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["open", "done", "attention"]
+        }
+      },
+      "required": ["title", "due_at", "state"],
+      "additionalProperties": false,
+      "description": "用事・気づきの行（UI-07）。題名・期限・状態（open は未了、done は済み、attention は気づき）。"
+    },
+    "CanvasContentList": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "list"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentListRow"
+          },
+          "maxItems": 50
+        }
+      },
+      "required": ["component", "rows"],
+      "additionalProperties": false,
+      "description": "list の中身（UI-07）。rows は物のデータの参照（item_refs）と同じ順・同じ件数（意味の検査）。"
+    },
+    "CanvasContentTableRow": {
+      "type": "object",
+      "properties": {
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentCell"
+          },
+          "maxItems": 8
+        }
+      },
+      "required": ["cells"],
+      "additionalProperties": false,
+      "description": "表の 1 行（UI-07）。cells の数は columns と同じ（意味の検査）。"
+    },
+    "CanvasContentTable": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "table"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentText"
+          },
+          "maxItems": 8
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentTableRow"
+          },
+          "maxItems": 50
+        }
+      },
+      "required": ["component", "columns", "rows"],
+      "additionalProperties": false,
+      "description": "table の中身（UI-07）。列は 8 まで、行は 50 まで。rows は item_refs と同じ順・同じ件数で、各行の cells の数は columns と同じ（意味の検査）。"
+    },
+    "CanvasContentEvent": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/CanvasContentText"
+        },
+        "start_minute": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1439
+        },
+        "end_minute": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
+        }
+      },
+      "required": ["title", "start_minute", "end_minute"],
+      "additionalProperties": false,
+      "description": "予定の 1 件（UI-07）。0 時からの分で開始と終了（開始が終了より前。意味の検査）。"
+    },
+    "CanvasContentTimeline": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "schedule_timeline"
+        },
+        "day_start_minute": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1439
+        },
+        "day_end_minute": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentEvent"
+          },
+          "maxItems": 50
+        }
+      },
+      "required": ["component", "day_start_minute", "day_end_minute", "events"],
+      "additionalProperties": false,
+      "description": "schedule_timeline の中身（UI-07）。時間の軸は 0 時からの分で day_start_minute から day_end_minute まで。events は item_refs と同じ順・同じ件数で、軸の範囲の中・開始が終了より前（意味の検査）。重なりは画面が位置で示す（決まった順に列を割り当てる）。"
+    },
+    "CanvasContentMailEntry": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/CanvasContentText"
+        },
+        "subject": {
+          "$ref": "#/$defs/CanvasContentText"
+        },
+        "received_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentLabel"
+          },
+          "maxItems": 5
+        },
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasContentBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["from", "subject", "received_at", "labels", "body"],
+      "additionalProperties": false,
+      "description": "メールの 1 通（UI-07）。差出人・件名・受信の時刻・ラベル。本文は開いた 1 通だけ（それ以外は null）。"
+    },
+    "CanvasContentMail": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "mail_card"
+        },
+        "mails": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentMailEntry"
+          },
+          "maxItems": 50
+        }
+      },
+      "required": ["component", "mails"],
+      "additionalProperties": false,
+      "description": "mail_card の中身（UI-07）。差出人・件名・受信の時刻・ラベル。本文（body）は開いたときだけ（open_index の 1 通だけが非 null。ほかは null。意味の検査）。mails は item_refs と同じ順・同じ件数。"
+    },
+    "CanvasContentCompareRow": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/CanvasContentLabel"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentCell"
+          },
+          "maxItems": 3
+        }
+      },
+      "required": ["label", "values"],
+      "additionalProperties": false,
+      "description": "見比べるの 1 行（UI-07）。values の数は columns と同じ（意味の検査）。"
+    },
+    "CanvasContentCompare": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "compare"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentText"
+          },
+          "maxItems": 3
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentCompareRow"
+          },
+          "maxItems": 12
+        }
+      },
+      "required": ["component", "columns", "rows"],
+      "additionalProperties": false,
+      "description": "compare の中身（UI-07）。2〜3 列を横に並べ、行ごとの値を比べる。各行の values の数は columns と同じ（意味の検査。参照の数とは結び付けない）。違いは画面が位置で示す（同じ値は 1 つにまとめ、違う値は列ごとに分ける）。"
+    },
+    "CanvasContentStep": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/CanvasContentText"
+        },
+        "done": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      },
+      "required": ["label", "done", "total"],
+      "additionalProperties": false,
+      "description": "進み具合の 1 つ（UI-07）。done が total を超えない（意味の検査）。"
+    },
+    "CanvasContentProgress": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "progress"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentStep"
+          },
+          "maxItems": 12
+        }
+      },
+      "required": ["component", "steps"],
+      "additionalProperties": false,
+      "description": "progress の中身（UI-07）。進み具合（done / total）。done が total を超えない（意味の検査。参照の数とは結び付けない）。"
+    },
+    "CanvasChartValue": {
+      "type": "number",
+      "minimum": -1000000000,
+      "maximum": 1000000000,
+      "description": "グラフの値（UI-07）。有限の数。"
+    },
+    "CanvasContentSeries": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/CanvasContentLabel"
+        },
+        "mark": {
+          "type": "string",
+          "enum": ["bar", "line"]
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasChartValue"
+          },
+          "maxItems": 24
+        }
+      },
+      "required": ["label", "mark", "values"],
+      "additionalProperties": false,
+      "description": "グラフの系列（UI-07）。棒（bar）か折れ線（line）。values の数は x_labels と同じ（意味の検査）。"
+    },
+    "CanvasContentChart": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "chart"
+        },
+        "x_labels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentLabel"
+          },
+          "maxItems": 24
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentSeries"
+          },
+          "maxItems": 3
+        }
+      },
+      "required": ["component", "x_labels", "series"],
+      "additionalProperties": false,
+      "description": "chart の中身（UI-07）。棒（bar）と折れ線（line）の系列。値の数は x_labels と同じ（意味の検査）。画面は SVG を React で描き、系列を色だけでなく形（棒の模様・線の種類・印）と直接のラベルで分ける。"
+    },
+    "CanvasContentSource": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/CanvasContentText"
+        },
+        "url": {
+          "$ref": "#/$defs/CanvasContentUrl"
+        }
+      },
+      "required": ["title", "url"],
+      "additionalProperties": false,
+      "description": "出典の 1 件（UI-07）。題名と https の URL。"
+    },
+    "CanvasContentSources": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "source_list"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasContentSource"
+          },
+          "maxItems": 50
+        }
+      },
+      "required": ["component", "sources"],
+      "additionalProperties": false,
+      "description": "source_list の中身（UI-07）。出典の題名と https の URL。sources は item_refs と同じ順・同じ件数。"
+    },
+    "CanvasContentPlain": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "const": "text"
+        },
+        "text": {
+          "$ref": "#/$defs/CanvasContentBody"
+        }
+      },
+      "required": ["component", "text"],
+      "additionalProperties": false,
+      "description": "text の中身（UI-07）。話の本体（プレーンテキスト）。1 回の答えにつき 1 つまで（キャンバスの意味の検査）。"
+    },
+    "CanvasContent": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CanvasContentList"
+        },
+        {
+          "$ref": "#/$defs/CanvasContentTable"
+        },
+        {
+          "$ref": "#/$defs/CanvasContentTimeline"
+        },
+        {
+          "$ref": "#/$defs/CanvasContentMail"
+        },
+        {
+          "$ref": "#/$defs/CanvasContentCompare"
+        },
+        {
+          "$ref": "#/$defs/CanvasContentProgress"
+        },
+        {
+          "$ref": "#/$defs/CanvasContentChart"
+        },
+        {
+          "$ref": "#/$defs/CanvasContentSources"
+        },
+        {
+          "$ref": "#/$defs/CanvasContentPlain"
+        }
+      ],
+      "description": "キャンバスの物の中身（UI-07、ADR 0032）。記述（CanvasDocument）は参照だけで本文を持たず、中身は物ごとに、描くときに許可範囲内で取る（postCanvasContent）。中枢の識別子を含まない（行は item_refs と同じ順の位置で参照に結び付ける）。端末に保存せず、イベントにも入れない。ロック・停止・切断・世代の変化で捨てる。"
+    },
+    "CanvasOpenIndex": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 49,
+      "description": "物のデータの参照（item_refs）の位置（UI-07）。メールの本文を開く行。"
+    },
+    "CanvasContentRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        },
+        "item_id": {
+          "$ref": "#/$defs/CanvasItemId"
+        },
+        "open_index": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasOpenIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_canvas_revision",
+        "item_id",
+        "open_index"
+      ],
+      "additionalProperties": false,
+      "description": "物の中身の読み取り（UI-07、ADR 0032）。expected_canvas_revision は端末が描いている版で、今と同じでなければ 409（中身と参照の位置がずれるため）。open_index は mail_card の本文を開く行（item_refs の位置）。null は本文を開かない。"
+    },
+    "CanvasContentResponse": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        },
+        "item_id": {
+          "$ref": "#/$defs/CanvasItemId"
+        },
+        "open_index": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasOpenIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content": {
+          "$ref": "#/$defs/CanvasContent"
+        }
+      },
+      "required": [
+        "request_id",
+        "canvas_revision",
+        "item_id",
+        "open_index",
+        "content"
+      ],
+      "additionalProperties": false,
+      "description": "物の中身（UI-07、ADR 0032）。canvas_revision は中身を作ったときの版（要求の版と同じ）。"
+    },
     "SegmentBoundaryReason": {
       "type": "string",
       "enum": [
@@ -11467,7 +12079,7 @@
       },
       "required": ["kind", "ref"],
       "additionalProperties": false,
-      "description": "画面へ渡す表示対象の参照（ADR 0032）。中枢の識別子（予定・メールの ID など）を main の中に持ち、画面には main が作った不透明な参照だけを渡す。ref は中枢の識別子から作らず、1 つの記述ごとに作り直す。"
+      "description": "画面へ渡す表示対象の参照（ADR 0032）。中枢の識別子（予定・メールの ID など）を main の中に持ち、画面には main が作った不透明な参照だけを渡す。ref は中枢の識別子から作らず、同じ世代の中では同じ物の同じ対象に同じ参照を保ち（配置だけが変わった版で画面の本文を取り直さないため）、世代が進むと作り直す。"
     },
     "DesktopCanvasData": {
       "type": "object",

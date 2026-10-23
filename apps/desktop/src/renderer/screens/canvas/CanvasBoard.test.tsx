@@ -297,3 +297,20 @@ test('no items or no view draws nothing; the locked ground draws nothing inside'
   );
   assert.match(unlocked, /今日の用事/u);
 });
+
+// UI-07（Issue #99 の持ち越し、PR #121 の P3）: 1 列でもカードの最小の幅 160 を守る。置ける幅は画面の幅 − 120。
+test('a screen too narrow for a 160px card shows the minimal layout instead of squeezing the card; the narrowest column is exactly 160', () => {
+  const canvas = view([item('a'), item('b')]);
+  // 画面の幅 279（置ける幅 159）: 最小の表示。物は置かず、札だけ。
+  const narrow = board(canvas, { viewport: { width: 279, height: 800 } });
+  assert.match(narrow, /data-layout-mode="minimal"/u);
+  assert.doesNotMatch(narrow, /data-item=/u);
+  assert.equal((narrow.match(/data-overflow="/gu) ?? []).length, 2);
+  // 画面の幅 280（置ける幅 160）: 1 列で、幅はちょうど 160。
+  const edge = board(canvas, { viewport: { width: 280, height: 800 } });
+  assert.match(edge, /data-layout-mode="column"/u);
+  assert.match(
+    edge,
+    /data-item="a"[^>]*style="left:24px;top:24px;width:160px;/u,
+  );
+});

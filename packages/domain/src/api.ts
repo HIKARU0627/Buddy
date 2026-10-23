@@ -39,6 +39,9 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   getCanvas: [...READ, 'unlocked'],
   // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。版の照合は経路の処理が物ごとに行う。
   postCanvasUserOp: SCREEN,
+  // キャンバスの物の中身の読み取り（UI-07、ADR 0032）。本文を含むので、ロック中・不明は出さない。接続範囲（許可範囲）を求める。
+  // 読み取りだけで外部変更を起こさないので、画面操作は求めない（後ろにある間も描いている物の中身を取る）。
+  postCanvasContent: COMMAND,
   handoffSession: [...SCREEN, 'expected_revision'],
   previewOperation: COMMAND,
   displayOperation: COMMAND,

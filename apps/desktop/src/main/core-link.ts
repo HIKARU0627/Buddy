@@ -114,6 +114,8 @@ export const OPERATION_CHANNELS: readonly DesktopIpcChannel[] = [
 // 承認・停止のチャネルとは別。
 export const CANVAS_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.canvas_user_op',
+  // 物の中身（本文）を求める（UI-07）。読み取りだけ。後ろにある間も描いている物の中身を取る（メールの本文を開くときだけ前面）。
+  'desktop.canvas_content',
 ];
 
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
@@ -983,7 +985,8 @@ export class DesktopCoreLink {
     if (
       !contract.isRequest(raw) ||
       raw.channel !== ipcChannel ||
-      raw.channel !== 'desktop.canvas_user_op'
+      (raw.channel !== 'desktop.canvas_user_op' &&
+        raw.channel !== 'desktop.canvas_content')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -993,7 +996,11 @@ export class DesktopCoreLink {
     const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
     if (!admission.ok)
       return this.#reject(raw.request_id, raw.channel, admission.reason);
-    if (this.#options.canvasFront?.() !== true)
+    // 動かす・閉じるなどは前に出ている間だけ。物の中身の読み取りは後ろにある間も受け付ける（描いている物の中身を取る）が、
+    // メールの本文を開くのは本人の操作なので前に出ているときだけ。
+    const needsFront =
+      raw.channel === 'desktop.canvas_user_op' || raw.payload.open_ref !== null;
+    if (needsFront && this.#options.canvasFront?.() !== true)
       return this.#reject(
         raw.request_id,
         raw.channel,
@@ -1011,6 +1018,23 @@ export class DesktopCoreLink {
     )
       return this.#reject(raw.request_id, raw.channel, 'not_connected');
     const generation = this.#viewGeneration;
+    if (raw.channel === 'desktop.canvas_content') {
+      // 物の中身（UI-07）。読み取りだけなので、世代が変わったら中身を渡さず、ロック中なら device_locked にする。
+      const content = await this.#canvas.content(
+        raw.payload.item_id,
+        raw.payload.expected_canvas_revision,
+        raw.payload.open_ref,
+      );
+      const stale = this.#staleReason(generation);
+      if (stale !== null)
+        return this.#reject(raw.request_id, raw.channel, stale);
+      return this.#operationOutcome(
+        raw.request_id,
+        raw.channel,
+        content,
+        (value) => ({ ...value }),
+      );
+    }
     const result = await this.#canvas.userOp(
       raw.payload.expected_canvas_revision,
       raw.payload.op,
@@ -1740,6 +1764,18 @@ export class DesktopCoreLink {
   // したら取り直す（キャンバスのモードだけ）。
   ioStateChanged(): void {
     if (this.#options.canvasMode === true) this.#canvas.ioChanged();
+  }
+
+  // キャンバスの窓そのものが隠れた（hide・最小化。Electron の層が呼ぶ。UI-07）。画面が持つ本文と、main の参照・取っている途中の
+  // 答えを捨てる（取得の世代を進め、画面へ空を通知する）。隠れている間は、版の知らせ・再接続・ロックの解除があっても取らない。
+  // 後ろにあるが表示している間は呼ばない。表示し直したら canvasShown で今の記述を取り直す。
+  canvasHidden(): void {
+    if (this.#options.canvasMode === true) this.#canvas.hide();
+  }
+
+  // キャンバスの窓が表示し直された（show・restore）。隠れていたなら、取れるようにして今の記述を取り直す。
+  canvasShown(): void {
+    if (this.#options.canvasMode === true) this.#canvas.show();
   }
 
   // キャンバスの窓が通知を受け取る準備を終えた。今の記述を送り直す（なければ取り直す）。

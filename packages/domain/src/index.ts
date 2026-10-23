@@ -12,6 +12,8 @@ export * from './budget-gate.js';
 export * from './canvas.js';
 // UI-06: キャンバスの配置のエンジン（ADR 0032）。
 export * from './canvas-layout.js';
+// UI-07: キャンバスの物の中身の意味の検査（ADR 0032）。
+export * from './canvas-content.js';
 export * from './conversation.js';
 // B04-01: 操作の種類・connector の能力・照合（ADR 0027）。
 export * from './connectors.js';

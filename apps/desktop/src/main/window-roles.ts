@@ -23,6 +23,7 @@ const LEGACY_EXCLUDED_CHANNELS: readonly string[] = [
   'desktop.canvas_summon',
   'desktop.status_panel',
   'desktop.canvas_user_op',
+  'desktop.canvas_content',
 ];
 
 // 窓の組み立て方。既定は従来の 1 つの窓。canvas は 3 つの役割の窓（試作）。

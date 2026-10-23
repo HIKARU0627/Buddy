@@ -293,13 +293,14 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     let canvas: CanvasOpBatch | null;
     if (placed.has(turn.turn_id)) canvas = replays.get(turn.turn_id) ?? null;
     else {
-      placed.add(turn.turn_id);
       const batch = (options.place ?? placeCanvasForTurn)(
         options.canvas.document,
         turn.result_view,
       );
       // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。
       canvas = batch !== null && options.canvas.apply(batch).ok ? batch : null;
+      // 配置を試みた発言だけ覚える（聞き返しなど、配置しない発言は入れない。同じ結果なら再送でも配置しないので）。
+      if (batch !== null) placed.add(turn.turn_id);
       replays.set(turn.turn_id, canvas);
       for (const old of replays.keys()) {
         if (replays.size <= MAX_REPLAYS) break;

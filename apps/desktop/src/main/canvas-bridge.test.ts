@@ -492,3 +492,25 @@ test('resend hands the description over again, or fetches it when there is none'
   assert.equal(published.length, 2);
   assert.deepEqual(published[1], published[0]);
 });
+
+test('a state notice that does not change the stop state or io_epoch neither drops nor adds a fetch', async () => {
+  const { bridge, script, sent, published } = setup();
+  let release: (outcome: Outcome) => void = () => undefined;
+  script.push(new Promise<Outcome>((resolve) => (release = resolve)));
+  const pending = bridge.refresh();
+  // 取得の途中に、入出力と関係のない状態の通知（中枢の最終確認の時刻だけが変わった）が来る。何度来ても同じ。
+  bridge.ioChanged();
+  bridge.ioChanged();
+  assert.equal(sent.length, 1);
+  release(ok(document('1')));
+  await pending;
+  await bridge.idle();
+  // 取得 A の結果が使われ、取得は増えていない。
+  assert.equal(sent.length, 1);
+  assert.equal(bridge.view?.canvas_revision, '1');
+  assert.equal(published.length, 1);
+  // 記述を持っているときも、状態が同じ通知では何もしない。
+  bridge.ioChanged();
+  assert.equal(sent.length, 1);
+  assert.equal(published.length, 1);
+});

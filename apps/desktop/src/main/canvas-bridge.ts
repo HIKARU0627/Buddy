@@ -57,6 +57,8 @@ export class CanvasBridge {
   #view: DesktopCanvasView | null = null;
   // 最後に見た入出力の世代（io_epoch）。停止（世代が進む）をまたいだ記述は使わない。
   #epoch: string | null = null;
+  // 最後に見た入出力の許可（停止していないか）。null は未確認。
+  #permitted: boolean | null = null;
   // 進行中の取得（試験が通知の処理の完了を待つため。idle）。
   readonly #inflight = new Set<Promise<void>>();
   // 画面に渡した参照 → 中枢の識別子（main の中だけ。物を開くときに main が解決する。UI-07 以降）。
@@ -91,9 +93,18 @@ export class CanvasBridge {
   // 「停止で隠す」）。再開して記述がなければ取り直す。
   ioChanged(): void {
     const io = this.#host.io();
-    const changed = this.#epoch !== null && this.#epoch !== io.epoch;
+    const epochChanged = this.#epoch !== null && this.#epoch !== io.epoch;
+    // 停止の状態が実際に変わったか（最初の通知は、停止中のときだけ変わったとみなす）。
+    const stopChanged =
+      this.#permitted === null
+        ? !io.permitted
+        : this.#permitted !== io.permitted;
     this.#epoch = io.epoch;
-    if (!io.permitted || changed) this.reset();
+    this.#permitted = io.permitted;
+    // 入出力と関係のない状態の更新（中枢の最終確認の時刻だけが変わったなど）では何もしない。進行中の取得を捨てず、
+    // 取得を増やさない（先の取得が成功しても順序の照合で捨てられ、後の取得が失敗して空になるのを避ける）。
+    if (!epochChanged && !stopChanged) return;
+    if (!io.permitted || epochChanged) this.reset();
     if (io.permitted && this.#view === null) void this.refresh();
   }
 
@@ -137,6 +148,7 @@ export class CanvasBridge {
     if (!io.permitted) return;
     if (this.#epoch !== null && this.#epoch !== io.epoch) this.reset();
     this.#epoch = io.epoch;
+    this.#permitted = true;
     const gen = this.#gen;
     const seq = ++this.#fetchSeq;
     const outcome = await connection.request({

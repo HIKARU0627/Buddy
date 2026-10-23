@@ -49,8 +49,14 @@ const liabilityRequest = (request) => ({
   priceVersions:
     request.versions === 'invalid'
       ? spec.invalid_price_versions
-      : runtime.price_versions,
-  verifiedPriceVersions: request.verified ?? budget.verified_price_versions,
+      : request.versions === 'extra'
+        ? spec.extra_price_versions
+        : runtime.price_versions,
+  verifiedPriceVersions:
+    request.verified ??
+    (request.versions === 'extra'
+      ? spec.extra_price_versions.map((item) => item.price_version)
+      : budget.verified_price_versions),
   billableFrom: request.from,
   billableUntil: request.until,
   quantities: request.quantities,
@@ -93,6 +99,15 @@ test('the synthetic runtime config is valid and has no personal amounts', () => 
     );
   assert(invalid('p-cached-high').includes('cached_price_above_input'));
   assert(invalid('p-bad-conversion').includes('safety_factor_below_one'));
+  // cached の最低課金量が大きい版などは設定の検査に通る。domain の M が最大の分け方で守る。
+  for (const item of spec.extra_price_versions) {
+    assert(validators.PriceVersion(item), item.price_version);
+    assert.deepEqual(
+      semanticErrors('PriceVersion', item),
+      [],
+      item.price_version,
+    );
+  }
 });
 
 for (const entry of spec.liability_cases)

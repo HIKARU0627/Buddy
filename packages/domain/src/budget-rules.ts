@@ -159,6 +159,44 @@ function coveringVersions(
   return hits;
 }
 
+interface InputPrice {
+  readonly price: bigint;
+  readonly per: bigint;
+  readonly minimum: bigint;
+}
+
+// 送る量 total のうち uncached を非命中、残りを命中（cached）として課金したときの、換算前の最大の費用。
+// 区分ごとの課金量は「量が 1 以上なら最低課金量との大きい方、0 なら 0」。費用は分け方について区分的に
+// 線形なので、端（0・1・total−1・total）と、最低課金量の折れ目（非命中＝最低課金量、命中＝最低課金量）
+// だけを比べれば最大が分かる。
+function worstInputSplit(
+  total: bigint,
+  input: InputPrice,
+  cached: InputPrice,
+): Rational {
+  const billed = (amount: bigint, minimum: bigint): bigint =>
+    amount <= 0n ? 0n : amount > minimum ? amount : minimum;
+  const candidates = [
+    0n,
+    1n,
+    total - 1n,
+    total,
+    input.minimum,
+    total - cached.minimum,
+  ].filter((value) => value >= 0n && value <= total);
+  let worst: Rational = { n: 0n, d: 1n };
+  for (const uncached of candidates) {
+    const cost: Rational = {
+      n:
+        billed(uncached, input.minimum) * input.price * cached.per +
+        billed(total - uncached, cached.minimum) * cached.price * input.per,
+      d: input.per * cached.per,
+    };
+    if (greater(cost, worst)) worst = cost;
+  }
+  return worst;
+}
+
 // outputCap は予約 R の算出（p95 × 1.2）で出力の量だけを絞るときに使う。M では使わない。
 function estimate(
   request: LiabilityRequest,
@@ -256,9 +294,10 @@ function estimate(
         n: billed * unitPrice * rateMicros * safetyMicros,
         d: perQuantity * MICRO * MICRO,
       };
-      // 入力はキャッシュなしの単価で見積もる前提（05 固定部分の節）。cached の単価が入力より高い版
-      // （設定の意味検査は cached_price_above_input で拒否する）でも少なく見積もらないよう、入力の量に
-      // cached の単価も当てて高い方を使う（ADR 0035）。
+      // 入力はキャッシュなしの単価で見積もる前提（05 固定部分の節）。版に cached の単価があれば、
+      // 送る量のうち何 token がキャッシュに当たっても少なく見積もらないよう、非命中と命中の分け方の
+      // うち費用が最大になるものを使う。各区分の最低課金量は、その区分に 1 単位以上あるときに掛ける
+      // （cached の単価が高い版・cached の最低課金量が大きい版も含む。ADR 0035）。
       const cachedRate =
         category === 'input_tokens'
           ? version.rates.find(
@@ -268,14 +307,25 @@ function estimate(
       if (cachedRate !== undefined) {
         const cachedPrice = toInteger(cachedRate.unit_price);
         const cachedPer = toInteger(cachedRate.per_quantity);
-        if (cachedPrice === null || cachedPer === null || cachedPer === 0n) {
+        const cachedMinimum = toInteger(cachedRate.minimum_quantity);
+        if (
+          cachedPrice === null ||
+          cachedPer === null ||
+          cachedPer === 0n ||
+          cachedMinimum === null
+        ) {
           reasons.push('invalid_price:cached_input_tokens');
         } else {
-          const cachedCost: Rational = {
-            n: billed * cachedPrice * rateMicros * safetyMicros,
-            d: cachedPer * MICRO * MICRO,
+          const split = worstInputSplit(
+            quantity,
+            { price: unitPrice, per: perQuantity, minimum },
+            { price: cachedPrice, per: cachedPer, minimum: cachedMinimum },
+          );
+          const mixed: Rational = {
+            n: split.n * rateMicros * safetyMicros,
+            d: split.d * MICRO * MICRO,
           };
-          if (greater(cachedCost, cost)) cost = cachedCost;
+          if (greater(mixed, cost)) cost = mixed;
         }
       }
       // 境界を跨ぐ要求は、換算と安全係数を掛けた後の高い方を使う（05 F02）。
@@ -411,6 +461,13 @@ export function budgetMonthOf(time: string, timeZone: string): string | null {
   const millis = toMillis(time);
   const formatter = monthFormatter(timeZone);
   if (millis === null || formatter === null) return null;
+  return monthAtMillis(millis, formatter);
+}
+
+function monthAtMillis(
+  millis: number,
+  formatter: Intl.DateTimeFormat,
+): string | null {
   const parts = formatter.formatToParts(new Date(millis));
   const year = Number(parts.find((part) => part.type === 'year')?.value);
   const month = parts.find((part) => part.type === 'month')?.value;
@@ -419,12 +476,13 @@ export function budgetMonthOf(time: string, timeZone: string): string | null {
   return `${String(year).padStart(4, '0')}-${month}`;
 }
 
-// 使っている予算月と、その月の境目に使うタイムゾーン（月ごとに Core が記録する。ADR 0034）。
-// previousTimeZone は前の月のタイムゾーン（この月の始まりを決めた方）。最初の月は null。
+// 使っている予算月・その月の境目に使うタイムゾーン・その月が実際に始まった時刻（UTC、ミリ秒まで）。
+// 月ごとに Core が記録する（ADR 0034・0035）。monthStart は、前の月のタイムゾーンでこの月に入った境目
+// （最初の月は、そのタイムゾーンでの月の初め）。
 export interface BudgetCalendarState {
   readonly month: string;
   readonly timeZone: string;
-  readonly previousTimeZone: string | null;
+  readonly monthStart: string;
 }
 
 export type BudgetCalendarResult =
@@ -435,49 +493,101 @@ export type BudgetCalendarResult =
     }
   | Failure;
 
+const MONTH_SEARCH_SPAN = 33 * 24 * 60 * 60 * 1000;
+
+const monthBefore = (month: string): string => {
+  const [year = 0, value = 1] = month.split('-').map(Number);
+  return value === 1
+    ? `${String(year - 1).padStart(4, '0')}-12`
+    : `${String(year).padStart(4, '0')}-${String(value - 1).padStart(2, '0')}`;
+};
+
+// formatter のタイムゾーンで month より後の月になる最初の時刻（ミリ秒）。lo では month 以前、hi では
+// month より後であること。暦月は時刻とともに減らないので二分探索で求まる。
+function firstMillisAfter(
+  formatter: Intl.DateTimeFormat,
+  month: string,
+  lo: number,
+  hi: number,
+): number {
+  let low = lo;
+  let high = hi;
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if ((monthAtMillis(middle, formatter) ?? '') > month) high = middle;
+    else low = middle;
+  }
+  return high;
+}
+
 // 現在の時刻で予算月を進める。設定のタイムゾーンを変えても、今の月の境目は今の月のタイムゾーンで決め、
-// 新しいタイムゾーンは翌月から使う（本人の判断 2026-10-23）。時計が戻って、使っている予算月より前の月になる
-// 時刻では clock_regressed を返し、有料の受付を保留する（原本に決めなし、ADR 0035）。前の月の方が進んだ
-// タイムゾーンから遅れたタイムゾーンへ変えた直後は、新しいタイムゾーンでは前の月に見えるが、前の月の
-// タイムゾーンで今の月に入っていれば時計の戻りとしない。
+// 新しいタイムゾーンは翌月から使う（本人の判断 2026-10-23）。止まっている間に境目を 2 つ以上越えていたら、
+// 越えた境目ごとに 1 か月ずつ進め、2 つ目からは新しいタイムゾーンの境目を使う。時計が今の月の始まり
+// （monthStart）より前へ戻ったら clock_regressed を返し、予算月を戻さずに有料の受付を保留する（原本に
+// 決めなし、ADR 0035）。進んだタイムゾーン・遅れたタイムゾーンのどちらへ変えた後も、実際の始まりで比べる。
 export function advanceBudgetMonth(
   state: BudgetCalendarState | null,
   now: string,
   configuredTimeZone: string,
 ): BudgetCalendarResult {
-  if (monthFormatter(configuredTimeZone) === null)
+  const configured = monthFormatter(configuredTimeZone);
+  if (configured === null)
     return { ok: false, reasonCodes: ['invalid_time_zone'] };
-  if (toMillis(now) === null)
-    return { ok: false, reasonCodes: ['invalid_time'] };
+  const nowMillis = toMillis(now);
+  if (nowMillis === null) return { ok: false, reasonCodes: ['invalid_time'] };
   if (state === null) {
-    const month = budgetMonthOf(now, configuredTimeZone) as string;
+    const month = monthAtMillis(nowMillis, configured);
+    if (month === null) return { ok: false, reasonCodes: ['invalid_time'] };
+    // この月の初め（前の月より後になる最初の時刻）。33 日前は必ず前の月以前なので、そこから今までを探す。
+    const start = firstMillisAfter(
+      configured,
+      monthBefore(month),
+      nowMillis - MONTH_SEARCH_SPAN,
+      nowMillis,
+    );
     return {
       ok: true,
       rolledOver: false,
-      state: { month, timeZone: configuredTimeZone, previousTimeZone: null },
-    };
-  }
-  const current = budgetMonthOf(now, state.timeZone);
-  if (current === null || !YEAR_MONTH.test(state.month))
-    return { ok: false, reasonCodes: ['invalid_time_zone'] };
-  if (current > state.month)
-    return {
-      ok: true,
-      rolledOver: true,
       state: {
-        month: current,
+        month,
         timeZone: configuredTimeZone,
-        previousTimeZone: state.timeZone,
+        monthStart: new Date(start).toISOString(),
       },
     };
-  if (current === state.month) return { ok: true, rolledOver: false, state };
-  const byPrevious =
-    state.previousTimeZone === null
-      ? null
-      : budgetMonthOf(now, state.previousTimeZone);
-  if (byPrevious !== null && byPrevious >= state.month)
-    return { ok: true, rolledOver: false, state };
-  return { ok: false, reasonCodes: ['clock_regressed'] };
+  }
+  const startMillis = toMillis(state.monthStart);
+  if (
+    monthFormatter(state.timeZone) === null ||
+    !YEAR_MONTH.test(state.month) ||
+    startMillis === null
+  )
+    return { ok: false, reasonCodes: ['invalid_calendar_state'] };
+  if (nowMillis < startMillis)
+    return { ok: false, reasonCodes: ['clock_regressed'] };
+  let current: BudgetCalendarState = state;
+  let currentStart = startMillis;
+  for (;;) {
+    const formatter = monthFormatter(current.timeZone) as Intl.DateTimeFormat;
+    const shown = monthAtMillis(nowMillis, formatter);
+    if (shown === null) return { ok: false, reasonCodes: ['invalid_time'] };
+    if (shown <= current.month) break;
+    // 今の月のタイムゾーンで、今の月より後になる最初の時刻が次の月の始まり。
+    const boundary = firstMillisAfter(
+      formatter,
+      current.month,
+      currentStart,
+      nowMillis,
+    );
+    current = {
+      month: monthAtMillis(boundary, formatter) as string,
+      timeZone: configuredTimeZone,
+      monthStart: new Date(boundary).toISOString(),
+    };
+    currentStart = boundary;
+  }
+  return current === state
+    ? { ok: true, rolledOver: false, state }
+    : { ok: true, rolledOver: true, state: current };
 }
 
 // ---------------------------------------------------------------------------
@@ -812,6 +922,7 @@ export function matchOverageApproval(
   if (now === null || expires === null || now >= expires)
     reasons.push('approval_expired');
   // 承認済みなら、承認を求めた後・期限の前に決めた記録がある（requested_at ≦ decided_at < expires_at）。
+  // 今の時刻より後に決めたことになっている承認（時計の戻りなど）は使わない（decided_at ≦ now）。
   if (approval.status === 'approved') {
     const requested = toMillis(approval.requested_at);
     const decided =
@@ -824,6 +935,8 @@ export function matchOverageApproval(
       decided >= expires
     )
       reasons.push('approval_decision_invalid');
+    if (decided !== null && (now === null || now < decided))
+      reasons.push('approval_decided_in_future');
   }
   if (approval.request_id !== expected.requestId)
     reasons.push('approval_request_mismatch');

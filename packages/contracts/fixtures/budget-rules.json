@@ -443,6 +443,153 @@
       }
     }
   ],
+  "extra_price_versions": [
+    {
+      "price_version": "p-cmin-0",
+      "price_key": "synthetic.cachedmin.none",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "2",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    {
+      "price_version": "p-cmin-600",
+      "price_key": "synthetic.cachedmin.small",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "2",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "600",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    {
+      "price_version": "p-cmin-1500",
+      "price_key": "synthetic.cachedmin.large",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "2",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "1500",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    {
+      "price_version": "p-cmin-10000",
+      "price_key": "synthetic.cachedmin.huge",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "2",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "10000",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    },
+    {
+      "price_version": "p-imin-2000",
+      "price_key": "synthetic.inputmin",
+      "currency": "XTS",
+      "effective_from": "2030-10-01T00:00:00.000Z",
+      "effective_to": null,
+      "rates": [
+        {
+          "category": "input_tokens",
+          "unit_price": "2",
+          "per_quantity": "1000",
+          "minimum_quantity": "2000",
+          "max_quantity_per_request": null
+        },
+        {
+          "category": "cached_input_tokens",
+          "unit_price": "1",
+          "per_quantity": "1000",
+          "minimum_quantity": "0",
+          "max_quantity_per_request": null
+        }
+      ],
+      "conversion": {
+        "conversion_version": "xts-same-1",
+        "to_currency": "XTS",
+        "rate": "1",
+        "safety_factor": "1.2"
+      }
+    }
+  ],
   "liability_cases": [
     {
       "id": "qa20-within-one-version",
@@ -1032,6 +1179,162 @@
         "ok": false,
         "reasonCodes": ["invalid_billable_period"]
       }
+    },
+    {
+      "id": "qa20-cached-minimum-0",
+      "title": "cached の最低課金量 0。すべて非命中 1000×2/1000=2.0 が最大で ×1.2=2.4→3",
+      "request": {
+        "price_key": "synthetic.cachedmin.none",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "1000"
+        },
+        "versions": "extra"
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "3",
+        "priceVersion": "p-cmin-0",
+        "priceVersions": ["p-cmin-0"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "1000",
+            "amount": "3"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-cached-minimum-600",
+      "title": "cached の最低課金量 600。非命中 999・命中 1（600 として課金）が最大: 1.998+0.6=2.598、×1.2=3.1176→4",
+      "request": {
+        "price_key": "synthetic.cachedmin.small",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "1000"
+        },
+        "versions": "extra"
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "4",
+        "priceVersion": "p-cmin-600",
+        "priceVersions": ["p-cmin-600"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "1000",
+            "amount": "4"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-cached-minimum-above-quantity",
+      "title": "cached の最低課金量 1500（送る量 1000 より大きい）。非命中 999・命中 1 が最大: 1.998+1.5=3.498、×1.2=4.1976→5",
+      "request": {
+        "price_key": "synthetic.cachedmin.large",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "1000"
+        },
+        "versions": "extra"
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "5",
+        "priceVersion": "p-cmin-1500",
+        "priceVersions": ["p-cmin-1500"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "1000",
+            "amount": "5"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-cached-minimum-10000",
+      "title": "cached の最低課金量 10000。非命中 999・命中 1 が最大: 1.998+10=11.998、×1.2=14.3976→15（非命中の料金だけなら 3）",
+      "request": {
+        "price_key": "synthetic.cachedmin.huge",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "1000"
+        },
+        "versions": "extra"
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "15",
+        "priceVersion": "p-cmin-10000",
+        "priceVersions": ["p-cmin-10000"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "1000",
+            "amount": "15"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-cached-minimum-small-input",
+      "title": "レビューの例。入力 100、cached の最低課金量 10000。非命中 99・命中 1 が最大: 0.198+10=10.198、×1.2=12.2376→13（すべて命中なら 10×1.2=12、非命中だけなら 0.24→1）",
+      "request": {
+        "price_key": "synthetic.cachedmin.huge",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "100"
+        },
+        "versions": "extra"
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "13",
+        "priceVersion": "p-cmin-10000",
+        "priceVersions": ["p-cmin-10000"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "100",
+            "amount": "13"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa20-input-minimum-with-cache",
+      "title": "入力の最低課金量 2000。非命中 1（2000 として課金）・命中 999 が最大: 4+0.999=4.999、×1.2=5.9988→6",
+      "request": {
+        "price_key": "synthetic.inputmin",
+        "from": "2030-10-15T00:00:00.000Z",
+        "until": "2030-10-15T00:01:00.000Z",
+        "quantities": {
+          "input_tokens": "1000"
+        },
+        "versions": "extra"
+      },
+      "expected": {
+        "ok": true,
+        "maxLiability": "6",
+        "priceVersion": "p-imin-2000",
+        "priceVersions": ["p-imin-2000"],
+        "lines": [
+          {
+            "category": "input_tokens",
+            "quantity": "2000",
+            "amount": "6"
+          }
+        ]
+      }
     }
   ],
   "reservation_defaults": {
@@ -1322,7 +1625,7 @@
   "calendar_cases": [
     {
       "id": "qa42-calendar-first-start",
-      "title": "初めての起動は設定のタイムゾーンで今の月を決める",
+      "title": "初めての起動は設定のタイムゾーンで今の月を決め、その月の初め（東京の 10 月 1 日 0 時）を記録する",
       "state": null,
       "now": "2030-10-15T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1332,7 +1635,23 @@
         "state": {
           "month": "2030-10",
           "timeZone": "Asia/Tokyo",
-          "previousTimeZone": null
+          "monthStart": "2030-09-30T15:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-first-start-daylight-saving",
+      "title": "夏時間のタイムゾーン（オークランドの 10 月は +13）で月の初めを記録する",
+      "state": null,
+      "now": "2030-10-15T00:00:00.000Z",
+      "configured": "Pacific/Auckland",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2030-10",
+          "timeZone": "Pacific/Auckland",
+          "monthStart": "2030-09-30T11:00:00.000Z"
         }
       }
     },
@@ -1342,7 +1661,7 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "previousTimeZone": null
+        "monthStart": "2030-09-30T15:00:00.000Z"
       },
       "now": "2030-10-31T14:00:00.000Z",
       "configured": "UTC",
@@ -1352,17 +1671,17 @@
         "state": {
           "month": "2030-10",
           "timeZone": "Asia/Tokyo",
-          "previousTimeZone": null
+          "monthStart": "2030-09-30T15:00:00.000Z"
         }
       }
     },
     {
       "id": "qa42-calendar-rollover-applies-new-zone",
-      "title": "今の月の境目は元のタイムゾーン（東京の 11 月 1 日 0 時）。翌月から UTC を使う",
+      "title": "今の月の境目は元のタイムゾーン（東京の 11 月 1 日 0 時）。翌月から UTC を使い、11 月の始まりはその境目",
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "previousTimeZone": null
+        "monthStart": "2030-09-30T15:00:00.000Z"
       },
       "now": "2030-10-31T15:00:00.000Z",
       "configured": "UTC",
@@ -1372,17 +1691,17 @@
         "state": {
           "month": "2030-11",
           "timeZone": "UTC",
-          "previousTimeZone": "Asia/Tokyo"
+          "monthStart": "2030-10-31T15:00:00.000Z"
         }
       }
     },
     {
       "id": "qa42-calendar-behind-zone-is-not-regression",
-      "title": "遅れたタイムゾーンへ変えた直後は UTC では 10 月に見えるが、前の月のタイムゾーンで 11 月に入っているので戻りではない",
+      "title": "遅れたタイムゾーンへ変えた直後は UTC では 10 月に見えるが、11 月の始まりより後なので戻りではない",
       "state": {
         "month": "2030-11",
         "timeZone": "UTC",
-        "previousTimeZone": "Asia/Tokyo"
+        "monthStart": "2030-10-31T15:00:00.000Z"
       },
       "now": "2030-10-31T16:00:00.000Z",
       "configured": "UTC",
@@ -1392,21 +1711,154 @@
         "state": {
           "month": "2030-11",
           "timeZone": "UTC",
-          "previousTimeZone": "Asia/Tokyo"
+          "monthStart": "2030-10-31T15:00:00.000Z"
         }
       }
     },
     {
       "id": "qa42-calendar-regression-after-zone-change",
-      "title": "どちらのタイムゾーンでも 10 月の時刻に戻ったら保留",
+      "title": "11 月の始まり（東京の境目）より前へ戻ったら保留",
       "state": {
         "month": "2030-11",
         "timeZone": "UTC",
-        "previousTimeZone": "Asia/Tokyo"
+        "monthStart": "2030-10-31T15:00:00.000Z"
       },
       "now": "2030-10-31T14:00:00.000Z",
       "configured": "UTC",
-      "expected": { "ok": false, "reasonCodes": ["clock_regressed"] }
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["clock_regressed"]
+      }
+    },
+    {
+      "id": "qa42-calendar-ahead-zone-rollover",
+      "title": "UTC の 10 月から、UTC の境目（11 月 1 日 0 時 UTC）で 11 月へ進み、翌月から東京を使う",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "UTC",
+        "monthStart": "2030-10-01T00:00:00.000Z"
+      },
+      "now": "2030-11-01T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2030-11",
+          "timeZone": "Asia/Tokyo",
+          "monthStart": "2030-11-01T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-ahead-zone-regression",
+      "title": "レビューの例。東京では 11 月の時刻でも、実際の 11 月の始まり（UTC の境目）より前へ戻ったら保留",
+      "state": {
+        "month": "2030-11",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-11-01T00:00:00.000Z"
+      },
+      "now": "2030-10-31T16:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["clock_regressed"]
+      }
+    },
+    {
+      "id": "qa42-calendar-ahead-zone-one-millisecond-before",
+      "title": "始まりの 1 ミリ秒前も保留",
+      "state": {
+        "month": "2030-11",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-11-01T00:00:00.000Z"
+      },
+      "now": "2030-10-31T23:59:59.999Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["clock_regressed"]
+      }
+    },
+    {
+      "id": "qa42-calendar-ahead-zone-at-start",
+      "title": "始まりちょうどは今の月のまま",
+      "state": {
+        "month": "2030-11",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-11-01T00:00:00.000Z"
+      },
+      "now": "2030-11-01T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2030-11",
+          "timeZone": "Asia/Tokyo",
+          "monthStart": "2030-11-01T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-two-boundaries-while-stopped",
+      "title": "レビューの例。UTC の 10 月に東京へ変え、止まったまま東京の 12 月 1 日 1 時に再開。UTC の境目で 11 月、東京の境目で 12 月へ進む",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "UTC",
+        "monthStart": "2030-10-01T00:00:00.000Z"
+      },
+      "now": "2030-11-30T16:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2030-12",
+          "timeZone": "Asia/Tokyo",
+          "monthStart": "2030-11-30T15:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-two-boundaries-repeat",
+      "title": "同じ時刻でもう一度呼んでも月は変わらない",
+      "state": {
+        "month": "2030-12",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-11-30T15:00:00.000Z"
+      },
+      "now": "2030-11-30T16:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": true,
+        "rolledOver": false,
+        "state": {
+          "month": "2030-12",
+          "timeZone": "Asia/Tokyo",
+          "monthStart": "2030-11-30T15:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "qa42-calendar-two-boundaries-behind-zone",
+      "title": "東京の 10 月に UTC へ変え、止まったまま UTC の 12 月 1 日 0 時に再開。東京の境目で 11 月、UTC の境目で 12 月",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-09-30T15:00:00.000Z"
+      },
+      "now": "2030-12-01T00:00:00.000Z",
+      "configured": "UTC",
+      "expected": {
+        "ok": true,
+        "rolledOver": true,
+        "state": {
+          "month": "2030-12",
+          "timeZone": "UTC",
+          "monthStart": "2030-12-01T00:00:00.000Z"
+        }
+      }
     },
     {
       "id": "qa42-calendar-clock-regressed",
@@ -1414,11 +1866,14 @@
       "state": {
         "month": "2030-11",
         "timeZone": "Asia/Tokyo",
-        "previousTimeZone": "Asia/Tokyo"
+        "monthStart": "2030-10-31T15:00:00.000Z"
       },
       "now": "2030-10-20T00:00:00.000Z",
       "configured": "Asia/Tokyo",
-      "expected": { "ok": false, "reasonCodes": ["clock_regressed"] }
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["clock_regressed"]
+      }
     },
     {
       "id": "qa42-calendar-back-within-month",
@@ -1426,7 +1881,7 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "previousTimeZone": null
+        "monthStart": "2030-09-30T15:00:00.000Z"
       },
       "now": "2030-10-01T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1436,17 +1891,17 @@
         "state": {
           "month": "2030-10",
           "timeZone": "Asia/Tokyo",
-          "previousTimeZone": null
+          "monthStart": "2030-09-30T15:00:00.000Z"
         }
       }
     },
     {
       "id": "qa42-calendar-skipped-months",
-      "title": "中枢が止まっていて数か月後に起動したら、その時刻の月へ進む",
+      "title": "中枢が止まっていて数か月後に起動したら、越えた境目ごとに進み、最後の月の始まりを記録する",
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "previousTimeZone": null
+        "monthStart": "2030-09-30T15:00:00.000Z"
       },
       "now": "2031-01-05T00:00:00.000Z",
       "configured": "Asia/Tokyo",
@@ -1456,7 +1911,7 @@
         "state": {
           "month": "2031-01",
           "timeZone": "Asia/Tokyo",
-          "previousTimeZone": "Asia/Tokyo"
+          "monthStart": "2030-12-31T15:00:00.000Z"
         }
       }
     },
@@ -1466,11 +1921,14 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "previousTimeZone": null
+        "monthStart": "2030-09-30T15:00:00.000Z"
       },
       "now": "2030-10-15T00:00:00.000Z",
       "configured": "Mars/Base",
-      "expected": { "ok": false, "reasonCodes": ["invalid_time_zone"] }
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_time_zone"]
+      }
     },
     {
       "id": "qa42-calendar-invalid-time",
@@ -1478,13 +1936,28 @@
       "state": {
         "month": "2030-10",
         "timeZone": "Asia/Tokyo",
-        "previousTimeZone": null
+        "monthStart": "2030-09-30T15:00:00.000Z"
       },
       "now": "2030-02-30T00:00:00.000Z",
       "configured": "Asia/Tokyo",
       "expected": {
         "ok": false,
         "reasonCodes": ["invalid_time"]
+      }
+    },
+    {
+      "id": "qa42-calendar-invalid-state",
+      "title": "記録した月の始まりが壊れていれば進めない",
+      "state": {
+        "month": "2030-10",
+        "timeZone": "Asia/Tokyo",
+        "monthStart": "2030-09-31T15:00:00.000Z"
+      },
+      "now": "2030-10-15T00:00:00.000Z",
+      "configured": "Asia/Tokyo",
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_calendar_state"]
       }
     }
   ],
@@ -1718,12 +2191,36 @@
       "approval": {
         "decided_at": "2030-10-20T00:10:00Z"
       },
-      "expected": ["approval_decision_invalid"]
+      "expected": ["approval_decision_invalid", "approval_decided_in_future"]
     },
     {
       "id": "qa42-approval-decided-at-request",
       "approval": {
         "decided_at": "2030-10-20T00:00:00Z"
+      },
+      "expected": []
+    },
+    {
+      "id": "qa42-approval-now-before-request",
+      "title": "今の時刻が承認を求める前（決めたのは今より後）",
+      "expectation": {
+        "now": "2030-10-19T23:59:00Z"
+      },
+      "expected": ["approval_decided_in_future"]
+    },
+    {
+      "id": "qa42-approval-now-before-decision",
+      "title": "承認を求めた後だが、決める前",
+      "expectation": {
+        "now": "2030-10-20T00:00:30Z"
+      },
+      "expected": ["approval_decided_in_future"]
+    },
+    {
+      "id": "qa42-approval-now-at-decision",
+      "title": "決めた時刻ちょうどは使える",
+      "expectation": {
+        "now": "2030-10-20T00:01:00Z"
       },
       "expected": []
     }

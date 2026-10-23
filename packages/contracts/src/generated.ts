@@ -602,6 +602,15 @@ export type EvaluationUse =
   | 'voice_conversation'
   | 'local_asr';
 /**
+ * 有料の受付全体を止めている理由（B07-04、ADR 0037）。config_invalid は実行時の設定ファイルが読めない・検査に通らない、clock_regressed は時計が今の予算月の始まりより前へ戻った、calendar_mismatch は記録した予算月の始まりと tz データで求め直した値が食い違う（U23）、reservation_pool_unknown は今の設定で経路を解けない予約がある、calendar_unavailable は予算月の状態を読めない。予算月の確かめ直しは本人の確認で行う。理由のコードを利用者に見せない。
+ */
+export type BudgetGateHoldReason =
+  | 'config_invalid'
+  | 'clock_regressed'
+  | 'calendar_mismatch'
+  | 'reservation_pool_unknown'
+  | 'calendar_unavailable';
+/**
  * 保存モード（設計 03 保存期限）。normal は発言から 7 日、extended は本人指定の継続相談で 30 日、private は記録しない会話。
  */
 export type StorageMode = 'normal' | 'extended' | 'private';
@@ -2608,13 +2617,35 @@ export interface CurrencyConversion {
   safety_factor: DecimalString;
 }
 /**
- * 予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。秘密情報（API キーなど）を含めない。
+ * 予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。routing は起点から計上する枠と超過枠（B07-04）。秘密情報（API キーなど）を含めない。
  */
 export interface BudgetRuntimeConfig {
   schema: 'buddy.budget-runtime.v1';
   time_zone: TimeZone | null;
   budget: BudgetConfig;
   price_versions: PriceVersion[];
+  routing: BudgetRouting;
+}
+/**
+ * 起点から計上する葉の枠と、個別承認の超過枠（B07-04、ADR 0037）。超過枠へ回せる通常の枠の許可リストは、本人の依頼（owner_request）の LLM・検索の枠から Core が作る（音声は入れない）。overage_pool_id が null なら超過枠へ回さない。枠の木（ADR 0006）の形は変えない。
+ */
+export interface BudgetRouting {
+  routes: {
+    owner_request: BudgetServiceRoutes;
+    autonomous_analysis: BudgetServiceRoutes;
+    auto_execution: BudgetServiceRoutes;
+    initial_import: BudgetServiceRoutes;
+    shadow_mode: BudgetServiceRoutes;
+  };
+  overage_pool_id: BudgetPoolId | null;
+}
+/**
+ * ひとつの起点の処理を、サービス（LLM・検索・音声）ごとにどの葉の枠へ計上するか（B07-04、ADR 0037）。null はその起点でそのサービスの有料処理を受け付けない。
+ */
+export interface BudgetServiceRoutes {
+  llm: BudgetPoolId | null;
+  search: BudgetPoolId | null;
+  voice: BudgetPoolId | null;
 }
 /**
  * 予算の利用状況（GET /v1/budget/usage、ADR 0034）。months は今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月。time_zone は今月の予算月の境目に使っているタイムゾーン。overage_approvals は承認待ちの超過枠の承認。pending_reservations は本人の操作を待つ予約（usage 不明で手での精算を待つものと、M 超過の確認を待つもの）で、手での精算・M 超過の確認の要求に使う reservation_id・予約の版・個別の R と M・実費・月・枠を持つ。表示はキャンバス UI で作る。
@@ -3304,7 +3335,7 @@ export interface Bootstrap {
   io_state: DeviceIOState;
 }
 /**
- * 一つの整合した DB 読取りで得た現在の表示状態と、その境界のイベント位置（設計 07 §4）。表示権限に応じて返し、ロック中・停止中は再開用の管理情報だけ（management_only）にする。
+ * 一つの整合した DB 読取りで得た現在の表示状態と、その境界のイベント位置（設計 07 §4）。表示権限に応じて返し、ロック中・停止中は再開用の管理情報だけ（management_only）にする。budget_hold は予算保留（ADR 0037）で、management_only では null。
  */
 export interface Snapshot {
   store_generation: StoreGeneration;
@@ -3312,6 +3343,7 @@ export interface Snapshot {
   event_cursor: EventCursor;
   view: 'full' | 'management_only';
   io_state: DeviceIOState;
+  budget_hold: BudgetHoldState | null;
   sessions: {
     session_id: Id;
     storage_mode: StorageMode;
@@ -3321,6 +3353,20 @@ export interface Snapshot {
   }[];
   candidates: CandidateSnapshot[];
   operations: OperationSnapshot[];
+}
+/**
+ * 状態欄の「予算保留」（設計 01 いつも見える状態、B07-04、ADR 0037）。reasons は有料の受付全体を止めている理由、held_pools は今月に保留している枠とその理由。held はどちらかがあるとき true。金額を含めない。
+ */
+export interface BudgetHoldState {
+  held: boolean;
+  reasons: BudgetGateHoldReason[];
+  held_pools: {
+    pool_id: BudgetPoolId;
+    /**
+     * @minItems 1
+     */
+    hold_reasons: [BudgetHoldReason, ...BudgetHoldReason[]];
+  }[];
 }
 /**
  * 表示用の発言。保存期限を過ぎた発言と記録しない会話の発言は返さない。

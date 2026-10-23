@@ -86,6 +86,8 @@ export async function startEventCore(
     // 発言の解釈・対象の解決（ADR 0029）。
     readonly turns?: CoreTurnOptions;
     readonly now?: () => Date;
+    // 予算の門（ADR 0037）。設定ファイルの場所・OS のタイムゾーンなど。
+    readonly budget?: StartCoreOptions['budget'];
   } = {},
 ): Promise<EventCore> {
   const dataDir =
@@ -122,6 +124,7 @@ export async function startEventCore(
     },
     ...(options.events === undefined ? {} : { events: options.events }),
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.budget === undefined ? {} : { budget: options.budget }),
   });
   onCleanup(t, () => handle.stop('test').catch(() => undefined));
   assert(handle.https !== null);

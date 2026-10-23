@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// buddy-core start | status | stop（ADR 0012）、first-device（ADR 0021）、device list | revoke（ADR 0021 の追記）。
+// buddy-core start | status | stop（ADR 0012）、first-device（ADR 0021）、device list | revoke（ADR 0021 の追記）、
+// budget calendar status | confirm（予算月の確かめ直し、ADR 0037）。
 // start はフォアグラウンドで動き、SIGINT / SIGTERM（Windows では SIGINT・SIGBREAK と制御チャネルの stop）
 // で「新しい要求の受付停止 → 終了処理 → ソケット・ロックの解放 → 終了」を行う。
 // 標準出力には機械向けの JSON を 1 行ずつ、標準エラーには人向けの記録を書く。
@@ -45,6 +46,8 @@ const EXIT = {
   first_device_refused: 7,
   // device: Core が拒否した（端末がない・DB に書けないなど）。
   device_refused: 8,
+  // budget: Core が拒否した（本人が見た値が今の状態と違う・確かめ直すものがないなど）。
+  budget_refused: 9,
 } as const;
 
 // 鍵保護・データ鍵の照合による拒否（終了コード 5）。それ以外の起動の拒否は 4。
@@ -78,7 +81,16 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
          トークン・その hash・証明書の指紋は表示しない（中枢の画面が使えないときの保守の手段）
   device revoke --device-id <id>
          端末を失効する（接続範囲を無効にし、開いている接続を閉じる）。有効な端末が 0 台になれば
-         first-device からやり直せる。承認はできない`;
+         first-device からやり直せる。承認はできない
+  budget calendar status
+         予算月の状態（今の月・始まり・記録の始まりと tz データで求め直した始まり・時計の戻りの下限・受付を
+         止めている理由）を表示する。金額は表示しない
+  budget calendar confirm --reason <clock_regressed|calendar_mismatch> --month <YYYY-MM> --month-start <UTC>
+                          --revision <confirmation_revision> --observed-at <checked_at>
+         status で見た値を確かめ、予算月の保留を解く（本人の承認）。calendar_mismatch は記録の始まりと tz データの
+         食い違いで、--month-start に求め直した始まりを渡す。clock_regressed は時計の戻りで、--month-start に今の
+         月の始まりを渡す（予算月は戻さず、status で見た時計を下限にして今の月のまま受け付ける）。--revision と
+         --observed-at は status の confirmation_revision と checked_at。値が今の状態と違えば・古ければ拒否`;
 
 const out = (value: object) =>
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -100,6 +112,11 @@ async function main(argv: readonly string[]): Promise<number> {
         'https-port': { type: 'string' },
         'pairing-id': { type: 'string' },
         'device-id': { type: 'string' },
+        reason: { type: 'string' },
+        month: { type: 'string' },
+        'month-start': { type: 'string' },
+        revision: { type: 'string' },
+        'observed-at': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -127,10 +144,16 @@ async function main(argv: readonly string[]): Promise<number> {
     command === 'device' &&
     positionals.length === 2 &&
     ['list', 'revoke'].includes(action ?? '');
+  const budgetCommand =
+    command === 'budget' &&
+    positionals.length === 3 &&
+    action === 'calendar' &&
+    ['status', 'confirm'].includes(positionals[2] ?? '');
   if (
     !autostartCommand &&
     !firstDeviceCommand &&
     !deviceCommand &&
+    !budgetCommand &&
     (positionals.length !== 1 ||
       !['start', 'status', 'stop'].includes(command ?? ''))
   ) {
@@ -165,6 +188,24 @@ async function main(argv: readonly string[]): Promise<number> {
     (deviceCommand && action === 'revoke')
   ) {
     log('--device-id は device revoke で必ず指定し、他では使えません。');
+    return EXIT.usage;
+  }
+  const confirmCommand = budgetCommand && positionals[2] === 'confirm';
+  const confirmValues = [
+    values.reason,
+    values.month,
+    values['month-start'],
+    values.revision,
+    values['observed-at'],
+  ];
+  if (
+    confirmCommand
+      ? confirmValues.some((item) => item === undefined)
+      : confirmValues.some((item) => item !== undefined)
+  ) {
+    log(
+      '--reason・--month・--month-start・--revision・--observed-at は budget calendar confirm で必ず指定し、他では使えません。',
+    );
     return EXIT.usage;
   }
   let httpsPort = DEFAULT_HTTPS_PORT;
@@ -207,6 +248,19 @@ async function main(argv: readonly string[]): Promise<number> {
   if (firstDeviceCommand)
     return firstDevice(dataDir, values['pairing-id'] ?? null);
   if (deviceCommand) return device(dataDir, values['device-id'] ?? null);
+  if (budgetCommand)
+    return budgetCalendar(
+      dataDir,
+      confirmCommand
+        ? {
+            reason: values.reason as string,
+            month: values.month as string,
+            month_start: values['month-start'] as string,
+            revision: values.revision as string,
+            observed_at: values['observed-at'] as string,
+          }
+        : null,
+    );
   return command === 'status' ? status(dataDir) : stop(dataDir);
 }
 
@@ -426,6 +480,45 @@ async function device(
   if (result.body['error'] === 'unavailable') return EXIT.not_running;
   if (result.body['error'] === 'invalid_request') return EXIT.usage;
   return EXIT.device_refused;
+}
+
+// 予算月の状態と、本人による確かめ直し（ADR 0037）。動いている Core の制御チャネルへ頼む（DB を直接開かない）。
+// 確かめ直しは status で見た値を本人が明示して渡す承認の操作で、値が今の状態と違えば Core が拒否する。
+async function budgetCalendar(
+  dataDir: string,
+  confirm: {
+    readonly reason: string;
+    readonly month: string;
+    readonly month_start: string;
+    readonly revision: string;
+    readonly observed_at: string;
+  } | null,
+): Promise<number> {
+  const endpoint = await endpointFor(dataDir);
+  const result = endpoint
+    ? confirm === null
+      ? await callControl(endpoint, 'budget_calendar_status', 5000)
+      : await callControl(endpoint, 'budget_calendar_confirm', 5000, confirm)
+    : { kind: 'absent' as const };
+  if (result.kind !== 'response') {
+    out({ ok: false, state: 'not_running' });
+    return EXIT.not_running;
+  }
+  out(result.body);
+  if (result.body['ok'] === true) {
+    const calendar = result.body['budget_calendar'] as
+      { readonly hold_reasons?: readonly string[] } | undefined;
+    const holds = calendar?.hold_reasons ?? [];
+    log(
+      holds.length === 0
+        ? '予算月は受付を止めていません。'
+        : `予算月が有料の受付を止めています（${holds.join(', ')}）。値を確かめてから budget calendar confirm を実行してください。`,
+    );
+    return EXIT.ok;
+  }
+  if (result.body['error'] === 'unavailable') return EXIT.not_running;
+  if (result.body['error'] === 'invalid_request') return EXIT.usage;
+  return EXIT.budget_refused;
 }
 
 async function stop(dataDir: string): Promise<number> {

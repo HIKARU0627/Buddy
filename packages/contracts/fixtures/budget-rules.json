@@ -286,7 +286,33 @@
           "safety_factor": "1.5"
         }
       }
-    ]
+    ],
+    "routing": {
+      "routes": {
+        "owner_request": { "llm": "llm", "search": "search", "voice": "voice" },
+        "autonomous_analysis": {
+          "llm": "llm.background",
+          "search": "search",
+          "voice": null
+        },
+        "auto_execution": {
+          "llm": "llm.background",
+          "search": "search",
+          "voice": null
+        },
+        "initial_import": {
+          "llm": "llm.background",
+          "search": "search",
+          "voice": null
+        },
+        "shadow_mode": {
+          "llm": "llm.background.campaign",
+          "search": null,
+          "voice": null
+        }
+      },
+      "overage_pool_id": "overage"
+    }
   },
   "invalid_price_versions": [
     {

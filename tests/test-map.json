@@ -254,7 +254,8 @@
       "contract_fixtures": [
         "packages/contracts/fixtures/budget-scenarios.json#x18-boundary-concurrency-month-and-pools",
         "packages/contracts/fixtures/budget-rules.json#x18-route-auto-execution",
-        "packages/contracts/fixtures/budget-rules.json#qa42-x18-usage-summary"
+        "packages/contracts/fixtures/budget-rules.json#qa42-x18-usage-summary",
+        "packages/contracts/fixtures/schema-cases.json#x18-runtime-routing-owner-and-autonomous"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -589,7 +590,8 @@
       "id": "X53",
       "phases": ["B07"],
       "contract_fixtures": [
-        "packages/contracts/fixtures/budget-scenarios.json#x53-conversation-after-autonomous-exhausted"
+        "packages/contracts/fixtures/budget-scenarios.json#x53-conversation-after-autonomous-exhausted",
+        "packages/contracts/fixtures/schema-cases.json#x53-runtime-routing-autonomous-not-under-owner"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -1200,7 +1202,9 @@
         "packages/contracts/fixtures/budget-rules.json#qa42-calendar-st-johns-rollover-late",
         "packages/contracts/fixtures/budget-rules.json#qa42-calendar-st-johns-dip",
         "packages/contracts/fixtures/budget-rules.json#qa42-calendar-missing-start-zone",
-        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-stored-local-year-10000"
+        "packages/contracts/fixtures/budget-rules.json#qa42-calendar-stored-local-year-10000",
+        "packages/contracts/fixtures/schema-cases.json#qa42-snapshot-budget-hold-held",
+        "packages/contracts/fixtures/schema-cases.json#qa42-runtime-routing-voice-shared"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

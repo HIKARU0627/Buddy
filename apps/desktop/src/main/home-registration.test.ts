@@ -236,6 +236,7 @@ async function liveLink(
         event_cursor: 'cursor-1',
         view: 'full',
         io_state: ioState,
+        budget_hold: { held: false, reasons: [], held_pools: [] },
         sessions: [],
         candidates: [],
         operations: [],

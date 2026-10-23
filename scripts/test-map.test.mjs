@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { parseStrictJson, root } from './contract-tools.mjs';
-import { assertB04EvidenceSources } from './b04-evidence-sources.mjs';
+import {
+  assertB04EvidenceSources,
+  b04SourceFiles,
+  b04SourceSha256,
+  runtimeSpecifiers,
+} from './b04-evidence-sources.mjs';
 
 // 試験 ID の対応表・B04 へ渡す故障点・証拠の形式を検査する（B00-10 #29、ADR 0011）。
 const read = async (path) =>
@@ -242,13 +248,25 @@ test('B04 のケース・seed・観測値・対応表の範囲が証拠と一致
       assert.equal(record.outcome, 'matched_expectation');
     }
   }
-  for (const id of ['X10', 'QA27']) {
+  for (const id of ['X10']) {
     assert.equal(
       map.tests.find((e) => e.id === id).product_test,
       'simulated_partial',
     );
     assert(!evidence.records.some((r) => r.case_id === id));
   }
+  // QA27（B04-07）: 外部の下書きの保存を含む 3 経路と、全経路の権限・期限の記録がそろうときだけ simulated。
+  const qa27 = map.tests.find((e) => e.id === 'QA27');
+  assert.equal(qa27.product_test, 'simulated');
+  assert.deepEqual(
+    qa27.product_evidence.map((ref) => ref.split('#')[1]),
+    ['QA27-read', 'QA27-local', 'QA27-remote', 'QA27-auth', 'QA27-expiry'],
+  );
+  const remote = faults.qa_cases.find((c) => c.id === 'QA27-remote');
+  assert.equal(remote.operation, 'draft_reply');
+  assert.deepEqual(Object.keys(remote.expected.step_receives), [
+    '1-create_draft',
+  ]);
 });
 
 test('B04 の証拠は現行ソースの全対象ファイルと hash が一致する', async () => {
@@ -276,4 +294,99 @@ test('B04 の証拠の古い hash・欠落・余分なファイルを拒否す�
       /B04 の証拠と現行ソースが不一致/u,
     );
   }
+});
+
+// 証拠の hash の対象は、B04 の実行器が実際に読み込むファイルと期待値・fixture だけ（司令塔の依頼、PR #107）。
+const readOverridden = (overrides) => (path) =>
+  path in overrides
+    ? overrides[path]
+    : readFileSync(new URL(path, root), 'utf8');
+
+test('B04 の証拠の対象は実行器が読み込むファイルだけで、画面など関係のないファイルを含めない', () => {
+  const files = b04SourceFiles();
+  // 手で決めた、含めるべきファイル（実行器・Core の実行担当・模擬 provider・保存・期待値・fixture・マイグレーション）。
+  for (const path of [
+    'tests/integration/b04.test.mjs',
+    'tests/integration/b04-cases.mjs',
+    'tests/integration/b04-support.mjs',
+    'tests/integration/fault-points.json',
+    'scripts/b04-evidence-sources.mjs',
+    'apps/core/src/operation-runner.ts',
+    'apps/core/src/operation-runner-test-support.ts',
+    'apps/core/src/api-turns.ts',
+    'apps/desktop/src/main/hub-transport.ts',
+    'packages/connectors/src/provider/server.ts',
+    'packages/storage/src/db-worker.ts',
+    'packages/storage/migrations/0005_runner.sql',
+    'packages/contracts/schemas/buddy.schema.json',
+    'packages/contracts/fixtures/h01.json',
+    'packages/contracts/fixtures/operation-transitions.json',
+  ])
+    assert(files.includes(path), path);
+  // 手で決めた、含めないファイル（画面・デスクトップの main の他の部品・別の試験・文書・証拠）。
+  for (const path of [
+    'apps/desktop/src/renderer/screens/work/WorkPanel.tsx',
+    'apps/desktop/src/renderer/state/work-state.ts',
+    'apps/desktop/src/main/operation-bridge.ts',
+    'apps/desktop/src/main/two-clients.test.ts',
+    'apps/core/src/draft-save.test.ts',
+    'apps/core/src/cli.ts',
+    'packages/storage/migrations/README.md',
+    'tests/integration/evidence-b04-simulated.json',
+    'docs/b04/README.md',
+  ])
+    assert(!files.includes(path), path);
+  assert(files.every((path) => !path.startsWith('apps/desktop/src/renderer/')));
+});
+
+test('B04 の証拠の対象外のファイルが変わっても検査は通り、対象のファイルが変われば失敗する', async () => {
+  const evidence = await read('tests/integration/evidence-b04-simulated.json');
+  const base = b04SourceSha256();
+  // 対象外（画面・デスクトップの main の他の部品）を変えても、対象と hash は同じ。
+  const outside = readOverridden({
+    'apps/desktop/src/renderer/screens/work/WorkPanel.tsx': '// 合成の変更\n',
+    'apps/desktop/src/main/operation-bridge.ts': '// 合成の変更\n',
+  });
+  assert.deepEqual(b04SourceSha256(outside), base);
+  assertB04EvidenceSources(evidence, outside);
+  // 対象（実行担当・期待値）を変えると失敗する。
+  for (const path of [
+    'apps/core/src/operation-runner.ts',
+    'tests/integration/fault-points.json',
+  ]) {
+    const inside = readOverridden({
+      [path]: `${readOverridden({})(path)}\n// 合成の変更\n`,
+    });
+    assert.notDeepEqual(b04SourceSha256(inside), base, path);
+    assert.throws(
+      () => assertB04EvidenceSources(evidence, inside),
+      /B04 の証拠と現行ソースが不一致/u,
+      path,
+    );
+  }
+});
+
+test('B04 の証拠の対象は import を機械的に辿り、型だけの import は辿らない', () => {
+  const cases = readOverridden({})('tests/integration/b04-cases.mjs');
+  const files = b04SourceFiles(
+    readOverridden({
+      'tests/integration/b04-cases.mjs': `${cases}
+import '../../apps/desktop/dist/main/operation-bridge.js';
+`,
+      'apps/core/src/operation-runner.ts': `${readOverridden({})('apps/core/src/operation-runner.ts')}
+import type { AdminConfirmRequest } from '@buddy/desktop/admin-confirm';
+export type { Missing } from '../../desktop/src/main/admin-confirm.js';
+`,
+    }),
+  );
+  // 実行器に足した import の先（とその先）は対象に入る。
+  assert(files.includes('apps/desktop/src/main/operation-bridge.ts'));
+  // 型だけの import / export の先は対象に入らない。
+  assert(!files.includes('apps/desktop/src/main/admin-confirm.ts'));
+  assert.deepEqual(
+    runtimeSpecifiers(
+      "import type { A } from './a.js';\nimport { b } from './b.js';\nexport { c } from './c.js';\nexport type { D } from './d.js';\nconst e = await import('./e.js');\nconst f = new URL('./f.json', import.meta.url);\n",
+    ).sort(),
+    ['./b.js', './c.js', './e.js', './f.json'],
+  );
 });

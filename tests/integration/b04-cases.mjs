@@ -29,12 +29,18 @@ import {
   idle,
   reached,
   LABEL,
+  CLOCK_START,
+  DRAFT_TEXT,
+  SCHEDULE_TEXT,
+  TASK_TEXT,
+  preview,
 } from '../../apps/core/dist/operation-runner-test-support.js';
 
 import {
   installHistory,
   database,
   observe,
+  observeProviderDrafts,
   observeProviderLabels,
   restart,
   client,
@@ -43,7 +49,7 @@ import {
   shuffled,
 } from './b04-support.mjs';
 
-const TASK = '「牛乳を買う」を用事に登録して';
+const TASK = TASK_TEXT;
 const command = (id, expected, who = null) => ({
   command_id: randomUUID(),
   operation_id: id,
@@ -90,9 +96,19 @@ async function turn(core, who, text, body = {}) {
   return { path, request, response };
 }
 
+// 発言の文。下書きの保存のケース（operation: draft_reply）は外部の下書き、QA27-local は用事、他はラベル。
+const textOf = (spec) =>
+  spec.operation === 'draft_reply'
+    ? DRAFT_TEXT
+    : spec.id === 'QA27-local'
+      ? TASK
+      : LABEL;
+
 export async function runCase(t, spec, seed, round) {
   if (spec.id === 'QA28') return qa28(t, spec);
   if (spec.id.startsWith('X10')) return steps(t, spec);
+  if (spec.id === 'QA27-auth' || spec.id === 'QA27-expiry')
+    return qa27Guards(t, spec);
   const controller = new AbortController();
   const rig = await startRig(t, { writeSignal: controller.signal });
   let core = await startCore(t, rig);
@@ -133,13 +149,13 @@ export async function runCase(t, spec, seed, round) {
       counts,
     };
   }
-  const id = await createOperation(
-    core,
-    who,
-    spec.id === 'QA27-local' ? TASK : LABEL,
-  );
+  // LocalCommand の外部呼出し（読み取りを含む）は、発言の受付の前から数える。
+  const callsBeforeTurn = rig.ports.calls;
+  const id = await createOperation(core, who, textOf(spec));
   const detail = {};
-  switch (spec.id) {
+  // 下書きの保存の X ケースは、同じ故障の手順をラベルのケースと共有する（照合が目印になるだけ）。
+  const base = spec.id.replace(/-draft$/u, '');
+  switch (base) {
     case 'X01': {
       // 通常の完了後の再起動と、preparing での再起動の両方を固定順序で実行する。
       if (round % 2 === 1)
@@ -331,19 +347,19 @@ export async function runCase(t, spec, seed, round) {
       const point = spec.faults[0];
       rig.injector.arm('after_target_recheck', { mode: 'pause' });
       rig.injector.arm(point, {
-        mode: spec.id === 'X07' ? 'drop_response' : 'hold_then_apply',
+        mode: base === 'X07' ? 'drop_response' : 'hold_then_apply',
       });
       await approveOperation(core, who, id);
       await reached(rig.injector, 'after_target_recheck');
       const calls = rig.ports.calls;
       rig.injector.release('after_target_recheck');
       await reached(rig.injector, point);
-      if (spec.id === 'X08') controller.abort();
+      if (base === 'X08') controller.abort();
       await idle(core);
       // 以後の呼出しは書込み 1 回と自動照合の読み取り 1 回。
       assert.equal(rig.ports.calls - calls - 1, expected.automatic_lookups);
       detail.automatic_lookups = rig.ports.calls - calls - 1;
-      if (spec.id === 'X08') {
+      if (base === 'X08') {
         const held = await operationOf(core, who, id);
         assert.equal(held.state, expected.before_late_apply.state);
         assert.equal(
@@ -465,12 +481,13 @@ export async function runCase(t, spec, seed, round) {
       break;
     }
     case 'QA27-local': {
-      rig.ports.calls = 0;
       const first = await approveOperation(core, who, id);
       await idle(core);
       const replay = await approve(core, who.device, id, first.body);
       assert.deepEqual(replay.json, first.response.json);
-      assert.equal(rig.ports.calls, expected.external_calls);
+      // 発言の受付から適用・再要求まで、アダプターの呼出し（読み取りを含む）は 0。
+      assert.equal(rig.ports.calls - callsBeforeTurn, expected.external_calls);
+      detail.external_calls = rig.ports.calls - callsBeforeTurn;
       assert.equal(
         database(
           core,
@@ -488,6 +505,128 @@ export async function runCase(t, spec, seed, round) {
   }
   const result = await observe(core, rig, id, expected);
   return { ...result, ...detail };
+}
+
+// QA27 の全経路の権限（QA27-auth）と期限（QA27-expiry）。用事と下書きの操作を作って preview を出した後、
+// 失効した端末・期限の切れた接続範囲で 3 種の発言と 2 種の承認を送り、何も作らず送らないことを確かめる。
+async function qa27Guards(t, spec) {
+  const expected = spec.expected;
+  const rig = await startRig(t);
+  const clock = { ms: CLOCK_START };
+  const core = await startCore(t, rig, { clock });
+  installHistory(core);
+  const who = await session(core);
+  const ids = [
+    await createOperation(core, who, TASK),
+    await createOperation(core, who, DRAFT_TEXT),
+  ];
+  const shown = [];
+  for (const id of ids) {
+    const response = await preview(core, who, id);
+    assert.equal(response.status, 200);
+    shown.push(response.json);
+  }
+  const opened = await postJson(core, who.device, '/v1/sessions', {
+    request_id: randomUUID(),
+    command_scope_id: who.scope,
+    storage_mode: 'normal',
+  });
+  assert.equal(opened.status, 201);
+  const detail = {};
+  if (spec.id === 'QA27-auth') {
+    // 連携の許可: 予定の読み取りの範囲がなければ Read も聞き返す。
+    rig.provider.truth.setPermission({
+      scopes: ['mail.read', 'mail.labels.change', 'mail.drafts.create'],
+    });
+    const { response } = await turn(core, who, SCHEDULE_TEXT);
+    assert.equal(response.json.status, 'clarification');
+    assert.equal(response.json.reply_text, expected.read_scope_missing_reply);
+    detail.read_scope_missing = response.json.status;
+    const revoked = await core.handle.store.device({
+      kind: 'device.revoke',
+      device_id: who.device.device.device_id,
+      revoked_at: CLOCK_START,
+    });
+    assert(revoked.ok);
+  } else clock.ms = CLOCK_START + expected.clock_advance_ms;
+  const turnStatuses = [];
+  for (const text of [SCHEDULE_TEXT, TASK, DRAFT_TEXT]) {
+    const response = await postJson(
+      core,
+      who.device,
+      `/v1/sessions/${opened.json.session_id}/turns`,
+      {
+        request_id: randomUUID(),
+        command_scope_id: who.scope,
+        text,
+        input_kind: 'text',
+      },
+    );
+    assert.equal(response.status, expected.turn_status, text);
+    if (expected.error_code)
+      assert.equal(response.json.code, expected.error_code);
+    turnStatuses.push(response.status);
+  }
+  const approveStatuses = [];
+  for (const [i, id] of ids.entries()) {
+    const response = await approve(
+      core,
+      who.device,
+      id,
+      approveBody(who.scope, {
+        previewId: shown[i].preview_id,
+        hash: shown[i].content_hash,
+      }),
+    );
+    assert.equal(response.status, expected.approve_status);
+    approveStatuses.push(response.status);
+  }
+  await idle(core);
+  const counts = database(core, (db) =>
+    Object.fromEntries(
+      ['operations', 'approvals', 'operation_attempts'].map((table) => [
+        table,
+        db.prepare(`SELECT count(*) AS n FROM ${table}`).get().n,
+      ]),
+    ),
+  );
+  assert.deepEqual(counts, {
+    operations: expected.operations,
+    approvals: expected.approvals,
+    operation_attempts: expected.attempts,
+  });
+  const states = [];
+  for (const id of ids) {
+    const record = await core.handle.store.query({
+      kind: 'operation',
+      operation_id: id,
+    });
+    states.push(record.state);
+  }
+  assert.deepEqual(states, expected.operation_states);
+  assert.equal(rig.ports.counts.write, expected.adapter_writes);
+  assert.equal(rig.provider.truth.requestCount(), expected.provider_requests);
+  assert.equal(
+    rig.provider.truth.stateChangeCount(),
+    expected.provider_state_changes,
+  );
+  const providerLabels = observeProviderLabels(rig.provider.truth, expected);
+  const providerDrafts = observeProviderDrafts(rig.provider.truth, expected);
+  return {
+    provider_labels: providerLabels,
+    provider_drafts: providerDrafts,
+    provider_receipts: [],
+    provider_requests: rig.provider.truth.requestCount(),
+    provider_state_changes: rig.provider.truth.stateChangeCount(),
+    approval_count: counts.approvals,
+    db_version: String(core.handle.store.schemaVersion),
+    final_state: `refused_${expected.turn_status}`,
+    counts,
+    operation_states: states,
+    turn_statuses: turnStatuses,
+    approve_statuses: approveStatuses,
+    ...detail,
+  };
 }
 
 // X10 は工程の命令・保存・復旧後の照合判断だけ。製品の下書き送信経路は実行していない。

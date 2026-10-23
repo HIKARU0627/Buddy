@@ -40,7 +40,7 @@ import type {
 } from '@buddy/storage';
 import type { ApiContract } from './api-contract.js';
 import type { TurnRouteStore } from './api-turns.js';
-import { canWrite } from './turn-ports.js';
+import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   FaultHook,
   ProviderDraft,
@@ -124,6 +124,8 @@ type Recheck =
       readonly kind: 'changed';
       readonly source_revision: string;
       readonly permission_revision: string;
+      // 読み直した対象（下書きは返信元から宛先・件名を作り直す）。
+      readonly target: ProviderMailTarget;
     }
   // 確かめられない（接続なし・対象なし・書込み不可）。送らず、準備のまま残す（本人の取消か再開を待つ）。
   | { readonly kind: 'blocked'; readonly reason: string };
@@ -350,6 +352,9 @@ export function createOperationRunner(
       const permission = await provider.readPermission(intent.account_id);
       if (permission === null || permission.account_id !== intent.account_id)
         return { kind: 'blocked', reason: 'permission_unreadable' };
+      // 対象のメールを読む前に、メールの読み取りが許可に含まれることを確かめる（B04-07）。
+      if (!canRead(connection, 'mail.message'))
+        return { kind: 'blocked', reason: 'not_readable' };
       const target = await provider.readTarget(intent.remote_id);
       if (target === null || target.remote_id !== intent.remote_id)
         return { kind: 'blocked', reason: 'target_missing' };
@@ -361,6 +366,7 @@ export function createOperationRunner(
           kind: 'changed',
           source_revision: target.source_revision,
           permission_revision: permission.permission_revision,
+          target,
         };
       // 書込みの範囲がこの種類を許していなければ送らない（B04-07。範囲は種類ごと）。
       if (!canWrite(connection, intent.kind))
@@ -546,6 +552,19 @@ export function createOperationRunner(
     change: Extract<Recheck, { kind: 'changed' }>,
   ): Promise<void> => {
     const next = String(BigInt(current.current_content_version) + 1n);
+    // 下書きは、読み直した返信元から宛先・件名を作り直す（返信元の差出人・件名が変わっていれば新しい値になる）。
+    // 作り直せない（差出人か件名が読めない）なら内容版を上げず、準備のまま残す。本文と CC は変えない。
+    let action = intent.raw['action'] as Record<string, unknown>;
+    if (intent.kind === 'mail.draft.create') {
+      const reply = replyFields(change.target);
+      if (reply === null) {
+        log(
+          `操作 ${current.operation_id} の返信元の差出人か件名を読めないため、送らずに準備のまま残しました。`,
+        );
+        return;
+      }
+      action = { ...action, to: [...reply.to], subject: reply.subject };
+    }
     const content = {
       ...intent.raw,
       content_version: next,
@@ -554,6 +573,7 @@ export function createOperationRunner(
         ...(intent.raw['target'] as Record<string, unknown>),
         source_revision: change.source_revision,
       },
+      action,
     };
     if (!options.contract.valid('OperationIntent', content)) return;
     const key = await loadKey();

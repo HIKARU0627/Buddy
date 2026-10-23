@@ -29,7 +29,7 @@ import {
   startCore,
   startRig,
   turn,
-} from './draft-save-test-support.js';
+} from './operation-runner-test-support.js';
 
 const TIMEOUT = 60_000;
 const ACCOUNT = '00000000-0000-4000-8000-000000000002';
@@ -76,7 +76,7 @@ test(
     const who = await session(core);
     const operationId = await createOperation(core, who, DRAFT_TEXT);
     // 作っただけでは外部へ何も送らない。
-    assert.equal(rig.ports.calls.write, 0);
+    assert.equal(rig.ports.counts.write, 0);
     assert.equal(rig.provider.truth.requestCount(), 0);
     const created = await operationOf(core, who, operationId);
     assert.equal(created['state'], 'awaiting_approval');
@@ -142,7 +142,7 @@ test(
     assert.equal(receipt?.operation_id, operationId);
     assert.equal(receipt?.step_id, '1-create_draft');
     // 応答を受け取れたので照合（目印の読み取り）はしない。
-    assert.equal(rig.ports.calls.find, 0);
+    assert.equal(rig.ports.counts.find, 0);
     // 同じ承認の再送は保存済みの結果で、外部へ増やさない。
     const replay = await approve(core, who.device, operationId, body);
     assert.equal(replay.status, 202, replay.text);
@@ -174,8 +174,8 @@ test(
     assert.equal(rig.provider.truth.stateChangeCount(), 1);
     assert.equal(rig.provider.truth.receipts()[0]?.responded, false);
     // 自動の照合は 1 回だけ（D4）。書込みは 1 回。
-    assert.equal(rig.ports.calls.find, 1);
-    assert.equal(rig.ports.calls.write, 1);
+    assert.equal(rig.ports.counts.find, 1);
+    assert.equal(rig.ports.counts.write, 1);
     assert.deepEqual(draftsOf(rig), [expectedDraft(operationId)]);
   },
 );
@@ -200,7 +200,7 @@ test(
     assert.equal(held['state'], 'unknown_held');
     assert.deepEqual(held['allowed_actions'], ['reconcile']);
     // 自動の照合は 1 回（まだ適用されていないので見つからない）。未実行とは断定しない。
-    assert.equal(rig.ports.calls.find, 1);
+    assert.equal(rig.ports.counts.find, 1);
     assert.equal(rig.provider.truth.requestCount(), 1);
     assert.equal(rig.provider.truth.stateChangeCount(), 0);
     // 遅れて保存されても、自動では照合も再送もしない。
@@ -210,7 +210,7 @@ test(
       (await operationOf(core, who, operationId))['state'],
       'unknown_held',
     );
-    assert.equal(rig.ports.calls.find, 1);
+    assert.equal(rig.ports.counts.find, 1);
     // 本人の照合（参照だけ）で、目印の下書きを 1 件見つけて成功にする。
     const reconciled = await reconcile(core, who, operationId);
     assert.equal(reconciled.status, 202, reconciled.text);
@@ -219,8 +219,8 @@ test(
       (await operationOf(core, who, operationId))['state'],
       'succeeded',
     );
-    assert.equal(rig.ports.calls.find, 2);
-    assert.equal(rig.ports.calls.write, 1);
+    assert.equal(rig.ports.counts.find, 2);
+    assert.equal(rig.ports.counts.write, 1);
     assert.equal(rig.provider.truth.requestCount(), 1);
     assert.deepEqual(draftsOf(rig), [expectedDraft(operationId)]);
   },
@@ -380,7 +380,7 @@ test(
       (await operationOf(core, who, atDispatch))['state'],
       'preparing',
     );
-    assert.equal(rig.ports.calls.write, 0);
+    assert.equal(rig.ports.counts.write, 0);
     assert.equal(rig.provider.truth.requestCount(), 0);
     assert.deepEqual(draftsOf(rig), []);
   },
@@ -428,8 +428,12 @@ test(
   },
 );
 
+// 返信元の差出人・件名が変わった後の内容版 2 の正規形（手で書いた値。宛先と件名を作り直し、本文はそのまま）。
+const canonicalRevised = (operationId: string) =>
+  `{"account_id":"${ACCOUNT}","action":{"body":"（合成）承知しました。","cc":[],"kind":"mail.draft.create","subject":"Re: （合成）日程の再調整","to":["synthetic-other@example.com"]},"content_version":"2","effects":{"external_recipients":[],"reconcile_scope":"operation_marker"},"operation_id":"${operationId}","permission_revision":"1","provider":"mock","schema":"buddy.operation.v1","target":{"remote_id":"mail-001","source_revision":"r2"}}`;
+
 test(
-  'draft save: a reply source changed after approval sends nothing and returns to approval with content version 2 and a new marker',
+  'draft save: a reply source changed after approval sends nothing and returns to approval with content version 2, the new recipient and subject, and a new marker',
   { timeout: TIMEOUT },
   async (t) => {
     const rig = await startRig(t);
@@ -439,24 +443,45 @@ test(
     rig.injector.arm('after_approval_save', { mode: 'pause' });
     await approveOperation(core, who, operationId);
     await reached(rig.injector, 'after_approval_save');
-    rig.provider.truth.setSourceRevision('mail-001', 'r2');
+    // 返信元の版・差出人・件名が変わる。
+    rig.provider.truth.updateMail('mail-001', {
+      source_revision: 'r2',
+      from: 'synthetic-other@example.com',
+      subject: '（合成）日程の再調整',
+    });
     rig.injector.release('after_approval_save');
     await idle(core);
     const revised = await operationOf(core, who, operationId);
     assert.equal(revised['state'], 'awaiting_approval');
     assert.equal(revised['content_version'], '2');
     assert.equal(rig.provider.truth.requestCount(), 0);
-    // 新しい内容版を承認すると、目印は内容版 2 のもので 1 回だけ保存する。
+    // 新しい内容版の preview: 宛先・件名は読み直した返信元から作り直した値。hash は手で書いた正規形。
     const shown = await preview(core, who, operationId);
+    assert.equal(shown.status, 200, shown.text);
     assert.equal(
       shown.json?.['content_hash'],
-      sha256(
-        canonicalIntent(operationId, '2').replace(
-          '"source_revision":"r1"',
-          '"source_revision":"r2"',
-        ),
-      ),
+      sha256(canonicalRevised(operationId)),
     );
+    const intent = shown.json?.['intent'] as Record<string, unknown>;
+    assert.deepEqual(intent['action'], {
+      kind: 'mail.draft.create',
+      to: ['synthetic-other@example.com'],
+      cc: [],
+      subject: 'Re: （合成）日程の再調整',
+      body: '（合成）承知しました。',
+    });
+    assert.deepEqual(intent['target'], {
+      remote_id: 'mail-001',
+      source_revision: 'r2',
+    });
+    assert.deepEqual(shown.json?.['display'], {
+      account_label: 'synthetic-user@example.com',
+      target: {
+        subject: '（合成）日程の再調整',
+        sender: 'synthetic-other@example.com',
+        received_at: '2026-10-04T18:30:00+09:00',
+      },
+    });
     // approveBody は内容版 1 を入れるので、内容版 2 に書き換える。
     const retried = await approve(core, who.device, operationId, {
       ...approveBody(who.scope, {
@@ -474,8 +499,126 @@ test(
     );
     assert.equal(rig.provider.truth.requestCount(), 1);
     assert.deepEqual(draftsOf(rig), [
-      { ...expectedDraft(operationId), marker: `buddy-op:${operationId}:2` },
+      {
+        marker: `buddy-op:${operationId}:2`,
+        in_reply_to: 'mail-001',
+        to: ['synthetic-other@example.com'],
+        cc: [],
+        subject: 'Re: （合成）日程の再調整',
+        body: '（合成）承知しました。',
+        status: 'draft',
+      },
     ]);
+  },
+);
+
+test(
+  'draft save: without the mail read scope the reply source is not read, the preview is refused, and an approved draft is not sent',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const approved = await createOperation(core, who, DRAFT_TEXT);
+    const pending = await createOperation(core, who, DRAFT_TEXT);
+    rig.injector.arm('after_approval_save', { mode: 'pause' });
+    await approveOperation(core, who, approved);
+    await reached(rig.injector, 'after_approval_save');
+    // メールの読み取りの範囲だけが外れる（許可の版・書込みの範囲は同じ）。
+    rig.provider.truth.setPermission({
+      scopes: [
+        'calendar.read',
+        'mail.labels.change',
+        'mail.drafts.create',
+        'mail.drafts.send',
+      ],
+    });
+    const readsBefore = rig.ports.counts.read;
+    rig.injector.release('after_approval_save');
+    await idle(core);
+    // 送る前の確かめ直しで止まり、準備のまま。返信元は読んでいない（接続と許可の 2 回だけ）。
+    assert.equal(
+      (await operationOf(core, who, approved))['state'],
+      'preparing',
+    );
+    assert.equal(rig.ports.counts.read - readsBefore, 2);
+    assert.equal(rig.provider.truth.requestCount(), 0);
+    // preview は出さない。内容の表示用の読み取りでも件名・差出人を読まない。
+    const refused = await preview(core, who, pending);
+    assert.equal(refused.status, 409, refused.text);
+    const display = await postJson(
+      core,
+      who.device,
+      `/v1/operations/${pending}/display`,
+      { request_id: randomUUID(), command_scope_id: who.scope },
+    );
+    assert.equal(display.status, 200, display.text);
+    assert.deepEqual(display.json?.['display'], {
+      account_label: 'synthetic-user@example.com',
+      target: null,
+    });
+    // 発言: 下書きもラベルも、返信元・対象を読まずに聞き返す。
+    for (const text of [DRAFT_TEXT, 'mail-001 に follow-up を付けて']) {
+      const before = rig.ports.counts.read;
+      const asked = await turn(core, who, text);
+      assert.equal(asked['status'], 'clarification', text);
+      assert.equal(
+        asked['reply_text'],
+        '連携の接続が使えません。接続を確かめてください。',
+      );
+      // 入力の許可（接続・許可）と意味検証の接続の 3 回。対象のメールは読まない。
+      assert.equal(rig.ports.counts.read - before, 3, text);
+    }
+    assert.equal(rig.provider.truth.requestCount(), 0);
+  },
+);
+
+test(
+  'draft save and label: removing only that kind of write scope after the preview makes the approval 409 and nothing is sent',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const all = [
+      'mail.read',
+      'calendar.read',
+      'mail.labels.change',
+      'mail.drafts.create',
+      'mail.drafts.send',
+    ];
+    for (const [text, removed] of [
+      [DRAFT_TEXT, 'mail.drafts.create'],
+      ['mail-001 に follow-up を付けて', 'mail.labels.change'],
+    ] as const) {
+      rig.provider.truth.setPermission({ scopes: all });
+      const operationId = await createOperation(core, who, text);
+      const shown = await preview(core, who, operationId);
+      assert.equal(shown.status, 200, shown.text);
+      // その種類の書込みの範囲だけを外す（許可の版は同じ・別の種類の書込みの範囲は残る）。
+      rig.provider.truth.setPermission({
+        scopes: all.filter((scope) => scope !== removed),
+      });
+      const refused = await approve(
+        core,
+        who.device,
+        operationId,
+        approveBody(who.scope, {
+          previewId: String(shown.json?.['preview_id']),
+          hash: String(shown.json?.['content_hash']),
+        }),
+      );
+      assert.equal(refused.status, 409, `${text}: ${refused.text}`);
+      await idle(core);
+      assert.deepEqual(await recordOf(core, operationId), {
+        state: 'awaiting_approval',
+        approvals: 0,
+        attempts: 0,
+        steps: [],
+      });
+    }
+    assert.equal(rig.ports.counts.write, 0);
+    assert.equal(rig.provider.truth.requestCount(), 0);
   },
 );
 

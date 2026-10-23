@@ -47,10 +47,11 @@ import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import type { EventQueryStore } from './event-feed.js';
 import type { PreviewRegistry } from './previews.js';
 import type { JsonObject } from './strict-json.js';
-import { canRead, canWrite } from './turn-ports.js';
+import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   CandidateSource,
   Interpreter,
+  ProviderConnection,
   ProviderReader,
   TurnPolicy,
 } from './turn-ports.js';
@@ -144,11 +145,6 @@ export function scheduleOverlaps(
       overlapping.add(b.id);
     }
   return overlapping;
-}
-
-// 返信の件名。返信元の件名が既に「Re:」で始まれば（大文字・小文字を問わない）そのまま、なければ「Re: 」を付ける。
-export function replySubject(subject: string): string {
-  return /^re:/iu.test(subject) ? subject : `Re: ${subject}`;
 }
 
 // 予定の照会で返す予定の上限。予定 1 件の参照は重なりの参照を含めて高々 2 件（1 件は約 70 文字）なので、
@@ -281,7 +277,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   // アカウントのメールを読んでしまう）null を返す。
   const readTargetDisplay = async (
     intent: Record<string, unknown>,
-    connection: { readonly account_id: string } | null,
+    connection: Pick<
+      ProviderConnection,
+      'account_id' | 'status' | 'readable_kinds'
+    > | null,
   ): Promise<{
     subject: string | null;
     sender: string | null;
@@ -292,6 +291,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       options.provider === null ||
       connection === null ||
       connection.account_id !== intent['account_id'] ||
+      // メールの読み取りが許可に含まれなければ、件名・差出人を読まない。
+      !canRead(connection, 'mail.message') ||
       typeof target !== 'object' ||
       target === null
     )
@@ -432,7 +433,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (
       connection === null ||
       connection.status !== 'active' ||
-      !canWrite(connection, 'mail.labels.change')
+      !canWrite(connection, 'mail.labels.change') ||
+      // 対象のメールを読む前に、メールの読み取りが許可に含まれることを確かめる。
+      !canRead(connection, 'mail.message')
     )
       return clarify('connection', intent);
     let target;
@@ -508,7 +511,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (
       connection === null ||
       connection.status !== 'active' ||
-      !canWrite(connection, 'mail.draft.create')
+      !canWrite(connection, 'mail.draft.create') ||
+      // 返信元を読む前に、メールの読み取りが許可に含まれることを確かめる。
+      !canRead(connection, 'mail.message')
     )
       return clarify('connection', intent);
     let target;
@@ -520,15 +525,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (target === null || target.remote_id !== candidate.remote_id)
       return clarify('target_not_found', intent);
     // 返信先（差出人）と件名が読めなければ、宛先と件名を決められないので作らない。
-    const sender = target.sender ?? null;
-    const subject = target.subject ?? null;
-    if (
-      sender === null ||
-      sender.length === 0 ||
-      subject === null ||
-      subject.length === 0
-    )
-      return clarify('invalid', intent);
+    const reply = replyFields(target);
+    if (reply === null) return clarify('invalid', intent);
     const permission = await readPermission(connection.account_id);
     if (permission === null) return clarify('connection', intent);
     if (readiness(intent, permission === permissionAtInput) === 'blocked')
@@ -554,9 +552,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         },
         action: {
           kind: 'mail.draft.create',
-          to: [sender],
+          to: reply.to,
           cc: [],
-          subject: replySubject(subject),
+          subject: reply.subject,
           body,
         },
         effects: {
@@ -608,10 +606,62 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
   };
 
+  // 連携の provider を使う意図（Read と RemoteMutation）。これ以外（LocalCommand・聞き返し）では接続を照会しない
+  // （QA27: LocalCommand に外部の HTTP がない。B04-07）。
+  const PROVIDER_INTENTS: readonly IntentName[] = [
+    'query_schedule',
+    'label_mail',
+    'draft_reply',
+  ];
+
+  // 入力の許可の版。provider を使う意図だけ、解釈の直後（意味検証の前）に読む。接続がなければ null。
+  const inputPermission = async (): Promise<string | null> => {
+    const connection = await readConnection();
+    return connection === null
+      ? null
+      : await readPermission(connection.account_id);
+  };
+
   const planTurn = async (
     text: string,
-    permissionAtInput: string | null,
-  ): Promise<TurnPlan> => {
+  ): Promise<{
+    readonly plan: TurnPlan;
+    readonly permissionAtInput: string | null;
+  }> => {
+    const result = await interpretTurn(text);
+    if (result.kind === 'plan')
+      return { plan: result.plan, permissionAtInput: null };
+    const { intent, args } = result;
+    if (!PROVIDER_INTENTS.includes(intent))
+      return {
+        plan:
+          intent === 'create_task'
+            ? planTask(args)
+            : clarify('unsupported', intent),
+        permissionAtInput: null,
+      };
+    const permissionAtInput = await inputPermission();
+    const plan =
+      intent === 'query_schedule'
+        ? await planRead(intent, args)
+        : intent === 'label_mail'
+          ? await planLabel(args, permissionAtInput)
+          : await planDraft(args, permissionAtInput);
+    return { plan, permissionAtInput };
+  };
+
+  // 解釈と、意図表・契約での引数の検査。聞き返しなら plan、通れば意図と引数を返す。
+  const interpretTurn = async (
+    text: string,
+  ): Promise<
+    | { readonly kind: 'plan'; readonly plan: TurnPlan }
+    | {
+        readonly kind: 'intent';
+        readonly intent: IntentName;
+        readonly args: ArgValues;
+      }
+  > => {
+    const done = (plan: TurnPlan) => ({ kind: 'plan' as const, plan });
     let candidates;
     try {
       candidates = await options.candidates.mailCandidates();
@@ -626,7 +676,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         mail_candidates: candidates,
       });
     } catch {
-      return clarify('unclear', null);
+      return done(clarify('unclear', null));
     }
     // 解釈の結果を信用しない: 意図表にない意図・契約に合わない引数は知らない文と同じ扱い。
     if (
@@ -637,25 +687,23 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       reply.intent === 'unclear' ||
       !contract.valid('IntentArgs', reply.args)
     )
-      return clarify('unclear', null);
+      return done(clarify('unclear', null));
     const intent = reply.intent as IntentName;
     const args = reply.args as unknown as ArgValues;
     const checked = checkIntentArgs(intent, args);
     if (checked.missing.length > 0)
-      return clarify(
-        checked.missing.includes('target_candidate_id')
-          ? 'missing_target'
-          : checked.missing.includes('title')
-            ? 'missing_title'
-            : 'missing_other',
-        intent,
+      return done(
+        clarify(
+          checked.missing.includes('target_candidate_id')
+            ? 'missing_target'
+            : checked.missing.includes('title')
+              ? 'missing_title'
+              : 'missing_other',
+          intent,
+        ),
       );
-    if (checked.unexpected.length > 0) return clarify('invalid', intent);
-    if (intent === 'query_schedule') return planRead(intent, args);
-    if (intent === 'label_mail') return planLabel(args, permissionAtInput);
-    if (intent === 'create_task') return planTask(args);
-    if (intent === 'draft_reply') return planDraft(args, permissionAtInput);
-    return clarify('unsupported', intent);
+    if (checked.unexpected.length > 0) return done(clarify('invalid', intent));
+    return { kind: 'intent', intent, args };
   };
 
   const workflowState = (plan: TurnPlan): WorkflowState | null => {
@@ -717,11 +765,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (found.value !== null)
       return storedResponse(found.value.response_json, requestId);
     const text = stringOf(body, 'text');
-    // 入力の時点の許可の版（連携の接続がなければ 0）。
-    const connection = await readConnection();
-    const permissionAtInput =
-      connection === null ? null : await readPermission(connection.account_id);
-    let plan = await planTurn(text, permissionAtInput);
+    // 入力の許可の版（provider を使う意図だけ。連携の接続がない・使わないなら 0 として記録する）。
+    const planned = await planTurn(text);
+    let plan = planned.plan;
+    const permissionAtInput = planned.permissionAtInput;
     const key = await loadKey();
     if (key === null)
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
@@ -913,8 +960,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if ('error' in loaded) return loaded.error;
     const { operation, intent } = loaded;
     // 外部変更は、今の接続が書込み可で、許可の版が確定 intent と同じときだけ preview を出す。
-    let account: { account_id: string; permission_revision: string } | null =
-      null;
+    let account: {
+      account_id: string;
+      permission_revision: string;
+      operation_kind: string;
+    } | null = null;
     // 承認画面で口座と対象のメールを見分ける表示用の値（provider から読む。読めない項目は null）。
     let display: {
       account_label: string | null;
@@ -934,12 +984,18 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         connection.status !== 'active' ||
         typeof actionKind !== 'string' ||
         !canWrite(connection, actionKind) ||
+        // 対象のメールを確かめられない（読み取りの範囲がない）なら、承認の表示を出さない。
+        !canRead(connection, 'mail.message') ||
         connection.account_id !== accountId ||
         permission === null ||
         permission !== intent['permission_revision']
       )
         return apiErrorResponse(409, 'conflict', requestId);
-      account = { account_id: accountId, permission_revision: permission };
+      account = {
+        account_id: accountId,
+        permission_revision: permission,
+        operation_kind: actionKind,
+      };
       display = {
         account_label: connection.account_label ?? null,
         target: await readTargetDisplay(intent, connection),
@@ -1042,10 +1098,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       return false;
     if (binding.account !== null) {
       const connection = await readConnection();
+      // 書込み・読み取りの範囲は種類ごとに見る（許可の版が同じでも、その種類の範囲だけが外れうる）。
       if (
         connection === null ||
         connection.status !== 'active' ||
-        connection.access !== 'read_write' ||
+        !canWrite(connection, binding.account.operation_kind) ||
+        !canRead(connection, 'mail.message') ||
         connection.account_id !== binding.account.account_id ||
         (await readPermission(binding.account.account_id)) !==
           binding.account.permission_revision

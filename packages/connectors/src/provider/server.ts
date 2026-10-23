@@ -57,6 +57,15 @@ export interface MockProviderTruth {
   releaseLateApplies(): number;
   /** 試験の状況づくり。変更の回数には数えない。 */
   setSourceRevision(remoteId: string, revision: string): void;
+  /** 試験の状況づくり: メールの版・件名・差出人を変える（返信元が変わる D1。B04-07）。変更の回数には数えない。 */
+  updateMail(
+    remoteId: string,
+    change: {
+      readonly source_revision?: string;
+      readonly subject?: string;
+      readonly from?: string;
+    },
+  ): void;
   setPermission(permission: {
     readonly permission_revision?: string;
     readonly scopes?: readonly string[];
@@ -495,6 +504,15 @@ async function startProvider(
       const mail = state.mails[remoteId];
       if (mail === undefined) throw new Error(`知らないメール: ${remoteId}`);
       mail.source_revision = revision;
+      persist();
+    },
+    updateMail(remoteId, change) {
+      const mail = state.mails[remoteId];
+      if (mail === undefined) throw new Error(`知らないメール: ${remoteId}`);
+      if (change.source_revision !== undefined)
+        mail.source_revision = change.source_revision;
+      if (change.subject !== undefined) mail.subject = change.subject;
+      if (change.from !== undefined) mail.from = change.from;
       persist();
     },
     setPermission(permission) {

@@ -26,8 +26,8 @@ import {
   startCore,
   startRig,
   turn,
-} from './draft-save-test-support.js';
-import type { Clock } from './draft-save-test-support.js';
+} from './operation-runner-test-support.js';
+import type { Clock } from './operation-runner-test-support.js';
 import { bootstrap } from './event-test-support.js';
 
 const TIMEOUT = 60_000;
@@ -58,16 +58,17 @@ test(
       ],
     );
     assert.equal(await snapshotOperations(core, who), 0);
-    assert.equal(rig.ports.calls.write, 0);
+    assert.equal(rig.ports.counts.write, 0);
+    assert.equal(rig.ports.counts.find, 0);
     assert.equal(rig.provider.truth.requestCount(), 0);
 
-    // LocalCommand: 用事の登録。承認の後に一つの transaction で適用し、外部の HTTP は 0。
+    // LocalCommand: 用事の登録。発言の受付から承認・適用の完了まで、アダプターの呼び出し（読み取りを含む）は 0。
+    const before = { calls: rig.ports.calls, ...rig.ports.counts };
     const task = await createOperation(core, who, TASK_TEXT);
-    const callsBefore = { ...rig.ports.calls };
     await approveOperation(core, who, task);
     await idle(core);
     assert.equal((await operationOf(core, who, task))['state'], 'succeeded');
-    assert.deepEqual(rig.ports.calls, callsBefore);
+    assert.deepEqual({ calls: rig.ports.calls, ...rig.ports.counts }, before);
     assert.equal(rig.provider.truth.requestCount(), 0);
     assert.deepEqual(await recordOf(core, task), {
       state: 'succeeded',
@@ -258,7 +259,7 @@ test(
       'awaiting_approval',
     );
     assert.equal(await snapshotOperations(core, who), 2);
-    assert.equal(rig.ports.calls.write, 0);
+    assert.equal(rig.ports.counts.write, 0);
     assert.equal(rig.provider.truth.requestCount(), 0);
   },
 );

@@ -6,6 +6,7 @@ const Database = createRequire(
 )('better-sqlite3');
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { ClientConnection } from '../../packages/client/dist/index.js';
 import { createHubTransport } from '../../apps/desktop/dist/main/hub-transport.js';
 import { systemClock } from '../../apps/desktop/dist/main/system-clock.js';
@@ -180,6 +181,23 @@ export async function observe(core, rig, operationId, expected) {
     expected.provider_state_changes,
   );
   const providerLabels = observeProviderLabels(rig.provider.truth, expected);
+  const providerDrafts = observeProviderDrafts(
+    rig.provider.truth,
+    expected,
+    operationId,
+  );
+  // 確定 intent の hash は、手書きの正規形（{operation_id} だけを置き換える）の SHA-256 と照合する。
+  if (expected.content_canonical)
+    assert.equal(
+      record.content_hash ?? view.content_hash,
+      createHash('sha256')
+        .update(
+          expected.content_canonical.replaceAll('{operation_id}', operationId),
+          'utf8',
+        )
+        .digest('hex'),
+      '確定 intent の hash',
+    );
   const stepReceives = {};
   for (const [i, r] of receipts.entries()) {
     assert.equal(r.operation_id, operationId);
@@ -222,9 +240,35 @@ export async function observe(core, rig, operationId, expected) {
     provider_requests: receipts.length,
     provider_state_changes: rig.provider.truth.stateChangeCount(),
     provider_labels: providerLabels,
+    ...(providerDrafts === null ? {} : { provider_drafts: providerDrafts }),
     approval_count: record.approvals.length,
     final_state: record.state,
   };
+}
+
+// 下書きの保存（B04-07）: provider の真の下書きの内容を、手書きの期待値と照合する。目印の {operation_id} だけを
+// その試行の操作 ID に置き換える。期待値に provider_drafts がなければ照合しない（null を返す）。
+export function observeProviderDrafts(truth, expected, operationId) {
+  if (!expected.provider_drafts) return null;
+  const drafts = Object.values(truth.snapshot().drafts).map((d) => ({
+    marker: d.marker,
+    in_reply_to: d.in_reply_to,
+    to: d.to,
+    cc: d.cc,
+    subject: d.subject,
+    body: d.body,
+    status: d.status,
+  }));
+  assert.deepEqual(
+    drafts,
+    expected.provider_drafts.map((d) => ({
+      ...d,
+      marker: d.marker.replaceAll('{operation_id}', operationId ?? ''),
+    })),
+    'provider の真の下書き（宛先・件名・本文・返信元・目印）',
+  );
+  // 証拠には本文を載せない（件数・目印・状態だけ）。
+  return drafts.map((d) => ({ marker: d.marker, status: d.status }));
 }
 
 export function observeProviderLabels(truth, expected) {

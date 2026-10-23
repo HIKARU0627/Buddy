@@ -78,6 +78,28 @@ export function canWrite(
   );
 }
 
+// 返信の下書きの宛先と件名（B04-07）。宛先は返信元の差出人だけ、件名は返信元の件名に「Re: 」を付けた値
+// （既に「Re:」で始まれば、大文字・小文字を問わずそのまま）。Core が返信元の読み取りから決め、モデルに作らせない
+// （ADR 0004）。差出人か件名が読めなければ null（作らない・内容版を上げない）。発言の時と、送る前の確かめ直しで
+// 返信元が変わった時（D1）の両方で使う。
+export function replyFields(
+  target: Pick<ProviderMailTarget, 'sender' | 'subject'>,
+): { readonly to: readonly string[]; readonly subject: string } | null {
+  const sender = target.sender ?? null;
+  const subject = target.subject ?? null;
+  if (
+    sender === null ||
+    sender.length === 0 ||
+    subject === null ||
+    subject.length === 0
+  )
+    return null;
+  return {
+    to: [sender],
+    subject: /^re:/iu.test(subject) ? subject : `Re: ${subject}`,
+  };
+}
+
 // 目印で探した下書き（結果不明の照合、by_operation_marker。読み取りだけ）。
 export interface ProviderDraft {
   readonly draft_id: string;

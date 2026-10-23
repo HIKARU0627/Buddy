@@ -36,6 +36,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.canvas_summon',
   // UI-04: 状態の層のパネルを出す・しまう（状態の層からだけ。ADR 0032）。
   'desktop.status_panel',
+  // UI-06: キャンバスの物を動かす・大きさを変える・閉じる・棚へ片付ける・棚から出す（キャンバスの窓からだけ。ADR 0032）。
+  'desktop.canvas_user_op',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -93,6 +95,8 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'input_stopped',
   // 取消・再試行の確認に出す操作の内容（見出し）を、今の内容版で確かめられない（確認へ進ませない。B04-05、ADR 0031）。
   'content_unavailable',
+  // キャンバスのユーザーの操作が古い版への操作で、その物の置き場所・存在が後から変わっていた（捨てた。UI-06、ADR 0032）。
+  'canvas_conflict',
 ] as const;
 
 export type DesktopIpcRejectReason =
@@ -146,6 +150,8 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.operation_check',
   // キャンバスを前に出すのも本人の画面操作（UI-02。ロック中は呼ばず、キャンバスの中身を出さない）。
   'desktop.canvas_summon',
+  // キャンバスのユーザーの操作も本人の画面操作（UI-06。前に出ているかは main が別に確かめる）。
+  'desktop.canvas_user_op',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -202,10 +208,11 @@ export type DesktopWindowRole = (typeof DESKTOP_WINDOW_ROLES)[number];
 // （B04-05 の desktop.turn_submit）と、キャンバスを前に出す（UI-02）だけ。承認表示の準備・承認・取消・照合・再試行・
 // 状態の確認は状態の層だけ。キャンバスは自分を前に出せない（呼ぶのは本人の操作: 全体のショートカット・つまみ・入力バー）。
 // 状態の層のパネルを出す・しまう（UI-04）も状態の層だけ。キャンバスは状態の層を隠せない・動かせない。
+// キャンバスの物のユーザーの操作（UI-06）はキャンバスの窓だけ。承認・停止のチャネルとは別で、物の置き場所だけを変える。
 export const DESKTOP_ROLE_CHANNELS: Readonly<
   Record<DesktopWindowRole, readonly DesktopIpcChannel[]>
 > = {
-  canvas: ['desktop.get_state'],
+  canvas: ['desktop.get_state', 'desktop.canvas_user_op'],
   status: [
     'desktop.get_state',
     'desktop.io_stop',

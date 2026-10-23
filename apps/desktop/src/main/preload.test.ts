@@ -127,11 +127,16 @@ test('requests go only to the contract channels', async () => {
     'desktop.operation_retry',
     'desktop.operation_check',
   ];
-  // preload の一覧は domain の一覧と同じ（UI-02 の canvas_summon と UI-04 の status_panel は従来の窓では使わないので、
-  // 最後に別に足す）。
+  // preload の一覧は domain の一覧と同じ（UI-02 の canvas_summon・UI-04 の status_panel・UI-06 の canvas_user_op は
+  // 従来の窓では使わないので、最後に別に足す）。
   assert.deepEqual(
     [...DESKTOP_IPC_CHANNELS],
-    [...channels, 'desktop.canvas_summon', 'desktop.status_panel'],
+    [
+      ...channels,
+      'desktop.canvas_summon',
+      'desktop.status_panel',
+      'desktop.canvas_user_op',
+    ],
   );
   for (const channel of channels) {
     const request = { channel, request_id: 'r', payload: null };
@@ -145,6 +150,8 @@ test('requests go only to the contract channels', async () => {
     // 従来の窓（役割の引数なし）はキャンバスを前に出さない・状態の層のパネルを使わない。
     { channel: 'desktop.canvas_summon' },
     { channel: 'desktop.status_panel' },
+    // キャンバスの物のユーザーの操作も使わない（UI-06）。
+    { channel: 'desktop.canvas_user_op' },
     { channel: 'desktop.hub_stop' },
     { channel: 'desktop.power_event' },
     { channel: 'desktop.connection_changed' },
@@ -199,7 +206,8 @@ const apiOf = (loaded: ReturnType<typeof loadPreload>) =>
 // UI-02: 窓の役割ごとに、preload でもチャネルと通知を絞る（多重の防御。正本は main の対応表）。
 // 期待する表は手で書き、domain の表とも一致することを確かめる。
 const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
-  canvas: ['desktop.get_state'],
+  // キャンバスは状態の取得と物のユーザーの操作だけ（UI-06）。
+  canvas: ['desktop.get_state', 'desktop.canvas_user_op'],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
   status: [
     'desktop.get_state',
@@ -312,7 +320,8 @@ test('the legacy role argument keeps every existing channel and notification', a
   for (const channel of DESKTOP_IPC_CHANNELS)
     if (
       channel === 'desktop.canvas_summon' ||
-      channel === 'desktop.status_panel'
+      channel === 'desktop.status_panel' ||
+      channel === 'desktop.canvas_user_op'
     )
       await assert.rejects(
         api.invoke({ channel, request_id: 'r', payload: null }),

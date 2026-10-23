@@ -11,7 +11,7 @@
 // - 模擬の試験だけ。実機（Electron の窓・画面）の確認は docs/ui/canvas-vertical.md で別に記録する。
 import assert from 'node:assert/strict';
 import { randomUUID, X509Certificate } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createDeviceToken, deviceTokenHash } from '@buddy/core';
@@ -29,7 +29,12 @@ import {
 } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import {
+  CANVAS_DISPLAY_FILE,
+  saveCanvasDisplaySettings,
+} from './canvas-display.js';
+import {
   ADMIN_CHANNELS,
+  CANVAS_CHANNELS,
   CONNECTION_CHANNELS,
   DesktopCoreLink,
   OPERATION_CHANNELS,
@@ -162,6 +167,8 @@ function senderFor(
 
 interface Client {
   readonly link: DesktopCoreLink;
+  // 端末側の保存の場所（端末トークンの保存などを置く一時のディレクトリ。UI-06 の「端末に本文が残らない」の試験）。
+  readonly dir: string;
   readonly registry: UiWindowRegistry<string>;
   // キャンバスの窓へ通知した記述（通知の宛先は対応表で確かめた）。
   readonly canvasNotices: Extract<
@@ -213,6 +220,8 @@ interface ClientOptions {
   // 応答を書き換える（中枢が契約に反する記述を返したときの試験）。
   // 端末の入出力の状態（試験が書き換える。停止・io_epoch）。
   readonly io?: { state: DesktopIoState };
+  // キャンバスが前に出ているか（UI-06。試験が書き換える）。省略は前に出ている。
+  readonly front?: { value: boolean };
   // main の OS の確認ダイアログの答え（与えたときだけ confirmAdmin を付ける）。
   readonly confirm?: (request: AdminConfirmRequest) => boolean;
   readonly rewrite?: (
@@ -288,6 +297,7 @@ async function startClient(
           },
         }),
     canvasMode: true,
+    canvasFront: () => options.front?.value ?? true,
     onCanvas: (notification) => {
       // 通知の宛先は、読み込みが終わり役割の表に通知がある窓だけ（キャンバスの窓だけ）。
       assert.deepEqual(
@@ -335,6 +345,16 @@ async function startClient(
         .response;
     if (CONNECTION_CHANNELS.includes(channel as never))
       return link.handleIpc(channel, raw, sender, UNLOCKED).response;
+    // キャンバスの物のユーザーの操作（UI-06）は、端末の今の入出力の状態で受け付ける。
+    if (CANVAS_CHANNELS.includes(channel as never))
+      return (
+        await link.handleCanvasIpc(
+          channel,
+          raw,
+          sender,
+          options.io?.state ?? UNLOCKED,
+        )
+      ).response;
     throw new Error(`not a link channel: ${channel}`);
   };
   const direct = (method: 'GET' | 'POST', path: string, body?: unknown) =>
@@ -349,6 +369,7 @@ async function startClient(
     });
   return {
     link,
+    dir,
     registry,
     canvasNotices,
     logs,
@@ -849,12 +870,12 @@ test(
         false,
         channel,
       );
-    // キャンバスが使えるのは状態の取得だけ（すべてのチャネルのうちの 1 つ）。
+    // キャンバスが使えるのは状態の取得と、物のユーザーの操作（UI-06）だけ（すべてのチャネルのうちの 2 つ）。
     assert.deepEqual(
       DESKTOP_IPC_CHANNELS.filter((channel) =>
         desktopChannelAllowedForRole('canvas', channel),
       ),
-      ['desktop.get_state'],
+      ['desktop.get_state', 'desktop.canvas_user_op'],
     );
     assert.equal(client.requests.length, requestsBefore);
 
@@ -1142,5 +1163,322 @@ test(
       client.requests.filter((line) => line.endsWith('/approve')).length,
       1,
     );
+  },
+);
+
+// UI-06（#98）: キャンバスの物のユーザーの操作。キャンバスの窓（11）から main を通して中枢へ記録し、中枢が記述に当てて
+// 版を進め、キャンバスの窓へ新しい記述が届く。期待値（版・マス・置き場所・読む順）は手で書いた。
+const userOp = (
+  client: Client,
+  expected: string,
+  op: Record<string, unknown>,
+  webContentsId = 11,
+) =>
+  client.ipc(webContentsId, 'desktop.canvas_user_op', {
+    expected_canvas_revision: expected,
+    op,
+  });
+
+const MOVED = { column: 7, row: 2, span: 4, rows: 3 };
+
+test(
+  'UI-06: the user moves, shelves, takes back and closes the card from the canvas window; the core records it and the next placement uses it',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub);
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+
+    // 動かす: 中枢がユーザーの置き場所として持ち、版 2 の記述がキャンバスの窓に届く。
+    const moved = await userOp(client, '1', {
+      kind: 'move',
+      item_id: 'errands',
+      cell: MOVED,
+    });
+    assert.equal(moved.outcome, 'ok', JSON.stringify(moved));
+    assert.equal(field(moved, 'canvas_revision'), '2');
+    await waitUntil(() => latest(client)?.canvas_revision === '2', 'rev 2');
+    assert.deepEqual(latest(client)?.user_pins, [
+      { item_id: 'errands', cell: MOVED },
+    ]);
+    const core = await client.coreCanvas();
+    assert.deepEqual(core.user_pins, [{ item_id: 'errands', cell: MOVED }]);
+    // 格子のヒント（AI の意味）は変えない。
+    assert.deepEqual(core.items[0]?.grid, { column: 2, span: 4, rows: 3 });
+    assert(client.requests.includes('POST /v1/canvas/user-ops'));
+
+    // 状態の層（12）と入力バー（13）は物を動かせない（中枢へ何も送らない）。
+    const sentBefore = client.requests.length;
+    for (const id of [12, 13]) {
+      const refused = await userOp(
+        client,
+        '2',
+        { kind: 'close', item_id: 'errands' },
+        id,
+      );
+      assert.equal(field(refused, 'reason'), 'untrusted_sender', String(id));
+    }
+    assert.equal(client.requests.length, sentBefore);
+
+    // 棚へ片付ける: 棚の物になり、読む順とユーザーの置き場所から外れる。
+    assert.equal(
+      field(
+        await userOp(client, '2', { kind: 'shelve', item_id: 'errands' }),
+        'canvas_revision',
+      ),
+      '3',
+    );
+    await waitUntil(() => latest(client)?.canvas_revision === '3', 'rev 3');
+    assert.equal(latest(client)?.items[0]?.placement, 'shelf');
+    assert.deepEqual(latest(client)?.reading_order, []);
+    assert.deepEqual(latest(client)?.user_pins, []);
+    // 棚から出す: 見える物に戻り、読む順の最後に入る。
+    assert.equal(
+      field(
+        await userOp(client, '3', { kind: 'unshelve', item_id: 'errands' }),
+        'canvas_revision',
+      ),
+      '4',
+    );
+    await waitUntil(() => latest(client)?.canvas_revision === '4', 'rev 4');
+    assert.equal(latest(client)?.items[0]?.placement, 'canvas');
+    assert.deepEqual(latest(client)?.reading_order, ['errands']);
+    // 閉じる。
+    assert.equal(
+      field(
+        await userOp(client, '4', { kind: 'close', item_id: 'errands' }),
+        'canvas_revision',
+      ),
+      '5',
+    );
+    await waitUntil(() => latest(client)?.canvas_revision === '5', 'rev 5');
+    assert.deepEqual(latest(client)?.items, []);
+
+    // もう一度頼むと、配置者は記録（最後に動かしたマスの列・幅・行数）を格子のヒントにして置き直す（AI が優先）。
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '6', 'rev 6');
+    assert.deepEqual(latest(client)?.items[0]?.grid, {
+      column: 7,
+      span: 4,
+      rows: 3,
+    });
+    assert.deepEqual(latest(client)?.reading_order, ['errands']);
+  },
+);
+
+test(
+  'UI-06: an operation on an old revision is applied when the item did not move since, and refused (canvas_conflict) when it moved, is gone or the revision is ahead',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub);
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    // AI の 2 回目の答えは中身だけの update（置き場所は変えない）: 版 2。
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '2', 'rev 2');
+
+    // 版 1 を見ていた本人の操作: その物の置き場所は版 1 から変わっていないので当てる（版 3）。
+    const old = await userOp(client, '1', {
+      kind: 'move',
+      item_id: 'errands',
+      cell: MOVED,
+    });
+    assert.equal(old.outcome, 'ok', JSON.stringify(old));
+    assert.equal(field(old, 'canvas_revision'), '3');
+    await waitUntil(() => latest(client)?.canvas_revision === '3', 'rev 3');
+
+    // 版 2 を見ていた操作: その物は版 3 で動いたので捨てる（記述は版 3 のまま）。
+    const stale = await userOp(client, '2', {
+      kind: 'resize',
+      item_id: 'errands',
+      cell: { ...MOVED, span: 2 },
+    });
+    assert.equal(field(stale, 'reason'), 'canvas_conflict');
+    const after = await client.coreCanvas();
+    assert.equal(after.canvas_revision, '3');
+    assert.deepEqual(after.user_pins, [{ item_id: 'errands', cell: MOVED }]);
+    // ない物（AI が閉じた・別の名前）も捨てる。
+    const ghost = await userOp(client, '3', {
+      kind: 'close',
+      item_id: 'ghost',
+    });
+    assert.equal(field(ghost, 'reason'), 'canvas_conflict');
+    // 画面に渡していない版（今より新しい）は中枢へ送らない。
+    const sentBefore = client.requests.length;
+    const ahead = await userOp(client, '9', {
+      kind: 'close',
+      item_id: 'errands',
+    });
+    assert.equal(field(ahead, 'reason'), 'canvas_conflict');
+    assert.equal(client.requests.length, sentBefore);
+    assert.equal((await client.coreCanvas()).canvas_revision, '3');
+  },
+);
+
+test(
+  'UI-06: a canvas operation is refused when the canvas is not in front, while stopped or locked; an answer after the lock is unknown',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const front = { value: true };
+    const io: { state: DesktopIoState } = { state: UNLOCKED };
+    let hold = false;
+    const gates: (() => void)[] = [];
+    const client = await startClient(t, hub, {
+      front,
+      io,
+      holdResponse: (_method, path) =>
+        hold && path === '/v1/canvas/user-ops'
+          ? new Promise<void>((resolve) => gates.push(resolve))
+          : undefined,
+    });
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const sentBefore = client.requests.length;
+    const close = { kind: 'close', item_id: 'errands' };
+
+    // 後ろにある（前に出ていない）キャンバスは操作を受けない。
+    front.value = false;
+    assert.equal(
+      field(await userOp(client, '1', close), 'reason'),
+      'screen_operation_required',
+    );
+    front.value = true;
+    // 入出力の停止中は受けない。
+    io.state = { lockState: 'unlocked', stopScope: 'local', ioEpoch: '1' };
+    assert.equal(
+      field(await userOp(client, '1', close), 'reason'),
+      'input_stopped',
+    );
+    io.state = UNLOCKED;
+    // ロック中・不明は受けない。
+    for (const lockState of ['locked', 'unknown'] as const) {
+      const raw = {
+        channel: 'desktop.canvas_user_op',
+        request_id: randomUUID(),
+        payload: { expected_canvas_revision: '1', op: close },
+      };
+      const refused = await client.link.handleCanvasIpc(
+        'desktop.canvas_user_op',
+        raw,
+        senderFor(client.registry, 11, 'desktop.canvas_user_op'),
+        { ...UNLOCKED, lockState },
+      );
+      assert.equal(field(refused.response, 'reason'), 'device_locked');
+    }
+    assert.equal(client.requests.length, sentBefore);
+
+    // 送った後、応答が届く前にロックした: 結果不明（自動では送り直さない）。中枢には当たっている。
+    hold = true;
+    const pending = userOp(client, '1', close);
+    await waitUntil(() => gates.length === 1, 'user-op gate');
+    client.link.setLockState('locked');
+    hold = false;
+    gates[0]?.();
+    const unknown = await pending;
+    assert.equal(field(unknown, 'reason'), 'outcome_unknown');
+    assert.equal(
+      client.requests.filter((line) => line === 'POST /v1/canvas/user-ops')
+        .length,
+      1,
+    );
+    assert.equal((await client.coreCanvas()).canvas_revision, '2');
+    // ロックで記述を捨てた（キャンバスの窓へ空を通知した）。
+    assert.equal(client.link.canvasView(), null);
+    assert.equal(client.canvasNotices.at(-1)?.canvas ?? null, null);
+  },
+);
+
+// 端末のディレクトリの中のファイルをすべて読む。
+function filesUnder(dir: string): { path: string; bytes: Buffer }[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory()
+      ? filesUnder(path)
+      : [{ path, bytes: readFileSync(path) }];
+  });
+}
+
+test(
+  'UI-06: nothing of the canvas content stays on the device; only the display setting is stored, and a setting carrying content is refused',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub);
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    assert.equal(
+      (
+        await userOp(client, '1', {
+          kind: 'move',
+          item_id: 'errands',
+          cell: MOVED,
+        })
+      ).outcome,
+      'ok',
+    );
+    await waitUntil(() => latest(client)?.canvas_revision === '2', 'rev 2');
+    // 端末に保存してよい配置の設定（複数のモニターの設定）。本文・置き場所を含む設定は書かない。
+    const valid = (value: unknown) =>
+      contract.valid('DesktopCanvasDisplaySettings', value);
+    const settingsPath = join(client.dir, CANVAS_DISPLAY_FILE);
+    assert.equal(
+      saveCanvasDisplaySettings(
+        settingsPath,
+        { schema_version: 1, target: 'display', display_id: 2 },
+        valid,
+      ),
+      true,
+    );
+    assert.equal(
+      saveCanvasDisplaySettings(
+        join(client.dir, 'carrying-content.json'),
+        {
+          schema_version: 1,
+          target: 'primary',
+          heading: '今日の用事',
+        } as never,
+        valid,
+      ),
+      false,
+    );
+    assert.equal(
+      readFileSync(settingsPath, 'utf8'),
+      '{"schema_version":1,"target":"display","display_id":2}\n',
+    );
+    // 端末のディレクトリのどのファイルにも、見出し・物の名前・中枢の予定の識別子・置き場所が残っていない。
+    const core = await client.coreCanvas();
+    const ids = core.items.flatMap((entry) =>
+      entry.data.item_refs.map((refEntry) => refEntry.id),
+    );
+    assert(ids.length > 0);
+    const files = filesUnder(client.dir);
+    assert.deepEqual(
+      files.map((file) => file.path.slice(client.dir.length + 1)).sort(),
+      [CANVAS_DISPLAY_FILE, 'device-credential.bin'],
+    );
+    for (const file of files)
+      for (const needle of [
+        '今日の用事',
+        'errands',
+        'user_pins',
+        '"column":7',
+        ...ids,
+      ])
+        assert.equal(
+          file.bytes.includes(Buffer.from(needle, 'utf8')),
+          false,
+          `${file.path} ${needle}`,
+        );
   },
 );

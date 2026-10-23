@@ -32,6 +32,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.operation_check',
   'desktop.canvas_summon',
   'desktop.status_panel',
+  'desktop.canvas_user_op',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',
@@ -45,15 +46,19 @@ const NOTIFICATION_CHANNELS: readonly string[] = [
 // packages/domain の DESKTOP_ROLE_CHANNELS・DESKTOP_ROLE_NOTIFICATIONS と同じ表（一致は preload.test で確かめる）。
 const ROLE_ARG = '--buddy-window-role=';
 const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
-  // 従来の窓はキャンバスを前に出すチャネルと状態の層のパネルのチャネルを使わない（従来の窓の組み立てには
-  // キャンバスも状態の層もない）。
+  // 従来の窓はキャンバスを前に出すチャネル・状態の層のパネルのチャネル・キャンバスのユーザーの操作のチャネルを使わない
+  // （従来の窓の組み立てにはキャンバスも状態の層もない）。
   legacy: REQUEST_CHANNELS.filter(
     (channel) =>
-      channel !== 'desktop.canvas_summon' && channel !== 'desktop.status_panel',
+      channel !== 'desktop.canvas_summon' &&
+      channel !== 'desktop.status_panel' &&
+      channel !== 'desktop.canvas_user_op',
   ),
-  canvas: ['desktop.get_state'],
+  // キャンバスは状態の取得と、物のユーザーの操作だけ（UI-06。承認・停止を使えない）。
+  canvas: ['desktop.get_state', 'desktop.canvas_user_op'],
   status: REQUEST_CHANNELS.filter(
-    (channel) => channel !== 'desktop.turn_submit',
+    (channel) =>
+      channel !== 'desktop.turn_submit' && channel !== 'desktop.canvas_user_op',
   ),
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

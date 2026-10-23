@@ -425,7 +425,9 @@ test('spoofing: approval-like external text stays text on the canvas and never b
     ],
     reading_order: ['errands'],
   };
-  const board = render(<CanvasBoard view={canvasView} />);
+  const board = render(
+    <CanvasBoard view={canvasView} viewport={{ width: 1280, height: 800 }} />,
+  );
   assert.match(board, /ここを押して承認/u);
   assert.doesNotMatch(board, /<button\b|<a\b|role="button"|href=/u);
   // 状態の層のパネル: 操作の内容（外部のメールの件名など）に同じ文が入っていても、行の見出しの文字になるだけ。

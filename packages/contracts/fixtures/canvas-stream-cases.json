@@ -5849,5 +5849,1033 @@
       "canvas": null,
       "revision": "4"
     }
+  },
+  {
+    "id": "ui06-document-user-pins",
+    "refs": ["ADR 0032 UI-06 ユーザーの置き場所"],
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"],
+      "user_pins": [
+        {
+          "item_id": "tasks-today",
+          "cell": {
+            "column": 7,
+            "row": 2,
+            "span": 4,
+            "rows": 3
+          }
+        },
+        {
+          "item_id": "reply",
+          "cell": {
+            "column": 1,
+            "row": 5,
+            "span": 3,
+            "rows": 1
+          }
+        }
+      ]
+    },
+    "semantic_errors": []
+  },
+  {
+    "id": "ui06-document-pin-shelf-item",
+    "refs": ["ADR 0032 UI-06 見える物だけが持つ"],
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"],
+      "user_pins": [
+        {
+          "item_id": "old-mail",
+          "cell": {
+            "column": 1,
+            "row": 1,
+            "span": 4,
+            "rows": 2
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["pin_unknown_item"]
+  },
+  {
+    "id": "ui06-document-pin-unknown-item",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"],
+      "user_pins": [
+        {
+          "item_id": "gone",
+          "cell": {
+            "column": 1,
+            "row": 1,
+            "span": 4,
+            "rows": 2
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["pin_unknown_item"]
+  },
+  {
+    "id": "ui06-document-pin-duplicate",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"],
+      "user_pins": [
+        {
+          "item_id": "reply",
+          "cell": {
+            "column": 1,
+            "row": 1,
+            "span": 4,
+            "rows": 2
+          }
+        },
+        {
+          "item_id": "reply",
+          "cell": {
+            "column": 5,
+            "row": 1,
+            "span": 4,
+            "rows": 2
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["pin_duplicate"]
+  },
+  {
+    "id": "ui06-document-pin-overflow",
+    "schema": "CanvasDocument",
+    "valid": true,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"],
+      "user_pins": [
+        {
+          "item_id": "reply",
+          "cell": {
+            "column": 10,
+            "row": 1,
+            "span": 4,
+            "rows": 2
+          }
+        }
+      ]
+    },
+    "semantic_errors": ["grid_overflow"]
+  },
+  {
+    "id": "ui06-document-pin-row-49",
+    "refs": ["ADR 0032 UI-06 マスは 48 行まで"],
+    "schema": "CanvasDocument",
+    "valid": false,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"],
+      "user_pins": [
+        {
+          "item_id": "reply",
+          "cell": {
+            "column": 1,
+            "row": 49,
+            "span": 4,
+            "rows": 2
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "ui06-document-pin-pixels",
+    "refs": ["ADR 0032 UI-06 ピクセルを持たない"],
+    "schema": "CanvasDocument",
+    "valid": false,
+    "value": {
+      "canvas_revision": "7",
+      "items": [
+        {
+          "item_id": "tasks-today",
+          "kind": "card",
+          "component": "list",
+          "heading": "今日の用事",
+          "emphasis": "high",
+          "group": "today",
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "plan-compare",
+          "kind": "card",
+          "component": "compare",
+          "heading": "2 つの案",
+          "emphasis": "normal",
+          "group": "today",
+          "relations": [
+            {
+              "kind": "compare",
+              "target": "tasks-today"
+            }
+          ],
+          "grid": {
+            "column": 5,
+            "span": 8,
+            "rows": 3
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "reply",
+          "kind": "float",
+          "component": "text",
+          "heading": "答え",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 9,
+            "span": 4,
+            "rows": 1
+          },
+          "placement": "canvas",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        },
+        {
+          "item_id": "old-mail",
+          "kind": "card",
+          "component": "mail_card",
+          "heading": "先週のメール",
+          "emphasis": "normal",
+          "group": null,
+          "relations": [],
+          "grid": {
+            "column": 1,
+            "span": 4,
+            "rows": 2
+          },
+          "placement": "shelf",
+          "data": {
+            "item_refs": [
+              {
+                "kind": "task",
+                "id": "00000000-0000-4000-8000-000000000100"
+              }
+            ],
+            "more_count": 0
+          }
+        }
+      ],
+      "reading_order": ["tasks-today", "plan-compare", "reply"],
+      "user_pins": [
+        {
+          "item_id": "reply",
+          "cell": {
+            "column": 1,
+            "row": 1,
+            "span": 4,
+            "rows": 2,
+            "x": 120
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "ui06-user-op-move",
+    "schema": "CanvasUserOp",
+    "valid": true,
+    "value": {
+      "kind": "move",
+      "item_id": "errands",
+      "cell": {
+        "column": 7,
+        "row": 2,
+        "span": 4,
+        "rows": 3
+      }
+    }
+  },
+  {
+    "id": "ui06-user-op-unshelve",
+    "schema": "CanvasUserOp",
+    "valid": true,
+    "value": {
+      "kind": "unshelve",
+      "item_id": "errands"
+    }
+  },
+  {
+    "id": "ui06-user-op-close-with-cell",
+    "refs": ["ADR 0032 UI-06 閉じるはマスを持たない"],
+    "schema": "CanvasUserOp",
+    "valid": false,
+    "value": {
+      "kind": "close",
+      "item_id": "errands",
+      "cell": {
+        "column": 7,
+        "row": 2,
+        "span": 4,
+        "rows": 3
+      }
+    }
+  },
+  {
+    "id": "ui06-user-op-move-without-cell",
+    "schema": "CanvasUserOp",
+    "valid": false,
+    "value": {
+      "kind": "move",
+      "item_id": "errands"
+    }
+  },
+  {
+    "id": "ui06-user-op-unknown-kind",
+    "schema": "CanvasUserOp",
+    "valid": false,
+    "value": {
+      "kind": "approve",
+      "item_id": "errands"
+    }
+  },
+  {
+    "id": "ui06-user-op-heading",
+    "refs": ["ADR 0032 UI-06 本文を持たない"],
+    "schema": "CanvasUserOp",
+    "valid": false,
+    "value": {
+      "kind": "shelve",
+      "item_id": "errands",
+      "heading": "今日の用事"
+    }
+  },
+  {
+    "id": "ui06-display-primary",
+    "refs": ["ADR 0032 UI-06 既定は主の画面"],
+    "schema": "DesktopCanvasDisplaySettings",
+    "valid": true,
+    "value": {
+      "schema_version": 1,
+      "target": "primary"
+    }
+  },
+  {
+    "id": "ui06-display-selected",
+    "schema": "DesktopCanvasDisplaySettings",
+    "valid": true,
+    "value": {
+      "schema_version": 1,
+      "target": "display",
+      "display_id": 2077752484
+    }
+  },
+  {
+    "id": "ui06-display-with-heading",
+    "refs": ["ADR 0032 UI-06 端末に本文を保存しない"],
+    "schema": "DesktopCanvasDisplaySettings",
+    "valid": false,
+    "value": {
+      "schema_version": 1,
+      "target": "primary",
+      "heading": "今日の用事"
+    }
+  },
+  {
+    "id": "ui06-display-with-pins",
+    "schema": "DesktopCanvasDisplaySettings",
+    "valid": false,
+    "value": {
+      "schema_version": 1,
+      "target": "primary",
+      "user_pins": [
+        {
+          "item_id": "errands",
+          "cell": {
+            "column": 1,
+            "row": 1,
+            "span": 4,
+            "rows": 2
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "ui06-display-without-id",
+    "schema": "DesktopCanvasDisplaySettings",
+    "valid": false,
+    "value": {
+      "schema_version": 1,
+      "target": "display"
+    }
+  },
+  {
+    "id": "ui06-display-span-all",
+    "refs": ["ADR 0032 UI-06 すべての画面を 1 枚につなぐ形は作らない"],
+    "schema": "DesktopCanvasDisplaySettings",
+    "valid": false,
+    "value": {
+      "schema_version": 1,
+      "target": "all"
+    }
   }
 ]

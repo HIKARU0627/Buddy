@@ -77,6 +77,9 @@ export class CanvasBridge {
   readonly #inflight = new Set<Promise<void>>();
   // 画面に渡した参照 → 中枢の識別子（main の中だけ。物を開くときに main が解決する。UI-07 以降）。
   #refs = new Map<string, { readonly kind: string; readonly id: string }>();
+  // 物・対象・同じ対象の何番目か → 画面へ渡した参照。同じ世代の中では、同じ物の同じ対象に同じ参照を保つ（配置だけが変わった版で、
+  // 画面が持つ本文・開いたメールを取り直さないため）。記述にない対象の参照は次の記述で捨てる。世代が進む（reset）と全部作り直す。
+  #refKeys = new Map<string, string>();
 
   constructor(host: CanvasHost) {
     this.#host = host;
@@ -98,6 +101,7 @@ export class CanvasBridge {
     this.#gen += 1;
     this.#fetchSeq += 1;
     this.#refs = new Map();
+    this.#refKeys = new Map();
     if (this.#view === null) return;
     this.#view = null;
     this.#host.publish(null);
@@ -204,6 +208,7 @@ export class CanvasBridge {
   // 参照を不透明な参照に置き換えて画面へ渡す。
   #adopt(document: CanvasDocument): void {
     const refs = new Map<string, { kind: string; id: string }>();
+    const refKeys = new Map<string, string>();
     const view: DesktopCanvasView = {
       canvas_revision: document.canvas_revision,
       reading_order: [...document.reading_order],
@@ -221,7 +226,12 @@ export class CanvasBridge {
         data: {
           more_count: item.data.more_count,
           item_refs: item.data.item_refs.map((entry) => {
-            const ref = this.#host.newRef();
+            // 同じ物の同じ対象（同じ対象が複数あれば出てきた順）には、前の記述と同じ参照を使う。
+            const base = `${item.item_id}|${entry.kind}|${entry.id}`;
+            let key = base;
+            for (let n = 1; refKeys.has(key); n += 1) key = `${base}|${n}`;
+            const ref = this.#refKeys.get(key) ?? this.#host.newRef();
+            refKeys.set(key, ref);
             refs.set(ref, { kind: entry.kind, id: entry.id });
             return { kind: entry.kind, ref };
           }),
@@ -234,6 +244,7 @@ export class CanvasBridge {
       return;
     }
     this.#refs = refs;
+    this.#refKeys = refKeys;
     this.#view = view;
     this.#host.publish(view);
   }

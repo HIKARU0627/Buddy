@@ -552,13 +552,13 @@ test(
     await waitUntil(() => latest(client)?.canvas_revision === '2', 'rev 2');
     // 描いている版を添える。
     assert.equal(client.streamBodies[1]?.['expected_canvas_revision'], '1');
-    // 同じカードの中身の更新（物は 1 枚のまま）。参照は新しい記述ごとに作り直す（前の参照を使い回さない）。
+    // 同じカードの中身の更新（物は 1 枚のまま）。同じ世代の中で同じ対象（同じ予定）なら、同じ参照を保つ（UI-07 の PR #124 の
+    // レビュー。画面が持つ本文を、対象が変わらないのに取り直さないため）。
     const view = latest(client) as DesktopCanvasView;
     assert.equal(view.items.length, 1);
     const secondRefs = view.items[0]?.data.item_refs ?? [];
     assert.equal(secondRefs.length, 4);
-    for (const ref of secondRefs)
-      assert(!firstRefs.some((old) => old.ref === ref.ref));
+    assert.deepEqual(secondRefs, firstRefs);
     // 知らない文は聞き返し（文字の結果）。キャンバスは変わらない。固定の待ちは使わず、順序で確かめる: 聞き返しの後に本物の
     // 変更（版 3）を行い、その知らせ（購読は順番どおり）が届くまでに、版 3 より前の知らせが 1 つも出ていないこと。
     const seen: string[] = [];
@@ -1664,5 +1664,69 @@ test(
     assert.equal(locked.outcome, 'rejected');
     assert.equal(sentContent(), before);
     assert.equal(client.link.canvasView(), null);
+  },
+);
+
+test(
+  'UI-07 (review): moving the card keeps the opaque refs (so the screen keeps its content); hiding the canvas window drops the description, the refs and an answer on the way, and showing it again fetches a fresh one',
+  { timeout: 60_000 },
+  async (t) => {
+    const gates: (() => void)[] = [];
+    let hold = false;
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub, {
+      holdResponse: (method, path) => {
+        if (!hold || method !== 'POST' || path !== '/v1/canvas/content')
+          return undefined;
+        return new Promise<void>((resolve) => gates.push(resolve));
+      },
+    });
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const refsNow = () =>
+      latest(client)?.items[0]?.data.item_refs.map((entry) => entry.ref) ?? [];
+    const first = refsNow();
+    assert.equal(first.length, 4);
+    // 配置だけが変わる（動かす）。版は 2 に進むが、物のデータは同じなので、参照も同じ。
+    assert.equal(
+      (
+        await userOp(client, '1', {
+          kind: 'move',
+          item_id: 'errands',
+          cell: MOVED,
+        })
+      ).outcome,
+      'ok',
+    );
+    await waitUntil(() => latest(client)?.canvas_revision === '2', 'rev 2');
+    assert.deepEqual(refsNow(), first);
+    // 本文を取っている途中で、窓そのものが隠れた: 記述と参照を捨て、画面へ空を通知し、答えが届いても本文を返さない。
+    hold = true;
+    const pending = contentOp(client, '2', 'errands');
+    await waitUntil(() => gates.length === 1, 'content gate');
+    client.link.canvasHidden();
+    hold = false;
+    gates[0]?.();
+    const dropped = await pending;
+    assert.equal(dropped.outcome, 'rejected');
+    assert(!JSON.stringify(dropped).includes('歯医者'));
+    assert.equal(client.link.canvasView(), null);
+    assert.equal(client.canvasNotices.at(-1)?.canvas ?? null, null);
+    // 隠れている間は求められない（記述がない）。
+    const hidden = await contentOp(client, '2', 'errands');
+    assert.equal(field(hidden, 'reason'), 'canvas_conflict');
+    // 表示し直したら、今の記述を取り直して送る。参照は作り直す（世代が進んだ）。
+    client.link.canvasSubscribed();
+    await waitUntil(
+      () => latest(client)?.canvas_revision === '2',
+      'shown again',
+    );
+    const again = refsNow();
+    assert.equal(again.length, 4);
+    for (const ref of first) assert(!again.includes(ref));
+    const ok = await contentOp(client, '2', 'errands');
+    assert.equal(ok.outcome, 'ok');
   },
 );

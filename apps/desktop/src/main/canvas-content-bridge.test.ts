@@ -482,3 +482,65 @@ test('the content of a generation that has ended is dropped: a reset, a lock or 
     assert.deepEqual(await pending, { ok: false, reason: 'canvas_conflict' });
   }
 });
+
+const refsOf = (view: DesktopCanvasView | null, itemId: string): string[] =>
+  (
+    view?.items.find((entry) => entry.item_id === itemId)?.data.item_refs ?? []
+  ).map((entry) => entry.ref);
+
+test('within one generation the same target of the same item keeps the same opaque ref, so a layout-only revision does not make the screen drop its content', async () => {
+  const items = (errandsRefs: number[]) => [
+    item('errands', 'list', errandsRefs),
+    item('mails', 'mail_card', [0x90, 0x91, 0x92]),
+  ];
+  const { bridge, script, published } = await adopted(items([0x80, 0x81]));
+  const first = bridge.view;
+  const errands = refsOf(first, 'errands');
+  const mails = refsOf(first, 'mails');
+  assert.equal(errands.length, 2);
+  // 配置だけが変わった版（ユーザーの置き場所が付き、版が進む）: 参照は同じ。
+  script.push(
+    ok({
+      ...document('4', items([0x80, 0x81])),
+      user_pins: [
+        { item_id: 'errands', cell: { column: 2, row: 1, span: 4, rows: 3 } },
+      ],
+    }),
+  );
+  await bridge.refresh();
+  assert.equal(bridge.view?.canvas_revision, '4');
+  assert.deepEqual(refsOf(bridge.view, 'errands'), errands);
+  assert.deepEqual(refsOf(bridge.view, 'mails'), mails);
+  assert.equal(published.length, 2);
+  // 前の版で渡した参照で、本文を開く要求がそのまま通る（参照が変わらないので位置に直せる）。
+  script.push(ok(response('4', 'mails', 1, MAILS(1))));
+  const opened = await bridge.content('mails', '4', mails[1] ?? '');
+  assert(opened.ok);
+  assert.equal(opened.value.open_index, 1);
+  // 参照が一部だけ変わった物: 残る対象は同じ参照、新しい対象は新しい参照、なくなった対象の参照は捨てる。
+  script.push(ok(document('5', items([0x80, 0x82]))));
+  await bridge.refresh();
+  const changed = refsOf(bridge.view, 'errands');
+  assert.equal(changed[0], errands[0]);
+  assert.notEqual(changed[1], errands[1]);
+  assert(!changed.includes(errands[1] ?? ''));
+  assert.equal(bridge.refCount, 5);
+  assert.deepEqual(refsOf(bridge.view, 'mails'), mails);
+  // 同じ対象が 1 つの物に 2 回あれば、2 つの参照（出てきた順に同じ参照を保つ）。
+  script.push(ok(document('6', items([0x80, 0x80]))));
+  await bridge.refresh();
+  const twice = refsOf(bridge.view, 'errands');
+  assert.equal(new Set(twice).size, 2);
+  assert.equal(twice[0], changed[0]);
+  script.push(ok(document('7', items([0x80, 0x80]))));
+  await bridge.refresh();
+  assert.deepEqual(refsOf(bridge.view, 'errands'), twice);
+  // 世代が進んだ（ロック・切断・窓が隠れる）と、すべて作り直す。
+  bridge.reset();
+  script.push(ok(document('8', items([0x80, 0x81]))));
+  await bridge.refresh();
+  const after = refsOf(bridge.view, 'errands');
+  for (const ref of [...errands, ...changed, ...twice])
+    assert(!after.includes(ref), 'no ref survives a new generation');
+  assert(!refsOf(bridge.view, 'mails').some((ref) => mails.includes(ref)));
+});

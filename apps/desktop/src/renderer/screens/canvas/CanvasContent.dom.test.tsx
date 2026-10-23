@@ -493,3 +493,46 @@ test('a drag is stopped when the screen width changes in the middle of it: nothi
   assert.deepEqual(board.sent, []);
   board.unmount();
 });
+
+test('a failure that arrives after a newer revision is retried once at that revision, not left as a failed mark', async () => {
+  const gates: ((
+    value: { content: CanvasContent; open_index: null } | null,
+  ) => void)[] = [];
+  const board = await mount(
+    () =>
+      new Promise((resolve) => {
+        gates.push(resolve);
+      }),
+  );
+  const text = (revision: string) => view(revision, [item('t', 'text', [])]);
+  await board.render(text('1'));
+  assert.deepEqual(
+    board.calls.map((call) => call.revision),
+    ['1'],
+  );
+  // 版 1 の取得の途中に版 2 が届く（物のデータは同じなので、重ねて取らない）。
+  await board.render(text('2'));
+  assert.equal(board.calls.length, 1);
+  // main が古い取得を拒否した（canvas_conflict）: 失敗の応答。新しい版 2 で 1 度だけ取り直す。
+  await act(async () => {
+    gates[0]?.(null);
+  });
+  assert.deepEqual(
+    board.calls.map((call) => call.revision),
+    ['1', '2'],
+  );
+  assert.equal(
+    document.querySelector('[aria-label="中身を表示できません"]'),
+    null,
+  );
+  // 取り直しが同じ版のまま失敗したら、印のまま（さらに取り直さない）。
+  await act(async () => {
+    gates[1]?.(null);
+  });
+  assert.equal(board.calls.length, 2);
+  assert.notEqual(
+    document.querySelector('[aria-label="中身を表示できません"]'),
+    null,
+  );
+  board.unmount();
+});

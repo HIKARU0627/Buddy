@@ -330,6 +330,17 @@ export interface LaneSlot {
 // 重なる予定に列を割り当てる。開始の早い順（同じなら元の順）に、空いている最も左の列へ置く。重なりの塊（つながって
 // 重なる予定の集まり）ごとに列の数を決め、重ならない予定は全幅。同じ入力から同じ結果を出す（乱数を使わない）。
 export function assignLanes(events: readonly TimelineEvent[]): LaneSlot[] {
+  return assignLanesWithin(events, Number.POSITIVE_INFINITY).map(
+    (slot) => slot ?? { lane: 0, lanes: 1, overlaps: false },
+  );
+}
+
+// 列の数に上限（読める列の幅から決める）があるときの割り当て。上限の列がすべて埋まっていて置けない予定は null（描かず、
+// 省いた件数の札に数える）。置けた予定だけで、重なりの塊・列の数を決める。
+export function assignLanesWithin(
+  events: readonly TimelineEvent[],
+  maxLanes: number,
+): (LaneSlot | null)[] {
   const order = events
     .map((event, index) => ({ event, index }))
     .sort(
@@ -338,34 +349,46 @@ export function assignLanes(events: readonly TimelineEvent[]): LaneSlot[] {
         a.event.end_minute - b.event.end_minute ||
         a.index - b.index,
     );
-  const slots: { lane: number; cluster: number }[] = new Array(events.length);
+  const slots: ({ lane: number; cluster: number } | null)[] = new Array(
+    events.length,
+  ).fill(null);
   const clusterLanes: number[] = [];
   const clusterSize: number[] = [];
   let laneEnds: number[] = [];
   let cluster = -1;
   let clusterEnd = -1;
   for (const { event, index } of order) {
-    if (cluster < 0 || event.start_minute >= clusterEnd) {
-      cluster += 1;
-      clusterEnd = event.end_minute;
-      laneEnds = [];
-      clusterLanes[cluster] = 0;
-      clusterSize[cluster] = 0;
-    } else clusterEnd = Math.max(clusterEnd, event.end_minute);
-    let lane = laneEnds.findIndex((end) => end <= event.start_minute);
+    const startsCluster = cluster < 0 || event.start_minute >= clusterEnd;
+    let lane = startsCluster
+      ? -1
+      : laneEnds.findIndex((end) => end <= event.start_minute);
     if (lane < 0) {
+      // 新しい列が要る。上限に達していれば、この予定は置かない（塊の状態は変えない）。
+      if (!startsCluster && laneEnds.length >= maxLanes) continue;
+      if (startsCluster) {
+        cluster += 1;
+        clusterEnd = event.end_minute;
+        laneEnds = [];
+        clusterLanes[cluster] = 0;
+        clusterSize[cluster] = 0;
+      }
       lane = laneEnds.length;
       laneEnds.push(event.end_minute);
     } else laneEnds[lane] = event.end_minute;
+    clusterEnd = Math.max(clusterEnd, event.end_minute);
     clusterLanes[cluster] = Math.max(clusterLanes[cluster] ?? 0, lane + 1);
     clusterSize[cluster] = (clusterSize[cluster] ?? 0) + 1;
     slots[index] = { lane, cluster };
   }
-  return slots.map((slot) => ({
-    lane: slot.lane,
-    lanes: clusterLanes[slot.cluster] ?? 1,
-    overlaps: (clusterSize[slot.cluster] ?? 1) > 1,
-  }));
+  return slots.map((slot) =>
+    slot === null
+      ? null
+      : {
+          lane: slot.lane,
+          lanes: clusterLanes[slot.cluster] ?? 1,
+          overlaps: (clusterSize[slot.cluster] ?? 1) > 1,
+        },
+  );
 }
 
 // 時間の軸の目盛り（時）。高さに合わせて、目盛りの間が 28 ピクセル以上になる最も細かい間隔（1・2・3・4・6 時間）。

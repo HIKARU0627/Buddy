@@ -1,7 +1,7 @@
 // chart: 棒と折れ線（UI-07、ADR 0032）。SVG を React で描く（外部のライブラリ・画像・インラインの style を使わない。CSP を守る）。
 // 系列は色だけで分けない: 棒は塗り方（べた・斜線・点）、折れ線は線の種類（実線・破線・点線）と点の形（丸・四角・三角）で分け、
 // 凡例は同じ形の印とラベルで並べる。棒には値を書き、軸には目盛りの数と項目の名前を書く。読み上げは、図を隠して同じ値の表を
-// 画面の外に置く。目盛りは 0 から（棒を含むとき）のきりのよい刻み。位置・大きさは箱の大きさだけから決める。
+// 画面の外に置く（読み上げ用の表は元の値のまま。目盛り・棒の値の書式の丸めとは分ける）。目盛りは 0 から（棒を含むとき）のきりのよい刻み。位置・大きさは箱の大きさだけから決める。
 import { useId } from 'react';
 import type { CanvasContent } from '@buddy/contracts';
 import { SeriesMark } from '../../../components/CanvasPartIcons.js';
@@ -251,7 +251,7 @@ export function ChartPart({ item, content, box }: PartProps<ChartContent>) {
             <tr key={index}>
               <th scope="row">{series.label}</th>
               {series.values.map((value, valueIndex) => (
-                <td key={valueIndex}>{chartNumber(value)}</td>
+                <td key={valueIndex}>{String(value)}</td>
               ))}
             </tr>
           ))}

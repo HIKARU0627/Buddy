@@ -630,3 +630,46 @@ test('while the content is loading the card shows numbered empty bands, and when
   const mismatch = card(ready(TABLE(1, 1)), item('list', 1), SIZES.wide);
   assert.match(mismatch, /data-state="failed"/u);
 });
+
+test('timeline: dense events are limited to lanes that stay readable (the rest is a count), and an event at the end of the axis stays inside the box', () => {
+  // 狭い 200 × 300: 本文 166 − 軸 36 = 130 → 読める列（56 以上）は floor(130 / 56) = 2。同じ時刻の 50 件のうち 2 件を描き、
+  // 残りの 48 件は札（札の分 32 を空けて並べ直す）。列の幅は 63（130 ÷ 2 − 2）で、負にならない。
+  const same: CanvasContent = {
+    component: 'schedule_timeline',
+    day_start_minute: 480,
+    day_end_minute: 1200,
+    events: Array.from({ length: 50 }, (_, index) => ({
+      title: `予定${index}`,
+      start_minute: 540,
+      end_minute: 600,
+    })),
+  };
+  const dense = card(ready(same), item('schedule_timeline', 50), SIZES.narrow);
+  assert.equal(count(dense, /data-event="/gu), 2);
+  assert.equal(count(dense, /data-lanes="2"/gu), 2);
+  assert.match(dense, new RegExp(`aria-label="ほか${NB}48${NB}件"`, 'u'));
+  // 広い 640 × 400: 本文 606 − 36 = 570 → 10 列まで。50 件の同時でも 10 件、残り 40 件は札。
+  const wide = card(ready(same), item('schedule_timeline', 50), SIZES.wide);
+  assert.equal(count(wide, /data-event="/gu), 10);
+  assert.match(wide, new RegExp(`aria-label="ほか${NB}40${NB}件"`, 'u'));
+  // 軸の終わり（20:00）の直前の 10 分の予定: 最小の高さ 20 を取ると下にはみ出すので、下の端にそろえる。
+  // 本文の高さ 322 → top = 322 − 20 = 302。
+  const last: CanvasContent = {
+    component: 'schedule_timeline',
+    day_start_minute: 480,
+    day_end_minute: 1200,
+    events: [{ title: '終わり際', start_minute: 1190, end_minute: 1200 }],
+  };
+  const edge = card(ready(last), item('schedule_timeline', 1), SIZES.wide);
+  assert.match(edge, /data-event="0"[^>]*style="top:302px;height:20px/u);
+});
+
+test('chart: the table for readers keeps the exact values, apart from the rounded numbers drawn on the chart', () => {
+  const fine: CanvasContent = {
+    component: 'chart',
+    x_labels: ['a', 'b'],
+    series: [{ label: '細かい値', mark: 'bar', values: [0.001, 0.002] }],
+  };
+  const html = card(ready(fine), item('chart', 0), SIZES.wide);
+  assert.match(html, /<td>0\.001<\/td><td>0\.002<\/td>/u);
+});

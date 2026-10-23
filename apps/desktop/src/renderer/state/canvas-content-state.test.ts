@@ -5,6 +5,7 @@ import type { CanvasContent, DesktopCanvasView } from '@buddy/contracts';
 import {
   EMPTY_STORE,
   assignLanes,
+  assignLanesWithin,
   bodySizeOf,
   chartNumber,
   clockLabel,
@@ -459,4 +460,50 @@ test('rows that fit leave room for the count tag only when something is hidden',
   // 少なくとも 1 行。
   assert.equal(rowsThatFit(5, 20, 32, 4, true), 1);
   assert.equal(rowsThatFit(0, 0, 32, 4, false), 1);
+});
+
+test('lanes with a limit: an event that finds every lane busy is left out (null), the cluster counts only the placed ones', () => {
+  // 同時の 5 件を 2 列まで: 先の 2 件（元の順）だけ置き、残りの 3 件は null。置いた塊は 2 列。
+  const same = Array.from({ length: 5 }, () => ({
+    start_minute: 600,
+    end_minute: 660,
+  }));
+  assert.deepEqual(assignLanesWithin(same, 2), [
+    { lane: 0, lanes: 2, overlaps: true },
+    { lane: 1, lanes: 2, overlaps: true },
+    null,
+    null,
+    null,
+  ]);
+  // 1 列まで: 重なる予定は先の 1 件だけ。重ならない次の予定は置く（塊が変わるので全幅）。
+  assert.deepEqual(
+    assignLanesWithin(
+      [
+        { start_minute: 0, end_minute: 60 },
+        { start_minute: 30, end_minute: 90 },
+        { start_minute: 60, end_minute: 120 },
+      ],
+      1,
+    ),
+    [
+      { lane: 0, lanes: 1, overlaps: false },
+      null,
+      { lane: 0, lanes: 1, overlaps: false },
+    ],
+  );
+  // 上限が十分なら、上限なしと同じ。
+  const some = [
+    { start_minute: 540, end_minute: 600 },
+    { start_minute: 570, end_minute: 660 },
+    { start_minute: 700, end_minute: 760 },
+  ];
+  assert.deepEqual(assignLanesWithin(some, 8), assignLanes(some));
+  // 50 件が同時でも、上限の列の数を超えない。
+  const fifty = Array.from({ length: 50 }, () => ({
+    start_minute: 0,
+    end_minute: 30,
+  }));
+  const placed = assignLanesWithin(fifty, 3).filter((slot) => slot !== null);
+  assert.equal(placed.length, 3);
+  assert(placed.every((slot) => slot.lanes === 3 && slot.lane < 3));
 });

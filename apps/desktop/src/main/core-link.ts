@@ -1766,6 +1766,13 @@ export class DesktopCoreLink {
     if (this.#options.canvasMode === true) this.#canvas.ioChanged();
   }
 
+  // キャンバスの窓そのものが隠れた（hide・最小化。Electron の層が呼ぶ。UI-07）。画面が持つ本文と、main の参照・取っている途中の
+  // 答えを捨てる（取得の世代を進め、画面へ空を通知する）。後ろにあるが表示している間は呼ばない。表示し直したら canvasSubscribed
+  // で今の記述を取り直す。
+  canvasHidden(): void {
+    if (this.#options.canvasMode === true) this.#canvas.reset();
+  }
+
   // キャンバスの窓が通知を受け取る準備を終えた。今の記述を送り直す（なければ取り直す）。
   canvasSubscribed(): void {
     if (this.#options.canvasMode === true) this.#canvas.resend();

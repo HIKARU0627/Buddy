@@ -95,6 +95,8 @@ export function useCanvasContents(
   loader: ContentLoader | undefined,
 ): CanvasContents {
   const [store, dispatch] = useReducer(reduce, EMPTY_STORE);
+  // 取れなかった答えが、取り始めた版より新しい版が届いた後に着いたとき、整え直す（その版で 1 度だけ取り直す）ための合図。
+  const [recheck, requestRecheck] = useReducer((count: number) => count + 1, 0);
   const storeRef = useRef(store);
   storeRef.current = store;
   const viewRef = useRef(view);
@@ -111,17 +113,22 @@ export function useCanvasContents(
       enabled,
     );
     if (next !== storeRef.current) dispatch({ type: 'sync', store: next });
+    // 失敗したとき、すでに新しい版が届いていたら（古い版を取っている間に記述が進み、main が古い取得を拒否した）、その版で取り直す。
+    // 同じ版のままなら取り直さない（次の版が届くまで失敗の印のまま）。
+    const failed = (request: ContentRequest) => {
+      dispatch({ type: 'failed', request });
+      if (viewRef.current?.canvas_revision !== request.revision)
+        requestRecheck();
+    };
     for (const request of requests)
       loader(request.item_id, request.revision, null)
         .then((result) =>
-          dispatch(
-            result === null
-              ? { type: 'failed', request }
-              : { type: 'arrived', request, content: result.content },
-          ),
+          result === null
+            ? failed(request)
+            : dispatch({ type: 'arrived', request, content: result.content }),
         )
-        .catch(() => dispatch({ type: 'failed', request }));
-  }, [view, enabled, loader]);
+        .catch(() => failed(request));
+  }, [view, enabled, loader, recheck]);
 
   const openMail = useCallback((itemId: string, index: number) => {
     const current = viewRef.current;

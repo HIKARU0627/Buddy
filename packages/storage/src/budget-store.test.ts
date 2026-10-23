@@ -1504,6 +1504,9 @@ const confirm = (
     readonly month: string;
     readonly monthStart: number;
     readonly now: number;
+    // 本人が見た状態の版と時計（既定は版 0・今の時計）。
+    readonly revision?: string;
+    readonly observedAt?: number;
   },
 ): BudgetOpResult =>
   run(db, {
@@ -1512,6 +1515,8 @@ const confirm = (
     reason: input.reason,
     month: input.month,
     month_start: input.monthStart,
+    expected_revision: input.revision ?? '0',
+    observed_at: input.observedAt ?? input.now,
     now: input.now,
   });
 
@@ -1540,6 +1545,7 @@ test('the owner re-verifies a month start that no longer matches the time zone d
         recorded_month_start: '2030-09-30T16:00:00.000Z',
         recomputed_month_start: '2030-09-30T15:00:00.000Z',
         regression_floor: null,
+        confirmation_revision: '0',
       });
       const base = {
         n: 1,
@@ -1594,7 +1600,11 @@ test('the owner re-verifies a month start that no longer matches the time zone d
         admit(db, admitOp(1, { reserved: '1', max: '1' })).admitted,
         true,
       );
+      // 同じ入力の送り直しは古い（版が 1 に進んだ）。新しい版でも、止まっていなければ記録しない。
       assert.deepEqual(reasons(confirm(db, { ...base, n: 2 })), [
+        'confirmation_stale',
+      ]);
+      assert.deepEqual(reasons(confirm(db, { ...base, n: 3, revision: '1' })), [
         'nothing_to_confirm',
       ]);
       // 確かめ直した月から次の月へ進める。
@@ -1708,6 +1718,46 @@ test('the owner accepts a regressed clock: the month never moves back and a furt
       ),
       ['clock_regressed'],
     );
+    // 前の確かめ直しの入力の送り直しは、さらに戻った時計を承認しない（版が 1 に進んだ。Codex のレビュー P2）。
+    const accept = {
+      reason: 'clock_regressed' as const,
+      month: '2030-11',
+      monthStart: TOKYO_NOV_START,
+    };
+    assert.deepEqual(
+      reasons(
+        confirm(db, { ...accept, n: 3, observedAt: back, now: back - 1 }),
+      ),
+      ['confirmation_stale'],
+    );
+    // 新しい版でも、本人が見た時計より今の時計がさらに戻っていれば古い入力。
+    assert.deepEqual(
+      reasons(
+        confirm(db, {
+          ...accept,
+          n: 4,
+          revision: '1',
+          observedAt: back,
+          now: back - 1,
+        }),
+      ),
+      ['confirmation_stale'],
+    );
+    // 今の状態を見直した入力なら、見た時計を新しい下限にする（実行時の時計ではない）。
+    const again = value(
+      'budget.calendar_confirm',
+      confirm(db, {
+        ...accept,
+        n: 5,
+        revision: '1',
+        observedAt: back - 1,
+        now: back - 1,
+      }),
+    );
+    assert.deepEqual(
+      [again.reasons, again.regression_floor, again.confirmation_revision],
+      [[], '2030-10-14T23:59:59.999Z', '2'],
+    );
     assert.equal(count(db, 'SELECT count(*) FROM budget_months'), 2);
     // 正しい時刻が 12 月の始まりを越えれば、普通に次の月へ進む。
     assert.deepEqual(
@@ -1735,6 +1785,7 @@ test('the dispatch intent is the final check before sending: once, only while re
         kind: 'budget.dispatch_intent',
         reservation_id: reservationId(n),
         now,
+        deadline: OCT_15 + 60_000,
       });
     const release = (n: number) =>
       run(db, {
@@ -1800,10 +1851,59 @@ test('the dispatch intent is the final check before sending: once, only while re
           .run(reservationId(3)),
       /budget_dispatched_not_releasable/u,
     );
+    // 送出意図と解放を 1 つの UPDATE で同時に書いても拒否する（Codex のレビュー P2）。行は変わらない。
+    admit(db, admitOp(4, { reserved: '1', max: '2' }));
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE budget_reservations SET dispatch_intent_at = 1000, status = 'released' WHERE reservation_id = ?",
+          )
+          .run(reservationId(4)),
+      /budget_dispatched_not_releasable/u,
+    );
+    assert.deepEqual(
+      [
+        reservationRow(db, reservationId(4))?.['status'],
+        db
+          .prepare(
+            'SELECT dispatch_intent_at FROM budget_reservations WHERE reservation_id = ?',
+          )
+          .pluck()
+          .get(reservationId(4)),
+      ],
+      ['reserved', null],
+    );
+    // 応答の期限（M を計算した課金期間の終わり）ちょうど以降は送出意図を記録しない（Codex のレビュー P1）。
+    admit(db, admitOp(5, { reserved: '1', max: '2' }));
+    const deadline = OCT_15 + 60_000;
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'budget.dispatch_intent',
+          reservation_id: reservationId(5),
+          now: deadline,
+          deadline,
+        }),
+      ),
+      ['reservation_expired'],
+    );
+    assert.equal(
+      value(
+        'budget.dispatch_intent',
+        run(db, {
+          kind: 'budget.dispatch_intent',
+          reservation_id: reservationId(5),
+          now: deadline - 1,
+          deadline,
+        }),
+      ).reservation.dispatchIntentAt,
+      deadline - 1,
+    );
     assert.equal(
       value('budget.unsettled_list', run(db, { kind: 'budget.unsettled_list' }))
         .length,
-      1,
+      3,
     );
   });
 });

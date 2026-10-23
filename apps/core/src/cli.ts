@@ -86,9 +86,11 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
          予算月の状態（今の月・始まり・記録の始まりと tz データで求め直した始まり・時計の戻りの下限・受付を
          止めている理由）を表示する。金額は表示しない
   budget calendar confirm --reason <clock_regressed|calendar_mismatch> --month <YYYY-MM> --month-start <UTC>
+                          --revision <confirmation_revision> --observed-at <checked_at>
          status で見た値を確かめ、予算月の保留を解く（本人の承認）。calendar_mismatch は記録の始まりと tz データの
          食い違いで、--month-start に求め直した始まりを渡す。clock_regressed は時計の戻りで、--month-start に今の
-         月の始まりを渡す（予算月は戻さず、今の時計を下限にして今の月のまま受け付ける）。値が今の状態と違えば拒否`;
+         月の始まりを渡す（予算月は戻さず、status で見た時計を下限にして今の月のまま受け付ける）。--revision と
+         --observed-at は status の confirmation_revision と checked_at。値が今の状態と違えば・古ければ拒否`;
 
 const out = (value: object) =>
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -113,6 +115,8 @@ async function main(argv: readonly string[]): Promise<number> {
         reason: { type: 'string' },
         month: { type: 'string' },
         'month-start': { type: 'string' },
+        revision: { type: 'string' },
+        'observed-at': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -187,14 +191,20 @@ async function main(argv: readonly string[]): Promise<number> {
     return EXIT.usage;
   }
   const confirmCommand = budgetCommand && positionals[2] === 'confirm';
-  const confirmValues = [values.reason, values.month, values['month-start']];
+  const confirmValues = [
+    values.reason,
+    values.month,
+    values['month-start'],
+    values.revision,
+    values['observed-at'],
+  ];
   if (
     confirmCommand
       ? confirmValues.some((item) => item === undefined)
       : confirmValues.some((item) => item !== undefined)
   ) {
     log(
-      '--reason・--month・--month-start は budget calendar confirm で必ず指定し、他では使えません。',
+      '--reason・--month・--month-start・--revision・--observed-at は budget calendar confirm で必ず指定し、他では使えません。',
     );
     return EXIT.usage;
   }
@@ -246,6 +256,8 @@ async function main(argv: readonly string[]): Promise<number> {
             reason: values.reason as string,
             month: values.month as string,
             month_start: values['month-start'] as string,
+            revision: values.revision as string,
+            observed_at: values['observed-at'] as string,
           }
         : null,
     );
@@ -478,6 +490,8 @@ async function budgetCalendar(
     readonly reason: string;
     readonly month: string;
     readonly month_start: string;
+    readonly revision: string;
+    readonly observed_at: string;
   } | null,
 ): Promise<number> {
   const endpoint = await endpointFor(dataDir);

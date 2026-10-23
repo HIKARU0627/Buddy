@@ -84,6 +84,7 @@ test(
       recorded_month_start: '2030-09-30T15:00:00.000Z',
       recomputed_month_start: '2030-09-30T15:00:00.000Z',
       regression_floor: null,
+      confirmation_revision: '0',
       hold_reasons: [],
       checked_at: '2030-10-15T00:00:00.000Z',
     });
@@ -96,6 +97,8 @@ test(
         reason: 'clock_regressed',
         month: '2030-10',
         month_start: '2030-09-30T15:00:00.000Z',
+        revision: '0',
+        observed_at: '2030-10-15T00:00:00.000Z',
       },
     );
     assert.equal(confirm.kind, 'response');
@@ -119,6 +122,8 @@ test('the budget calendar control requests are checked strictly', () => {
           reason: 'calendar_mismatch',
           month: '2030-10',
           month_start: '2030-09-30T15:00:00.000Z',
+          revision: '0',
+          observed_at: '2030-10-15T00:00:00.000Z',
           ...fields,
         }),
       ),
@@ -131,8 +136,17 @@ test('the budget calendar control requests are checked strictly', () => {
     reason: 'calendar_mismatch',
     month: '2030-10',
     month_start: '2030-09-30T15:00:00.000Z',
+    revision: '0',
+    observed_at: '2030-10-15T00:00:00.000Z',
   });
   assert.equal(confirm({ reason: 'month_rolled' }), 'invalid_reason');
+  assert.equal(confirm({ revision: '01' }), 'invalid_revision');
+  assert.equal(confirm({ revision: 1 }), 'invalid_type');
+  assert.equal(
+    confirm({ observed_at: '2030-10-15T00:00:00Z' }),
+    'invalid_observed_at',
+  );
+  assert.equal(confirm({ observed_at: undefined }), 'missing_field');
   assert.equal(confirm({ month: '2030-13' }), 'invalid_month');
   // 秒までの時刻・暦にない日付・UTC 以外は受け付けない。
   assert.equal(

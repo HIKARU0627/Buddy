@@ -44,13 +44,16 @@ export type ControlRequest =
       readonly device_id: string;
     }
   | { readonly op: 'budget_calendar_status'; readonly request_id: string }
-  // 本人が見た理由・月・始まり（RFC 3339 の UTC）。今の状態と一致するときだけ Core が記録する。
+  // 本人が見た理由・月・始まり（RFC 3339 の UTC）と、そのときの状態の版・時計（status の confirmation_revision・
+  // checked_at）。今の状態と一致するときだけ Core が記録する。
   | {
       readonly op: 'budget_calendar_confirm';
       readonly request_id: string;
       readonly reason: 'clock_regressed' | 'calendar_mismatch';
       readonly month: string;
       readonly month_start: string;
+      readonly revision: string;
+      readonly observed_at: string;
     };
 
 export type ControlRejectReason =
@@ -68,7 +71,9 @@ export type ControlRejectReason =
   | 'invalid_device_id'
   | 'invalid_reason'
   | 'invalid_month'
-  | 'invalid_month_start';
+  | 'invalid_month_start'
+  | 'invalid_revision'
+  | 'invalid_observed_at';
 
 export type ControlParseResult =
   | { readonly ok: true; readonly request: ControlRequest }
@@ -125,6 +130,8 @@ export interface ControlBudgetCalendar {
   readonly recomputed_month_start: string | null;
   // 時計の戻りを受け入れた下限。
   readonly regression_floor: string | null;
+  // 確かめ直しの版。確かめ直しの要求に revision として渡す。
+  readonly confirmation_revision: string | null;
   // 受付を止めている理由（clock_regressed・invalid_calendar_state など）。空なら止めていない。
   readonly hold_reasons: readonly string[];
   readonly checked_at: string;
@@ -164,14 +171,17 @@ const ALLOWED_FIELDS: readonly string[] = ['op', 'request_id'];
 // pairing_first_approve だけが pairing_id を、device_revoke だけが device_id を持つ。
 const APPROVE_FIELDS: readonly string[] = ['op', 'request_id', 'pairing_id'];
 const REVOKE_FIELDS: readonly string[] = ['op', 'request_id', 'device_id'];
-// budget_calendar_confirm だけが理由・月・始まりを持つ。
+// budget_calendar_confirm だけが理由・月・始まり・版・見た時刻を持つ。
 const CONFIRM_FIELDS: readonly string[] = [
   'op',
   'request_id',
   'reason',
   'month',
   'month_start',
+  'revision',
+  'observed_at',
 ];
+const REVISION = /^(0|[1-9][0-9]{0,14})$/u;
 const YEAR_MONTH = /^[0-9]{4}-(0[1-9]|1[0-2])$/u;
 const UTC_MILLIS =
   /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/u;
@@ -250,12 +260,22 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
     const reason = value['reason'];
     const month = value['month'];
     const monthStart = value['month_start'];
-    if (reason === undefined || month === undefined || monthStart === undefined)
+    const revision = value['revision'];
+    const observedAt = value['observed_at'];
+    if (
+      reason === undefined ||
+      month === undefined ||
+      monthStart === undefined ||
+      revision === undefined ||
+      observedAt === undefined
+    )
       return { ok: false, reason: 'missing_field' };
     if (
       typeof reason !== 'string' ||
       typeof month !== 'string' ||
-      typeof monthStart !== 'string'
+      typeof monthStart !== 'string' ||
+      typeof revision !== 'string' ||
+      typeof observedAt !== 'string'
     )
       return { ok: false, reason: 'invalid_type' };
     if (reason !== 'clock_regressed' && reason !== 'calendar_mismatch')
@@ -263,6 +283,10 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
     if (!YEAR_MONTH.test(month)) return { ok: false, reason: 'invalid_month' };
     if (!isUtcMillis(monthStart))
       return { ok: false, reason: 'invalid_month_start' };
+    if (!REVISION.test(revision))
+      return { ok: false, reason: 'invalid_revision' };
+    if (!isUtcMillis(observedAt))
+      return { ok: false, reason: 'invalid_observed_at' };
     return {
       ok: true,
       request: {
@@ -271,6 +295,8 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
         reason,
         month,
         month_start: monthStart,
+        revision,
+        observed_at: observedAt,
       },
     };
   }

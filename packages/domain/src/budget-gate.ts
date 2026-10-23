@@ -282,15 +282,25 @@ function routingErrors(
     const pool = pools.get(overage);
     if (pool === undefined) errors.add('unknown_route_pool');
     else if (!pool.requires_approval) errors.add('overage_pool_invalid');
+    // 超過枠は独立した枠（ADR 0006）。根の枠でなければ、音声や LLM・検索の木の予算を消費し得る。
+    else if (pool.parent_pool_id !== null)
+      errors.add('overage_pool_not_independent');
   }
+  // 自発の起点の LLM の枠は、本人の依頼の LLM の枠の配下（子孫）でなければならない（本人の判断）。同じ枠や、本人の
+  // 枠の外（親の total など）へ向けると、自発の枠の上限を迂回して本人の依頼の予算を使い切れる（Codex のレビュー P2）。
   const ownerLlm = routing.routes.owner_request.llm;
-  for (const origin of Object.keys(routing.routes) as BudgetOrigin[])
+  for (const origin of Object.keys(routing.routes) as BudgetOrigin[]) {
+    const llm = routing.routes[origin].llm;
     if (
       origin !== 'owner_request' &&
       ownerLlm !== null &&
-      routing.routes[origin].llm === ownerLlm
+      pools.has(ownerLlm) &&
+      llm !== null &&
+      pools.has(llm) &&
+      (llm === ownerLlm || !path(llm).includes(ownerLlm))
     )
-      errors.add('autonomous_shares_owner_pool');
+      errors.add('autonomous_not_under_owner_pool');
+  }
   const textPaths = new Set(textPools.flatMap(path));
   if (voicePools.some((id) => path(id).some((item) => textPaths.has(item))))
     errors.add('voice_pool_shared');
@@ -333,6 +343,10 @@ export interface DispatchCheckInput {
   // 送出意図を記録済み（もう一度送らない）。
   readonly dispatched: boolean;
   readonly safetyStopped: boolean;
+  // 送る時刻と応答の期限（UTC のミリ秒）。M は受付の時刻から期限までの単価で計算したので、期限の後には送らない
+  // （Codex のレビュー P1。期限を過ぎた要求は新しい受付で M を計算し直す）。
+  readonly now: number;
+  readonly deadline: number;
 }
 
 // 送る直前の検査（08 §3 P01 の reservation_valid と安全停止）。空なら一度だけ送ってよい。送出意図は 1 予約に 1 回で、
@@ -342,5 +356,6 @@ export function dispatchReasons(input: DispatchCheckInput): string[] {
   if (input.status !== 'reserved') reasons.push('reservation_invalid');
   if (input.dispatched) reasons.push('already_dispatched');
   if (input.safetyStopped) reasons.push('safety_stopped');
+  if (!(input.now < input.deadline)) reasons.push('reservation_expired');
   return reasons;
 }

@@ -170,6 +170,8 @@ export interface CalendarStatus {
   // 予算月の境目に使う設定のタイムゾーン（正規化した名前）。設定がなければ null。
   readonly configured_time_zone: string | null;
   readonly check: BudgetCalendarCheck | null;
+  // 確認した時刻（門の時計）。確かめ直しの要求に observed_at として渡す。
+  readonly checked_at: string;
 }
 
 export type CalendarConfirmReason = 'clock_regressed' | 'calendar_mismatch';
@@ -191,6 +193,9 @@ export interface BudgetGateOptions {
   // 試験用の故障点。受付の命令を送る直前に呼ぶ（同時の受付を関門でそろえる）。
   readonly faults?: {
     readonly beforeAdmit?: (request: PaidRequest) => Promise<void> | void;
+    // 送出意図の命令の前と後（期限・中断の検査の試験）。
+    readonly beforeDispatch?: (ticket: BudgetTicket) => Promise<void> | void;
+    readonly afterDispatch?: (ticket: BudgetTicket) => Promise<void> | void;
   };
 }
 
@@ -252,6 +257,8 @@ export class BudgetGate {
   readonly #p95ProfileIds: readonly string[];
   readonly #timers: GateTimers;
   readonly #beforeAdmit: (request: PaidRequest) => Promise<void> | void;
+  readonly #beforeDispatch: (ticket: BudgetTicket) => Promise<void> | void;
+  readonly #afterDispatch: (ticket: BudgetTicket) => Promise<void> | void;
   readonly #listeners = new Set<(event: BudgetResumeEvent) => void>();
   readonly #pending = new Set<Promise<unknown>>();
 
@@ -264,6 +271,8 @@ export class BudgetGate {
     this.#p95ProfileIds = options.p95ProfileIds ?? [];
     this.#timers = options.timers ?? DEFAULT_TIMERS;
     this.#beforeAdmit = options.faults?.beforeAdmit ?? (() => undefined);
+    this.#beforeDispatch = options.faults?.beforeDispatch ?? (() => undefined);
+    this.#afterDispatch = options.faults?.afterDispatch ?? (() => undefined);
   }
 
   // 実行時の設定の検査に通っているか（通っていなければ有料の処理を受け付けない）。
@@ -440,6 +449,7 @@ export class BudgetGate {
       kind: 'budget.dispatch_intent',
       reservation_id: ticket.reservation_id,
       now: this.#now(),
+      deadline: ticket.deadline,
     });
     if (result.ok) return { ok: true };
     return {
@@ -565,13 +575,30 @@ export class BudgetGate {
         reasons: [...reasons, ...released.reasons],
       };
     };
-    if (options.signal?.aborted === true)
-      return unsent(['aborted_before_dispatch']);
+    // 待ちをまたいで呼び出し側の中断を確かめる（関数で読み、途中の await の後も今の値を見る）。
+    const callerAborted = (): boolean => options.signal?.aborted === true;
+    if (callerAborted()) return unsent(['aborted_before_dispatch']);
+    // 期限を過ぎた予約は送らない（M は受付の時刻から期限までの単価で計算した。Codex のレビュー P1）。送出意図の前
+    // なので解放する。送り直すなら新しい request_id で受け付け直し、課金期間と M・上限・承認を検査し直す。
+    if (this.#now() >= ticket.deadline) return unsent(['reservation_expired']);
+    await this.#beforeDispatch(ticket);
     const dispatched = await this.dispatch(ticket);
     if (!dispatched.ok) {
       if (!dispatched.uncertain) return unsent(dispatched.reasons);
       // 送出意図の記録が成否不明。送らず、解放もしない（再起動の照合が決める）。
       return { kind: 'usage_unknown', ticket, reasons: dispatched.reasons };
+    }
+    await this.#afterDispatch(ticket);
+    // 送出意図を記録した後は解放しない。記録を待つ間に中断された・期限を過ぎたなら送らず、usage 不明として保持する
+    // （記録の上では送った可能性があるため。Codex のレビュー P1・P2）。ここから send を呼ぶまでは同期で進める。
+    const stopped = callerAborted()
+      ? 'discarded'
+      : this.#now() >= ticket.deadline
+        ? 'reservation_expired'
+        : null;
+    if (stopped !== null) {
+      await this.unknown(ticket);
+      return { kind: 'usage_unknown', ticket, reasons: [stopped, 'not_sent'] };
     }
     const controller = new AbortController();
     const cancelTimer = this.#timers.set(ticket.deadline - this.#now(), () =>
@@ -579,18 +606,21 @@ export class BudgetGate {
     );
     const discard = () => controller.abort('discarded');
     options.signal?.addEventListener('abort', discard, { once: true });
-    const sending: Promise<PaidOutcome> = Promise.resolve()
-      .then(() =>
+    let sending: Promise<PaidOutcome>;
+    try {
+      sending = Promise.resolve(
         send({
           request_id: ticket.request_id,
           reservation_id: ticket.reservation_id,
           signal: controller.signal,
         }),
-      )
-      .then(
+      ).then(
         (outcome) => outcome,
         (): PaidOutcome => ({ kind: 'unknown' }),
       );
+    } catch {
+      sending = Promise.resolve({ kind: 'unknown' });
+    }
     const aborted = new Promise<'aborted'>((resolve) => {
       if (controller.signal.aborted) resolve('aborted');
       controller.signal.addEventListener('abort', () => resolve('aborted'), {
@@ -731,23 +761,28 @@ export class BudgetGate {
   // 本人が予算月を確かめ直す前に見る状態（CLI が表示する）。
   async calendarStatus(): Promise<CalendarStatus> {
     const config = this.#config;
+    const now = this.#now();
     const check = await this.#store.budget({
       kind: 'budget.calendar_check',
-      now: this.#now(),
+      now,
     });
     return {
       configured: config.ok,
       configured_time_zone: config.ok ? config.timeZone : null,
       check: check.ok ? check.value : null,
+      checked_at: iso(now),
     };
   }
 
   // 本人による予算月の確かめ直し（承認を伴う操作。中枢のローカルの CLI から呼ぶ）。本人が見た月と始まりを渡し、
-  // 今の状態と一致するときだけ記録する。保留が解ければ知らせる。
+  // 今の状態と一致するときだけ記録する。本人が見た状態の版（confirmation_revision）と時計（checked_at）も渡し、
+  // 古い入力の送り直しで新しい状態を承認しない。保留が解ければ知らせる。
   async confirmCalendar(input: {
     readonly reason: CalendarConfirmReason;
     readonly month: string;
     readonly month_start: string;
+    readonly revision: string;
+    readonly observed_at: string;
   }): Promise<
     | { readonly ok: true; readonly check: BudgetCalendarCheck }
     | { readonly ok: false; readonly reasons: readonly string[] }
@@ -755,6 +790,9 @@ export class BudgetGate {
     const monthStart = Date.parse(input.month_start);
     if (Number.isNaN(monthStart))
       return { ok: false, reasons: ['month_start_invalid'] };
+    const observedAt = Date.parse(input.observed_at);
+    if (Number.isNaN(observedAt))
+      return { ok: false, reasons: ['observed_at_invalid'] };
     const result = await this.#store.budget({
       kind: 'budget.calendar_confirm',
       confirmation_id: this.#newId(),
@@ -764,6 +802,8 @@ export class BudgetGate {
           : 'invalid_calendar_state',
       month: input.month,
       month_start: monthStart,
+      expected_revision: input.revision,
+      observed_at: observedAt,
       now: this.#now(),
     });
     if (!result.ok) return { ok: false, reasons: result.reasons };
@@ -774,6 +814,7 @@ export class BudgetGate {
       recorded_month_start: result.value.recorded_month_start,
       recomputed_month_start: result.value.recomputed_month_start,
       regression_floor: result.value.regression_floor,
+      confirmation_revision: result.value.confirmation_revision,
     };
     if (check.reasons.length === 0 && check.state !== null)
       this.#emit({ kind: 'hold_cleared', month: check.state.month });

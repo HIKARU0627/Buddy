@@ -120,7 +120,43 @@ test('broken JSON, duplicate keys, unknown fields and semantic errors disable pa
         }),
       ),
     ),
-    ['config_semantic:autonomous_shares_owner_pool'],
+    ['config_semantic:autonomous_not_under_owner_pool'],
+  );
+  // 自発の処理を本人の LLM の親（total）へ向けて、自発の枠の上限を迂回する設定（Codex のレビュー P2）。
+  assert.deepEqual(
+    reasonsOf(
+      check(
+        syntheticConfig((config) => {
+          const routing = config['routing'] as {
+            routes: Record<string, { llm: string | null }>;
+          };
+          (routing.routes['auto_execution'] as { llm: string | null }).llm =
+            'total';
+        }),
+      ),
+    ),
+    ['config_semantic:autonomous_not_under_owner_pool'],
+  );
+  // 超過枠を音声の枠の配下に置く設定（ADR 0006 の独立した枠でない。Codex のレビュー P2）。
+  assert.deepEqual(
+    reasonsOf(
+      check(
+        syntheticConfig((config) => {
+          const budget = config['budget'] as {
+            pools: { pool_id: string; parent_pool_id: string | null }[];
+          };
+          const overage = budget.pools.find(
+            (pool) => pool.pool_id === 'overage',
+          );
+          if (overage !== undefined) overage.parent_pool_id = 'voice';
+        }),
+      ),
+    ),
+    // 超過枠の上限 60 は音声の枠の上限 50 も超える。
+    [
+      'config_semantic:child_limit_exceeds_parent',
+      'config_semantic:overage_pool_not_independent',
+    ],
   );
 });
 

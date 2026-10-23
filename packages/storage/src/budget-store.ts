@@ -222,6 +222,10 @@ export type BudgetOp =
       readonly reason: 'invalid_calendar_state' | 'clock_regressed';
       readonly month: string;
       readonly month_start: number;
+      // 本人が見た状態の版（calendar_check の confirmation_revision）と、そのときの時計（checked_at）。古い入力の
+      // 送り直しが、その後の新しい時計の戻りを承認しないように照合する（Codex のレビュー P2）。
+      readonly expected_revision: string;
+      readonly observed_at: number;
       readonly now: number;
     }
   // 送る直前の最終検査と送出意図の記録（08 §3 P01 の reservation_valid、0007）。予約が reserved で、まだ送出意図が
@@ -230,6 +234,8 @@ export type BudgetOp =
       readonly kind: 'budget.dispatch_intent';
       readonly reservation_id: string;
       readonly now: number;
+      // 応答の期限（受付で M を計算した課金期間の終わり）。この時刻以降は送らない。
+      readonly deadline: number;
     }
   // 精算していない受付中（reserved）の予約。再起動の照合に使う（X28 の仕組み）。
   | { readonly kind: 'budget.unsettled_list' }
@@ -280,6 +286,8 @@ export interface BudgetCalendarCheck {
   readonly recomputed_month_start: string | null;
   // 時計の戻りを受け入れた下限。なければ null。
   readonly regression_floor: string | null;
+  // 今の月の確かめ直しの版（記録した確かめ直しの件数）。確かめ直しの要求はこの版を送る。
+  readonly confirmation_revision: string | null;
 }
 
 export interface BudgetUnsettledItem {
@@ -584,11 +592,18 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       );
       check(isMonth(op.month), 'budget_month_invalid');
       check(isTime(op.month_start), 'month_start_invalid');
+      check(
+        typeof op.expected_revision === 'string' &&
+          /^(0|[1-9][0-9]{0,14})$/u.test(op.expected_revision),
+        'revision_invalid',
+      );
+      check(isTime(op.observed_at), 'observed_at_invalid');
       check(isTime(op.now), 'now_invalid');
       break;
     case 'budget.dispatch_intent':
       check(isUuid(op.reservation_id), 'reservation_id_invalid');
       check(isTime(op.now), 'now_invalid');
+      check(isTime(op.deadline), 'deadline_invalid');
       break;
     case 'budget.reservation_find':
       check(
@@ -856,6 +871,7 @@ function checkCalendar(db: SqliteDatabase, now: number): BudgetCalendarCheck {
       recorded_month_start: null,
       recomputed_month_start: null,
       regression_floor: null,
+      confirmation_revision: null,
     };
   const checked = evaluateCalendar(effective, now, effective.state.timeZone);
   return {
@@ -868,7 +884,20 @@ function checkCalendar(db: SqliteDatabase, now: number): BudgetCalendarCheck {
       effective.state.monthStartTimeZone,
     ),
     regression_floor: effective.floor === null ? null : iso(effective.floor),
+    confirmation_revision: confirmationRevision(db, effective.state.month),
   };
+}
+
+// 今の月の確かめ直しの版（記録した件数）。記録は消さないので、確かめ直すたびに 1 つ増える。
+function confirmationRevision(db: SqliteDatabase, month: string): string {
+  return String(
+    db
+      .prepare(
+        'SELECT count(*) FROM budget_month_confirmations WHERE month = ?',
+      )
+      .pluck()
+      .get(month) as number,
+  );
 }
 
 // --- 端末の要求の受付（command_receipts） ---
@@ -1446,6 +1475,13 @@ function confirmCalendar(
   const state = effective.state;
   if (state.month !== op.month)
     throw new BudgetRejection(['confirmation_mismatch']);
+  // 本人が見た後に別の確かめ直しが記録された・時計が見た時刻よりさらに戻った入力は古い（送り直しで新しい状態を
+  // 承認しない）。
+  if (
+    confirmationRevision(db, state.month) !== op.expected_revision ||
+    op.now < op.observed_at
+  )
+    throw new BudgetRejection(['confirmation_stale']);
   const checked = evaluateCalendar(effective, op.now, state.timeZone);
   const reasons = checked.ok ? [] : checked.reasonCodes;
   if (reasons.length !== 1 || reasons[0] !== op.reason)
@@ -1473,7 +1509,8 @@ function confirmCalendar(
       op.now,
     );
   } else {
-    if (currentStart !== op.month_start)
+    // 本人が見た時計は今の月の始まりより前（戻っていた）。下限は本人が見た時計で、実行時の時計ではない。
+    if (currentStart !== op.month_start || op.observed_at >= currentStart)
       throw new BudgetRejection(['confirmation_mismatch']);
     db.prepare(
       "INSERT INTO budget_month_confirmations (confirmation_id, month, kind, previous_month_start, month_start, regression_floor, confirmed_at) VALUES (?, ?, 'clock_regression_accepted', ?, ?, ?, ?)",
@@ -1482,7 +1519,7 @@ function confirmCalendar(
       state.month,
       currentStart,
       currentStart,
-      op.now,
+      op.observed_at,
       op.now,
     );
   }
@@ -1506,6 +1543,8 @@ function dispatchIntent(
     // 起点のない 0001 から移した行は、送出の記録がないので送った可能性があるとみなす。
     dispatched: current.dispatchIntentAt !== null || current.origin === null,
     safetyStopped: breaker?.state === 'stopped',
+    now: op.now,
+    deadline: op.deadline,
   });
   if (reasons.length > 0) throw new BudgetRejection(reasons);
   const updated = db

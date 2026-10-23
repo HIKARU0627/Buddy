@@ -22,9 +22,15 @@ BEGIN
   SELECT RAISE(ABORT, 'budget_dispatch_intent_fixed');
 END;
 
--- 送出意図を記録した予約は解放しない（送った可能性がある）。
-CREATE TRIGGER budget_reservations_dispatched_not_released BEFORE UPDATE OF status ON budget_reservations
-  WHEN NEW.status = 'released' AND OLD.dispatch_intent_at IS NOT NULL
+-- 送出意図を記録した予約は解放しない（送った可能性がある）。更新の前と後のどちらの送出意図も見る（送出意図と解放を
+-- 1 つの UPDATE で同時に書く場合も拒否する。Codex のレビュー P2）。挿入も同じ。
+CREATE TRIGGER budget_reservations_dispatched_not_released BEFORE UPDATE OF status, dispatch_intent_at ON budget_reservations
+  WHEN NEW.status = 'released' AND (OLD.dispatch_intent_at IS NOT NULL OR NEW.dispatch_intent_at IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'budget_dispatched_not_releasable');
+END;
+CREATE TRIGGER budget_reservations_dispatched_not_released_insert BEFORE INSERT ON budget_reservations
+  WHEN NEW.status = 'released' AND NEW.dispatch_intent_at IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'budget_dispatched_not_releasable');
 END;

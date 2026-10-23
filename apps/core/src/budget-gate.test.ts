@@ -639,30 +639,47 @@ test(
           status.check?.state?.month,
           status.check?.state?.monthStart,
           status.check?.reasons,
+          status.check?.confirmation_revision,
+          status.checked_at,
         ],
         [
           'Asia/Tokyo',
           '2030-11',
           '2030-10-31T15:00:00.000Z',
           ['clock_regressed'],
+          '0',
+          '2030-10-15T00:00:00.000Z',
         ],
       );
+      const seen = {
+        month: '2030-11',
+        month_start: '2030-10-31T15:00:00.000Z',
+        revision: '0',
+        observed_at: '2030-10-15T00:00:00.000Z',
+      };
       // 本人が見た値と違う確かめ直しは記録しない。
       assert.deepEqual(
-        await gate.confirmCalendar({
-          reason: 'calendar_mismatch',
-          month: '2030-11',
-          month_start: '2030-10-31T15:00:00.000Z',
-        }),
+        await gate.confirmCalendar({ ...seen, reason: 'calendar_mismatch' }),
         { ok: false, reasons: ['nothing_to_confirm'] },
       );
       const confirmed = await gate.confirmCalendar({
+        ...seen,
         reason: 'clock_regressed',
-        month: '2030-11',
-        month_start: '2030-10-31T15:00:00.000Z',
       });
       assert.equal(confirmed.ok, true, JSON.stringify(confirmed));
       assert.deepEqual(events, [{ kind: 'hold_cleared', month: '2030-11' }]);
+      // 同じ入力の送り直しは古い入力として拒否する（時計がさらに戻っても承認しない）。
+      harness.clock.set(OCT_15 - 86_400_000);
+      assert.deepEqual(
+        await gate.confirmCalendar({ ...seen, reason: 'clock_regressed' }),
+        { ok: false, reasons: ['confirmation_stale'] },
+      );
+      assert.deepEqual(await gate.admit(textRequest(uuid(3))), {
+        ok: false,
+        reasons: ['clock_regressed'],
+        budgetHeld: true,
+      });
+      harness.clock.set(OCT_15);
       const admitted = await gate.admit(textRequest(uuid(2)));
       assert.equal(admitted.ok && admitted.ticket.budget_month, '2030-11');
       assert.deepEqual(await gate.holdState(), {
@@ -706,6 +723,8 @@ test(
           reason: 'calendar_mismatch',
           month: '2030-10',
           month_start: '2030-09-30T16:00:00.000Z',
+          revision: '0',
+          observed_at: status.checked_at,
         }),
         { ok: false, reasons: ['confirmation_mismatch'] },
       );
@@ -713,6 +732,8 @@ test(
         reason: 'calendar_mismatch',
         month: '2030-10',
         month_start: '2030-09-30T15:00:00.000Z',
+        revision: '0',
+        observed_at: status.checked_at,
       });
       assert.equal(confirmed.ok, true, JSON.stringify(confirmed));
       assert.equal((await gate.admit(textRequest(uuid(2)))).ok, true);
@@ -856,3 +877,103 @@ test(
     });
   },
 );
+
+test(
+  'a reservation whose deadline passed before the dispatch intent is released and never sent (Codex P1)',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      const provider = new MockPaidProvider();
+      const gate = harness.gate({
+        // 受付の後、送出意図の命令の前に応答の期限（受付の時刻 ＋ 60 秒）ちょうどになった。
+        faults: {
+          beforeDispatch: () => harness.clock.set(OCT_15 + 60_000),
+        },
+      });
+      await gate.start();
+      assert.deepEqual(await gate.run(textRequest(uuid(1)), provider.send), {
+        kind: 'released',
+        reasons: ['reservation_expired'],
+      });
+      assert.equal(provider.receipts.length, 0);
+      assert.deepEqual(
+        rows(harness).map((row) => [row.status, row.dispatch_intent_at]),
+        [['released', null]],
+      );
+    });
+  },
+);
+
+test(
+  'a deadline or an abort while the dispatch intent is being recorded stops the send and holds R and M (Codex P1・P2)',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      const provider = new MockPaidProvider();
+      const controller = new AbortController();
+      let step = 0;
+      const gate = harness.gate({
+        faults: {
+          afterDispatch: () => {
+            step += 1;
+            // 1 件目: 送出意図の記録を待つ間に期限を過ぎた。2 件目: 待つ間に呼び出し側が中断した。
+            if (step === 1) harness.clock.set(OCT_15 + 60_000);
+            else controller.abort();
+          },
+        },
+      });
+      await gate.start();
+      assert.deepEqual(await gate.run(textRequest(uuid(1)), provider.send), {
+        kind: 'usage_unknown',
+        ticket: (await reservationTicket(harness, uuid(1))) as BudgetTicket,
+        reasons: ['reservation_expired', 'not_sent'],
+      });
+      harness.clock.set(OCT_15);
+      const second = await gate.run(textRequest(uuid(2)), provider.send, {
+        signal: controller.signal,
+      });
+      assert.deepEqual(
+        second.kind === 'usage_unknown' ? second.reasons : second,
+        ['discarded', 'not_sent'],
+      );
+      // provider へは送っていない。送出意図を記録したので解放せず、usage 不明として R と M を保持する。
+      assert.equal(provider.receipts.length, 0);
+      assert.deepEqual(
+        rows(harness).map((row) => [
+          row.request_id,
+          row.status,
+          row.max_liability,
+          row.dispatch_intent_at !== null,
+        ]),
+        [
+          [uuid(1), 'usage_unknown', 40, true],
+          [uuid(2), 'usage_unknown', 40, true],
+        ],
+      );
+    });
+  },
+);
+
+// 期限を過ぎた例の ticket（受付の時刻 OCT_15 と期限 60 秒から手で決めた値と、DB の予約の ID）。
+async function reservationTicket(
+  harness: BudgetHarness,
+  requestId: string,
+): Promise<BudgetTicket | null> {
+  const found = await harness.store.budget({
+    kind: 'budget.reservation_find',
+    reservation_id: null,
+    request_id: requestId,
+  });
+  if (!found.ok || found.value === null) return null;
+  return {
+    reservation_id: found.value.reservationId,
+    request_id: requestId,
+    pool_id: 'llm',
+    budget_month: '2030-10',
+    reserved: '40',
+    max_liability: '40',
+    revision: '1',
+    routed: false,
+    deadline: OCT_15 + 60_000,
+  };
+}

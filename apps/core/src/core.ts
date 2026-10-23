@@ -588,12 +588,7 @@ export async function startCore(
         request.op === 'budget_calendar_status' ||
         request.op === 'budget_calendar_confirm'
       )
-        return budgetControl(
-          request,
-          lifecycle.state,
-          budget,
-          options.budget?.now ?? (() => now().getTime()),
-        );
+        return budgetControl(request, lifecycle.state, budget);
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
         return { response: { ok: false, error: 'unavailable' } as const };
@@ -1033,7 +1028,6 @@ async function budgetControl(
   >,
   state: LifecycleState,
   gate: BudgetGate | null,
-  now: () => number,
 ): Promise<{ readonly response: ControlResponse }> {
   if (state !== 'running' || gate === null)
     return { response: { ok: false, error: 'unavailable' } };
@@ -1042,6 +1036,8 @@ async function budgetControl(
       reason: request.reason,
       month: request.month,
       month_start: request.month_start,
+      revision: request.revision,
+      observed_at: request.observed_at,
     });
     if (!confirmed.ok)
       return {
@@ -1064,8 +1060,9 @@ async function budgetControl(
     recorded_month_start: check?.recorded_month_start ?? null,
     recomputed_month_start: check?.recomputed_month_start ?? null,
     regression_floor: check?.regression_floor ?? null,
+    confirmation_revision: check?.confirmation_revision ?? null,
     hold_reasons: check === null ? ['calendar_unavailable'] : check.reasons,
-    checked_at: new Date(now()).toISOString(),
+    checked_at: status.checked_at,
   };
   return {
     response: {

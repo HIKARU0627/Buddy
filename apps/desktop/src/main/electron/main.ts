@@ -593,7 +593,11 @@ function registerIpc(): void {
       if (outcome.effect === 'hide_window') setImmediate(hideWindows);
       // 状態の層のパネルを出す・しまう（つまみ・パネルの中の Esc。UI-04）。応答を返してから窓の大きさを変える。
       if (outcome.effect === 'status_panel_open')
-        setImmediate(() => statusPanel.request(true));
+        setImmediate(() => {
+          statusPanel.request(true);
+          // パネルを開いたら、予算の確認の項目と予算保留を読み直す（B07-05）。
+          void link?.refreshBudget();
+        });
       if (outcome.effect === 'status_panel_close')
         setImmediate(() => statusPanel.request(false));
       // キャンバスを前に出す（端のつまみ・入力バー）。応答を返してから出す。
@@ -838,7 +842,10 @@ function start(): void {
   // 窓とトレイを作る前に登録する。
   const run: Record<GlobalShortcutId, () => void> = {
     stop: () => controller?.stopFromMain(),
-    status_panel: () => statusPanel.toggle(),
+    status_panel: () => {
+      // パネルを出すときは、予算の確認の項目と予算保留も読み直す（B07-05）。
+      if (statusPanel.toggle() === 'expand') void link?.refreshBudget();
+    },
     canvas: () => summonCanvas('shortcut'),
   };
   stopShortcut = stopShortcutState(

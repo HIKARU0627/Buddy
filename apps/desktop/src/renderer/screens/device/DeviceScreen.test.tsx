@@ -284,6 +284,7 @@ const connection = (
   hub_target: { host: '100.64.0.10', port: 47823 },
   home_network: null,
   operations: [],
+  budget_items: [],
   ...extra,
 });
 

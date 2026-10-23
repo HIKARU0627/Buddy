@@ -741,6 +741,20 @@ export function semanticErrors(name, value) {
       errors.push('hub_screen_without_connection');
     if (value.link !== 'connected' && value.operations.length > 0)
       errors.push('operations_without_connection');
+    // 予算の確認の項目（B07-05、ADR 0038）。接続している間だけ。種類ごとに持つ値が決まっている。
+    if (value.link !== 'connected' && value.budget_items.length > 0)
+      errors.push('budget_items_without_connection');
+    if (
+      value.budget_items.some(
+        (item) =>
+          (item.kind === 'overage_approval') !==
+            (item.overage_remaining !== null && item.expires_at !== null) ||
+          (item.kind === 'overage_approval') !==
+            (item.overage_remaining !== null || item.expires_at !== null) ||
+          (item.kind === 'overrun_review') !== (item.actual_gross !== null),
+      )
+    )
+      errors.push('budget_entry_kind_mismatch');
     if (value.link === 'connected' && value.last_confirmed_at === null)
       errors.push('connected_without_confirmation');
     if ((value.link === 'waiting_retry') !== (value.retry_at !== null))

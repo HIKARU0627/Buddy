@@ -145,6 +145,8 @@ async function createClient(
       if (link) ipc.push(link.view('unlocked'));
     },
     log: (code) => logs.push(code),
+    // 中枢への要求の数を数える試験なので、予算の背景の読み取りは混ぜない（B07-05）。
+    budgetAuto: false,
     confirmAdmin: (request) => {
       confirms.push(request);
       return Promise.resolve(options.confirm?.(request) ?? true);
@@ -815,7 +817,9 @@ test(
       // main は確認に、中枢から受け取った端末名と確認コード（端末の画面と同じ値）を出した。
       assert.deepEqual(
         a.confirms.flatMap((entry) =>
-          entry.action === 'register_home' || 'operationKind' in entry
+          entry.action === 'register_home' ||
+          'operationKind' in entry ||
+          'poolId' in entry
             ? []
             : [[entry.action, entry.deviceName, entry.claimCheck]],
         ),

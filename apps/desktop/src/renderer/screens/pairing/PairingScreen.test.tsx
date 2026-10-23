@@ -47,6 +47,7 @@ const base: ShownConnection = {
   hub_target: null,
   home_network: null,
   operations: [],
+  budget_items: [],
 };
 
 const pairingAt = (
@@ -506,6 +507,7 @@ test('the connection section shows reason, home check and operations without sec
             reported_at: '2030-10-01T00:00:00Z',
           },
           operations: [],
+          budget_items: [],
         }}
       />
     </AppProviders>,

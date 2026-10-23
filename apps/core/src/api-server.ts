@@ -15,7 +15,7 @@
 //   8. 本文を上限まで読む（超えたら 413）
 //   9. 形式の検査（パスの値・クエリー・ヘッダー・厳格な JSON（重複キー）・JSON Schema）。不正は 422 invalid_input
 //  10. 経路の検査（domain の admitRequest。ROUTE_CHECKS の順）
-//  11. 経路の処理。getBootstrap と、handlers に渡された経路（B03-02・B03-04 など）。他の経路は検査の後に 503 で閉じる
+//  11. 経路の処理。getBootstrap と、handlers に渡された経路（B03-02・B03-04・B07-05 など）。処理のない経路は検査の後に 503 で閉じる
 // WebSocket（/v1/events/stream）は ws で受け、同じ検査の後に切り替える。配信は eventStream（B03-04、ADR 0023）が行い、
 // 渡されなければ切り替えた後に 1013 で閉じる。
 // 拒否の本文は ApiError（code・message・request_id）だけで、対象の本文・トークン・hash を返さない。
@@ -59,7 +59,7 @@ import type {
   EnvironmentInput,
   RequestEnvironment,
 } from './api-environment.js';
-import { PENDING_ROUTE_IDS, matchRoute } from './api-routes.js';
+import { matchRoute } from './api-routes.js';
 import type { ApiRoute } from './api-routes.js';
 import {
   StrictJsonError,
@@ -399,10 +399,6 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   const portReason = listenPortReason(options.port);
   if (portReason !== null) throw new ApiListenError(portReason);
   const limits: ApiLimits = { ...DEFAULT_API_LIMITS, ...options.limits };
-  // 未実装の印（pending）のある経路に処理を渡さない。版の照合を飛ばしたまま処理が動くのを防ぐ。
-  for (const id of Object.keys(options.handlers ?? {}))
-    if (PENDING_ROUTE_IDS.has(id))
-      throw new Error(`pending route has a handler: ${id}`);
   const environment: RequestEnvironment = {
     ...SAFE_REQUEST_ENVIRONMENT,
     ...options.environment,
@@ -586,11 +582,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         context.hubLocal = await environment.hubLocal(input);
       else if (check === 'audio_owner')
         context.audioOwner = await environment.audioOwner(input);
-      // 未実装の経路（pending）は版を照合する先がないので照合せず、認可の後の処理の 503 で閉じる（ADR 0034）。
       else if (check === 'expected_revision')
-        context.revisionMatches = PENDING_ROUTE_IDS.has(input.operationId)
-          ? true
-          : await environment.revisionMatches(input);
+        context.revisionMatches = await environment.revisionMatches(input);
     }
     return context;
   };

@@ -74,6 +74,10 @@ import type {
   TurnPolicy,
 } from './turn-ports.js';
 import { createApiContract } from './api-contract.js';
+import {
+  BUDGET_REVISION_CHECKED_ROUTES,
+  createBudgetRoutes,
+} from './api-budget.js';
 import { BUDGET_CONFIG_FILE, loadBudgetConfig } from './budget-config.js';
 import { BudgetGate } from './budget-gate.js';
 import type { UsageReconciler } from './budget-gate.js';
@@ -756,13 +760,25 @@ async function startHttps(
     },
   };
   let routes: ReturnType<typeof createOperationRoutes> | null = null;
-  // 承認・取消の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。
+  // 予算の 4 経路（ADR 0038）。M 超過の確認・手での精算の版は予約の行の現在値で照合する。
+  const budgetRoutes = createBudgetRoutes({
+    gate: budget,
+    receiptExists: (commandScopeId, requestId) =>
+      store.query({
+        kind: 'receipt_exists',
+        command_scope_id: commandScopeId,
+        request_id: requestId,
+      }),
+  });
+  // 承認・取消・予算の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。
   const environment: RequestEnvironment = {
     ...base,
     revisionMatches: (input) =>
       routes !== null && REVISION_CHECKED_ROUTES.has(input.operationId)
         ? routes.revisionMatches(input)
-        : base.revisionMatches(input),
+        : BUDGET_REVISION_CHECKED_ROUTES.has(input.operationId)
+          ? budgetRoutes.revisionMatches(input)
+          : base.revisionMatches(input),
   };
   const turnOptions = https.turns ?? {};
   const turns = createTurnRoutes({
@@ -834,6 +850,7 @@ async function startHttps(
     homeNetwork.handlers,
     turns.handlers,
     stream.handlers,
+    budgetRoutes.handlers,
   ].flatMap((handlers) => Object.keys(handlers));
   if (new Set(handlerKeys).size !== handlerKeys.length)
     throw new Error('route_handlers_overlap');
@@ -854,6 +871,7 @@ async function startHttps(
         ...homeNetwork.handlers,
         ...turns.handlers,
         ...stream.handlers,
+        ...budgetRoutes.handlers,
       },
       eventStream: streams,
       ...(https.limits === undefined ? {} : { limits: https.limits }),

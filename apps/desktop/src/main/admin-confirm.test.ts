@@ -226,3 +226,90 @@ test(
     assert.doesNotMatch(cancel.detail, /内容:/u);
   },
 );
+
+// 予算の確認（B07-05、ADR 0038）。値は main が中枢の利用状況から読んだもの（手での精算の実費・照合 ID は本人の入力）。
+// 金額は通貨単位の百万分の一の整数で、合成の XTS。期待値は手で書く。
+const xts = (amount: string) => ({ currency: 'XTS', amount });
+
+test('the overage approval confirmation shows the request M, the remaining overage, the month and the limit, with cancel first', () => {
+  const text = adminConfirmText({
+    action: 'approve_overage',
+    poolId: 'llm',
+    budgetMonth: '2030-10',
+    maxLiability: xts('40000000'),
+    overageRemaining: xts('60000000'),
+    expiresAt: new Date(2030, 9, 15, 9, 10, 0).toISOString(),
+    actualGross: null,
+    reconciliationId: null,
+  });
+  assert.equal(text.title, '超過枠の承認');
+  assert.equal(
+    text.message,
+    'この依頼の最大負担 XTS 40.00 を、超過枠から使うことを承認しますか',
+  );
+  assert.equal(
+    text.detail,
+    [
+      '枠: llm（2030-10）',
+      '最大負担 M: XTS 40.00',
+      '超過枠の残り: XTS 60.00',
+      '承認の期限: 10/15 09:10:00',
+      '',
+      '承認は、この依頼と最大負担だけに使います。別の依頼や、より大きな負担には使えません。',
+    ].join('\n'),
+  );
+  assert.deepEqual(text.buttons, ['やめる', '承認する']);
+});
+
+test('the overrun review confirmation shows the recorded actual cost, M and the part over M', () => {
+  const text = adminConfirmText({
+    action: 'review_overrun',
+    poolId: 'llm.background',
+    budgetMonth: '2030-10',
+    maxLiability: xts('40000000'),
+    overageRemaining: null,
+    expiresAt: null,
+    actualGross: xts('55000000'),
+    reconciliationId: null,
+  });
+  assert.equal(text.title, 'M 超過の確認');
+  assert.equal(
+    text.detail,
+    [
+      '枠: llm.background（2030-10）',
+      '記録した実費: XTS 55.00',
+      '最大負担 M: XTS 40.00',
+      '超過: XTS 15.00',
+      '',
+      '確認すると、この枠と下位の枠の新しい受付が再開します。実費と計上先は変わりません。',
+    ].join('\n'),
+  );
+  assert.deepEqual(text.buttons, ['やめる', '確認した']);
+});
+
+test('the manual settlement confirmation shows the typed actual cost and reconciliation id, cleaned of control characters', () => {
+  const text = adminConfirmText({
+    action: 'settle_manual',
+    poolId: 'llm',
+    budgetMonth: '2030-09',
+    maxLiability: xts('40000000'),
+    overageRemaining: null,
+    expiresAt: null,
+    actualGross: xts('3500000'),
+    reconciliationId: 'manual:invoice-a‮',
+  });
+  assert.equal(text.title, '不明な費用の精算');
+  assert.equal(text.message, '不明な費用を XTS 3.50 で精算しますか');
+  assert.equal(
+    text.detail,
+    [
+      '枠: llm（2030-09）',
+      '保持している最大負担 M: XTS 40.00',
+      '入力した実費: XTS 3.50',
+      '照合 ID: manual:invoice-a',
+      '',
+      '精算は一度だけで、元の月・元の枠に計上します。請求の照合で確かめた値だけを入力してください。',
+    ].join('\n'),
+  );
+  assert.deepEqual(text.buttons, ['やめる', '精算する']);
+});

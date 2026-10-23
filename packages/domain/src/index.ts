@@ -8,6 +8,8 @@ export * from './budget.js';
 export * from './budget-rules.js';
 // B07-04: 起点から計上する枠・実行時の設定の意味検査・タイムゾーンの正規化・送る前の検査（ADR 0037）。
 export * from './budget-gate.js';
+// B07-05: 金額の表示と小数の入力の変換（ADR 0038）。
+export * from './budget-money.js';
 // UI-01: キャンバスの記述と流れの区切りの意味の検査（ADR 0032）。
 export * from './canvas.js';
 // UI-06: キャンバスの配置のエンジン（ADR 0032）。

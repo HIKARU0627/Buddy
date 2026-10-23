@@ -862,6 +862,36 @@ export type DesktopIpcRequest =
         expected_canvas_revision: CanvasRevision;
         op: CanvasUserOp;
       };
+    }
+  | {
+      channel: 'desktop.budget_overage_decide';
+      request_id: Id;
+      payload: {
+        ref: Id;
+        decision: 'approve' | 'reject';
+      };
+    }
+  | {
+      channel: 'desktop.budget_overrun_review';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.budget_manual_settle';
+      request_id: Id;
+      payload: {
+        ref: Id;
+        /**
+         * 手で入力した照合 ID。manual: で始め、英数字と . _ - だけ（メールアドレス・氏名・自由文を入れない）。
+         */
+        reconciliation_id: string;
+        /**
+         * 通貨単位の百万分の一を整数文字列で表す。通貨変換はしない。18 桁まで（SQLite の 64 ビット整数に収まる。ADR 0034）。合計の桁あふれは保存・集計の側で検査する。
+         */
+        actual_amount: string;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -979,7 +1009,10 @@ export type DesktopIpcResponse =
         | 'desktop.operation_approve'
         | 'desktop.operation_cancel'
         | 'desktop.operation_reconcile'
-        | 'desktop.operation_retry';
+        | 'desktop.operation_retry'
+        | 'desktop.budget_overage_decide'
+        | 'desktop.budget_overrun_review'
+        | 'desktop.budget_manual_settle';
       outcome: 'ok';
       receipt: 'accepted' | 'durable';
     }
@@ -1108,6 +1141,7 @@ export type DesktopConnectionView =
         reported_at: UtcTime;
       } | null;
       operations: DesktopOperationEntry[];
+      budget_items: DesktopBudgetEntry[];
       hub_screen: boolean;
       hub_target: {
         /**
@@ -1152,7 +1186,7 @@ export type DesktopPairingFailure =
   | 'storage_failed'
   | 'protocol_error';
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0038）。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -1181,7 +1215,10 @@ export type DesktopIpcChannel =
   | 'desktop.operation_check'
   | 'desktop.canvas_summon'
   | 'desktop.status_panel'
-  | 'desktop.canvas_user_op';
+  | 'desktop.canvas_user_op'
+  | 'desktop.budget_overage_decide'
+  | 'desktop.budget_overrun_review'
+  | 'desktop.budget_manual_settle';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -3758,6 +3795,23 @@ export interface DesktopOperationEntry {
    * 見出しの補足（期限・宛先・ラベルの変更など）。
    */
   detail: string | null;
+}
+/**
+ * 状態の層の確認の一覧に出す予算の確認（B07-05、ADR 0038）。ref は main が項目ごとに作る参照で、承認 ID・予算の要求 ID・予約 ID・予約の版・照合値を含めない。kind: overage_approval は超過枠の個別の承認（max_liability は承認する依頼の M、overage_remaining は承認を求めた時点の超過枠の残り、expires_at は承認の期限。actual_gross は null）、overrun_review は M 超過の確認（actual_gross は記録した実費、max_liability は M。overage_remaining・expires_at は null）、manual_settlement は不明な費用の手での精算（max_liability は保持している M。actual_gross・overage_remaining・expires_at は null で、本人が実費を入力する）。金額は本人の設定に基づく実行時の値で、契約・fixture・撮影には合成の通貨 XTS だけを使う。
+ */
+export interface DesktopBudgetEntry {
+  ref: Id;
+  kind: 'overage_approval' | 'overrun_review' | 'manual_settlement';
+  pool_id: BudgetPoolId;
+  budget_month: YearMonth;
+  max_liability: Money;
+  overage_remaining: Money | null;
+  actual_gross: Money | null;
+  expires_at: UtcTime | null;
+  /**
+   * 決定・確認・精算の命令を送ったが、中枢に届いたか確かめられていない（結果不明）。次の利用状況の読み取りで解くまで、同じ命令を自動で送り直さず、画面からも送らせない。
+   */
+  delivery_unknown: boolean;
 }
 /**
  * 画面に出す承認待ちの申請（B03-06、ADR 0026）。ref は main が一覧ごとに作る参照で、申請 ID・コード・秘密を含めない。

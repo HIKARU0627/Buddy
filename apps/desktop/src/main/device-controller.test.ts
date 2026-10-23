@@ -542,3 +542,39 @@ test('the status panel request turns into the open or close effect, even while t
     'untrusted_sender',
   );
 });
+
+test('the budget hold follows the hub only while connected, is unknown (null) otherwise, and changes are announced once (B07-05)', () => {
+  const { controller, notifications } = setup();
+  controller.applyLockQuery('unlock_screen');
+  const announced = () =>
+    notifications.filter((item) => item.channel === 'desktop.state_changed');
+  const held = () =>
+    (controller.statusBar as { budget_held: boolean | null }).budget_held;
+  const before = announced().length;
+  // 接続していなければ、予算保留の値があっても出さない（状態欄の意味検査。接続していなければ必ず null）。
+  controller.setHub({
+    connection: 'not_connected',
+    lastConfirmedAt: null,
+    budgetHeld: true,
+  });
+  assert.equal(held(), null);
+  assert.equal(announced().length, before, 'nothing visible changed');
+  // 接続中: 中枢の予算保留をそのまま出す。
+  const hub = {
+    connection: 'connected' as const,
+    lastConfirmedAt: '2030-10-05T00:00:00Z',
+  };
+  controller.setHub({ ...hub, budgetHeld: false });
+  assert.equal(held(), false);
+  controller.setHub({ ...hub, budgetHeld: true });
+  assert.equal(held(), true);
+  const afterTrue = announced().length;
+  // 同じ値の繰り返しは知らせない。
+  controller.setHub({ ...hub, budgetHeld: true });
+  assert.equal(announced().length, afterTrue);
+  // まだ読んでいない・読めない（null・省略）は不明で、保留なしと見せない。
+  controller.setHub({ ...hub, budgetHeld: null });
+  assert.equal(held(), null);
+  controller.setHub({ ...hub });
+  assert.equal(held(), null);
+});

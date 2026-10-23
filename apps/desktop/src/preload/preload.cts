@@ -32,12 +32,14 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.operation_check',
   'desktop.canvas_summon',
   'desktop.status_panel',
+  'desktop.canvas_user_op',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',
   'desktop.power_event',
   'desktop.connection_changed',
   'desktop.canvas_changed',
+  'desktop.canvas_work_area',
 ];
 
 // 窓の役割（UI-02、ADR 0032）。main が窓を作るときに --buddy-window-role=<役割> を渡す。引数がなければ従来の窓。
@@ -45,26 +47,39 @@ const NOTIFICATION_CHANNELS: readonly string[] = [
 // packages/domain の DESKTOP_ROLE_CHANNELS・DESKTOP_ROLE_NOTIFICATIONS と同じ表（一致は preload.test で確かめる）。
 const ROLE_ARG = '--buddy-window-role=';
 const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
-  // 従来の窓はキャンバスを前に出すチャネルと状態の層のパネルのチャネルを使わない（従来の窓の組み立てには
-  // キャンバスも状態の層もない）。
+  // 従来の窓はキャンバスを前に出すチャネル・状態の層のパネルのチャネル・キャンバスのユーザーの操作のチャネルを使わない
+  // （従来の窓の組み立てにはキャンバスも状態の層もない）。
   legacy: REQUEST_CHANNELS.filter(
     (channel) =>
-      channel !== 'desktop.canvas_summon' && channel !== 'desktop.status_panel',
+      channel !== 'desktop.canvas_summon' &&
+      channel !== 'desktop.status_panel' &&
+      channel !== 'desktop.canvas_user_op',
   ),
-  canvas: ['desktop.get_state'],
+  // キャンバスは状態の取得と、物のユーザーの操作だけ（UI-06。承認・停止を使えない）。
+  canvas: ['desktop.get_state', 'desktop.canvas_user_op'],
   status: REQUEST_CHANNELS.filter(
-    (channel) => channel !== 'desktop.turn_submit',
+    (channel) =>
+      channel !== 'desktop.turn_submit' && channel !== 'desktop.canvas_user_op',
   ),
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };
 const ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> = {
   // 従来の窓・状態の層・入力バーはキャンバスの記述を受けない（キャンバスの窓だけ。ADR 0032）。
+  // 作業領域の外の幅（UI-06）もキャンバスの窓だけ。
   legacy: NOTIFICATION_CHANNELS.filter(
-    (channel) => channel !== 'desktop.canvas_changed',
+    (channel) =>
+      channel !== 'desktop.canvas_changed' &&
+      channel !== 'desktop.canvas_work_area',
   ),
-  canvas: ['desktop.state_changed', 'desktop.canvas_changed'],
+  canvas: [
+    'desktop.state_changed',
+    'desktop.canvas_changed',
+    'desktop.canvas_work_area',
+  ],
   status: NOTIFICATION_CHANNELS.filter(
-    (channel) => channel !== 'desktop.canvas_changed',
+    (channel) =>
+      channel !== 'desktop.canvas_changed' &&
+      channel !== 'desktop.canvas_work_area',
   ),
   input: ['desktop.state_changed'],
 };

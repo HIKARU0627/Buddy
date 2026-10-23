@@ -15,13 +15,14 @@ import {
 import { isTrustedSender, type SenderFacts } from './window-policy.js';
 
 // 従来の窓（legacy）は、今の 1 つの窓（B03・B04 の画面）。今と同じく全チャネル・全通知を使う。
-// ただし UI-02 で足したキャンバスを前に出すチャネルと、UI-04 で足した状態の層のパネルのチャネルは使わない
-// （従来の窓の組み立てにはキャンバスも状態の層もない）。
+// ただし UI-02 で足したキャンバスを前に出すチャネル、UI-04 で足した状態の層のパネルのチャネル、UI-06 で足したキャンバスの
+// ユーザーの操作のチャネルは使わない（従来の窓の組み立てにはキャンバスも状態の層もない）。
 export type UiWindowRole = DesktopWindowRole | 'legacy';
 
 const LEGACY_EXCLUDED_CHANNELS: readonly string[] = [
   'desktop.canvas_summon',
   'desktop.status_panel',
+  'desktop.canvas_user_op',
 ];
 
 // 窓の組み立て方。既定は従来の 1 つの窓。canvas は 3 つの役割の窓（試作）。
@@ -85,11 +86,12 @@ export function notificationAllowedForWindow(
   role: UiWindowRole,
   channel: string,
 ): boolean {
-  // 従来の窓はキャンバスの記述を受けない（UI-03。キャンバスの窓だけ）。
+  // 従来の窓はキャンバスの記述（UI-03）と作業領域の外の幅（UI-06）を受けない（キャンバスの窓だけ）。
   if (role === 'legacy')
     return (
       (DESKTOP_NOTIFICATION_CHANNELS as readonly string[]).includes(channel) &&
-      channel !== 'desktop.canvas_changed'
+      channel !== 'desktop.canvas_changed' &&
+      channel !== 'desktop.canvas_work_area'
     );
   return (DESKTOP_ROLE_NOTIFICATIONS[role] as readonly string[]).includes(
     channel,

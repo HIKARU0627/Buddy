@@ -33,8 +33,10 @@ import { DESKTOP_IPC_CHANNELS, type DesktopPowerEvent } from '@buddy/domain';
 import { adminConfirmText } from '../admin-confirm.js';
 import { ConnectionPublisher } from '../connection-publisher.js';
 import { createDesktopContract, loadContractSchema } from '../contract.js';
+import type { DesktopCanvasDisplaySettings } from '@buddy/contracts';
 import {
   ADMIN_CHANNELS,
+  CANVAS_CHANNELS,
   CONNECTION_CHANNELS,
   OPERATION_CHANNELS,
   DesktopCoreLink,
@@ -48,6 +50,13 @@ import {
   type CanvasDismissReason,
   type CanvasSummonSource,
 } from '../canvas-presence.js';
+import {
+  CANVAS_DISPLAY_FILE,
+  DEFAULT_CANVAS_DISPLAY_SETTINGS,
+  canvasWorkAreaNotification,
+  loadCanvasDisplaySettings,
+  resolveCanvasDisplay,
+} from '../canvas-display.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
 import {
   STOP_SHORTCUT_ARG,
@@ -63,6 +72,7 @@ import {
   StatusPanel,
   confirmDialogParent,
   runPanelConfirm,
+  statusWindowBounds,
 } from '../status-panel.js';
 import type { SecretProtector } from '../credential-store.js';
 import { DesktopDeviceController } from '../device-controller.js';
@@ -174,7 +184,7 @@ const statusPanel = new StatusPanel({
       focus: () => window.focus(),
     };
   },
-  workArea: () => primaryDisplay().workArea,
+  workArea: () => uiDisplay().workArea,
   reducedMotion: () => {
     try {
       return systemPreferences.getAnimationSettings().prefersReducedMotion;
@@ -231,7 +241,7 @@ function showWindow(): void {
     const window = liveWindow(role) ?? createWindow(role);
     if (window.isMinimized()) window.restore();
     if (
-      uiWindowSpec(role, process.platform, primaryDisplay(), PRELOAD_PATH)
+      uiWindowSpec(role, process.platform, uiDisplay(), PRELOAD_PATH)
         .focusOnShow
     ) {
       window.show();
@@ -308,20 +318,74 @@ function windowFocused(): boolean {
   return isWindowFocused(screenWindow());
 }
 
-function primaryDisplay() {
-  const display = screen.getPrimaryDisplay();
-  return { bounds: display.bounds, workArea: display.workArea };
+// キャンバスを置く画面の設定（複数のモニターの設定。UI-06）。既定は主の画面。start で userData から読む。
+let displaySettings: DesktopCanvasDisplaySettings =
+  DEFAULT_CANVAS_DISPLAY_SETTINGS;
+
+// キャンバス・状態の層・入力バーを置く画面（canvas-display.ts の resolveCanvasDisplay。選んだ画面がなければ主の画面）。
+function uiDisplay() {
+  const primary = screen.getPrimaryDisplay();
+  const resolved = resolveCanvasDisplay(
+    displaySettings,
+    screen.getAllDisplays().map((display) => ({
+      id: display.id,
+      bounds: display.bounds,
+      workArea: display.workArea,
+    })),
+    primary.id,
+  );
+  return (
+    resolved?.geometry ?? {
+      bounds: primary.bounds,
+      workArea: primary.workArea,
+    }
+  );
+}
+
+// 画面の追加・取り外し・大きさの変更（UI-06）。置く画面を選び直し、3 つの窓をその画面へ置き直す。
+function placeRoleWindows(): void {
+  if (uiMode !== 'canvas') return;
+  const display = uiDisplay();
+  for (const role of ['canvas', 'input'] as const) {
+    const window = liveWindow(role);
+    if (window === null) continue;
+    const { x, y, width, height } = uiWindowSpec(
+      role,
+      process.platform,
+      display,
+      PRELOAD_PATH,
+    ).options;
+    if (x !== undefined && y !== undefined)
+      window.setBounds({ x, y, width, height });
+    if (role === 'canvas' && process.platform !== 'darwin') window.maximize();
+  }
+  liveWindow('status')?.setBounds(
+    statusWindowBounds(statusPanel.open, display.workArea),
+  );
+  pushCanvasWorkArea();
+}
+
+// キャンバスの窓へ、作業領域の外の幅を送る（UI-06）。画面は配置のエンジンの空ける場所を計算し直す。窓の大きさが
+// 変わらず作業領域だけが変わったとき（Dock の大きさ・表示）も、画面の作業領域の変化（display-metrics-changed）で送る。
+function pushCanvasWorkArea(): void {
+  if (uiMode !== 'canvas' || !contractRef) return;
+  const canvas = liveWindow('canvas');
+  if (canvas === null) return;
+  const notification = canvasWorkAreaNotification(
+    canvas.getBounds(),
+    uiDisplay().workArea,
+  );
+  if (contractRef.notificationErrors(notification).length > 0) {
+    log('canvas_work_area_invalid');
+    return;
+  }
+  sendToRenderer(notification.channel, notification);
 }
 
 // 役割の窓を作る。3 つの窓と従来の窓は、同じ sandbox・contextIsolation・CSP（特権スキームの応答の見出し）・preload を使い、
 // 役割の引数（--buddy-window-role）だけが違う。役割の正本は main の対応表（windows）。
 function createWindow(role: UiWindowRole): BrowserWindow {
-  const spec = uiWindowSpec(
-    role,
-    process.platform,
-    primaryDisplay(),
-    PRELOAD_PATH,
-  );
+  const spec = uiWindowSpec(role, process.platform, uiDisplay(), PRELOAD_PATH);
   const window = new BrowserWindow({
     ...spec.options,
     webPreferences: {
@@ -373,6 +437,8 @@ function createWindow(role: UiWindowRole): BrowserWindow {
   if (role === 'canvas') {
     // 前に出したキャンバスは、Esc・ほかのアプリへの移動（前面でなくなる）で後ろへ戻る。
     window.on('blur', () => dismissCanvas('blur'));
+    // 窓の大きさが変わった（Windows の最大化など）: 作業領域の外の幅を送り直す（UI-06）。
+    window.on('resize', pushCanvasWorkArea);
     window.webContents.on('before-input-event', (event, input) => {
       if (presence.layer === 'front' && isDismissKey(input)) {
         event.preventDefault();
@@ -510,11 +576,19 @@ function registerIpc(): void {
         return link
           .handleOperationIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
+      // キャンバスの物のユーザーの操作（UI-06）。キャンバスの窓だけ・前に出ている間だけ（core-link が確かめる）。
+      if (CANVAS_CHANNELS.includes(channel))
+        return link
+          .handleCanvasIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
       const outcome = controller.handleIpc(channel, raw, sender);
       // キャンバスの窓は購読を始めてから状態を取る。その取得を、通知を受け取る準備ができた合図にして、今の記述を送り直す
       // （読み込み直しの通知を購読の前に取り逃しても、空のままにしない）。
       if (canvasResendAfter(entry?.role ?? null, channel))
-        setImmediate(() => link?.canvasSubscribed());
+        setImmediate(() => {
+          link?.canvasSubscribed();
+          pushCanvasWorkArea();
+        });
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window') setImmediate(hideWindows);
       // 状態の層のパネルを出す・しまう（つまみ・パネルの中の Esc。UI-04）。応答を返してから窓の大きさを変える。
@@ -651,6 +725,8 @@ function createLink(
     // キャンバスのモード（開発用のフラグ）では、入力バーの発言を流れへ送り、キャンバスの記述をキャンバスの窓だけへ渡す
     // （役割の表 DESKTOP_ROLE_NOTIFICATIONS。状態の層・入力バーへは送らない）。
     canvasMode: uiMode === 'canvas',
+    // キャンバスが前に出ているか（ユーザーの操作は前に出ている間だけ。UI-06）。
+    canvasFront: () => presence.layer === 'front',
     onCanvas: (notification) =>
       sendToRenderer(notification.channel, notification),
   });
@@ -738,6 +814,16 @@ function start(): void {
       }
     },
   });
+  // キャンバスを置く画面の設定（UI-06）。端末に保存するのはこれだけ。形が違えば既定（主の画面）にする。
+  const display = loadCanvasDisplaySettings(
+    join(app.getPath('userData'), CANVAS_DISPLAY_FILE),
+    (value) => contract.valid('DesktopCanvasDisplaySettings', value),
+  );
+  if (display.kind === 'invalid') log('canvas_display_settings_invalid');
+  displaySettings = display.settings;
+  screen.on('display-added', placeRoleWindows);
+  screen.on('display-removed', placeRoleWindows);
+  screen.on('display-metrics-changed', placeRoleWindows);
   link = createLink(contract);
   hardenWebContents();
   registerAppProtocol();

@@ -37,6 +37,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   postStreamTurn: COMMAND,
   // キャンバスの今の記述（ADR 0032）。内容なので、ロック中・不明は出さない。読み取りなので接続範囲は求めない。
   getCanvas: [...READ, 'unlocked'],
+  // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。版の照合は経路の処理が物ごとに行う。
+  postCanvasUserOp: SCREEN,
   handoffSession: [...SCREEN, 'expected_revision'],
   previewOperation: COMMAND,
   displayOperation: COMMAND,

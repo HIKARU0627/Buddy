@@ -115,7 +115,10 @@ export type BuddyContract =
   | CanvasOpBatch
   | DesktopCanvasView
   | StreamTurnRequest
-  | StreamTurnResponse;
+  | StreamTurnResponse
+  | CanvasUserOpRequest
+  | CanvasUserOpResponse
+  | DesktopCanvasDisplaySettings;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -842,9 +845,34 @@ export type DesktopIpcRequest =
       payload: {
         open: boolean;
       };
+    }
+  | {
+      channel: 'desktop.canvas_user_op';
+      request_id: Id;
+      payload: {
+        expected_canvas_revision: CanvasRevision;
+        op: CanvasUserOp;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
+/**
+ * ユーザーのキャンバスの操作（UI-06、ADR 0032）。move（動かす）・resize（大きさを変える）は置く先のマス（配置のエンジンの格子のマス）、close は閉じる、shelve は下の棚へ片付ける、unshelve は棚から出す。ピクセル・座標・本文を持たない。キャンバスが前に出ている間の本人の操作だけ。
+ */
+export type CanvasUserOp =
+  | {
+      kind: 'move' | 'resize';
+      item_id: CanvasItemId;
+      cell: CanvasCell;
+    }
+  | {
+      kind: 'close' | 'shelve' | 'unshelve';
+      item_id: CanvasItemId;
+    };
+/**
+ * キャンバスの中の物の名前（ADR 0032）。同じキャンバスの中だけで一意。操作 ID・会話 ID などの内部の識別子を使わない。
+ */
+export type CanvasItemId = string;
 /**
  * main から UI レンダラーへの応答（ADR 0014・0025）。どの拒否を返すかは domain の desktop.ts の規則と main のペアリングの手順が決める。
  */
@@ -956,6 +984,12 @@ export type DesktopIpcResponse =
       resolved: 'state_changed' | 'state_unchanged';
     }
   | {
+      request_id: Id;
+      channel: 'desktop.canvas_user_op';
+      outcome: 'ok';
+      canvas_revision: CanvasRevision;
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -982,7 +1016,8 @@ export type DesktopIpcResponse =
         | 'home_network_changed'
         | 'preview_stale'
         | 'input_stopped'
-        | 'content_unavailable';
+        | 'content_unavailable'
+        | 'canvas_conflict';
       /**
        * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。
        */
@@ -1108,7 +1143,7 @@ export type DesktopPairingFailure =
   | 'storage_failed'
   | 'protocol_error';
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -1136,7 +1171,8 @@ export type DesktopIpcChannel =
   | 'desktop.operation_retry'
   | 'desktop.operation_check'
   | 'desktop.canvas_summon'
-  | 'desktop.status_panel';
+  | 'desktop.status_panel'
+  | 'desktop.canvas_user_op';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -1159,11 +1195,16 @@ export type DesktopIpcNotification =
   | {
       channel: 'desktop.canvas_changed';
       canvas: DesktopCanvasView | null;
+    }
+  | {
+      channel: 'desktop.canvas_work_area';
+      insets: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+      };
     };
-/**
- * キャンバスの中の物の名前（ADR 0032）。同じキャンバスの中だけで一意。操作 ID・会話 ID などの内部の識別子を使わない。
- */
-export type CanvasItemId = string;
 /**
  * 物の種類（ADR 0032）。card はキャンバスの格子に置くカード、float はキャンバスの窓の中に浮かぶフローティングウィンドウ。どちらもキャンバスの窓の外に出られない。
  */
@@ -1235,6 +1276,19 @@ export type SegmentBoundaryReason =
   | 'storage_mode_changed'
   | 'user_requested'
   | 'forget_requested';
+/**
+ * キャンバスを置く画面の設定（UI-06、ADR 0032）。端末に保存してよい配置の設定はこれだけで、キャンバスの本文・見出し・参照・置き場所を持たない。primary（既定）は主の画面、display は OS の画面の ID の画面（なければ主の画面）。キャンバス・状態の層・入力バーを同じ画面に置く。すべての画面を 1 枚につなぐ形はない。
+ */
+export type DesktopCanvasDisplaySettings =
+  | {
+      schema_version: 1;
+      target: 'primary';
+    }
+  | {
+      schema_version: 1;
+      target: 'display';
+      display_id: number;
+    };
 
 export interface AudioRange {
   audio_epoch: AudioEpoch;
@@ -3617,6 +3671,15 @@ export interface ConnectionDisconnectRequest {
   expected_permission_revision: PermissionRevision;
 }
 /**
+ * 配置のエンジンの格子のマス（UI-06、ADR 0032）。12 列で、列・行は 1 から。column + span − 1 が 12 を超えないこと（意味の検査）。ピクセル・座標は持たない。ユーザーの置き場所と、ユーザーの操作の置く先に使う。
+ */
+export interface CanvasCell {
+  column: number;
+  row: number;
+  span: number;
+  rows: number;
+}
+/**
  * 画面に出す操作（B04-05、ADR 0031）。ref は main が操作ごとに作る参照で、操作 ID・内容版・hash・provider の受領 ID を含めない。allowed_actions は表示補助で、実行時の認可ではない。
  */
 export interface DesktopOperationEntry {
@@ -3786,6 +3849,12 @@ export interface DesktopCanvasView {
    * @maxItems 24
    */
   reading_order: CanvasItemId[];
+  /**
+   * ユーザーの置き場所（UI-06）。省略は空と同じ（UI-05 までの記述との互換）。
+   *
+   * @maxItems 24
+   */
+  user_pins?: CanvasUserPin[];
 }
 /**
  * 画面へ渡すキャンバスの物（ADR 0032）。CanvasItem と同じ項目で、データの参照だけを不透明な参照にする。説明文の項目・承認・停止・取消の操作を持たない。見出しはプレーンテキストとしてだけ描く。
@@ -3843,7 +3912,14 @@ export interface DesktopCanvasRef {
   ref: Id;
 }
 /**
- * キャンバスの今の記述（ADR 0032）。見える物（placement が canvas）は 24 個まで、棚を含めて 48 個まで。reading_order は見える物をちょうど 1 回ずつ含む（意味の検査）。
+ * ユーザーが動かした・大きさを変えた物の置き場所（UI-06、ADR 0032）。配置のエンジンはこのマスにそのまま置く。AI の束がその物を動かす（move）・閉じる・置き直す（relayout）・棚へ移すと消える（AI が優先）。見える物だけが持ち、1 つの物に 1 つ（意味の検査）。
+ */
+export interface CanvasUserPin {
+  item_id: CanvasItemId;
+  cell: CanvasCell;
+}
+/**
+ * キャンバスの今の記述（ADR 0032）。見える物（placement が canvas）は 24 個まで、棚を含めて 48 個まで。reading_order は見える物をちょうど 1 回ずつ含む（意味の検査）。 user_pins はユーザーの置き場所（UI-06）。
  */
 export interface CanvasDocument {
   canvas_revision: CanvasRevision;
@@ -3855,6 +3931,12 @@ export interface CanvasDocument {
    * @maxItems 24
    */
   reading_order: CanvasItemId[];
+  /**
+   * ユーザーの置き場所（UI-06）。省略は空と同じ（UI-05 までの記述との互換）。
+   *
+   * @maxItems 24
+   */
+  user_pins?: CanvasUserPin[];
 }
 /**
  * キャンバスに置く物（ADR 0032）。宣言的な記述だけで、説明文の項目（description・note・caption など）を持たない。承認・停止・取消の操作を持たない。
@@ -4041,4 +4123,20 @@ export interface CarriedSummary {
    */
   source_segment_ids: [Id, ...Id[]];
   expires_at: UtcTime;
+}
+/**
+ * ユーザーのキャンバスの操作の記録（UI-06、ADR 0032）。expected_canvas_revision は端末が描いている版。版が今と同じか、古くてもその物の置き場所・存在がその版より後に変わっていなければ当てる。それ以外は 409（conflict）で捨てる（自動では送り直さない）。
+ */
+export interface CanvasUserOpRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_canvas_revision: CanvasRevision;
+  op: CanvasUserOp;
+}
+/**
+ * ユーザーの操作を当てた後のキャンバスの版（UI-06、ADR 0032）。記述そのものは getCanvas で取る（購読の canvas の知らせも届く）。
+ */
+export interface CanvasUserOpResponse {
+  request_id: Id;
+  canvas_revision: CanvasRevision;
 }

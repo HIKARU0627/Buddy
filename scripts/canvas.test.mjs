@@ -15,6 +15,7 @@ import {
   DESKTOP_WINDOW_ROLES,
   applyCanvasBatch,
   applyCanvasBatchToStore,
+  applyCanvasUserOp,
   beginPrivateCanvas,
   canvasBatchErrors,
   canvasDocumentErrors,
@@ -318,7 +319,24 @@ const CANVAS_FORBIDDEN = [
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
   assert.deepEqual([...DESKTOP_WINDOW_ROLES], ['canvas', 'status', 'input']);
-  assert.deepEqual([...DESKTOP_ROLE_CHANNELS.canvas], ['desktop.get_state']);
+  // キャンバスは状態の取得と、物のユーザーの操作（UI-06）だけ。
+  assert.deepEqual(
+    [...DESKTOP_ROLE_CHANNELS.canvas],
+    ['desktop.get_state', 'desktop.canvas_user_op'],
+  );
+  // 物のユーザーの操作はキャンバスの窓だけ（状態の層・入力バーは使えない）。
+  assert.equal(
+    desktopChannelAllowedForRole('canvas', 'desktop.canvas_user_op'),
+    true,
+  );
+  assert.equal(
+    desktopChannelAllowedForRole('status', 'desktop.canvas_user_op'),
+    false,
+  );
+  assert.equal(
+    desktopChannelAllowedForRole('input', 'desktop.canvas_user_op'),
+    false,
+  );
   assert.deepEqual(
     [...DESKTOP_ROLE_CHANNELS.input],
     ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
@@ -360,9 +378,14 @@ test('window roles: the canvas cannot use stop, resume, approval or quit channel
     assert.equal(desktopChannelAllowedForRole(role, 'toString'), false);
   }
   // 状態の層だけが電源の記録と接続の通知を受ける。キャンバスの記述（UI-03）はキャンバスの窓だけが受ける。
+  // 作業領域の外の幅（UI-06）もキャンバスの窓だけが受ける。
   assert.deepEqual(
     [...DESKTOP_ROLE_NOTIFICATIONS.canvas],
-    ['desktop.state_changed', 'desktop.canvas_changed'],
+    [
+      'desktop.state_changed',
+      'desktop.canvas_changed',
+      'desktop.canvas_work_area',
+    ],
   );
   assert.deepEqual(
     [...DESKTOP_ROLE_NOTIFICATIONS.status],
@@ -392,10 +415,11 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 26 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
-  // status_panel を含む）。
-  assert.equal(channels.size, 26);
-  assert.equal(CANVAS_FORBIDDEN.length + 3, 26);
+  // 手で数えた数（現在の DesktopIpcChannel は 27 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
+  // status_panel、UI-06 の canvas_user_op を含む）。禁止の一覧 23 ＋ 全員の get_state ＋ 入力バーの turn_submit・
+  // canvas_summon ＋ キャンバスの canvas_user_op。
+  assert.equal(channels.size, 27);
+  assert.equal(CANVAS_FORBIDDEN.length + 4, 27);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、
@@ -786,4 +810,63 @@ test('carried summaries expire with their earliest source, across several segmen
     }),
     null,
   );
+});
+
+// UI-06（PR #121 のレビュー P2）: 他の物から参照されている物を閉じると、その物への関係も同じ操作で取り除く。
+// 期待値は手で書いた記述。
+const relItem = (id, relations = [], placement = 'canvas') => ({
+  item_id: id,
+  kind: 'card',
+  component: 'list',
+  heading: '見出し',
+  emphasis: 'normal',
+  group: null,
+  relations,
+  grid: { column: 1, span: 4, rows: 2 },
+  placement,
+  data: { item_refs: [], more_count: 0 },
+});
+
+test('closing an item that others refer to removes those relations in the same operation (compare, sequence, detail_of)', () => {
+  for (const kind of ['compare', 'sequence', 'detail_of']) {
+    const canvas = {
+      canvas_revision: '5',
+      items: [
+        relItem('target'),
+        relItem('other', [
+          { kind, target: 'target' },
+          { kind: 'compare', target: 'keep' },
+        ]),
+        relItem('keep'),
+        // 棚の物の関係も取り除く。
+        relItem('shelved', [{ kind, target: 'target' }], 'shelf'),
+      ],
+      reading_order: ['target', 'other', 'keep'],
+      user_pins: [],
+    };
+    const result = applyCanvasUserOp({
+      canvas,
+      op: { kind: 'close', item_id: 'target' },
+      expected_revision: '5',
+      placed_at: '1',
+    });
+    assert.deepEqual(
+      result,
+      {
+        ok: true,
+        canvas: {
+          canvas_revision: '6',
+          items: [
+            relItem('other', [{ kind: 'compare', target: 'keep' }]),
+            relItem('keep'),
+            relItem('shelved', [], 'shelf'),
+          ],
+          reading_order: ['other', 'keep'],
+          user_pins: [],
+        },
+      },
+      kind,
+    );
+    assert.deepEqual(canvasDocumentErrors(result.canvas), [], kind);
+  }
 });

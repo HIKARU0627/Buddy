@@ -110,6 +110,12 @@ export const OPERATION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.operation_check',
 ];
 
+// キャンバスのユーザーの操作のチャネル（UI-06、ADR 0032）。キャンバスの窓だけが使い、キャンバスが前に出ている間だけ受け付ける。
+// 承認・停止のチャネルとは別。
+export const CANVAS_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.canvas_user_op',
+];
+
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
 interface HubHomeReading {
   readonly fingerprint: HomeFingerprint;
@@ -168,6 +174,9 @@ export interface DesktopCoreLinkOptions {
   // キャンバスのモード（開発用のフラグ。UI-03、ADR 0032）。true のとき、入力バーの発言を流れ（POST /v1/stream/turns）へ
   // 送り、中枢のキャンバスの記述を取って onCanvas でキャンバスの窓へ渡す。false（既定）は従来どおり会話へ送る。
   readonly canvasMode?: boolean;
+  // キャンバスが前に出ているか（UI-06。Electron の層が CanvasPresence から注入する）。省略は前に出ていない
+  // （ユーザーの操作を受け付けない）。
+  readonly canvasFront?: () => boolean;
   // キャンバスの記述の通知（検査済み。キャンバスの窓だけへ送るのは Electron の層）。
   readonly onCanvas?: (
     notification: Extract<
@@ -959,6 +968,61 @@ export class DesktopCoreLink {
       if (raw.channel !== 'desktop.operation_preview') return outcome;
     }
     return this.#withinGeneration(generation, outcome);
+  }
+
+  // キャンバスのユーザーの操作（UI-06、ADR 0032）。受付の規則は ロック解除済み・前面（画面操作）→ キャンバスが前に出ている
+  // → 入出力が止まっていない の順。中枢へ操作を記録し、当てた後の版を返す。古い版への操作で物が変わっていれば
+  // canvas_conflict（記述を取り直す）。送った後に世代（ロック・停止・切断）が変わったら結果不明にする（自動では送り直さない）。
+  async handleCanvasIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      raw.channel !== 'desktop.canvas_user_op'
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    if (this.#options.canvasFront?.() !== true)
+      return this.#reject(
+        raw.request_id,
+        raw.channel,
+        'screen_operation_required',
+      );
+    if (!desktopInputPermitted(ioState))
+      return this.#reject(raw.request_id, raw.channel, 'input_stopped');
+    if (this.#options.canvasMode !== true)
+      return this.#reject(raw.request_id, raw.channel, 'invalid_request');
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
+    const result = await this.#canvas.userOp(
+      raw.payload.expected_canvas_revision,
+      raw.payload.op,
+    );
+    if (generation !== this.#viewGeneration || this.#lockState !== 'unlocked')
+      return this.#reject(raw.request_id, raw.channel, 'outcome_unknown');
+    return this.#operationOutcome(
+      raw.request_id,
+      raw.channel,
+      result,
+      (revision) => ({ canvas_revision: revision }),
+    );
   }
 
   // 操作の結果を応答にする。結果が分からない（outcome_unknown）はそのまま返す（自動では送り直さない）。

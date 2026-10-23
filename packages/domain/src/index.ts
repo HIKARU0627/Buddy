@@ -8,6 +8,8 @@ export * from './budget.js';
 export * from './budget-rules.js';
 // UI-01: キャンバスの記述と流れの区切りの意味の検査（ADR 0032）。
 export * from './canvas.js';
+// UI-06: キャンバスの配置のエンジン（ADR 0032）。
+export * from './canvas-layout.js';
 export * from './conversation.js';
 // B04-01: 操作の種類・connector の能力・照合（ADR 0027）。
 export * from './connectors.js';

@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import type {
   CanvasDocument,
+  CanvasItem,
   CanvasOpBatch,
   ResultView,
   StreamTurnResponse,
@@ -823,5 +824,306 @@ test(
     assert.equal(againBody.canvas, null);
     assert.equal(JSON.stringify(await canvasOf(core, device)), before);
     assert.equal((await canvasOf(core, device)).canvas_revision, '2');
+  },
+);
+
+// UI-06（#98、ADR 0032）: ユーザーの操作の記録・版の照合・AI が優先。期待値（版・置き場所・記録）は手で書いた。
+const CELL = { column: 7, row: 2, span: 4, rows: 3 };
+const notesItem: CanvasItem = {
+  item_id: 'notes',
+  kind: 'card',
+  component: 'list',
+  heading: 'メモ',
+  emphasis: 'normal',
+  group: null,
+  relations: [],
+  grid: { column: 7, span: 4, rows: 2 },
+  placement: 'canvas',
+  data: { item_refs: [], more_count: 0 },
+};
+
+test('UI-06: the hub applies user operations by the per-item revision rule and keeps a bounded record', () => {
+  const hub = new CanvasHub(contract);
+  const told: string[] = [];
+  hub.subscribe((revision) => told.push(revision));
+  const first = placeCanvasForTurn(
+    EMPTY_CANVAS,
+    view([{ kind: 'calendar_event', id: id(1) }]),
+  );
+  assert(first !== null);
+  assert.equal(hub.apply(first).ok, true);
+  assert.equal(hub.placedAt('errands'), '1');
+  // AI がもう 1 つ置く（版 2）。errands の置き場所は版 1 のまま。
+  assert.equal(
+    hub.apply({
+      base_canvas_revision: '1',
+      canvas_revision: '2',
+      ops: [{ op: 'add', item: notesItem }],
+      reading_order: ['errands', 'notes'],
+    }).ok,
+    true,
+  );
+  assert.equal(hub.placedAt('errands'), '1');
+  assert.equal(hub.placedAt('notes'), '2');
+
+  // 版 1 を見ていた本人が errands を動かす: errands は版 1 から変わっていないので当てる（版 3）。
+  assert.deepEqual(
+    hub.applyUser({ kind: 'move', item_id: 'errands', cell: CELL }, '1'),
+    { ok: true, revision: '3' },
+  );
+  assert.deepEqual(hub.document.user_pins, [
+    { item_id: 'errands', cell: CELL },
+  ]);
+  assert.deepEqual(hub.document.reading_order, ['errands', 'notes']);
+  assert.equal(hub.placedAt('errands'), '3');
+  assert.deepEqual(hub.record, [
+    { kind: 'move', item_id: 'errands', cell: CELL, canvas_revision: '3' },
+  ]);
+  // 版 2 を見ていた操作: errands は版 3 で動いたので捨てる。notes は版 2 のままなので当てる（閉じる。版 4）。
+  assert.deepEqual(
+    hub.applyUser(
+      { kind: 'resize', item_id: 'errands', cell: { ...CELL, span: 2 } },
+      '2',
+    ),
+    { ok: false, reason: 'stale' },
+  );
+  assert.deepEqual(hub.applyUser({ kind: 'close', item_id: 'notes' }, '2'), {
+    ok: true,
+    revision: '4',
+  });
+  assert.equal(hub.placedAt('notes'), null);
+  assert.deepEqual(hub.document.reading_order, ['errands']);
+  // ない物・今より新しい版・当てられない操作（見える物を棚から出す・はみ出すマス）。
+  assert.deepEqual(hub.applyUser({ kind: 'close', item_id: 'ghost' }, '4'), {
+    ok: false,
+    reason: 'stale',
+  });
+  assert.deepEqual(hub.applyUser({ kind: 'close', item_id: 'errands' }, '9'), {
+    ok: false,
+    reason: 'stale',
+  });
+  assert.deepEqual(
+    hub.applyUser({ kind: 'unshelve', item_id: 'errands' }, '4'),
+    { ok: false, reason: 'not_applicable' },
+  );
+  assert.deepEqual(
+    hub.applyUser(
+      {
+        kind: 'move',
+        item_id: 'errands',
+        cell: { column: 10, row: 1, span: 4, rows: 1 },
+      },
+      '4',
+    ),
+    { ok: false, reason: 'not_applicable' },
+  );
+  assert.equal(hub.document.canvas_revision, '4');
+
+  // AI の中身だけの update（版 5）はユーザーの置き場所を消さず、置き場所の版も進めない。
+  const update = placeCanvasForTurn(
+    hub.document,
+    view([{ kind: 'calendar_event', id: id(2) }]),
+  );
+  assert(update !== null && update.ops[0]?.op === 'update');
+  assert.equal(hub.apply(update).ok, true);
+  assert.deepEqual(hub.document.user_pins, [
+    { item_id: 'errands', cell: CELL },
+  ]);
+  assert.equal(hub.placedAt('errands'), '3');
+  // AI が errands を動かす（版 6）: AI が優先なのでユーザーの置き場所を消す。
+  assert.equal(
+    hub.apply({
+      base_canvas_revision: '5',
+      canvas_revision: '6',
+      ops: [
+        {
+          op: 'move',
+          item_id: 'errands',
+          grid: { column: 1, span: 6, rows: 3 },
+        },
+      ],
+      reading_order: ['errands'],
+    }).ok,
+    true,
+  );
+  assert.deepEqual(hub.document.user_pins, []);
+  assert.equal(hub.placedAt('errands'), '6');
+  // もう一度置いて、AI の置き直し（relayout、版 8）でも消える。
+  assert.equal(
+    hub.applyUser({ kind: 'move', item_id: 'errands', cell: CELL }, '6').ok,
+    true,
+  );
+  assert.equal(
+    hub.apply({
+      base_canvas_revision: '7',
+      canvas_revision: '8',
+      ops: [{ op: 'relayout' }],
+      reading_order: ['errands'],
+    }).ok,
+    true,
+  );
+  assert.deepEqual(hub.document.user_pins, []);
+  assert.deepEqual(told, ['1', '2', '3', '4', '5', '6', '7', '8']);
+  // 記録は 64 件まで（古い方から捨てる）。
+  for (let n = 0; n < 70; n += 1)
+    assert.equal(
+      hub.applyUser(
+        {
+          kind: 'move',
+          item_id: 'errands',
+          cell: { ...CELL, row: 1 + (n % 3) },
+        },
+        hub.document.canvas_revision,
+      ).ok,
+      true,
+    );
+  assert.equal(hub.record.length, 64);
+  assert.equal(hub.record.at(-1)?.canvas_revision, '78');
+  assert.equal(hub.record[0]?.canvas_revision, '15');
+});
+
+test('UI-06: the placer re-adds the card with the size the user gave it last (the record is the next input)', () => {
+  const record = [
+    {
+      kind: 'move' as const,
+      item_id: 'errands',
+      cell: { column: 3, row: 1, span: 4, rows: 3 },
+      canvas_revision: '2',
+    },
+    {
+      kind: 'resize' as const,
+      item_id: 'errands',
+      cell: { column: 5, row: 3, span: 6, rows: 2 },
+      canvas_revision: '3',
+    },
+    // ほかの物と、マスのない操作は使わない。
+    {
+      kind: 'move' as const,
+      item_id: 'notes',
+      cell: { column: 1, row: 1, span: 2, rows: 1 },
+      canvas_revision: '4',
+    },
+    {
+      kind: 'close' as const,
+      item_id: 'errands',
+      cell: null,
+      canvas_revision: '5',
+    },
+  ];
+  const batch = placeCanvasForTurn(
+    { canvas_revision: '5', items: [], reading_order: [] },
+    view([{ kind: 'calendar_event', id: id(1) }]),
+    { record, seen_revision: '3' },
+  );
+  const op = batch?.ops[0];
+  assert(op?.op === 'add');
+  assert.deepEqual(op.item.grid, { column: 5, span: 6, rows: 2 });
+  // 記録がなければ UI-03 のヒントのまま。
+  const plain = placeCanvasForTurn(
+    EMPTY_CANVAS,
+    view([{ kind: 'calendar_event', id: id(1) }]),
+    { record: [], seen_revision: '0' },
+  );
+  assert(plain?.ops[0]?.op === 'add');
+  assert.deepEqual(plain.ops[0].item.grid, { column: 2, span: 4, rows: 3 });
+});
+
+test(
+  'UI-06: postCanvasUserOp over HTTPS needs a screen operation, applies by the revision rule, replays the same request and refuses a changed one',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startCanvasCore(t);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const placed = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(placed.status, 200, placed.text);
+    const screen = { 'buddy-input-origin': 'screen' };
+    const body = (requestId: string, expected: string, op: object) => ({
+      request_id: requestId,
+      command_scope_id: scope,
+      expected_canvas_revision: expected,
+      op,
+    });
+    const move = { kind: 'move', item_id: 'errands', cell: CELL };
+    // 画面操作でない（音声）は 403。
+    const voice = await postJson(
+      core,
+      device,
+      '/v1/canvas/user-ops',
+      body(randomUUID(), '1', move),
+      { 'buddy-input-origin': 'voice' },
+    );
+    assert.equal(voice.status, 403, voice.text);
+    assert.equal(
+      (voice.json as { code?: string }).code,
+      'screen_operation_required',
+    );
+    // ピクセルを持つ操作は形式の違反（422）。
+    const pixels = await postJson(
+      core,
+      device,
+      '/v1/canvas/user-ops',
+      body(randomUUID(), '1', { ...move, x: 120 }),
+      screen,
+    );
+    assert.equal(pixels.status, 422, pixels.text);
+    // 当てる: 版 2。応答は契約どおり。購読の知らせと同じく、記述は getCanvas で取る。
+    const requestId = randomUUID();
+    const ok = await postJson(
+      core,
+      device,
+      '/v1/canvas/user-ops',
+      body(requestId, '1', move),
+      screen,
+    );
+    assert.equal(ok.status, 200, ok.text);
+    assert(contract.valid('CanvasUserOpResponse', ok.json));
+    assert.deepEqual(ok.json, { request_id: requestId, canvas_revision: '2' });
+    const canvas = await canvasOf(core, device);
+    assert.deepEqual(canvas.user_pins, [{ item_id: 'errands', cell: CELL }]);
+    // 同じ要求の再送は同じ結果（もう一度当てない）。内容が違えば 409。
+    const replay = await postJson(
+      core,
+      device,
+      '/v1/canvas/user-ops',
+      body(requestId, '1', move),
+      screen,
+    );
+    assert.deepEqual(replay.json, {
+      request_id: requestId,
+      canvas_revision: '2',
+    });
+    assert.equal((await canvasOf(core, device)).canvas_revision, '2');
+    const changed = await postJson(
+      core,
+      device,
+      '/v1/canvas/user-ops',
+      body(requestId, '1', { kind: 'close', item_id: 'errands' }),
+      screen,
+    );
+    assert.equal(changed.status, 409, changed.text);
+    // 古い版で、その物が後から動いた: 409（conflict）。記述は変えない。
+    const stale = await postJson(
+      core,
+      device,
+      '/v1/canvas/user-ops',
+      body(randomUUID(), '1', { kind: 'shelve', item_id: 'errands' }),
+      screen,
+    );
+    assert.equal(stale.status, 409, stale.text);
+    assert.equal((stale.json as { code?: string }).code, 'conflict');
+    assert.equal((await canvasOf(core, device)).canvas_revision, '2');
+    // 発言は版が古くても受け付ける（言葉を捨てない）。配置者は今の記述から作る（中身だけの update。版 3）。
+    const turn = await postStream(core, device, scope, '今日の用事を見せて', {
+      expected: '0',
+    });
+    assert.equal(turn.status, 200, turn.text);
+    const turnBody = turn.json as unknown as StreamTurnResponse;
+    assert.equal(turnBody.canvas?.base_canvas_revision, '2');
+    assert.equal(turnBody.canvas?.ops[0]?.op, 'update');
+    // 中身だけの update はユーザーの置き場所を消さない。
+    assert.deepEqual((await canvasOf(core, device)).user_pins, [
+      { item_id: 'errands', cell: CELL },
+    ]);
   },
 );

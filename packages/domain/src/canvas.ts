@@ -33,7 +33,10 @@ export type CanvasSemanticError =
   | 'revision_not_next'
   | 'base_revision_mismatch'
   | 'item_exists'
-  | 'item_not_found';
+  | 'item_not_found'
+  // UI-06: ユーザーの置き場所（user_pins）が、見える物でない・同じ物に 2 つある。
+  | 'pin_unknown_item'
+  | 'pin_duplicate';
 
 export interface CanvasGridLike {
   readonly column: number;
@@ -64,10 +67,27 @@ export interface CanvasItemLike {
   readonly data: CanvasDataLike;
 }
 
+// 格子のマス（UI-06）。列・行は 1 から。ユーザーの置き場所と配置のエンジンの出力に使う。ピクセルではない。
+export interface CanvasCellLike {
+  readonly column: number;
+  readonly row: number;
+  readonly span: number;
+  readonly rows: number;
+}
+
+// ユーザーが動かした・大きさを変えた物の置き場所（UI-06、ADR 0032）。AI の束がその物を動かす・閉じる・置き直す・
+// 棚へ移すと消える（AI が優先）。
+export interface CanvasUserPinLike {
+  readonly item_id: string;
+  readonly cell: CanvasCellLike;
+}
+
 export interface CanvasDocumentLike {
   readonly canvas_revision: string;
   readonly items: readonly CanvasItemLike[];
   readonly reading_order: readonly string[];
+  // UI-06: ユーザーの置き場所。省略は空と同じ（UI-05 までの記述との互換）。
+  readonly user_pins?: readonly CanvasUserPinLike[];
 }
 
 export interface CanvasItemChangesLike {
@@ -216,6 +236,15 @@ export function canvasDocumentErrors(
   }
   for (const id of visible)
     if (!seen.has(id)) errors.add('reading_order_missing');
+  const pinned = new Set<string>();
+  for (const pin of canvas.user_pins ?? []) {
+    if (pinned.has(pin.item_id)) errors.add('pin_duplicate');
+    pinned.add(pin.item_id);
+    // ユーザーの置き場所は見える物だけが持つ（棚の物・ない物は持たない）。
+    if (!visible.has(pin.item_id)) errors.add('pin_unknown_item');
+    if (pin.cell.column + pin.cell.span - 1 > CANVAS_GRID_COLUMNS)
+      errors.add('grid_overflow');
+  }
   return sorted(errors);
 }
 
@@ -313,14 +342,159 @@ export function applyCanvasBatch(
       });
   }
   if (errors.size > 0) return { ok: false, errors: sorted(errors) };
+  const pins = pinsAfterBatch(canvas, batch, items);
   const next: CanvasDocumentLike = {
     canvas_revision: batch.canvas_revision,
     items: [...items.values()],
     reading_order: batch.reading_order,
+    // ユーザーの置き場所の項目は、前の記述が持っていたときだけ持つ（UI-05 までの記述の形を変えない）。
+    ...(canvas.user_pins === undefined ? {} : { user_pins: pins }),
   };
   const after = canvasDocumentErrors(next);
   return after.length > 0
     ? { ok: false, errors: after }
+    : { ok: true, canvas: next };
+}
+
+// AI の束を当てた後に残すユーザーの置き場所（UI-06、ADR 0032。AI が優先）。束がその物を動かす（move）・閉じる・
+// 置き直す（relayout。すべて）・棚へ移すと消す。中身だけの update では消さない。
+function pinsAfterBatch(
+  canvas: CanvasDocumentLike,
+  batch: CanvasOpBatchLike,
+  items: ReadonlyMap<string, CanvasItemLike>,
+): CanvasUserPinLike[] {
+  if (batch.ops.some((op) => op.op === 'relayout')) return [];
+  const moved = new Set(
+    batch.ops.flatMap((op) =>
+      op.op === 'move' || op.op === 'close' ? [op.item_id] : [],
+    ),
+  );
+  return (canvas.user_pins ?? []).filter(
+    (pin) =>
+      !moved.has(pin.item_id) && items.get(pin.item_id)?.placement === 'canvas',
+  );
+}
+
+// 束で置き場所・存在が変わる物（UI-06）。Core はこれで物ごとの「置き場所が最後に変わった版」を進め、古い版への
+// ユーザーの操作を当ててよいかを決める。relayout はすべての物（null）。中身だけの update は含めない。
+export function canvasBatchPlacementTargets(
+  batch: CanvasOpBatchLike,
+): readonly string[] | null {
+  if (batch.ops.some((op) => op.op === 'relayout')) return null;
+  return batch.ops.flatMap((op) =>
+    op.op === 'add'
+      ? [op.item.item_id]
+      : op.op === 'move' || op.op === 'close'
+        ? [op.item_id]
+        : [],
+  );
+}
+
+// ユーザーの操作（UI-06、ADR 0032）。move・resize は置く先のマス（エンジンの格子のマス）、close は閉じる、
+// shelve は棚へ片付ける、unshelve は棚から出す。
+export type CanvasUserOpLike =
+  | {
+      readonly kind: 'move' | 'resize';
+      readonly item_id: string;
+      readonly cell: CanvasCellLike;
+    }
+  | {
+      readonly kind: 'close' | 'shelve' | 'unshelve';
+      readonly item_id: string;
+    };
+
+export type CanvasUserOpRejection =
+  // 古い版への操作で、その物の置き場所・存在が後から変わった。物がない。今より新しい版。
+  | 'stale'
+  // 今の記述には当てられない（見える数の上限・棚の物を動かす・マスのはみ出し）。
+  | 'not_applicable';
+
+export type CanvasUserOpResult =
+  | { readonly ok: true; readonly canvas: CanvasDocumentLike }
+  | { readonly ok: false; readonly reason: CanvasUserOpRejection };
+
+const revisionOf = (value: string): bigint | null =>
+  /^(0|[1-9][0-9]*)$/u.test(value) ? BigInt(value) : null;
+
+// ユーザーの操作を今の記述に当てる（UI-06、ADR 0032）。版の照合: 添えた版（画面が描いている版）が今と同じなら当てる。
+// 古い版でも、その物の置き場所・存在が添えた版より後に変わっていなければ当てる（placedAt はその物の置き場所が
+// 最後に変わった版。Core が持つ）。今より新しい版・物がない・後から変わった物は stale。当てたら版を 1 進める。
+export function applyCanvasUserOp(input: {
+  readonly canvas: CanvasDocumentLike;
+  readonly op: CanvasUserOpLike;
+  readonly expected_revision: string;
+  readonly placed_at: string | null;
+}): CanvasUserOpResult {
+  const { canvas, op } = input;
+  const current = revisionOf(canvas.canvas_revision);
+  const expected = revisionOf(input.expected_revision);
+  if (current === null || expected === null || expected > current)
+    return { ok: false, reason: 'stale' };
+  const item = canvas.items.find((entry) => entry.item_id === op.item_id);
+  if (item === undefined) return { ok: false, reason: 'stale' };
+  const placedAt =
+    input.placed_at === null ? null : revisionOf(input.placed_at);
+  if (expected < current && (placedAt === null || placedAt > expected))
+    return { ok: false, reason: 'stale' };
+  const pins = (canvas.user_pins ?? []).filter(
+    (pin) => pin.item_id !== op.item_id,
+  );
+  let items = canvas.items;
+  let order = canvas.reading_order;
+  switch (op.kind) {
+    case 'move':
+    case 'resize':
+      if (item.placement !== 'canvas')
+        return { ok: false, reason: 'not_applicable' };
+      if (op.cell.column + op.cell.span - 1 > CANVAS_GRID_COLUMNS)
+        return { ok: false, reason: 'not_applicable' };
+      pins.push({ item_id: op.item_id, cell: { ...op.cell } });
+      break;
+    case 'close':
+      // 閉じた物への関係（compare・sequence・detail_of）も同じ操作で取り除く（参照先のない関係を残さない）。
+      items = items
+        .filter((entry) => entry.item_id !== op.item_id)
+        .map((entry) =>
+          entry.relations.some((relation) => relation.target === op.item_id)
+            ? {
+                ...entry,
+                relations: entry.relations.filter(
+                  (relation) => relation.target !== op.item_id,
+                ),
+              }
+            : entry,
+        );
+      order = order.filter((id) => id !== op.item_id);
+      break;
+    case 'shelve':
+      if (item.placement !== 'canvas')
+        return { ok: false, reason: 'not_applicable' };
+      items = items.map((entry) =>
+        entry.item_id === op.item_id
+          ? { ...entry, placement: 'shelf' as const }
+          : entry,
+      );
+      order = order.filter((id) => id !== op.item_id);
+      break;
+    case 'unshelve':
+      if (item.placement !== 'shelf')
+        return { ok: false, reason: 'not_applicable' };
+      items = items.map((entry) =>
+        entry.item_id === op.item_id
+          ? { ...entry, placement: 'canvas' as const }
+          : entry,
+      );
+      order = [...order, op.item_id];
+      break;
+  }
+  const next: CanvasDocumentLike = {
+    canvas_revision: (current + 1n).toString(),
+    items,
+    reading_order: order,
+    user_pins: pins,
+  };
+  return canvasDocumentErrors(next).length > 0
+    ? { ok: false, reason: 'not_applicable' }
     : { ok: true, canvas: next };
 }
 

@@ -357,10 +357,18 @@ test('window roles: the canvas cannot use stop, resume, approval or quit channel
     assert.equal(desktopChannelAllowedForRole(role, 'desktop.unknown'), false);
     assert.equal(desktopChannelAllowedForRole(role, 'toString'), false);
   }
-  // 状態の層だけが電源の記録と接続の通知を受ける。
+  // 状態の層だけが電源の記録と接続の通知を受ける。キャンバスの記述（UI-03）はキャンバスの窓だけが受ける。
   assert.deepEqual(
     [...DESKTOP_ROLE_NOTIFICATIONS.canvas],
-    ['desktop.state_changed'],
+    ['desktop.state_changed', 'desktop.canvas_changed'],
+  );
+  assert.deepEqual(
+    [...DESKTOP_ROLE_NOTIFICATIONS.status],
+    [
+      'desktop.state_changed',
+      'desktop.power_event',
+      'desktop.connection_changed',
+    ],
   );
   assert.deepEqual(
     [...DESKTOP_ROLE_NOTIFICATIONS.input],

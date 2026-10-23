@@ -173,6 +173,34 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/canvas:
+    get:
+      operationId: getCanvas
+      summary: キャンバスの今の記述
+      description: 流れのキャンバスの今の記述（CanvasDocument。ADR 0032）。正本は中枢で、端末はイベントの購読で届く canvas の知らせ（版だけ）を受けたときと、接続・ロック解除のときにこれで取る。記述は参照だけで本文・説明文を含まない。ロック中・不明は 403。読み取りだけで記述を変えない。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: キャンバスの今の記述。まだ何も置いていなければ版 0 の空の記述。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CanvasDocument
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/sessions/{session_id}/handoff:
     post:
       operationId: handoffSession
@@ -718,7 +746,7 @@ paths:
     get:
       operationId: streamEvents
       summary: イベントの購読（WSS）
-      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。同じ端末の同時の購読は上限（4）までで、超えれば切り替えずに 429、同時の切り替えで後から開いたものは理由つきで閉じる。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
+      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。同じ端末の同時の購読は上限（4）までで、超えれば切り替えずに 429、同時の切り替えで後から開いたものは理由つきで閉じる。キャンバスの記述が新しい版になったときは canvas の知らせ（版だけ。cursor を持たず、記録に入れない）を購読に送り、端末は getCanvas で取る（ADR 0032）。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
       x-buddy-core-checks: *id001
       parameters:
         - $ref: '#/components/parameters/Cursor'

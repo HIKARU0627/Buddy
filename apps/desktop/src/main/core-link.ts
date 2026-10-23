@@ -10,6 +10,8 @@
 // Electron に依存しない。safeStorage・指紋の収集・接続口の一覧は Electron の層が注入する。
 
 import type {
+  DesktopCanvasView,
+  DesktopIpcNotification,
   DesktopIpcRequest,
   DeviceList,
   PairingClaimList,
@@ -69,6 +71,7 @@ import type {
   PeerCertificateResult,
   PinnedHub,
 } from './hub-transport.js';
+import { CanvasBridge } from './canvas-bridge.js';
 import { OperationBridge } from './operation-bridge.js';
 import type {
   BridgeOutcome,
@@ -162,6 +165,16 @@ export interface DesktopCoreLinkOptions {
   readonly hubScreenProbeRetryMs?: number;
   // 承認・拒否・失効の前の本人の確認。省略すると確認できないので送らない。
   readonly confirmAdmin?: AdminConfirm;
+  // キャンバスのモード（開発用のフラグ。UI-03、ADR 0032）。true のとき、入力バーの発言を流れ（POST /v1/stream/turns）へ
+  // 送り、中枢のキャンバスの記述を取って onCanvas でキャンバスの窓へ渡す。false（既定）は従来どおり会話へ送る。
+  readonly canvasMode?: boolean;
+  // キャンバスの記述の通知（検査済み。キャンバスの窓だけへ送るのは Electron の層）。
+  readonly onCanvas?: (
+    notification: Extract<
+      DesktopIpcNotification,
+      { channel: 'desktop.canvas_changed' }
+    >,
+  ) => void;
 }
 
 // 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。main が OS の確認ダイアログで行う。
@@ -299,6 +312,8 @@ export class DesktopCoreLink {
 
   // 発言・承認・取消・照合（参照だけを画面へ渡す。B04-05）。
   readonly #operations: OperationBridge;
+  // キャンバスの記述と流れへの発言（キャンバスのモードだけ。UI-03）。
+  readonly #canvas: CanvasBridge;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -314,6 +329,21 @@ export class DesktopCoreLink {
           : { permitted: desktopInputPermitted(state), epoch: state.ioEpoch };
       },
       changed: () => options.onChange(),
+      log: (code) => this.#log(code),
+    });
+    this.#canvas = new CanvasBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      unlocked: () => this.#lockState === 'unlocked',
+      io: () => {
+        const state = options.ioState?.() ?? null;
+        return state === null
+          ? { permitted: true, epoch: '' }
+          : { permitted: desktopInputPermitted(state), epoch: state.ioEpoch };
+      },
+      publish: (canvas) => this.#publishCanvas(canvas),
+      turnResult: (turn) => this.#operations.streamTurnResult(turn),
       log: (code) => this.#log(code),
     });
     this.#pairing = new PairingFlow({
@@ -385,7 +415,11 @@ export class DesktopCoreLink {
     this.#lockState = lockState;
     if (lockState !== 'unlocked') this.#bumpGeneration();
     this.#connection?.setLockState(lockState);
-    if (lockState === 'unlocked') void this.#probeHubScreen();
+    if (lockState === 'unlocked') {
+      void this.#probeHubScreen();
+      // ロック中に捨てた記述を、解除したら中枢から取り直す（ロック中に届いた版の知らせは取っていない）。
+      if (this.#options.canvasMode === true) void this.#canvas.refresh();
+    }
     // ロックした・不明になったら、自宅の登録の参照を捨てる（解除の後に読み取り直して確かめ直す。B03-08）。
     else this.#homeRef = null;
     this.#options.onChange();
@@ -644,6 +678,8 @@ export class DesktopCoreLink {
       if (state.phase === 'live' && previous.phase !== 'live') {
         this.#probeRetries = 0;
         void this.#probeHubScreen();
+        // 接続するたびに、中枢のキャンバスの今の記述を取る（捨てた記述の復元。UI-03）。
+        if (this.#options.canvasMode === true) void this.#canvas.refresh();
       }
       // 中枢の API の major が違えば、以後は要求を送らない。自宅の指紋の報告も止める（レビューの指摘 L4）。
       if (state.phase === 'upgrade_required') this.#reporter?.stop();
@@ -665,6 +701,9 @@ export class DesktopCoreLink {
       this.#options.onChange();
     });
     this.#connection = connection;
+    // 中枢のキャンバスの版の知らせ（本文なし）。取るのは canvas の窓のためだけ（キャンバスのモード）。
+    if (this.#options.canvasMode === true)
+      connection.onCanvas((revision) => this.#canvas.onRevision(revision));
     const reporter = new HomeReporter({
       collect: () => this.#options.collectHome(),
       send: (body) =>
@@ -833,7 +872,11 @@ export class DesktopCoreLink {
     let outcome: ConnectionIpcOutcome;
     switch (raw.channel) {
       case 'desktop.turn_submit': {
-        const result = await this.#operations.submitTurn(raw.payload.text);
+        // キャンバスのモードは流れへ（会話を作らない）。それ以外は従来の会話へ。
+        const result =
+          this.#options.canvasMode === true
+            ? await this.#canvas.submitTurn(raw.payload.text)
+            : await this.#operations.submitTurn(raw.payload.text);
         outcome = this.#operationOutcome(
           requestId,
           raw.channel,
@@ -1620,6 +1663,38 @@ export class DesktopCoreLink {
     return 'core_rejected';
   }
 
+  // 今キャンバスの窓へ渡している記述（読み込み直した窓へ送る。キャンバスのモード以外は null）。
+  canvasView(): DesktopCanvasView | null {
+    return this.#options.canvasMode === true ? this.#canvas.view : null;
+  }
+
+  // 入出力の状態（停止・io_epoch）が変わった（Electron の層が呼ぶ）。停止・世代の変化ではキャンバスの記述を捨て、再開
+  // したら取り直す（キャンバスのモードだけ）。
+  ioStateChanged(): void {
+    if (this.#options.canvasMode === true) this.#canvas.ioChanged();
+  }
+
+  // キャンバスの窓が通知を受け取る準備を終えた。今の記述を送り直す（なければ取り直す）。
+  canvasSubscribed(): void {
+    if (this.#options.canvasMode === true) this.#canvas.resend();
+  }
+
+  // 試験用: 進行中のキャンバスの取得がすべて終わるまで待つ。
+  canvasIdle(): Promise<void> {
+    return this.#canvas.idle();
+  }
+
+  // キャンバスの記述をキャンバスの窓へ通知する。送る前に契約で確かめる（形式に合わなければ送らず捨てる）。
+  #publishCanvas(canvas: DesktopCanvasView | null): void {
+    if (this.#options.canvasMode !== true) return;
+    const notification = { channel: 'desktop.canvas_changed' as const, canvas };
+    if (this.#options.contract.notificationErrors(notification).length > 0) {
+      this.#log('canvas_notification_invalid');
+      return;
+    }
+    this.#options.onCanvas?.(notification);
+  }
+
   // 表示している確認を閉じて「送らない」にする（ウィンドウが隠れた・最小化されたとき。Electron の層が呼ぶ）。
   // 表示の権限の世代は進めない（参照・一覧は残し、前面に戻して押し直せる）。
   closeConfirm(): void {
@@ -1631,6 +1706,7 @@ export class DesktopCoreLink {
   #bumpGeneration(): void {
     this.#viewGeneration += 1;
     this.#operations.reset();
+    this.#canvas.reset();
     this.#confirmAbort?.abort();
     this.#confirmAbort = null;
   }

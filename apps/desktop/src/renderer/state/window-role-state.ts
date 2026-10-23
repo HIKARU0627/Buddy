@@ -91,6 +91,12 @@ export function contentShown(status: DesktopStatusBar | null): boolean {
   return status?.visibility === 'shown';
 }
 
+// キャンバスの記述を描いてよいか（ロック解除済みで、入出力が止まっていない）。入力バーの下書きと違い、停止中も描かない
+// （ADR 0032 の「停止で隠す」。再開したら main が取り直して送る）。
+export function canvasContentShown(status: DesktopStatusBar | null): boolean {
+  return status?.visibility === 'shown' && status.stop_scope === 'none';
+}
+
 // 状態が変わった後の入力バーの下書き。内容を出せないとき（ロック中・不明）は捨てる（解除しても戻さない）。
 // 描画にもこの値を使い、捨てる前の一瞬にも下書きを描かない。
 export function inputDraftAfter(

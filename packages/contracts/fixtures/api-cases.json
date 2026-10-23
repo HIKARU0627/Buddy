@@ -928,6 +928,10 @@
           }
         },
         {
+          "type": "canvas",
+          "canvas_revision": "4"
+        },
+        {
           "type": "resnapshot_required",
           "reason": "store_generation_changed"
         }
@@ -951,6 +955,15 @@
         {
           "type": "resnapshot_required",
           "reason": "unknown"
+        },
+        {
+          "type": "canvas",
+          "canvas_revision": "4",
+          "canvas": { "canvas_revision": "4", "items": [], "reading_order": [] }
+        },
+        {
+          "type": "canvas",
+          "canvas_revision": "04"
         }
       ],
       "rejections": [
@@ -1229,6 +1242,41 @@
         {
           "claim_secret": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
         }
+      ]
+    },
+    "getCanvas": {
+      "response": {
+        "canvas_revision": "4",
+        "items": [
+          {
+            "item_id": "errands",
+            "kind": "card",
+            "component": "list",
+            "heading": "今日の用事",
+            "emphasis": "normal",
+            "group": null,
+            "relations": [],
+            "grid": { "column": 2, "span": 4, "rows": 3 },
+            "placement": "canvas",
+            "data": {
+              "item_refs": [
+                {
+                  "kind": "calendar_event",
+                  "id": "00000000-0000-4000-8000-000000000080"
+                }
+              ],
+              "more_count": 0
+            }
+          }
+        ],
+        "reading_order": ["errands"]
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
       ]
     },
     "listDevices": {

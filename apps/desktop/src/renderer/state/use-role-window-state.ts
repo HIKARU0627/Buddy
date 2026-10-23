@@ -28,6 +28,8 @@ export function useRoleWindowState(
     const unsubscribe = api.onNotification((notification) =>
       setState((prev) => applyNotification(prev, notification)),
     );
+    // 購読を始めてから状態を取る。main はキャンバスの窓の状態の取得を「通知を受け取る準備ができた」合図にして、今のキャンバスの
+    // 記述を送り直す（UI-03。順序を入れ替えない）。
     for (const channel of initialChannelsFor(role))
       api
         .invoke(request(channel, null))

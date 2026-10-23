@@ -76,6 +76,7 @@ import {
 } from '../window-policy.js';
 import {
   UiWindowRegistry,
+  canvasResendAfter,
   rolesForMode,
   senderFactsOf,
   uiWindowMode,
@@ -349,6 +350,13 @@ function createWindow(role: UiWindowRole): BrowserWindow {
       channel: 'desktop.state_changed',
       status: controller.statusBar,
     });
+    // 読み込み直したキャンバスの窓へ、今の記述を送る（役割の表に通知がある窓だけ）。
+    const canvas = link?.canvasView() ?? null;
+    if (canvas !== null)
+      sendHere('desktop.canvas_changed', {
+        channel: 'desktop.canvas_changed',
+        canvas,
+      });
     // 読み込み直した画面は前回の接続の状態を持っていないので、同じ内容でも送る。
     connectionPublisher.reset();
     pushConnection();
@@ -442,6 +450,10 @@ function registerIpc(): void {
           .handleOperationIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
       const outcome = controller.handleIpc(channel, raw, sender);
+      // キャンバスの窓は購読を始めてから状態を取る。その取得を、通知を受け取る準備ができた合図にして、今の記述を送り直す
+      // （読み込み直しの通知を購読の前に取り逃しても、空のままにしない）。
+      if (canvasResendAfter(entry?.role ?? null, channel))
+        setImmediate(() => link?.canvasSubscribed());
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window') setImmediate(hideWindows);
       // キャンバスを前に出す（端のつまみ・入力バー）。応答を返してから出す。
@@ -570,6 +582,11 @@ function createLink(
     onChange: pushConnection,
     log,
     confirmAdmin: confirmAdminWithDialog,
+    // キャンバスのモード（開発用のフラグ）では、入力バーの発言を流れへ送り、キャンバスの記述をキャンバスの窓だけへ渡す
+    // （役割の表 DESKTOP_ROLE_NOTIFICATIONS。状態の層・入力バーへは送らない）。
+    canvasMode: uiMode === 'canvas',
+    onCanvas: (notification) =>
+      sendToRenderer(notification.channel, notification),
   });
 }
 
@@ -637,6 +654,8 @@ function start(): void {
           // 停止した（トレイ・画面・電源の事象のどれでも）: 表示している承認・取消・再試行の確認を閉じて送らない。
           if (controller.state.stopScope !== 'none') link.closeConfirm();
           link.setLockState(controller.state.lockState);
+          // 停止・io_epoch の変化では、キャンバスの記述と参照を捨てる（再開したら取り直す）。
+          link.ioStateChanged();
           // ロック中・不明になったら、前に出したキャンバスを後ろへ戻す（中身を出したままにしない）。
           summoner.lockChanged(controller.state.lockState);
           pushConnection();

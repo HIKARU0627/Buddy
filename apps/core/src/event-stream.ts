@@ -67,6 +67,9 @@ export interface EventStreamOptions {
   readonly coreInstanceId: string;
   readonly environment: RequestEnvironment;
   readonly deviceConnections: DeviceConnections;
+  // キャンバスの記述が新しい版になったことを知らせる元（ADR 0032）。購読ごとに版だけを `{type:"canvas"}` で送る。
+  // イベントの記録（cursor）には入れない。なければ送らない。
+  readonly canvas?: CanvasNotifier;
   readonly now?: () => number;
   readonly pingIntervalMs?: number;
   readonly maxBufferedBytes?: number;
@@ -74,6 +77,10 @@ export interface EventStreamOptions {
   // 故障点（試験用、ADR 0030）。イベントを送った後・端末の ACK（cursor の前進）の前。注入で例外になれば、
   // 配信の後に接続を失ったものとして閉じる（端末は cursor から再開する）。
   readonly faults?: FaultHook;
+}
+
+export interface CanvasNotifier {
+  subscribe(listener: (revision: string) => void): () => void;
 }
 
 export interface EventStreamManager extends ApiEventStream {
@@ -140,6 +147,7 @@ export function createEventStream(
     let scopeId: string | null = null;
     let subscription: { close(): void } | null = null;
     let unregister: (() => void) | null = null;
+    let unsubscribeCanvas: (() => void) | null = null;
     let pingTimer: NodeJS.Timeout | null = null;
     let checking = false;
 
@@ -150,6 +158,8 @@ export function createEventStream(
       subscription = null;
       unregister?.();
       unregister = null;
+      unsubscribeCanvas?.();
+      unsubscribeCanvas = null;
       sessions.delete(finish);
       if (counted) {
         counted = false;
@@ -190,6 +200,19 @@ export function createEventStream(
       client.close(code, reason);
     }
     sessions.add(finish);
+    // キャンバスの版の知らせ。受け付けた直後（非同期の処理の前）に登録するので、端末が開いた後に取る getCanvas より
+    // 後の変更は必ず知らせが届く。版だけを送り、記述の本文を含めない。
+    unsubscribeCanvas =
+      options.canvas?.subscribe((revision) => {
+        if (closed || client.readyState !== WebSocket.OPEN) return;
+        if (client.bufferedAmount > maxBuffered) {
+          finish('slow_consumer');
+          return;
+        }
+        client.send(
+          JSON.stringify({ type: 'canvas', canvas_revision: revision }),
+        );
+      }) ?? null;
 
     client.on('pong', () => {
       alive = true;

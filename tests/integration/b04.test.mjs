@@ -5,6 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { platform, release } from 'node:os';
 import { specification, shuffled } from './b04-support.mjs';
+import { collectRuns, shouldWriteEvidence } from './evidence-run.mjs';
 import { runCase } from './b04-cases.mjs';
 import { b04SourceSha256 } from '../../scripts/b04-evidence-sources.mjs';
 
@@ -16,48 +17,25 @@ test(
   'B04-06・07: 全故障点・下書きの保存の故障・QA27 の 3 経路と権限・期限・QA28 を固定 seed で反復照合する',
   { timeout: 300000 },
   async (t) => {
-    const runs = [];
-    let failed = false;
-    for (const [round, seed] of specification.seeds.entries()) {
-      const order = shuffled(cases, seed);
-      for (const spec of order) {
-        await t.test(
-          `${spec.id} / seed=${seed}`,
-          { timeout: 45000 },
-          async (sub) => {
-            try {
-              const observed = await runCase(sub, spec, seed, round);
-              runs.push({
-                case_id: spec.id,
-                seed: String(seed),
-                order: order.map((c) => c.id),
-                faults: spec.b04_faults ?? spec.faults ?? [],
-                observed,
-              });
-            } catch (error) {
-              failed = true;
-              throw error;
-            }
-          },
-        );
-      }
-    }
-    // 通常の CI では書き出さない。全反復の成功時だけ、指定された出力先へ証拠を作る。
-    // 子試験の時間切れ・取り消しは catch を通らないので、case と seed のすべての組が実際に完了したことも確かめる
-    // （欠けた実行があれば、前の証拠を今回の成功として上書きしない）。
-    const finished = new Set(runs.map((run) => `${run.case_id}/${run.seed}`));
-    const complete =
-      runs.length === cases.length * specification.seeds.length &&
-      finished.size === runs.length &&
-      cases.every((spec) =>
-        specification.seeds.every((seed) => finished.has(`${spec.id}/${seed}`)),
-      );
-    if (process.env.BUDDY_B04_EVIDENCE_PATH && !failed)
-      assert(
-        complete,
-        '時間切れ・取り消しなどで完了していない実行があるため、証拠を保存しません',
-      );
-    if (process.env.BUDDY_B04_EVIDENCE_PATH && !failed && complete) {
+    // 子試験の時間切れ・取り消しの後に遅れて終わった結果は、成功に数えない（evidence-run.mjs）。
+    const result = await collectRuns({
+      t,
+      cases,
+      seeds: specification.seeds,
+      shuffled,
+      timeoutMs: 45000,
+      execute: (sub, spec, seed, round) => runCase(sub, spec, seed, round),
+      toRun: (spec, seed, order, observed) => ({
+        case_id: spec.id,
+        seed: String(seed),
+        order: order.map((c) => c.id),
+        faults: spec.b04_faults ?? spec.faults ?? [],
+        observed,
+      }),
+    });
+    const { runs } = result;
+    // 通常の CI では書き出さない。全反復が時間内に成功し、case と seed のすべての組がそろったときだけ、証拠を作る。
+    if (shouldWriteEvidence(process.env.BUDDY_B04_EVIDENCE_PATH, result)) {
       const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
         encoding: 'utf8',
       }).trim();

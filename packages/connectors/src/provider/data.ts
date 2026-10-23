@@ -30,7 +30,12 @@ export interface MockDraft {
   operation_id: string;
   attempt_id: string;
   step_id: string | null;
+  /** 操作の目印（buddy-op:<operation_id>:<content_version>）。結果不明のときの照合で探す。付けない要求は null。 */
+  marker: string | null;
+  /** 返信元のメールの ID。返信でない下書きは null。 */
+  in_reply_to: string | null;
   to: string[];
+  cc: string[];
   subject: string;
   body: string;
   status: 'draft' | 'sent';

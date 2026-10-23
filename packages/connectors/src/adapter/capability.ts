@@ -16,7 +16,8 @@ export interface MinimalWriteCapability {
   readonly effect_kind: 'RemoteMutation';
   /** HTTP の自動再送の回数。書込みは常に 0。 */
   readonly automatic_http_retries: 0;
-  readonly reconcile_scope: 'exact_target';
+  /** 照合の範囲。下書きの作成は作成物の目印（operation_marker、ADR 0027）、他は正確な対象。 */
+  readonly reconcile_scope: 'exact_target' | 'operation_marker';
 }
 
 export interface MinimalConnectorCapability {
@@ -38,7 +39,10 @@ export const MOCK_CONNECTOR_CAPABILITY: MinimalConnectorCapability = {
       action_kind: action_kind as MinimalWriteCapability['action_kind'],
       effect_kind: 'RemoteMutation' as const,
       automatic_http_retries: 0 as const,
-      reconcile_scope: 'exact_target' as const,
+      reconcile_scope:
+        action_kind === 'mail.draft.create'
+          ? ('operation_marker' as const)
+          : ('exact_target' as const),
     }),
   ),
 };

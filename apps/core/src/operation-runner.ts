@@ -18,6 +18,7 @@ import {
   canAutoReconcile,
   isOperationKind,
   nextStepDecision,
+  operationMarker,
   reconcileOutcome,
 } from '@buddy/domain';
 import type {
@@ -39,8 +40,10 @@ import type {
 } from '@buddy/storage';
 import type { ApiContract } from './api-contract.js';
 import type { TurnRouteStore } from './api-turns.js';
+import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   FaultHook,
+  ProviderDraft,
   ProviderMailTarget,
   ProviderReader,
   ProviderWriter,
@@ -78,16 +81,35 @@ export interface OperationRunner {
   close(): void;
 }
 
-// ラベル変更の確定 intent のうち、実行に使う項目。
-interface LabelIntent {
+// 外部変更の確定 intent のうち、実行に使う共通の項目（口座・許可の版・前提の対象）。
+interface RemoteIntentBase {
   readonly raw: Record<string, unknown>;
   readonly account_id: string;
   readonly permission_revision: string;
+  // 前提の対象（ラベル変更は対象のメール、下書きは返信元）。送出の直前に版を読み直す。
   readonly remote_id: string;
   readonly source_revision: string;
+}
+
+// ラベル変更の確定 intent のうち、実行に使う項目。
+interface LabelIntent extends RemoteIntentBase {
+  readonly kind: 'mail.labels.change';
   readonly add: readonly string[];
   readonly remove: readonly string[];
 }
+
+// 返信の下書きの保存の確定 intent のうち、実行に使う項目（B04-07）。
+interface DraftIntent extends RemoteIntentBase {
+  readonly kind: 'mail.draft.create';
+  readonly to: readonly string[];
+  readonly cc: readonly string[];
+  readonly subject: string;
+  readonly body: string;
+  // 作成物に付ける目印（operation_id と content_version から決める。試行 ID を含めない）。
+  readonly marker: string;
+}
+
+type RemoteIntent = LabelIntent | DraftIntent;
 
 type Recheck =
   | {
@@ -102,6 +124,8 @@ type Recheck =
       readonly kind: 'changed';
       readonly source_revision: string;
       readonly permission_revision: string;
+      // 読み直した対象（下書きは返信元から宛先・件名を作り直す）。
+      readonly target: ProviderMailTarget;
     }
   // 確かめられない（接続なし・対象なし・書込み不可）。送らず、準備のまま残す（本人の取消か再開を待つ）。
   | { readonly kind: 'blocked'; readonly reason: string };
@@ -124,6 +148,21 @@ export function labelChangeObserved(
   return applied
     ? { kind: 'found', external_id: target.remote_id }
     : { kind: 'not_found' };
+}
+
+// 目印での照合（operation_marker）。同じ目印の下書きがちょうど 1 件なら found、0 件は not_found
+// （遅れて適用されうる）、2 件以上は multiple（重複の可能性があり、本人の確認が要る）。
+// 目印が同じで返信元が違う作成物があれば、Buddy の作成物として説明できないので unreadable にする。
+export function draftSaveObserved(
+  drafts: readonly ProviderDraft[],
+  intent: Pick<DraftIntent, 'marker' | 'remote_id'>,
+): ReconcileObservation {
+  const matched = drafts.filter((draft) => draft.marker === intent.marker);
+  if (matched.some((draft) => draft.in_reply_to !== intent.remote_id))
+    return { kind: 'unreadable' };
+  if (matched.length === 0) return { kind: 'not_found' };
+  if (matched.length > 1) return { kind: 'multiple', count: matched.length };
+  return { kind: 'found', external_id: (matched[0] as ProviderDraft).draft_id };
 }
 
 const STEP_KINDS: readonly string[] = [
@@ -235,34 +274,75 @@ export function createOperationRunner(
     return options.contract.valid('OperationIntent', intent) ? intent : null;
   };
 
-  const labelIntent = (raw: Record<string, unknown>): LabelIntent | null => {
+  // 確定 intent から実行に使う項目を取り出す。保存した操作の種類と action.kind が違えば実行しない。
+  const remoteIntent = (
+    raw: Record<string, unknown>,
+    operationKind: string,
+  ): RemoteIntent | null => {
     const target = raw['target'] as Record<string, unknown> | undefined;
     const action = raw['action'] as Record<string, unknown> | undefined;
-    const add = strings(action?.['add']);
-    const remove = strings(action?.['remove']);
     if (
-      action?.['kind'] !== 'mail.labels.change' ||
+      action?.['kind'] !== operationKind ||
       typeof raw['account_id'] !== 'string' ||
       typeof raw['permission_revision'] !== 'string' ||
       typeof target?.['remote_id'] !== 'string' ||
-      typeof target['source_revision'] !== 'string' ||
-      add === null ||
-      remove === null
+      typeof target['source_revision'] !== 'string'
     )
       return null;
-    return {
+    const base = {
       raw,
       account_id: raw['account_id'],
       permission_revision: raw['permission_revision'],
       remote_id: target['remote_id'],
       source_revision: target['source_revision'],
-      add,
-      remove,
     };
+    if (operationKind === 'mail.labels.change') {
+      const add = strings(action['add']);
+      const remove = strings(action['remove']);
+      if (add === null || remove === null) return null;
+      return { ...base, kind: 'mail.labels.change', add, remove };
+    }
+    if (operationKind === 'mail.draft.create') {
+      const to = strings(action['to']);
+      const cc = strings(action['cc']);
+      const subject = action['subject'];
+      const body = action['body'];
+      if (
+        to === null ||
+        cc === null ||
+        typeof subject !== 'string' ||
+        typeof body !== 'string' ||
+        typeof raw['operation_id'] !== 'string' ||
+        typeof raw['content_version'] !== 'string'
+      )
+        return null;
+      let marker: string;
+      try {
+        marker = operationMarker(raw['operation_id'], raw['content_version']);
+      } catch {
+        return null;
+      }
+      return {
+        ...base,
+        kind: 'mail.draft.create',
+        to,
+        cc,
+        subject,
+        body,
+        marker,
+      };
+    }
+    return null;
   };
 
+  // 種類ごとの書込み・照合の差し込み口が provider にあるか（ない provider では送らない）。
+  const supported = (intent: RemoteIntent): boolean =>
+    intent.kind === 'mail.labels.change' ||
+    (options.writer?.createDraft !== undefined &&
+      options.provider?.findDrafts !== undefined);
+
   // アダプターで対象と許可を確かめ直す（送出の直前の接続の照合を含む）。読み取りだけ。
-  const recheck = async (intent: LabelIntent): Promise<Recheck> => {
+  const recheck = async (intent: RemoteIntent): Promise<Recheck> => {
     const provider = options.provider;
     if (provider === null) return { kind: 'blocked', reason: 'no_provider' };
     try {
@@ -272,6 +352,9 @@ export function createOperationRunner(
       const permission = await provider.readPermission(intent.account_id);
       if (permission === null || permission.account_id !== intent.account_id)
         return { kind: 'blocked', reason: 'permission_unreadable' };
+      // 対象のメールを読む前に、メールの読み取りが許可に含まれることを確かめる（B04-07）。
+      if (!canRead(connection, 'mail.message'))
+        return { kind: 'blocked', reason: 'not_readable' };
       const target = await provider.readTarget(intent.remote_id);
       if (target === null || target.remote_id !== intent.remote_id)
         return { kind: 'blocked', reason: 'target_missing' };
@@ -283,7 +366,11 @@ export function createOperationRunner(
           kind: 'changed',
           source_revision: target.source_revision,
           permission_revision: permission.permission_revision,
+          target,
         };
+      // 書込みの範囲がこの種類を許していなければ送らない（B04-07。範囲は種類ごと）。
+      if (!canWrite(connection, intent.kind))
+        return { kind: 'blocked', reason: 'not_writable' };
       return {
         kind: 'ok',
         status: connection.status,
@@ -296,16 +383,67 @@ export function createOperationRunner(
   };
 
   // 参照だけの照合（D4）。再送しない。
-  const lookup = async (intent: LabelIntent): Promise<ReconcileObservation> => {
-    if (options.provider === null) return { kind: 'unreadable' };
+  const lookup = async (
+    intent: RemoteIntent,
+  ): Promise<ReconcileObservation> => {
+    const provider = options.provider;
+    if (provider === null) return { kind: 'unreadable' };
     try {
-      return labelChangeObserved(
-        await options.provider.readTarget(intent.remote_id),
+      if (intent.kind === 'mail.labels.change')
+        return labelChangeObserved(
+          await provider.readTarget(intent.remote_id),
+          intent,
+        );
+      // 下書きは作成物の目印で探す（by_operation_marker）。
+      if (provider.findDrafts === undefined) return { kind: 'unreadable' };
+      return draftSaveObserved(
+        await provider.findDrafts(intent.marker),
         intent,
       );
     } catch {
       return { kind: 'unreadable' };
     }
+  };
+
+  // 1 回だけ送る。どの結果でも再送しない。応答を失ったら直後に 1 回だけ参照で照合する（D4）。
+  const send = async (
+    writer: ProviderWriter,
+    intent: RemoteIntent,
+    identity: { operation_id: string; attempt_id: string; step_id: string },
+  ): Promise<ReconcileObservation | 'not_executed'> => {
+    let outcome:
+      | { readonly kind: 'applied'; readonly external_id: string }
+      | { readonly kind: 'rejected' | 'not_sent' | 'unknown' };
+    if (intent.kind === 'mail.labels.change') {
+      const labels = await writer.changeLabels(identity, {
+        remote_id: intent.remote_id,
+        add: intent.add,
+        remove: intent.remove,
+      });
+      outcome =
+        labels.kind === 'applied'
+          ? { kind: 'applied', external_id: labels.value.remote_id }
+          : { kind: labels.kind };
+    } else {
+      if (writer.createDraft === undefined) return { kind: 'unreadable' };
+      const created = await writer.createDraft(identity, {
+        in_reply_to: intent.remote_id,
+        to: intent.to,
+        cc: intent.cc,
+        subject: intent.subject,
+        body: intent.body,
+        marker: intent.marker,
+      });
+      outcome =
+        created.kind === 'applied'
+          ? { kind: 'applied', external_id: created.value.draft_id }
+          : { kind: created.kind };
+    }
+    if (outcome.kind === 'applied')
+      return { kind: 'found', external_id: outcome.external_id };
+    if (outcome.kind === 'rejected' || outcome.kind === 'not_sent')
+      return 'not_executed';
+    return canAutoReconcile(0) ? lookup(intent) : { kind: 'unreadable' };
   };
 
   const record = (
@@ -410,10 +548,23 @@ export function createOperationRunner(
   // D1: 対象・許可の版が変わったら送らず、同じ operation_id で内容版を上げる（旧版の承認は revoked、試行は superseded）。
   const revise = async (
     current: OperationView,
-    intent: LabelIntent,
+    intent: RemoteIntent,
     change: Extract<Recheck, { kind: 'changed' }>,
   ): Promise<void> => {
     const next = String(BigInt(current.current_content_version) + 1n);
+    // 下書きは、読み直した返信元から宛先・件名を作り直す（返信元の差出人・件名が変わっていれば新しい値になる）。
+    // 作り直せない（差出人か件名が読めない）なら内容版を上げず、準備のまま残す。本文と CC は変えない。
+    let action = intent.raw['action'] as Record<string, unknown>;
+    if (intent.kind === 'mail.draft.create') {
+      const reply = replyFields(change.target);
+      if (reply === null) {
+        log(
+          `操作 ${current.operation_id} の返信元の差出人か件名を読めないため、送らずに準備のまま残しました。`,
+        );
+        return;
+      }
+      action = { ...action, to: [...reply.to], subject: reply.subject };
+    }
     const content = {
       ...intent.raw,
       content_version: next,
@@ -422,6 +573,7 @@ export function createOperationRunner(
         ...(intent.raw['target'] as Record<string, unknown>),
         source_revision: change.source_revision,
       },
+      action,
     };
     if (!options.contract.valid('OperationIntent', content)) return;
     const key = await loadKey();
@@ -448,14 +600,16 @@ export function createOperationRunner(
   const runRemote = async (initial: OperationView): Promise<void> => {
     const writer = options.writer;
     if (writer === null || options.provider === null) return;
-    if (initial.operation_kind !== 'mail.labels.change') {
-      // QA27 の外部下書き保存（発言・実行・目印での照合）は B04-07（Issue #106）で実装する。
-      log(`操作 ${initial.operation_id} の種類はまだ実行できません。`);
+    const raw = await openIntent(initial);
+    const intent =
+      raw === null ? null : remoteIntent(raw, initial.operation_kind);
+    if (intent === null) return;
+    if (!supported(intent)) {
+      log(
+        `操作 ${initial.operation_id} の種類は、この接続では実行できません。`,
+      );
       return;
     }
-    const raw = await openIntent(initial);
-    const intent = raw === null ? null : labelIntent(raw);
-    if (intent === null) return;
     let current: OperationView | null = initial;
     let attemptId: string;
     if (current.state === 'approved') {
@@ -500,7 +654,7 @@ export function createOperationRunner(
       return;
     // 工程の仕組み（D3）: 保存した工程から次に行うことを決める。送出意図のある工程は再送しない（照合だけ）。
     const decision = nextStepDecision(
-      OPERATION_KIND_RULES['mail.labels.change'].steps,
+      OPERATION_KIND_RULES[intent.kind].steps,
       stepRecords(current),
     );
     if (decision.action !== 'dispatch') {
@@ -532,20 +686,11 @@ export function createOperationRunner(
     // 停止の後・許可を使えないときは送らない（起動時の回復で unknown_held になり、自動では送らない）。
     if (closed || !store.consumeDispatchPermit(dispatched.dispatch_permit))
       return;
-    const sent = await writer.changeLabels(
-      { operation_id: operationId, attempt_id: attemptId, step_id: step },
-      { remote_id: intent.remote_id, add: intent.add, remove: intent.remove },
-    );
-    let observation: ReconcileObservation | 'not_executed';
-    if (sent.kind === 'applied')
-      observation = { kind: 'found', external_id: sent.value.remote_id };
-    else if (sent.kind === 'rejected' || sent.kind === 'not_sent')
-      observation = 'not_executed';
-    // 応答を失った: 直後に 1 回だけ参照で照合する（D4）。
-    else
-      observation = canAutoReconcile(0)
-        ? await lookup(intent)
-        : { kind: 'unreadable' };
+    const observation = await send(writer, intent, {
+      operation_id: operationId,
+      attempt_id: attemptId,
+      step_id: step,
+    });
     await faults.hit('before_result_save', {
       operation_id: operationId,
       step_id: step,
@@ -698,7 +843,8 @@ export function createOperationRunner(
     )
       return null;
     const raw = await openIntent(current);
-    const intent = raw === null ? null : labelIntent(raw);
+    const intent =
+      raw === null ? null : remoteIntent(raw, current.operation_kind);
     if (intent === null) return null;
     const attemptId = current.attempt_id;
     const work = async (): Promise<DbCommandOutcome | null> => {

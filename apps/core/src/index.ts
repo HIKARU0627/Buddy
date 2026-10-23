@@ -50,6 +50,7 @@ export type {
   CoreHttpsInfo,
   CoreHttpsOptions,
   CoreStartRefusal,
+  CoreTurnOptions,
   StartCoreOptions,
 } from './core.js';
 export {
@@ -131,3 +132,18 @@ export {
 export type { OperationRoutes, PreviewCheck } from './api-operations.js';
 export { DeviceConnections } from './device-connections.js';
 export type { DeviceCloseReason } from './device-connections.js';
+// 模擬メールのアダプターを Core の差し込み口へつなぐ部品（B04-07。デスクトップの統合試験が中枢へ渡す）。
+export {
+  MOCK_DRAFT_WRITE_SCOPE,
+  MOCK_LABEL_WRITE_SCOPE,
+  mockMailPorts,
+} from './mock-mail-ports.js';
+export type { MockMailPorts } from './mock-mail-ports.js';
+export { canRead, canWrite } from './turn-ports.js';
+export type {
+  CandidateSource,
+  ProviderConnection,
+  ProviderDraft,
+  ProviderReader,
+  ProviderWriter,
+} from './turn-ports.js';

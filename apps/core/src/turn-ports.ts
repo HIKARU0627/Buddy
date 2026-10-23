@@ -48,6 +48,63 @@ export interface ProviderConnection {
   readonly access: 'read' | 'read_write';
   // 口座の表示名（承認画面で口座を見分けるための表示用）。読めなければ省略か null。
   readonly account_label?: string | null;
+  // 書込みできる操作の種類（connector が許可の範囲から決める。B04-07）。省略すると access だけで判断する。
+  readonly writable_kinds?: readonly string[];
+  // 読める対象（connector の読み取りの種類。例: calendar.events）。省略すると接続が active なら読めるとする。
+  readonly readable_kinds?: readonly string[];
+}
+
+// 対象の読み取りが今の接続の許可に含まれるか（Read の経路の権限の検査、QA27）。
+export function canRead(
+  connection: Pick<ProviderConnection, 'status' | 'readable_kinds'>,
+  kind: string,
+): boolean {
+  return (
+    connection.status === 'active' &&
+    (connection.readable_kinds === undefined ||
+      connection.readable_kinds.includes(kind))
+  );
+}
+
+// 操作の種類の書込みが今の接続で許されているか（access と、あれば writable_kinds）。
+export function canWrite(
+  connection: Pick<ProviderConnection, 'access' | 'writable_kinds'>,
+  kind: string,
+): boolean {
+  return (
+    connection.access === 'read_write' &&
+    (connection.writable_kinds === undefined ||
+      connection.writable_kinds.includes(kind))
+  );
+}
+
+// 返信の下書きの宛先と件名（B04-07）。宛先は返信元の差出人だけ、件名は返信元の件名に「Re: 」を付けた値
+// （既に「Re:」で始まれば、大文字・小文字を問わずそのまま）。Core が返信元の読み取りから決め、モデルに作らせない
+// （ADR 0004）。差出人か件名が読めなければ null（作らない・内容版を上げない）。発言の時と、送る前の確かめ直しで
+// 返信元が変わった時（D1）の両方で使う。
+export function replyFields(
+  target: Pick<ProviderMailTarget, 'sender' | 'subject'>,
+): { readonly to: readonly string[]; readonly subject: string } | null {
+  const sender = target.sender ?? null;
+  const subject = target.subject ?? null;
+  if (
+    sender === null ||
+    sender.length === 0 ||
+    subject === null ||
+    subject.length === 0
+  )
+    return null;
+  return {
+    to: [sender],
+    subject: /^re:/iu.test(subject) ? subject : `Re: ${subject}`,
+  };
+}
+
+// 目印で探した下書き（結果不明の照合、by_operation_marker。読み取りだけ）。
+export interface ProviderDraft {
+  readonly draft_id: string;
+  readonly marker: string;
+  readonly in_reply_to: string | null;
 }
 
 export interface ProviderPermission {
@@ -81,6 +138,8 @@ export interface ProviderReader {
   readPermission(accountId: string): Promise<ProviderPermission | null>;
   readTarget(remoteId: string): Promise<ProviderMailTarget | null>;
   listEvents(): Promise<readonly ProviderEvent[]>;
+  // 操作の目印で下書きを探す（照合だけに使う）。持たない provider では下書きの保存を実行しない。
+  findDrafts?(marker: string): Promise<readonly ProviderDraft[]>;
 }
 
 // 連携の provider への書込み（B04-04、ADR 0030）。形は #87 の MockMailConnector の書込みに合わせた。
@@ -114,6 +173,19 @@ export interface ProviderWriter {
       readonly remove: readonly string[];
     },
   ): Promise<ProviderWriteOutcome<ProviderMailTarget>>;
+  // 返信の下書きの保存（B04-07）。目印（buddy-op:<operation_id>:<content_version>）を付けて 1 回だけ送る。
+  // 持たない provider では下書きの保存を実行しない。
+  createDraft?(
+    identity: ProviderWriteIdentity,
+    draft: {
+      readonly in_reply_to: string;
+      readonly to: readonly string[];
+      readonly cc: readonly string[];
+      readonly subject: string;
+      readonly body: string;
+      readonly marker: string;
+    },
+  ): Promise<ProviderWriteOutcome<{ readonly draft_id: string }>>;
 }
 
 // Core 側の故障点（tests/integration/fault-points.json の fault_points、ADR 0028）。製品では何もしない。
@@ -186,10 +258,28 @@ const EMPTY_ARGS = {
 // - 「今日の予定を見せて」→ query_schedule（今日）
 // - 「「牛乳を買う」を用事に登録して」→ create_task（題名つき）
 // - 「用事を登録して」→ create_task（題名なし。必須の不足で聞き返し）
+// - 「mail-001 に「本文」と返信の下書きを保存して」→ draft_reply（対象は候補の対応から、本文つき。B04-07）
+// - 「mail-001 に返信の下書きを保存して」→ draft_reply（本文なし。聞き返し）
 export function createMockInterpreter(): Interpreter {
   return {
     interpret(context) {
       const text = context.text.normalize('NFC').trim();
+      const draft =
+        /^(mail-[0-9]{3}) に(?:「(.+)」と)?返信の下書きを保存して$/u.exec(text);
+      if (draft !== null) {
+        const candidate = context.mail_candidates.find(
+          (item) => item.remote_id === draft[1],
+        );
+        return Promise.resolve({
+          kind: 'intent',
+          intent: 'draft_reply',
+          args: {
+            ...EMPTY_ARGS,
+            target_candidate_id: candidate?.candidate_id ?? null,
+            body: draft[2] ?? null,
+          },
+        });
+      }
       const label = /^(mail-[0-9]{3}) に (\S+) を付けて$/u.exec(text);
       if (label !== null) {
         const candidate = context.mail_candidates.find(

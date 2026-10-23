@@ -286,6 +286,7 @@ test('admission is decided inside the transaction against every pool on the path
         createdAt: OCT_15,
         requestedPoolId: 'llm',
         origin: 'owner_request',
+        dispatchIntentAt: null,
       },
     });
     // llm は 30＋50＝80 で上限ちょうど。次の M 1 は llm の上限を超える（R は 31 で収まる）。
@@ -1483,6 +1484,426 @@ test('usage left in a removed pool blocks admission and top-up into sibling pool
     assert.deepEqual(
       reservationRow(db, reservationId(2))?.['max_liability'],
       '20',
+    );
+  });
+});
+
+// --- B07-04（0007、ADR 0037）: 予算月の確かめ直しと送出意図 ---
+
+const calendarCheck = (db: SqliteDatabase, now: number) =>
+  value(
+    'budget.calendar_check',
+    run(db, { kind: 'budget.calendar_check', now }),
+  );
+
+const confirm = (
+  db: SqliteDatabase,
+  input: {
+    readonly n: number;
+    readonly reason: 'invalid_calendar_state' | 'clock_regressed';
+    readonly month: string;
+    readonly monthStart: number;
+    readonly now: number;
+    // 本人が見た状態の版と時計（既定は版 0・今の時計）。
+    readonly revision?: string;
+    readonly observedAt?: number;
+  },
+): BudgetOpResult =>
+  run(db, {
+    kind: 'budget.calendar_confirm',
+    confirmation_id: uuid(0xf00000 + input.n),
+    reason: input.reason,
+    month: input.month,
+    month_start: input.monthStart,
+    expected_revision: input.revision ?? '0',
+    observed_at: input.observedAt ?? input.now,
+    now: input.now,
+  });
+
+// 東京の 10 月の始まり（2030-09-30T15:00Z）と、1 時間遅い始まり（古い tz データで作った記録の模擬）。
+const TOKYO_OCT_START = 1917010800000;
+const DRIFTED_OCT_START = 1917014400000;
+// 東京の 11 月・12 月の始まり（2030-10-31T15:00Z・2030-11-30T15:00Z）。
+const TOKYO_NOV_START = 1919689200000;
+const TOKYO_DEC_START = 1922281200000;
+
+test('the owner re-verifies a month start that no longer matches the time zone data: the record stays and admission resumes', async () => {
+  await withBudget(
+    (db) => {
+      db.prepare(
+        "INSERT INTO budget_months (month, time_zone, month_start, month_start_time_zone, recorded_at) VALUES ('2030-10', 'Asia/Tokyo', ?, 'Asia/Tokyo', ?)",
+      ).run(DRIFTED_OCT_START, DRIFTED_OCT_START);
+      assert.deepEqual(calendarCheck(db, OCT_15), {
+        state: {
+          month: '2030-10',
+          timeZone: 'Asia/Tokyo',
+          monthStart: '2030-09-30T16:00:00.000Z',
+          monthStartTimeZone: 'Asia/Tokyo',
+        },
+        reasons: ['invalid_calendar_state'],
+        stale: false,
+        recorded_month_start: '2030-09-30T16:00:00.000Z',
+        recomputed_month_start: '2030-09-30T15:00:00.000Z',
+        regression_floor: null,
+        confirmation_revision: '0',
+      });
+      const base = {
+        n: 1,
+        reason: 'invalid_calendar_state' as const,
+        month: '2030-10',
+        monthStart: TOKYO_OCT_START,
+        now: OCT_15,
+      };
+      // 理由・月・始まりのどれかが本人の見た値と違えば記録しない。
+      assert.deepEqual(
+        reasons(confirm(db, { ...base, reason: 'clock_regressed' })),
+        ['nothing_to_confirm'],
+      );
+      assert.deepEqual(
+        reasons(confirm(db, { ...base, monthStart: DRIFTED_OCT_START })),
+        ['confirmation_mismatch'],
+      );
+      assert.deepEqual(reasons(confirm(db, { ...base, month: '2030-11' })), [
+        'confirmation_mismatch',
+      ]);
+      assert.equal(
+        count(db, 'SELECT count(*) FROM budget_month_confirmations'),
+        0,
+      );
+      const confirmed = value('budget.calendar_confirm', confirm(db, base));
+      assert.deepEqual(confirmed.reasons, []);
+      assert.equal(confirmed.state?.monthStart, '2030-09-30T15:00:00.000Z');
+      assert.equal(confirmed.recorded_month_start, '2030-09-30T16:00:00.000Z');
+      // 予算月の記録は書き換えない。確かめ直しは別の行。
+      assert.deepEqual(
+        db.prepare('SELECT month, month_start FROM budget_months').all(),
+        [{ month: '2030-10', month_start: DRIFTED_OCT_START }],
+      );
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT month, kind, previous_month_start, month_start, regression_floor, confirmed_at FROM budget_month_confirmations',
+          )
+          .all(),
+        [
+          {
+            month: '2030-10',
+            kind: 'start_reverified',
+            previous_month_start: DRIFTED_OCT_START,
+            month_start: TOKYO_OCT_START,
+            regression_floor: null,
+            confirmed_at: OCT_15,
+          },
+        ],
+      );
+      assert.equal(
+        admit(db, admitOp(1, { reserved: '1', max: '1' })).admitted,
+        true,
+      );
+      // 同じ入力の送り直しは古い（版が 1 に進んだ）。新しい版でも、止まっていなければ記録しない。
+      assert.deepEqual(reasons(confirm(db, { ...base, n: 2 })), [
+        'confirmation_stale',
+      ]);
+      assert.deepEqual(reasons(confirm(db, { ...base, n: 3, revision: '1' })), [
+        'nothing_to_confirm',
+      ]);
+      // 確かめ直した月から次の月へ進める。
+      assert.equal(
+        value('budget.calendar_advance', advance(db, NOV_02)).rolled_over,
+        true,
+      );
+      // 記録の行は SQL でも書き換えられない。
+      assert.throws(
+        () => db.exec('UPDATE budget_month_confirmations SET month_start = 0'),
+        /budget_month_confirmation_fixed/u,
+      );
+      assert.throws(
+        () => db.exec('DELETE FROM budget_month_confirmations'),
+        /budget_month_confirmation_fixed/u,
+      );
+    },
+    { calendar: false },
+  );
+});
+
+test('the owner accepts a regressed clock: the month never moves back and a further regression holds again', async () => {
+  await withBudget((db) => {
+    value('budget.calendar_advance', advance(db, NOV_02));
+    // 時計が 10 月 15 日へ戻った（11 月の始まりより前）。
+    const back = OCT_15;
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          admitOp(
+            1,
+            { reserved: '1', max: '1' },
+            {
+              budget_month: '2030-11',
+              now: back,
+            },
+          ),
+        ),
+      ),
+      ['clock_regressed'],
+    );
+    assert.deepEqual(calendarCheck(db, back).reasons, ['clock_regressed']);
+    assert.deepEqual(
+      reasons(
+        confirm(db, {
+          n: 1,
+          reason: 'clock_regressed',
+          month: '2030-11',
+          monthStart: TOKYO_OCT_START,
+          now: back,
+        }),
+      ),
+      ['confirmation_mismatch'],
+    );
+    const accepted = value(
+      'budget.calendar_confirm',
+      confirm(db, {
+        n: 2,
+        reason: 'clock_regressed',
+        month: '2030-11',
+        monthStart: TOKYO_NOV_START,
+        now: back,
+      }),
+    );
+    assert.deepEqual(accepted.reasons, []);
+    assert.equal(accepted.regression_floor, '2030-10-15T00:00:00.000Z');
+    // 予算月は 11 月のまま受け付ける（10 月へ戻さない）。
+    const admitted = admit(
+      db,
+      admitOp(
+        1,
+        { reserved: '1', max: '1' },
+        {
+          budget_month: '2030-11',
+          now: back + 1000,
+        },
+      ),
+    );
+    assert.equal(admitted.reservation?.budgetMonth, '2030-11');
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          admitOp(
+            2,
+            { reserved: '1', max: '1' },
+            {
+              budget_month: '2030-10',
+              now: back + 1000,
+            },
+          ),
+        ),
+      ),
+      ['budget_month_not_current'],
+    );
+    // 下限よりさらに戻れば、また保留する。
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          admitOp(
+            3,
+            { reserved: '1', max: '1' },
+            {
+              budget_month: '2030-11',
+              now: back - 1,
+            },
+          ),
+        ),
+      ),
+      ['clock_regressed'],
+    );
+    // 前の確かめ直しの入力の送り直しは、さらに戻った時計を承認しない（版が 1 に進んだ。Codex のレビュー P2）。
+    const accept = {
+      reason: 'clock_regressed' as const,
+      month: '2030-11',
+      monthStart: TOKYO_NOV_START,
+    };
+    assert.deepEqual(
+      reasons(
+        confirm(db, { ...accept, n: 3, observedAt: back, now: back - 1 }),
+      ),
+      ['confirmation_stale'],
+    );
+    // 新しい版でも、本人が見た時計より今の時計がさらに戻っていれば古い入力。
+    assert.deepEqual(
+      reasons(
+        confirm(db, {
+          ...accept,
+          n: 4,
+          revision: '1',
+          observedAt: back,
+          now: back - 1,
+        }),
+      ),
+      ['confirmation_stale'],
+    );
+    // 今の状態を見直した入力なら、見た時計を新しい下限にする（実行時の時計ではない）。
+    const again = value(
+      'budget.calendar_confirm',
+      confirm(db, {
+        ...accept,
+        n: 5,
+        revision: '1',
+        observedAt: back - 1,
+        now: back - 1,
+      }),
+    );
+    assert.deepEqual(
+      [again.reasons, again.regression_floor, again.confirmation_revision],
+      [[], '2030-10-14T23:59:59.999Z', '2'],
+    );
+    assert.equal(count(db, 'SELECT count(*) FROM budget_months'), 2);
+    // 正しい時刻が 12 月の始まりを越えれば、普通に次の月へ進む。
+    assert.deepEqual(
+      value('budget.calendar_advance', advance(db, TOKYO_DEC_START)),
+      {
+        state: {
+          month: '2030-12',
+          timeZone: 'Asia/Tokyo',
+          monthStart: '2030-11-30T15:00:00.000Z',
+          monthStartTimeZone: 'Asia/Tokyo',
+        },
+        rolled_over: true,
+        recorded: true,
+      },
+    );
+  });
+});
+
+test('the dispatch intent is the final check before sending: once, only while reserved and not safety-stopped, and never released after', async () => {
+  await withBudget((db) => {
+    for (const n of [1, 2, 3])
+      admit(db, admitOp(n, { reserved: '1', max: '2' }));
+    const dispatch = (n: number, now = OCT_15 + 10) =>
+      run(db, {
+        kind: 'budget.dispatch_intent',
+        reservation_id: reservationId(n),
+        now,
+        deadline: OCT_15 + 60_000,
+      });
+    const release = (n: number) =>
+      run(db, {
+        kind: 'budget.release_unsent',
+        reservation_id: reservationId(n),
+        provider_request_sent: false,
+      });
+    assert.equal(
+      value('budget.dispatch_intent', dispatch(1)).reservation.dispatchIntentAt,
+      OCT_15 + 10,
+    );
+    // 二度目の送出意図は記録しない（自動の再送をしない）。送った可能性がある予約は解放しない。
+    assert.deepEqual(reasons(dispatch(1, OCT_15 + 20)), ['already_dispatched']);
+    assert.deepEqual(reasons(release(1)), ['possibly_sent']);
+    const listed = value(
+      'budget.unsettled_list',
+      run(db, { kind: 'budget.unsettled_list' }),
+    );
+    assert.deepEqual(
+      listed.map((item) => [
+        item.reservation.reservationId,
+        item.reservation.dispatchIntentAt,
+        item.live_session,
+      ]),
+      [
+        [reservationId(1), OCT_15 + 10, false],
+        [reservationId(2), null, false],
+        [reservationId(3), null, false],
+      ],
+    );
+    run(db, { kind: 'budget.mark_unknown', reservation_id: reservationId(1) });
+    assert.deepEqual(reasons(dispatch(1)), [
+      'reservation_invalid',
+      'already_dispatched',
+    ]);
+    // 安全停止の間は送出意図を記録しない。記録のない予約は解放できる。
+    db.exec(
+      "INSERT OR REPLACE INTO safety_breaker (singleton, state, safety_revision, stop_reason, stopped_at) VALUES (1, 'stopped', 1, 'rate_exceeded', 1000)",
+    );
+    assert.deepEqual(reasons(dispatch(2)), ['safety_stopped']);
+    assert.equal(reservationRow(db, reservationId(2))?.['status'], 'reserved');
+    assert.equal(value('budget.release_unsent', release(2)).duplicate, false);
+    db.exec(
+      "UPDATE safety_breaker SET state = 'running', stop_reason = NULL, stopped_at = NULL WHERE singleton = 1",
+    );
+    value('budget.dispatch_intent', dispatch(3));
+    // DB の制約が最終の保証: 送出意図は消せず、送出意図のある予約は解放できない。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            'UPDATE budget_reservations SET dispatch_intent_at = NULL WHERE reservation_id = ?',
+          )
+          .run(reservationId(3)),
+      /budget_dispatch_intent_fixed/u,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE budget_reservations SET status = 'released' WHERE reservation_id = ?",
+          )
+          .run(reservationId(3)),
+      /budget_dispatched_not_releasable/u,
+    );
+    // 送出意図と解放を 1 つの UPDATE で同時に書いても拒否する（Codex のレビュー P2）。行は変わらない。
+    admit(db, admitOp(4, { reserved: '1', max: '2' }));
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE budget_reservations SET dispatch_intent_at = 1000, status = 'released' WHERE reservation_id = ?",
+          )
+          .run(reservationId(4)),
+      /budget_dispatched_not_releasable/u,
+    );
+    assert.deepEqual(
+      [
+        reservationRow(db, reservationId(4))?.['status'],
+        db
+          .prepare(
+            'SELECT dispatch_intent_at FROM budget_reservations WHERE reservation_id = ?',
+          )
+          .pluck()
+          .get(reservationId(4)),
+      ],
+      ['reserved', null],
+    );
+    // 応答の期限（M を計算した課金期間の終わり）ちょうど以降は送出意図を記録しない（Codex のレビュー P1）。
+    admit(db, admitOp(5, { reserved: '1', max: '2' }));
+    const deadline = OCT_15 + 60_000;
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'budget.dispatch_intent',
+          reservation_id: reservationId(5),
+          now: deadline,
+          deadline,
+        }),
+      ),
+      ['reservation_expired'],
+    );
+    assert.equal(
+      value(
+        'budget.dispatch_intent',
+        run(db, {
+          kind: 'budget.dispatch_intent',
+          reservation_id: reservationId(5),
+          now: deadline - 1,
+          deadline,
+        }),
+      ).reservation.dispatchIntentAt,
+      deadline - 1,
+    );
+    assert.equal(
+      value('budget.unsettled_list', run(db, { kind: 'budget.unsettled_list' }))
+        .length,
+      3,
     );
   });
 });

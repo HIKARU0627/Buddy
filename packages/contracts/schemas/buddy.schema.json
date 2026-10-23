@@ -5214,11 +5214,115 @@
           "items": {
             "$ref": "#/$defs/PriceVersion"
           }
+        },
+        "routing": {
+          "$ref": "#/$defs/BudgetRouting"
         }
       },
-      "required": ["schema", "time_zone", "budget", "price_versions"],
+      "required": [
+        "schema",
+        "time_zone",
+        "budget",
+        "price_versions",
+        "routing"
+      ],
       "additionalProperties": false,
-      "description": "予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。秘密情報（API キーなど）を含めない。"
+      "description": "予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。routing は起点から計上する枠と超過枠（B07-04）。秘密情報（API キーなど）を含めない。"
+    },
+    "BudgetOrigin": {
+      "type": "string",
+      "enum": [
+        "owner_request",
+        "autonomous_analysis",
+        "auto_execution",
+        "initial_import",
+        "shadow_mode"
+      ],
+      "description": "有料処理の起点（本人の判断 2026-10-23）。owner_request は本人の依頼（本人が頼んだ背景の処理を含む）で本人の依頼の枠を使う。自発的な解析・自動実行・初回の読み込み・影モードは自発の枠を使う。"
+    },
+    "BudgetServiceRoutes": {
+      "type": "object",
+      "properties": {
+        "llm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetPoolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "search": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetPoolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "voice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetPoolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["llm", "search", "voice"],
+      "additionalProperties": false,
+      "description": "ひとつの起点の処理を、サービス（LLM・検索・音声）ごとにどの葉の枠へ計上するか（B07-04、ADR 0037）。null はその起点でそのサービスの有料処理を受け付けない。"
+    },
+    "BudgetRouting": {
+      "type": "object",
+      "properties": {
+        "routes": {
+          "type": "object",
+          "properties": {
+            "owner_request": {
+              "$ref": "#/$defs/BudgetServiceRoutes"
+            },
+            "autonomous_analysis": {
+              "$ref": "#/$defs/BudgetServiceRoutes"
+            },
+            "auto_execution": {
+              "$ref": "#/$defs/BudgetServiceRoutes"
+            },
+            "initial_import": {
+              "$ref": "#/$defs/BudgetServiceRoutes"
+            },
+            "shadow_mode": {
+              "$ref": "#/$defs/BudgetServiceRoutes"
+            }
+          },
+          "required": [
+            "owner_request",
+            "autonomous_analysis",
+            "auto_execution",
+            "initial_import",
+            "shadow_mode"
+          ],
+          "additionalProperties": false
+        },
+        "overage_pool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetPoolId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["routes", "overage_pool_id"],
+      "additionalProperties": false,
+      "description": "起点から計上する葉の枠と、個別承認の超過枠（B07-04、ADR 0037）。超過枠へ回せる通常の枠の許可リストは、本人の依頼（owner_request）の LLM・検索の枠から Core が作る（音声は入れない）。overage_pool_id が null なら超過枠へ回さない。枠の木（ADR 0006）の形は変えない。"
     },
     "BudgetHoldReason": {
       "type": "string",
@@ -5229,6 +5333,56 @@
         "config_invalid"
       ],
       "description": "枠の予算保留の理由（01 いつも見える状態の「予算保留」）。limit_reached は精算済み額＋未精算の M が上限に達した、overrun_review_pending は M 超過の確認待ち、ancestor_held は祖先の枠の保留、config_invalid は設定の検査に失敗して有料処理を止めている。理由のコードを利用者に見せない。"
+    },
+    "BudgetGateHoldReason": {
+      "type": "string",
+      "enum": [
+        "config_invalid",
+        "clock_regressed",
+        "calendar_mismatch",
+        "reservation_pool_unknown",
+        "calendar_unavailable"
+      ],
+      "description": "有料の受付全体を止めている理由（B07-04、ADR 0037）。config_invalid は実行時の設定ファイルが読めない・検査に通らない、clock_regressed は時計が今の予算月の始まりより前へ戻った、calendar_mismatch は記録した予算月の始まりと tz データで求め直した値が食い違う（U23）、reservation_pool_unknown は今の設定で経路を解けない予約がある、calendar_unavailable は予算月の状態を読めない。予算月の確かめ直しは本人の確認で行う。理由のコードを利用者に見せない。"
+    },
+    "BudgetHoldState": {
+      "type": "object",
+      "properties": {
+        "held": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BudgetGateHoldReason"
+          },
+          "uniqueItems": true
+        },
+        "held_pools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pool_id": {
+                "$ref": "#/$defs/BudgetPoolId"
+              },
+              "hold_reasons": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/BudgetHoldReason"
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": ["pool_id", "hold_reasons"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["held", "reasons", "held_pools"],
+      "additionalProperties": false,
+      "description": "状態欄の「予算保留」（設計 01 いつも見える状態、B07-04、ADR 0037）。reasons は有料の受付全体を止めている理由、held_pools は今月に保留している枠とその理由。held はどちらかがあるとき true。金額を含めない。"
     },
     "BudgetPoolUsage": {
       "type": "object",
@@ -7106,6 +7260,16 @@
         "io_state": {
           "$ref": "#/$defs/DeviceIOState"
         },
+        "budget_hold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetHoldState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "sessions": {
           "type": "array",
           "items": {
@@ -7166,12 +7330,13 @@
         "event_cursor",
         "view",
         "io_state",
+        "budget_hold",
         "sessions",
         "candidates",
         "operations"
       ],
       "additionalProperties": false,
-      "description": "一つの整合した DB 読取りで得た現在の表示状態と、その境界のイベント位置（設計 07 §4）。表示権限に応じて返し、ロック中・停止中は再開用の管理情報だけ（management_only）にする。"
+      "description": "一つの整合した DB 読取りで得た現在の表示状態と、その境界のイベント位置（設計 07 §4）。表示権限に応じて返し、ロック中・停止中は再開用の管理情報だけ（management_only）にする。budget_hold は予算保留（ADR 0037）で、management_only では null。"
     },
     "SessionCreateRequest": {
       "type": "object",

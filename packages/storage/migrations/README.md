@@ -8,6 +8,7 @@
 | `0004_turn_responses.sql` | 発言への応答（ID・状態・決まった文の聞き返しだけ）。同じ要求の再送に解釈し直さずに返す。発言と同じ期限（ADR 0029）                                                                         |
 | `0005_runner.sql`         | 試行の状態に superseded（送出意図の前の置き換え）を足すため operation_attempts を作り直す。用事の表 tasks（本文は確定 intent を参照）（ADR 0030）                                          |
 | `0006_budget.sql`         | 予算の予約を作り直し（profile_id・精算の時刻・手での精算の印・M 超過の確認の時刻と、状態の流れ・固定の項目の trigger）、live_sessions も作り直す。超過枠の承認の表と予算月の表（ADR 0036） |
+| `0007_budget_gate.sql`    | 予約の送出意図（`dispatch_intent_at`、一度だけ・送った予約は解放しない）と、本人による予算月の確かめ直し（`budget_month_confirmations`、書き換えない）（ADR 0037）                         |
 | `connection.sql`          | 書込み接続の作成時に実行する PRAGMA。読み戻して一致しなければ外部変更を開始しない                                                                                                          |
 
 規約（[ADR 0010](../../../docs/adr/0010-domain-boundary-and-storage-draft.md)）:

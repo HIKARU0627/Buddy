@@ -652,6 +652,17 @@ export function budgetMonthOf(time: string, timeZone: string): string | null {
   return budgetMonthAt(millis, timeZone)?.month ?? null;
 }
 
+// timeZone での予算月 month の始まり（UTC の RFC 3339、ミリ秒まで）。記録した始まりと tz データで求め直した値の
+// 食い違い（U23）を本人が確かめ直すときに、求め直した値を見せるために使う（B07-04、ADR 0037）。不正・範囲の外は null。
+export function budgetMonthStart(
+  month: string,
+  timeZone: string,
+): string | null {
+  if (!isTimeZoneName(timeZone)) return null;
+  const start = monthStartMillis(month, timeZone);
+  return start === null ? null : new Date(start).toISOString();
+}
+
 // 使っている予算月・その月の境目に使うタイムゾーン・その月の始まり（UTC、ミリ秒まで）と、始まりを決めた
 // タイムゾーン。月ごとに Core が記録する（ADR 0034・0035）。monthStart は、monthStartTimeZone での month の
 // 始まり（monthStartMillis。前の月のタイムゾーンでの境目、最初の月はそのタイムゾーンでの始まり）。

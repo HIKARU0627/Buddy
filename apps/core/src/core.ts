@@ -2,7 +2,8 @@
 //
 // 起動: 起動前の検査（鍵保護）→ データディレクトリ → 排他ロック → データ鍵の読み直し（作成しない）
 //   → B01 の状態ファイルの読み取り → DB worker（書込み接続・耐久設定の読み戻し・マイグレーション・
-//   健全性・鍵の照合値・store_generation）→ 状態ファイルの片付け → 起動時の回復 → イベントの配信の元
+//   健全性・鍵の照合値・store_generation）→ 状態ファイルの片付け → 起動時の回復
+//   → 予算の門（設定ファイルの読み込み・予算の再起動の照合・予算月。ADR 0037）→ イベントの配信の元
 //   →（HTTPS を設定したとき）TLS の身元（秘密鍵はキーチェーン）→ HTTPS の待ち受け（スナップショット・イベント・
 //   操作の経路と WSS の配信、ADR 0023）→ 制御チャネル → running。
 //   どこかで失敗したら書込みを始めず（DB worker を閉じ、ロックを返し）、理由を付けて起動を拒否する。
@@ -73,6 +74,9 @@ import type {
   TurnPolicy,
 } from './turn-ports.js';
 import { createApiContract } from './api-contract.js';
+import { BUDGET_CONFIG_FILE, loadBudgetConfig } from './budget-config.js';
+import { BudgetGate } from './budget-gate.js';
+import type { UsageReconciler } from './budget-gate.js';
 import { createOperationRunner } from './operation-runner.js';
 import type { OperationRunner } from './operation-runner.js';
 import { EventFeed } from './event-feed.js';
@@ -82,6 +86,7 @@ import type { EventStreamManager, EventStreamOptions } from './event-stream.js';
 import { callControl, listenControlServer } from './control-channel.js';
 import type { ControlServer } from './control-channel.js';
 import type {
+  ControlBudgetCalendar,
   ControlRequest,
   ControlResponse,
   ControlStatus,
@@ -220,6 +225,20 @@ export interface StartCoreOptions {
     EventFeedOptions,
     'pollIntervalMs' | 'pageSize' | 'afterRead'
   >;
+  // 予算の門（ADR 0037）。省略したものは、設定ファイルはデータディレクトリの budget-runtime.json、OS のタイムゾーンは
+  // Intl の既定、provider の照合の口はなし（送出意図のある予約は usage 不明として保持）、月の確認は 1 分ごと。
+  readonly budget?: CoreBudgetOptions;
+}
+
+export interface CoreBudgetOptions {
+  readonly configPath?: string;
+  readonly osTimeZone?: () => string;
+  readonly reconciler?: UsageReconciler;
+  // 予算月を進める間隔（月替わりの知らせ）。0 なら定期には進めない（受付のたびには進める）。
+  readonly tickIntervalMs?: number;
+  readonly p95ProfileIds?: readonly string[];
+  // 予算の門の時計（試験で予算月を動かす）。省略すると Core の時計。
+  readonly now?: () => number;
 }
 
 export interface CoreHandle {
@@ -245,6 +264,8 @@ export interface CoreHandle {
   readonly events: EventFeed;
   // 端末の接続（WSS の購読）を閉じる差し込み口。失効（B03-02、ADR 0021）・自宅判定の不成立（B03-03）が呼ぶ。
   readonly deviceConnections: DeviceConnections;
+  // 予算の門（ADR 0037）。有料の provider へ送るアダプターはここを通す。設定がなければ有料の処理を受け付けない。
+  readonly budget: BudgetGate;
   // ペアリング（最初の端末の CLI の承認を含む。ADR 0021）。HTTPS を設定しなければ null。
   readonly pairing: PairingService | null;
   // 自宅判定（ADR 0022）。HTTPS を設定しなければ null。onDenied で WSS を閉じる（配信は B03-04）。
@@ -435,6 +456,8 @@ export async function startCore(
   let httpsInfo: CoreHttpsInfo | null = null;
   let homeNetwork: HomeNetworkGate | null = null;
   let pairing: PairingService | null = null;
+  let budget: BudgetGate | null = null;
+  let budgetTimer: NodeJS.Timeout | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
   let closedResolve: () => void = () => undefined;
@@ -471,6 +494,8 @@ export async function startCore(
     };
     // 実行担当を止める（以後は外部へ送らない。送出意図の後に止まった試行は次の起動で unknown_held になる）。
     runner?.close();
+    // 予算月の定期の確認を止める。
+    if (budgetTimer !== null) clearInterval(budgetTimer);
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
       await streams?.closeAll();
@@ -498,6 +523,15 @@ export async function startCore(
 
   try {
     opened = await openStore(dataDir, options, log);
+    const startedBudget = await startBudgetGate(
+      dataDir,
+      options,
+      opened.store,
+      now,
+      log,
+    );
+    budget = startedBudget.gate;
+    budgetTimer = startedBudget.timer;
     feed = new EventFeed({
       store: opened.store,
       now: () => now().getTime(),
@@ -515,6 +549,7 @@ export async function startCore(
         deviceConnections,
         log,
         options.keyStore,
+        budget,
       );
       api = started.api;
       streams = started.streams;
@@ -549,6 +584,11 @@ export async function startCore(
                 log,
               },
         );
+      if (
+        request.op === 'budget_calendar_status' ||
+        request.op === 'budget_calendar_confirm'
+      )
+        return budgetControl(request, lifecycle.state, budget);
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
         return { response: { ok: false, error: 'unavailable' } as const };
@@ -570,6 +610,7 @@ export async function startCore(
       removeSocketFile,
     );
   } catch (error) {
+    if (budgetTimer !== null) clearInterval(budgetTimer);
     feed?.close();
     await api?.close(0).catch(() => undefined);
     await opened?.store.close().catch(() => undefined);
@@ -586,6 +627,7 @@ export async function startCore(
   lifecycle.apply('started');
   const { store, binding, recovery } = opened;
   const events = feed;
+  const budgetGate = budget as BudgetGate;
 
   return {
     dataDir,
@@ -603,6 +645,7 @@ export async function startCore(
     homeNetwork,
     events,
     deviceConnections,
+    budget: budgetGate,
     pairing,
     get state() {
       return lifecycle.state;
@@ -625,6 +668,7 @@ async function startHttps(
   deviceConnections: DeviceConnections,
   log: (message: string) => void,
   keyStore: DataKeyProvider,
+  budget: BudgetGate,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -770,6 +814,7 @@ async function startHttps(
       : { previewValid: https.previewValid }),
     runner,
     faults,
+    budgetHold: () => budget.holdState(),
   });
   const streams = createEventStream({
     feed,
@@ -908,6 +953,122 @@ async function deviceControl(
       ok: true,
       request_id: request.request_id,
       device: controlDevice(revoked.device),
+    },
+  };
+}
+
+const BUDGET_TICK_MS = 60_000;
+
+// 予算の門を作る（ADR 0037）。設定ファイルを読み（読めない・不正なら有料の処理を無効にする）、再起動の照合をして
+// から予算月を進める。月替わりを知らせるため、一定の間隔で予算月を確かめる。照合・月の失敗では起動を止めない
+// （予算の受付は DB の検査で閉じた側に倒れる）。
+async function startBudgetGate(
+  dataDir: string,
+  options: StartCoreOptions,
+  store: DbWorkerClient,
+  now: () => Date,
+  log: (message: string) => void,
+): Promise<{
+  readonly gate: BudgetGate;
+  readonly timer: NodeJS.Timeout | null;
+}> {
+  const settings = options.budget ?? {};
+  const config = await loadBudgetConfig({
+    path: settings.configPath ?? join(dataDir, BUDGET_CONFIG_FILE),
+    contract: createApiContract(),
+    ...(settings.osTimeZone === undefined
+      ? {}
+      : { osTimeZone: settings.osTimeZone }),
+  });
+  if (config.ok) {
+    log(
+      `予算の設定を読み込みました（予算月のタイムゾーン ${config.timeZone}）。`,
+    );
+    if (config.warnings.includes('time_zone_normalized'))
+      log(
+        `予算の設定のタイムゾーンを正規の名前 ${config.timeZone} にして記録します。設定ファイルの名前もそろえてください。`,
+      );
+  } else
+    log(
+      `予算の設定を使えないため、有料の処理を受け付けません（${config.reasons.join(', ')}）。`,
+    );
+  const gate = new BudgetGate({
+    store,
+    config,
+    now: settings.now ?? (() => now().getTime()),
+    log,
+    ...(settings.p95ProfileIds === undefined
+      ? {}
+      : { p95ProfileIds: settings.p95ProfileIds }),
+  });
+  try {
+    await gate.start(settings.reconciler);
+  } catch {
+    log(
+      '予算の再起動の照合に失敗しました。有料の受付は DB の検査で止まります。',
+    );
+  }
+  const interval = settings.tickIntervalMs ?? BUDGET_TICK_MS;
+  const timer =
+    interval > 0
+      ? setInterval(() => {
+          void gate.tick().catch(() => undefined);
+        }, interval)
+      : null;
+  timer?.unref();
+  return { gate, timer };
+}
+
+// 制御チャネルの予算月の状態と、本人による確かめ直し（ADR 0037）。中枢のローカルの CLI（OS の本人の利用者だけが
+// 使える制御チャネル）から、本人が見た値を明示して行う承認の操作。running のときだけ。
+async function budgetControl(
+  request: Extract<
+    ControlRequest,
+    { op: 'budget_calendar_status' | 'budget_calendar_confirm' }
+  >,
+  state: LifecycleState,
+  gate: BudgetGate | null,
+): Promise<{ readonly response: ControlResponse }> {
+  if (state !== 'running' || gate === null)
+    return { response: { ok: false, error: 'unavailable' } };
+  if (request.op === 'budget_calendar_confirm') {
+    const confirmed = await gate.confirmCalendar({
+      reason: request.reason,
+      month: request.month,
+      month_start: request.month_start,
+      revision: request.revision,
+      observed_at: request.observed_at,
+    });
+    if (!confirmed.ok)
+      return {
+        response: {
+          ok: false,
+          error: 'refused',
+          reason: confirmed.reasons.join(','),
+        },
+      };
+  }
+  const status = await gate.calendarStatus();
+  const check = status.check;
+  const calendar: ControlBudgetCalendar = {
+    configured: status.configured,
+    configured_time_zone: status.configured_time_zone,
+    month: check?.state?.month ?? null,
+    time_zone: check?.state?.timeZone ?? null,
+    month_start: check?.state?.monthStart ?? null,
+    month_start_time_zone: check?.state?.monthStartTimeZone ?? null,
+    recorded_month_start: check?.recorded_month_start ?? null,
+    recomputed_month_start: check?.recomputed_month_start ?? null,
+    regression_floor: check?.regression_floor ?? null,
+    confirmation_revision: check?.confirmation_revision ?? null,
+    hold_reasons: check === null ? ['calendar_unavailable'] : check.reasons,
+    checked_at: status.checked_at,
+  };
+  return {
+    response: {
+      ok: true,
+      request_id: request.request_id,
+      budget_calendar: calendar,
     },
   };
 }

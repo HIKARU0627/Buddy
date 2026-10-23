@@ -3,7 +3,7 @@
 // （ADR 0021）、端末の一覧と失効（中枢の画面が使えないときの保守の手段。ADR 0021 の追記）を扱う。
 // 承認の命令（2 台目以降の申請の承認）は置かない。本文・秘密は載せない。最初の端末の開始の応答だけは、
 // CLI の画面に出すワンタイムコード（有効 5 分・1 回だけ）を載せる。端末の一覧はトークン・その hash・
-// 証明書の指紋を含めない。
+// 証明書の指紋を含めない。予算月の状態と、本人が見た値を明示する確かめ直し（ADR 0037）も扱う（金額は載せない）。
 // スキーマ検証ライブラリを Core に入れないため、許可する形を手で厳格に検査する。
 
 import {
@@ -23,6 +23,9 @@ export const CONTROL_OPS = [
   'pairing_first_approve',
   'device_list',
   'device_revoke',
+  // 予算月の状態と、本人による確かめ直し（B07-04、ADR 0037）。
+  'budget_calendar_status',
+  'budget_calendar_confirm',
 ] as const;
 export type ControlOp = (typeof CONTROL_OPS)[number];
 
@@ -39,6 +42,18 @@ export type ControlRequest =
       readonly op: 'device_revoke';
       readonly request_id: string;
       readonly device_id: string;
+    }
+  | { readonly op: 'budget_calendar_status'; readonly request_id: string }
+  // 本人が見た理由・月・始まり（RFC 3339 の UTC）と、そのときの状態の版・時計（status の confirmation_revision・
+  // checked_at）。今の状態と一致するときだけ Core が記録する。
+  | {
+      readonly op: 'budget_calendar_confirm';
+      readonly request_id: string;
+      readonly reason: 'clock_regressed' | 'calendar_mismatch';
+      readonly month: string;
+      readonly month_start: string;
+      readonly revision: string;
+      readonly observed_at: string;
     };
 
 export type ControlRejectReason =
@@ -53,7 +68,12 @@ export type ControlRejectReason =
   | 'unknown_op'
   | 'invalid_request_id'
   | 'invalid_pairing_id'
-  | 'invalid_device_id';
+  | 'invalid_device_id'
+  | 'invalid_reason'
+  | 'invalid_month'
+  | 'invalid_month_start'
+  | 'invalid_revision'
+  | 'invalid_observed_at';
 
 export type ControlParseResult =
   | { readonly ok: true; readonly request: ControlRequest }
@@ -95,8 +115,35 @@ export interface ControlDevice {
   readonly revoked_at: string | null;
 }
 
+// 予算月の状態（B07-04、ADR 0037）。本人が確かめ直す前に CLI に出す値。金額を含めない。
+export interface ControlBudgetCalendar {
+  // 実行時の設定の検査に通っているか。
+  readonly configured: boolean;
+  readonly configured_time_zone: string | null;
+  // 今の月（確かめ直しを重ねたもの）。記録がなければ null。
+  readonly month: string | null;
+  readonly time_zone: string | null;
+  readonly month_start: string | null;
+  readonly month_start_time_zone: string | null;
+  // 予算月の記録の始まりと、tz データで求め直した始まり。
+  readonly recorded_month_start: string | null;
+  readonly recomputed_month_start: string | null;
+  // 時計の戻りを受け入れた下限。
+  readonly regression_floor: string | null;
+  // 確かめ直しの版。確かめ直しの要求に revision として渡す。
+  readonly confirmation_revision: string | null;
+  // 受付を止めている理由（clock_regressed・invalid_calendar_state など）。空なら止めていない。
+  readonly hold_reasons: readonly string[];
+  readonly checked_at: string;
+}
+
 export type ControlResponse =
   | ({ readonly ok: true; readonly request_id: string } & ControlStatus)
+  | {
+      readonly ok: true;
+      readonly request_id: string;
+      readonly budget_calendar: ControlBudgetCalendar;
+    }
   | {
       readonly ok: true;
       readonly request_id: string;
@@ -124,6 +171,27 @@ const ALLOWED_FIELDS: readonly string[] = ['op', 'request_id'];
 // pairing_first_approve だけが pairing_id を、device_revoke だけが device_id を持つ。
 const APPROVE_FIELDS: readonly string[] = ['op', 'request_id', 'pairing_id'];
 const REVOKE_FIELDS: readonly string[] = ['op', 'request_id', 'device_id'];
+// budget_calendar_confirm だけが理由・月・始まり・版・見た時刻を持つ。
+const CONFIRM_FIELDS: readonly string[] = [
+  'op',
+  'request_id',
+  'reason',
+  'month',
+  'month_start',
+  'revision',
+  'observed_at',
+];
+const REVISION = /^(0|[1-9][0-9]{0,14})$/u;
+const YEAR_MONTH = /^[0-9]{4}-(0[1-9]|1[0-2])$/u;
+const UTC_MILLIS =
+  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/u;
+
+// UTC の RFC 3339（ミリ秒 3 桁）で、暦にある時刻か（Date が別の時刻へずらさない）。
+function isUtcMillis(value: string): boolean {
+  if (!UTC_MILLIS.test(value)) return false;
+  const parsed = Date.parse(value);
+  return !Number.isNaN(parsed) && new Date(parsed).toISOString() === value;
+}
 
 // 改行を除いた 1 行のバイト列を検査する。
 export function parseControlRequest(line: Uint8Array): ControlParseResult {
@@ -149,7 +217,9 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
       ? APPROVE_FIELDS
       : value['op'] === 'device_revoke'
         ? REVOKE_FIELDS
-        : ALLOWED_FIELDS;
+        : value['op'] === 'budget_calendar_confirm'
+          ? CONFIRM_FIELDS
+          : ALLOWED_FIELDS;
   for (const key of Object.keys(value))
     if (!allowed.includes(key)) return { ok: false, reason: 'unknown_field' };
   const op = value['op'];
@@ -186,10 +256,56 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
       request: { op, request_id: requestId, device_id: deviceId },
     };
   }
+  if (op === 'budget_calendar_confirm') {
+    const reason = value['reason'];
+    const month = value['month'];
+    const monthStart = value['month_start'];
+    const revision = value['revision'];
+    const observedAt = value['observed_at'];
+    if (
+      reason === undefined ||
+      month === undefined ||
+      monthStart === undefined ||
+      revision === undefined ||
+      observedAt === undefined
+    )
+      return { ok: false, reason: 'missing_field' };
+    if (
+      typeof reason !== 'string' ||
+      typeof month !== 'string' ||
+      typeof monthStart !== 'string' ||
+      typeof revision !== 'string' ||
+      typeof observedAt !== 'string'
+    )
+      return { ok: false, reason: 'invalid_type' };
+    if (reason !== 'clock_regressed' && reason !== 'calendar_mismatch')
+      return { ok: false, reason: 'invalid_reason' };
+    if (!YEAR_MONTH.test(month)) return { ok: false, reason: 'invalid_month' };
+    if (!isUtcMillis(monthStart))
+      return { ok: false, reason: 'invalid_month_start' };
+    if (!REVISION.test(revision))
+      return { ok: false, reason: 'invalid_revision' };
+    if (!isUtcMillis(observedAt))
+      return { ok: false, reason: 'invalid_observed_at' };
+    return {
+      ok: true,
+      request: {
+        op,
+        request_id: requestId,
+        reason,
+        month,
+        month_start: monthStart,
+        revision,
+        observed_at: observedAt,
+      },
+    };
+  }
   return {
     ok: true,
     request:
-      op === 'pairing_first_start' || op === 'device_list'
+      op === 'pairing_first_start' ||
+      op === 'device_list' ||
+      op === 'budget_calendar_status'
         ? { op, request_id: requestId }
         : { op: op as 'status' | 'stop', request_id: requestId },
   };

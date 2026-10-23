@@ -339,6 +339,32 @@ test('B04 の証拠の対象は実行器が読み込むファイルだけで、�
   assert(files.every((path) => !path.startsWith('apps/desktop/src/renderer/')));
 });
 
+test('B04 の証拠は exports の解決に使った package.json を含み、対象のファイル同士で参照先を差し替えると失敗する', async () => {
+  const files = b04SourceFiles();
+  for (const path of [
+    'packages/domain/package.json',
+    'packages/storage/package.json',
+    'packages/connectors/package.json',
+    'packages/contracts/package.json',
+  ])
+    assert(files.includes(path), path);
+  const evidence = await read('tests/integration/evidence-b04-simulated.json');
+  // domain の入口を、すでに対象にある別のファイル（api.ts）へ差し替える。ファイルの集合は変わらなくても失敗する。
+  const manifest = JSON.parse(
+    readOverridden({})('packages/domain/package.json'),
+  );
+  manifest.exports['.'].default = './dist/api.js';
+  const swapped = readOverridden({
+    'packages/domain/package.json': `${JSON.stringify(manifest, null, 2)}\n`,
+  });
+  assert(b04SourceFiles(swapped).includes('packages/domain/src/api.ts'));
+  assert.notDeepEqual(b04SourceSha256(swapped), b04SourceSha256());
+  assert.throws(
+    () => assertB04EvidenceSources(evidence, swapped),
+    /B04 の証拠と現行ソースが不一致/u,
+  );
+});
+
 test('B04 の証拠の対象外のファイルが変わっても検査は通り、対象のファイルが変われば失敗する', async () => {
   const evidence = await read('tests/integration/evidence-b04-simulated.json');
   const base = b04SourceSha256();

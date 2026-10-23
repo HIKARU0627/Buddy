@@ -5,7 +5,8 @@
 // - 入口は tests/integration/b04*.mjs。そこから import・export … from・動的 import（文字列）を辿る。
 // - `import type` / `export type` だけの文は実行されないので辿らない。
 // - ビルド済みの dist を指す参照は、同じワークスペースの src（.ts / .tsx）へ読み替える（dist はコミットしない）。
-// - @buddy/* はワークスペースの package.json の exports で解決する（dist は src へ読み替え）。
+// - @buddy/* はワークスペースの package.json の exports で解決する（dist は src へ読み替え）。解決に使った
+//   package.json も対象に入れる（exports の参照先が変われば、読み込むファイルが同じ集合でも証拠を古いと判定する）。
 // - `new URL('…', import.meta.url)` と `import.meta.resolve('…')` の文字列も辿る（fixture・Schema・SQL の
 //   マイグレーション・worker）。ディレクトリ（末尾が /）は中のファイルをすべて含める。
 // - node: の組み込みと外部の依存（node_modules）は含めない。
@@ -28,7 +29,7 @@ const toPosix = (path) => path.split(sep).join(posix.sep);
 const rel = (abs) => toPosix(relative(ROOT, abs));
 
 // ワークスペースの名前 → ディレクトリと exports。
-function workspaces() {
+function workspaces(readFile) {
   const map = new Map();
   for (const group of ['apps', 'packages']) {
     const base = join(ROOT, group);
@@ -36,8 +37,12 @@ function workspaces() {
     for (const name of readdirSync(base)) {
       const file = join(base, name, 'package.json');
       if (!existsSync(file)) continue;
-      const pkg = JSON.parse(readFileSync(file, 'utf8'));
-      map.set(pkg.name, { dir: join(base, name), exports: pkg.exports ?? {} });
+      const pkg = JSON.parse(readFile(rel(file)));
+      map.set(pkg.name, {
+        dir: join(base, name),
+        manifest: file,
+        exports: pkg.exports ?? {},
+      });
     }
   }
   return map;
@@ -69,6 +74,7 @@ function exportTarget(entry) {
 function resolveSpecifier(specifier, fromAbs, packages) {
   if (specifier.startsWith('node:')) return null;
   let target;
+  let manifest = null;
   if (specifier.startsWith('.') || specifier.startsWith('/')) {
     target = resolve(dirname(fromAbs), specifier);
   } else if (specifier.startsWith('@buddy/')) {
@@ -80,9 +86,10 @@ function resolveSpecifier(specifier, fromAbs, packages) {
     const mapped = exportTarget(pkg.exports[sub]);
     if (mapped === null) return null;
     target = resolve(pkg.dir, mapped);
+    manifest = pkg.manifest;
   } else return null;
-  if (specifier.endsWith('/')) return { dir: target };
-  return { file: toSource(target) ?? target };
+  if (specifier.endsWith('/')) return { dir: target, manifest };
+  return { file: toSource(target) ?? target, manifest };
 }
 
 // 実行される参照の指定子を取り出す（型だけの import / export は除く）。
@@ -124,7 +131,7 @@ function listDir(abs) {
 // B04 の実行器が読むファイル（リポジトリからの相対パス、辞書順）。
 // readFile は試験で内容を差し替えるための差し込み口（既定はディスクから読む）。
 export function b04SourceFiles(readFile = defaultRead) {
-  const packages = workspaces();
+  const packages = workspaces(readFile);
   const entries = readdirSync(join(ROOT, ENTRY_DIR))
     .filter((name) => ENTRY.test(name))
     .map((name) => join(ROOT, ENTRY_DIR, name));
@@ -139,6 +146,8 @@ export function b04SourceFiles(readFile = defaultRead) {
     for (const specifier of runtimeSpecifiers(readFile(path))) {
       const resolved = resolveSpecifier(specifier, abs, packages);
       if (resolved === null) continue;
+      // 解決に使った manifest（package.json の exports）も対象にする。
+      if (resolved.manifest !== null) queue.push(resolved.manifest);
       if ('dir' in resolved) {
         if (existsSync(resolved.dir)) queue.push(...listDir(resolved.dir));
         continue;

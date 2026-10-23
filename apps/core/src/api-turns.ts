@@ -176,6 +176,12 @@ type TurnPlan =
       readonly permission_revision: string;
     };
 
+// 発言の入力の時点に控える、連携の口座と許可の版（Core のメモリーにある最後に確かめた値）。
+type InputPermission = {
+  readonly account_id: string;
+  readonly permission_revision: string;
+} | null;
+
 const clarify = (
   reason: ClarifyReason,
   intent: IntentName | null,
@@ -185,6 +191,7 @@ export interface TurnRoutes {
   readonly handlers: Readonly<Record<string, ApiRouteHandler>>;
   readonly previewValid: PreviewCheck;
   readonly previewCurrent: (previewId: string) => boolean;
+  readonly prime: () => Promise<void>;
 }
 
 export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
@@ -312,13 +319,22 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     }
   };
 
+  // Core が最後に確かめた連携の口座と許可の版（メモリーだけ）。provider から読むたびに更新する。
+  // 発言の入力の時点の許可の版は、外部へ問い合わせずにこの値から取る（解釈の前に控える。QA27 の LocalCommand に
+  // 外部の HTTP を作らないため。PR #107 のレビュー）。起動時に一度読んでおく（prime）。
+  let observedPermission: InputPermission = null;
+
   const readPermission = async (accountId: string): Promise<string | null> => {
     if (options.provider === null) return null;
     try {
       const permission = await options.provider.readPermission(accountId);
-      return permission !== null && permission.account_id === accountId
-        ? permission.permission_revision
-        : null;
+      if (permission === null || permission.account_id !== accountId)
+        return null;
+      observedPermission = {
+        account_id: accountId,
+        permission_revision: permission.permission_revision,
+      };
+      return permission.permission_revision;
     } catch {
       return null;
     }
@@ -409,9 +425,18 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     return result.state === 'blocked' ? 'blocked' : 'ok';
   };
 
+  // 入力の時点に控えた口座と許可の版から、今の接続の口座の入力の時点の版を取る（口座が違えば null）。
+  const permissionOf = (
+    input: InputPermission,
+    accountId: string,
+  ): string | null =>
+    input !== null && input.account_id === accountId
+      ? input.permission_revision
+      : null;
+
   const planLabel = async (
     args: ArgValues,
-    permissionAtInput: string | null,
+    input: InputPermission,
   ): Promise<TurnPlan> => {
     const intent: IntentName = 'label_mail';
     const add = (args.add_labels as readonly string[] | null) ?? [];
@@ -455,7 +480,13 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const permission = await readPermission(connection.account_id);
     if (permission === null) return clarify('connection', intent);
     // 入力の時点の許可の版と、確定の直前に読み直した許可の版が同じであること（10 §5A、ADR 0029）。
-    if (readiness(intent, permission === permissionAtInput) === 'blocked')
+    // 入力の時点の版が分からない（起動の後にまだ確かめていない）ときも進めない。
+    if (
+      readiness(
+        intent,
+        permission === permissionOf(input, connection.account_id),
+      ) === 'blocked'
+    )
       return clarify('blocked', intent);
     const operationId = randomUUID();
     return {
@@ -491,7 +522,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   // CC は空。下書きは送らないので external_recipients は空で、照合は作成物の目印（operation_marker）。
   const planDraft = async (
     args: ArgValues,
-    permissionAtInput: string | null,
+    input: InputPermission,
   ): Promise<TurnPlan> => {
     const intent: IntentName = 'draft_reply';
     const body = typeof args.body === 'string' ? args.body.trim() : '';
@@ -529,7 +560,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (reply === null) return clarify('invalid', intent);
     const permission = await readPermission(connection.account_id);
     if (permission === null) return clarify('connection', intent);
-    if (readiness(intent, permission === permissionAtInput) === 'blocked')
+    if (
+      readiness(
+        intent,
+        permission === permissionOf(input, connection.account_id),
+      ) === 'blocked'
+    )
       return clarify('blocked', intent);
     const operationId = randomUUID();
     return {
@@ -614,16 +650,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     'draft_reply',
   ];
 
-  // 入力の許可の版。provider を使う意図だけ、解釈の直後（意味検証の前）に読む。接続がなければ null。
-  const inputPermission = async (): Promise<string | null> => {
-    const connection = await readConnection();
-    return connection === null
-      ? null
-      : await readPermission(connection.account_id);
-  };
-
+  // input: 発言を受けた時点（解釈の前）に控えた口座と許可の版。解釈の間に許可の版が変わっても、確定の直前の
+  // 読み直しとの比較で気づける。
   const planTurn = async (
     text: string,
+    input: InputPermission,
   ): Promise<{
     readonly plan: TurnPlan;
     readonly permissionAtInput: string | null;
@@ -640,14 +671,13 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             : clarify('unsupported', intent),
         permissionAtInput: null,
       };
-    const permissionAtInput = await inputPermission();
     const plan =
       intent === 'query_schedule'
         ? await planRead(intent, args)
         : intent === 'label_mail'
-          ? await planLabel(args, permissionAtInput)
-          : await planDraft(args, permissionAtInput);
-    return { plan, permissionAtInput };
+          ? await planLabel(args, input)
+          : await planDraft(args, input);
+    return { plan, permissionAtInput: input?.permission_revision ?? null };
   };
 
   // 解釈と、意図表・契約での引数の検査。聞き返しなら plan、通れば意図と引数を返す。
@@ -765,8 +795,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (found.value !== null)
       return storedResponse(found.value.response_json, requestId);
     const text = stringOf(body, 'text');
-    // 入力の許可の版（provider を使う意図だけ。連携の接続がない・使わないなら 0 として記録する）。
-    const planned = await planTurn(text);
+    // 入力の時点の許可の版は、解釈の前に Core のメモリーから控える（外部へ問い合わせない）。記録するのは provider
+    // を使う意図だけで、連携の接続がない・使わないなら 0 として記録する。
+    const planned = await planTurn(text, observedPermission);
     let plan = planned.plan;
     const permissionAtInput = planned.permissionAtInput;
     const key = await loadKey();
@@ -1117,5 +1148,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     handlers: { createSession, postTurn, previewOperation, displayOperation },
     previewValid,
     previewCurrent: (previewId) => previews.get(previewId) !== null,
+    // 起動の後に一度、連携の口座と許可の版を確かめておく（入力の時点の版を外部へ問い合わせずに持つため）。
+    // 読めなくても起動は止めない（最初の外部変更の発言は聞き返しになり、そのときの読み取りで控え直す）。
+    async prime() {
+      const connection = await readConnection();
+      if (connection !== null) await readPermission(connection.account_id);
+    },
   };
 }

@@ -31,7 +31,11 @@ import {
 } from './event-test-support.js';
 import type { EventCore } from './event-test-support.js';
 import { mockMailPorts } from './mock-mail-ports.js';
-import type { ProviderReader, ProviderWriter } from './turn-ports.js';
+import type {
+  Interpreter,
+  ProviderReader,
+  ProviderWriter,
+} from './turn-ports.js';
 
 interface FaultCase {
   readonly id: string;
@@ -178,6 +182,8 @@ async function startCore(
     readonly restartOf?: EventCore;
     readonly faults?: FaultInjector;
     readonly clock?: Clock;
+    // 解釈の差し替え（解釈の間に状況を変える試験）。既定は模擬の解釈。
+    readonly interpreter?: Interpreter;
   } = {},
 ): Promise<EventCore> {
   const previous = options.restartOf;
@@ -192,6 +198,9 @@ async function startCore(
       provider: rig.ports.reader,
       writer: rig.ports.writer,
       faults: options.faults ?? rig.injector,
+      ...(options.interpreter === undefined
+        ? {}
+        : { interpreter: options.interpreter }),
       candidates: {
         mailCandidates: () =>
           Promise.resolve([

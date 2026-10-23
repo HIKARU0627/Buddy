@@ -27,11 +27,75 @@ import {
   recordOf,
   session,
   startCore,
+  snapshotOperations,
   startRig,
   turn,
 } from './operation-runner-test-support.js';
+import { createMockInterpreter } from './turn-ports.js';
 
 const TIMEOUT = 60_000;
+
+test(
+  'label and draft: a permission revision that changes from 1 to 2 while the message is interpreted is asked back and makes no operation',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    // 解釈の間に許可の版を 1 → 2 に変える（範囲は変えない）。
+    const mock = createMockInterpreter();
+    let changeDuring: string | null = null;
+    const core = await startCore(t, rig, {
+      interpreter: {
+        interpret: (context) => {
+          if (changeDuring !== null)
+            rig.provider.truth.setPermission({
+              permission_revision: changeDuring,
+            });
+          return mock.interpret(context);
+        },
+      },
+    });
+    const who = await session(core);
+    for (const [made, text, revision] of [
+      [0, DRAFT_TEXT, '2'],
+      [1, 'mail-001 に follow-up を付けて', '3'],
+    ] as const) {
+      changeDuring = revision;
+      const asked = await turn(core, who, text);
+      assert.equal(asked['status'], 'clarification', text);
+      assert.equal(
+        asked['reply_text'],
+        '今は進められません。少し待ってからもう一度お願いします。',
+        text,
+      );
+      // 聞き返しでは操作を増やさない（前の言い直しで作った操作だけ）。
+      assert.equal(await snapshotOperations(core, who), made, text);
+      // 版が変わらなければ（同じ発言の言い直し）、新しい版で操作を作れる。
+      changeDuring = null;
+      const again = await turn(core, who, text);
+      assert.equal(again['status'], 'answered', text);
+      const shown = await preview(
+        core,
+        who,
+        String(
+          (
+            (again['result_view'] as Record<string, unknown>)['item_refs'] as {
+              id: string;
+            }[]
+          )[0]?.id,
+        ),
+      );
+      assert.equal(
+        (shown.json?.['intent'] as Record<string, unknown>)[
+          'permission_revision'
+        ],
+        revision,
+        text,
+      );
+    }
+    assert.equal(await snapshotOperations(core, who), 2);
+    assert.equal(rig.provider.truth.requestCount(), 0);
+  },
+);
 const ACCOUNT = '00000000-0000-4000-8000-000000000002';
 
 // 手で決めた下書きの内容（返信元は合成の mail-001）。
@@ -566,8 +630,8 @@ test(
         asked['reply_text'],
         '連携の接続が使えません。接続を確かめてください。',
       );
-      // 入力の許可（接続・許可）と意味検証の接続の 3 回。対象のメールは読まない。
-      assert.equal(rig.ports.counts.read - before, 3, text);
+      // 意味検証の接続の 1 回だけ（入力の時点の許可の版は Core のメモリーから取る）。対象のメールは読まない。
+      assert.equal(rig.ports.counts.read - before, 1, text);
     }
     assert.equal(rig.provider.truth.requestCount(), 0);
   },

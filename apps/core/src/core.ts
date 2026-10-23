@@ -734,6 +734,8 @@ async function startHttps(
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
   });
+  // 連携の口座と許可の版を一度確かめておく（発言の入力の時点の版を外部へ問い合わせずに持つ。B04-07）。
+  await turns.prime().catch(() => undefined);
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
   const faults = turnOptions.faults ?? NO_FAULTS;
   const runner = createOperationRunner({

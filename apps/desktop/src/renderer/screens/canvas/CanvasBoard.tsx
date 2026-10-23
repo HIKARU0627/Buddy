@@ -160,12 +160,15 @@ function OverflowTag({
   item,
   front,
   compact,
+  revealable,
   onReveal,
   onSend,
 }: {
   readonly item: CanvasViewItem;
   readonly front: boolean;
   readonly compact: boolean;
+  // 見せられる（最小の高さ以上）。見せられないときは「…」の印とボタンを出さず、見出しだけの札にする（形で示す）。
+  readonly revealable: boolean;
   readonly onReveal: (id: string) => void;
   readonly onSend: (op: CanvasUserOp) => void;
 }) {
@@ -176,21 +179,30 @@ function OverflowTag({
       data-overflow={item.item_id}
       className={`flex ${size} shrink-0 items-center rounded-full border border-separator bg-surface text-foreground`}
     >
-      <Button
-        size="sm"
-        variant="ghost"
-        isDisabled={!front}
-        aria-label={`${item.heading}を見せる`}
-        onPress={() => onReveal(item.item_id)}
-        className={`${size} gap-1.5 rounded-full px-3`}
-      >
-        <span aria-hidden="true" className="flex gap-0.5">
-          <span className="size-1 rounded-full bg-current" />
-          <span className="size-1 rounded-full bg-current" />
-          <span className="size-1 rounded-full bg-current" />
+      {revealable ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          isDisabled={!front}
+          aria-label={`${item.heading}を見せる`}
+          onPress={() => onReveal(item.item_id)}
+          className={`${size} gap-1.5 rounded-full px-3`}
+        >
+          <span aria-hidden="true" className="flex gap-0.5">
+            <span className="size-1 rounded-full bg-current" />
+            <span className="size-1 rounded-full bg-current" />
+            <span className="size-1 rounded-full bg-current" />
+          </span>
+          <span className="max-w-40 truncate">{item.heading}</span>
+        </Button>
+      ) : (
+        <span
+          data-revealable="false"
+          className="max-w-40 truncate px-3 text-muted"
+        >
+          {item.heading}
         </span>
-        <span className="max-w-40 truncate">{item.heading}</span>
-      </Button>
+      )}
       {front ? (
         <>
           <Button
@@ -256,6 +268,7 @@ function Shelf({
           item={item}
           front={front}
           compact={compact}
+          revealable={!compact}
           onReveal={onReveal}
           onSend={onSend}
         />
@@ -426,7 +439,8 @@ export function CanvasBoard({
 
   const onReveal = useCallback(
     (id: string) => {
-      if (!front) return;
+      // 最小の高さに満たない（物を置かない）ときは見せない（札もボタンを出さない）。
+      if (!front || layoutRef.current.mode === 'minimal') return;
       setInteraction((prev) => reveal(prev, id));
     },
     [front],

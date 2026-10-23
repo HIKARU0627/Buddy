@@ -266,6 +266,11 @@ test('an overflow tag offers show, shelve and close while in front; below the mi
     low,
     /data-shelf="compact" style="left:24px;top:4px;width:1160px;height:32px"/u,
   );
+  // 最小の表示では見せられないので、札は見出しだけ（「見せる」のボタンと「…」の印を出さない）。片付ける・閉じるは残す。
+  assert.doesNotMatch(low, /を見せる/u);
+  assert.equal((low.match(/data-revealable="false"/gu) ?? []).length, 3);
+  assert.match(low, /aria-label="見出しaを閉じる"/u);
+  assert.match(low, /aria-label="見出しaを棚へ片付ける"/u);
 });
 
 test('an empty list shows an empty mark instead of rows', () => {

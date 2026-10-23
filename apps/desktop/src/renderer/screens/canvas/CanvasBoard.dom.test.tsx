@@ -237,6 +237,63 @@ test('a sent move stays where it was sent while an unrelated revision arrives, u
   board.unmount();
 });
 
+test('a tag shows its card even when it does not fit as is: a focus card shrinks at 480 × 400, a user pin steps aside at 1280 × 300', async () => {
+  const board = await mountBoard();
+  // 480 × 400: 置ける高さ 200。焦点 f（3 行 = 248）は入らず札。見せると 2 行（160）に縮めて出る。
+  await board.render(
+    view('3', [
+      item('a'),
+      item('f', { emphasis: 'high', grid: { column: 1, span: 4, rows: 3 } }),
+    ]),
+    { width: 480, height: 400 },
+  );
+  assert.equal(document.querySelector('[data-item="f"]'), null);
+  await press('見出しfを見せる');
+  assert.equal(card('f').style.height, '160px');
+  assert.equal(document.activeElement, card('f'));
+  assert.notEqual(document.querySelector('[data-overflow="a"]'), null);
+  board.unmount();
+  // 1280 × 300（2 行）: ユーザーの置き場所 p が全体を埋め、x は札。見せると x が列 1 に出て（left 24・4 列 × 2 行）、
+  // p は列 5 から 8 列 × 1 行（left 24 + 4 × 98 = 416・高さ 72）へ下がる。
+  const second = await mountBoard();
+  await second.render(
+    view(
+      '3',
+      [item('p'), item('x', { grid: { column: 1, span: 4, rows: 2 } })],
+      {
+        user_pins: [
+          { item_id: 'p', cell: { column: 1, row: 1, span: 12, rows: 2 } },
+        ],
+      },
+    ),
+    { width: 1280, height: 300 },
+  );
+  assert.equal(document.querySelector('[data-item="x"]'), null);
+  await press('見出しxを見せる');
+  assert.equal(card('x').style.left, '24px');
+  assert.equal(card('x').style.height, '160px');
+  assert.equal(card('p').style.left, '416px');
+  assert.equal(card('p').style.height, '72px');
+  assert.deepEqual(second.sent, []);
+  second.unmount();
+});
+
+test('below the minimum height the tags cannot show a card: no show button, only shelve and close', async () => {
+  const board = await mountBoard();
+  await board.render(view('3', [item('a'), item('b')]), {
+    width: 1280,
+    height: 200,
+  });
+  assert.equal(document.querySelector('[aria-label="見出しaを見せる"]'), null);
+  assert.equal(
+    document.querySelectorAll('[data-revealable="false"]').length,
+    2,
+  );
+  await press('見出しaを棚へ片付ける');
+  assert.deepEqual(board.sent, [[{ kind: 'shelve', item_id: 'a' }, '3']]);
+  board.unmount();
+});
+
 const STATUS: DesktopStatusBar = {
   visibility: 'shown',
   lock_state: 'unlocked',

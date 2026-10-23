@@ -388,10 +388,22 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       return rows * L.rowHeight + (rows - 1) * L.gap;
     };
     const room = frame.bottom - frame.top;
+    // 札から見せるよう選ばれた物は、入らなければ入る行数まで縮める（最小の高さ以上なら 1 行は必ず入る）。
+    const revealedHeight =
+      revealed === undefined
+        ? 0
+        : Math.min(
+            heightOf(revealed),
+            Math.max(1, Math.floor((room + L.gap) / (L.rowHeight + L.gap))) *
+              (L.rowHeight + L.gap) -
+              L.gap,
+          );
+    const heightFor = (item: CanvasLayoutItemLike) =>
+      item === revealed ? revealedHeight : heightOf(item);
     const shown = new Set<string>();
     let used = 0;
     const take = (item: CanvasLayoutItemLike): boolean => {
-      const add = (shown.size > 0 ? L.gap : 0) + heightOf(item);
+      const add = (shown.size > 0 ? L.gap : 0) + heightFor(item);
       if (used + add > room) return false;
       used += add;
       shown.add(item.item_id);
@@ -410,7 +422,7 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
         overflow.push(item.item_id);
         continue;
       }
-      const height = heightOf(item);
+      const height = heightFor(item);
       boxes.push({
         item_id: item.item_id,
         rect: { x: frame.left, y, width: frame.width, height },
@@ -450,12 +462,20 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       height: cell.rows * (L.rowHeight + L.gap) - L.gap,
     };
   };
-  const occupancy = new Occupancy(gridRows);
-  const placed = new Map<string, CanvasLayoutBox>();
-  const overflow = new Set<string>();
+  let occupancy = new Occupancy(gridRows);
+  let placed = new Map<string, CanvasLayoutBox>();
+  let overflow = new Set<string>();
   // まとまりごとの、置いた物を囲む範囲。
-  const groupArea = new Map<string, CanvasCellLike>();
+  let groupArea = new Map<string, CanvasCellLike>();
   let firstFocus: CanvasCellLike | null = null;
+  // 置き直すために、空の格子から始め直す（札から見せる物が入らなかったとき）。
+  const reset = () => {
+    occupancy = new Occupancy(gridRows);
+    placed = new Map();
+    overflow = new Set();
+    groupArea = new Map();
+    firstFocus = null;
+  };
 
   const commit = (
     item: CanvasLayoutItemLike,
@@ -533,7 +553,11 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
   };
 
   // 意味の規則で置く。望む位置は、関係 → まとまり → 強調の順に、最初に当てはまるもので決める。
-  const placeBySemantics = (item: CanvasLayoutItemLike) => {
+  // shrinkAlways は、周辺でも幅を縮めて探す（札から見せる物）。
+  const placeBySemantics = (
+    item: CanvasLayoutItemLike,
+    shrinkAlways = false,
+  ) => {
     if (gridRows === 0) {
       overflow.add(item.item_id);
       return;
@@ -604,49 +628,51 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       else if (focus !== null) want = { kind: 'area', cell: focus };
       else want = point(1, hintColumn(span));
     }
-    const found = search(span, rows, want, role !== 'peripheral');
+    const found = search(
+      span,
+      rows,
+      want,
+      shrinkAlways || role !== 'peripheral',
+    );
     if (found === null) overflow.add(item.item_id);
     else commit(item, found, 'engine');
   };
 
-  // 1. 守る物。
   const held = input.held ?? null;
   const heldItem =
     held === null
       ? undefined
       : visible.find((item) => item.item_id === held.item_id);
-  if (held !== null && heldItem !== undefined)
-    placeExact(heldItem, held.cell, 'held');
-  // 2. ユーザーの置き場所（読む順）。
   const pins = new Map(
     (input.user_pins ?? []).map((pin) => [pin.item_id, pin.cell]),
   );
-  for (const item of visible) {
-    const cell = pins.get(item.item_id);
+  const placeHeld = () => {
     if (
-      cell !== undefined &&
-      !placed.has(item.item_id) &&
-      !overflow.has(item.item_id)
+      held !== null &&
+      heldItem !== undefined &&
+      !placed.has(heldItem.item_id)
     )
-      placeExact(item, cell, 'user');
-  }
-  // 3. 札から見せるよう選ばれた物（意味の規則で、ほかの物より先に場所を取る）。
-  if (
-    revealed !== undefined &&
-    !placed.has(revealed.item_id) &&
-    !overflow.has(revealed.item_id)
-  )
-    placeBySemantics(revealed);
-  // 4. 焦点（読む順）。
-  for (const item of visible)
+      placeExact(heldItem, held.cell, 'held');
+  };
+  const placePins = () => {
+    for (const item of visible) {
+      const cell = pins.get(item.item_id);
+      if (
+        cell !== undefined &&
+        !placed.has(item.item_id) &&
+        !overflow.has(item.item_id)
+      )
+        placeExact(item, cell, 'user');
+    }
+  };
+  const placeRevealed = () => {
     if (
-      roleOf(item.emphasis) === 'focus' &&
-      !placed.has(item.item_id) &&
-      !overflow.has(item.item_id)
+      revealed !== undefined &&
+      !placed.has(revealed.item_id) &&
+      !overflow.has(revealed.item_id)
     )
-      placeBySemantics(item);
-  // 5. 補助、その後に周辺（読む順）。それぞれ、関係を持つ物を先に置く（相手の隣を先に取る）。関係の相手がまだなら、
-  // 相手の後に回す。
+      placeBySemantics(revealed, true);
+  };
   const tier = (role: Role) => {
     const members = visible.filter((item) => roleOf(item.emphasis) === role);
     return [
@@ -654,21 +680,53 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       ...members.filter((item) => item.relations.length === 0),
     ];
   };
-  const rest = [...tier('support'), ...tier('peripheral')].filter(
-    (item) => !placed.has(item.item_id) && !overflow.has(item.item_id),
-  );
-  while (rest.length > 0) {
-    const waiting = new Set(rest.map((item) => item.item_id));
-    let index = rest.findIndex((item) =>
-      item.relations.every(
-        (relation) =>
-          relation.target === item.item_id || !waiting.has(relation.target),
-      ),
+  const placeRest = () => {
+    // 焦点（読む順）。
+    for (const item of visible)
+      if (
+        roleOf(item.emphasis) === 'focus' &&
+        !placed.has(item.item_id) &&
+        !overflow.has(item.item_id)
+      )
+        placeBySemantics(item);
+    // 補助、その後に周辺（読む順）。それぞれ、関係を持つ物を先に置く（相手の隣を先に取る）。関係の相手がまだなら、
+    // 相手の後に回す。
+    const rest = [...tier('support'), ...tier('peripheral')].filter(
+      (item) => !placed.has(item.item_id) && !overflow.has(item.item_id),
     );
-    if (index === -1) index = 0;
-    const [next] = rest.splice(index, 1);
-    if (next !== undefined) placeBySemantics(next);
+    while (rest.length > 0) {
+      const waiting = new Set(rest.map((item) => item.item_id));
+      let index = rest.findIndex((item) =>
+        item.relations.every(
+          (relation) =>
+            relation.target === item.item_id || !waiting.has(relation.target),
+        ),
+      );
+      if (index === -1) index = 0;
+      const [next] = rest.splice(index, 1);
+      if (next !== undefined) placeBySemantics(next);
+    }
+  };
+  // 置く順: 1. 守る物 → 2. ユーザーの置き場所 → 3. 札から見せるよう選ばれた物 → 4. 焦点 → 5. 補助・周辺。
+  // 選ばれた物が入らなければ（ユーザーの置き場所が場所を埋めている）、選ばれた物をユーザーの置き場所より先に置いて
+  // 置き直す（ユーザーの置き場所を一時的に下げる）。それでも入らなければ（守る物が場所を埋めている）、選ばれた物を
+  // 最初に置く。格子に 1 行あれば、最初に置いた物は必ず入る（幅・行数を縮める）。
+  placeHeld();
+  placePins();
+  placeRevealed();
+  if (revealed !== undefined && !placed.has(revealed.item_id)) {
+    reset();
+    placeHeld();
+    placeRevealed();
+    placePins();
   }
+  if (revealed !== undefined && !placed.has(revealed.item_id)) {
+    reset();
+    placeRevealed();
+    placeHeld();
+    placePins();
+  }
+  placeRest();
 
   const boxes = [...placed.values()].sort(byOrder);
   return {

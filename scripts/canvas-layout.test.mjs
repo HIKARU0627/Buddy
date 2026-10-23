@@ -642,3 +642,117 @@ test('below the minimum height (272) nothing is placed and the shelf becomes a s
     height: 56,
   });
 });
+
+test('a card chosen from its tag is always shown at or above the minimum height: it shrinks, and user pins or a held card step aside', () => {
+  // 1 列 480 × 400: 置ける高さ = (400 − 88 − 16 − 56 − 16) − 24 = 200。焦点 f は 3 行（248）では入らないので
+  // 2 行（160）に縮めて見せる。a（160）は 160 + 16 + 160 = 336 > 200 なので札。
+  const items = [
+    item('a', { grid: { column: 1, span: 4, rows: 2 } }),
+    item('f', { emphasis: 'high', grid: { column: 1, span: 4, rows: 3 } }),
+  ];
+  const plain = layoutCanvas({
+    items,
+    reading_order: ['a', 'f'],
+    viewport: { width: 480, height: 400 },
+  });
+  assert.deepEqual(plain.overflow, ['f']);
+  const shown = layoutCanvas({
+    items,
+    reading_order: ['a', 'f'],
+    viewport: { width: 480, height: 400 },
+    revealed: 'f',
+  });
+  assert.deepEqual(rectOf(shown, 'f'), {
+    x: 24,
+    y: 24,
+    width: 360,
+    height: 160,
+  });
+  assert.deepEqual(shown.overflow, ['a']);
+  // 最小の高さ 272 では置ける高さ 72: 1 行（72）に縮めて見せる。
+  const lowest = layoutCanvas({
+    items,
+    reading_order: ['a', 'f'],
+    viewport: { width: 480, height: 272 },
+    revealed: 'f',
+  });
+  assert.deepEqual(rectOf(lowest, 'f'), {
+    x: 24,
+    y: 24,
+    width: 360,
+    height: 72,
+  });
+
+  // 格子 1280 × 300（2 行）: ユーザーの置き場所 p が 12 列 × 2 行を埋めている。札から x を選ぶと、x を先に
+  // （列 1・4 列 × 2 行）置き、p は同じ大きさで入らないので縮めて最も近い空き（行 1・列 5 から 8 列 × 1 行）へ下げる。
+  const pinned = [
+    item('p'),
+    item('x', { grid: { column: 1, span: 4, rows: 2 } }),
+  ];
+  const pins = [
+    { item_id: 'p', cell: { column: 1, row: 1, span: 12, rows: 2 } },
+  ];
+  const blocked = layout(pinned, {
+    viewport: { width: 1280, height: 300 },
+    pins,
+  });
+  assert.equal(blocked.grid.rows, 2);
+  assert.deepEqual(blocked.overflow, ['x']);
+  const stepped = layoutCanvas({
+    items: pinned,
+    reading_order: ['p', 'x'],
+    user_pins: pins,
+    viewport: { width: 1280, height: 300 },
+    revealed: 'x',
+  });
+  assert.deepEqual(cellOf(stepped, 'x'), cell(1, 1, 4, 2));
+  assert.deepEqual(cellOf(stepped, 'p'), cell(1, 5, 8, 1));
+  assert.equal(stepped.boxes.find((box) => box.item_id === 'p').source, 'user');
+  assert.deepEqual(stepped.overflow, []);
+
+  // 格子 1280 × 272（1 行）: 守る物 h（ドラッグ中・送信中）が 12 列を埋めていても、選んだ x を最初に置き
+  // （列 1・4 列 × 1 行）、h は縮めて行 1・列 5 から 8 列へ。
+  const heldCase = layoutCanvas({
+    items: [item('h'), item('x', { grid: { column: 1, span: 4, rows: 2 } })],
+    reading_order: ['h', 'x'],
+    held: { item_id: 'h', cell: { column: 1, row: 1, span: 12, rows: 1 } },
+    viewport: { width: 1280, height: 272 },
+    revealed: 'x',
+  });
+  assert.deepEqual(cellOf(heldCase, 'x'), cell(1, 1, 4, 1));
+  assert.deepEqual(cellOf(heldCase, 'h'), cell(1, 5, 8, 1));
+  assert.equal(
+    heldCase.boxes.find((box) => box.item_id === 'h').source,
+    'held',
+  );
+
+  // 最小の高さに満たない（1280 × 200）ときは見せない（物を置かない）。
+  const minimal = layoutCanvas({
+    items,
+    reading_order: ['a', 'f'],
+    viewport: { width: 1280, height: 200 },
+    revealed: 'f',
+  });
+  assert.equal(minimal.mode, 'minimal');
+  assert.deepEqual(minimal.boxes, []);
+});
+
+test('at every size from the minimum height up, any visible card chosen from the tags gets a box', () => {
+  const visible = MIXED.filter((entry) => entry.placement === 'canvas').map(
+    (entry) => entry.item_id,
+  );
+  for (const width of [480, 600, 840, 1024, 1280, 1920])
+    for (const height of [272, 300, 400, 720])
+      for (const id of visible) {
+        const result = layoutCanvas({
+          items: MIXED,
+          reading_order: visible,
+          viewport: { width, height },
+          revealed: id,
+        });
+        assert(
+          result.boxes.some((box) => box.item_id === id),
+          `${width}×${height} ${id}`,
+        );
+      }
+});

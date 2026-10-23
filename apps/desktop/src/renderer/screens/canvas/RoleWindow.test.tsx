@@ -23,6 +23,7 @@ import {
 } from '../../state/window-role-state.js';
 import { CanvasGround } from './CanvasGround.js';
 import { InputBar } from './InputBar.js';
+import { privacyMarks } from '../../state/status-panel-state.js';
 import { StatusTab } from './StatusTab.js';
 
 const id = (n: number) =>
@@ -114,7 +115,7 @@ test('the status tab shows one mark and the number of operations needing attenti
     line: { tone: 'success', mark: 'dot', text: '受付中' },
     pending: 2,
     // 数と単位の間は折り返さない空白（U+00A0。ADR 0024 の約束 1）。
-    label: 'Buddy の状態: 受付中、確認が必要な操作 2 件',
+    label: 'Buddy の状態: 受付中、確認が必要な操作 2\u00a0件',
   });
   assert.deepEqual(
     statusTabView(shown({ stop_scope: 'local', input_permitted: false }), null),
@@ -156,32 +157,50 @@ const visibleText = (html: string) =>
     .replace(/\s+/gu, ' ')
     .trim();
 
-test('the status tab draws a mark and a count with no visible sentence', () => {
+test('the status tab draws a mark, a count and three privacy slots with no visible sentence; pressing it opens the panel', () => {
   const html = render(
     <StatusTab
       view={statusTabView(shown(), connected([entry(1), entry(2)]))}
+      privacy={privacyMarks(shown())}
+      panelOpen={false}
+      onTogglePanel={noop}
       canSummon
       onSummon={noop}
     />,
   );
-  assert.match(html, /role="status"/u);
   assert.match(
     html,
-    /aria-label="Buddy の状態: 受付中、確認が必要な操作 2\u00a0件"/u,
+    /<aside[^>]*aria-label="Buddy の状態: 受付中、確認が必要な操作 2\u00a0件"/u,
   );
+  // UI-04: つまみ（記号・数・専用の記号）を押すとパネルが出る（本人の決定）。押す前は aria-expanded が false。
+  const buttons = html.match(/<button[\s\S]*?<\/button>/gu) ?? [];
+  assert.equal(buttons.length, 2);
+  const toggle = buttons[0] ?? '';
+  assert.match(toggle, /aria-expanded="false"/u);
+  assert.match(toggle, /aria-label="状態のパネルを出す（Buddy の状態: 受付中/u);
+  assert.match(toggle, /●/u);
   // つまみの下に、入力バーと同じキャンバスの記号のボタン（縁つき）がある。読み上げの名前だけで、見える説明文はない。
-  assert.match(html, /<button[^>]*aria-label="キャンバスを前に出す"/u);
-  assert.match(html, /button--outline/u);
-  assert.equal((html.match(/<rect\b/gu) ?? []).length, 4);
-  // 状態を見る部分（記号と数）はボタンの外にある（押せるのは縁のあるボタンだけ）。
-  const button = /<button[\s\S]*?<\/button>/u.exec(html)?.[0] ?? '';
-  assert.doesNotMatch(button, /●/u);
+  const canvas = buttons[1] ?? '';
+  assert.match(canvas, /aria-label="キャンバスを前に出す"/u);
+  assert.match(canvas, /button--outline/u);
+  assert.equal((canvas.match(/<rect\b/gu) ?? []).length, 4);
   assert.doesNotMatch(html, /<button[^>]*\bdisabled/u);
+  // 専用の記号 3 つは決まった順。値がまだない（B05・UI-05・中枢が配るまで）ので、点線の枠だけで記号は描かない。
+  assert.deepEqual(
+    [...html.matchAll(/data-privacy="([a-z_]+)" data-state="([a-z]+)"/gu)].map(
+      (match) => `${match[1]}:${match[2]}`,
+    ),
+    ['voice_external:unknown', 'private_mode:unknown', 'safety_stop:unknown'],
+  );
+  assert.equal((html.match(/border-dashed/gu) ?? []).length, 3);
   // 見える文字は記号と数だけ。
   assert.equal(visibleText(html), '● 2');
   const locked = render(
     <StatusTab
       view={statusTabView({ visibility: 'hidden', lock_state: 'locked' }, null)}
+      privacy={privacyMarks({ visibility: 'hidden', lock_state: 'locked' })}
+      panelOpen={false}
+      onTogglePanel={noop}
       canSummon={canSummonCanvas({
         visibility: 'hidden',
         lock_state: 'locked',
@@ -190,8 +209,68 @@ test('the status tab draws a mark and a count with no visible sentence', () => {
     />,
   );
   assert.equal(visibleText(locked), '○');
+  // ロック中でもパネルは出せる（停止へ届く）。専用の記号は隠す（枠だけ）。
+  const lockedButtons = locked.match(/<button[\s\S]*?<\/button>/gu) ?? [];
+  assert.doesNotMatch(lockedButtons[0] ?? '', /^<button[^>]*\bdisabled/u);
+  assert.equal((locked.match(/data-state="hidden"/gu) ?? []).length, 3);
   // ロック中はキャンバスを呼べない。
   assert.match(locked, /<button[^>]*\bdisabled/u);
+});
+
+test('the privacy slots stay in place and fill in when the state is on', () => {
+  const on = render(
+    <StatusTab
+      view={statusTabView(shown(), null)}
+      privacy={privacyMarks(
+        shown({
+          voice_state: 'conversation_live',
+          storage_mode: 'private',
+          safety_stopped: true,
+        }),
+      )}
+      panelOpen
+      onTogglePanel={noop}
+      canSummon
+      onSummon={noop}
+    />,
+  );
+  // パネルを出している間は、同じつまみがしまうボタンになる。
+  assert.match(on, /aria-expanded="true"/u);
+  assert.match(on, /aria-label="状態のパネルをしまう/u);
+  assert.deepEqual(
+    [...on.matchAll(/data-privacy="([a-z_]+)" data-state="([a-z]+)"/gu)].map(
+      (match) => `${match[1]}:${match[2]}`,
+    ),
+    ['voice_external:on', 'private_mode:on', 'safety_stop:on'],
+  );
+  assert.match(on, /bg-warning-soft/u);
+  assert.match(on, /bg-accent-soft/u);
+  assert.match(on, /bg-danger-soft/u);
+  // 読み上げの名前に専用の記号の状態が入る（画面には出さない）。
+  assert.match(on, /音声を外部へ送っている、記録しないモード、安全停止中/u);
+  assert.equal(visibleText(on), '●');
+  const off = render(
+    <StatusTab
+      view={statusTabView(shown(), null)}
+      privacy={privacyMarks(
+        shown({
+          voice_state: 'waiting_wake_word',
+          storage_mode: 'normal',
+          safety_stopped: false,
+        }),
+      )}
+      panelOpen={false}
+      onTogglePanel={noop}
+      canSummon
+      onSummon={noop}
+    />,
+  );
+  assert.equal((off.match(/data-state="off"/gu) ?? []).length, 3);
+  assert.doesNotMatch(
+    off,
+    /border-dashed|bg-warning-soft|bg-accent-soft|bg-danger-soft/u,
+  );
+  assert.equal(visibleText(off), '●');
 });
 
 test('the input bar is a mark, one field and the canvas button; it is disabled while stopped or locked', () => {

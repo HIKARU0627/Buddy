@@ -60,17 +60,36 @@ function loadPreload(argv?: readonly string[]) {
   return { exposed, invoked, listeners, requested };
 }
 
-test('the preload requires only electron and exposes only invoke, onNotification and the window role', () => {
+test('the preload requires only electron and exposes only invoke, onNotification, the window role and the stop shortcut mark', () => {
   const { exposed, requested } = loadPreload();
   assert.deepEqual(requested, ['electron']);
   assert.deepEqual([...exposed.keys()], ['buddyDesktop']);
   assert.deepEqual(Object.keys(exposed.get('buddyDesktop') ?? {}).sort(), [
     'invoke',
     'onNotification',
+    'stopShortcut',
     'windowRole',
   ]);
-  // 役割の引数がなければ従来の窓。
+  // 役割の引数がなければ従来の窓。停止のショートカットの引数がなければ印を出さない（null）。
   assert.equal(exposed.get('buddyDesktop')?.['windowRole'], 'legacy');
+  assert.equal(exposed.get('buddyDesktop')?.['stopShortcut'], null);
+});
+
+// UI-04: 全体の停止のショートカットを登録できたか（印だけに使う）。知らない値・2 つ以上は null。
+test('the stop shortcut argument is passed through only when it is a known value', () => {
+  const read = (argv: string[]) =>
+    loadPreload(argv).exposed.get('buddyDesktop')?.['stopShortcut'];
+  assert.equal(read(['--buddy-stop-shortcut=registered']), 'registered');
+  assert.equal(
+    read(['--buddy-window-role=status', '--buddy-stop-shortcut=unavailable']),
+    'unavailable',
+  );
+  for (const argv of [
+    ['--buddy-stop-shortcut=yes'],
+    ['--buddy-stop-shortcut='],
+    ['--buddy-stop-shortcut=registered', '--buddy-stop-shortcut=unavailable'],
+  ])
+    assert.equal(read(argv), null, argv.join(' '));
 });
 
 test('requests go only to the contract channels', async () => {
@@ -108,10 +127,11 @@ test('requests go only to the contract channels', async () => {
     'desktop.operation_retry',
     'desktop.operation_check',
   ];
-  // preload の一覧は domain の一覧と同じ（UI-02 の canvas_summon は従来の窓では使わないので、最後に別に足す）。
+  // preload の一覧は domain の一覧と同じ（UI-02 の canvas_summon と UI-04 の status_panel は従来の窓では使わないので、
+  // 最後に別に足す）。
   assert.deepEqual(
     [...DESKTOP_IPC_CHANNELS],
-    [...channels, 'desktop.canvas_summon'],
+    [...channels, 'desktop.canvas_summon', 'desktop.status_panel'],
   );
   for (const channel of channels) {
     const request = { channel, request_id: 'r', payload: null };
@@ -122,8 +142,9 @@ test('requests go only to the contract channels', async () => {
     channels,
   );
   for (const bad of [
-    // 従来の窓（役割の引数なし）はキャンバスを前に出さない。
+    // 従来の窓（役割の引数なし）はキャンバスを前に出さない・状態の層のパネルを使わない。
     { channel: 'desktop.canvas_summon' },
+    { channel: 'desktop.status_panel' },
     { channel: 'desktop.hub_stop' },
     { channel: 'desktop.power_event' },
     { channel: 'desktop.connection_changed' },
@@ -205,6 +226,7 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.operation_retry',
     'desktop.operation_check',
     'desktop.canvas_summon',
+    'desktop.status_panel',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
@@ -288,7 +310,10 @@ test('the legacy role argument keeps every existing channel and notification', a
   const api = apiOf(loaded);
   assert.equal(api.windowRole, 'legacy');
   for (const channel of DESKTOP_IPC_CHANNELS)
-    if (channel === 'desktop.canvas_summon')
+    if (
+      channel === 'desktop.canvas_summon' ||
+      channel === 'desktop.status_panel'
+    )
       await assert.rejects(
         api.invoke({ channel, request_id: 'r', payload: null }),
         /desktop_unknown_channel/u,

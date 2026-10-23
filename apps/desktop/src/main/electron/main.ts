@@ -18,6 +18,7 @@ import {
   screen,
   session,
   shell,
+  systemPreferences,
   type IpcMainInvokeEvent,
 } from 'electron';
 import { readFile } from 'node:fs/promises';
@@ -40,7 +41,6 @@ import {
   type AdminConfirmRequest,
 } from '../core-link.js';
 import {
-  CANVAS_SUMMON_ACCELERATOR,
   CanvasPresence,
   CanvasSummoner,
   isDismissKey,
@@ -49,6 +49,21 @@ import {
   type CanvasSummonSource,
 } from '../canvas-presence.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
+import {
+  STOP_SHORTCUT_ARG,
+  registerGlobalShortcuts,
+  shortcutsForMode,
+  stopShortcutState,
+  trayMenuEntries,
+  type GlobalShortcutId,
+  type StopShortcutState,
+} from '../global-shortcuts.js';
+import {
+  CONFIRM_NOT_SHOWN,
+  StatusPanel,
+  confirmDialogParent,
+  runPanelConfirm,
+} from '../status-panel.js';
 import type { SecretProtector } from '../credential-store.js';
 import { DesktopDeviceController } from '../device-controller.js';
 import { networkSignatureOf } from '../home-reporter.js';
@@ -147,6 +162,36 @@ const summoner = new CanvasSummoner({
   // log は後で宣言するので、呼ぶときに引く。
   log: (code) => log(code),
 });
+// 状態の層のパネル（UI-04）。出しているかの正本は main。画面は窓の幅に合わせて描く。
+const statusPanel = new StatusPanel({
+  window: () => {
+    const window = liveWindow('status');
+    if (window === null) return null;
+    return {
+      setBounds: (bounds, animate) => window.setBounds(bounds, animate),
+      isVisible: () => window.isVisible(),
+      show: () => window.show(),
+      focus: () => window.focus(),
+    };
+  },
+  workArea: () => primaryDisplay().workArea,
+  reducedMotion: () => {
+    try {
+      return systemPreferences.getAnimationSettings().prefersReducedMotion;
+    } catch {
+      return true;
+    }
+  },
+  // パネルをしまうときは、パネルを親にした確認を閉じて送らない。
+  closeConfirm: () => link?.closeConfirm(),
+  // 全体のショートカットで出すとき、ほかのアプリが前面でも Buddy を前面にする（macOS）。
+  activateApp: () => {
+    if (process.platform === 'darwin') app.focus({ steal: true });
+  },
+  log: (code) => log(code),
+});
+// 全体の停止のショートカットを登録できたか（窓とトレイに印を出す。登録は start で窓を作る前に行う）。
+let stopShortcut: StopShortcutState = 'registered';
 // main が作った窓の webContents と役割の対応。送信元の検査と通知の宛先はこれだけで決める。
 const windows = new UiWindowRegistry<BrowserWindow>();
 let tray: Tray | null = null;
@@ -281,7 +326,11 @@ function createWindow(role: UiWindowRole): BrowserWindow {
     ...spec.options,
     webPreferences: {
       ...spec.options.webPreferences,
-      additionalArguments: [...spec.options.webPreferences.additionalArguments],
+      // 停止のショートカットを登録できたか（画面の印だけに使う。受付には使わない）。
+      additionalArguments: [
+        ...spec.options.webPreferences.additionalArguments,
+        `${STOP_SHORTCUT_ARG}${stopShortcut}`,
+      ],
     },
   });
   const contentsId = window.webContents.id;
@@ -313,7 +362,14 @@ function createWindow(role: UiWindowRole): BrowserWindow {
   window.on('closed', () => {
     windows.unregister(contentsId);
     if (role === 'canvas') presence.reset();
+    if (role === 'status') statusPanel.reset();
   });
+  if (role === 'status') {
+    // 状態の層のパネルは、外へのクリック・ほかのアプリへの移動（前面でなくなる）・窓を隠す操作でしまう（UI-04）。
+    // 確認のダイアログ（パネルを親にしたシート・モーダル）へフォーカスが移った blur ではしまわない（status-panel.ts）。
+    window.on('blur', () => statusPanel.hide('blur'));
+    window.on('hide', () => statusPanel.hide('hidden'));
+  }
   if (role === 'canvas') {
     // 前に出したキャンバスは、Esc・ほかのアプリへの移動（前面でなくなる）で後ろへ戻る。
     window.on('blur', () => dismissCanvas('blur'));
@@ -381,14 +437,19 @@ function createTray(): Tray {
   const created = new Tray(icon);
   const run: Record<TrayAction, () => void> = {
     show_window: showWindow,
-    io_stop: () => controller?.stopFromTray(),
+    // 全体の停止のショートカット（UI-04）と同じ処理。
+    io_stop: () => controller?.stopFromMain(),
     client_quit: requestQuit,
   };
+  // 停止の項目には、登録できた停止のショートカットを出す（登録できなければ ⚠ の印。global-shortcuts.ts）。
   created.setContextMenu(
     Menu.buildFromTemplate(
-      TRAY_MENU.map((item) => ({
+      trayMenuEntries(TRAY_MENU, stopShortcut).map((item) => ({
         label: item.label,
         click: run[item.action],
+        ...(item.accelerator === null
+          ? {}
+          : { accelerator: item.accelerator, registerAccelerator: false }),
       })),
     ),
   );
@@ -456,6 +517,11 @@ function registerIpc(): void {
         setImmediate(() => link?.canvasSubscribed());
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window') setImmediate(hideWindows);
+      // 状態の層のパネルを出す・しまう（つまみ・パネルの中の Esc。UI-04）。応答を返してから窓の大きさを変える。
+      if (outcome.effect === 'status_panel_open')
+        setImmediate(() => statusPanel.request(true));
+      if (outcome.effect === 'status_panel_close')
+        setImmediate(() => statusPanel.request(false));
       // キャンバスを前に出す（端のつまみ・入力バー）。応答を返してから出す。
       if (outcome.effect === 'summon_canvas') {
         const source: CanvasSummonSource =
@@ -592,14 +658,18 @@ function createLink(
 
 // 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。親付きのモーダルな OS の確認ダイアログで、
 // 「やめる」を既定・取り消しにする。ロック・切断で signal が閉じられたら閉じる。ウィンドウがなければ確認できないので送らない。
-// 3 つの窓の試作（UI-02）では、状態の層のつまみが小さく、シートを付けられないので、親を付けないアプリのモーダルにする
-// （状態の層がなければ送らないことは同じ。確認の出し方は UI-04 で決める）。
+// 3 つの窓の組み立て（UI-04 で決めた。ADR 0032）では、パネルが出ている間だけ、状態の層の窓（パネル）を親にする
+// （macOS はパネルに付くシート、Windows はパネルが持ち主のモーダル）。パネルが出ていなければ確認を出さず、送らない。
+// 確認を出している間は、確認へフォーカスが移ってもパネルをしまわない。パネルをしまう・窓を隠す・ロック・停止で閉じる。
 async function confirmAdminWithDialog(
   request: AdminConfirmRequest,
   signal: AbortSignal,
-): Promise<boolean> {
-  const window = screenWindow();
-  if (window === null || signal.aborted) return false;
+): Promise<boolean | typeof CONFIRM_NOT_SHOWN> {
+  const parent = confirmDialogParent(uiMode, statusPanel.open);
+  const window = parent === null ? null : liveWindow(parent);
+  // 確認を出せない（親の窓・パネルがない）。「やめる」ではないので、画面操作からやり直させる。
+  if (window === null) return CONFIRM_NOT_SHOWN;
+  if (signal.aborted) return false;
   const text = adminConfirmText(request);
   const options: Electron.MessageBoxOptions = {
     type:
@@ -616,11 +686,16 @@ async function confirmAdminWithDialog(
     noLink: true,
     signal,
   };
-  const result =
-    uiMode === 'canvas'
-      ? await dialog.showMessageBox(options)
-      : await dialog.showMessageBox(window, options);
-  return !signal.aborted && result.response === 1;
+  if (uiMode === 'legacy') {
+    const result = await dialog.showMessageBox(window, options);
+    return !signal.aborted && result.response === 1;
+  }
+  // パネルを親にした確認の手順は status-panel.ts の runPanelConfirm（試験で守る）。main はダイアログを渡すだけ。
+  return runPanelConfirm(statusPanel, signal, {
+    showDialog: () => dialog.showMessageBox(window, options),
+    windowFocused: () => isWindowFocused(liveWindow('status')),
+    defer: (task) => setTimeout(task, 150),
+  });
 }
 
 function start(): void {
@@ -668,26 +743,29 @@ function start(): void {
   registerAppProtocol();
   registerIpc();
   registerPowerMonitor();
-  tray = createTray();
-  updateTray();
   // 起動直後のロック状態は unknown。OS へ問い合わせて確かめる。
   queryLockState();
   link.start(controller.state.lockState);
+  // 全体のショートカット（global-shortcuts.ts）。全体の停止（トレイの停止と同じ処理）はどの組み立てでも、状態の層の
+  // パネル・キャンバスを呼ぶは 3 つの窓の組み立てのときだけ。ほかのアプリが使っていれば登録できず、ショートカットなしで
+  // 続ける（トレイ・つまみ・パネル・入力バーから同じ操作ができる）。停止を登録できなければ、トレイと画面に印を出すので、
+  // 窓とトレイを作る前に登録する。
+  const run: Record<GlobalShortcutId, () => void> = {
+    stop: () => controller?.stopFromMain(),
+    status_panel: () => statusPanel.toggle(),
+    canvas: () => summonCanvas('shortcut'),
+  };
+  stopShortcut = stopShortcutState(
+    registerGlobalShortcuts(
+      shortcutsForMode(uiMode),
+      (accelerator, callback) => globalShortcut.register(accelerator, callback),
+      run,
+      log,
+    ),
+  );
+  tray = createTray();
+  updateTray();
   for (const role of rolesForMode(uiMode)) createWindow(role);
-  // 全体のショートカットでキャンバスを呼ぶ（3 つの窓の組み立てのときだけ）。ほかのアプリが使っていれば登録できず、
-  // ショートカットなしで続ける（端のつまみ・入力バーから呼べる）。
-  if (uiMode === 'canvas') {
-    try {
-      if (
-        !globalShortcut.register(CANVAS_SUMMON_ACCELERATOR, () =>
-          summonCanvas('shortcut'),
-        )
-      )
-        log('canvas_shortcut_unavailable');
-    } catch {
-      log('canvas_shortcut_unavailable');
-    }
-  }
 }
 
 if (!app.requestSingleInstanceLock()) {

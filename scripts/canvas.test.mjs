@@ -312,6 +312,8 @@ const CANVAS_FORBIDDEN = [
   'desktop.operation_reconcile',
   'desktop.operation_retry',
   'desktop.operation_check',
+  // 状態の層のパネルを出す・しまう（UI-04）。キャンバスと入力バーは状態の層を隠せない・動かせない。
+  'desktop.status_panel',
 ];
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
@@ -390,9 +392,10 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 25 個。B04-05 の 7 個と UI-02 の canvas_summon を含む）。
-  assert.equal(channels.size, 25);
-  assert.equal(CANVAS_FORBIDDEN.length + 3, 25);
+  // 手で数えた数（現在の DesktopIpcChannel は 26 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
+  // status_panel を含む）。
+  assert.equal(channels.size, 26);
+  assert.equal(CANVAS_FORBIDDEN.length + 3, 26);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

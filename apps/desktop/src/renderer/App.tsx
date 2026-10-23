@@ -28,6 +28,11 @@ import { useHomeState } from './state/use-home-state.js';
 import { useHubState } from './state/use-hub-state.js';
 import { useWorkState } from './state/use-work-state.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
+import { StopShortcutMark } from './components/StopShortcutMark.js';
+import {
+  stopShortcutKeys,
+  stopShortcutMark,
+} from './state/status-panel-state.js';
 import { rendererWindowRole } from './state/window-role-state.js';
 
 // 操作がないときの空の配列（描画のたびに新しい配列を作らない）。
@@ -102,6 +107,12 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
             : 'この端末'
       }
       onDismissRegistered={dismissRegistered}
+      stopShortcut={
+        <StopShortcutMark
+          mark={stopShortcutMark(api.stopShortcut)}
+          keys={stopShortcutKeys(navigator.userAgent)}
+        />
+      }
       work={
         workShown && connection !== null ? (
           <WorkPanel

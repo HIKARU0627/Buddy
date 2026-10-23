@@ -211,10 +211,12 @@ export interface HomeConfirmRequest {
   readonly ssidChange: 'added' | 'removed' | null;
 }
 
+// 確認の結果。true は「承認する」等を選んだ、false は「やめる」を選んだ。'not_shown' は確認を出せなかった
+// （確認の親の窓・パネルが出ていない。UI-04）で、本人の画面操作からやり直す（screen_operation_required）。
 export type AdminConfirm = (
   request: AdminConfirmRequest,
   signal: AbortSignal,
-) => Promise<boolean>;
+) => Promise<boolean | 'not_shown'>;
 
 export interface ConnectionIpcOutcome {
   readonly response: DesktopIpcResponse;
@@ -1011,7 +1013,7 @@ export class DesktopCoreLink {
     const generation = this.#viewGeneration;
     const controller = new AbortController();
     this.#confirmAbort = controller;
-    let confirmed: boolean;
+    let confirmed: boolean | 'not_shown';
     try {
       confirmed = await confirm(request, controller.signal);
     } catch {
@@ -1023,9 +1025,11 @@ export class DesktopCoreLink {
       return this.#lockState === 'unlocked' ? 'not_connected' : 'device_locked';
     // ウィンドウが隠れた・最小化された（前面でなくなった）ので閉じた。画面操作からやり直す。
     if (controller.signal.aborted) return 'screen_operation_required';
+    // 確認を出せなかった（親の窓・パネルがない）。「やめる」を選んだのではないので、画面操作からやり直す。
+    if (confirmed === 'not_shown') return 'screen_operation_required';
     if (this.#connection?.state.commandScopeId !== scope)
       return 'not_connected';
-    return confirmed ? { scope } : 'confirmation_declined';
+    return confirmed === true ? { scope } : 'confirmation_declined';
   }
 
   // 結果が分からなかった参照を、同じ種類の一覧で照合できるまで保留にする。

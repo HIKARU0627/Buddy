@@ -653,6 +653,52 @@ function useFocusRestore(openRef: string | null, loaded: boolean) {
   }, [openRef, loaded]);
 }
 
+// 確認を開いている操作（一覧にあれば）と、確認を開いた・閉じたときのフォーカスの移動。WorkPanel と状態の層のパネルが
+// 呼び、結果を WorkOperations に渡す（フォーカスの移動は呼び出し側の画面が持つ。UI-04 のレビュー）。
+export function usePreviewFocus(
+  state: WorkViewState,
+  operations: readonly DesktopOperationEntry[],
+): DesktopOperationEntry | undefined {
+  const previewEntry = operations.find(
+    (entry) => entry.ref === state.preview?.ref,
+  );
+  const previewOpen = state.preview !== null && previewEntry !== undefined;
+  useFocusRestore(
+    previewOpen ? (state.preview?.ref ?? null) : null,
+    state.preview !== null && state.preview.preview !== null,
+  );
+  return previewEntry;
+}
+
+// 確認が必要な操作の一覧と、確認の欄（変更の確認）。従来の窓の WorkPanel と、3 つの窓の組み立ての状態の層のパネル
+// （UI-04、ADR 0032）が同じ部品を使う（承認・取消・再試行・照合は、どちらも main の OS の確認ダイアログで 1 回）。
+// 中枢に接続している間だけ描く（呼び出し側が決める）。
+export function WorkOperations({
+  state,
+  actions,
+  operations,
+  stopped,
+  previewEntry,
+}: {
+  readonly state: WorkViewState;
+  readonly actions: WorkActions;
+  readonly operations: readonly DesktopOperationEntry[];
+  // この端末の入出力が止まっている（承認の準備・再試行を出さない。取消と照合は止まっていても使える）。
+  readonly stopped: boolean;
+  // 確認を開いている操作（usePreviewFocus の戻り値）。
+  readonly previewEntry: DesktopOperationEntry | undefined;
+}) {
+  return (
+    <OperationSections
+      state={state}
+      actions={actions}
+      operations={operations}
+      stopped={stopped}
+      previewEntry={previewEntry}
+    />
+  );
+}
+
 export function WorkPanel({
   state,
   actions,
@@ -674,14 +720,8 @@ export function WorkPanel({
     : stopped
       ? WORK_LABELS.stopped
       : null;
-  const previewEntry = operations.find(
-    (entry) => entry.ref === state.preview?.ref,
-  );
+  const previewEntry = usePreviewFocus(state, operations);
   const previewOpen = state.preview !== null && previewEntry !== undefined;
-  useFocusRestore(
-    previewOpen ? (state.preview?.ref ?? null) : null,
-    state.preview !== null && state.preview.preview !== null,
-  );
   return (
     <>
       <Conversation
@@ -692,7 +732,7 @@ export function WorkPanel({
         previewOpen={previewOpen && state.preview?.preview?.approvable === true}
       />
       {connected ? (
-        <OperationSections
+        <WorkOperations
           state={state}
           actions={actions}
           operations={operations}

@@ -67,6 +67,15 @@ export function channelAllowedForWindow(
   return desktopChannelAllowedForRole(role, channel);
 }
 
+// キャンバスの窓が状態を取った後に、キャンバスの記述を送り直すか。キャンバスの窓は購読を始めてから状態を取るので、
+// その取得を「通知を受け取る準備ができた」合図にする（UI-03。読み込みの通知を購読の前に取り逃した画面を救う）。
+export function canvasResendAfter(
+  role: UiWindowRole | null,
+  channel: string,
+): boolean {
+  return role === 'canvas' && channel === 'desktop.get_state';
+}
+
 // その窓へ通知を送ってよいか。
 export function notificationAllowedForWindow(
   role: UiWindowRole,

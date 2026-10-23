@@ -49,6 +49,7 @@ import type { PinnedHub } from './hub-transport.js';
 import { systemClock } from './system-clock.js';
 import {
   UiWindowRegistry,
+  canvasResendAfter,
   senderFactsOf,
   windowSender,
 } from './window-roles.js';
@@ -179,6 +180,23 @@ interface Client {
   coreTurn(text: string): Promise<{ status: number; body: unknown }>;
 }
 
+// 中枢からの版の知らせ（購読の canvas メッセージ）が届き、main の処理（取るかどうかの判断）が済んだときに解決する。
+// 接続の listener より後に登録するので、解決した時点で main の onRevision は呼ばれている（取得は idle で待つ）。
+function nextNotice(
+  client: Client,
+  predicate: (revision: string) => boolean = () => true,
+): Promise<string> {
+  const connection = client.link.connection;
+  assert(connection !== null, 'not connected');
+  return new Promise((resolve) => {
+    const off = connection.onCanvas((revision) => {
+      if (!predicate(revision)) return;
+      off();
+      resolve(revision);
+    });
+  });
+}
+
 interface ClientOptions {
   // 応答を中枢から受け取った後、クライアントへ返す前に保つ（世代の競合を作る）。
   readonly holdResponse?: (
@@ -186,6 +204,8 @@ interface ClientOptions {
     path: string,
   ) => Promise<void> | undefined;
   // 応答を書き換える（中枢が契約に反する記述を返したときの試験）。
+  // 端末の入出力の状態（試験が書き換える。停止・io_epoch）。
+  readonly io?: { state: DesktopIoState };
   readonly rewrite?: (
     path: string,
     outcome: { kind: string; status?: number; body?: unknown },
@@ -245,6 +265,9 @@ async function startClient(
     log: (code) => logs.push(code),
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     aliveTimeoutMs: 3_000,
+    ...(options.io === undefined
+      ? {}
+      : { ioState: () => (options.io as { state: DesktopIoState }).state }),
     canvasMode: true,
     onCanvas: (notification) => {
       // 通知の宛先は、読み込みが終わり役割の表に通知がある窓だけ（キャンバスの窓だけ）。
@@ -469,16 +492,25 @@ test(
     assert.equal(secondRefs.length, 4);
     for (const ref of secondRefs)
       assert(!firstRefs.some((old) => old.ref === ref.ref));
-    // 知らない文は聞き返し（文字の結果）。キャンバスは変わらない。
-    const before = client.canvasNotices.length;
+    // 知らない文は聞き返し（文字の結果）。キャンバスは変わらない。固定の待ちは使わず、順序で確かめる: 聞き返しの後に本物の
+    // 変更（版 3）を行い、その知らせ（購読は順番どおり）が届くまでに、版 3 より前の知らせが 1 つも出ていないこと。
+    const seen: string[] = [];
+    const off = client.link.connection?.onCanvas((revision) =>
+      seen.push(revision),
+    );
     const clarified = await client.submit('こんにちは');
     assert.equal(
       (field(clarified, 'turn') as { status: string }).status,
       'clarification',
     );
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    assert.equal(client.canvasNotices.length, before);
-    assert.equal((await client.coreCanvas()).canvas_revision, '2');
+    const third = nextNotice(client, (revision) => revision === '3');
+    assert.equal((await client.coreTurn('今日の予定を見せて')).status, 200);
+    await third;
+    await client.link.canvasIdle();
+    off?.();
+    assert.deepEqual(seen, ['3']);
+    await waitUntil(() => latest(client)?.canvas_revision === '3', 'rev 3');
+    assert.equal((await client.coreCanvas()).canvas_revision, '3');
   },
 );
 
@@ -508,9 +540,12 @@ test(
     });
 
     // ロック中に中枢のキャンバスが変わる（別の端末の発言）。版の知らせが届いても取りに行かない。
+    const noticed = nextNotice(client, (revision) => revision === '2');
     const other = await client.coreTurn('今日の予定を見せて');
     assert.equal(other.status, 200, JSON.stringify(other.body));
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // 版の知らせが届き、main が処理を終えるまで待つ（固定の待ちは使わない）。
+    await noticed;
+    await client.link.canvasIdle();
     assert.equal(
       client.requests.filter((line) => line === 'GET /v1/canvas').length,
       fetchesBefore,
@@ -559,6 +594,7 @@ test(
 
     // 発言を送った後、応答が届く前にロックする: 内容を画面へ返さず、結果不明にする（未送信と答えない）。
     hold = '/v1/stream/turns';
+    const noticedOne = nextNotice(client, (revision) => revision === '1');
     const submitting = client.submit('今日の用事を見せて');
     await waitUntil(() => gates.length === 1, 'turn gate');
     client.link.setLockState('locked');
@@ -569,8 +605,10 @@ test(
     const response = await submitting;
     assert.equal(response.outcome, 'rejected');
     assert.equal(field(response, 'reason'), 'outcome_unknown');
-    // 中枢には届いている（記述は版 1 になった）が、ロック中なので画面へは何も渡さない。
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // 中枢には届いている（記述は版 1 になった）が、ロック中なので画面へは何も渡さない。版の知らせの処理と、
+    // 進行中の取得の完了まで待つ。
+    await noticedOne;
+    await client.link.canvasIdle();
     assert.equal((await client.coreCanvas()).canvas_revision, '1');
     assert.equal(client.link.canvasView(), null);
     assert.equal(client.canvasNotices.length, atLock);
@@ -589,7 +627,8 @@ test(
     client.link.setLockState('locked');
     hold = null;
     gates[0]?.release();
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // 保っていた取得の処理（世代の照合で捨てる）が終わるまで待つ。
+    await client.link.canvasIdle();
     // ロックで空を 1 回通知しただけ。保っていた版 2 の記述は渡していない。
     assert.equal(client.canvasNotices.length, shownBefore + 1);
     assert.deepEqual(client.canvasNotices.at(-1)?.canvas, null);
@@ -674,12 +713,13 @@ test(
         body['canvas_revision'] = '2';
         return mutate(body);
       };
-      const turn = await client.coreTurn('今日の予定を見せて');
-      assert.equal(turn.status, 200, name);
-      // 版の知らせが届いて取得が走り、拒否のログが出るまで待つ。
+      // 基準の件数は操作の前に取る（操作の間に拒否が終わっても取り逃さない）。
       const rejections = client.logs.filter(
         (code) => code === 'canvas_document_rejected',
       ).length;
+      const turn = await client.coreTurn('今日の予定を見せて');
+      assert.equal(turn.status, 200, name);
+      // 版の知らせが届いて取得が走り、拒否のログが出るまで待つ。
       await waitUntil(
         () =>
           client.logs.filter((code) => code === 'canvas_document_rejected')
@@ -818,5 +858,150 @@ test(
       .entries()
       .map((entry) => entry.role);
     assert.deepEqual(roles.sort(), ['canvas', 'input', 'status']);
+  },
+);
+
+test(
+  'UI-03: stopping input (or a new io_epoch) discards the canvas and the refs, nothing is fetched while stopped, and resuming restores it',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const io = { state: { ...UNLOCKED } as DesktopIoState };
+    const client = await startClient(t, hub, { io });
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    await client.submit('今日の用事を見せて');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    const noticesBefore = client.canvasNotices.length;
+    const fetchCount = () =>
+      client.requests.filter((line) => line === 'GET /v1/canvas').length;
+
+    // 停止（トレイ・画面のどれでも io_epoch が進む）: 記述と参照を捨てて、空を通知する。ロック状態は変わらない。
+    io.state = { lockState: 'unlocked', stopScope: 'local', ioEpoch: '1' };
+    client.link.ioStateChanged();
+    assert.equal(client.link.canvasView(), null);
+    assert.equal(client.canvasNotices.length, noticesBefore + 1);
+    assert.deepEqual(client.canvasNotices.at(-1), {
+      channel: 'desktop.canvas_changed',
+      canvas: null,
+    });
+
+    // 停止中に中枢のキャンバスが変わる。版の知らせは届くが、取りに行かない。
+    const fetches = fetchCount();
+    const noticed = nextNotice(client, (revision) => revision === '2');
+    assert.equal((await client.coreTurn('今日の予定を見せて')).status, 200);
+    await noticed;
+    await client.link.canvasIdle();
+    assert.equal(fetchCount(), fetches);
+    assert.equal(client.link.canvasView(), null);
+    assert.equal(client.canvasNotices.length, noticesBefore + 1);
+
+    // 再開（停止の世代のまま）: 中枢から取り直して渡す。
+    io.state = { lockState: 'unlocked', stopScope: 'none', ioEpoch: '1' };
+    client.link.ioStateChanged();
+    await waitUntil(() => latest(client)?.canvas_revision === '2', 'rev 2');
+    assert.equal(client.link.canvasView()?.canvas_revision, '2');
+
+    // 世代だけが進んだ（停止と再開の通知を main が 1 つにまとめて受けた）: 捨てて、取り直す。
+    const count = client.canvasNotices.length;
+    io.state = { lockState: 'unlocked', stopScope: 'none', ioEpoch: '3' };
+    client.link.ioStateChanged();
+    assert.equal(client.canvasNotices.at(count)?.canvas ?? null, null);
+    await waitUntil(
+      () => client.link.canvasView()?.canvas_revision === '2',
+      'restored after epoch change',
+    );
+  },
+);
+
+test(
+  'UI-03: an answer that arrives after input was stopped is not shown',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const io = { state: { ...UNLOCKED } as DesktopIoState };
+    const gates: (() => void)[] = [];
+    let hold = false;
+    const client = await startClient(t, hub, {
+      io,
+      holdResponse: (_method, path) =>
+        hold && path === '/v1/canvas'
+          ? new Promise<void>((resolve) => gates.push(resolve))
+          : undefined,
+    });
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    // 取得の応答を保っている間に停止する。
+    hold = true;
+    const noticed = nextNotice(client, (revision) => revision === '1');
+    assert.equal((await client.coreTurn('今日の用事を見せて')).status, 200);
+    await noticed;
+    await waitUntil(() => gates.length === 1, 'canvas gate');
+    const atStop = client.canvasNotices.length;
+    io.state = { lockState: 'unlocked', stopScope: 'local', ioEpoch: '1' };
+    client.link.ioStateChanged();
+    hold = false;
+    gates[0]?.();
+    await client.link.canvasIdle();
+    // 停止の通知（空）のあとに、保っていた版 1 の記述は渡していない。
+    assert.equal(client.canvasNotices.at(-1)?.canvas ?? null, null);
+    assert(
+      client.canvasNotices
+        .slice(atStop)
+        .every((notice) => notice.canvas === null),
+    );
+    assert.equal(client.link.canvasView(), null);
+    // 発言も停止中は送らない。
+    const before = client.streamBodies.length;
+    const refused = await client.link.handleOperationIpc(
+      'desktop.turn_submit',
+      {
+        channel: 'desktop.turn_submit',
+        request_id: randomUUID(),
+        payload: { text: '今日の用事を見せて' },
+      },
+      senderFor(client.registry, 13, 'desktop.turn_submit'),
+      io.state,
+    );
+    assert.equal(field(refused.response, 'reason'), 'input_stopped');
+    assert.equal(client.streamBodies.length, before);
+  },
+);
+
+test(
+  'UI-03: a canvas window that missed the first notice gets the description again when it asks for its state',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startCanvasHub(t);
+    const client = await startClient(t, hub);
+    client.link.start('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
+    await client.submit('今日の用事を見せて');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
+    // 読み込み直した窓は、通知が購読より先に来て取り逃した（何も受け取っていない）。購読を始めて状態を取ると、
+    // main は今の記述を送り直す。
+    const missed = client.canvasNotices.length;
+    assert.equal(canvasResendAfter('canvas', 'desktop.get_state'), true);
+    client.link.canvasSubscribed();
+    assert.equal(client.canvasNotices.length, missed + 1);
+    const again = client.canvasNotices.at(-1)?.canvas as DesktopCanvasView;
+    assert.deepEqual(again, latest(client));
+    assert.equal(again.canvas_revision, '1');
+    assert.equal(again.items[0]?.heading, '今日の用事');
+    // 記述がまだない（ロックで捨てた後に解除した直後）ときも、取り直して渡す。
+    client.link.setLockState('locked');
+    client.link.setLockState('unlocked');
+    await waitUntil(() => latest(client)?.canvas_revision === '1', 'restored');
+    // ロック中は取りに行かない・渡さない。
+    client.link.setLockState('locked');
+    const lockedCount = client.canvasNotices.length;
+    client.link.canvasSubscribed();
+    await client.link.canvasIdle();
+    assert.equal(client.canvasNotices.length, lockedCount);
+    // 状態の取得で送り直すのはキャンバスの窓だけ。
+    for (const role of ['status', 'input', 'legacy'] as const)
+      assert.equal(canvasResendAfter(role, 'desktop.get_state'), false);
+    assert.equal(canvasResendAfter('canvas', 'desktop.io_stop'), false);
+    assert.equal(canvasResendAfter(null, 'desktop.get_state'), false);
   },
 );

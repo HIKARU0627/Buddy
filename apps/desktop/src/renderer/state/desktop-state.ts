@@ -99,8 +99,11 @@ export function applyNotification(
     return {
       ...state,
       status,
-      // ロック中・状態が不明になったら、描いている記述を捨てる（解除しても戻さない）。
-      canvas: status.visibility === 'shown' ? state.canvas : null,
+      // ロック中・状態が不明・入出力の停止になったら、描いている記述を捨てる（解除・再開しても戻さない。main が取り直して送る）。
+      canvas:
+        status.visibility === 'shown' && status.stop_scope === 'none'
+          ? state.canvas
+          : null,
       // 再開したら止まった理由を消す。入出力の状態が変わったら、入出力の拒否の文言も消す。
       stopCause: resumed ? null : state.stopCause,
       message:

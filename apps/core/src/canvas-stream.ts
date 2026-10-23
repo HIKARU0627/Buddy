@@ -192,7 +192,7 @@ const routeOf = (operationId: string): ApiRoute => {
   return found;
 };
 
-// 同じ要求の再送で返す、前に当てた変更の束（Core の RAM。上限つき）。
+// 応答のキャッシュの上限（前に当てた変更の束）。
 const MAX_REPLAYS = 256;
 
 interface Stream {
@@ -211,7 +211,9 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   const postTurnRoute = routeOf('postTurn');
   let current: Stream | null = null;
   let creating: Promise<EnsureResult> | null = null;
+  // 前に当てた束（応答のキャッシュ。上限つき）と、配置を済ませた発言の ID（上限なし。1 人の流れの RAM だけ）。
   const replays = new Map<string, CanvasOpBatch | null>();
+  const placed = new Set<string>();
 
   // 今の区切り。流れの最初の発言で作り（理由: stream_started）、以後は同じ区切りを使う。同時の最初の発言でも 1 つだけ。
   const ensureStream = (request: ApiHandlerRequest): Promise<EnsureResult> => {
@@ -285,18 +287,20 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     if (!contract.valid('TurnResponse', inner.body))
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     const turn = inner.body as TurnResponse;
-    // 同じ要求の再送は、前に当てた束をそのまま返す（もう一度配置しない）。
-    const key = `${stringOf(body, 'command_scope_id')}:${requestId}`;
+    // 同じ要求の再送は、もう一度配置しない。配置済みかは発言の ID（turn_id。再送は保存済みの同じ発言を返す）で、
+    // 応答の束のキャッシュの件数とは切り離して覚える（キャッシュから消えた後の再送でも再配置しない。そのときの束は
+    // 再現できないので canvas は null）。UI-05 で発言の記録に結び付けて保存する。
     let canvas: CanvasOpBatch | null;
-    if (replays.has(key)) canvas = replays.get(key) ?? null;
+    if (placed.has(turn.turn_id)) canvas = replays.get(turn.turn_id) ?? null;
     else {
+      placed.add(turn.turn_id);
       const batch = (options.place ?? placeCanvasForTurn)(
         options.canvas.document,
         turn.result_view,
       );
       // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。
       canvas = batch !== null && options.canvas.apply(batch).ok ? batch : null;
-      replays.set(key, canvas);
+      replays.set(turn.turn_id, canvas);
       for (const old of replays.keys()) {
         if (replays.size <= MAX_REPLAYS) break;
         replays.delete(old);

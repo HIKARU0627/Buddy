@@ -659,13 +659,19 @@ test(
       'operations'
     ] as unknown[];
     assert.equal(operations.length, 1);
-    // キャンバスは空のまま、知らせも出ていない。
+    // 聞き返し・承認待ちの操作の後も、キャンバスは空のまま。
     assert.deepEqual(await canvasOf(core, device), EMPTY_CANVAS);
-    // 少し待っても知らせは来ない（イベントは操作の更新だけ）。
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // 固定の待ちは使わず、順序で確かめる。次に本物の変更（予定の照会）を行い、その知らせ（版 1）が届いた時点で、それより前に
+    // キャンバスの知らせが 1 つも出ていないこと（WSS の送信は順番どおり）。
+    const real = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(real.status, 200, real.text);
+    await stream.waitFor(
+      (messages) => messages.some((message) => message.type === 'canvas'),
+      'first canvas notice',
+    );
     assert.deepEqual(
       stream.messages.filter((message) => message.type === 'canvas'),
-      [],
+      [{ type: 'canvas', canvas_revision: '1' }],
     );
   },
 );
@@ -778,5 +784,44 @@ test(
     assert.equal(op.item.data.more_count, 3);
     // 重ならないので強調しない。
     assert.equal(op.item.emphasis, 'normal');
+  },
+);
+
+test(
+  'UI-03: a request replayed after the response cache evicted it is answered but never placed again',
+  { timeout: 120_000 },
+  async (t) => {
+    const core = await startCanvasCore(t);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const firstId = randomUUID();
+    const first = await postStream(core, device, scope, '今日の用事を見せて', {
+      requestId: firstId,
+    });
+    const firstBody = first.json as unknown as StreamTurnResponse;
+    assert.equal(firstBody.canvas?.canvas_revision, '1');
+    // 応答のキャッシュの上限（256 件）を超えるまで、別の発言（聞き返し。配置なし）を送る。
+    for (let index = 0; index < 260; index += 1) {
+      const filler = await postStream(core, device, scope, 'こんにちは');
+      assert.equal(filler.status, 200, filler.text);
+    }
+    // もう一度、現在の記述を版 2 にしておく（最初の束の参照へ戻されたことを見分けるため）。
+    const second = await postStream(core, device, scope, '今日の予定を見せて');
+    assert.equal(
+      (second.json as unknown as StreamTurnResponse).canvas?.canvas_revision,
+      '2',
+    );
+    const before = JSON.stringify(await canvasOf(core, device));
+    // 最初の要求の再送: 保存済みの発言の応答（文字の結果）は同じで、もう一度配置しない（版も参照も変わらない）。
+    const again = await postStream(core, device, scope, '今日の用事を見せて', {
+      requestId: firstId,
+    });
+    assert.equal(again.status, 200, again.text);
+    const againBody = again.json as unknown as StreamTurnResponse;
+    assert.equal(againBody.turn_id, firstBody.turn_id);
+    assert.deepEqual(againBody.result_view, firstBody.result_view);
+    assert.equal(againBody.canvas, null);
+    assert.equal(JSON.stringify(await canvasOf(core, device)), before);
+    assert.equal((await canvasOf(core, device)).canvas_revision, '2');
   },
 );

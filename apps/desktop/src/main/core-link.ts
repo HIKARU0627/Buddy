@@ -1668,6 +1668,22 @@ export class DesktopCoreLink {
     return this.#options.canvasMode === true ? this.#canvas.view : null;
   }
 
+  // 入出力の状態（停止・io_epoch）が変わった（Electron の層が呼ぶ）。停止・世代の変化ではキャンバスの記述を捨て、再開
+  // したら取り直す（キャンバスのモードだけ）。
+  ioStateChanged(): void {
+    if (this.#options.canvasMode === true) this.#canvas.ioChanged();
+  }
+
+  // キャンバスの窓が通知を受け取る準備を終えた。今の記述を送り直す（なければ取り直す）。
+  canvasSubscribed(): void {
+    if (this.#options.canvasMode === true) this.#canvas.resend();
+  }
+
+  // 試験用: 進行中のキャンバスの取得がすべて終わるまで待つ。
+  canvasIdle(): Promise<void> {
+    return this.#canvas.idle();
+  }
+
   // キャンバスの記述をキャンバスの窓へ通知する。送る前に契約で確かめる（形式に合わなければ送らず捨てる）。
   #publishCanvas(canvas: DesktopCanvasView | null): void {
     if (this.#options.canvasMode !== true) return;

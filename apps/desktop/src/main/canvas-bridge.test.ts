@@ -63,6 +63,7 @@ function setup(
   options: {
     readonly unlocked?: () => boolean;
     readonly permitted?: () => boolean;
+    readonly epoch?: () => string;
   } = {},
 ) {
   const sent: Sent[] = [];
@@ -93,7 +94,10 @@ function setup(
     connection: () => connection,
     newRef: () => id(refCounter++),
     unlocked: options.unlocked ?? (() => true),
-    io: () => ({ permitted: options.permitted?.() ?? true, epoch: '0' }),
+    io: () => ({
+      permitted: options.permitted?.() ?? true,
+      epoch: options.epoch?.() ?? '0',
+    }),
     publish: (canvas) => published.push(canvas),
     turnResult: (turn) => ({
       status: turn.status,
@@ -411,4 +415,80 @@ test('message failures: not sent, unknown, rejected, malformed, stopped input, a
   });
   assert.deepEqual(stopped.sent, []);
   permitted = true;
+});
+
+test('stopping input discards the description; nothing is fetched while stopped; resuming fetches again', async () => {
+  let permitted = true;
+  const { bridge, script, published, sent } = setup({
+    permitted: () => permitted,
+  });
+  script.push(ok(document('1')));
+  await bridge.refresh();
+  assert.equal(bridge.refCount, 2);
+  permitted = false;
+  bridge.ioChanged();
+  assert.equal(bridge.view === null, true);
+  assert.equal(bridge.refCount, 0);
+  assert.deepEqual(published.at(-1), null);
+  const sentBefore = sent.length;
+  // 停止中は取得も版の知らせの処理もしない。
+  await bridge.refresh();
+  bridge.onRevision('9');
+  await bridge.idle();
+  assert.equal(sent.length, sentBefore);
+  // 再開: 取り直して渡す。
+  permitted = true;
+  script.push(ok(document('2', [0x82])));
+  bridge.ioChanged();
+  await bridge.idle();
+  assert.equal(bridge.view?.canvas_revision, '2');
+});
+
+test('a fetch that is answered after input was stopped is dropped', async () => {
+  let permitted = true;
+  const { bridge, script, published } = setup({ permitted: () => permitted });
+  let release: (outcome: Outcome) => void = () => undefined;
+  script.push(new Promise<Outcome>((resolve) => (release = resolve)));
+  const pending = bridge.refresh();
+  // 世代を進めずに、停止の状態だけが変わった（通知の前に応答が届く順序）。
+  permitted = false;
+  release(ok(document('1')));
+  await pending;
+  assert.deepEqual(published, []);
+  assert.equal(bridge.view === null, true);
+});
+
+test('a new io_epoch discards the description even when the stop was not seen', async () => {
+  let epoch = '0';
+  const { bridge, script, published } = setup({ epoch: () => epoch });
+  script.push(ok(document('1')));
+  await bridge.refresh();
+  // 世代が進んだ通知: 前の記述を捨てて（空を通知）、取り直す。
+  epoch = '2';
+  script.push(ok(document('2', [0x82])));
+  bridge.ioChanged();
+  assert.deepEqual(published.at(-1), null);
+  await bridge.idle();
+  assert.equal(bridge.view?.canvas_revision, '2');
+  // ioChanged を見逃した場合でも、次の取得の前に世代の違いで前の記述を捨てる（版 2 から 3 へ進むだけでなく、必ず空を挟む）。
+  const count = published.length;
+  epoch = '4';
+  script.push(ok(document('3', [0x83])));
+  await bridge.refresh();
+  assert.deepEqual(
+    published.slice(count).map((view) => view?.canvas_revision ?? null),
+    [null, '3'],
+  );
+});
+
+test('resend hands the description over again, or fetches it when there is none', async () => {
+  const { bridge, script, published } = setup();
+  script.push(ok(document('1')));
+  bridge.resend();
+  await bridge.idle();
+  assert.equal(published.length, 1);
+  assert.equal(published[0]?.canvas_revision, '1');
+  bridge.resend();
+  assert.equal(published.length, 2);
+  assert.deepEqual(published[1], published[0]);
 });

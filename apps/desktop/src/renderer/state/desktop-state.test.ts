@@ -414,3 +414,31 @@ test('the canvas notification sets the description; null discards it; a locked s
     null,
   );
 });
+
+// 入出力の停止でも、キャンバスの記述は描かない（ロックと同じ。再開しても main が送るまで戻さない）。
+test('a stopped state discards the canvas description and resuming does not bring it back', () => {
+  const view = { canvas_revision: '4', items: [], reading_order: [] };
+  const running = applyNotification(
+    applyNotification(INITIAL_VIEW_STATE, {
+      channel: 'desktop.canvas_changed',
+      canvas: view,
+    }),
+    { channel: 'desktop.state_changed', status: shown('none') },
+  );
+  assert.deepEqual(running.canvas, view);
+  for (const scope of ['local', 'guest', 'global'] as const) {
+    const stopped = applyNotification(running, {
+      channel: 'desktop.state_changed',
+      status: shown(scope),
+    });
+    assert.equal(stopped.canvas, null, scope);
+    assert.equal(
+      applyNotification(stopped, {
+        channel: 'desktop.state_changed',
+        status: shown('none'),
+      }).canvas,
+      null,
+      scope,
+    );
+  }
+});

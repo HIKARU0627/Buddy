@@ -7,7 +7,7 @@
 //   反すれば捨て、前に渡した版が残る（画面の記述は変えない）。
 // - 画面へ渡す記述: 表示対象の参照（予定・メールの ID）は、main が作った不透明な参照に置き換える。中枢の識別子は
 //   main の中にだけ持ち、画面・ログに出さない。記述はキャンバスの窓だけに通知する（役割の表）。
-// - 世代（ロック・切断・世代の変化）: reset で記述と参照を捨て、画面へ「空」を通知する。非同期の取得・発言は各 await の
+// - 世代（ロック・停止・切断・世代の変化）: reset で記述と参照を捨て、画面へ「空」を通知する。非同期の取得・発言は各 await の
 //   後に世代・取得の順・ロック状態を照合する（ADR 0031 と同じ。またいだ応答は何も変えない）。取得は後に始めたものだけが
 //   有効で、古い応答で新しい記述を戻さない。版は戻さない（同じ世代の中で小さい版を受けない）。
 // Electron に依存しない（node:test で試験する）。
@@ -55,6 +55,10 @@ export class CanvasBridge {
   // 取得の順。取得を始めるたびに進め、最後に始めたものだけを使う。
   #fetchSeq = 0;
   #view: DesktopCanvasView | null = null;
+  // 最後に見た入出力の世代（io_epoch）。停止（世代が進む）をまたいだ記述は使わない。
+  #epoch: string | null = null;
+  // 進行中の取得（試験が通知の処理の完了を待つため。idle）。
+  readonly #inflight = new Set<Promise<void>>();
   // 画面に渡した参照 → 中枢の識別子（main の中だけ。物を開くときに main が解決する。UI-07 以降）。
   #refs = new Map<string, { readonly kind: string; readonly id: string }>();
 
@@ -83,18 +87,56 @@ export class CanvasBridge {
     this.#host.publish(null);
   }
 
+  // 入出力の状態（停止・io_epoch）が変わった。停止中・世代が進んだときは記述と参照を捨てる（ロックと同じ。ADR 0032 の
+  // 「停止で隠す」）。再開して記述がなければ取り直す。
+  ioChanged(): void {
+    const io = this.#host.io();
+    const changed = this.#epoch !== null && this.#epoch !== io.epoch;
+    this.#epoch = io.epoch;
+    if (!io.permitted || changed) this.reset();
+    if (io.permitted && this.#view === null) void this.refresh();
+  }
+
+  // 画面が通知を受け取る準備を終えた（キャンバスの窓が読み込み直した・購読を始めた）。今の記述を送り直す。記述がなければ
+  // 取り直す。通知が購読より先に来て取り逃した画面を、次の変更まで空のままにしない。
+  resend(): void {
+    if (this.#view !== null) this.#host.publish(this.#view);
+    else void this.refresh();
+  }
+
+  // 進行中の取得がすべて終わるまで待つ（試験用。通知の処理の完了と同期する）。
+  async idle(): Promise<void> {
+    while (this.#inflight.size > 0)
+      await Promise.allSettled([...this.#inflight]);
+  }
+
   // 中枢から版の知らせ（本文なし）が届いた。持っている版より新しければ取りに行く。
   onRevision(revision: string): void {
-    if (!this.#host.unlocked()) return;
+    if (!this.#host.unlocked() || !this.#host.io().permitted) return;
     if (this.#view !== null && !newer(revision, this.#view.canvas_revision))
       return;
     void this.refresh();
   }
 
   // 中枢から今の記述を取り、検査を通ったときだけ画面へ渡す。読み取りだけで、中枢の記述は変えない。
-  async refresh(): Promise<void> {
+  refresh(): Promise<void> {
+    const run = this.#refresh();
+    this.#inflight.add(run);
+    const done = () => {
+      this.#inflight.delete(run);
+    };
+    run.then(done, done);
+    return run;
+  }
+
+  async #refresh(): Promise<void> {
     const connection = this.#host.connection();
     if (connection === null || !this.#host.unlocked()) return;
+    // 停止中は取らない。停止をまたいだ（世代が進んだ）記述は捨てる。
+    const io = this.#host.io();
+    if (!io.permitted) return;
+    if (this.#epoch !== null && this.#epoch !== io.epoch) this.reset();
+    this.#epoch = io.epoch;
     const gen = this.#gen;
     const seq = ++this.#fetchSeq;
     const outcome = await connection.request({
@@ -104,6 +146,8 @@ export class CanvasBridge {
     // 世代をまたいだ・後から始めた取得がある・ロックした: 何も変えない。
     if (gen !== this.#gen || seq !== this.#fetchSeq || !this.#host.unlocked())
       return;
+    const after = this.#host.io();
+    if (!after.permitted || after.epoch !== io.epoch) return;
     if (outcome.kind !== 'response' || outcome.status !== 200) {
       // 取れなかった。前の版を残す（捨てるのはロック・切断の世代の変化だけ）。
       this.#host.log('canvas_fetch_failed');

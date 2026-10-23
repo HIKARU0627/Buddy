@@ -9,6 +9,7 @@ import {
 } from '../../state/use-role-window-state.js';
 import {
   canSummonCanvas,
+  canvasContentShown,
   contentShown,
   inputBarEnabled,
   inputDraftAfter,
@@ -25,7 +26,7 @@ function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const { state } = useRoleWindowState(api, 'canvas');
   const focused = useWindowFocused();
   return (
-    <CanvasGround front={focused} shown={contentShown(state.status)}>
+    <CanvasGround front={focused} shown={canvasContentShown(state.status)}>
       <CanvasBoard view={state.canvas} />
     </CanvasGround>
   );

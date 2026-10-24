@@ -5993,6 +5993,14 @@
         },
         "overrun_reviewed": {
           "type": "boolean"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcTime",
+          "description": "予約を受け付けた時刻（本人が対象の予約を見分ける表示用。B07-05、ADR 0039）。記録のない古い行では省く。"
+        },
+        "origin": {
+          "$ref": "#/$defs/BudgetOrigin",
+          "description": "予約の処理の起点（本人の依頼か、自発の処理か。表示用）。記録のない古い行では省く。"
         }
       },
       "required": [
@@ -9676,9 +9684,12 @@
         "desktop.canvas_summon",
         "desktop.status_panel",
         "desktop.canvas_user_op",
-        "desktop.canvas_content"
+        "desktop.canvas_content",
+        "desktop.budget_overage_decide",
+        "desktop.budget_overrun_review",
+        "desktop.budget_manual_settle"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -10344,6 +10355,94 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "キャンバスの物の中身（行・セル・メールの件名など）を main に求める（UI-07、ADR 0032）。キャンバスの窓だけが使え、ロック解除済みのときだけ受け付ける（後ろにある間も、描いている物の中身を取る）。open_ref はメールの本文を開く行の不透明な参照（記述の item_refs の ref）で、null なら開かない。開くのは本人の操作なので、キャンバスが前に出ているときだけ。main は中枢から許可範囲内で取り、検査してから、不透明な参照の位置のまま返す。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.budget_overage_decide"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                },
+                "decision": {
+                  "type": "string",
+                  "enum": ["approve", "reject"]
+                }
+              },
+              "required": ["ref", "decision"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "超過枠の個別の承認（approve）または見送り（reject）を要求する（B07-05、ADR 0039）。approve は main が OS の確認ダイアログを 1 回だけ出し（その依頼の M と超過枠の残りを main が持つ値で見せる）、「承認する」を選んだときだけ、承認する依頼の予算の要求 ID と M を固定して中枢へ送る。reject は承認を増やさないので確認を挟まない。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.budget_overrun_review"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "M 超過の確認を要求する（B07-05、ADR 0039）。main が OS の確認ダイアログを 1 回だけ出し（記録した実費と M を main が持つ値で見せる）、選んだときだけ、見た実費と M・予約の版を固定して中枢へ送る。確認すると、その枠と子孫の枠の新しい受付の停止が解ける。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.budget_manual_settle"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                },
+                "reconciliation_id": {
+                  "type": "string",
+                  "pattern": "^manual:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+                  "description": "手で入力した照合 ID。manual: で始め、英数字と . _ - だけ（メールアドレス・氏名・自由文を入れない）。"
+                },
+                "actual_amount": {
+                  "$ref": "#/$defs/Amount",
+                  "description": "本人が請求の照合で得た実費。通貨は main が持つ予約の通貨で、画面は小数の入力を通貨単位の百万分の一の整数にして送る。"
+                }
+              },
+              "required": ["ref", "reconciliation_id", "actual_amount"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "不明な費用の手での精算を要求する（B07-05、ADR 0039）。照合 ID と実費を入力し、main が OS の確認ダイアログを 1 回だけ出して（入力した値を見せる）、選んだときだけ、予約の版を固定して中枢へ送る。usage 不明の予約だけに、元の月・元の枠のまま一度だけ適用する。ロック解除済みの画面操作だけ。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -10727,6 +10826,12 @@
                 "$ref": "#/$defs/DesktopOperationEntry"
               }
             },
+            "budget_items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DesktopBudgetEntry"
+              }
+            },
             "hub_screen": {
               "type": "boolean"
             },
@@ -10763,11 +10868,12 @@
             "pairing",
             "home_network",
             "operations",
+            "budget_items",
             "hub_screen",
             "hub_target"
           ],
           "additionalProperties": false,
-          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（参照 ref で指す。操作 ID は含めない。ADR 0031）（ロック解除済みで接続しているときだけ）。 hub_screen は中枢の画面の端末（中枢と同じマシンの hub_local の端末）として中枢が認めたとき（承認待ちの申請の一覧が 200）だけ true で、申請の承認・端末の管理の画面を出す（B03-06）。 hub_target は登録した中枢の宛先（登録済み・再登録が必要のとき。再登録の宛先の初期値に使う。秘密ではない）。"
+          "description": "ロック解除済み。registration の secure_storage_unavailable は保護の弱い方式しか使えず、トークンを保存しない（ペアリングもしない）。pairing は進行中・失敗したペアリング（なければ null）で、fingerprint は最初の接続で受け取った中枢の証明書の DER 全体の SHA-256。home_network は直近の自宅の指紋の報告の結果（診断の理由だけで値を含めない）。operations は中枢のスナップショット・イベントから作った操作の表示用の値（参照 ref で指す。操作 ID は含めない。ADR 0031）（ロック解除済みで接続しているときだけ）。 hub_screen は中枢の画面の端末（中枢と同じマシンの hub_local の端末）として中枢が認めたとき（承認待ちの申請の一覧が 200）だけ true で、申請の承認・端末の管理の画面を出す（B03-06）。 hub_target は登録した中枢の宛先（登録済み・再登録が必要のとき。再登録の宛先の初期値に使う。秘密ではない）。 budget_items は中枢の利用状況から作った、本人の確認が要る予算の項目（超過枠の承認待ち・M 超過の確認待ち・手での精算待ち。参照 ref で指す。予算・予約の ID と版は含めない。B07-05、ADR 0039）（ロック解除済みで接続しているときだけ。それ以外は空）。"
         }
       ],
       "description": "中枢との接続・登録・ペアリングの状態（設計 02 端末登録と接続、07 §2〜§4、ADR 0025）。main が作り、UI レンダラーは表示するだけ。端末トークン・申請用の秘密・端末 ID・中枢の証明書の本体・自宅の指紋の値を含めない。"
@@ -11312,7 +11418,10 @@
                 "desktop.operation_approve",
                 "desktop.operation_cancel",
                 "desktop.operation_reconcile",
-                "desktop.operation_retry"
+                "desktop.operation_retry",
+                "desktop.budget_overage_decide",
+                "desktop.budget_overrun_review",
+                "desktop.budget_manual_settle"
               ]
             },
             "outcome": {
@@ -11326,7 +11435,7 @@
           },
           "required": ["request_id", "channel", "outcome", "receipt"],
           "additionalProperties": false,
-          "description": "中枢が命令を受け付けた（accepted）か記録した（durable）。外部変更の成功ではない。操作の状態は desktop.connection_changed の operations で知らせる。"
+          "description": "中枢が命令を受け付けた（accepted）か記録した（durable）。外部変更の成功ではない。操作の状態は desktop.connection_changed の operations で知らせる。 予算の確認（超過枠の承認・見送り、M 超過の確認、手での精算）では、中枢が決定・確認・精算を記録した（durable。同じ命令の再送の保存済みの結果を含む）。予算の項目の状態は desktop.connection_changed の budget_items で知らせる。"
         },
         {
           "type": "object",
@@ -11707,6 +11816,134 @@
       ],
       "additionalProperties": false,
       "description": "画面に出す操作（B04-05、ADR 0031）。ref は main が操作ごとに作る参照で、操作 ID・内容版・hash・provider の受領 ID を含めない。allowed_actions は表示補助で、実行時の認可ではない。"
+    },
+    "DesktopBudgetEntry": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["overage_approval", "overrun_review", "manual_settlement"]
+        },
+        "pool_id": {
+          "$ref": "#/$defs/BudgetPoolId"
+        },
+        "budget_month": {
+          "$ref": "#/$defs/YearMonth"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetOrigin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "処理の起点（本人の依頼・自動の解析など。表示の用途）。中枢が記録していなければ null。"
+        },
+        "profile_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProfileId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "予約したモデルの名前（profile の ID。表示用）。承認待ちには記録がないので null。"
+        },
+        "occurred_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "対象が発生した日時（承認は求めた時刻、予約は受け付けた時刻）。本人が同じ金額・同じ枠の項目を見分けるために出す。中枢が記録していなければ null。"
+        },
+        "ordinal": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "of": {
+                  "type": "integer",
+                  "minimum": 2
+                }
+              },
+              "required": ["position", "of"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "表示が重なる項目（同じ種類・枠・月・金額・用途・モデルの名前・発生した分）の中での順番。受付の時刻（ミリ秒）の順に数え、同じ時刻なら内部の参照の順で決める。重ならない項目は null。一覧・読み上げの名前・確認のダイアログで同じ言い方（「同じ時刻の 2 件のうち 1 件目」）にして、本人が項目を取り違えないようにする。"
+        },
+        "max_liability": {
+          "$ref": "#/$defs/Money"
+        },
+        "overage_remaining": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actual_gross": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery_unknown": {
+          "type": "boolean",
+          "description": "決定・確認・精算の命令を送ったが、中枢に届いたか確かめられていない（結果不明）。次の利用状況の読み取りで解くまで、同じ命令を自動で送り直さず、画面からも送らせない。"
+        }
+      },
+      "required": [
+        "ref",
+        "kind",
+        "pool_id",
+        "budget_month",
+        "origin",
+        "profile_id",
+        "occurred_at",
+        "ordinal",
+        "max_liability",
+        "overage_remaining",
+        "actual_gross",
+        "expires_at",
+        "delivery_unknown"
+      ],
+      "additionalProperties": false,
+      "description": "状態の層の確認の一覧に出す予算の確認（B07-05、ADR 0039）。ref は main が項目ごとに作る参照で、承認 ID・予算の要求 ID・予約 ID・予約の版・照合値を含めない。kind: overage_approval は超過枠の個別の承認（max_liability は承認する依頼の M、overage_remaining は承認を求めた時点の超過枠の残り、expires_at は承認の期限。actual_gross は null）、overrun_review は M 超過の確認（actual_gross は記録した実費、max_liability は M。overage_remaining・expires_at は null）、manual_settlement は不明な費用の手での精算（max_liability は保持している M。actual_gross・overage_remaining・expires_at は null で、本人が実費を入力する）。金額は本人の設定に基づく実行時の値で、契約・fixture・撮影には合成の通貨 XTS だけを使う。 origin・profile_id・occurred_at は、同じ月・枠・金額の項目を本人が見分けるための表示用の値で、依頼の本文は含めない。"
     },
     "DesktopOperationPreview": {
       "type": "object",

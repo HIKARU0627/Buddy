@@ -181,7 +181,8 @@ export class DesktopDeviceController {
   setHub(hub: StatusBarHub): void {
     if (
       hub.connection === this.#hub.connection &&
-      hub.lastConfirmedAt === this.#hub.lastConfirmedAt
+      hub.lastConfirmedAt === this.#hub.lastConfirmedAt &&
+      (hub.budgetHeld ?? null) === (this.#hub.budgetHeld ?? null)
     )
       return;
     this.#hub = hub;

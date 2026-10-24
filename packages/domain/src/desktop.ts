@@ -40,6 +40,10 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.canvas_user_op',
   // UI-07: キャンバスの物の中身（本文）を main に求める（キャンバスの窓からだけ。ADR 0032）。
   'desktop.canvas_content',
+  // B07-05: 超過枠の承認・見送り、M 超過の確認、不明な費用の手での精算（状態の層からだけ。ADR 0039）。
+  'desktop.budget_overage_decide',
+  'desktop.budget_overrun_review',
+  'desktop.budget_manual_settle',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -156,6 +160,10 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.canvas_summon',
   // キャンバスのユーザーの操作も本人の画面操作（UI-06。前に出ているかは main が別に確かめる）。
   'desktop.canvas_user_op',
+  // 予算の確認（超過枠の承認・見送り、M 超過の確認、手での精算）も本人の画面操作（B07-05）。
+  'desktop.budget_overage_decide',
+  'desktop.budget_overrun_review',
+  'desktop.budget_manual_settle',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -215,6 +223,7 @@ export type DesktopWindowRole = (typeof DESKTOP_WINDOW_ROLES)[number];
 // （B04-05 の desktop.turn_submit）と、キャンバスを前に出す（UI-02）だけ。承認表示の準備・承認・取消・照合・再試行・
 // 状態の確認は状態の層だけ。キャンバスは自分を前に出せない（呼ぶのは本人の操作: 全体のショートカット・つまみ・入力バー）。
 // 状態の層のパネルを出す・しまう（UI-04）も状態の層だけ。キャンバスは状態の層を隠せない・動かせない。
+// 予算の確認（超過枠の承認・見送り、M 超過の確認、手での精算。B07-05）も状態の層だけ。
 // キャンバスの物のユーザーの操作（UI-06）はキャンバスの窓だけ。承認・停止のチャネルとは別で、物の置き場所だけを変える。
 // キャンバスの物の中身（UI-07）もキャンバスの窓だけ。読み取りだけで、状態の層・入力バー・従来の窓には本文を渡さない。
 export const DESKTOP_ROLE_CHANNELS: Readonly<
@@ -251,6 +260,10 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.operation_check',
     'desktop.canvas_summon',
     'desktop.status_panel',
+    // 予算の確認（B07-05）。承認・取消と同じく状態の層だけ。キャンバスの部品が承認の画面に見せかけられない。
+    'desktop.budget_overage_decide',
+    'desktop.budget_overrun_review',
+    'desktop.budget_manual_settle',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

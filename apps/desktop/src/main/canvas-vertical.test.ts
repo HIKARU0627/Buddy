@@ -282,6 +282,8 @@ async function startClient(
     networkSignature: () => 'fixed',
     onChange: () => undefined,
     log: (code) => logs.push(code),
+    // 中枢への要求の数を数える試験なので、予算の背景の読み取りは混ぜない（B07-05）。
+    budgetAuto: false,
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     ...(options.io === undefined
       ? {}
@@ -846,6 +848,17 @@ test(
       'desktop.claim_decide': { ref: randomUUID(), decision: 'approve' },
       'desktop.device_revoke': refs,
       'desktop.home_register': { ref: randomUUID(), include_ssid: false },
+      // 予算の確認（B07-05）。形式（Schema）に合う本文。
+      'desktop.budget_overage_decide': {
+        ref: randomUUID(),
+        decision: 'approve',
+      },
+      'desktop.budget_overrun_review': refs,
+      'desktop.budget_manual_settle': {
+        ref: randomUUID(),
+        reconciliation_id: 'manual:invoice-a',
+        actual_amount: '3000000',
+      },
     };
     const linkChannels = [
       ...OPERATION_CHANNELS,
@@ -891,9 +904,15 @@ test(
       'desktop.operation_approve',
       'desktop.operation_cancel',
       'desktop.operation_retry',
+      'desktop.budget_overage_decide',
+      'desktop.budget_overrun_review',
+      'desktop.budget_manual_settle',
     ])
       assert.equal(
-        field(await client.ipc(13, channel, refs), 'reason'),
+        field(
+          await client.ipc(13, channel, payloads[channel] ?? refs),
+          'reason',
+        ),
         'untrusted_sender',
         channel,
       );

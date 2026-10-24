@@ -24,6 +24,10 @@ const LEGACY_EXCLUDED_CHANNELS: readonly string[] = [
   'desktop.status_panel',
   'desktop.canvas_user_op',
   'desktop.canvas_content',
+  // 予算の確認（B07-05）は状態の層だけ。従来の窓には予算の画面がない。
+  'desktop.budget_overage_decide',
+  'desktop.budget_overrun_review',
+  'desktop.budget_manual_settle',
 ];
 
 // 窓の組み立て方。既定は従来の 1 つの窓。canvas は 3 つの役割の窓（試作）。

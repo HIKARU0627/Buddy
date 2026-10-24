@@ -87,6 +87,7 @@ const connected = (
   pairing: null,
   home_network: null,
   operations,
+  budget_items: [],
   hub_screen: false,
   hub_target: null,
 });

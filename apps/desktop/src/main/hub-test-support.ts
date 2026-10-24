@@ -18,7 +18,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type test from 'node:test';
 import { startCore } from '@buddy/core';
-import type { CoreHandle, CoreTurnOptions } from '@buddy/core';
+import type {
+  CoreBudgetOptions,
+  CoreHandle,
+  CoreTurnOptions,
+} from '@buddy/core';
 import { createMockKeyStore, createMockTlsKeyStore } from '@buddy/platform';
 import type { MockTlsKeyStore, TailscaleStatusSource } from '@buddy/platform';
 import { sealOperationIntent } from '@buddy/storage';
@@ -182,6 +186,8 @@ export async function startHub(
     readonly turns?: CoreTurnOptions;
     // 中枢の時計（今日の日付を決める。省略すると実時間）。
     readonly now?: () => Date;
+    // 予算の門（B07-05。設定ファイルはデータディレクトリに置き、予算月の時計を試験で動かす）。
+    readonly budget?: CoreBudgetOptions;
     // heartbeat 自体を試す場合だけ短縮する。通常の統合は製品の既定を使う（Issue #108）。
     readonly pingIntervalMs?: number;
   },
@@ -212,6 +218,7 @@ export async function startHub(
     },
     events: { pollIntervalMs: 100 },
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.budget === undefined ? {} : { budget: options.budget }),
   });
   onCleanup(t, () => handle.stop('test').catch(() => undefined));
   assert(handle.https !== null);

@@ -137,6 +137,9 @@ test('requests go only to the contract channels', async () => {
       'desktop.status_panel',
       'desktop.canvas_user_op',
       'desktop.canvas_content',
+      'desktop.budget_overage_decide',
+      'desktop.budget_overrun_review',
+      'desktop.budget_manual_settle',
     ],
   );
   for (const channel of channels) {
@@ -153,6 +156,10 @@ test('requests go only to the contract channels', async () => {
     { channel: 'desktop.status_panel' },
     // キャンバスの物のユーザーの操作も使わない（UI-06）。
     { channel: 'desktop.canvas_user_op' },
+    // 予算の確認は状態の層だけ（B07-05）。
+    { channel: 'desktop.budget_overage_decide' },
+    { channel: 'desktop.budget_overrun_review' },
+    { channel: 'desktop.budget_manual_settle' },
     // キャンバスの物の中身の読み取りも使わない（UI-07）。
     { channel: 'desktop.canvas_content' },
     { channel: 'desktop.hub_stop' },
@@ -244,6 +251,10 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.operation_check',
     'desktop.canvas_summon',
     'desktop.status_panel',
+    // 予算の確認（B07-05）。
+    'desktop.budget_overage_decide',
+    'desktop.budget_overrun_review',
+    'desktop.budget_manual_settle',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
@@ -336,6 +347,8 @@ test('the legacy role argument keeps every existing channel and notification', a
       channel === 'desktop.canvas_summon' ||
       channel === 'desktop.status_panel' ||
       channel === 'desktop.canvas_user_op' ||
+      // 予算の確認（B07-05）は状態の層だけ。従来の窓には予算の画面がない。
+      channel.startsWith('desktop.budget_') ||
       channel === 'desktop.canvas_content'
     )
       await assert.rejects(

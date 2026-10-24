@@ -7,6 +7,7 @@ import type { DesktopVoiceView } from '@buddy/contracts';
 import { NO_FAULTS, type MockFaults } from './voice-mock-renderer.js';
 import { voiceHarness, type HarnessOptions } from './voice-test-support.js';
 import type { LocalVoiceConsent } from './voice-consent.js';
+import { notifyVoiceDeviceChanged } from './voice-controller.js';
 
 const GRANTED: LocalVoiceConsent = {
   kind: 'voice_live_audio',
@@ -60,6 +61,43 @@ const statusVoice = (h: Harness) => {
 };
 const granted = (extra: HarnessOptions = {}) =>
   voiceHarness({ consent: GRANTED, ...extra });
+
+// 「続ける」を待っている間にリースを失い、もう一度「続ける」を押した組み立て（Issue #162）。
+// 1 回目の接続の答えは 3 秒後に届き、2 回目のリースは受け付ける。
+async function supersededContinue() {
+  let calls = 0;
+  const h = granted({
+    openMs: 3000,
+    renew: (body) => {
+      calls += 1;
+      return calls === 2
+        ? {
+            request_id: body.request_id,
+            lease_id: body.lease_id,
+            nonce: body.nonce,
+            result: 'rejected',
+            ttl_ms: null,
+          }
+        : {
+            request_id: body.request_id,
+            lease_id: body.lease_id,
+            nonce: body.nonce,
+            result: 'renewed',
+            ttl_ms: body.ttl_ms,
+          };
+    },
+  });
+  await ready(h);
+  const first = h.voice.continueConversation();
+  await h.clock.advance(2100);
+  // 1 回目のリースは拒否され、待っている手順は捨てられた。
+  assert.equal(h.voice.leaseActive, false);
+  const second = h.voice.continueConversation();
+  await h.clock.advance(20);
+  // 2 回目のリースは受け付けられた。
+  assert.equal(h.voice.leaseActive, true);
+  return { h, first, second };
+}
 
 test('the renderer is prepared only after the lock is confirmed open; nothing is shown before', async () => {
   const h = granted();
@@ -723,6 +761,79 @@ test('a lease lost while the live session is pending (rejected or expired) start
   assert.ok(!expired.sentChannels().includes('voice.start'));
   assert.equal(expired.closed.at(-1)?.reason, 'core_lease_lost');
   assert.equal(expired.voice.leaseActive, false);
+});
+
+// Issue #162 の P3-1: 置き換えられた古い手順の応答で、新しい手順のリースを止めない。
+test('a superseded continue does not stop the lease of the newer flow', async () => {
+  const { h, first, second } = await supersededContinue();
+  assert.equal(h.opens.length, 2);
+  await h.clock.advance(1000);
+  // 1 回目の接続の答え（3 秒後）が届いた。古い手順は捨てるが、2 回目のリースは止めない。
+  assert.equal(await first, 'input_stopped');
+  assert.equal(h.voice.leaseActive, true);
+  assert.ok(!h.sentChannels().includes('voice.start'));
+  assert.equal(h.device.state.stopScope, 'none');
+  // 2 回目の接続の答え（さらに 2 秒後）で、新しい手順は会話を始める。
+  await h.clock.advance(2100);
+  assert.equal(await second, 'ok');
+  assert.equal(h.voice.leaseActive, true);
+  assert.deepEqual(
+    h.sentChannels().filter((channel) => channel === 'voice.start'),
+    ['voice.start'],
+  );
+});
+
+// Issue #162 の P3-2: 古い手順が閉じる Live の理由は、端末の停止ではない。
+test('a superseded continue closes its live session with provider_failure, not device_io_stop', async () => {
+  const { h, first } = await supersededContinue();
+  await h.clock.advance(1000);
+  assert.equal(await first, 'input_stopped');
+  assert.deepEqual(
+    h.closed.map((entry) => entry.reason),
+    ['provider_failure'],
+  );
+  assert.equal(h.device.state.stopScope, 'none');
+});
+
+// Issue #162 の P3-3: 音声の制御が例外を投げても、状態の通知の残りの処理を飛ばさない。
+test('a throwing voice controller does not skip the rest of the device state notification', () => {
+  const logs: string[] = [];
+  const order: string[] = [];
+  const state = {
+    lockState: 'locked',
+    stopScope: 'none',
+    ioEpoch: '1',
+  } as const;
+  notifyVoiceDeviceChanged(
+    {
+      deviceChanged: (seen) => {
+        assert.equal(seen.ioEpoch, '1');
+        order.push('voice');
+        throw new Error('voice failed');
+      },
+    },
+    state,
+    (code) => logs.push(code),
+  );
+  // 音声の制御の後に続く処理（トレイ・状態の通知・ロックしたときのキャンバスを戻す処理）は飛ばさない。
+  order.push('tray');
+  order.push('state_changed');
+  order.push('canvas_restored');
+  assert.deepEqual(order, [
+    'voice',
+    'tray',
+    'state_changed',
+    'canvas_restored',
+  ]);
+  assert.deepEqual(logs, ['voice_device_changed_failed']);
+  // 例外がなければ記録しない。
+  notifyVoiceDeviceChanged(
+    { deviceChanged: () => order.push('voice_ok') },
+    state,
+    (code) => logs.push(code),
+  );
+  assert.equal(order.at(-1), 'voice_ok');
+  assert.deepEqual(logs, ['voice_device_changed_failed']);
 });
 
 test('a renewal with an unknown result is not treated as success (the lease runs out)', async () => {

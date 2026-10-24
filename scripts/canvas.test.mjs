@@ -319,6 +319,10 @@ const CANVAS_FORBIDDEN = [
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',
+  // 音声の状態・最小の「続ける」・同意の取り消し（B05-06）。キャンバスの部品が「続ける」や同意に見せかけられない。
+  'desktop.get_voice',
+  'desktop.voice_continue',
+  'desktop.voice_consent_revoke',
 ];
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
@@ -394,8 +398,8 @@ test('window roles: the canvas cannot use stop, resume, approval or quit channel
     assert.equal(desktopChannelAllowedForRole(role, 'desktop.unknown'), false);
     assert.equal(desktopChannelAllowedForRole(role, 'toString'), false);
   }
-  // 状態の層だけが電源の記録と接続の通知を受ける。キャンバスの記述（UI-03）はキャンバスの窓だけが受ける。
-  // 作業領域の外の幅（UI-06）もキャンバスの窓だけが受ける。
+  // 状態の層だけが電源の記録と接続の通知と音声の状態（B05-06）を受ける。キャンバスの記述（UI-03）はキャンバスの窓だけが
+  // 受ける。作業領域の外の幅（UI-06）もキャンバスの窓だけが受ける。
   assert.deepEqual(
     [...DESKTOP_ROLE_NOTIFICATIONS.canvas],
     [
@@ -410,6 +414,7 @@ test('window roles: the canvas cannot use stop, resume, approval or quit channel
       'desktop.state_changed',
       'desktop.power_event',
       'desktop.connection_changed',
+      'desktop.voice_changed',
     ],
   );
   assert.deepEqual(
@@ -432,12 +437,12 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 31 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
-  // status_panel、UI-06 の canvas_user_op、UI-07 の canvas_content、B07-05 の予算の確認 3 個を含む）。
-  // 禁止の一覧 26 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
+  // 手で数えた数（現在の DesktopIpcChannel は 34 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
+  // status_panel、UI-06 の canvas_user_op、UI-07 の canvas_content、B07-05 の予算の確認 3 個、B05-06 の音声 3 個を含む）。
+  // 禁止の一覧 29 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
   // キャンバスの canvas_user_op・canvas_content。
-  assert.equal(channels.size, 31);
-  assert.equal(CANVAS_FORBIDDEN.length + 5, 31);
+  assert.equal(channels.size, 34);
+  assert.equal(CANVAS_FORBIDDEN.length + 5, 34);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

@@ -37,6 +37,9 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',
+  'desktop.get_voice',
+  'desktop.voice_continue',
+  'desktop.voice_consent_revoke',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',
@@ -44,6 +47,7 @@ const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.connection_changed',
   'desktop.canvas_changed',
   'desktop.canvas_work_area',
+  'desktop.voice_changed',
 ];
 
 // 窓の役割（UI-02、ADR 0032）。main が窓を作るときに --buddy-window-role=<役割> を渡す。引数がなければ従来の窓。
@@ -60,7 +64,11 @@ const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
       channel !== 'desktop.canvas_user_op' &&
       // 予算の確認（B07-05）は状態の層だけ（従来の窓には予算の画面がない）。
       !channel.startsWith('desktop.budget_') &&
-      channel !== 'desktop.canvas_content',
+      channel !== 'desktop.canvas_content' &&
+      // 音声の状態・「続ける」・同意の取り消し（B05-06）は状態の層だけ。
+      channel !== 'desktop.get_voice' &&
+      channel !== 'desktop.voice_continue' &&
+      channel !== 'desktop.voice_consent_revoke',
   ),
   // キャンバスは状態の取得と、物のユーザーの操作・物の中身の読み取りだけ（UI-06・UI-07。承認・停止を使えない）。
   canvas: [
@@ -82,7 +90,8 @@ const ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> = {
   legacy: NOTIFICATION_CHANNELS.filter(
     (channel) =>
       channel !== 'desktop.canvas_changed' &&
-      channel !== 'desktop.canvas_work_area',
+      channel !== 'desktop.canvas_work_area' &&
+      channel !== 'desktop.voice_changed',
   ),
   canvas: [
     'desktop.state_changed',

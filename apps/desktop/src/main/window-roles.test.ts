@@ -58,6 +58,12 @@ const BUDGET = [
 ];
 // UI-07 で足した、キャンバスの物の中身（本文）を求めるチャネル（キャンバスの窓だけ。従来の窓は使わない）。
 const CONTENT = 'desktop.canvas_content';
+// B05-06 で足した、音声の状態・最小の「続ける」・同意の取り消しのチャネル（状態の層だけ。従来の窓は使わない）。
+const VOICE = [
+  'desktop.get_voice',
+  'desktop.voice_continue',
+  'desktop.voice_consent_revoke',
+];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,
   SUMMON,
@@ -65,6 +71,7 @@ const ALL_CHANNELS = [
   USER_OP,
   CONTENT,
   ...BUDGET,
+  ...VOICE,
 ];
 
 const UNLOCKED = {
@@ -212,7 +219,7 @@ test('the legacy window keeps every existing channel and the same sender decisio
   }
   // 従来の窓はキャンバスを前に出さない・状態の層のパネルを使わない・キャンバスの物を操作しない（従来の窓の組み立てには
   // どちらもない）。
-  for (const channel of [SUMMON, PANEL, USER_OP, CONTENT]) {
+  for (const channel of [SUMMON, PANEL, USER_OP, CONTENT, ...VOICE]) {
     assert.equal(channelAllowedForWindow('legacy', channel), false, channel);
     assert.deepEqual(
       admitDesktopRequest(
@@ -232,9 +239,13 @@ test('the legacy window keeps every existing channel and the same sender decisio
     'desktop.connection_changed',
   ])
     assert.equal(notificationAllowedForWindow('legacy', channel), true);
-  // キャンバスの記述（UI-03）と作業領域の外の幅（UI-06）は従来の窓へ送らない。
+  // キャンバスの記述（UI-03）と作業領域の外の幅（UI-06）と音声の状態（B05-06）は従来の窓へ送らない。
   assert.equal(
     notificationAllowedForWindow('legacy', 'desktop.canvas_changed'),
+    false,
+  );
+  assert.equal(
+    notificationAllowedForWindow('legacy', 'desktop.voice_changed'),
     false,
   );
   assert.equal(

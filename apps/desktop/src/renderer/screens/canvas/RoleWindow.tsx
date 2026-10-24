@@ -16,6 +16,7 @@ import {
   statusItems,
   stopShortcutKeys,
   stopShortcutMark,
+  voiceStripView,
 } from '../../state/status-panel-state.js';
 import { useNow } from '../../state/use-desktop-state.js';
 import {
@@ -43,6 +44,7 @@ import { CanvasGround } from './CanvasGround.js';
 import { InputBar } from './InputBar.js';
 import { StatusPanel } from './StatusPanel.js';
 import { StatusTab } from './StatusTab.js';
+import { VoiceStrip } from './VoiceStrip.js';
 
 function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const { state, canvasUserOp, canvasContent } = useRoleWindowState(
@@ -74,10 +76,15 @@ const NO_BUDGET_ITEMS: readonly DesktopBudgetEntry[] = [];
 
 // 状態の層（UI-04）。窓の幅が main の決めたパネルの幅ならパネル、つまみの幅ならつまみだけを描く。
 function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
-  const { state, summonCanvas, setPanel, stop, resume } = useRoleWindowState(
-    api,
-    'status',
-  );
+  const {
+    state,
+    summonCanvas,
+    setPanel,
+    stop,
+    resume,
+    continueVoice,
+    revokeVoiceConsent,
+  } = useRoleWindowState(api, 'status');
   const now = useNow();
   const width = useWindowWidth();
   const panelOpen = panelShownFor(width);
@@ -120,7 +127,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const tab = (
     <StatusTab
       view={view}
-      privacy={privacyMarks(state.status)}
+      privacy={privacyMarks(state.status, state.voice)}
       panelOpen={panelOpen}
       onTogglePanel={() => setPanel(!panelOpen)}
       canSummon={canSummonCanvas(state.status)}
@@ -140,6 +147,17 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
       onResume={resume}
       stopShortcut={stopShortcutMark(api.stopShortcut)}
       stopKeys={stopShortcutKeys(navigator.userAgent)}
+      voice={
+        <VoiceStrip
+          view={voiceStripView(state.voice)}
+          message={messageFor(state, [
+            'desktop.voice_continue',
+            'desktop.voice_consent_revoke',
+          ])}
+          onContinue={continueVoice}
+          onRevoke={revokeVoiceConsent}
+        />
+      }
       operations={
         live ? (
           <>

@@ -109,11 +109,55 @@ import {
   windowSender,
   type UiWindowRole,
 } from '../window-roles.js';
+import {
+  VOICE_ACK_CHANNEL,
+  VOICE_COMMAND_CHANNEL,
+  VOICE_CONTENT_SECURITY_POLICY,
+  VOICE_ENTRY_URL,
+  VOICE_PARTITION,
+  VOICE_SCHEME,
+  VoiceAckLimiter,
+  isVoiceSender,
+  resolveVoiceAsset,
+  voiceAckSizeOk,
+  voiceFaultSpec,
+  voiceMode,
+  voiceNavigationAllowed,
+  voicePermissionAllowed,
+  voiceRequestAllowed,
+  voiceWindowOptions,
+} from '../voice-window.js';
+import {
+  VOICE_CHANNELS,
+  VoiceController,
+  type VoiceRendererPort,
+} from '../voice-controller.js';
+import {
+  VOICE_CONSENT_FILE,
+  VoiceConsentStore,
+  loadVoiceConsentFile,
+  removeVoiceConsentFile,
+  saveVoiceConsentFile,
+  voiceConsentText,
+} from '../voice-consent.js';
+import {
+  mockVoiceCorePort,
+  unavailableVoiceCorePort,
+} from '../voice-core-port.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 // dist/main/electron から見たビルド済みの preload と画面。
 const PRELOAD_PATH = join(here, '..', '..', 'preload', 'preload.cjs');
 const RENDERER_DIR = join(here, '..', '..', 'renderer');
+// 音声レンダラー（B05-06）の preload と画面（UI レンダラーとは別のディレクトリ）。
+const VOICE_PRELOAD_PATH = join(
+  here,
+  '..',
+  '..',
+  'preload',
+  'voice-preload.cjs',
+);
+const VOICE_DIR = join(here, '..', '..', 'voice');
 
 // トレイのアイコン（16px と 32px の PNG。リポジトリにバイナリを置かないため埋め込む）。
 const TRAY_ICON_1X =
@@ -121,9 +165,23 @@ const TRAY_ICON_1X =
 const TRAY_ICON_2X =
   'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAlklEQVR4nO3UyQ2AMAxEUXdEaXRMK3COTJYZxk6QcvAR/wciseO8bOYwD92dCQH0ojQmMj6EiAwPQbLiVURm/BWxHCA67hAz4gWCBSh+XgqgvLgKwNc3Z78EBBiNQzs3YAN+BQg9htMvIkTdgsA72IcV4wCZCKsBMhC2PCAS4VqKs0zHewAVpLlffbNBcQSAYKB9DEA6DxdGPimEe0K2AAAAAElFTkSuQmCC';
 
+// 音声（B05-06、ADR 0050）。開発の起動で 3 つの窓の組み立てのときに、--buddy-voice=mock（または BUDDY_DESKTOP_VOICE=mock）で
+// 模擬の音声レンダラーと端末の中の模擬の中枢を使う。既定・配布版は音声レンダラーを作らず、音声のスキーム・セッションも作らない。
+const voiceEnabled =
+  uiWindowMode(process.argv, process.env, { packaged: app.isPackaged }) ===
+    'canvas' &&
+  voiceMode(process.argv, process.env, { packaged: app.isPackaged }) === 'mock';
+const voiceFault = voiceFaultSpec(process.argv, process.env, {
+  packaged: app.isPackaged,
+});
+
 // 画面は登録した特権スキームから読み込む（file:// を使わない）。ready の前に登録する必要がある。
+// 音声レンダラーのスキーム（B05-06）は、音声を使う組み立てのときだけ、音声レンダラーの専用のセッションにだけ登録する。
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true } },
+  ...(voiceEnabled
+    ? [{ scheme: VOICE_SCHEME, privileges: { standard: true, secure: true } }]
+    : []),
 ]);
 // すべてのレンダラーを sandbox にする。
 app.enableSandbox();
@@ -208,6 +266,12 @@ let tray: Tray | null = null;
 let controller: DesktopDeviceController | null = null;
 let link: DesktopCoreLink | null = null;
 let contractRef: ReturnType<typeof createDesktopContract> | null = null;
+let voice: VoiceController | null = null;
+// 今の音声レンダラーの窓と、その作り直しの番号（古い番号の窓からの ACK・出来事は使わない）。
+let voiceWindow: {
+  readonly generation: number;
+  readonly window: BrowserWindow;
+} | null = null;
 
 // ログは理由のコードだけ（トークン・宛先・指紋の値・自宅の指紋を出さない）。例外の本文も出さない。
 const log = (code: string) => console.error(`[buddy-desktop] ${code}`);
@@ -572,6 +636,9 @@ function registerIpc(): void {
       });
       if (CONNECTION_CHANNELS.includes(channel))
         return link.handleIpc(channel, raw, sender, controller.state).response;
+      // 音声の状態・最小の「続ける」・同意の取り消し（B05-06）。同意の確認は main の OS の確認ダイアログで 1 回だけ。
+      if (VOICE_CHANNELS.includes(channel) && voice)
+        return voice.handleIpc(channel, raw, sender);
       // 中枢の画面の端末の申請の承認・端末の管理（B03-06）。中枢へ要求を送るので非同期。
       if (ADMIN_CHANNELS.includes(channel))
         return link
@@ -638,15 +705,19 @@ function registerPowerMonitor(): void {
 function hardenWebContents(): void {
   app.on('web-contents-created', (_event, contents) => {
     contents.on('will-attach-webview', (event) => event.preventDefault());
+    const voiceContents = isVoiceContents(contents);
+    const allowed = (url: string) =>
+      voiceContents ? voiceNavigationAllowed(url) : navigationAllowed(url);
     contents.on('will-navigate', (event) => {
-      if (!navigationAllowed(event.url)) event.preventDefault();
+      if (!allowed(event.url)) event.preventDefault();
     });
     contents.on('will-redirect', (event) => {
-      if (!navigationAllowed(event.url)) event.preventDefault();
+      if (!allowed(event.url)) event.preventDefault();
     });
     // 新しいウィンドウはすべて拒否し、https のリンクだけを通常のブラウザーへ渡す。
     contents.setWindowOpenHandler(({ url }) => {
-      const target = externalOpenTarget(url);
+      // 音声レンダラーは外部のページも開かない（B05-06）。
+      const target = voiceContents ? null : externalOpenTarget(url);
       if (target !== null)
         void shell
           .openExternal(target)
@@ -784,6 +855,243 @@ async function confirmAdminWithDialog(
   });
 }
 
+// ---- 音声レンダラー（B05-06、ADR 0050） -------------------------------------------------------------------
+
+let voiceSessionPrepared = false;
+
+// 音声レンダラーのセッションの webContents か（音声を使わない組み立てでは、音声のセッションを作らない）。
+function isVoiceContents(contents: Electron.WebContents): boolean {
+  return voiceEnabled && contents.session === voiceSession();
+}
+
+// 音声レンダラーの専用のセッション（保存しない）。音声レンダラーの画面のファイルだけを返し、ほかの要求・権限をすべて拒否する。
+function voiceSession(): Electron.Session {
+  const voiceSes = session.fromPartition(VOICE_PARTITION);
+  if (voiceSessionPrepared) return voiceSes;
+  voiceSessionPrepared = true;
+  voiceSes.protocol.handle(VOICE_SCHEME, async (request) => {
+    const asset = resolveVoiceAsset(VOICE_DIR, request.url);
+    if (asset === null) return new Response(null, { status: 404 });
+    try {
+      return new Response(await readFile(asset.path), {
+        status: 200,
+        headers: {
+          'content-type': asset.contentType,
+          'content-security-policy': VOICE_CONTENT_SECURITY_POLICY,
+          'x-content-type-options': 'nosniff',
+          'cache-control': 'no-store',
+        },
+      });
+    } catch {
+      return new Response(null, { status: 404 });
+    }
+  });
+  // 音声レンダラーの入口とビルド済みのファイルのほかは、どの通信も拒否する（http・https・ws・wss・file・data など）。
+  voiceSes.webRequest.onBeforeRequest((details, callback) => {
+    const allowed = voiceRequestAllowed(details.url);
+    if (!allowed) log('voice_request_blocked');
+    callback({ cancel: !allowed });
+  });
+  voiceSes.setPermissionRequestHandler((_contents, permission, callback) =>
+    callback(voicePermissionAllowed(permission)),
+  );
+  voiceSes.setPermissionCheckHandler((_contents, permission) =>
+    voicePermissionAllowed(permission),
+  );
+  voiceSes.setDevicePermissionHandler(() => false);
+  voiceSes.on('will-download', (event) => event.preventDefault());
+  return voiceSes;
+}
+
+function liveVoiceWindow(generation: number): BrowserWindow | null {
+  const current = voiceWindow;
+  if (current === null || current.generation !== generation) return null;
+  return current.window.isDestroyed() ? null : current.window;
+}
+
+const voiceRenderer: VoiceRendererPort = {
+  create(generation) {
+    voiceSession();
+    const window = new BrowserWindow(
+      voiceWindowOptions(VOICE_PRELOAD_PATH, {
+        packaged: app.isPackaged,
+        fault: voiceFault,
+      }) as unknown as Electron.BrowserWindowConstructorOptions,
+    );
+    voiceWindow = { generation, window };
+    const contents = window.webContents;
+    // クライアントの終了の途中で窓が閉じるのは異常ではない（端末の停止にしない）。
+    const gone = (cause: string) => {
+      if (!lifecycle.quitting) voice?.rendererGone(generation, cause);
+    };
+    contents.on('did-finish-load', () => voice?.rendererReady(generation));
+    contents.on(
+      'did-fail-load',
+      (_event, _code, _description, _url, isMainFrame) => {
+        if (isMainFrame) gone('load_failed');
+      },
+    );
+    contents.on('render-process-gone', () => gone('process_gone'));
+    // 無応答（ハング）は判別できないので、止める側へ倒す（強制終了とこの端末の停止）。
+    contents.on('unresponsive', () => gone('unresponsive'));
+    window.on('closed', () => {
+      if (voiceWindow?.generation === generation) voiceWindow = null;
+      gone('closed');
+    });
+    void window.loadURL(VOICE_ENTRY_URL);
+  },
+  send(generation, request) {
+    const window = liveVoiceWindow(generation);
+    if (window === null || window.webContents.isDestroyed()) return false;
+    window.webContents.send(VOICE_COMMAND_CHANNEL, request);
+    return true;
+  },
+  kill(generation) {
+    const window = liveVoiceWindow(generation);
+    if (voiceWindow?.generation === generation) voiceWindow = null;
+    if (window === null) return;
+    try {
+      if (!window.webContents.isDestroyed())
+        window.webContents.forcefullyCrashRenderer();
+    } catch {
+      log('voice_renderer_crash_failed');
+    }
+    window.destroy();
+  },
+};
+
+// 音声レンダラーからの ACK。送信元が今の音声レンダラーの主フレームのときだけ渡す。
+function registerVoiceIpc(): void {
+  if (!voiceEnabled) return;
+  const limiter = new VoiceAckLimiter();
+  let dropping = false;
+  ipcMain.on(VOICE_ACK_CHANNEL, (event, raw: unknown) => {
+    // 大きすぎる・多すぎる ACK は受け取らない（停止の ACK なら期限で強制終了する側へ倒れる）。
+    if (!voiceAckSizeOk(raw) || !limiter.accept(performance.now())) {
+      if (!dropping) log('voice_ack_dropped_limit');
+      dropping = true;
+      return;
+    }
+    dropping = false;
+    const current = voiceWindow;
+    const window =
+      current !== null && !current.window.isDestroyed() ? current.window : null;
+    const contents =
+      window !== null && !window.webContents.isDestroyed()
+        ? window.webContents
+        : null;
+    const frame = event.senderFrame;
+    const trusted = isVoiceSender({
+      senderWebContentsId: event.sender.id,
+      voiceWebContentsId: contents?.id ?? null,
+      senderIsMainFrame:
+        frame !== null &&
+        contents !== null &&
+        frame.parent === null &&
+        frame.processId === contents.mainFrame.processId &&
+        frame.routingId === contents.mainFrame.routingId,
+      senderFrameUrl: frame?.url ?? null,
+    });
+    if (!trusted || current === null) {
+      log('voice_ack_untrusted_sender');
+      return;
+    }
+    voice?.receiveAck(current.generation, raw);
+  });
+}
+
+// 外部への送信の同意の OS の確認ダイアログ（本人の判断 2026-10-23）。パネルが出ている間だけ、パネルを親にして 1 回だけ出す。
+// ロック・停止・同意の取り消しで「続ける」を捨てたら、出ている確認も閉じる（signal）。
+let voiceConsentAbort: AbortController | null = null;
+
+async function confirmVoiceConsent(): Promise<boolean | 'not_shown'> {
+  const parent = confirmDialogParent(uiMode, statusPanel.open);
+  const window = parent === null ? null : liveWindow(parent);
+  if (window === null) return 'not_shown';
+  voiceConsentAbort?.abort();
+  const abort = new AbortController();
+  voiceConsentAbort = abort;
+  const text = voiceConsentText();
+  const options: Electron.MessageBoxOptions = {
+    type: 'question',
+    title: text.title,
+    message: text.message,
+    detail: text.detail,
+    buttons: [...text.buttons],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    signal: abort.signal,
+  };
+  try {
+    const result = await runPanelConfirm(statusPanel, abort.signal, {
+      showDialog: () => dialog.showMessageBox(window, options),
+      windowFocused: () => isWindowFocused(liveWindow('status')),
+      defer: (task) => setTimeout(task, 150),
+    });
+    return result === CONFIRM_NOT_SHOWN ? 'not_shown' : result;
+  } finally {
+    if (voiceConsentAbort === abort) voiceConsentAbort = null;
+  }
+}
+
+function createVoice(
+  contract: ReturnType<typeof createDesktopContract>,
+): VoiceController {
+  const clock = systemClock();
+  const consentPath = join(app.getPath('userData'), VOICE_CONSENT_FILE);
+  return new VoiceController({
+    enabled: voiceEnabled,
+    contract,
+    renderer: voiceRenderer,
+    core: voiceEnabled
+      ? mockVoiceCorePort({
+          newId: clock.newRequestId,
+          delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          renewDelayMs: 20,
+          openDelayMs: 200,
+          log,
+        })
+      : unavailableVoiceCorePort(),
+    clock: {
+      mono: () => Math.floor(performance.now()),
+      wall: () => Date.now(),
+      setTimer: clock.setTimer,
+      newId: clock.newRequestId,
+    },
+    consent: new VoiceConsentStore({
+      load: () => loadVoiceConsentFile(consentPath),
+      save: (record) => saveVoiceConsentFile(consentPath, record),
+      remove: () => removeVoiceConsentFile(consentPath),
+      now: () => new Date().toISOString(),
+      log,
+    }),
+    confirmConsent: confirmVoiceConsent,
+    cancelConsent: () => {
+      voiceConsentAbort?.abort();
+      voiceConsentAbort = null;
+    },
+    stopDevice: () => controller?.stopFromMain(),
+    onChange: () => {
+      if (!voice || !controller) return;
+      controller.setVoice({
+        enabled: voiceEnabled,
+        state: voice.statusVoice(),
+      });
+      const notification = {
+        channel: 'desktop.voice_changed' as const,
+        voice: voice.view(),
+      };
+      if (contract.notificationErrors(notification).length > 0) {
+        log('voice_notification_invalid');
+        return;
+      }
+      sendToRenderer(notification.channel, notification);
+    },
+    log,
+  });
+}
+
 function start(): void {
   const contract = createDesktopContract(loadContractSchema());
   contractRef = contract;
@@ -807,20 +1115,32 @@ function start(): void {
     persist,
     onPersistError: () => log('device_io_state_save_failed'),
     onNotification: (notification) => {
-      sendToRenderer(notification.channel, notification);
-      if (notification.channel === 'desktop.state_changed') {
-        updateTray();
-        // ロック状態は要求の Buddy-Lock-State と接続の表示の範囲に使う。
-        if (link && controller) {
-          // 停止した（トレイ・画面・電源の事象のどれでも）: 表示している承認・取消・再試行の確認を閉じて送らない。
-          if (controller.state.stopScope !== 'none') link.closeConfirm();
-          link.setLockState(controller.state.lockState);
-          // 停止・io_epoch の変化では、キャンバスの記述と参照を捨てる（再開したら取り直す）。
-          link.ioStateChanged();
-          // ロック中・不明になったら、前に出したキャンバスを後ろへ戻す（中身を出したままにしない）。
-          summoner.lockChanged(controller.state.lockState);
-          pushConnection();
-        }
+      if (notification.channel !== 'desktop.state_changed') {
+        sendToRenderer(notification.channel, notification);
+        return;
+      }
+      // 止まった・ロックした・再開した: 最初に音声レンダラーへ suspend_io を送る・用意する（B05-06。PR #160 のレビュー P2-3:
+      // ほかの処理の例外で停止が遅れない・届かないことがないよう、ほかより先に呼ぶ）。
+      try {
+        if (controller) voice?.deviceChanged(controller.state);
+      } finally {
+        // 音声の状態で状態欄が更新されることがあるので、届いた通知ではなく今の状態欄を送る（古い状態欄を後から送らない）。
+        sendToRenderer('desktop.state_changed', {
+          channel: 'desktop.state_changed',
+          status: controller?.statusBar ?? notification.status,
+        });
+      }
+      updateTray();
+      // ロック状態は要求の Buddy-Lock-State と接続の表示の範囲に使う。
+      if (link && controller) {
+        // 停止した（トレイ・画面・電源の事象のどれでも）: 表示している承認・取消・再試行の確認を閉じて送らない。
+        if (controller.state.stopScope !== 'none') link.closeConfirm();
+        link.setLockState(controller.state.lockState);
+        // 停止・io_epoch の変化では、キャンバスの記述と参照を捨てる（再開したら取り直す）。
+        link.ioStateChanged();
+        // ロック中・不明になったら、前に出したキャンバスを後ろへ戻す（中身を出したままにしない）。
+        summoner.lockChanged(controller.state.lockState);
+        pushConnection();
       }
     },
   });
@@ -835,9 +1155,11 @@ function start(): void {
   screen.on('display-removed', placeRoleWindows);
   screen.on('display-metrics-changed', placeRoleWindows);
   link = createLink(contract);
+  voice = createVoice(contract);
   hardenWebContents();
   registerAppProtocol();
   registerIpc();
+  registerVoiceIpc();
   registerPowerMonitor();
   // 起動直後のロック状態は unknown。OS へ問い合わせて確かめる。
   queryLockState();
@@ -865,6 +1187,8 @@ function start(): void {
   tray = createTray();
   updateTray();
   for (const role of rolesForMode(uiMode)) createWindow(role);
+  // 音声の状態の初めの値（ロック状態を確かめる前は隠した値）。
+  voice.deviceChanged(controller.state);
 }
 
 if (!app.requestSingleInstanceLock()) {

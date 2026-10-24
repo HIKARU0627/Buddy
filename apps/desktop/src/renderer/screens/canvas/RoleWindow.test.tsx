@@ -99,9 +99,11 @@ test('the window role from the preload picks the screen; unknown roles draw noth
 test('each window asks only for what its role may read', () => {
   assert.deepEqual(initialChannelsFor('canvas'), ['desktop.get_state']);
   assert.deepEqual(initialChannelsFor('input'), ['desktop.get_state']);
+  // 状態の層は音声の状態（B05-06）も取る。
   assert.deepEqual(initialChannelsFor('status'), [
     'desktop.get_state',
     'desktop.get_connection',
+    'desktop.get_voice',
   ]);
 });
 

@@ -87,7 +87,7 @@ pnpm run contracts:check
 `source_sha256` の対象の決め方（[scripts/b04-evidence-sources.mjs](../../scripts/b04-evidence-sources.mjs)、B04-07 で絞った）:
 
 - 対象は、B04 の実行器（`tests/integration/b04*.mjs`）が実際に読み込んで動かすファイルと、期待値・fixture だけです。以前は `apps`・`packages`・`scripts`・`tests` の全ファイル（約 350 件）で、画面など B04 と関係のない変更でも証拠を作り直す必要があり、PR 同士の衝突も起きていました。
-- 対象は機械的に集めます。入口の `tests/integration/b04*.mjs` から、`import`・`export … from`・文字列の動的 `import()`・`new URL('…', import.meta.url)`・`import.meta.resolve('…')` を辿ります。`import type` / `export type` だけの文は実行されないので辿りません。`dist` を指す参照は同じワークスペースの `src` へ、`@buddy/*` は各 `package.json` の `exports` で解決し、解決に使った `package.json` も対象に含めます（参照先の差し替えも検出する）。ディレクトリの参照（SQL のマイグレーション）は中のファイルを含め、説明文（`.md`）は除きます。
+- 対象は機械的に集めます（集め方は B07 と共通の [scripts/evidence-sources.mjs](../../scripts/evidence-sources.mjs) で、`scripts/b04-evidence-sources.mjs` は B04 の入口と明示するファイルだけを決める薄い部品。B07-06 で共通化した）。入口の `tests/integration/b04*.mjs` から、`import`・`export … from`・文字列の動的 `import()`・`new URL('…', import.meta.url)`・`import.meta.resolve('…')` を辿ります。`import type` / `export type` だけの文は実行されないので辿りません。`dist` を指す参照は同じワークスペースの `src` へ、`@buddy/*` は各 `package.json` の `exports` で解決し、解決に使った `package.json` も対象に含めます（参照先の差し替えも検出する）。ディレクトリの参照（SQL のマイグレーション）は中のファイルを含め、説明文（`.md`）は除きます。
 - `node:` の組み込みと外部の依存（node_modules・pnpm-lock.yaml）は含めません。実行器が読まないが期待値の整合に使う状態の遷移表（`packages/contracts/fixtures/operation-transitions.json`）は、明示して含めます（`EXTRA_FILES`）。
 - 対象の件数と一覧は、証拠（`tests/integration/evidence-b04-simulated.json`）の `source_sha256` が正本です。PR ごとに件数を書き換えると衝突するため、ここには書きません。デスクトップの画面（`apps/desktop/src/renderer/`）や、実行器が読まない main の部品は対象外です。`scripts/test-map.test.mjs` が、対象外のファイルを変えても検査が通ること、対象のファイルを変えると失敗すること、実行器に足した import の先が自動で対象に入ること、型だけの import は辿らないこと、対象のファイル同士で `exports` の参照先を差し替えると失敗することを確かめます。
 

@@ -13,6 +13,10 @@
 //   リースの取り消し・Live を閉じ始める・停止のイベント）、その後に DB へ書く（中枢が io・output の世代を進める。ADR 0046・U70）。
 //   書けなければ再試行し、保存できるまでは停止中の印で更新と Live の受付を拒否する。
 // - 再開（/v1/io/resume）は画面操作と版の一致だけ。リースは戻さず、端末は新しいリースを取り直す（10 §1A）。
+// - 会話の予算（B05-04、ADR 0049）。開始の予約（15 秒 + 180 秒）の後、60 秒ごとに 60 秒分を同じ予約へ追加する。追加に失敗
+//   したら planBudgetFailure に従い、サイドバンドが使えれば一言伝える指示を送り、モデルの発話の終わりか 10 秒の早い方で閉じる
+//   （使えなければすぐ閉じる）。確認した使用秒数（15 秒との大きい方）で一度だけ精算し、使用量を確認できない終了は予約を保持して、
+//   provider への照会（lookupSession）で後から照合する（reconcileHeld）。時計が逆行したら会話の長さを数えられないので閉じる。
 // provider（OpenAI の Live）と予算の門・同意は注入する境界で、呼び出しには期限を付ける（切れたら結果不明。予約は保持）。
 // 製品の起動ではまだ渡さない（実 API は使わない。渡されなければ Live の接続は 503）。結果不明の外部への送信を自動で送り直さない。
 
@@ -21,16 +25,22 @@ import {
   AUDIO_CONTROL_RULES,
   LIVE_INITIAL_RESERVE_SECONDS,
   SIDEBAND_CONNECT_DEADLINE_MS,
+  BUDGET_CLOSE_GRACE_MS,
+  LIVE_TOP_UP_SECONDS,
   admitLiveStart,
   arbitrateAudioClaim,
+  budgetCloseDeadline,
   grantedLeaseTtlMs,
   ioStopReach,
   issueLiveEpochs,
   leaseRenewalReasons,
   leaseRotationRequired,
   nextLiveControl,
+  planBudgetFailure,
   planStop,
   settleLiveSeconds,
+  shouldCloseForBudget,
+  topUpSchedule,
 } from '@buddy/domain';
 import type {
   AudioReason,
@@ -69,6 +79,17 @@ export const LIVE_CREATE_TIMEOUT_MS = 10000;
 // DB への書込みの再試行の間隔（ms）と、停止の応答の前に試す回数。原本に決めなし（仮置き）。
 export const VOICE_PERSIST_RETRY_MS = 1000;
 export const STOP_WRITE_ATTEMPTS = 3;
+// 使用量を確認できなかった Live の照合（lookupSession）の間隔（ms）。原本に決めなし（仮置き。U88）。
+export const LIVE_RECONCILE_INTERVAL_MS = 60000;
+// 精算の失敗（DB の書込みの失敗など）を、同じ照合 ID で試す回数。尽きたら予約を保持して本人の手での精算に回す。
+export const BUDGET_SETTLE_ATTEMPTS = 3;
+// 精算の拒否のうち、試し直しても変わらないもの（予算の門の理由のコード）。
+const SETTLE_PERMANENT: ReadonlySet<string> = new Set([
+  'settlement_conflict',
+  'released',
+  'request_mismatch',
+  'manual_prefix_reserved',
+]);
 // 終わった Live の記録を診断のために残す数（メモリーが増え続けないように、古いものから捨てる）。
 const FINISHED_KEPT = 32;
 
@@ -97,14 +118,29 @@ export interface LiveSidebandHandlers {
   onSessionClosed(usageSeconds: number | null): void;
   // WebSocket の終了・エラー。
   onDisconnected(): void;
+  // モデルの発話の終わり。予算の上限を伝える一言の後に閉じる時刻の判定に使う（イベントの名前は provider の実装で決める。U86）。
+  onModelUtteranceEnded(): void;
 }
 
 export interface LiveSideband {
   ping(): void;
   // session.close を送る。
   sendClose(): void;
+  // session.instructions.append で、予算の上限に達したので会話を終えることを一言で伝え質問を続けない指示を送る。送れたら true。
+  appendInstructions(kind: 'budget_reached'): boolean;
   terminate(): void;
 }
+
+// provider に照会した Live の状態（終了後の照合・再起動の後の孤児の確認。live_session_id は createSession に渡した値）。
+export type LiveLookup =
+  | { readonly state: 'not_found' }
+  | { readonly state: 'open'; readonly provider_session_id: string }
+  | {
+      readonly state: 'closed';
+      readonly provider_session_id: string;
+      // 確認できた使用秒数（15 秒の最低課金を含む）。分からなければ null。
+      readonly usage_seconds: number | null;
+    };
 
 // OpenAI の Live（の模擬）。実 API の実装は B05 の後の作業。
 export interface LiveProvider {
@@ -126,9 +162,12 @@ export interface LiveProvider {
     providerSessionId: string,
     handlers: LiveSidebandHandlers,
   ): Promise<LiveSideband | null>;
+  // live_session_id で Live の状態を照会する（読み取りだけ。セッションを作らない・送り直さない）。
+  lookupSession(liveSessionId: string): Promise<LiveLookup>;
 }
 
-// 予算の門（B07）への境界。秒数だけを渡し、金額は門の側の規則が決める。ticket は門の値をそのまま持ち回る。
+// 予算の門（B07）への境界。秒数だけを渡し、金額は門の単価の規則が決める（実装は live-budget.ts）。ticket は門の値をそのまま
+// 持ち回る（追加予約で版が進んだ ticket に置き換える）。
 export interface LiveBudgetPort {
   reserve(input: {
     readonly request_id: string;
@@ -147,10 +186,30 @@ export interface LiveBudgetPort {
   ): Promise<{ readonly ok: boolean; readonly uncertain: boolean }>;
   // 送っていない予約の解放。
   release(ticket: unknown): Promise<void>;
-  // 確認した使用秒数での精算（15 秒の最低課金を含めた秒数）。
-  settle(ticket: unknown, billableSeconds: number): Promise<void>;
+  // 会話中の追加予約（同じ予約へ秒数分を足す）。失敗したら ticket は変わらない。
+  topUp(
+    ticket: unknown,
+    seconds: number,
+  ): Promise<
+    | { readonly ok: true; readonly ticket: unknown }
+    | { readonly ok: false; readonly reasons: readonly string[] }
+  >;
+  // 確認した使用秒数での精算。15 秒の最低課金との大きい方にするのは境界の側。照合 ID は Live の ID から決まり、同じ Live の
+  // 同じ金額の再精算は変化なし（duplicate）、違う金額は拒否される。
+  settle(
+    ticket: unknown,
+    input: {
+      readonly live_session_id: string;
+      readonly usage_seconds: number;
+    },
+  ): Promise<
+    | { readonly ok: true; readonly duplicate: boolean }
+    | { readonly ok: false; readonly reasons: readonly string[] }
+  >;
   // 使用秒数が分からない（予約を保持する）。
   hold(ticket: unknown): Promise<void>;
+  // 保存済みの予約から ticket を作り直す（再起動の後・遅れて届いた使用量の精算）。なければ null、読めなければ 'unavailable'。
+  ticketOf(reservationId: string): Promise<unknown>;
 }
 
 export type VoiceStore = Pick<DbWorkerClient, 'voice' | 'conversation'>;
@@ -215,7 +274,24 @@ interface LiveRuntime {
   persisting: Promise<void> | null;
   retryTimer: unknown;
   readonly opened: OpenedLive;
-  readonly ticket: unknown;
+  // 予算の門の券。追加予約で版が進んだら置き換える（予算の門の呼び出しは budgetChain で 1 つずつ行うので、最新の券を使う）。
+  // 再起動の後に作り直した記録では null（精算・保持のときに保存済みの予約から作り直す）。
+  ticket: unknown;
+  // 予約を取った中枢の単調時計（追加予約と会話の長さの起点）と、追加予約を要求した回数・予約した秒数。
+  reserved_at: number;
+  topups_requested: number;
+  reserved_seconds: number;
+  // 直前に時計を観測した値（逆行の検出）。
+  last_observed: number;
+  topUpTimer: unknown;
+  // 予算の上限に達した後の閉じ方（指示を送った時刻・モデルの発話の終わり）。
+  budgetClose: {
+    readonly instructed_at: number;
+    utterance_ended_at: number | null;
+    last_observed: number;
+    timer: unknown;
+  } | null;
+  settleTimer: unknown;
   provider_session_id: string | null;
   sideband: LiveSideband | null;
   connectTimer: unknown;
@@ -329,6 +405,8 @@ export class VoiceControl {
   // 停止を受けるたびに進める。DB を読んだ後にこれが変わっていれば読み直す（停止の前の状態で判定しない）。
   #stopGen = 0;
   #closed = false;
+  // 使用量を確認できなかった Live の照合の timer（確認できるまで間隔を置いて続ける）。
+  #reconcileTimer: unknown = null;
 
   constructor(options: VoiceControlOptions) {
     this.#store = options.store;
@@ -1184,6 +1262,34 @@ export class VoiceControl {
         ? error(422, 'budget_held', requestId)
         : error(503, 'dependency_unavailable', requestId);
     const ticket = reserved.ticket;
+    const reservedAt = this.#monoNow();
+    // 送出意図を記録する前に、予約を待っている間の停止・交代・期限切れを拾い直す。ここで断れば、送っていないので予約を解放できる
+    // （送出意図を記録した後は解放できず、使用量不明として保持されるため、記録の前に確かめる。ADR 0049・U84）。
+    const recheck = await this.#exclusive(async (): Promise<Status | null> => {
+      let state: DeviceVoiceState | null;
+      try {
+        state = await this.#freshState(device.device_id);
+      } catch {
+        return error(503, 'dependency_unavailable', requestId);
+      }
+      if (state === null) return error(401, 'unauthenticated', requestId);
+      // 自分の受付の途中の印は、この判定では数えない（判定の後に付け直す）。
+      this.#opening.delete(device.device_id);
+      const admitted = this.#liveAdmission(
+        device,
+        state,
+        body,
+        consent,
+        requestId,
+      );
+      if ('status' in admitted) return admitted;
+      this.#opening.add(device.device_id);
+      return null;
+    });
+    if (recheck !== null) {
+      this.#budgetLater(null, () => budget.release(ticket));
+      return recheck;
+    }
     const dispatched = await this.#within(VOICE_EXTERNAL_TIMEOUT_MS, () =>
       budget.dispatch(ticket),
     );
@@ -1257,23 +1363,9 @@ export class VoiceControl {
           outcome: 'open',
         };
         lease.opened = live;
-        const runtime: LiveRuntime = {
-          record: opened.value,
-          persisted: valuesOf(opened.value),
-          persisting: null,
-          retryTimer: null,
-          opened: live,
-          ticket,
-          provider_session_id: null,
-          sideband: null,
-          connectTimer: null,
-          pingTimer: null,
-          deadlineTimer: null,
-          confirmTimer: null,
-          lost: false,
-          settled: false,
-          budgetChain: Promise.resolve(),
-        };
+        const runtime = this.#newRuntime(opened.value, live, ticket);
+        runtime.reserved_at = reservedAt;
+        runtime.last_observed = reservedAt;
         this.#lives.set(liveSessionId, runtime);
         return runtime;
       },
@@ -1284,12 +1376,20 @@ export class VoiceControl {
       return second;
     }
     const runtime = second;
-    const created = await this.#within(LIVE_CREATE_TIMEOUT_MS, () =>
-      provider.createSession({
-        live_session_id: runtime.record.live_session_id,
-        purpose: runtime.record.purpose,
-        sdp_offer: str(body, 'sdp_offer'),
-      }),
+    // 会話の長さの数え始め（追加予約は予約を取ってから 60 秒ごと）。provider が作る前から課金され得るので、作成の応答を待たない。
+    this.#armTopUp(runtime);
+    const created = await this.#within(
+      LIVE_CREATE_TIMEOUT_MS,
+      () =>
+        provider.createSession({
+          live_session_id: runtime.record.live_session_id,
+          purpose: runtime.record.purpose,
+          sdp_offer: str(body, 'sdp_offer'),
+        }),
+      // 期限の後に遅れて作られた provider のセッション（孤児）。送り直さず、そのセッションを閉じて使用量を照合する。
+      (late) => {
+        if (late.ok) this.#adoptLateSession(runtime, late.provider_session_id);
+      },
     );
     if (created === TIMED_OUT || !created.ok) {
       // 送った可能性がある。送り直さず、終了未確認として予約を保持する。
@@ -1349,12 +1449,19 @@ export class VoiceControl {
   // ---- 制御接続（サイドバンド） ---------------------------------------------------------------------------------
 
   // 予算の門の呼び出しを、Live ごとに 1 つずつ・期限つきで行う（応答を待たない）。
-  #budgetLater(runtime: LiveRuntime | null, run: () => Promise<void>): void {
+  // onTimeout は、期限までに応答がなかった・例外だったとき（結果不明）に呼ぶ。
+  #budgetLater(
+    runtime: LiveRuntime | null,
+    run: () => Promise<void>,
+    onTimeout?: () => void,
+  ): void {
     const call = () =>
       this.#within(VOICE_EXTERNAL_TIMEOUT_MS, run)
         .then((value) => {
-          if (value === TIMED_OUT)
+          if (value === TIMED_OUT) {
             this.#log('予算の門の応答が期限までにありませんでした。');
+            onTimeout?.();
+          }
         })
         .catch(() => undefined);
     const track = (promise: Promise<void>) => {
@@ -1485,12 +1592,16 @@ export class VoiceControl {
       runtime.pingTimer,
       runtime.deadlineTimer,
       runtime.confirmTimer,
+      runtime.topUpTimer,
+      runtime.budgetClose?.timer ?? null,
     ])
       if (handle !== null) this.#timers.clear(handle);
     runtime.connectTimer = null;
     runtime.pingTimer = null;
     runtime.deadlineTimer = null;
     runtime.confirmTimer = null;
+    runtime.topUpTimer = null;
+    if (runtime.budgetClose !== null) runtime.budgetClose.timer = null;
   }
 
   #handlers(
@@ -1500,7 +1611,16 @@ export class VoiceControl {
     return {
       onPong: () => {
         if (handleRef.handle !== runtime.sideband) return;
+        // 時計が逆行していたら、会話の長さを数えられない（予算の上限の判定を信用できない）ので閉じる。
+        if (this.#observe(runtime) === null) {
+          this.#budgetReached(runtime, 'clock_regressed');
+          return;
+        }
         this.#armDeadline(runtime);
+      },
+      onModelUtteranceEnded: () => {
+        if (handleRef.handle !== runtime.sideband) return;
+        this.#onUtteranceEnded(runtime);
       },
       onSessionClosed: (usage) => this.#onSessionClosed(runtime, usage),
       onDisconnected: () => {
@@ -1575,6 +1695,10 @@ export class VoiceControl {
   #ping(runtime: LiveRuntime): void {
     runtime.pingTimer = null;
     if (this.#closed || runtime.record.control_state !== 'ready') return;
+    if (this.#observe(runtime) === null) {
+      this.#budgetReached(runtime, 'clock_regressed');
+      return;
+    }
     runtime.sideband?.ping();
     runtime.pingTimer = this.#timers.set(SIDEBAND_PING_INTERVAL_MS, () =>
       this.#ping(runtime),
@@ -1670,6 +1794,12 @@ export class VoiceControl {
     if (runtime.deadlineTimer !== null)
       this.#timers.clear(runtime.deadlineTimer);
     runtime.deadlineTimer = null;
+    // 閉じる要求の後は追加予約も、予算の上限の閉じ方の待ちも要らない（閉じ終えるまでは開始の予約の余りで足りる）。
+    if (runtime.topUpTimer !== null) this.#timers.clear(runtime.topUpTimer);
+    runtime.topUpTimer = null;
+    if (runtime.budgetClose?.timer != null)
+      this.#timers.clear(runtime.budgetClose.timer);
+    runtime.budgetClose = null;
     if (!wasLost && runtime.sideband !== null) {
       runtime.sideband.sendClose();
       this.#armConfirm(runtime);
@@ -1699,6 +1829,339 @@ export class VoiceControl {
     const budget = this.#budget;
     if (budget !== null && runtime.ticket !== null)
       this.#budgetLater(runtime, () => budget.hold(runtime.ticket));
+    // 使用量は provider への照会で後から照合する（間隔を置いて、確認できるまで続ける）。
+    this.#armReconcile();
+  }
+
+  // ---- 会話の予算（追加予約・予算に達したときの閉じ方・精算。ADR 0049） ----------------------------------------------
+
+  // 時計を観測する。直前の観測より前（逆行）なら null（会話の長さを数えられない）。逆行は観測の値を更新しない。
+  #observe(runtime: LiveRuntime): number | null {
+    const now = this.#monoNow();
+    if (!Number.isFinite(now) || now < runtime.last_observed) return null;
+    runtime.last_observed = now;
+    return now;
+  }
+
+  // 次の追加予約の時刻に timer を置く（予約を取ってから 60 秒ごと。期限の来た回数は topUpSchedule が数える）。
+  #armTopUp(runtime: LiveRuntime): void {
+    if (this.#closed || this.#budget === null) return;
+    if (runtime.topUpTimer !== null) this.#timers.clear(runtime.topUpTimer);
+    const elapsed = this.#monoNow() - runtime.reserved_at;
+    const plan = topUpSchedule(elapsed, runtime.topups_requested);
+    const delay = plan.due > 0 ? 0 : Math.max(0, plan.next_at_ms - elapsed);
+    runtime.topUpTimer = this.#timers.set(delay, () =>
+      this.#onTopUpTimer(runtime),
+    );
+  }
+
+  #onTopUpTimer(runtime: LiveRuntime): void {
+    runtime.topUpTimer = null;
+    if (this.#closed || runtime.record.closure !== 'open') return;
+    const now = this.#observe(runtime);
+    if (now === null) {
+      this.#budgetReached(runtime, 'clock_regressed');
+      return;
+    }
+    const plan = topUpSchedule(
+      now - runtime.reserved_at,
+      runtime.topups_requested,
+    );
+    for (let index = 0; index < plan.due; index += 1) {
+      runtime.topups_requested += 1;
+      this.#topUpOnce(runtime);
+    }
+    this.#armTopUp(runtime);
+  }
+
+  // 60 秒分の追加予約を 1 回。成功したら券を置き換え、失敗・結果不明（期限切れ・例外）は予算に達したものとして扱う。
+  // 結果不明のときは追加が済んだかもしれないので、同じ券では送り直さない（閉じて精算で余りを戻す）。
+  #topUpOnce(runtime: LiveRuntime): void {
+    const budget = this.#budget;
+    if (budget === null) return;
+    this.#budgetLater(
+      runtime,
+      async () => {
+        // 閉じ始めた後は足さない（予約の余りは精算で戻る）。
+        if (runtime.record.closure !== 'open') return;
+        const result = await budget.topUp(runtime.ticket, LIVE_TOP_UP_SECONDS);
+        if (result.ok) {
+          runtime.ticket = result.ticket;
+          runtime.reserved_seconds += LIVE_TOP_UP_SECONDS;
+          return;
+        }
+        this.#log(
+          `会話の追加予約ができませんでした（${result.reasons.join(', ')}）。`,
+        );
+        this.#budgetReached(runtime, 'top_up_failed');
+      },
+      () => this.#budgetReached(runtime, 'top_up_unknown'),
+    );
+  }
+
+  // 予算の上限に達した（追加予約の失敗・結果不明）または時計を信用できない。サイドバンドが使えれば一言伝える指示を送り、
+  // モデルの発話の終わりか 10 秒の早い方で閉じる。使えなければ・時計を信用できなければ、待たずに閉じる（planBudgetFailure）。
+  #budgetReached(runtime: LiveRuntime, cause: string): void {
+    if (runtime.record.closure !== 'open' || runtime.budgetClose !== null)
+      return;
+    const ready =
+      cause !== 'clock_regressed' &&
+      runtime.record.control_state === 'ready' &&
+      runtime.sideband !== null;
+    const plan = planBudgetFailure(ready);
+    this.#log(`会話の予算の上限に達しました（${cause}）。`);
+    if (
+      plan.close_immediately ||
+      !plan.instruct ||
+      runtime.sideband?.appendInstructions('budget_reached') !== true
+    ) {
+      this.#finishBudgetClose(runtime);
+      return;
+    }
+    const now = this.#monoNow();
+    runtime.budgetClose = {
+      instructed_at: now,
+      utterance_ended_at: null,
+      last_observed: now,
+      timer: this.#timers.set(BUDGET_CLOSE_GRACE_MS, () =>
+        this.#checkBudgetClose(runtime),
+      ),
+    };
+  }
+
+  #onUtteranceEnded(runtime: LiveRuntime): void {
+    const close = runtime.budgetClose;
+    if (close === null || runtime.record.closure !== 'open') return;
+    close.utterance_ended_at = this.#monoNow();
+    this.#checkBudgetClose(runtime);
+  }
+
+  // 指示から 10 秒・モデルの発話の終わりのどちらか早い方に達したか。時計の逆行は待たずに閉じる。
+  #checkBudgetClose(runtime: LiveRuntime): void {
+    const close = runtime.budgetClose;
+    if (close === null) return;
+    if (close.timer !== null) this.#timers.clear(close.timer);
+    close.timer = null;
+    if (runtime.record.closure !== 'open') return;
+    const now = this.#monoNow();
+    if (
+      shouldCloseForBudget(
+        now,
+        close.instructed_at,
+        close.utterance_ended_at,
+        close.last_observed,
+      )
+    ) {
+      this.#finishBudgetClose(runtime);
+      return;
+    }
+    close.last_observed = now;
+    const deadline = budgetCloseDeadline(
+      close.instructed_at,
+      close.utterance_ended_at,
+    );
+    close.timer = this.#timers.set(Math.max(0, deadline - now), () =>
+      this.#checkBudgetClose(runtime),
+    );
+  }
+
+  // 閉じる。端末へ close_voice_session（budget_reached）を送り、端末は③（声で話しかけて文字で返す）へ切り替える。
+  // 予約ができるまで①は開かない（次の Live の受付は予約で決まる）。
+  #finishBudgetClose(runtime: LiveRuntime): void {
+    if (runtime.record.closure !== 'open') return;
+    this.#beginClose(runtime, 'budget_reached');
+    this.#emitAudioControl(
+      runtime.record.device_id,
+      'budget_reached',
+      runtime.record,
+    );
+  }
+
+  // 確認した使用秒数での精算（15 秒と使用秒数の大きい方）。一度だけ行い、失敗は同じ照合 ID で試し直し、尽きたら予約を保持する。
+  #settleLive(runtime: LiveRuntime, usage: number): void {
+    const budget = this.#budget;
+    const settlement = settleLiveSeconds(usage, runtime.reserved_seconds);
+    if (!settlement.settled || budget === null || runtime.settled) return;
+    if (settlement.exceeds_reserved)
+      this.#log(
+        '使用秒数が予約した秒数を超えました。実費は全額を記録し、最大負担 M の超過は予算の門が扱います。',
+      );
+    runtime.settled = true;
+    this.#budgetLater(runtime, () => this.#settleOnce(runtime, usage, 1));
+  }
+
+  async #ticketFor(
+    runtime: LiveRuntime,
+    budget: LiveBudgetPort,
+  ): Promise<unknown> {
+    if (runtime.ticket !== null) return runtime.ticket;
+    const found = await budget.ticketOf(runtime.record.reservation_id);
+    return found === 'unavailable' ? null : found;
+  }
+
+  async #settleOnce(
+    runtime: LiveRuntime,
+    usage: number,
+    attempt: number,
+  ): Promise<void> {
+    const budget = this.#budget;
+    if (budget === null) return;
+    const ticket = await this.#ticketFor(runtime, budget);
+    const found = ticket !== null && ticket !== undefined;
+    const result = found
+      ? await budget.settle(ticket, {
+          live_session_id: runtime.record.live_session_id,
+          usage_seconds: usage,
+        })
+      : null;
+    if (result?.ok === true) return;
+    // 同じ照合 ID の違う金額・解放済み・別の要求の予約は、試し直しても変わらない（二重に数えない。本人の確認に回す）。
+    if (
+      result !== null &&
+      !result.ok &&
+      result.reasons.some((reason) => SETTLE_PERMANENT.has(reason))
+    ) {
+      this.#log(
+        `会話の精算は受け付けられませんでした（${result.reasons.join(', ')}）。試し直しません。`,
+      );
+      return;
+    }
+    if (attempt < BUDGET_SETTLE_ATTEMPTS) {
+      this.#log('会話の精算ができませんでした。同じ照合 ID で試し直します。');
+      runtime.settleTimer = this.#timers.set(VOICE_PERSIST_RETRY_MS, () => {
+        runtime.settleTimer = null;
+        this.#budgetLater(runtime, () =>
+          this.#settleOnce(runtime, usage, attempt + 1),
+        );
+      });
+      return;
+    }
+    // 試し直しが尽きた。予約を保持し、本人の手での精算（budget.settle_manual）に回す（自動で別の金額を作らない）。
+    this.#log(
+      `会話の精算ができませんでした（${result === null ? 'ticket_unavailable' : result.reasons.join(', ')}）。予約を保持します。`,
+    );
+    if (found) await budget.hold(ticket);
+  }
+
+  // ---- 終了後の照合（使用量を確認できなかった Live。ADR 0049） -----------------------------------------------------
+
+  #armReconcile(): void {
+    if (
+      this.#closed ||
+      this.#reconcileTimer !== null ||
+      this.#provider === null ||
+      this.#budget === null
+    )
+      return;
+    this.#reconcileTimer = this.#timers.set(LIVE_RECONCILE_INTERVAL_MS, () => {
+      this.#reconcileTimer = null;
+      const run = this.reconcileHeld().then((report) => {
+        if (report.unconfirmed > 0) this.#armReconcile();
+      });
+      this.#inflight.add(run);
+      void run.catch(() => undefined).finally(() => this.#inflight.delete(run));
+    });
+  }
+
+  // 閉じ終えたが使用量を確認できていない Live（closure が close_unconfirmed）を provider へ照会する。
+  // - 閉じていて使用秒数が分かれば、確認済みにして精算する（同じ照合 ID なので、先に精算済みでも二重に数えない）。
+  // - まだ開いていれば、閉じるためだけに接続して session.close を送る（孤児のセッション。使用量は session.closed で届く）。
+  // - 見つからない・分からない・照会できないときは保持する（解放しない・送り直さない。本人の手での精算を待つ）。
+  async reconcileHeld(): Promise<{
+    readonly settled: number;
+    readonly closing: number;
+    readonly unconfirmed: number;
+  }> {
+    const provider = this.#provider;
+    const budget = this.#budget;
+    if (provider === null || budget === null || this.#closed)
+      return { settled: 0, closing: 0, unconfirmed: 0 };
+    const held = await this.#store.voice({ kind: 'voice.live_held' });
+    if (!held.ok) return { settled: 0, closing: 0, unconfirmed: 1 };
+    let settled = 0;
+    let closing = 0;
+    let unconfirmed = 0;
+    for (const record of held.value) {
+      const runtime =
+        this.#lives.get(record.live_session_id) ?? this.#runtimeFrom(record);
+      if (runtime.record.closure !== 'close_unconfirmed') continue;
+      const looked = await this.#within(VOICE_EXTERNAL_TIMEOUT_MS, () =>
+        provider.lookupSession(record.live_session_id),
+      );
+      if (looked === TIMED_OUT || looked.state === 'not_found') {
+        unconfirmed += 1;
+        continue;
+      }
+      if (looked.state === 'open') {
+        runtime.provider_session_id = looked.provider_session_id;
+        this.#lateClose(runtime);
+        closing += 1;
+        unconfirmed += 1;
+        continue;
+      }
+      const usage = looked.usage_seconds;
+      if (usage === null || !Number.isInteger(usage) || usage < 0) {
+        unconfirmed += 1;
+        continue;
+      }
+      if (!this.#step(runtime, 'usage_reconciled', usage)) {
+        unconfirmed += 1;
+        continue;
+      }
+      this.#settleLive(runtime, usage);
+      settled += 1;
+    }
+    return { settled, closing, unconfirmed };
+  }
+
+  // 作成の応答が期限の後に届いた（孤児になりかけた）provider のセッション。終了未確認の Live なら閉じに行く。
+  #adoptLateSession(runtime: LiveRuntime, providerSessionId: string): void {
+    runtime.provider_session_id = providerSessionId;
+    if (runtime.record.closure === 'close_unconfirmed')
+      this.#lateClose(runtime);
+  }
+
+  // 終了未確認の Live の provider のセッションへ、閉じるためだけに接続して session.close を送る（1 回・3 秒まで。
+  // session.closed の使用秒数は、通常の終了と同じ経路で確認済みにして精算する）。
+  #lateClose(runtime: LiveRuntime): void {
+    const provider = this.#provider;
+    const providerSessionId = runtime.provider_session_id;
+    if (
+      provider === null ||
+      providerSessionId === null ||
+      runtime.sideband !== null ||
+      runtime.record.closure !== 'close_unconfirmed'
+    )
+      return;
+    const ref: { handle: LiveSideband | null } = { handle: null };
+    let done = false;
+    const timer = this.#timers.set(SIDEBAND_CLOSE_RECONNECT_MS, () => {
+      done = true;
+    });
+    void provider
+      .connectSideband(providerSessionId, this.#handlers(runtime, ref))
+      .catch(() => null)
+      .then((handle) => {
+        if (done || this.#closed) {
+          handle?.terminate();
+          return;
+        }
+        done = true;
+        this.#timers.clear(timer);
+        if (handle === null || runtime.record.closure !== 'close_unconfirmed') {
+          handle?.terminate();
+          return;
+        }
+        ref.handle = handle;
+        runtime.sideband = handle;
+        handle.sendClose();
+        // 終了を確認できなければ切って、次の照合に任せる。
+        runtime.confirmTimer = this.#timers.set(CORE_CLOSE_CONFIRM_MS, () => {
+          runtime.confirmTimer = null;
+          runtime.sideband?.terminate();
+          runtime.sideband = null;
+        });
+      });
   }
 
   #onSessionClosed(runtime: LiveRuntime, usage: number | null): void {
@@ -1720,19 +2183,7 @@ export class VoiceControl {
     this.#clearTimers(runtime);
     runtime.sideband?.terminate();
     runtime.sideband = null;
-    const settlement = settleLiveSeconds(usage, LIVE_INITIAL_RESERVE_SECONDS);
-    const budget = this.#budget;
-    if (
-      settlement.settled &&
-      budget !== null &&
-      runtime.ticket !== null &&
-      !runtime.settled
-    ) {
-      runtime.settled = true;
-      this.#budgetLater(runtime, () =>
-        budget.settle(runtime.ticket, settlement.billable_seconds),
-      );
-    }
+    this.#settleLive(runtime, usage);
     // provider が先に閉じた。端末へ close_voice_session（provider_failure）を送る（ADR 0038）。
     if (providerFirst)
       this.#emitAudioControl(
@@ -1740,6 +2191,47 @@ export class VoiceControl {
         'provider_failure',
         runtime.record,
       );
+  }
+
+  #newRuntime(
+    record: LiveSessionRecord,
+    opened: OpenedLive,
+    ticket: unknown,
+  ): LiveRuntime {
+    const now = this.#monoNow();
+    return {
+      record,
+      persisted: valuesOf(record),
+      persisting: null,
+      retryTimer: null,
+      opened,
+      ticket,
+      reserved_at: now,
+      topups_requested: 0,
+      reserved_seconds: LIVE_INITIAL_RESERVE_SECONDS,
+      last_observed: now,
+      topUpTimer: null,
+      budgetClose: null,
+      settleTimer: null,
+      provider_session_id: null,
+      sideband: null,
+      connectTimer: null,
+      pingTimer: null,
+      deadlineTimer: null,
+      confirmTimer: null,
+      lost: false,
+      settled: false,
+      budgetChain: Promise.resolve(),
+    };
+  }
+
+  // 保存済みの記録から作る実行時の状態（再起動の後・終了後の照合）。ticket は精算のときに予約から作り直す。
+  #runtimeFrom(record: LiveSessionRecord): LiveRuntime {
+    return this.#newRuntime(
+      record,
+      { live_session_id: record.live_session_id, outcome: 'open' },
+      null,
+    );
   }
 
   // ---- 起動と停止 -----------------------------------------------------------------------------------------------
@@ -1755,23 +2247,7 @@ export class VoiceControl {
     if (!found.ok) throw new Error('voice_state_unavailable');
     const ids: string[] = [];
     for (const record of found.value) {
-      const runtime: LiveRuntime = {
-        record,
-        persisted: valuesOf(record),
-        persisting: null,
-        retryTimer: null,
-        opened: { live_session_id: record.live_session_id, outcome: 'open' },
-        ticket: null,
-        provider_session_id: null,
-        sideband: null,
-        connectTimer: null,
-        pingTimer: null,
-        deadlineTimer: null,
-        confirmTimer: null,
-        lost: false,
-        settled: false,
-        budgetChain: Promise.resolve(),
-      };
+      const runtime = this.#runtimeFrom(record);
       if (
         record.control_state === 'connecting' ||
         record.control_state === 'ready'
@@ -1791,6 +2267,14 @@ export class VoiceControl {
       this.#log(
         `前の起動の Live（${ids.length} 件）を終了未確認にしました。予約は保持し、使用量の照合を待ちます。`,
       );
+    // 前の起動で使用量を確認できなかった Live も含め、provider へ照会して照合する（待たずに進める。確認できるまで続ける）。
+    if (this.#provider !== null && this.#budget !== null) {
+      const run = this.reconcileHeld().then((report) => {
+        if (report.unconfirmed > 0) this.#armReconcile();
+      });
+      this.#inflight.add(run);
+      void run.catch(() => undefined).finally(() => this.#inflight.delete(run));
+    }
     return { unfinished: ids };
   }
 
@@ -1802,9 +2286,13 @@ export class VoiceControl {
       this.#clearTimers(runtime);
       if (runtime.retryTimer !== null) this.#timers.clear(runtime.retryTimer);
       runtime.retryTimer = null;
+      if (runtime.settleTimer !== null) this.#timers.clear(runtime.settleTimer);
+      runtime.settleTimer = null;
       runtime.sideband?.terminate();
       runtime.sideband = null;
     }
+    if (this.#reconcileTimer !== null) this.#timers.clear(this.#reconcileTimer);
+    this.#reconcileTimer = null;
     for (const stop of this.#pendingStops)
       if (stop.retry !== null) this.#timers.clear(stop.retry);
     for (const byKind of this.#leases.values())

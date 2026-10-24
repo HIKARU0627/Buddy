@@ -970,6 +970,7 @@ async function reservationTicket(
     request_id: requestId,
     pool_id: 'llm',
     budget_month: '2030-10',
+    price_version: 'xts.text.v1',
     reserved: '40',
     max_liability: '40',
     revision: '1',
@@ -1087,6 +1088,75 @@ test(
           [uuid(3), 'usage_unknown', 40, true],
         ],
       );
+    });
+  },
+);
+
+test(
+  '会話（Live）の単価の系列は、live_seconds の単価がある系列がちょうど 1 つあるときだけ決まる（ADR 0049）',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      assert.equal(
+        harness.gate({ config: loadedConfig() }).livePriceKey(),
+        'synthetic.live',
+      );
+      // live_seconds の単価がなければ決まらない（会話の系列の単価を別の区分へ変える）。
+      const none = loadedConfig(
+        syntheticConfig((config) => {
+          for (const price of config['price_versions'] as {
+            rates: { category: string }[];
+          }[])
+            for (const rate of price.rates)
+              if (rate.category === 'live_seconds')
+                rate.category = 'search_requests';
+        }),
+      );
+      assert.equal(harness.gate({ config: none }).livePriceKey(), null);
+      // 別の系列にも live_seconds の単価があれば、どちらか決められないので決まらない。
+      const two = loadedConfig(
+        syntheticConfig((config) => {
+          const prices = config['price_versions'] as Record<string, unknown>[];
+          const live = prices.find(
+            (price) => price['price_key'] === 'synthetic.live',
+          );
+          prices.push({
+            ...(live as Record<string, unknown>),
+            price_version: 'xts.live2.v1',
+            price_key: 'synthetic.secondary',
+          });
+          (
+            config['budget'] as { verified_price_versions: string[] }
+          ).verified_price_versions.push('xts.live2.v1');
+        }),
+      );
+      assert.equal(harness.gate({ config: two }).livePriceKey(), null);
+      // 券は保存済みの予約から作り直せて、会話の秒数は券の版の単価で金額になる。
+      const gate = harness.gate({ config: loadedConfig() });
+      await gate.start();
+      const admitted = await gate.admit(
+        textRequest(uuid(1), {
+          service: 'voice',
+          price_key: 'synthetic.live',
+          quantities: { live_seconds: '15' },
+        }),
+      );
+      assert(admitted.ok);
+      const rebuilt = await gate.ticketOf(admitted.ticket.reservation_id);
+      assert(rebuilt !== null && rebuilt !== 'unavailable');
+      assert.deepEqual(
+        [rebuilt.price_version, rebuilt.reserved, rebuilt.revision],
+        ['xts.live.v1', '15', '1'],
+      );
+      assert.deepEqual(gate.liveSecondsAmount(rebuilt, 60, 'increment'), {
+        ok: true,
+        amount: '60',
+      });
+      assert.deepEqual(gate.liveSecondsAmount(rebuilt, 5, 'actual'), {
+        ok: true,
+        amount: '15',
+      });
+      assert.equal(await gate.ticketOf(uuid(0x99)), null);
     });
   },
 );

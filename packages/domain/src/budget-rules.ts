@@ -490,6 +490,82 @@ export function computeReservation(
   };
 }
 
+// 会話（Live）の秒数を金額にする（B05-04、ADR 0049）。接続の開始の予約（15 秒 + 180 秒）は computeReservation が
+// 計算し、ここは「60 秒ごとの追加予約の 1 回分」と「確認した使用秒数での精算の実費」を、予約に固定した単価の版で求める。
+// - increment: 追加分の最大負担 M と予約 R（同じ額）。量 × 単価 × 為替 × 安全係数を切り上げる（M と同じ式。最低課金量は
+//   接続ごとに 1 回で、開始の予約が済ませているので掛けない。版の 1 要求の最大量は、追加を重ねて超えるので見ない）。
+// - actual: 実費。最低課金量との大きい方 × 単価 × 為替を切り上げる（安全係数は M の見積もりだけの余裕で、実費には掛けない）。
+// どちらも、予約を受けた版（price_version）で求め、版が確認されていない・通貨が違う・単価がなければ拒否する。
+export interface LiveSecondsCostRequest {
+  readonly budgetCurrency: string;
+  readonly priceKey: string;
+  // 予約の受付で固定した単価の版（BudgetTicket.price_version）。
+  readonly priceVersion: string;
+  readonly priceVersions: readonly PriceVersionInput[];
+  readonly verifiedPriceVersions: readonly string[];
+  readonly seconds: number;
+  readonly basis: 'increment' | 'actual';
+}
+
+export function computeLiveSecondsAmount(request: LiveSecondsCostRequest):
+  | {
+      readonly ok: true;
+      readonly amount: string;
+      readonly priceVersion: string;
+    }
+  | Failure {
+  if (!Number.isSafeInteger(request.seconds) || request.seconds < 0)
+    return { ok: false, reasonCodes: ['invalid_quantity:live_seconds'] };
+  const version = request.priceVersions.find(
+    (item) =>
+      item.price_version === request.priceVersion &&
+      item.price_key === request.priceKey,
+  );
+  if (version === undefined)
+    return { ok: false, reasonCodes: ['price_version_unknown'] };
+  const reasons: string[] = [];
+  if (!request.verifiedPriceVersions.includes(version.price_version))
+    reasons.push(`price_unverified:${version.price_version}`);
+  if (version.conversion.to_currency !== request.budgetCurrency)
+    reasons.push('currency_mismatch');
+  const rate = version.rates.find((item) => item.category === 'live_seconds');
+  if (rate === undefined) reasons.push('unpriced_category:live_seconds');
+  const exchange = toMicros(version.conversion.rate);
+  const safety = toMicros(version.conversion.safety_factor);
+  if (exchange === null || exchange === 0n || safety === null || safety < MICRO)
+    reasons.push('invalid_conversion');
+  if (reasons.length > 0 || rate === undefined)
+    return { ok: false, reasonCodes: unique(reasons) };
+  const unitPrice = toInteger(rate.unit_price);
+  const perQuantity = toInteger(rate.per_quantity);
+  const minimum = toInteger(rate.minimum_quantity);
+  if (
+    unitPrice === null ||
+    perQuantity === null ||
+    perQuantity === 0n ||
+    minimum === null ||
+    exchange === null ||
+    safety === null
+  )
+    return { ok: false, reasonCodes: ['invalid_price:live_seconds'] };
+  const seconds = BigInt(request.seconds);
+  const billed =
+    request.basis === 'actual' && seconds < minimum ? minimum : seconds;
+  const factor =
+    request.basis === 'actual' ? exchange * MICRO : exchange * safety;
+  const amount = ceilDiv(
+    billed * unitPrice * factor,
+    perQuantity * MICRO * MICRO,
+  );
+  if (amount > BUDGET_AMOUNT_MAX)
+    return { ok: false, reasonCodes: ['amount_overflow'] };
+  return {
+    ok: true,
+    amount: amount.toString(),
+    priceVersion: version.price_version,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 3. 予算月（budgetMonthOf・advanceBudgetMonth）
 

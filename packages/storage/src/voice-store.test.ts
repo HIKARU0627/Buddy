@@ -485,6 +485,51 @@ test('Live の更新: 今の値が expected のときだけ書き、戻す更新
       ok<unknown[]>(run(db, { kind: 'voice.live_unfinished' })),
       [],
     );
+    // 閉じ終えたが使用量を確認できていない接続だけが、終了後の照合の対象になる。
+    assert.deepEqual(
+      ok<{ live_session_id: string }[]>(
+        run(db, { kind: 'voice.live_held' }),
+      ).map((record) => record.live_session_id),
+      [LIVE_1],
+    );
+    // 後から使用秒数が分かれば、確認済みにできる（usage_reconciled）。確認済みの使用秒数は変えられない。
+    const unconfirmed: LiveControlValues = {
+      control_state: 'closed',
+      control_epoch: '1',
+      closure: 'close_unconfirmed',
+      usage_seconds: null,
+    };
+    const confirmed: LiveControlValues = {
+      ...unconfirmed,
+      closure: 'close_confirmed',
+      usage_seconds: 12,
+    };
+    ok(
+      run(db, {
+        kind: 'voice.live_update',
+        live_session_id: LIVE_1,
+        expected: unconfirmed,
+        next: confirmed,
+        ended_at: 9000,
+        end_reason: 'sideband_lost',
+      }),
+    );
+    assert.deepEqual(ok<unknown[]>(run(db, { kind: 'voice.live_held' })), []);
+    assert.deepEqual(
+      run(db, {
+        kind: 'voice.live_update',
+        live_session_id: LIVE_1,
+        expected: confirmed,
+        next: { ...confirmed, usage_seconds: 99 },
+        ended_at: 9000,
+        end_reason: 'sideband_lost',
+      }),
+      {
+        ok: false,
+        outcome: 'rejected',
+        reasons: ['live_close_confirmed_final'],
+      },
+    );
     assert.deepEqual(
       run(db, {
         kind: 'voice.live_update',

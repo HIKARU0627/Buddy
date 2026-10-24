@@ -1,0 +1,1043 @@
+{
+  "status": "specification_only",
+  "description": "方式 A の区間リング（16kHz・mono・16bit・60 秒まで）と、区間の sealed・blocked・collecting・truncated の期待値（設計 10 §5A、07 §1、09 QA05・QA06・X51、ADR 0041）。手で書いたもので、domain の実装から生成していない。音声は含まず、フレームの番号（frame_seq）と sample の範囲だけを持つ。1 フレームは 20ms = 320 sample、リングの容量は 960000 sample（60 秒）。frames の gen は同じ大きさの連続フレームを n 個作る省略記法（first_seq から連番、start から連続）。sealed は区間を固定したという意味で、誤認識がないことでも実行の許可でもない。",
+  "constants": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16,
+    "ring_max_seconds": 60,
+    "ring_capacity_samples": 960000,
+    "bridge_seconds": 15
+  },
+  "segment_defaults": {
+    "audio_epoch": "7",
+    "live_offset_mapping": "verified",
+    "target_turn_count": 1,
+    "asr": "completed"
+  },
+  "ring_epoch": "7",
+  "push_cases": [
+    {
+      "id": "push-first-frame",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 1
+          }
+        }
+      ],
+      "push": {
+        "frame_seq": 1,
+        "start_sample": 320,
+        "sample_count": 320
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": false,
+        "frames": 2,
+        "evicted_samples": 0
+      }
+    },
+    {
+      "id": "push-the-same-frame-again-is-ignored",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 2
+          }
+        }
+      ],
+      "push": {
+        "frame_seq": 1,
+        "start_sample": 320,
+        "sample_count": 320
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": true,
+        "frames": 2,
+        "evicted_samples": 0
+      }
+    },
+    {
+      "id": "push-a-conflicting-frame-with-the-same-number",
+      "refs": ["QA05"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 2
+          }
+        }
+      ],
+      "push": {
+        "frame_seq": 1,
+        "start_sample": 320,
+        "sample_count": 160
+      },
+      "expected": {
+        "ok": false,
+        "reason": "frame_conflict"
+      }
+    },
+    {
+      "id": "push-a-frame-number-that-went-back",
+      "refs": ["QA05"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3
+          }
+        }
+      ],
+      "push": {
+        "frame_seq": 1,
+        "start_sample": 320,
+        "sample_count": 320
+      },
+      "expected": {
+        "ok": false,
+        "reason": "frame_seq_regressed"
+      }
+    },
+    {
+      "id": "push-a-frame-from-another-epoch",
+      "refs": ["QA06"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 1
+          }
+        }
+      ],
+      "epoch": "8",
+      "push": {
+        "frame_seq": 1,
+        "start_sample": 320,
+        "sample_count": 320
+      },
+      "expected": {
+        "ok": false,
+        "reason": "audio_epoch_changed"
+      }
+    },
+    {
+      "id": "push-an-empty-frame",
+      "refs": ["10 §5A"],
+      "frames": [],
+      "push": {
+        "frame_seq": 0,
+        "start_sample": 0,
+        "sample_count": 0
+      },
+      "expected": {
+        "ok": false,
+        "reason": "invalid_frame"
+      }
+    },
+    {
+      "id": "push-a-negative-start",
+      "refs": ["10 §5A"],
+      "frames": [],
+      "push": {
+        "frame_seq": 0,
+        "start_sample": -1,
+        "sample_count": 320
+      },
+      "expected": {
+        "ok": false,
+        "reason": "invalid_frame"
+      }
+    },
+    {
+      "id": "push-a-fractional-frame-number",
+      "refs": ["10 §5A"],
+      "frames": [],
+      "push": {
+        "frame_seq": 0.5,
+        "start_sample": 0,
+        "sample_count": 320
+      },
+      "expected": {
+        "ok": false,
+        "reason": "invalid_frame"
+      }
+    },
+    {
+      "id": "push-a-frame-larger-than-the-ring",
+      "refs": ["10 §5A"],
+      "frames": [],
+      "push": {
+        "frame_seq": 0,
+        "start_sample": 0,
+        "sample_count": 960001
+      },
+      "expected": {
+        "ok": false,
+        "reason": "invalid_frame"
+      }
+    },
+    {
+      "id": "ring-exactly-full-evicts-nothing",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 2999
+          }
+        }
+      ],
+      "push": {
+        "frame_seq": 2999,
+        "start_sample": 959680,
+        "sample_count": 320
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": false,
+        "frames": 3000,
+        "evicted_samples": 0
+      }
+    },
+    {
+      "id": "one-more-frame-evicts-the-oldest",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3000
+          }
+        }
+      ],
+      "push": {
+        "frame_seq": 3000,
+        "start_sample": 960000,
+        "sample_count": 320
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": false,
+        "frames": 3000,
+        "evicted_samples": 320
+      }
+    }
+  ],
+  "seal_cases": [
+    {
+      "id": "sealed-one-second",
+      "refs": ["10 §5A", "QA05"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16000
+      },
+      "expected": {
+        "state": "sealed",
+        "reasons": [],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": "full_audio_segment",
+        "seal_reason": "local_asr_segment",
+        "guidance": null
+      }
+    },
+    {
+      "id": "sealed-a-segment-in-the-middle",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 3200,
+        "end_sample": 9600
+      },
+      "expected": {
+        "state": "sealed",
+        "reasons": [],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": "full_audio_segment",
+        "seal_reason": "local_asr_segment",
+        "guidance": null
+      }
+    },
+    {
+      "id": "asr-not-finished-is-collecting-not-sealed",
+      "refs": ["10 §5A", "QA05"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16000,
+        "asr": "pending"
+      },
+      "expected": {
+        "state": "collecting",
+        "reasons": ["asr_incomplete"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": null
+      }
+    },
+    {
+      "id": "asr-failed-is-blocked",
+      "refs": ["10 §5A", "QA05"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16000,
+        "asr": "failed"
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["asr_failed"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "segment-end-not-captured-yet-is-collecting",
+      "refs": ["10 §5A", "QA05"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16320
+      },
+      "expected": {
+        "state": "collecting",
+        "reasons": ["segment_not_fully_captured"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": null
+      }
+    },
+    {
+      "id": "frame-number-skipped-is-a-gap",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3
+          }
+        },
+        {
+          "frame_seq": 4,
+          "start_sample": 960,
+          "sample_count": 320
+        },
+        {
+          "frame_seq": 5,
+          "start_sample": 1280,
+          "sample_count": 320
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 1600
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["frame_gap"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "sample-hole-between-frames-is-a-gap",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3
+          }
+        },
+        {
+          "frame_seq": 3,
+          "start_sample": 1280,
+          "sample_count": 320
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 1600
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["frame_gap"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "a-gap-outside-the-segment-does-not-block",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3
+          }
+        },
+        {
+          "frame_seq": 3,
+          "start_sample": 1280,
+          "sample_count": 320
+        }
+      ],
+      "segment": {
+        "start_sample": 1280,
+        "end_sample": 1600
+      },
+      "expected": {
+        "state": "sealed",
+        "reasons": [],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": "full_audio_segment",
+        "seal_reason": "local_asr_segment",
+        "guidance": null
+      }
+    },
+    {
+      "id": "segment-starts-before-the-first-frame-that-was-ever-captured",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 10,
+            "start": 3200,
+            "count": 320,
+            "n": 10
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 3200
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["frame_gap"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "segment-starts-in-the-evicted-part-is-truncated",
+      "refs": ["10 §5A", "QA06"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3001
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16000
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["segment_truncated"],
+        "truncated": true,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "text_or_resplit"
+      }
+    },
+    {
+      "id": "segment-starting-exactly-at-the-oldest-kept-sample-is-sealed",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3001
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 320,
+        "end_sample": 16000
+      },
+      "expected": {
+        "state": "sealed",
+        "reasons": [],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": "full_audio_segment",
+        "seal_reason": "local_asr_segment",
+        "guidance": null
+      }
+    },
+    {
+      "id": "sixty-seconds-exactly-is-sealed",
+      "refs": ["10 §5A", "QA39"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3001
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 320,
+        "end_sample": 960320
+      },
+      "expected": {
+        "state": "sealed",
+        "reasons": [],
+        "truncated": false,
+        "bridge_first": true,
+        "input_evidence": "full_audio_segment",
+        "seal_reason": "local_asr_segment",
+        "guidance": null
+      }
+    },
+    {
+      "id": "sixty-seconds-and-one-sample-is-truncated",
+      "refs": ["10 §5A", "QA39"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3001
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 320,
+        "end_sample": 960321
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["segment_truncated"],
+        "truncated": true,
+        "bridge_first": true,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "text_or_resplit"
+      }
+    },
+    {
+      "id": "fifteen-seconds-exactly-needs-no-bridge",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 750
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 240000
+      },
+      "expected": {
+        "state": "sealed",
+        "reasons": [],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": "full_audio_segment",
+        "seal_reason": "local_asr_segment",
+        "guidance": null
+      }
+    },
+    {
+      "id": "fifteen-seconds-and-one-sample-needs-a-bridge",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 751
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 240001
+      },
+      "expected": {
+        "state": "sealed",
+        "reasons": [],
+        "truncated": false,
+        "bridge_first": true,
+        "input_evidence": "full_audio_segment",
+        "seal_reason": "local_asr_segment",
+        "guidance": null
+      }
+    },
+    {
+      "id": "epoch-changed-after-a-reconnect",
+      "refs": ["QA06", "07 §1"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "audio_epoch": "8",
+        "start_sample": 0,
+        "end_sample": 16000
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["audio_epoch_changed"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "live-offset-mapping-cannot-be-verified",
+      "refs": ["10 §5A", "QA05", "X51"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16000,
+        "live_offset_mapping": "unknown"
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["offset_mapping_unverified"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "two-target-turns",
+      "refs": ["10 §5A", "X51"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16000,
+        "target_turn_count": 2
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["target_turn_not_unique"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "no-target-turn",
+      "refs": ["10 §5A", "X51"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16000,
+        "target_turn_count": 0
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["target_turn_not_unique"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "empty-range",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 3200,
+        "end_sample": 3200
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["invalid_segment"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "negative-start",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": -320,
+        "end_sample": 3200
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["invalid_segment"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "fractional-end",
+      "refs": ["10 §5A"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 50
+          }
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 3200.5
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["invalid_segment"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "every-problem-at-once-keeps-the-blocking-reasons-first",
+      "refs": ["QA05", "X51"],
+      "frames": [
+        {
+          "gen": {
+            "first_seq": 0,
+            "start": 0,
+            "count": 320,
+            "n": 3
+          }
+        },
+        {
+          "frame_seq": 4,
+          "start_sample": 960,
+          "sample_count": 320
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 1280,
+        "live_offset_mapping": "unknown",
+        "asr": "pending"
+      },
+      "expected": {
+        "state": "blocked",
+        "reasons": ["frame_gap", "offset_mapping_unverified", "asr_incomplete"],
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "codex-regression-a-later-frame-proves-the-missing-tail-is-a-gap",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "frame_seq": 0,
+          "start_sample": 0,
+          "sample_count": 16000
+        },
+        {
+          "frame_seq": 2,
+          "start_sample": 32000,
+          "sample_count": 16000
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 32000
+      },
+      "expected": {
+        "state": "blocked",
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "reasons": ["frame_gap"],
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "no-later-frame-yet-is-still-collecting",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "frame_seq": 0,
+          "start_sample": 0,
+          "sample_count": 16000
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 32000
+      },
+      "expected": {
+        "state": "collecting",
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "reasons": ["segment_not_fully_captured"],
+        "guidance": null
+      }
+    },
+    {
+      "id": "a-contiguous-later-frame-after-the-segment-is-fine",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "frame_seq": 0,
+          "start_sample": 0,
+          "sample_count": 16000
+        },
+        {
+          "frame_seq": 1,
+          "start_sample": 16000,
+          "sample_count": 16000
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 24000
+      },
+      "expected": {
+        "state": "sealed",
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": "full_audio_segment",
+        "seal_reason": "local_asr_segment",
+        "reasons": [],
+        "guidance": null
+      }
+    },
+    {
+      "id": "a-hole-before-a-later-frame-inside-the-segment-end-is-a-gap",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "frame_seq": 0,
+          "start_sample": 0,
+          "sample_count": 16000
+        },
+        {
+          "frame_seq": 1,
+          "start_sample": 16000,
+          "sample_count": 8000
+        },
+        {
+          "frame_seq": 3,
+          "start_sample": 32000,
+          "sample_count": 16000
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 28000
+      },
+      "expected": {
+        "state": "blocked",
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "reasons": ["frame_gap"],
+        "guidance": "ask_again"
+      }
+    },
+    {
+      "id": "one-sample-short-without-a-later-frame-is-collecting",
+      "refs": ["QA05", "10 §5A"],
+      "frames": [
+        {
+          "frame_seq": 0,
+          "start_sample": 0,
+          "sample_count": 16000
+        }
+      ],
+      "segment": {
+        "start_sample": 0,
+        "end_sample": 16001
+      },
+      "expected": {
+        "state": "collecting",
+        "truncated": false,
+        "bridge_first": false,
+        "input_evidence": null,
+        "seal_reason": null,
+        "reasons": ["segment_not_fully_captured"],
+        "guidance": null
+      }
+    }
+  ]
+}

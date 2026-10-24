@@ -2,7 +2,7 @@
 //
 // 起動: 起動前の検査（鍵保護）→ データディレクトリ → 排他ロック → データ鍵の読み直し（作成しない）
 //   → B01 の状態ファイルの読み取り → DB worker（書込み接続・耐久設定の読み戻し・マイグレーション・
-//   健全性・鍵の照合値・store_generation）→ 状態ファイルの片付け → 起動時の回復
+//   健全性・鍵の照合値・store_generation）→ 状態ファイルの片付け → 起動時の回復 → 用事の暗号文の移行（ADR 0051）
 //   → 予算の門（設定ファイルの読み込み・予算の再起動の照合・予算月。ADR 0037）→ イベントの配信の元
 //   →（HTTPS を設定したとき）TLS の身元（秘密鍵はキーチェーン）→ HTTPS の待ち受け（スナップショット・イベント・
 //   操作の経路と WSS の配信、ADR 0023）→ 制御チャネル → running。
@@ -57,6 +57,10 @@ import {
 } from './api-operations.js';
 import type { PreviewCheck } from './api-operations.js';
 import { DeviceConnections } from './device-connections.js';
+import {
+  TaskMigrationError,
+  migrateTaskContents,
+} from './task-content-migration.js';
 import { createTurnRoutes } from './api-turns.js';
 import { CanvasHub, createStreamRoutes } from './canvas-stream.js';
 import { PreviewRegistry } from './previews.js';
@@ -411,6 +415,22 @@ async function openStore(
         throw new CoreStartError('store_recovery_failed', error.reasons);
       if (error instanceof StorageError)
         throw new CoreStartError('store_recovery_failed', [error.reason]);
+      throw error;
+    }
+    // 起動時のデータ移行（ADR 0051）: 0010 までの用事の正本を、確定 intent から用事自身の暗号文へ移す。
+    // 移していない用事が残る間は、DB worker が J5 の本文の削除と 90 日の削除を拒否する（起動時のゲート）。
+    try {
+      const migration = await migrateTaskContents(store, dataKey);
+      if (migration.migrated > 0 || migration.pending > 0)
+        log(
+          `用事の暗号文の移行: 移した ${migration.migrated} 件、移せなかった ${migration.failed.length} 件、残り ${migration.pending} 件。残りがある間は、終わった操作の本文の削除を止めます。`,
+        );
+    } catch (error) {
+      if (error instanceof TaskMigrationError)
+        throw new CoreStartError('store_recovery_failed', [
+          'task_content_migration_failed',
+          error.reason,
+        ]);
       throw error;
     }
     log(

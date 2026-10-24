@@ -32,9 +32,16 @@ import type {
 import type { BudgetOp, BudgetOpKind, BudgetOpResult } from './budget-store.js';
 // B05-03: 音声の世代・入出力の停止・Live の制御の状態（ADR 0046）。
 import type { VoiceOp, VoiceOpKind, VoiceOpResult } from './voice-store.js';
+// B06-06c: 終わった操作の本文の削除・90 日の削除・用事の正本の移行（ADR 0051）。
+import type {
+  RetentionOp,
+  RetentionOpKind,
+  RetentionOpResult,
+} from './retention-store.js';
 
 // 故障注入の対象（操作の命令・予算の命令・音声の命令の種類）。
-export type DbFaultKind = DbCommandKind | BudgetOpKind | VoiceOpKind;
+export type DbFaultKind =
+  DbCommandKind | BudgetOpKind | VoiceOpKind | RetentionOpKind;
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -114,7 +121,13 @@ export type MainToWorker =
   // 予算の命令と照会（ADR 0036）。
   | { readonly type: 'budget'; readonly id: number; readonly op: BudgetOp }
   // 音声の世代・入出力の停止・Live の制御の状態（ADR 0046）。
-  | { readonly type: 'voice'; readonly id: number; readonly op: VoiceOp };
+  | { readonly type: 'voice'; readonly id: number; readonly op: VoiceOp }
+  // 終わった操作の本文の削除・90 日の削除・用事の正本の移行（ADR 0051）。
+  | {
+      readonly type: 'retention';
+      readonly id: number;
+      readonly op: RetentionOp;
+    };
 
 export interface WorkerTimings extends StoreTimings {
   // Core main が送ってから worker が処理を始めるまで（IPC と待ち行列の待ち）。
@@ -189,6 +202,12 @@ export type WorkerToMain =
       readonly type: 'voice_result';
       readonly id: number;
       readonly result: VoiceOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'retention_result';
+      readonly id: number;
+      readonly result: RetentionOpResult;
       readonly halted: boolean;
     };
 

@@ -16,6 +16,7 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `operation-steps.ts`: 操作の工程（operation_steps）の進め方（D3、ADR 0027）
 - `approval.ts`: 承認の受付（同じ内容版の承認は一つ・方針の版）と DB worker の命令の再検査（[ADR 0010](../../docs/adr/0010-domain-boundary-and-storage-draft.md)）
 - `audio.ts`: 停止理由ごとの動作と再開条件、遅着した結果の受け入れ、出力先の決定（[ADR 0005](../../docs/adr/0005-conversation-and-voice-control.md)）
+- `voice-lease.ts`・`voice-stop.ts`・`voice-silence.ts`・`voice-reservation.ts`・`voice-notification.ts`・`voice-start.ts`・`voice-input.ts`: 音声の純粋な規則（リースの期限と世代の発行・3 層の停止の時間・無音・追加予約と精算の秒数・通知の頻度・接続開始の門・方式 A の区間リング・方式 C の 4 操作・ASR の比較・会話の操作の照合）。時計と乱数は呼び出し側が渡す。リースを継続して見張るときは `observeLease` を使い、返る状態（直前の観測）を次の観測と更新の適用（`acceptLeaseRenewal`）へ渡す（`evaluateLease` は状態を持たない単発の判定だけ）（[ADR 0041](../../docs/adr/0041-b05-voice-pure-rules.md)）
 - `desktop.ts`: デスクトップの限定 IPC の受付（送信元・ロック・画面操作・停止の範囲・io_epoch）、状態欄の非表示、入出力・ロックの状態遷移（[ADR 0014](../../docs/adr/0014-b01-desktop-ipc-contract.md)）
 - `conversation.ts`: 意図ごとの結果表示、会話の操作の照合
 - `retention.ts`: 削除期限の計算（起点から一度だけ）
@@ -27,4 +28,4 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `storage-mode.ts`: 記録しない会話の保存の境界（保存モードごとの許可表、入る・出るの遷移と命令の順序、独立した確認の中身と最小の操作記録。判別できない値は禁止の側。[ADR 0045](../../docs/adr/0045-b06-private-conversation-storage-boundary.md)）
 - `evaluation.ts`: 配備×用途の採否、配備の段階、成果物の照合、同じモデル ID のままの変化の検知、戻し先、影モードの停止と skip
 
-contracts の生成型は import せず、意図名・引数名の一覧が schema と一致することを `scripts/domain.test.mjs`・`scripts/voice.test.mjs`・`scripts/budget.test.mjs`・`scripts/sync-analysis.test.mjs`・`scripts/memory-evaluation.test.mjs`・`scripts/api.test.mjs`・`scripts/boundary.test.mjs`・`scripts/desktop-ipc.test.mjs`・`scripts/storage-mode.test.mjs` で検査します。試験はビルド後の `dist` を対象にします。DB の transaction・最終検査・外部送出は未実装です。
+contracts の生成型は import せず、意図名・引数名の一覧が schema と一致することを `scripts/domain.test.mjs`・`scripts/voice.test.mjs`・`scripts/budget.test.mjs`・`scripts/sync-analysis.test.mjs`・`scripts/memory-evaluation.test.mjs`・`scripts/api.test.mjs`・`scripts/boundary.test.mjs`・`scripts/desktop-ipc.test.mjs`・`scripts/storage-mode.test.mjs`・`scripts/voice-contract.test.mjs`・`scripts/voice-rules.test.mjs` で検査します。試験はビルド後の `dist` を対象にします。DB の transaction・最終検査・外部送出は未実装です。

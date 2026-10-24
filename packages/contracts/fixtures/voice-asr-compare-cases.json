@@ -1,0 +1,1238 @@
+{
+  "status": "specification_only",
+  "description": "Live の文字断片と端末の ASR の結果の比較の期待値（設計 10 §5A、09 QA08・X50・QA05、ADR 0041）。手書きで、domain の実装から生成していない。判定の正本は「完全一致」だけ（初期。U36）: proceed になるのは、Unicode の NFC（同じ文字の別の符号化だけをそろえる）と前後の空白の除去だけをした文字列が完全に一致したときだけで、それ以外は、全角と半角・文末の記号（「？」と「。」、「5!」と「5」）・上付き数字や丸数字・漢数字・読み・かな/カタカナ・曜日・敬称・記号・空白・桁区切りの違いも含めて、すべて ask_back。NFKC は意味を持つ差（10⁴ と 104、①② と 12）を消すので使わない。数字・日時・否定・宛先の抽出は differences の説明の補助で、判定には使わない（説明が付かない差は reasons が text_differs で、differences が空になる）。許容は、B05 の実測（T08）で、1 つずつ安全を確かめて足す。空の判定は正規化の後（空白だけの入力）に行い、どちらかが空・ASR がない場合は比べられないので聞き返す。合成の発話だけで、実際の音声・実在の人名・実在のメールアドレスは含まない。メールアドレスの形の文字列は公開情報の検査に誤検出されるので、@ を {at} と書き、試験が @ に置き換えて渡す。",
+  "cases": [
+    {
+      "id": "identical",
+      "refs": ["QA08"],
+      "live": "明日の予定を教えて",
+      "asr": "明日の予定を教えて",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "inner-spaces-differ-is-asked-back",
+      "refs": ["QA08"],
+      "live": "カレンダーに登録して。",
+      "asr": "カレンダー に 登録して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "katakana-and-hiragana-is-asked-back",
+      "refs": ["QA08"],
+      "live": "ラベルを付けて",
+      "asr": "らべるを付けて",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "hour-differs-15-16",
+      "refs": ["QA08", "X51"],
+      "live": "明日15時に予定を入れて",
+      "asr": "明日16時に予定を入れて",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "kanji-numerals-and-a-reading-are-asked-back",
+      "refs": ["QA08"],
+      "live": "明日十五時に予定を入れて",
+      "asr": "あした15時に予定を入れて",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "fullwidth-digits-are-asked-back",
+      "refs": ["QA08"],
+      "live": "１５時に会う",
+      "asr": "15時に会う",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "half-past-written-two-ways-is-asked-back",
+      "refs": ["QA08"],
+      "live": "十時半に会う",
+      "asr": "10時30分に会う",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "minutes-differ",
+      "refs": ["QA08"],
+      "live": "10時30分に会う",
+      "asr": "10時35分に会う",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "day-of-month-differs",
+      "refs": ["QA08"],
+      "live": "10月7日までに返信",
+      "asr": "10月8日までに返信",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "year-differs",
+      "refs": ["QA08"],
+      "live": "2026年10月7日",
+      "asr": "2027年10月7日",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "kanji-year-and-date-is-asked-back",
+      "refs": ["QA08"],
+      "live": "2026年10月7日",
+      "asr": "二〇二六年十月七日",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "weekday-differs",
+      "refs": ["QA08"],
+      "live": "月曜日に会う",
+      "asr": "火曜日に会う",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "weekday-with-and-without-the-day-word-is-asked-back",
+      "refs": ["QA08"],
+      "live": "月曜に会う",
+      "asr": "月曜日に会う",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "morning-and-afternoon-differ",
+      "refs": ["QA08"],
+      "live": "午前9時に会う",
+      "asr": "午後9時に会う",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "today-and-tomorrow-differ",
+      "refs": ["QA08"],
+      "live": "今日出す",
+      "asr": "明日出す",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "next-week-and-the-week-after-differ",
+      "refs": ["QA08"],
+      "live": "来週にする",
+      "asr": "再来週にする",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "day-after-tomorrow-reading-is-asked-back",
+      "refs": ["QA08"],
+      "live": "あさってにする",
+      "asr": "明後日にする",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "duration-differs",
+      "refs": ["QA08"],
+      "live": "2時間後に知らせて",
+      "asr": "3時間後に知らせて",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "amount-written-in-kanji-is-asked-back",
+      "refs": ["QA08"],
+      "live": "3000円払う",
+      "asr": "三千円払う",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "amount-with-a-thousand-word-is-asked-back",
+      "refs": ["QA08"],
+      "live": "3000円払う",
+      "asr": "3千円払う",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "amount-with-ten-thousands-is-asked-back",
+      "refs": ["QA08"],
+      "live": "30000円払う",
+      "asr": "3万円払う",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "amount-mixed-digits-and-kanji-is-asked-back",
+      "refs": ["QA08"],
+      "live": "15000円払う",
+      "asr": "1万5千円払う",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "amount-differs-by-a-zero",
+      "refs": ["QA08"],
+      "live": "3000円払う",
+      "asr": "30000円払う",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "people-count-differs",
+      "refs": ["QA08"],
+      "live": "3人で行く",
+      "asr": "4人で行く",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "counter-unit-differs",
+      "refs": ["QA08"],
+      "live": "5個ある",
+      "asr": "5件ある",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "digits-split-by-a-space-in-a-phone-number",
+      "refs": ["QA08"],
+      "live": "番号は090 1234",
+      "asr": "番号は090 1235",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "decimal-point-is-kept",
+      "refs": ["QA08"],
+      "live": "1.5倍にする",
+      "asr": "15倍にする",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "thousands-separator-is-asked-back",
+      "refs": ["QA08"],
+      "live": "1,000円",
+      "asr": "1000円",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "negation-added",
+      "refs": ["QA08", "X50"],
+      "live": "行きます",
+      "asr": "行きません",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "negation-dropped",
+      "refs": ["QA08"],
+      "live": "予定を消さないで",
+      "asr": "予定を消して",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "negation-saved-or-not",
+      "refs": ["QA08"],
+      "live": "保存して",
+      "asr": "保存しないで",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "negation-in-another-wording",
+      "refs": ["QA08"],
+      "live": "予定はありません",
+      "asr": "予定はないです",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "negation-with-a-kanji-prefix",
+      "refs": ["QA08"],
+      "live": "返信は不要です",
+      "asr": "返信は必要です",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "recipient-differs",
+      "refs": ["QA08", "X51"],
+      "live": "田中さんに送って",
+      "asr": "山田さんに送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "honorific-differs-is-asked-back",
+      "refs": ["QA08"],
+      "live": "田中さんに送って",
+      "asr": "田中様に送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "addressed-to-the-same-person-in-another-wording-is-asked-back",
+      "refs": ["QA08"],
+      "live": "田中さんに送って",
+      "asr": "田中宛に送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "same-recipients-in-another-order-is-asked-back",
+      "refs": ["QA08"],
+      "live": "田中さんと山田さんに送って",
+      "asr": "山田さんと田中さんに送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "one-recipient-missing",
+      "refs": ["QA08"],
+      "live": "田中さんと山田さんに送って",
+      "asr": "田中さんに送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "name-in-kana-and-in-kanji-is-asked-back",
+      "refs": ["QA08", "X56"],
+      "live": "田中さんに送って",
+      "asr": "たなかさんに送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "recipient-before-send-without-an-honorific",
+      "refs": ["QA08"],
+      "live": "山田にメールして",
+      "asr": "田中にメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "mail-address-differs",
+      "refs": ["QA08"],
+      "live": "taro{at}example.test に送って",
+      "asr": "hanako{at}example.test に送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "mail-address-differs-only-in-case-is-asked-back",
+      "refs": ["QA08"],
+      "live": "Taro{at}Example.test に送って",
+      "asr": "taro{at}example.test に送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "datetime-negation-and-recipient-all-differ",
+      "refs": ["QA08", "X51"],
+      "live": "田中さんに明日15時に送って",
+      "asr": "山田さんに明日16時に送らないで",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime", "negation", "recipient"],
+        "reasons": ["datetime_differs", "negation_differs", "recipient_differs"]
+      }
+    },
+    {
+      "id": "a-different-noun-is-asked-back",
+      "refs": ["QA08"],
+      "live": "ゼミの資料を作る",
+      "asr": "プレゼンの資料を作る",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "asr-result-missing",
+      "refs": ["QA08", "X50"],
+      "live": "明日の予定を教えて",
+      "asr": null,
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["asr_missing"]
+      }
+    },
+    {
+      "id": "live-transcript-empty",
+      "refs": ["QA08", "QA05"],
+      "live": "",
+      "asr": "明日の予定を教えて",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["live_transcript_empty"]
+      }
+    },
+    {
+      "id": "asr-transcript-only-spaces",
+      "refs": ["QA08", "X50"],
+      "live": "明日の予定を教えて",
+      "asr": "　 ",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["asr_transcript_empty"]
+      }
+    },
+    {
+      "id": "both-empty",
+      "refs": ["QA08"],
+      "live": " ",
+      "asr": "",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["live_transcript_empty", "asr_transcript_empty"]
+      }
+    },
+    {
+      "id": "codex-regression-swapped-times-in-a-range",
+      "refs": ["QA08", "X51"],
+      "live": "3時から5時へ変更して",
+      "asr": "5時から3時へ変更して",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "the-same-range-in-the-same-order",
+      "refs": ["QA08"],
+      "live": "3時から5時まで会議",
+      "asr": "3時から5時まで会議",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "range-role-from-and-until-swapped",
+      "refs": ["QA08"],
+      "live": "3時から5時",
+      "asr": "3時まで5時",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "swapped-counts-keep-their-order",
+      "refs": ["QA08"],
+      "live": "3個と5件",
+      "asr": "5件と3個",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "swapped-dates",
+      "refs": ["QA08"],
+      "live": "10月7日を10月9日に変えて",
+      "asr": "10月9日を10月7日に変えて",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "codex-regression-negation-moved-to-another-verb",
+      "refs": ["QA08", "X50"],
+      "live": "送らないで保存して",
+      "asr": "送って保存しないで",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "the-same-negation-target-in-another-ending-is-asked-back",
+      "refs": ["QA08"],
+      "live": "送らないで保存して",
+      "asr": "送らなくて保存して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "two-negations-on-the-same-targets",
+      "refs": ["QA08"],
+      "live": "消さないで送らないで",
+      "asr": "消さないで送らないで",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "two-negations-swapped-between-targets",
+      "refs": ["QA08"],
+      "live": "消さないで送って",
+      "asr": "消して送らないで",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "codex-regression-hiragana-recipient-without-an-honorific",
+      "refs": ["QA08", "X51"],
+      "live": "たろうにメールして",
+      "asr": "はなこにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "katakana-recipient-without-an-honorific",
+      "refs": ["QA08"],
+      "live": "タロウにメールして",
+      "asr": "ハナコにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "the-same-name-in-hiragana-and-katakana-is-asked-back",
+      "refs": ["QA08"],
+      "live": "たろうにメールして",
+      "asr": "タロウにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "mixed-writing-with-a-time-word-before-the-name-is-asked-back",
+      "refs": ["QA08"],
+      "live": "明日たろうにメールして",
+      "asr": "あしたタロウにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "latin-recipient-without-an-honorific",
+      "refs": ["QA08"],
+      "live": "taroにメールして",
+      "asr": "hanakoにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "kanji-name-and-kana-name-without-an-honorific-are-asked-back",
+      "refs": ["QA08", "X56"],
+      "live": "太郎にメールして",
+      "asr": "たろうにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "identical-text-with-an-unreadable-recipient-proceeds",
+      "refs": ["QA08"],
+      "live": "あしたにメールして",
+      "asr": "あしたにメールして",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "time-particle-before-send-is-not-a-recipient",
+      "refs": ["QA08"],
+      "live": "明日15時に送って",
+      "asr": "明日15時に送って",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "send-without-a-recipient-is-implicit",
+      "refs": ["QA08"],
+      "live": "この返信を送って",
+      "asr": "この返信を送って",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "codex-v2-negation-moved-between-recipients",
+      "refs": ["QA08", "X51"],
+      "live": "田中さんには送らないで山田さんには送って",
+      "asr": "田中さんには送って山田さんには送らないで",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v2-a-shared-given-name-with-different-family-names",
+      "refs": ["QA08", "X51"],
+      "live": "山田たろうにメールして",
+      "asr": "鈴木たろうにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v2-a-recipient-far-from-the-send-verb",
+      "refs": ["QA08", "X51"],
+      "live": "たろうにこのメールを送って",
+      "asr": "はなこにこのメールを送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v2-fractional-hours-and-minutes",
+      "refs": ["QA08"],
+      "live": "1.5時間後に知らせて",
+      "asr": "1.5分後に知らせて",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "the-same-fractional-duration",
+      "refs": ["QA08"],
+      "live": "1.5時間後に知らせて",
+      "asr": "1.5時間後に知らせて",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "an-added-word-around-a-date-is-asked-back",
+      "refs": ["QA08"],
+      "live": "明日の予定を教えて",
+      "asr": "明日の予定を教えてください",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "an-added-word-before-a-negation-changes-its-target",
+      "refs": ["QA08"],
+      "live": "まだ送らないで",
+      "asr": "送らないで",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "a-send-expression-with-a-different-object",
+      "refs": ["QA08", "X51"],
+      "live": "この資料を送って",
+      "asr": "あの資料を送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "a-risk-marker-on-one-side-only-needs-a-full-match",
+      "refs": ["QA08"],
+      "live": "資料を作る",
+      "asr": "資料を作って送る",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "a-different-noun-without-any-marker-is-asked-back",
+      "refs": ["QA08"],
+      "live": "資料を作る",
+      "asr": "試料を作る",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "inner-spacing-and-marks-differ-is-asked-back",
+      "refs": ["QA08"],
+      "live": "田中さんに、送って！",
+      "asr": "田中さんに 送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "honorific-written-as-sama-is-asked-back",
+      "refs": ["QA08"],
+      "live": "山田様に送って",
+      "asr": "山田さんに送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "near-miss-ni-alone-needs-a-full-match",
+      "refs": ["QA08"],
+      "live": "山田に電話して",
+      "asr": "鈴木に電話して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "near-miss-he-alone-needs-a-full-match",
+      "refs": ["QA08"],
+      "live": "山田へ電話して",
+      "asr": "鈴木へ電話して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "near-miss-mail-address-alone-needs-a-full-match",
+      "refs": ["QA08"],
+      "live": "メモ: taro{at}example.test",
+      "asr": "ノート: taro{at}example.test",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "near-miss-digit-alone-needs-a-full-match",
+      "refs": ["QA08"],
+      "live": "第3章を読む",
+      "asr": "3章を読む",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "near-miss-honorific-alone-needs-a-full-match",
+      "refs": ["QA08"],
+      "live": "山田さんは優しい",
+      "asr": "山田さんは親切",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-date-separator-1-23-and-12-3",
+      "refs": ["QA08", "X51"],
+      "live": "1/23に予定を作って",
+      "asr": "12/3に予定を作って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-negative-sign",
+      "refs": ["QA08"],
+      "live": "-5度になったら知らせて",
+      "asr": "5度になったら知らせて",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-currency-dollar-and-yen",
+      "refs": ["QA08"],
+      "live": "予算は＄50で登録して",
+      "asr": "予算は￥50で登録して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-name-split-by-a-space",
+      "refs": ["QA08", "X51"],
+      "live": "Ann Aさんへ送って",
+      "asr": "Annaさんへ送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-explicit-zero-man-and-one-man",
+      "refs": ["QA08"],
+      "live": "0万円を上限にして",
+      "asr": "1万円を上限にして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-fullwidth-zero-man-and-one-man",
+      "refs": ["QA08"],
+      "live": "０万円を上限にして",
+      "asr": "１万円を上限にして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-kanji-zero-man-and-one-man",
+      "refs": ["QA08"],
+      "live": "〇万円を上限にして",
+      "asr": "一万円を上限にして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "zero-man-written-two-ways-is-asked-back",
+      "refs": ["QA08"],
+      "live": "0万円を上限にして",
+      "asr": "〇万円を上限にして",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-prohibition-na-and-te",
+      "refs": ["QA08", "X50"],
+      "live": "予定を消すな",
+      "asr": "予定を消して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-hitotsu-and-futatsu",
+      "refs": ["QA08"],
+      "live": "一つ追加して",
+      "asr": "二つ追加して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-tomorrow-night-and-tonight",
+      "refs": ["QA08"],
+      "live": "明晩の予定を教えて",
+      "asr": "今夜の予定を教えて",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "trailing-marks-differ-is-asked-back",
+      "refs": ["QA08"],
+      "live": " 予定を入れて。",
+      "asr": "予定を入れて！？ ",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "fullwidth-and-halfwidth-forms-are-asked-back",
+      "refs": ["QA08"],
+      "live": "ＡＢＣ１２３に送って",
+      "asr": "ABC123に送って",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v3-explicit-zero-sen-and-one-sen",
+      "refs": ["QA08"],
+      "live": "0千円を上限にして",
+      "asr": "1千円を上限にして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-question-and-statement",
+      "refs": ["QA08", "X50"],
+      "live": "明日の予定を削除する？",
+      "asr": "明日の予定を削除する。",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-question-and-command-in-english",
+      "refs": ["QA08"],
+      "live": "Delete the event?",
+      "asr": "Delete the event!",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-factorial-and-number",
+      "refs": ["QA08"],
+      "live": "計算して、5!",
+      "asr": "計算して、5",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-superscript-ten-to-the-fourth-and-104",
+      "refs": ["QA08", "X51"],
+      "live": "予算は10⁴円にして",
+      "asr": "予算は104円にして",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-circled-numbers-and-12",
+      "refs": ["QA08", "X51"],
+      "live": "項目①②を削除して",
+      "asr": "項目12を削除して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-question-mark-only-and-full-stop-only",
+      "refs": ["QA08"],
+      "live": "？",
+      "asr": "。",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "subscript-and-plain-digits",
+      "refs": ["QA08"],
+      "live": "H₂O",
+      "asr": "H2O",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "halfwidth-and-fullwidth-kana",
+      "refs": ["QA08"],
+      "live": "ｱｲｳ",
+      "asr": "アイウ",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "a-trailing-full-stop-and-none",
+      "refs": ["QA08"],
+      "live": "予定を入れて。",
+      "asr": "予定を入れて",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "an-exclamation-mark-and-a-full-stop",
+      "refs": ["QA08"],
+      "live": "消して！",
+      "asr": "消して。",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "nfc-composed-and-decomposed-voiced-kana",
+      "refs": ["QA08"],
+      "live": "がくしゅう",
+      "asr": "がくしゅう",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "only-the-outer-spaces-differ",
+      "refs": ["QA08"],
+      "live": "  予定を入れて ",
+      "asr": "予定を入れて",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "only-the-outer-ideographic-spaces-differ",
+      "refs": ["QA08"],
+      "live": "　予定を入れて　",
+      "asr": "予定を入れて",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "a-question-mark-only-on-both-sides-is-the-same-sentence",
+      "refs": ["QA08"],
+      "live": "？",
+      "asr": "？",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "only-spaces-after-the-normalization-is-empty",
+      "refs": ["QA08", "X50"],
+      "live": "　 \t",
+      "asr": "　 \t",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["live_transcript_empty", "asr_transcript_empty"]
+      }
+    }
+  ]
+}

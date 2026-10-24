@@ -948,7 +948,7 @@
         ],
         [
           "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1b', 'q-1b', 'intent.luna.v1', 'overage', 'overage', 'owner_request', '2030-10', 'XTS', 'price-1', 20, 20, 'reserved', 1, 'ap-1', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1600)",
-          "unique"
+          "trigger:budget_reservation_replace"
         ],
         [
           "UPDATE budget_overage_approvals SET status = 'consumed', consumed_at = 2000, consumed_reservation_id = 'r-1' WHERE approval_id = 'ap-1'",

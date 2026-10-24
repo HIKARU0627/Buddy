@@ -52,12 +52,16 @@ BEGIN
 END;
 
 -- INSERT OR REPLACE は、既存の行を消してから入れ直すので、BEFORE DELETE の trigger をすり抜ける
--- （recursive_triggers は 0）。同じ予約・同じ要求・同じ照合 ID への挿入を拒否する（0008・0009 と同じ書き方）。
+-- （recursive_triggers は 0）。同じ予約・同じ要求・同じ照合 ID・同じ超過の承認への挿入を拒否する
+-- （0008・0009 と同じ書き方）。衝突の相手は、列の UNIQUE と 0006 の部分 UNIQUE 索引
+-- （budget_reservations_one_per_approval）のすべてを見る。
 CREATE TRIGGER budget_reservations_no_replace BEFORE INSERT ON budget_reservations
   WHEN EXISTS (SELECT 1 FROM budget_reservations WHERE reservation_id = NEW.reservation_id)
     OR EXISTS (SELECT 1 FROM budget_reservations WHERE request_id = NEW.request_id)
     OR (NEW.provider_reconciliation_id IS NOT NULL
       AND EXISTS (SELECT 1 FROM budget_reservations WHERE provider_reconciliation_id = NEW.provider_reconciliation_id))
+    OR (NEW.approval_id IS NOT NULL
+      AND EXISTS (SELECT 1 FROM budget_reservations WHERE approval_id = NEW.approval_id))
 BEGIN
   SELECT RAISE(ABORT, 'budget_reservation_replace');
 END;
@@ -124,8 +128,13 @@ BEGIN
 END;
 
 -- 記録の種類は normal から private_minimal へだけ変えられる（戻すと、記録しない会話の操作が通常の記録になる）。
+-- 依頼と操作の結び付け（request_entity_operations）に使った操作は、結び付けを残したまま private_minimal へ
+-- 変えられない（結び付けから通常の記録を引けなくなる）。
 CREATE TRIGGER operations_record_kind_forward BEFORE UPDATE OF record_kind ON operations
-  WHEN OLD.record_kind = 'private_minimal' AND NEW.record_kind <> OLD.record_kind
+  WHEN (OLD.record_kind = 'private_minimal' AND NEW.record_kind <> OLD.record_kind)
+    OR (NEW.record_kind = 'private_minimal' AND NEW.record_kind <> OLD.record_kind
+      AND EXISTS (
+        SELECT 1 FROM request_entity_operations WHERE operation_id = NEW.operation_id))
 BEGIN
   SELECT RAISE(ABORT, 'operation_record_kind_fixed');
 END;

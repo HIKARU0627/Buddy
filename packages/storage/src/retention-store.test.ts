@@ -480,6 +480,15 @@ test('INSERT OR REPLACE cannot get around the delete guard for reservations', ()
       actual: 10,
       deleteAt: DELETE_AT,
     });
+    // 承認（approval_id）は、0006 の部分 UNIQUE 索引で 1 つの予約にだけ結び付く。
+    insertReservation(db, {
+      id: uuid(35),
+      request: uuid(36),
+      status: 'settled',
+      actual: 10,
+      approvalId: 'ap-1',
+      deleteAt: DELETE_AT,
+    });
     const replace = db.prepare(
       `INSERT OR REPLACE INTO budget_reservations (
         reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month,
@@ -487,7 +496,7 @@ test('INSERT OR REPLACE cannot get around the delete guard for reservations', ()
         approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind,
         credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at, delete_at
       ) VALUES (?, ?, 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', ?, 'XTS', 'price-1', 0, 20,
-        'settled', 1, NULL, 10, 0, 10, ?, 'provider', NULL, 1500, 0, NULL, 1000, ?)`,
+        'settled', 1, ?, 10, 0, 10, ?, 'provider', NULL, 1500, 0, NULL, 1000, ?)`,
     );
     // 予約 ID・要求 ID・照合 ID のどれかが既存の行と衝突したら、置き換えない。
     for (const [id, request, provider] of [
@@ -496,14 +505,27 @@ test('INSERT OR REPLACE cannot get around the delete guard for reservations', ()
       [uuid(34), uuid(34), `anthropic:${uuid(31)}`],
     ]) {
       assert.throws(
-        () => replace.run(id, request, MONTH, provider, DELETE_AT),
+        () => replace.run(id, request, MONTH, null, provider, DELETE_AT),
         /budget_reservation_replace/u,
       );
     }
+    // 承認（approval_id）だけが既存の行と衝突する場合も置き換えない。
+    assert.throws(
+      () =>
+        replace.run(
+          uuid(37),
+          uuid(38),
+          MONTH,
+          'ap-1',
+          `anthropic:${uuid(38)}`,
+          DELETE_AT,
+        ),
+      /budget_reservation_replace/u,
+    );
     assert.deepEqual(
       db
         .prepare(
-          'SELECT reservation_id, request_id, provider_reconciliation_id, delete_at FROM budget_reservations',
+          'SELECT reservation_id, request_id, provider_reconciliation_id, approval_id, delete_at FROM budget_reservations ORDER BY reservation_id',
         )
         .all(),
       [
@@ -511,6 +533,14 @@ test('INSERT OR REPLACE cannot get around the delete guard for reservations', ()
           reservation_id: uuid(30),
           request_id: uuid(31),
           provider_reconciliation_id: `anthropic:${uuid(31)}`,
+          approval_id: null,
+          delete_at: DELETE_AT,
+        },
+        {
+          reservation_id: uuid(35),
+          request_id: uuid(36),
+          provider_reconciliation_id: `anthropic:${uuid(36)}`,
+          approval_id: 'ap-1',
           delete_at: DELETE_AT,
         },
       ],
@@ -629,6 +659,7 @@ test('private_minimal operations cannot carry a workflow, and record_kind is lim
     );
     insert('op-private-ok', 'private_minimal', null);
     insert('op-normal', 'normal', 'w-1');
+    insert('op-linked', 'normal', null);
     assert.throws(
       () =>
         db
@@ -673,6 +704,23 @@ test('private_minimal operations cannot carry a workflow, and record_kind is lim
           .run(),
       /operation_private_minimal_request_entity/u,
     );
+    // 依頼と操作の結び付けに使った操作は、workflow がなくても private_minimal に変えられない
+    // （結び付けを残したまま、記録しない会話の操作にしない）。
+    db.prepare(
+      "INSERT INTO request_entities VALUES ('re-2', 'acct-1', 'thread-1', 'msg-1', 1, 'active', 0, NULL, 1000, NULL)",
+    ).run();
+    db.prepare(
+      "INSERT INTO request_entity_operations VALUES ('re-2', 'label_mail', 'acct-1', '', 'op-linked')",
+    ).run();
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE operations SET record_kind = 'private_minimal' WHERE operation_id = 'op-linked'",
+          )
+          .run(),
+      /operation_record_kind_fixed/u,
+    );
     assert.throws(
       () => insert('op-bad', 'private', null),
       /CHECK constraint failed/u,
@@ -684,6 +732,11 @@ test('private_minimal operations cannot carry a workflow, and record_kind is lim
         )
         .all(),
       [
+        {
+          operation_id: 'op-linked',
+          record_kind: 'normal',
+          workflow_id: null,
+        },
         {
           operation_id: 'op-normal',
           record_kind: 'normal',

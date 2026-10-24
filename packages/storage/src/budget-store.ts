@@ -26,6 +26,8 @@ import {
   advanceBudgetMonth,
   allocateCredit,
   budgetMonthStart,
+  budgetRecordDeleteAt,
+  budgetReservationDeletable,
   creditAdmission,
   creditAdoptionDecision,
   creditBasesOf,
@@ -304,6 +306,14 @@ export type BudgetOp =
     }
   // 精算していない受付中（reserved）の予約。再起動の照合に使う（X28 の仕組み）。
   | { readonly kind: 'budget.unsettled_list' }
+  // 月ごとにまとめて予算の記録を消す（J4、ADR 0040・0048）。その月のすべての予約が消してよく、delete_at が今以前の
+  // ときだけ、1 つの transaction で live_sessions → budget_overage_approvals → budget_reservations の順に消す。
+  // 1 行でも残すべき予約があれば何も消さない。budget_months・budget_month_confirmations・budget_credit_observations は消さない。
+  | {
+      readonly kind: 'budget.purge_month';
+      readonly budget_month: string;
+      readonly now: number;
+    }
   | {
       readonly kind: 'budget.reservation_find';
       readonly reservation_id: string | null;
@@ -361,6 +371,14 @@ export interface BudgetUnsettledItem {
   readonly live_session: boolean;
 }
 
+// 月ごとの削除の結果。消した件数だけを返す（値・本文は返さない）。
+export interface BudgetPurgeValue {
+  readonly budget_month: string;
+  readonly deleted_live_sessions: number;
+  readonly deleted_approvals: number;
+  readonly deleted_reservations: number;
+}
+
 export interface BudgetOpValues {
   'budget.admit': BudgetAdmitValue;
   'budget.top_up': BudgetReservationChange;
@@ -393,6 +411,7 @@ export interface BudgetOpValues {
     readonly confirmation_id: string;
   };
   'budget.dispatch_intent': BudgetReservationChange;
+  'budget.purge_month': BudgetPurgeValue;
   'budget.unsettled_list': readonly BudgetUnsettledItem[];
   'budget.reservation_find': BudgetReservationValue | null;
   'budget.approval_find': BudgetApprovalValue | null;
@@ -442,6 +461,7 @@ export const BUDGET_WRITE_OPS: ReadonlySet<BudgetOpKind> = new Set([
   'budget.calendar_confirm',
   'budget.dispatch_intent',
   'budget.credit_adopt',
+  'budget.purge_month',
 ]);
 
 class BudgetRejection extends Error {
@@ -742,6 +762,10 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       break;
     case 'budget.calendar_read':
     case 'budget.unsettled_list':
+      break;
+    case 'budget.purge_month':
+      check(isMonth(op.budget_month), 'budget_month_invalid');
+      check(isTime(op.now), 'now_invalid');
       break;
     case 'budget.credit_adopt':
       check(
@@ -1432,6 +1456,18 @@ function writeReceipt(
 
 // --- 書込み ---
 
+// 予算月の記録を消してよくなる時刻（UTC のミリ秒）。その月のタイムゾーンは budget_months の記録を使う。
+// 月の記録がない・タイムゾーンが求められないときは null（推測で書かず、削除しない側に倒す）。
+function budgetDeleteAt(db: SqliteDatabase, month: string): number | null {
+  const timeZone = db
+    .prepare('SELECT time_zone FROM budget_months WHERE month = ?')
+    .pluck()
+    .get(month) as string | undefined;
+  if (typeof timeZone !== 'string') return null;
+  const deleteAt = budgetRecordDeleteAt(month, timeZone);
+  return deleteAt === null ? null : Date.parse(deleteAt);
+}
+
 function settledUpdate(
   db: SqliteDatabase,
   reservationId: string,
@@ -1443,12 +1479,14 @@ function settledUpdate(
   reconciliationId: string,
   kind: 'provider' | 'manual',
   now: number,
+  deleteAt: number | null,
 ): void {
   // 実費をクレジットと追加の支出に分けて記録する（B07-07。実費 = クレジット + 追加の支出は DB の CHECK が守る）。
-  // 周期（credit_cycle_id）は受付時に結び付けた値のまま変えない。
+  // 周期（credit_cycle_id）は受付時に結び付けた値のまま変えない。M 以内に収まった精算は、この時点で消してよい
+  // 状態なので delete_at も同じ UPDATE で書く（解放済みの行は変えられない trigger があるので、別の UPDATE にしない）。
   const updated = db
     .prepare(
-      "UPDATE budget_reservations SET status = 'settled', actual_gross = ?, credit_applied = ?, additional_spend = ?, credit_estimate = ?, credit_settled_seq = ?, provider_reconciliation_id = ?, settlement_kind = ?, settled_at = ? WHERE reservation_id = ? AND status IN ('reserved', 'usage_unknown')",
+      "UPDATE budget_reservations SET status = 'settled', actual_gross = ?, credit_applied = ?, additional_spend = ?, credit_estimate = ?, credit_settled_seq = ?, provider_reconciliation_id = ?, settlement_kind = ?, settled_at = ?, delete_at = ? WHERE reservation_id = ? AND status IN ('reserved', 'usage_unknown')",
     )
     .run(
       BigInt(actualGross),
@@ -1459,6 +1497,7 @@ function settledUpdate(
       reconciliationId,
       kind,
       now,
+      deleteAt,
       reservationId,
     );
   if (updated.changes !== 1) throw new BudgetRejection(['not_settleable']);
@@ -1765,6 +1804,11 @@ function settle(
   if (!decision.ok) throw new BudgetRejection(decision.reasonCodes);
   if (decision.duplicate)
     return { reservation: current, duplicate: true, overrun: decision.overrun };
+  // M 以内に収まった精算は、この時点で消してよい状態（J4）。M を超えた行は、本人の確認（review_overrun）まで消さない。
+  const deleteAt =
+    BigInt(op.actual_gross) <= BigInt(current.maxLiability)
+      ? budgetDeleteAt(db, current.budgetMonth)
+      : null;
   settledUpdate(
     db,
     op.reservation_id,
@@ -1776,6 +1820,7 @@ function settle(
     reconciliationId,
     'provider',
     op.now,
+    deleteAt,
   );
   return {
     reservation: requireReservation(db, op.reservation_id),
@@ -1826,11 +1871,12 @@ function release(
       current.origin === null,
   );
   if (!decision.ok) throw new BudgetRejection(decision.reasonCodes);
+  // 解放した行は消してよい状態（J4）。status と delete_at を同じ UPDATE で書く（解放済みの行は変えられない trigger がある）。
   const updated = db
     .prepare(
-      "UPDATE budget_reservations SET status = 'released' WHERE reservation_id = ? AND status = 'reserved'",
+      "UPDATE budget_reservations SET status = 'released', delete_at = ? WHERE reservation_id = ? AND status = 'reserved'",
     )
-    .run(op.reservation_id);
+    .run(budgetDeleteAt(db, current.budgetMonth), op.reservation_id);
   if (updated.changes !== 1) throw new BudgetRejection(['not_active']);
   return {
     reservation: requireReservation(db, op.reservation_id),
@@ -1856,14 +1902,15 @@ function review(
     maxLiability: op.max_liability,
   });
   if (!decision.ok) throw new BudgetRejection(decision.reasonCodes);
-  if (!decision.duplicate) {
-    const updated = db
-      .prepare(
-        "UPDATE budget_reservations SET overrun_reviewed = 1, overrun_reviewed_at = ? WHERE reservation_id = ? AND status = 'settled' AND overrun_reviewed = 0",
-      )
-      .run(op.now, op.reservation_id);
-    if (updated.changes !== 1) throw new BudgetRejection(['not_settled']);
-  }
+  // M 超過の確認が済めば、その月の締めから 13 か月後を delete_at に書く（J4）。すでに書いてある値は変えない。
+  // 0010 より前からある確認済みの行も、この命令の再適用で delete_at を得る（delete_at が NULL の行だけ更新する）。
+  const updated = db
+    .prepare(
+      "UPDATE budget_reservations SET overrun_reviewed = 1, overrun_reviewed_at = coalesce(overrun_reviewed_at, ?), delete_at = coalesce(delete_at, ?) WHERE reservation_id = ? AND status = 'settled' AND (overrun_reviewed = 0 OR delete_at IS NULL)",
+    )
+    .run(op.now, budgetDeleteAt(db, current.budgetMonth), op.reservation_id);
+  if (!decision.duplicate && updated.changes !== 1)
+    throw new BudgetRejection(['not_settled']);
   writeReceipt(db, op.request, op.reservation_id, current.revision, op.now);
   return {
     reservation: requireReservation(db, op.reservation_id),
@@ -1925,6 +1972,9 @@ function settleByHand(
       op.manual_reconciliation_id,
       'manual',
       op.now,
+      BigInt(op.actual_gross) <= BigInt(current.maxLiability)
+        ? budgetDeleteAt(db, current.budgetMonth)
+        : null,
     );
   writeReceipt(db, op.request, op.reservation_id, current.revision, op.now);
   return {
@@ -2172,6 +2222,74 @@ function dispatchIntent(
   };
 }
 
+// 月ごとにまとめて予算の記録を消す（J4、ADR 0040・0048）。その月のすべての予約が消してよく、delete_at が今以前の
+// ときだけ、1 つの transaction で消す。1 行でも残すべき予約があれば、何も消さない（使用額が部分的に少なく見えるのを
+// 防ぐ）。外部キーの順序は live_sessions → budget_overage_approvals → budget_reservations（ADR 0040）。
+// budget_months・budget_month_confirmations・budget_credit_observations は消さない（追記だけの記録）。
+function purgeMonth(
+  db: SqliteDatabase,
+  op: Extract<BudgetOp, { kind: 'budget.purge_month' }>,
+): BudgetPurgeValue {
+  const monthDeadline = budgetDeleteAt(db, op.budget_month);
+  if (monthDeadline === null) throw new BudgetRejection(['calendar_invalid']);
+  if (op.now < monthDeadline) throw new BudgetRejection(['not_due']);
+  const rows = db
+    .prepare(
+      'SELECT reservation_id, status, actual_gross, max_liability, overrun_reviewed, delete_at FROM budget_reservations WHERE budget_month = ? ORDER BY reservation_id',
+    )
+    .safeIntegers(true)
+    .all(op.budget_month) as {
+    reservation_id: string;
+    status: 'reserved' | 'usage_unknown' | 'settled' | 'released';
+    actual_gross: bigint | null;
+    max_liability: bigint;
+    overrun_reviewed: bigint;
+    delete_at: bigint | null;
+  }[];
+  // 消してよい状態かを domain の規則でもう一度確かめる（delete_at が書かれていても、状態が変わっていれば消さない）。
+  const open = rows.some(
+    (row) =>
+      !budgetReservationDeletable({
+        reservation_id: row.reservation_id,
+        status: row.status,
+        actual_gross:
+          row.actual_gross === null ? null : row.actual_gross.toString(),
+        max_liability: row.max_liability.toString(),
+        overrun_reviewed: row.overrun_reviewed === 1n,
+        live_session_ids: [],
+        approval_ids: [],
+      }),
+  );
+  if (open) throw new BudgetRejection(['month_has_open_rows']);
+  // 1 行でも delete_at が未来・未設定なら、その月はまだ消さない（月ごとにまとめて消す）。
+  const notDue = rows.some(
+    (row) => row.delete_at === null || row.delete_at > BigInt(op.now),
+  );
+  if (notDue) throw new BudgetRejection(['not_due']);
+
+  const liveSessions = db
+    .prepare(
+      'DELETE FROM live_sessions WHERE reservation_id IN (SELECT reservation_id FROM budget_reservations WHERE budget_month = ?)',
+    )
+    .run(op.budget_month);
+  // 使われなかった承認（pending・rejected・expired）も、承認を求めた月の同じ規則で消す。使用済みの承認は、同じ月の
+  // 予約を消す前に消す（consumed_reservation_id の外部キー）。期限の来ていない pending・approved は消さない。
+  const approvals = db
+    .prepare(
+      "DELETE FROM budget_overage_approvals WHERE budget_month = ? AND (consumed_reservation_id IN (SELECT reservation_id FROM budget_reservations WHERE budget_month = ?) OR (consumed_reservation_id IS NULL AND status IN ('pending', 'rejected', 'expired') AND expires_at <= ?))",
+    )
+    .run(op.budget_month, op.budget_month, op.now);
+  const reservations = db
+    .prepare('DELETE FROM budget_reservations WHERE budget_month = ?')
+    .run(op.budget_month);
+  return {
+    budget_month: op.budget_month,
+    deleted_live_sessions: liveSessions.changes,
+    deleted_approvals: approvals.changes,
+    deleted_reservations: reservations.changes,
+  };
+}
+
 function applyWrite(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
   switch (op.kind) {
     case 'budget.admit':
@@ -2198,6 +2316,8 @@ function applyWrite(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
       return confirmCalendar(db, op);
     case 'budget.dispatch_intent':
       return dispatchIntent(db, op);
+    case 'budget.purge_month':
+      return purgeMonth(db, op);
     case 'budget.credit_adopt': {
       const rejected = adoptObservations(db, op.credit, op.now);
       const resolved = resolveCredit(db, op.credit, rejected);

@@ -34,6 +34,8 @@ const request = (seconds, basis, extra = {}) => ({
   priceVersion: 'xts.live.v1',
   priceVersions: [version()],
   verifiedPriceVersions: ['xts.live.v1'],
+  billableFrom: '2030-01-01T00:00:00.000Z',
+  billableUntil: '2030-01-01T02:00:00.000Z',
   seconds,
   basis,
   ...extra,
@@ -63,10 +65,10 @@ for (const [seconds, basis, amount] of accepted)
     });
   });
 
-test('会話の秒数の金額: 予約に固定した版で求める（今の版が変わっても、その版の単価）', () => {
+test('会話の秒数の金額: 予約の窓（予約から 2 時間）にかかる版のうち、高い方の単価で求める（途中で切り替わっても少なく数えない）', () => {
   const next = version({
     price_version: 'xts.live.v2',
-    effective_from: '2030-06-01T00:00:00.000Z',
+    effective_from: '2030-01-01T00:30:00.000Z',
     rates: [
       {
         category: 'live_seconds',
@@ -77,22 +79,56 @@ test('会話の秒数の金額: 予約に固定した版で求める（今の版
       },
     ],
   });
-  const both = { priceVersions: [version(), next] };
-  const verified = { verifiedPriceVersions: ['xts.live.v1', 'xts.live.v2'] };
-  assert.equal(
-    computeLiveSecondsAmount(request(60, 'actual', { ...both, ...verified }))
-      .amount,
-    '10',
-  );
-  assert.equal(
+  const both = {
+    priceVersions: [
+      version({ effective_to: '2030-01-01T00:30:00.000Z' }),
+      next,
+    ],
+    verifiedPriceVersions: ['xts.live.v1', 'xts.live.v2'],
+  };
+  // 予約の 40 分後の追加予約・実費でも、窓（0 分〜120 分）にかかる v2（単価 10）で求める。
+  // v1 の単価 5 なら 60 秒の追加は 13・実費は 10 だが、v2 では 60 × 10 × 2 × 1.25 / 60 = 25、60 × 10 × 2 / 60 = 20。
+  assert.deepEqual(computeLiveSecondsAmount(request(60, 'increment', both)), {
+    ok: true,
+    amount: '25',
+    priceVersion: 'xts.live.v2',
+  });
+  assert.deepEqual(computeLiveSecondsAmount(request(60, 'actual', both)), {
+    ok: true,
+    amount: '20',
+    priceVersion: 'xts.live.v2',
+  });
+});
+
+test('会話の秒数の金額: 予約の窓が版で覆われていなければ拒否する', () => {
+  const next = version({
+    price_version: 'xts.live.v2',
+    effective_from: '2030-01-01T00:30:00.000Z',
+  });
+  // v1 の effective_to が null のまま v2 が始まると、期間の一部で版が重なる・決まらない。
+  assert.deepEqual(
     computeLiveSecondsAmount(
       request(60, 'actual', {
-        ...both,
-        ...verified,
-        priceVersion: 'xts.live.v2',
+        priceVersions: [version(), next],
+        verifiedPriceVersions: ['xts.live.v1', 'xts.live.v2'],
       }),
-    ).amount,
-    '20',
+    ),
+    { ok: false, reasonCodes: ['price_not_covered'] },
+  );
+  // 窓の始まりが v2 の後なら、予約に固定した版（v1）と食い違う。
+  assert.deepEqual(
+    computeLiveSecondsAmount(
+      request(60, 'actual', {
+        priceVersions: [
+          version({ effective_to: '2030-01-01T00:30:00.000Z' }),
+          next,
+        ],
+        verifiedPriceVersions: ['xts.live.v1', 'xts.live.v2'],
+        billableFrom: '2030-01-01T01:00:00.000Z',
+        billableUntil: '2030-01-01T03:00:00.000Z',
+      }),
+    ),
+    { ok: false, reasonCodes: ['price_version_unknown'] },
   );
 });
 

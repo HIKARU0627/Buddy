@@ -96,6 +96,10 @@ export interface BudgetTicket {
   readonly routed: boolean;
   // 応答の期限（UTC のミリ秒）。
   readonly deadline: number;
+  // 課金され得る期間（UTC のミリ秒。予約の受付から応答の期限まで）。会話の秒数の金額は、この窓にかかる
+  // 単価の版のうち高い方で求める（ADR 0049・U85）。
+  readonly billable_from: number;
+  readonly billable_until: number;
   // 受付で結び付けたクレジットの有効期限（UTC のミリ秒。クレジットを充てない予約は null）。provider へ送る直前にも
   // この時刻を過ぎていないことを確かめる。
   readonly credit_expires_at: number | null;
@@ -323,6 +327,10 @@ const HOLD_ORDER: readonly BudgetGateHoldReason[] = [
 
 const iso = (millis: number): string => new Date(millis).toISOString();
 
+// 会話の課金され得る期間（予約から 2 時間。live-budget.ts の LIVE_SESSION_MAX_MS と同じ）。保存した予約から券を
+// 作り直すとき、受付の時刻（createdAt）にこの長さを足して窓を作る。
+const LIVE_BILLABLE_WINDOW_MS = 7_200_000;
+
 // 観測の採用の結果。設定がなければ configured: false。採用の書込みが失敗したときは state が null（理由つき）。
 type CreditAdoptionResult =
   | { readonly configured: false }
@@ -346,6 +354,8 @@ const toTicket = (
   reservation: BudgetReservationValue,
   routed: boolean,
   deadline: number,
+  billableFrom: number,
+  billableUntil: number,
 ): BudgetTicket => ({
   reservation_id: reservation.reservationId,
   request_id: reservation.requestId,
@@ -357,6 +367,8 @@ const toTicket = (
   revision: reservation.revision,
   routed,
   deadline,
+  billable_from: billableFrom,
+  billable_until: billableUntil,
   credit_expires_at: reservation.creditExpiresAt,
 });
 
@@ -724,7 +736,13 @@ export class BudgetGate {
       this.#creditWaiting.delete(request.request_id);
       return {
         ok: true,
-        ticket: toTicket(value.reservation, value.routed, deadline),
+        ticket: toTicket(
+          value.reservation,
+          value.routed,
+          deadline,
+          now,
+          deadline,
+        ),
         duplicate: value.duplicate,
       };
     }
@@ -873,6 +891,8 @@ export class BudgetGate {
         result.value.reservation,
         ticket.routed,
         ticket.deadline,
+        ticket.billable_from,
+        ticket.billable_until,
       ),
     };
   }
@@ -1027,7 +1047,13 @@ export class BudgetGate {
     let failed = 0;
     for (const item of listed.value) {
       const reservation = item.reservation;
-      const ticket = toTicket(reservation, reservation.approvalId !== null, 0);
+      const ticket = toTicket(
+        reservation,
+        reservation.approvalId !== null,
+        0,
+        reservation.createdAt,
+        reservation.createdAt + LIVE_BILLABLE_WINDOW_MS,
+      );
       const possiblySent =
         reservation.dispatchIntentAt !== null ||
         item.live_session ||
@@ -1280,6 +1306,8 @@ export class BudgetGate {
       priceVersion: ticket.price_version,
       priceVersions: config.config.price_versions,
       verifiedPriceVersions: config.settings.verifiedPriceVersions,
+      billableFrom: iso(ticket.billable_from),
+      billableUntil: iso(ticket.billable_until),
       seconds,
       basis,
     });
@@ -1314,9 +1342,15 @@ export class BudgetGate {
       request_id: null,
     });
     if (!result.ok) return 'unavailable';
-    return result.value === null
-      ? null
-      : toTicket(result.value, result.value.approvalId !== null, 0);
+    if (result.value === null) return null;
+    // 保存した予約の受付の時刻から、会話の課金され得る期間（2 時間）を作る。
+    return toTicket(
+      result.value,
+      result.value.approvalId !== null,
+      0,
+      result.value.createdAt,
+      result.value.createdAt + LIVE_BILLABLE_WINDOW_MS,
+    );
   }
 
   // 予約の今の版（経路の検査の「版の照合」に使う）。読めなければ 'unavailable'、なければ null。

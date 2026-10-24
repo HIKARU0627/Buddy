@@ -109,6 +109,49 @@ async function untilFirstTopUp(
   await rig.wait();
 }
 
+// 閉じ始めた Live のリースは取り直し（lease_rotation_required）になるので、新しい lease_id で更新を続ける。
+async function beatWithRotation(
+  rig: Rig,
+  hb: Heartbeat,
+  ms: number,
+): Promise<void> {
+  let leaseId = LEASE;
+  let previousNonce: string | null = `n${hb.n}`;
+  let rotations = 0;
+  for (let done = 0; done < ms; done += 2000) {
+    await rig.clock.advance(Math.min(2000, ms - done));
+    hb.n += 1;
+    const nonce = `n${hb.n}`;
+    rig.provider.sidebands[0]?.pong();
+    const renewed = bodyOf(
+      await renew(rig, A, {
+        lease_id: leaseId,
+        nonce,
+        previous_nonce: previousNonce,
+        at: 10 + 2000 * (hb.n - 1),
+      }),
+    );
+    if (renewed['result'] === 'renewed') {
+      previousNonce = nonce;
+      continue;
+    }
+    assert.deepEqual(renewed['reasons'], ['lease_rotation_required']);
+    rotations += 1;
+    leaseId = uuid(0x2f00 + rotations);
+    const rotatedNonce = `r${rotations}`;
+    const rotated = bodyOf(
+      await renew(rig, A, {
+        lease_id: leaseId,
+        nonce: rotatedNonce,
+        previous_nonce: null,
+        at: 11 + 2000 * (hb.n - 1),
+      }),
+    );
+    assert.equal(rotated['result'], 'renewed');
+    previousNonce = rotatedNonce;
+  }
+}
+
 // ---- 追加予約（60 秒ごとに 60 秒分） ----------------------------------------------------------------------------------
 
 test(
@@ -394,6 +437,82 @@ test(
   },
 );
 
+test(
+  '予算到達: 指示の送信が例外で終わっても、待たずに閉じる（例外で閉じる手順を止めない。P1）',
+  TIMEOUT,
+  async () => {
+    await withRig(
+      async (rig) => {
+        const live = await openLive(rig);
+        const hb: Heartbeat = { n: 1 };
+        const sideband = rig.provider.sidebands[0];
+        assert(sideband !== undefined);
+        let instructionCalls = 0;
+        sideband.appendInstructions = () => {
+          instructionCalls += 1;
+          throw new Error('synthetic');
+        };
+        // 60 秒の最初の追加予約は上限 250 で拒否される。指示は 1 回だけ試し、例外でも直ちに閉じる。
+        await untilFirstTopUp(rig, hb, live);
+        assert.equal(instructionCalls, 1);
+        assert.equal(sideband.closes, 1);
+        assert.notEqual(rig.voice.liveRecord(live)?.closure, 'open');
+        assert.deepEqual(audioControls(rig, DEV_A), [
+          ['close_voice_session', 'budget_reached', '0'],
+        ]);
+        // 320 秒まで pong とリースの更新を続けても、閉じたまま（予約を超えて話し続けない）。
+        await beatWithRotation(rig, hb, 260000);
+        assert.notEqual(rig.voice.liveRecord(live)?.closure, 'open');
+        assert.equal(sideband.closes, 1);
+        assert.equal(instructionCalls, 1);
+        assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+      },
+      {},
+      LIMIT_250,
+    );
+  },
+);
+
+test(
+  '予算到達: 承認に固定された予約の追加予約が拒否されても、予算到達の手順に入る',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const live = await openLive(rig);
+      const hb: Heartbeat = { n: 1 };
+      // 超過の承認に固定された予約は、追加予約で M を増やせない（DB の拒否の理由）。
+      (rig.budget as { topUp: unknown }).topUp = () => {
+        rig.budget.calls.push('topup:60');
+        return Promise.resolve({
+          ok: false,
+          reasons: ['approval_fixes_max_liability'],
+        });
+      };
+      await untilFirstTopUp(rig, hb, live);
+      assert.deepEqual(rig.provider.sidebands[0]?.instructions, [
+        'budget_reached',
+      ]);
+      assert.deepEqual(
+        voiceRows(rig).map((row) => [row.reserved_amount, row.status]),
+        [[195, 'reserved']],
+      );
+      assert.equal(rig.voice.liveRecord(live)?.closure, 'open');
+      // 指示への発話の終わりで閉じ、端末へ予算到達を伝える。
+      rig.provider.sidebands[0]?.utteranceEnded();
+      await rig.wait();
+      const record = rig.voice.liveRecord(live);
+      assert.deepEqual(
+        [record?.closure, record?.end_reason],
+        ['close_requested', 'budget_reached'],
+      );
+      assert.equal(rig.provider.sidebands[0]?.closes, 1);
+      assert.deepEqual(audioControls(rig, DEV_A), [
+        ['close_voice_session', 'budget_reached', '0'],
+      ]);
+    });
+  },
+);
+
 // ---- 時計の逆行 ----------------------------------------------------------------------------------------------------------------
 
 test(
@@ -599,6 +718,46 @@ test(
 );
 
 test(
+  '精算が 5 秒の期限までに返らなければ、同じ照合 ID で 3 回まで試し直し、尽きたら予約を保持する（P2-2）',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      await openLive(rig);
+      (rig.budget as { settle: unknown }).settle = () => {
+        rig.budget.calls.push('settle:20');
+        return new Promise(() => undefined);
+      };
+      // 返らない予算の門の呼び出しがある間は、idle（予算の呼び出しの完了待ち）を待たずに時間を進める。
+      const settle = rig.clock.settle;
+      rig.clock.settle = flushOnly;
+      rig.provider.sidebands[0]?.closed(20);
+      await flushOnly();
+      // 最初の精算は 5 秒で期限切れ、1 秒後に 2 回目、その 5 秒後に 3 回目、尽きたら保持する。
+      await rig.clock.advance(6000);
+      assert.deepEqual(
+        rig.budget.calls.filter((call) => call.startsWith('settle')),
+        ['settle:20', 'settle:20'],
+      );
+      await rig.clock.advance(600000);
+      rig.clock.settle = settle;
+      await waitUntil(
+        rig,
+        '精算を 3 回試して予約を保持する',
+        () => reservationStatus(rig)[0] === 'usage_unknown',
+      );
+      assert.deepEqual(rig.budget.calls.slice(2), [
+        'settle:20',
+        'settle:20',
+        'settle:20',
+        'hold',
+      ]);
+      assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+      assert.deepEqual(actualGross(rig), [null as unknown as number]);
+    });
+  },
+);
+
+test(
   '精算が settlement_conflict（同じ照合 ID の違う金額）で拒否されたら、試し直さず・保持にも戻さない（二重に数えない）',
   TIMEOUT,
   async () => {
@@ -666,6 +825,32 @@ test(
       assert.equal(rig.provider.lookupCalls.length, 1);
       assert.equal(rig.provider.created.length, 1);
     });
+  },
+);
+
+test(
+  '終了後の照合: 使用秒数が安全な整数でない・会話の最長に余裕を足した上限を超えるときは、確認済みにしない（P3-4）',
+  TIMEOUT,
+  async () => {
+    for (const usage of [Number.MAX_SAFE_INTEGER + 1, 7_300]) {
+      await withRig(async (rig) => {
+        const live = await unconfirmedLive(rig);
+        rig.provider.lookups.set(live, {
+          state: 'closed',
+          provider_session_id: 'prov-synthetic',
+          usage_seconds: usage,
+        });
+        await rig.clock.advance(LIVE_RECONCILE_INTERVAL_MS);
+        await rig.wait();
+        const record = rig.voice.liveRecord(live);
+        assert.deepEqual(
+          [record?.closure, record?.usage_seconds],
+          ['close_unconfirmed', null],
+        );
+        assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+        assert.deepEqual(actualGross(rig), [null as unknown as number]);
+      });
+    }
   },
 );
 

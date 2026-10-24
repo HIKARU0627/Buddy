@@ -491,18 +491,23 @@ export function computeReservation(
 }
 
 // 会話（Live）の秒数を金額にする（B05-04、ADR 0049）。接続の開始の予約（15 秒 + 180 秒）は computeReservation が
-// 計算し、ここは「60 秒ごとの追加予約の 1 回分」と「確認した使用秒数での精算の実費」を、予約に固定した単価の版で求める。
+// 計算し、ここは「60 秒ごとの追加予約の 1 回分」と「確認した使用秒数での精算の実費」を求める。
 // - increment: 追加分の最大負担 M と予約 R（同じ額）。量 × 単価 × 為替 × 安全係数を切り上げる（M と同じ式。最低課金量は
 //   接続ごとに 1 回で、開始の予約が済ませているので掛けない。版の 1 要求の最大量は、追加を重ねて超えるので見ない）。
 // - actual: 実費。最低課金量との大きい方 × 単価 × 為替を切り上げる（安全係数は M の見積もりだけの余裕で、実費には掛けない）。
-// どちらも、予約を受けた版（price_version）で求め、版が確認されていない・通貨が違う・単価がなければ拒否する。
+// どちらも、予約の課金され得る期間（予約から 2 時間）にかかる版のうち、最も高い額になる単価で求める。開始の M の
+// 見積もり（estimate）と同じく、期間の途中で版が切り替わっても少なく数えない側に倒す（P2-3）。
+// 版が確認されていない・通貨が違う・単価がない・期間の一部でも単価が決まっていなければ拒否する。
 export interface LiveSecondsCostRequest {
   readonly budgetCurrency: string;
   readonly priceKey: string;
-  // 予約の受付で固定した単価の版（BudgetTicket.price_version）。
+  // 予約の受付で固定した単価の版（BudgetTicket.price_version）。この版が期間の最初の版でなければ拒否する。
   readonly priceVersion: string;
   readonly priceVersions: readonly PriceVersionInput[];
   readonly verifiedPriceVersions: readonly string[];
+  // 予約の課金され得る期間（予約の受付から 2 時間。両端を含む）。
+  readonly billableFrom: string;
+  readonly billableUntil: string;
   readonly seconds: number;
   readonly basis: 'increment' | 'actual';
 }
@@ -516,53 +521,99 @@ export function computeLiveSecondsAmount(request: LiveSecondsCostRequest):
   | Failure {
   if (!Number.isSafeInteger(request.seconds) || request.seconds < 0)
     return { ok: false, reasonCodes: ['invalid_quantity:live_seconds'] };
-  const version = request.priceVersions.find(
+  const from = toMillis(request.billableFrom);
+  const until = toMillis(request.billableUntil);
+  if (from === null || until === null || until < from)
+    return { ok: false, reasonCodes: ['invalid_billable_period'] };
+  const fixedVersion = request.priceVersions.find(
     (item) =>
       item.price_version === request.priceVersion &&
       item.price_key === request.priceKey,
   );
-  if (version === undefined)
+  if (fixedVersion === undefined)
+    return { ok: false, reasonCodes: ['price_version_unknown'] };
+  const versions = coveringVersions(
+    request.priceVersions,
+    request.priceKey,
+    from,
+    until,
+  );
+  if (versions === null)
+    return { ok: false, reasonCodes: ['price_not_covered'] };
+  // 予約に固定した版は、期間の最初に適用される版でなければならない（受付の見積もりと同じ版で数える）。
+  const fixed = versions[0] as PriceVersionInput;
+  if (fixed.price_version !== request.priceVersion)
     return { ok: false, reasonCodes: ['price_version_unknown'] };
   const reasons: string[] = [];
-  if (!request.verifiedPriceVersions.includes(version.price_version))
-    reasons.push(`price_unverified:${version.price_version}`);
-  if (version.conversion.to_currency !== request.budgetCurrency)
-    reasons.push('currency_mismatch');
-  const rate = version.rates.find((item) => item.category === 'live_seconds');
-  if (rate === undefined) reasons.push('unpriced_category:live_seconds');
-  const exchange = toMicros(version.conversion.rate);
-  const safety = toMicros(version.conversion.safety_factor);
-  if (exchange === null || exchange === 0n || safety === null || safety < MICRO)
-    reasons.push('invalid_conversion');
-  if (reasons.length > 0 || rate === undefined)
+  const prices: {
+    readonly version: PriceVersionInput;
+    readonly unitPrice: bigint;
+    readonly perQuantity: bigint;
+    readonly minimum: bigint;
+    readonly exchange: bigint;
+    readonly safety: bigint;
+  }[] = [];
+  for (const version of versions) {
+    if (!request.verifiedPriceVersions.includes(version.price_version))
+      reasons.push(`price_unverified:${version.price_version}`);
+    if (version.conversion.to_currency !== request.budgetCurrency)
+      reasons.push('currency_mismatch');
+    const rate = version.rates.find((item) => item.category === 'live_seconds');
+    if (rate === undefined) reasons.push('unpriced_category:live_seconds');
+    const exchange = toMicros(version.conversion.rate);
+    const safety = toMicros(version.conversion.safety_factor);
+    if (
+      exchange === null ||
+      exchange === 0n ||
+      safety === null ||
+      safety < MICRO
+    )
+      reasons.push('invalid_conversion');
+    if (rate === undefined || exchange === null || safety === null) continue;
+    const unitPrice = toInteger(rate.unit_price);
+    const perQuantity = toInteger(rate.per_quantity);
+    const minimum = toInteger(rate.minimum_quantity);
+    if (
+      unitPrice === null ||
+      perQuantity === null ||
+      perQuantity === 0n ||
+      minimum === null
+    ) {
+      reasons.push('invalid_price:live_seconds');
+      continue;
+    }
+    prices.push({ version, unitPrice, perQuantity, minimum, exchange, safety });
+  }
+  if (reasons.length > 0 || prices.length !== versions.length)
     return { ok: false, reasonCodes: unique(reasons) };
-  const unitPrice = toInteger(rate.unit_price);
-  const perQuantity = toInteger(rate.per_quantity);
-  const minimum = toInteger(rate.minimum_quantity);
-  if (
-    unitPrice === null ||
-    perQuantity === null ||
-    perQuantity === 0n ||
-    minimum === null ||
-    exchange === null ||
-    safety === null
-  )
-    return { ok: false, reasonCodes: ['invalid_price:live_seconds'] };
   const seconds = BigInt(request.seconds);
-  const billed =
-    request.basis === 'actual' && seconds < minimum ? minimum : seconds;
-  const factor =
-    request.basis === 'actual' ? exchange * MICRO : exchange * safety;
-  const amount = ceilDiv(
-    billed * unitPrice * factor,
-    perQuantity * MICRO * MICRO,
-  );
-  if (amount > BUDGET_AMOUNT_MAX)
-    return { ok: false, reasonCodes: ['amount_overflow'] };
+  let highest: { readonly amount: bigint; readonly version: string } | null =
+    null;
+  for (const price of prices) {
+    const billed =
+      request.basis === 'actual' && seconds < price.minimum
+        ? price.minimum
+        : seconds;
+    const factor =
+      request.basis === 'actual'
+        ? price.exchange * MICRO
+        : price.exchange * price.safety;
+    const amount = ceilDiv(
+      billed * price.unitPrice * factor,
+      price.perQuantity * MICRO * MICRO,
+    );
+    // 期間のどの版でも 18 桁を超えないことを確かめる（高い方を選ぶ前に、少なく数えない側で拒否する）。
+    if (amount > BUDGET_AMOUNT_MAX)
+      return { ok: false, reasonCodes: ['amount_overflow'] };
+    if (highest === null || amount > highest.amount)
+      highest = { amount, version: price.version.price_version };
+  }
+  if (highest === null)
+    return { ok: false, reasonCodes: ['unpriced_category:live_seconds'] };
   return {
     ok: true,
-    amount: amount.toString(),
-    priceVersion: version.price_version,
+    amount: highest.amount.toString(),
+    priceVersion: highest.version,
   };
 }
 

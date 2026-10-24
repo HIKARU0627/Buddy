@@ -976,6 +976,8 @@ async function reservationTicket(
     revision: '1',
     routed: false,
     deadline: OCT_15 + 60_000,
+    billable_from: OCT_15,
+    billable_until: OCT_15 + 60_000,
     credit_expires_at: null,
   };
 }
@@ -1157,6 +1159,83 @@ test(
         amount: '15',
       });
       assert.equal(await gate.ticketOf(uuid(0x99)), null);
+    });
+  },
+);
+
+test(
+  '会話（Live）の秒数の金額は、予約の窓（予約から 2 時間）にかかる版のうち高い単価で求める（ADR 0049・U85）',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      const config = loadedConfig(
+        syntheticConfig((config) => {
+          const budget = config['budget'] as {
+            pools: { pool_id: string; limit: { amount: string } }[];
+            verified_price_versions: string[];
+          };
+          for (const pool of budget.pools)
+            if (pool.pool_id === 'voice') pool.limit.amount = '5000';
+          budget.verified_price_versions.push('xts.live.v2');
+          const prices = config['price_versions'] as Record<string, unknown>[];
+          for (const price of prices)
+            if (price['price_version'] === 'xts.live.v1')
+              price['effective_to'] = '2030-10-15T00:30:00.000Z';
+          prices.push({
+            price_version: 'xts.live.v2',
+            price_key: 'synthetic.live',
+            currency: 'XTS',
+            effective_from: '2030-10-15T00:30:00.000Z',
+            effective_to: null,
+            rates: [
+              {
+                category: 'live_seconds',
+                unit_price: '2',
+                per_quantity: '1',
+                minimum_quantity: '15',
+                max_quantity_per_request: '400',
+              },
+            ],
+            conversion: {
+              conversion_version: 'xts.same.v1',
+              to_currency: 'XTS',
+              rate: '1',
+              safety_factor: '1',
+            },
+          });
+        }),
+      );
+      const gate = harness.gate({ config });
+      await gate.start();
+      const admitted = await gate.admit(
+        textRequest(uuid(1), {
+          service: 'voice',
+          price_key: 'synthetic.live',
+          quantities: { live_seconds: '15' },
+          timeout_ms: 7_200_000,
+        }),
+      );
+      assert(admitted.ok);
+      // 予約の 0 分〜120 分の窓に、30 分から有効な v2（単価 2）が掛かる。v1 の単価 1 ではなく v2 で求める。
+      // 60 秒 × 2 = 120（安全係数は 1）。
+      assert.deepEqual(
+        gate.liveSecondsAmount(admitted.ticket, 60, 'increment'),
+        {
+          ok: true,
+          amount: '120',
+        },
+      );
+      assert.deepEqual(gate.liveSecondsAmount(admitted.ticket, 60, 'actual'), {
+        ok: true,
+        amount: '120',
+      });
+      // 保存した予約から作り直した券でも、受付の時刻から同じ窓を作る。
+      const rebuilt = await gate.ticketOf(admitted.ticket.reservation_id);
+      assert(rebuilt !== null && rebuilt !== 'unavailable');
+      assert.deepEqual(gate.liveSecondsAmount(rebuilt, 60, 'actual'), {
+        ok: true,
+        amount: '120',
+      });
     });
   },
 );

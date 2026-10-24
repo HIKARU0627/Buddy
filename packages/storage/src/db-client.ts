@@ -66,6 +66,13 @@ import type {
   TurnRecordValue,
 } from './conversation-store.js';
 import { BUDGET_WRITE_OPS } from './budget-store.js';
+import { VOICE_WRITE_OPS } from './voice-store.js';
+import type {
+  VoiceOp,
+  VoiceOpKind,
+  VoiceOpResult,
+  VoiceOpValues,
+} from './voice-store.js';
 import type {
   BudgetOp,
   BudgetOpKind,
@@ -220,6 +227,17 @@ interface PendingBudget {
   readonly resolve: (result: BudgetOpResult) => void;
 }
 
+interface PendingVoice {
+  readonly kind: 'voice';
+  readonly op: VoiceOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: VoiceOpResult) => void;
+}
+
+export type VoiceOpOutcome<K extends VoiceOpKind> =
+  | { readonly ok: true; readonly value: VoiceOpValues[K] }
+  | Extract<VoiceOpResult, { ok: false }>;
+
 export type BudgetOpOutcome<K extends BudgetOpKind> =
   | { readonly ok: true; readonly value: BudgetOpValues[K] }
   | Extract<BudgetOpResult, { ok: false }>;
@@ -260,6 +278,7 @@ export class DbWorkerClient {
     | PendingHome
     | PendingConversation
     | PendingBudget
+    | PendingVoice
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -638,6 +657,33 @@ export class DbWorkerClient {
     }) as Promise<BudgetOpOutcome<K>>;
   }
 
+  // 音声の世代・入出力の停止・Live の制御の状態の命令と照会（ADR 0046）。扱いは budget と同じ（使えなければ送らずに
+  // rejected、書込みの応答を失えば成否不明で broken）。
+  voice<K extends VoiceOpKind>(
+    op: Extract<VoiceOp, { kind: K }>,
+  ): Promise<VoiceOpOutcome<K>> {
+    return new Promise<VoiceOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'voice', op, timer, resolve });
+      const message: MainToWorker = { type: 'voice', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<VoiceOpOutcome<K>>;
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -735,6 +781,16 @@ export class DbWorkerClient {
         pending.resolve({
           ok: false,
           outcome: BUDGET_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'voice') {
+        pending.resolve({
+          ok: false,
+          outcome: VOICE_WRITE_OPS.has(pending.op.kind)
             ? 'unknown'
             : 'rejected',
           reasons: [reason],
@@ -841,6 +897,18 @@ export class DbWorkerClient {
     if (message.type === 'conversation_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'conversation') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'voice_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'voice') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

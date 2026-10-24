@@ -1,0 +1,210 @@
+{
+  "status": "specification_only",
+  "description": "音声所有権（音声リースの取得）の調停・中枢が返すリースの期限・リースの取り直し・停止の到達の状態の期待値（設計 07 §5、10 §2A・§8、09 X13・X14・X32、ADR 0046）。手で書いたもので、domain の実装から生成していない。時刻は中枢の単調時計の合成値（ms）。300 ms・6 秒は設計初期値で合格値ではない。1800 は原本に決めなしの上限（U69）。",
+  "claim_cases": [
+    {
+      "id": "no-owner-grants",
+      "refs": ["10 §8"],
+      "owner": null,
+      "claim": { "device_id": "B", "at_mono_ms": 1000 },
+      "display_target": null,
+      "expected": { "decision": "grant", "replaces": null }
+    },
+    {
+      "id": "invalid-owner-grants-without-closing",
+      "refs": ["10 §8", "07 §5"],
+      "owner": { "device_id": "A", "granted_at_mono_ms": 900, "valid": false },
+      "claim": { "device_id": "B", "at_mono_ms": 1000 },
+      "display_target": null,
+      "expected": { "decision": "grant", "replaces": null }
+    },
+    {
+      "id": "same-device-grants",
+      "refs": ["10 §8"],
+      "owner": { "device_id": "A", "granted_at_mono_ms": 900, "valid": true },
+      "claim": { "device_id": "A", "at_mono_ms": 950 },
+      "display_target": null,
+      "expected": { "decision": "grant", "replaces": null }
+    },
+    {
+      "id": "x32-second-device-within-the-window-is-refused",
+      "refs": ["10 §8", "X32"],
+      "owner": { "device_id": "A", "granted_at_mono_ms": 1000, "valid": true },
+      "claim": { "device_id": "B", "at_mono_ms": 1100 },
+      "display_target": null,
+      "expected": { "decision": "reject", "code": "audio_owned_elsewhere" }
+    },
+    {
+      "id": "x32-exactly-300ms-is-inside-the-window",
+      "refs": ["10 §8", "X32"],
+      "owner": { "device_id": "A", "granted_at_mono_ms": 1000, "valid": true },
+      "claim": { "device_id": "B", "at_mono_ms": 1300 },
+      "display_target": null,
+      "expected": { "decision": "reject", "code": "audio_owned_elsewhere" }
+    },
+    {
+      "id": "x32-display-target-within-the-window-wins",
+      "refs": ["10 §8", "X32"],
+      "owner": { "device_id": "A", "granted_at_mono_ms": 1000, "valid": true },
+      "claim": { "device_id": "B", "at_mono_ms": 1300 },
+      "display_target": "B",
+      "expected": {
+        "decision": "grant",
+        "replaces": "A",
+        "why": "display_target_priority"
+      }
+    },
+    {
+      "id": "x32-display-target-already-owns-and-keeps-it",
+      "refs": ["10 §8", "X32"],
+      "owner": { "device_id": "A", "granted_at_mono_ms": 1000, "valid": true },
+      "claim": { "device_id": "B", "at_mono_ms": 1100 },
+      "display_target": "A",
+      "expected": { "decision": "reject", "code": "audio_owned_elsewhere" }
+    },
+    {
+      "id": "after-the-window-is-a-device-move",
+      "refs": ["10 §8", "07 §5"],
+      "owner": { "device_id": "A", "granted_at_mono_ms": 1000, "valid": true },
+      "claim": { "device_id": "B", "at_mono_ms": 1301 },
+      "display_target": null,
+      "expected": { "decision": "grant", "replaces": "A", "why": "takeover" }
+    },
+    {
+      "id": "clock-before-the-grant-does-not-close-the-other-device",
+      "refs": ["U38", "U68"],
+      "owner": { "device_id": "A", "granted_at_mono_ms": 5000, "valid": true },
+      "claim": { "device_id": "B", "at_mono_ms": 4999 },
+      "display_target": "B",
+      "expected": { "decision": "reject", "code": "audio_owned_elsewhere" }
+    }
+  ],
+  "ttl_cases": [
+    {
+      "id": "six-seconds-is-kept",
+      "refs": ["07 §5"],
+      "requested": 6000,
+      "expected": 6000
+    },
+    {
+      "id": "shorter-is-kept",
+      "refs": ["07 §5"],
+      "requested": 4000,
+      "expected": 4000
+    },
+    {
+      "id": "longer-is-cut-to-six-seconds",
+      "refs": ["07 §5", "X13"],
+      "requested": 60000,
+      "expected": 6000
+    }
+  ],
+  "rotation_cases": [
+    {
+      "id": "first-request-is-not-a-rotation",
+      "refs": ["U69"],
+      "accepted_nonces": null,
+      "expected": false
+    },
+    {
+      "id": "one-below-the-limit-renews",
+      "refs": ["U69"],
+      "accepted_nonces": 1799,
+      "expected": false
+    },
+    {
+      "id": "at-the-limit-must-rotate",
+      "refs": ["U69"],
+      "accepted_nonces": 1800,
+      "expected": true
+    }
+  ],
+  "reach_cases": [
+    {
+      "id": "x14-requester-confirmed-other-awaiting",
+      "refs": ["07 §5", "X14"],
+      "now_mono_ms": 10000,
+      "targets": [
+        {
+          "device_id": "A",
+          "requester": true,
+          "lease_expires_at_mono_ms": 12000
+        },
+        {
+          "device_id": "B",
+          "requester": false,
+          "lease_expires_at_mono_ms": 12000
+        }
+      ],
+      "expected": {
+        "devices": [
+          { "device_id": "A", "stop_state": "confirmed" },
+          { "device_id": "B", "stop_state": "awaiting_ack" }
+        ],
+        "all_confirmed": false
+      }
+    },
+    {
+      "id": "x14-expired-lease-is-not-a-confirmation",
+      "refs": ["07 §5", "X14"],
+      "now_mono_ms": 12000,
+      "targets": [
+        {
+          "device_id": "A",
+          "requester": true,
+          "lease_expires_at_mono_ms": null
+        },
+        {
+          "device_id": "B",
+          "requester": false,
+          "lease_expires_at_mono_ms": 12000
+        },
+        {
+          "device_id": "C",
+          "requester": false,
+          "lease_expires_at_mono_ms": 12001
+        }
+      ],
+      "expected": {
+        "devices": [
+          { "device_id": "A", "stop_state": "confirmed" },
+          { "device_id": "B", "stop_state": "lease_expired" },
+          { "device_id": "C", "stop_state": "awaiting_ack" }
+        ],
+        "all_confirmed": false
+      }
+    },
+    {
+      "id": "device-without-a-lease-still-needs-an-ack",
+      "refs": ["10 §1A", "U70"],
+      "now_mono_ms": 50000,
+      "targets": [
+        {
+          "device_id": "B",
+          "requester": false,
+          "lease_expires_at_mono_ms": null
+        }
+      ],
+      "expected": {
+        "devices": [{ "device_id": "B", "stop_state": "awaiting_ack" }],
+        "all_confirmed": false
+      }
+    },
+    {
+      "id": "local-stop-of-the-requester-only-is-all-confirmed",
+      "refs": ["07 §5"],
+      "now_mono_ms": 1000,
+      "targets": [
+        {
+          "device_id": "A",
+          "requester": true,
+          "lease_expires_at_mono_ms": 6000
+        }
+      ],
+      "expected": {
+        "devices": [{ "device_id": "A", "stop_state": "confirmed" }],
+        "all_confirmed": true
+      }
+    }
+  ]
+}

@@ -61,6 +61,11 @@ const eighthBytes = readFileSync(
   new URL('0008_budget_credit.sql', MIGRATIONS_DIR),
 );
 const eighthSha = createHash('sha256').update(eighthBytes).digest('hex');
+// 0009（ADR 0046）: 音声の世代・入出力の停止の状態・live_sessions の世代の列と trigger。
+const ninthBytes = readFileSync(
+  new URL('0009_voice_epochs.sql', MIGRATIONS_DIR),
+);
+const ninthSha = createHash('sha256').update(ninthBytes).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -121,7 +126,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0008 apply to a temporary file DB: 50 STRICT tables, version 8 and the content hashes', () => {
+test('0001 to 0009 apply to a temporary file DB: 52 STRICT tables, version 9 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -129,18 +134,18 @@ test('0001 to 0008 apply to a temporary file DB: 50 STRICT tables, version 8 and
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 8,
-        applied: [1, 2, 3, 4, 5, 6, 7, 8],
+        to: 9,
+        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9],
       });
       const tables = tableNames(db);
-      assert.equal(tables.length, 50);
+      assert.equal(tables.length, 52);
       assert.deepEqual(tables, Object.keys(TABLE_POLICIES).sort());
       const strict = db
         .prepare(
           "SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'",
         )
         .all() as { name: string; strict: number }[];
-      assert.equal(strict.length, 50);
+      assert.equal(strict.length, 52);
       for (const row of strict) assert.equal(row.strict, 1, row.name);
       assert.deepEqual(meta(db), {
         'migration_sha256:0001': initialSha,
@@ -151,20 +156,21 @@ test('0001 to 0008 apply to a temporary file DB: 50 STRICT tables, version 8 and
         'migration_sha256:0006': sixthSha,
         'migration_sha256:0007': seventhSha,
         'migration_sha256:0008': eighthSha,
-        schema_version: '8',
+        'migration_sha256:0009': ninthSha,
+        schema_version: '9',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 8 のまま、適用するものはない。
+    // 開き直しても版は 9 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 8);
+      assert.equal(readSchemaVersion(reopened), 9);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 8,
-        to: 8,
+        from: 9,
+        to: 9,
         applied: [],
       });
     } finally {
@@ -339,6 +345,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [6, '0006_budget.sql'],
       [7, '0007_budget_gate.sql'],
       [8, '0008_budget_credit.sql'],
+      [9, '0009_voice_epochs.sql'],
     ],
   );
   withTempDir((dir) => {
@@ -586,7 +593,8 @@ test('0008 upgrades a version 7 DB holding reservations, keeps every row, gives 
         `INSERT INTO budget_reservations (${columns}) VALUES ('r-3', 'q-3', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'usage_unknown', 2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1300)`,
       ])
         db.exec(sql);
-      assert.deepEqual(applyMigrations(db), {
+      // 0008 の移し方だけを見る（0009 は 0009 の試験で見る）。
+      assert.deepEqual(applyMigrations(db, loadMigrations().slice(0, 8)), {
         from: 7,
         to: 8,
         applied: [8],
@@ -726,7 +734,8 @@ test('0006 upgrades a version 5 DB holding reservations and a live session and k
         "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'ready', 1, 'open', NULL, 'r-1', 1100, NULL, NULL)",
       ])
         db.exec(sql);
-      assert.deepEqual(applyMigrations(db), {
+      // 0006 の移し方だけを見る（0009 の列は 0009 の試験で見る）。
+      assert.deepEqual(applyMigrations(db, bundled.slice(0, 8)), {
         from: 5,
         to: 8,
         applied: [6, 7, 8],

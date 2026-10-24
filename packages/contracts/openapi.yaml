@@ -933,6 +933,44 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/leases/renew:
+    post:
+      operationId: renewLease
+      summary: リースの取得と更新（heartbeat）
+      description: 音声・機密表示のリースの取得と更新（設計 07 §5、10 §2A・§8、ADR 0046）。初回（previous_nonce が null・新しい lease_id）と更新で形は同じ。中枢は domain の leaseRenewalReasons で起動 ID・接続範囲・入出力の世代・停止・失効・サイドバンドの喪失・nonce の再利用と再送・単調時計を検査し、拒否なら 200 の rejected を返す（端末は期限で止まる）。ttl_ms は中枢の上限（6 秒。設計初期値）に切り詰めて返す。音声のリースは 1 台だけが持つ（音声所有権）。別の端末が 300 ms 以内に先に取得していれば、表示先の端末の要求でない限り 409（audio_owned_elsewhere）。それより後の取得は、前の端末の Live を中枢が閉じてからリースを発行する（端末の交代）。本文の device_id は認証した端末と一致しなければならない。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/LeaseRenewalRequest
+      responses:
+        '200':
+          description: 更新した（renewed）か、拒否した（rejected）か。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/LeaseRenewalResponse
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/pairing/sessions:
     post:
       operationId: startPairing

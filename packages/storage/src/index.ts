@@ -27,3 +27,4 @@ export * from './home-network-store.js';
 export * from './conversation-store.js';
 // B07-03: 予算の受付・精算・超過の承認・利用状況・予算月の保存（ADR 0036、マイグレーション 0006）。
 export * from './budget-store.js';
+export * from './voice-store.js';

@@ -1045,6 +1045,54 @@
         }
       ]
     },
+    "renewLease": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000000094",
+        "lease_id": "00000000-0000-4000-8000-000000000095",
+        "kind": "audio",
+        "device_id": "00000000-0000-4000-8000-000000000007",
+        "core_instance_id": "00000000-0000-4000-8000-000000000002",
+        "command_scope_id": "00000000-0000-4000-8000-000000000033",
+        "io_epoch": "8",
+        "nonce": "synthetic-nonce-2",
+        "previous_nonce": "synthetic-nonce-1",
+        "requested_at_mono_ms": 120000,
+        "heartbeat_ms": 2000,
+        "ttl_ms": 6000
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000000094",
+        "lease_id": "00000000-0000-4000-8000-000000000095",
+        "nonce": "synthetic-nonce-2",
+        "result": "rejected",
+        "reasons": ["sideband_lost"],
+        "ttl_ms": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "accepted_contexts": ["locked", "lock_unknown", "audio_none"],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000000094",
+          "lease_id": "00000000-0000-4000-8000-000000000095",
+          "kind": "microphone",
+          "device_id": "00000000-0000-4000-8000-000000000007",
+          "core_instance_id": "00000000-0000-4000-8000-000000000002",
+          "command_scope_id": "00000000-0000-4000-8000-000000000033",
+          "io_epoch": "8",
+          "nonce": "synthetic-nonce-2",
+          "previous_nonce": null,
+          "requested_at_mono_ms": 120000,
+          "heartbeat_ms": 2000,
+          "ttl_ms": 6000
+        }
+      ]
+    },
     "startPairing": {
       "request": {
         "request_id": "00000000-0000-4000-8000-000000009001",

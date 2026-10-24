@@ -70,6 +70,9 @@ export interface EventStreamOptions {
   // キャンバスの記述が新しい版になったことを知らせる元（ADR 0032）。購読ごとに版だけを `{type:"canvas"}` で送る。
   // イベントの記録（cursor）には入れない。なければ送らない。
   readonly canvas?: CanvasNotifier;
+  // 音声の制御イベント（B05-03、ADR 0046）。その端末の購読にだけ `{type:"voice"}` で送る。イベントの記録（cursor）には
+  // 入れない（届かなくても端末はリースの期限で止まる。10 §2A）。なければ送らない。
+  readonly voice?: VoiceNotifier;
   readonly now?: () => number;
   readonly pingIntervalMs?: number;
   readonly maxBufferedBytes?: number;
@@ -81,6 +84,10 @@ export interface EventStreamOptions {
 
 export interface CanvasNotifier {
   subscribe(listener: (revision: string) => void): () => void;
+}
+
+export interface VoiceNotifier {
+  subscribe(deviceId: string, listener: (event: object) => void): () => void;
 }
 
 export interface EventStreamManager extends ApiEventStream {
@@ -148,6 +155,7 @@ export function createEventStream(
     let subscription: { close(): void } | null = null;
     let unregister: (() => void) | null = null;
     let unsubscribeCanvas: (() => void) | null = null;
+    let unsubscribeVoice: (() => void) | null = null;
     let pingTimer: NodeJS.Timeout | null = null;
     let checking = false;
 
@@ -160,6 +168,8 @@ export function createEventStream(
       unregister = null;
       unsubscribeCanvas?.();
       unsubscribeCanvas = null;
+      unsubscribeVoice?.();
+      unsubscribeVoice = null;
       sessions.delete(finish);
       if (counted) {
         counted = false;
@@ -212,6 +222,17 @@ export function createEventStream(
         client.send(
           JSON.stringify({ type: 'canvas', canvas_revision: revision }),
         );
+      }) ?? null;
+
+    // 音声の制御イベント（ADR 0046）。この端末宛てだけを送る。本文・文字起こし・認証情報を含めない。
+    unsubscribeVoice =
+      options.voice?.subscribe(device.device_id, (event) => {
+        if (closed || client.readyState !== WebSocket.OPEN) return;
+        if (client.bufferedAmount > maxBuffered) {
+          finish('slow_consumer');
+          return;
+        }
+        client.send(JSON.stringify({ type: 'voice', event }));
       }) ?? null;
 
     client.on('pong', () => {

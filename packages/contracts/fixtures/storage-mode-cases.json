@@ -1,15 +1,25 @@
 {
   "status": "specification_only",
-  "description": "記録しない会話（保存モードの private）の保存の境界の期待値（設計 03 保存期限・記録しない会話の境界、10 §1A・§6、09 X17・X36・X44・X48・X59、ADR 0032・0038・0040・0045）。手で書いたもので、domain の実装から生成していない。許可表の行ごとの許可・拒否、契約の StorageModeState の effects、独立した確認の中身と承認の検査、入る・出る・外部変更・音声の接続の順序を入れ替えた遷移を持つ。値はすべて合成で、実データを含まない。",
+  "description": "記録しない会話（保存モードの private）の保存の境界の期待値（設計 03 保存期限・記録しない会話の境界、10 §1A・§6、09 X17・X36・X44・X48・X59、ADR 0032・0038・0040・0045）。手で書いたもので、domain の実装から生成していない。許可表の行ごとの許可・拒否、契約の StorageModeState の effects、独立した確認の中身（確定した OperationIntent と内容の hash）と承認の検査、入る・出る・外部変更・音声の接続・遅れて届いた結果・入り直した後の古い承認の順序を入れ替えた遷移を持つ。`$draft`・`$approval`・`$origin` は同じファイルの合成の値を差し込む参照で、中の値は上書きでき、`$delete` は欄を消す。content_hash は Python の json.dumps（キーの整列・区切りなし・ensure_ascii=False）と hashlib で別に求めた値。値はすべて合成で、実データを含まない。",
   "permission_rows": [
     {
       "id": "row-persist-turns",
       "effect": "persist_turns",
       "tests": ["X17", "X36"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -22,10 +32,24 @@
       "effect": "persist_turn_events",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
-        { "mode": null, "allowed": false, "reason": "storage_mode_unknown" }
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": null,
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
       ]
     },
     {
@@ -33,9 +57,19 @@
       "effect": "persist_summary",
       "tests": ["X17", "X36"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "PRIVATE",
           "allowed": false,
@@ -48,10 +82,24 @@
       "effect": "persist_input_snapshot",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
-        { "mode": "", "allowed": false, "reason": "storage_mode_unknown" }
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": "",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
       ]
     },
     {
@@ -59,9 +107,19 @@
       "effect": "persist_clarification",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -74,9 +132,19 @@
       "effect": "persist_this_time_directive",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -89,9 +157,19 @@
       "effect": "persist_from_now_on_directive",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -104,9 +182,19 @@
       "effect": "save_memory",
       "tests": ["X59"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -119,9 +207,19 @@
       "effect": "extract_memory",
       "tests": ["X44"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -134,11 +232,146 @@
       "effect": "record_shadow",
       "tests": ["X48"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-derived-summary",
+      "effect": "persist_derived_summary",
+      "tests": ["X17"],
+      "cases": [
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-workflow",
+      "effect": "persist_workflow",
+      "tests": ["X17"],
+      "cases": [
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-workflow-result",
+      "effect": "persist_workflow_result",
+      "tests": ["X17", "X36"],
+      "cases": [
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": null,
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-turn-response",
+      "effect": "persist_turn_response",
+      "tests": ["X17"],
+      "cases": [
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-command-receipt",
+      "effect": "persist_command_receipt",
+      "tests": ["X17"],
+      "cases": [
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": "Private",
           "allowed": false,
           "reason": "storage_mode_unknown"
         }
@@ -149,9 +382,19 @@
       "effect": "open_live",
       "tests": ["X17", "X36"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -164,9 +407,18 @@
       "effect": "local_asr",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": true },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": true
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -179,9 +431,19 @@
       "effect": "write_persisted_canvas",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -194,9 +456,20 @@
       "effect": "write_ephemeral_canvas",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": false, "reason": "denied_in_mode" },
-        { "mode": "extended", "allowed": false, "reason": "denied_in_mode" },
-        { "mode": "private", "allowed": true },
+        {
+          "mode": "normal",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": "extended",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": "private",
+          "allowed": true
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -209,9 +482,19 @@
       "effect": "record_full_operation",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "private",
           "independent_confirmation_approved": true,
@@ -230,14 +513,22 @@
       "effect": "record_minimal_operation",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "normal",
           "independent_confirmation_approved": true,
           "allowed": false,
           "reason": "denied_in_mode"
         },
-        { "mode": "extended", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "extended",
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
         {
           "mode": "private",
           "allowed": false,
@@ -273,9 +564,18 @@
       "effect": "reserve_budget",
       "tests": ["X17"],
       "cases": [
-        { "mode": "normal", "allowed": true },
-        { "mode": "extended", "allowed": true },
-        { "mode": "private", "allowed": true },
+        {
+          "mode": "normal",
+          "allowed": true
+        },
+        {
+          "mode": "extended",
+          "allowed": true
+        },
+        {
+          "mode": "private",
+          "allowed": true
+        },
         {
           "mode": "archived",
           "allowed": false,
@@ -295,8 +595,16 @@
       "effect": "save_summary_memo",
       "reason": "effect_unknown"
     },
-    { "mode": "private", "effect": null, "reason": "effect_unknown" },
-    { "mode": "archived", "effect": "bogus", "reason": "storage_mode_unknown" }
+    {
+      "mode": "private",
+      "effect": null,
+      "reason": "effect_unknown"
+    },
+    {
+      "mode": "archived",
+      "effect": "bogus",
+      "reason": "storage_mode_unknown"
+    }
   ],
   "state_effects": {
     "normal": {
@@ -333,384 +641,703 @@
       "operation_record": "minimal_after_confirmation"
     }
   },
+  "origins": {
+    "seg1": {
+      "segment_id": "seg-1",
+      "segment_generation": "1",
+      "storage_mode": "normal"
+    },
+    "seg2p": {
+      "segment_id": "seg-2",
+      "segment_generation": "2",
+      "storage_mode": "private"
+    },
+    "seg3": {
+      "segment_id": "seg-3",
+      "segment_generation": "3",
+      "storage_mode": "normal"
+    },
+    "seg3e": {
+      "segment_id": "seg-3",
+      "segment_generation": "3",
+      "storage_mode": "extended"
+    },
+    "seg4p": {
+      "segment_id": "seg-4",
+      "segment_generation": "4",
+      "storage_mode": "private"
+    }
+  },
   "drafts": {
     "label_mail": {
-      "operation_id": "00000000-0000-4000-8000-000000000401",
-      "content_version": "1",
-      "content_hash": "9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d0f",
-      "intent": "label_mail",
-      "account_id": "00000000-0000-4000-8000-000000000402",
-      "target": { "remote_id": "mock-mail-001", "source_revision": "r1" },
-      "change": { "add_labels": ["follow-up"], "remove_labels": [] }
+      "operation": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000401",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000402",
+        "target": {
+          "remote_id": "mock-mail-001",
+          "source_revision": "r1"
+        },
+        "action": {
+          "kind": "mail.labels.change",
+          "add": ["follow-up"],
+          "remove": []
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        }
+      },
+      "content_hash": "85c142d1beac723e4228a598de00f1090d5ab75046f75cee99fdd073e33fb0b7"
     },
-    "create_event": {
-      "operation_id": "00000000-0000-4000-8000-000000000411",
-      "content_version": "1",
-      "content_hash": "1a3c5e7b9d0f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a",
-      "intent": "create_event",
-      "account_id": "00000000-0000-4000-8000-000000000402",
-      "target": null,
-      "change": {
-        "title": "合成の予定",
-        "start": "2030-10-07T04:00:00Z",
-        "end": "2030-10-07T05:00:00Z"
-      }
+    "label_mail_b": {
+      "operation": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000403",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000402",
+        "target": {
+          "remote_id": "mock-mail-003",
+          "source_revision": "r2"
+        },
+        "action": {
+          "kind": "mail.labels.change",
+          "add": ["waiting"],
+          "remove": []
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        }
+      },
+      "content_hash": "fa6438be20ab07efa54fdce3cd2c742034a7fdfc163390b6067ca60b2ab01d72"
     },
-    "send_mail": {
-      "operation_id": "00000000-0000-4000-8000-000000000421",
-      "content_version": "2",
-      "content_hash": "e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d0f9f2c4e6a8b0d1f3e5a7c9",
-      "intent": "send_mail",
-      "account_id": "00000000-0000-4000-8000-000000000402",
-      "target": { "remote_id": "mock-mail-002", "source_revision": "r3" },
-      "change": {
-        "subject": "Re: 合成の件名",
-        "body": "合成の返信の本文です。"
-      }
+    "draft_reply": {
+      "operation": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000421",
+        "content_version": "2",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000402",
+        "target": {
+          "remote_id": "mock-mail-002",
+          "source_revision": "r3"
+        },
+        "action": {
+          "kind": "mail.draft.create",
+          "to": ["sender@example.invalid"],
+          "cc": [],
+          "subject": "Re: 合成の件名",
+          "body": "合成の返信の本文です。"
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "operation_marker"
+        }
+      },
+      "content_hash": "d3874f1d3b05d149fc12cbb78e4ea56aed0965ec9aafd9870108ce02a5f9fc20"
     }
   },
   "confirmation_cases": [
     {
       "id": "x17-confirmation-label-mail",
-      "draft": { "$draft": "label_mail" },
-      "errors": []
+      "draft": {
+        "$draft": "label_mail"
+      },
+      "errors": [],
+      "contract_valid": true
     },
     {
-      "id": "x17-confirmation-create-event-without-target",
-      "draft": { "$draft": "create_event" },
-      "errors": []
+      "id": "x17-confirmation-draft-reply",
+      "note": "元サービスへ実際に渡す宛先・件名・本文は、確定した変更として残してよい（ADR 0040）。会話の本文とは別。",
+      "draft": {
+        "$draft": "draft_reply"
+      },
+      "errors": [],
+      "contract_valid": true
     },
     {
-      "id": "x17-confirmation-send-mail-body-is-the-change",
-      "note": "元サービスへ実際に渡す本文は変更の内容として残してよい（ADR 0040）。会話の本文とは別。",
-      "draft": { "$draft": "send_mail" },
-      "errors": []
+      "id": "x17-confirmation-label-item-is-object",
+      "note": "Codex の P1-1 の再現。許可した欄（ラベル）の中に会話の本文を入れる。",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "action": {
+            "add": [
+              {
+                "transcript": "合成の非公開会話本文"
+              }
+            ]
+          }
+        }
+      },
+      "errors": ["labels_add_invalid"],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-source-revision-is-a-sentence",
+      "note": "Codex の P1-1 の再現。版の欄に会話の本文を入れる。契約の SourceRevision は通るが、domain は空白のない ASCII に限る。",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "target": {
+            "source_revision": "合成の非公開会話本文"
+          }
+        }
+      },
+      "errors": ["target_source_revision_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-source-revision-with-space",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "target": {
+            "source_revision": "forget this"
+          }
+        }
+      },
+      "errors": ["target_source_revision_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-draft-body-is-object",
+      "note": "Codex の P1-1 の再現。本文の欄に物を入れる。",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "body": {
+              "transcript": "合成の非公開会話本文"
+            }
+          }
+        }
+      },
+      "errors": ["body_invalid"],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-draft-reply-empty-action",
+      "note": "Codex の P2-4 の再現。宛先・件名・本文が揃っていない下書き。",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "to": "$delete",
+            "cc": "$delete",
+            "subject": "$delete",
+            "body": "$delete"
+          }
+        }
+      },
+      "errors": [
+        "action_field_missing:body",
+        "action_field_missing:cc",
+        "action_field_missing:subject",
+        "action_field_missing:to",
+        "body_invalid",
+        "recipients_cc_invalid",
+        "recipients_to_invalid",
+        "subject_invalid"
+      ],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-draft-reply-without-recipient",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "to": []
+          }
+        }
+      },
+      "errors": ["recipients_to_invalid"],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-draft-reply-recipient-is-a-sentence",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "to": ["合成の宛先 です"]
+          }
+        }
+      },
+      "errors": ["recipients_to_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-draft-reply-cc-repeats-to",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "cc": ["sender@example.invalid"]
+          }
+        }
+      },
+      "errors": ["recipients_duplicated"],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-draft-reply-empty-subject",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "subject": ""
+          }
+        }
+      },
+      "errors": ["subject_invalid"],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-draft-reply-blank-subject",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "subject": "   "
+          }
+        }
+      },
+      "errors": ["subject_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-draft-reply-subject-with-newline",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "subject": "Re: 合成\n本文"
+          }
+        }
+      },
+      "errors": ["subject_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-draft-reply-body-with-control",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "body": "合成の本文\u0000"
+          }
+        }
+      },
+      "errors": ["body_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-draft-reply-body-with-newline",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "body": "合成の本文\n二行目"
+          }
+        }
+      },
+      "errors": [],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-labels-conflicting",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "action": {
+            "remove": ["follow-up"]
+          }
+        }
+      },
+      "errors": ["labels_conflicting"],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-labels-empty",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "action": {
+            "add": []
+          }
+        }
+      },
+      "errors": ["labels_empty"],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-label-with-newline",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "action": {
+            "add": ["follow\nup"]
+          }
+        }
+      },
+      "errors": ["labels_add_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-label-is-number",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "action": {
+            "remove": [1]
+          }
+        }
+      },
+      "errors": ["labels_remove_invalid"],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-label-duplicated",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "action": {
+            "add": ["follow-up", "follow-up"]
+          }
+        }
+      },
+      "errors": ["labels_add_invalid"],
+      "contract_valid": false
     },
     {
       "id": "x17-confirmation-turn-text-rejected",
-      "draft": { "$draft": "label_mail", "turn_text": "合成の発言" },
-      "errors": ["field_not_allowed:turn_text"]
+      "draft": {
+        "$draft": "label_mail",
+        "turn_text": "合成の発言"
+      },
+      "errors": ["field_not_allowed:turn_text"],
+      "contract_valid": true
     },
     {
       "id": "x17-confirmation-transcript-rejected",
-      "draft": { "$draft": "label_mail", "transcript": "合成の文字起こし" },
-      "errors": ["field_not_allowed:transcript"]
-    },
-    {
-      "id": "x17-confirmation-audio-rejected",
-      "draft": { "$draft": "label_mail", "audio": "AAAA" },
-      "errors": ["field_not_allowed:audio"]
+      "draft": {
+        "$draft": "label_mail",
+        "transcript": "合成の文字起こし"
+      },
+      "errors": ["field_not_allowed:transcript"],
+      "contract_valid": true
     },
     {
       "id": "x17-confirmation-summary-rejected",
-      "draft": { "$draft": "label_mail", "summary": "合成の要約" },
-      "errors": ["field_not_allowed:summary"]
-    },
-    {
-      "id": "x17-confirmation-interpretation-rejected",
       "draft": {
         "$draft": "label_mail",
-        "interpretation": { "intent": "label_mail", "confidence": 0.9 }
+        "summary": "合成の要約"
       },
-      "errors": ["field_not_allowed:interpretation"]
+      "errors": ["field_not_allowed:summary"],
+      "contract_valid": true
     },
     {
-      "id": "x17-confirmation-llm-output-rejected",
-      "draft": { "$draft": "label_mail", "llm_output": "合成の応答" },
-      "errors": ["field_not_allowed:llm_output"]
-    },
-    {
-      "id": "x17-confirmation-turn-id-rejected",
+      "id": "x17-confirmation-session-and-workflow-rejected",
       "draft": {
         "$draft": "label_mail",
-        "turn_id": "00000000-0000-4000-8000-000000000431"
+        "session_id": "00000000-0000-4000-8000-000000000432",
+        "workflow_id": "00000000-0000-4000-8000-000000000433",
+        "input_id": "00000000-0000-4000-8000-000000000434",
+        "segment_id": "seg-2"
       },
-      "errors": ["field_not_allowed:turn_id"]
-    },
-    {
-      "id": "x17-confirmation-session-id-rejected",
-      "draft": {
-        "$draft": "label_mail",
-        "session_id": "00000000-0000-4000-8000-000000000432"
-      },
-      "errors": ["field_not_allowed:session_id"]
-    },
-    {
-      "id": "x17-confirmation-workflow-id-rejected",
-      "draft": {
-        "$draft": "label_mail",
-        "workflow_id": "00000000-0000-4000-8000-000000000433"
-      },
-      "errors": ["field_not_allowed:workflow_id"]
-    },
-    {
-      "id": "x17-confirmation-input-id-rejected",
-      "draft": {
-        "$draft": "label_mail",
-        "input_id": "00000000-0000-4000-8000-000000000434"
-      },
-      "errors": ["field_not_allowed:input_id"]
-    },
-    {
-      "id": "x17-confirmation-request-revision-rejected",
-      "draft": { "$draft": "label_mail", "request_revision": "3" },
-      "errors": ["field_not_allowed:request_revision"]
-    },
-    {
-      "id": "x17-confirmation-segment-id-rejected",
-      "draft": {
-        "$draft": "label_mail",
-        "segment_id": "00000000-0000-4000-8000-000000000435"
-      },
-      "errors": ["field_not_allowed:segment_id"]
+      "errors": [
+        "field_not_allowed:input_id",
+        "field_not_allowed:segment_id",
+        "field_not_allowed:session_id",
+        "field_not_allowed:workflow_id"
+      ],
+      "contract_valid": true
     },
     {
       "id": "x48-confirmation-shadow-rejected",
-      "draft": { "$draft": "label_mail", "shadow": { "jev": "label_mail" } },
-      "errors": ["field_not_allowed:shadow"]
+      "draft": {
+        "$draft": "label_mail",
+        "shadow": {
+          "jev": "label_mail"
+        }
+      },
+      "errors": ["field_not_allowed:shadow"],
+      "contract_valid": true
     },
     {
       "id": "x59-confirmation-memory-sources-rejected",
-      "draft": { "$draft": "label_mail", "memory_sources": [] },
-      "errors": ["field_not_allowed:memory_sources"]
-    },
-    {
-      "id": "x17-confirmation-several-forbidden-fields",
       "draft": {
         "$draft": "label_mail",
-        "summary": "合成の要約",
-        "conversation": ["合成の発言"],
-        "session_id": "00000000-0000-4000-8000-000000000432"
+        "memory_sources": []
       },
-      "errors": [
-        "field_not_allowed:conversation",
-        "field_not_allowed:session_id",
-        "field_not_allowed:summary"
-      ]
+      "errors": ["field_not_allowed:memory_sources"],
+      "contract_valid": true
     },
     {
       "id": "x17-confirmation-claims-conversation-saved",
-      "note": "確認の画面に出す conversation_saved は Core が足す。下書きに入れて名乗ることはできない。",
-      "draft": { "$draft": "label_mail", "conversation_saved": true },
-      "errors": ["field_not_allowed:conversation_saved"]
-    },
-    {
-      "id": "x59-confirmation-memory-save-is-not-external",
+      "note": "確認の画面に出す conversation_saved と intent は Core が足す。下書きでは名乗れない。",
       "draft": {
         "$draft": "label_mail",
-        "intent": "memory_save",
-        "target": null,
-        "change": { "body": "合成の覚えてほしいこと" }
+        "conversation_saved": true,
+        "intent": "label_mail"
       },
-      "errors": ["intent_not_external_change"]
+      "errors": [
+        "field_not_allowed:conversation_saved",
+        "field_not_allowed:intent"
+      ],
+      "contract_valid": true
     },
     {
-      "id": "x17-confirmation-create-task-is-not-external",
+      "id": "x17-confirmation-operation-with-transcript",
       "draft": {
         "$draft": "label_mail",
-        "intent": "create_task",
-        "target": null,
-        "change": { "title": "合成の用事" }
-      },
-      "errors": ["intent_not_external_change"]
-    },
-    {
-      "id": "x17-confirmation-read-intent-is-not-external",
-      "draft": {
-        "$draft": "label_mail",
-        "intent": "query_schedule",
-        "target": null,
-        "change": {}
-      },
-      "errors": ["intent_not_external_change"]
-    },
-    {
-      "id": "x17-confirmation-unknown-intent",
-      "draft": { "$draft": "label_mail", "intent": "erase_mailbox" },
-      "errors": ["intent_unknown"]
-    },
-    {
-      "id": "x17-confirmation-change-with-candidate-index",
-      "draft": {
-        "$draft": "label_mail",
-        "change": {
-          "target_candidate_id": "c1",
-          "add_labels": ["follow-up"],
-          "remove_labels": []
+        "operation": {
+          "transcript": "合成の文字起こし",
+          "workflow_id": "00000000-0000-4000-8000-000000000433"
         }
       },
-      "errors": ["change_field_not_allowed:target_candidate_id"]
-    },
-    {
-      "id": "x17-confirmation-change-with-query",
-      "draft": {
-        "$draft": "label_mail",
-        "change": {
-          "add_labels": ["follow-up"],
-          "remove_labels": [],
-          "query": "合成の検索語"
-        }
-      },
-      "errors": ["change_field_not_allowed:query"]
-    },
-    {
-      "id": "x17-confirmation-change-with-transcript",
-      "draft": {
-        "$draft": "label_mail",
-        "change": {
-          "add_labels": ["follow-up"],
-          "remove_labels": [],
-          "transcript": "合成の文字起こし"
-        }
-      },
-      "errors": ["change_field_not_allowed:transcript"]
-    },
-    {
-      "id": "x17-confirmation-change-not-object",
-      "draft": { "$draft": "label_mail", "change": "follow-up を付けて" },
-      "errors": ["change_not_object"]
+      "errors": [
+        "operation_field_not_allowed:transcript",
+        "operation_field_not_allowed:workflow_id"
+      ],
+      "contract_valid": false
     },
     {
       "id": "x17-confirmation-target-with-extra-field",
       "draft": {
         "$draft": "label_mail",
-        "target": {
-          "remote_id": "mock-mail-001",
-          "source_revision": "r1",
-          "subject": "合成の件名"
+        "operation": {
+          "target": {
+            "subject": "合成の件名"
+          }
         }
       },
-      "errors": ["target_field_not_allowed:subject"]
+      "errors": ["target_field_not_allowed:subject"],
+      "contract_valid": false
     },
     {
       "id": "x17-confirmation-target-id-is-a-sentence",
       "draft": {
         "$draft": "label_mail",
-        "target": { "remote_id": "明日の会議の件", "source_revision": "r1" }
+        "operation": {
+          "target": {
+            "remote_id": "明日の会議の件"
+          }
+        }
       },
-      "errors": ["target_remote_id_invalid"]
+      "errors": ["target_remote_id_invalid"],
+      "contract_valid": true
     },
     {
-      "id": "x17-confirmation-target-id-with-space",
+      "id": "x17-confirmation-action-with-transcript",
       "draft": {
         "$draft": "label_mail",
-        "target": { "remote_id": "Forget this", "source_revision": "r1" }
+        "operation": {
+          "action": {
+            "transcript": "合成の文字起こし"
+          }
+        }
       },
-      "errors": ["target_remote_id_invalid"]
+      "errors": ["action_field_not_allowed:transcript"],
+      "contract_valid": false
     },
     {
-      "id": "x17-confirmation-target-empty-revision",
+      "id": "x17-confirmation-task-is-not-external",
       "draft": {
         "$draft": "label_mail",
-        "target": { "remote_id": "mock-mail-001", "source_revision": "" }
+        "operation": {
+          "action": {
+            "kind": "task.create",
+            "add": "$delete",
+            "remove": "$delete",
+            "title": "合成の用事",
+            "due": null,
+            "body": null
+          }
+        }
       },
-      "errors": ["target_source_revision_invalid"]
+      "errors": ["intent_not_external_change"],
+      "contract_valid": false
     },
     {
-      "id": "x17-confirmation-target-not-object",
-      "draft": { "$draft": "label_mail", "target": "mock-mail-001" },
-      "errors": ["target_not_object", "target_missing"]
-    },
-    {
-      "id": "x17-confirmation-label-mail-without-target",
-      "draft": { "$draft": "label_mail", "target": null },
-      "errors": ["target_missing"]
-    },
-    {
-      "id": "x17-confirmation-create-event-with-target",
+      "id": "x17-confirmation-send-is-not-confirmable-yet",
+      "note": "確定した型が契約にない外部変更（送信）は、型ができるまで切り出さない。",
       "draft": {
-        "$draft": "create_event",
-        "target": { "remote_id": "mock-event-001", "source_revision": "r1" }
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "kind": "mail.send"
+          }
+        }
       },
-      "errors": ["target_not_allowed"]
+      "errors": ["action_kind_not_confirmable"],
+      "contract_valid": false
     },
     {
-      "id": "x17-confirmation-label-mail-without-labels",
+      "id": "x17-confirmation-external-recipients-not-empty",
       "draft": {
         "$draft": "label_mail",
-        "change": { "add_labels": [], "remove_labels": [] }
+        "operation": {
+          "effects": {
+            "external_recipients": ["sender@example.invalid"]
+          }
+        }
       },
-      "errors": ["change_missing:add_labels"]
+      "errors": ["effects_external_recipients_invalid"],
+      "contract_valid": false
     },
     {
-      "id": "x17-confirmation-send-mail-without-body",
+      "id": "x17-confirmation-wrong-reconcile-scope",
       "draft": {
-        "$draft": "send_mail",
-        "change": { "subject": "Re: 合成の件名" }
+        "$draft": "label_mail",
+        "operation": {
+          "effects": {
+            "reconcile_scope": "operation_marker"
+          }
+        }
       },
-      "errors": ["change_missing:body"]
+      "errors": ["effects_reconcile_scope_invalid"],
+      "contract_valid": false
     },
     {
       "id": "x17-confirmation-bad-identifiers",
       "draft": {
         "$draft": "label_mail",
-        "operation_id": "operation-1",
-        "content_version": "01",
-        "content_hash": "9F2C4E6A8B0D1F3E5A7C9E1B3D5F7A9C2E4B6D8F0A1C3E5B7D9F1A3C5E7B9D0F",
-        "account_id": "00000000-0000-1000-8000-000000000402"
+        "operation": {
+          "operation_id": "operation-1",
+          "content_version": "01",
+          "permission_revision": "v1",
+          "provider": "imap",
+          "account_id": "00000000-0000-1000-8000-000000000402"
+        },
+        "content_hash": "85C142D1BEAC723E4228A598DE00F1090D5AB75046F75CEE99FDD073E33FB0B7"
       },
       "errors": [
         "account_id_invalid",
         "content_hash_invalid",
         "content_version_invalid",
-        "operation_id_invalid"
-      ]
+        "operation_id_invalid",
+        "permission_revision_invalid",
+        "provider_invalid"
+      ],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-other-schema",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": {
+          "schema": "buddy.operation.v2"
+        }
+      },
+      "errors": ["operation_schema_invalid"],
+      "contract_valid": false
     },
     {
       "id": "x17-confirmation-missing-fields",
       "draft": {
-        "operation_id": "00000000-0000-4000-8000-000000000401",
-        "intent": "label_mail"
+        "$draft": "label_mail",
+        "content_hash": "$delete",
+        "operation": {
+          "target": "$delete",
+          "effects": "$delete"
+        }
       },
       "errors": [
-        "field_missing:account_id",
-        "field_missing:change",
+        "effects_not_object",
         "field_missing:content_hash",
-        "field_missing:content_version",
-        "field_missing:target"
-      ]
+        "operation_field_missing:effects",
+        "operation_field_missing:target",
+        "target_not_object"
+      ],
+      "contract_valid": false
+    },
+    {
+      "id": "x17-confirmation-operation-null",
+      "draft": {
+        "$draft": "label_mail",
+        "operation": null
+      },
+      "errors": ["operation_not_object"],
+      "contract_valid": false
     },
     {
       "id": "x17-confirmation-not-object",
       "draft": "このメールに follow-up を付けて",
       "errors": ["not_object"]
     },
-    { "id": "x17-confirmation-null", "draft": null, "errors": ["not_object"] }
+    {
+      "id": "x17-confirmation-null",
+      "draft": null,
+      "errors": ["not_object"]
+    }
   ],
+  "approvals": {
+    "label_g2": {
+      "route": "screen",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "approved_at": "2030-10-05T00:01:00Z",
+      "segment_generation": "2",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "content_hash": "85c142d1beac723e4228a598de00f1090d5ab75046f75cee99fdd073e33fb0b7"
+    },
+    "label_b_g4": {
+      "route": "screen",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "approved_at": "2030-10-05T00:05:00Z",
+      "segment_generation": "4",
+      "operation_id": "00000000-0000-4000-8000-000000000403",
+      "content_version": "1",
+      "content_hash": "fa6438be20ab07efa54fdce3cd2c742034a7fdfc163390b6067ca60b2ab01d72"
+    },
+    "draft_g2": {
+      "route": "screen",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "approved_at": "2030-10-05T00:02:00Z",
+      "segment_generation": "2",
+      "operation_id": "00000000-0000-4000-8000-000000000421",
+      "content_version": "2",
+      "content_hash": "d3874f1d3b05d149fc12cbb78e4ea56aed0965ec9aafd9870108ce02a5f9fc20"
+    }
+  },
   "approval_cases": [
     {
       "id": "x17-approval-screen",
       "approval": {
-        "route": "screen",
-        "device_id": "00000000-0000-4000-8000-000000000050",
-        "approved_at": "2030-10-05T00:01:00Z"
+        "$approval": "label_g2"
       },
       "errors": []
     },
     {
       "id": "x17-approval-voice-yes-rejected",
       "approval": {
-        "route": "voice",
-        "device_id": "00000000-0000-4000-8000-000000000050",
-        "approved_at": "2030-10-05T00:01:00Z"
+        "$approval": "label_g2",
+        "route": "voice"
       },
       "errors": ["route_not_screen"]
     },
     {
       "id": "x17-approval-policy-rejected",
       "approval": {
-        "route": "policy",
-        "device_id": "00000000-0000-4000-8000-000000000050",
-        "approved_at": "2030-10-05T00:01:00Z"
+        "$approval": "label_g2",
+        "route": "policy"
       },
       "errors": ["route_not_screen"]
     },
     {
       "id": "x17-approval-with-utterance-rejected",
       "approval": {
-        "route": "screen",
-        "device_id": "00000000-0000-4000-8000-000000000050",
-        "approved_at": "2030-10-05T00:01:00Z",
+        "$approval": "label_g2",
         "utterance": "はい"
       },
       "errors": ["field_not_allowed:utterance"]
@@ -718,7 +1345,7 @@
     {
       "id": "x17-approval-bad-device-and-time",
       "approval": {
-        "route": "screen",
+        "$approval": "label_g2",
         "device_id": "windows-pc",
         "approved_at": "2030-10-05T09:01:00+09:00"
       },
@@ -727,11 +1354,38 @@
     {
       "id": "x17-approval-impossible-time",
       "approval": {
-        "route": "screen",
-        "device_id": "00000000-0000-4000-8000-000000000050",
+        "$approval": "label_g2",
         "approved_at": "2030-13-40T00:01:00Z"
       },
       "errors": ["approved_at_invalid"]
+    },
+    {
+      "id": "x17-approval-without-binding",
+      "note": "区切りの世代・操作の ID・内容版・内容の hash に結び付かない承認は受けない。",
+      "approval": {
+        "route": "screen",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "approved_at": "2030-10-05T00:01:00Z"
+      },
+      "errors": [
+        "content_hash_invalid",
+        "content_version_invalid",
+        "field_missing:content_hash",
+        "field_missing:content_version",
+        "field_missing:operation_id",
+        "field_missing:segment_generation",
+        "operation_id_invalid",
+        "segment_generation_invalid"
+      ]
+    },
+    {
+      "id": "x17-approval-bad-binding-format",
+      "approval": {
+        "$approval": "label_g2",
+        "segment_generation": "g2",
+        "content_hash": "abc"
+      },
+      "errors": ["content_hash_invalid", "segment_generation_invalid"]
     },
     {
       "id": "x17-approval-not-object",
@@ -739,38 +1393,34 @@
       "errors": ["not_object"]
     }
   ],
-  "approvals": {
-    "screen": {
-      "route": "screen",
-      "device_id": "00000000-0000-4000-8000-000000000050",
-      "approved_at": "2030-10-05T00:01:00Z"
-    },
-    "voice": {
-      "route": "voice",
-      "device_id": "00000000-0000-4000-8000-000000000050",
-      "approved_at": "2030-10-05T00:01:00Z"
-    }
-  },
   "sequences": [
     {
       "id": "x17-enter-hold-in-ram-exit",
       "tests": ["X17", "X36", "X44", "X48", "X59"],
-      "note": "入る → 文字と③は RAM → 要約・「今回は」・聞き返し・入力の版・キャンバスは RAM → 記憶・抽出・影モード・「今後は」・発言のイベント・通常の操作の記録は拒否 → 予算の予約だけ書く → 出る（RAM を捨て、前の要約を持ち込まない） → 通常に戻ると書く。",
+      "note": "入る → 文字と③・要約・「今回は」・聞き返し・入力の版・派生物・依頼と結果・受付の記録・キャンバスは RAM → 記憶・抽出・影モード・「今後は」・発言のイベント・通常の操作の記録は拒否 → 予算の予約だけ書く → 出る（RAM を捨て、前の要約を持ち込まない） → 通常に戻ると書く。",
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "begin_private_canvas" },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -778,67 +1428,302 @@
           ]
         },
         {
-          "event": { "type": "input", "input_kind": "text" },
-          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+          "event": {
+            "type": "input",
+            "input_kind": "text"
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "turn",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "input", "input_kind": "voice_local" },
-          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+          "event": {
+            "type": "input",
+            "input_kind": "voice_local"
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "turn",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "persist_summary" },
-          "commands": [{ "type": "hold_in_ram", "kind": "summary" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "summary",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "persist_this_time_directive" },
-          "commands": [{ "type": "hold_in_ram", "kind": "this_time_directive" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_this_time_directive",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "this_time_directive",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "persist_clarification" },
-          "commands": [{ "type": "hold_in_ram", "kind": "clarification" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_clarification",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "clarification",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "persist_input_snapshot" },
-          "commands": [{ "type": "hold_in_ram", "kind": "input_snapshot" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_input_snapshot",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "input_snapshot",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "write_persisted_canvas" },
-          "commands": [{ "type": "hold_in_ram", "kind": "canvas" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_derived_summary",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "derived_summary",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "persist_turn_events" },
-          "rejected": "denied_in_mode"
+          "event": {
+            "type": "write",
+            "effect": "persist_workflow",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "workflow",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "save_memory" },
-          "rejected": "denied_in_mode"
+          "event": {
+            "type": "write",
+            "effect": "persist_workflow_result",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "workflow_result",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "extract_memory" },
-          "rejected": "denied_in_mode"
+          "event": {
+            "type": "write",
+            "effect": "persist_turn_response",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "turn_response",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "record_shadow" },
+          "event": {
+            "type": "write",
+            "effect": "persist_command_receipt",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "command_receipt",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "write_persisted_canvas",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "canvas",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_turn_events",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
           "rejected": "denied_in_mode"
         },
         {
           "event": {
             "type": "write",
-            "effect": "persist_from_now_on_directive"
+            "effect": "save_memory",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "rejected": "denied_in_mode"
         },
         {
-          "event": { "type": "write", "effect": "record_full_operation" },
+          "event": {
+            "type": "write",
+            "effect": "extract_memory",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
           "rejected": "denied_in_mode"
         },
         {
-          "event": { "type": "write", "effect": "record_minimal_operation" },
+          "event": {
+            "type": "write",
+            "effect": "record_shadow",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_from_now_on_directive",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "record_full_operation",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "record_minimal_operation",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
           "rejected": "independent_confirmation_required"
         },
         {
-          "event": { "type": "write", "effect": "reserve_budget" },
-          "commands": [{ "type": "write", "effect": "reserve_budget" }]
+          "event": {
+            "type": "write",
+            "effect": "reserve_budget",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "reserve_budget",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
           "event": {
@@ -847,11 +1732,17 @@
             "mode": "normal"
           },
           "commands": [
-            { "type": "discard_private_ram", "confirmation_ids": [] },
-            { "type": "end_private_canvas" },
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-3",
+              "segment_generation": "3",
               "storage_mode": "normal",
               "open_reason": "private_ended",
               "carried_summary": null
@@ -859,44 +1750,94 @@
           ]
         },
         {
-          "event": { "type": "input", "input_kind": "text" },
-          "commands": [{ "type": "write", "effect": "persist_turns" }]
+          "event": {
+            "type": "input",
+            "input_kind": "text"
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_turns",
+              "origin": {
+                "$origin": "seg3"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "persist_summary" },
-          "commands": [{ "type": "write", "effect": "persist_summary" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg3"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_summary",
+              "origin": {
+                "$origin": "seg3"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "save_memory" },
-          "commands": [{ "type": "write", "effect": "save_memory" }]
+          "event": {
+            "type": "write",
+            "effect": "save_memory",
+            "origin": {
+              "$origin": "seg3"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "save_memory",
+              "origin": {
+                "$origin": "seg3"
+              }
+            }
+          ]
         }
       ],
       "final": {
         "mode": "normal",
         "segment_id": "seg-3",
+        "segment_generation": "3",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
-      "id": "x17-ram-is-kept-in-order-while-private",
-      "tests": ["X17"],
+      "id": "x17-late-results-after-exit",
+      "tests": ["X17", "X44", "X48", "X59"],
+      "note": "Codex の P1-2 の再現。入る → 入力（要約などの処理を始める） → 出る → 記録しない区切りが由来の結果が遅れて届く。出た後も永続化しない。",
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "begin_private_canvas" },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -904,20 +1845,469 @@
           ]
         },
         {
-          "event": { "type": "input", "input_kind": "voice_local" },
-          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+          "event": {
+            "type": "input",
+            "input_kind": "text"
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "turn",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "persist_clarification" },
-          "commands": [{ "type": "hold_in_ram", "kind": "clarification" }]
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "segment_generation": "3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "save_memory",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "record_shadow",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "write_persisted_canvas",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_turn_events",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "extract_memory",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_derived_summary",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_workflow_result",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_turns",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg3"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_summary",
+              "origin": {
+                "$origin": "seg3"
+              }
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "segment_generation": "3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      }
+    },
+    {
+      "id": "x17-late-results-after-reentry",
+      "tests": ["X17"],
+      "note": "出て入り直した後に、前の記録しない区切りの結果が届く。新しい区切りの RAM にも入れない。通常の区切りの結果が遅れて届いても捨てる。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
+          "commands": [
+            {
+              "type": "begin_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "segment_generation": "2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "segment_generation": "3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-4"
+          },
+          "commands": [
+            {
+              "type": "begin_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-4",
+              "segment_generation": "4",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg3"
+            }
+          },
+          "rejected": "origin_stale"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "segment_id": "seg-2",
+              "segment_generation": "4",
+              "storage_mode": "private"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg4p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "summary",
+              "origin": {
+                "$origin": "seg4p"
+              }
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-4",
+        "segment_generation": "4",
+        "live": "closed",
+        "private_ram": ["summary"],
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      }
+    },
+    {
+      "id": "x36-stale-and-invalid-origins",
+      "tests": ["X36"],
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "segment_id": "seg-0",
+              "segment_generation": "0",
+              "storage_mode": "normal"
+            }
+          },
+          "rejected": "origin_stale"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "segment_id": "seg-1",
+              "segment_generation": "0",
+              "storage_mode": "normal"
+            }
+          },
+          "rejected": "origin_stale"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "segment_id": "seg-1",
+              "segment_generation": "1",
+              "storage_mode": "private"
+            }
+          },
+          "rejected": "origin_mismatch"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "segment_id": "seg-1",
+              "segment_generation": "1",
+              "storage_mode": "extended"
+            }
+          },
+          "rejected": "origin_mismatch"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "segment_id": "seg-1",
+              "segment_generation": "1",
+              "storage_mode": "archived"
+            }
+          },
+          "rejected": "origin_invalid"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "segment_id": "seg-1",
+              "segment_generation": 1,
+              "storage_mode": "normal"
+            }
+          },
+          "rejected": "origin_invalid"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "segment_id": "seg-1",
+              "segment_generation": "1",
+              "storage_mode": "normal",
+              "transcript": "合成"
+            }
+          },
+          "rejected": "origin_invalid"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": null
+          },
+          "rejected": "origin_invalid"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary"
+          },
+          "rejected": "origin_invalid"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_summary",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
+          "commands": [
+            {
+              "type": "begin_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "segment_generation": "2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_summary",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "rejected": "origin_stale"
         }
       ],
       "final": {
         "mode": "private",
         "segment_id": "seg-2",
+        "segment_generation": "2",
         "live": "closed",
-        "private_ram": ["turn", "clarification"],
-        "pending_confirmations": []
+        "private_ram": [],
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
@@ -927,19 +2317,30 @@
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "open",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "close_voice_session", "reason": "private_conversation" },
-            { "type": "begin_private_canvas" },
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -947,21 +2348,44 @@
           ]
         },
         {
-          "event": { "type": "input", "input_kind": "voice_live" },
+          "event": {
+            "type": "input",
+            "input_kind": "voice_live"
+          },
           "rejected": "private_conversation"
         },
         {
-          "event": { "type": "live_requested" },
-          "rejected": "private_conversation"
-        },
-        { "event": { "type": "live_closed" }, "commands": [] },
-        {
-          "event": { "type": "live_requested" },
+          "event": {
+            "type": "live_requested"
+          },
           "rejected": "private_conversation"
         },
         {
-          "event": { "type": "input", "input_kind": "voice_local" },
-          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+          "event": {
+            "type": "live_closed"
+          },
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "live_requested"
+          },
+          "rejected": "private_conversation"
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "voice_local"
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "turn",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
           "event": {
@@ -970,11 +2394,17 @@
             "mode": "extended"
           },
           "commands": [
-            { "type": "discard_private_ram", "confirmation_ids": [] },
-            { "type": "end_private_canvas" },
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-3",
+              "segment_generation": "3",
               "storage_mode": "extended",
               "open_reason": "private_ended",
               "carried_summary": null
@@ -982,21 +2412,45 @@
           ]
         },
         {
-          "event": { "type": "live_requested" },
-          "commands": [{ "type": "start_live" }]
+          "event": {
+            "type": "live_requested"
+          },
+          "commands": [
+            {
+              "type": "start_live"
+            }
+          ]
         },
-        { "event": { "type": "live_connected" }, "commands": [] },
         {
-          "event": { "type": "input", "input_kind": "voice_live" },
-          "commands": [{ "type": "write", "effect": "persist_turns" }]
+          "event": {
+            "type": "live_connected"
+          },
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "voice_live"
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_turns",
+              "origin": {
+                "$origin": "seg3e"
+              }
+            }
+          ]
         }
       ],
       "final": {
         "mode": "extended",
         "segment_id": "seg-3",
+        "segment_generation": "3",
         "live": "open",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
@@ -1006,19 +2460,30 @@
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "connecting",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "close_voice_session", "reason": "private_conversation" },
-            { "type": "begin_private_canvas" },
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -1026,26 +2491,45 @@
           ]
         },
         {
-          "event": { "type": "live_connected" },
+          "event": {
+            "type": "live_connected"
+          },
           "rejected": "private_conversation",
           "commands": []
         },
-        { "event": { "type": "live_closed" }, "commands": [] },
         {
-          "event": { "type": "live_connected" },
+          "event": {
+            "type": "live_closed"
+          },
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "live_connected"
+          },
           "rejected": "private_conversation",
           "commands": [
-            { "type": "close_voice_session", "reason": "private_conversation" }
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            }
           ]
         },
-        { "event": { "type": "live_closed" }, "commands": [] }
+        {
+          "event": {
+            "type": "live_closed"
+          },
+          "commands": []
+        }
       ],
       "final": {
         "mode": "private",
         "segment_id": "seg-2",
+        "segment_generation": "2",
         "live": "closed",
         "private_ram": [],
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
@@ -1055,18 +2539,26 @@
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "closing",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "begin_private_canvas" },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -1077,30 +2569,40 @@
       "final": {
         "mode": "private",
         "segment_id": "seg-2",
+        "segment_generation": "2",
         "live": "closing",
         "private_ram": [],
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
       "id": "x17-external-change-approved-then-exit",
       "tests": ["X17"],
-      "note": "記録しない会話からラベル変更を頼む。独立した確認には会話の本文がなく、画面での一度の承認の後に最小の操作記録だけが残る。出ても承認済みの記録は変わらない。",
+      "note": "記録しない会話からラベル変更を頼む。独立した確認には会話の本文がなく、同じ世代・同じ内容への画面での一度の承認の後に、最小の操作記録だけが残る。出ても承認済みの記録は変わらない。",
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "begin_private_canvas" },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -1108,30 +2610,60 @@
           ]
         },
         {
-          "event": { "type": "input", "input_kind": "text" },
-          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+          "event": {
+            "type": "input",
+            "input_kind": "text"
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "turn",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
           "event": {
             "type": "external_change_requested",
             "confirmation_id": "c-1",
-            "draft": { "$draft": "label_mail" }
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
           },
           "commands": [
             {
               "type": "show_independent_confirmation",
               "confirmation_id": "c-1",
+              "segment_generation": "2",
               "view": {
-                "operation_id": "00000000-0000-4000-8000-000000000401",
-                "content_version": "1",
-                "content_hash": "9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d0f",
                 "intent": "label_mail",
-                "account_id": "00000000-0000-4000-8000-000000000402",
-                "target": {
-                  "remote_id": "mock-mail-001",
-                  "source_revision": "r1"
+                "operation": {
+                  "schema": "buddy.operation.v1",
+                  "operation_id": "00000000-0000-4000-8000-000000000401",
+                  "content_version": "1",
+                  "permission_revision": "1",
+                  "provider": "mock",
+                  "account_id": "00000000-0000-4000-8000-000000000402",
+                  "target": {
+                    "remote_id": "mock-mail-001",
+                    "source_revision": "r1"
+                  },
+                  "action": {
+                    "kind": "mail.labels.change",
+                    "add": ["follow-up"],
+                    "remove": []
+                  },
+                  "effects": {
+                    "external_recipients": [],
+                    "reconcile_scope": "exact_target"
+                  }
                 },
-                "change": { "add_labels": ["follow-up"], "remove_labels": [] },
+                "content_hash": "85c142d1beac723e4228a598de00f1090d5ab75046f75cee99fdd073e33fb0b7",
                 "conversation_saved": false
               }
             }
@@ -1141,7 +2673,9 @@
           "event": {
             "type": "confirmation_approved",
             "confirmation_id": "c-1",
-            "approval": { "$approval": "screen" }
+            "approval": {
+              "$approval": "label_g2"
+            }
           },
           "commands": [
             {
@@ -1149,16 +2683,29 @@
               "record": {
                 "record_kind": "private_minimal",
                 "workflow_id": null,
-                "operation_id": "00000000-0000-4000-8000-000000000401",
-                "content_version": "1",
-                "content_hash": "9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d0f",
                 "intent": "label_mail",
-                "account_id": "00000000-0000-4000-8000-000000000402",
-                "target": {
-                  "remote_id": "mock-mail-001",
-                  "source_revision": "r1"
+                "operation": {
+                  "schema": "buddy.operation.v1",
+                  "operation_id": "00000000-0000-4000-8000-000000000401",
+                  "content_version": "1",
+                  "permission_revision": "1",
+                  "provider": "mock",
+                  "account_id": "00000000-0000-4000-8000-000000000402",
+                  "target": {
+                    "remote_id": "mock-mail-001",
+                    "source_revision": "r1"
+                  },
+                  "action": {
+                    "kind": "mail.labels.change",
+                    "add": ["follow-up"],
+                    "remove": []
+                  },
+                  "effects": {
+                    "external_recipients": [],
+                    "reconcile_scope": "exact_target"
+                  }
                 },
-                "change": { "add_labels": ["follow-up"], "remove_labels": [] },
+                "content_hash": "85c142d1beac723e4228a598de00f1090d5ab75046f75cee99fdd073e33fb0b7",
                 "approval": {
                   "route": "screen",
                   "device_id": "00000000-0000-4000-8000-000000000050",
@@ -1175,11 +2722,17 @@
             "mode": "normal"
           },
           "commands": [
-            { "type": "discard_private_ram", "confirmation_ids": [] },
-            { "type": "end_private_canvas" },
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-3",
+              "segment_generation": "3",
               "storage_mode": "normal",
               "open_reason": "private_ended",
               "carried_summary": null
@@ -1190,9 +2743,11 @@
       "final": {
         "mode": "normal",
         "segment_id": "seg-3",
+        "segment_generation": "3",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
@@ -1202,18 +2757,26 @@
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "begin_private_canvas" },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -1224,13 +2787,23 @@
           "event": {
             "type": "external_change_requested",
             "confirmation_id": "c-1",
-            "draft": { "$draft": "label_mail" }
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
           },
           "commands": [
             {
               "type": "show_independent_confirmation",
               "confirmation_id": "c-1",
-              "view": { "$draft": "label_mail", "conversation_saved": false }
+              "segment_generation": "2",
+              "view": {
+                "$draft": "label_mail",
+                "intent": "label_mail",
+                "conversation_saved": false
+              }
             }
           ]
         },
@@ -1238,13 +2811,23 @@
           "event": {
             "type": "external_change_requested",
             "confirmation_id": "c-2",
-            "draft": { "$draft": "create_event" }
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "draft_reply"
+            }
           },
           "commands": [
             {
               "type": "show_independent_confirmation",
               "confirmation_id": "c-2",
-              "view": { "$draft": "create_event", "conversation_saved": false }
+              "segment_generation": "2",
+              "view": {
+                "$draft": "draft_reply",
+                "intent": "draft_reply",
+                "conversation_saved": false
+              }
             }
           ]
         },
@@ -1259,10 +2842,13 @@
               "type": "discard_private_ram",
               "confirmation_ids": ["c-1", "c-2"]
             },
-            { "type": "end_private_canvas" },
+            {
+              "type": "end_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-3",
+              "segment_generation": "3",
               "storage_mode": "normal",
               "open_reason": "private_ended",
               "carried_summary": null
@@ -1273,7 +2859,9 @@
           "event": {
             "type": "confirmation_approved",
             "confirmation_id": "c-1",
-            "approval": { "$approval": "screen" }
+            "approval": {
+              "$approval": "label_g2"
+            }
           },
           "rejected": "confirmation_not_found"
         },
@@ -1288,109 +2876,40 @@
       "final": {
         "mode": "normal",
         "segment_id": "seg-3",
+        "segment_generation": "3",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
-      "id": "x17-approval-order-swapped",
+      "id": "x17-reentry-stale-approval",
       "tests": ["X17"],
-      "note": "頼む前の承認・声の「はい」・二度目の承認は記録を作らない。",
-      "start": {
-        "mode": "private",
-        "segment_id": "seg-2",
-        "live": "closed",
-        "private_ram": [],
-        "pending_confirmations": []
-      },
-      "steps": [
-        {
-          "event": {
-            "type": "confirmation_approved",
-            "confirmation_id": "c-9",
-            "approval": { "$approval": "screen" }
-          },
-          "rejected": "confirmation_not_found"
-        },
-        {
-          "event": {
-            "type": "external_change_requested",
-            "confirmation_id": "c-9",
-            "draft": { "$draft": "send_mail" }
-          },
-          "commands": [
-            {
-              "type": "show_independent_confirmation",
-              "confirmation_id": "c-9",
-              "view": { "$draft": "send_mail", "conversation_saved": false }
-            }
-          ]
-        },
-        {
-          "event": {
-            "type": "confirmation_approved",
-            "confirmation_id": "c-9",
-            "approval": { "$approval": "voice" }
-          },
-          "rejected": "approval_invalid",
-          "errors": ["route_not_screen"]
-        },
-        {
-          "event": {
-            "type": "confirmation_approved",
-            "confirmation_id": "c-9",
-            "approval": { "$approval": "screen" }
-          },
-          "commands": [
-            {
-              "type": "record_minimal_operation",
-              "record": {
-                "$draft": "send_mail",
-                "record_kind": "private_minimal",
-                "workflow_id": null,
-                "approval": { "$approval": "screen" }
-              }
-            }
-          ]
-        },
-        {
-          "event": {
-            "type": "confirmation_approved",
-            "confirmation_id": "c-9",
-            "approval": { "$approval": "screen" }
-          },
-          "rejected": "confirmation_not_found"
-        }
-      ],
-      "final": {
-        "mode": "private",
-        "segment_id": "seg-2",
-        "live": "closed",
-        "private_ram": [],
-        "pending_confirmations": []
-      }
-    },
-    {
-      "id": "x17-external-change-while-live-closing",
-      "tests": ["X17"],
-      "note": "Live が開いている間に入り、閉じ終わる前に外部変更を頼む。遅れて届いた接続は閉じる命令を重ねず拒否し、承認の後に最小の記録だけを残す。",
+      "note": "Codex の P2-3 の再現。c-1 で操作 A の確認 → 承認前に出る → 入り直す → c-1 で操作 B の確認 → A への古い承認が届く。区切りの世代・操作の ID・内容の hash が違うので拒否し、B の正しい承認だけが記録を作る。前の世代の頼みが遅れて届いても受けない。",
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
-        "live": "open",
+        "segment_generation": "1",
+        "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "close_voice_session", "reason": "private_conversation" },
-            { "type": "begin_private_canvas" },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -1401,40 +2920,26 @@
           "event": {
             "type": "external_change_requested",
             "confirmation_id": "c-1",
-            "draft": { "$draft": "label_mail" }
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
           },
           "commands": [
             {
               "type": "show_independent_confirmation",
               "confirmation_id": "c-1",
-              "view": { "$draft": "label_mail", "conversation_saved": false }
-            }
-          ]
-        },
-        {
-          "event": { "type": "live_connected" },
-          "rejected": "private_conversation",
-          "commands": []
-        },
-        {
-          "event": {
-            "type": "confirmation_approved",
-            "confirmation_id": "c-1",
-            "approval": { "$approval": "screen" }
-          },
-          "commands": [
-            {
-              "type": "record_minimal_operation",
-              "record": {
+              "segment_generation": "2",
+              "view": {
                 "$draft": "label_mail",
-                "record_kind": "private_minimal",
-                "workflow_id": null,
-                "approval": { "$approval": "screen" }
+                "intent": "label_mail",
+                "conversation_saved": false
               }
             }
           ]
         },
-        { "event": { "type": "live_closed" }, "commands": [] },
         {
           "event": {
             "type": "exit_private",
@@ -1442,143 +2947,39 @@
             "mode": "normal"
           },
           "commands": [
-            { "type": "discard_private_ram", "confirmation_ids": [] },
-            { "type": "end_private_canvas" },
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": ["c-1"]
+            },
+            {
+              "type": "end_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-3",
+              "segment_generation": "3",
               "storage_mode": "normal",
               "open_reason": "private_ended",
               "carried_summary": null
             }
           ]
-        }
-      ],
-      "final": {
-        "mode": "normal",
-        "segment_id": "seg-3",
-        "live": "closed",
-        "private_ram": null,
-        "pending_confirmations": []
-      }
-    },
-    {
-      "id": "x17-external-change-in-normal-uses-normal-approval",
-      "tests": ["X17"],
-      "start": {
-        "mode": "normal",
-        "segment_id": "seg-1",
-        "live": "closed",
-        "private_ram": null,
-        "pending_confirmations": []
-      },
-      "steps": [
-        {
-          "event": {
-            "type": "external_change_requested",
-            "confirmation_id": "c-1",
-            "draft": { "$draft": "label_mail" }
-          },
-          "rejected": "not_private"
         },
         {
           "event": {
-            "type": "confirmation_approved",
-            "confirmation_id": "c-1",
-            "approval": { "$approval": "screen" }
-          },
-          "rejected": "confirmation_not_found"
-        },
-        {
-          "event": { "type": "write", "effect": "record_full_operation" },
-          "commands": [{ "type": "write", "effect": "record_full_operation" }]
-        },
-        {
-          "event": { "type": "write", "effect": "record_minimal_operation" },
-          "rejected": "denied_in_mode"
-        }
-      ],
-      "final": {
-        "mode": "normal",
-        "segment_id": "seg-1",
-        "live": "closed",
-        "private_ram": null,
-        "pending_confirmations": []
-      }
-    },
-    {
-      "id": "x17-invalid-confirmation-is-not-kept",
-      "tests": ["X17"],
-      "start": {
-        "mode": "private",
-        "segment_id": "seg-2",
-        "live": "closed",
-        "private_ram": [],
-        "pending_confirmations": []
-      },
-      "steps": [
-        {
-          "event": {
-            "type": "external_change_requested",
-            "confirmation_id": "c-1",
-            "draft": { "$draft": "label_mail", "turn_text": "合成の発言" }
-          },
-          "rejected": "confirmation_invalid",
-          "errors": ["field_not_allowed:turn_text"]
-        },
-        {
-          "event": {
-            "type": "external_change_requested",
-            "confirmation_id": "c-2",
-            "draft": {
-              "$draft": "label_mail",
-              "intent": "memory_save",
-              "target": null,
-              "change": { "body": "合成の覚えてほしいこと" }
-            }
-          },
-          "rejected": "confirmation_invalid",
-          "errors": ["intent_not_external_change"]
-        },
-        {
-          "event": {
-            "type": "confirmation_approved",
-            "confirmation_id": "c-1",
-            "approval": { "$approval": "screen" }
-          },
-          "rejected": "confirmation_not_found"
-        }
-      ],
-      "final": {
-        "mode": "private",
-        "segment_id": "seg-2",
-        "live": "closed",
-        "private_ram": [],
-        "pending_confirmations": []
-      }
-    },
-    {
-      "id": "x17-decline-and-reused-id",
-      "tests": ["X17"],
-      "start": {
-        "mode": "private",
-        "segment_id": "seg-2",
-        "live": "closed",
-        "private_ram": [],
-        "pending_confirmations": []
-      },
-      "steps": [
-        {
-          "event": {
-            "type": "external_change_requested",
-            "confirmation_id": "c-1",
-            "draft": { "$draft": "label_mail" }
+            "type": "enter_private",
+            "segment_id": "seg-4"
           },
           "commands": [
             {
-              "type": "show_independent_confirmation",
-              "confirmation_id": "c-1",
-              "view": { "$draft": "label_mail", "conversation_saved": false }
+              "type": "begin_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-4",
+              "segment_generation": "4",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
             }
           ]
         },
@@ -1586,7 +2987,292 @@
           "event": {
             "type": "external_change_requested",
             "confirmation_id": "c-1",
-            "draft": { "$draft": "create_event" }
+            "origin": {
+              "$origin": "seg4p"
+            },
+            "draft": {
+              "$draft": "label_mail_b"
+            }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "segment_generation": "4",
+              "view": {
+                "$draft": "label_mail_b",
+                "intent": "label_mail",
+                "conversation_saved": false
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2"
+            }
+          },
+          "rejected": "approval_mismatch",
+          "errors": [
+            "segment_generation_mismatch",
+            "operation_id_mismatch",
+            "content_hash_mismatch"
+          ]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-2",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_b_g4"
+            }
+          },
+          "commands": [
+            {
+              "type": "record_minimal_operation",
+              "record": {
+                "$draft": "label_mail_b",
+                "intent": "label_mail",
+                "record_kind": "private_minimal",
+                "workflow_id": null,
+                "approval": {
+                  "route": "screen",
+                  "device_id": "00000000-0000-4000-8000-000000000050",
+                  "approved_at": "2030-10-05T00:05:00Z"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-4",
+        "segment_generation": "4",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": [],
+        "used_confirmation_ids": ["c-1"]
+      }
+    },
+    {
+      "id": "x17-approval-bound-to-content",
+      "tests": ["X17"],
+      "note": "承認は同じ世代の同じ操作・内容版・内容の hash だけ。声の「はい」も受けない。頼む前の承認・二度目の承認は記録を作らない。",
+      "start": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "segment_generation": "2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2"
+            }
+          },
+          "rejected": "confirmation_not_found"
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "segment_generation": "2",
+              "view": {
+                "$draft": "label_mail",
+                "intent": "label_mail",
+                "conversation_saved": false
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2",
+              "route": "voice"
+            }
+          },
+          "rejected": "approval_invalid",
+          "errors": ["route_not_screen"]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2",
+              "content_hash": "fa6438be20ab07efa54fdce3cd2c742034a7fdfc163390b6067ca60b2ab01d72"
+            }
+          },
+          "rejected": "approval_mismatch",
+          "errors": ["content_hash_mismatch"]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2",
+              "content_version": "2"
+            }
+          },
+          "rejected": "approval_mismatch",
+          "errors": ["content_version_mismatch"]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2",
+              "operation_id": "00000000-0000-4000-8000-000000000403"
+            }
+          },
+          "rejected": "approval_mismatch",
+          "errors": ["operation_id_mismatch"]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2",
+              "segment_generation": "3"
+            }
+          },
+          "rejected": "approval_mismatch",
+          "errors": ["segment_generation_mismatch"]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2"
+            }
+          },
+          "commands": [
+            {
+              "type": "record_minimal_operation",
+              "record": {
+                "$draft": "label_mail",
+                "intent": "label_mail",
+                "record_kind": "private_minimal",
+                "workflow_id": null,
+                "approval": {
+                  "route": "screen",
+                  "device_id": "00000000-0000-4000-8000-000000000050",
+                  "approved_at": "2030-10-05T00:01:00Z"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2"
+            }
+          },
+          "rejected": "confirmation_not_found"
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "segment_generation": "2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": [],
+        "used_confirmation_ids": ["c-1"]
+      }
+    },
+    {
+      "id": "x17-confirmation-id-is-not-reused",
+      "tests": ["X17"],
+      "note": "同じ世代の中では、取り下げ・承認・検査の失敗の後も同じ確認の ID を使わせない。",
+      "start": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "segment_generation": "2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "segment_generation": "2",
+              "view": {
+                "$draft": "label_mail",
+                "intent": "label_mail",
+                "conversation_saved": false
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail_b"
+            }
           },
           "rejected": "confirmation_id_reused"
         },
@@ -1599,9 +3285,24 @@
         },
         {
           "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail_b"
+            }
+          },
+          "rejected": "confirmation_id_reused"
+        },
+        {
+          "event": {
             "type": "confirmation_approved",
             "confirmation_id": "c-1",
-            "approval": { "$approval": "screen" }
+            "approval": {
+              "$approval": "label_g2"
+            }
           },
           "rejected": "confirmation_not_found"
         },
@@ -1611,14 +3312,382 @@
             "confirmation_id": "c-1"
           },
           "rejected": "confirmation_not_found"
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-2",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail",
+              "turn_text": "合成の発言"
+            }
+          },
+          "rejected": "confirmation_invalid",
+          "errors": ["field_not_allowed:turn_text"]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-2",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
+          },
+          "rejected": "confirmation_id_reused"
         }
       ],
       "final": {
         "mode": "private",
         "segment_id": "seg-2",
+        "segment_generation": "2",
         "live": "closed",
         "private_ram": [],
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": ["c-1", "c-2"]
+      }
+    },
+    {
+      "id": "x17-external-change-while-live-closing",
+      "tests": ["X17"],
+      "note": "Live が開いている間に入り、閉じ終わる前に下書きを頼む。遅れて届いた接続は閉じる命令を重ねず拒否し、承認の後に最小の記録だけを残す。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "1",
+        "live": "open",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
+          "commands": [
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            },
+            {
+              "type": "begin_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "segment_generation": "2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "draft_reply"
+            }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "segment_generation": "2",
+              "view": {
+                "$draft": "draft_reply",
+                "intent": "draft_reply",
+                "conversation_saved": false
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "live_connected"
+          },
+          "rejected": "private_conversation",
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "draft_g2"
+            }
+          },
+          "commands": [
+            {
+              "type": "record_minimal_operation",
+              "record": {
+                "$draft": "draft_reply",
+                "intent": "draft_reply",
+                "record_kind": "private_minimal",
+                "workflow_id": null,
+                "approval": {
+                  "route": "screen",
+                  "device_id": "00000000-0000-4000-8000-000000000050",
+                  "approved_at": "2030-10-05T00:02:00Z"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "live_closed"
+          },
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "segment_generation": "3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "segment_generation": "3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      }
+    },
+    {
+      "id": "x17-external-change-in-normal-uses-normal-approval",
+      "tests": ["X17"],
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "origin": {
+              "$origin": "seg1"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
+          },
+          "rejected": "not_private"
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2"
+            }
+          },
+          "rejected": "confirmation_not_found"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "record_full_operation",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "record_full_operation",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "record_minimal_operation",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "rejected": "denied_in_mode"
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      }
+    },
+    {
+      "id": "x17-invalid-confirmation-is-not-kept",
+      "tests": ["X17", "X59"],
+      "note": "Codex の P1-1・P2-4 の再現を遷移でも確かめる。検査に通らない確認は出さず、承認もできない。",
+      "start": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "segment_generation": "2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail",
+              "operation": {
+                "action": {
+                  "add": [
+                    {
+                      "transcript": "合成の非公開会話本文"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "rejected": "confirmation_invalid",
+          "errors": ["labels_add_invalid"]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-2",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail",
+              "operation": {
+                "target": {
+                  "source_revision": "合成の非公開会話本文"
+                }
+              }
+            }
+          },
+          "rejected": "confirmation_invalid",
+          "errors": ["target_source_revision_invalid"]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-3",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "draft_reply",
+              "operation": {
+                "action": {
+                  "body": {
+                    "transcript": "合成の非公開会話本文"
+                  }
+                }
+              }
+            }
+          },
+          "rejected": "confirmation_invalid",
+          "errors": ["body_invalid"]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-4",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "draft_reply",
+              "operation": {
+                "action": {
+                  "to": "$delete",
+                  "cc": "$delete",
+                  "subject": "$delete",
+                  "body": "$delete"
+                }
+              }
+            }
+          },
+          "rejected": "confirmation_invalid",
+          "errors": [
+            "action_field_missing:to",
+            "action_field_missing:cc",
+            "action_field_missing:subject",
+            "action_field_missing:body",
+            "recipients_to_invalid",
+            "recipients_cc_invalid",
+            "subject_invalid",
+            "body_invalid"
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2"
+            }
+          },
+          "rejected": "confirmation_not_found"
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "segment_generation": "2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": [],
+        "used_confirmation_ids": ["c-1", "c-2", "c-3", "c-4"]
       }
     },
     {
@@ -1628,18 +3697,26 @@
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "begin_private_canvas" },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -1647,11 +3724,25 @@
           ]
         },
         {
-          "event": { "type": "input", "input_kind": "text" },
-          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+          "event": {
+            "type": "input",
+            "input_kind": "text"
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "turn",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "enter_private", "segment_id": "seg-3" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-3"
+          },
           "rejected": "already_private"
         },
         {
@@ -1693,11 +3784,17 @@
             "mode": "normal"
           },
           "commands": [
-            { "type": "discard_private_ram", "confirmation_ids": [] },
-            { "type": "end_private_canvas" },
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-3",
+              "segment_generation": "3",
               "storage_mode": "normal",
               "open_reason": "private_ended",
               "carried_summary": null
@@ -1713,16 +3810,21 @@
           "rejected": "not_private"
         },
         {
-          "event": { "type": "enter_private", "segment_id": "seg-3" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-3"
+          },
           "rejected": "segment_id_reused"
         }
       ],
       "final": {
         "mode": "normal",
         "segment_id": "seg-3",
+        "segment_generation": "3",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
@@ -1732,20 +3834,36 @@
       "start": {
         "mode": "archived",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "open",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "input", "input_kind": "text" },
+          "event": {
+            "type": "input",
+            "input_kind": "text"
+          },
           "rejected": "storage_mode_unknown",
           "commands": [
-            { "type": "close_voice_session", "reason": "private_conversation" }
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            }
           ]
         },
         {
-          "event": { "type": "write", "effect": "reserve_budget" },
+          "event": {
+            "type": "write",
+            "effect": "reserve_budget",
+            "origin": {
+              "segment_id": "seg-1",
+              "segment_generation": "1",
+              "storage_mode": "normal"
+            }
+          },
           "rejected": "storage_mode_unknown",
           "commands": []
         },
@@ -1753,7 +3871,12 @@
           "event": {
             "type": "external_change_requested",
             "confirmation_id": "c-1",
-            "draft": { "$draft": "label_mail" }
+            "origin": {
+              "$origin": "seg1"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
           },
           "rejected": "storage_mode_unknown"
         },
@@ -1766,12 +3889,18 @@
           "rejected": "storage_mode_unknown"
         },
         {
-          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
           "commands": [
-            { "type": "begin_private_canvas" },
+            {
+              "type": "begin_private_canvas"
+            },
             {
               "type": "open_segment",
               "segment_id": "seg-2",
+              "segment_generation": "2",
               "storage_mode": "private",
               "open_reason": "private_started",
               "carried_summary": null
@@ -1782,9 +3911,133 @@
       "final": {
         "mode": "private",
         "segment_id": "seg-2",
+        "segment_generation": "2",
         "live": "closing",
         "private_ram": [],
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      }
+    },
+    {
+      "id": "x17-invalid-generation-writes-nothing",
+      "tests": ["X17"],
+      "note": "区切りの世代が読めない状態では、次の世代を決められない。入ることも含めて何もせず、開いている Live を閉じる。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "g1",
+        "live": "open",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "text"
+          },
+          "rejected": "state_invalid",
+          "commands": [
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
+          "rejected": "state_invalid",
+          "commands": []
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "g1",
+        "live": "closing",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      }
+    },
+    {
+      "id": "x17-ram-is-kept-in-order-while-private",
+      "tests": ["X17"],
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
+          "commands": [
+            {
+              "type": "begin_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "segment_generation": "2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "voice_local"
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "turn",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_clarification",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "commands": [
+            {
+              "type": "hold_in_ram",
+              "kind": "clarification",
+              "origin": {
+                "$origin": "seg2p"
+              }
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "segment_generation": "2",
+        "live": "closed",
+        "private_ram": ["turn", "clarification"],
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     },
     {
@@ -1793,102 +4046,359 @@
       "start": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "closed",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       },
       "steps": [
         {
-          "event": { "type": "input", "input_kind": "voice_live" },
+          "event": {
+            "type": "input",
+            "input_kind": "voice_live"
+          },
           "rejected": "live_not_open"
         },
         {
-          "event": { "type": "input", "input_kind": "voice_remote" },
+          "event": {
+            "type": "input",
+            "input_kind": "voice_remote"
+          },
           "rejected": "input_kind_unknown"
         },
         {
-          "event": { "type": "live_connected" },
+          "event": {
+            "type": "live_connected"
+          },
           "rejected": "invalid_transition"
         },
         {
-          "event": { "type": "write", "effect": "open_live" },
+          "event": {
+            "type": "write",
+            "effect": "open_live",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
           "rejected": "not_a_write"
         },
         {
-          "event": { "type": "write", "effect": "local_asr" },
+          "event": {
+            "type": "write",
+            "effect": "local_asr",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
           "rejected": "not_a_write"
         },
         {
-          "event": { "type": "write", "effect": "write_ephemeral_canvas" },
+          "event": {
+            "type": "write",
+            "effect": "write_ephemeral_canvas",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
           "rejected": "not_a_write"
         },
         {
-          "event": { "type": "write", "effect": "persist_all" },
+          "event": {
+            "type": "write",
+            "effect": "persist_all",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
           "rejected": "effect_unknown"
         },
         {
-          "event": { "type": "write", "effect": "persist_turn_events" },
-          "commands": [{ "type": "write", "effect": "persist_turn_events" }]
-        },
-        {
-          "event": { "type": "write", "effect": "persist_input_snapshot" },
-          "commands": [{ "type": "write", "effect": "persist_input_snapshot" }]
-        },
-        {
-          "event": { "type": "write", "effect": "persist_clarification" },
-          "commands": [{ "type": "write", "effect": "persist_clarification" }]
-        },
-        {
-          "event": { "type": "write", "effect": "persist_this_time_directive" },
+          "event": {
+            "type": "write",
+            "effect": "persist_turn_events",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
           "commands": [
-            { "type": "write", "effect": "persist_this_time_directive" }
+            {
+              "type": "write",
+              "effect": "persist_turn_events",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
           ]
         },
         {
           "event": {
             "type": "write",
-            "effect": "persist_from_now_on_directive"
+            "effect": "persist_input_snapshot",
+            "origin": {
+              "$origin": "seg1"
+            }
           },
           "commands": [
-            { "type": "write", "effect": "persist_from_now_on_directive" }
+            {
+              "type": "write",
+              "effect": "persist_input_snapshot",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
           ]
         },
         {
-          "event": { "type": "write", "effect": "extract_memory" },
-          "commands": [{ "type": "write", "effect": "extract_memory" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_clarification",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_clarification",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "record_shadow" },
-          "commands": [{ "type": "write", "effect": "record_shadow" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_this_time_directive",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_this_time_directive",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "write", "effect": "write_persisted_canvas" },
-          "commands": [{ "type": "write", "effect": "write_persisted_canvas" }]
+          "event": {
+            "type": "write",
+            "effect": "persist_from_now_on_directive",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_from_now_on_directive",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "live_requested" },
-          "commands": [{ "type": "start_live" }]
+          "event": {
+            "type": "write",
+            "effect": "extract_memory",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "extract_memory",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
         },
         {
-          "event": { "type": "live_requested" },
+          "event": {
+            "type": "write",
+            "effect": "record_shadow",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "record_shadow",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_derived_summary",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_derived_summary",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_workflow",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_workflow",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_workflow_result",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_workflow_result",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_turn_response",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_turn_response",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_command_receipt",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_command_receipt",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "write_persisted_canvas",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "write_persisted_canvas",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "live_requested"
+          },
+          "commands": [
+            {
+              "type": "start_live"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "live_requested"
+          },
           "rejected": "live_not_closed"
         },
-        { "event": { "type": "live_connected" }, "commands": [] },
         {
-          "event": { "type": "live_connected" },
+          "event": {
+            "type": "live_connected"
+          },
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "live_connected"
+          },
           "rejected": "invalid_transition"
         },
         {
-          "event": { "type": "input", "input_kind": "voice_live" },
-          "commands": [{ "type": "write", "effect": "persist_turns" }]
+          "event": {
+            "type": "input",
+            "input_kind": "voice_live"
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_turns",
+              "origin": {
+                "$origin": "seg1"
+              }
+            }
+          ]
         }
       ],
       "final": {
         "mode": "normal",
         "segment_id": "seg-1",
+        "segment_generation": "1",
         "live": "open",
         "private_ram": null,
-        "pending_confirmations": []
+        "pending_confirmations": [],
+        "used_confirmation_ids": []
       }
     }
   ]

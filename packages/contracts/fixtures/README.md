@@ -20,7 +20,7 @@
 - `analysis-cases.json`: 関連解析の ready、取消の順序の逆転、再作成抑止の期待値（QA45 ほか）。
 - `extraction-cases.json`: 候補起点の自動実行の検査と期限の変換の期待値（X39・X62・X63 ほか）。
 - `storage-contract-cases.json`: 忘却台帳の別ファイルと端末の複製・バックアップの封筒・復元の結果・期限切れと忘却の知らせ・保存モード・復旧キー・バックアップの置き場所の正常例と拒否例（世代の欠番・hash の連鎖の不一致・private を含むバックアップ・本文の混入・知らせに本文。X15・X16・X17、ADR 0040）。手書きで、台帳の hash は Python の json.dumps と hashlib で別に求めた値。復旧キーの値は合成の並びで実際のキーではない。台帳の元情報の ID は生の値ではなく HMAC の形（64 桁の 16 進）で書く。復元直後の操作の記録（`RestoredOperation`）と、隔離のシナリオ（`scenarios`。`not_executed` の再現の順序・照合で解除できるのは積極的な証拠だけ）も含む。形式と意味検査は `contracts:check`。
-- `storage-mode-cases.json`: 記録しない会話の保存の境界の期待値（許可表の 17 行それぞれの許可側と拒否側・契約の StorageModeState の effects・独立した確認の中身と承認の検査・入る／出る／外部変更／音声の接続の順序を入れ替えた遷移。X17・X36・X44・X48・X59、ADR 0045）。手書きで、domain の実装から生成していない。`$draft`・`$approval` は同じファイルの合成の値を差し込む参照。`scripts/storage-mode.test.mjs` がビルド後の domain で確かめる。
+- `storage-mode-cases.json`: 記録しない会話の保存の境界の期待値（許可表の 22 行それぞれの許可側と拒否側・契約の StorageModeState の effects・独立した確認の中身（確定した OperationIntent と内容の hash）と承認の検査・入る／出る／外部変更／音声の接続／遅れて届いた結果／入り直した後の古い承認の順序を入れ替えた遷移。X17・X36・X44・X48・X59、ADR 0045）。手書きで、domain の実装から生成していない。`$draft`・`$approval`・`$origin` は同じファイルの合成の値を差し込む参照（中の値を上書きでき、`$delete` は欄を消す）。content_hash は Python の json.dumps と hashlib で別に求めた値。`scripts/storage-mode.test.mjs` がビルド後の domain で確かめる。
 - `memory-cases.json`: 記憶の保存直前の検査・期限・復元・抽出の時点の期待値（X15・X16・X44 ほか）。
 - `evaluation-cases.json`: 配備×用途の採否・段階・成果物の照合・変化の検知・影モードの期待値（X57・X66・QA21・QA26 ほか）。実測値ではない。
 - `eval-conversion-cases.json`: 評価セットの行を書き出し形式へ変換する期待値。行はすべて合成。

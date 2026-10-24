@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import canonicalize from 'canonicalize';
 import {
   AUDIO_CONTROL_RULES,
   INPUT_KIND_RULES,
@@ -18,13 +20,20 @@ import {
   shouldExtractMemories,
   storageModeDecision,
   storageModeStateEffects,
+  storageOriginRejection,
   streamSegmentErrors,
   turnRetentionRule,
 } from '../packages/domain/dist/index.js';
-import { loadContracts, parseStrictJson, root } from './contract-tools.mjs';
+import {
+  loadContracts,
+  parseStrictJson,
+  root,
+  semanticErrors,
+} from './contract-tools.mjs';
 
 // 記録しない会話の保存の境界（B06-04、ADR 0045）を、手書きの期待値（storage-mode-cases.json）で検査する。
-// 期待値は domain の実装から作っていない。$draft / $approval は fixture の中の合成の値を差し込むだけの参照。
+// 期待値は domain の実装から作っていない。$draft / $approval / $origin は fixture の中の合成の値を差し込むだけの参照で、
+// 一緒に書いた欄はその値を上書きする（物は中まで、配列と値は置き換え）。"$delete" はその欄を消す。
 const { schema, validators } = await loadContracts();
 const spec = parseStrictJson(
   await readFile(
@@ -33,22 +42,43 @@ const spec = parseStrictJson(
   ),
 );
 
+const isObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+function overlay(base, patch) {
+  const result = structuredClone(base);
+  for (const [key, item] of Object.entries(patch)) {
+    if (item === '$delete') delete result[key];
+    else if (isObject(item) && isObject(result[key]))
+      result[key] = overlay(result[key], item);
+    else result[key] = expand(item);
+  }
+  return result;
+}
+
 function expand(value) {
   if (Array.isArray(value)) return value.map(expand);
-  if (value === null || typeof value !== 'object') return value;
-  const { $draft, $approval, ...rest } = value;
-  const base =
+  if (!isObject(value)) return value;
+  const { $draft, $approval, $origin, ...rest } = value;
+  const name = $draft ?? $approval ?? $origin;
+  const table =
     $draft !== undefined
-      ? structuredClone(spec.drafts[$draft])
+      ? spec.drafts
       : $approval !== undefined
-        ? structuredClone(spec.approvals[$approval])
-        : {};
-  assert(base !== undefined, `unknown reference ${$draft ?? $approval}`);
-  for (const [key, item] of Object.entries(rest)) base[key] = expand(item);
-  return base;
+        ? spec.approvals
+        : $origin !== undefined
+          ? spec.origins
+          : null;
+  if (table === null) return overlay({}, rest);
+  assert(table[name] !== undefined, `unknown reference ${name}`);
+  return overlay(table[name], rest);
 }
 
 const sorted = (list) => [...list].sort();
+
+const contractValid = (operation) =>
+  validators.OperationIntent(operation) &&
+  semanticErrors('OperationIntent', operation).length === 0;
 
 test('許可表のすべての行に、許可側と拒否側の手書きのケースがある', () => {
   assert.deepEqual(
@@ -136,31 +166,51 @@ test('契約の StorageModeState と表から作る effects が一致する（X1
     assert.equal(storageModeStateEffects(mode), null);
 });
 
-test('独立した確認の中身の検査（会話の本文を持たない）', () => {
+test('確認の下書きは契約の OperationIntent で、内容の hash は別に求めた値と一致する', () => {
+  for (const [name, draft] of Object.entries(spec.drafts)) {
+    assert(contractValid(draft.operation), name);
+    assert.equal(
+      createHash('sha256')
+        .update(canonicalize(draft.operation), 'utf8')
+        .digest('hex'),
+      draft.content_hash,
+      name,
+    );
+  }
+});
+
+test('独立した確認の中身の検査（確定した変更の型・会話の本文を持たない）', () => {
   const ids = new Set();
   for (const entry of spec.confirmation_cases) {
     assert(!ids.has(entry.id), entry.id);
     ids.add(entry.id);
-    assert.deepEqual(
-      sorted(privateConfirmationErrors(expand(entry.draft))),
-      sorted(entry.errors),
-      entry.id,
-    );
+    const draft = expand(entry.draft);
+    const errors = privateConfirmationErrors(draft);
+    assert.deepEqual(sorted(errors), sorted(entry.errors), entry.id);
+    // 契約との照合（手書きの contract_valid）。domain が通す下書きは、必ず契約も通る（domain の方が狭い）。
+    if (entry.contract_valid !== undefined)
+      assert.equal(
+        contractValid(draft.operation),
+        entry.contract_valid,
+        entry.id,
+      );
+    if (errors.length === 0)
+      assert.equal(contractValid(draft.operation), true, entry.id);
   }
   assert(spec.confirmation_cases.some((entry) => entry.errors.length === 0));
   assert(spec.confirmation_cases.some((entry) => entry.errors.length > 0));
 });
 
-test('独立した確認の承認は画面での一度だけ', () => {
+test('独立した確認の承認は画面での一度だけで、世代と内容に結び付く', () => {
   for (const entry of spec.approval_cases)
     assert.deepEqual(
-      sorted(privateApprovalErrors(entry.approval)),
+      sorted(privateApprovalErrors(expand(entry.approval))),
       sorted(entry.errors),
       entry.id,
     );
 });
 
-test('入る・出る・外部変更・音声の接続の順序を入れ替えた遷移', () => {
+test('入る・出る・外部変更・音声の接続・遅れて届く結果の順序を入れ替えた遷移', () => {
   for (const sequence of spec.sequences) {
     let state = sequence.start;
     sequence.steps.forEach((step, index) => {
@@ -175,53 +225,70 @@ test('入る・出る・外部変更・音声の接続の順序を入れ替え�
   }
 });
 
-test('記録しない区切りの間に書くのは予算の予約と、承認の後の最小の記録だけ（X17）', () => {
+test('永続化は今の区切りが由来のものだけで、記録しない区切りの間は予算の予約と承認の後の最小の記録だけ（X17）', () => {
   const allowedView = sorted([
     ...PRIVATE_CONFIRMATION_FIELDS,
+    'intent',
     'conversation_saved',
   ]);
   const allowedRecord = sorted([
     ...PRIVATE_CONFIRMATION_FIELDS,
+    'intent',
     'record_kind',
     'workflow_id',
     'approval',
   ]);
   let records = 0;
+  let writes = 0;
   for (const sequence of spec.sequences) {
     let state = sequence.start;
     for (const step of sequence.steps) {
-      const before = state.mode;
+      const before = state;
       const result = applyStorageBoundaryEvent(state, expand(step.event));
-      if (before === 'private')
-        for (const command of result.commands) {
-          if (command.type === 'write')
+      for (const command of result.commands) {
+        if (command.type === 'write') {
+          writes += 1;
+          // 書く物の由来は、事象を当てる前の今の区切り（遅れて届いた結果・失効した区切りの結果は書かない）。
+          assert.deepEqual(
+            command.origin,
+            {
+              segment_id: before.segment_id,
+              segment_generation: before.segment_generation,
+              storage_mode: before.mode,
+            },
+            sequence.id,
+          );
+          if (command.origin.storage_mode === 'private')
             assert.equal(command.effect, 'reserve_budget', sequence.id);
-          if (command.type === 'show_independent_confirmation') {
-            assert.deepEqual(sorted(Object.keys(command.view)), allowedView);
-            assert.equal(command.view.conversation_saved, false);
-          }
-          if (command.type === 'record_minimal_operation') {
-            records += 1;
-            assert.deepEqual(
-              sorted(Object.keys(command.record)),
-              allowedRecord,
-            );
-            assert.equal(command.record.workflow_id, null);
-            assert.equal(command.record.record_kind, 'private_minimal');
-            assert.equal(command.record.approval.route, 'screen');
-          }
         }
-      else
-        assert(
-          result.commands.every(
-            (command) => command.type !== 'record_minimal_operation',
-          ),
-          sequence.id,
-        );
+        if (command.type === 'hold_in_ram')
+          assert.equal(command.origin.storage_mode, 'private', sequence.id);
+        if (command.type === 'show_independent_confirmation') {
+          assert.equal(before.mode, 'private', sequence.id);
+          assert.equal(command.segment_generation, before.segment_generation);
+          assert.deepEqual(sorted(Object.keys(command.view)), allowedView);
+          assert.equal(command.view.conversation_saved, false);
+        }
+        if (command.type === 'record_minimal_operation') {
+          records += 1;
+          assert.equal(before.mode, 'private', sequence.id);
+          assert.deepEqual(sorted(Object.keys(command.record)), allowedRecord);
+          assert.deepEqual(sorted(Object.keys(command.record.approval)), [
+            'approved_at',
+            'device_id',
+            'route',
+          ]);
+          assert.equal(command.record.workflow_id, null);
+          assert.equal(command.record.record_kind, 'private_minimal');
+          assert.equal(command.record.approval.route, 'screen');
+          assert(contractValid(command.record.operation), sequence.id);
+        }
+      }
       state = result.state;
     }
   }
-  assert(records >= 3);
+  assert(records >= 4);
+  assert(writes >= 10);
 });
 
 // 入る・外部変更を頼む・承認・出る・遅れて届く Live の接続の 5 つを、すべての順序（120 通り）で当てる。
@@ -237,24 +304,17 @@ test('5 つの事象のすべての順序で、記録と Live の閉じ方が規
     request: {
       type: 'external_change_requested',
       confirmation_id: 'c-1',
+      origin: structuredClone(spec.origins.seg2p),
       draft: structuredClone(spec.drafts.label_mail),
     },
     approve: {
       type: 'confirmation_approved',
       confirmation_id: 'c-1',
-      approval: structuredClone(spec.approvals.screen),
+      approval: structuredClone(spec.approvals.label_g2),
     },
     exit: { type: 'exit_private', segment_id: 'seg-3', mode: 'normal' },
     connected: { type: 'live_connected' },
   };
-  const permutations = (list) =>
-    list.length <= 1
-      ? [list]
-      : list.flatMap((item, index) =>
-          permutations([...list.slice(0, index), ...list.slice(index + 1)]).map(
-            (rest) => [item, ...rest],
-          ),
-        );
   const orders = permutations(Object.keys(events));
   assert.equal(orders.length, 120);
   for (const order of orders) {
@@ -293,7 +353,6 @@ test('5 つの事象のすべての順序で、記録と Live の閉じ方が規
       at.exit > at.enter ? 'normal' : 'private',
       order.join(','),
     );
-    // 承認を待つ確認が残るのは、確認を出したのに記録せず、まだ出ていないときだけ。
     assert.equal(
       state.pending_confirmations.length,
       expectShow && !expectRecord && privateEnd === Infinity ? 1 : 0,
@@ -301,6 +360,89 @@ test('5 つの事象のすべての順序で、記録と Live の閉じ方が規
     );
   }
 });
+
+// 入る（seg-2）・出る（seg-3）・入り直す（seg-4）と、記録しない区切りで始まった処理の結果（要約）・最初の区切りで頼んだ
+// 確認への古い承認の 5 つを、すべての順序（120 通り）で当てる。初めに seg-1 を通常の区切りとし、入る・入り直すの前に
+// 確認を頼む事象は置かない（頼みは「入る」の直後に自動で当てる）。規則:
+// - 要約は、由来（seg-2・世代 2・private）と今の区切りが同じときだけ RAM に持ち、それ以外はどの順序でも永続化しない。
+// - 古い承認が記録を作るのは、seg-2 の確認が出ていて、まだ出ていないときだけ（入り直した後の同じ ID の確認には当たらない）。
+test('出た後・入り直した後に遅れて届く結果と承認は、どの順序でも永続化しない', () => {
+  const second = {
+    type: 'external_change_requested',
+    confirmation_id: 'c-1',
+    origin: structuredClone(spec.origins.seg4p),
+    draft: structuredClone(spec.drafts.label_mail_b),
+  };
+  const first = {
+    type: 'external_change_requested',
+    confirmation_id: 'c-1',
+    origin: structuredClone(spec.origins.seg2p),
+    draft: structuredClone(spec.drafts.label_mail),
+  };
+  const events = {
+    enter: { type: 'enter_private', segment_id: 'seg-2' },
+    exit: { type: 'exit_private', segment_id: 'seg-3', mode: 'normal' },
+    reenter: { type: 'enter_private', segment_id: 'seg-4' },
+    late_summary: {
+      type: 'write',
+      effect: 'persist_summary',
+      origin: structuredClone(spec.origins.seg2p),
+    },
+    old_approval: {
+      type: 'confirmation_approved',
+      confirmation_id: 'c-1',
+      approval: structuredClone(spec.approvals.label_g2),
+    },
+  };
+  for (const order of permutations(Object.keys(events))) {
+    let state = initialStorageBoundaryState('seg-1', 'normal');
+    const label = order.join(',');
+    for (const name of order) {
+      const before = state;
+      const result = applyStorageBoundaryEvent(state, events[name]);
+      state = result.state;
+      for (const command of result.commands) {
+        assert.notEqual(command.type, 'write', label);
+        if (command.type === 'hold_in_ram') {
+          assert.equal(name, 'late_summary', label);
+          assert.equal(before.segment_id, 'seg-2', label);
+          assert.equal(before.segment_generation, '2', label);
+        }
+        if (command.type === 'record_minimal_operation') {
+          assert.equal(name, 'old_approval', label);
+          assert.equal(before.segment_generation, '2', label);
+          assert.equal(
+            command.record.operation.operation_id,
+            spec.drafts.label_mail.operation.operation_id,
+            label,
+          );
+        }
+      }
+      // 入った直後に、その区切りの確認を頼む。
+      if (result.rejected === null && name === 'enter')
+        state = applyStorageBoundaryEvent(state, first).state;
+      if (result.rejected === null && name === 'reenter')
+        state = applyStorageBoundaryEvent(state, {
+          ...second,
+          origin: {
+            segment_id: state.segment_id,
+            segment_generation: state.segment_generation,
+            storage_mode: state.mode,
+          },
+        }).state;
+    }
+  }
+});
+
+function permutations(list) {
+  return list.length <= 1
+    ? [list]
+    : list.flatMap((item, index) =>
+        permutations([...list.slice(0, index), ...list.slice(index + 1)]).map(
+          (rest) => [item, ...rest],
+        ),
+      );
+}
 
 test('確認と記録は、頼んだ後に呼び出し側が下書きを書き換えても変わらない', () => {
   const draft = structuredClone(spec.drafts.label_mail);
@@ -312,24 +454,47 @@ test('確認と記録は、頼んだ後に呼び出し側が下書きを書き�
   const shown = applyStorageBoundaryEvent(state, {
     type: 'external_change_requested',
     confirmation_id: 'c-1',
+    origin: structuredClone(spec.origins.seg2p),
     draft,
   });
-  draft.change.add_labels.push('synthetic-extra');
-  draft.target.remote_id = 'mock-mail-999';
+  draft.operation.action.add.push('synthetic-extra');
+  draft.operation.target.remote_id = 'mock-mail-999';
+  draft.operation.extra = '合成の本文';
   const approved = applyStorageBoundaryEvent(shown.state, {
     type: 'confirmation_approved',
     confirmation_id: 'c-1',
-    approval: structuredClone(spec.approvals.screen),
+    approval: structuredClone(spec.approvals.label_g2),
   });
-  assert.deepEqual(shown.commands[0].view.change, {
-    add_labels: ['follow-up'],
-    remove_labels: [],
-  });
-  assert.deepEqual(approved.commands[0].record.change, {
-    add_labels: ['follow-up'],
-    remove_labels: [],
-  });
-  assert.equal(approved.commands[0].record.target.remote_id, 'mock-mail-001');
+  assert.deepEqual(
+    shown.commands[0].view.operation,
+    spec.drafts.label_mail.operation,
+  );
+  assert.deepEqual(
+    approved.commands[0].record.operation,
+    spec.drafts.label_mail.operation,
+  );
+});
+
+test('由来の照合は、出た後・入り直した後・失効した区切りの結果を通さない', () => {
+  const state = {
+    mode: 'normal',
+    segment_id: 'seg-3',
+    segment_generation: '3',
+  };
+  assert.equal(storageOriginRejection(state, spec.origins.seg3), null);
+  assert.equal(
+    storageOriginRejection(state, spec.origins.seg2p),
+    'origin_private',
+  );
+  assert.equal(
+    storageOriginRejection(state, spec.origins.seg1),
+    'origin_stale',
+  );
+  assert.equal(
+    storageOriginRejection(state, spec.origins.seg3e),
+    'origin_mismatch',
+  );
+  assert.equal(storageOriginRejection(state, undefined), 'origin_invalid');
 });
 
 test('既存の規則（音声・記憶・期限・区切り）と許可表が食い違わない', () => {
@@ -369,11 +534,13 @@ test('既存の規則（音声・記憶・期限・区切り）と許可表が�
       (rule) => rule.input_kind === 'voice_local',
     ).requires.includes('not_private_conversation'),
   );
-  // 記憶（X44・X59）: 抽出 0・保存 0。
+  // 記憶（X44・X59）: 抽出 0・保存 0。Core は、今の保存モードではなく由来の保存モードを渡す
+  // （出た後に届いた記録しない区切りの結果も private として扱う）。
+  const privateConversation = spec.origins.seg2p.storage_mode !== 'normal';
   assert.equal(
     shouldExtractMemories({
       trigger: 'conversation_end',
-      privateConversation: true,
+      privateConversation,
       userExchanges: 6,
       explicitSaveExchanges: 0,
     }),
@@ -390,7 +557,7 @@ test('既存の規則（音声・記憶・期限・区切り）と許可表が�
       permission_revision: '1',
     },
     {
-      privateConversation: true,
+      privateConversation,
       allowedKinds: ['profile'],
       currentForgettingGeneration: '0',
       currentPermissionRevision: '1',

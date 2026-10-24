@@ -3,15 +3,7 @@
 // 純粋な規則だけを持つ。Core の StorageModeGate（B06-07）が呼び、DB・音声・キャンバスへの副作用は命令として返す。
 // 安全の境界なので、決まっていない・判別できない値は記録しない側・禁止の側に倒す。
 
-import {
-  ARG_FIELDS,
-  INTENT_NAMES,
-  INTENT_POLICIES,
-  checkIntentArgs,
-  type ArgField,
-  type ArgValues,
-  type IntentName,
-} from './intents.js';
+import type { IntentName } from './intents.js';
 import { RETENTION_RULES, turnRetentionRule } from './retention.js';
 
 export const STORAGE_MODE_NAMES = ['normal', 'extended', 'private'] as const;
@@ -24,12 +16,13 @@ export const isStorageModeName = (value: unknown): value is StorageModeName =>
 // ---- 保存モードごとの許可表 -------------------------------------------------------------------------------
 
 // 表の行。persist_* は Buddy 内への永続化（DB・スナップショット・イベントの記録・ログ）を指す。
+// 既存の保存先と行の対応は ADR 0045 の「保存先の分類」。
 export const STORAGE_EFFECTS = [
-  // 発言の本文（sessions / turns）。
+  // 発言の本文（sessions / turns と本文の sealed_blobs）。
   'persist_turns',
   // 発言のイベント（event_outbox。07 §4 の「記録しない会話の発言のイベントは永続化しない」）。
   'persist_turn_events',
-  // 会話の要約・区切りをつなぐ要約（ADR 0032 の CarriedSummary）。
+  // 会話の要約・区切りをつなぐ要約（sessions.summary_blob_id、ADR 0032 の CarriedSummary）。
   'persist_summary',
   // 入力の版（input_snapshots）。
   'persist_input_snapshot',
@@ -45,11 +38,21 @@ export const STORAGE_EFFECTS = [
   'extract_memory',
   // 影モードの比較記録（intent_shadow。X48）。
   'record_shadow',
+  // 会話から作った派生物の要約・抄録（request_entities・related_analyses・notification_candidates の題・抄録）。
+  'persist_derived_summary',
+  // 依頼の行（workflows。session_id を必須にする）。
+  'persist_workflow',
+  // 完了した依頼の結果・未確定案（03 の「完了した依頼の結果」。7 日）。
+  'persist_workflow_result',
+  // 発言の受付の応答の記録（turn_responses。同じ要求の再送に同じ応答を返すため）。
+  'persist_turn_response',
+  // 受付の記録（command_receipts。本文なしの ID・結果。7 日）。
+  'persist_command_receipt',
   // Live（GPT-Live-1）の接続を開く（X17・X36）。
   'open_live',
   // 端末内で文字にする③（質問 110）。
   'local_asr',
-  // 保存してよいキャンバスの記述への書き込み（ADR 0032 の CanvasStore.persisted）。
+  // 保存してよいキャンバスの記述への書き込み（ADR 0032 の CanvasStore.persisted・スナップショット）。
   'write_persisted_canvas',
   // 記録しない区切りの間だけ RAM に持つ一時のキャンバスの記述（CanvasStore.ephemeral）。
   'write_ephemeral_canvas',
@@ -81,6 +84,11 @@ const NORMAL_PERMISSIONS: Readonly<Record<StorageEffect, StoragePermission>> = {
   save_memory: 'allow',
   extract_memory: 'allow',
   record_shadow: 'allow',
+  persist_derived_summary: 'allow',
+  persist_workflow: 'allow',
+  persist_workflow_result: 'allow',
+  persist_turn_response: 'allow',
+  persist_command_receipt: 'allow',
   open_live: 'allow',
   local_asr: 'allow',
   write_persisted_canvas: 'allow',
@@ -109,6 +117,11 @@ export const STORAGE_MODE_PERMISSIONS: Readonly<
     save_memory: 'deny',
     extract_memory: 'deny',
     record_shadow: 'deny',
+    persist_derived_summary: 'deny',
+    persist_workflow: 'deny',
+    persist_workflow_result: 'deny',
+    persist_turn_response: 'deny',
+    persist_command_receipt: 'deny',
     open_live: 'deny',
     local_asr: 'allow',
     write_persisted_canvas: 'deny',
@@ -188,35 +201,89 @@ export function storageModeStateEffects(
 }
 
 // ---- 記録しない会話から外部変更を頼まれたときの、独立した確認の中身（ADR 0040 U42・ADR 0045） ------------------
+//
+// 確認の中身は、Core が解決した確定済みの変更（契約の OperationIntent）と、その内容の hash だけ。解釈の段階の引数
+// （INTENT_POLICIES）は使わない。元サービスへ実際に渡す内容（宛先・件名・本文・ラベル）が揃っていなければ拒否する。
+// 対象（target）の ID と版は、Core が元サービスの読み取りから解決した値を入れる前提で、domain は型と形だけを検査する。
+// 確定した型が契約にない外部変更（送信・予定・ごみ箱など）は、型ができるまで記録しない会話からは切り出さない。
 
-// 確認の中身に置ける欄（許可リスト）。会話の本文・文字起こし・音声・要約・解釈の結果・発言・会話・依頼・入力の版・
-// 影モード・記憶の由来は、名前によらず、ここにない欄としてすべて拒否する。
 export const PRIVATE_CONFIRMATION_FIELDS = [
+  'operation',
+  'content_hash',
+] as const;
+const OPERATION_FIELDS = [
+  'schema',
+  'operation_id',
+  'content_version',
+  'permission_revision',
+  'provider',
+  'account_id',
+  'target',
+  'action',
+  'effects',
+] as const;
+const TARGET_FIELDS = ['remote_id', 'source_revision'] as const;
+const EFFECTS_FIELDS = ['external_recipients', 'reconcile_scope'] as const;
+const PROVIDERS = ['mock', 'gmail', 'microsoft_graph'] as const;
+export const PRIVATE_APPROVAL_FIELDS = [
+  'route',
+  'device_id',
+  'approved_at',
+  'segment_generation',
   'operation_id',
   'content_version',
   'content_hash',
-  'intent',
-  'account_id',
-  'target',
-  'change',
 ] as const;
-const TARGET_FIELDS = ['remote_id', 'source_revision'] as const;
-const APPROVAL_FIELDS = ['route', 'device_id', 'approved_at'] as const;
+
+// 記録しない会話から切り出せる確定済みの変更の種類。キーは OperationIntent の action.kind。
+const CONFIRMABLE_KINDS = {
+  'mail.labels.change': 'label_mail',
+  'mail.draft.create': 'draft_reply',
+} as const satisfies Readonly<Record<string, IntentName>>;
+type ConfirmableKind = keyof typeof CONFIRMABLE_KINDS;
+// 契約にはあるが Buddy 内の変更（LocalCommand）なので切り出さない種類。
+const LOCAL_KINDS = ['task.create'];
 
 export interface PrivateTargetLike {
   readonly remote_id: string;
   readonly source_revision: string;
 }
 
-export interface PrivateConfirmationContent {
+export type PrivateOperationAction =
+  | {
+      readonly kind: 'mail.labels.change';
+      readonly add: readonly string[];
+      readonly remove: readonly string[];
+    }
+  | {
+      readonly kind: 'mail.draft.create';
+      readonly to: readonly string[];
+      readonly cc: readonly string[];
+      readonly subject: string;
+      readonly body: string;
+    };
+
+// 契約の LabelOperationIntent・DraftReplyOperationIntent と同じ形。
+export interface PrivateConfirmedOperation {
+  readonly schema: 'buddy.operation.v1';
   readonly operation_id: string;
   readonly content_version: string;
-  readonly content_hash: string;
-  readonly intent: IntentName;
+  readonly permission_revision: string;
+  readonly provider: (typeof PROVIDERS)[number];
   readonly account_id: string;
-  readonly target: PrivateTargetLike | null;
-  // 元サービスへ実際に渡す内容（確認の画面に出す）。キーは意図の許可引数から target_candidate_id を除いたもの。
-  readonly change: Readonly<Partial<Record<ArgField, unknown>>>;
+  readonly target: PrivateTargetLike;
+  readonly action: PrivateOperationAction;
+  readonly effects: {
+    readonly external_recipients: readonly [];
+    readonly reconcile_scope: 'exact_target' | 'operation_marker';
+  };
+}
+
+export interface PrivateConfirmationContent {
+  readonly intent: 'label_mail' | 'draft_reply';
+  readonly operation: PrivateConfirmedOperation;
+  // 確定した operation 全体の JCS＋SHA-256（Core が求める。domain は形だけを検査する）。
+  readonly content_hash: string;
 }
 
 export interface PrivateApprovalLike {
@@ -230,7 +297,7 @@ export interface PrivateConfirmationView extends PrivateConfirmationContent {
   readonly conversation_saved: false;
 }
 
-// 承認の後に残す最小の操作記録。会話・依頼へのつながりを持たない（workflow_id は null）。
+// 承認の後に残す最小の操作記録。会話・区切り・依頼へのつながりを持たない（workflow_id は null）。
 export interface PrivateMinimalRecord extends PrivateConfirmationContent {
   readonly record_kind: 'private_minimal';
   readonly workflow_id: null;
@@ -243,154 +310,295 @@ const DECIMAL = /^(0|[1-9][0-9]*)$/u;
 const SHA256_HEX = /^[0-9a-f]{64}$/u;
 // 元サービスの対象 ID（OriginalSourceId と同じ文字種。空白・日本語の文を入れられない）。
 const ORIGINAL_SOURCE_ID = /^[A-Za-z0-9._:=+~-]{1,256}$/u;
+// 元サービスの版（etag・履歴 ID など）。空白のない表示可能な ASCII に限る（文を入れられない）。契約の SourceRevision
+// より狭い（空白や日本語を含む版は、記録しない会話からは切り出さない）。
+const SOURCE_REVISION = /^[\x21-\x7e]{1,256}$/u;
 const UTC_TIME =
   /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9](\.[0-9]+)?Z$/u;
+// 宛先（RFC 5322 の厳密な検査ではなく、空白・制御文字のない local@domain の形と長さだけ）。
+const MAIL_ADDRESS = /^[^\s@\p{Cc}]{1,64}@[^\s@\p{Cc}]{1,189}$/u;
+// 1 行の文字列（ラベル名・件名）に制御文字を入れられない。本文は改行とタブだけを許す。
 const CONTROL = /\p{Cc}/u;
+const BODY_CONTROL = /[^\P{Cc}\n\r\t]/u;
+const LABEL_MAX = 225;
+const LABELS_MAX = 100;
+const SUBJECT_MAX = 998;
+const BODY_MAX = 100_000;
+const RECIPIENTS_MAX = 100;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-// JSON の値の写し（呼び出し側の物を共有しない）。
-function copyJson<T>(value: T): T {
-  if (Array.isArray(value))
-    return value.map((item: unknown) => copyJson(item)) as T;
-  if (isRecord(value))
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, copyJson(item)]),
-    ) as T;
-  return value;
+const matches = (value: unknown, pattern: RegExp): value is string =>
+  typeof value === 'string' && pattern.test(value);
+
+function keyErrors(
+  value: Record<string, unknown>,
+  fields: readonly string[],
+  prefix: string,
+): string[] {
+  const errors: string[] = [];
+  for (const key of Object.keys(value).sort())
+    if (!fields.includes(key)) errors.push(`${prefix}field_not_allowed:${key}`);
+  for (const key of fields)
+    if (!Object.hasOwn(value, key))
+      errors.push(`${prefix}field_missing:${key}`);
+  return errors;
 }
 
-// 確認の中身の検査。理由は決まった順に返す（欄の名前は辞書順）。空なら確認の画面へ出してよい。
-export function privateConfirmationErrors(draft: unknown): string[] {
-  if (!isRecord(draft)) return ['not_object'];
-  const errors: string[] = [];
-  for (const key of Object.keys(draft).sort())
-    if (!(PRIVATE_CONFIRMATION_FIELDS as readonly string[]).includes(key))
-      errors.push(`field_not_allowed:${key}`);
-  for (const key of PRIVATE_CONFIRMATION_FIELDS)
-    if (!(key in draft)) errors.push(`field_missing:${key}`);
-  if ('operation_id' in draft && !matches(draft['operation_id'], UUID_V4))
+// 文字列の配列（重複なし・件数の上限・各要素の検査）。
+function stringListOk(
+  value: unknown,
+  max: number,
+  item: (text: string) => boolean,
+): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= max &&
+    value.every((entry) => typeof entry === 'string' && item(entry)) &&
+    new Set(value).size === value.length
+  );
+}
+
+const labelOk = (text: string): boolean =>
+  text.length > 0 &&
+  text.length <= LABEL_MAX &&
+  text.trim() === text &&
+  !CONTROL.test(text);
+const addressOk = (text: string): boolean =>
+  text.length <= 254 && MAIL_ADDRESS.test(text);
+
+// 確定済みの変更の検査。理由は決まった順に返す。
+function operationErrors(operation: unknown): string[] {
+  if (!isRecord(operation)) return ['operation_not_object'];
+  const errors = keyErrors(operation, OPERATION_FIELDS, 'operation_');
+  if (operation['schema'] !== 'buddy.operation.v1')
+    errors.push('operation_schema_invalid');
+  if (!matches(operation['operation_id'], UUID_V4))
     errors.push('operation_id_invalid');
-  if ('content_version' in draft && !matches(draft['content_version'], DECIMAL))
+  if (!matches(operation['content_version'], DECIMAL))
     errors.push('content_version_invalid');
-  if ('content_hash' in draft && !matches(draft['content_hash'], SHA256_HEX))
-    errors.push('content_hash_invalid');
-  if ('account_id' in draft && !matches(draft['account_id'], UUID_V4))
+  if (!matches(operation['permission_revision'], DECIMAL))
+    errors.push('permission_revision_invalid');
+  if (!(PROVIDERS as readonly unknown[]).includes(operation['provider']))
+    errors.push('provider_invalid');
+  if (!matches(operation['account_id'], UUID_V4))
     errors.push('account_id_invalid');
-  const intent = draft['intent'];
-  const known =
-    typeof intent === 'string' &&
-    (INTENT_NAMES as readonly string[]).includes(intent);
-  if ('intent' in draft && !known) errors.push('intent_unknown');
-  // 切り出せるのは外部変更（RemoteMutation）だけ。LocalCommand（用事・メモ・記憶）は Buddy 内に内容を残し、
-  // Read は操作の記録が要らない。どちらも独立した確認の対象にしない（ADR 0045 U64）。
-  if (
-    known &&
-    INTENT_POLICIES[intent as IntentName].route !== 'remote_mutation'
-  )
+  const target = operation['target'];
+  if (!isRecord(target)) errors.push('target_not_object');
+  else {
+    errors.push(...keyErrors(target, TARGET_FIELDS, 'target_'));
+    if (!matches(target['remote_id'], ORIGINAL_SOURCE_ID))
+      errors.push('target_remote_id_invalid');
+    if (!matches(target['source_revision'], SOURCE_REVISION))
+      errors.push('target_source_revision_invalid');
+  }
+  const action = operation['action'];
+  const kind = isRecord(action) ? action['kind'] : undefined;
+  if (!isRecord(action)) errors.push('action_not_object');
+  else if (typeof kind === 'string' && LOCAL_KINDS.includes(kind))
     errors.push('intent_not_external_change');
-  if ('target' in draft) errors.push(...targetErrors(draft['target']));
-  if ('change' in draft) {
-    const change = draft['change'];
-    if (!isRecord(change)) errors.push('change_not_object');
-    else {
-      for (const key of Object.keys(change).sort())
-        if (
-          key === 'target_candidate_id' ||
-          !(ARG_FIELDS as readonly string[]).includes(key)
-        )
-          errors.push(`change_field_not_allowed:${key}`);
-      if (known && errors.every((e) => !e.startsWith('change_field'))) {
-        // 対象は target に解決済みなので、引数の検査では target の有無を target_candidate_id として渡す。
-        const args = Object.fromEntries(
-          ARG_FIELDS.map((field) => [field, change[field] ?? null]),
-        ) as Record<ArgField, unknown>;
-        args.target_candidate_id = isRecord(draft['target'])
-          ? draft['target']['remote_id']
-          : null;
-        const result = checkIntentArgs(intent as IntentName, args as ArgValues);
-        for (const field of result.unexpected)
-          errors.push(
-            field === 'target_candidate_id'
-              ? 'target_not_allowed'
-              : `change_field_not_allowed:${field}`,
-          );
-        for (const field of result.missing)
-          errors.push(
-            field === 'target_candidate_id'
-              ? 'target_missing'
-              : `change_missing:${field}`,
-          );
-      }
+  else if (kind === 'mail.labels.change') {
+    errors.push(...keyErrors(action, ['kind', 'add', 'remove'], 'action_'));
+    const add = action['add'];
+    const remove = action['remove'];
+    const addOk = stringListOk(add, LABELS_MAX, labelOk);
+    const removeOk = stringListOk(remove, LABELS_MAX, labelOk);
+    if (!addOk) errors.push('labels_add_invalid');
+    if (!removeOk) errors.push('labels_remove_invalid');
+    if (addOk && removeOk) {
+      if (add.length === 0 && remove.length === 0) errors.push('labels_empty');
+      if (add.some((label) => remove.includes(label)))
+        errors.push('labels_conflicting');
     }
+  } else if (kind === 'mail.draft.create') {
+    errors.push(
+      ...keyErrors(action, ['kind', 'to', 'cc', 'subject', 'body'], 'action_'),
+    );
+    const to = action['to'];
+    const cc = action['cc'];
+    const toOk = stringListOk(to, RECIPIENTS_MAX, addressOk) && to.length > 0;
+    const ccOk = stringListOk(cc, RECIPIENTS_MAX, addressOk);
+    if (!toOk) errors.push('recipients_to_invalid');
+    if (!ccOk) errors.push('recipients_cc_invalid');
+    if (toOk && ccOk && cc.some((address) => to.includes(address)))
+      errors.push('recipients_duplicated');
+    const subject = action['subject'];
+    if (
+      typeof subject !== 'string' ||
+      subject.trim().length === 0 ||
+      subject.length > SUBJECT_MAX ||
+      CONTROL.test(subject)
+    )
+      errors.push('subject_invalid');
+    const body = action['body'];
+    if (
+      typeof body !== 'string' ||
+      body.trim().length === 0 ||
+      body.length > BODY_MAX ||
+      BODY_CONTROL.test(body)
+    )
+      errors.push('body_invalid');
+  } else errors.push('action_kind_not_confirmable');
+  const effects = operation['effects'];
+  const scope =
+    kind === 'mail.labels.change'
+      ? 'exact_target'
+      : kind === 'mail.draft.create'
+        ? 'operation_marker'
+        : null;
+  if (!isRecord(effects)) errors.push('effects_not_object');
+  else {
+    errors.push(...keyErrors(effects, EFFECTS_FIELDS, 'effects_'));
+    const recipients = effects['external_recipients'];
+    if (!Array.isArray(recipients) || recipients.length !== 0)
+      errors.push('effects_external_recipients_invalid');
+    if (scope !== null && effects['reconcile_scope'] !== scope)
+      errors.push('effects_reconcile_scope_invalid');
   }
   return errors;
 }
 
-function matches(value: unknown, pattern: RegExp): boolean {
-  return typeof value === 'string' && pattern.test(value);
-}
-
-function targetErrors(target: unknown): string[] {
-  if (target === null) return [];
-  if (!isRecord(target)) return ['target_not_object'];
-  const errors: string[] = [];
-  for (const key of Object.keys(target).sort())
-    if (!(TARGET_FIELDS as readonly string[]).includes(key))
-      errors.push(`target_field_not_allowed:${key}`);
-  if (!matches(target['remote_id'], ORIGINAL_SOURCE_ID))
-    errors.push('target_remote_id_invalid');
-  const revision = target['source_revision'];
+// 確認の中身の検査。空なら確認の画面へ出してよい。
+export function privateConfirmationErrors(draft: unknown): string[] {
+  if (!isRecord(draft)) return ['not_object'];
+  const errors = keyErrors(draft, PRIVATE_CONFIRMATION_FIELDS, '');
+  if (Object.hasOwn(draft, 'operation'))
+    errors.push(...operationErrors(draft['operation']));
   if (
-    typeof revision !== 'string' ||
-    revision.length === 0 ||
-    revision.length > 256 ||
-    CONTROL.test(revision)
+    Object.hasOwn(draft, 'content_hash') &&
+    !matches(draft['content_hash'], SHA256_HEX)
   )
-    errors.push('target_source_revision_invalid');
+    errors.push('content_hash_invalid');
   return errors;
 }
 
-// 承認の検査。独立した確認は画面で一度だけ承認する（音声の「はい」・方針による自動承認は使わない）。
+// 承認の形の検査。独立した確認は画面で一度だけ承認する（音声の「はい」・方針による自動承認は使わない）。
+// 承認は、確認を出した区切りの世代と、操作の ID・内容版・内容の hash に結び付ける（照合は遷移で行う）。
 export function privateApprovalErrors(approval: unknown): string[] {
   if (!isRecord(approval)) return ['not_object'];
   const errors: string[] = [];
   for (const key of Object.keys(approval).sort())
-    if (!(APPROVAL_FIELDS as readonly string[]).includes(key))
+    if (!(PRIVATE_APPROVAL_FIELDS as readonly string[]).includes(key))
       errors.push(`field_not_allowed:${key}`);
+  for (const key of PRIVATE_APPROVAL_FIELDS)
+    if (!Object.hasOwn(approval, key)) errors.push(`field_missing:${key}`);
   if (approval['route'] !== 'screen') errors.push('route_not_screen');
   if (!matches(approval['device_id'], UUID_V4))
     errors.push('device_id_invalid');
-  if (
-    !matches(approval['approved_at'], UTC_TIME) ||
-    Number.isNaN(Date.parse(approval['approved_at'] as string))
-  )
+  const at = approval['approved_at'];
+  if (!matches(at, UTC_TIME) || Number.isNaN(Date.parse(at)))
     errors.push('approved_at_invalid');
+  if (!matches(approval['segment_generation'], DECIMAL))
+    errors.push('segment_generation_invalid');
+  if (!matches(approval['operation_id'], UUID_V4))
+    errors.push('operation_id_invalid');
+  if (!matches(approval['content_version'], DECIMAL))
+    errors.push('content_version_invalid');
+  if (!matches(approval['content_hash'], SHA256_HEX))
+    errors.push('content_hash_invalid');
   return errors;
 }
 
-// 検査を通った下書きから、許可リストの欄だけを写した中身を作る（呼び出し側の物を共有しない）。
+// 検査を通った下書きから、検査した項目だけを 1 つずつ写して中身を作る（呼び出し側の物を共有しない）。
 function confirmationContent(
   draft: Record<string, unknown>,
 ): PrivateConfirmationContent {
-  const target = draft['target'] as PrivateTargetLike | null;
-  const change = draft['change'] as Record<string, unknown>;
+  const operation = draft['operation'] as Record<string, unknown>;
+  const target = operation['target'] as Record<string, string>;
+  const action = operation['action'] as Record<string, unknown>;
+  const kind = action['kind'] as ConfirmableKind;
+  const strings = (value: unknown): string[] => [...(value as string[])];
+  const copied: PrivateOperationAction =
+    kind === 'mail.labels.change'
+      ? {
+          kind,
+          add: strings(action['add']),
+          remove: strings(action['remove']),
+        }
+      : {
+          kind,
+          to: strings(action['to']),
+          cc: strings(action['cc']),
+          subject: action['subject'] as string,
+          body: action['body'] as string,
+        };
   return {
-    operation_id: draft['operation_id'] as string,
-    content_version: draft['content_version'] as string,
+    intent: CONFIRMABLE_KINDS[kind],
+    operation: {
+      schema: 'buddy.operation.v1',
+      operation_id: operation['operation_id'] as string,
+      content_version: operation['content_version'] as string,
+      permission_revision: operation['permission_revision'] as string,
+      provider: operation['provider'] as PrivateConfirmedOperation['provider'],
+      account_id: operation['account_id'] as string,
+      target: {
+        remote_id: target['remote_id'] as string,
+        source_revision: target['source_revision'] as string,
+      },
+      action: copied,
+      effects: {
+        external_recipients: [],
+        reconcile_scope:
+          kind === 'mail.labels.change' ? 'exact_target' : 'operation_marker',
+      },
+    },
     content_hash: draft['content_hash'] as string,
-    intent: draft['intent'] as IntentName,
-    account_id: draft['account_id'] as string,
-    target:
-      target === null
-        ? null
-        : {
-            remote_id: target['remote_id'],
-            source_revision: target['source_revision'],
-          },
-    change: copyJson(change),
   };
+}
+
+function copyContent(
+  content: PrivateConfirmationContent,
+): PrivateConfirmationContent {
+  return confirmationContent({
+    operation: content.operation,
+    content_hash: content.content_hash,
+  });
+}
+
+// ---- 処理の由来（遅れて届いた結果の照合） -------------------------------------------------------------------
+
+// 処理を始めたときの区切り。入力の命令に付けて返し、Core は後段の処理（要約・抽出・影モード・派生物）の結果に
+// そのまま持たせて、保存の直前に write の事象で戻す。
+export interface StorageOrigin {
+  readonly segment_id: string;
+  readonly segment_generation: string;
+  readonly storage_mode: StorageModeName;
+}
+const ORIGIN_FIELDS = ['segment_id', 'segment_generation', 'storage_mode'];
+
+export type StorageOriginRejection =
+  'origin_invalid' | 'origin_private' | 'origin_stale' | 'origin_mismatch';
+
+// 由来の照合。null なら今の区切りの結果。
+// - 形が違う・保存モードが判別できない: origin_invalid（記録しない由来かもしれないので捨てる）。
+// - 記録しない区切りが由来で、今の区切りと違う（出た後・入り直した後）: origin_private（永続化しない。RAM も捨て済み）。
+// - それ以外で今の区切りと違う（失効した区切り）: origin_stale（捨てる）。
+// - 区切りは同じで保存モードが違う: origin_mismatch。
+export function storageOriginRejection(
+  state: Pick<
+    StorageBoundaryState,
+    'mode' | 'segment_id' | 'segment_generation'
+  >,
+  origin: unknown,
+): StorageOriginRejection | null {
+  if (
+    !isRecord(origin) ||
+    Object.keys(origin).length !== ORIGIN_FIELDS.length ||
+    !ORIGIN_FIELDS.every((key) => Object.hasOwn(origin, key)) ||
+    typeof origin['segment_id'] !== 'string' ||
+    !matches(origin['segment_generation'], DECIMAL) ||
+    !isStorageModeName(origin['storage_mode'])
+  )
+    return 'origin_invalid';
+  const same =
+    origin['segment_id'] === state.segment_id &&
+    origin['segment_generation'] === state.segment_generation;
+  if (!same)
+    return origin['storage_mode'] === 'private'
+      ? 'origin_private'
+      : 'origin_stale';
+  return origin['storage_mode'] === state.mode ? null : 'origin_mismatch';
 }
 
 // ---- 遷移（入る・出る・音声・外部変更の確認） -------------------------------------------------------------
@@ -405,22 +613,32 @@ export const PRIVATE_RAM_KINDS = [
   'input_snapshot',
   'clarification',
   'this_time_directive',
+  'derived_summary',
+  'workflow',
+  'workflow_result',
+  'turn_response',
+  'command_receipt',
   'canvas',
 ] as const;
 export type PrivateRamKind = (typeof PRIVATE_RAM_KINDS)[number];
 
-// 記録しない区切りで永続化を禁じられたときに、RAM に持つ先。ない行（記憶・抽出・影モード・「今後は」・通常の操作の記録）は
-// RAM にも持たず、拒否する。
+// 記録しない区切りで永続化を禁じられたときに、RAM に持つ先。ない行（記憶・抽出・影モード・「今後は」・発言のイベント・
+// 通常の操作の記録）は RAM にも持たず、拒否する。
 const RAM_FALLBACK: Readonly<Partial<Record<StorageEffect, PrivateRamKind>>> = {
   persist_turns: 'turn',
   persist_summary: 'summary',
   persist_input_snapshot: 'input_snapshot',
   persist_clarification: 'clarification',
   persist_this_time_directive: 'this_time_directive',
+  persist_derived_summary: 'derived_summary',
+  persist_workflow: 'workflow',
+  persist_workflow_result: 'workflow_result',
+  persist_turn_response: 'turn_response',
+  persist_command_receipt: 'command_receipt',
   write_persisted_canvas: 'canvas',
 };
 
-// write の命令で扱えない行（接続・③・最小の記録は専用の事象で扱う）。
+// write の事象で扱えない行（接続・③・最小の記録は専用の事象で扱う）。
 const NOT_WRITES: readonly StorageEffect[] = [
   'open_live',
   'local_asr',
@@ -436,11 +654,15 @@ export interface PendingPrivateConfirmation {
 export interface StorageBoundaryState {
   readonly mode: StorageModeName;
   readonly segment_id: string;
+  // 区切りの世代（10 進の文字列）。入る・出るたびに 1 進める。由来と承認の照合に使う。
+  readonly segment_generation: string;
   readonly live: LivePhase;
   // 記録しない区切りで RAM に持っている物（種類を受けた順に）。通常の区切りでは null。
   readonly private_ram: readonly PrivateRamKind[] | null;
   // 承認を待つ独立した確認（RAM だけ）。
   readonly pending_confirmations: readonly PendingPrivateConfirmation[];
+  // この区切りの世代で使った確認の ID（承認・取り下げ・失敗の後も再利用させない）。
+  readonly used_confirmation_ids: readonly string[];
 }
 
 export type StorageBoundaryEvent =
@@ -454,10 +676,15 @@ export type StorageBoundaryEvent =
   | { readonly type: 'live_connected' }
   | { readonly type: 'live_closed' }
   | { readonly type: 'input'; readonly input_kind: unknown }
-  | { readonly type: 'write'; readonly effect: unknown }
+  | {
+      readonly type: 'write';
+      readonly effect: unknown;
+      readonly origin: unknown;
+    }
   | {
       readonly type: 'external_change_requested';
       readonly confirmation_id: string;
+      readonly origin: unknown;
       readonly draft: unknown;
     }
   | {
@@ -484,16 +711,26 @@ export type StorageBoundaryCommand =
   | {
       readonly type: 'open_segment';
       readonly segment_id: string;
+      readonly segment_generation: string;
       readonly storage_mode: StorageModeName;
       readonly open_reason: 'private_started' | 'private_ended';
       readonly carried_summary: null;
     }
   | { readonly type: 'start_live' }
-  | { readonly type: 'write'; readonly effect: StorageEffect }
-  | { readonly type: 'hold_in_ram'; readonly kind: PrivateRamKind }
+  | {
+      readonly type: 'write';
+      readonly effect: StorageEffect;
+      readonly origin: StorageOrigin;
+    }
+  | {
+      readonly type: 'hold_in_ram';
+      readonly kind: PrivateRamKind;
+      readonly origin: StorageOrigin;
+    }
   | {
       readonly type: 'show_independent_confirmation';
       readonly confirmation_id: string;
+      readonly segment_generation: string;
       readonly view: PrivateConfirmationView;
     }
   | {
@@ -503,6 +740,7 @@ export type StorageBoundaryCommand =
 
 export type StorageBoundaryRejection =
   | 'storage_mode_unknown'
+  | 'state_invalid'
   | 'already_private'
   | 'not_private'
   | 'segment_id_reused'
@@ -515,10 +753,12 @@ export type StorageBoundaryRejection =
   | 'not_a_write'
   | 'denied_in_mode'
   | 'independent_confirmation_required'
+  | StorageOriginRejection
   | 'confirmation_invalid'
   | 'confirmation_id_reused'
   | 'confirmation_not_found'
-  | 'approval_invalid';
+  | 'approval_invalid'
+  | 'approval_mismatch';
 
 export interface StorageBoundaryResult {
   readonly state: StorageBoundaryState;
@@ -532,12 +772,18 @@ const CLOSE_LIVE: StorageBoundaryCommand = {
   reason: 'private_conversation',
 };
 
+const nextGeneration = (generation: string): string =>
+  (BigInt(generation) + 1n).toString();
+
 // 1 つの事象を当てる。命令は Core が返した順に行う（順序に意味がある）。
 // - 入る: 開いている・開きかけの Live を先に閉じ、一時のキャンバスを始め、要約をつながない記録しない区切りを開く。
-// - 出る: RAM（発言・要約・入力の版・聞き返し・「今回は」・一時のキャンバス・承認前の確認）を先に捨て、一時のキャンバスを
-//   終え、前の要約を持ち込まない区切りを開く。出る先の保存モードが判別できなければ出ない（記録しない側に留まる）。
+// - 出る: RAM（発言・要約・入力の版・聞き返し・「今回は」・派生物・依頼と結果・受付の記録・一時のキャンバス・承認前の
+//   確認）を先に捨て、一時のキャンバスを終え、前の要約を持ち込まない区切りを開く。出る先の保存モードが判別できなければ
+//   出ない（記録しない側に留まる）。
+// - 入る・出るたびに区切りの世代を進める。結果の保存（write）は由来の区切りと世代を照合し、記録しない区切りが由来の
+//   結果は出た後も永続化しない。失効した区切りへ遅れて届いた結果は捨てる。
 // - 記録しない区切りの間: Live は開かない（遅れて届いた接続は閉じる）。③と文字は RAM に持つ。外部変更は独立した確認に
-//   切り出し、画面での一度の承認の後に最小の操作記録だけを残す。
+//   切り出し、同じ世代・同じ操作の内容への画面での一度の承認の後に、最小の操作記録だけを残す。
 export function applyStorageBoundaryEvent(
   state: StorageBoundaryState,
   event: StorageBoundaryEvent,
@@ -563,19 +809,38 @@ export function applyStorageBoundaryEvent(
     errors,
   });
   const liveActive = state.live === 'connecting' || state.live === 'open';
+  const closeIfActive = (reason: StorageBoundaryRejection) =>
+    reject(
+      reason,
+      [],
+      { ...state, live: liveActive ? 'closing' : state.live },
+      liveActive ? [CLOSE_LIVE] : [],
+    );
+
+  // 世代が読めなければ、次の世代も決められない。何も書かず、開いている Live を閉じる。
+  if (!matches(state.segment_generation, DECIMAL))
+    return closeIfActive('state_invalid');
+  const current: StorageOrigin = {
+    segment_id: state.segment_id,
+    segment_generation: state.segment_generation,
+    storage_mode: state.mode,
+  };
 
   if (event.type === 'enter_private') {
     // 判別できない保存モードからは、記録しない側へ入ることだけを許す。
     if (state.mode === 'private') return reject('already_private');
     if (event.segment_id === state.segment_id)
       return reject('segment_id_reused');
+    const generation = nextGeneration(state.segment_generation);
     return done(
       {
         mode: 'private',
         segment_id: event.segment_id,
+        segment_generation: generation,
         live: liveActive ? 'closing' : state.live,
         private_ram: [],
         pending_confirmations: [],
+        used_confirmation_ids: [],
       },
       [
         ...(liveActive ? [CLOSE_LIVE] : []),
@@ -583,6 +848,7 @@ export function applyStorageBoundaryEvent(
         {
           type: 'open_segment',
           segment_id: event.segment_id,
+          segment_generation: generation,
           storage_mode: 'private',
           open_reason: 'private_started',
           carried_summary: null,
@@ -591,15 +857,9 @@ export function applyStorageBoundaryEvent(
     );
   }
 
-  if (!isStorageModeName(state.mode)) {
-    // 判別できない保存モードでは何も書かず、開いている Live を閉じる。
-    return reject(
-      'storage_mode_unknown',
-      [],
-      { ...state, live: liveActive ? 'closing' : state.live },
-      liveActive ? [CLOSE_LIVE] : [],
-    );
-  }
+  // 判別できない保存モードでは何も書かず、開いている Live を閉じる。
+  if (!isStorageModeName(state.mode))
+    return closeIfActive('storage_mode_unknown');
   const isPrivate = state.mode === 'private';
 
   switch (event.type) {
@@ -609,13 +869,16 @@ export function applyStorageBoundaryEvent(
         return reject('storage_mode_unknown');
       if (event.segment_id === state.segment_id)
         return reject('segment_id_reused');
+      const generation = nextGeneration(state.segment_generation);
       return done(
         {
           mode: event.mode,
           segment_id: event.segment_id,
+          segment_generation: generation,
           live: state.live,
           private_ram: null,
           pending_confirmations: [],
+          used_confirmation_ids: [],
         },
         [
           {
@@ -628,6 +891,7 @@ export function applyStorageBoundaryEvent(
           {
             type: 'open_segment',
             segment_id: event.segment_id,
+            segment_generation: generation,
             storage_mode: event.mode,
             open_reason: 'private_ended',
             carried_summary: null,
@@ -662,7 +926,8 @@ export function applyStorageBoundaryEvent(
         const asr = storageModeDecision(state.mode, 'local_asr');
         if (!asr.allowed) return reject(asr.reason);
       } else if (kind !== 'text') return reject('input_kind_unknown');
-      return write(state, 'persist_turns', done, reject);
+      // 入力は今の区切りで始まる処理。命令に由来を付けて返す。
+      return write(state, 'persist_turns', current, done, reject);
     }
     case 'write': {
       if (!isStorageEffect(event.effect)) return reject('effect_unknown');
@@ -674,24 +939,30 @@ export function applyStorageBoundaryEvent(
           );
         return reject('not_a_write');
       }
-      return write(state, event.effect, done, reject);
+      const stale = storageOriginRejection(state, event.origin);
+      if (stale !== null) return reject(stale);
+      return write(state, event.effect, current, done, reject);
     }
     case 'external_change_requested': {
       if (!isPrivate) return reject('not_private');
-      const errors = privateConfirmationErrors(event.draft);
-      if (errors.length > 0) return reject('confirmation_invalid', errors);
-      if (
-        state.pending_confirmations.some(
-          (pending) => pending.confirmation_id === event.confirmation_id,
-        )
-      )
+      const stale = storageOriginRejection(state, event.origin);
+      if (stale !== null) return reject(stale);
+      if (state.used_confirmation_ids.includes(event.confirmation_id))
         return reject('confirmation_id_reused');
+      const used = [...state.used_confirmation_ids, event.confirmation_id];
+      const errors = privateConfirmationErrors(event.draft);
+      if (errors.length > 0)
+        return reject('confirmation_invalid', errors, {
+          ...state,
+          used_confirmation_ids: used,
+        });
       const content = confirmationContent(
         event.draft as Record<string, unknown>,
       );
       return done(
         {
           ...state,
+          used_confirmation_ids: used,
           pending_confirmations: [
             ...state.pending_confirmations,
             { confirmation_id: event.confirmation_id, content },
@@ -701,7 +972,8 @@ export function applyStorageBoundaryEvent(
           {
             type: 'show_independent_confirmation',
             confirmation_id: event.confirmation_id,
-            view: { ...copyJson(content), conversation_saved: false },
+            segment_generation: state.segment_generation,
+            view: { ...copyContent(content), conversation_saved: false },
           },
         ],
       );
@@ -714,13 +986,29 @@ export function applyStorageBoundaryEvent(
       if (pending === undefined) return reject('confirmation_not_found');
       const errors = privateApprovalErrors(event.approval);
       if (errors.length > 0) return reject('approval_invalid', errors);
+      const approval = event.approval as Record<string, string>;
+      // 承認は、確認を出した世代と、同じ操作の同じ内容へのものだけ（入り直した後の古い承認を別の操作へ当てない）。
+      const operation = pending.content.operation;
+      const mismatched = [
+        approval['segment_generation'] !== state.segment_generation &&
+          'segment_generation',
+        approval['operation_id'] !== operation.operation_id && 'operation_id',
+        approval['content_version'] !== operation.content_version &&
+          'content_version',
+        approval['content_hash'] !== pending.content.content_hash &&
+          'content_hash',
+      ].filter((name): name is string => typeof name === 'string');
+      if (mismatched.length > 0)
+        return reject(
+          'approval_mismatch',
+          mismatched.map((name) => `${name}_mismatch`),
+        );
       const decision = storageModeDecision(
         state.mode,
         'record_minimal_operation',
         { independentConfirmationApproved: true },
       );
       if (!decision.allowed) return reject(decision.reason);
-      const approval = event.approval as PrivateApprovalLike;
       return done(
         {
           ...state,
@@ -734,11 +1022,11 @@ export function applyStorageBoundaryEvent(
             record: {
               record_kind: 'private_minimal',
               workflow_id: null,
-              ...copyJson(pending.content),
+              ...copyContent(pending.content),
               approval: {
                 route: 'screen',
-                device_id: approval.device_id,
-                approved_at: approval.approved_at,
+                device_id: approval['device_id'] as string,
+                approved_at: approval['approved_at'] as string,
               },
             },
           },
@@ -761,6 +1049,7 @@ export function applyStorageBoundaryEvent(
 function write(
   state: StorageBoundaryState,
   effect: StorageEffect,
+  origin: StorageOrigin,
   done: (
     next: StorageBoundaryState,
     commands?: StorageBoundaryCommand[],
@@ -768,17 +1057,18 @@ function write(
   reject: (reason: StorageBoundaryRejection) => StorageBoundaryResult,
 ): StorageBoundaryResult {
   const decision = storageModeDecision(state.mode, effect);
-  if (decision.allowed) return done(state, [{ type: 'write', effect }]);
+  if (decision.allowed)
+    return done(state, [{ type: 'write', effect, origin: { ...origin } }]);
   const kind = RAM_FALLBACK[effect];
   if (state.mode === 'private' && kind !== undefined)
     return done(
       { ...state, private_ram: [...(state.private_ram ?? []), kind] },
-      [{ type: 'hold_in_ram', kind }],
+      [{ type: 'hold_in_ram', kind, origin: { ...origin } }],
     );
   return reject(decision.reason);
 }
 
-// 通常の区切りの初めの状態（流れの最初）。
+// 通常の区切りの初めの状態（流れの最初）。世代は 1 から。
 export function initialStorageBoundaryState(
   segmentId: string,
   mode: 'normal' | 'extended',
@@ -786,8 +1076,10 @@ export function initialStorageBoundaryState(
   return {
     mode,
     segment_id: segmentId,
+    segment_generation: '1',
     live: 'closed',
     private_ram: null,
     pending_confirmations: [],
+    used_confirmation_ids: [],
   };
 }

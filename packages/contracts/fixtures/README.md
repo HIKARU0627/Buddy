@@ -15,6 +15,7 @@
 - `voice-reservation-cases.json`・`voice-notification-rate-cases.json`: 追加予約の計画・予算到達の閉じ方・精算の秒数と、音声の通知の頻度の制限の期待値（X26・X34・X35、ADR 0041）。秒数だけで、金額は予算の規則（合成の通貨 XTS）が決める。
 - `voice-segment-cases.json`・`voice-method-c-cases.json`・`voice-asr-compare-cases.json`: 方式 A の区間リングと sealed・blocked・truncated、方式 C の 4 操作の限定、Live と端末の ASR の比較の期待値（QA05・QA06・QA08・QA41・X51、ADR 0041）。音声は含まず、フレームの番号と sample の範囲、合成の発話だけ。
 - `budget-scenarios.json`: 合成設定（通貨 XTS、合成の上限）による予算の受付・精算のシナリオ。超過枠への経路・手での精算・M 超過の確認の手順と、QA42 の残り・X53・X18 の予算の行を含む（ADR 0035）。本人の金額を含まない。
+- `budget-credit.json`: 付帯クレジットの区分と保留の純粋な規則の期待値（周期の ID・誰に充てるか・周期ごとの基準と残高の換算・残りと保留の理由・受付・精算の割り当て・provider の精算と手での精算の区分。MA03〜MA06、ADR 0042）。予算の通貨は XTS、残高の通貨は XXX の合成値で、期待値は手計算。`scripts/budget-credit.test.mjs` がビルド後の domain で確かめる。
 - `budget-rules.json`: 予算の純粋な規則の期待値（M と R の計算・単価の境界・丸め・予算月とタイムゾーンの翌月反映・時計の戻り・利用状況・超過枠への経路と承認の照合・手での精算・M 超過の確認。ADR 0035）。合成の実行時の設定（通貨 XTS、換算の例の元の通貨は XXX、縮めた単価）で、期待値は手計算。`scripts/budget-rules.test.mjs` がビルド後の domain で確かめる。
 - `sync-scenarios.json`: 同期の走査の排他・公開前の照合の期待値（QA44・QA36 ほか）。
 - `analysis-cases.json`: 関連解析の ready、取消の順序の逆転、再作成抑止の期待値（QA45 ほか）。

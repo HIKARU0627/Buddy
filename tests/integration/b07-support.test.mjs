@@ -4,7 +4,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   CLEAN,
+  CLEAN_CREDIT,
+  CREDIT_PROFILE,
   Labels,
+  creditFindings,
   findings,
   shuffled,
   specification,
@@ -325,11 +328,120 @@ test('B07 の期待値は手書きの枠の表と全ケースの形がそろい�
   const ids = specification.cases.map((c) => c.id);
   assert.equal(new Set(ids).size, ids.length);
   for (const spec of specification.cases) {
-    assert.match(spec.id, /^(X18|X53|QA20|QA42|B07)-[a-z0-9-]+$/u);
+    assert.match(spec.id, /^(X18|X53|QA20|QA42|B07|MA0[3-6])-[a-z0-9-]+$/u);
     assert(spec.title.length > 0, spec.id);
     assert(Array.isArray(spec.faults), spec.id);
     assert.equal(typeof spec.expected, 'object', spec.id);
   }
   assert.deepEqual(specification.seeds.length, 3);
   assert.equal(new Set(specification.seeds).size, 3);
+});
+
+// クレジットの区分の突き合わせ（B07-07）自体の試験。正しい行は通し、周期のない行のクレジット・実費と合わない区分・
+// M を超えるクレジット・音声や検索や指定のない profile の周期・未精算の行の区分・観測した残高を超えるクレジットを検出する。
+const credited = (id, overrides = {}) => ({
+  request_id: id,
+  profile_id: CREDIT_PROFILE,
+  pool_id: 'llm',
+  status: 'settled',
+  max_liability: '40',
+  actual_gross: '30',
+  credit_applied: '30',
+  additional_spend: '0',
+  credit_cycle_id: 'anthropic:2030-10-01',
+  credit_estimate: '30',
+  credit_expires_at: 1919000000000,
+  credit_observation_seq: 1,
+  ...overrides,
+});
+
+test('B07 のクレジットの突き合わせ: 正しい行は指摘なし、未精算の行・周期のない行は区分を持たない', () => {
+  assert.deepEqual(
+    creditFindings({
+      rows: [
+        credited('a'),
+        credited('b', {
+          status: 'usage_unknown',
+          actual_gross: null,
+          credit_applied: null,
+          additional_spend: null,
+          credit_estimate: '0',
+        }),
+        credited('c', {
+          profile_id: 'intent.synthetic.v1',
+          credit_applied: '0',
+          additional_spend: '30',
+          credit_cycle_id: null,
+          credit_estimate: '0',
+          credit_expires_at: null,
+          credit_observation_seq: null,
+        }),
+      ],
+      cap: { 'anthropic:2030-10-01': '100' },
+    }),
+    CLEAN_CREDIT,
+  );
+});
+
+test('B07 のクレジットの突き合わせ: 区分の誤りを検出する', () => {
+  const found = (overrides, cap) =>
+    creditFindings({ rows: [credited('a', overrides)], cap });
+  assert.deepEqual(found({ credit_cycle_id: null }).credit_without_cycle, [
+    'a',
+  ]);
+  assert.deepEqual(found({ additional_spend: '1' }).split_not_adding_up, ['a']);
+  assert.deepEqual(found({ max_liability: '29' }).credit_above_m, ['a']);
+  assert.deepEqual(found({ pool_id: 'voice' }).cycle_on_uncredited_row, ['a']);
+  assert.deepEqual(found({ pool_id: 'search' }).cycle_on_uncredited_row, ['a']);
+  assert.deepEqual(
+    found({ profile_id: 'intent.synthetic.v1' }).cycle_on_uncredited_row,
+    ['a'],
+  );
+  assert.deepEqual(found({ status: 'usage_unknown' }).split_on_unsettled_row, [
+    'a',
+  ]);
+  // 周期に結び付く行は有効期限と観測の番号を持つ。持たない行は周期もない。
+  assert.deepEqual(found({ credit_expires_at: null }).cycle_without_binding, [
+    'a',
+  ]);
+  assert.deepEqual(
+    found({ credit_observation_seq: null }).cycle_without_binding,
+    ['a'],
+  );
+  assert.deepEqual(
+    found({
+      credit_cycle_id: null,
+      credit_applied: '0',
+      additional_spend: '30',
+      credit_estimate: '0',
+    }).cycle_without_binding,
+    ['a'],
+  );
+  // 見積もりは、精算した行ではクレジット以上、精算していない行・周期のない行では 0。
+  assert.deepEqual(
+    found({ credit_estimate: '29' }).estimate_below_credit_or_misplaced,
+    ['a'],
+  );
+  assert.deepEqual(
+    found({
+      status: 'usage_unknown',
+      actual_gross: null,
+      credit_applied: null,
+      additional_spend: null,
+    }).estimate_below_credit_or_misplaced,
+    ['a'],
+  );
+  assert.deepEqual(
+    found({ credit_estimate: '31' }).estimate_below_credit_or_misplaced,
+    [],
+  );
+  // 観測した最も大きい残高（予算の通貨）を超えるクレジット。
+  assert.deepEqual(
+    found({}, { 'anthropic:2030-10-01': '29' }).credit_over_observed_balance,
+    ['anthropic:2030-10-01'],
+  );
+  assert.deepEqual(
+    found({}, { 'anthropic:2030-10-01': '30' }).credit_over_observed_balance,
+    [],
+  );
 });

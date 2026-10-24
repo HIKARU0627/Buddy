@@ -15,6 +15,7 @@ import {
   TABLE_POLICIES,
   applyConnectionPragmas,
   applyMigrations,
+  executeBudgetOp,
   initStoreGeneration,
   loadMigrations,
   migrationSha256,
@@ -55,6 +56,11 @@ const seventhBytes = readFileSync(
   new URL('0007_budget_gate.sql', MIGRATIONS_DIR),
 );
 const seventhSha = createHash('sha256').update(seventhBytes).digest('hex');
+// 0008（ADR 0042）: 付帯クレジットの観測の採用と、予約のクレジットの結び付け。
+const eighthBytes = readFileSync(
+  new URL('0008_budget_credit.sql', MIGRATIONS_DIR),
+);
+const eighthSha = createHash('sha256').update(eighthBytes).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -115,7 +121,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0007 apply to a temporary file DB: 49 STRICT tables, version 7 and the content hashes', () => {
+test('0001 to 0008 apply to a temporary file DB: 50 STRICT tables, version 8 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -123,18 +129,18 @@ test('0001 to 0007 apply to a temporary file DB: 49 STRICT tables, version 7 and
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 7,
-        applied: [1, 2, 3, 4, 5, 6, 7],
+        to: 8,
+        applied: [1, 2, 3, 4, 5, 6, 7, 8],
       });
       const tables = tableNames(db);
-      assert.equal(tables.length, 49);
+      assert.equal(tables.length, 50);
       assert.deepEqual(tables, Object.keys(TABLE_POLICIES).sort());
       const strict = db
         .prepare(
           "SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'",
         )
         .all() as { name: string; strict: number }[];
-      assert.equal(strict.length, 49);
+      assert.equal(strict.length, 50);
       for (const row of strict) assert.equal(row.strict, 1, row.name);
       assert.deepEqual(meta(db), {
         'migration_sha256:0001': initialSha,
@@ -144,20 +150,21 @@ test('0001 to 0007 apply to a temporary file DB: 49 STRICT tables, version 7 and
         'migration_sha256:0005': fifthSha,
         'migration_sha256:0006': sixthSha,
         'migration_sha256:0007': seventhSha,
-        schema_version: '7',
+        'migration_sha256:0008': eighthSha,
+        schema_version: '8',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 7 のまま、適用するものはない。
+    // 開き直しても版は 8 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 7);
+      assert.equal(readSchemaVersion(reopened), 8);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 7,
-        to: 7,
+        from: 8,
+        to: 8,
         applied: [],
       });
     } finally {
@@ -331,6 +338,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [5, '0005_runner.sql'],
       [6, '0006_budget.sql'],
       [7, '0007_budget_gate.sql'],
+      [8, '0008_budget_credit.sql'],
     ],
   );
   withTempDir((dir) => {
@@ -563,6 +571,141 @@ test('0005 upgrades a version 4 DB holding attempts and steps and keeps every ro
 // 0006（ADR 0036）: 予約（各状態）と会話の接続が入った版 5 の DB を更新しても、全行・外部キーが残り、新しい列は
 // 0001 の行から求められる値（手での精算の印）か NULL（記録のない時刻）、profile は記録なしの印になる。
 // 期待値は手で書いた値。金額は合成の通貨 XTS と縮めた値（18 桁の上限の 1 行を含む）。
+test('0008 upgrades a version 7 DB holding reservations, keeps every row, gives the new columns their defaults and adds the observation table and triggers', () => {
+  withTempDir((dir) => {
+    const db = openWriteConnection(join(dir, 'buddy.sqlite'), {
+      platform: 'macos',
+    });
+    try {
+      applyMigrations(db, loadMigrations().slice(0, 7));
+      const columns =
+        'reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, created_at';
+      for (const sql of [
+        `INSERT INTO budget_reservations (${columns}) VALUES ('r-1', 'q-1', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, 'anthropic:2030-10-01', NULL, 1100)`,
+        `INSERT INTO budget_reservations (${columns}) VALUES ('r-2', 'q-2', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'settled', 1, 15, 5, 10, 'anthropic:p-2', 'provider', 'anthropic:2030-10-01', 1500, 1200)`,
+        `INSERT INTO budget_reservations (${columns}) VALUES ('r-3', 'q-3', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'usage_unknown', 2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1300)`,
+      ])
+        db.exec(sql);
+      assert.deepEqual(applyMigrations(db), {
+        from: 7,
+        to: 8,
+        applied: [8],
+      });
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT reservation_id, status, credit_applied, additional_spend, credit_cycle_id, credit_estimate, credit_settled_seq, credit_expires_at, credit_observation_seq FROM budget_reservations ORDER BY reservation_id',
+          )
+          .all(),
+        [
+          {
+            reservation_id: 'r-1',
+            status: 'reserved',
+            credit_applied: null,
+            additional_spend: null,
+            credit_cycle_id: 'anthropic:2030-10-01',
+            credit_estimate: 0,
+            credit_settled_seq: null,
+            credit_expires_at: null,
+            credit_observation_seq: null,
+          },
+          {
+            reservation_id: 'r-2',
+            status: 'settled',
+            credit_applied: 5,
+            additional_spend: 10,
+            credit_cycle_id: 'anthropic:2030-10-01',
+            // 精算済みの行は、確認済みの消費（credit_applied 5）を見積もりへ引き継ぐ（連番は順序が分からないので空）。
+            credit_estimate: 5,
+            credit_settled_seq: null,
+            credit_expires_at: null,
+            credit_observation_seq: null,
+          },
+          {
+            reservation_id: 'r-3',
+            status: 'usage_unknown',
+            credit_applied: null,
+            additional_spend: null,
+            credit_cycle_id: null,
+            credit_estimate: 0,
+            credit_settled_seq: null,
+            credit_expires_at: null,
+            credit_observation_seq: null,
+          },
+        ],
+      );
+      assert.equal(
+        db
+          .prepare('SELECT count(*) FROM budget_credit_observations')
+          .pluck()
+          .get(),
+        0,
+      );
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT name FROM sqlite_schema WHERE type = 'trigger' AND (name LIKE 'budget_credit%' OR name LIKE 'budget_reservations_credit%') ORDER BY name",
+          )
+          .pluck()
+          .all(),
+        [
+          'budget_credit_observations_cycle_forward',
+          'budget_credit_observations_no_delete',
+          'budget_credit_observations_no_replace',
+          'budget_credit_observations_no_update',
+          'budget_credit_observations_time_forward',
+          'budget_reservations_credit_binding_fixed',
+          'budget_reservations_credit_binding_insert',
+          'budget_reservations_credit_cycle_fixed',
+          'budget_reservations_credit_estimate_fixed',
+          'budget_reservations_credit_split_valid',
+        ],
+      );
+      // 移した精算済みの行の消費（5）は、精算より前に観測した基準なら台帳から引き、後に観測した基準なら引かない（連番がないので
+      // 観測の時刻と精算の時刻で比べる）。精算前の周期付きの行 r-1 の M 20 は未精算として数える。観測は表へ直接書く（手で書いた値）。
+      const observe = db.prepare(
+        "INSERT INTO budget_credit_observations (observation_seq, cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES (?, 'anthropic:2030-10-01', 0, ?, 100000, 'observed', 0, 'synthetic-organization', 'XXX', 40, ?, 1)",
+      );
+      observe.run(1, 1000, 'a'.repeat(64));
+      observe.run(2, 2000, 'b'.repeat(64));
+      const ledgerAt = (basisSeq: number) => {
+        const result = executeBudgetOp(
+          db,
+          {
+            kind: 'budget.credit_ledger',
+            cycle_id: 'anthropic:2030-10-01',
+            basis_seq: basisSeq,
+            exclude_reservation_id: null,
+          },
+          { platform: 'macos', halted: false },
+        ).result;
+        assert.equal(result.ok, true);
+        return result.ok ? result.value : null;
+      };
+      assert.deepEqual(ledgerAt(1), {
+        allocated_since: '5',
+        outstanding: '20',
+      });
+      assert.deepEqual(ledgerAt(2), {
+        allocated_since: '0',
+        outstanding: '20',
+      });
+      // 移した行の周期は、受付で結び付けたものではないので変えられない（精算前の行）。
+      assert.throws(
+        () =>
+          db.exec(
+            "UPDATE budget_reservations SET credit_cycle_id = 'anthropic:2030-11-01' WHERE reservation_id = 'r-1'",
+          ),
+        /budget_credit_binding_fixed/u,
+      );
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
+    } finally {
+      db.close();
+    }
+  });
+});
+
 test('0006 upgrades a version 5 DB holding reservations and a live session and keeps every row and foreign key', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
@@ -585,8 +728,8 @@ test('0006 upgrades a version 5 DB holding reservations and a live session and k
         db.exec(sql);
       assert.deepEqual(applyMigrations(db), {
         from: 5,
-        to: 7,
-        applied: [6, 7],
+        to: 8,
+        applied: [6, 7, 8],
       });
       const rows = db
         .prepare(

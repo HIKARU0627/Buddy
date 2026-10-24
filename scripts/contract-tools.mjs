@@ -302,6 +302,27 @@ function decimalMicros(text) {
   return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
 }
 
+// 付帯クレジットの周期の開始（UTC の日付の 0 時のミリ秒）。暦にない日付・1970 年より前は null（B07-07）。
+// domain の creditCycleStart と同じ規則。
+function creditCycleStart(cycleId) {
+  const match =
+    /^([a-z][a-z0-9-]*):([0-9]{4})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/u.exec(
+      cycleId,
+    );
+  if (match === null) return null;
+  const year = Number(match[2]);
+  const month = Number(match[3]);
+  const day = Number(match[4]);
+  if (year < 1970) return null;
+  const value = Date.UTC(year, month - 1, day);
+  const date = new Date(value);
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+    ? value
+    : null;
+}
+
 // 起点から計上する枠と超過枠（B07-04、ADR 0037）。各理由は 1 回だけ返す。
 // - unknown_route_pool: 経路・超過枠に設定にない枠がある。
 // - route_pool_requires_approval / route_under_approval_pool: 通常の経路の枠かその祖先が承認の要る枠。
@@ -411,6 +432,27 @@ export function semanticErrors(name, value) {
     value.provider_reconciliation_id.startsWith('manual:')
   )
     errors.push('manual_prefix_reserved');
+  // 実費は、クレジットと追加の支出に過不足なく分ける（B07-07、ADR 0042）。
+  if (name === 'BudgetSettlement') {
+    const amounts = [
+      value.actual_gross,
+      value.credit_applied,
+      value.additional_spend,
+    ];
+    if (amounts.some((item) => item.currency !== value.actual_gross.currency))
+      errors.push('currency_mismatch');
+    else if (
+      BigInt(value.actual_gross.amount) !==
+      BigInt(value.credit_applied.amount) +
+        BigInt(value.additional_spend.amount)
+    )
+      errors.push('settlement_sum');
+    if (
+      BigInt(value.credit_applied.amount) > 0n &&
+      value.credit_cycle_id === null
+    )
+      errors.push('missing_credit_cycle');
+  }
   if (name === 'CurrencyConversion') {
     if (decimalMicros(value.rate) === 0n) errors.push('non_positive_rate');
     if (decimalMicros(value.safety_factor) < 1_000_000n)
@@ -488,6 +530,41 @@ export function semanticErrors(name, value) {
           errors.push('price_period_overlap');
     }
     errors.push(...routingErrors(value.budget, value.routing));
+    // 付帯クレジットの区分の設定（B07-07、ADR 0042）。domain の creditConfigErrors と同じ理由コード・順序。
+    if (value.credit !== undefined) {
+      const rate = decimalMicros(value.credit.balance_to_budget_rate);
+      if (rate === 0n) errors.push('credit_non_positive_rate');
+      if (
+        value.credit.balance_currency === value.budget.currency &&
+        rate !== 1_000_000n
+      )
+        errors.push('credit_same_currency_rate');
+    }
+  }
+  // 残高の観測の一覧（B07-07、ADR 0042）。domain の creditObservationsErrors と同じ理由コード・順序。
+  if (name === 'BudgetCreditObservations') {
+    const seen = new Set();
+    for (const item of value.observations) {
+      const observed = Date.parse(item.observed_at);
+      const expires = Date.parse(item.expires_at);
+      if (item.status === 'observed' && item.balance === null)
+        errors.push('missing_observed_balance');
+      if (item.status === 'observed' && observed >= expires)
+        errors.push('expired_observation');
+      if (item.status === 'unknown' && item.balance !== null)
+        errors.push('unknown_with_balance');
+      const start = creditCycleStart(item.cycle_id);
+      if (start === null) errors.push('invalid_cycle_date');
+      else {
+        if (start > observed) errors.push('cycle_after_observation');
+        if (expires <= start) errors.push('expiry_not_after_cycle');
+      }
+      if (item.cycle_id.split(':')[0] !== item.provider)
+        errors.push('cycle_provider_mismatch');
+      const key = `${item.cycle_id} ${observed}`;
+      if (seen.has(key)) errors.push('duplicate_observation');
+      seen.add(key);
+    }
   }
   if (name === 'BudgetOverageApproval') {
     if (Date.parse(value.expires_at) <= Date.parse(value.requested_at))
@@ -784,7 +861,12 @@ export function semanticErrors(name, value) {
     if (value.view === 'management_only')
       errors.push('budget_hold_in_management_view');
     const hold = value.budget_hold;
-    if (hold.held !== (hold.reasons.length > 0 || hold.held_pools.length > 0))
+    if (
+      hold.held !==
+      (hold.reasons.length > 0 ||
+        hold.held_pools.length > 0 ||
+        hold.credit_hold !== undefined)
+    )
       errors.push('budget_hold_mismatch');
     const ids = hold.held_pools.map((pool) => pool.pool_id);
     if (new Set(ids).size !== ids.length) errors.push('duplicate_pool');

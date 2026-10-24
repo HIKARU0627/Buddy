@@ -1517,34 +1517,94 @@
     {
       "id": "MA03",
       "phases": ["B07"],
-      "contract_fixtures": [],
-      "status": "specified",
-      "product_test": "not_run",
-      "related": []
+      "contract_fixtures": [
+        "packages/contracts/fixtures/schema-cases.json#ma03-runtime-config-credit",
+        "packages/contracts/fixtures/schema-cases.json#ma03-settlement-credit-and-additional",
+        "packages/contracts/fixtures/schema-cases.json#ma03-manual-settlement-credit-and-additional",
+        "packages/contracts/fixtures/schema-cases.json#ma03-reservation-settled-with-credit",
+        "packages/contracts/fixtures/budget-credit.json#ma03-all-credit",
+        "packages/contracts/fixtures/budget-credit.json#ma03-capped-by-m",
+        "packages/contracts/fixtures/budget-credit.json#ma03-capped-by-remaining",
+        "packages/contracts/fixtures/budget-credit.json#ma03-settle-with-credit",
+        "packages/contracts/fixtures/budget-credit.json#ma03-manual-split",
+        "packages/contracts/fixtures/budget-credit.json#ma03-m-fits-exactly"
+      ],
+      "status": "contract_fixture",
+      "product_test": "simulated",
+      "related": [],
+      "product_evidence": [
+        "tests/integration/evidence-b07-simulated.json#MA03-credit-split-once"
+      ],
+      "product_scope": "B07-07 の固定 seed 3 回・合成の通貨 XTS（予算）と XXX（残高）・縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。残高の観測はメモリの模擬（本人が書くファイルの読み込みは Core の試験で別に確認）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、クレジットの区分は予約の行だけから別に数えて検査。実 API・実請求・Console の実残高との照合は未実施で、実請求の照合は B15。 同じ usage を通常料金・クレジット・追加の支出へ一度だけ分ける（同時の同じ精算は 1 件）。クレジットで追加の支出が 0 でも、通常料金の実費は枠の上限に数え、通常料金の M で止まる（影モードの枠を含む）。usage 不明は M を解放せず、クレジットの残りからも確保し続ける。"
     },
     {
       "id": "MA04",
       "phases": ["B07"],
-      "contract_fixtures": [],
-      "status": "specified",
-      "product_test": "not_run",
-      "related": []
+      "contract_fixtures": [
+        "packages/contracts/fixtures/schema-cases.json#ma04-credit-observations-two-cycles",
+        "packages/contracts/fixtures/schema-cases.json#ma04-settlement-credit-without-cycle",
+        "packages/contracts/fixtures/schema-cases.json#ma04-reservation-reserved-with-cycle",
+        "packages/contracts/fixtures/budget-credit.json#ma04-cycle-october",
+        "packages/contracts/fixtures/budget-credit.json#ma04-now-at-expiry",
+        "packages/contracts/fixtures/budget-credit.json#ma04-basis-of-another-cycle",
+        "packages/contracts/fixtures/budget-credit.json#ma04-cycle-ended",
+        "packages/contracts/fixtures/budget-credit.json#ma04-manual-other-cycle"
+      ],
+      "status": "contract_fixture",
+      "product_test": "simulated",
+      "related": [],
+      "product_evidence": [
+        "tests/integration/evidence-b07-simulated.json#MA04-cycle-and-month-are-separate"
+      ],
+      "product_scope": "B07-07 の固定 seed 3 回・合成の通貨 XTS（予算）と XXX（残高）・縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。残高の観測はメモリの模擬（本人が書くファイルの読み込みは Core の試験で別に確認）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、クレジットの区分は予約の行だけから別に数えて検査。実 API・実請求・Console の実残高との照合は未実施で、実請求の照合は B15。 請求周期の終わり（失効）と暦月の予算の更新を別々に起こす。月替わりで残高を戻さず、古い周期の未精算の要求を新しい周期へ無断で付け替えない（精算はクレジット 0、手での精算は古い周期だけ）。"
     },
     {
       "id": "MA05",
       "phases": ["B07"],
-      "contract_fixtures": [],
-      "status": "specified",
-      "product_test": "not_run",
-      "related": []
+      "contract_fixtures": [
+        "packages/contracts/fixtures/schema-cases.json#ma05-credit-observations-unknown-and-expired",
+        "packages/contracts/fixtures/schema-cases.json#ma05-hold-state-credit-hold",
+        "packages/contracts/fixtures/schema-cases.json#ma05-snapshot-credit-hold-only",
+        "packages/contracts/fixtures/budget-credit.json#ma05-exhausted-zero",
+        "packages/contracts/fixtures/budget-credit.json#ma05-shared-one-ms-over-limit",
+        "packages/contracts/fixtures/budget-credit.json#ma05-m-one-over",
+        "packages/contracts/fixtures/budget-credit.json#ma05-status-unknown",
+        "packages/contracts/fixtures/budget-credit.json#ma05-no-basis",
+        "packages/contracts/fixtures/budget-credit.json#ma05-covers-with-nothing-left",
+        "packages/contracts/fixtures/budget-credit.json#ma05-balance-dropped-below-reserved",
+        "packages/contracts/fixtures/budget-credit.json#ma05-top-up-fits-exactly",
+        "packages/contracts/fixtures/budget-credit.json#ma05-top-up-one-over",
+        "packages/contracts/fixtures/budget-credit.json#ma05-same-time-other-content",
+        "packages/contracts/fixtures/budget-credit.json#ma05-older-time"
+      ],
+      "status": "contract_fixture",
+      "product_test": "simulated",
+      "related": [],
+      "product_evidence": [
+        "tests/integration/evidence-b07-simulated.json#MA05-hold-until-balance-is-known",
+        "tests/integration/evidence-b07-simulated.json#MA05-credit-rechecked-before-sending-and-top-up",
+        "tests/integration/evidence-b07-simulated.json#MA05-observations-are-adopted-once"
+      ],
+      "product_scope": "B07-07 の固定 seed 3 回・合成の通貨 XTS（予算）と XXX（残高）・縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。残高の観測はメモリの模擬（本人が書くファイルの読み込みは Core の試験で別に確認）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、クレジットの区分は予約の行だけから別に数えて検査。実 API・実請求・Console の実残高との照合は未実施で、実請求の照合は B15。 残高不明・失効・枯渇・共有の組織の他用途消費（古い観測と減った観測）・同時要求を注入し、Claude の処理を保留して provider へ送らず、購入残高・後払いへ移らない。専用の組織の上限だけで共有残高を専有できるとは扱わない。受付の後の失効・残高の減少は送る直前に再検査して送らず、追加予約も残りで賄えるときだけ増やす。採用した観測は永続化し、ファイルの巻き戻し・矛盾する観測・時計の巻き戻りで一度確認した枯渇を取り消せない。確認できない精算は、消費した分を後の観測が届くまで残りから引き続ける。"
     },
     {
       "id": "MA06",
       "phases": ["B07"],
-      "contract_fixtures": [],
-      "status": "specified",
-      "product_test": "not_run",
-      "related": []
+      "contract_fixtures": [
+        "packages/contracts/fixtures/schema-cases.json#ma06-runtime-config-credit-no-profile",
+        "packages/contracts/fixtures/budget-credit.json#ma06-claude-voice",
+        "packages/contracts/fixtures/budget-credit.json#ma06-claude-search",
+        "packages/contracts/fixtures/budget-credit.json#ma06-luna-llm",
+        "packages/contracts/fixtures/budget-credit.json#ma06-settle-credit-without-cycle",
+        "packages/contracts/fixtures/budget-credit.json#ma06-manual-credit-on-uncredited-reservation"
+      ],
+      "status": "contract_fixture",
+      "product_test": "simulated",
+      "related": [],
+      "product_evidence": [
+        "tests/integration/evidence-b07-simulated.json#MA06-credit-only-for-claude"
+      ],
+      "product_scope": "B07-07 の固定 seed 3 回・合成の通貨 XTS（予算）と XXX（残高）・縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。残高の観測はメモリの模擬（本人が書くファイルの読み込みは Core の試験で別に確認）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、クレジットの区分は予約の行だけから別に数えて検査。実 API・実請求・Console の実残高との照合は未実施で、実請求の照合は B15。 音声・検索・Luna には Claude のクレジットを充てない（Claude の profile の ID を音声・検索の要求に付けても充てない）。本文・応答の実料金が不明なものを 0 円と確定せず、クレジットを充てた扱いにもしない。Console の実残高照合は模擬試験とは別の証拠で、未実施。"
     }
   ]
 }

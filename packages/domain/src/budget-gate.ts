@@ -9,6 +9,8 @@
 // 個人の金額・単価・為替はコードに置かない。設定の値は呼び出し側が渡す。
 
 import type { BudgetSettings } from './budget.js';
+import { creditConfigErrors } from './budget-credit.js';
+import type { BudgetCreditConfigInput } from './budget-credit.js';
 import type { BudgetOrigin, PriceVersionInput } from './budget-rules.js';
 
 export type BudgetService = 'llm' | 'search' | 'voice';
@@ -59,6 +61,8 @@ export interface BudgetRuntimeConfigInput {
   readonly budget: BudgetConfigInput;
   readonly price_versions: readonly PriceVersionInput[];
   readonly routing: BudgetRoutingInput;
+  // 付帯クレジットの区分の設定（B07-07）。省略はクレジットを使わない。
+  readonly credit?: BudgetCreditConfigInput;
 }
 
 // 起点とサービスから計上する葉の枠。設定にない（null）なら受け付けない。
@@ -335,6 +339,8 @@ export function budgetRuntimeConfigErrors(
         errors.push('price_period_overlap');
   });
   errors.push(...routingErrors(value.budget, value.routing));
+  if (value.credit !== undefined)
+    errors.push(...creditConfigErrors(value.credit, value.budget.currency));
   return errors;
 }
 

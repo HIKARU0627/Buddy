@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { FORGET_ARTIFACT_KINDS } from '@buddy/domain';
 import {
   applyMigrations,
   executeBudgetOp,
@@ -36,16 +37,22 @@ function withDb(run: (db: SqliteDatabase) => void): void {
   }
 }
 
-function insertMonth(db: SqliteDatabase, month = MONTH): void {
+function insertMonth(
+  db: SqliteDatabase,
+  month = MONTH,
+  timeZone = 'UTC',
+  monthStart = Date.UTC(2030, 9, 1),
+): void {
   db.prepare(
-    "INSERT INTO budget_months (month, time_zone, month_start, month_start_time_zone, recorded_at) VALUES (?, 'UTC', ?, 'UTC', 1)",
-  ).run(month, Date.UTC(2030, 9, 1));
+    'INSERT INTO budget_months (month, time_zone, month_start, month_start_time_zone, recorded_at) VALUES (?, ?, ?, ?, 1)',
+  ).run(month, timeZone, monthStart, timeZone);
 }
 
 interface ReservationInput {
   readonly id: string;
   readonly request: string;
   readonly status: 'reserved' | 'usage_unknown' | 'settled' | 'released';
+  readonly month?: string;
   readonly max?: number;
   readonly actual?: number;
   readonly reviewed?: boolean;
@@ -67,7 +74,7 @@ function insertReservation(db: SqliteDatabase, input: ReservationInput): void {
   ).run(
     input.id,
     input.request,
-    MONTH,
+    input.month ?? MONTH,
     input.max ?? 20,
     input.status,
     input.approvalId ?? null,
@@ -233,6 +240,60 @@ test('settling, releasing and confirming an overrun write the month-close deadli
   });
 });
 
+test('delete_at follows the month close in Asia/Tokyo and America/New_York (hand-written values)', () => {
+  // 2030-10 の締め（東京）は 2030-10-31T15:00:00Z。13 か月後は 2031-11-30T15:00:00Z。
+  // 2030-03 の締め（ニューヨーク、夏時間）は 2030-04-01T04:00:00Z。13 か月後は 2031-05-01T04:00:00Z。
+  const cases = [
+    {
+      month: '2030-10',
+      timeZone: 'Asia/Tokyo',
+      monthStart: Date.UTC(2030, 9, 1),
+      expected: '2031-11-30T15:00:00Z',
+    },
+    {
+      month: '2030-03',
+      timeZone: 'America/New_York',
+      // 2030-03-01 00:00 ニューヨーク（EST、UTC−5）は 05:00Z。
+      monthStart: Date.UTC(2030, 2, 1, 5),
+      expected: '2031-05-01T04:00:00Z',
+    },
+  ] as const;
+  for (const [index, item] of cases.entries()) {
+    withDb((db) => {
+      const id = uuid(100 + index);
+      const request = uuid(200 + index);
+      insertMonth(db, item.month, item.timeZone, item.monthStart);
+      insertReservation(db, {
+        id,
+        request,
+        status: 'reserved',
+        month: item.month,
+      });
+      assert.equal(
+        budgetResult(db, {
+          kind: 'budget.settle',
+          reservation_id: id,
+          request_id: request,
+          provider: 'anthropic',
+          provider_reconciliation_id: `p-tz-${index}`,
+          actual_gross: '15',
+          now: 2000,
+        }).ok,
+        true,
+      );
+      assert.equal(
+        db
+          .prepare(
+            'SELECT delete_at FROM budget_reservations WHERE reservation_id = ?',
+          )
+          .pluck()
+          .get(id),
+        Date.parse(item.expected),
+      );
+    });
+  }
+});
+
 test('a reservation without delete_at cannot be deleted (DB final guard)', () => {
   withDb((db) => {
     insertMonth(db);
@@ -257,6 +318,35 @@ test('a reservation without delete_at cannot be deleted (DB final guard)', () =>
           )
           .run(DELETE_AT, uuid(7)),
       /budget_delete_at_invalid/u,
+    );
+    // 作った時刻から 364 日より前の期限は早すぎる（月の締めから 13 か月後は、どの月でも 395 日以上ある）。
+    insertReservation(db, {
+      id: uuid(9),
+      request: uuid(10),
+      status: 'settled',
+      actual: 10,
+    });
+    const earliest = 1000 + 364 * 86400000;
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            'UPDATE budget_reservations SET delete_at = ? WHERE reservation_id = ?',
+          )
+          .run(earliest - 1, uuid(9)),
+      /budget_delete_at_invalid/u,
+    );
+    db.prepare(
+      'UPDATE budget_reservations SET delete_at = ? WHERE reservation_id = ?',
+    ).run(earliest, uuid(9));
+    assert.equal(
+      db
+        .prepare(
+          'SELECT delete_at FROM budget_reservations WHERE reservation_id = ?',
+        )
+        .pluck()
+        .get(uuid(9)),
+      earliest,
     );
   });
 });
@@ -380,6 +470,141 @@ test('one open row keeps the whole month, and a future delete_at keeps it too', 
   });
 });
 
+test('INSERT OR REPLACE cannot get around the delete guard for reservations', () => {
+  withDb((db) => {
+    insertMonth(db);
+    insertReservation(db, {
+      id: uuid(30),
+      request: uuid(31),
+      status: 'settled',
+      actual: 10,
+      deleteAt: DELETE_AT,
+    });
+    const replace = db.prepare(
+      `INSERT OR REPLACE INTO budget_reservations (
+        reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month,
+        currency, price_version, reserved_amount, max_liability, status, reservation_revision,
+        approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind,
+        credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at, delete_at
+      ) VALUES (?, ?, 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', ?, 'XTS', 'price-1', 0, 20,
+        'settled', 1, NULL, 10, 0, 10, ?, 'provider', NULL, 1500, 0, NULL, 1000, ?)`,
+    );
+    // 予約 ID・要求 ID・照合 ID のどれかが既存の行と衝突したら、置き換えない。
+    for (const [id, request, provider] of [
+      [uuid(30), uuid(32), `anthropic:${uuid(32)}`],
+      [uuid(33), uuid(31), `anthropic:${uuid(33)}`],
+      [uuid(34), uuid(34), `anthropic:${uuid(31)}`],
+    ]) {
+      assert.throws(
+        () => replace.run(id, request, MONTH, provider, DELETE_AT),
+        /budget_reservation_replace/u,
+      );
+    }
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT reservation_id, request_id, provider_reconciliation_id, delete_at FROM budget_reservations',
+        )
+        .all(),
+      [
+        {
+          reservation_id: uuid(30),
+          request_id: uuid(31),
+          provider_reconciliation_id: `anthropic:${uuid(31)}`,
+          delete_at: DELETE_AT,
+        },
+      ],
+    );
+  });
+});
+
+// 期限が来ても消さない月（使用量不明・M 超過の確認待ち・予算月の記録なし・期限の 1 ms 前）。
+test('purge_month refuses months with unknown usage, an unreviewed overrun, no month record or one millisecond early', () => {
+  withDb((db) => {
+    insertMonth(db);
+    insertReservation(db, {
+      id: uuid(40),
+      request: uuid(41),
+      status: 'usage_unknown',
+    });
+    assert.deepEqual(
+      budgetResult(db, {
+        kind: 'budget.purge_month',
+        budget_month: MONTH,
+        now: DELETE_AT,
+      }),
+      { ok: false, outcome: 'rejected', reasons: ['month_has_open_rows'] },
+    );
+    assert.equal(
+      db.prepare('SELECT count(*) FROM budget_reservations').pluck().get(),
+      1,
+    );
+  });
+  withDb((db) => {
+    insertMonth(db);
+    insertReservation(db, {
+      id: uuid(42),
+      request: uuid(43),
+      status: 'settled',
+      max: 20,
+      actual: 30,
+    });
+    assert.deepEqual(
+      budgetResult(db, {
+        kind: 'budget.purge_month',
+        budget_month: MONTH,
+        now: DELETE_AT,
+      }),
+      { ok: false, outcome: 'rejected', reasons: ['month_has_open_rows'] },
+    );
+    assert.equal(
+      db.prepare('SELECT count(*) FROM budget_reservations').pluck().get(),
+      1,
+    );
+  });
+  withDb((db) => {
+    insertReservation(db, {
+      id: uuid(44),
+      request: uuid(45),
+      status: 'released',
+      deleteAt: DELETE_AT,
+    });
+    assert.deepEqual(
+      budgetResult(db, {
+        kind: 'budget.purge_month',
+        budget_month: MONTH,
+        now: DELETE_AT,
+      }),
+      { ok: false, outcome: 'rejected', reasons: ['calendar_invalid'] },
+    );
+    assert.equal(
+      db.prepare('SELECT count(*) FROM budget_reservations').pluck().get(),
+      1,
+    );
+  });
+  withDb((db) => {
+    insertMonth(db);
+    insertReservation(db, {
+      id: uuid(46),
+      request: uuid(47),
+      status: 'released',
+      deleteAt: DELETE_AT,
+    });
+    assert.deepEqual(
+      budgetResult(db, {
+        kind: 'budget.purge_month',
+        budget_month: MONTH,
+        now: DELETE_AT - 1,
+      }),
+      { ok: false, outcome: 'rejected', reasons: ['not_due'] },
+    );
+    assert.equal(
+      db.prepare('SELECT count(*) FROM budget_reservations').pluck().get(),
+      1,
+    );
+  });
+});
+
 test('private_minimal operations cannot carry a workflow, and record_kind is limited', () => {
   withDb((db) => {
     db.prepare(
@@ -412,6 +637,41 @@ test('private_minimal operations cannot carry a workflow, and record_kind is lim
           )
           .run(),
       /operation_private_minimal_workflow/u,
+    );
+    // 逆向き（private_minimal → normal）は拒否する。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE operations SET record_kind = 'normal' WHERE operation_id = 'op-private-ok'",
+          )
+          .run(),
+      /operation_record_kind_fixed/u,
+    );
+    // private_minimal の操作は、依頼と操作の結び付け（自動作成の一度だけの記録）に使わない。
+    db.prepare(
+      "INSERT INTO request_entities VALUES ('re-1', 'acct-1', 'thread-1', 'msg-1', 1, 'active', 0, NULL, 1000, NULL)",
+    ).run();
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO request_entity_operations VALUES ('re-1', 'label_mail', 'acct-1', '', 'op-private-ok')",
+          )
+          .run(),
+      /operation_private_minimal_request_entity/u,
+    );
+    db.prepare(
+      "INSERT INTO request_entity_operations VALUES ('re-1', 'label_mail', 'acct-1', '', 'op-normal')",
+    ).run();
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE request_entity_operations SET operation_id = 'op-private-ok' WHERE operation_id = 'op-normal'",
+          )
+          .run(),
+      /operation_private_minimal_request_entity/u,
     );
     assert.throws(
       () => insert('op-bad', 'private', null),
@@ -459,6 +719,46 @@ test('a restore-unverified operation rejects approvals, approved/preparing trans
         )
         .run(id, state, recordKind, marked);
     insertOp('op-r', 'awaiting_approval', 2000);
+    // 印のある操作は INSERT OR REPLACE で入れ替えない（印・状態・記録の種類を消さない）。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT OR REPLACE INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at, completed_at, record_kind, restore_unverified_at) VALUES ('op-r', NULL, 'mail.labels.change', 'remote_mutation', 1, 'awaiting_approval', 0, 1000, NULL, 'normal', NULL)",
+          )
+          .run(),
+      /operation_replace/u,
+    );
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT state, restore_unverified_at FROM operations WHERE operation_id = 'op-r'",
+        )
+        .get(),
+      { state: 'awaiting_approval', restore_unverified_at: 2000 },
+    );
+    // 印を付けられるのは remote_mutation の操作だけ（挿入でも更新でも拒否する）。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at, completed_at, record_kind, restore_unverified_at) VALUES ('op-local', NULL, 'task.create', 'local_command', 1, 'awaiting_approval', 0, 1000, NULL, 'normal', 2000)",
+          )
+          .run(),
+      /operation_restore_unverified_route/u,
+    );
+    db.prepare(
+      "INSERT INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at, completed_at, record_kind, restore_unverified_at) VALUES ('op-local-2', NULL, 'task.create', 'local_command', 1, 'awaiting_approval', 0, 1000, NULL, 'normal', NULL)",
+    ).run();
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE operations SET restore_unverified_at = 2000 WHERE operation_id = 'op-local-2'",
+          )
+          .run(),
+      /operation_restore_unverified_route/u,
+    );
     db.prepare(
       "INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at) VALUES ('op-r', 1, ?, 'b-1', 1000)",
     ).run(HASH);
@@ -488,6 +788,16 @@ test('a restore-unverified operation rejects approvals, approved/preparing trans
         db
           .prepare(
             "UPDATE operations SET state = 'preparing' WHERE operation_id = 'op-r2'",
+          )
+          .run(),
+      /operation_restore_unverified/u,
+    );
+    // 送出の手前（dispatching）へも進めない。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE operations SET state = 'dispatching' WHERE operation_id = 'op-r2'",
           )
           .run(),
       /operation_restore_unverified/u,
@@ -527,6 +837,34 @@ test('a restore-unverified operation rejects approvals, approved/preparing trans
         .pluck()
         .get(),
       1,
+    );
+    // 印を付ける前に作った試行も、印がある間は dispatching へ進めない。印を外せば進める。
+    db.prepare(
+      "UPDATE operations SET restore_unverified_at = 2000 WHERE operation_id = 'op-r3'",
+    ).run();
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE operation_attempts SET status = 'dispatching', dispatch_intent_at = 3000 WHERE attempt_id = 'at-r3'",
+          )
+          .run(),
+      /operation_restore_unverified/u,
+    );
+    db.prepare(
+      "UPDATE operations SET restore_unverified_at = NULL WHERE operation_id = 'op-r3'",
+    ).run();
+    db.prepare(
+      "UPDATE operation_attempts SET status = 'dispatching', dispatch_intent_at = 3000 WHERE attempt_id = 'at-r3'",
+    ).run();
+    assert.equal(
+      db
+        .prepare(
+          "SELECT status FROM operation_attempts WHERE attempt_id = 'at-r3'",
+        )
+        .pluck()
+        .get(),
+      'dispatching',
     );
   });
 });
@@ -582,7 +920,43 @@ test('derivations reject duplicates and read back by source', () => {
           source_id: 'turn-1',
           created_at: 1300,
         }),
-      /UNIQUE constraint failed/u,
+      /derivation_fixed/u,
+    );
+    // 書いた辺は変えず、INSERT OR REPLACE でも入れ替えない。削除は忘却で使うので許す。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE derivations SET created_at = 1400 WHERE artifact_id = 'summary-1'",
+          )
+          .run(),
+      /derivation_fixed/u,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT OR REPLACE INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES ('session_summary', 'summary-1', 'turn', 'turn-1', 1400)",
+          )
+          .run(),
+      /derivation_fixed/u,
+    );
+    // 自分自身を由来にしない。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES ('turn', 'same-1', 'turn', 'same-1', 1000)",
+          )
+          .run(),
+      /CHECK constraint failed/u,
+    );
+    db.prepare(
+      "DELETE FROM derivations WHERE artifact_kind = 'notification_candidate'",
+    ).run();
+    assert.equal(
+      db.prepare('SELECT count(*) FROM derivations').pluck().get(),
+      2,
     );
     assert.throws(
       () =>
@@ -593,6 +967,85 @@ test('derivations reject duplicates and read back by source', () => {
           source_id: 'turn-1',
           created_at: 1300,
         } as never),
+      /CHECK constraint failed/u,
+    );
+  });
+});
+
+test('the derivations CHECK lists exactly turn, memory and FORGET_ARTIFACT_KINDS', () => {
+  // 手で書いた期待値（domain の FORGET_ARTIFACT_KINDS と、由来を引けない種類の turn・memory）。
+  const artifactKinds = [
+    'turn',
+    'memory',
+    'session_summary',
+    'carried_summary',
+    'notification_candidate',
+    'request_entity',
+    'related_analysis',
+    'canvas_item',
+    'intent_shadow',
+    'operation_content',
+    'async_guard',
+  ];
+  const sourceKinds = [
+    'turn',
+    'source_item',
+    'memory',
+    'session_summary',
+    'carried_summary',
+    'notification_candidate',
+    'request_entity',
+    'related_analysis',
+    'canvas_item',
+    'intent_shadow',
+    'operation_content',
+    'async_guard',
+  ];
+  assert.deepEqual([...FORGET_ARTIFACT_KINDS], artifactKinds.slice(2));
+  withDb((db) => {
+    const sql = db
+      .prepare(
+        "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'derivations'",
+      )
+      .pluck()
+      .get();
+    assert.equal(typeof sql, 'string');
+    const checked = (column: string): string[] => {
+      const match = new RegExp(
+        `${column}\\s+TEXT\\s+NOT\\s+NULL\\s+CHECK\\s*\\(\\s*${column}\\s+IN\\s*\\(([^)]*)\\)`,
+        'u',
+      ).exec(sql as string);
+      assert.notEqual(match, null, column);
+      return ((match as RegExpExecArray)[1] ?? '')
+        .split(',')
+        .map((item) => item.trim().replace(/^'|'$/gu, ''));
+    };
+    assert.deepEqual(checked('artifact_kind'), artifactKinds);
+    assert.deepEqual(checked('source_kind'), sourceKinds);
+    // 期待した種類はすべて通り、知らない種類と、artifact_kind に許さない source_item は拒否する。
+    for (const [index, kind] of artifactKinds.entries())
+      db.prepare(
+        "INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES (?, ?, 'turn', ?, 1000)",
+      ).run(kind, `a-${index}`, `t-${index}`);
+    db.prepare(
+      "INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES ('session_summary', 'from-source-item', 'source_item', 's-1', 1000)",
+    ).run();
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES ('session', 's', 'turn', 't', 1000)",
+          )
+          .run(),
+      /CHECK constraint failed/u,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES ('source_item', 's', 'turn', 't', 1000)",
+          )
+          .run(),
       /CHECK constraint failed/u,
     );
   });

@@ -177,7 +177,7 @@
         ],
         [
           "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-2', 'q-1', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
-          "unique"
+          "trigger:budget_reservation_replace"
         ],
         [
           "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-3', 'q-3', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 300, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
@@ -201,7 +201,7 @@
         ],
         [
           "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-6', 'q-6', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'settled', 1, NULL, 10, 0, 10, 'anthropic:p-1', 'provider', NULL, 2000, 0, NULL, 1000)",
-          "unique"
+          "trigger:budget_reservation_replace"
         ],
         [
           "UPDATE budget_reservations SET budget_month = '2030-11' WHERE reservation_id = 'r-1'",

@@ -232,7 +232,11 @@
         "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-derived-from-forgotten",
         "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-item-with-body-field-rejected",
         "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-item-id-is-sentence-rejected",
-        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-with-summary-field-rejected"
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-with-summary-field-rejected",
+        "packages/contracts/fixtures/forget-plan-cases.json#x15-forget-memory-closure",
+        "packages/contracts/fixtures/forget-plan-cases.json#x15-forget-turn-removes-memories-made-from-it",
+        "packages/contracts/fixtures/forget-plan-cases.json#x15-in-flight-operations-are-never-touched",
+        "packages/contracts/fixtures/forget-plan-cases.json#forgotten-source-late"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -299,7 +303,22 @@
         "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private-opens-live-rejected",
         "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private-persists-turns-rejected",
         "packages/contracts/fixtures/storage-contract-cases.json#x17-backup-manifest-includes-private-rejected",
-        "packages/contracts/fixtures/storage-contract-cases.json#x17-backup-manifest-private-exclusion-missing-rejected"
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-backup-manifest-private-exclusion-missing-rejected",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-enter-hold-in-ram-exit",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-enter-while-live-open",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-enter-while-live-connecting",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-external-change-approved-then-exit",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-external-change-exit-before-approval",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-late-results-after-exit",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-reentry-stale-approval",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-input-after-exit",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-operation-id-reused",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-live-connected-while-closed",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-confirmation-label-item-is-object",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-confirmation-turn-text-rejected",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-approval-voice-yes-rejected",
+        "packages/contracts/fixtures/storage-mode-cases.json#row-open-live",
+        "packages/contracts/fixtures/storage-mode-cases.json#row-local-asr"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -517,9 +536,14 @@
     },
     {
       "id": "X36",
-      "phases": ["B03", "B05", "B10"],
-      "contract_fixtures": [],
-      "status": "specified",
+      "phases": ["B03", "B05", "B06", "B10"],
+      "contract_fixtures": [
+        "packages/contracts/fixtures/storage-mode-cases.json#x36-normal-writes-and-invalid-events",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-input-after-exit",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-enter-while-live-open",
+        "packages/contracts/fixtures/storage-mode-cases.json#row-persist-turns"
+      ],
+      "status": "contract_fixture",
       "product_test": "not_run",
       "t": ["T01", "T06"]
     },
@@ -613,6 +637,8 @@
         "packages/contracts/fixtures/memory-cases.json#x44-six-exchanges",
         "packages/contracts/fixtures/memory-cases.json#x44-two-exchanges",
         "packages/contracts/fixtures/memory-cases.json#x44-two-exchanges-with-memory-save",
+        "packages/contracts/fixtures/forget-plan-cases.json#content-ban-stops-auto-extraction",
+        "packages/contracts/fixtures/storage-mode-cases.json#row-extract-memory",
         "tests/fixtures/retention-sweep-cases.json#x44-memory-review-due-at-exact-deadline",
         "tests/fixtures/retention-sweep-cases.json#x44-memory-unanswered-review-deleted-at-exact-deadline",
         "tests/fixtures/storage-cases.json#memories-one-live-content-and-no-extension"
@@ -651,11 +677,13 @@
     },
     {
       "id": "X48",
-      "phases": ["B07", "B10"],
+      "phases": ["B06", "B07", "B10"],
       "contract_fixtures": [
         "packages/contracts/fixtures/evaluation-cases.json#shadow-summary-cannot-be-evidence",
         "packages/contracts/fixtures/evaluation-cases.json#x48-private-conversation",
-        "packages/contracts/fixtures/evaluation-cases.json#x48-stops-at-300"
+        "packages/contracts/fixtures/evaluation-cases.json#x48-stops-at-300",
+        "packages/contracts/fixtures/storage-mode-cases.json#row-record-shadow",
+        "packages/contracts/fixtures/storage-mode-cases.json#x48-confirmation-shadow-rejected"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -785,7 +813,10 @@
         "packages/contracts/fixtures/memory-cases.json#private-conversation",
         "packages/contracts/fixtures/readiness-cases.json#full-audio-memory-save",
         "packages/contracts/fixtures/readiness-cases.json#live-create-task",
-        "packages/contracts/fixtures/readiness-cases.json#live-memory-save-needs-full-text"
+        "packages/contracts/fixtures/readiness-cases.json#live-memory-save-needs-full-text",
+        "packages/contracts/fixtures/forget-plan-cases.json#x59-private-conversation-persist",
+        "packages/contracts/fixtures/storage-mode-cases.json#row-save-memory",
+        "packages/contracts/fixtures/storage-mode-cases.json#x59-confirmation-memory-sources-rejected"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -1246,7 +1277,9 @@
       "id": "QA34",
       "phases": ["B05", "B06", "B10", "B13"],
       "contract_fixtures": [
-        "packages/contracts/fixtures/delivery-cases.json#voice-result-old-device"
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-old-device",
+        "packages/contracts/fixtures/forget-plan-cases.json#unrelated-forgetting-passes-when-scoped",
+        "packages/contracts/fixtures/forget-plan-cases.json#forgotten-source-late"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

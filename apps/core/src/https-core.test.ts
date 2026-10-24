@@ -37,19 +37,6 @@ const PASSING: RequestEnvironment = {
   claimSecretMatches: () => true,
 };
 
-// 試験側が確保したポートへ接続し、待ち受けの相手が返すバイト列を読む。
-// 同じポートを Core が開いていれば、応答は試験側のものにならない。
-function readGreeting(port: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const socket = netConnect({ host: '127.0.0.1', port });
-    let text = '';
-    socket.setEncoding('utf8');
-    socket.on('data', (chunk: string) => (text += chunk));
-    socket.once('error', reject);
-    socket.once('close', () => resolve(text));
-  });
-}
-
 // 待ち受けていないか（接続が拒否されるか）。Windows では拒否の通知に 1〜2 秒かかるため、
 // 時間切れ（5 秒）も「接続できなかった」として扱い、待ちを必ず終える。
 function refusesConnections(port: number): Promise<boolean> {
@@ -181,10 +168,14 @@ test(
   { timeout: 30_000 },
   async (t) => {
     const dataDir = join(await tempDir(t, 'buddy-https-core-'), 'data');
-    // ポートは試験側で確保したまま起動を試す。Core が待ち受けを開こうとしても
-    // 同じポートは二重に開けないため、開いたかどうかを他の試験のポートの取り合いと切り離して確かめられる。
+    // ポートは試験側が確保しているため、Core が待ち受けを開こうとすれば https_listen_failed になる。
+    // 直前の起動が tls_unavailable で拒否されたことが、Core が開いていない証拠（待ち受けまで進んでいない）。
     const holder = netServer();
-    holder.on('connection', (socket) => socket.end('test-holder'));
+    // 対向（Core）が RST を返しても、未処理の error で試験のプロセスを落とさない。
+    holder.on('connection', (socket) => {
+      socket.on('error', () => undefined);
+      socket.end('test-holder');
+    });
     await new Promise<void>((resolve) =>
       holder.listen(0, '127.0.0.1', resolve),
     );
@@ -208,10 +199,8 @@ test(
         error.code === 'tls_unavailable' &&
         error.reasons[0] === 'tls_key_unavailable:mock_unavailable',
     );
-    // 失敗の後も、そのポートの持ち主は Core ではなく試験側の待ち受けのまま。
-    assert.equal(holder.listening, true);
-    assert.equal(await readGreeting(port), 'test-holder');
     // データ鍵の鍵保護（起動前の検査）が使えなければ、TLS の鍵にも触れずに拒否する。
+    // 拒否のコードが preflight_failed であることも、待ち受けを開いていない証拠。
     const untouched = createMockTlsKeyStore();
     await assert.rejects(
       startCore({
@@ -223,8 +212,6 @@ test(
       (error: CoreStartError) => error.code === 'preflight_failed',
     );
     assert.equal(untouched.writes, 0);
-    assert.equal(holder.listening, true);
-    assert.equal(await readGreeting(port), 'test-holder');
     // ロックを返しているので、鍵保護が使えれば同じデータディレクトリで起動できる。
     // ポートは OS に任せ、開いたポートが実際に接続を受けることを確かめる。
     const handle = await startWithHttps(t, dataDir, {

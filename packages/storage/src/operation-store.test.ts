@@ -717,6 +717,29 @@ test('bulk writes are split into transactions of at most 50 items or 20 ms', asy
   });
 });
 
+test('the bulk write with the default clock splits every item when the time limit is zero', async () => {
+  await withStore((db) => {
+    db.exec('CREATE TEMP TABLE bulk (n INTEGER NOT NULL)');
+    const items = [1, 2, 3];
+    const write = (n: number): void => {
+      db.prepare('INSERT INTO bulk (n) VALUES (?)').run(n);
+    };
+    // 時計を渡さず、実時間（performance.now）を使う。上限 0ms では 1 件書いた時点で
+    // 経過が必ず 0 以上になるため、実測の値に関係なく 1 件ずつ区切られる。
+    const ends: number[] = [];
+    for (let index = 0; index < items.length;) {
+      index = writeBulkSlice(db, items, index, write, { maxMilliseconds: 0 });
+      ends.push(index);
+    }
+    assert.deepEqual(ends, [1, 2, 3]);
+    assert.deepEqual(db.prepare('SELECT n FROM bulk ORDER BY n').all(), [
+      { n: 1 },
+      { n: 2 },
+      { n: 3 },
+    ]);
+  });
+});
+
 test('recovery after a restart moves only dispatching attempts to unknown_held and records it (08 §4)', async () => {
   await withStore((db) => {
     // op-p: preparing のまま。op-d: 送出意図の記録の後（dispatching）。op-a: 承認済み。

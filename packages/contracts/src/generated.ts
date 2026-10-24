@@ -612,6 +612,22 @@ export type ExecutorGeneration = string;
 export type MemoryKind =
   'preference' | 'goal' | 'person' | 'routine' | 'lexicon' | 'progress';
 /**
+ * 記憶の由来（発言・元情報・別の記憶）。本文は持たない（設計 03 忘却と再取り込み）。発言（turn）と別の記憶（memory）は Buddy 内の ID（Id）、元情報（source_item）は元サービスの ID（OriginalSourceId）に限る（ADR 0040）。
+ */
+export type MemorySourceRef =
+  | {
+      source_kind: 'turn' | 'memory';
+      source_id: Id;
+    }
+  | {
+      source_kind: 'source_item';
+      source_id: OriginalSourceId;
+    };
+/**
+ * 元サービスの対象 ID（メール・予定・添付などの provider の ID）と、忘却の台帳の再登録を禁じる元の ID の文字列表現（B06-01 の Codex のレビュー P1、ADR 0040）。英数字と . _ : = + ~ - だけで 256 文字まで。空白・日本語・文を入れられない（本文・検索語を ID の欄に混ぜて永続化させない）。内部の ID（turn・memory）は Id を使う。
+ */
+export type OriginalSourceId = string;
+/**
  * 採否を決める用途（設計 05 評価の進め方）。全用途をまとめた値は置かない。memory_extraction は独立した用途で、正解付きセットができるまで未評価（ADR 0008）。
  */
 export type EvaluationUse =
@@ -1780,7 +1796,7 @@ export type StorageModeState =
       };
     };
 /**
- * 復旧キーの記録（J1、ADR 0040）。Core が保存する秘密でない情報で、復旧キーそのものを持たない。check_value は復旧キーから別の用途ラベルで導いた 32 ビットの確認用の値で、復元で入力したキーの打ち間違いを先に見つけるためだけに使う。shown は本人へ 1 度だけ表示した後の状態で、以後キーは再表示できない。
+ * 復旧キーの記録（J1、ADR 0040）。Core が保存する秘密でない情報で、復旧キーそのものを持たない（Core は復旧キーを知らない）。check_value は CLI が復旧キーから別の用途ラベルで導いた 32 ビットの確認用の値で、復元で入力したキーの打ち間違いを先に見つけるためだけに使う。shown は本人へ 1 度だけ表示した後の状態で、以後キーは再表示できない。
  */
 export type RecoveryKeyRecord =
   | {
@@ -3532,13 +3548,6 @@ export interface MemoryCandidate {
   created_at: UtcTime;
 }
 /**
- * 記憶の由来（発言・元情報・別の記憶）。本文は持たない（設計 03 忘却と再取り込み）。
- */
-export interface MemorySourceRef {
-  source_kind: 'turn' | 'source_item' | 'memory';
-  source_id: string;
-}
-/**
  * 保存した要約記憶（設計 03 保存期限）。保存から 90 日で見直し待ち、見直し待ちは自動提案の根拠から外し 30 日未応答で削除する。利用・再要約・重複の再抽出で期限を延ばさない。
  */
 export interface MemoryRecord {
@@ -3569,7 +3578,7 @@ export interface ForgetLedgerEntry {
    * @minItems 1
    */
   forgotten: [MemorySourceRef, ...MemorySourceRef[]];
-  blocked_source_ids: string[];
+  blocked_source_ids: OriginalSourceId[];
   blocked_content_keys: Hash[];
 }
 /**
@@ -5360,7 +5369,7 @@ export interface BackupManifest {
   key_wraps: unknown[] & [BackupKeyWrap, BackupKeyWrap];
 }
 /**
- * 復旧キーで包んだ鍵 1 つ（J1、ADR 0040）。復旧キーは 256 ビットの乱数で、HKDF-SHA256（salt 付き）で導いた鍵で AES-256-GCM により包む。purpose が backup_file ならバックアップ本体の鍵、data_key なら DB の暗号文（sealed_blobs）の鍵。包んだ値だけで、平文の鍵・復旧キーを持たない。
+ * 復旧キーで包んだ鍵 1 つ（J1、ADR 0040）。復旧キーは 256 ビットの乱数で、HKDF-SHA256（salt 付き）で導いた鍵で AES-256-GCM により包む。包むのは設定のときに CLI のプロセスが 1 度だけ行い（Core は復旧キーを持たない）、毎回の封筒には同じ包みを写す。purpose が backup_file ならバックアップ本体の鍵（毎回の暗号化はこの鍵と backup_id から導く）、data_key なら DB の暗号文（sealed_blobs）の鍵。包んだ値だけで、平文の鍵・復旧キーを持たない。
  */
 export interface BackupKeyWrap {
   purpose: 'backup_file' | 'data_key';
@@ -5404,7 +5413,7 @@ export interface RestoreResult {
   after_restore: RestoreAftermath | null;
 }
 /**
- * 復元で戻した後の状態（J3、ADR 0040）。DB の世代は新しい値にし、有効だった承認はすべて失効、進行中の操作は結果不明として保留、外部への送信の同意は取り直し、外部サービスの接続は再認証。件数だけで ID・本文を持たない。
+ * 復元で戻した後の状態（J3、ADR 0040）。DB の世代は新しい値にし、有効だった承認はすべて失効、進行中の操作は結果不明として保留（operations_held_count）、バックアップの後に実行された可能性のある外部変更の操作（承認待ちを含む）は通常の承認・送出から隔離して照合する（operations_unverified_count）、外部への送信の同意は取り直し、外部サービスの接続は再認証。件数だけで ID・本文を持たない。
  */
 export interface RestoreAftermath {
   new_store_generation: StoreGeneration;
@@ -5413,18 +5422,19 @@ export interface RestoreAftermath {
   forgotten_applied_count: number;
   approvals_revoked_count: number;
   operations_held_count: number;
+  operations_unverified_count: number;
   consents_reset: true;
   connections_reauth_required: true;
 }
 /**
- * 知らせの対象 1 件。ID だけ（空白・日本語を含む文を入れられない）。carried_summary の item_id は要約をつないだ区間の ID。
+ * 知らせの対象 1 件。ID だけ（OriginalSourceId の文字種に限り、空白・日本語を含む文を入れられない）。carried_summary の item_id は要約をつないだ区間の ID。
  */
 export interface RetentionNoticeItem {
   item_kind: 'turn' | 'source_item' | 'memory' | 'carried_summary';
-  item_id: string;
+  item_id: OriginalSourceId;
 }
 /**
- * 復旧キーの初回の表示（J1、ADR 0040）。自動で作った 256 ビットの乱数を Crockford base32（4 文字 × 13 組）にした文字列で、作った直後に 1 度だけローカルの操作（CLI・中枢の画面）へ返す。HTTP・イベント・ログ・DB・バックアップへ出さない。
+ * 復旧キーの初回の表示（J1、ADR 0040）。CLI のプロセスが OS の乱数で作った 256 ビットを Crockford base32（4 文字 × 13 組）にした文字列で、作った直後に 1 度だけ端末の画面へ出す。Core には渡さず（Core へ渡すのは包んだ鍵 BackupKeyWrap と確認値だけ）、HTTP・制御チャネル・イベント・ログ・DB・バックアップへ出さない。
  */
 export interface RecoveryKeyDisplay {
   schema: 'buddy.recovery-key-display.v1';

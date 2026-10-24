@@ -585,6 +585,475 @@
       }
     },
     {
+      "id": "x16-ledger-turn-id-sentence-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "忘れた発言の ID に文を入れられない（日本語の文）。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "合成の秘密を忘れてください"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-memory-id-sentence-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "忘れた記憶の ID に文を入れられない（空白を含む文）。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "memory",
+                  "source_id": "synthetic search sentence"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-turn-id-not-internal-id-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "発言・記憶の ID は Buddy 内の ID（UUID）に限る。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "turn-10"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-source-item-id-sentence-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "元情報の ID に文を入れられない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "synthetic search sentence"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-source-item-id-too-long-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "元情報の ID は 256 文字まで。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-id-sentence-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "再登録を禁じる元の ID の欄に文（検索語）を入れられない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["synthetic search sentence"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-id-japanese-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "再登録を禁じる元の ID の欄に日本語の文を入れられない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["合成の秘密を忘れてください"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-id-too-long-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "再登録を禁じる元の ID は 256 文字まで。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": [
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-replica-id-sentence-rejected",
+      "schema": "ForgetLedgerReplica",
+      "valid": false,
+      "note": "端末への複製でも ID の欄に文を入れられない。",
+      "value": {
+        "schema": "buddy.forget-ledger-replica.v1",
+        "device_id": "00000000-0000-4000-8000-000000001101",
+        "replicated_at": "2026-10-07T21:16:00Z",
+        "ledger": {
+          "schema": "buddy.forget-ledger-file.v1",
+          "ledger_id": "00000000-0000-4000-8000-000000001001",
+          "entries": [
+            {
+              "entry": {
+                "schema": "buddy.forget-ledger.v1",
+                "entry_id": "00000000-0000-4000-8000-000000002001",
+                "forgetting_generation": "1",
+                "recorded_at": "2026-10-01T09:00:00Z",
+                "forgotten": [
+                  {
+                    "source_kind": "turn",
+                    "source_id": "00000000-0000-4000-8000-000000003001"
+                  }
+                ],
+                "blocked_source_ids": ["synthetic search sentence"],
+                "blocked_content_keys": [
+                  "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+                ]
+              },
+              "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+              "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            }
+          ],
+          "head": {
+            "forgetting_generation": "1",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          },
+          "written_at": "2026-10-07T21:15:05Z"
+        }
+      }
+    },
+    {
+      "id": "x16-ledger-file-boundary-256-char-source-ids",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "元情報の ID・再登録を禁じる元の ID が 256 文字ちょうど（境界の正常例）。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+              ],
+              "blocked_source_ids": [
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "c893c1bf1847378ef05c0337bd863589359307fbedec854540b117dd58263ac4"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "c893c1bf1847378ef05c0337bd863589359307fbedec854540b117dd58263ac4"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-file-duplicate-forgotten",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "1 件の中に同じ対象が 2 回ある（DB の forget_ledger_items の主キーと合わない）。ファイルに包んでも検出する。",
+      "semantic_errors": ["duplicate_forgotten"],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                },
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "1477acc17047dad0d705819673668d778d6b374b5c7a12946224cb55d2783807"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "1477acc17047dad0d705819673668d778d6b374b5c7a12946224cb55d2783807"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-replica-duplicate-forgotten",
+      "schema": "ForgetLedgerReplica",
+      "valid": true,
+      "note": "端末への複製に包んでも、同じ対象の重複を検出する。",
+      "semantic_errors": ["duplicate_forgotten"],
+      "value": {
+        "schema": "buddy.forget-ledger-replica.v1",
+        "device_id": "00000000-0000-4000-8000-000000001101",
+        "replicated_at": "2026-10-07T21:16:00Z",
+        "ledger": {
+          "schema": "buddy.forget-ledger-file.v1",
+          "ledger_id": "00000000-0000-4000-8000-000000001001",
+          "entries": [
+            {
+              "entry": {
+                "schema": "buddy.forget-ledger.v1",
+                "entry_id": "00000000-0000-4000-8000-000000002001",
+                "forgetting_generation": "1",
+                "recorded_at": "2026-10-01T09:00:00Z",
+                "forgotten": [
+                  {
+                    "source_kind": "turn",
+                    "source_id": "00000000-0000-4000-8000-000000003001"
+                  },
+                  {
+                    "source_kind": "turn",
+                    "source_id": "00000000-0000-4000-8000-000000003001"
+                  }
+                ],
+                "blocked_source_ids": ["mail-001"],
+                "blocked_content_keys": [
+                  "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+                ]
+              },
+              "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+              "entry_hash": "1477acc17047dad0d705819673668d778d6b374b5c7a12946224cb55d2783807"
+            }
+          ],
+          "head": {
+            "forgetting_generation": "1",
+            "entry_hash": "1477acc17047dad0d705819673668d778d6b374b5c7a12946224cb55d2783807"
+          },
+          "written_at": "2026-10-07T21:15:05Z"
+        }
+      }
+    },
+    {
       "id": "x16-backup-manifest-valid",
       "schema": "BackupManifest",
       "valid": true,
@@ -1250,6 +1719,7 @@
           "forgotten_applied_count": 4,
           "approvals_revoked_count": 2,
           "operations_held_count": 1,
+          "operations_unverified_count": 3,
           "consents_reset": true,
           "connections_reauth_required": true
         }
@@ -1309,6 +1779,7 @@
           "forgotten_applied_count": 4,
           "approvals_revoked_count": 2,
           "operations_held_count": 1,
+          "operations_unverified_count": 3,
           "consents_reset": true,
           "connections_reauth_required": true
         }
@@ -1561,6 +2032,7 @@
           "forgotten_applied_count": 4,
           "approvals_revoked_count": 2,
           "operations_held_count": 1,
+          "operations_unverified_count": 3,
           "consents_reset": true,
           "connections_reauth_required": true
         }
@@ -1670,6 +2142,7 @@
           "forgotten_applied_count": 4,
           "approvals_revoked_count": 2,
           "operations_held_count": 1,
+          "operations_unverified_count": 3,
           "consents_reset": true,
           "connections_reauth_required": true
         }
@@ -1876,6 +2349,334 @@
           }
         ],
         "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-clock-regression-rejected",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "処理中に時計が戻ったと判定して止めた拒否。実測の UTC の逆転（終わりが始まりより前）をそのまま記録できる。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T00:59:00Z",
+        "outcome": "rejected",
+        "failed_stage": "expiry_purge",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "failed",
+            "reasons": ["clock_regression"]
+          },
+          {
+            "stage": "forget_apply",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-reversed-time-other-failure",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "時計の巻き戻り以外の拒否で、終わりが始まりより前になることは許さない。",
+      "semantic_errors": ["finished_before_started"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T00:59:00Z",
+        "outcome": "rejected",
+        "failed_stage": "expiry_purge",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "failed",
+            "reasons": ["backup_unreadable"]
+          },
+          {
+            "stage": "forget_apply",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-ledger-stop-reversed-time",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "台帳の確認で止まった拒否でも、時刻の逆転は許さない。",
+      "semantic_errors": ["finished_before_started"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T00:59:00Z",
+        "outcome": "settings_only",
+        "failed_stage": "ledger_check",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "failed",
+            "reasons": ["latest_ledger_missing"]
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-restored-reversed-time",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "復元できた結果で時刻が逆転することは許さない。",
+      "semantic_errors": ["finished_before_started"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T00:59:00Z",
+        "outcome": "restored",
+        "failed_stage": null,
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "pending",
+            "reasons": []
+          }
+        ],
+        "after_restore": {
+          "new_store_generation": "00000000-0000-4000-8000-000000005002",
+          "applied_forgetting_generation": "3",
+          "expired_deleted_count": 12,
+          "forgotten_applied_count": 4,
+          "approvals_revoked_count": 2,
+          "operations_held_count": 1,
+          "operations_unverified_count": 3,
+          "consents_reset": true,
+          "connections_reauth_required": true
+        }
+      }
+    },
+    {
+      "id": "x16-restore-held-exceeds-unverified",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "結果不明として保留した操作が、隔離した操作の総数より多い。",
+      "semantic_errors": ["held_exceeds_unverified"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "restored",
+        "failed_stage": null,
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "pending",
+            "reasons": []
+          }
+        ],
+        "after_restore": {
+          "new_store_generation": "00000000-0000-4000-8000-000000005002",
+          "applied_forgetting_generation": "3",
+          "expired_deleted_count": 12,
+          "forgotten_applied_count": 4,
+          "approvals_revoked_count": 2,
+          "operations_held_count": 5,
+          "operations_unverified_count": 3,
+          "consents_reset": true,
+          "connections_reauth_required": true
+        }
+      }
+    },
+    {
+      "id": "x16-restore-aftermath-without-unverified-count-rejected",
+      "schema": "RestoreResult",
+      "valid": false,
+      "note": "バックアップの後に実行された可能性のある操作を隔離した件数がない復元後の状態は拒否する。",
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "restored",
+        "failed_stage": null,
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "pending",
+            "reasons": []
+          }
+        ],
+        "after_restore": {
+          "new_store_generation": "00000000-0000-4000-8000-000000005002",
+          "applied_forgetting_generation": "3",
+          "expired_deleted_count": 12,
+          "forgotten_applied_count": 4,
+          "approvals_revoked_count": 2,
+          "operations_held_count": 1,
+          "consents_reset": true,
+          "connections_reauth_required": true
+        }
       }
     },
     {

@@ -87,6 +87,7 @@ function ledgerEntryHash(entry, previousHash) {
 // - previous_hash_mismatch: previous_hash が 1 つ前の entry_hash（最初は 64 個の 0）と違う（連鎖の切れ）。
 // - entry_hash_mismatch: entry_hash が内容から求めた値と違う（内容の書き換え）。
 // - head_mismatch: head が最後の世代・entry_hash と違う（空なら世代 0・64 個の 0）。
+// - ForgetLedgerEntry の意味検査の理由（duplicate_forgotten）: 1 件ごとに同じ検査を通す。
 function ledgerFileErrors(file) {
   const errors = new Set();
   const ids = new Set();
@@ -101,6 +102,10 @@ function ledgerFileErrors(file) {
       errors.add('previous_hash_mismatch');
     if (ledgerEntryHash(item.entry, item.previous_hash) !== item.entry_hash)
       errors.add('entry_hash_mismatch');
+    // 1 件の中身の検査（duplicate_forgotten など）は DB の forget_ledger_items の主キーと同じ規則で、
+    // 包んだ状態でも必ず通す（B06-01 の Codex のレビュー P2）。
+    for (const reason of semanticErrors('ForgetLedgerEntry', item.entry))
+      errors.add(reason);
   });
   const last = file.entries.at(-1);
   const generation = last ? last.entry.forgetting_generation : '0';
@@ -175,7 +180,23 @@ function restoreResultErrors(value) {
     value.after_restore.new_store_generation === value.backup_store_generation
   )
     errors.add('store_generation_not_renewed');
-  if (Date.parse(value.finished_at) < Date.parse(value.started_at))
+  // 結果不明として保留した操作は、隔離した操作の一部（承認待ちなどを含む総数より多くならない）。
+  if (
+    value.after_restore !== null &&
+    value.after_restore.operations_held_count >
+      value.after_restore.operations_unverified_count
+  )
+    errors.add('held_exceeds_unverified');
+  // 終わりの時刻が始まりより前になれるのは、処理中に時計が戻ったと判定して止めた拒否だけ
+  // （期限切れの削除の段階の clock_regression。実測の UTC の逆転をそのまま記録する。ADR 0040）。
+  const clockRegression =
+    value.outcome === 'rejected' &&
+    failedStage === 'expiry_purge' &&
+    value.stages[failedIndex].reasons.includes('clock_regression');
+  if (
+    Date.parse(value.finished_at) < Date.parse(value.started_at) &&
+    !clockRegression
+  )
     errors.add('finished_before_started');
   return [...errors];
 }

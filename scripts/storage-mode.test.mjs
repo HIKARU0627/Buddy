@@ -628,6 +628,8 @@ test('既存の規則（音声・記憶・期限・区切り）と許可表が�
       ledger: [],
       expiredSourceIds: [],
       existing: [],
+      // 台帳が空なので呼ばれない。B06-03（ADR 0044）で必須になった HMAC の関数の合成値。
+      sourceHmac: () => 'a'.repeat(64),
     },
   );
   assert.equal(admission.action, 'reject');

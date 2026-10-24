@@ -4,7 +4,11 @@
 // - 状態の項目（ADR 0014 の 8 項目）は、記号と決まった位置で示し、名前と値はフォーカス・ポインターで出す。
 // - プライバシーと権限に関わる状態（音声を外部へ送っている・記録しないモード・安全停止中）は、つまみの専用の記号で
 //   いつも見せる。値がまだない（音声は B05、記録しないモードは UI-05、安全停止は中枢が配るまで）ときは枠だけを出す。
-import type { DesktopConnectionView, DesktopStatusBar } from '@buddy/contracts';
+import type {
+  DesktopConnectionView,
+  DesktopStatusBar,
+  DesktopVoiceView,
+} from '@buddy/contracts';
 import { clockOf } from '../format.js';
 import {
   DISPLAY_TARGET_LABELS,
@@ -194,16 +198,21 @@ export function statusItems(
 function voiceLine(status: Shown): StatusLine | null {
   if (status.voice_state === null) return null;
   const text = VOICE_STATE_LABELS[status.voice_state] ?? status.voice_state;
+  // 停止中は入出力の記号と同じ ■（B05-06。音声の段と同じ形）。
   return voiceSendsExternally(status.voice_state)
     ? { tone: 'warning', mark: 'warning', text }
-    : { tone: 'neutral', mark: 'circle', text };
+    : status.voice_state === 'device_stopped' ||
+        status.voice_state === 'global_stopped'
+      ? { tone: 'neutral', mark: 'square', text }
+      : { tone: 'neutral', mark: 'circle', text };
 }
 
-// 音声を外部へ送っている状態（読み取り: 会話中と聞き取り中は Live の接続へ音声を送る。B05 で確かめ直す。ADR 0032）。
+// 音声を外部へ送っている状態（B05-06 で確かめ直した。ADR 0050）。会話中と読み上げ中（音声の通知も Live の接続を開く。
+// 設計 10 §7）は Live の接続へ音声を送る。聞き取り中（文字で返す）は端末の中で文字にし、音声を外へ出さない（10 §6A の③）。
 export function voiceSendsExternally(
   voice: NonNullable<Shown['voice_state']>,
 ): boolean {
-  return voice === 'conversation_live' || voice === 'listening_text_reply';
+  return voice === 'conversation_live' || voice === 'reading_aloud';
 }
 
 // つまみの専用の記号（プライバシーと権限）。並びは固定。
@@ -238,8 +247,11 @@ const STATE_SUFFIX: Readonly<Record<PrivacyMarkState, string>> = {
   hidden: 'かは隠しています',
 };
 
+// voice は main の音声の状態（desktop.voice_changed）。あれば「音声を外部へ送っている」は、その external_send（送っている
+// かもしれない間を含む）で決める。なければ状態欄の音声の状態から決める（音声を使わない組み立て・受け取る前）。
 export function privacyMarks(
   status: DesktopStatusBar | null,
+  voice: DesktopVoiceView | null = null,
 ): readonly PrivacyMark[] {
   const states: Record<PrivacyMarkKey, PrivacyMarkState> =
     status === null || status.visibility !== 'shown'
@@ -250,11 +262,17 @@ export function privacyMarks(
         }
       : {
           voice_external:
-            status.voice_state === null
-              ? 'unknown'
-              : voiceSendsExternally(status.voice_state)
+            voice?.visibility === 'shown'
+              ? voice.external_send
                 ? 'on'
-                : 'off',
+                : voice.voice_state === null
+                  ? 'unknown'
+                  : 'off'
+              : status.voice_state === null
+                ? 'unknown'
+                : voiceSendsExternally(status.voice_state)
+                  ? 'on'
+                  : 'off',
           private_mode:
             status.storage_mode === null
               ? 'unknown'
@@ -313,4 +331,65 @@ export function stopShortcutMark(value: unknown): StopShortcutMark {
 // 停止のショートカットのキーの表し方（main の STOP_ACCELERATOR と同じ組み合わせ）。
 export function stopShortcutKeys(userAgent: string): string {
   return /Mac OS X|Macintosh/u.test(userAgent) ? '⌘⌥⇧X' : 'Ctrl+Alt+Shift+X';
+}
+
+// 状態の層のパネルの音声の段（B05-06、ADR 0050）。音声の状態の記号と文言・「音声を外部へ送っている」の印・「続ける」・
+// 同意の取り消し・知らせを、main の音声の状態（DesktopVoiceView）から決める。受付の規則と同意の確認は main が持つ。
+export interface VoiceStripView {
+  readonly kind: 'hidden' | 'shown';
+  // 音声の状態の記号と文言（停止中・会話中・呼びかけ待ちなど）。
+  readonly line: StatusLine;
+  // 音声を外部へ送っている印（送っているかもしれない間も on）。値がなければ unknown。
+  readonly external: 'on' | 'off' | 'unknown';
+  // 「続ける」: 押せる・始めている途中・押せない。
+  readonly continueState: 'ready' | 'starting' | 'unavailable';
+  // 外部への送信の同意を取り消せる（同意している）。
+  readonly revocable: boolean;
+  // 知らせ（入力の中断・始められなかった）。理由のコード・送り先の名前は出さない。
+  readonly notice: string | null;
+}
+
+export const VOICE_NOTICE_TEXT: Readonly<
+  Record<'input_interrupted' | 'not_started', string>
+> = {
+  input_interrupted: '入力を中断しました。',
+  not_started: '声の会話を始められませんでした。',
+};
+
+// 隠しているときの文言（読み上げ）。
+const VOICE_HIDDEN_TEXT = '隠しています';
+
+export function voiceStripView(voice: DesktopVoiceView | null): VoiceStripView {
+  if (voice === null || voice.visibility !== 'shown')
+    return {
+      kind: 'hidden',
+      line: { tone: 'muted', mark: 'none', text: VOICE_HIDDEN_TEXT },
+      external: 'unknown',
+      continueState: 'unavailable',
+      revocable: false,
+      notice: null,
+    };
+  const state = voice.voice_state;
+  const text =
+    state === null ? NOT_RECEIVED_TEXT : (VOICE_STATE_LABELS[state] ?? state);
+  const line: StatusLine =
+    state === null
+      ? { tone: 'neutral', mark: 'none', text }
+      : voice.external_send || voiceSendsExternally(state)
+        ? { tone: 'warning', mark: 'warning', text }
+        : state === 'device_stopped' || state === 'global_stopped'
+          ? { tone: 'neutral', mark: 'square', text }
+          : { tone: 'neutral', mark: 'circle', text };
+  return {
+    kind: 'shown',
+    line,
+    external: voice.external_send ? 'on' : state === null ? 'unknown' : 'off',
+    continueState: voice.can_continue
+      ? 'ready'
+      : state === 'waiting_wake_word' && !voice.external_send
+        ? 'starting'
+        : 'unavailable',
+    revocable: voice.consent === 'granted',
+    notice: voice.notice === null ? null : VOICE_NOTICE_TEXT[voice.notice],
+  };
 }

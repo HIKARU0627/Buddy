@@ -521,6 +521,35 @@ export default tseslint.config(
     },
   },
   {
+    // 音声レンダラー（B05-06、ADR 0050）: 隠した窓の中で動き、Electron・Node.js・中枢・接続・UI レンダラーを読み込まない。
+    // main のコードは、純粋な模擬のレンダラー（voice-mock-renderer）だけを読み込める。
+    files: ['apps/desktop/src/voice/**/*.ts'],
+    languageOptions: { globals: globals.browser },
+    rules: {
+      'no-restricted-imports': restricted(
+        [
+          ['node:*', 'electron', 'electron/*', '@electron/*'],
+          desktopRendererForbidden,
+          desktopWorkspaceRelative,
+          [
+            '../renderer/**',
+            '../preload/**',
+            '../main/*',
+            '!../main/voice-mock-renderer.js',
+          ],
+        ],
+        nodeImports,
+      ),
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression',
+          message: '音声レンダラーの依存は静的 import で明示してください。',
+        },
+      ],
+    },
+  },
+  {
     // UI レンダラーの試験（ADR 0024）: node:test・node:assert だけを足す。Electron・main・中枢・OS アダプター・
     // 接続の状態機械・ws は画面と同じく読み込まない（画面と同じ拒否の一覧を使う）。
     files: [

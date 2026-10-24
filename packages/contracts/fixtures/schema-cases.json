@@ -24401,5 +24401,240 @@
       "approval_id": null,
       "overrun_reviewed": false
     }
+  },
+  {
+    "id": "desktop-voice-waiting",
+    "schema": "DesktopVoiceView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "waiting_wake_word",
+      "external_send": false,
+      "consent": "granted",
+      "can_continue": true,
+      "notice": null
+    }
+  },
+  {
+    "id": "desktop-voice-talking",
+    "schema": "DesktopVoiceView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "conversation_live",
+      "external_send": true,
+      "consent": "granted",
+      "can_continue": false,
+      "notice": null
+    }
+  },
+  {
+    "id": "desktop-voice-stopping-before-ack",
+    "schema": "DesktopVoiceView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "device_stopped",
+      "external_send": true,
+      "consent": "required",
+      "can_continue": false,
+      "notice": "input_interrupted"
+    }
+  },
+  {
+    "id": "desktop-voice-not-ready",
+    "schema": "DesktopVoiceView",
+    "valid": true,
+    "value": {
+      "visibility": "shown",
+      "voice_state": null,
+      "external_send": false,
+      "consent": "granted",
+      "can_continue": false,
+      "notice": "not_started"
+    }
+  },
+  {
+    "id": "desktop-voice-hidden",
+    "schema": "DesktopVoiceView",
+    "valid": true,
+    "value": {
+      "visibility": "hidden"
+    }
+  },
+  {
+    "id": "desktop-voice-continue-while-sending",
+    "schema": "DesktopVoiceView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "waiting_wake_word",
+      "external_send": true,
+      "consent": "granted",
+      "can_continue": true,
+      "notice": null
+    }
+  },
+  {
+    "id": "desktop-voice-continue-while-talking",
+    "schema": "DesktopVoiceView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "conversation_live",
+      "external_send": true,
+      "consent": "granted",
+      "can_continue": true,
+      "notice": null
+    }
+  },
+  {
+    "id": "desktop-voice-continue-while-stopped",
+    "schema": "DesktopVoiceView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "device_stopped",
+      "external_send": false,
+      "consent": "granted",
+      "can_continue": true,
+      "notice": null
+    }
+  },
+  {
+    "id": "desktop-voice-hidden-with-state",
+    "schema": "DesktopVoiceView",
+    "valid": false,
+    "value": {
+      "visibility": "hidden",
+      "voice_state": "conversation_live"
+    }
+  },
+  {
+    "id": "desktop-voice-reason-code-notice",
+    "schema": "DesktopVoiceView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "conversation_live",
+      "external_send": true,
+      "consent": "granted",
+      "can_continue": false,
+      "notice": "os_lock"
+    }
+  },
+  {
+    "id": "desktop-voice-provider-name",
+    "schema": "DesktopVoiceView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "conversation_live",
+      "external_send": true,
+      "consent": "granted",
+      "can_continue": false,
+      "notice": null,
+      "provider": "openai_live"
+    }
+  },
+  {
+    "id": "desktop-voice-consent-from-renderer",
+    "schema": "DesktopVoiceView",
+    "valid": false,
+    "value": {
+      "visibility": "shown",
+      "voice_state": "waiting_wake_word",
+      "external_send": false,
+      "consent": "os_dialog_main",
+      "can_continue": true,
+      "notice": null
+    }
+  },
+  {
+    "id": "desktop-notify-voice",
+    "schema": "DesktopIpcNotification",
+    "valid": true,
+    "value": {
+      "channel": "desktop.voice_changed",
+      "voice": {
+        "visibility": "shown",
+        "voice_state": "conversation_live",
+        "external_send": true,
+        "consent": "granted",
+        "can_continue": false,
+        "notice": null
+      }
+    }
+  },
+  {
+    "id": "desktop-request-voice-continue",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.voice_continue",
+      "request_id": "00000000-0000-4000-8000-000000000b61",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-request-voice-continue-with-consent",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.voice_continue",
+      "request_id": "00000000-0000-4000-8000-000000000b61",
+      "payload": {
+        "consent": true
+      }
+    }
+  },
+  {
+    "id": "desktop-request-voice-renderer-channel",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "voice.start",
+      "request_id": "00000000-0000-4000-8000-000000000b61",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-response-voice-continue",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000b61",
+      "channel": "desktop.voice_continue",
+      "outcome": "ok",
+      "voice": {
+        "visibility": "shown",
+        "voice_state": "conversation_live",
+        "external_send": true,
+        "consent": "granted",
+        "can_continue": false,
+        "notice": null
+      }
+    }
+  },
+  {
+    "id": "desktop-response-voice-unavailable",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000b61",
+      "channel": "desktop.voice_continue",
+      "outcome": "rejected",
+      "reason": "voice_unavailable"
+    }
+  },
+  {
+    "id": "desktop-response-get-voice-without-view",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000b61",
+      "channel": "desktop.get_voice",
+      "outcome": "ok"
+    }
   }
 ]

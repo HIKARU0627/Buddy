@@ -44,6 +44,10 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',
+  // B05-06: 音声の状態の取得・最小の「続ける」・外部への送信の同意の取り消し（状態の層からだけ。ADR 0050）。
+  'desktop.get_voice',
+  'desktop.voice_continue',
+  'desktop.voice_consent_revoke',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -56,6 +60,8 @@ export const DESKTOP_NOTIFICATION_CHANNELS = [
   'desktop.canvas_changed',
   // UI-06: キャンバスの窓の作業領域の外の幅が変わった（キャンバスの窓だけ。ADR 0032）。
   'desktop.canvas_work_area',
+  // B05-06: 音声の状態が変わった（状態の層だけ。ADR 0050）。
+  'desktop.voice_changed',
 ] as const;
 
 export const DESKTOP_POWER_EVENTS = [
@@ -105,6 +111,8 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'content_unavailable',
   // キャンバスのユーザーの操作が古い版への操作で、その物の置き場所・存在が後から変わっていた（捨てた。UI-06、ADR 0032）。
   'canvas_conflict',
+  // 音声の会話を始められない（音声レンダラーが使えない・始めている途中・会話中・接続できない。B05-06、ADR 0050）。
+  'voice_unavailable',
 ] as const;
 
 export type DesktopIpcRejectReason =
@@ -164,6 +172,8 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',
+  // 最小の「続ける」も本人の画面操作（B05-06。外部への送信の同意の確認ダイアログを出す入口になる）。
+  'desktop.voice_continue',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -179,7 +189,8 @@ export const DESKTOP_UNLOCKED_CHANNELS: readonly DesktopIpcChannel[] = [
 
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
 // 状態欄・接続の状態の取得・入出力停止・ウィンドウを閉じる・クライアント終了・ペアリングをやめる・状態の層のパネルを
-// 出す／しまう（UI-04。ロック中でも停止へ届くように。中身はロック中・不明なら main と画面が隠す）は、
+// 出す／しまう（UI-04。ロック中でも停止へ届くように。中身はロック中・不明なら main と画面が隠す）・音声の状態の取得と
+// 外部への送信の同意の取り消し（B05-06。取り消しは送らない側の操作。中身はロック中・不明なら main が隠す）は、
 // ロック中・不明・停止中でも受け付ける。ペアリングの手順は ロック解除済み → 画面操作 の順に検査する
 // （手順の順序は main が検査する）。
 // 再開は ロック解除済み → 画面操作 → この端末の停止 → 期待する io_epoch の一致 の順に検査する。
@@ -264,6 +275,10 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.budget_overage_decide',
     'desktop.budget_overrun_review',
     'desktop.budget_manual_settle',
+    // 音声の状態の取得・最小の「続ける」・同意の取り消し（B05-06）。状態の層だけ。キャンバスの部品が「続ける」や同意に見せかけられない。
+    'desktop.get_voice',
+    'desktop.voice_continue',
+    'desktop.voice_consent_revoke',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };
@@ -286,6 +301,8 @@ export const DESKTOP_ROLE_NOTIFICATIONS: Readonly<
     'desktop.state_changed',
     'desktop.power_event',
     'desktop.connection_changed',
+    // 音声の状態（B05-06）。外部へ送っている印・「続ける」は状態の層だけが描く。
+    'desktop.voice_changed',
   ],
   input: ['desktop.state_changed'],
 };

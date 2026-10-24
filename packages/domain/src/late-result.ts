@@ -52,7 +52,9 @@ export function lateResultCheck(
   // 記録しない会話では保存しない。表示・送信は一時の文脈のまま行える。
   if (result.use === 'persist' && context.privateConversation)
     reasons.push('private_conversation');
-  if (result.provenance === 'unknown') reasons.push('provenance_unknown');
+  // 由来を 1 件も把握していない結果は、provenance が complete でも不明と同じに扱う（scopedForgettingReasons と同じ規則）。
+  if (result.provenance === 'unknown' || result.sources.length === 0)
+    reasons.push('provenance_unknown');
   if (result.permission_revision !== context.currentPermissionRevision)
     reasons.push('permission_changed');
   reasons.push(

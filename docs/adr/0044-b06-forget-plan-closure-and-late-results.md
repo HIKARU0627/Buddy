@@ -21,7 +21,7 @@
 | 遅着の検査の一般化と、命令の再検査を関係する由来に絞る入力               | `packages/domain/src/late-result.ts`（新規）         | `lateResultCheck`・`scopedForgettingReasons`                                                                                                     |
 | 台帳との関係の判定（共通部品）・台帳の由来の型・台帳の項目名の合わせ直し | `packages/domain/src/memory.ts`（変更）              | `ledgerRelationReasons`・`LedgerSource`・`SourceHmac`。`memoryAdmission` はこの共通部品を呼ぶ                                                    |
 | 命令の再検査（opt-in の絞り込み）                                        | `packages/domain/src/approval.ts`（変更）            | `commandGuard` の `options.forgetting`（渡さなければ従来どおり）                                                                                 |
-| 手書きの期待値                                                           | `packages/contracts/fixtures/forget-plan-cases.json` | 解決・閉包の計画 13 件・拒否 5 件・台帳の組み立て（正常 1 件・拒否 7 件）・遅着 16 件・順序（3 つの場面×12 通り）・命令の再検査 17 件・HMAC の形 |
+| 手書きの期待値                                                           | `packages/contracts/fixtures/forget-plan-cases.json` | 解決・閉包の計画 14 件・拒否 5 件・台帳の組み立て（正常 1 件・拒否 7 件）・遅着 19 件・順序（3 つの場面×12 通り）・命令の再検査 17 件・HMAC の形 |
 | 試験                                                                     | `scripts/forget-plan.test.mjs`                       | ビルド後の domain を fixture で検査（12 試験）                                                                                                   |
 
 domain は contracts の型を import しない。台帳の項目の形（`LedgerSource`・`ForgetLedgerEntryDraft`）は contracts の `LedgerSourceRef`・`ForgetLedgerEntry` と同じ構造で書き、Core が契約の検査を通してから書く。
@@ -56,6 +56,8 @@ Core は系譜（`derivations`。ADR 0040 の案）を読んで `ForgetGraph`（
 - **D（由来を引けない派生物）**: 系譜が書かれていない派生物は、属する範囲（会話・元情報・発言・記憶）だけを渡す。範囲が**忘れる物（core）**に触れるなら消し、範囲全体（同じ会話の全発言・同じ元情報）を除外する（03「同じ元メッセージ全体」）。範囲が**除外する由来**に触れるか、**広げて消す物**（C で消す別の記憶など）に属するなら、種類によらず消す（操作の確定内容は状態に応じて、下の「4」）。**この 2 番目の場合は core に上げず、範囲の由来をさらに除外へ広げない**（連鎖して消えるのを防ぐ境界。Codex の再確認 P1。系譜が辺として書かれている場合と同じ結果にする）。
 - **知らない種類は計画を作らない**: 辺の種類が表にないときは `unknown_artifact_kind`・`unknown_source_kind` で拒否する（見落とすより閉じた側）。
 
+**既知の過剰な消え方（系譜がないときの D）**: 由来を引けない派生物の範囲に**会話**を使うと、忘れる対象と同じ会話の全発言が除外へ広がり、その発言から作った別の記憶まで消える。例: 忘れる対象 `memory:m`（由来は `source_item:a`）、忘却の指示の発言 `ti`（core。指示は忘却と同じ transaction で消す）、別の記憶 `memory:other ← turn:t2`、`ti` と `t2` は同じ会話 `S`、要約 `s` は由来の記録がなく `scope=session:S`。`s` の範囲に core の `ti` が触れるので `s` は core になり、会話 `S` の全発言（`t2` を含む）が除外へ広がる。除外された `t2` から作った `other` は、広げて消す規則（C）で消える。`other` は `m` と関係がないが、`s` の由来を引けないために、同じ会話全体を「忘れる内容を含まないと証明できない」物として扱った結果。**これは既知の過剰な消え方で、閉じた側（忘れた内容が残らないこと）を優先した。** 部分ごとの系譜（`derivations`。B06-06）が書かれ、`s` の由来が `ti` を含まないと分かれば、D は働かず、広がらない（系譜を辺として渡した場合の結果になる）。部分の系譜ができたら、この広がりを緩める。
+
 結果は次の形（`ForgetPlan`）。**操作の取消・失効・再送の項目は持たない**。
 
 - `deletions`: 物理削除する行（記憶・派生物・対象の発言・対象の元情報の本文）。`FORGET_DELETE_ORDER`（参照する側から先）の順。操作の行は入らない。FK の最終の順序は B06-06。
@@ -88,7 +90,7 @@ Core は系譜（`derivations`。ADR 0040 の案）を読んで `ForgetGraph`（
 
 `lateResultCheck(result, context)`（`late-result.ts`）。要約・記憶の候補・自動表示・後続の送信を、保存・表示・送信の直前に同じ規則で見直す。
 
-- 理由の並び（`memoryAdmission` と同じ）: 記録しない会話（保存だけ）→ 由来を引けない（`provenance_unknown`。閉じた側）→ 許可版 → 台帳 → 期限。
+- 理由の並び（`memoryAdmission` と同じ）: 記録しない会話（保存だけ）→ 由来を引けない（`provenance_unknown`。閉じた側）→ 許可版 → 台帳 → 期限。**由来を 1 件も把握していない結果（`sources` が空）は、`provenance` が `complete` でも不明と同じに扱い、保存・表示・送信のどれでも破棄する**（`scopedForgettingReasons` と同じ規則。再確認 P2）。
 - **台帳との関係**は `ledgerRelationReasons`（`memory.ts`）に切り出し、`memoryAdmission`・`lateResultCheck`・`scopedForgettingReasons` が共有する。ADR 0040 の「忘却の関連の判定」の表のとおり、世代の新旧ではなく**由来が忘却と関係するか**で決める（世代が同じでも忘れた由来は通さない。無関係な忘却で世代が進んだだけでは破棄しない。開始の後の世代が台帳に揃わなければ破棄。開始の世代が今より大きければ破棄）。
 - **照合する側でも HMAC の形を検査する**（Codex の P1）: 注入された関数の戻り値が 64 桁の小文字 16 進でなければ（生の ID・大文字・桁数不足・空）、「台帳と一致しない」と読んで通さず、`source_hmac_malformed` で拒否する。計画を作る側（`planForget`）と同じ検査を、共通の `ledgerRelationReasons` に入れたので、保存（`persist`）・表示（`display`）・送信（`send`）・命令の再検査・記憶の保存直前のすべてに効く。
 - 記録しない会話は**保存だけ**を止める。表示・送信は一時の文脈のまま判定できる（X59。保存の禁止は `StorageModeGate` の責務で、遅着の検査は二重の保証）。
@@ -100,7 +102,7 @@ Core は系譜（`derivations`。ADR 0040 の案）を読んで `ForgetGraph`（
 **絞れる。ただし opt-in にし、storage への配線は後続にした**（案 A）。
 
 - 今の `commandGuard` は、命令の忘却世代が DB の最新の世代と違えば拒否する。無関係な忘却（別の記憶を忘れた）でも、進行中の命令がすべて `forgetting_generation_changed` で拒否される。ADR 0040 の「関連の判定」と食い違う。
-- `commandGuard(command, current, { external, forgetting })` に、命令の由来（`sources`・`provenance`）・台帳・HMAC の関数を渡したときだけ、世代の検査を `scopedForgettingReasons`（`ledgerRelationReasons`）に置き換える。**渡さなければ従来どおり**（この PR で既存の動作は変わらない）。拒否の理由は従来と同じ `forgetting_generation_changed` のまま（Core の応答の分類 `CONFLICT_REASONS` を変えない）。
+- `commandGuard(command, current, { external, forgetting })` に、命令の由来（`sources`・`provenance`）・台帳・HMAC の関数を渡したときだけ、世代の検査を `scopedForgettingReasons`（`ledgerRelationReasons`）に置き換える。**渡さなければ従来どおり**（この PR で既存の動作は変わらない）。拒否の理由は従来と同じ `forgetting_generation_changed` のまま（Core の応答の分類 `CONFLICT_REASONS` を変えない）。 **世代が変わっていないのに由来が不明なだけの拒否は、理由を `provenance_unknown` だけにする**（`forgetting_generation_changed` を併記しない。世代が変わっているときは両方）。Core の応答の分類（`CONFLICT_REASONS`）に `provenance_unknown` はまだなく、配線のときに「由来を把握できない保留」として分類する（B06-07）。
 - 安全側の条件: **判明している由来は、由来の全体が不明（`provenance: 'unknown'`）でも、必ず台帳と照合する**（Codex の P1。以前は不明なら照合せず、世代が同じなら通っていた）。由来を把握していない命令は、世代が違えば拒否する（従来どおり）。**外部へ送る命令（`options.external`）は、由来が不明なら世代が同じでも拒否する**（理由に `provenance_unknown` を足す）。台帳に開始後の世代が欠けていれば拒否。世代が同じでも忘れた由来から作った命令は拒否（従来は通っていた。**絞った検査のほうが厳しい場合がある**）。台帳との照合に使う HMAC が形（64 桁の小文字 16 進）を満たさなければ拒否する（`source_hmac_malformed`。次の「5」）。状態版・依頼版・許可版・安全停止・予算予約の検査は変わらない。 **保持した操作の由来（元情報は `source_id_hmac`）は、そのまま `options.forgetting.sources` に渡せる**（HMAC の参照は HMAC の関数を通さず、台帳の HMAC と直接比べ、形も検査する）。**由来を 1 件も渡さない命令は、`provenance: 'complete'` と名乗っても完全とは扱わず**、不明と同じ規則にする（世代が違えば拒否、外部へ送るなら拒否）。
 - 配線しなかった理由: 命令の由来を DB から引く（`async_context_guards.source_refs` の読み取りと、送出直前の transaction の中での台帳の全件読み）は DB worker の変更で、承認・送出の最終ガードに触れるため、B06-07 以降で Codex のレビューを重くして行う。そのとき、`DbCommand` が由来の参照を持つか、worker が `async_context_guards` を引くかを決める。
 
@@ -116,6 +118,7 @@ Core は系譜（`derivations`。ADR 0040 の案）を読んで `ForgetGraph`（
 | `ForgetEntry` の `blocked_source_ids` を `blocked_source_hmacs` に改名し、`forgotten` を `LedgerSource`（元情報は `source_id_hmac`）にした | ADR 0040 が B06-03 に残した合わせ直し。台帳の契約（`ForgetLedgerEntry`）と同じ名前・形にし、生の元情報の ID を持たない | 製品の呼び出し元は今ない（`memoryAdmission` だけが使う）。`memory-cases.json` の台帳を新しい形へ手で書き直した（案件の id と期待値は変えていない）                                 |
 | `MemoryAdmissionContext` に `sourceHmac` を必須で足した                                                                                    | 台帳の HMAC と比べるために由来を同じ HMAC に通す。domain が鍵を持たない                                                | 製品の呼び出し元は今ない。試験は手書きの対応表の関数を注入する。`memoryAdmission` の結果は、元の 16 ケースの期待値のまま変わらない（共通部品への切り出しだけで、理由の並びも同じ） |
 | `memoryAdmission` の台帳の判定を `ledgerRelationReasons` へ切り出した                                                                      | 遅着の検査・命令の再検査と同じ規則を一箇所に置く                                                                       | 動作は変わらない（`scripts/memory-evaluation.test.mjs` の既存の期待値が通る）                                                                                                      |
+| `memoryAdmission` が、由来が 1 件もない候補を `provenance_unknown` で拒否する（記録しない会話・種類の次）                                  | 03「記憶は由来関係を必ず記録」。由来がなければ忘却と関係するか判定できない                                             | 既存の 16 ケースの期待値は変わらない（すべて由来がある）。`sources-empty` を手で足した。製品の呼び出し元は今ない                                                                   |
 | `commandGuard` に optional の `options.forgetting` を足した                                                                                | 上の「6」                                                                                                              | 渡さなければ動作は変わらない。storage（`operation-store.ts`）は渡していないので、worker の動作は変わらない                                                                         |
 
 ## 判断が要る点（司令塔へ）
@@ -139,10 +142,10 @@ Core は系譜（`derivations`。ADR 0040 の案）を読んで `ForgetGraph`（
 契約の fixture `packages/contracts/fixtures/forget-plan-cases.json`（手書き。計画の実装から生成していない）を `scripts/forget-plan.test.mjs` が、ビルド後の domain で確かめる。**模擬の期待値だけ**で、DB・Core・実機・実 API・実請求は未実施。`tests/test-map.json` の X15・QA34・X44・X59 の `product_test` は `not_run` のまま（契約 fixture の合格を製品試験の合格として扱わない）。
 
 - **解決**: ID・検索語（0 件・1 件・同じ対象の重複・複数・今ない対象の一致）。検索語の文字列が確定内容・計画・台帳・知らせ・聞き返しの候補のどこにも出ないこと。
-- **閉包**（手で組んだ系譜の世界 7 つ）: 記憶・発言・元情報のそれぞれを忘れたときの `deletions`・`ledger`・`notice`・操作の確定内容の期待値（全項目）。派生物の派生物（要約を表示するキャンバスの物）・同じ発言・同じメールから作った別の記憶・気づき・依頼・関連解析・キャンバス・影モード・要約・つないだ要約・非同期処理の参照・確定内容がすべて消えること（Codex の再現の系譜）・由来を引けない要約・気づき・会話全体の除外・残る物が消されないこと。広げて消す記憶に属する由来を引けない要約・確定内容（要約を消し、確定内容は送出禁止で残す）と、別の由来（広げて消した記憶の別の元）へ連鎖しないこと。間接の由来を辿った保持操作の由来。「忘れた物から作られた物が残っていない」ことを、手で書いた辺から別に確かめる。
+- **閉包**（手で組んだ系譜の世界 8 つ）: 記憶・発言・元情報のそれぞれを忘れたときの `deletions`・`ledger`・`notice`・操作の確定内容の期待値（全項目）。派生物の派生物（要約を表示するキャンバスの物）・同じ発言・同じメールから作った別の記憶・気づき・依頼・関連解析・キャンバス・影モード・要約・つないだ要約・非同期処理の参照・確定内容がすべて消えること（Codex の再現の系譜）・由来を引けない要約・気づき・会話全体の除外・残る物が消されないこと。広げて消す記憶に属する由来を引けない要約・確定内容（要約を消し、確定内容は送出禁止で残す）と、別の由来（広げて消した記憶の別の元）へ連鎖しないこと。間接の由来を辿った保持操作の由来。「忘れた物から作られた物が残っていない」ことを、手で書いた辺から別に確かめる。
 - **進行中の操作**: 10 の状態すべて。終端 3 つだけが消え、残りと記録のない操作・操作の状態にない名前（`toString` など）は触れない。残す操作には送出禁止の印と本文なしの由来（元情報は HMAC）が付く。実行中の memory_forget だけ確定内容を消す。計画に取消・失効・再送の項目がない。
 - **台帳のエントリ**: 生の元情報の ID が出ない。HMAC の関数が生の ID を返す・大文字・63 桁・重複・空・世代の不正を拒否。
-- **遅着**: 16 ケース（同じ世代でも忘れた由来は破棄・無関係な忘却は通す・元メールの再登録の禁止・内容の禁止は自動抽出だけ・記録しない会話は保存だけ破棄・由来を引けない・由来を引けなくても判明している由来は照合する・許可・期限・台帳の欠番・世代の先行・理由の並び）と、順序の入れ替え 12 通り×2 を 3 つの場面（発言を忘れる・記憶を忘れて同じ元を共有する派生物が届く・元のメールを忘れる）で。
+- **遅着**: 19 ケース（同じ世代でも忘れた由来は破棄・無関係な忘却は通す・元メールの再登録の禁止・内容の禁止は自動抽出だけ・記録しない会話は保存だけ破棄・由来を引けない・由来を引けなくても判明している由来は照合する・許可・期限・台帳の欠番・世代の先行・理由の並び）と、順序の入れ替え 12 通り×2 を 3 つの場面（発言を忘れる・記憶を忘れて同じ元を共有する派生物が届く・元のメールを忘れる）で。
 - **命令の再検査**: 絞った検査と従来の検査を並べた 17 ケース（無関係な忘却は通る・関係する忘却・派生した記憶・台帳の欠番・由来を把握していない・由来が不明でも判明している由来が忘却済みなら拒否・外部へ送る命令の由来が不明なら世代が同じでも拒否・世代が同じでも忘れた由来・世代の先行・元情報の HMAC の参照・由来が空のとき完全と扱わない・ほかの版の検査は変わらない）。HMAC の参照そのものの形の検査も。
 - **HMAC の形**: 注入された関数が生の ID・大文字・桁数不足（63 桁）・長すぎる値（65 桁）・空を返したとき、保存・表示・送信・命令・記憶の保存直前のすべてが `source_hmac_malformed` で拒否される。
 - 試験が通ることを、実装を壊して確かめた（広がりの規則・HMAC の形の検査・外部の由来不明の拒否・世代で決める旧い判定を入れると、対応する試験が落ちる）。

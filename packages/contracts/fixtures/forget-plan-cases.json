@@ -10,7 +10,8 @@
     "source_item:mail-z": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
     "turn:u-1": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
     "turn:u-2": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
-    "turn:u-3": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3"
+    "turn:u-3": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+    "turn:t2": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"
   },
   "resolve": {
     "known": [
@@ -360,6 +361,29 @@
         ]
       ],
       "operations": [["op-i", "awaiting_approval"]]
+    },
+    "known-excess": {
+      "note": "記憶 m（元はメール mail-a）。忘却の指示の発言 ti と別の記憶 other の元の発言 t2 は同じ会話 S。要約 s は由来の記録がなく、会話 S に属することだけが分かる（系譜がないとき）。",
+      "edges": [
+        ["memory:m", "source_item:mail-a"],
+        ["memory:other", "turn:t2"]
+      ],
+      "unattributed": [["session_summary:s", "session:S"]],
+      "turn_sessions": [
+        ["ti", "S"],
+        ["t2", "S"]
+      ],
+      "memories": [
+        [
+          "m",
+          "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5"
+        ],
+        [
+          "other",
+          "c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6"
+        ]
+      ],
+      "operations": []
     }
   },
   "plans": [
@@ -1269,6 +1293,55 @@
         "notice_forgotten": ["memory:mem-i"],
         "notice_derived": []
       }
+    },
+    {
+      "id": "x15-known-excess-unattributed-summary-widens-to-whole-conversation",
+      "title": "既知の過剰な消え方（ADR 0044）: 系譜がなく、要約 s の範囲が忘却の指示の発言 ti の会話 S のとき、会話の全発言が除外へ広がり、m と関係のない別の記憶 other（元の発言 t2）も消える。部分の系譜ができたら緩める",
+      "refs": ["X15", "03 判別が不確かな場合は元メッセージ全体を除外"],
+      "world": "known-excess",
+      "input": {
+        "target": "memory:m",
+        "instruction_turn_id": "ti",
+        "executing_operation_id": null
+      },
+      "expected": {
+        "ok": true,
+        "targets": ["memory:m", "turn:ti"],
+        "deletions": [
+          "session_summary:s",
+          "memory:m",
+          "memory:other",
+          "turn:ti"
+        ],
+        "purge_operation_contents": [],
+        "retained_operations": [],
+        "ledger": {
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "m"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "other"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "ti"
+            }
+          ],
+          "blocked_source_hmacs": [
+            "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"
+          ],
+          "blocked_content_keys": [
+            "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5",
+            "c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6"
+          ]
+        },
+        "notice_forgotten": ["memory:m", "turn:ti"],
+        "notice_derived": ["memory:other"]
+      }
     }
   ],
   "plan_rejections": [
@@ -1764,6 +1837,48 @@
           "action": "discard",
           "reasons": ["provenance_unknown", "source_forgotten"]
         }
+      },
+      {
+        "id": "empty-sources-persist",
+        "title": "由来が 1 件もない結果は、provenance が complete でも不明と同じに扱って破棄する（保存・表示・送信のどれでも）",
+        "refs": ["X15", "03 記憶は由来関係を必ず記録", "08 §6"],
+        "result": {
+          "use": "persist",
+          "sources": [],
+          "provenance": "complete"
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["provenance_unknown"]
+        }
+      },
+      {
+        "id": "empty-sources-display",
+        "title": "由来が 1 件もない結果は、provenance が complete でも不明と同じに扱って破棄する（保存・表示・送信のどれでも）",
+        "refs": ["X15", "03 記憶は由来関係を必ず記録", "08 §6"],
+        "result": {
+          "use": "display",
+          "sources": [],
+          "provenance": "complete"
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["provenance_unknown"]
+        }
+      },
+      {
+        "id": "empty-sources-send",
+        "title": "由来が 1 件もない結果は、provenance が complete でも不明と同じに扱って破棄する（保存・表示・送信のどれでも）",
+        "refs": ["X15", "03 記憶は由来関係を必ず記録", "08 §6"],
+        "result": {
+          "use": "send",
+          "sources": [],
+          "provenance": "complete"
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["provenance_unknown"]
+        }
       }
     ],
     "malformed_hmac": {
@@ -2191,12 +2306,13 @@
         },
         "expected_scoped": {
           "action": "reject",
-          "reasons": ["forgetting_generation_changed", "provenance_unknown"]
+          "reasons": ["provenance_unknown"]
         },
         "expected_strict": {
           "action": "apply",
           "reasons": []
-        }
+        },
+        "note": "世代は変わっていないので、世代の理由は併記しない。"
       },
       {
         "id": "external-unknown-provenance-different-generation",
@@ -2292,12 +2408,13 @@
         },
         "expected_scoped": {
           "action": "reject",
-          "reasons": ["forgetting_generation_changed", "provenance_unknown"]
+          "reasons": ["provenance_unknown"]
         },
         "expected_strict": {
           "action": "apply",
           "reasons": []
-        }
+        },
+        "note": "世代は変わっていないので、世代の理由は併記しない。"
       },
       {
         "id": "complete-but-empty-provenance-different-generation",

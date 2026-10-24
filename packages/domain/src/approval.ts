@@ -120,10 +120,11 @@ export function commandGuard(
           options.forgetting,
           options.external,
         );
+  // 由来が不明なだけ（世代は変わっていない）のときは、世代の理由を併記しない。
   if (
     scoped === null
       ? command.forgetting_generation !== current.forgetting_generation
-      : scoped.length > 0
+      : scoped.some((reason) => reason !== 'provenance_unknown')
   )
     reasons.push('forgetting_generation_changed');
   if (scoped?.includes('provenance_unknown'))

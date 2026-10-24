@@ -168,6 +168,8 @@ export function memoryAdmission(
   if (context.privateConversation) reasons.push('private_conversation');
   if (!context.allowedKinds.includes(candidate.kind))
     reasons.push('kind_not_allowed');
+  // 記憶は由来関係を必ず記録する（03）。由来が 1 件もない候補は、忘却と関係するか判定できないので保存しない。
+  if (candidate.sources.length === 0) reasons.push('provenance_unknown');
   if (candidate.permission_revision !== context.currentPermissionRevision)
     reasons.push('permission_changed');
   reasons.push(

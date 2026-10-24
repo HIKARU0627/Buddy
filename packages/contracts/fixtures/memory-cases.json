@@ -353,6 +353,19 @@
           "reasons": [],
           "conflictingMemoryIds": []
         }
+      },
+      {
+        "id": "sources-empty",
+        "title": "由来が 1 件もない候補は保存しない（記憶は由来関係を必ず記録する）",
+        "refs": ["X15", "03 データの分離（memory_sources）・忘却と再取り込み"],
+        "candidate": {
+          "sources": []
+        },
+        "expected": {
+          "action": "reject",
+          "reasons": ["provenance_unknown"],
+          "conflictingMemoryIds": []
+        }
       }
     ],
     "source_hmacs": {

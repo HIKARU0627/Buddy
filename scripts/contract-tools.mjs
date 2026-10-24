@@ -70,6 +70,229 @@ export async function loadContracts() {
   return { schema, validators };
 }
 
+const ZERO_HASH = '0'.repeat(64);
+
+// 忘却台帳の 1 件の hash（ADR 0040）。{entry, previous_hash} の JCS（RFC 8785）に SHA-256 を掛けた小文字 16 進。
+// 期待値は fixture に手で書いた値（Python の json.dumps の正規形と hashlib で別に求めた）と照合するための検査で、
+// fixture の値をこの関数から作らない。
+function ledgerEntryHash(entry, previousHash) {
+  return createHash('sha256')
+    .update(canonicalize({ entry, previous_hash: previousHash }), 'utf8')
+    .digest('hex');
+}
+
+// 忘却台帳の別ファイルの検査。各理由は最初に起きた順に 1 回だけ返す。
+// - generation_gap: 世代が 1 から 1 つずつ続かない（欠番・重複・順序の入れ替え）。
+// - duplicate_entry_id: entry_id の重複。
+// - previous_hash_mismatch: previous_hash が 1 つ前の entry_hash（最初は 64 個の 0）と違う（連鎖の切れ）。
+// - entry_hash_mismatch: entry_hash が内容から求めた値と違う（内容の書き換え）。
+// - head_mismatch: head が最後の世代・entry_hash と違う（空なら世代 0・64 個の 0）。
+// - ForgetLedgerEntry の意味検査の理由（duplicate_forgotten）: 1 件ごとに同じ検査を通す。
+function ledgerFileErrors(file) {
+  const errors = new Set();
+  const ids = new Set();
+  file.entries.forEach((item, index) => {
+    if (item.entry.forgetting_generation !== String(index + 1))
+      errors.add('generation_gap');
+    if (ids.has(item.entry.entry_id)) errors.add('duplicate_entry_id');
+    ids.add(item.entry.entry_id);
+    const expectedPrevious =
+      index === 0 ? ZERO_HASH : file.entries[index - 1].entry_hash;
+    if (item.previous_hash !== expectedPrevious)
+      errors.add('previous_hash_mismatch');
+    if (ledgerEntryHash(item.entry, item.previous_hash) !== item.entry_hash)
+      errors.add('entry_hash_mismatch');
+    // 1 件の中身の検査（duplicate_forgotten など）は DB の forget_ledger_items の主キーと同じ規則で、
+    // 包んだ状態でも必ず通す（B06-01 の Codex のレビュー P2）。
+    for (const reason of semanticErrors('ForgetLedgerEntry', item.entry))
+      errors.add(reason);
+  });
+  const last = file.entries.at(-1);
+  const generation = last ? last.entry.forgetting_generation : '0';
+  const hash = last ? last.entry_hash : ZERO_HASH;
+  if (
+    file.head.forgetting_generation !== generation ||
+    file.head.entry_hash !== hash
+  )
+    errors.add('head_mismatch');
+  return [...errors];
+}
+
+// 段階ごとに出せる理由（ADR 0040）。外部の状態の照合は、再認証が済むまで保留（pending）にでき、失敗で復元を止めない。
+const RESTORE_STAGE_REASONS = {
+  ledger_check: [
+    'latest_ledger_unconfirmed',
+    'latest_ledger_missing',
+    'backup_newer_than_ledger',
+    'ledger_chain_invalid',
+    'ledger_lineage_mismatch',
+    'backup_ledger_hash_mismatch',
+    'manifest_invalid',
+  ],
+  expiry_purge: ['backup_unreadable', 'clock_regression'],
+  forget_apply: ['forget_apply_failed'],
+  db_verify: ['db_integrity_failed', 'schema_newer_than_code'],
+  rebuild_views: ['rebuild_failed'],
+  external_reconcile: [],
+};
+
+// 復元の結果の検査。理由は最初に起きた順に 1 回だけ返す。
+function restoreResultErrors(value) {
+  const errors = new Set();
+  const failed = value.stages.filter((stage) => stage.status === 'failed');
+  if (failed.length > 1) errors.add('multiple_failed_stages');
+  const failedIndex = value.stages.findIndex(
+    (stage) => stage.status === 'failed',
+  );
+  const failedStage = failedIndex < 0 ? null : value.stages[failedIndex].stage;
+  if (value.failed_stage !== failedStage) errors.add('failed_stage_mismatch');
+  value.stages.forEach((stage, index) => {
+    if (stage.status === 'pending' && stage.stage !== 'external_reconcile')
+      errors.add('pending_outside_reconcile');
+    if (stage.stage === 'external_reconcile' && stage.status === 'failed')
+      errors.add('external_reconcile_cannot_fail');
+    if (failedIndex < 0 && stage.status === 'not_run')
+      errors.add('stage_not_run_without_failure');
+    if (failedIndex >= 0 && index < failedIndex && stage.status !== 'passed')
+      errors.add('stage_before_failure_not_passed');
+    if (failedIndex >= 0 && index > failedIndex && stage.status !== 'not_run')
+      errors.add('stage_after_failure_ran');
+    if (stage.status === 'failed' && stage.reasons.length === 0)
+      errors.add('failed_stage_without_reason');
+    if (stage.status !== 'failed' && stage.reasons.length > 0)
+      errors.add('reason_without_failure');
+    if (
+      stage.reasons.some(
+        (reason) => !RESTORE_STAGE_REASONS[stage.stage].includes(reason),
+      )
+    )
+      errors.add('reason_not_allowed_for_stage');
+  });
+  if ((value.outcome === 'restored') !== failedIndex < 0)
+    errors.add('outcome_mismatch');
+  // 非機密の設定だけを戻せるのは、台帳の確認で止まったときだけ（設計 03）。
+  if (value.outcome === 'settings_only' && failedStage !== 'ledger_check')
+    errors.add('settings_only_without_ledger_stop');
+  if ((value.outcome === 'restored') !== (value.after_restore !== null))
+    errors.add('after_restore_mismatch');
+  if (
+    value.after_restore !== null &&
+    value.after_restore.new_store_generation === value.backup_store_generation
+  )
+    errors.add('store_generation_not_renewed');
+  // 結果不明として保留した操作は、隔離した操作の一部（承認待ちなどを含む総数より多くならない）。
+  if (
+    value.after_restore !== null &&
+    value.after_restore.operations_held_count >
+      value.after_restore.operations_unverified_count
+  )
+    errors.add('held_exceeds_unverified');
+  // 終わりの時刻が始まりより前になれるのは、処理中に時計が戻ったと判定して止めた拒否だけ
+  // （期限切れの削除の段階の clock_regression。実測の UTC の逆転をそのまま記録する。ADR 0040）。
+  const clockRegression =
+    value.outcome === 'rejected' &&
+    failedStage === 'expiry_purge' &&
+    value.stages[failedIndex].reasons.includes('clock_regression');
+  if (
+    Date.parse(value.finished_at) < Date.parse(value.started_at) &&
+    !clockRegression
+  )
+    errors.add('finished_before_started');
+  return [...errors];
+}
+
+// 復元の時点から再実行に届き得る状態（ADR 0040 の表。08 §3 と domain の OPERATION_TRANSITIONS から手で列挙した）。
+// 外部サービスを変える操作（remote_mutation）の終端でない 7 つの状態すべてが、承認・送出準備・試行へ戻り得る。
+//   awaiting_approval → approved → preparing → dispatching
+//   approved・preparing・dispatching・reconciling（→ not_executed → preparing）・unknown_held（→ not_executed → preparing）
+//   not_executed → awaiting_approval・preparing（再試行・内容の更新）
+// 終端の succeeded・cancelled・superseded からは出られない。LocalCommand の効果は DB と一緒に戻るので対象外。
+const RESTORE_OPEN_STATES = [
+  'awaiting_approval',
+  'approved',
+  'preparing',
+  'dispatching',
+  'reconciling',
+  'unknown_held',
+  'not_executed',
+];
+// 復元の後に unknown_held になる、進行中の 4 つ。
+const RESTORE_IN_FLIGHT_STATES = [
+  'approved',
+  'preparing',
+  'dispatching',
+  'reconciling',
+];
+
+// 復元の直後の操作の記録の検査。理由は最初に起きた順に 1 回だけ返す。
+function restoredOperationErrors(op) {
+  const errors = new Set();
+  const marked = op.restore_unverified_at !== null;
+  if (op.effect_route === 'local_command') {
+    if (marked) errors.add('local_command_quarantined');
+  } else {
+    const open = RESTORE_OPEN_STATES.includes(op.state);
+    if (open && !marked) errors.add('not_quarantined');
+    if (!open && marked) errors.add('terminal_quarantined');
+    if (RESTORE_IN_FLIGHT_STATES.includes(op.state))
+      errors.add('in_flight_not_held');
+  }
+  if (marked && op.valid_approval_count > 0) errors.add('approval_not_revoked');
+  return [...errors];
+}
+
+// 復元後の印（restore_unverified_at）の DB 側の守りと、印を外す条件の期待表（ADR 0040）。
+// 手書きのシナリオ（storage-contract-cases.json の scenarios）の期待値と照合するための参照実装で、製品の関数ではない。
+// - 承認の作成・approved と preparing への遷移・試行の作成: 印があれば拒否（restore_unverified）。
+// - 内容の更新: 外部に出ないので許すが、印は操作に付いたまま（内容版を上げても外れない）。
+// - 照合（reconcile）: 印を外して結果を取り込むのは、実行済みの積極的な証拠（目印つきの作成物が一つ見つかり、
+//   目印の内容版が復元した内容版と同じで、内容も照合できた）があるときだけ。見つからない・複数・読めない・
+//   別の内容版・内容を照合できない・照合の手段がない、は保留（印は残る）。「見つからない」は未実行の証拠にしない
+//   （connectors.ts の reconcileOutcome の not_found_may_apply_late と同じ）。
+// - 本人の手での決着（owner_resolve）: 印を外せる。
+export function restoreGuard(op, step) {
+  const marked = op.restore_unverified_at !== null;
+  switch (step.event) {
+    case 'create_approval':
+    case 'enter_approved':
+    case 'enter_preparing':
+    case 'create_attempt':
+      return marked
+        ? { result: 'rejected', reason: 'restore_unverified' }
+        : { result: 'allowed', reason: null };
+    case 'revise_content':
+      return { result: 'allowed', reason: null };
+    case 'reconcile': {
+      if (!marked) return { result: 'rejected', reason: 'not_quarantined' };
+      const o = step.observation;
+      switch (o.kind) {
+        case 'found':
+          if (o.marker_content_version !== op.content_version)
+            return { result: 'hold', reason: 'content_version_mismatch' };
+          if (o.content_matches !== true)
+            return { result: 'hold', reason: 'content_unverified' };
+          return { result: 'import_result', reason: null };
+        case 'not_found':
+          return { result: 'hold', reason: 'not_found_may_apply_late' };
+        case 'multiple':
+          return { result: 'hold', reason: 'multiple_matches' };
+        case 'unreadable':
+          return { result: 'hold', reason: 'lookup_unreadable' };
+        case 'unsupported':
+          return { result: 'hold', reason: 'lookup_unsupported' };
+        default:
+          throw new Error(`unknown observation ${o.kind}`);
+      }
+    }
+    case 'owner_resolve':
+      return marked
+        ? { result: 'released', reason: null }
+        : { result: 'rejected', reason: 'not_quarantined' };
+    default:
+      throw new Error(`unknown event ${step.event}`);
+  }
+}
+
 // 文書に明記した局所的不変条件だけ。認可・DB状態・外部照合は検証しない。
 // DecimalString（小数点以下 6 桁まで）を百万分の一の整数にする。浮動小数点数を使わない。
 function decimalMicros(text) {
@@ -451,8 +674,43 @@ export function semanticErrors(name, value) {
       errors.push('delete_before_review');
   }
   if (name === 'ForgetLedgerEntry') {
-    const keys = value.forgotten.map((s) => `${s.source_kind}:${s.source_id}`);
+    const keys = value.forgotten.map(
+      (s) => `${s.source_kind}:${s.source_id ?? s.source_id_hmac}`,
+    );
     if (new Set(keys).size !== keys.length) errors.push('duplicate_forgotten');
+  }
+  // 忘却台帳の別ファイル・端末の複製・バックアップの封筒・復元の結果・置き場所の検査（B06-01、ADR 0040）。
+  if (name === 'ForgetLedgerFile') errors.push(...ledgerFileErrors(value));
+  if (name === 'ForgetLedgerReplica')
+    errors.push(...ledgerFileErrors(value.ledger));
+  if (name === 'BackupManifest') {
+    // 世代 0（空の台帳）のときだけ、台帳の hash は 64 個の 0。
+    if (
+      (value.forgetting_generation === '0') !==
+      (value.ledger_head_hash === ZERO_HASH)
+    )
+      errors.push('genesis_ledger_hash_mismatch');
+    if (
+      value.excluded_tables.some((table) =>
+        ['forget_ledger', 'forget_ledger_items'].includes(table),
+      )
+    )
+      errors.push('required_table_excluded');
+    // 3 つの鍵は同じ復旧キーで包む。
+    if (new Set(value.key_wraps.map((wrap) => wrap.recovery_key_id)).size !== 1)
+      errors.push('recovery_key_mismatch');
+  }
+  if (name === 'RestoreResult') errors.push(...restoreResultErrors(value));
+  if (name === 'RestoredOperation')
+    errors.push(...restoredOperationErrors(value));
+  if (name === 'BackupLocationCheck') {
+    if (value.usable !== (value.problems.length === 0))
+      errors.push('usable_mismatch');
+    if (
+      value.warnings.includes('sync_folder_detected') !==
+      (value.sync_provider_hint !== null)
+    )
+      errors.push('sync_hint_mismatch');
   }
   if (name === 'DeploymentManifest') {
     const uses = value.adoptions.map((a) => a.use);

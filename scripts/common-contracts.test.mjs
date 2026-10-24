@@ -37,6 +37,10 @@ const VERSION_FIELDS = {
   session_epoch: 'SessionEpoch',
   source_revision: 'SourceRevision',
   store_generation: 'StoreGeneration',
+  // バックアップ・復元（ADR 0040）。復元の前後の DB の世代と、復元で適用した台帳の世代。
+  backup_store_generation: 'StoreGeneration',
+  new_store_generation: 'StoreGeneration',
+  applied_forgetting_generation: 'ForgettingGeneration',
   template_version: 'TemplateVersion',
   reservation_revision: 'ReservationRevision',
   executor_generation: 'ExecutorGeneration',
@@ -74,6 +78,9 @@ const OPAQUE_VERSION_FIELDS = new Set([
   'suite_version',
   // 端末に保存するキャンバスを置く画面の設定の形式の番号（定数 1。UI-06、ADR 0032）。順序を比べる版ではない。
   'schema_version',
+  // バックアップを取った時点の DB のマイグレーションの版（正の整数。ADR 0040）。復元ではコードの最新より新しければ拒否する
+  // だけで、版どうしの大小を契約では比べない。
+  'db_schema_version',
 ]);
 // 抽出した依頼の版を使う定義。RequestEntity 等を追加した時点で登録する（U04）。
 const REQUEST_ENTITY_DEFS = new Set([

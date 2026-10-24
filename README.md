@@ -61,6 +61,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [デスクトップの会話・変更の確認・処理状況の画面（発言・承認・取消・照合の IPC）](docs/adr/0031-b04-desktop-conversation-approval-screen.md)
 - [キャンバスの UI への作り直し（窓の役割・宣言的なキャンバスの記述・流れと区切り）](docs/adr/0032-ui-canvas-stream-and-window-roles.md)
 - [B05 の音声の契約の補い（音声レンダラーの限定 IPC・制御接続・リース・世代の永続・input_kind・外部への送信の同意）](docs/adr/0038-b05-voice-contract-additions.md)
+- [B06 の保存の契約（忘却台帳の別ファイル・バックアップの封筒・復元の結果・期限切れと忘却の知らせ・保存モード・復旧キー）と本人の判断](docs/adr/0040-b06-storage-contracts-and-owner-decisions.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

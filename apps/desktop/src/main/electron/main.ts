@@ -130,6 +130,7 @@ import {
 import {
   VOICE_CHANNELS,
   VoiceController,
+  notifyVoiceDeviceChanged,
   type VoiceRendererPort,
 } from '../voice-controller.js';
 import {
@@ -1120,16 +1121,14 @@ function start(): void {
         return;
       }
       // 止まった・ロックした・再開した: 最初に音声レンダラーへ suspend_io を送る・用意する（B05-06。PR #160 のレビュー P2-3:
-      // ほかの処理の例外で停止が遅れない・届かないことがないよう、ほかより先に呼ぶ）。
-      try {
-        if (controller) voice?.deviceChanged(controller.state);
-      } finally {
-        // 音声の状態で状態欄が更新されることがあるので、届いた通知ではなく今の状態欄を送る（古い状態欄を後から送らない）。
-        sendToRenderer('desktop.state_changed', {
-          channel: 'desktop.state_changed',
-          status: controller?.statusBar ?? notification.status,
-        });
-      }
+      // ほかの処理の例外で停止が遅れない・届かないことがないよう、ほかより先に呼ぶ）。音声の制御が例外を投げても、記録だけ
+      // して続ける（トレイの更新・ロックしたときにキャンバスを戻す処理を飛ばさない。Issue #162）。
+      if (controller) notifyVoiceDeviceChanged(voice, controller.state, log);
+      // 音声の状態で状態欄が更新されることがあるので、届いた通知ではなく今の状態欄を送る（古い状態欄を後から送らない）。
+      sendToRenderer('desktop.state_changed', {
+        channel: 'desktop.state_changed',
+        status: controller?.statusBar ?? notification.status,
+      });
       updateTray();
       // ロック状態は要求の Buddy-Lock-State と接続の表示の範囲に使う。
       if (link && controller) {

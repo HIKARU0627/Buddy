@@ -1187,7 +1187,7 @@
     },
     {
       "id": "ma03-capped-by-m",
-      "title": "実費 55 は M 40 までがクレジット、超えた 15 は追加の支出",
+      "title": "実費 55 は M 40 までがクレジット、超えた 15 は追加の支出。消費の見積もりは M で止めず実費の 55",
       "cycle_id": "anthropic:2030-10-01",
       "actual_gross": "55",
       "max_liability": "40",
@@ -1208,7 +1208,7 @@
       "expected": {
         "credit_applied": "40",
         "additional_spend": "15",
-        "estimate": "40"
+        "estimate": "55"
       }
     },
     {
@@ -1291,7 +1291,7 @@
     },
     {
       "id": "ma03-remaining-zero-capped-by-m",
-      "title": "残りが 0 で実費 55 が M 40 を超えるとき、割り当て 0・追加の支出 55、消費の見積もりは M の 40",
+      "title": "残りが 0 で実費 55 が M 40 を超えるとき、割り当て 0・追加の支出 55、消費の見積もりは実費の 55",
       "cycle_id": "anthropic:2030-10-01",
       "actual_gross": "55",
       "max_liability": "40",
@@ -1312,7 +1312,7 @@
       "expected": {
         "credit_applied": "0",
         "additional_spend": "55",
-        "estimate": "40"
+        "estimate": "55"
       }
     },
     {

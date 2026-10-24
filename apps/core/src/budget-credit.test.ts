@@ -209,3 +209,16 @@ test('the gate reads the file every time, so a balance the owner writes takes ef
     assert.equal(provider.receipts.length, 1);
   });
 });
+
+test('a list above the count limit is refused with a reason that names the limit, not a generic shape error', () => {
+  const many = Array.from({ length: 121 }, (_, index) =>
+    creditObservation({
+      observed_at: new Date(Date.UTC(2030, 9, 1, 0, 0, index)).toISOString(),
+    }),
+  );
+  assert.deepEqual(reasonsOf(check(file(...many))), [
+    'credit_too_many_observations',
+  ]);
+  // 120 件までは読める。
+  assert.equal(check(file(...many.slice(0, 120))).ok, true);
+});

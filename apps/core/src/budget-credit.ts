@@ -22,6 +22,8 @@ import { StrictJsonError, parseStrictJson } from './strict-json.js';
 
 export const BUDGET_CREDIT_FILE = 'budget-credit-observations.json';
 export const MAX_BUDGET_CREDIT_BYTES = 256 * 1024;
+// 観測の一覧の件数の上限（契約の BudgetCreditObservations と同じ）。
+export const MAX_BUDGET_CREDIT_OBSERVATIONS = 120;
 
 export type LoadedCreditObservations =
   | {
@@ -62,6 +64,15 @@ export function checkCreditObservationsText(
   }
   // 原型のないオブジェクトを普通の値にする（DB worker へ渡す前の形をそろえる）。
   const value = JSON.parse(JSON.stringify(parsed)) as unknown;
+  // 件数の上限（契約の maxItems）を超えたことが分かるように、形の誤りと分けて理由を返す。
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as { observations?: unknown }).observations) &&
+    (value as { observations: unknown[] }).observations.length >
+      MAX_BUDGET_CREDIT_OBSERVATIONS
+  )
+    return fail(['credit_too_many_observations']);
   if (!contract.valid('BudgetCreditObservations', value))
     return fail(['credit_schema_invalid']);
   const observations = value as BudgetCreditObservationsInput;

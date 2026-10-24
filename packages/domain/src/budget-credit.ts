@@ -386,11 +386,14 @@ export interface CreditAllocation {
   readonly creditApplied: bigint;
   readonly additionalSpend: bigint;
   // 受付の残りから引く消費の見積もり（精算の区分とは別。ADR 0042）。周期に結び付いた予約（クレジットの対象の要求）は、
-  // Buddy が割り当てた額（creditApplied）に関わらず min(実費, M) を見積もる。ほかの予約が残りを占めていて割り当てが 0 でも、
+  // Buddy が割り当てた額（creditApplied）や M に関わらず実費を見積もる（M を超えた分も provider は引くので保守側。18 桁で丸める）。ほかの予約が残りを占めていて割り当てが 0 でも、
   // provider がクレジットから消費したかもしれないので、後の連番の観測が採用されるまで引き続ける（消費済みの残高を使い回さない）。
   // 周期に結び付かない予約だけ 0。
   readonly estimate: bigint;
 }
+
+// 金額の上限（18 桁。DB の列の CHECK と同じ）。
+const MAX_CREDIT_AMOUNT = 999999999999999999n;
 
 // クレジットは、予約の周期の、確認できる残りの範囲で、実費と最大負担 M の小さい方まで充てる。
 // - 確認できない（周期に結び付かない・観測がない・不明・失効・周期が終わった）ときは 0。別の周期の残高へ付け替えない。
@@ -400,9 +403,10 @@ export interface CreditAllocation {
 // - 残りは、観測した残高から、観測の後に精算したクレジットと、ほかの予約の未精算の M を引いた値。
 // この区分は精算の記録で、枠の上限の判定（実費の全額を数える）には使わない。
 export function allocateCredit(input: CreditAllocationInput): CreditAllocation {
-  const capped =
-    input.maxLiability < input.actualGross
-      ? input.maxLiability
+  // 消費の見積もりは M で止めず実費にする（provider は M を超えた分も引く。保守側）。金額の上限（18 桁）で丸める。
+  const estimate =
+    input.actualGross > MAX_CREDIT_AMOUNT
+      ? MAX_CREDIT_AMOUNT
       : input.actualGross;
   if (input.cycleId === null)
     return {
@@ -413,7 +417,7 @@ export function allocateCredit(input: CreditAllocationInput): CreditAllocation {
   const unconfirmed: CreditAllocation = {
     creditApplied: 0n,
     additionalSpend: input.actualGross,
-    estimate: capped,
+    estimate,
   };
   const { basis, ledger } = input;
   if (
@@ -434,6 +438,6 @@ export function allocateCredit(input: CreditAllocationInput): CreditAllocation {
   return {
     creditApplied: credit,
     additionalSpend: input.actualGross - credit,
-    estimate: capped,
+    estimate,
   };
 }

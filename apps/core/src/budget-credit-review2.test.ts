@@ -18,6 +18,7 @@ import {
   creditConfig,
   creditObservation,
   loadedConfig,
+  textRequest,
   uuid,
   withBudgetStore,
 } from './budget-test-support.js';
@@ -399,6 +400,163 @@ test(
       const status = await gate.creditStatus();
       // 5 XXX は予算の通貨で 10 XTS。
       assert.equal(status.balance, '10');
+    });
+  },
+);
+
+// --- 最後の再確認 ---
+
+test(
+  'a reservation that is not bound to the credit never waits for the observation file, in dispatch, top-up and settlement',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      const source = new MemoryCreditSource([creditObservation()]);
+      // 読み込みが詰まっても待たない（待てば待ち時間の上限まで進まず、試験が時間切れになる）。
+      const gate = creditGate(harness, source, {
+        creditReadTimeoutMs: 600_000,
+      });
+      await gate.start();
+      // 対象外の profile（Luna 相当）の要求は、クレジットに結び付かない。
+      const ticket = await admitted(gate, textRequest(uuid(1)));
+      assert.equal(ticket.credit_expires_at, null);
+      source.beforeRead = () => new Promise<void>(() => undefined);
+      const reads = source.reads;
+      assert.deepEqual(await gate.dispatch(ticket), { ok: true });
+      const topped = await gate.topUp(ticket, {
+        reserved: '1',
+        max_liability: '1',
+      });
+      assert.equal(topped.ok, true);
+      assert.equal((await gate.settle(ticket, usage('30', 'p-1'))).ok, true);
+      assert.equal(source.reads, reads);
+      const row = rowOf(harness, uuid(1));
+      assert.deepEqual(
+        [
+          row.status,
+          row.credit_applied,
+          row.additional_spend,
+          row.credit_estimate,
+        ],
+        ['settled', 0, 30, 0],
+      );
+    });
+  },
+);
+
+test(
+  'when the observations cannot be adopted, admission, dispatch and top-up are refused with credit_adoption_failed and not as a budget hold, and settlement goes on',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      const source = new MemoryCreditSource([
+        creditObservation({ balance: xxx('50') }),
+      ]);
+      const gate = creditGate(harness, source);
+      await gate.start();
+      const settleTicket = await admitted(gate, claudeRequest(uuid(1)));
+      const ticket = await admitted(gate, claudeRequest(uuid(2)));
+      // 観測が 121 件（上限は 120）。採用は credit_invalid で失敗する。
+      source.observations = Array.from({ length: 121 }, () =>
+        creditObservation({ balance: xxx('50') }),
+      );
+      const reasons = ['credit_adoption_failed', 'credit_invalid'];
+      const held = await gate.admit(claudeRequest(uuid(3)));
+      assert.deepEqual(held, { ok: false, reasons, budgetHeld: false });
+      assert.deepEqual(await gate.dispatch(ticket), {
+        ok: false,
+        reasons,
+        uncertain: false,
+      });
+      assert.deepEqual(
+        await gate.topUp(ticket, { reserved: '1', max_liability: '1' }),
+        { ok: false, reasons },
+      );
+      // 精算は止めない（採用済みの観測のまま区分する）。残高 100 XTS に M 40 が 2 つ、実費 30 は全額クレジット。
+      assert.equal(
+        (await gate.settle(settleTicket, usage('30', 'p-1'))).ok,
+        true,
+      );
+      const row = rowOf(harness, uuid(1));
+      assert.deepEqual(
+        [
+          row.status,
+          row.credit_applied,
+          row.additional_spend,
+          row.credit_estimate,
+        ],
+        ['settled', 30, 0, 30],
+      );
+      // 状態は不明として保留する（閉じた側）。
+      assert.equal((await gate.creditStatus()).hold, 'credit_unknown');
+    });
+  },
+);
+
+test(
+  'a request refused right before sending because the credit became unknown is told once when it recovers, even when no check saw the hold',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      const provider = new MockPaidProvider();
+      const source = new MemoryCreditSource([
+        creditObservation({ balance: xxx('20') }),
+      ]);
+      const gate = creditGate(harness, source, {
+        faults: {
+          beforeDispatch: () => {
+            source.observations.push(
+              creditObservation({
+                observed_at: at(1),
+                status: 'unknown',
+                balance: null,
+              }),
+            );
+            harness.clock.set(OCT_15 + 2000);
+          },
+        },
+      });
+      await gate.start();
+      const events: BudgetResumeEvent['kind'][] = [];
+      gate.onResumable((event) => events.push(event.kind));
+      const result = await gate.run(claudeRequest(uuid(1)), provider.send);
+      assert.deepEqual(result, {
+        kind: 'released',
+        reasons: ['credit_unknown'],
+      });
+      // 回復する観測（残高 20 XXX = 40 XTS）。保留を見た確認がなくても、待っていた要求のために一度だけ知らせる。
+      source.observations.push(
+        creditObservation({ observed_at: at(3), balance: xxx('20') }),
+      );
+      harness.clock.set(OCT_15 + 4000);
+      await gate.tick();
+      await gate.tick();
+      assert.deepEqual(events, ['credit_resumed']);
+    });
+  },
+);
+
+test(
+  'a file that cannot be read tells its reason once in the log, and a missing file stays silent',
+  TIMEOUT,
+  async () => {
+    await withBudgetStore(async (harness) => {
+      const messages: string[] = [];
+      const source = new MemoryCreditSource([]);
+      const gate = creditGate(harness, source, {
+        log: (message) => messages.push(message),
+      });
+      source.failure = 'missing';
+      await gate.start();
+      await gate.tick();
+      assert.equal(messages.length, 0);
+      source.failure = 'unreadable';
+      await gate.tick();
+      await gate.tick();
+      const told = (messages as string[]).filter((message) =>
+        message.includes('credit_unreadable'),
+      );
+      assert.equal(told.length, 1);
     });
   },
 );

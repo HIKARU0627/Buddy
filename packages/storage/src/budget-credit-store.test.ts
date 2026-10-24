@@ -395,12 +395,13 @@ test('a settlement splits the actual cost between the credit and the additional 
       actual_gross: 25,
       credit_applied: 20,
       additional_spend: 5,
-      credit_estimate: 20,
+      // 見積もりは M で止めず実費 25（M を超えた分も provider は引く）。割り当て（20）より大きくてよい。
+      credit_estimate: 25,
       credit_cycle_id: CYCLE,
     });
-    assert.deepEqual(ledger(db), { allocated_since: '45', outstanding: '0' });
-    // 観測の時刻より前に精算した分は引かない（観測した残高に含まれている）。
-    assert.deepEqual(ledger(db, OCT_15 + 1001), {
+    assert.deepEqual(ledger(db), { allocated_since: '50', outstanding: '0' });
+    // 後の連番の観測を基準にすれば、それより前に精算した分は引かない（観測した残高に含まれている）。
+    assert.deepEqual(ledger(db, 2), {
       allocated_since: '0',
       outstanding: '0',
     });
@@ -1306,6 +1307,103 @@ test('the estimate and the settlement sequence stay fixed after settlement and a
           )
           .run(reservationId(1)),
       /budget_credit_estimate_fixed/,
+    );
+  });
+});
+
+test('a manual settlement that omits the split keeps the consumed amount deducted for a credited reservation, and an explicit zero stays zero', async () => {
+  // 残高 60。M 30 の予約が usage 不明になり、本人が区分を省略して実費 30 を手で精算する。
+  await withBudget((db) => {
+    const credit = input(obs('60'));
+    value(
+      'budget.admit',
+      run(db, credited(1, { reserved: '5', max: '30' }, credit)),
+    );
+    value(
+      'budget.mark_unknown',
+      run(db, {
+        kind: 'budget.mark_unknown',
+        reservation_id: reservationId(1),
+      }),
+    );
+    value(
+      'budget.settle_manual',
+      run(db, {
+        kind: 'budget.settle_manual',
+        reservation_id: reservationId(1),
+        expected_revision: '1',
+        manual_reconciliation_id: 'manual:inv-1',
+        currency: 'XTS',
+        actual_gross: '30',
+        now: OCT_15 + 1000,
+        request: request(1),
+      }),
+    );
+    // 区分は初期の規則（クレジット 0・追加の支出＝実費）で、見積もりは実費 30（以前は 0 で、残りが 60 に戻っていた）。
+    assert.deepEqual(split(db, 1), {
+      status: 'settled',
+      actual_gross: 30,
+      credit_applied: 0,
+      additional_spend: 30,
+      credit_estimate: 30,
+      credit_cycle_id: CYCLE,
+    });
+    // 残り = 60 − 30 = 30。M 40 は収まらず、M 30 は収まる。
+    assert.deepEqual(
+      value(
+        'budget.admit',
+        run(db, credited(2, { reserved: '5', max: '40' }, credit)),
+      ).reason_codes,
+      ['credit_insufficient'],
+    );
+    assert.equal(
+      value(
+        'budget.admit',
+        run(db, credited(3, { reserved: '5', max: '30' }, credit)),
+      ).admitted,
+      true,
+    );
+  });
+  // 本人が明示した 0 は 0 のまま（請求の照合で、クレジットを消費していないと確かめた値）。残りは 60 のまま（M 50 が収まる。見積もり 30 なら残り 30 で収まらない）。
+  await withBudget((db) => {
+    const credit = input(obs('60'));
+    value(
+      'budget.admit',
+      run(db, credited(1, { reserved: '5', max: '30' }, credit)),
+    );
+    value(
+      'budget.mark_unknown',
+      run(db, {
+        kind: 'budget.mark_unknown',
+        reservation_id: reservationId(1),
+      }),
+    );
+    value(
+      'budget.settle_manual',
+      run(db, {
+        kind: 'budget.settle_manual',
+        reservation_id: reservationId(1),
+        expected_revision: '1',
+        manual_reconciliation_id: 'manual:inv-1',
+        currency: 'XTS',
+        actual_gross: '30',
+        credit_applied: '0',
+        additional_spend: '30',
+        credit_cycle_id: CYCLE,
+        now: OCT_15 + 1000,
+        request: request(1),
+      }),
+    );
+    assert.equal(
+      (split(db, 1) as { credit_estimate: number }).credit_estimate,
+      0,
+    );
+    assert.equal(
+      value(
+        'budget.admit',
+        run(db, credited(2, { reserved: '5', max: '50' }, credit)),
+      ).admitted,
+      true,
     );
   });
 });

@@ -1912,8 +1912,13 @@ function settleByHand(
       op.actual_gross,
       op.credit_applied ?? '0',
       op.additional_spend ?? op.actual_gross,
-      // 本人が請求の照合で得た区分なので、見積もりも同じ（確認できないものではない）。連番は精算した時点の最新。
-      op.credit_applied ?? '0',
+      // 本人が区分を明示したときは、請求の照合で得た値なので、見積もりも同じ（明示した 0 は 0）。区分を省略したときは、周期に
+      // 結び付いた予約の見積もりを保守側（実費）にする（省略を「消費なし」とみなして残りを戻さない）。連番は精算した時点の最新。
+      op.credit_applied !== undefined
+        ? op.credit_applied
+        : current.creditCycleId === null || current.creditCycleId === undefined
+          ? '0'
+          : op.actual_gross,
       current.creditCycleId === null || current.creditCycleId === undefined
         ? null
         : latestSeq(db, current.creditCycleId),

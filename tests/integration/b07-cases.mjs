@@ -1475,7 +1475,7 @@ export const cases = {
         await gate.start();
         provider.plan(labels.id('b'), { kind: 'drop', actual: '8' });
         const b = await gate.run(claudeRequest(labels.id('b')), provider.send);
-        // a: 実費 55 は M 40 を超える。クレジットは M までで、b の確保を食わない。超えた 15 は追加の支出。
+        // a: 実費 55 は M 40 を超える。クレジットは M までで、b の確保を食わない。超えた 15 は追加の支出。消費の見積もりは M で止めず実費 55 なので、残りは 100 − 55 − b の M 40 = 5。
         provider.plan(labels.id('a'), { kind: 'usage', actual: '55' });
         const a = await gate.run(claudeRequest(labels.id('a')), provider.send);
         return {

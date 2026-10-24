@@ -67,6 +67,13 @@ import type {
 } from './conversation-store.js';
 import { BUDGET_WRITE_OPS } from './budget-store.js';
 import { VOICE_WRITE_OPS } from './voice-store.js';
+import { RETENTION_WRITE_OPS } from './retention-store.js';
+import type {
+  RetentionOp,
+  RetentionOpKind,
+  RetentionOpResult,
+  RetentionOpValues,
+} from './retention-store.js';
 import type {
   VoiceOp,
   VoiceOpKind,
@@ -234,6 +241,17 @@ interface PendingVoice {
   readonly resolve: (result: VoiceOpResult) => void;
 }
 
+interface PendingRetention {
+  readonly kind: 'retention';
+  readonly op: RetentionOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: RetentionOpResult) => void;
+}
+
+export type RetentionOpOutcome<K extends RetentionOpKind> =
+  | { readonly ok: true; readonly value: RetentionOpValues[K] }
+  | Extract<RetentionOpResult, { ok: false }>;
+
 export type VoiceOpOutcome<K extends VoiceOpKind> =
   | { readonly ok: true; readonly value: VoiceOpValues[K] }
   | Extract<VoiceOpResult, { ok: false }>;
@@ -279,6 +297,7 @@ export class DbWorkerClient {
     | PendingConversation
     | PendingBudget
     | PendingVoice
+    | PendingRetention
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -684,6 +703,32 @@ export class DbWorkerClient {
     }) as Promise<VoiceOpOutcome<K>>;
   }
 
+  // 終わった操作の本文の削除・90 日の削除・用事の正本の移行（ADR 0051）。扱いは budget と同じ。
+  retention<K extends RetentionOpKind>(
+    op: Extract<RetentionOp, { kind: K }>,
+  ): Promise<RetentionOpOutcome<K>> {
+    return new Promise<RetentionOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'retention', op, timer, resolve });
+      const message: MainToWorker = { type: 'retention', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<RetentionOpOutcome<K>>;
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -781,6 +826,16 @@ export class DbWorkerClient {
         pending.resolve({
           ok: false,
           outcome: BUDGET_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'retention') {
+        pending.resolve({
+          ok: false,
+          outcome: RETENTION_WRITE_OPS.has(pending.op.kind)
             ? 'unknown'
             : 'rejected',
           reasons: [reason],
@@ -897,6 +952,18 @@ export class DbWorkerClient {
     if (message.type === 'conversation_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'conversation') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'retention_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'retention') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

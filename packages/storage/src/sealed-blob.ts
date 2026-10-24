@@ -15,7 +15,10 @@ import {
 /** 封筒の形式版。AAD の作り方・アルゴリズム・nonce とタグの長さを変えるときに上げる。 */
 export const SEALED_BLOB_FORMAT_VERSION = 1;
 
-/** sealed_blobs.purpose の値（migrations/0001_initial.sql の CHECK と一致することを試験する）。 */
+/**
+ * sealed_blobs.purpose の値（最新のマイグレーションの CHECK と一致することを試験する）。
+ * task_content は 0011 で足した（用事の題名・期限・本文。所有者は tasks。ADR 0051）。
+ */
 export const SEALED_BLOB_PURPOSES = [
   'operation_intent',
   'turn_text',
@@ -29,6 +32,7 @@ export const SEALED_BLOB_PURPOSES = [
   'connection_account',
   'request_summary',
   'proposal',
+  'task_content',
 ] as const;
 
 export type SealedBlobPurpose = (typeof SEALED_BLOB_PURPOSES)[number];

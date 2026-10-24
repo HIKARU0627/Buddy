@@ -70,6 +70,11 @@ const ninthSha = createHash('sha256').update(ninthBytes).digest('hex');
 // 復元の後の未確認の印。
 const tenthBytes = readFileSync(new URL('0010_retention.sql', MIGRATIONS_DIR));
 const tenthSha = createHash('sha256').update(tenthBytes).digest('hex');
+// 0011（ADR 0051）: 用事の正本の分離・本文の削除・依頼の結び付けの外部キー・安全停止の理由・解放済みの予約の backfill。
+const eleventhBytes = readFileSync(
+  new URL('0011_operation_body_retention.sql', MIGRATIONS_DIR),
+);
+const eleventhSha = createHash('sha256').update(eleventhBytes).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -130,7 +135,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0010 apply to a temporary file DB: 53 STRICT tables, version 10 and the content hashes', () => {
+test('0001 to 0011 apply to a temporary file DB: 53 STRICT tables, version 11 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -138,8 +143,8 @@ test('0001 to 0010 apply to a temporary file DB: 53 STRICT tables, version 10 an
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 10,
-        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        to: 11,
+        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
       });
       const tables = tableNames(db);
       assert.equal(tables.length, 53);
@@ -162,20 +167,21 @@ test('0001 to 0010 apply to a temporary file DB: 53 STRICT tables, version 10 an
         'migration_sha256:0008': eighthSha,
         'migration_sha256:0009': ninthSha,
         'migration_sha256:0010': tenthSha,
-        schema_version: '10',
+        'migration_sha256:0011': eleventhSha,
+        schema_version: '11',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 10 のまま、適用するものはない。
+    // 開き直しても版は 11 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 10);
+      assert.equal(readSchemaVersion(reopened), 11);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 10,
-        to: 10,
+        from: 11,
+        to: 11,
         applied: [],
       });
     } finally {
@@ -352,6 +358,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [8, '0008_budget_credit.sql'],
       [9, '0009_voice_epochs.sql'],
       [10, '0010_retention.sql'],
+      [11, '0011_operation_body_retention.sql'],
     ],
   );
   withTempDir((dir) => {

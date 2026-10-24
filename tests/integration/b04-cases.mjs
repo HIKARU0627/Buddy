@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   sealOperationIntent,
@@ -714,6 +714,15 @@ async function qa28(t, spec) {
     attempt_id: randomUUID(),
     task_id: randomUUID(),
     list_id: 'inbox',
+    // 用事の正本の暗号文（ADR 0051。DB worker は中身を復号しないので合成の乱数でよい）。
+    content: {
+      blob_id: randomUUID(),
+      format_version: 1,
+      key_id: 'data-key-v1',
+      nonce: randomBytes(12),
+      ciphertext: randomBytes(24),
+      tag: randomBytes(16),
+    },
   };
   const lost = await store.submit(apply).result;
   assert.equal(lost.outcome, spec.expected.lost_ack_outcome);

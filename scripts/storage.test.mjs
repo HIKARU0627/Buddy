@@ -31,9 +31,15 @@ const cases = parseStrictJson(
   await readFile(new URL('tests/fixtures/storage-cases.json', root), 'utf8'),
 );
 
+// 製品の適用（applyMigrations）と同じく、版ごとに 1 つの transaction で適用する。0011 は外部キーの検査を
+// transaction の終わりまで遅らせて表を作り直すので、自動コミットでは適用できない（ADR 0051）。
 function openMigrated() {
   const db = new DatabaseSync(':memory:');
-  for (const sql of migrations) db.exec(sql);
+  for (const sql of migrations) {
+    db.exec('BEGIN IMMEDIATE');
+    db.exec(sql);
+    db.exec('COMMIT');
+  }
   return db;
 }
 

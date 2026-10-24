@@ -157,6 +157,9 @@ export interface ApplyLocalCommand extends DbCommandBase<'operation.apply_local'
   readonly task_id: string;
   // 登録先の一覧（確定 intent の target.list_id。復号は Core が行う）。
   readonly list_id: string;
+  // 用事の題名・期限・本文の暗号文（purpose = task_content、所有者は tasks の task_id・版 0。ADR 0051）。
+  // 用事の正本は操作の確定 intent から分け、確定 intent は J5 のとおり完了から 7 日で消える。
+  readonly content: SealedBlobInput;
 }
 
 export type DbCommand =
@@ -218,7 +221,7 @@ const ID_TEXT = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const REVISION_TEXT = /^(0|[1-9][0-9]*)$/u;
 const HASH_TEXT = /^[0-9a-f]{64}$/u;
 
-function isId(value: unknown): value is string {
+export function isId(value: unknown): value is string {
   return typeof value === 'string' && ID_TEXT.test(value);
 }
 
@@ -262,7 +265,7 @@ function isBytes(value: unknown, length?: number): boolean {
   );
 }
 
-function isSealedBlob(value: unknown): boolean {
+export function isSealedBlob(value: unknown): boolean {
   const intent = value as SealedBlobInput | null | undefined;
   return (
     typeof intent === 'object' &&
@@ -408,6 +411,7 @@ export function commandShapeReasons(command: DbCommand): string[] {
         command.list_id.length > 128
       )
         reasons.push('list_id_invalid');
+      if (!isSealedBlob(command.content)) reasons.push('content_invalid');
       break;
     case 'operation.record_result':
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');

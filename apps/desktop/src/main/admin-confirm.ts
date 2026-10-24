@@ -1,6 +1,13 @@
 // 承認・拒否・失効の前の OS の確認ダイアログの文言（本人の判断 2026-10-22、ADR 0026）。Electron に依存しない純粋な関数で、
 // 値は main が中枢から受け取った一覧の値だけを使う。端末名・OS は申請者の自己申告なので、制御文字・書字方向の制御文字を
 // 取り除き、長さを切る。確認コードの見比べを求める文を必ず入れる。
+import {
+  budgetOrdinalLabel,
+  budgetOriginLabel,
+  budgetPoolLabel,
+  formatMoney,
+} from '@buddy/domain';
+import type { BudgetConfirmRequest } from './budget-bridge.js';
 import type { AdminConfirmRequest, HomeConfirmRequest } from './core-link.js';
 import type { OperationConfirmRequest } from './operation-bridge.js';
 
@@ -198,11 +205,100 @@ export function operationConfirmText(
   };
 }
 
+// 予算の確認（B07-05、ADR 0039）の確認。値は main が中枢の利用状況から読んだもので、手での精算の実費・照合 ID だけは本人が
+// 入力した値。金額は本人の設定に基づく実行時の値（個人の金額なので、試験・撮影には合成の XTS だけを使う）。
+export function budgetConfirmText(
+  request: BudgetConfirmRequest,
+): AdminConfirmText {
+  // 枠の内部の ID は出さず、用途の名前で言う。対象を見分けられるよう、発生した日時・用途・モデルの名前も出す
+  // （中枢が記録していない値は出さない）。
+  const pool = `枠: ${budgetPoolLabel(request.poolId)}（${displayText(request.budgetMonth, 7)}）`;
+  const identity: (string | null)[] = [
+    request.occurredAt === null ? null : `発生: ${clock(request.occurredAt)}`,
+    // 表示が重なる項目の順番（一覧・読み上げと同じ言い方）。
+    request.ordinal === null
+      ? null
+      : budgetOrdinalLabel(request.ordinal.position, request.ordinal.of),
+    request.origin === null
+      ? null
+      : `用途: ${budgetOriginLabel(request.origin)}`,
+    request.profileId === null
+      ? null
+      : `モデル: ${displayText(request.profileId, 60)}`,
+  ];
+  const detail = (lines: readonly (string | null)[]): string =>
+    lines.filter((line): line is string => line !== null).join('\n');
+  const actual =
+    request.actualGross === null ? null : formatMoney(request.actualGross);
+  switch (request.action) {
+    case 'approve_overage':
+      return {
+        title: '超過枠の承認',
+        message: `この依頼の最大負担 ${formatMoney(request.maxLiability)} を、超過枠から使うことを承認しますか`,
+        detail: detail([
+          pool,
+          ...identity,
+          `最大負担 M: ${formatMoney(request.maxLiability)}`,
+          request.overageRemaining === null
+            ? null
+            : `超過枠の残り: ${formatMoney(request.overageRemaining)}`,
+          request.expiresAt === null
+            ? null
+            : `承認の期限: ${clock(request.expiresAt)}`,
+          '',
+          '承認は、この依頼と最大負担だけに使います。別の依頼や、より大きな負担には使えません。',
+        ]),
+        buttons: ['やめる', '承認する'],
+      };
+    case 'review_overrun':
+      return {
+        title: 'M 超過の確認',
+        message: '最大負担を超えた実費を確認しましたか',
+        detail: detail([
+          pool,
+          ...identity,
+          actual === null ? null : `記録した実費: ${actual}`,
+          `最大負担 M: ${formatMoney(request.maxLiability)}`,
+          request.actualGross === null
+            ? null
+            : `超過: ${formatMoney({
+                currency: request.actualGross.currency,
+                amount: (
+                  BigInt(request.actualGross.amount) -
+                  BigInt(request.maxLiability.amount)
+                ).toString(),
+              })}`,
+          '',
+          '確認すると、この枠と下位の枠の新しい受付が再開します。実費と計上先は変わりません。',
+        ]),
+        buttons: ['やめる', '確認した'],
+      };
+    case 'settle_manual':
+      return {
+        title: '不明な費用の精算',
+        message: `不明な費用を ${actual ?? ''} で精算しますか`,
+        detail: detail([
+          pool,
+          ...identity,
+          `保持している最大負担 M: ${formatMoney(request.maxLiability)}`,
+          actual === null ? null : `入力した実費: ${actual}`,
+          request.reconciliationId === null
+            ? null
+            : `照合 ID: ${displayText(request.reconciliationId, 70)}`,
+          '',
+          '精算は一度だけで、元の月・元の枠に計上します。請求の照合で確かめた値だけを入力してください。',
+        ]),
+        buttons: ['やめる', '精算する'],
+      };
+  }
+}
+
 export function adminConfirmText(
   request: AdminConfirmRequest,
 ): AdminConfirmText {
   if (request.action === 'register_home') return homeConfirmText(request);
   if ('operationKind' in request) return operationConfirmText(request);
+  if ('poolId' in request) return budgetConfirmText(request);
   const name = displayText(request.deviceName) || '（名前なし）';
   const platform =
     PLATFORMS[request.platform] ?? displayText(request.platform, 20);

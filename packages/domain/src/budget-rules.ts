@@ -836,6 +836,9 @@ export interface BudgetReservationView {
   readonly credit_cycle_id: string | null;
   readonly approval_id: string | null;
   readonly overrun_reviewed: boolean;
+  // 受付の時刻と処理の起点（表示用。記録のない行では省く。B07-05）。
+  readonly created_at?: string;
+  readonly origin?: BudgetOrigin;
 }
 
 export interface BudgetUsageSummaryView {
@@ -892,6 +895,12 @@ export function toReservationView(
     credit_cycle_id: null,
     approval_id: item.approvalId,
     overrun_reviewed: item.overrunReviewed,
+    ...(item.createdAt === undefined
+      ? {}
+      : { created_at: new Date(item.createdAt).toISOString() }),
+    ...(item.origin === undefined || item.origin === null
+      ? {}
+      : { origin: item.origin }),
   };
 }
 

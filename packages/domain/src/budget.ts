@@ -1,6 +1,8 @@
 // 予約 R と最大負担 M による予算の受付と精算（設計 05 予約と最大負担の区別 F02、ADR 0006）。
 // 金額は通貨単位の百万分の一の整数文字列で受け、BigInt で計算する。個人の金額は設定から渡す。
 
+import type { BudgetOrigin } from './budget-rules.js';
+
 export interface BudgetPoolConfig {
   readonly poolId: string;
   readonly parentPoolId: string | null;
@@ -36,6 +38,10 @@ export interface ReservationRecord {
   readonly approvalId: string | null;
   readonly revision: string;
   readonly overrunReviewed: boolean;
+  // 保存した行の受付の時刻（UTC のミリ秒）と処理の起点。本人が対象を見分ける表示用で、判定には使わない（B07-05、
+  // ADR 0039）。記録のない古い行・合成のシナリオでは省く（null）。
+  readonly createdAt?: number;
+  readonly origin?: BudgetOrigin | null;
 }
 
 export interface AdmissionRequest {

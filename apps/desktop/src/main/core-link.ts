@@ -71,6 +71,8 @@ import type {
   PeerCertificateResult,
   PinnedHub,
 } from './hub-transport.js';
+import { BudgetBridge } from './budget-bridge.js';
+import type { BudgetConfirmRequest } from './budget-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
 import { OperationBridge } from './operation-bridge.js';
 import type {
@@ -108,6 +110,10 @@ export const OPERATION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.operation_reconcile',
   'desktop.operation_retry',
   'desktop.operation_check',
+  // 予算の確認（B07-05、ADR 0039）。超過枠の承認・見送り、M 超過の確認、不明な費用の手での精算。
+  'desktop.budget_overage_decide',
+  'desktop.budget_overrun_review',
+  'desktop.budget_manual_settle',
 ];
 
 // キャンバスのユーザーの操作のチャネル（UI-06、ADR 0032）。キャンバスの窓だけが使い、キャンバスが前に出ている間だけ受け付ける。
@@ -134,6 +140,8 @@ export type Registration =
 export interface HubStatus {
   readonly connection: HubConnection;
   readonly lastConfirmedAt: string | null;
+  // 中枢のスナップショットの予算保留（budget_hold.held）。不明は null。
+  readonly budgetHeld: boolean | null;
 }
 
 export interface DesktopCoreLinkOptions {
@@ -173,6 +181,9 @@ export interface DesktopCoreLinkOptions {
   readonly hubScreenProbeRetryMs?: number;
   // 承認・拒否・失効の前の本人の確認。省略すると確認できないので送らない。
   readonly confirmAdmin?: AdminConfirm;
+  // 予算の利用状況・予算保留を、接続・ロック解除・一定の間隔で自動で読むか（既定は読む。B07-05）。false なら、
+  // refreshBudget() を呼んだときだけ読む（中枢への要求の数を数える試験で、背景の読み取りを混ぜないため）。
+  readonly budgetAuto?: boolean;
   // キャンバスのモード（開発用のフラグ。UI-03、ADR 0032）。true のとき、入力バーの発言を流れ（POST /v1/stream/turns）へ
   // 送り、中枢のキャンバスの記述を取って onCanvas でキャンバスの窓へ渡す。false（既定）は従来どおり会話へ送る。
   readonly canvasMode?: boolean;
@@ -192,7 +203,10 @@ export interface DesktopCoreLinkOptions {
 // 表示する値（端末名・OS・確認コード）は main が中枢から受け取った一覧の値で、画面からは受け取らない。
 // 「やめる」を既定にし、signal で閉じられたら false を返す。Electron の層が dialog.showMessageBox で実装し、試験は注入する。
 export type AdminConfirmRequest =
-  DeviceConfirmRequest | HomeConfirmRequest | OperationConfirmRequest;
+  | DeviceConfirmRequest
+  | HomeConfirmRequest
+  | OperationConfirmRequest
+  | BudgetConfirmRequest;
 
 export interface DeviceConfirmRequest {
   readonly action: 'approve' | 'reject' | 'revoke';
@@ -239,6 +253,9 @@ const UUID_V4 =
 // 最終確認時刻だけが変わったときに画面へ知らせる最短の間隔（レビューの指摘 L8）。中枢の ping（15 秒）の
 // たびには知らせるが、イベントの取り直しなどで続けて変わるときは間引く。
 export const CONFIRMED_ONLY_NOTIFY_INTERVAL_MS = 10_000;
+
+// 予算の利用状況と予算保留を読み直す間隔（中枢から予算の変化を知らせる通知はないので、読み直す。B07-05）。
+export const BUDGET_POLL_INTERVAL_MS = 30_000;
 
 // 中枢の画面の端末かの判定が決まらなかったときの再試行（2・4・6 秒後、最大 3 回。接続し直すと数え直す）。
 export const HUB_SCREEN_PROBE_RETRY_MS = 2_000;
@@ -327,6 +344,10 @@ export class DesktopCoreLink {
   readonly #operations: OperationBridge;
   // キャンバスの記述と流れへの発言（キャンバスのモードだけ。UI-03）。
   readonly #canvas: CanvasBridge;
+  // 予算の確認（超過枠の承認・M 超過の確認・手での精算）と予算保留（B07-05、ADR 0039）。
+  readonly #budget: BudgetBridge;
+  // 予算の利用状況を読み直す次の時刻の timer（接続している間だけ。ロック・切断で止める）。
+  #budgetPoll: (() => void) | null = null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -341,6 +362,21 @@ export class DesktopCoreLink {
           ? { permitted: true, epoch: '' }
           : { permitted: desktopInputPermitted(state), epoch: state.ioEpoch };
       },
+      changed: () => options.onChange(),
+      log: (code) => this.#log(code),
+    });
+    this.#budget = new BudgetBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      confirm: (request) => this.#confirm(request),
+      io: () => {
+        const state = options.ioState?.() ?? null;
+        return state === null
+          ? { permitted: true, epoch: '' }
+          : { permitted: desktopInputPermitted(state), epoch: state.ioEpoch };
+      },
+      now: () => options.clock.now(),
       changed: () => options.onChange(),
       log: (code) => this.#log(code),
     });
@@ -430,6 +466,7 @@ export class DesktopCoreLink {
     this.#connection?.setLockState(lockState);
     if (lockState === 'unlocked') {
       void this.#probeHubScreen();
+      if (this.#options.budgetAuto !== false) void this.refreshBudget();
       // ロック中に捨てた記述を、解除したら中枢から取り直す（ロック中に届いた版の知らせは取っていない）。
       if (this.#options.canvasMode === true) void this.#canvas.refresh();
     }
@@ -447,13 +484,19 @@ export class DesktopCoreLink {
   hubStatus(): HubStatus {
     const state = this.#connection?.state;
     if (state === undefined)
-      return { connection: 'not_connected', lastConfirmedAt: null };
+      return {
+        connection: 'not_connected',
+        lastConfirmedAt: null,
+        budgetHeld: null,
+      };
     const connection = hubConnectionOf(state);
     return {
       connection,
       // 接続していない（未登録・再登録が必要）ときは最終確認時刻を出さない（状態欄の意味検査）。
       lastConfirmedAt:
         connection === 'not_connected' ? null : iso(state.lastConfirmedAt),
+      // 予算保留は中枢のスナップショットの値。接続している間だけ（読めていなければ不明）。
+      budgetHeld: connection === 'connected' ? this.#budget.hold : null,
     };
   }
 
@@ -514,6 +557,10 @@ export class DesktopCoreLink {
       operations:
         link === 'connected' && state?.view === 'full'
           ? this.#operations.entries(state.operations)
+          : [],
+      budget_items:
+        link === 'connected' && state?.view === 'full'
+          ? this.#budget.entries()
           : [],
     };
     const errors = this.#options.contract.connectionErrors(view);
@@ -691,6 +738,8 @@ export class DesktopCoreLink {
       if (state.phase === 'live' && previous.phase !== 'live') {
         this.#probeRetries = 0;
         void this.#probeHubScreen();
+        // 接続するたびに、予算の利用状況と予算保留を読む（本人の確認が要る項目・状態欄の予算保留。B07-05）。
+        if (this.#options.budgetAuto !== false) void this.refreshBudget();
         // 接続するたびに、中枢のキャンバスの今の記述を取る（捨てた記述の復元。UI-03）。
         if (this.#options.canvasMode === true) void this.#canvas.refresh();
       }
@@ -866,10 +915,14 @@ export class DesktopCoreLink {
       return this.#reject(raw.request_id, raw.channel, admission.reason);
     // 入出力が止まっている（この端末の停止・来客・全体停止）間は、発言も承認も受け付けない（01 いつも見える状態）。
     // 内容の確認・取消・照合は止まっていても使える（実行を増やさない）。
+    // 予算の承認・M 超過の確認も支出を許すので止める（見送りと手での精算は止めない。B07-05）。
     if (
       (raw.channel === 'desktop.turn_submit' ||
         raw.channel === 'desktop.operation_approve' ||
-        raw.channel === 'desktop.operation_retry') &&
+        raw.channel === 'desktop.operation_retry' ||
+        raw.channel === 'desktop.budget_overrun_review' ||
+        (raw.channel === 'desktop.budget_overage_decide' &&
+          raw.payload.decision === 'approve')) &&
       !desktopInputPermitted(ioState)
     )
       return this.#reject(raw.request_id, raw.channel, 'input_stopped');
@@ -931,6 +984,27 @@ export class DesktopCoreLink {
           raw.channel,
           result,
           (resolved) => ({ resolved }),
+        );
+        break;
+      }
+      case 'desktop.budget_overage_decide':
+      case 'desktop.budget_overrun_review':
+      case 'desktop.budget_manual_settle': {
+        const result =
+          raw.channel === 'desktop.budget_overage_decide'
+            ? await this.#budget.decide(raw.payload.ref, raw.payload.decision)
+            : raw.channel === 'desktop.budget_overrun_review'
+              ? await this.#budget.reviewOverrun(raw.payload.ref)
+              : await this.#budget.settleManually(
+                  raw.payload.ref,
+                  raw.payload.reconciliation_id,
+                  raw.payload.actual_amount,
+                );
+        outcome = this.#operationOutcome(
+          requestId,
+          raw.channel,
+          result,
+          (receipt) => ({ receipt }),
         );
         break;
       }
@@ -1799,6 +1873,43 @@ export class DesktopCoreLink {
     this.#options.onCanvas?.(notification);
   }
 
+  // 予算の利用状況と予算保留を読み直す（接続・ロック解除・パネルを出したとき・一定の間隔。B07-05、ADR 0039）。
+  // 読めた値だけを反映し、画面に出す値が変わったときだけ知らせる。次の読み取りを予約する。
+  async refreshBudget(): Promise<void> {
+    this.#cancelBudgetPoll();
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      connection.state.phase !== 'live' ||
+      this.#lockState !== 'unlocked'
+    )
+      return;
+    await this.#budget.refresh();
+    // 読んでいる間に切断・ロックしていれば、次を予約しない（自動で読まない設定でも予約しない）。
+    if (
+      this.#options.budgetAuto !== false &&
+      this.#connection === connection &&
+      connection.state.phase === 'live' &&
+      this.#lockState === 'unlocked' &&
+      this.#started
+    ) {
+      // 読み取りが重なっても、次の予約は常に 1 つ（予約の直前に前の予約を取り消す）。
+      this.#cancelBudgetPoll();
+      this.#budgetPoll = this.#options.clock.setTimer(
+        BUDGET_POLL_INTERVAL_MS,
+        () => {
+          this.#budgetPoll = null;
+          void this.refreshBudget();
+        },
+      );
+    }
+  }
+
+  #cancelBudgetPoll(): void {
+    this.#budgetPoll?.();
+    this.#budgetPoll = null;
+  }
+
   // 表示している確認を閉じて「送らない」にする（ウィンドウが隠れた・最小化されたとき。Electron の層が呼ぶ）。
   // 表示の権限の世代は進めない（参照・一覧は残し、前面に戻して押し直せる）。
   closeConfirm(): void {
@@ -1810,6 +1921,8 @@ export class DesktopCoreLink {
   #bumpGeneration(): void {
     this.#viewGeneration += 1;
     this.#operations.reset();
+    this.#budget.reset();
+    this.#cancelBudgetPoll();
     this.#canvas.reset();
     this.#confirmAbort?.abort();
     this.#confirmAbort = null;

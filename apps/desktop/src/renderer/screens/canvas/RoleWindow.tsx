@@ -1,7 +1,10 @@
 // 3 つの窓の画面の切り替え（UI-02 の試作・UI-04、ADR 0032）。preload が渡した窓の役割で、キャンバス・状態の層・入力バーの
 // どれを描くかを決める。役割で使えるチャネルは main が決め、画面は役割の表にある要求だけを送る。
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DesktopOperationEntry } from '@buddy/contracts';
+import type {
+  DesktopBudgetEntry,
+  DesktopOperationEntry,
+} from '@buddy/contracts';
 import type { BuddyDesktopApi } from '../../desktop-api.js';
 import { request } from '../../desktop-api.js';
 import { shownConnection } from '../../state/connection-state.js';
@@ -21,7 +24,9 @@ import {
   useWindowFocused,
   useWindowWidth,
 } from '../../state/use-role-window-state.js';
+import { useBudgetState } from '../../state/use-budget-state.js';
 import { useWorkState } from '../../state/use-work-state.js';
+import { BudgetItems } from '../budget/BudgetItems.js';
 import { WorkOperations, usePreviewFocus } from '../work/WorkPanel.js';
 import {
   canSummonCanvas,
@@ -65,6 +70,7 @@ function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
 
 // 操作がないときの空の配列（描画のたびに新しい配列を作らない）。
 const NO_OPERATIONS: readonly DesktopOperationEntry[] = [];
+const NO_BUDGET_ITEMS: readonly DesktopBudgetEntry[] = [];
 
 // 状態の層（UI-04）。窓の幅が main の決めたパネルの幅ならパネル、つまみの幅ならつまみだけを描く。
 function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
@@ -80,6 +86,9 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const live = operationsShown(state.status, connection);
   const operations = connection?.operations ?? NO_OPERATIONS;
   const work = useWorkState(api, live, operations);
+  // 予算の確認（超過枠の承認・M 超過の確認・不明な費用の手での精算。B07-05）。操作の一覧と同じく、ロック・切断で捨てる。
+  const budgetItems = connection?.budget_items ?? NO_BUDGET_ITEMS;
+  const budget = useBudgetState(api, live, budgetItems);
   const previewEntry = usePreviewFocus(work.state, operations);
   const view = statusTabView(state.status, state.connection);
   const stopped =
@@ -133,13 +142,22 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
       stopKeys={stopShortcutKeys(navigator.userAgent)}
       operations={
         live ? (
-          <WorkOperations
-            state={work.state}
-            actions={work.actions}
-            operations={operations}
-            stopped={stopped}
-            previewEntry={previewEntry}
-          />
+          <>
+            <BudgetItems
+              items={budgetItems}
+              state={budget.state}
+              actions={budget.actions}
+              stopped={stopped}
+              now={now}
+            />
+            <WorkOperations
+              state={work.state}
+              actions={work.actions}
+              operations={operations}
+              stopped={stopped}
+              previewEntry={previewEntry}
+            />
+          </>
         ) : null
       }
     />

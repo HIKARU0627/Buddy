@@ -19,11 +19,19 @@
 // 結果の理由にはコードだけを入れ、金額・本文を記録へ出さない。
 
 import { randomUUID } from 'node:crypto';
-import { computeReservation, overageRouteOf, routePool } from '@buddy/domain';
+import {
+  computeReservation,
+  overageRouteOf,
+  routePool,
+  toReservationView,
+} from '@buddy/domain';
 import type {
   BudgetHoldReason,
   BudgetOrigin,
+  BudgetReservationView,
   BudgetService,
+  BudgetUsageSummaryView,
+  OverageApprovalRecord,
   P95Measurement,
   PriceCategory,
 } from '@buddy/domain';
@@ -32,6 +40,7 @@ import type {
   BudgetOp,
   BudgetOpKind,
   BudgetOpOutcome,
+  BudgetRequestRef,
   BudgetReservationValue,
 } from '@buddy/storage';
 import type { LoadedBudgetConfig } from './budget-config.js';
@@ -175,6 +184,38 @@ export interface CalendarStatus {
 }
 
 export type CalendarConfirmReason = 'clock_regressed' | 'calendar_mismatch';
+
+// 超過枠の承認の期限の長さ（ADR 0039。原本に決めなし。承認の画面を開いて OS の確認で 1 回決めるのに足りる 10 分。
+// 期限を過ぎた承認は使えず、新しく求め直す）。
+export const OVERAGE_APPROVAL_TTL_MS = 10 * 60_000;
+
+// 本人の操作（超過の承認・M 超過の確認・手での精算・利用状況）の結果。reasons は理由のコードだけ（金額・本文を含めない）。
+// unknown は書込みの成否が分からない（COMMIT の失敗。自動では送り直さず、同じ要求の再送で保存済みの結果を返す）。
+export type GateResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: false;
+      readonly reasons: readonly string[];
+      readonly unknown: boolean;
+    };
+
+const gateFailure = (
+  reasons: readonly string[],
+  unknown = false,
+): {
+  readonly ok: false;
+  readonly reasons: readonly string[];
+  readonly unknown: boolean;
+} => ({
+  ok: false,
+  reasons,
+  unknown,
+});
+
+export interface Money {
+  readonly currency: string;
+  readonly amount: string;
+}
 
 export interface GateTimers {
   // ms 後に fn を呼ぶ。戻り値で取り消す。
@@ -341,6 +382,27 @@ export class BudgetGate {
     return true;
   }
 
+  // R と M の計算（受付と超過の承認の要求で同じ値を使う）。課金され得る期間は受付の時刻から応答の期限まで。
+  #estimate(
+    config: Extract<LoadedBudgetConfig, { readonly ok: true }>,
+    request: PaidRequest,
+    now: number,
+  ): ReturnType<typeof computeReservation> {
+    return computeReservation({
+      budgetCurrency: config.settings.currency,
+      priceKey: request.price_key,
+      priceVersions: config.config.price_versions,
+      verifiedPriceVersions: config.settings.verifiedPriceVersions,
+      billableFrom: iso(now),
+      billableUntil: iso(now + request.timeout_ms),
+      quantities: request.quantities,
+      profileId: request.profile_id,
+      profileRevision: request.profile_revision,
+      p95ProfileIds: this.#p95ProfileIds,
+      measurement: request.p95 ?? null,
+    });
+  }
+
   // 受付。枠を決め、予算月を進め、R と M を計算して、DB の 1 つの transaction で受け付ける。
   async admit(request: PaidRequest): Promise<AdmitResult> {
     const reject = (reasons: readonly string[]): AdmitResult => ({
@@ -370,19 +432,7 @@ export class BudgetGate {
       if (calendar.value.rolled_over)
         this.#emit({ kind: 'month_rolled', month: calendar.value.state.month });
       const deadline = now + request.timeout_ms;
-      const estimate = computeReservation({
-        budgetCurrency: config.settings.currency,
-        priceKey: request.price_key,
-        priceVersions: config.config.price_versions,
-        verifiedPriceVersions: config.settings.verifiedPriceVersions,
-        billableFrom: iso(now),
-        billableUntil: iso(deadline),
-        quantities: request.quantities,
-        profileId: request.profile_id,
-        profileRevision: request.profile_revision,
-        p95ProfileIds: this.#p95ProfileIds,
-        measurement: request.p95 ?? null,
-      });
+      const estimate = this.#estimate(config, request, now);
       if (!estimate.ok) return reject(estimate.reasonCodes);
       await this.#beforeAdmit(request);
       const admitted = await this.#store.budget({
@@ -726,6 +776,192 @@ export class BudgetGate {
       else failed += 1;
     }
     return { released, settled, usage_unknown: unknown, failed };
+  }
+
+  // --- 本人の操作と利用状況（B07-05、ADR 0039） ---
+
+  // 利用状況（契約の BudgetUsageSummary）。先に予算月を進める（月替わりの受付を待たずに今月を見せる）。設定が使えない
+  // ときは返さない。
+  async usage(): Promise<GateResult<BudgetUsageSummaryView>> {
+    const config = this.#config;
+    if (!config.ok) return gateFailure(['config_invalid']);
+    await this.tick().catch(() => false);
+    const result = await this.#store.budget({
+      kind: 'budget.summary',
+      settings: config.settings,
+      config_valid: true,
+      now: this.#now(),
+    });
+    return result.ok
+      ? { ok: true, value: result.value }
+      : gateFailure(result.reasons, result.outcome === 'unknown');
+  }
+
+  // 超過枠の個別の承認を求める（pending の承認を作る。承認は本人が main の OS の確認ダイアログで 1 回決める）。
+  // 本人の依頼で、超過枠へ回せる通常の枠の要求だけ。承認はこの request_id・M（要求の時点の価格で計算した値）・
+  // 超過枠・今の予算月に固定され、別の M・期限後の受付には使えない。超過枠の残りが M に足りなければ求めない。
+  // 同じ request_id の期限内の再要求（二度押し）は保存済みの承認を返す。
+  async requestOverage(request: PaidRequest): Promise<
+    GateResult<{
+      readonly approval: OverageApprovalRecord;
+      readonly duplicate: boolean;
+    }>
+  > {
+    const config = this.#config;
+    if (!config.ok) return gateFailure(['config_invalid']);
+    const poolId = routePool(
+      config.config.routing,
+      request.origin,
+      request.service,
+    );
+    if (poolId === null) return gateFailure(['route_missing']);
+    const route = overageRouteOf(config.config.routing);
+    if (route === null) return gateFailure(['overage_unavailable']);
+    if (request.origin !== 'owner_request')
+      return gateFailure(['not_owner_request']);
+    if (!route.routablePoolIds.includes(poolId))
+      return gateFailure(['pool_not_routable']);
+    if (!Number.isSafeInteger(request.timeout_ms) || request.timeout_ms <= 0)
+      return gateFailure(['timeout_invalid']);
+    const now = this.#now();
+    const calendar = await this.#store.budget({
+      kind: 'budget.calendar_advance',
+      now,
+      time_zone: config.timeZone,
+    });
+    if (!calendar.ok)
+      return gateFailure(calendar.reasons, calendar.outcome === 'unknown');
+    if (calendar.value.rolled_over)
+      this.#emit({ kind: 'month_rolled', month: calendar.value.state.month });
+    const estimate = this.#estimate(config, request, now);
+    if (!estimate.ok) return gateFailure(estimate.reasonCodes);
+    const summary = await this.#store.budget({
+      kind: 'budget.summary',
+      settings: config.settings,
+      config_valid: true,
+      now,
+    });
+    if (!summary.ok)
+      return gateFailure(summary.reasons, summary.outcome === 'unknown');
+    const month = summary.value.months.find(
+      (item) => item.budget_month === calendar.value.state.month,
+    );
+    const pool = month?.pools.find(
+      (item) => item.pool_id === route.overagePoolId,
+    );
+    if (pool === undefined) return gateFailure(['overage_unavailable']);
+    const remaining =
+      BigInt(pool.limit.amount) -
+      BigInt(pool.settled.amount) -
+      BigInt(pool.unsettled_max_liability.amount);
+    if (remaining < BigInt(estimate.maxLiability))
+      return gateFailure(['overage_insufficient']);
+    const requested = await this.#store.budget({
+      kind: 'budget.request_overage',
+      approval_id: this.#newId(),
+      request_id: request.request_id,
+      pool_id: route.overagePoolId,
+      budget_month: calendar.value.state.month,
+      currency: config.settings.currency,
+      max_liability: estimate.maxLiability,
+      overage_remaining: remaining.toString(),
+      now,
+      expires_at: now + OVERAGE_APPROVAL_TTL_MS,
+    });
+    if (!requested.ok)
+      return gateFailure(requested.reasons, requested.outcome === 'unknown');
+    return {
+      ok: true,
+      value: {
+        approval: requested.value.approval,
+        duplicate: requested.value.duplicate,
+      },
+    };
+  }
+
+  // 超過枠の承認・拒否（main の OS の確認ダイアログの後に端末から届く）。画面で見せた request_id と M が記録と一致する
+  // ときだけ決める。二度押しでも承認は 1 件。
+  async decideOverage(input: {
+    readonly approval_id: string;
+    readonly budget_request_id: string;
+    readonly max_liability: Money;
+    readonly decision: 'approve' | 'reject';
+    readonly request: BudgetRequestRef;
+  }): Promise<GateResult<OverageApprovalRecord>> {
+    const result = await this.#store.budget({
+      kind: 'budget.approve_overage',
+      approval_id: input.approval_id,
+      budget_request_id: input.budget_request_id,
+      currency: input.max_liability.currency,
+      max_liability: input.max_liability.amount,
+      decision: input.decision,
+      now: this.#now(),
+      request: input.request,
+    });
+    return result.ok
+      ? { ok: true, value: result.value.approval }
+      : gateFailure(result.reasons, result.outcome === 'unknown');
+  }
+
+  // M 超過の確認（本人が見た実費と M が記録と一致して、実費が M を超えるときだけ、その枠と子孫の枠の受付の停止を解く）。
+  async reviewOverrun(input: {
+    readonly reservation_id: string;
+    readonly expected_revision: string;
+    readonly actual_gross: Money;
+    readonly max_liability: Money;
+    readonly request: BudgetRequestRef;
+  }): Promise<GateResult<BudgetReservationView>> {
+    if (input.actual_gross.currency !== input.max_liability.currency)
+      return gateFailure(['currency_mismatch']);
+    const result = await this.#store.budget({
+      kind: 'budget.review_overrun',
+      reservation_id: input.reservation_id,
+      expected_revision: input.expected_revision,
+      currency: input.actual_gross.currency,
+      actual_gross: input.actual_gross.amount,
+      max_liability: input.max_liability.amount,
+      now: this.#now(),
+      request: input.request,
+    });
+    return result.ok
+      ? { ok: true, value: toReservationView(result.value.reservation) }
+      : gateFailure(result.reasons, result.outcome === 'unknown');
+  }
+
+  // 不明な費用の手での精算（usage 不明の予約に、本人が請求の照合で得た実額を一度だけ。元の月・元の枠のまま）。
+  async settleManual(input: {
+    readonly reservation_id: string;
+    readonly expected_revision: string;
+    readonly manual_reconciliation_id: string;
+    readonly actual_gross: Money;
+    readonly request: BudgetRequestRef;
+  }): Promise<GateResult<BudgetReservationView>> {
+    const result = await this.#store.budget({
+      kind: 'budget.settle_manual',
+      reservation_id: input.reservation_id,
+      expected_revision: input.expected_revision,
+      manual_reconciliation_id: input.manual_reconciliation_id,
+      currency: input.actual_gross.currency,
+      actual_gross: input.actual_gross.amount,
+      now: this.#now(),
+      request: input.request,
+    });
+    return result.ok
+      ? { ok: true, value: toReservationView(result.value.reservation) }
+      : gateFailure(result.reasons, result.outcome === 'unknown');
+  }
+
+  // 予約の今の版（経路の検査の「版の照合」に使う）。読めなければ 'unavailable'、なければ null。
+  async reservationRevision(
+    reservationId: string,
+  ): Promise<string | null | 'unavailable'> {
+    const result = await this.#store.budget({
+      kind: 'budget.reservation_find',
+      reservation_id: reservationId,
+      request_id: null,
+    });
+    if (!result.ok) return 'unavailable';
+    return result.value === null ? null : result.value.revision;
   }
 
   // 状態欄の「予算保留」（契約の BudgetHoldState）。金額を含めない。

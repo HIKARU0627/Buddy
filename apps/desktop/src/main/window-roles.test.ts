@@ -50,9 +50,22 @@ const SUMMON = 'desktop.canvas_summon';
 const PANEL = 'desktop.status_panel';
 // UI-06 で足した、キャンバスの物のユーザーの操作のチャネル（キャンバスの窓だけ。従来の窓は使わない）。
 const USER_OP = 'desktop.canvas_user_op';
+// B07-05 で足した、予算の確認のチャネル（状態の層だけ。従来の窓は使わない）。
+const BUDGET = [
+  'desktop.budget_overage_decide',
+  'desktop.budget_overrun_review',
+  'desktop.budget_manual_settle',
+];
 // UI-07 で足した、キャンバスの物の中身（本文）を求めるチャネル（キャンバスの窓だけ。従来の窓は使わない）。
 const CONTENT = 'desktop.canvas_content';
-const ALL_CHANNELS = [...LEGACY_CHANNELS, SUMMON, PANEL, USER_OP, CONTENT];
+const ALL_CHANNELS = [
+  ...LEGACY_CHANNELS,
+  SUMMON,
+  PANEL,
+  USER_OP,
+  CONTENT,
+  ...BUDGET,
+];
 
 const UNLOCKED = {
   lockState: 'unlocked',

@@ -196,6 +196,39 @@ export function desktopSemanticErrors(
       operations.length > 0
     )
       errors.push('operations_without_connection');
+    // 予算の確認の項目（B07-05、ADR 0039）。接続している間だけ。種類ごとに持つ値が決まっている。
+    const items = value['budget_items'];
+    if (Array.isArray(items)) {
+      if (link !== 'connected' && items.length > 0)
+        errors.push('budget_items_without_connection');
+      if (
+        items.some(
+          (item) =>
+            isRecord(item) &&
+            ((item['kind'] === 'overage_approval') !==
+              (item['overage_remaining'] !== null &&
+                item['expires_at'] !== null) ||
+              (item['kind'] === 'overage_approval') !==
+                (item['overage_remaining'] !== null ||
+                  item['expires_at'] !== null) ||
+              (item['kind'] === 'overrun_review') !==
+                (item['actual_gross'] !== null)),
+        )
+      )
+        errors.push('budget_entry_kind_mismatch');
+      if (
+        items.some((item) => {
+          const ordinal = isRecord(item) ? item['ordinal'] : null;
+          return (
+            isRecord(ordinal) &&
+            typeof ordinal['position'] === 'number' &&
+            typeof ordinal['of'] === 'number' &&
+            ordinal['position'] > ordinal['of']
+          );
+        })
+      )
+        errors.push('budget_ordinal_out_of_range');
+    }
     if (link === 'connected' && value['last_confirmed_at'] === null)
       errors.push('connected_without_confirmation');
     if ((link === 'waiting_retry') !== (value['retry_at'] !== null))

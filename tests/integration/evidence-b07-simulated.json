@@ -13,7 +13,7 @@
     },
     {
       "path": "apps/core/src/budget-gate.ts",
-      "sha256": "f1c698646130aba30aec5697566919f2e7a9ec690b7aad11809aa75a14114103"
+      "sha256": "03f6b5022e2f67d46c1d8250fbc86ca06f602150082fea289506288f2d8591a7"
     },
     {
       "path": "apps/core/src/budget-test-support.ts",
@@ -29,7 +29,7 @@
     },
     {
       "path": "packages/contracts/schemas/buddy.schema.json",
-      "sha256": "3f60ea4dcfd27f107f0d889dc92ebbbb5c4cb2265bfb4196782908d10cbb3764"
+      "sha256": "370756e3212931e2a16e3e1ac427d1f5eaa7a5428d3a883155c9f3f861b7be93"
     },
     {
       "path": "packages/domain/package.json",
@@ -56,12 +56,16 @@
       "sha256": "558ef23fe66306b75f0b3fd7cf63b14cc89a0e2464ec2a00561bbd18743e4ae9"
     },
     {
+      "path": "packages/domain/src/budget-money.ts",
+      "sha256": "cae27cd61dfcafd7a665117a166854381f201feede6d54ebf8a9dfaa21e5f0a9"
+    },
+    {
       "path": "packages/domain/src/budget-rules.ts",
-      "sha256": "85be5a75e0008289fa69714f996f40166270c3d1f9c5788de5ac566edcaa2ab9"
+      "sha256": "a7a1421b3c460e3e196f50a3d2b8d387a4ff7759c6b188119a11cd48eb7bb516"
     },
     {
       "path": "packages/domain/src/budget.ts",
-      "sha256": "82ce2ba91039e1ebeb96811d7276c3590a6e2b43f83be5691cd418cf3dd34e91"
+      "sha256": "37ddfb790ae09235eaecd10c49e615c6e66289b41b2b2c2e68a374ba757b0d7c"
     },
     {
       "path": "packages/domain/src/canvas-content.ts",
@@ -81,11 +85,11 @@
     },
     {
       "path": "packages/domain/src/conversation.ts",
-      "sha256": "9f4b45e0f35f325ef8fdcd9fe09d998c8459dd6e8324887bc63f80ec88e94444"
+      "sha256": "79d9c176d40e073312f6841e245e1bea8aa039d6eab2a4cfd091d5ae7043d912"
     },
     {
       "path": "packages/domain/src/desktop.ts",
-      "sha256": "dac9a256ac3a0d71e4332f57aaf53e77009da24bbbc34d5061a6fd92232d02c6"
+      "sha256": "e1a6d5ef7935132da4993391c029b6821f42ff581fac0ad8aed1f05ba81ae294"
     },
     {
       "path": "packages/domain/src/evaluation.ts",
@@ -105,7 +109,7 @@
     },
     {
       "path": "packages/domain/src/index.ts",
-      "sha256": "942d211a34918fa7ca95a2ffe4aa29825d125fd4199baf5dc7556ea43fbb64d1"
+      "sha256": "e3b8dbe9b13048efb4f18d74ddc7ac3fd898150c6819e96acd53a54d13f78f40"
     },
     {
       "path": "packages/domain/src/intents.ts",
@@ -146,34 +150,6 @@
     {
       "path": "packages/domain/src/sync.ts",
       "sha256": "2891b339d9b2493d4ec12e677b54f41abb279b71a4d2a54b7c04317a9afdae3f"
-    },
-    {
-      "path": "packages/domain/src/voice-input.ts",
-      "sha256": "4e479bd2a6f1b5d3947f406707730a8e429bef6cb236f7b5e9723a82de9130df"
-    },
-    {
-      "path": "packages/domain/src/voice-lease.ts",
-      "sha256": "ea34a385c3627f25ff6f91dfd65f5557241ad41ab1c04a213e459d1169a3edd7"
-    },
-    {
-      "path": "packages/domain/src/voice-notification.ts",
-      "sha256": "48b49a55d6713763b208ce04338b79eae17d77c3ef7146cb549644a0bfc79b69"
-    },
-    {
-      "path": "packages/domain/src/voice-reservation.ts",
-      "sha256": "4264a93d07d3914d7ad853a28d4e4ed73d44a8148ca5dbc2aa6008d543943eab"
-    },
-    {
-      "path": "packages/domain/src/voice-silence.ts",
-      "sha256": "93f7a9b431cfa5697ef1a06ce8d2c74e6744f8e06955d6db4be840d53113c10f"
-    },
-    {
-      "path": "packages/domain/src/voice-start.ts",
-      "sha256": "5ac223bbf27e61576b559f938fa15e86d161876468e33f31d0d1ab76302ed699"
-    },
-    {
-      "path": "packages/domain/src/voice-stop.ts",
-      "sha256": "e05d28dd65d98f4dc78927b0d0387553baa04606318dcda039dd80205f3235d3"
     },
     {
       "path": "packages/domain/src/voice.ts",
@@ -336,7 +312,7 @@
     {
       "case_id": "X18-boundary-concurrency",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -350,7 +326,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -358,7 +334,7 @@
     {
       "case_id": "X18-overage-concurrency",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -372,7 +348,7 @@
       "provider_state_changes": 4,
       "approvals": 3,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -380,7 +356,7 @@
     {
       "case_id": "X18-pools-concurrency",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -394,7 +370,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:2,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -402,7 +378,7 @@
     {
       "case_id": "X18-topup-concurrency",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -416,7 +392,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -424,7 +400,7 @@
     {
       "case_id": "QA42-admission-by-m",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -438,7 +414,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:1,released:0,reserved:1",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -446,7 +422,7 @@
     {
       "case_id": "QA42-usage-duplicate-missing",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -460,7 +436,7 @@
       "provider_state_changes": 2,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:1,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -468,7 +444,7 @@
     {
       "case_id": "QA42-timeout-discard",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -482,7 +458,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -490,7 +466,7 @@
     {
       "case_id": "QA42-month-rollover",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -504,7 +480,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -512,7 +488,7 @@
     {
       "case_id": "QA42-overrun-hold",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -526,7 +502,7 @@
       "provider_state_changes": 2,
       "approvals": 1,
       "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -534,7 +510,7 @@
     {
       "case_id": "QA42-overage-approval",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -548,7 +524,7 @@
       "provider_state_changes": 4,
       "approvals": 3,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -556,7 +532,7 @@
     {
       "case_id": "QA42-voice-isolation",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -570,7 +546,7 @@
       "provider_state_changes": 8,
       "approvals": 1,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:5,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -578,7 +554,7 @@
     {
       "case_id": "QA20-price-boundary",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -592,7 +568,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "settled:0,usage_unknown:0,released:0,reserved:3 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -600,7 +576,7 @@
     {
       "case_id": "QA20-limit-unknown",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -614,7 +590,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -622,7 +598,7 @@
     {
       "case_id": "X53-autonomous-own-slot",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -636,7 +612,7 @@
       "provider_state_changes": 3,
       "approvals": 1,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -644,7 +620,7 @@
     {
       "case_id": "B07-runtime-config",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -658,7 +634,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -666,7 +642,7 @@
     {
       "case_id": "B07-failure-paths",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -680,7 +656,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:1,released:2,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -688,7 +664,7 @@
     {
       "case_id": "B07-settlement-once",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -702,7 +678,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -710,7 +686,7 @@
     {
       "case_id": "B07-restart-reconcile",
       "kind": "simulated",
-      "commit": "27299ba686b724cfbf73b5be4c236632a17a20f2",
+      "commit": "1600b9c98b5304e2ff79c3c48d09145307249c3c",
       "contract_version": "1.0.0",
       "db_version": "7",
       "environment": {
@@ -724,7 +700,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:1,released:1,reserved:0",
-      "observed_at": "2026-10-24T01:08:12.469Z",
+      "observed_at": "2026-10-24T00:55:52.477Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"

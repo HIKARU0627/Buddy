@@ -34,6 +34,9 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.status_panel',
   'desktop.canvas_user_op',
   'desktop.canvas_content',
+  'desktop.budget_overage_decide',
+  'desktop.budget_overrun_review',
+  'desktop.budget_manual_settle',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',
@@ -55,6 +58,8 @@ const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
       channel !== 'desktop.canvas_summon' &&
       channel !== 'desktop.status_panel' &&
       channel !== 'desktop.canvas_user_op' &&
+      // 予算の確認（B07-05）は状態の層だけ（従来の窓には予算の画面がない）。
+      !channel.startsWith('desktop.budget_') &&
       channel !== 'desktop.canvas_content',
   ),
   // キャンバスは状態の取得と、物のユーザーの操作・物の中身の読み取りだけ（UI-06・UI-07。承認・停止を使えない）。

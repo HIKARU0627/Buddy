@@ -1,7 +1,7 @@
 # ADR 0046: B05 の中枢の音声の制御（リースの経路・音声所有権・世代の永続・停止の到達・サイドバンドの喪失）
 
 - 日付: 2026-10-24
-- 状態: B05-03（#127、親 #15）の判断。Core の音声の制御（`apps/core/src/voice-control.ts`・`api-voice.ts`）、マイグレーション 0008、domain の純粋な規則の追加（`voice-ownership.ts`）、契約の補い（経路 `renewLease`・拒否の理由・ApiError のコード）、試験。試験は**模擬だけ**（DB worker・予算の門・模擬の Live の provider・手で進める時計）。実際の音声・実 API（OpenAI の Live）・実機・実請求は**未実施**。
+- 状態: B05-03（#127、親 #15）の判断。Core の音声の制御（`apps/core/src/voice-control.ts`・`api-voice.ts`）、マイグレーション 0009（ADR 0038 の案の 0008。B07-07 の 0008 が先にマージされたので繰り上げた）、domain の純粋な規則の追加（`voice-ownership.ts`）、契約の補い（経路 `renewLease`・拒否の理由・ApiError のコード）、試験。試験は**模擬だけ**（DB worker・予算の門・模擬の Live の provider・手で進める時計）。実際の音声・実 API（OpenAI の Live）・実機・実請求は**未実施**。
 - 根拠: 設計 07 §1・§2・§4・§5、10 §1・§1A・§2・§2A・§3・§8、09（X13・X14・X25・X28・X32・QA24・QA43）、ADR 0005・0006・0037・0038・0041、本人の判断（2026-10-23、#15 のコメント）、B05-01 の持ち越し（#127 のコメント）。原本は権限のある接続で読み取りだけ行い、全文は写していない。原本に決めがないことは「原本に決めなし」と書き、`docs/b00/contract-map.md` の U68〜U72 に記録した。
 
 ## 作ったもの
@@ -10,7 +10,7 @@
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 経路           | `POST /v1/leases/renew`（renewLease）を足した。`/v1/io/stop`・`/v1/io/resume`・`/v1/live/sessions`・`/v1/live/sessions/{id}/close` は 503 から実装へ。getBootstrap の `io_state` は中枢の正本（世代・停止・リース）を返す                                                                                                                                                                                                    |
 | 判定           | B05-01・02 の規則をそのまま使う。リースの更新は `leaseRenewalReasons`、返す期限は `grantedLeaseTtlMs`（6 秒に切り詰め）、制御接続の遷移は `nextLiveControl`、Live の受付は `admitLiveStart`、世代は `issueLiveEpochs`、停止の第 3 層は `planStop(reason).core`、精算の秒数は `settleLiveSeconds`。足した規則は `arbitrateAudioClaim`（同時の呼びかけ）・`leaseRotationRequired`（取り直し）・`ioStopReach`（停止の到達）だけ |
-| 保存           | 0008: `device_epochs`（io・output・audio・session の epoch と端末単位の停止。戻さない・消さない trigger）、`io_stop_state`（来客モード・全体停止。再起動で解除しない）、`live_sessions` の `audio_epoch`・`session_epoch`（挿入の後は変えない）と、control_epoch を戻さない・lost 以降から ready へ戻さない・確認済みの使用秒数を変えない trigger。DB worker の命令 `voice.*`（compare-and-set）                             |
+| 保存           | 0009: `device_epochs`（io・output・audio・session の epoch と端末単位の停止。戻さない・消さない trigger）、`io_stop_state`（来客モード・全体停止。再起動で解除しない）、`live_sessions` の `audio_epoch`・`session_epoch`（挿入の後は変えない）と、control_epoch を戻さない・lost 以降から ready へ戻さない・確認済みの使用秒数を変えない trigger。DB worker の命令 `voice.*`（compare-and-set）                             |
 | 停止のイベント | WSS の `{type:"voice"}`（VoiceEvent の `audio_control`・`sideband_connected`）を、その端末の購読にだけ送る。イベントの記録（cursor）には入れない。届かなくても端末はリースの期限で止まる（10 §2A）                                                                                                                                                                                                                           |
 | 境界           | provider（`LiveProvider`）と予算の門（`LiveBudgetPort`。秒数だけを渡す）は注入する。製品の起動ではまだ渡さないので、Live の接続は 503（実 API を使わない）。同意（`consent`）は既定で missing                                                                                                                                                                                                                                |
 
@@ -59,7 +59,7 @@
 | P2-3 | 停止・更新が外部の待ちの後ろに並ぶ                                                                                               | 停止は受付の列に並ばない。受付を 2 段にし、外部（同意・予算の門・provider）には期限を付ける。DB を読んでいる間に停止が来たら読み直す                                                                                                                                                                                                                                          | 予約が返らないままでも全体停止が返り、受付は 5 秒で断る                                  |
 | P2-4 | lost・close の DB 書込みの失敗で副作用が止まる                                                                                   | 遷移はまずメモリーの状態を変え、副作用（更新の拒否・イベント・session.close・再接続）をその値で行う。DB へは compare-and-set で今の値を書き、失敗すれば再試行する（応答を失って DB が先に進んでいれば読み直す）                                                                                                                                                               | lost の書込みが失敗しても拒否・イベント・再接続が行われ、再試行で DB に書かれる          |
 | P2-5 | 交代のときに Live が同時に 2 つ開く                                                                                              | 他の端末を含めて closure が open の Live・受付の途中の端末があれば 409                                                                                                                                                                                                                                                                                                        | 受付の途中に交代した端末の受付は 409                                                     |
-| P3   | 期限切れのリースへの遅れた更新、INSERT OR REPLACE、正常に終わった Live のリースの更新、終わった Live のメモリー、期待値の独立    | 中枢の見積もりで切れたリースは取り消す。0008 に既存の行への挿入を拒否する trigger（device_epochs・io_stop_state・live_sessions）。正常に終わった Live のリースは lease_rotation_required。閉じ終えて DB へ書けた Live はメモリーから外す（直近 32 件の記録だけ残す）。端末の模擬の試験は中枢が送った停止のイベントから始め、X13 の 2 つ目の場面は端末の模擬の経路で受理させる | 各試験と `voice-store.test.ts`                                                           |
+| P3   | 期限切れのリースへの遅れた更新、INSERT OR REPLACE、正常に終わった Live のリースの更新、終わった Live のメモリー、期待値の独立    | 中枢の見積もりで切れたリースは取り消す。0009 に既存の行への挿入を拒否する trigger（device_epochs・io_stop_state・live_sessions）。正常に終わった Live のリースは lease_rotation_required。閉じ終えて DB へ書けた Live はメモリーから外す（直近 32 件の記録だけ残す）。端末の模擬の試験は中枢が送った停止のイベントから始め、X13 の 2 つ目の場面は端末の模擬の経路で受理させる | 各試験と `voice-store.test.ts`                                                           |
 
 ## 判断が要る点
 
@@ -76,7 +76,7 @@
 - 端末が進めた世代の報告の経路（`acceptDeviceEpochReport`）、端末の起動時の世代（`deviceEpochAtStartup`）、復元時に Core 発行の世代を進める処理（`epochsAfterRestore`）。
 - provider（OpenAI の Live）の実装と、実 API の 2 段階の試験（合成の音声、その後に本人の声）。端末の main・音声レンダラーの実装。
 - **端末が進めた世代を報告する経路の優先度を上げる**（停止で中枢が世代を進める今の形と、端末の停止の世代を合わせるため。U70）。
-- 復元の後の `io_stop_state` は、止めた状態（全体停止）に倒す（バックアップの時点の解除された状態に戻さない）。今は復元の処理が 0008 の表を扱っていない。
+- 復元の後の `io_stop_state` は、止めた状態（全体停止）に倒す（バックアップの時点の解除された状態に戻さない）。今は復元の処理が 0009 の表を扱っていない。
 - 自宅の外や古い command_scope からは全体停止を出せない（経路の検査が先に拒否する）。停止は安全側の操作なので、検査をゆるめるかは本人の判断が要る。
 - 端末の失効（`/v1/devices/{id}/revoke`）が中枢の音声に届かない（失効した端末のリースと Live を、失効の時点で取り消し・閉じる処理がない。更新は DB の失効で拒否される）。
 
@@ -84,6 +84,6 @@
 
 - `apps/core/src/voice-control.test.ts`（DB worker・予算の門・模擬の provider・手で進める時計）: リースの取得・更新・拒否、ロック、1800 回の取り直し、X32（300 ms・表示先・交代）、Live の受付の拒否（リースなし・期限切れ・別の接続範囲・同意なし・同じリースの 2 回目）と結果不明の保持、X25（6 秒・5999 ms・閉じるための再接続・3 秒・2 秒・遅れた使用秒数での精算）、X14（全体停止の到達・第 3 層・停止のイベント・lease_expired）、QA43（再接続・新しいリースでは再開しない・版の一致）、X28（再起動の後の世代・前のリース・ready だった Live）、X13（回線の断・サイドバンドだけの lost・停止の通知の欠落のどれでも、端末の模擬が最後に受理された要求から 6 秒で止まる）、端末の模擬の時計の逆行・ACK の失敗・音声レンダラーの無応答（domain の規則）。
 - `apps/core/src/api-voice.test.ts`: HTTPS に組み込んだ経路（bootstrap の io_state、リース、409、全体停止と WSS の停止のイベント、画面の再開、Live の拒否）。応答は JSON Schema で検査した。
-- `packages/storage/src/voice-store.test.ts`: 0008 の更新（版 7 の DB）、trigger、停止・再開・Live の開始と更新の compare-and-set。
+- `packages/storage/src/voice-store.test.ts`: 0009 の更新（版 8 の DB）、trigger、停止・再開・Live の開始と更新の compare-and-set。
 - `scripts/voice-ownership.test.mjs` と `packages/contracts/fixtures/voice-ownership-cases.json`: 調停・期限・取り直し・到達の手書きの期待値。
 - 実際の音声・実 API・実機・実請求は**未実施**。停止の時間（200 ms・300 ms・6 秒）は設計初期値で、合格値ではない（T04 の実測の後）。

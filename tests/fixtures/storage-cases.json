@@ -169,7 +169,7 @@
     },
     {
       "id": "budget-settlement-is-consistent-and-once",
-      "refs": ["ADR 0006", "QA42", "ADR 0036"],
+      "refs": ["ADR 0006", "QA42", "ADR 0036", "ADR 0042"],
       "steps": [
         [
           "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1', 'q-1', 'intent.luna.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 100, 200, 'reserved', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1000)",
@@ -193,6 +193,10 @@
         ],
         [
           "UPDATE budget_reservations SET status = 'settled', actual_gross = 150, credit_applied = 100, additional_spend = 50, provider_reconciliation_id = 'anthropic:p-1', settlement_kind = 'provider', settled_at = 2000 WHERE reservation_id = 'r-1'",
+          "trigger:budget_credit_split_invalid"
+        ],
+        [
+          "UPDATE budget_reservations SET status = 'settled', actual_gross = 150, credit_applied = 0, additional_spend = 150, provider_reconciliation_id = 'anthropic:p-1', settlement_kind = 'provider', settled_at = 2000 WHERE reservation_id = 'r-1'",
           "ok"
         ],
         [
@@ -1018,6 +1022,136 @@
         ],
         [
           "INSERT INTO budget_months (month, time_zone, month_start, month_start_time_zone, recorded_at) VALUES ('2030-12', '', 1922313600000, 'UTC', 1922313600000)",
+          "check"
+        ]
+      ]
+    },
+    {
+      "id": "budget-credit-binding-estimate-and-observations",
+      "refs": ["ADR 0042", "MA03", "MA04", "MA05", "MA06"],
+      "steps": [
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, credit_cycle_id, credit_expires_at, credit_observation_seq, created_at) VALUES ('c-1', 'cq-1', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, 'anthropic:2030-10-01', NULL, NULL, 1000)",
+          "trigger:budget_credit_binding_invalid"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, credit_cycle_id, credit_expires_at, credit_observation_seq, created_at) VALUES ('c-1', 'cq-1', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, 'anthropic:2030-10-01', 1919721600000, NULL, 1000)",
+          "trigger:budget_credit_binding_invalid"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, credit_cycle_id, credit_expires_at, credit_observation_seq, created_at) VALUES ('c-1', 'cq-1', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, 1919721600000, 1, 1000)",
+          "trigger:budget_credit_binding_invalid"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, credit_cycle_id, credit_expires_at, credit_observation_seq, created_at) VALUES ('c-1', 'cq-1', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, 'anthropic:2030-10-01', 1919721600000, 0, 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, credit_cycle_id, credit_expires_at, credit_observation_seq, created_at) VALUES ('c-1', 'cq-1', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, 'anthropic:2030-10-01', 1919721600000, 1, 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, credit_cycle_id, credit_expires_at, credit_observation_seq, created_at) VALUES ('c-2', 'cq-2', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'reserved', 1, NULL, NULL, NULL, 1000)",
+          "ok"
+        ],
+        [
+          "UPDATE budget_reservations SET credit_cycle_id = 'anthropic:2030-11-01' WHERE reservation_id = 'c-1'",
+          "trigger:budget_credit_binding_fixed"
+        ],
+        [
+          "UPDATE budget_reservations SET credit_cycle_id = 'anthropic:2030-10-01' WHERE reservation_id = 'c-2'",
+          "trigger:budget_credit_binding_fixed"
+        ],
+        [
+          "UPDATE budget_reservations SET credit_expires_at = 5 WHERE reservation_id = 'c-1'",
+          "trigger:budget_credit_binding_fixed"
+        ],
+        [
+          "UPDATE budget_reservations SET credit_observation_seq = 2 WHERE reservation_id = 'c-1'",
+          "trigger:budget_credit_binding_fixed"
+        ],
+        [
+          "UPDATE budget_reservations SET credit_estimate = 3 WHERE reservation_id = 'c-1'",
+          "trigger:budget_credit_split_invalid"
+        ],
+        [
+          "UPDATE budget_reservations SET status = 'settled', actual_gross = 10, credit_applied = 5, additional_spend = 5, credit_estimate = 4, provider_reconciliation_id = 'anthropic:c-1', settlement_kind = 'provider', settled_at = 2000 WHERE reservation_id = 'c-1'",
+          "trigger:budget_credit_split_invalid"
+        ],
+        [
+          "UPDATE budget_reservations SET status = 'settled', actual_gross = 10, credit_applied = 5, additional_spend = 5, credit_estimate = 5, provider_reconciliation_id = 'anthropic:c-2', settlement_kind = 'provider', settled_at = 2000 WHERE reservation_id = 'c-2'",
+          "trigger:budget_credit_split_invalid"
+        ],
+        [
+          "UPDATE budget_reservations SET status = 'settled', actual_gross = 10, credit_applied = 5, additional_spend = 5, credit_estimate = 5, provider_reconciliation_id = 'anthropic:c-1', settlement_kind = 'provider', settled_at = 2000 WHERE reservation_id = 'c-1'",
+          "ok"
+        ],
+        [
+          "UPDATE budget_reservations SET credit_estimate = 9 WHERE reservation_id = 'c-1'",
+          "trigger:budget_credit_estimate_fixed"
+        ],
+        [
+          "UPDATE budget_reservations SET credit_expires_at = 6 WHERE reservation_id = 'c-1'",
+          "trigger:budget_credit_binding_fixed"
+        ],
+        [
+          "UPDATE budget_reservations SET credit_estimate = -1 WHERE reservation_id = 'c-2'",
+          "trigger:budget_credit_split_invalid"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 1000, 1919721600000, 'observed', 0, 'synthetic-organization', 'XXX', 50, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 1000, 1919721600000, 'observed', 0, 'synthetic-organization', 'XXX', 50, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "trigger:budget_credit_observation_regression"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 999, 1919721600000, 'observed', 0, 'synthetic-organization', 'XXX', 50, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "trigger:budget_credit_observation_regression"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 2000, 1919721600000, 'observed', 0, 'synthetic-organization', NULL, NULL, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 2000, 1919721600000, 'observed', 0, 'synthetic-organization', 'XXX', NULL, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 2000, 1919721600000, 'unknown', 0, 'synthetic-organization', NULL, NULL, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 3000, 1917043200000, 'unknown', 0, 'synthetic-organization', NULL, NULL, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 3000, 1919721600000, 'maybe', 0, 'synthetic-organization', 'XXX', 50, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 3000, 1919721600000, 'observed', 0, 'synthetic-organization', 'XXX', 50, 'short', 1000)",
+          "check"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-11-01', 1919721600000, 1919721600000, 1922313600000, 'observed', 0, 'synthetic-organization', 'XXX', 50, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "ok"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-10-01', 1917043200000, 1919721600005, 1919721600000, 'observed', 0, 'synthetic-organization', 'XXX', 50, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000)",
+          "trigger:budget_credit_cycle_regression"
+        ],
+        [
+          "UPDATE budget_credit_observations SET balance_amount = 99 WHERE observed_at = 1000",
+          "trigger:budget_credit_observation_fixed"
+        ],
+        [
+          "DELETE FROM budget_credit_observations WHERE observed_at = 1000",
+          "trigger:budget_credit_observation_fixed"
+        ],
+        [
+          "INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES ('anthropic:2030-12-01', 1922313600000, 5000, 1922313600010, 'observed', 1, '', 'XXX', 1, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000)",
           "check"
         ]
       ]

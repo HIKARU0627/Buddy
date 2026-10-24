@@ -662,6 +662,11 @@ export type BudgetGateHoldReason =
   | 'reservation_pool_unknown'
   | 'calendar_unavailable';
 /**
+ * クレジットを充てる profile（Claude）の保留の理由（MA05、ADR 0042）。credit_unknown は残高の観測がない・不明・読めない、credit_expired は周期が終わった・失効、credit_stale は共有の組織の観測が古い、credit_exhausted は残高から未精算の最大負担を引くと残りがない。枠の予算保留（BudgetHoldReason）とは別で、その profile だけを止める。理由のコードを利用者に見せない。
+ */
+export type BudgetCreditHoldReason =
+  'credit_unknown' | 'credit_expired' | 'credit_stale' | 'credit_exhausted';
+/**
  * 保存モード（設計 03 保存期限）。normal は発言から 7 日、extended は本人指定の継続相談で 30 日、private は記録しない会話。
  */
 export type StorageMode = 'normal' | 'extended' | 'private';
@@ -3166,7 +3171,7 @@ export interface CurrencyConversion {
   safety_factor: DecimalString;
 }
 /**
- * 予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。routing は起点から計上する枠と超過枠（B07-04）。秘密情報（API キーなど）を含めない。
+ * 予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。routing は起点から計上する枠と超過枠（B07-04）。credit は付帯クレジットの区分の設定（B07-07、ADR 0042）で、省略するとクレジットを使わない（精算はクレジット 0・追加の支出＝実費）。秘密情報（API キーなど）を含めない。
  */
 export interface BudgetRuntimeConfig {
   schema: 'buddy.budget-runtime.v1';
@@ -3174,6 +3179,7 @@ export interface BudgetRuntimeConfig {
   budget: BudgetConfig;
   price_versions: PriceVersion[];
   routing: BudgetRouting;
+  credit?: BudgetCreditConfig;
 }
 /**
  * 起点から計上する葉の枠と、個別承認の超過枠（B07-04、ADR 0037）。超過枠へ回せる通常の枠の許可リストは、本人の依頼（owner_request）の LLM・検索の枠から Core が作る（音声は入れない）。overage_pool_id が null なら超過枠へ回さない。枠の木（ADR 0006）の形は変えない。
@@ -3195,6 +3201,30 @@ export interface BudgetServiceRoutes {
   llm: BudgetPoolId | null;
   search: BudgetPoolId | null;
   voice: BudgetPoolId | null;
+}
+/**
+ * 付帯クレジットの区分の設定（設計 05 クレジットの追補、09 MA03〜MA06、B07-07、ADR 0042）。通常料金の R と M で上限を守る規則は変えず、精算を通常料金・クレジット・追加の支出に分ける。クレジットを充てる profile は、残高が不明・失効・枯渇・古い・M に足りないとき受け付けない（購入残高・後払いへ自動で移らない）。残高の観測は別のファイル（BudgetCreditObservations）に本人が書く。
+ */
+export interface BudgetCreditConfig {
+  provider: 'anthropic';
+  /**
+   * クレジットを充てる profile。ここにない profile（音声・検索・他社の LLM）には充てない（MA06）。LLM のサービスの要求だけが対象で、音声・検索の要求はここにあっても充てない。
+   *
+   * @minItems 1
+   */
+  profile_ids: [ProfileId, ...ProfileId[]];
+  /**
+   * 残高の観測の通貨（provider が示す通貨）。
+   */
+  balance_currency: string;
+  /**
+   * 負でない 10 進の小数（小数点以下 6 桁まで）。為替・安全係数に使う。浮動小数点数にしない（ADR 0034）。
+   */
+  balance_to_budget_rate: string;
+  /**
+   * 共有の組織の残高の観測（shared: true）を、観測の時刻からこの時間より後は古いものとして扱い、Claude の処理を保留する長さ（ミリ秒）。共有の組織では他の用途が残高を減らすので、新しい観測が届くまで残高を信じ続けない。専用の組織の観測（shared: false）には使わない。
+   */
+  shared_observation_max_age_ms: number;
 }
 /**
  * 予算の利用状況（GET /v1/budget/usage、ADR 0034）。months は今月と、未精算・usage 不明・M 超過の確認待ちが残る前の月。time_zone は今月の予算月の境目に使っているタイムゾーン。overage_approvals は承認待ちの超過枠の承認。pending_reservations は本人の操作を待つ予約（usage 不明で手での精算を待つものと、M 超過の確認を待つもの）で、手での精算・M 超過の確認の要求に使う reservation_id・予約の版・個別の R と M・実費・月・枠を持つ。表示はキャンバス UI で作る。
@@ -3897,7 +3927,7 @@ export interface Snapshot {
   operations: OperationSnapshot[];
 }
 /**
- * 状態欄の「予算保留」（設計 01 いつも見える状態、B07-04、ADR 0037）。reasons は有料の受付全体を止めている理由、held_pools は今月に保留している枠とその理由。held はどちらかがあるとき true。金額を含めない。
+ * 状態欄の「予算保留」（設計 01 いつも見える状態、B07-04、ADR 0037）。reasons は有料の受付全体を止めている理由、held_pools は今月に保留している枠とその理由、credit_hold はクレジットを充てる profile の保留（B07-07、省略は保留なし）。held はどれかがあるとき true。金額を含めない。
  */
 export interface BudgetHoldState {
   held: boolean;
@@ -3909,6 +3939,17 @@ export interface BudgetHoldState {
      */
     hold_reasons: [BudgetHoldReason, ...BudgetHoldReason[]];
   }[];
+  credit_hold?: BudgetCreditHold;
+}
+/**
+ * クレジットを充てる profile の保留（MA05）。金額・残高を含めない。
+ */
+export interface BudgetCreditHold {
+  reason: BudgetCreditHoldReason;
+  /**
+   * @minItems 1
+   */
+  profile_ids: [ProfileId, ...ProfileId[]];
 }
 /**
  * 表示用の発言。保存期限を過ぎた発言と記録しない会話の発言は返さない。

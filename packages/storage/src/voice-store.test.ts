@@ -1,4 +1,4 @@
-// 音声の世代・入出力の停止・Live の制御の状態の保存（0008、ADR 0046）。
+// 音声の世代・入出力の停止・Live の制御の状態の保存（0009、ADR 0046）。
 // DB は一時ディレクトリに作って消す。期待値は手で書いた値で、保存の実装から生成していない。端末・予約は合成の値。
 
 import assert from 'node:assert/strict';
@@ -76,7 +76,7 @@ const CONNECTING: LiveControlValues = {
   usage_seconds: null,
 };
 
-test('0008 は版 7 の DB の端末に世代の行（全部 0・停止なし）を作り、Live の行に世代 0 の列を足す', () => {
+test('0009 は版 8 の DB の端末に世代の行（全部 0・停止なし）を作り、Live の行に世代 0 の列を足す', () => {
   const all = loadMigrations();
   withDb(
     (db) => {
@@ -86,9 +86,9 @@ test('0008 は版 7 の DB の端末に世代の行（全部 0・停止なし）
         "INSERT INTO live_sessions VALUES (?, ?, NULL, 'conversation', 'ready', 3, 'open', NULL, ?, 1100, NULL, NULL)",
       ).run(LIVE_1, DEV_A, RES_1);
       assert.deepEqual(applyMigrations(db, all), {
-        from: 7,
-        to: 8,
-        applied: [8],
+        from: 8,
+        to: 9,
+        applied: [9],
       });
       assert.deepEqual(db.prepare('SELECT * FROM device_epochs').all(), [
         {
@@ -121,7 +121,7 @@ test('0008 は版 7 の DB の端末に世代の行（全部 0・停止なし）
       );
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     },
-    all.slice(0, 7),
+    all.slice(0, 8),
   );
 });
 

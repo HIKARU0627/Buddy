@@ -16,11 +16,14 @@
 - `voice-reservation-cases.json`・`voice-notification-rate-cases.json`: 追加予約の計画・予算到達の閉じ方・精算の秒数と、音声の通知の頻度の制限の期待値（X26・X34・X35、ADR 0041）。秒数だけで、金額は予算の規則（合成の通貨 XTS）が決める。
 - `voice-segment-cases.json`・`voice-method-c-cases.json`・`voice-asr-compare-cases.json`: 方式 A の区間リングと sealed・blocked・truncated、方式 C の 4 操作の限定、Live と端末の ASR の比較の期待値（QA05・QA06・QA08・QA41・X51、ADR 0041）。音声は含まず、フレームの番号と sample の範囲、合成の発話だけ。
 - `budget-scenarios.json`: 合成設定（通貨 XTS、合成の上限）による予算の受付・精算のシナリオ。超過枠への経路・手での精算・M 超過の確認の手順と、QA42 の残り・X53・X18 の予算の行を含む（ADR 0035）。本人の金額を含まない。
+- `budget-credit.json`: 付帯クレジットの区分と保留の純粋な規則の期待値（周期の ID・誰に充てるか・周期ごとの基準と残高の換算・残りと保留の理由・受付・精算の割り当て・provider の精算と手での精算の区分。MA03〜MA06、ADR 0042）。予算の通貨は XTS、残高の通貨は XXX の合成値で、期待値は手計算。`scripts/budget-credit.test.mjs` がビルド後の domain で確かめる。
 - `budget-rules.json`: 予算の純粋な規則の期待値（M と R の計算・単価の境界・丸め・予算月とタイムゾーンの翌月反映・時計の戻り・利用状況・超過枠への経路と承認の照合・手での精算・M 超過の確認。ADR 0035）。合成の実行時の設定（通貨 XTS、換算の例の元の通貨は XXX、縮めた単価）で、期待値は手計算。`scripts/budget-rules.test.mjs` がビルド後の domain で確かめる。
 - `sync-scenarios.json`: 同期の走査の排他・公開前の照合の期待値（QA44・QA36 ほか）。
 - `analysis-cases.json`: 関連解析の ready、取消の順序の逆転、再作成抑止の期待値（QA45 ほか）。
 - `extraction-cases.json`: 候補起点の自動実行の検査と期限の変換の期待値（X39・X62・X63 ほか）。
 - `storage-contract-cases.json`: 忘却台帳の別ファイルと端末の複製・バックアップの封筒・復元の結果・期限切れと忘却の知らせ・保存モード・復旧キー・バックアップの置き場所の正常例と拒否例（世代の欠番・hash の連鎖の不一致・private を含むバックアップ・本文の混入・知らせに本文。X15・X16・X17、ADR 0040）。手書きで、台帳の hash は Python の json.dumps と hashlib で別に求めた値。復旧キーの値は合成の並びで実際のキーではない。台帳の元情報の ID は生の値ではなく HMAC の形（64 桁の 16 進）で書く。復元直後の操作の記録（`RestoredOperation`）と、隔離のシナリオ（`scenarios`。`not_executed` の再現の順序・照合で解除できるのは積極的な証拠だけ）も含む。形式と意味検査は `contracts:check`。
+- `forget-plan-cases.json`: 忘却の計画（対象の解決・派生の閉包・台帳のエントリの組み立て・進行中の操作の扱い）と、遅着の検査・忘却と遅着のすべての順序・命令の再検査の絞り込みの期待値（X15・X44・X59・QA34、ADR 0044）。手書きで、domain の実装から生成していない。ID・HMAC は合成値で、鍵は持たず対応表の関数を注入する。`scripts/forget-plan.test.mjs` がビルド後の domain で確かめる。
+- `storage-mode-cases.json`: 記録しない会話の保存の境界の期待値（許可表の 22 行それぞれの許可側と拒否側・契約の StorageModeState の effects・独立した確認の中身（確定した OperationIntent と内容の hash）と承認の検査・入る／出る／外部変更／音声の接続／遅れて届いた結果／入り直した後の古い承認の順序を入れ替えた遷移。X17・X36・X44・X48・X59、ADR 0045）。手書きで、domain の実装から生成していない。`$draft`・`$approval`・`$origin` は同じファイルの合成の値を差し込む参照（中の値を上書きでき、`$delete` は欄を消す）。content_hash は Python の json.dumps と hashlib で別に求めた値。`scripts/storage-mode.test.mjs` がビルド後の domain で確かめる。
 - `memory-cases.json`: 記憶の保存直前の検査・期限・復元・抽出の時点の期待値（X15・X16・X44 ほか）。
 - `evaluation-cases.json`: 配備×用途の採否・段階・成果物の照合・変化の検知・影モードの期待値（X57・X66・QA21・QA26 ほか）。実測値ではない。
 - `eval-conversion-cases.json`: 評価セットの行を書き出し形式へ変換する期待値。行はすべて合成。

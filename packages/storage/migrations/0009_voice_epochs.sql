@@ -1,4 +1,4 @@
--- 保存案 0008（B05-03、ADR 0046。案は ADR 0038）。音声の世代（epoch）の永続と、入出力の停止の状態。
+-- 保存案 0009（B05-03、ADR 0046。案は ADR 0038 の 0008。B07-07 の 0008 が先にマージされたので繰り上げた）。音声の世代（epoch）の永続と、入出力の停止の状態。
 -- 1. device_epochs: 端末ごとの io・output・audio・session の epoch と、端末単位の停止（local_stop）。
 --    どの epoch も戻さない（BEFORE UPDATE）・行を消さない（BEFORE DELETE）・INSERT OR REPLACE で入れ直さない（BEFORE INSERT）。中枢の再起動で巻き戻さない（ADR 0005）。
 --    既存の端末の行はここで作り、以後の端末は中枢が最初の書込みの transaction で作る（行がないときだけ挿入する）。

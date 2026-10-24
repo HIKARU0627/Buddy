@@ -4,7 +4,7 @@
 // - リース（音声・機密表示）。RAM だけで、中枢の再起動（起動 ID の変更）で全て無効になる（07 §4・§5）。更新の可否は domain の
 //   leaseRenewalReasons、音声所有権の調停は arbitrateAudioClaim、返す期限は grantedLeaseTtlMs で決め、ここで判定を作り直さない。
 //   Live とリースの結び付きは端末単位（その端末の開いている Live）で見る。lease_id を取り直しても Live は管理から外れない。
-// - 世代と停止の状態。DB（0008）が正本で、中枢の再起動で巻き戻さない。Live の世代は issueLiveEpochs で決めて DB に書く。
+// - 世代と停止の状態。DB（0009）が正本で、中枢の再起動で巻き戻さない。Live の世代は issueLiveEpochs で決めて DB に書く。
 // - Live の制御接続（サイドバンド）。遷移は nextLiveControl だけで決め、まずメモリーの状態を変えて副作用（更新の拒否・停止の
 //   イベント・session.close・再接続）を行い、DB へは compare-and-set で書く（失敗すれば再試行する）。ping 2 秒・期限 6 秒
 //   （設計初期値）で lost にし、lost では音声リースを更新せず、停止のイベントを送り、閉じるためだけの再接続を 1 回・3 秒まで

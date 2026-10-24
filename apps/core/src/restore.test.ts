@@ -229,7 +229,7 @@ test(
     const first = await start(t, dataDir);
     assert.equal(first.storeGenerationSource, 'created');
     assert.equal(first.dataKeyCheck, 'stored');
-    assert.equal(first.schemaVersion, 8);
+    assert.equal(first.schemaVersion, 9);
     assert.deepEqual(first.recovery, { held: [], resumable: [] });
 
     const plans: Record<string, DbCommand[]> = {
@@ -700,7 +700,7 @@ test(
     const crashed = await startCli(t, dataDir);
     assert.deepEqual(crashed.events['store_opened'], {
       event: 'store_opened',
-      schema_version: 8,
+      schema_version: 9,
       store_generation: generation,
       store_generation_source: 'database',
       data_key_check: 'matched',

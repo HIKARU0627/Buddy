@@ -4,7 +4,7 @@
 // 接続の耐久設定を読み戻す（home-network-store.ts と同じ）。
 // - 世代は先頭ゼロのない非負整数の 10 進文字列で受け渡す（07 §1）。DB では INTEGER（Number.MAX_SAFE_INTEGER まで）。
 // - 次の世代の値は Core が domain の規則（issueLiveEpochs・nextLiveControl）で決めて渡し、ここでは今の値との一致を
-//   確かめてから書く（compare-and-set）。戻す・消す更新は 0008 の trigger が拒否する。
+//   確かめてから書く（compare-and-set）。戻す・消す更新は 0009 の trigger が拒否する。
 // - 停止は中枢が io_epoch・output_epoch を 1 つ進める（ADR 0046・U70）。再開は版（expected_io_epoch）の一致を確かめて
 //   停止の印を外す（世代は進めない）。
 // 結果の理由にはコードだけを入れ、SQL・パスを入れない。
@@ -305,7 +305,7 @@ function readStop(db: SqliteDatabase): StopRow {
       'SELECT guest_mode, global_stop FROM io_stop_state WHERE stop_id = 1',
     )
     .get() as StopRow | undefined;
-  // 0008 が 1 行を作り、消す trigger がある。なければ安全側（止めている）にする。
+  // 0009 が 1 行を作り、消す trigger がある。なければ安全側（止めている）にする。
   return row ?? { guest_mode: 1, global_stop: 1 };
 }
 
@@ -519,7 +519,7 @@ function sqliteCode(error: unknown): string | null {
   return error instanceof Database.SqliteError ? error.code : null;
 }
 
-// trigger の RAISE の理由（0008 で決めたコードだけ）。
+// trigger の RAISE の理由（0009 で決めたコードだけ）。
 const TRIGGER_REASONS: readonly string[] = [
   'device_epoch_regressed',
   'device_epochs_permanent',

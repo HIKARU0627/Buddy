@@ -2,7 +2,7 @@
 // Electron は起動しない（判定の純粋な関数を確かめる）。期待値は手で書く。
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { resolve } from 'node:path';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import {
@@ -100,15 +100,17 @@ test('only the voice entry and its built scripts may be requested; every other r
 });
 
 test('the voice scheme maps only to HTML and JS files inside the voice build directory', () => {
+  // 製品は基準のディレクトリを resolve して絶対パスにする（Windows ではドライブ文字が付く）。
+  // 期待値も OS の表し方に合わせ、試験の中の基準のディレクトリを resolve してから相対の部分をつなぐ。
   const root = '/opt/buddy/dist/voice';
   assert.deepEqual(resolveVoiceAsset(root, VOICE_ENTRY_URL), {
-    path: join(root, 'voice.html'),
+    path: resolve(root, 'voice.html'),
     contentType: 'text/html; charset=utf-8',
   });
   assert.deepEqual(
     resolveVoiceAsset(root, 'buddy-voice://renderer/assets/voice-1.js'),
     {
-      path: join(root, 'assets', 'voice-1.js'),
+      path: resolve(root, 'assets', 'voice-1.js'),
       contentType: 'text/javascript; charset=utf-8',
     },
   );
@@ -119,7 +121,7 @@ test('the voice scheme maps only to HTML and JS files inside the voice build dir
   ])
     assert.equal(
       resolveVoiceAsset(root, url)?.path,
-      join(root, 'renderer', 'index.html'),
+      resolve(root, 'renderer', 'index.html'),
       url,
     );
   for (const url of [

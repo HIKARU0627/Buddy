@@ -1,0 +1,299 @@
+{
+  "status": "specification_only",
+  "description": "リースの期限の計算（要求を送った時点の単調時計から数える・遅れて届いた応答で延ばさない・スリープや時計の不整合ではリースを捨てる）の期待値（設計 07 §5、10 §2A、X13・X25、ADR 0039）。手で書いたもので、domain の実装から生成していない。時計は注入した値で、単位は ms。許容（tolerance_ms）の既定は 1000 で、原本に決めがなく T04・T07 の実測まで置く仮の値（合格値ではない）。",
+  "tolerance_ms_default": 1000,
+  "clock_cases": [
+    {
+      "id": "clock-consistent",
+      "refs": ["07 §5"],
+      "since": { "mono_ms": 1000, "wall_ms": 1000000 },
+      "now": { "mono_ms": 3000, "wall_ms": 1002000 },
+      "expected": "consistent"
+    },
+    {
+      "id": "clock-skew-exactly-at-the-tolerance-is-consistent",
+      "refs": ["07 §5"],
+      "since": { "mono_ms": 1000, "wall_ms": 1000000 },
+      "now": { "mono_ms": 3000, "wall_ms": 1003000 },
+      "expected": "consistent"
+    },
+    {
+      "id": "clock-skew-one-ms-over-the-tolerance",
+      "refs": ["07 §5"],
+      "since": { "mono_ms": 1000, "wall_ms": 1000000 },
+      "now": { "mono_ms": 3000, "wall_ms": 1003001 },
+      "expected": "skewed"
+    },
+    {
+      "id": "clock-wall-slower-than-mono-over-the-tolerance",
+      "refs": ["07 §5"],
+      "since": { "mono_ms": 1000, "wall_ms": 1000000 },
+      "now": { "mono_ms": 5000, "wall_ms": 1002999 },
+      "expected": "skewed"
+    },
+    {
+      "id": "clock-sleep-resume-wall-jumped-ahead",
+      "refs": ["07 §5", "X13"],
+      "since": { "mono_ms": 1000, "wall_ms": 1000000 },
+      "now": { "mono_ms": 3000, "wall_ms": 1062000 },
+      "expected": "skewed"
+    },
+    {
+      "id": "clock-wall-clock-set-back",
+      "refs": ["07 §5"],
+      "since": { "mono_ms": 1000, "wall_ms": 1000000 },
+      "now": { "mono_ms": 3000, "wall_ms": 995000 },
+      "expected": "skewed"
+    },
+    {
+      "id": "clock-monotonic-went-back",
+      "refs": ["07 §5"],
+      "since": { "mono_ms": 1000, "wall_ms": 1000000 },
+      "now": { "mono_ms": 500, "wall_ms": 999500 },
+      "expected": "mono_regressed"
+    },
+    {
+      "id": "clock-unreadable-now",
+      "refs": ["07 §5"],
+      "since": { "mono_ms": 1000, "wall_ms": 1000000 },
+      "now": null,
+      "expected": "unavailable"
+    },
+    {
+      "id": "clock-unreadable-since",
+      "refs": ["07 §5"],
+      "since": null,
+      "now": { "mono_ms": 3000, "wall_ms": 1002000 },
+      "expected": "unavailable"
+    },
+    {
+      "id": "clock-custom-tolerance",
+      "refs": ["07 §5"],
+      "since": { "mono_ms": 0, "wall_ms": 0 },
+      "now": { "mono_ms": 1000, "wall_ms": 1300 },
+      "tolerance_ms": 200,
+      "expected": "skewed"
+    }
+  ],
+  "held_base": {
+    "lease_id": "00000000-0000-4000-8000-000000000080",
+    "expires_at_mono_ms": 16000,
+    "sent_at": { "mono_ms": 10000, "wall_ms": 5000000 }
+  },
+  "lease_cases": [
+    {
+      "id": "lease-valid-one-ms-before-expiry",
+      "refs": ["07 §5", "X13"],
+      "now": { "mono_ms": 15999, "wall_ms": 5005999 },
+      "expected": { "status": "valid", "remaining_ms": 1 }
+    },
+    {
+      "id": "lease-expires-exactly-at-the-deadline",
+      "refs": ["07 §5", "X13"],
+      "now": { "mono_ms": 16000, "wall_ms": 5006000 },
+      "expected": { "status": "expired" }
+    },
+    {
+      "id": "lease-expired-after-the-deadline",
+      "refs": ["07 §5"],
+      "now": { "mono_ms": 16001, "wall_ms": 5006001 },
+      "expected": { "status": "expired" }
+    },
+    {
+      "id": "lease-discarded-on-sleep-resume-even-before-the-deadline",
+      "refs": ["07 §5", "X13"],
+      "now": { "mono_ms": 12000, "wall_ms": 5090000 },
+      "expected": { "status": "discarded", "reason": "sleep_or_clock_skew" }
+    },
+    {
+      "id": "lease-discarded-when-the-monotonic-clock-went-back",
+      "refs": ["07 §5"],
+      "now": { "mono_ms": 9000, "wall_ms": 4999000 },
+      "expected": { "status": "discarded", "reason": "mono_clock_regressed" }
+    },
+    {
+      "id": "lease-discarded-when-the-clock-cannot-be-read",
+      "refs": ["07 §5"],
+      "now": null,
+      "expected": { "status": "discarded", "reason": "clock_unavailable" }
+    },
+    {
+      "id": "lease-clock-fault-is-reported-before-expiry",
+      "refs": ["07 §5"],
+      "now": { "mono_ms": 20000, "wall_ms": 5100000 },
+      "expected": { "status": "discarded", "reason": "sleep_or_clock_skew" }
+    },
+    {
+      "id": "no-lease-held",
+      "refs": ["07 §5"],
+      "held": null,
+      "now": { "mono_ms": 10000, "wall_ms": 5000000 },
+      "expected": { "status": "discarded", "reason": "no_lease" }
+    }
+  ],
+  "renewal_base": {
+    "pending": {
+      "request_id": "00000000-0000-4000-8000-0000000000a1",
+      "lease_id": "00000000-0000-4000-8000-000000000080",
+      "nonce": "nonce-0002",
+      "core_instance_id": "00000000-0000-4000-8000-000000000060",
+      "command_scope_id": "00000000-0000-4000-8000-000000000070",
+      "io_epoch": "4",
+      "requested_at_mono_ms": 10000,
+      "requested_at_wall_ms": 5000000,
+      "heartbeat_ms": 2000
+    },
+    "response": {
+      "request_id": "00000000-0000-4000-8000-0000000000a1",
+      "lease_id": "00000000-0000-4000-8000-000000000080",
+      "nonce": "nonce-0002",
+      "result": "renewed",
+      "ttl_ms": 6000
+    },
+    "current": {
+      "core_instance_id": "00000000-0000-4000-8000-000000000060",
+      "command_scope_id": "00000000-0000-4000-8000-000000000070",
+      "io_epoch": "4",
+      "io_suspended": false
+    }
+  },
+  "renewal_cases": [
+    {
+      "id": "renewal-on-time-counts-from-the-request",
+      "refs": ["07 §5", "X13"],
+      "now": { "mono_ms": 10050, "wall_ms": 5000050 },
+      "expected": {
+        "held": {
+          "lease_id": "00000000-0000-4000-8000-000000000080",
+          "expires_at_mono_ms": 16000,
+          "sent_at": { "mono_ms": 10000, "wall_ms": 5000000 }
+        },
+        "reasons": [],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "late-response-does-not-extend-the-lease",
+      "refs": ["07 §5", "X13"],
+      "now": { "mono_ms": 14000, "wall_ms": 5004000 },
+      "expected": {
+        "held": {
+          "lease_id": "00000000-0000-4000-8000-000000000080",
+          "expires_at_mono_ms": 16000,
+          "sent_at": { "mono_ms": 10000, "wall_ms": 5000000 }
+        },
+        "reasons": [],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "response-one-ms-before-the-counted-expiry-is-applied",
+      "refs": ["07 §5"],
+      "now": { "mono_ms": 15999, "wall_ms": 5005999 },
+      "expected": {
+        "held": {
+          "lease_id": "00000000-0000-4000-8000-000000000080",
+          "expires_at_mono_ms": 16000,
+          "sent_at": { "mono_ms": 10000, "wall_ms": 5000000 }
+        },
+        "reasons": [],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "response-exactly-at-the-counted-expiry-is-not-applied",
+      "refs": ["07 §5", "X13"],
+      "now": { "mono_ms": 16000, "wall_ms": 5006000 },
+      "expected": {
+        "held": null,
+        "reasons": ["expired_before_applied"],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "response-after-sleep-is-not-applied",
+      "refs": ["07 §5", "X13"],
+      "now": { "mono_ms": 11000, "wall_ms": 5060000 },
+      "expected": {
+        "held": null,
+        "reasons": ["clock_inconsistent", "sleep_or_clock_skew"],
+        "clock": "skewed"
+      }
+    },
+    {
+      "id": "response-after-the-monotonic-clock-went-back-is-not-applied",
+      "refs": ["07 §5"],
+      "now": { "mono_ms": 9000, "wall_ms": 4999000 },
+      "expected": {
+        "held": null,
+        "reasons": ["clock_inconsistent", "mono_clock_regressed"],
+        "clock": "mono_regressed"
+      }
+    },
+    {
+      "id": "response-without-a-readable-clock-is-not-applied",
+      "refs": ["07 §5"],
+      "now": null,
+      "expected": {
+        "held": null,
+        "reasons": ["clock_inconsistent", "clock_unavailable"],
+        "clock": "unavailable"
+      }
+    },
+    {
+      "id": "response-with-another-nonce",
+      "refs": ["07 §5", "X30"],
+      "response": { "nonce": "nonce-0001" },
+      "now": { "mono_ms": 10050, "wall_ms": 5000050 },
+      "expected": {
+        "held": null,
+        "reasons": ["nonce_mismatch"],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "response-for-a-dropped-request",
+      "refs": ["07 §5", "X30"],
+      "pending": null,
+      "now": { "mono_ms": 10050, "wall_ms": 5000050 },
+      "expected": {
+        "held": null,
+        "reasons": ["no_pending_request"],
+        "clock": "unavailable"
+      }
+    },
+    {
+      "id": "response-after-the-io-epoch-moved-on",
+      "refs": ["07 §5", "X13"],
+      "current": { "io_epoch": "5" },
+      "now": { "mono_ms": 10050, "wall_ms": 5000050 },
+      "expected": {
+        "held": null,
+        "reasons": ["stale_io_epoch"],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "response-with-a-ttl-not-longer-than-the-heartbeat",
+      "refs": ["07 §5"],
+      "response": { "ttl_ms": 2000 },
+      "now": { "mono_ms": 10050, "wall_ms": 5000050 },
+      "expected": {
+        "held": null,
+        "reasons": ["heartbeat_not_shorter_than_ttl"],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "rejected-renewal",
+      "refs": ["07 §5"],
+      "response": { "result": "rejected", "ttl_ms": null },
+      "now": { "mono_ms": 10050, "wall_ms": 5000050 },
+      "expected": {
+        "held": null,
+        "reasons": ["renewal_rejected"],
+        "clock": "consistent"
+      }
+    }
+  ]
+}

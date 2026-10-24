@@ -1,0 +1,627 @@
+{
+  "status": "specification_only",
+  "description": "3 層の停止の時間モデルの期待値（設計 10 §1・§1A・§9、09 X13・X30・QA43、ADR 0039）。手で書いたもので、domain の実装から生成していない。第 1 層の 200ms は目標、第 2 層の 300ms は強制終了の期限で、どちらも設計の初期値であり合格値ではない（質問 44。実測は T04）。時刻は注入した単調時計の値（ms）。stop_playback の ACK が返らないときの全停止の理由は、新しい理由を足さず既存の device_io_stop（local）を使う（ADR 0039）。",
+  "constants": { "layer1_target_ms": 200, "layer2_deadline_ms": 300 },
+  "plan_cases": [
+    {
+      "id": "plan-user-stop",
+      "refs": ["10 §1A", "QA43"],
+      "reason": "user_stop",
+      "expected": {
+        "action": "stop_playback",
+        "channel": "voice.stop_playback",
+        "local": [
+          "mute_playback",
+          "discard_queued_audio",
+          "advance_output_epoch"
+        ],
+        "ack_deadline_ms": 300,
+        "core": []
+      }
+    },
+    {
+      "id": "plan-barge-in",
+      "refs": ["10 §1A", "QA43"],
+      "reason": "barge_in",
+      "expected": {
+        "action": "stop_playback",
+        "channel": "voice.stop_playback",
+        "local": [
+          "mute_playback",
+          "discard_queued_audio",
+          "advance_output_epoch"
+        ],
+        "ack_deadline_ms": 300,
+        "core": []
+      }
+    },
+    {
+      "id": "plan-silence-closes-live-but-keeps-the-microphone",
+      "refs": ["10 §1A", "10 §2"],
+      "reason": "silence",
+      "expected": {
+        "action": "close_voice_session",
+        "channel": "voice.close_voice_session",
+        "local": [
+          "mute_playback",
+          "discard_queued_audio",
+          "disable_live_send",
+          "close_webrtc",
+          "advance_output_epoch"
+        ],
+        "ack_deadline_ms": 1500,
+        "core": ["core_sideband_close", "reconcile_usage_hold_reservation"]
+      }
+    },
+    {
+      "id": "plan-consent-revoked-closes-live",
+      "refs": ["10 §1A", "ADR 0038"],
+      "reason": "consent_revoked",
+      "expected": {
+        "action": "close_voice_session",
+        "channel": "voice.close_voice_session",
+        "local": [
+          "mute_playback",
+          "discard_queued_audio",
+          "disable_live_send",
+          "close_webrtc",
+          "advance_output_epoch"
+        ],
+        "ack_deadline_ms": 1500,
+        "core": ["core_sideband_close", "reconcile_usage_hold_reservation"]
+      }
+    },
+    {
+      "id": "plan-os-lock-stops-everything",
+      "refs": ["10 §1", "10 §1A", "X13", "X30"],
+      "reason": "os_lock",
+      "expected": {
+        "action": "suspend_io",
+        "channel": "voice.suspend_io",
+        "local": [
+          "mute_playback",
+          "discard_queued_audio",
+          "disable_live_send",
+          "close_webrtc",
+          "stop_mic_track",
+          "discard_pcm_ring",
+          "stop_kws_vad_asr_delivery",
+          "advance_output_epoch",
+          "advance_io_epoch"
+        ],
+        "ack_deadline_ms": 300,
+        "core": [
+          "invalidate_old_epoch_results",
+          "core_sideband_close",
+          "reconcile_usage_hold_reservation"
+        ]
+      }
+    },
+    {
+      "id": "plan-device-revoked-stops-everything",
+      "refs": ["10 §1A", "X13"],
+      "reason": "device_revoked",
+      "expected": {
+        "action": "suspend_io",
+        "channel": "voice.suspend_io",
+        "local": [
+          "mute_playback",
+          "discard_queued_audio",
+          "disable_live_send",
+          "close_webrtc",
+          "stop_mic_track",
+          "discard_pcm_ring",
+          "stop_kws_vad_asr_delivery",
+          "advance_output_epoch",
+          "advance_io_epoch"
+        ],
+        "ack_deadline_ms": 300,
+        "core": [
+          "invalidate_old_epoch_results",
+          "core_sideband_close",
+          "reconcile_usage_hold_reservation"
+        ]
+      }
+    }
+  ],
+  "assess_cases": [
+    {
+      "id": "suspend-io-acked-within-the-targets",
+      "refs": ["10 §1", "X30"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": 1100,
+        "ack_at_mono_ms": 1150,
+        "ack_accepted": true,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1150
+      },
+      "expected": {
+        "layer1": { "target_ms": 200, "elapsed_ms": 100, "status": "met" },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "acked",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "layer1-exactly-at-the-target",
+      "refs": ["10 §1"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": 1200,
+        "ack_at_mono_ms": 1250,
+        "ack_accepted": true,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1250
+      },
+      "expected": {
+        "layer1": { "target_ms": 200, "elapsed_ms": 200, "status": "met" },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "acked",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "layer1-one-ms-over-the-target-is-recorded-not-failed",
+      "refs": ["10 §1", "質問 44"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": 1201,
+        "ack_at_mono_ms": 1250,
+        "ack_accepted": true,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1250
+      },
+      "expected": {
+        "layer1": { "target_ms": 200, "elapsed_ms": 201, "status": "missed" },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "acked",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "ack-exactly-at-the-deadline-is-in-time",
+      "refs": ["10 §1", "X30"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": 1300,
+        "ack_accepted": true,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1300
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "acked",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "ack-one-ms-after-the-deadline-comes-too-late",
+      "refs": ["10 §1", "X30"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": 1301,
+        "ack_accepted": true,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1301
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "timed_out",
+          "late_ack_ignored": true
+        },
+        "fallback": "force_kill_renderer",
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": true,
+        "reasons": ["late_ack_ignored"]
+      }
+    },
+    {
+      "id": "no-ack-at-the-deadline-still-waits",
+      "refs": ["10 §1", "X30"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": null,
+        "ack_accepted": null,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1300
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "waiting",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "no-ack-one-ms-after-the-deadline-kills-the-renderer",
+      "refs": ["10 §1", "X13", "X30"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": null,
+        "ack_accepted": null,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1301
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "timed_out",
+          "late_ack_ignored": false
+        },
+        "fallback": "force_kill_renderer",
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": true,
+        "reasons": []
+      }
+    },
+    {
+      "id": "an-ack-that-was-not-accepted-counts-as-no-ack-while-waiting",
+      "refs": ["10 §1A", "X30"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": 1100,
+        "ack_accepted": false,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1200
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "waiting",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": ["ack_not_accepted"]
+      }
+    },
+    {
+      "id": "an-ack-that-was-not-accepted-does-not-stop-the-kill",
+      "refs": ["10 §1A", "X30"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": 1100,
+        "ack_accepted": false,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1301
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "timed_out",
+          "late_ack_ignored": false
+        },
+        "fallback": "force_kill_renderer",
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": true,
+        "reasons": ["ack_not_accepted"]
+      }
+    },
+    {
+      "id": "an-ack-stamped-before-the-request-is-ignored",
+      "refs": ["10 §1A", "X30"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": 900,
+        "ack_accepted": true,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1301
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "timed_out",
+          "late_ack_ignored": false
+        },
+        "fallback": "force_kill_renderer",
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": true,
+        "reasons": ["ack_clock_regressed"]
+      }
+    },
+    {
+      "id": "a-local-stop-report-stamped-before-the-request-is-not-used",
+      "refs": ["10 §1"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": 900,
+        "ack_at_mono_ms": 1100,
+        "ack_accepted": true,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1100
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "acked",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": ["local_stop_clock_regressed"]
+      }
+    },
+    {
+      "id": "a-shorter-requested-timeout-is-used",
+      "refs": ["10 §1"],
+      "observation": {
+        "reason": "os_lock",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": 1250,
+        "ack_accepted": true,
+        "ack_timeout_ms": 200,
+        "now_mono_ms": 1250
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 200,
+          "status": "timed_out",
+          "late_ack_ignored": true
+        },
+        "fallback": "force_kill_renderer",
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": true,
+        "reasons": ["late_ack_ignored"]
+      }
+    },
+    {
+      "id": "playback-stop-acked-keeps-everything-else-running",
+      "refs": ["10 §1", "QA43"],
+      "observation": {
+        "reason": "user_stop",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": 1050,
+        "ack_at_mono_ms": 1080,
+        "ack_accepted": true,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1080
+      },
+      "expected": {
+        "layer1": { "target_ms": 200, "elapsed_ms": 50, "status": "met" },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "acked",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "playback-stop-without-an-ack-escalates-to-a-full-stop",
+      "refs": ["10 §1", "X30", "QA43"],
+      "observation": {
+        "reason": "barge_in",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": null,
+        "ack_accepted": null,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1301
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "timed_out",
+          "late_ack_ignored": false
+        },
+        "fallback": "escalate_suspend_io",
+        "notify_input_interrupted": true,
+        "escalation": {
+          "action": "suspend_io",
+          "reason": "device_io_stop",
+          "scope": "local"
+        },
+        "invalidate_old_epoch_results": true,
+        "reasons": []
+      }
+    },
+    {
+      "id": "playback-stop-waiting-does-not-escalate-yet",
+      "refs": ["10 §1", "X30"],
+      "observation": {
+        "reason": "user_stop",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": null,
+        "ack_accepted": null,
+        "ack_timeout_ms": 300,
+        "now_mono_ms": 1300
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 300,
+          "status": "waiting",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "close-waits-up-to-the-clamped-timeout",
+      "refs": ["10 §2", "ADR 0038"],
+      "observation": {
+        "reason": "silence",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": null,
+        "ack_accepted": null,
+        "ack_timeout_ms": 3000,
+        "now_mono_ms": 2500
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 1500,
+          "status": "waiting",
+          "late_ack_ignored": false
+        },
+        "fallback": null,
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": false,
+        "reasons": ["ack_timeout_clamped"]
+      }
+    },
+    {
+      "id": "close-without-an-ack-kills-the-renderer-after-the-clamped-timeout",
+      "refs": ["10 §2", "ADR 0038"],
+      "observation": {
+        "reason": "silence",
+        "requested_at_mono_ms": 1000,
+        "local_stop_completed_at_mono_ms": null,
+        "ack_at_mono_ms": null,
+        "ack_accepted": null,
+        "ack_timeout_ms": 3000,
+        "now_mono_ms": 2501
+      },
+      "expected": {
+        "layer1": {
+          "target_ms": 200,
+          "elapsed_ms": null,
+          "status": "not_reported"
+        },
+        "layer2": {
+          "deadline_ms": 1500,
+          "status": "timed_out",
+          "late_ack_ignored": false
+        },
+        "fallback": "force_kill_renderer",
+        "notify_input_interrupted": false,
+        "escalation": null,
+        "invalidate_old_epoch_results": true,
+        "reasons": ["ack_timeout_clamped"]
+      }
+    }
+  ]
+}

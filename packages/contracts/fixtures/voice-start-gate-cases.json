@@ -1,0 +1,248 @@
+{
+  "status": "specification_only",
+  "description": "Live の接続を始めるときの送信トラックの門の期待値（設計 10 §2・§9、09 X31・X54、ADR 0039）。手で書いたもので、domain の実装から生成していない。送信トラックは、session.started と中枢の「サイドバンド接続済み」の両方が揃うまで無効にし、2 つ目の効果音もそのときだけ鳴らす。サイドバンドが SDP answer から 3 秒を超えても接続できなければ接続を閉じて③へ切り替える（ちょうど 3 秒は待つ）。入出力の停止中は閉じるだけで③も使わない。「まだ接続中」の効果音は呼びかけから 3 秒（許容。原本は目標 1.5 秒・許容 3 秒で、超えたらの対象を明示しない）を超えて session.started がないときに 1 回だけ。時刻は注入した単調時計の経過（ms）。",
+  "constants": {
+    "sideband_connect_deadline_ms": 3000,
+    "session_start_tolerance_ms": 3000
+  },
+  "input_base": {
+    "io_suspended": false,
+    "private_conversation": false,
+    "session_started": false,
+    "sideband_connected": false,
+    "elapsed_since_answer_ms": 0,
+    "elapsed_since_wake_ms": 0,
+    "still_connecting_played": false
+  },
+  "cases": [
+    {
+      "id": "both-ready-enables-the-send-track-and-plays-the-second-clip",
+      "refs": ["10 §2", "X54"],
+      "input": {
+        "session_started": true,
+        "sideband_connected": true,
+        "elapsed_since_answer_ms": 400
+      },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": true,
+        "play_listening_clip": true,
+        "play_still_connecting_clip": false,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "sideband-delayed-two-seconds-keeps-the-track-disabled",
+      "refs": ["10 §2", "X54"],
+      "input": { "session_started": true, "elapsed_since_answer_ms": 2000 },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": ["awaiting_sideband"]
+      }
+    },
+    {
+      "id": "sideband-exactly-at-three-seconds-still-waits",
+      "refs": ["10 §2", "X54"],
+      "input": { "session_started": true, "elapsed_since_answer_ms": 3000 },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": ["awaiting_sideband"]
+      }
+    },
+    {
+      "id": "sideband-over-three-seconds-closes-and-switches-to-local-asr",
+      "refs": ["10 §2", "X54"],
+      "input": { "session_started": true, "elapsed_since_answer_ms": 3001 },
+      "expected": {
+        "apply_answer": false,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": true,
+        "switch_to_local_asr": true,
+        "reasons": ["sideband_not_connected_in_time"]
+      }
+    },
+    {
+      "id": "sideband-late-even-before-session-started-closes",
+      "refs": ["10 §2", "X54"],
+      "input": { "elapsed_since_answer_ms": 3500 },
+      "expected": {
+        "apply_answer": false,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": true,
+        "switch_to_local_asr": true,
+        "reasons": ["sideband_not_connected_in_time"]
+      }
+    },
+    {
+      "id": "connected-sideband-with-a-long-wait-is-not-closed-by-the-deadline",
+      "refs": ["10 §2", "X54"],
+      "input": {
+        "session_started": true,
+        "sideband_connected": true,
+        "elapsed_since_answer_ms": 10000
+      },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": true,
+        "play_listening_clip": true,
+        "play_still_connecting_clip": false,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": []
+      }
+    },
+    {
+      "id": "session-not-started-yet-keeps-the-track-disabled",
+      "refs": ["10 §2", "X54"],
+      "input": {
+        "sideband_connected": true,
+        "elapsed_since_answer_ms": 1000,
+        "elapsed_since_wake_ms": 1500
+      },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": ["awaiting_session_started"]
+      }
+    },
+    {
+      "id": "still-connecting-clip-after-the-tolerance",
+      "refs": ["10 §2", "10 §9"],
+      "input": {
+        "sideband_connected": true,
+        "elapsed_since_answer_ms": 2000,
+        "elapsed_since_wake_ms": 3001
+      },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": true,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": ["awaiting_session_started"]
+      }
+    },
+    {
+      "id": "no-still-connecting-clip-at-exactly-the-tolerance",
+      "refs": ["10 §2", "10 §9"],
+      "input": {
+        "sideband_connected": true,
+        "elapsed_since_answer_ms": 2000,
+        "elapsed_since_wake_ms": 3000
+      },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": ["awaiting_session_started"]
+      }
+    },
+    {
+      "id": "still-connecting-clip-is-not-repeated",
+      "refs": ["10 §2", "10 §9"],
+      "input": {
+        "sideband_connected": true,
+        "elapsed_since_answer_ms": 2000,
+        "elapsed_since_wake_ms": 5000,
+        "still_connecting_played": true
+      },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": ["awaiting_session_started"]
+      }
+    },
+    {
+      "id": "nothing-ready-lists-both-waits-in-order",
+      "refs": ["10 §2", "X54"],
+      "input": { "elapsed_since_answer_ms": 100 },
+      "expected": {
+        "apply_answer": true,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": false,
+        "switch_to_local_asr": false,
+        "reasons": ["awaiting_session_started", "awaiting_sideband"]
+      }
+    },
+    {
+      "id": "io-stopped-while-waiting-for-the-answer-discards-it-and-does-not-fall-back",
+      "refs": ["10 §2", "X31", "X13"],
+      "input": {
+        "io_suspended": true,
+        "session_started": true,
+        "sideband_connected": true
+      },
+      "expected": {
+        "apply_answer": false,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": true,
+        "switch_to_local_asr": false,
+        "reasons": ["io_suspended"]
+      }
+    },
+    {
+      "id": "private-conversation-started-while-waiting-discards-the-answer-and-uses-local-asr",
+      "refs": ["10 §2", "X31"],
+      "input": { "private_conversation": true },
+      "expected": {
+        "apply_answer": false,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": true,
+        "switch_to_local_asr": true,
+        "reasons": ["private_conversation"]
+      }
+    },
+    {
+      "id": "io-stop-wins-over-the-sideband-deadline-and-a-private-conversation",
+      "refs": ["10 §2", "X31", "X13"],
+      "input": {
+        "io_suspended": true,
+        "private_conversation": true,
+        "elapsed_since_answer_ms": 9000
+      },
+      "expected": {
+        "apply_answer": false,
+        "send_track_enabled": false,
+        "play_listening_clip": false,
+        "play_still_connecting_clip": false,
+        "close_live": true,
+        "switch_to_local_asr": false,
+        "reasons": ["io_suspended"]
+      }
+    }
+  ]
+}

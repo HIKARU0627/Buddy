@@ -1,0 +1,351 @@
+{
+  "status": "specification_only",
+  "description": "世代（epoch）の発行と逆行の拒否の期待値（設計 07 §1、10 §1A、ADR 0005・0038・0039、X13・X30・QA06・QA43）。手で書いたもので、domain の実装から生成していない。世代は先頭ゼロのない非負整数の 10 進文字列で、JavaScript の数値精度（2 の 53 乗）を超える値も含む。端末が進めるのは io_epoch・output_epoch、中枢が発行するのは audio・control・session の epoch。throws は例外の名前。",
+  "classify_cases": [
+    {
+      "id": "same",
+      "refs": ["10 §1A"],
+      "given": "5",
+      "current": "5",
+      "expected": "current"
+    },
+    {
+      "id": "older",
+      "refs": ["10 §1A", "X30"],
+      "given": "4",
+      "current": "5",
+      "expected": "stale"
+    },
+    {
+      "id": "newer-than-issued",
+      "refs": ["10 §1A", "X13"],
+      "given": "6",
+      "current": "5",
+      "expected": "unknown"
+    },
+    {
+      "id": "zero-and-zero",
+      "refs": ["07 §1"],
+      "given": "0",
+      "current": "0",
+      "expected": "current"
+    },
+    {
+      "id": "leading-zero",
+      "refs": ["07 §1"],
+      "given": "05",
+      "current": "5",
+      "expected": "invalid"
+    },
+    {
+      "id": "negative",
+      "refs": ["07 §1"],
+      "given": "-1",
+      "current": "5",
+      "expected": "invalid"
+    },
+    {
+      "id": "empty",
+      "refs": ["07 §1"],
+      "given": "",
+      "current": "5",
+      "expected": "invalid"
+    },
+    {
+      "id": "not-a-number",
+      "refs": ["07 §1"],
+      "given": "1e3",
+      "current": "5",
+      "expected": "invalid"
+    },
+    {
+      "id": "beyond-double-precision-newer",
+      "refs": ["07 §1"],
+      "given": "9007199254740993",
+      "current": "9007199254740992",
+      "expected": "unknown"
+    },
+    {
+      "id": "beyond-double-precision-older",
+      "refs": ["07 §1"],
+      "given": "9007199254740992",
+      "current": "9007199254740993",
+      "expected": "stale"
+    }
+  ],
+  "hold_cases": [
+    {
+      "id": "hold-ignores-a-lower-value",
+      "refs": ["ADR 0005"],
+      "held": "5",
+      "incoming": "4",
+      "expected": { "value": "5", "regressed": true }
+    },
+    {
+      "id": "hold-same-value",
+      "refs": ["ADR 0005"],
+      "held": "5",
+      "incoming": "5",
+      "expected": { "value": "5", "regressed": false }
+    },
+    {
+      "id": "hold-takes-a-higher-value",
+      "refs": ["ADR 0005"],
+      "held": "5",
+      "incoming": "8",
+      "expected": { "value": "8", "regressed": false }
+    },
+    {
+      "id": "hold-beyond-double-precision",
+      "refs": ["07 §1"],
+      "held": "9007199254740993",
+      "incoming": "9007199254740992",
+      "expected": { "value": "9007199254740993", "regressed": true }
+    }
+  ],
+  "advance_cases": [
+    {
+      "id": "advance-zero",
+      "refs": ["07 §1"],
+      "current": "0",
+      "expected": "1"
+    },
+    {
+      "id": "advance-carry",
+      "refs": ["07 §1"],
+      "current": "9",
+      "expected": "10"
+    },
+    {
+      "id": "advance-beyond-double-precision",
+      "refs": ["07 §1"],
+      "current": "9007199254740992",
+      "expected": "9007199254740993"
+    },
+    {
+      "id": "advance-invalid",
+      "refs": ["07 §1"],
+      "current": "01",
+      "throws": "TypeError"
+    }
+  ],
+  "device_report_base": { "io_epoch": "4", "output_epoch": "7" },
+  "device_report_cases": [
+    {
+      "id": "report-unchanged",
+      "refs": ["ADR 0005"],
+      "report": { "io_epoch": "4", "output_epoch": "7" },
+      "expected": {
+        "ok": true,
+        "next": { "io_epoch": "4", "output_epoch": "7" },
+        "advanced": []
+      }
+    },
+    {
+      "id": "report-io-epoch-advanced-by-the-device",
+      "refs": ["ADR 0005", "X13"],
+      "report": { "io_epoch": "5", "output_epoch": "7" },
+      "expected": {
+        "ok": true,
+        "next": { "io_epoch": "5", "output_epoch": "7" },
+        "advanced": ["io_epoch"]
+      }
+    },
+    {
+      "id": "report-both-advanced",
+      "refs": ["ADR 0005"],
+      "report": { "io_epoch": "5", "output_epoch": "9" },
+      "expected": {
+        "ok": true,
+        "next": { "io_epoch": "5", "output_epoch": "9" },
+        "advanced": ["io_epoch", "output_epoch"]
+      }
+    },
+    {
+      "id": "report-io-epoch-went-back",
+      "refs": ["ADR 0005", "X30"],
+      "report": { "io_epoch": "3", "output_epoch": "9" },
+      "expected": {
+        "ok": false,
+        "reason": "epoch_regressed",
+        "keys": ["io_epoch"],
+        "stored": { "io_epoch": "4", "output_epoch": "7" }
+      }
+    },
+    {
+      "id": "report-output-epoch-went-back",
+      "refs": ["ADR 0005", "QA43"],
+      "report": { "io_epoch": "4", "output_epoch": "6" },
+      "expected": {
+        "ok": false,
+        "reason": "epoch_regressed",
+        "keys": ["output_epoch"],
+        "stored": { "io_epoch": "4", "output_epoch": "7" }
+      }
+    },
+    {
+      "id": "report-after-the-device-lost-its-saved-values",
+      "refs": ["ADR 0005", "ADR 0038"],
+      "report": { "io_epoch": "0", "output_epoch": "0" },
+      "expected": {
+        "ok": false,
+        "reason": "epoch_regressed",
+        "keys": ["io_epoch", "output_epoch"],
+        "stored": { "io_epoch": "4", "output_epoch": "7" }
+      }
+    },
+    {
+      "id": "report-with-a-malformed-value",
+      "refs": ["07 §1"],
+      "report": { "io_epoch": "04", "output_epoch": "7" },
+      "expected": {
+        "ok": false,
+        "reason": "invalid_epoch",
+        "keys": ["io_epoch"],
+        "stored": { "io_epoch": "4", "output_epoch": "7" }
+      }
+    }
+  ],
+  "startup_cases": [
+    {
+      "id": "startup-core-is-ahead",
+      "refs": ["ADR 0038"],
+      "core": "12",
+      "saved": "9",
+      "expected": "13"
+    },
+    {
+      "id": "startup-saved-is-ahead",
+      "refs": ["ADR 0038"],
+      "core": "3",
+      "saved": "8",
+      "expected": "9"
+    },
+    {
+      "id": "startup-nothing-known",
+      "refs": ["ADR 0038"],
+      "core": null,
+      "saved": null,
+      "expected": "1"
+    },
+    {
+      "id": "startup-saved-zero",
+      "refs": ["ADR 0038"],
+      "core": null,
+      "saved": "0",
+      "expected": "1"
+    },
+    {
+      "id": "startup-without-a-saved-value",
+      "refs": ["ADR 0038"],
+      "core": "7",
+      "saved": null,
+      "expected": "8"
+    },
+    {
+      "id": "startup-equal-values",
+      "refs": ["ADR 0038"],
+      "core": "7",
+      "saved": "7",
+      "expected": "8"
+    },
+    {
+      "id": "startup-malformed-core-value",
+      "refs": ["07 §1"],
+      "core": "07",
+      "saved": null,
+      "throws": "TypeError"
+    }
+  ],
+  "core_epochs": {
+    "audio_epoch": "3",
+    "control_epoch": "2",
+    "session_epoch": "5"
+  },
+  "issue_cases": [
+    {
+      "id": "issue-on-live-start",
+      "refs": ["ADR 0005", "ADR 0038", "QA06"],
+      "event": "live_start",
+      "expected": {
+        "next": {
+          "audio_epoch": "4",
+          "control_epoch": "2",
+          "session_epoch": "6"
+        },
+        "issued": ["audio_epoch", "session_epoch"]
+      }
+    },
+    {
+      "id": "issue-on-reconnect",
+      "refs": ["ADR 0005", "QA06"],
+      "event": "reconnect",
+      "expected": {
+        "next": {
+          "audio_epoch": "4",
+          "control_epoch": "2",
+          "session_epoch": "6"
+        },
+        "issued": ["audio_epoch", "session_epoch"]
+      }
+    },
+    {
+      "id": "issue-on-device-move",
+      "refs": ["ADR 0005", "QA06"],
+      "event": "device_move",
+      "expected": {
+        "next": {
+          "audio_epoch": "4",
+          "control_epoch": "2",
+          "session_epoch": "6"
+        },
+        "issued": ["audio_epoch", "session_epoch"]
+      }
+    },
+    {
+      "id": "issue-on-an-unknown-event",
+      "refs": ["ADR 0005"],
+      "event": "wake_word",
+      "throws": "TypeError"
+    }
+  ],
+  "control_epoch_expected": {
+    "audio_epoch": "3",
+    "control_epoch": "3",
+    "session_epoch": "5"
+  },
+  "restore_cases": [
+    {
+      "id": "restore-default-step",
+      "refs": ["ADR 0038"],
+      "step": 1,
+      "expected": {
+        "audio_epoch": "4",
+        "control_epoch": "2",
+        "session_epoch": "6"
+      }
+    },
+    {
+      "id": "restore-larger-step",
+      "refs": ["ADR 0038"],
+      "step": 3,
+      "expected": {
+        "audio_epoch": "6",
+        "control_epoch": "2",
+        "session_epoch": "8"
+      }
+    },
+    {
+      "id": "restore-zero-step",
+      "refs": ["ADR 0038"],
+      "step": 0,
+      "throws": "RangeError"
+    },
+    {
+      "id": "restore-fractional-step",
+      "refs": ["ADR 0038"],
+      "step": 1.5,
+      "throws": "RangeError"
+    }
+  ]
+}

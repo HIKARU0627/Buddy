@@ -1,0 +1,438 @@
+{
+  "status": "specification_only",
+  "description": "Live の会話予算の追加予約の計画・予算到達の閉じ方・精算の秒数の期待値（設計 10 §2・§3・§9、09 X26・X34、質問 109、J17、ADR 0039）。手で書いたもので、domain の実装から生成していない。開始の予約は 15 秒 + 180 秒（195 秒）、そのあと 60 秒ごとに 60 秒分。精算は 15 秒と確認した使用秒数の大きい方。秒数だけで、金額は予算の規則（B07。合成の通貨 XTS）が決める。時刻は注入した単調時計（ms）。",
+  "constants": {
+    "min_billed_seconds": 15,
+    "initial_extra_seconds": 180,
+    "initial_reserve_seconds": 195,
+    "top_up_interval_ms": 60000,
+    "top_up_seconds": 60,
+    "budget_close_grace_ms": 10000
+  },
+  "admission_cases": [
+    {
+      "id": "fourteen-seconds-left",
+      "refs": ["10 §2"],
+      "available_seconds": 14,
+      "expected": {
+        "ok": false,
+        "stage": "device_precheck",
+        "code": "budget_insufficient"
+      }
+    },
+    {
+      "id": "zero-seconds-left",
+      "refs": ["10 §2", "X26"],
+      "available_seconds": 0,
+      "expected": {
+        "ok": false,
+        "stage": "device_precheck",
+        "code": "budget_insufficient"
+      }
+    },
+    {
+      "id": "exactly-fifteen-seconds-passes-the-device-check-only",
+      "refs": ["10 §2"],
+      "available_seconds": 15,
+      "expected": {
+        "ok": false,
+        "stage": "initial_reserve",
+        "code": "budget_insufficient"
+      }
+    },
+    {
+      "id": "one-short-of-the-initial-reservation",
+      "refs": ["10 §2", "X26"],
+      "available_seconds": 194,
+      "expected": {
+        "ok": false,
+        "stage": "initial_reserve",
+        "code": "budget_insufficient"
+      }
+    },
+    {
+      "id": "exactly-the-initial-reservation",
+      "refs": ["10 §2"],
+      "available_seconds": 195,
+      "expected": { "ok": true }
+    },
+    {
+      "id": "plenty-left",
+      "refs": ["10 §2"],
+      "available_seconds": 10000,
+      "expected": { "ok": true }
+    }
+  ],
+  "schedule_cases": [
+    {
+      "id": "schedule-at-the-start",
+      "refs": ["10 §2"],
+      "elapsed_ms": 0,
+      "completed": 0,
+      "expected": {
+        "reserved_seconds": 195,
+        "due": 0,
+        "next_at_ms": 60000,
+        "coverage_seconds": 195,
+        "exhausted": false
+      }
+    },
+    {
+      "id": "schedule-one-ms-before-the-first-top-up",
+      "refs": ["10 §2"],
+      "elapsed_ms": 59999,
+      "completed": 0,
+      "expected": { "reserved_seconds": 195, "due": 0, "next_at_ms": 60000 }
+    },
+    {
+      "id": "schedule-first-top-up-is-due-at-sixty-seconds",
+      "refs": ["10 §2"],
+      "elapsed_ms": 60000,
+      "completed": 0,
+      "expected": {
+        "reserved_seconds": 195,
+        "due": 1,
+        "next_at_ms": 60000,
+        "coverage_seconds": 135,
+        "exhausted": false
+      }
+    },
+    {
+      "id": "schedule-after-the-first-top-up",
+      "refs": ["10 §2"],
+      "elapsed_ms": 60000,
+      "completed": 1,
+      "expected": {
+        "reserved_seconds": 255,
+        "due": 0,
+        "next_at_ms": 120000,
+        "coverage_seconds": 195,
+        "exhausted": false
+      }
+    },
+    {
+      "id": "schedule-second-top-up-is-late",
+      "refs": ["10 §2"],
+      "elapsed_ms": 125000,
+      "completed": 1,
+      "expected": {
+        "reserved_seconds": 255,
+        "due": 1,
+        "next_at_ms": 120000,
+        "coverage_seconds": 130,
+        "exhausted": false
+      }
+    },
+    {
+      "id": "schedule-reservation-just-covers-the-elapsed-time",
+      "refs": ["10 §2", "X26"],
+      "elapsed_ms": 195000,
+      "completed": 0,
+      "expected": {
+        "reserved_seconds": 195,
+        "due": 3,
+        "next_at_ms": 60000,
+        "coverage_seconds": 0,
+        "exhausted": true
+      }
+    },
+    {
+      "id": "schedule-one-second-of-coverage-left",
+      "refs": ["10 §2", "X26"],
+      "elapsed_ms": 194000,
+      "completed": 0,
+      "expected": {
+        "reserved_seconds": 195,
+        "due": 3,
+        "coverage_seconds": 1,
+        "exhausted": false
+      }
+    },
+    {
+      "id": "schedule-with-a-clock-that-went-back",
+      "refs": ["10 §2"],
+      "elapsed_ms": -5000,
+      "completed": 0,
+      "expected": {
+        "reserved_seconds": 195,
+        "due": 0,
+        "next_at_ms": 60000,
+        "coverage_seconds": 195,
+        "exhausted": false
+      }
+    },
+    {
+      "id": "schedule-after-four-top-ups",
+      "refs": ["10 §2"],
+      "elapsed_ms": 300000,
+      "completed": 4,
+      "expected": {
+        "reserved_seconds": 435,
+        "due": 1,
+        "next_at_ms": 300000,
+        "coverage_seconds": 135,
+        "exhausted": false
+      }
+    },
+    {
+      "id": "schedule-more-top-ups-than-the-elapsed-time-needs",
+      "refs": ["10 §2"],
+      "elapsed_ms": 60000,
+      "completed": 3,
+      "expected": { "reserved_seconds": 375, "due": 0, "next_at_ms": 240000 }
+    }
+  ],
+  "failure_plan_cases": [
+    {
+      "id": "failure-with-the-sideband-ready",
+      "refs": ["10 §3", "X26", "質問 109"],
+      "sideband_ready": true,
+      "expected": {
+        "instruct": true,
+        "close_immediately": false,
+        "close_reason": "budget_reached",
+        "resume": "local_asr_until_budget",
+        "switch_to_local_asr": true
+      }
+    },
+    {
+      "id": "failure-without-a-sideband-to-instruct-through",
+      "refs": ["10 §3", "10 §2A", "X26"],
+      "sideband_ready": false,
+      "expected": {
+        "instruct": false,
+        "close_immediately": true,
+        "close_reason": "budget_reached",
+        "resume": "local_asr_until_budget",
+        "switch_to_local_asr": true
+      }
+    }
+  ],
+  "close_deadline_cases": [
+    {
+      "id": "deadline-without-an-utterance-end",
+      "refs": ["10 §3"],
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": null,
+      "expected": 11000
+    },
+    {
+      "id": "deadline-utterance-ends-first",
+      "refs": ["10 §3"],
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": 5000,
+      "expected": 5000
+    },
+    {
+      "id": "deadline-utterance-ends-exactly-at-ten-seconds",
+      "refs": ["10 §3"],
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": 11000,
+      "expected": 11000
+    },
+    {
+      "id": "deadline-utterance-runs-past-ten-seconds",
+      "refs": ["10 §3"],
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": 12000,
+      "expected": 11000
+    },
+    {
+      "id": "deadline-an-earlier-utterance-end-is-not-the-answer",
+      "refs": ["10 §3"],
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": 999,
+      "expected": 11000
+    },
+    {
+      "id": "deadline-utterance-ends-at-the-instruction",
+      "refs": ["10 §3"],
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": 1000,
+      "expected": 1000
+    }
+  ],
+  "should_close_cases": [
+    {
+      "id": "close-one-ms-before-ten-seconds",
+      "refs": ["10 §3"],
+      "now_ms": 10999,
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": null,
+      "expected": false
+    },
+    {
+      "id": "close-at-ten-seconds",
+      "refs": ["10 §3"],
+      "now_ms": 11000,
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": null,
+      "expected": true
+    },
+    {
+      "id": "close-when-the-utterance-ends",
+      "refs": ["10 §3"],
+      "now_ms": 5000,
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": 5000,
+      "expected": true
+    },
+    {
+      "id": "keep-until-the-utterance-ends",
+      "refs": ["10 §3"],
+      "now_ms": 4999,
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": 5000,
+      "expected": false
+    },
+    {
+      "id": "do-not-close-on-a-clock-before-the-instruction",
+      "refs": ["10 §3"],
+      "now_ms": 500,
+      "instructed_at_ms": 1000,
+      "utterance_ended_at_ms": 400,
+      "expected": false
+    }
+  ],
+  "settlement_cases": [
+    {
+      "id": "settle-five-seconds-is-billed-as-fifteen",
+      "refs": ["10 §2", "X34"],
+      "usage_seconds": 5,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": true,
+        "billable_seconds": 15,
+        "floor_applied": true,
+        "exceeds_reserved": false
+      }
+    },
+    {
+      "id": "settle-ten-seconds-is-billed-as-fifteen",
+      "refs": ["10 §2", "X34"],
+      "usage_seconds": 10,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": true,
+        "billable_seconds": 15,
+        "floor_applied": true,
+        "exceeds_reserved": false
+      }
+    },
+    {
+      "id": "settle-zero-seconds-is-billed-as-fifteen",
+      "refs": ["10 §2", "X34"],
+      "usage_seconds": 0,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": true,
+        "billable_seconds": 15,
+        "floor_applied": true,
+        "exceeds_reserved": false
+      }
+    },
+    {
+      "id": "settle-exactly-fifteen-seconds",
+      "refs": ["10 §2", "X34"],
+      "usage_seconds": 15,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": true,
+        "billable_seconds": 15,
+        "floor_applied": false,
+        "exceeds_reserved": false
+      }
+    },
+    {
+      "id": "settle-sixteen-seconds",
+      "refs": ["10 §2", "X34"],
+      "usage_seconds": 16,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": true,
+        "billable_seconds": 16,
+        "floor_applied": false,
+        "exceeds_reserved": false
+      }
+    },
+    {
+      "id": "settle-sixty-seconds",
+      "refs": ["10 §2", "X34"],
+      "usage_seconds": 60,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": true,
+        "billable_seconds": 60,
+        "floor_applied": false,
+        "exceeds_reserved": false
+      }
+    },
+    {
+      "id": "settle-exactly-the-reservation",
+      "refs": ["10 §2"],
+      "usage_seconds": 195,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": true,
+        "billable_seconds": 195,
+        "floor_applied": false,
+        "exceeds_reserved": false
+      }
+    },
+    {
+      "id": "settle-over-the-reservation-is-recorded-in-full",
+      "refs": ["10 §2", "QA42"],
+      "usage_seconds": 200,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": true,
+        "billable_seconds": 200,
+        "floor_applied": false,
+        "exceeds_reserved": true
+      }
+    },
+    {
+      "id": "usage-not-confirmed-holds-the-reservation",
+      "refs": ["10 §2A", "X25", "X34"],
+      "usage_seconds": null,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": false,
+        "reason": "usage_unconfirmed",
+        "hold_reservation": true
+      }
+    },
+    {
+      "id": "negative-usage-is-invalid",
+      "refs": ["10 §2A"],
+      "usage_seconds": -1,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": false,
+        "reason": "usage_invalid",
+        "hold_reservation": true
+      }
+    },
+    {
+      "id": "fractional-usage-is-invalid",
+      "refs": ["10 §2A"],
+      "usage_seconds": 12.5,
+      "reserved_seconds": 195,
+      "expected": {
+        "settled": false,
+        "reason": "usage_invalid",
+        "hold_reservation": true
+      }
+    }
+  ],
+  "x34_runs": {
+    "refs": ["X34", "10 §2"],
+    "description": "5 秒・10 秒・60 秒の会話を各 10 回行ったときの、確認した使用秒数に対する精算の秒数。",
+    "sessions": [
+      { "usage_seconds": 5, "count": 10, "expected_billable_seconds": 15 },
+      { "usage_seconds": 10, "count": 10, "expected_billable_seconds": 15 },
+      { "usage_seconds": 60, "count": 10, "expected_billable_seconds": 60 }
+    ],
+    "expected_total_billable_seconds": 900
+  }
+}

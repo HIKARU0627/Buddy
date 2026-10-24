@@ -151,7 +151,7 @@ test(
       assert.equal(response.status, 410, path);
       assert.equal(response.json?.['code'], 'expired_scope', path);
     }
-    // 新しい bootstrap の接続範囲は検査を通る（経路は B03-04 なので 503 で閉じる）。
+    // 新しい bootstrap の接続範囲は検査を通る（停止は B05-03 で受け付ける。ADR 0046）。
     const again = await pinnedRequest(target2, {
       method: 'GET',
       path: '/v1/bootstrap',
@@ -163,8 +163,9 @@ test(
       command_scope_id: again.json?.['command_scope_id'],
       scope: 'global',
     });
-    assert.equal(fresh.status, 503);
-    assert.equal(fresh.json?.['code'], 'dependency_unavailable');
+    assert.equal(fresh.status, 202);
+    assert.equal(fresh.json?.['scope'], 'global');
+    assert.equal(fresh.json?.['all_confirmed'], true);
     // 停止すると HTTPS も閉じる。
     const port = second.https.port;
     await second.stop('test');

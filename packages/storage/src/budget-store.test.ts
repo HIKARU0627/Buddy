@@ -691,7 +691,7 @@ test('usage unknown keeps R and M, only certainly unsent reservations are releas
       "INSERT INTO sessions VALUES ('s-1', 'normal', 'dev-1', 1, NULL, 1000, NULL)",
     );
     db.prepare(
-      "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'connecting', 0, 'open', NULL, ?, 1000, NULL, NULL)",
+      "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'connecting', 0, 'open', NULL, ?, 1000, NULL, NULL, 0, 0)",
     ).run(reservationId(4));
     assert.deepEqual(reasons(release(4, false)), ['possibly_sent']);
     // 解放した予約は 0、usage 不明と予約中は R と M（1・3・4 の 3 件）。

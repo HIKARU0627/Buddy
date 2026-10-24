@@ -48,3 +48,5 @@ export * from './voice-reservation.js';
 export * from './voice-notification.js';
 export * from './voice-input.js';
 export * from './voice-start.js';
+// B05-03: 音声所有権の調停・中枢が返すリースの期限・リースの取り直し・停止の到達の状態（ADR 0046）。
+export * from './voice-ownership.js';

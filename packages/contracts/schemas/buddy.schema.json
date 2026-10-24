@@ -3003,9 +3003,10 @@
         "nonce_reused",
         "nonce_replayed",
         "mono_clock_regressed",
-        "heartbeat_not_shorter_than_ttl"
+        "heartbeat_not_shorter_than_ttl",
+        "lease_rotation_required"
       ],
-      "description": "リースの更新を中枢が拒否する理由（設計 07 §5、10 §2A）。"
+      "description": "リースの更新を中枢が拒否する理由（設計 07 §5、10 §2A）。lease_rotation_required は、同じリースで受け付けた更新の数が上限に達したこと（nonce の履歴の保持量の上限。端末は新しい lease_id・previous_nonce null で取り直す。ADR 0046・U69）。"
     },
     "LeaseRenewalRequest": {
       "type": "object",
@@ -5874,6 +5875,10 @@
             "audio_ownership_required",
             "payload_too_large",
             "private_conversation",
+            "io_suspended",
+            "audio_lease_invalid",
+            "output_mode_text",
+            "external_send_consent_required",
             "target_changed",
             "undo_expired",
             "pairing_failed",
@@ -5897,7 +5902,7 @@
       },
       "required": ["code", "message", "request_id"],
       "additionalProperties": false,
-      "description": "HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。"
+      "description": "HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。"
     },
     "BudgetReservation": {
       "type": "object",

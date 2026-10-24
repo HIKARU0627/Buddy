@@ -80,6 +80,14 @@ import {
 } from './api-budget.js';
 import { BUDGET_CONFIG_FILE, loadBudgetConfig } from './budget-config.js';
 import { BudgetGate } from './budget-gate.js';
+import { createVoiceRoutes } from './api-voice.js';
+import { VoiceControl } from './voice-control.js';
+import type {
+  LiveBudgetPort,
+  LiveProvider,
+  VoiceControlOptions,
+  VoiceTimers,
+} from './voice-control.js';
 import type { UsageReconciler } from './budget-gate.js';
 import { createOperationRunner } from './operation-runner.js';
 import type { OperationRunner } from './operation-runner.js';
@@ -181,6 +189,18 @@ export interface CoreHttpsOptions {
     EventStreamOptions,
     'pingIntervalMs' | 'maxBufferedBytes'
   >;
+  // 音声の制御（B05-03、ADR 0046）。省略したものは、provider・予算の門の境界はなし（Live の接続は 503）、同意は
+  // missing（開かない）、表示先はなし、時計は performance.now と実際のタイマー。
+  readonly voice?: CoreVoiceOptions;
+}
+
+export interface CoreVoiceOptions {
+  readonly provider?: LiveProvider | null;
+  readonly budget?: LiveBudgetPort | null;
+  readonly consent?: VoiceControlOptions['consent'];
+  readonly displayTarget?: () => string | null;
+  readonly timers?: VoiceTimers;
+  readonly monoNow?: () => number;
 }
 
 export interface CoreTurnOptions {
@@ -462,6 +482,7 @@ export async function startCore(
   let pairing: PairingService | null = null;
   let budget: BudgetGate | null = null;
   let budgetTimer: NodeJS.Timeout | null = null;
+  let voice: VoiceControl | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
   let closedResolve: () => void = () => undefined;
@@ -507,6 +528,8 @@ export async function startCore(
     });
     await step(async () => api?.close(options.shutdownGraceMs ?? 2000));
     await step(() => control.close(options.shutdownGraceMs ?? 2000));
+    // 音声の制御のタイマーとサイドバンドを止める（閉じ終えていない Live は次の起動の照合が扱う）。
+    await step(async () => voice?.close());
     // 処理中の命令を終えてから DB を閉じる。ロックはその後に返す。
     await step(async () => opened?.store.close());
     await step(removeSocketFile);
@@ -558,6 +581,7 @@ export async function startCore(
       api = started.api;
       streams = started.streams;
       runner = started.runner;
+      voice = started.voice;
       httpsInfo = started.info;
       homeNetwork = started.homeNetwork;
       pairing = started.pairing;
@@ -680,6 +704,7 @@ async function startHttps(
   readonly pairing: PairingService;
   readonly homeNetwork: HomeNetworkGate;
   readonly runner: OperationRunner;
+  readonly voice: VoiceControl;
 }> {
   const store = opened.store;
   let identity;
@@ -735,6 +760,33 @@ async function startHttps(
   }
   // 操作の命令の後にイベントを配るよう、命令を送る store を通知つきにする（ADR 0023）。
   const watched = feed.watchStore(store);
+  // 音声の制御（ADR 0046）。世代と停止の状態は DB が正本。起動時に前の起動の閉じ終えていない Live を照合する。
+  const voiceOptions = https.voice ?? {};
+  const voice = new VoiceControl({
+    store,
+    coreInstanceId,
+    monoNow: voiceOptions.monoNow ?? (() => performance.now()),
+    wallNow: () => now().getTime(),
+    ...(voiceOptions.timers === undefined
+      ? {}
+      : { timers: voiceOptions.timers }),
+    provider: voiceOptions.provider ?? null,
+    budget: voiceOptions.budget ?? null,
+    ...(voiceOptions.consent === undefined
+      ? {}
+      : { consent: voiceOptions.consent }),
+    ...(voiceOptions.displayTarget === undefined
+      ? {}
+      : { displayTarget: voiceOptions.displayTarget }),
+    log,
+  });
+  try {
+    await voice.start();
+  } catch {
+    throw new CoreStartError('store_recovery_failed', [
+      'voice_reconcile_failed',
+    ]);
+  }
   // 注入した環境（試験）が、ペアリングの判定（中枢の画面・申請用の秘密）と自宅判定（B03-03）より優先する。
   // ロック状態は端末の main が Buddy-Lock-State で申告した値（認証した端末だけ。B03-05、ADR 0025）。
   const merged: RequestEnvironment = {
@@ -742,6 +794,8 @@ async function startHttps(
     lockState: declaredLockState,
     ...pairing.environment,
     homeNetwork: homeNetwork.homeNetwork,
+    // 音声所有権は中枢の音声リース（ADR 0046）。
+    audioOwner: (input) => voice.audioOwner(input.device),
     ...https.environment,
   };
   // 発行した preview（ADR 0029）。Core のメモリーだけに置き、再起動で無効になる。端末の接続の終了（失効・自宅判定の
@@ -778,7 +832,9 @@ async function startHttps(
         ? routes.revisionMatches(input)
         : BUDGET_REVISION_CHECKED_ROUTES.has(input.operationId)
           ? budgetRoutes.revisionMatches(input)
-          : base.revisionMatches(input),
+          : input.operationId === 'resumeIo'
+            ? voice.revisionMatches(input.device, input.body)
+            : base.revisionMatches(input),
   };
   const turnOptions = https.turns ?? {};
   const turns = createTurnRoutes({
@@ -839,10 +895,14 @@ async function startHttps(
     environment,
     deviceConnections,
     canvas,
+    voice: {
+      subscribe: (deviceId, listener) => voice.subscribe(deviceId, listener),
+    },
     now: () => now().getTime(),
     faults,
     ...https.eventStream,
   });
+  const voiceRoutes = createVoiceRoutes(voice);
   // 経路の処理の表は重ならない（同じ operationId を二つの処理が持たない）。重なれば起動しない。
   const handlerKeys = [
     pairing.handlers,
@@ -851,6 +911,7 @@ async function startHttps(
     turns.handlers,
     stream.handlers,
     budgetRoutes.handlers,
+    voiceRoutes.handlers,
   ].flatMap((handlers) => Object.keys(handlers));
   if (new Set(handlerKeys).size !== handlerKeys.length)
     throw new Error('route_handlers_overlap');
@@ -872,8 +933,10 @@ async function startHttps(
         ...turns.handlers,
         ...stream.handlers,
         ...budgetRoutes.handlers,
+        ...voiceRoutes.handlers,
       },
       eventStream: streams,
+      ioState: (device, lock) => voice.ioState(device, lock),
       ...(https.limits === undefined ? {} : { limits: https.limits }),
     });
   } catch (error) {
@@ -898,6 +961,7 @@ async function startHttps(
     api,
     homeNetwork,
     pairing,
+    voice,
     streams,
     info: {
       host: api.host,

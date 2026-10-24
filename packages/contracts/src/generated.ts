@@ -1603,7 +1603,7 @@ export type LeaseRenewalResponse =
       ttl_ms: null;
     };
 /**
- * リースの更新を中枢が拒否する理由（設計 07 §5、10 §2A）。
+ * リースの更新を中枢が拒否する理由（設計 07 §5、10 §2A）。lease_rotation_required は、同じリースで受け付けた更新の数が上限に達したこと（nonce の履歴の保持量の上限。端末は新しい lease_id・previous_nonce null で取り直す。ADR 0046・U69）。
  */
 export type LeaseRenewalRejectReason =
   | 'core_restarted'
@@ -1619,7 +1619,8 @@ export type LeaseRenewalRejectReason =
   | 'nonce_reused'
   | 'nonce_replayed'
   | 'mono_clock_regressed'
-  | 'heartbeat_not_shorter_than_ttl';
+  | 'heartbeat_not_shorter_than_ttl'
+  | 'lease_rotation_required';
 /**
  * input_kind の受付の規則（設計 10 §4・§6・§6A、ADR 0038）。どの経路で受け付け、何が必要か。表の値は domain の INPUT_KIND_RULES と一致する。
  */
@@ -2162,7 +2163,7 @@ export interface EventPage {
   resnapshot_required: boolean;
 }
 /**
- * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。
+ * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。
  */
 export interface ApiError {
   code:
@@ -2182,6 +2183,10 @@ export interface ApiError {
     | 'audio_ownership_required'
     | 'payload_too_large'
     | 'private_conversation'
+    | 'io_suspended'
+    | 'audio_lease_invalid'
+    | 'output_mode_text'
+    | 'external_send_consent_required'
     | 'target_changed'
     | 'undo_expired'
     | 'pairing_failed'

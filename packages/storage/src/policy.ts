@@ -1,4 +1,4 @@
-// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022、0004 の表は ADR 0029、0005 の表は ADR 0030、0006 の表は ADR 0036）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
+// 保存案の表ごとの方針（ADR 0010。0003 の表は ADR 0022、0004 の表は ADR 0029、0005 の表は ADR 0030、0006 の表は ADR 0036、0008 の表は ADR 0046）。migrations の全版を適用した表と一致することを scripts/storage.test.mjs で検査する。
 // retention は domain の RETENTION_RULES の ID、または期限の持ち方の説明。body は本文の置き場所。
 // transaction は同じ短い transaction で書く表の組（08 §3・§5、11 §1A・§9）。
 
@@ -175,6 +175,18 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     body: 'none',
     retention: 'permanent',
     transaction: 'budget',
+  },
+  // 0008（B05-03、ADR 0046）: 端末ごとの音声の世代と端末単位の停止（戻さない・消さない）。
+  device_epochs: {
+    body: 'none',
+    retention: 'permanent',
+    transaction: 'voice',
+  },
+  // 0008（B05-03、ADR 0046）: 来客モードと全体停止（家ごとに 1 行。再起動で解除しない）。
+  io_stop_state: {
+    body: 'none',
+    retention: 'permanent',
+    transaction: 'voice',
   },
   sync_scopes: {
     body: 'none',

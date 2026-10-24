@@ -6,3 +6,6 @@ PRAGMA synchronous = FULL;
 PRAGMA fullfsync = ON;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 0;
+-- 消した行の内容を空きページに残さない（ADR 0040・0048）。暗号文なので鍵がなければ読めないが、
+-- 忘却・期限で消したことを言えるようにする。SSD の痕跡消去までは保証しない。
+PRAGMA secure_delete = ON;

@@ -70,7 +70,7 @@ export const BACKUP_EXCLUDED_TABLES: Readonly<
   home_network_reports: 'device_report',
 };
 
-// 含める表（マイグレーション 0001〜0007 の表から、上の除外を引いたもの）。ここにも除外にもない表は未知で、
+// 含める表（マイグレーション 0001〜0010 の表から、上の除外を引いたもの）。ここにも除外にもない表は未知で、
 // バックアップを取らない（何が入っているか分からない表を、黙って含めも捨てもしない）。表を足すマイグレーションは、
 // この一覧か除外の一覧に必ず載せる（scripts/backup-restore.test.mjs がマイグレーションの CREATE TABLE と照合する）。
 export const BACKUP_INCLUDED_TABLES: readonly string[] = [
@@ -107,6 +107,8 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   'sync_scopes',
   'request_entities',
   'request_entity_operations',
+  // 派生物の系譜（0010、B06-06b）。本文は持たず、ID・種類・時刻だけ。忘却の閉包と、復元の忘却の適用に使うので含める。
+  'derivations',
   'related_analyses',
   'notification_candidates',
   'deliveries',

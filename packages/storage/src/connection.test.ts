@@ -73,6 +73,7 @@ test('a write connection on a temporary file reads back WAL / FULL / fullfsync /
       synchronous: 2,
       fullfsync: 1,
       foreign_keys: 1,
+      secure_delete: 1,
       busy_timeout: 0,
     });
     for (const platform of PLATFORMS)
@@ -105,6 +106,11 @@ test('a pragma changed after configuration is detected on read-back', () => {
       sql: 'PRAGMA foreign_keys = OFF',
       macos: ['foreign_keys_off'],
       other: ['foreign_keys_off'],
+    },
+    {
+      sql: 'PRAGMA secure_delete = OFF',
+      macos: ['secure_delete_off'],
+      other: ['secure_delete_off'],
     },
     {
       sql: 'PRAGMA busy_timeout = 5000',
@@ -171,9 +177,9 @@ test('a weakened connection script is rejected, the connection is closed and not
       macos: ['synchronous_not_full'],
     },
     {
-      // 新しい DB で WAL だけを設定した接続（synchronous は既定の FULL のまま、fullfsync は OFF）。
+      // 新しい DB で WAL だけを設定した接続（synchronous は既定の FULL のまま、fullfsync と secure_delete は OFF）。
       sql: WAL_ONLY,
-      macos: ['fullfsync_off'],
+      macos: ['fullfsync_off', 'secure_delete_off'],
     },
     {
       sql: `${readConnectionSql()}\nPRAGMA foreign_keys = OFF;\n`,
@@ -201,14 +207,21 @@ test('reopening a WAL database without setting synchronous falls back to NORMAL 
     const error = rejection(() =>
       openWriteConnection(path, { platform: 'macos', connectionSql: WAL_ONLY }),
     );
-    assert.deepEqual(error.reasons, ['synchronous_not_full', 'fullfsync_off']);
+    assert.deepEqual(error.reasons, [
+      'synchronous_not_full',
+      'fullfsync_off',
+      'secure_delete_off',
+    ]);
     const windows = rejection(() =>
       openWriteConnection(path, {
         platform: 'windows',
         connectionSql: WAL_ONLY,
       }),
     );
-    assert.deepEqual(windows.reasons, ['synchronous_not_full']);
+    assert.deepEqual(windows.reasons, [
+      'synchronous_not_full',
+      'secure_delete_off',
+    ]);
     assertEmpty(path);
     // 既定の connection.sql なら開き直しても FULL。
     const db = openWriteConnection(path, { platform: 'macos' });

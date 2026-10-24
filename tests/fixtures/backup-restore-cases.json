@@ -77,7 +77,7 @@
   "table_plan_cases": [
     {
       "id": "b0605-tables-all-migration-tables",
-      "note": "マイグレーション 0001〜0009 の表すべて（0008 の budget_credit_observations、0009 の device_epochs・io_stop_state を含む）。短命の 10 表だけを除き、忘却台帳の 2 表は含める。",
+      "note": "マイグレーション 0001〜0010 の表すべて（0008 の budget_credit_observations、0009 の device_epochs・io_stop_state、0010 の derivations を含む）。短命の 10 表だけを除き、忘却台帳の 2 表は含める。",
       "tables": [
         "schema_meta",
         "sealed_blobs",
@@ -110,6 +110,7 @@
         "source_items",
         "request_entities",
         "request_entity_operations",
+        "derivations",
         "related_analyses",
         "notification_candidates",
         "deliveries",
@@ -146,22 +147,22 @@
           "sync_batches",
           "sync_staging"
         ],
-        "included_count": 42
+        "included_count": 43
       }
     },
     {
       "id": "b0605-tables-unknown-table-blocks-backup",
-      "note": "まだ分類していない表（B06-06 で足す予定の derivations など）があれば、黙って含めも捨てもせず、取らない。",
+      "note": "まだ分類していない表（例: future_table）があれば、黙って含めも捨てもせず、取らない。",
       "tables": [
         "schema_meta",
         "forget_ledger",
         "forget_ledger_items",
-        "derivations"
+        "future_table"
       ],
       "expect": {
         "ok": false,
         "reasons": ["unknown_table"],
-        "unknown_tables": ["derivations"],
+        "unknown_tables": ["future_table"],
         "missing_required_tables": []
       }
     },
@@ -3151,6 +3152,7 @@
           "sync_staging",
           "request_entities",
           "request_entity_operations",
+          "derivations",
           "related_analyses",
           "notification_candidates",
           "deliveries",
@@ -4658,6 +4660,7 @@
       "source_items",
       "request_entities",
       "request_entity_operations",
+      "derivations",
       "related_analyses",
       "notification_candidates",
       "deliveries",

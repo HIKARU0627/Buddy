@@ -66,6 +66,10 @@ const ninthBytes = readFileSync(
   new URL('0009_voice_epochs.sql', MIGRATIONS_DIR),
 );
 const ninthSha = createHash('sha256').update(ninthBytes).digest('hex');
+// 0010（ADR 0048）: 予算の記録の delete_at と削除の trigger・secure_delete・派生物の系譜・操作の記録の種類と
+// 復元の後の未確認の印。
+const tenthBytes = readFileSync(new URL('0010_retention.sql', MIGRATIONS_DIR));
+const tenthSha = createHash('sha256').update(tenthBytes).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -126,7 +130,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0009 apply to a temporary file DB: 52 STRICT tables, version 9 and the content hashes', () => {
+test('0001 to 0010 apply to a temporary file DB: 53 STRICT tables, version 10 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -134,18 +138,18 @@ test('0001 to 0009 apply to a temporary file DB: 52 STRICT tables, version 9 and
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 9,
-        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+        to: 10,
+        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
       });
       const tables = tableNames(db);
-      assert.equal(tables.length, 52);
+      assert.equal(tables.length, 53);
       assert.deepEqual(tables, Object.keys(TABLE_POLICIES).sort());
       const strict = db
         .prepare(
           "SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'",
         )
         .all() as { name: string; strict: number }[];
-      assert.equal(strict.length, 52);
+      assert.equal(strict.length, 53);
       for (const row of strict) assert.equal(row.strict, 1, row.name);
       assert.deepEqual(meta(db), {
         'migration_sha256:0001': initialSha,
@@ -157,20 +161,21 @@ test('0001 to 0009 apply to a temporary file DB: 52 STRICT tables, version 9 and
         'migration_sha256:0007': seventhSha,
         'migration_sha256:0008': eighthSha,
         'migration_sha256:0009': ninthSha,
-        schema_version: '9',
+        'migration_sha256:0010': tenthSha,
+        schema_version: '10',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 9 のまま、適用するものはない。
+    // 開き直しても版は 10 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 9);
+      assert.equal(readSchemaVersion(reopened), 10);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 9,
-        to: 9,
+        from: 10,
+        to: 10,
         applied: [],
       });
     } finally {
@@ -346,6 +351,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [7, '0007_budget_gate.sql'],
       [8, '0008_budget_credit.sql'],
       [9, '0009_voice_epochs.sql'],
+      [10, '0010_retention.sql'],
     ],
   );
   withTempDir((dir) => {
@@ -917,6 +923,71 @@ test('0006 upgrades a version 5 DB holding reservations and a live session and k
             "UPDATE budget_reservations SET status = 'settled', actual_gross = 1, credit_applied = 0, additional_spend = 1, provider_reconciliation_id = 'p-5', settlement_kind = 'provider' WHERE reservation_id = 'r-5'",
           ),
         /budget_reservation_released/u,
+      );
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// 0010（ADR 0048）: 版 9 の DB を 10 へ移す。操作・承認・予算の行はそのまま残り、新しい列は既定（record_kind は normal、
+// restore_unverified_at と予算の delete_at は NULL）になる。系譜の表は空で作られる。
+test('0010 upgrades a version 9 DB and keeps operations, approvals and budget rows with the new defaults', () => {
+  withTempDir((dir) => {
+    const path = join(dir, 'buddy.sqlite');
+    const db = openWriteConnection(path, { platform: 'macos' });
+    try {
+      applyMigrations(db, loadMigrations().slice(0, 9));
+      const hash = '1'.repeat(64);
+      for (const sql of [
+        "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-1', 'operation_intent', 'operation_versions', 'op-1', 1, 1, 'k1', X'000000000000000000000001', X'00', X'00000000000000000000000000000000', 1000, NULL)",
+        "INSERT INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at, completed_at) VALUES ('op-1', NULL, 'mail.labels.change', 'remote_mutation', 1, 'awaiting_approval', 2, 1000, NULL)",
+        `INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at) VALUES ('op-1', 1, '${hash}', 'b-1', 1000)`,
+        `INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-1', 'op-1', 1, '${hash}', 'policy_auto', NULL, NULL, 3, 'valid', 1100)`,
+        "INSERT INTO budget_months (month, time_zone, month_start, month_start_time_zone, recorded_at) VALUES ('2030-10', 'UTC', 1900000000000, 'UTC', 900)",
+        "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-1', 'q-1', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'released', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1100)",
+        "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind, credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at) VALUES ('r-2', 'q-2', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', '2030-10', 'XTS', 'price-1', 10, 20, 'settled', 1, 15, 0, 15, 'anthropic:p-2', 'provider', NULL, 1500, 0, NULL, 1200)",
+      ])
+        db.exec(sql);
+      assert.deepEqual(applyMigrations(db, loadMigrations().slice(0, 10)), {
+        from: 9,
+        to: 10,
+        applied: [10],
+      });
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT operation_id, record_kind, restore_unverified_at FROM operations ORDER BY operation_id',
+          )
+          .all(),
+        [
+          {
+            operation_id: 'op-1',
+            record_kind: 'normal',
+            restore_unverified_at: null,
+          },
+        ],
+      );
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT reservation_id, status, delete_at FROM budget_reservations ORDER BY reservation_id',
+          )
+          .all(),
+        [
+          { reservation_id: 'r-1', status: 'released', delete_at: null },
+          { reservation_id: 'r-2', status: 'settled', delete_at: null },
+        ],
+      );
+      assert.deepEqual(
+        db.prepare('SELECT approval_id, status FROM approvals').all(),
+        [{ approval_id: 'ap-1', status: 'valid' }],
+      );
+      assert.equal(
+        db.prepare('SELECT count(*) FROM derivations').pluck().get(),
+        0,
       );
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');

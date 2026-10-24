@@ -249,6 +249,12 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'memory_review',
     transaction: 'memory',
   },
+  // 0010（B06-06b、ADR 0048）: 派生物の系譜（要約・抄録・抽出結果などと、その由来）。派生物を作る transaction で書く。
+  derivations: {
+    body: 'none',
+    retention: 'derived_deadline_of_origins',
+    transaction: 'owner',
+  },
   forget_ledger: {
     body: 'none',
     retention: 'permanent',
@@ -305,6 +311,7 @@ export interface ObservedPragmas {
   readonly synchronous: number;
   readonly fullfsync: number;
   readonly foreign_keys: number;
+  readonly secure_delete: number;
 }
 
 // 書込み接続の PRAGMA の読み戻し（08 §3、11 §9）。一つでも違えば外部変更を開始しない。
@@ -320,5 +327,6 @@ export function pragmaReasons(
   if (platform === 'macos' && observed.fullfsync !== 1)
     reasons.push('fullfsync_off');
   if (observed.foreign_keys !== 1) reasons.push('foreign_keys_off');
+  if (observed.secure_delete !== 1) reasons.push('secure_delete_off');
   return reasons;
 }

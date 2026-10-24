@@ -179,6 +179,7 @@ test('connection pragmas read back as WAL / FULL / fullfsync, which is not a dur
       synchronous: read('synchronous'),
       fullfsync: read('fullfsync'),
       foreign_keys: read('foreign_keys'),
+      secure_delete: read('secure_delete'),
     };
     assert.deepEqual(pragmaReasons(observed, 'macos'), []);
     file.close();
@@ -193,6 +194,7 @@ test('connection pragmas read back as WAL / FULL / fullfsync, which is not a dur
     synchronous: 1,
     fullfsync: 0,
     foreign_keys: 0,
+    secure_delete: 1,
   };
   assert.deepEqual(pragmaReasons(observed, 'macos'), [
     'journal_mode_not_wal',
@@ -207,5 +209,13 @@ test('connection pragmas read back as WAL / FULL / fullfsync, which is not a dur
     ),
     [],
   );
+  // secure_delete が OFF なら拒否する（ADR 0040・0048）。
+  assert.deepEqual(pragmaReasons({ ...observed, secure_delete: 0 }, 'macos'), [
+    'journal_mode_not_wal',
+    'synchronous_not_full',
+    'fullfsync_off',
+    'foreign_keys_off',
+    'secure_delete_off',
+  ]);
   memory.close();
 });

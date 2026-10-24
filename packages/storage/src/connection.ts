@@ -67,6 +67,7 @@ export function readConnectionPragmas(
     synchronous: number(pragmaValue(db, 'synchronous')),
     fullfsync: number(pragmaValue(db, 'fullfsync')),
     foreign_keys: number(pragmaValue(db, 'foreign_keys')),
+    secure_delete: number(pragmaValue(db, 'secure_delete')),
     busy_timeout: number(pragmaValue(db, 'busy_timeout')),
   };
 }

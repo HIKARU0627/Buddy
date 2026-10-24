@@ -6,7 +6,7 @@
     "INSERT INTO devices VALUES ('dev-hub', '合成の中枢', 'macos', 1, X'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000, NULL, NULL)",
     "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-intent-1', 'operation_intent', 'operation_versions', 'op-1', 1, 1, 'k1', X'000000000000000000000001', X'00', X'00000000000000000000000000000000', 1000, NULL)",
     "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-intent-2', 'operation_intent', 'operation_versions', 'op-1', 2, 1, 'k1', X'000000000000000000000002', X'00', X'00000000000000000000000000000000', 1000, NULL)",
-    "INSERT INTO operations VALUES ('op-1', NULL, 'mail.labels.change', 'remote_mutation', 1, 'awaiting_approval', 0, 1000, NULL)",
+    "INSERT INTO operations VALUES ('op-1', NULL, 'mail.labels.change', 'remote_mutation', 1, 'awaiting_approval', 0, 1000, NULL, 'normal', NULL)",
     "INSERT INTO operation_versions VALUES ('op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'b-intent-1', 1000)",
     "INSERT INTO operation_versions VALUES ('op-1', 2, '2222222222222222222222222222222222222222222222222222222222222222', 'b-intent-2', 1100)",
     "INSERT INTO sessions VALUES ('s-1', 'normal', 'dev-1', 1, NULL, 1000, NULL)",
@@ -482,15 +482,15 @@
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-task', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL)",
+          "INSERT INTO operations VALUES ('op-task', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL, 'normal', NULL)",
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-task-2', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL)",
+          "INSERT INTO operations VALUES ('op-task-2', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL, 'normal', NULL)",
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-event', NULL, 'create_event', 'remote_mutation', 1, 'approved', 0, 1000, NULL)",
+          "INSERT INTO operations VALUES ('op-event', NULL, 'create_event', 'remote_mutation', 1, 'approved', 0, 1000, NULL, 'normal', NULL)",
           "ok"
         ],
         [
@@ -602,15 +602,15 @@
       "refs": ["X24", "J12"],
       "steps": [
         [
-          "INSERT INTO operations VALUES ('op-auto', NULL, 'label_mail', 'remote_mutation', 1, 'succeeded', 3, 1000, 2000)",
+          "INSERT INTO operations VALUES ('op-auto', NULL, 'label_mail', 'remote_mutation', 1, 'succeeded', 3, 1000, 2000, 'normal', NULL)",
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-comp-1', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL)",
+          "INSERT INTO operations VALUES ('op-comp-1', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL, 'normal', NULL)",
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-comp-2', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL)",
+          "INSERT INTO operations VALUES ('op-comp-2', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL, 'normal', NULL)",
           "ok"
         ],
         [

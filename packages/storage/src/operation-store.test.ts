@@ -855,6 +855,8 @@ const applyLocalCommand = (
   attempt_id: randomUUID(),
   task_id: randomUUID(),
   list_id: options.list_id ?? 'inbox',
+  // 用事の正本の暗号文（ADR 0051。中身は合成の乱数で、ここでは復号しない）。
+  content: sealedIntent(),
 });
 
 const count = (db: SqliteDatabase, sql: string): number =>
@@ -880,6 +882,26 @@ test('D5: apply_local writes the task, attempt, approval use, final state, event
     assert.equal(
       count(db, "SELECT count(*) FROM tasks WHERE operation_id = 'op-l'"),
       1,
+    );
+    // 用事は自分の暗号文（用途 task_content、持ち主は用事・版 0）を持つ（ADR 0051）。
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT b.blob_id = ? AS same, b.purpose, b.owner_table, b.owner_id = t.task_id AS owner, b.owner_version FROM tasks t JOIN sealed_blobs b ON b.blob_id = t.content_blob_id WHERE t.operation_id = 'op-l'",
+        )
+        .all(
+          (command as Extract<DbCommand, { kind: 'operation.apply_local' }>)
+            .content.blob_id,
+        ),
+      [
+        {
+          same: 1,
+          purpose: 'task_content',
+          owner_table: 'tasks',
+          owner: 1,
+          owner_version: 0,
+        },
+      ],
     );
     assert.deepEqual(
       db

@@ -27,7 +27,14 @@ import type {
   ReconcileObservation,
   StepResultStatus,
 } from '@buddy/domain';
-import { openOperationIntent, sealOperationIntent } from '@buddy/storage';
+import {
+  openOperationIntent,
+  openTaskContent,
+  sameTaskContent,
+  sealOperationIntent,
+  sealTaskContent,
+  taskContentFromIntent,
+} from '@buddy/storage';
 import type {
   DataKeyMaterial,
   DataKeyProvider,
@@ -710,12 +717,42 @@ export function createOperationRunner(
     const target = intent?.['target'] as Record<string, unknown> | undefined;
     const listId = target?.['list_id'];
     if (typeof listId !== 'string') return;
+    // 用事の正本（題名・期限・本文）を、用事を所有者にして暗号化する（ADR 0051）。確定 intent は完了から 7 日で
+    // 消えるので、用事の内容をそこに置かない。暗号文は書く前に復号して同じ内容に戻ることを確かめる。
+    const content = taskContentFromIntent(intent);
+    const key = content === null ? null : await loadKey();
+    const unsealed = () =>
+      log(
+        `用事の内容を暗号化できず、登録を適用しませんでした（操作 ${current.operation_id}）。`,
+      );
+    if (content === null || key === null) {
+      unsealed();
+      return;
+    }
+    const taskId = randomUUID();
+    const sealed = sealTaskContent(key, taskId, content);
+    if (!sealed.ok) {
+      unsealed();
+      return;
+    }
+    const reopened = openTaskContent(key, taskId, {
+      formatVersion: sealed.content.format_version,
+      keyId: sealed.content.key_id,
+      nonce: sealed.content.nonce,
+      ciphertext: sealed.content.ciphertext,
+      tag: sealed.content.tag,
+    });
+    if (!reopened.ok || !sameTaskContent(reopened.content, content)) {
+      unsealed();
+      return;
+    }
     const outcome = await submit({
       ...base(current, String(intent?.['permission_revision'] ?? '0')),
       kind: 'operation.apply_local',
       attempt_id: randomUUID(),
-      task_id: randomUUID(),
+      task_id: taskId,
       list_id: listId,
+      content: sealed.content,
     });
     if (outcome.outcome !== 'durable')
       log(`用事の登録を適用できませんでした（操作 ${current.operation_id}）。`);

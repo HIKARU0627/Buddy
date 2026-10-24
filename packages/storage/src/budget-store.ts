@@ -314,6 +314,13 @@ export type BudgetOp =
       readonly budget_month: string;
       readonly now: number;
     }
+  // 0010 より前からある予算の行の delete_at を埋める（ADR 0048 の U80、ADR 0051）。その月の行のうち、消してよい状態
+  // （budgetReservationDeletable）で delete_at が NULL の行に、予算月の締めから 13 か月後を書く。月の記録がなければ
+  // 書かない（推測の時刻を入れない。ADR 0010）。消してよい状態でない行はそのまま残す（精算・確認の命令が書く）。
+  | {
+      readonly kind: 'budget.backfill_delete_at';
+      readonly budget_month: string;
+    }
   | {
       readonly kind: 'budget.reservation_find';
       readonly reservation_id: string | null;
@@ -379,6 +386,14 @@ export interface BudgetPurgeValue {
   readonly deleted_reservations: number;
 }
 
+export interface BudgetBackfillValue {
+  readonly budget_month: string;
+  // 今回 delete_at を書いた行の数。
+  readonly filled: number;
+  // delete_at が NULL のまま残った行（まだ消してよい状態でない行）の数。
+  readonly still_open: number;
+}
+
 export interface BudgetOpValues {
   'budget.admit': BudgetAdmitValue;
   'budget.top_up': BudgetReservationChange;
@@ -412,6 +427,7 @@ export interface BudgetOpValues {
   };
   'budget.dispatch_intent': BudgetReservationChange;
   'budget.purge_month': BudgetPurgeValue;
+  'budget.backfill_delete_at': BudgetBackfillValue;
   'budget.unsettled_list': readonly BudgetUnsettledItem[];
   'budget.reservation_find': BudgetReservationValue | null;
   'budget.approval_find': BudgetApprovalValue | null;
@@ -462,6 +478,7 @@ export const BUDGET_WRITE_OPS: ReadonlySet<BudgetOpKind> = new Set([
   'budget.dispatch_intent',
   'budget.credit_adopt',
   'budget.purge_month',
+  'budget.backfill_delete_at',
 ]);
 
 class BudgetRejection extends Error {
@@ -766,6 +783,9 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
     case 'budget.purge_month':
       check(isMonth(op.budget_month), 'budget_month_invalid');
       check(isTime(op.now), 'now_invalid');
+      break;
+    case 'budget.backfill_delete_at':
+      check(isMonth(op.budget_month), 'budget_month_invalid');
       break;
     case 'budget.credit_adopt':
       check(
@@ -2290,6 +2310,52 @@ function purgeMonth(
   };
 }
 
+// 0010 より前の行の delete_at を埋める（ADR 0048 の U80）。解放済みの行は 0011 の released_final の例外（delete_at を
+// NULL から値にする更新だけ）で書ける。値は精算・解放・確認のときと同じ budgetDeleteAt（予算月の記録から求める）。
+// 書ける条件（消してよい状態・作った時刻から 364 日以上）は 0010 の trigger も確かめる。
+function backfillDeleteAt(
+  db: SqliteDatabase,
+  op: Extract<BudgetOp, { kind: 'budget.backfill_delete_at' }>,
+): BudgetBackfillValue {
+  const deadline = budgetDeleteAt(db, op.budget_month);
+  if (deadline === null) throw new BudgetRejection(['calendar_invalid']);
+  const rows = db
+    .prepare(
+      'SELECT reservation_id, status, actual_gross, max_liability, overrun_reviewed FROM budget_reservations WHERE budget_month = ? AND delete_at IS NULL ORDER BY reservation_id',
+    )
+    .safeIntegers(true)
+    .all(op.budget_month) as {
+    reservation_id: string;
+    status: 'reserved' | 'usage_unknown' | 'settled' | 'released';
+    actual_gross: bigint | null;
+    max_liability: bigint;
+    overrun_reviewed: bigint;
+  }[];
+  const write = db.prepare(
+    'UPDATE budget_reservations SET delete_at = ? WHERE reservation_id = ? AND delete_at IS NULL',
+  );
+  let filled = 0;
+  for (const row of rows) {
+    const deletable = budgetReservationDeletable({
+      reservation_id: row.reservation_id,
+      status: row.status,
+      actual_gross:
+        row.actual_gross === null ? null : row.actual_gross.toString(),
+      max_liability: row.max_liability.toString(),
+      overrun_reviewed: row.overrun_reviewed === 1n,
+      live_session_ids: [],
+      approval_ids: [],
+    });
+    if (!deletable) continue;
+    filled += write.run(deadline, row.reservation_id).changes;
+  }
+  return {
+    budget_month: op.budget_month,
+    filled,
+    still_open: rows.length - filled,
+  };
+}
+
 function applyWrite(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
   switch (op.kind) {
     case 'budget.admit':
@@ -2318,6 +2384,8 @@ function applyWrite(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
       return dispatchIntent(db, op);
     case 'budget.purge_month':
       return purgeMonth(db, op);
+    case 'budget.backfill_delete_at':
+      return backfillDeleteAt(db, op);
     case 'budget.credit_adopt': {
       const rejected = adoptObservations(db, op.credit, op.now);
       const resolved = resolveCredit(db, op.credit, rejected);

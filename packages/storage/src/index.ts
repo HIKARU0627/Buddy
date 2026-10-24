@@ -30,3 +30,6 @@ export * from './budget-store.js';
 export * from './voice-store.js';
 // B06-06b: 派生物の系譜（ADR 0048、マイグレーション 0010）。
 export * from './derivation-store.js';
+// B06-06c: 終わった操作の本文の削除・90 日の削除・用事の正本の分離（ADR 0051、マイグレーション 0011）。
+export * from './retention-store.js';
+export * from './task-content.js';

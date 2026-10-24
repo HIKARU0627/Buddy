@@ -103,10 +103,11 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'operation_receipt',
     transaction: 'operation',
   },
-  // 0005（ADR 0030）: 用事。題名・期限・本文は確定 intent の暗号文を参照し、複製しない。
+  // 0005（ADR 0030）: 用事。0011（ADR 0051）で正本を操作のレシートから分け、題名・期限・本文を自分の暗号文
+  // （content_blob_id）に持つ。本人の削除操作で消え、掃除（J5 の 7 日・90 日）の対象にしない（03）。
   tasks: {
-    body: 'none',
-    retention: 'operation_receipt',
+    body: 'sealed_refs',
+    retention: 'until_owner_deletes',
     transaction: 'operation',
   },
   operation_steps: {

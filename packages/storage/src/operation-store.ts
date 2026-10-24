@@ -46,6 +46,15 @@ import type {
 const RECEIPT_TTL_MS = RETENTION_RULES['command_receipt']?.ms ?? 0;
 const EVENT_TTL_MS = RETENTION_RULES['event_outbox']?.ms ?? 0;
 
+// 完了した状態（J5 の本文の削除・90 日の削除の対象。unknown_held は完了ではない。ADR 0040）。
+export const COMPLETED_OPERATION_STATES: readonly OperationState[] = [
+  'succeeded',
+  'not_executed',
+  'cancelled',
+  'superseded',
+];
+const COMPLETED_STATES = COMPLETED_OPERATION_STATES;
+
 // 送出境界を越えて結果を待っている状態。取消は受け付けるが取消済みにしない（08 §3、X05）。
 const AFTER_DISPATCH: readonly OperationState[] = [
   'dispatching',
@@ -247,6 +256,8 @@ export interface OperationRecord {
   readonly state_revision: string;
   readonly current_content_version: string;
   readonly content_hash: string;
+  // 今の内容版の本文を J5 で消したか（hash は残る）。
+  readonly body_erased: boolean;
   readonly created_at: number;
   readonly completed_at: number | null;
   readonly approvals: readonly {
@@ -311,6 +322,20 @@ function versionHash(
   return row?.content_hash;
 }
 
+// 内容版の本文（確定 intent の暗号文）を J5 で消したか。消えた内容版からは承認・準備・送出・適用をしない（ADR 0051）。
+function bodyErased(
+  db: SqliteDatabase,
+  id: string,
+  contentVersion: number,
+): boolean {
+  const row = db
+    .prepare(
+      'SELECT intent_blob_id FROM operation_versions WHERE operation_id = ? AND content_version = ?',
+    )
+    .get(id, contentVersion) as { intent_blob_id: string | null } | undefined;
+  return row !== undefined && row.intent_blob_id === null;
+}
+
 function effectiveApproval(
   db: SqliteDatabase,
   id: string,
@@ -368,6 +393,7 @@ export function readOperation(
     current_content_version: toText(row.current_content_version),
     content_hash:
       versionHash(db, operationId, row.current_content_version) ?? '',
+    body_erased: bodyErased(db, operationId, row.current_content_version),
     created_at: row.created_at,
     completed_at: row.completed_at,
     approvals: approvals.map((approval) => ({
@@ -617,10 +643,12 @@ function advance(
   if (!canTransition(operation.state, to, operation.effect_route))
     throw new CommandRejection(['transition_not_allowed']);
   const next = operation.state_revision + 1;
-  const completed = to === 'succeeded' || to === 'cancelled';
+  // completed_at は今の完了の状態に入った時刻（J5 の本文 7 日・レシート 90 日の起点。ADR 0040・0051）。
+  // 未実行の確定（not_executed）も完了に数える。本人の再試行で完了でない状態へ戻れば NULL に戻す。
+  const completed = COMPLETED_STATES.includes(to);
   const updated = db
     .prepare(
-      'UPDATE operations SET state = ?, state_revision = ?, completed_at = CASE WHEN ? THEN ? ELSE completed_at END WHERE operation_id = ? AND state_revision = ?',
+      'UPDATE operations SET state = ?, state_revision = ?, completed_at = CASE WHEN ? THEN ? ELSE NULL END WHERE operation_id = ? AND state_revision = ?',
     )
     .run(
       to,
@@ -683,6 +711,27 @@ export function insertVersion(
   db.prepare(
     'INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at) VALUES (?, ?, ?, ?, ?)',
   ).run(operationId, contentVersion, contentHash, intent.blob_id, context.now);
+}
+
+// 用事の暗号文（sealed_blobs、purpose = task_content、持ち主は tasks の task_id・版 0）を書く。
+export function insertTaskContent(
+  db: SqliteDatabase,
+  context: { readonly now: number },
+  taskId: string,
+  content: SealedBlobInput,
+): void {
+  db.prepare(
+    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'task_content', 'tasks', ?, 0, ?, ?, ?, ?, ?, ?, NULL)",
+  ).run(
+    content.blob_id,
+    taskId,
+    content.format_version,
+    content.key_id,
+    bytes(content.nonce),
+    bytes(content.ciphertext),
+    bytes(content.tag),
+    context.now,
+  );
 }
 
 // --- 命令ごとの本体 ---
@@ -800,6 +849,8 @@ function approveOperation(
     writeReceipt(db, context, command, operation.state_revision);
     return durable(command, operation.state_revision, { existing: true });
   }
+  if (bodyErased(db, operation.operation_id, contentVersion))
+    throw new CommandRejection(['operation_body_erased']);
   guard(
     db,
     command,
@@ -844,6 +895,9 @@ function prepareOperation(
     null,
   );
   const contentVersion = operation.current_content_version;
+  // 本文の消えた内容版は送れない（未実行の確定の後、7 日を過ぎてからの本人の再試行）。
+  if (bodyErased(db, operation.operation_id, contentVersion))
+    throw new CommandRejection(['operation_body_erased']);
   const hash = versionHash(db, operation.operation_id, contentVersion);
   const approval = effectiveApproval(
     db,
@@ -892,6 +946,8 @@ function recordDispatchIntent(
   const reasons: string[] = [];
   if (attempt.content_version !== operation.current_content_version)
     reasons.push('content_version_changed');
+  if (bodyErased(db, operation.operation_id, attempt.content_version))
+    reasons.push('operation_body_erased');
   const hash = versionHash(db, operation.operation_id, attempt.content_version);
   const approval = db
     .prepare('SELECT * FROM approvals WHERE approval_id = ?')
@@ -1176,6 +1232,8 @@ function applyLocal(
     null,
   );
   const contentVersion = operation.current_content_version;
+  if (bodyErased(db, operation.operation_id, contentVersion))
+    throw new CommandRejection(['operation_body_erased']);
   const hash = versionHash(db, operation.operation_id, contentVersion);
   const approval = effectiveApproval(
     db,
@@ -1199,14 +1257,17 @@ function applyLocal(
     command.task_id,
     context.now,
   );
+  // 用事の正本（題名・期限・本文の暗号文。所有者は用事）を同じ transaction で書く（ADR 0051）。
+  insertTaskContent(db, context, command.task_id, command.content);
   db.prepare(
-    "INSERT INTO tasks (task_id, operation_id, content_version, list_id, status, created_at) VALUES (?, ?, ?, ?, 'open', ?)",
+    "INSERT INTO tasks (task_id, operation_id, content_version, list_id, status, created_at, content_blob_id) VALUES (?, ?, ?, ?, 'open', ?, ?)",
   ).run(
     command.task_id,
     operation.operation_id,
     contentVersion,
     command.list_id,
     context.now,
+    command.content.blob_id,
   );
   db.prepare(
     "UPDATE approvals SET status = 'consumed' WHERE approval_id = ? AND status = 'valid'",

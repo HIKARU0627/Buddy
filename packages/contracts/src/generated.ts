@@ -129,7 +129,18 @@ export type BuddyContract =
   | LeaseRenewalResponse
   | InputKindRule
   | ExternalSendConsent
-  | ExternalSendConsentChange;
+  | ExternalSendConsentChange
+  | ForgetLedgerFile
+  | ForgetLedgerReplica
+  | BackupManifest
+  | RestoreResult
+  | RetentionNotice
+  | StorageModeState
+  | RecoveryKeyRecord
+  | RecoveryKeyDisplay
+  | BackupConfig
+  | BackupLocationCheck
+  | RestoredOperation;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -601,6 +612,34 @@ export type ExecutorGeneration = string;
  */
 export type MemoryKind =
   'preference' | 'goal' | 'person' | 'routine' | 'lexicon' | 'progress';
+/**
+ * 記憶の由来（発言・元情報・別の記憶）。本文は持たない（設計 03 忘却と再取り込み）。発言（turn）と別の記憶（memory）は Buddy 内の ID（Id）、元情報（source_item）は元サービスの ID（OriginalSourceId）に限る（ADR 0040）。
+ */
+export type MemorySourceRef =
+  | {
+      source_kind: 'turn' | 'memory';
+      source_id: Id;
+    }
+  | {
+      source_kind: 'source_item';
+      source_id: OriginalSourceId;
+    };
+/**
+ * 元サービスの対象 ID（メール・予定・添付などの provider の ID）の文字列表現（ADR 0040）。英数字と . _ : = + ~ - だけで 256 文字まで。これは文字種と長さの制限で、文（Forget. など許可文字だけの文字列）と ID は区別できない。ID であることは、Core が信頼できる元情報（自分の DB の行）から解決した値だけを書くことで守る（台帳・複製には生の値を書かず HMAC にする。LedgerSourceRef）。内部の ID（turn・memory）は Id を使う。
+ */
+export type OriginalSourceId = string;
+/**
+ * 忘却台帳の由来の参照（ADR 0040）。発言（turn）と別の記憶（memory）は Buddy 内の ID（Id）。元情報（source_item）は元サービスの ID の生の値を書かず、台帳用の鍵による用途別の HMAC-SHA256（64 桁の小文字 16 進。source_id_hmac）だけを書く。HMAC の入力と鍵は ADR 0040。Core が信頼できる元情報（自分の DB の行）から解決した値を HMAC に通したものだけを書く。形の検査は 64 桁の 16 進かどうかだけで、HMAC であること自体は保証しない。
+ */
+export type LedgerSourceRef =
+  | {
+      source_kind: 'turn' | 'memory';
+      source_id: Id;
+    }
+  | {
+      source_kind: 'source_item';
+      source_id_hmac: Hash;
+    };
 /**
  * 採否を決める用途（設計 05 評価の進め方）。全用途をまとめた値は置かない。memory_extraction は独立した用途で、正解付きセットができるまで未評価（ADR 0008）。
  */
@@ -1688,6 +1727,111 @@ export type ExternalSendConsentChange =
         method: 'os_dialog_main';
         confirmed_at: UtcTime;
       } | null;
+    };
+/**
+ * 期限切れ・忘却の知らせ（キャンバス向け。UI-05、ADR 0040）。ID と理由だけで、本文・要約・検索語を入れない。受け取った側は該当の物を表示から消す。期限切れは forgetting_generation が null、忘却は台帳の世代を持つ。
+ */
+export type RetentionNotice =
+  | {
+      schema: 'buddy.retention-notice.v1';
+      notice_id: Id;
+      occurred_at: UtcTime;
+      kind: 'expired';
+      reason: 'retention_due' | 'review_unanswered' | 'summary_origin_expired';
+      forgetting_generation: null;
+      /**
+       * @minItems 1
+       * @maxItems 256
+       */
+      items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
+    }
+  | {
+      schema: 'buddy.retention-notice.v1';
+      notice_id: Id;
+      occurred_at: UtcTime;
+      kind: 'forgotten';
+      reason: 'forgotten' | 'derived_from_forgotten';
+      forgetting_generation: ForgettingGeneration;
+      /**
+       * @minItems 1
+       * @maxItems 256
+       */
+      items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
+    };
+/**
+ * 区切りの保存モードの状態（設計 03 保存期限・記録しない会話の境界、ADR 0040）。モードごとに何を保存し何を禁じるかを固定の値で持ち、private では発言・要約・記憶・抽出・影モードの記録・Live の接続を持てない。端末内の音声認識（③）は使える。判定は Core のコードが持ち、クライアントは表示にだけ使う。
+ */
+export type StorageModeState =
+  | {
+      schema: 'buddy.storage-mode-state.v1';
+      segment_id: Id;
+      storage_mode: 'normal';
+      since: UtcTime;
+      effects: {
+        persist_turns: true;
+        persist_summary: true;
+        save_memory: true;
+        extract_memory: true;
+        record_shadow: true;
+        open_live: true;
+        local_asr: true;
+        turn_retention_days: 7;
+        operation_record: 'full';
+      };
+    }
+  | {
+      schema: 'buddy.storage-mode-state.v1';
+      segment_id: Id;
+      storage_mode: 'extended';
+      since: UtcTime;
+      effects: {
+        persist_turns: true;
+        persist_summary: true;
+        save_memory: true;
+        extract_memory: true;
+        record_shadow: true;
+        open_live: true;
+        local_asr: true;
+        turn_retention_days: 30;
+        operation_record: 'full';
+      };
+    }
+  | {
+      schema: 'buddy.storage-mode-state.v1';
+      segment_id: Id;
+      storage_mode: 'private';
+      since: UtcTime;
+      effects: {
+        persist_turns: false;
+        persist_summary: false;
+        save_memory: false;
+        extract_memory: false;
+        record_shadow: false;
+        open_live: false;
+        local_asr: true;
+        turn_retention_days: null;
+        operation_record: 'minimal_after_confirmation';
+      };
+    };
+/**
+ * 復旧キーの記録（J1、ADR 0040）。Core が保存する秘密でない情報で、復旧キーそのものを持たない（Core は復旧キーを知らない）。check_value は CLI が復旧キーから別の用途ラベルで導いた 32 ビットの確認用の値で、復元で入力したキーの打ち間違いを先に見つけるためだけに使う。shown は本人へ 1 度だけ表示した後の状態で、以後キーは再表示できない。
+ */
+export type RecoveryKeyRecord =
+  | {
+      schema: 'buddy.recovery-key-record.v1';
+      recovery_key_id: Id;
+      created_at: UtcTime;
+      check_value: string;
+      state: 'not_shown';
+      shown_at: null;
+    }
+  | {
+      schema: 'buddy.recovery-key-record.v1';
+      recovery_key_id: Id;
+      created_at: UtcTime;
+      check_value: string;
+      state: 'shown';
+      shown_at: UtcTime;
     };
 
 export interface AudioRange {
@@ -3447,13 +3591,6 @@ export interface MemoryCandidate {
   created_at: UtcTime;
 }
 /**
- * 記憶の由来（発言・元情報・別の記憶）。本文は持たない（設計 03 忘却と再取り込み）。
- */
-export interface MemorySourceRef {
-  source_kind: 'turn' | 'source_item' | 'memory';
-  source_id: string;
-}
-/**
  * 保存した要約記憶（設計 03 保存期限）。保存から 90 日で見直し待ち、見直し待ちは自動提案の根拠から外し 30 日未応答で削除する。利用・再要約・重複の再抽出で期限を延ばさない。
  */
 export interface MemoryRecord {
@@ -3473,7 +3610,7 @@ export interface MemoryRecord {
   delete_at: UtcTime | null;
 }
 /**
- * 忘却台帳の 1 件（設計 03 forget_ledger、忘却と再取り込み・バックアップ）。本文を持たず、忘れた対象と派生した記憶、再登録を禁止する元の由来 ID、同じ内容の自動記憶化を止める HMAC だけを記録する。世代は 1 件ごとに 1 つ進む。
+ * 忘却台帳の 1 件（設計 03 forget_ledger、忘却と再取り込み・バックアップ）。本文を持たず、忘れた対象（発言・記憶は Buddy 内の ID、元情報は用途別の HMAC）と、再登録を禁じる元の由来の HMAC、同じ内容の自動記憶化を止める HMAC だけを記録する。元サービスの ID の生の値は書かない（ADR 0040）。世代は 1 件ごとに 1 つ進む。
  */
 export interface ForgetLedgerEntry {
   schema: 'buddy.forget-ledger.v1';
@@ -3483,8 +3620,8 @@ export interface ForgetLedgerEntry {
   /**
    * @minItems 1
    */
-  forgotten: [MemorySourceRef, ...MemorySourceRef[]];
-  blocked_source_ids: string[];
+  forgotten: [LedgerSourceRef, ...LedgerSourceRef[]];
+  blocked_source_hmacs: Hash[];
   blocked_content_keys: Hash[];
 }
 /**
@@ -5207,4 +5344,198 @@ export interface LeaseRenewalRequest {
   requested_at_mono_ms: number;
   heartbeat_ms: number;
   ttl_ms: number;
+}
+/**
+ * 忘却台帳の別ファイル（設計 03 バックアップ・復元、ADR 0040）。DB の forget_ledger とは別に、本文なしで世代を 1 から欠番なく並べ、hash で連鎖させる。追記だけで、先頭を削らない。ledger_id は台帳の系譜で、復元しても変わらない。意味検査: 世代の欠番・重複、previous_hash の不一致、entry_hash の不一致、head の不一致。
+ */
+export interface ForgetLedgerFile {
+  schema: 'buddy.forget-ledger-file.v1';
+  ledger_id: Id;
+  /**
+   * @maxItems 100000
+   */
+  entries: ForgetLedgerChainEntry[];
+  /**
+   * 最新の世代とその entry_hash。台帳が空なら世代 0・64 個の 0。
+   */
+  head: {
+    forgetting_generation: ForgettingGeneration;
+    entry_hash: Hash;
+  };
+  written_at: UtcTime;
+}
+/**
+ * 忘却台帳の別ファイルの 1 件（ADR 0040）。entry は DB の ForgetLedgerEntry と同じ（本文なし）。previous_hash は 1 つ前の entry_hash（最初の世代は 64 個の 0）、entry_hash は {entry, previous_hash} の JCS（RFC 8785）の UTF-8 に SHA-256 を掛けた小文字 16 進。
+ */
+export interface ForgetLedgerChainEntry {
+  entry: ForgetLedgerEntry;
+  previous_hash: Hash;
+  entry_hash: Hash;
+}
+/**
+ * 登録済み端末へ複製した忘却台帳（設計 03、ADR 0040）。部分の複製は作らず、世代 1 から head までの全体だけを持つ（完全でない複製は意味検査に通らない）。端末は複製を忘却の判定に使えるだけで、台帳の正本にはならない。
+ */
+export interface ForgetLedgerReplica {
+  schema: 'buddy.forget-ledger-replica.v1';
+  device_id: Id;
+  replicated_at: UtcTime;
+  ledger: ForgetLedgerFile;
+}
+/**
+ * バックアップの封筒（manifest。設計 03 バックアップ・復元、ADR 0040）。本文を持たず、復元の最初の判定に要る値だけを平文で持つ。included_storage_modes に private を入れられない。excluded_data の 4 つ（生音声・記録しない会話・OAuth トークン・API キー）は必ず記録する。store_generation は取った時点の DB の世代で、復元では新しい値にする。forgetting_generation と ledger_head_hash は取った時点の台帳の最新（世代 0 なら 64 個の 0）。
+ */
+export interface BackupManifest {
+  schema: 'buddy.backup-manifest.v1';
+  backup_id: Id;
+  created_at: UtcTime;
+  store_generation: StoreGeneration;
+  db_schema_version: number;
+  forgetting_generation: ForgettingGeneration;
+  ledger_id: Id;
+  ledger_head_hash: Hash;
+  /**
+   * @minItems 1
+   */
+  included_storage_modes: ['normal' | 'extended', ...('normal' | 'extended')[]];
+  /**
+   * @minItems 4
+   */
+  excluded_data: unknown[] &
+    [
+      'raw_audio' | 'private_conversation' | 'oauth_tokens' | 'api_keys',
+      'raw_audio' | 'private_conversation' | 'oauth_tokens' | 'api_keys',
+      'raw_audio' | 'private_conversation' | 'oauth_tokens' | 'api_keys',
+      'raw_audio' | 'private_conversation' | 'oauth_tokens' | 'api_keys',
+      ...('raw_audio' | 'private_conversation' | 'oauth_tokens' | 'api_keys')[],
+    ];
+  /**
+   * @maxItems 64
+   */
+  excluded_tables: string[];
+  payload: {
+    bytes: number;
+    sha256: Hash;
+  };
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  key_wraps: unknown[] & [BackupKeyWrap, BackupKeyWrap, BackupKeyWrap];
+}
+/**
+ * 復旧キーで包んだ鍵 1 つ（J1、ADR 0040）。復旧キーは 256 ビットの乱数で、HKDF-SHA256（salt 付き）で導いた鍵で AES-256-GCM により包む。包むのは設定のときに CLI のプロセスが 1 度だけ行い（Core は復旧キーを持たない）、毎回の封筒には同じ包みを写す。purpose が backup_file ならバックアップ本体の鍵（毎回の暗号化はこの鍵と backup_id から導く）、data_key なら DB の暗号文（sealed_blobs）の鍵、ledger_hmac_key なら台帳・記憶の用途別の HMAC の鍵（忘却の再取り込みの阻止を、復元・端末交代の後も続けるため。データ鍵とは別に持ち、データ鍵を入れ替えても変えない）。包んだ値だけで、平文の鍵・復旧キーを持たない。
+ */
+export interface BackupKeyWrap {
+  purpose: 'backup_file' | 'data_key' | 'ledger_hmac_key';
+  key_id: string;
+  recovery_key_id: Id;
+  kdf: {
+    algorithm: 'hkdf-sha256';
+    salt: string;
+  };
+  cipher: 'aes-256-gcm';
+  nonce: string;
+  wrapped_material: string;
+  tag: string;
+}
+/**
+ * 復元の結果（設計 03 バックアップ・復元、ADR 0040）。6 段階（台帳の確認 → 期限切れの削除 → 忘却の適用 → DB の検証 → 画面と索引の作り直し → 外部の状態の照合）をこの順に必ず記録する。restored は全段階が成功（外部の照合は再認証待ちの pending も可）、settings_only は台帳の確認で止まったときに非機密の設定だけを戻す場合、rejected は何も戻さない場合。
+ */
+export interface RestoreResult {
+  schema: 'buddy.restore-result.v1';
+  restore_id: Id;
+  backup_id: Id;
+  backup_store_generation: StoreGeneration;
+  started_at: UtcTime;
+  finished_at: UtcTime;
+  outcome: 'restored' | 'settings_only' | 'rejected';
+  failed_stage:
+    | (
+        | 'ledger_check'
+        | 'expiry_purge'
+        | 'forget_apply'
+        | 'db_verify'
+        | 'rebuild_views'
+        | 'external_reconcile'
+      )
+    | null;
+  /**
+   * @minItems 6
+   * @maxItems 6
+   */
+  stages: [unknown, unknown, unknown, unknown, unknown, unknown];
+  after_restore: RestoreAftermath | null;
+}
+/**
+ * 復元で戻した後の状態（J3、ADR 0040）。DB の世代は新しい値にし、有効だった承認はすべて失効、進行中の操作は結果不明として保留（operations_held_count）、バックアップの後に実行された可能性のある外部変更の操作（承認待ちを含む）は通常の承認・送出から隔離して照合する（operations_unverified_count）、外部への送信の同意は取り直し、外部サービスの接続は再認証。件数だけで ID・本文を持たない。
+ */
+export interface RestoreAftermath {
+  new_store_generation: StoreGeneration;
+  applied_forgetting_generation: ForgettingGeneration;
+  expired_deleted_count: number;
+  forgotten_applied_count: number;
+  approvals_revoked_count: number;
+  operations_held_count: number;
+  operations_unverified_count: number;
+  consents_reset: true;
+  connections_reauth_required: true;
+}
+/**
+ * 知らせの対象 1 件。ID だけ（OriginalSourceId の文字種と長さに限る。文字種の制限は文と ID を区別しないので、Core が自分の DB の行から作った ID だけを入れる）。carried_summary の item_id は要約をつないだ区間の ID。
+ */
+export interface RetentionNoticeItem {
+  item_kind: 'turn' | 'source_item' | 'memory' | 'carried_summary';
+  item_id: OriginalSourceId;
+}
+/**
+ * 復旧キーの初回の表示（J1、ADR 0040）。CLI のプロセスが OS の乱数で作った 256 ビットを Crockford base32（4 文字 × 13 組）にした文字列で、作った直後に 1 度だけ端末の画面へ出す。Core には渡さず（Core へ渡すのは包んだ鍵 BackupKeyWrap と確認値だけ）、HTTP・制御チャネル・イベント・ログ・DB・バックアップへ出さない。
+ */
+export interface RecoveryKeyDisplay {
+  schema: 'buddy.recovery-key-display.v1';
+  recovery_key_id: Id;
+  created_at: UtcTime;
+  recovery_code: string;
+  display_once: true;
+}
+/**
+ * バックアップの置き場所の設定（J2、ADR 0040）。中枢のローカルの設定ファイル（リポジトリの外。予算の設定と同じ方式）に書き、起動時に Schema で検査して読み込む。ディレクトリは絶対パスで、.. を含められない。保持する世代の数の初期値は 7（設計 03）。同期フォルダーも使えるが警告する（BackupLocationCheck）。
+ */
+export interface BackupConfig {
+  schema: 'buddy.backup-config.v1';
+  directory: string;
+  keep_generations: number;
+}
+/**
+ * バックアップの置き場所の検査の結果（J2、ADR 0040）。同期フォルダーは使えるが warnings に sync_folder_detected を出す（クラウド側に古い版が残る可能性）。problems があれば使えない。意味検査: usable は problems が空のときだけ true、sync_provider_hint は sync_folder_detected があるときだけ値を持つ。
+ */
+export interface BackupLocationCheck {
+  schema: 'buddy.backup-location-check.v1';
+  directory: string;
+  usable: boolean;
+  problems: ('not_a_directory' | 'not_writable' | 'is_data_directory')[];
+  warnings: 'sync_folder_detected'[];
+  sync_provider_hint:
+    ('icloud' | 'onedrive' | 'dropbox' | 'google_drive' | 'other') | null;
+}
+/**
+ * 復元の直後の操作の記録（ADR 0040）。外部サービスを変える操作（remote_mutation）で、復元の時点から再実行に届き得る 7 つの状態（awaiting_approval・approved・preparing・dispatching・reconciling・unknown_held・not_executed）はすべて restore_unverified_at を持ち、承認はすべて失効している。進行中の 4 つ（approved・preparing・dispatching・reconciling）は復元の後に unknown_held になる。終端（succeeded・cancelled・superseded）と LocalCommand には印を付けない。印のある操作は、承認・送出準備・試行の作成ができない。印を外せるのは、実行済みの積極的な証拠で結果を取り込んだとき（状態は succeeded）と、本人が手で決着させたときだけ。意味検査は restoreGuard（scripts/contract-tools.mjs）の表と同じ。
+ */
+export interface RestoredOperation {
+  schema: 'buddy.restored-operation.v1';
+  operation_id: Id;
+  effect_route: 'local_command' | 'remote_mutation';
+  state:
+    | 'awaiting_approval'
+    | 'approved'
+    | 'preparing'
+    | 'dispatching'
+    | 'reconciling'
+    | 'succeeded'
+    | 'unknown_held'
+    | 'not_executed'
+    | 'cancelled'
+    | 'superseded';
+  content_version: ContentVersion;
+  restore_unverified_at: UtcTime | null;
+  valid_approval_count: number;
 }

@@ -96,6 +96,9 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   'budget_overage_approvals',
   'budget_months',
   'budget_month_confirmations',
+  // 採用したクレジットの残高の観測（0008。本文なし・書き換え・削除不可）。予算の記録と同じく含める。復元の後に古い観測で
+  // 残高を多く見ないよう、restore-aftermath.ts の restoreCreditReasons で新しい観測まで止める。
+  'budget_credit_observations',
   'live_sessions',
   'sync_scopes',
   'request_entities',
@@ -425,7 +428,9 @@ export type BackupRetentionHold =
   | 'created_in_future'
   | 'generation_ahead_of_ledger'
   // 忘却の世代が古いが、置き換えるバックアップがまだない（新しいバックアップを取ってから消す。ADR 0040）。
-  | 'awaiting_replacement';
+  | 'awaiting_replacement'
+  // 期限を過ぎたが、成功した最新のバックアップなので 1 つだけ残す（司令塔の判断。U74。失敗が続いても手元を 0 にしない）。
+  | 'last_backup_kept';
 
 export interface BackupRetentionDecision {
   readonly backup_id: string;
@@ -439,7 +444,7 @@ export type BackupRetentionPlan =
       readonly clock_state: 'ok' | 'regressed';
       readonly effective_now: string;
       readonly decisions: readonly BackupRetentionDecision[];
-      // 今の忘却の世代のバックアップがない（置き換えを待つ封筒がある、または 1 つもない）。
+      // 今の忘却の世代のバックアップがない（置き換えを待つ封筒がある、または 1 つもない）、または期限を過ぎた最新の 1 つだけが残る。
       readonly needs_new_backup: boolean;
       // 残る、復元に使えるバックアップの数。
       readonly restorable_count: number;
@@ -457,7 +462,8 @@ export type BackupRetentionPlan =
 
 // アプリが管理する古いバックアップにも、期限と忘却を当てる（03「アプリ管理下の古いバックアップにも忘却・期限を適用し、
 // 必要に応じて置換または削除」）。期限は世代の数 × 1 日（1 日 1 回の設計なので、初期 7 世代は 7 日）。時計が戻ったときは
-// 最終確認時刻で判定する（延ばさない。ADR 0043 の U54 と同じく消し続ける）。
+// 最終確認時刻で判定する（延ばさない。ADR 0043 の U54 と同じく消し続ける）。ただし期限内の封筒が 1 つもなくなるときは、
+// 成功した最新の 1 つを残す（司令塔の判断。U74）。残した封筒にも、復元の段階 2・3 で期限と忘却を当てる。
 export function backupRetentionPlan(
   input: BackupRetentionInput,
 ): BackupRetentionPlan {
@@ -543,6 +549,9 @@ export function backupRetentionPlan(
     }
     return true;
   });
+  // 期限内の封筒が 1 つもなければ、成功した最新の 1 つ（並べた先頭）を残す。
+  const lastKept = alive.length === 0 ? (candidates[0] ?? null) : null;
+  if (lastKept !== null) alive.push(lastKept);
   const kept = alive.slice(0, input.keep_generations);
   for (const candidate of alive.slice(input.keep_generations))
     decided.set(candidate.entry.backup_id, {
@@ -557,6 +566,20 @@ export function backupRetentionPlan(
   let awaiting = false;
   for (const candidate of kept) {
     const id = candidate.entry.backup_id;
+    if (candidate === lastKept) {
+      const stale =
+        ledgerGeneration !== null && candidate.generation < ledgerGeneration;
+      if (stale) awaiting = true;
+      decided.set(id, {
+        backup_id: id,
+        action: 'keep',
+        reasons: stale
+          ? ['last_backup_kept', 'awaiting_replacement']
+          : ['last_backup_kept'],
+      });
+      restorable += 1;
+      continue;
+    }
     if (ledgerGeneration !== null && candidate.generation < ledgerGeneration) {
       if (hasCurrent) {
         decided.set(id, {
@@ -590,7 +613,9 @@ export function backupRetentionPlan(
           reasons: ['manifest_unreadable'],
         },
     ),
-    needs_new_backup: ledgerGeneration !== null && (awaiting || !hasCurrent),
+    needs_new_backup:
+      lastKept !== null ||
+      (ledgerGeneration !== null && (awaiting || !hasCurrent)),
     restorable_count: restorable,
     forgetting_checked: ledgerGeneration !== null,
   };

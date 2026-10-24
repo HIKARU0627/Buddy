@@ -464,6 +464,31 @@ export function restoreBudgetHoldReasons(input: {
   return ['budget_restore_hold'];
 }
 
+// --- 付帯クレジットの観測（B07-07 の budget_credit_observations。ADR 0042） ---
+
+// 復元した DB の採用済みの観測はバックアップの時点まで。その後に採用した観測（残高の減少・枯渇）と、その後の精算（消費の
+// 見積もり）は失われるので、古い観測から求めた残りは実際より多く見え得る（購入残高・後払いへ移る受付を許し得る）。
+// 復元の後は、観測の時刻が復元の時刻以後の観測を新しく採用するまで、クレジットを充てる受付・追加予約・送出を止める
+// （ADR 0042 の credit_unknown と同じ側）。採用の連番（observation_seq）は復元した DB の続きから振り直され、復元の前の
+// DB で使った番号と重なり得るが、番号を参照するのは同じ DB の予約の行だけなので、DB の中では食い違わない（DB の外へ番号を
+// 出さない前提）。ADR 0047。
+export function restoreCreditReasons(input: {
+  // 効いている復元の時刻（復元していなければ null）。
+  readonly restored_at: string | null;
+  // 採用済みの観測のうち、最も新しい観測の時刻（なければ null）。
+  readonly latest_observed_at: string | null;
+}): readonly 'credit_restore_unverified'[] {
+  if (input.restored_at === null) return [];
+  const restored = parseBackupTime(input.restored_at);
+  const observed =
+    input.latest_observed_at === null
+      ? null
+      : parseBackupTime(input.latest_observed_at);
+  if (restored === null || observed === null || observed < restored)
+    return ['credit_restore_unverified'];
+  return [];
+}
+
 // --- 取り直し（差し替えと同じ transaction で行う） ---
 
 // 復元の後に取り直すもの（この順で記録する。順序は transaction の中なので意味を持たないが、漏れを試験で確かめる）。
@@ -488,6 +513,8 @@ export const RESTORE_RESETS = [
   'block_candidate_auto_execution',
   // 予算の保留（restoreBudgetHold）。
   'hold_budget',
+  // 付帯クレジットは、復元の後に採用した新しい観測まで充てない（restoreCreditReasons）。
+  'require_new_credit_observation',
 ] as const;
 export type RestoreReset = (typeof RESTORE_RESETS)[number];
 

@@ -38,6 +38,7 @@ import {
   restoreBudgetHold,
   restoreBudgetHoldReasons,
   restoreCandidateAutoReasons,
+  restoreCreditReasons,
   restoreDbVerifyCheck,
   restoreForgetCheck,
   restoreLedgerCheck,
@@ -949,4 +950,9 @@ test('aftermath: new store generation and counts from the quarantine', () => {
     },
   });
   assert.deepEqual(failed, { ok: false, reasons: ['quarantine_failed'] });
+});
+
+test('credit after restore waits for an observation taken after the restore', () => {
+  for (const entry of cases.credit_restore_cases)
+    assert.deepEqual(restoreCreditReasons(entry.input), entry.expect, entry.id);
 });

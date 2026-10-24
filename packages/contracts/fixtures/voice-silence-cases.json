@@ -1,0 +1,902 @@
+{
+  "status": "specification_only",
+  "description": "無音の規則の期待値（設計 10 §3・§5・§5A、09 X25・X29・X55、質問 81・100・126、ADR 0041）。手で書いたもので、domain の実装から生成していない。既定 10 秒・質問の後は 20 秒・「ちょっと待って」で 1 回だけ 60 秒（どれも設計初期値）。委譲の処理中（前面）・Buddy の再生中・画面の操作中・本人の発話中は無音に数えない。時刻は注入した単調時計の値（ms）。steps は時刻順で、input は既定（すべて false・delegation は none）を上書きする項目だけを書く。",
+  "constants": {
+    "default_ms": 10000,
+    "after_question_ms": 20000,
+    "extended_ms": 60000
+  },
+  "input_defaults": {
+    "user_speaking": false,
+    "playing": false,
+    "delegation": "none",
+    "screen_event": false,
+    "screen_active": false
+  },
+  "question_cases": [
+    {
+      "id": "question-mark",
+      "refs": ["10 §3"],
+      "text": "いつがいいでしょうか？",
+      "expected": true
+    },
+    {
+      "id": "question-mark-halfwidth",
+      "refs": ["10 §3"],
+      "text": "Is that right?",
+      "expected": true
+    },
+    {
+      "id": "only-a-question-mark",
+      "refs": ["10 §3"],
+      "text": "？",
+      "expected": true
+    },
+    {
+      "id": "masu-ka",
+      "refs": ["10 §3"],
+      "text": "予定を入れますか",
+      "expected": true
+    },
+    {
+      "id": "masu-ka-with-a-full-stop",
+      "refs": ["10 §3"],
+      "text": "どれにしますか。",
+      "expected": true
+    },
+    {
+      "id": "masen-ka",
+      "refs": ["10 §3"],
+      "text": "行きませんか",
+      "expected": true
+    },
+    {
+      "id": "desu-ka",
+      "refs": ["10 §3"],
+      "text": "これでいいですか?",
+      "expected": true
+    },
+    {
+      "id": "deshou-ka",
+      "refs": ["10 §3"],
+      "text": "どうでしょうか",
+      "expected": true
+    },
+    {
+      "id": "desu-ka-with-a-full-stop",
+      "refs": ["10 §3"],
+      "text": "これでいいですか。",
+      "expected": true
+    },
+    {
+      "id": "masu-ka-ne",
+      "refs": ["10 §3"],
+      "text": "予定を入れますかね。",
+      "expected": true
+    },
+    {
+      "id": "masen-ka-with-a-full-stop",
+      "refs": ["10 §3"],
+      "text": "行きませんか。",
+      "expected": true
+    },
+    {
+      "id": "deshou-ka-with-a-full-stop",
+      "refs": ["10 §3"],
+      "text": "どうでしょうか。",
+      "expected": true
+    },
+    {
+      "id": "desu-ka-ne",
+      "refs": ["10 §3"],
+      "text": "こちらですかね。",
+      "expected": true
+    },
+    {
+      "id": "closing-bracket-after-the-question",
+      "refs": ["10 §3"],
+      "text": "（確認しますか）",
+      "expected": true
+    },
+    {
+      "id": "trailing-marks-after-the-question",
+      "refs": ["10 §3"],
+      "text": "ほかにありますか！…",
+      "expected": true
+    },
+    {
+      "id": "statement",
+      "refs": ["10 §3"],
+      "text": "登録しました。",
+      "expected": false
+    },
+    {
+      "id": "statement-with-a-count",
+      "refs": ["10 §3"],
+      "text": "予定は 2 件です。",
+      "expected": false
+    },
+    {
+      "id": "question-word-in-the-middle",
+      "refs": ["10 §3"],
+      "text": "いかがですかと言っていました。",
+      "expected": false
+    },
+    {
+      "id": "ka-but-continues",
+      "refs": ["10 §3"],
+      "text": "確認しますが、少し待ってください。",
+      "expected": false
+    },
+    {
+      "id": "ka-then-a-quote",
+      "refs": ["10 §3"],
+      "text": "ですか、と聞かれました",
+      "expected": false
+    },
+    {
+      "id": "a-lone-ka",
+      "refs": ["10 §3"],
+      "text": "か",
+      "expected": false
+    },
+    {
+      "id": "empty",
+      "refs": ["10 §3"],
+      "text": "",
+      "expected": false
+    },
+    {
+      "id": "statement-with-ne",
+      "refs": ["10 §3"],
+      "text": "明日は雨ですね",
+      "expected": false
+    }
+  ],
+  "blocker_cases": [
+    {
+      "id": "every-activity-blocks",
+      "refs": ["10 §3", "X55"],
+      "input": {
+        "user_speaking": true,
+        "playing": true,
+        "delegation": "foreground",
+        "screen_event": false,
+        "screen_active": true
+      },
+      "expected": [
+        "user_speaking",
+        "playing",
+        "delegation_foreground",
+        "screen_active"
+      ]
+    },
+    {
+      "id": "background-delegation-does-not-block",
+      "refs": ["10 §5A", "X29", "X55"],
+      "input": {
+        "delegation": "background"
+      },
+      "expected": []
+    },
+    {
+      "id": "a-screen-event-alone-is-not-an-ongoing-activity",
+      "refs": ["10 §3"],
+      "input": {
+        "screen_event": true
+      },
+      "expected": []
+    },
+    {
+      "id": "foreground-delegation",
+      "refs": ["10 §3", "X55"],
+      "input": {
+        "delegation": "foreground"
+      },
+      "expected": ["delegation_foreground"]
+    },
+    {
+      "id": "playing",
+      "refs": ["10 §3", "X55"],
+      "input": {
+        "playing": true
+      },
+      "expected": ["playing"]
+    },
+    {
+      "id": "screen-operation-in-progress",
+      "refs": ["10 §3", "X55"],
+      "input": {
+        "screen_active": true
+      },
+      "expected": ["screen_active"]
+    },
+    {
+      "id": "nothing",
+      "refs": ["10 §3"],
+      "input": {},
+      "expected": []
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "default-ten-seconds",
+      "refs": ["10 §3", "X25"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 9999,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 1
+          }
+        },
+        {
+          "at": 10000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "twenty-seconds-after-a-question",
+      "refs": ["10 §3", "質問 100"],
+      "steps": [
+        {
+          "at": 0,
+          "buddy_ended_with_question": true,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 20000,
+            "remaining_ms": 20000
+          }
+        },
+        {
+          "at": 19999,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 20000,
+            "remaining_ms": 1
+          }
+        },
+        {
+          "at": 20000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 20000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-statement-after-a-question-goes-back-to-ten-seconds",
+      "refs": ["10 §3", "質問 100"],
+      "steps": [
+        {
+          "at": 0,
+          "buddy_ended_with_question": true,
+          "input": {
+            "playing": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 20000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 3000,
+          "buddy_ended_with_question": false,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 13000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "playback-is-not-counted-as-silence",
+      "refs": ["10 §3", "X55"],
+      "steps": [
+        {
+          "at": 0,
+          "input": {
+            "playing": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 29999,
+          "input": {
+            "playing": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 30000,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 39999,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 1
+          }
+        },
+        {
+          "at": 40000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "foreground-delegation-is-not-counted-and-background-starts-the-count",
+      "refs": ["10 §3", "10 §5A", "X29", "X55"],
+      "steps": [
+        {
+          "at": 0,
+          "input": {
+            "delegation": "foreground"
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 7999,
+          "input": {
+            "delegation": "foreground"
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 8000,
+          "input": {
+            "delegation": "background"
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 17999,
+          "input": {
+            "delegation": "background"
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 1
+          }
+        },
+        {
+          "at": 18000,
+          "input": {
+            "delegation": "background"
+          },
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-screen-operation-restarts-the-count",
+      "refs": ["10 §3", "X55"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 5000,
+          "input": {
+            "screen_event": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 14999,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 1
+          }
+        },
+        {
+          "at": 15000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-screen-operation-in-progress-is-not-counted",
+      "refs": ["10 §3", "X55"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 9000,
+          "input": {
+            "screen_active": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 60000,
+          "input": {
+            "screen_active": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 61000,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        }
+      ]
+    },
+    {
+      "id": "the-user-speaking-resets-the-count",
+      "refs": ["10 §3"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 9000,
+          "input": {
+            "user_speaking": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 12000,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 22000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "wait-a-moment-said-while-speaking-extends-the-next-silence-to-sixty-seconds",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "steps": [
+        {
+          "at": 0,
+          "input": {
+            "user_speaking": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 500,
+          "grant_extension": true,
+          "expect_grant": "granted"
+        },
+        {
+          "at": 1000,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 60000,
+            "remaining_ms": 60000
+          }
+        },
+        {
+          "at": 60999,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 60000,
+            "remaining_ms": 1
+          }
+        },
+        {
+          "at": 61000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 60000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "the-extension-is-used-once-and-the-next-silence-is-ten-seconds",
+      "refs": ["10 §3", "X58"],
+      "steps": [
+        {
+          "at": 0,
+          "input": {
+            "user_speaking": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 100,
+          "grant_extension": true,
+          "expect_grant": "granted"
+        },
+        {
+          "at": 200,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 60000,
+            "remaining_ms": 60000
+          }
+        },
+        {
+          "at": 5000,
+          "input": {
+            "user_speaking": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 6000,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 16000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "wait-a-moment-after-the-count-started-extends-the-current-silence",
+      "refs": ["10 §3", "X58"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 500,
+          "grant_extension": true,
+          "expect_grant": "granted"
+        },
+        {
+          "at": 500,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 60000,
+            "remaining_ms": 59500
+          }
+        },
+        {
+          "at": 59999,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 60000,
+            "remaining_ms": 1
+          }
+        },
+        {
+          "at": 60000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 60000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "saying-it-twice-does-not-stack",
+      "refs": ["10 §3", "X58"],
+      "steps": [
+        {
+          "at": 0,
+          "input": {
+            "user_speaking": true
+          },
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": null
+          }
+        },
+        {
+          "at": 100,
+          "grant_extension": true,
+          "expect_grant": "granted"
+        },
+        {
+          "at": 200,
+          "grant_extension": true,
+          "expect_grant": "already_extended"
+        },
+        {
+          "at": 300,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 60000,
+            "remaining_ms": 60000
+          }
+        },
+        {
+          "at": 400,
+          "grant_extension": true,
+          "expect_grant": "already_extended"
+        },
+        {
+          "at": 60300,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 60000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "an-extension-one-ms-before-the-deadline-is-granted",
+      "refs": ["10 §3", "X58"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 9999,
+          "grant_extension": true,
+          "expect_grant": "granted"
+        },
+        {
+          "at": 59999,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 60000,
+            "remaining_ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "an-extension-at-exactly-the-deadline-is-refused",
+      "refs": ["10 §3", "X58"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 10000,
+          "grant_extension": true,
+          "expect_grant": "too_late"
+        },
+        {
+          "at": 10000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "extension-after-a-question-uses-sixty-seconds",
+      "refs": ["10 §3", "質問 100", "X58"],
+      "steps": [
+        {
+          "at": 0,
+          "buddy_ended_with_question": true,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 20000,
+            "remaining_ms": 20000
+          }
+        },
+        {
+          "at": 1000,
+          "grant_extension": true,
+          "expect_grant": "granted"
+        },
+        {
+          "at": 1000,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 60000,
+            "remaining_ms": 59000
+          }
+        },
+        {
+          "at": 60000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 60000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-clock-that-went-back-restarts-the-count-instead-of-closing",
+      "refs": ["10 §3"],
+      "steps": [
+        {
+          "at": 5000,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 4000,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 13999,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 1
+          }
+        },
+        {
+          "at": 14000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-late-check-after-the-deadline-closes",
+      "refs": ["10 §3", "X25"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "decision": "keep",
+            "timeout_ms": 10000,
+            "remaining_ms": 10000
+          }
+        },
+        {
+          "at": 25000,
+          "expect": {
+            "decision": "close",
+            "timeout_ms": 10000,
+            "remaining_ms": 0
+          }
+        }
+      ]
+    }
+  ]
+}

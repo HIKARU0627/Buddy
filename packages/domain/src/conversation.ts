@@ -61,7 +61,8 @@ export type SessionControlAction =
   | 'start_private_conversation'
   | 'reply_in_text';
 
-const normalize = (text: string): string =>
+// 照合の前の正規化（全角・半角をそろえ、末尾の記号と空白を除く）。照合表の言い回しにも同じ正規化を使う。
+export const normalizeUtterance = (text: string): string =>
   text
     .normalize('NFKC')
     .trim()
@@ -76,9 +77,10 @@ export function matchSessionControl(
     readonly action: SessionControlAction;
   }[],
 ): SessionControlAction | null {
-  const said = normalize(utterance);
+  const said = normalizeUtterance(utterance);
   if (!said) return null;
   return (
-    phrases.find((entry) => normalize(entry.phrase) === said)?.action ?? null
+    phrases.find((entry) => normalizeUtterance(entry.phrase) === said)
+      ?.action ?? null
   );
 }

@@ -1,0 +1,1895 @@
+{
+  "status": "specification_only",
+  "description": "記録しない会話（保存モードの private）の保存の境界の期待値（設計 03 保存期限・記録しない会話の境界、10 §1A・§6、09 X17・X36・X44・X48・X59、ADR 0032・0038・0040・0045）。手で書いたもので、domain の実装から生成していない。許可表の行ごとの許可・拒否、契約の StorageModeState の effects、独立した確認の中身と承認の検査、入る・出る・外部変更・音声の接続の順序を入れ替えた遷移を持つ。値はすべて合成で、実データを含まない。",
+  "permission_rows": [
+    {
+      "id": "row-persist-turns",
+      "effect": "persist_turns",
+      "tests": ["X17", "X36"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-turn-events",
+      "effect": "persist_turn_events",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        { "mode": null, "allowed": false, "reason": "storage_mode_unknown" }
+      ]
+    },
+    {
+      "id": "row-persist-summary",
+      "effect": "persist_summary",
+      "tests": ["X17", "X36"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "PRIVATE",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-input-snapshot",
+      "effect": "persist_input_snapshot",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        { "mode": "", "allowed": false, "reason": "storage_mode_unknown" }
+      ]
+    },
+    {
+      "id": "row-persist-clarification",
+      "effect": "persist_clarification",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-this-time-directive",
+      "effect": "persist_this_time_directive",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-persist-from-now-on-directive",
+      "effect": "persist_from_now_on_directive",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-save-memory",
+      "effect": "save_memory",
+      "tests": ["X59"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-extract-memory",
+      "effect": "extract_memory",
+      "tests": ["X44"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-record-shadow",
+      "effect": "record_shadow",
+      "tests": ["X48"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-open-live",
+      "effect": "open_live",
+      "tests": ["X17", "X36"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-local-asr",
+      "effect": "local_asr",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": true },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-write-persisted-canvas",
+      "effect": "write_persisted_canvas",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-write-ephemeral-canvas",
+      "effect": "write_ephemeral_canvas",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": false, "reason": "denied_in_mode" },
+        { "mode": "extended", "allowed": false, "reason": "denied_in_mode" },
+        { "mode": "private", "allowed": true },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-record-full-operation",
+      "effect": "record_full_operation",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "private",
+          "independent_confirmation_approved": true,
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-record-minimal-operation",
+      "effect": "record_minimal_operation",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "normal",
+          "independent_confirmation_approved": true,
+          "allowed": false,
+          "reason": "denied_in_mode"
+        },
+        { "mode": "extended", "allowed": false, "reason": "denied_in_mode" },
+        {
+          "mode": "private",
+          "allowed": false,
+          "reason": "independent_confirmation_required"
+        },
+        {
+          "mode": "private",
+          "independent_confirmation_approved": "true",
+          "allowed": false,
+          "reason": "independent_confirmation_required"
+        },
+        {
+          "mode": "private",
+          "independent_confirmation_approved": 1,
+          "allowed": false,
+          "reason": "independent_confirmation_required"
+        },
+        {
+          "mode": "private",
+          "independent_confirmation_approved": true,
+          "allowed": true
+        },
+        {
+          "mode": "archived",
+          "independent_confirmation_approved": true,
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    },
+    {
+      "id": "row-reserve-budget",
+      "effect": "reserve_budget",
+      "tests": ["X17"],
+      "cases": [
+        { "mode": "normal", "allowed": true },
+        { "mode": "extended", "allowed": true },
+        { "mode": "private", "allowed": true },
+        {
+          "mode": "archived",
+          "allowed": false,
+          "reason": "storage_mode_unknown"
+        }
+      ]
+    }
+  ],
+  "unknown_effect_cases": [
+    {
+      "mode": "normal",
+      "effect": "persist_everything",
+      "reason": "effect_unknown"
+    },
+    {
+      "mode": "private",
+      "effect": "save_summary_memo",
+      "reason": "effect_unknown"
+    },
+    { "mode": "private", "effect": null, "reason": "effect_unknown" },
+    { "mode": "archived", "effect": "bogus", "reason": "storage_mode_unknown" }
+  ],
+  "state_effects": {
+    "normal": {
+      "persist_turns": true,
+      "persist_summary": true,
+      "save_memory": true,
+      "extract_memory": true,
+      "record_shadow": true,
+      "open_live": true,
+      "local_asr": true,
+      "turn_retention_days": 7,
+      "operation_record": "full"
+    },
+    "extended": {
+      "persist_turns": true,
+      "persist_summary": true,
+      "save_memory": true,
+      "extract_memory": true,
+      "record_shadow": true,
+      "open_live": true,
+      "local_asr": true,
+      "turn_retention_days": 30,
+      "operation_record": "full"
+    },
+    "private": {
+      "persist_turns": false,
+      "persist_summary": false,
+      "save_memory": false,
+      "extract_memory": false,
+      "record_shadow": false,
+      "open_live": false,
+      "local_asr": true,
+      "turn_retention_days": null,
+      "operation_record": "minimal_after_confirmation"
+    }
+  },
+  "drafts": {
+    "label_mail": {
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "content_hash": "9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d0f",
+      "intent": "label_mail",
+      "account_id": "00000000-0000-4000-8000-000000000402",
+      "target": { "remote_id": "mock-mail-001", "source_revision": "r1" },
+      "change": { "add_labels": ["follow-up"], "remove_labels": [] }
+    },
+    "create_event": {
+      "operation_id": "00000000-0000-4000-8000-000000000411",
+      "content_version": "1",
+      "content_hash": "1a3c5e7b9d0f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a",
+      "intent": "create_event",
+      "account_id": "00000000-0000-4000-8000-000000000402",
+      "target": null,
+      "change": {
+        "title": "合成の予定",
+        "start": "2030-10-07T04:00:00Z",
+        "end": "2030-10-07T05:00:00Z"
+      }
+    },
+    "send_mail": {
+      "operation_id": "00000000-0000-4000-8000-000000000421",
+      "content_version": "2",
+      "content_hash": "e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d0f9f2c4e6a8b0d1f3e5a7c9",
+      "intent": "send_mail",
+      "account_id": "00000000-0000-4000-8000-000000000402",
+      "target": { "remote_id": "mock-mail-002", "source_revision": "r3" },
+      "change": {
+        "subject": "Re: 合成の件名",
+        "body": "合成の返信の本文です。"
+      }
+    }
+  },
+  "confirmation_cases": [
+    {
+      "id": "x17-confirmation-label-mail",
+      "draft": { "$draft": "label_mail" },
+      "errors": []
+    },
+    {
+      "id": "x17-confirmation-create-event-without-target",
+      "draft": { "$draft": "create_event" },
+      "errors": []
+    },
+    {
+      "id": "x17-confirmation-send-mail-body-is-the-change",
+      "note": "元サービスへ実際に渡す本文は変更の内容として残してよい（ADR 0040）。会話の本文とは別。",
+      "draft": { "$draft": "send_mail" },
+      "errors": []
+    },
+    {
+      "id": "x17-confirmation-turn-text-rejected",
+      "draft": { "$draft": "label_mail", "turn_text": "合成の発言" },
+      "errors": ["field_not_allowed:turn_text"]
+    },
+    {
+      "id": "x17-confirmation-transcript-rejected",
+      "draft": { "$draft": "label_mail", "transcript": "合成の文字起こし" },
+      "errors": ["field_not_allowed:transcript"]
+    },
+    {
+      "id": "x17-confirmation-audio-rejected",
+      "draft": { "$draft": "label_mail", "audio": "AAAA" },
+      "errors": ["field_not_allowed:audio"]
+    },
+    {
+      "id": "x17-confirmation-summary-rejected",
+      "draft": { "$draft": "label_mail", "summary": "合成の要約" },
+      "errors": ["field_not_allowed:summary"]
+    },
+    {
+      "id": "x17-confirmation-interpretation-rejected",
+      "draft": {
+        "$draft": "label_mail",
+        "interpretation": { "intent": "label_mail", "confidence": 0.9 }
+      },
+      "errors": ["field_not_allowed:interpretation"]
+    },
+    {
+      "id": "x17-confirmation-llm-output-rejected",
+      "draft": { "$draft": "label_mail", "llm_output": "合成の応答" },
+      "errors": ["field_not_allowed:llm_output"]
+    },
+    {
+      "id": "x17-confirmation-turn-id-rejected",
+      "draft": {
+        "$draft": "label_mail",
+        "turn_id": "00000000-0000-4000-8000-000000000431"
+      },
+      "errors": ["field_not_allowed:turn_id"]
+    },
+    {
+      "id": "x17-confirmation-session-id-rejected",
+      "draft": {
+        "$draft": "label_mail",
+        "session_id": "00000000-0000-4000-8000-000000000432"
+      },
+      "errors": ["field_not_allowed:session_id"]
+    },
+    {
+      "id": "x17-confirmation-workflow-id-rejected",
+      "draft": {
+        "$draft": "label_mail",
+        "workflow_id": "00000000-0000-4000-8000-000000000433"
+      },
+      "errors": ["field_not_allowed:workflow_id"]
+    },
+    {
+      "id": "x17-confirmation-input-id-rejected",
+      "draft": {
+        "$draft": "label_mail",
+        "input_id": "00000000-0000-4000-8000-000000000434"
+      },
+      "errors": ["field_not_allowed:input_id"]
+    },
+    {
+      "id": "x17-confirmation-request-revision-rejected",
+      "draft": { "$draft": "label_mail", "request_revision": "3" },
+      "errors": ["field_not_allowed:request_revision"]
+    },
+    {
+      "id": "x17-confirmation-segment-id-rejected",
+      "draft": {
+        "$draft": "label_mail",
+        "segment_id": "00000000-0000-4000-8000-000000000435"
+      },
+      "errors": ["field_not_allowed:segment_id"]
+    },
+    {
+      "id": "x48-confirmation-shadow-rejected",
+      "draft": { "$draft": "label_mail", "shadow": { "jev": "label_mail" } },
+      "errors": ["field_not_allowed:shadow"]
+    },
+    {
+      "id": "x59-confirmation-memory-sources-rejected",
+      "draft": { "$draft": "label_mail", "memory_sources": [] },
+      "errors": ["field_not_allowed:memory_sources"]
+    },
+    {
+      "id": "x17-confirmation-several-forbidden-fields",
+      "draft": {
+        "$draft": "label_mail",
+        "summary": "合成の要約",
+        "conversation": ["合成の発言"],
+        "session_id": "00000000-0000-4000-8000-000000000432"
+      },
+      "errors": [
+        "field_not_allowed:conversation",
+        "field_not_allowed:session_id",
+        "field_not_allowed:summary"
+      ]
+    },
+    {
+      "id": "x17-confirmation-claims-conversation-saved",
+      "note": "確認の画面に出す conversation_saved は Core が足す。下書きに入れて名乗ることはできない。",
+      "draft": { "$draft": "label_mail", "conversation_saved": true },
+      "errors": ["field_not_allowed:conversation_saved"]
+    },
+    {
+      "id": "x59-confirmation-memory-save-is-not-external",
+      "draft": {
+        "$draft": "label_mail",
+        "intent": "memory_save",
+        "target": null,
+        "change": { "body": "合成の覚えてほしいこと" }
+      },
+      "errors": ["intent_not_external_change"]
+    },
+    {
+      "id": "x17-confirmation-create-task-is-not-external",
+      "draft": {
+        "$draft": "label_mail",
+        "intent": "create_task",
+        "target": null,
+        "change": { "title": "合成の用事" }
+      },
+      "errors": ["intent_not_external_change"]
+    },
+    {
+      "id": "x17-confirmation-read-intent-is-not-external",
+      "draft": {
+        "$draft": "label_mail",
+        "intent": "query_schedule",
+        "target": null,
+        "change": {}
+      },
+      "errors": ["intent_not_external_change"]
+    },
+    {
+      "id": "x17-confirmation-unknown-intent",
+      "draft": { "$draft": "label_mail", "intent": "erase_mailbox" },
+      "errors": ["intent_unknown"]
+    },
+    {
+      "id": "x17-confirmation-change-with-candidate-index",
+      "draft": {
+        "$draft": "label_mail",
+        "change": {
+          "target_candidate_id": "c1",
+          "add_labels": ["follow-up"],
+          "remove_labels": []
+        }
+      },
+      "errors": ["change_field_not_allowed:target_candidate_id"]
+    },
+    {
+      "id": "x17-confirmation-change-with-query",
+      "draft": {
+        "$draft": "label_mail",
+        "change": {
+          "add_labels": ["follow-up"],
+          "remove_labels": [],
+          "query": "合成の検索語"
+        }
+      },
+      "errors": ["change_field_not_allowed:query"]
+    },
+    {
+      "id": "x17-confirmation-change-with-transcript",
+      "draft": {
+        "$draft": "label_mail",
+        "change": {
+          "add_labels": ["follow-up"],
+          "remove_labels": [],
+          "transcript": "合成の文字起こし"
+        }
+      },
+      "errors": ["change_field_not_allowed:transcript"]
+    },
+    {
+      "id": "x17-confirmation-change-not-object",
+      "draft": { "$draft": "label_mail", "change": "follow-up を付けて" },
+      "errors": ["change_not_object"]
+    },
+    {
+      "id": "x17-confirmation-target-with-extra-field",
+      "draft": {
+        "$draft": "label_mail",
+        "target": {
+          "remote_id": "mock-mail-001",
+          "source_revision": "r1",
+          "subject": "合成の件名"
+        }
+      },
+      "errors": ["target_field_not_allowed:subject"]
+    },
+    {
+      "id": "x17-confirmation-target-id-is-a-sentence",
+      "draft": {
+        "$draft": "label_mail",
+        "target": { "remote_id": "明日の会議の件", "source_revision": "r1" }
+      },
+      "errors": ["target_remote_id_invalid"]
+    },
+    {
+      "id": "x17-confirmation-target-id-with-space",
+      "draft": {
+        "$draft": "label_mail",
+        "target": { "remote_id": "Forget this", "source_revision": "r1" }
+      },
+      "errors": ["target_remote_id_invalid"]
+    },
+    {
+      "id": "x17-confirmation-target-empty-revision",
+      "draft": {
+        "$draft": "label_mail",
+        "target": { "remote_id": "mock-mail-001", "source_revision": "" }
+      },
+      "errors": ["target_source_revision_invalid"]
+    },
+    {
+      "id": "x17-confirmation-target-not-object",
+      "draft": { "$draft": "label_mail", "target": "mock-mail-001" },
+      "errors": ["target_not_object", "target_missing"]
+    },
+    {
+      "id": "x17-confirmation-label-mail-without-target",
+      "draft": { "$draft": "label_mail", "target": null },
+      "errors": ["target_missing"]
+    },
+    {
+      "id": "x17-confirmation-create-event-with-target",
+      "draft": {
+        "$draft": "create_event",
+        "target": { "remote_id": "mock-event-001", "source_revision": "r1" }
+      },
+      "errors": ["target_not_allowed"]
+    },
+    {
+      "id": "x17-confirmation-label-mail-without-labels",
+      "draft": {
+        "$draft": "label_mail",
+        "change": { "add_labels": [], "remove_labels": [] }
+      },
+      "errors": ["change_missing:add_labels"]
+    },
+    {
+      "id": "x17-confirmation-send-mail-without-body",
+      "draft": {
+        "$draft": "send_mail",
+        "change": { "subject": "Re: 合成の件名" }
+      },
+      "errors": ["change_missing:body"]
+    },
+    {
+      "id": "x17-confirmation-bad-identifiers",
+      "draft": {
+        "$draft": "label_mail",
+        "operation_id": "operation-1",
+        "content_version": "01",
+        "content_hash": "9F2C4E6A8B0D1F3E5A7C9E1B3D5F7A9C2E4B6D8F0A1C3E5B7D9F1A3C5E7B9D0F",
+        "account_id": "00000000-0000-1000-8000-000000000402"
+      },
+      "errors": [
+        "account_id_invalid",
+        "content_hash_invalid",
+        "content_version_invalid",
+        "operation_id_invalid"
+      ]
+    },
+    {
+      "id": "x17-confirmation-missing-fields",
+      "draft": {
+        "operation_id": "00000000-0000-4000-8000-000000000401",
+        "intent": "label_mail"
+      },
+      "errors": [
+        "field_missing:account_id",
+        "field_missing:change",
+        "field_missing:content_hash",
+        "field_missing:content_version",
+        "field_missing:target"
+      ]
+    },
+    {
+      "id": "x17-confirmation-not-object",
+      "draft": "このメールに follow-up を付けて",
+      "errors": ["not_object"]
+    },
+    { "id": "x17-confirmation-null", "draft": null, "errors": ["not_object"] }
+  ],
+  "approval_cases": [
+    {
+      "id": "x17-approval-screen",
+      "approval": {
+        "route": "screen",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "approved_at": "2030-10-05T00:01:00Z"
+      },
+      "errors": []
+    },
+    {
+      "id": "x17-approval-voice-yes-rejected",
+      "approval": {
+        "route": "voice",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "approved_at": "2030-10-05T00:01:00Z"
+      },
+      "errors": ["route_not_screen"]
+    },
+    {
+      "id": "x17-approval-policy-rejected",
+      "approval": {
+        "route": "policy",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "approved_at": "2030-10-05T00:01:00Z"
+      },
+      "errors": ["route_not_screen"]
+    },
+    {
+      "id": "x17-approval-with-utterance-rejected",
+      "approval": {
+        "route": "screen",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "approved_at": "2030-10-05T00:01:00Z",
+        "utterance": "はい"
+      },
+      "errors": ["field_not_allowed:utterance"]
+    },
+    {
+      "id": "x17-approval-bad-device-and-time",
+      "approval": {
+        "route": "screen",
+        "device_id": "windows-pc",
+        "approved_at": "2030-10-05T09:01:00+09:00"
+      },
+      "errors": ["approved_at_invalid", "device_id_invalid"]
+    },
+    {
+      "id": "x17-approval-impossible-time",
+      "approval": {
+        "route": "screen",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "approved_at": "2030-13-40T00:01:00Z"
+      },
+      "errors": ["approved_at_invalid"]
+    },
+    {
+      "id": "x17-approval-not-object",
+      "approval": "screen",
+      "errors": ["not_object"]
+    }
+  ],
+  "approvals": {
+    "screen": {
+      "route": "screen",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "approved_at": "2030-10-05T00:01:00Z"
+    },
+    "voice": {
+      "route": "voice",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "approved_at": "2030-10-05T00:01:00Z"
+    }
+  },
+  "sequences": [
+    {
+      "id": "x17-enter-hold-in-ram-exit",
+      "tests": ["X17", "X36", "X44", "X48", "X59"],
+      "note": "入る → 文字と③は RAM → 要約・「今回は」・聞き返し・入力の版・キャンバスは RAM → 記憶・抽出・影モード・「今後は」・発言のイベント・通常の操作の記録は拒否 → 予算の予約だけ書く → 出る（RAM を捨て、前の要約を持ち込まない） → 通常に戻ると書く。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": { "type": "input", "input_kind": "text" },
+          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+        },
+        {
+          "event": { "type": "input", "input_kind": "voice_local" },
+          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_summary" },
+          "commands": [{ "type": "hold_in_ram", "kind": "summary" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_this_time_directive" },
+          "commands": [{ "type": "hold_in_ram", "kind": "this_time_directive" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_clarification" },
+          "commands": [{ "type": "hold_in_ram", "kind": "clarification" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_input_snapshot" },
+          "commands": [{ "type": "hold_in_ram", "kind": "input_snapshot" }]
+        },
+        {
+          "event": { "type": "write", "effect": "write_persisted_canvas" },
+          "commands": [{ "type": "hold_in_ram", "kind": "canvas" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_turn_events" },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": { "type": "write", "effect": "save_memory" },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": { "type": "write", "effect": "extract_memory" },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": { "type": "write", "effect": "record_shadow" },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_from_now_on_directive"
+          },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": { "type": "write", "effect": "record_full_operation" },
+          "rejected": "denied_in_mode"
+        },
+        {
+          "event": { "type": "write", "effect": "record_minimal_operation" },
+          "rejected": "independent_confirmation_required"
+        },
+        {
+          "event": { "type": "write", "effect": "reserve_budget" },
+          "commands": [{ "type": "write", "effect": "reserve_budget" }]
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            { "type": "discard_private_ram", "confirmation_ids": [] },
+            { "type": "end_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": { "type": "input", "input_kind": "text" },
+          "commands": [{ "type": "write", "effect": "persist_turns" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_summary" },
+          "commands": [{ "type": "write", "effect": "persist_summary" }]
+        },
+        {
+          "event": { "type": "write", "effect": "save_memory" },
+          "commands": [{ "type": "write", "effect": "save_memory" }]
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-ram-is-kept-in-order-while-private",
+      "tests": ["X17"],
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": { "type": "input", "input_kind": "voice_local" },
+          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_clarification" },
+          "commands": [{ "type": "hold_in_ram", "kind": "clarification" }]
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closed",
+        "private_ram": ["turn", "clarification"],
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-enter-while-live-open",
+      "tests": ["X17", "X36"],
+      "note": "Live が開いている間に入る。閉じる命令が最初。記録しない間は Live を開かず、Live の文字起こしも受けない。出た後は通常どおり開ける。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "open",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "close_voice_session", "reason": "private_conversation" },
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": { "type": "input", "input_kind": "voice_live" },
+          "rejected": "private_conversation"
+        },
+        {
+          "event": { "type": "live_requested" },
+          "rejected": "private_conversation"
+        },
+        { "event": { "type": "live_closed" }, "commands": [] },
+        {
+          "event": { "type": "live_requested" },
+          "rejected": "private_conversation"
+        },
+        {
+          "event": { "type": "input", "input_kind": "voice_local" },
+          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "extended"
+          },
+          "commands": [
+            { "type": "discard_private_ram", "confirmation_ids": [] },
+            { "type": "end_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "storage_mode": "extended",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": { "type": "live_requested" },
+          "commands": [{ "type": "start_live" }]
+        },
+        { "event": { "type": "live_connected" }, "commands": [] },
+        {
+          "event": { "type": "input", "input_kind": "voice_live" },
+          "commands": [{ "type": "write", "effect": "persist_turns" }]
+        }
+      ],
+      "final": {
+        "mode": "extended",
+        "segment_id": "seg-3",
+        "live": "open",
+        "private_ram": null,
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-enter-while-live-connecting",
+      "tests": ["X17"],
+      "note": "接続の途中（SDP の answer 待ち。X31）で入る。後から届いた接続は使わず、閉じる命令を出し済みなら重ねない。閉じ終わった後に古い接続が届いたら、もう一度閉じる。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "connecting",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "close_voice_session", "reason": "private_conversation" },
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": { "type": "live_connected" },
+          "rejected": "private_conversation",
+          "commands": []
+        },
+        { "event": { "type": "live_closed" }, "commands": [] },
+        {
+          "event": { "type": "live_connected" },
+          "rejected": "private_conversation",
+          "commands": [
+            { "type": "close_voice_session", "reason": "private_conversation" }
+          ]
+        },
+        { "event": { "type": "live_closed" }, "commands": [] }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-enter-while-live-closing",
+      "tests": ["X17"],
+      "note": "閉じている途中で入る。閉じる命令を重ねない。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closing",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closing",
+        "private_ram": [],
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-external-change-approved-then-exit",
+      "tests": ["X17"],
+      "note": "記録しない会話からラベル変更を頼む。独立した確認には会話の本文がなく、画面での一度の承認の後に最小の操作記録だけが残る。出ても承認済みの記録は変わらない。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": { "type": "input", "input_kind": "text" },
+          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "draft": { "$draft": "label_mail" }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "view": {
+                "operation_id": "00000000-0000-4000-8000-000000000401",
+                "content_version": "1",
+                "content_hash": "9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d0f",
+                "intent": "label_mail",
+                "account_id": "00000000-0000-4000-8000-000000000402",
+                "target": {
+                  "remote_id": "mock-mail-001",
+                  "source_revision": "r1"
+                },
+                "change": { "add_labels": ["follow-up"], "remove_labels": [] },
+                "conversation_saved": false
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": { "$approval": "screen" }
+          },
+          "commands": [
+            {
+              "type": "record_minimal_operation",
+              "record": {
+                "record_kind": "private_minimal",
+                "workflow_id": null,
+                "operation_id": "00000000-0000-4000-8000-000000000401",
+                "content_version": "1",
+                "content_hash": "9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f1a3c5e7b9d0f",
+                "intent": "label_mail",
+                "account_id": "00000000-0000-4000-8000-000000000402",
+                "target": {
+                  "remote_id": "mock-mail-001",
+                  "source_revision": "r1"
+                },
+                "change": { "add_labels": ["follow-up"], "remove_labels": [] },
+                "approval": {
+                  "route": "screen",
+                  "device_id": "00000000-0000-4000-8000-000000000050",
+                  "approved_at": "2030-10-05T00:01:00Z"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            { "type": "discard_private_ram", "confirmation_ids": [] },
+            { "type": "end_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-external-change-exit-before-approval",
+      "tests": ["X17"],
+      "note": "承認の前に出る。確認は RAM と一緒に捨て、出た後の承認では記録も外部変更も作らない（順序を入れ替えた例）。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "draft": { "$draft": "label_mail" }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "view": { "$draft": "label_mail", "conversation_saved": false }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-2",
+            "draft": { "$draft": "create_event" }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-2",
+              "view": { "$draft": "create_event", "conversation_saved": false }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": ["c-1", "c-2"]
+            },
+            { "type": "end_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": { "$approval": "screen" }
+          },
+          "rejected": "confirmation_not_found"
+        },
+        {
+          "event": {
+            "type": "confirmation_declined",
+            "confirmation_id": "c-2"
+          },
+          "rejected": "confirmation_not_found"
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-approval-order-swapped",
+      "tests": ["X17"],
+      "note": "頼む前の承認・声の「はい」・二度目の承認は記録を作らない。",
+      "start": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-9",
+            "approval": { "$approval": "screen" }
+          },
+          "rejected": "confirmation_not_found"
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-9",
+            "draft": { "$draft": "send_mail" }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-9",
+              "view": { "$draft": "send_mail", "conversation_saved": false }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-9",
+            "approval": { "$approval": "voice" }
+          },
+          "rejected": "approval_invalid",
+          "errors": ["route_not_screen"]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-9",
+            "approval": { "$approval": "screen" }
+          },
+          "commands": [
+            {
+              "type": "record_minimal_operation",
+              "record": {
+                "$draft": "send_mail",
+                "record_kind": "private_minimal",
+                "workflow_id": null,
+                "approval": { "$approval": "screen" }
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-9",
+            "approval": { "$approval": "screen" }
+          },
+          "rejected": "confirmation_not_found"
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-external-change-while-live-closing",
+      "tests": ["X17"],
+      "note": "Live が開いている間に入り、閉じ終わる前に外部変更を頼む。遅れて届いた接続は閉じる命令を重ねず拒否し、承認の後に最小の記録だけを残す。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "open",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "close_voice_session", "reason": "private_conversation" },
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "draft": { "$draft": "label_mail" }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "view": { "$draft": "label_mail", "conversation_saved": false }
+            }
+          ]
+        },
+        {
+          "event": { "type": "live_connected" },
+          "rejected": "private_conversation",
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": { "$approval": "screen" }
+          },
+          "commands": [
+            {
+              "type": "record_minimal_operation",
+              "record": {
+                "$draft": "label_mail",
+                "record_kind": "private_minimal",
+                "workflow_id": null,
+                "approval": { "$approval": "screen" }
+              }
+            }
+          ]
+        },
+        { "event": { "type": "live_closed" }, "commands": [] },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            { "type": "discard_private_ram", "confirmation_ids": [] },
+            { "type": "end_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-external-change-in-normal-uses-normal-approval",
+      "tests": ["X17"],
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "draft": { "$draft": "label_mail" }
+          },
+          "rejected": "not_private"
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": { "$approval": "screen" }
+          },
+          "rejected": "confirmation_not_found"
+        },
+        {
+          "event": { "type": "write", "effect": "record_full_operation" },
+          "commands": [{ "type": "write", "effect": "record_full_operation" }]
+        },
+        {
+          "event": { "type": "write", "effect": "record_minimal_operation" },
+          "rejected": "denied_in_mode"
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-invalid-confirmation-is-not-kept",
+      "tests": ["X17"],
+      "start": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "draft": { "$draft": "label_mail", "turn_text": "合成の発言" }
+          },
+          "rejected": "confirmation_invalid",
+          "errors": ["field_not_allowed:turn_text"]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-2",
+            "draft": {
+              "$draft": "label_mail",
+              "intent": "memory_save",
+              "target": null,
+              "change": { "body": "合成の覚えてほしいこと" }
+            }
+          },
+          "rejected": "confirmation_invalid",
+          "errors": ["intent_not_external_change"]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": { "$approval": "screen" }
+          },
+          "rejected": "confirmation_not_found"
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-decline-and-reused-id",
+      "tests": ["X17"],
+      "start": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "draft": { "$draft": "label_mail" }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "view": { "$draft": "label_mail", "conversation_saved": false }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "draft": { "$draft": "create_event" }
+          },
+          "rejected": "confirmation_id_reused"
+        },
+        {
+          "event": {
+            "type": "confirmation_declined",
+            "confirmation_id": "c-1"
+          },
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": { "$approval": "screen" }
+          },
+          "rejected": "confirmation_not_found"
+        },
+        {
+          "event": {
+            "type": "confirmation_declined",
+            "confirmation_id": "c-1"
+          },
+          "rejected": "confirmation_not_found"
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-enter-twice-exit-unknown-exit-twice",
+      "tests": ["X17"],
+      "note": "出る先の保存モードが判別できなければ出ない（記録しない側に留まる）。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": { "type": "input", "input_kind": "text" },
+          "commands": [{ "type": "hold_in_ram", "kind": "turn" }]
+        },
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-3" },
+          "rejected": "already_private"
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "unknown"
+          },
+          "rejected": "storage_mode_unknown"
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": null
+          },
+          "rejected": "storage_mode_unknown"
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "private"
+          },
+          "rejected": "storage_mode_unknown"
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-2",
+            "mode": "normal"
+          },
+          "rejected": "segment_id_reused"
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            { "type": "discard_private_ram", "confirmation_ids": [] },
+            { "type": "end_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-4",
+            "mode": "normal"
+          },
+          "rejected": "not_private"
+        },
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-3" },
+          "rejected": "segment_id_reused"
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x17-unknown-mode-writes-nothing",
+      "tests": ["X17"],
+      "note": "判別できない保存モードでは何も書かず、開いている Live を閉じる。記録しない側へ入ることだけは許す。",
+      "start": {
+        "mode": "archived",
+        "segment_id": "seg-1",
+        "live": "open",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "input", "input_kind": "text" },
+          "rejected": "storage_mode_unknown",
+          "commands": [
+            { "type": "close_voice_session", "reason": "private_conversation" }
+          ]
+        },
+        {
+          "event": { "type": "write", "effect": "reserve_budget" },
+          "rejected": "storage_mode_unknown",
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "draft": { "$draft": "label_mail" }
+          },
+          "rejected": "storage_mode_unknown"
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-2",
+            "mode": "normal"
+          },
+          "rejected": "storage_mode_unknown"
+        },
+        {
+          "event": { "type": "enter_private", "segment_id": "seg-2" },
+          "commands": [
+            { "type": "begin_private_canvas" },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "live": "closing",
+        "private_ram": [],
+        "pending_confirmations": []
+      }
+    },
+    {
+      "id": "x36-normal-writes-and-invalid-events",
+      "tests": ["X36"],
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": []
+      },
+      "steps": [
+        {
+          "event": { "type": "input", "input_kind": "voice_live" },
+          "rejected": "live_not_open"
+        },
+        {
+          "event": { "type": "input", "input_kind": "voice_remote" },
+          "rejected": "input_kind_unknown"
+        },
+        {
+          "event": { "type": "live_connected" },
+          "rejected": "invalid_transition"
+        },
+        {
+          "event": { "type": "write", "effect": "open_live" },
+          "rejected": "not_a_write"
+        },
+        {
+          "event": { "type": "write", "effect": "local_asr" },
+          "rejected": "not_a_write"
+        },
+        {
+          "event": { "type": "write", "effect": "write_ephemeral_canvas" },
+          "rejected": "not_a_write"
+        },
+        {
+          "event": { "type": "write", "effect": "persist_all" },
+          "rejected": "effect_unknown"
+        },
+        {
+          "event": { "type": "write", "effect": "persist_turn_events" },
+          "commands": [{ "type": "write", "effect": "persist_turn_events" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_input_snapshot" },
+          "commands": [{ "type": "write", "effect": "persist_input_snapshot" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_clarification" },
+          "commands": [{ "type": "write", "effect": "persist_clarification" }]
+        },
+        {
+          "event": { "type": "write", "effect": "persist_this_time_directive" },
+          "commands": [
+            { "type": "write", "effect": "persist_this_time_directive" }
+          ]
+        },
+        {
+          "event": {
+            "type": "write",
+            "effect": "persist_from_now_on_directive"
+          },
+          "commands": [
+            { "type": "write", "effect": "persist_from_now_on_directive" }
+          ]
+        },
+        {
+          "event": { "type": "write", "effect": "extract_memory" },
+          "commands": [{ "type": "write", "effect": "extract_memory" }]
+        },
+        {
+          "event": { "type": "write", "effect": "record_shadow" },
+          "commands": [{ "type": "write", "effect": "record_shadow" }]
+        },
+        {
+          "event": { "type": "write", "effect": "write_persisted_canvas" },
+          "commands": [{ "type": "write", "effect": "write_persisted_canvas" }]
+        },
+        {
+          "event": { "type": "live_requested" },
+          "commands": [{ "type": "start_live" }]
+        },
+        {
+          "event": { "type": "live_requested" },
+          "rejected": "live_not_closed"
+        },
+        { "event": { "type": "live_connected" }, "commands": [] },
+        {
+          "event": { "type": "live_connected" },
+          "rejected": "invalid_transition"
+        },
+        {
+          "event": { "type": "input", "input_kind": "voice_live" },
+          "commands": [{ "type": "write", "effect": "persist_turns" }]
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "live": "open",
+        "private_ram": null,
+        "pending_confirmations": []
+      }
+    }
+  ]
+}

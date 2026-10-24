@@ -24,6 +24,7 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `analysis.ts`: 関連集合の ready 判定、取消・完了の順序に依存しない解決、自動作成の一度だけの制限
 - `budget.ts`: 予約 R・最大負担 M による受付、追加予約、一度だけの精算、usage 不明の保持、未送信の解放（[ADR 0006](../../docs/adr/0006-budget-reservation-and-liability.md)）
 - `memory.ts`: 記憶の保存直前の検査（忘却した由来・派生・同じ内容の再取り込み・遅着）、見直しと削除の期限、時計の巻き戻り、復元の可否、抽出の時点（[ADR 0008](../../docs/adr/0008-memory-forgetting-and-model-evaluation.md)）
+- `storage-mode.ts`: 記録しない会話の保存の境界（保存モードごとの許可表、入る・出るの遷移と命令の順序、独立した確認の中身と最小の操作記録。判別できない値は禁止の側。[ADR 0045](../../docs/adr/0045-b06-private-conversation-storage-boundary.md)）
 - `evaluation.ts`: 配備×用途の採否、配備の段階、成果物の照合、同じモデル ID のままの変化の検知、戻し先、影モードの停止と skip
 
-contracts の生成型は import せず、意図名・引数名の一覧が schema と一致することを `scripts/domain.test.mjs`・`scripts/voice.test.mjs`・`scripts/budget.test.mjs`・`scripts/sync-analysis.test.mjs`・`scripts/memory-evaluation.test.mjs`・`scripts/api.test.mjs`・`scripts/boundary.test.mjs`・`scripts/desktop-ipc.test.mjs` で検査します。試験はビルド後の `dist` を対象にします。DB の transaction・最終検査・外部送出は未実装です。
+contracts の生成型は import せず、意図名・引数名の一覧が schema と一致することを `scripts/domain.test.mjs`・`scripts/voice.test.mjs`・`scripts/budget.test.mjs`・`scripts/sync-analysis.test.mjs`・`scripts/memory-evaluation.test.mjs`・`scripts/api.test.mjs`・`scripts/boundary.test.mjs`・`scripts/desktop-ipc.test.mjs`・`scripts/storage-mode.test.mjs` で検査します。試験はビルド後の `dist` を対象にします。DB の transaction・最終検査・外部送出は未実装です。

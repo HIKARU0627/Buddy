@@ -237,6 +237,7 @@ test('the overage approval confirmation shows the request M, the remaining overa
     origin: null,
     profileId: null,
     occurredAt: new Date(2030, 9, 15, 9, 2, 0).toISOString(),
+    ordinal: null,
     poolId: 'llm',
     budgetMonth: '2030-10',
     maxLiability: xts('40000000'),
@@ -271,6 +272,7 @@ test('the overrun review confirmation shows the recorded actual cost, M and the 
     origin: 'autonomous_analysis',
     profileId: 'synthetic.text.v1',
     occurredAt: new Date(2030, 9, 14, 9, 30, 0).toISOString(),
+    ordinal: null,
     poolId: 'llm.background',
     budgetMonth: '2030-10',
     maxLiability: xts('40000000'),
@@ -303,6 +305,7 @@ test('the manual settlement confirmation shows the typed actual cost and reconci
     origin: 'owner_request',
     profileId: 'synthetic.live.v1',
     occurredAt: new Date(2030, 8, 28, 22, 15, 0).toISOString(),
+    ordinal: null,
     poolId: 'llm',
     budgetMonth: '2030-09',
     maxLiability: xts('40000000'),
@@ -336,6 +339,7 @@ test('the confirmation never shows an internal pool ID: a pool outside the table
     origin: null,
     profileId: null,
     occurredAt: null,
+    ordinal: null,
     poolId: 'llm.experiment-internal',
     budgetMonth: '2030-09',
     maxLiability: xts('40000000'),
@@ -348,4 +352,36 @@ test('the confirmation never shows an internal pool ID: a pool outside the table
   assert.doesNotMatch(text.detail, /llm|experiment/u);
   // 記録のない日時・用途・モデルの行は出さない。
   assert.doesNotMatch(text.detail, /発生|用途|モデル/u);
+});
+
+test('items that look the same carry their order in the confirmation, in the same words as the list', () => {
+  const text = adminConfirmText({
+    action: 'settle_manual',
+    origin: 'owner_request',
+    profileId: 'synthetic.text.v1',
+    occurredAt: new Date(2030, 8, 28, 22, 15, 0).toISOString(),
+    ordinal: { position: 2, of: 3 },
+    poolId: 'llm',
+    budgetMonth: '2030-09',
+    maxLiability: xts('40000000'),
+    overageRemaining: null,
+    expiresAt: null,
+    actualGross: xts('3500000'),
+    reconciliationId: 'manual:invoice-a',
+  });
+  assert.equal(
+    text.detail,
+    [
+      '枠: 会話（2030-09）',
+      '発生: 9/28 22:15:00',
+      '同じ時刻の 3\u00a0件のうち 2\u00a0件目',
+      '用途: 本人の依頼',
+      'モデル: synthetic.text.v1',
+      '保持している最大負担 M: XTS\u00a040.00',
+      '入力した実費: XTS\u00a03.50',
+      '照合 ID: manual:invoice-a',
+      '',
+      '精算は一度だけで、元の月・元の枠に計上します。請求の照合で確かめた値だけを入力してください。',
+    ].join('\n'),
+  );
 });

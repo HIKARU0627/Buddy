@@ -6859,6 +6859,7 @@
       "origin": null,
       "profile_id": null,
       "occurred_at": "2030-10-15T00:02:00Z",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6884,6 +6885,7 @@
       "origin": "autonomous_analysis",
       "profile_id": "synthetic.text.v1",
       "occurred_at": "2030-10-14T09:30:00Z",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6909,6 +6911,7 @@
       "origin": "owner_request",
       "profile_id": "synthetic.text.v1",
       "occurred_at": "2030-09-28T22:15:00Z",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6931,6 +6934,7 @@
       "origin": null,
       "profile_id": null,
       "occurred_at": "2030-10-15T00:02:00Z",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -6957,6 +6961,7 @@
       "origin": "autonomous_analysis",
       "profile_id": "synthetic.text.v1",
       "occurred_at": "2030-10-14T09:30:00Z",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -7005,6 +7010,7 @@
       "origin": null,
       "profile_id": null,
       "occurred_at": "2030-10-15T00:02:00Z",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40.5"
@@ -7019,6 +7025,161 @@
     }
   },
   {
+    "id": "desktop-budget-entry-ordinal",
+    "schema": "DesktopBudgetEntry",
+    "valid": true,
+    "value": {
+      "ref": "00000000-0000-4000-8000-000000000b72",
+      "kind": "manual_settlement",
+      "pool_id": "llm",
+      "budget_month": "2030-09",
+      "origin": "owner_request",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "2030-09-28T22:15:00Z",
+      "ordinal": {
+        "position": 2,
+        "of": 3
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "overage_remaining": null,
+      "actual_gross": null,
+      "expires_at": null,
+      "delivery_unknown": true
+    }
+  },
+  {
+    "id": "desktop-budget-entry-ordinal-of-one",
+    "schema": "DesktopBudgetEntry",
+    "valid": false,
+    "value": {
+      "ref": "00000000-0000-4000-8000-000000000b72",
+      "kind": "manual_settlement",
+      "pool_id": "llm",
+      "budget_month": "2030-09",
+      "origin": "owner_request",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "2030-09-28T22:15:00Z",
+      "ordinal": {
+        "position": 1,
+        "of": 1
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "overage_remaining": null,
+      "actual_gross": null,
+      "expires_at": null,
+      "delivery_unknown": true
+    }
+  },
+  {
+    "id": "desktop-budget-entry-ordinal-zero",
+    "schema": "DesktopBudgetEntry",
+    "valid": false,
+    "value": {
+      "ref": "00000000-0000-4000-8000-000000000b72",
+      "kind": "manual_settlement",
+      "pool_id": "llm",
+      "budget_month": "2030-09",
+      "origin": "owner_request",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "2030-09-28T22:15:00Z",
+      "ordinal": {
+        "position": 0,
+        "of": 2
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "overage_remaining": null,
+      "actual_gross": null,
+      "expires_at": null,
+      "delivery_unknown": true
+    }
+  },
+  {
+    "id": "desktop-budget-entry-ordinal-with-id",
+    "schema": "DesktopBudgetEntry",
+    "valid": false,
+    "value": {
+      "ref": "00000000-0000-4000-8000-000000000b72",
+      "kind": "manual_settlement",
+      "pool_id": "llm",
+      "budget_month": "2030-09",
+      "origin": "owner_request",
+      "profile_id": "synthetic.text.v1",
+      "occurred_at": "2030-09-28T22:15:00Z",
+      "ordinal": {
+        "position": 1,
+        "of": 2,
+        "key": "manual:x"
+      },
+      "max_liability": {
+        "currency": "XTS",
+        "amount": "40000000"
+      },
+      "overage_remaining": null,
+      "actual_gross": null,
+      "expires_at": null,
+      "delivery_unknown": true
+    }
+  },
+  {
+    "id": "desktop-connection-budget-ordinal-beyond-count",
+    "schema": "DesktopConnectionView",
+    "valid": true,
+    "semantic_errors": ["budget_ordinal_out_of_range"],
+    "value": {
+      "visibility": "shown",
+      "registration": "registered",
+      "link": "connected",
+      "link_reason": null,
+      "last_confirmed_at": "2030-10-05T00:00:00Z",
+      "retry_at": null,
+      "pairing": null,
+      "home_network": {
+        "allowed": true,
+        "exempt": false,
+        "reasons": [],
+        "reported_at": "2030-10-05T00:00:00Z"
+      },
+      "operations": [],
+      "budget_items": [
+        {
+          "ref": "00000000-0000-4000-8000-000000000b72",
+          "kind": "manual_settlement",
+          "pool_id": "llm",
+          "budget_month": "2030-09",
+          "origin": "owner_request",
+          "profile_id": "synthetic.text.v1",
+          "occurred_at": "2030-09-28T22:15:00Z",
+          "ordinal": {
+            "position": 3,
+            "of": 2
+          },
+          "max_liability": {
+            "currency": "XTS",
+            "amount": "40000000"
+          },
+          "overage_remaining": null,
+          "actual_gross": null,
+          "expires_at": null,
+          "delivery_unknown": true
+        }
+      ],
+      "hub_screen": false,
+      "hub_target": {
+        "host": "100.64.0.10",
+        "port": 47443
+      }
+    }
+  },
+  {
     "id": "desktop-budget-entry-unknown-origin",
     "schema": "DesktopBudgetEntry",
     "valid": false,
@@ -7030,6 +7191,7 @@
       "origin": "someone",
       "profile_id": "synthetic.text.v1",
       "occurred_at": "2030-09-28T22:15:00Z",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -7052,6 +7214,7 @@
       "origin": "owner_request",
       "profile_id": "some model",
       "occurred_at": "2030-09-28T22:15:00Z",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -7074,6 +7237,7 @@
       "origin": "owner_request",
       "profile_id": "synthetic.text.v1",
       "occurred_at": "yesterday",
+      "ordinal": null,
       "max_liability": {
         "currency": "XTS",
         "amount": "40000000"
@@ -7261,6 +7425,7 @@
           "origin": null,
           "profile_id": null,
           "occurred_at": "2030-10-15T00:02:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7281,6 +7446,7 @@
           "origin": "autonomous_analysis",
           "profile_id": "synthetic.text.v1",
           "occurred_at": "2030-10-14T09:30:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7301,6 +7467,7 @@
           "origin": "owner_request",
           "profile_id": "synthetic.text.v1",
           "occurred_at": "2030-09-28T22:15:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7359,6 +7526,7 @@
           "origin": null,
           "profile_id": null,
           "occurred_at": "2030-10-15T00:02:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7448,6 +7616,7 @@
           "origin": null,
           "profile_id": null,
           "occurred_at": "2030-10-15T00:02:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7468,6 +7637,7 @@
           "origin": "autonomous_analysis",
           "profile_id": "synthetic.text.v1",
           "occurred_at": "2030-10-14T09:30:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7488,6 +7658,7 @@
           "origin": "owner_request",
           "profile_id": "synthetic.text.v1",
           "occurred_at": "2030-09-28T22:15:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7547,6 +7718,7 @@
           "origin": null,
           "profile_id": null,
           "occurred_at": "2030-10-15T00:02:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7609,6 +7781,7 @@
           "origin": "autonomous_analysis",
           "profile_id": "synthetic.text.v1",
           "occurred_at": "2030-10-14T09:30:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"
@@ -7668,6 +7841,7 @@
           "origin": "owner_request",
           "profile_id": "synthetic.text.v1",
           "occurred_at": "2030-09-28T22:15:00Z",
+          "ordinal": null,
           "max_liability": {
             "currency": "XTS",
             "amount": "40000000"

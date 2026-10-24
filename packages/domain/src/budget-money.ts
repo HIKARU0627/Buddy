@@ -76,3 +76,12 @@ export const BUDGET_ORIGIN_LABELS: Readonly<Record<BudgetOrigin, string>> = {
 export function budgetOriginLabel(origin: BudgetOrigin): string {
   return BUDGET_ORIGIN_LABELS[origin];
 }
+
+// 表示が重なる項目の順番の言い方（「同じ時刻の 2 件のうち 1 件目」）。一覧・読み上げの名前・確認のダイアログで同じ
+// 言い方にする（B07-05、ADR 0039）。数と単位の間は改行しない空白。
+export function budgetOrdinalLabel(position: number, of: number): string {
+  return `同じ時刻の ${of} 件のうち ${position} 件目`.replace(
+    /(\d) 件/gu,
+    `$1${NBSP}件`,
+  );
+}

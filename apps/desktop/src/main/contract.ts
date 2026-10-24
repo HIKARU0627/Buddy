@@ -216,6 +216,18 @@ export function desktopSemanticErrors(
         )
       )
         errors.push('budget_entry_kind_mismatch');
+      if (
+        items.some((item) => {
+          const ordinal = isRecord(item) ? item['ordinal'] : null;
+          return (
+            isRecord(ordinal) &&
+            typeof ordinal['position'] === 'number' &&
+            typeof ordinal['of'] === 'number' &&
+            ordinal['position'] > ordinal['of']
+          );
+        })
+      )
+        errors.push('budget_ordinal_out_of_range');
     }
     if (link === 'connected' && value['last_confirmed_at'] === null)
       errors.push('connected_without_confirmation');

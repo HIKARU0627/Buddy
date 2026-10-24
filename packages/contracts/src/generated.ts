@@ -4179,6 +4179,13 @@ export interface DesktopBudgetEntry {
    * 対象が発生した日時（承認は求めた時刻、予約は受け付けた時刻）。本人が同じ金額・同じ枠の項目を見分けるために出す。中枢が記録していなければ null。
    */
   occurred_at: UtcTime | null;
+  /**
+   * 表示が重なる項目（同じ種類・枠・月・金額・用途・モデルの名前・発生した分）の中での順番。受付の時刻（ミリ秒）の順に数え、同じ時刻なら内部の参照の順で決める。重ならない項目は null。一覧・読み上げの名前・確認のダイアログで同じ言い方（「同じ時刻の 2 件のうち 1 件目」）にして、本人が項目を取り違えないようにする。
+   */
+  ordinal: {
+    position: number;
+    of: number;
+  } | null;
   max_liability: Money;
   overage_remaining: Money | null;
   actual_gross: Money | null;

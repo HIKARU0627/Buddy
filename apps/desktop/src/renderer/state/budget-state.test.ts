@@ -19,6 +19,7 @@ import {
   entryExpired,
   expiryText,
   occurredText,
+  ordinalText,
   originText,
   poolText,
   manualProblems,
@@ -47,6 +48,7 @@ const approval = (
   origin: null,
   profile_id: null,
   occurred_at: '2030-10-15T00:02:00.000Z',
+  ordinal: null,
   max_liability: xts('40000000'),
   overage_remaining: xts('60000000'),
   actual_gross: null,
@@ -64,6 +66,7 @@ const overrun = (
   origin: 'autonomous_analysis',
   profile_id: 'synthetic.text.v1',
   occurred_at: '2030-10-14T09:30:00.000Z',
+  ordinal: null,
   max_liability: xts('40000000'),
   overage_remaining: null,
   actual_gross: xts('55000000'),
@@ -81,6 +84,7 @@ const manual = (
   origin: 'owner_request',
   profile_id: 'synthetic.text.v1',
   occurred_at: '2030-09-28T22:15:00.000Z',
+  ordinal: null,
   max_liability: xts('40000000'),
   overage_remaining: null,
   actual_gross: null,
@@ -395,4 +399,50 @@ test('the pool, the origin and the time are shown by names the person can read, 
     occurredText(overrun()),
     `${local.getMonth() + 1}/${local.getDate()} ${pad(local.getHours())}:${pad(local.getMinutes())}`,
   );
+});
+
+test('the order of look-alike items is said in the same words as the confirmation, and not at all for a unique item', () => {
+  assert.equal(ordinalText(manual()), null);
+  assert.equal(
+    ordinalText(manual({ ordinal: { position: 1, of: 2 } })),
+    '同じ時刻の 2\u00a0件のうち 1\u00a0件目',
+  );
+  assert.equal(
+    ordinalText(manual({ ordinal: { position: 3, of: 12 } })),
+    '同じ時刻の 12\u00a0件のうち 3\u00a0件目',
+  );
+});
+
+test('when a hold is released the "wait until it is updated" notice goes away; other notices stay, and a still-held item keeps its notice', () => {
+  const heldEntry = manual({ ref: id(7), delivery_unknown: true });
+  let state: BudgetViewState = applyBudgetResponse(
+    markBusy(INITIAL_BUDGET_STATE, id(7)),
+    id(7),
+    'desktop.budget_manual_settle',
+    'approve',
+    rejected('outcome_unknown', 'desktop.budget_manual_settle'),
+  );
+  state = syncBudget(state, [heldEntry, approval()]);
+  assert.deepEqual(state.held, [id(7)]);
+  assert.equal(state.notices[id(7)]?.tone, 'warning');
+  // 別の項目の通知は残る。
+  state = {
+    ...state,
+    notices: {
+      ...state.notices,
+      [id(1)]: { tone: 'warning', text: '別の通知' },
+    },
+  };
+  // まだ保留: 通知は残り、状態は変わらない（同じ参照）。
+  assert.equal(syncBudget(state, [heldEntry, approval()]), state);
+  // 保留が解けた（正常に読み直せた）: その項目の通知だけが消える。
+  const released = syncBudget(state, [
+    { ...heldEntry, delivery_unknown: false },
+    approval(),
+  ]);
+  assert.equal(released.notices[id(7)], undefined);
+  assert.equal(released.notices[id(1)]?.text, '別の通知');
+  assert.deepEqual(released.held, []);
+  // 項目が一覧から消えても、通知は消える。
+  assert.deepEqual(syncBudget(state, [approval()]).notices[id(7)], undefined);
 });

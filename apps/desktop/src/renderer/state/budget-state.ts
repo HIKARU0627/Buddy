@@ -9,6 +9,7 @@ import type {
 } from '@buddy/contracts';
 import {
   amountFromDecimal,
+  budgetOrdinalLabel,
   budgetOriginLabel,
   budgetPoolLabel,
   formatMoney,
@@ -141,6 +142,12 @@ export function occurredText(entry: DesktopBudgetEntry): string | null {
     : clockOf(entry.occurred_at, 0, { seconds: false, date: true });
 }
 
+// 表示が重なる項目の順番（「同じ時刻の 2 件のうち 1 件目」。重ならなければ null）。確認のダイアログと同じ言い方。
+export const ordinalText = (entry: DesktopBudgetEntry): string | null =>
+  entry.ordinal === null
+    ? null
+    : budgetOrdinalLabel(entry.ordinal.position, entry.ordinal.of);
+
 // 用途（処理の起点）の表示名。
 export const originText = (entry: DesktopBudgetEntry): string | null =>
   entry.origin === null ? null : budgetOriginLabel(entry.origin);
@@ -197,6 +204,9 @@ export interface BudgetViewState {
   readonly inputs: Readonly<Record<string, ManualInput>>;
   // 精算を送ろうとして入力に問題があった項目（問題の文言を出す）。
   readonly checked: readonly string[];
+  // 前の一覧で「結果不明」だった項目の参照。保留が解けたら（正常に読み直せたら）、その項目の「更新されるまで待って
+  // ください」の通知を消す（解けた後にも残さない。Codex の再確認 P3）。
+  readonly held: readonly string[];
 }
 
 export const INITIAL_BUDGET_STATE: BudgetViewState = {
@@ -204,6 +214,7 @@ export const INITIAL_BUDGET_STATE: BudgetViewState = {
   busy: [],
   inputs: {},
   checked: [],
+  held: [],
 };
 
 // ロック・切断・接続待ちで内容を捨てる（ロック中は内容を隠す）。
@@ -341,7 +352,16 @@ export function syncBudget(
 ): BudgetViewState {
   const refs = new Set(items.map((entry) => entry.ref));
   const keep = (ref: string) => refs.has(ref);
-  const notices = Object.entries(state.notices).filter(([ref]) => keep(ref));
+  const heldNow = items
+    .filter((entry) => entry.delivery_unknown)
+    .map((entry) => entry.ref);
+  // 保留が解けた項目（前は結果不明で、今も一覧にあり、もう結果不明ではない）の通知は消す。
+  const released = new Set(
+    state.held.filter((ref) => keep(ref) && !heldNow.includes(ref)),
+  );
+  const notices = Object.entries(state.notices).filter(
+    ([ref]) => keep(ref) && !released.has(ref),
+  );
   const inputs = Object.entries(state.inputs).filter(([ref]) => keep(ref));
   const busy = state.busy.filter(keep);
   const checked = state.checked.filter(keep);
@@ -349,7 +369,9 @@ export function syncBudget(
     notices.length === Object.keys(state.notices).length &&
     inputs.length === Object.keys(state.inputs).length &&
     busy.length === state.busy.length &&
-    checked.length === state.checked.length
+    checked.length === state.checked.length &&
+    heldNow.length === state.held.length &&
+    heldNow.every((ref, index) => state.held[index] === ref)
   )
     return state;
   return {
@@ -357,6 +379,7 @@ export function syncBudget(
     inputs: Object.fromEntries(inputs),
     busy,
     checked,
+    held: heldNow,
   };
 }
 

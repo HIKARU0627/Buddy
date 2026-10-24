@@ -755,6 +755,13 @@ export function semanticErrors(name, value) {
       )
     )
       errors.push('budget_entry_kind_mismatch');
+    if (
+      value.budget_items.some(
+        (item) =>
+          item.ordinal !== null && item.ordinal.position > item.ordinal.of,
+      )
+    )
+      errors.push('budget_ordinal_out_of_range');
     if (value.link === 'connected' && value.last_confirmed_at === null)
       errors.push('connected_without_confirmation');
     if ((value.link === 'waiting_retry') !== (value.retry_at !== null))

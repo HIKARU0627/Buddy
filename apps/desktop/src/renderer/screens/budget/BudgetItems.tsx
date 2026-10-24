@@ -20,6 +20,7 @@ import {
   manualProblems,
   moneyText,
   occurredText,
+  ordinalText,
   originText,
   overAmount,
   poolText,
@@ -62,7 +63,8 @@ export function barStep(percent: number): number {
 // ボタンの読み上げの名前（見える文字に枠と金額を足す。「承認する（llm・XTS 40.00）」）。
 export function itemLabel(verb: string, entry: DesktopBudgetEntry): string {
   const when = occurredText(entry);
-  return `${verb}（${poolText(entry)}・${moneyText(entry.max_liability)}${when === null ? '' : `・${when}`}）`;
+  const order = ordinalText(entry);
+  return `${verb}（${poolText(entry)}・${moneyText(entry.max_liability)}${when === null ? '' : `・${when}`}${order === null ? '' : `・${order}`}）`;
 }
 
 function Value({
@@ -203,7 +205,8 @@ function ItemRow({
       </div>
       {occurredText(entry) === null &&
       originText(entry) === null &&
-      entry.profile_id === null ? null : (
+      entry.profile_id === null &&
+      ordinalText(entry) === null ? null : (
         <p className="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
           {occurredText(entry) === null ? null : (
             <span className="tabular-nums">{occurredText(entry)}</span>
@@ -211,6 +214,11 @@ function ItemRow({
           {originText(entry) === null ? null : <span>{originText(entry)}</span>}
           {entry.profile_id === null ? null : (
             <span className="font-mono">{entry.profile_id}</span>
+          )}
+          {ordinalText(entry) === null ? null : (
+            <span className="font-semibold text-foreground">
+              {ordinalText(entry)}
+            </span>
           )}
         </p>
       )}

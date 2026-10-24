@@ -36,6 +36,10 @@ export interface BudgetIdentity {
   readonly profileId: string | null;
   // 対象が発生した日時（承認は求めた時刻、予約は受け付けた時刻。UTC）。
   readonly occurredAt: string | null;
+  // 表示が重なる項目（同じ種類・枠・月・金額・用途・モデルの名前・発生した分）の中での順番。重ならなければ null。
+  // 受付の時刻（ミリ秒）の順に数え、同じ時刻なら内部の参照（キー）の順で決める。一覧・読み上げ・確認のダイアログで
+  // 同じ言い方にして、同じ分・同じモデル・同じ金額の項目を本人が取り違えないようにする（Codex の再確認 P2）。
+  readonly ordinal: { readonly position: number; readonly of: number } | null;
 }
 
 // 本人の確認（OS の確認ダイアログ）に出す値。main が中枢の利用状況から作る（手での精算の実費・照合 ID は本人の入力）。
@@ -128,6 +132,8 @@ function sameRecord(a: BudgetRecord, b: BudgetRecord): boolean {
   if (a.kind !== b.kind || a.key !== b.key) return false;
   if (a.poolId !== b.poolId || a.budgetMonth !== b.budgetMonth) return false;
   if (
+    a.ordinal?.position !== b.ordinal?.position ||
+    a.ordinal?.of !== b.ordinal?.of ||
     a.origin !== b.origin ||
     a.profileId !== b.profileId ||
     a.occurredAt !== b.occurredAt
@@ -161,6 +167,7 @@ const identityOf = (reservation: {
   origin: reservation.origin ?? null,
   profileId: reservation.profile_id,
   occurredAt: reservation.created_at ?? null,
+  ordinal: null,
 });
 
 function recordsOf(summary: BudgetUsageSummary): BudgetRecord[] {
@@ -181,6 +188,7 @@ function recordsOf(summary: BudgetUsageSummary): BudgetRecord[] {
         origin: null,
         profileId: null,
         occurredAt: approval.requested_at,
+        ordinal: null,
       });
   for (const reservation of summary.pending_reservations) {
     if (reservation.status === 'usage_unknown')
@@ -213,7 +221,47 @@ function recordsOf(summary: BudgetUsageSummary): BudgetRecord[] {
         ...identityOf(reservation),
       });
   }
-  return records;
+  return withOrdinals(records);
+}
+
+// 表示が重なる項目に、受付の時刻（ミリ秒）の順の順番を付ける。時刻が同じ（または記録がない）なら、内部のキーの順。
+function withOrdinals(records: readonly BudgetRecord[]): BudgetRecord[] {
+  const groupOf = (record: BudgetRecord): string =>
+    JSON.stringify([
+      record.kind,
+      record.poolId,
+      record.budgetMonth,
+      record.maxLiability,
+      record.kind === 'overrun_review' ? record.actualGross : null,
+      record.origin,
+      record.profileId,
+      // 一覧の表示の細かさ（分）。
+      record.occurredAt === null ? null : record.occurredAt.slice(0, 16),
+    ]);
+  const groups = new Map<string, BudgetRecord[]>();
+  for (const record of records) {
+    const group = groups.get(groupOf(record)) ?? [];
+    group.push(record);
+    groups.set(groupOf(record), group);
+  }
+  const millis = (record: BudgetRecord): number =>
+    record.occurredAt === null ? 0 : Date.parse(record.occurredAt);
+  const ordinals = new Map<string, { position: number; of: number }>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    [...group]
+      .sort(
+        (a, b) =>
+          millis(a) - millis(b) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+      )
+      .forEach((record, index) =>
+        ordinals.set(record.key, { position: index + 1, of: group.length }),
+      );
+  }
+  return records.map((record) => ({
+    ...record,
+    ordinal: ordinals.get(record.key) ?? null,
+  }));
 }
 
 // 項目の並び: 承認待ち（期限の早い順）→ M 超過の確認 → 手での精算。同じ種類は予算月の古い順。
@@ -269,7 +317,8 @@ export class BudgetBridge {
         (a, b) =>
           KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
           a.budgetMonth.localeCompare(b.budgetMonth) ||
-          (a.occurredAt ?? '').localeCompare(b.occurredAt ?? '') ||
+          (a.occurredAt === null ? 0 : Date.parse(a.occurredAt)) -
+            (b.occurredAt === null ? 0 : Date.parse(b.occurredAt)) ||
           (a.kind === 'overage_approval' && b.kind === 'overage_approval'
             ? a.expiresAt.localeCompare(b.expiresAt)
             : 0) ||
@@ -284,6 +333,7 @@ export class BudgetBridge {
         origin: record.origin,
         profile_id: record.profileId,
         occurred_at: record.occurredAt,
+        ordinal: record.ordinal,
         max_liability: money(record.maxLiability),
         delivery_unknown: this.#held.has(record.key),
       };
@@ -539,6 +589,7 @@ export class BudgetBridge {
         origin: record.origin,
         profileId: record.profileId,
         occurredAt: record.occurredAt,
+        ordinal: record.ordinal,
         poolId: record.poolId,
         budgetMonth: record.budgetMonth,
         maxLiability: record.maxLiability,
@@ -590,6 +641,7 @@ export class BudgetBridge {
       origin: record.origin,
       profileId: record.profileId,
       occurredAt: record.occurredAt,
+      ordinal: record.ordinal,
       poolId: record.poolId,
       budgetMonth: record.budgetMonth,
       maxLiability: record.maxLiability,
@@ -643,6 +695,7 @@ export class BudgetBridge {
       origin: record.origin,
       profileId: record.profileId,
       occurredAt: record.occurredAt,
+      ordinal: record.ordinal,
       poolId: record.poolId,
       budgetMonth: record.budgetMonth,
       maxLiability: record.maxLiability,

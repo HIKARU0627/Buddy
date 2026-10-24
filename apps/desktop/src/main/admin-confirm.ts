@@ -1,7 +1,12 @@
 // 承認・拒否・失効の前の OS の確認ダイアログの文言（本人の判断 2026-10-22、ADR 0026）。Electron に依存しない純粋な関数で、
 // 値は main が中枢から受け取った一覧の値だけを使う。端末名・OS は申請者の自己申告なので、制御文字・書字方向の制御文字を
 // 取り除き、長さを切る。確認コードの見比べを求める文を必ず入れる。
-import { budgetOriginLabel, budgetPoolLabel, formatMoney } from '@buddy/domain';
+import {
+  budgetOrdinalLabel,
+  budgetOriginLabel,
+  budgetPoolLabel,
+  formatMoney,
+} from '@buddy/domain';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
 import type { AdminConfirmRequest, HomeConfirmRequest } from './core-link.js';
 import type { OperationConfirmRequest } from './operation-bridge.js';
@@ -210,6 +215,10 @@ export function budgetConfirmText(
   const pool = `枠: ${budgetPoolLabel(request.poolId)}（${displayText(request.budgetMonth, 7)}）`;
   const identity: (string | null)[] = [
     request.occurredAt === null ? null : `発生: ${clock(request.occurredAt)}`,
+    // 表示が重なる項目の順番（一覧・読み上げと同じ言い方）。
+    request.ordinal === null
+      ? null
+      : budgetOrdinalLabel(request.ordinal.position, request.ordinal.of),
     request.origin === null
       ? null
       : `用途: ${budgetOriginLabel(request.origin)}`,

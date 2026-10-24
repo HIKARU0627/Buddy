@@ -41,6 +41,7 @@ const approval = (
   origin: null,
   profile_id: null,
   occurred_at: '2030-10-15T00:02:00.000Z',
+  ordinal: null,
   max_liability: xts('40000000'),
   overage_remaining: xts('60000000'),
   actual_gross: null,
@@ -58,6 +59,7 @@ const overrun = (
   origin: 'autonomous_analysis',
   profile_id: 'synthetic.text.v1',
   occurred_at: '2030-10-14T09:30:00.000Z',
+  ordinal: null,
   max_liability: xts('40000000'),
   overage_remaining: null,
   actual_gross: xts('55000000'),
@@ -75,6 +77,7 @@ const manual = (
   origin: 'owner_request',
   profile_id: 'synthetic.text.v1',
   occurred_at: '2030-09-28T22:15:00.000Z',
+  ordinal: null,
   max_liability: xts('40000000'),
   overage_remaining: null,
   actual_gross: null,
@@ -321,4 +324,22 @@ test('two items with the same pool, month and amount have different spoken butto
   const a = approval({ ref: id(11), occurred_at: '2030-10-15T00:02:00.000Z' });
   const b = approval({ ref: id(12), occurred_at: '2030-10-15T00:05:00.000Z' });
   assert.notEqual(itemLabel('承認する', a), itemLabel('承認する', b));
+});
+
+test('look-alike rows carry their order in the line under the first line and in the spoken button name, in the same words', () => {
+  const first = manual({ ref: id(21), ordinal: { position: 1, of: 2 } });
+  const second = manual({ ref: id(22), ordinal: { position: 2, of: 2 } });
+  const html = list([first, second]);
+  const text = readable(html);
+  assert(text.includes('同じ時刻の 2\u00a0件のうち 1\u00a0件目'));
+  assert(text.includes('同じ時刻の 2\u00a0件のうち 2\u00a0件目'));
+  assert(
+    text.includes(
+      `精算する（会話・XTS\u00a040.00・${hm('2030-09-28T22:15:00.000Z')}・同じ時刻の 2\u00a0件のうち 1\u00a0件目）`,
+    ),
+  );
+  // 2 つの読み上げの名前は別（同じ分・同じモデル・同じ金額でも取り違えない）。
+  assert.notEqual(itemLabel('精算する', first), itemLabel('精算する', second));
+  // 重ならない行には出さない。
+  assert.doesNotMatch(list([manual()]), /同じ時刻/u);
 });

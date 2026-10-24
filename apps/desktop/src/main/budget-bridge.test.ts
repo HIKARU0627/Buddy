@@ -257,6 +257,7 @@ const APPROVAL_CONFIRM: BudgetConfirmRequest = {
   origin: null,
   profileId: null,
   occurredAt: '2030-10-15T00:00:00Z',
+  ordinal: null,
   poolId: 'llm',
   budgetMonth: '2030-10',
   maxLiability: xts('40000000'),
@@ -301,6 +302,7 @@ test('refresh builds the entries in a fixed order from the usage, and the screen
         origin: null,
         profile_id: null,
         occurred_at: '2030-10-15T00:00:00Z',
+        ordinal: null,
         max_liability: xts('40000000'),
         overage_remaining: xts('60000000'),
         actual_gross: null,
@@ -315,6 +317,7 @@ test('refresh builds the entries in a fixed order from the usage, and the screen
         origin: 'autonomous_analysis',
         profile_id: 'synthetic.text.v1',
         occurred_at: '2030-10-14T09:30:00.000Z',
+        ordinal: null,
         max_liability: xts('40000000'),
         overage_remaining: null,
         actual_gross: xts('55000000'),
@@ -329,6 +332,7 @@ test('refresh builds the entries in a fixed order from the usage, and the screen
         origin: 'owner_request',
         profile_id: 'synthetic.text.v1',
         occurred_at: '2030-09-28T22:15:00.000Z',
+        ordinal: null,
         max_liability: xts('40000000'),
         overage_remaining: null,
         actual_gross: null,
@@ -643,6 +647,7 @@ test('the overrun review shows the recorded actual cost and M, and sends the ver
       origin: 'autonomous_analysis',
       profileId: 'synthetic.text.v1',
       occurredAt: '2030-10-14T09:30:00.000Z',
+      ordinal: null,
       poolId: 'llm.background',
       budgetMonth: '2030-10',
       maxLiability: xts('40000000'),
@@ -681,6 +686,7 @@ test('the manual settlement shows the typed values and sends the initial credit 
       origin: 'owner_request',
       profileId: 'synthetic.text.v1',
       occurredAt: '2030-09-28T22:15:00.000Z',
+      ordinal: null,
       poolId: 'llm',
       budgetMonth: '2030-09',
       maxLiability: xts('40000000'),
@@ -985,4 +991,113 @@ test('a reservation without a recorded time or origin shows no time or origin (n
   assert.equal(entry?.origin, null);
   assert.equal(entry?.profile_id, 'synthetic.text.v1');
   assert(contract.valid('DesktopBudgetEntry', entry));
+});
+
+// 同じ種類・枠・月・金額・用途・モデルで、受付の分まで同じ 3 件（うち 2 件は同じミリ秒）。
+const triplet = () => {
+  const make = (n: number, createdAt: string) =>
+    reservation({
+      reservation_id: uuid(0xe0 + n),
+      budget_month: '2030-09',
+      status: 'usage_unknown',
+      created_at: createdAt,
+    });
+  return [
+    make(3, '2030-09-28T22:15:00.900Z'),
+    make(2, '2030-09-28T22:15:00.100Z'),
+    make(1, '2030-09-28T22:15:00.100Z'),
+  ];
+};
+const onlyReservations = (list: unknown[]) =>
+  applied({
+    ...usageBody({ approval: false, overrun: false, unknown: false }),
+    pending_reservations: list,
+  });
+
+test('items that look the same are numbered by their time to the millisecond, ties by the internal key, and the numbers are the same in the list and in the confirmation', async () => {
+  const r = rig();
+  r.usage = () => onlyReservations(triplet());
+  await r.bridge.refresh();
+  const entries = r.bridge.entries();
+  // 同じ分・同じモデル・同じ金額でも順番が付く。時刻（ミリ秒）の順、同じミリ秒は内部のキー（予約 ID）の順。
+  assert.deepEqual(
+    entries.map((entry) => entry.ordinal),
+    [
+      { position: 1, of: 3 },
+      { position: 2, of: 3 },
+      { position: 3, of: 3 },
+    ],
+  );
+  assert.deepEqual(
+    entries.map((entry) => entry.occurred_at),
+    [
+      '2030-09-28T22:15:00.100Z',
+      '2030-09-28T22:15:00.100Z',
+      '2030-09-28T22:15:00.900Z',
+    ],
+  );
+  // 2 番目を精算する: 確認には同じ順番が出て、送るのは 2 番目の予約（同じミリ秒の 2 件のうち、キーが後の方）。
+  r.post = () => applied(reservation({ status: 'settled' }));
+  assert.deepEqual(
+    await r.bridge.settleManually(
+      entries[1]?.ref as string,
+      'manual:invoice-b',
+      '3000000',
+    ),
+    ok,
+  );
+  assert.deepEqual(r.confirms[0]?.ordinal, { position: 2, of: 3 });
+  assert.equal(
+    r.posts()[0]?.path,
+    `/v1/budget/reservations/${uuid(0xe2)}/manual-settlement`,
+  );
+  // 順番は読み直しても変わらない（同じ入力から同じ並び）。
+  const again = rig();
+  again.usage = () => onlyReservations([...triplet()].reverse());
+  await again.bridge.refresh();
+  assert.deepEqual(
+    again.bridge.entries().map((entry) => entry.ordinal),
+    entries.map((entry) => entry.ordinal),
+  );
+});
+
+test('an item that does not look like another has no number, and a different minute is a different group', async () => {
+  const r = rig();
+  const [a, b, c] = triplet();
+  r.usage = () =>
+    onlyReservations([
+      a,
+      b,
+      {
+        ...(c as Record<string, unknown>),
+        created_at: '2030-09-28T22:16:00.000Z',
+      },
+    ]);
+  await r.bridge.refresh();
+  assert.deepEqual(
+    r.bridge.entries().map((entry) => [entry.occurred_at, entry.ordinal]),
+    [
+      ['2030-09-28T22:15:00.100Z', { position: 1, of: 2 }],
+      ['2030-09-28T22:15:00.900Z', { position: 2, of: 2 }],
+      ['2030-09-28T22:16:00.000Z', null],
+    ],
+  );
+});
+
+test('a confirmation is not sent when the numbering changed while it was open (another look-alike appeared)', async () => {
+  const r = rig();
+  const [a, b] = triplet();
+  r.usage = () => onlyReservations([a, b]);
+  await r.bridge.refresh();
+  const ref = r.bridge.entries()[0]?.ref as string;
+  r.answer = async () => {
+    r.usage = () => onlyReservations(triplet());
+    await r.bridge.refresh();
+    return { scope: SCOPE };
+  };
+  assert.deepEqual(
+    await r.bridge.settleManually(ref, 'manual:invoice-a', '3000000'),
+    fail('preview_stale'),
+  );
+  assert.equal(r.posts().length, 0);
 });

@@ -207,6 +207,9 @@ export interface BudgetViewState {
   // 前の一覧で「結果不明」だった項目の参照。保留が解けたら（正常に読み直せたら）、その項目の「更新されるまで待って
   // ください」の通知を消す（解けた後にも残さない。Codex の再確認 P3）。
   readonly held: readonly string[];
+  // 一覧を受け取って状態が変わった回数（増えるだけ）。要求を送ったときの回数と比べ、応答が一覧より古いかを見る
+  // （解除の後に遅れて届いた結果不明の応答で、待機の文言を戻さない。Codex の再確認 P3）。
+  readonly listRevision: number;
 }
 
 export const INITIAL_BUDGET_STATE: BudgetViewState = {
@@ -215,6 +218,7 @@ export const INITIAL_BUDGET_STATE: BudgetViewState = {
   inputs: {},
   checked: [],
   held: [],
+  listRevision: 0,
 };
 
 // ロック・切断・接続待ちで内容を捨てる（ロック中は内容を隠す）。
@@ -280,9 +284,18 @@ export function applyBudgetResponse(
   channel: Channel,
   decision: 'approve' | 'reject',
   response: DesktopIpcResponse,
+  sentListRevision: number,
 ): BudgetViewState {
   const busy = state.busy.filter((item) => item !== ref);
-  if (response.outcome === 'rejected')
+  if (response.outcome === 'rejected') {
+    // 送った後に一覧が進んで、この項目の保留がもう解けているなら、待機の文言は足さない（解除の後に遅れて届いた
+    // 結果不明の応答で、文言が戻らないようにする）。まだ保留の一覧に残っていれば足し、解除の同期で消す。
+    if (
+      response.reason === 'outcome_unknown' &&
+      sentListRevision < state.listRevision &&
+      !state.held.includes(ref)
+    )
+      return { ...state, busy };
     return {
       ...state,
       busy,
@@ -291,6 +304,7 @@ export function applyBudgetResponse(
         [ref]: warn(budgetFailureText(channel, response.reason, decision)),
       },
     };
+  }
   // 受け付けた（中枢が記録した）。項目は次の読み取りで一覧から消える。入力は捨てる。
   const inputs = { ...state.inputs };
   delete inputs[ref];
@@ -380,6 +394,7 @@ export function syncBudget(
     busy,
     checked,
     held: heldNow,
+    listRevision: state.listRevision + 1,
   };
 }
 
@@ -414,14 +429,24 @@ export function budgetActions(sink: BudgetSink): BudgetActions {
     built: DesktopIpcRequest,
     ref: string,
     decision: 'approve' | 'reject',
-  ) =>
-    sink.send(
+  ) => {
+    // 送った時点の一覧の版。応答が届いたときに一覧が進んでいれば、結果不明の待機の文言を足さない。
+    const sentListRevision = sink.state().listRevision;
+    return sink.send(
       built,
       (state, response) =>
-        applyBudgetResponse(state, ref, built.channel, decision, response),
+        applyBudgetResponse(
+          state,
+          ref,
+          built.channel,
+          decision,
+          response,
+          sentListRevision,
+        ),
       (state) => applyBudgetFailure(state, ref),
       (state) => markBusy(state, ref),
     );
+  };
   return {
     decide: (ref, decision) => {
       if (sink.state().busy.includes(ref)) return;

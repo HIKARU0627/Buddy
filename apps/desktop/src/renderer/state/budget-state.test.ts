@@ -231,6 +231,7 @@ test('a response ends the busy state with a one-line notice; the typed manual in
     'desktop.budget_manual_settle',
     'approve',
     rejected('confirmation_declined', 'desktop.budget_manual_settle'),
+    state.listRevision,
   );
   assert.deepEqual(refused.busy, []);
   assert.deepEqual(refused.notices[id(3)], {
@@ -244,6 +245,7 @@ test('a response ends the busy state with a one-line notice; the typed manual in
     'desktop.budget_manual_settle',
     'approve',
     durable('desktop.budget_manual_settle'),
+    state.listRevision,
   );
   assert.deepEqual(settled.notices[id(3)], {
     tone: 'success',
@@ -257,6 +259,7 @@ test('a response ends the busy state with a one-line notice; the typed manual in
       'desktop.budget_overage_decide',
       'reject',
       durable('desktop.budget_overage_decide'),
+      INITIAL_BUDGET_STATE.listRevision,
     ).notices[id(1)]?.text,
     '見送りました。',
   );
@@ -267,6 +270,7 @@ test('a response ends the busy state with a one-line notice; the typed manual in
       'desktop.budget_overrun_review',
       'approve',
       durable('desktop.budget_overrun_review'),
+      INITIAL_BUDGET_STATE.listRevision,
     ).notices[id(2)]?.text,
     '確認しました。',
   );
@@ -421,6 +425,7 @@ test('when a hold is released the "wait until it is updated" notice goes away; o
     'desktop.budget_manual_settle',
     'approve',
     rejected('outcome_unknown', 'desktop.budget_manual_settle'),
+    INITIAL_BUDGET_STATE.listRevision,
   );
   state = syncBudget(state, [heldEntry, approval()]);
   assert.deepEqual(state.held, [id(7)]);
@@ -445,4 +450,57 @@ test('when a hold is released the "wait until it is updated" notice goes away; o
   assert.deepEqual(released.held, []);
   // 項目が一覧から消えても、通知は消える。
   assert.deepEqual(syncBudget(state, [approval()]).notices[id(7)], undefined);
+});
+
+test('the usual order (hold, then an unknown result, then release) shows the wait notice and takes it away on release', async () => {
+  let release: (response: DesktopIpcResponse) => void = () => undefined;
+  const store = new BudgetStore({
+    invoke: () =>
+      new Promise<DesktopIpcResponse>((resolve) => {
+        release = resolve;
+      }),
+  });
+  store.actions.decide(id(1), 'approve');
+  // 保留: 一覧が結果不明として届く（この時点ではまだ待機の文言はない）。
+  store.sync([approval({ delivery_unknown: true })]);
+  assert.deepEqual(store.snapshot().held, [id(1)]);
+  assert.equal(store.snapshot().notices[id(1)], undefined);
+  // 結果不明の応答: 待機の文言を出す。
+  release(rejected('outcome_unknown'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(store.snapshot().busy, []);
+  assert.deepEqual(store.snapshot().notices[id(1)], {
+    tone: 'warning',
+    text: '結果を確かめられませんでした。自動では送り直しません。表示が更新されるまで、お待ちください。',
+  });
+  // 解除: 正常に読み直せて保留が解けたら、通知は消える。
+  store.sync([approval()]);
+  assert.deepEqual(store.snapshot().held, []);
+  assert.equal(store.snapshot().notices[id(1)], undefined);
+});
+
+test('an unknown result that arrives after the hold was released does not bring the wait notice back', async () => {
+  let release: (response: DesktopIpcResponse) => void = () => undefined;
+  const store = new BudgetStore({
+    invoke: () =>
+      new Promise<DesktopIpcResponse>((resolve) => {
+        release = resolve;
+      }),
+  });
+  store.actions.decide(id(1), 'approve');
+  // 保留: 一覧が結果不明として届く。
+  store.sync([approval({ delivery_unknown: true })]);
+  assert.deepEqual(store.snapshot().held, [id(1)]);
+  // 解除: 応答より先に、正常に読み直せた一覧が届く（保留が解ける）。
+  store.sync([approval()]);
+  assert.deepEqual(store.snapshot().held, []);
+  assert.equal(store.snapshot().notices[id(1)], undefined);
+  // 遅れて届いた結果不明の応答: 解除より前の一覧に基づくので、待機の文言を足さない。
+  release(rejected('outcome_unknown'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(store.snapshot().busy, []);
+  assert.equal(store.snapshot().notices[id(1)], undefined);
+  // その後の同期でも戻らない。
+  store.sync([approval()]);
+  assert.equal(store.snapshot().notices[id(1)], undefined);
 });

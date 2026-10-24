@@ -70,6 +70,116 @@ export async function loadContracts() {
   return { schema, validators };
 }
 
+const ZERO_HASH = '0'.repeat(64);
+
+// 忘却台帳の 1 件の hash（ADR 0040）。{entry, previous_hash} の JCS（RFC 8785）に SHA-256 を掛けた小文字 16 進。
+// 期待値は fixture に手で書いた値（Python の json.dumps の正規形と hashlib で別に求めた）と照合するための検査で、
+// fixture の値をこの関数から作らない。
+function ledgerEntryHash(entry, previousHash) {
+  return createHash('sha256')
+    .update(canonicalize({ entry, previous_hash: previousHash }), 'utf8')
+    .digest('hex');
+}
+
+// 忘却台帳の別ファイルの検査。各理由は最初に起きた順に 1 回だけ返す。
+// - generation_gap: 世代が 1 から 1 つずつ続かない（欠番・重複・順序の入れ替え）。
+// - duplicate_entry_id: entry_id の重複。
+// - previous_hash_mismatch: previous_hash が 1 つ前の entry_hash（最初は 64 個の 0）と違う（連鎖の切れ）。
+// - entry_hash_mismatch: entry_hash が内容から求めた値と違う（内容の書き換え）。
+// - head_mismatch: head が最後の世代・entry_hash と違う（空なら世代 0・64 個の 0）。
+function ledgerFileErrors(file) {
+  const errors = new Set();
+  const ids = new Set();
+  file.entries.forEach((item, index) => {
+    if (item.entry.forgetting_generation !== String(index + 1))
+      errors.add('generation_gap');
+    if (ids.has(item.entry.entry_id)) errors.add('duplicate_entry_id');
+    ids.add(item.entry.entry_id);
+    const expectedPrevious =
+      index === 0 ? ZERO_HASH : file.entries[index - 1].entry_hash;
+    if (item.previous_hash !== expectedPrevious)
+      errors.add('previous_hash_mismatch');
+    if (ledgerEntryHash(item.entry, item.previous_hash) !== item.entry_hash)
+      errors.add('entry_hash_mismatch');
+  });
+  const last = file.entries.at(-1);
+  const generation = last ? last.entry.forgetting_generation : '0';
+  const hash = last ? last.entry_hash : ZERO_HASH;
+  if (
+    file.head.forgetting_generation !== generation ||
+    file.head.entry_hash !== hash
+  )
+    errors.add('head_mismatch');
+  return [...errors];
+}
+
+// 段階ごとに出せる理由（ADR 0040）。外部の状態の照合は、再認証が済むまで保留（pending）にでき、失敗で復元を止めない。
+const RESTORE_STAGE_REASONS = {
+  ledger_check: [
+    'latest_ledger_unconfirmed',
+    'latest_ledger_missing',
+    'backup_newer_than_ledger',
+    'ledger_chain_invalid',
+    'ledger_lineage_mismatch',
+    'backup_ledger_hash_mismatch',
+    'manifest_invalid',
+  ],
+  expiry_purge: ['backup_unreadable', 'clock_regression'],
+  forget_apply: ['forget_apply_failed'],
+  db_verify: ['db_integrity_failed', 'schema_newer_than_code'],
+  rebuild_views: ['rebuild_failed'],
+  external_reconcile: [],
+};
+
+// 復元の結果の検査。理由は最初に起きた順に 1 回だけ返す。
+function restoreResultErrors(value) {
+  const errors = new Set();
+  const failed = value.stages.filter((stage) => stage.status === 'failed');
+  if (failed.length > 1) errors.add('multiple_failed_stages');
+  const failedIndex = value.stages.findIndex(
+    (stage) => stage.status === 'failed',
+  );
+  const failedStage = failedIndex < 0 ? null : value.stages[failedIndex].stage;
+  if (value.failed_stage !== failedStage) errors.add('failed_stage_mismatch');
+  value.stages.forEach((stage, index) => {
+    if (stage.status === 'pending' && stage.stage !== 'external_reconcile')
+      errors.add('pending_outside_reconcile');
+    if (stage.stage === 'external_reconcile' && stage.status === 'failed')
+      errors.add('external_reconcile_cannot_fail');
+    if (failedIndex < 0 && stage.status === 'not_run')
+      errors.add('stage_not_run_without_failure');
+    if (failedIndex >= 0 && index < failedIndex && stage.status !== 'passed')
+      errors.add('stage_before_failure_not_passed');
+    if (failedIndex >= 0 && index > failedIndex && stage.status !== 'not_run')
+      errors.add('stage_after_failure_ran');
+    if (stage.status === 'failed' && stage.reasons.length === 0)
+      errors.add('failed_stage_without_reason');
+    if (stage.status !== 'failed' && stage.reasons.length > 0)
+      errors.add('reason_without_failure');
+    if (
+      stage.reasons.some(
+        (reason) => !RESTORE_STAGE_REASONS[stage.stage].includes(reason),
+      )
+    )
+      errors.add('reason_not_allowed_for_stage');
+  });
+  if ((value.outcome === 'restored') !== failedIndex < 0)
+    errors.add('outcome_mismatch');
+  // 非機密の設定だけを戻せるのは、台帳の確認で止まったときだけ（設計 03）。
+  if (value.outcome === 'settings_only' && failedStage !== 'ledger_check')
+    errors.add('settings_only_without_ledger_stop');
+  if ((value.outcome === 'restored') !== (value.after_restore !== null))
+    errors.add('after_restore_mismatch');
+  if (
+    value.after_restore !== null &&
+    value.after_restore.new_store_generation === value.backup_store_generation
+  )
+    errors.add('store_generation_not_renewed');
+  if (Date.parse(value.finished_at) < Date.parse(value.started_at))
+    errors.add('finished_before_started');
+  return [...errors];
+}
+
 // 文書に明記した局所的不変条件だけ。認可・DB状態・外部照合は検証しない。
 // DecimalString（小数点以下 6 桁まで）を百万分の一の整数にする。浮動小数点数を使わない。
 function decimalMicros(text) {
@@ -453,6 +563,39 @@ export function semanticErrors(name, value) {
   if (name === 'ForgetLedgerEntry') {
     const keys = value.forgotten.map((s) => `${s.source_kind}:${s.source_id}`);
     if (new Set(keys).size !== keys.length) errors.push('duplicate_forgotten');
+  }
+  // 忘却台帳の別ファイル・端末の複製・バックアップの封筒・復元の結果・置き場所の検査（B06-01、ADR 0040）。
+  if (name === 'ForgetLedgerFile') errors.push(...ledgerFileErrors(value));
+  if (name === 'ForgetLedgerReplica')
+    errors.push(...ledgerFileErrors(value.ledger));
+  if (name === 'BackupManifest') {
+    // 世代 0（空の台帳）のときだけ、台帳の hash は 64 個の 0。
+    if (
+      (value.forgetting_generation === '0') !==
+      (value.ledger_head_hash === ZERO_HASH)
+    )
+      errors.push('genesis_ledger_hash_mismatch');
+    if (
+      value.excluded_tables.some((table) =>
+        ['forget_ledger', 'forget_ledger_items'].includes(table),
+      )
+    )
+      errors.push('required_table_excluded');
+    // 2 つの鍵は同じ復旧キーで包む。
+    if (
+      value.key_wraps[0].recovery_key_id !== value.key_wraps[1].recovery_key_id
+    )
+      errors.push('recovery_key_mismatch');
+  }
+  if (name === 'RestoreResult') errors.push(...restoreResultErrors(value));
+  if (name === 'BackupLocationCheck') {
+    if (value.usable !== (value.problems.length === 0))
+      errors.push('usable_mismatch');
+    if (
+      value.warnings.includes('sync_folder_detected') !==
+      (value.sync_provider_hint !== null)
+    )
+      errors.push('sync_hint_mismatch');
   }
   if (name === 'DeploymentManifest') {
     const uses = value.adoptions.map((a) => a.use);

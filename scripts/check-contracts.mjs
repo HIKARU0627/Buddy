@@ -83,6 +83,33 @@ for (const entry of voiceCases.cases) {
       entry.id,
     );
 }
+// 保存の契約の例（B06-01、ADR 0040）。忘却台帳の別ファイル・端末の複製・バックアップの封筒・復元の結果・
+// 期限切れと忘却の知らせ・保存モード・復旧キー・置き場所。形式と、契約の検証ツールの意味検査（世代の欠番・
+// hash の連鎖・復元の段階の整合など）を確かめる。期待値は手書きで、検査する関数から作っていない。
+const storageCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/storage-contract-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of storageCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors,
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
 const plan = parseStrictJson(
   await readFile(
     new URL('packages/contracts/model-evaluation.json', root),
@@ -100,5 +127,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length + canvasCases.length + voiceCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

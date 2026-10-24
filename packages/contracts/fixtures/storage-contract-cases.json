@@ -1,0 +1,2601 @@
+{
+  "note": "B06-01（ADR 0040）の契約の正常例と拒否例。手書きの期待値で、検査する関数から生成していない。台帳の hash は、{entry, previous_hash} を Python の json.dumps（sort_keys・区切りなし・ensure_ascii なし。値は ASCII だけなので RFC 8785 と同じ正規形）で書き出し、hashlib の SHA-256 で別に求めた値を写した。valid が true で semantic_errors があるものは、形は正しいが意味の検査で拒否する例。復旧キーの値は合成の並びで実際のキーではない。",
+  "cases": [
+    {
+      "id": "x16-ledger-file-three-generations",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "世代 1〜3 が欠番なく続き、hash が連鎖している正常例。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002002",
+              "forgetting_generation": "2",
+              "recorded_at": "2026-10-03T10:30:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "memory",
+                  "source_id": "00000000-0000-4000-8000-000000003002"
+                }
+              ],
+              "blocked_source_ids": [],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
+            "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "mail-002"
+                }
+              ],
+              "blocked_source_ids": ["mail-002"],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
+            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-file-empty",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "まだ何も忘れていない台帳。世代 0、head は 64 個の 0。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [],
+        "head": {
+          "forgetting_generation": "0",
+          "entry_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-file-generation-gap",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "世代 2 が欠けている。hash の連鎖は 1 → 3 でつながっているが、世代が続かないので拒否する。",
+      "semantic_errors": ["generation_gap"],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "mail-002"
+                }
+              ],
+              "blocked_source_ids": ["mail-002"],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
+            "entry_hash": "c90aea77c09e5302b0b695bdeab58ad3e0c867814b79e558070dfe225434c57d"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "c90aea77c09e5302b0b695bdeab58ad3e0c867814b79e558070dfe225434c57d"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-file-hash-chain-broken",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "2 件目の previous_hash が 1 件目の entry_hash と違う。entry_hash はその値から正しく求めてあるので、連鎖の切れだけが理由になる。",
+      "semantic_errors": ["previous_hash_mismatch"],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002002",
+              "forgetting_generation": "2",
+              "recorded_at": "2026-10-03T10:30:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "memory",
+                  "source_id": "00000000-0000-4000-8000-000000003002"
+                }
+              ],
+              "blocked_source_ids": [],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "entry_hash": "f178e7066589be383d6f1eff7dece24b8cff537f530f4b8c0c09f3b2bf42d551"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "mail-002"
+                }
+              ],
+              "blocked_source_ids": ["mail-002"],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "f178e7066589be383d6f1eff7dece24b8cff537f530f4b8c0c09f3b2bf42d551",
+            "entry_hash": "c8e3d32e6c067052e97469253788a3c225ee222143d683bdc844367bea931de3"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "c8e3d32e6c067052e97469253788a3c225ee222143d683bdc844367bea931de3"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-file-entry-rewritten",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "2 件目の中身を書き換えて entry_hash を直していない。",
+      "semantic_errors": ["entry_hash_mismatch"],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002002",
+              "forgetting_generation": "2",
+              "recorded_at": "2026-10-03T10:30:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "memory",
+                  "source_id": "00000000-0000-4000-8000-000000003002"
+                }
+              ],
+              "blocked_source_ids": ["mail-009"],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
+            "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "mail-002"
+                }
+              ],
+              "blocked_source_ids": ["mail-002"],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
+            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-file-head-behind",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "head が最後の世代より前を指している（末尾の世代を隠せない）。",
+      "semantic_errors": ["head_mismatch"],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002002",
+              "forgetting_generation": "2",
+              "recorded_at": "2026-10-03T10:30:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "memory",
+                  "source_id": "00000000-0000-4000-8000-000000003002"
+                }
+              ],
+              "blocked_source_ids": [],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
+            "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "mail-002"
+                }
+              ],
+              "blocked_source_ids": ["mail-002"],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
+            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "2",
+          "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-entry-with-body-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "台帳の entry に本文の欄を足せない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "text": "forgotten sentence"
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-chain-entry-with-body-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "連鎖の 1 件にも本文の欄を足せない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_ids": ["mail-001"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
+            "excerpt": "forgotten sentence"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-replica-complete",
+      "schema": "ForgetLedgerReplica",
+      "valid": true,
+      "note": "端末へ複製した完全な台帳。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-ledger-replica.v1",
+        "device_id": "00000000-0000-4000-8000-000000001101",
+        "replicated_at": "2026-10-07T21:16:00Z",
+        "ledger": {
+          "schema": "buddy.forget-ledger-file.v1",
+          "ledger_id": "00000000-0000-4000-8000-000000001001",
+          "entries": [
+            {
+              "entry": {
+                "schema": "buddy.forget-ledger.v1",
+                "entry_id": "00000000-0000-4000-8000-000000002001",
+                "forgetting_generation": "1",
+                "recorded_at": "2026-10-01T09:00:00Z",
+                "forgotten": [
+                  {
+                    "source_kind": "turn",
+                    "source_id": "00000000-0000-4000-8000-000000003001"
+                  }
+                ],
+                "blocked_source_ids": ["mail-001"],
+                "blocked_content_keys": [
+                  "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+                ]
+              },
+              "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+              "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            },
+            {
+              "entry": {
+                "schema": "buddy.forget-ledger.v1",
+                "entry_id": "00000000-0000-4000-8000-000000002002",
+                "forgetting_generation": "2",
+                "recorded_at": "2026-10-03T10:30:00Z",
+                "forgotten": [
+                  {
+                    "source_kind": "memory",
+                    "source_id": "00000000-0000-4000-8000-000000003002"
+                  }
+                ],
+                "blocked_source_ids": [],
+                "blocked_content_keys": []
+              },
+              "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
+              "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+            },
+            {
+              "entry": {
+                "schema": "buddy.forget-ledger.v1",
+                "entry_id": "00000000-0000-4000-8000-000000002003",
+                "forgetting_generation": "3",
+                "recorded_at": "2026-10-07T21:15:00Z",
+                "forgotten": [
+                  {
+                    "source_kind": "source_item",
+                    "source_id": "mail-002"
+                  }
+                ],
+                "blocked_source_ids": ["mail-002"],
+                "blocked_content_keys": []
+              },
+              "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
+              "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+            }
+          ],
+          "head": {
+            "forgetting_generation": "3",
+            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+          },
+          "written_at": "2026-10-07T21:15:05Z"
+        }
+      }
+    },
+    {
+      "id": "x16-ledger-replica-partial-copy",
+      "schema": "ForgetLedgerReplica",
+      "valid": true,
+      "note": "世代 1 を持たない部分の複製。復元の判定に使えない（完全でない複製）。",
+      "semantic_errors": ["generation_gap", "previous_hash_mismatch"],
+      "value": {
+        "schema": "buddy.forget-ledger-replica.v1",
+        "device_id": "00000000-0000-4000-8000-000000001101",
+        "replicated_at": "2026-10-07T21:16:00Z",
+        "ledger": {
+          "schema": "buddy.forget-ledger-file.v1",
+          "ledger_id": "00000000-0000-4000-8000-000000001001",
+          "entries": [
+            {
+              "entry": {
+                "schema": "buddy.forget-ledger.v1",
+                "entry_id": "00000000-0000-4000-8000-000000002002",
+                "forgetting_generation": "2",
+                "recorded_at": "2026-10-03T10:30:00Z",
+                "forgotten": [
+                  {
+                    "source_kind": "memory",
+                    "source_id": "00000000-0000-4000-8000-000000003002"
+                  }
+                ],
+                "blocked_source_ids": [],
+                "blocked_content_keys": []
+              },
+              "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
+              "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+            },
+            {
+              "entry": {
+                "schema": "buddy.forget-ledger.v1",
+                "entry_id": "00000000-0000-4000-8000-000000002003",
+                "forgetting_generation": "3",
+                "recorded_at": "2026-10-07T21:15:00Z",
+                "forgotten": [
+                  {
+                    "source_kind": "source_item",
+                    "source_id": "mail-002"
+                  }
+                ],
+                "blocked_source_ids": ["mail-002"],
+                "blocked_content_keys": []
+              },
+              "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
+              "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+            }
+          ],
+          "head": {
+            "forgetting_generation": "3",
+            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+          },
+          "written_at": "2026-10-07T21:15:05Z"
+        }
+      }
+    },
+    {
+      "id": "x16-backup-manifest-valid",
+      "schema": "BackupManifest",
+      "valid": true,
+      "note": "世代 3 の台帳と同じ head を持つ封筒。private は含まず、4 種類のデータを除外し、2 つの鍵を同じ復旧キーで包んでいる。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-backup-manifest-empty-ledger",
+      "schema": "BackupManifest",
+      "valid": true,
+      "note": "台帳が空（世代 0）のときの封筒。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "0",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x17-backup-manifest-includes-private-rejected",
+      "schema": "BackupManifest",
+      "valid": false,
+      "note": "記録しない会話（private）を含むバックアップは作れない。",
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "private"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x17-backup-manifest-only-private-rejected",
+      "schema": "BackupManifest",
+      "valid": false,
+      "note": "private だけのバックアップも作れない。",
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["private"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x17-backup-manifest-private-exclusion-missing-rejected",
+      "schema": "BackupManifest",
+      "valid": false,
+      "note": "除外の記録に記録しない会話がない封筒は拒否する。",
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": ["raw_audio", "oauth_tokens", "api_keys"],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-backup-manifest-raw-audio-exclusion-missing-rejected",
+      "schema": "BackupManifest",
+      "valid": false,
+      "note": "除外の記録に生音声がない封筒は拒否する。",
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": ["private_conversation", "oauth_tokens", "api_keys"],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-backup-manifest-body-field-rejected",
+      "schema": "BackupManifest",
+      "valid": false,
+      "note": "封筒に本文の欄を足せない。",
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ],
+        "memories": ["body text must not be here"]
+      }
+    },
+    {
+      "id": "x16-backup-manifest-data-key-wrap-missing-rejected",
+      "schema": "BackupManifest",
+      "valid": false,
+      "note": "DB の暗号文の鍵（data_key）を包んでいない封筒では、鍵を失った後に復元できない。",
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v2",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-backup-manifest-genesis-hash-mismatch",
+      "schema": "BackupManifest",
+      "valid": true,
+      "note": "世代 0 なのに台帳の hash が 0 でない。",
+      "semantic_errors": ["genesis_ledger_hash_mismatch"],
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "0",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-backup-manifest-ledger-table-excluded",
+      "schema": "BackupManifest",
+      "valid": true,
+      "note": "忘却台帳の表を除外してはならない。",
+      "semantic_errors": ["required_table_excluded"],
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["forget_ledger"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-backup-manifest-two-recovery-keys",
+      "schema": "BackupManifest",
+      "valid": true,
+      "note": "2 つの鍵を別の復旧キーで包んでいる。",
+      "semantic_errors": ["recovery_key_mismatch"],
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006002",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-restore-restored-reconcile-pending",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "5 段階まで成功し、外部の状態の照合は再認証が済むまで保留（結果不明の操作は保留のまま）。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "restored",
+        "failed_stage": null,
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "pending",
+            "reasons": []
+          }
+        ],
+        "after_restore": {
+          "new_store_generation": "00000000-0000-4000-8000-000000005002",
+          "applied_forgetting_generation": "3",
+          "expired_deleted_count": 12,
+          "forgotten_applied_count": 4,
+          "approvals_revoked_count": 2,
+          "operations_held_count": 1,
+          "consents_reset": true,
+          "connections_reauth_required": true
+        }
+      }
+    },
+    {
+      "id": "x16-restore-restored-all-passed",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "6 段階とも成功。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "restored",
+        "failed_stage": null,
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "passed",
+            "reasons": []
+          }
+        ],
+        "after_restore": {
+          "new_store_generation": "00000000-0000-4000-8000-000000005002",
+          "applied_forgetting_generation": "3",
+          "expired_deleted_count": 12,
+          "forgotten_applied_count": 4,
+          "approvals_revoked_count": 2,
+          "operations_held_count": 1,
+          "consents_reset": true,
+          "connections_reauth_required": true
+        }
+      }
+    },
+    {
+      "id": "x16-restore-ledger-lost-settings-only",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "最新の台帳が中枢にも端末にも残っていない。記憶・会話は戻さず、非機密の設定だけを戻す。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "settings_only",
+        "failed_stage": "ledger_check",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "failed",
+            "reasons": ["latest_ledger_missing"]
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-backup-newer-than-ledger",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "バックアップが台帳より新しい、または別の系譜の台帳。何も戻さない。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "rejected",
+        "failed_stage": "ledger_check",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "failed",
+            "reasons": ["backup_newer_than_ledger", "ledger_lineage_mismatch"]
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-schema-newer-rejected",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "バックアップの DB がコードより新しい版。ダウングレードせずに拒否する。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "rejected",
+        "failed_stage": "db_verify",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "failed",
+            "reasons": ["schema_newer_than_code"]
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-stages-out-of-order-rejected",
+      "schema": "RestoreResult",
+      "valid": false,
+      "note": "段階の順序を入れ替えられない。",
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "rejected",
+        "failed_stage": "ledger_check",
+        "stages": [
+          {
+            "stage": "expiry_purge",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "ledger_check",
+            "status": "failed",
+            "reasons": ["latest_ledger_unconfirmed"]
+          },
+          {
+            "stage": "forget_apply",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-stage-missing-rejected",
+      "schema": "RestoreResult",
+      "valid": false,
+      "note": "6 段階のうち 1 つでも欠けた結果は拒否する。",
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "restored",
+        "failed_stage": null,
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          }
+        ],
+        "after_restore": {
+          "new_store_generation": "00000000-0000-4000-8000-000000005002",
+          "applied_forgetting_generation": "3",
+          "expired_deleted_count": 12,
+          "forgotten_applied_count": 4,
+          "approvals_revoked_count": 2,
+          "operations_held_count": 1,
+          "consents_reset": true,
+          "connections_reauth_required": true
+        }
+      }
+    },
+    {
+      "id": "x16-restore-stage-ran-after-failure",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "台帳の確認で止まったのに、忘却の適用が実行されたことになっている。",
+      "semantic_errors": ["stage_after_failure_ran"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "settings_only",
+        "failed_stage": "ledger_check",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "failed",
+            "reasons": ["latest_ledger_missing"]
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-store-generation-not-renewed",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "復元しても DB の世代が新しい値にならない。",
+      "semantic_errors": ["store_generation_not_renewed"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "restored",
+        "failed_stage": null,
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "pending",
+            "reasons": []
+          }
+        ],
+        "after_restore": {
+          "new_store_generation": "00000000-0000-4000-8000-000000005001",
+          "applied_forgetting_generation": "3",
+          "expired_deleted_count": 12,
+          "forgotten_applied_count": 4,
+          "approvals_revoked_count": 2,
+          "operations_held_count": 1,
+          "consents_reset": true,
+          "connections_reauth_required": true
+        }
+      }
+    },
+    {
+      "id": "x16-restore-reason-for-wrong-stage",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "台帳の理由が DB の検証の段階に付いている。",
+      "semantic_errors": ["reason_not_allowed_for_stage"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "rejected",
+        "failed_stage": "db_verify",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "failed",
+            "reasons": ["latest_ledger_missing"]
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-settings-only-after-db-verify",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "設定だけを戻せるのは台帳の確認で止まったときだけ。",
+      "semantic_errors": ["settings_only_without_ledger_stop"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "settings_only",
+        "failed_stage": "db_verify",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "failed",
+            "reasons": ["db_integrity_failed"]
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-external-reconcile-failed",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "外部の状態の照合は復元を止める理由にならない（照合できない操作は保留のまま残す）。",
+      "semantic_errors": [
+        "external_reconcile_cannot_fail",
+        "failed_stage_without_reason"
+      ],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "rejected",
+        "failed_stage": "external_reconcile",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "failed",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-restored-without-aftermath",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "restored なのに復元後の状態（承認の失効・保留の件数など）がない。",
+      "semantic_errors": ["after_restore_mismatch"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "restored",
+        "failed_stage": null,
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "passed",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-notice-expired-retention-due",
+      "schema": "RetentionNotice",
+      "valid": true,
+      "note": "保存期限が来た発言と記憶。ID と理由だけ。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "expired",
+        "reason": "retention_due",
+        "forgetting_generation": null,
+        "items": [
+          {
+            "item_kind": "turn",
+            "item_id": "00000000-0000-4000-8000-000000003101"
+          },
+          {
+            "item_kind": "memory",
+            "item_id": "00000000-0000-4000-8000-000000003102"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-notice-expired-carried-summary",
+      "schema": "RetentionNotice",
+      "valid": true,
+      "note": "由来の最も早い期限が来た、つないだ要約（区間の ID だけ）。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "expired",
+        "reason": "summary_origin_expired",
+        "forgetting_generation": null,
+        "items": [
+          {
+            "item_kind": "carried_summary",
+            "item_id": "00000000-0000-4000-8000-000000009101"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-notice-forgotten",
+      "schema": "RetentionNotice",
+      "valid": true,
+      "note": "忘却の指示で消した記憶。台帳の世代を持つ。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "forgotten",
+        "reason": "forgotten",
+        "forgetting_generation": "3",
+        "items": [
+          {
+            "item_kind": "memory",
+            "item_id": "00000000-0000-4000-8000-000000003102"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-notice-derived-from-forgotten",
+      "schema": "RetentionNotice",
+      "valid": true,
+      "note": "忘れた由来から作った要約・記憶を、派生として消した知らせ。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "forgotten",
+        "reason": "derived_from_forgotten",
+        "forgetting_generation": "4",
+        "items": [
+          {
+            "item_kind": "carried_summary",
+            "item_id": "00000000-0000-4000-8000-000000009101"
+          },
+          {
+            "item_kind": "memory",
+            "item_id": "00000000-0000-4000-8000-000000003103"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-notice-item-with-body-field-rejected",
+      "schema": "RetentionNotice",
+      "valid": false,
+      "note": "知らせの対象に本文の欄を足せない。",
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "expired",
+        "reason": "retention_due",
+        "forgetting_generation": null,
+        "items": [
+          {
+            "item_kind": "turn",
+            "item_id": "00000000-0000-4000-8000-000000003101",
+            "text": "deleted sentence"
+          },
+          {
+            "item_kind": "memory",
+            "item_id": "00000000-0000-4000-8000-000000003102"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-notice-with-summary-field-rejected",
+      "schema": "RetentionNotice",
+      "valid": false,
+      "note": "知らせに要約の欄を足せない。",
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "expired",
+        "reason": "retention_due",
+        "forgetting_generation": null,
+        "items": [
+          {
+            "item_kind": "turn",
+            "item_id": "00000000-0000-4000-8000-000000003101"
+          },
+          {
+            "item_kind": "memory",
+            "item_id": "00000000-0000-4000-8000-000000003102"
+          }
+        ],
+        "summary": "deleted sentence"
+      }
+    },
+    {
+      "id": "x15-notice-item-id-is-sentence-rejected",
+      "schema": "RetentionNotice",
+      "valid": false,
+      "note": "item_id に文（空白を含む本文）を入れられない。",
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "forgotten",
+        "reason": "forgotten",
+        "forgetting_generation": "3",
+        "items": [
+          {
+            "item_kind": "memory",
+            "item_id": "forget my dentist appointment"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-notice-forgotten-without-generation-rejected",
+      "schema": "RetentionNotice",
+      "valid": false,
+      "note": "忘却の知らせは台帳の世代が要る。",
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "forgotten",
+        "reason": "forgotten",
+        "forgetting_generation": null,
+        "items": [
+          {
+            "item_kind": "turn",
+            "item_id": "00000000-0000-4000-8000-000000003101"
+          },
+          {
+            "item_kind": "memory",
+            "item_id": "00000000-0000-4000-8000-000000003102"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-notice-expired-with-generation-rejected",
+      "schema": "RetentionNotice",
+      "valid": false,
+      "note": "期限切れの知らせに忘却の世代を付けられない。",
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "expired",
+        "reason": "retention_due",
+        "forgetting_generation": "3",
+        "items": [
+          {
+            "item_kind": "turn",
+            "item_id": "00000000-0000-4000-8000-000000003101"
+          },
+          {
+            "item_kind": "memory",
+            "item_id": "00000000-0000-4000-8000-000000003102"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-notice-expired-with-forget-reason-rejected",
+      "schema": "RetentionNotice",
+      "valid": false,
+      "note": "期限切れの知らせに忘却の理由を付けられない。",
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "expired",
+        "reason": "forgotten",
+        "forgetting_generation": null,
+        "items": [
+          {
+            "item_kind": "turn",
+            "item_id": "00000000-0000-4000-8000-000000003101"
+          },
+          {
+            "item_kind": "memory",
+            "item_id": "00000000-0000-4000-8000-000000003102"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-notice-without-items-rejected",
+      "schema": "RetentionNotice",
+      "valid": false,
+      "note": "対象のない知らせは拒否する。",
+      "value": {
+        "schema": "buddy.retention-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008001",
+        "occurred_at": "2026-10-09T02:00:00Z",
+        "kind": "expired",
+        "reason": "retention_due",
+        "forgetting_generation": null,
+        "items": []
+      }
+    },
+    {
+      "id": "x17-storage-mode-normal",
+      "schema": "StorageModeState",
+      "valid": true,
+      "note": "通常の会話（発言は 7 日）。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.storage-mode-state.v1",
+        "segment_id": "00000000-0000-4000-8000-000000009201",
+        "storage_mode": "normal",
+        "since": "2026-10-09T03:00:00Z",
+        "effects": {
+          "persist_turns": true,
+          "persist_summary": true,
+          "save_memory": true,
+          "extract_memory": true,
+          "record_shadow": true,
+          "open_live": true,
+          "local_asr": true,
+          "turn_retention_days": 7,
+          "operation_record": "full"
+        }
+      }
+    },
+    {
+      "id": "x17-storage-mode-extended",
+      "schema": "StorageModeState",
+      "valid": true,
+      "note": "本人指定の継続相談（発言は 30 日）。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.storage-mode-state.v1",
+        "segment_id": "00000000-0000-4000-8000-000000009201",
+        "storage_mode": "extended",
+        "since": "2026-10-09T03:00:00Z",
+        "effects": {
+          "persist_turns": true,
+          "persist_summary": true,
+          "save_memory": true,
+          "extract_memory": true,
+          "record_shadow": true,
+          "open_live": true,
+          "local_asr": true,
+          "turn_retention_days": 30,
+          "operation_record": "full"
+        }
+      }
+    },
+    {
+      "id": "x17-storage-mode-private",
+      "schema": "StorageModeState",
+      "valid": true,
+      "note": "記録しない会話。保存・記憶・抽出・影モード・Live はすべて禁じ、端末内の音声認識（③）だけ使える。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.storage-mode-state.v1",
+        "segment_id": "00000000-0000-4000-8000-000000009201",
+        "storage_mode": "private",
+        "since": "2026-10-09T03:00:00Z",
+        "effects": {
+          "persist_turns": false,
+          "persist_summary": false,
+          "save_memory": false,
+          "extract_memory": false,
+          "record_shadow": false,
+          "open_live": false,
+          "local_asr": true,
+          "turn_retention_days": null,
+          "operation_record": "minimal_after_confirmation"
+        }
+      }
+    },
+    {
+      "id": "x17-storage-mode-private-opens-live-rejected",
+      "schema": "StorageModeState",
+      "valid": false,
+      "note": "記録しない会話で Live を開ける状態は拒否する。",
+      "value": {
+        "schema": "buddy.storage-mode-state.v1",
+        "segment_id": "00000000-0000-4000-8000-000000009201",
+        "storage_mode": "private",
+        "since": "2026-10-09T03:00:00Z",
+        "effects": {
+          "persist_turns": false,
+          "persist_summary": false,
+          "save_memory": false,
+          "extract_memory": false,
+          "record_shadow": false,
+          "open_live": true,
+          "local_asr": true,
+          "turn_retention_days": null,
+          "operation_record": "minimal_after_confirmation"
+        }
+      }
+    },
+    {
+      "id": "x17-storage-mode-private-persists-turns-rejected",
+      "schema": "StorageModeState",
+      "valid": false,
+      "note": "記録しない会話で発言を保存する状態は拒否する。",
+      "value": {
+        "schema": "buddy.storage-mode-state.v1",
+        "segment_id": "00000000-0000-4000-8000-000000009201",
+        "storage_mode": "private",
+        "since": "2026-10-09T03:00:00Z",
+        "effects": {
+          "persist_turns": true,
+          "persist_summary": false,
+          "save_memory": false,
+          "extract_memory": false,
+          "record_shadow": false,
+          "open_live": false,
+          "local_asr": true,
+          "turn_retention_days": null,
+          "operation_record": "minimal_after_confirmation"
+        }
+      }
+    },
+    {
+      "id": "x17-storage-mode-private-full-operation-record-rejected",
+      "schema": "StorageModeState",
+      "valid": false,
+      "note": "記録しない会話で操作記録を全部残す状態は拒否する（最小の記録だけ）。",
+      "value": {
+        "schema": "buddy.storage-mode-state.v1",
+        "segment_id": "00000000-0000-4000-8000-000000009201",
+        "storage_mode": "private",
+        "since": "2026-10-09T03:00:00Z",
+        "effects": {
+          "persist_turns": false,
+          "persist_summary": false,
+          "save_memory": false,
+          "extract_memory": false,
+          "record_shadow": false,
+          "open_live": false,
+          "local_asr": true,
+          "turn_retention_days": null,
+          "operation_record": "full"
+        }
+      }
+    },
+    {
+      "id": "x17-storage-mode-private-extracts-memory-rejected",
+      "schema": "StorageModeState",
+      "valid": false,
+      "note": "記録しない会話で記憶の抽出をする状態は拒否する。",
+      "value": {
+        "schema": "buddy.storage-mode-state.v1",
+        "segment_id": "00000000-0000-4000-8000-000000009201",
+        "storage_mode": "private",
+        "since": "2026-10-09T03:00:00Z",
+        "effects": {
+          "persist_turns": false,
+          "persist_summary": false,
+          "save_memory": false,
+          "extract_memory": true,
+          "record_shadow": false,
+          "open_live": false,
+          "local_asr": true,
+          "turn_retention_days": null,
+          "operation_record": "minimal_after_confirmation"
+        }
+      }
+    },
+    {
+      "id": "x17-storage-mode-normal-with-30-days-rejected",
+      "schema": "StorageModeState",
+      "valid": false,
+      "note": "通常の会話の期限は 7 日で、30 日を名乗れない。",
+      "value": {
+        "schema": "buddy.storage-mode-state.v1",
+        "segment_id": "00000000-0000-4000-8000-000000009201",
+        "storage_mode": "normal",
+        "since": "2026-10-09T03:00:00Z",
+        "effects": {
+          "persist_turns": true,
+          "persist_summary": true,
+          "save_memory": true,
+          "extract_memory": true,
+          "record_shadow": true,
+          "open_live": true,
+          "local_asr": true,
+          "turn_retention_days": 30,
+          "operation_record": "full"
+        }
+      }
+    },
+    {
+      "id": "x16-recovery-key-record-not-shown",
+      "schema": "RecoveryKeyRecord",
+      "valid": true,
+      "note": "作った直後で、まだ本人へ表示していない。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.recovery-key-record.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "check_value": "1A2B3C4D",
+        "state": "not_shown",
+        "shown_at": null
+      }
+    },
+    {
+      "id": "x16-recovery-key-record-shown",
+      "schema": "RecoveryKeyRecord",
+      "valid": true,
+      "note": "本人へ 1 度だけ表示した後。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.recovery-key-record.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "check_value": "1A2B3C4D",
+        "state": "shown",
+        "shown_at": "2026-10-08T02:00:30Z"
+      }
+    },
+    {
+      "id": "x16-recovery-key-record-shown-without-time-rejected",
+      "schema": "RecoveryKeyRecord",
+      "valid": false,
+      "note": "表示済みなのに時刻がない。",
+      "value": {
+        "schema": "buddy.recovery-key-record.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "check_value": "1A2B3C4D",
+        "state": "shown",
+        "shown_at": null
+      }
+    },
+    {
+      "id": "x16-recovery-key-record-not-shown-with-time-rejected",
+      "schema": "RecoveryKeyRecord",
+      "valid": false,
+      "note": "未表示なのに時刻がある。",
+      "value": {
+        "schema": "buddy.recovery-key-record.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "check_value": "1A2B3C4D",
+        "state": "not_shown",
+        "shown_at": "2026-10-08T02:00:30Z"
+      }
+    },
+    {
+      "id": "x16-recovery-key-record-with-secret-rejected",
+      "schema": "RecoveryKeyRecord",
+      "valid": false,
+      "note": "保存する記録に復旧キーそのものを入れられない。",
+      "value": {
+        "schema": "buddy.recovery-key-record.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "check_value": "1A2B3C4D",
+        "state": "shown",
+        "shown_at": "2026-10-08T02:00:30Z",
+        "recovery_code": "0123-4567-89AB-CDEF-GHJK-MNPQ-RSTV-WXYZ-0123-4567-89AB-CDEF-GHJK"
+      }
+    },
+    {
+      "id": "x16-recovery-key-display",
+      "schema": "RecoveryKeyDisplay",
+      "valid": true,
+      "note": "初回の表示。値は合成の並びで、実際の復旧キーではない。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.recovery-key-display.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "recovery_code": "0123-4567-89AB-CDEF-GHJK-MNPQ-RSTV-WXYZ-0123-4567-89AB-CDEF-GHJK",
+        "display_once": true
+      }
+    },
+    {
+      "id": "x16-recovery-key-display-lowercase-rejected",
+      "schema": "RecoveryKeyDisplay",
+      "valid": false,
+      "note": "小文字は拒否する。",
+      "value": {
+        "schema": "buddy.recovery-key-display.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "recovery_code": "0123-4567-89ab-cdef-ghjk-mnpq-rstv-wxyz-0123-4567-89ab-cdef-ghjk",
+        "display_once": true
+      }
+    },
+    {
+      "id": "x16-recovery-key-display-short-rejected",
+      "schema": "RecoveryKeyDisplay",
+      "valid": false,
+      "note": "12 組では短い。",
+      "value": {
+        "schema": "buddy.recovery-key-display.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "recovery_code": "0123-4567-89AB-CDEF-GHJK-MNPQ-RSTV-WXYZ-0123-4567-89AB-CDEF",
+        "display_once": true
+      }
+    },
+    {
+      "id": "x16-recovery-key-display-ambiguous-char-rejected",
+      "schema": "RecoveryKeyDisplay",
+      "valid": false,
+      "note": "読み間違えやすい文字（U）は使わない。",
+      "value": {
+        "schema": "buddy.recovery-key-display.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "recovery_code": "0123-4567-89AB-CDEF-GHJK-MNPQ-RSTU-WXYZ-0123-4567-89AB-CDEF-GHJK",
+        "display_once": true
+      }
+    },
+    {
+      "id": "x16-recovery-key-display-repeatable-rejected",
+      "schema": "RecoveryKeyDisplay",
+      "valid": false,
+      "note": "再表示を許す形は拒否する。",
+      "value": {
+        "schema": "buddy.recovery-key-display.v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+        "created_at": "2026-10-08T02:00:00Z",
+        "recovery_code": "0123-4567-89AB-CDEF-GHJK-MNPQ-RSTV-WXYZ-0123-4567-89AB-CDEF-GHJK",
+        "display_once": false
+      }
+    },
+    {
+      "id": "x16-backup-config-posix",
+      "schema": "BackupConfig",
+      "valid": true,
+      "note": "初期値の 7 世代。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.backup-config.v1",
+        "directory": "/Volumes/Example/BuddyBackups",
+        "keep_generations": 7
+      }
+    },
+    {
+      "id": "x16-backup-config-windows-path",
+      "schema": "BackupConfig",
+      "valid": true,
+      "note": "Windows の絶対パス。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.backup-config.v1",
+        "directory": "D:\\Example\\BuddyBackups",
+        "keep_generations": 7
+      }
+    },
+    {
+      "id": "x16-backup-config-relative-path-rejected",
+      "schema": "BackupConfig",
+      "valid": false,
+      "note": "相対パスは拒否する。",
+      "value": {
+        "schema": "buddy.backup-config.v1",
+        "directory": "backups/daily",
+        "keep_generations": 7
+      }
+    },
+    {
+      "id": "x16-backup-config-parent-segment-rejected",
+      "schema": "BackupConfig",
+      "valid": false,
+      "note": "親への移動（..）を含むパスは拒否する。",
+      "value": {
+        "schema": "buddy.backup-config.v1",
+        "directory": "/Volumes/Example/../Other",
+        "keep_generations": 7
+      }
+    },
+    {
+      "id": "x16-backup-config-zero-generations-rejected",
+      "schema": "BackupConfig",
+      "valid": false,
+      "note": "世代の数は 1 以上。",
+      "value": {
+        "schema": "buddy.backup-config.v1",
+        "directory": "/Volumes/Example/BuddyBackups",
+        "keep_generations": 0
+      }
+    },
+    {
+      "id": "x16-backup-config-unknown-setting-rejected",
+      "schema": "BackupConfig",
+      "valid": false,
+      "note": "知らない設定の項目は拒否する。",
+      "value": {
+        "schema": "buddy.backup-config.v1",
+        "directory": "/Volumes/Example/BuddyBackups",
+        "keep_generations": 7,
+        "cloud_upload": true
+      }
+    },
+    {
+      "id": "x16-backup-location-usable",
+      "schema": "BackupLocationCheck",
+      "valid": true,
+      "note": "使える置き場所。警告なし。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.backup-location-check.v1",
+        "directory": "/Volumes/Example/BuddyBackups",
+        "usable": true,
+        "problems": [],
+        "warnings": [],
+        "sync_provider_hint": null
+      }
+    },
+    {
+      "id": "x16-backup-location-sync-folder-warning",
+      "schema": "BackupLocationCheck",
+      "valid": true,
+      "note": "同期フォルダーは使えるが警告を出す。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.backup-location-check.v1",
+        "directory": "/Users/example/Library/Mobile Documents/Example",
+        "usable": true,
+        "problems": [],
+        "warnings": ["sync_folder_detected"],
+        "sync_provider_hint": "icloud"
+      }
+    },
+    {
+      "id": "x16-backup-location-not-writable",
+      "schema": "BackupLocationCheck",
+      "valid": true,
+      "note": "書き込めない置き場所は使えない。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.backup-location-check.v1",
+        "directory": "/Volumes/Example/BuddyBackups",
+        "usable": false,
+        "problems": ["not_writable"],
+        "warnings": [],
+        "sync_provider_hint": null
+      }
+    },
+    {
+      "id": "x16-backup-location-usable-with-problem",
+      "schema": "BackupLocationCheck",
+      "valid": true,
+      "note": "問題があるのに使えることになっている。",
+      "semantic_errors": ["usable_mismatch"],
+      "value": {
+        "schema": "buddy.backup-location-check.v1",
+        "directory": "/Volumes/Example/BuddyBackups",
+        "usable": true,
+        "problems": ["not_writable"],
+        "warnings": [],
+        "sync_provider_hint": null
+      }
+    },
+    {
+      "id": "x16-backup-location-sync-without-hint",
+      "schema": "BackupLocationCheck",
+      "valid": true,
+      "note": "同期フォルダーの警告なのに種類の手がかりがない。",
+      "semantic_errors": ["sync_hint_mismatch"],
+      "value": {
+        "schema": "buddy.backup-location-check.v1",
+        "directory": "/Users/example/Library/Mobile Documents/Example",
+        "usable": true,
+        "problems": [],
+        "warnings": ["sync_folder_detected"],
+        "sync_provider_hint": null
+      }
+    }
+  ]
+}

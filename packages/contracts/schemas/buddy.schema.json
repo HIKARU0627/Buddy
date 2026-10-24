@@ -381,6 +381,36 @@
     },
     {
       "$ref": "#/$defs/ExternalSendConsentChange"
+    },
+    {
+      "$ref": "#/$defs/ForgetLedgerFile"
+    },
+    {
+      "$ref": "#/$defs/ForgetLedgerReplica"
+    },
+    {
+      "$ref": "#/$defs/BackupManifest"
+    },
+    {
+      "$ref": "#/$defs/RestoreResult"
+    },
+    {
+      "$ref": "#/$defs/RetentionNotice"
+    },
+    {
+      "$ref": "#/$defs/StorageModeState"
+    },
+    {
+      "$ref": "#/$defs/RecoveryKeyRecord"
+    },
+    {
+      "$ref": "#/$defs/RecoveryKeyDisplay"
+    },
+    {
+      "$ref": "#/$defs/BackupConfig"
+    },
+    {
+      "$ref": "#/$defs/BackupLocationCheck"
     }
   ],
   "$defs": {
@@ -13363,6 +13393,1087 @@
         }
       ],
       "description": "キャンバスを置く画面の設定（UI-06、ADR 0032）。端末に保存してよい配置の設定はこれだけで、キャンバスの本文・見出し・参照・置き場所を持たない。primary（既定）は主の画面、display は OS の画面の ID の画面（なければ主の画面）。キャンバス・状態の層・入力バーを同じ画面に置く。すべての画面を 1 枚につなぐ形はない。"
+    },
+    "ForgetLedgerChainEntry": {
+      "type": "object",
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/ForgetLedgerEntry"
+        },
+        "previous_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "entry_hash": {
+          "$ref": "#/$defs/Hash"
+        }
+      },
+      "required": ["entry", "previous_hash", "entry_hash"],
+      "additionalProperties": false,
+      "description": "忘却台帳の別ファイルの 1 件（ADR 0040）。entry は DB の ForgetLedgerEntry と同じ（本文なし）。previous_hash は 1 つ前の entry_hash（最初の世代は 64 個の 0）、entry_hash は {entry, previous_hash} の JCS（RFC 8785）の UTF-8 に SHA-256 を掛けた小文字 16 進。"
+    },
+    "ForgetLedgerFile": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.forget-ledger-file.v1"
+        },
+        "ledger_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "entries": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "$ref": "#/$defs/ForgetLedgerChainEntry"
+          }
+        },
+        "head": {
+          "type": "object",
+          "properties": {
+            "forgetting_generation": {
+              "$ref": "#/$defs/ForgettingGeneration"
+            },
+            "entry_hash": {
+              "$ref": "#/$defs/Hash"
+            }
+          },
+          "required": ["forgetting_generation", "entry_hash"],
+          "additionalProperties": false,
+          "description": "最新の世代とその entry_hash。台帳が空なら世代 0・64 個の 0。"
+        },
+        "written_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": ["schema", "ledger_id", "entries", "head", "written_at"],
+      "additionalProperties": false,
+      "description": "忘却台帳の別ファイル（設計 03 バックアップ・復元、ADR 0040）。DB の forget_ledger とは別に、本文なしで世代を 1 から欠番なく並べ、hash で連鎖させる。追記だけで、先頭を削らない。ledger_id は台帳の系譜で、復元しても変わらない。意味検査: 世代の欠番・重複、previous_hash の不一致、entry_hash の不一致、head の不一致。"
+    },
+    "ForgetLedgerReplica": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.forget-ledger-replica.v1"
+        },
+        "device_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "replicated_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "ledger": {
+          "$ref": "#/$defs/ForgetLedgerFile"
+        }
+      },
+      "required": ["schema", "device_id", "replicated_at", "ledger"],
+      "additionalProperties": false,
+      "description": "登録済み端末へ複製した忘却台帳（設計 03、ADR 0040）。部分の複製は作らず、世代 1 から head までの全体だけを持つ（完全でない複製は意味検査に通らない）。端末は複製を忘却の判定に使えるだけで、台帳の正本にはならない。"
+    },
+    "BackupKeyWrap": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "enum": ["backup_file", "data_key"]
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "recovery_key_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kdf": {
+          "type": "object",
+          "properties": {
+            "algorithm": {
+              "const": "hkdf-sha256"
+            },
+            "salt": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9+/]{22}==$"
+            }
+          },
+          "required": ["algorithm", "salt"],
+          "additionalProperties": false
+        },
+        "cipher": {
+          "const": "aes-256-gcm"
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{16}$"
+        },
+        "wrapped_material": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{43}=$"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{22}==$"
+        }
+      },
+      "required": [
+        "purpose",
+        "key_id",
+        "recovery_key_id",
+        "kdf",
+        "cipher",
+        "nonce",
+        "wrapped_material",
+        "tag"
+      ],
+      "additionalProperties": false,
+      "description": "復旧キーで包んだ鍵 1 つ（J1、ADR 0040）。復旧キーは 256 ビットの乱数で、HKDF-SHA256（salt 付き）で導いた鍵で AES-256-GCM により包む。purpose が backup_file ならバックアップ本体の鍵、data_key なら DB の暗号文（sealed_blobs）の鍵。包んだ値だけで、平文の鍵・復旧キーを持たない。"
+    },
+    "BackupManifest": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.backup-manifest.v1"
+        },
+        "backup_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "store_generation": {
+          "$ref": "#/$defs/StoreGeneration"
+        },
+        "db_schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "forgetting_generation": {
+          "$ref": "#/$defs/ForgettingGeneration"
+        },
+        "ledger_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "ledger_head_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "included_storage_modes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["normal", "extended"]
+          }
+        },
+        "excluded_data": {
+          "type": "array",
+          "minItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "raw_audio",
+              "private_conversation",
+              "oauth_tokens",
+              "api_keys"
+            ]
+          },
+          "allOf": [
+            {
+              "type": "array",
+              "contains": {
+                "const": "raw_audio"
+              }
+            },
+            {
+              "type": "array",
+              "contains": {
+                "const": "private_conversation"
+              }
+            },
+            {
+              "type": "array",
+              "contains": {
+                "const": "oauth_tokens"
+              }
+            },
+            {
+              "type": "array",
+              "contains": {
+                "const": "api_keys"
+              }
+            }
+          ]
+        },
+        "excluded_tables": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          }
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "sha256": {
+              "$ref": "#/$defs/Hash"
+            }
+          },
+          "required": ["bytes", "sha256"],
+          "additionalProperties": false
+        },
+        "key_wraps": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/BackupKeyWrap"
+          },
+          "allOf": [
+            {
+              "type": "array",
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "purpose": {
+                    "const": "backup_file"
+                  }
+                },
+                "required": ["purpose"]
+              }
+            },
+            {
+              "type": "array",
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "purpose": {
+                    "const": "data_key"
+                  }
+                },
+                "required": ["purpose"]
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "backup_id",
+        "created_at",
+        "store_generation",
+        "db_schema_version",
+        "forgetting_generation",
+        "ledger_id",
+        "ledger_head_hash",
+        "included_storage_modes",
+        "excluded_data",
+        "excluded_tables",
+        "payload",
+        "key_wraps"
+      ],
+      "additionalProperties": false,
+      "description": "バックアップの封筒（manifest。設計 03 バックアップ・復元、ADR 0040）。本文を持たず、復元の最初の判定に要る値だけを平文で持つ。included_storage_modes に private を入れられない。excluded_data の 4 つ（生音声・記録しない会話・OAuth トークン・API キー）は必ず記録する。store_generation は取った時点の DB の世代で、復元では新しい値にする。forgetting_generation と ledger_head_hash は取った時点の台帳の最新（世代 0 なら 64 個の 0）。"
+    },
+    "RestoreRejectionReason": {
+      "type": "string",
+      "enum": [
+        "latest_ledger_unconfirmed",
+        "latest_ledger_missing",
+        "backup_newer_than_ledger",
+        "ledger_chain_invalid",
+        "ledger_lineage_mismatch",
+        "backup_ledger_hash_mismatch",
+        "manifest_invalid",
+        "backup_unreadable",
+        "clock_regression",
+        "forget_apply_failed",
+        "db_integrity_failed",
+        "schema_newer_than_code",
+        "rebuild_failed"
+      ],
+      "description": "復元を止める理由（ADR 0040）。段階ごとに出せる理由が決まっている（意味検査）。"
+    },
+    "RestoreStageResult": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": [
+            "ledger_check",
+            "expiry_purge",
+            "forget_apply",
+            "db_verify",
+            "rebuild_views",
+            "external_reconcile"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "not_run", "pending"]
+        },
+        "reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/RestoreRejectionReason"
+          }
+        }
+      },
+      "required": ["stage", "status", "reasons"],
+      "additionalProperties": false,
+      "description": "復元の 1 段階の判定。pending は external_reconcile だけで、再認証が済むまで外部の状態を照合できない（結果不明の操作は保留のまま）。"
+    },
+    "RestoreAftermath": {
+      "type": "object",
+      "properties": {
+        "new_store_generation": {
+          "$ref": "#/$defs/StoreGeneration"
+        },
+        "applied_forgetting_generation": {
+          "$ref": "#/$defs/ForgettingGeneration"
+        },
+        "expired_deleted_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "forgotten_applied_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "approvals_revoked_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "operations_held_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consents_reset": {
+          "const": true
+        },
+        "connections_reauth_required": {
+          "const": true
+        }
+      },
+      "required": [
+        "new_store_generation",
+        "applied_forgetting_generation",
+        "expired_deleted_count",
+        "forgotten_applied_count",
+        "approvals_revoked_count",
+        "operations_held_count",
+        "consents_reset",
+        "connections_reauth_required"
+      ],
+      "additionalProperties": false,
+      "description": "復元で戻した後の状態（J3、ADR 0040）。DB の世代は新しい値にし、有効だった承認はすべて失効、進行中の操作は結果不明として保留、外部への送信の同意は取り直し、外部サービスの接続は再認証。件数だけで ID・本文を持たない。"
+    },
+    "RestoreResult": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.restore-result.v1"
+        },
+        "restore_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "backup_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "backup_store_generation": {
+          "$ref": "#/$defs/StoreGeneration"
+        },
+        "started_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "finished_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["restored", "settings_only", "rejected"]
+        },
+        "failed_stage": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "ledger_check",
+                "expiry_purge",
+                "forget_apply",
+                "db_verify",
+                "rebuild_views",
+                "external_reconcile"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stages": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "const": "ledger_check"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["passed", "failed", "not_run", "pending"]
+                },
+                "reasons": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/RestoreRejectionReason"
+                  }
+                }
+              },
+              "required": ["stage", "status", "reasons"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "const": "expiry_purge"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["passed", "failed", "not_run", "pending"]
+                },
+                "reasons": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/RestoreRejectionReason"
+                  }
+                }
+              },
+              "required": ["stage", "status", "reasons"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "const": "forget_apply"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["passed", "failed", "not_run", "pending"]
+                },
+                "reasons": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/RestoreRejectionReason"
+                  }
+                }
+              },
+              "required": ["stage", "status", "reasons"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "const": "db_verify"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["passed", "failed", "not_run", "pending"]
+                },
+                "reasons": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/RestoreRejectionReason"
+                  }
+                }
+              },
+              "required": ["stage", "status", "reasons"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "const": "rebuild_views"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["passed", "failed", "not_run", "pending"]
+                },
+                "reasons": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/RestoreRejectionReason"
+                  }
+                }
+              },
+              "required": ["stage", "status", "reasons"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "const": "external_reconcile"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["passed", "failed", "not_run", "pending"]
+                },
+                "reasons": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/RestoreRejectionReason"
+                  }
+                }
+              },
+              "required": ["stage", "status", "reasons"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "after_restore": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RestoreAftermath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "restore_id",
+        "backup_id",
+        "backup_store_generation",
+        "started_at",
+        "finished_at",
+        "outcome",
+        "failed_stage",
+        "stages",
+        "after_restore"
+      ],
+      "additionalProperties": false,
+      "description": "復元の結果（設計 03 バックアップ・復元、ADR 0040）。6 段階（台帳の確認 → 期限切れの削除 → 忘却の適用 → DB の検証 → 画面と索引の作り直し → 外部の状態の照合）をこの順に必ず記録する。restored は全段階が成功（外部の照合は再認証待ちの pending も可）、settings_only は台帳の確認で止まったときに非機密の設定だけを戻す場合、rejected は何も戻さない場合。"
+    },
+    "RetentionNoticeItem": {
+      "type": "object",
+      "properties": {
+        "item_kind": {
+          "type": "string",
+          "enum": ["turn", "source_item", "memory", "carried_summary"]
+        },
+        "item_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:=+~-]{1,128}$"
+        }
+      },
+      "required": ["item_kind", "item_id"],
+      "additionalProperties": false,
+      "description": "知らせの対象 1 件。ID だけ（空白・日本語を含む文を入れられない）。carried_summary の item_id は要約をつないだ区間の ID。"
+    },
+    "RetentionNotice": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "const": "buddy.retention-notice.v1"
+            },
+            "notice_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "occurred_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "kind": {
+              "const": "expired"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "retention_due",
+                "review_unanswered",
+                "summary_origin_expired"
+              ]
+            },
+            "forgetting_generation": {
+              "type": "null"
+            },
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/RetentionNoticeItem"
+              }
+            }
+          },
+          "required": [
+            "schema",
+            "notice_id",
+            "occurred_at",
+            "kind",
+            "reason",
+            "forgetting_generation",
+            "items"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "const": "buddy.retention-notice.v1"
+            },
+            "notice_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "occurred_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "kind": {
+              "const": "forgotten"
+            },
+            "reason": {
+              "type": "string",
+              "enum": ["forgotten", "derived_from_forgotten"]
+            },
+            "forgetting_generation": {
+              "$ref": "#/$defs/ForgettingGeneration"
+            },
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/RetentionNoticeItem"
+              }
+            }
+          },
+          "required": [
+            "schema",
+            "notice_id",
+            "occurred_at",
+            "kind",
+            "reason",
+            "forgetting_generation",
+            "items"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "期限切れ・忘却の知らせ（キャンバス向け。UI-05、ADR 0040）。ID と理由だけで、本文・要約・検索語を入れない。受け取った側は該当の物を表示から消す。期限切れは forgetting_generation が null、忘却は台帳の世代を持つ。"
+    },
+    "StorageModeState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "const": "buddy.storage-mode-state.v1"
+            },
+            "segment_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "storage_mode": {
+              "const": "normal"
+            },
+            "since": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "effects": {
+              "type": "object",
+              "properties": {
+                "persist_turns": {
+                  "const": true
+                },
+                "persist_summary": {
+                  "const": true
+                },
+                "save_memory": {
+                  "const": true
+                },
+                "extract_memory": {
+                  "const": true
+                },
+                "record_shadow": {
+                  "const": true
+                },
+                "open_live": {
+                  "const": true
+                },
+                "local_asr": {
+                  "const": true
+                },
+                "turn_retention_days": {
+                  "const": 7
+                },
+                "operation_record": {
+                  "const": "full"
+                }
+              },
+              "required": [
+                "persist_turns",
+                "persist_summary",
+                "save_memory",
+                "extract_memory",
+                "record_shadow",
+                "open_live",
+                "local_asr",
+                "turn_retention_days",
+                "operation_record"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "schema",
+            "segment_id",
+            "storage_mode",
+            "since",
+            "effects"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "const": "buddy.storage-mode-state.v1"
+            },
+            "segment_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "storage_mode": {
+              "const": "extended"
+            },
+            "since": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "effects": {
+              "type": "object",
+              "properties": {
+                "persist_turns": {
+                  "const": true
+                },
+                "persist_summary": {
+                  "const": true
+                },
+                "save_memory": {
+                  "const": true
+                },
+                "extract_memory": {
+                  "const": true
+                },
+                "record_shadow": {
+                  "const": true
+                },
+                "open_live": {
+                  "const": true
+                },
+                "local_asr": {
+                  "const": true
+                },
+                "turn_retention_days": {
+                  "const": 30
+                },
+                "operation_record": {
+                  "const": "full"
+                }
+              },
+              "required": [
+                "persist_turns",
+                "persist_summary",
+                "save_memory",
+                "extract_memory",
+                "record_shadow",
+                "open_live",
+                "local_asr",
+                "turn_retention_days",
+                "operation_record"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "schema",
+            "segment_id",
+            "storage_mode",
+            "since",
+            "effects"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "const": "buddy.storage-mode-state.v1"
+            },
+            "segment_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "storage_mode": {
+              "const": "private"
+            },
+            "since": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "effects": {
+              "type": "object",
+              "properties": {
+                "persist_turns": {
+                  "const": false
+                },
+                "persist_summary": {
+                  "const": false
+                },
+                "save_memory": {
+                  "const": false
+                },
+                "extract_memory": {
+                  "const": false
+                },
+                "record_shadow": {
+                  "const": false
+                },
+                "open_live": {
+                  "const": false
+                },
+                "local_asr": {
+                  "const": true
+                },
+                "turn_retention_days": {
+                  "const": null
+                },
+                "operation_record": {
+                  "const": "minimal_after_confirmation"
+                }
+              },
+              "required": [
+                "persist_turns",
+                "persist_summary",
+                "save_memory",
+                "extract_memory",
+                "record_shadow",
+                "open_live",
+                "local_asr",
+                "turn_retention_days",
+                "operation_record"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "schema",
+            "segment_id",
+            "storage_mode",
+            "since",
+            "effects"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "区切りの保存モードの状態（設計 03 保存期限・記録しない会話の境界、ADR 0040）。モードごとに何を保存し何を禁じるかを固定の値で持ち、private では発言・要約・記憶・抽出・影モードの記録・Live の接続を持てない。端末内の音声認識（③）は使える。判定は Core のコードが持ち、クライアントは表示にだけ使う。"
+    },
+    "RecoveryKeyRecord": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "const": "buddy.recovery-key-record.v1"
+            },
+            "recovery_key_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "created_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "check_value": {
+              "type": "string",
+              "pattern": "^[0-9A-F]{8}$"
+            },
+            "state": {
+              "const": "not_shown"
+            },
+            "shown_at": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "schema",
+            "recovery_key_id",
+            "created_at",
+            "check_value",
+            "state",
+            "shown_at"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "const": "buddy.recovery-key-record.v1"
+            },
+            "recovery_key_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "created_at": {
+              "$ref": "#/$defs/UtcTime"
+            },
+            "check_value": {
+              "type": "string",
+              "pattern": "^[0-9A-F]{8}$"
+            },
+            "state": {
+              "const": "shown"
+            },
+            "shown_at": {
+              "$ref": "#/$defs/UtcTime"
+            }
+          },
+          "required": [
+            "schema",
+            "recovery_key_id",
+            "created_at",
+            "check_value",
+            "state",
+            "shown_at"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "復旧キーの記録（J1、ADR 0040）。Core が保存する秘密でない情報で、復旧キーそのものを持たない。check_value は復旧キーから別の用途ラベルで導いた 32 ビットの確認用の値で、復元で入力したキーの打ち間違いを先に見つけるためだけに使う。shown は本人へ 1 度だけ表示した後の状態で、以後キーは再表示できない。"
+    },
+    "RecoveryKeyDisplay": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.recovery-key-display.v1"
+        },
+        "recovery_key_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "recovery_code": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){12}$"
+        },
+        "display_once": {
+          "const": true
+        }
+      },
+      "required": [
+        "schema",
+        "recovery_key_id",
+        "created_at",
+        "recovery_code",
+        "display_once"
+      ],
+      "additionalProperties": false,
+      "description": "復旧キーの初回の表示（J1、ADR 0040）。自動で作った 256 ビットの乱数を Crockford base32（4 文字 × 13 組）にした文字列で、作った直後に 1 度だけローカルの操作（CLI・中枢の画面）へ返す。HTTP・イベント・ログ・DB・バックアップへ出さない。"
+    },
+    "BackupConfig": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.backup-config.v1"
+        },
+        "directory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$))(?:/|[A-Za-z]:[\\\\/]).+$"
+        },
+        "keep_generations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        }
+      },
+      "required": ["schema", "directory", "keep_generations"],
+      "additionalProperties": false,
+      "description": "バックアップの置き場所の設定（J2、ADR 0040）。中枢のローカルの設定ファイル（リポジトリの外。予算の設定と同じ方式）に書き、起動時に Schema で検査して読み込む。ディレクトリは絶対パスで、.. を含められない。保持する世代の数の初期値は 7（設計 03）。同期フォルダーも使えるが警告する（BackupLocationCheck）。"
+    },
+    "BackupLocationCheck": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.backup-location-check.v1"
+        },
+        "directory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$))(?:/|[A-Za-z]:[\\\\/]).+$"
+        },
+        "usable": {
+          "type": "boolean"
+        },
+        "problems": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["not_a_directory", "not_writable", "is_data_directory"]
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["sync_folder_detected"]
+          }
+        },
+        "sync_provider_hint": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["icloud", "onedrive", "dropbox", "google_drive", "other"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "directory",
+        "usable",
+        "problems",
+        "warnings",
+        "sync_provider_hint"
+      ],
+      "additionalProperties": false,
+      "description": "バックアップの置き場所の検査の結果（J2、ADR 0040）。同期フォルダーは使えるが warnings に sync_folder_detected を出す（クラウド側に古い版が残る可能性）。problems があれば使えない。意味検査: usable は problems が空のときだけ true、sync_provider_hint は sync_folder_detected があるときだけ値を持つ。"
     }
   }
 }

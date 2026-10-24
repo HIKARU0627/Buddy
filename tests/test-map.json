@@ -220,7 +220,12 @@
         "packages/contracts/fixtures/memory-cases.json#x15-derived-memory-forgotten",
         "packages/contracts/fixtures/memory-cases.json#x15-late-summary-after-forget",
         "packages/contracts/fixtures/memory-cases.json#x15-revival-started-after-forget",
-        "tests/fixtures/storage-cases.json#memories-one-live-content-and-no-extension"
+        "tests/fixtures/storage-cases.json#memories-one-live-content-and-no-extension",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-forgotten",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-derived-from-forgotten",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-item-with-body-field-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-item-id-is-sentence-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-with-summary-field-rejected"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -235,7 +240,18 @@
         "packages/contracts/fixtures/memory-cases.json#turn-within-deadline",
         "packages/contracts/fixtures/memory-cases.json#x16-ledger-lost-everywhere",
         "packages/contracts/fixtures/memory-cases.json#x16-only-old-or-broken-copies",
-        "tests/fixtures/storage-cases.json#turn-deadlines-are-never-extended"
+        "tests/fixtures/storage-cases.json#turn-deadlines-are-never-extended",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-file-three-generations",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-file-generation-gap",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-file-hash-chain-broken",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-file-entry-rewritten",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-file-head-behind",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-replica-partial-copy",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-backup-manifest-valid",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-backup-manifest-body-field-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-restore-ledger-lost-settings-only",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-restore-backup-newer-than-ledger",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-restore-store-generation-not-renewed"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -248,7 +264,12 @@
         "packages/contracts/fixtures/evaluation-cases.json#x48-private-conversation",
         "packages/contracts/fixtures/memory-cases.json#private-conversation",
         "packages/contracts/fixtures/memory-cases.json#x17-private-conversation",
-        "packages/contracts/fixtures/consent-cases.json#private-conversation"
+        "packages/contracts/fixtures/consent-cases.json#private-conversation",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private-opens-live-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private-persists-turns-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-backup-manifest-includes-private-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-backup-manifest-private-exclusion-missing-rejected"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

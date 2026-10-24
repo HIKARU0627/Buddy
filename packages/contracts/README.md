@@ -8,6 +8,7 @@ B00 の初回契約です。`schemas/buddy.schema.json`（Draft 2020-12）がデ
 - 経路ごとの要求・応答・エラーと、Core が行う検査の表（`x-buddy-core-checks`）。WSS のメッセージは `EventStreamMessage`。
 - デスクトップの UI レンダラーと main の間の限定 IPC（要求・応答・通知・状態欄。`DesktopIpcRequest` ほか。ADR 0014）。main が受け取った要求をこの定義で検査します。
 - 音声レンダラーへの限定 IPC（`VoiceRendererRequest`・`VoiceRendererAck`）、Live の制御接続の遷移、リースの更新、input_kind の受付の規則、外部への送信の同意（ADR 0038）。
+- 忘却台帳の別ファイル（hash の連鎖）と端末の複製、バックアップの封筒・復元の結果（6 段階と拒否の理由）、期限切れ・忘却の知らせ、保存モードの状態、復旧キー、バックアップの置き場所の設定（ADR 0040）。
 - 記憶の候補・忘却台帳・本人の指示、モデルの配備（DeploymentManifest）・用途別の評価結果・影モードの記録・評価セットの書き出し形式（ADR 0008）。
 - `model-evaluation.json` は評価候補。API 呼出し・モデルの有効化・利用料の承認を行う設定ではありません。
 

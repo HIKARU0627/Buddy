@@ -18,6 +18,7 @@ import {
   budgetFailureText,
   entryExpired,
   expiryText,
+  forgetBudget,
   occurredText,
   ordinalText,
   originText,
@@ -503,4 +504,83 @@ test('an unknown result that arrives after the hold was released does not bring 
   // その後の同期でも戻らない。
   store.sync([approval()]);
   assert.equal(store.snapshot().notices[id(1)], undefined);
+});
+
+test('an unknown result shows the wait notice even when another entry becomes held after the send', async () => {
+  let release: (response: DesktopIpcResponse) => void = () => undefined;
+  const store = new BudgetStore({
+    invoke: () =>
+      new Promise<DesktopIpcResponse>((resolve) => {
+        release = resolve;
+      }),
+  });
+  store.sync([approval()]);
+  store.actions.decide(id(1), 'approve');
+  // 別の項目（id(7)）が保留になる。id(1) は解除されていない。
+  store.sync([approval(), approval({ ref: id(7), delivery_unknown: true })]);
+  assert.deepEqual(store.snapshot().held, [id(7)]);
+  release(rejected('outcome_unknown'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(store.snapshot().busy, []);
+  assert.deepEqual(store.snapshot().notices[id(1)], {
+    tone: 'warning',
+    text: '結果を確かめられませんでした。自動では送り直しません。表示が更新されるまで、お待ちください。',
+  });
+  assert.equal(store.snapshot().notices[id(7)], undefined);
+});
+
+test('an unknown result shows the wait notice even when the hold of another entry is released after the send', async () => {
+  let release: (response: DesktopIpcResponse) => void = () => undefined;
+  const store = new BudgetStore({
+    invoke: () =>
+      new Promise<DesktopIpcResponse>((resolve) => {
+        release = resolve;
+      }),
+  });
+  // 別の項目（id(7)）が保留の一覧から始める。
+  store.sync([approval(), approval({ ref: id(7), delivery_unknown: true })]);
+  assert.deepEqual(store.snapshot().held, [id(7)]);
+  store.actions.decide(id(1), 'approve');
+  // 別の項目の保留だけが解ける。id(1) は解除されていない。
+  store.sync([approval(), approval({ ref: id(7) })]);
+  assert.deepEqual(store.snapshot().held, []);
+  assert.equal(store.snapshot().releasedAt[id(7)], 2);
+  assert.equal(store.snapshot().releasedAt[id(1)], undefined);
+  release(rejected('outcome_unknown'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(store.snapshot().busy, []);
+  assert.deepEqual(store.snapshot().notices[id(1)], {
+    tone: 'warning',
+    text: '結果を確かめられませんでした。自動では送り直しません。表示が更新されるまで、お待ちください。',
+  });
+  assert.equal(store.snapshot().notices[id(7)], undefined);
+});
+
+test('an entry that leaves the list after the send takes no wait notice when the unknown result arrives late', async () => {
+  let release: (response: DesktopIpcResponse) => void = () => undefined;
+  const store = new BudgetStore({
+    invoke: () =>
+      new Promise<DesktopIpcResponse>((resolve) => {
+        release = resolve;
+      }),
+  });
+  store.sync([approval()]);
+  store.actions.decide(id(1), 'approve');
+  // 送信の後に、項目自体が一覧から消える（表示する行がない）。
+  store.sync([]);
+  assert.deepEqual(store.snapshot().busy, []);
+  assert.equal(store.snapshot().releasedAt[id(1)], 1);
+  release(rejected('outcome_unknown'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(store.snapshot().busy, []);
+  assert.equal(store.snapshot().notices[id(1)], undefined);
+});
+
+test('hiding (a lock or a disconnect) clears the per-entry release versions', () => {
+  const held = approval({ ref: id(7), delivery_unknown: true });
+  let state: BudgetViewState = syncBudget(INITIAL_BUDGET_STATE, [held]);
+  state = syncBudget(state, [{ ...held, delivery_unknown: false }]);
+  assert.equal(state.releasedAt[id(7)], 2);
+  assert.deepEqual(forgetBudget().releasedAt, {});
+  assert.deepEqual(forgetBudget(), INITIAL_BUDGET_STATE);
 });

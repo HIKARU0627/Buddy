@@ -2,7 +2,7 @@
 // 画面と main の確認ダイアログが同じ書き方で金額を見せるため、純粋な関数として domain に置く（Electron・DOM に依存しない）。
 // 浮動小数点数を使わず、BigInt と文字列だけで変換する（丸めない。小数点以下 6 桁を超える入力は受け付けない）。
 
-import { BUDGET_AMOUNT_MAX } from './budget-rules.js';
+import { AMOUNT_PATTERN, BUDGET_AMOUNT_MAX } from './budget-rules.js';
 import type { BudgetOrigin } from './budget-rules.js';
 
 const MICRO = 1_000_000n;
@@ -16,7 +16,7 @@ export interface MoneyValue {
 
 // 整数部は 3 桁ごとに区切る。小数部は 2 桁を最低に、末尾の 0 を省く（0.5 → 0.50、0.000040 → 0.00004）。
 export function formatAmount(amount: string): string {
-  if (!/^(0|[1-9][0-9]{0,17})$/u.test(amount)) return amount;
+  if (!AMOUNT_PATTERN.test(amount)) return amount;
   const value = BigInt(amount);
   const whole = (value / MICRO)
     .toString()

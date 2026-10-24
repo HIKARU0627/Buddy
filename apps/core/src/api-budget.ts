@@ -45,6 +45,8 @@ const CONFLICT_REASONS: ReadonlySet<string> = new Set([
   'not_settleable',
   'reconciliation_id_used',
   'currency_mismatch',
+  // クレジットの区分が、予約が受付時に結び付いた周期と合わない（別の周期への付け替え・周期のない予約へのクレジット）。
+  'credit_cycle_mismatch',
 ]);
 
 // 本文の形は経路の形式の検査（JSON Schema）が済ませている。取り出すだけ。
@@ -149,17 +151,22 @@ export function createBudgetRoutes(options: BudgetRoutesOptions): BudgetRoutes {
     const actual = moneyOf(body['actual_gross']);
     const credit = moneyOf(body['credit_applied']);
     const additional = moneyOf(body['additional_spend']);
-    // クレジットの区分の決め方（MA03〜MA06）は B07-07。それまでは初期の規則（クレジット 0・追加の支出＝実費・周期なし）
-    // だけを受け付け、推測の区分を記録しない（ADR 0034・0039）。
+    const cycleId =
+      typeof body['credit_cycle_id'] === 'string'
+        ? body['credit_cycle_id']
+        : null;
+    // クレジットの区分（B07-07、ADR 0042）。本人が請求の照合で得た値を、実費 = クレジット + 追加の支出、クレジットを
+    // 充てたなら周期あり、の形で受け付ける。推測の区分は記録しない。クレジットが予約の周期と合うか（別の周期へ付け替えない・
+    // 周期のない予約へ充てない）は、保存した予約と照合して決める（合わなければ 409）。
     if (
       !MANUAL_RECONCILIATION_ID.test(
         stringOf(body['manual_reconciliation_id']),
       ) ||
       credit.currency !== actual.currency ||
       additional.currency !== actual.currency ||
-      credit.amount !== '0' ||
-      additional.amount !== actual.amount ||
-      body['credit_cycle_id'] !== null
+      BigInt(credit.amount) + BigInt(additional.amount) !==
+        BigInt(actual.amount) ||
+      (BigInt(credit.amount) > 0n && cycleId === null)
     )
       return apiErrorResponse(422, 'invalid_input', requestId);
     const result = await gate.settleManual({
@@ -167,6 +174,9 @@ export function createBudgetRoutes(options: BudgetRoutesOptions): BudgetRoutes {
       expected_revision: stringOf(body['expected_reservation_revision']),
       manual_reconciliation_id: stringOf(body['manual_reconciliation_id']),
       actual_gross: actual,
+      credit_applied: credit,
+      additional_spend: additional,
+      credit_cycle_id: cycleId,
       request: requestRef(request, reservationId),
     });
     if (!result.ok) return failure(result, requestId);

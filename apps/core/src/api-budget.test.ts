@@ -18,9 +18,13 @@ import { API_ROUTES } from './api-routes.js';
 import { pinnedRequest, tempDir } from './api-test-support.js';
 import type { TestDevice } from './api-test-support.js';
 import { BUDGET_CONFIG_FILE } from './budget-config.js';
+import { BUDGET_CREDIT_FILE } from './budget-credit.js';
 import {
   MockPaidProvider,
   OCT_15,
+  claudeRequest,
+  creditConfig,
+  creditObservation,
   syntheticConfig,
   textRequest,
   uuid,
@@ -78,14 +82,29 @@ interface Harness {
   sql<T>(body: (db: ReturnType<typeof openWriteConnection>) => T): T;
 }
 
-async function start(t: test.TestContext): Promise<Harness> {
+async function start(
+  t: test.TestContext,
+  options: { readonly credit?: boolean } = {},
+): Promise<Harness> {
   const dataDir = join(await tempDir(t, 'buddy-api-budget-'), 'data');
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   await writeFile(
     join(dataDir, BUDGET_CONFIG_FILE),
-    JSON.stringify(syntheticConfig()),
+    JSON.stringify(
+      options.credit === true ? creditConfig() : syntheticConfig(),
+    ),
     { mode: 0o600 },
   );
+  // クレジットの観測（本人が書くファイル。残高 50 XXX = 100 XTS、周期 2030-10-01〜11-01）。
+  if (options.credit === true)
+    await writeFile(
+      join(dataDir, BUDGET_CREDIT_FILE),
+      JSON.stringify({
+        schema: 'buddy.budget-credit-observations.v1',
+        observations: [creditObservation()],
+      }),
+      { mode: 0o600 },
+    );
   const clock = { now: OCT_15 };
   const core = await startEventCore(t, {
     dataDir,
@@ -663,14 +682,21 @@ test(
     assert.equal(stale.json?.['code'], 'conflict');
     for (const wrong of [
       { manual_reconciliation_id: 'rcpt-1' },
+      // 実費と合わない区分・クレジットなのに周期がない・通貨違いは形の検査で 422。
       { credit_applied: xts('1') },
       { additional_spend: xts('2') },
-      { credit_cycle_id: 'anthropic:2030-10-01' },
+      { credit_applied: xts('1'), additional_spend: xts('2') },
       { actual_gross: { currency: 'XXX', amount: '3' } },
     ]) {
       const response = await settle(h, reservationId, wrong);
       assert.equal(response.status, 422, JSON.stringify(wrong) + response.text);
     }
+    // この予約はクレジットに結び付いていない（Luna）ので、周期を付ける入力は予約の記録と合わず 409（付け替えない）。
+    const attached = await settle(h, reservationId, {
+      credit_cycle_id: 'anthropic:2030-10-01',
+    });
+    assert.equal(attached.status, 409, attached.text);
+    assert.equal(attached.json?.['code'], 'conflict');
     assert.equal(
       first((await usage(h))['pending_reservations'])['status'],
       'usage_unknown',
@@ -731,6 +757,99 @@ test(
     const next = first((await usage(h))['pending_reservations']);
     const conflict = await settle(h, next['reservation_id'] as string, {});
     assert.equal(conflict.status, 409, conflict.text);
+  },
+);
+
+test(
+  'a manual settlement takes the credit split in the cycle the reservation belongs to, and refuses a split that does not add up or points to another cycle',
+  { timeout: 60_000 },
+  async (t) => {
+    const h = await start(t, { credit: true });
+    // Claude の要求の応答が届かなかった（usage 不明）。受付で今の周期に結び付き、M 40 はクレジットの残りから確保される。
+    h.provider.plan(uuid(1), { kind: 'drop', actual: '30' });
+    const run = await h.core.handle.budget.run(
+      claudeRequest(uuid(1)),
+      h.provider.send,
+    );
+    assert.equal(run.kind, 'usage_unknown');
+    const held = await usage(h);
+    const unknown = first(held['pending_reservations']);
+    assert.equal(unknown['credit_cycle_id'], 'anthropic:2030-10-01');
+    assert.equal(unknown['credit_applied'], null);
+    const reservationId = unknown['reservation_id'] as string;
+    const split = (credit: string, additional: string, cycle: unknown) => ({
+      actual_gross: xts('30'),
+      credit_applied: xts(credit),
+      additional_spend: xts(additional),
+      credit_cycle_id: cycle,
+    });
+    // 合わない区分・周期なしのクレジットは 422。別の周期への付け替えは 409。どれも何も変えない。
+    for (const wrong of [
+      split('20', '9', 'anthropic:2030-10-01'),
+      split('20', '10', null),
+      split('31', '0', 'anthropic:2030-10-01'),
+    ]) {
+      const response = await settle(h, reservationId, wrong);
+      assert.equal(response.status, 422, JSON.stringify(wrong) + response.text);
+    }
+    const other = await settle(
+      h,
+      reservationId,
+      split('20', '10', 'anthropic:2030-11-01'),
+    );
+    assert.equal(other.status, 409, other.text);
+    assert.equal(
+      first((await usage(h))['pending_reservations'])['status'],
+      'usage_unknown',
+    );
+    // 本人が請求の照合で得た区分（クレジット 20・追加の支出 10）を、予約の周期で一度だけ記録する。
+    const command = randomUUID();
+    const settled = await settle(
+      h,
+      reservationId,
+      split('20', '10', 'anthropic:2030-10-01'),
+      command,
+    );
+    assert.equal(settled.status, 200, settled.text);
+    assert(contract.valid('BudgetReservation', settled.json), settled.text);
+    assert.equal(settled.json?.['status'], 'settled');
+    assert.deepEqual(
+      [
+        settled.json?.['actual_gross'],
+        settled.json?.['credit_applied'],
+        settled.json?.['additional_spend'],
+        settled.json?.['credit_cycle_id'],
+        settled.json?.['profile_id'],
+      ],
+      [
+        xts('30'),
+        xts('20'),
+        xts('10'),
+        'anthropic:2030-10-01',
+        'claude.synthetic.v1',
+      ],
+    );
+    // 同じ命令の再送・別の命令での同じ区分は同じ結果。区分を変えた再適用は 409。
+    for (const requestId of [command, randomUUID()]) {
+      const repeated = await settle(
+        h,
+        reservationId,
+        split('20', '10', 'anthropic:2030-10-01'),
+        requestId,
+      );
+      assert.equal(repeated.status, 200, repeated.text);
+      assert.deepEqual(repeated.json, settled.json);
+    }
+    const changed = await settle(
+      h,
+      reservationId,
+      split('30', '0', 'anthropic:2030-10-01'),
+    );
+    assert.equal(changed.status, 409, changed.text);
+    // 通常料金の実費 30 は枠の上限に数える（クレジットの分も含む）。未精算は消える。
+    const after = await usage(h);
+    assert.deepEqual(after['pending_reservations'], []);
+    assert.deepEqual(poolOf(after, '2030-10', 'llm')['settled'], xts('30'));
   },
 );
 

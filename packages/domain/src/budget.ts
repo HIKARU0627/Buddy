@@ -20,8 +20,11 @@ export type ReservationStatus =
   'reserved' | 'usage_unknown' | 'settled' | 'released';
 
 // 契約の BudgetReservation に対応する（ADR 0034 の対応表）。profile と単価の版は受付時に固定し、
-// 精算・追加予約で変えない。クレジットの区分（credit_applied・additional_spend・credit_cycle_id）は
-// B07-07 で分け方を決めてから足す。それまで精算は通常料金の実費（actualGross）だけを持つ。
+// 精算・追加予約で変えない。通常料金の実費（actualGross）が枠の上限を数える値で、クレジットの区分
+// （creditApplied・additionalSpend。実費 = クレジット + 追加の支出）は精算を分けて記録するだけで、上限の判定には
+// 使わない（05 クレジットの追補。ADR 0042）。creditCycleId は、クレジットを充てる profile の予約が受付時に結び付いた
+// 周期（周期をまたいで付け替えない）。省略した記録（合成のシナリオ・古い行）は「クレジット 0・追加の支出＝実費・
+// 周期なし」の初期の規則と同じ。
 export interface ReservationRecord {
   readonly reservationId: string;
   readonly requestId: string;
@@ -38,6 +41,9 @@ export interface ReservationRecord {
   readonly approvalId: string | null;
   readonly revision: string;
   readonly overrunReviewed: boolean;
+  readonly creditApplied?: string | null;
+  readonly additionalSpend?: string | null;
+  readonly creditCycleId?: string | null;
   // 保存した行の受付の時刻（UTC のミリ秒）と処理の起点。本人が対象を見分ける表示用で、判定には使わない（B07-05、
   // ADR 0039）。記録のない古い行・合成のシナリオでは省く（null）。
   readonly createdAt?: number;
@@ -240,13 +246,16 @@ export function topUpReservation(
   };
 }
 
-// 確定した usage で一度だけ精算する。元の月・元の枠のまま、M 超過も記録する。
+// 確定した usage で一度だけ精算する。元の月・元の枠のまま、M 超過も記録する。クレジットの区分（creditApplied。省略は
+// 0）は Buddy の台帳で決めた値で、provider が示す値ではないので、同じ精算の再適用の判定（照合 ID と実費）には使わない。
+// クレジットは、受付時に周期へ結び付いた予約（creditCycleId）で、実費以下のときだけ充てられる（ADR 0042）。
 export function settleReservation(
   reservation: ReservationRecord,
   settlement: {
     readonly requestId: string;
     readonly providerReconciliationId: string;
     readonly actualGross: string;
+    readonly creditApplied?: string;
   },
 ):
   | {
@@ -274,6 +283,11 @@ export function settleReservation(
       ? { ok: true, reservation, duplicate: true, overrun }
       : { ok: false, reasonCodes: ['settlement_conflict'] };
   }
+  const credit = BigInt(settlement.creditApplied ?? '0');
+  if (credit > BigInt(settlement.actualGross))
+    return { ok: false, reasonCodes: ['credit_exceeds_actual'] };
+  if (credit > 0n && (reservation.creditCycleId ?? null) === null)
+    return { ok: false, reasonCodes: ['credit_not_eligible'] };
   return {
     ok: true,
     duplicate: false,
@@ -283,6 +297,8 @@ export function settleReservation(
       status: 'settled',
       actualGross: settlement.actualGross,
       providerReconciliationId: settlement.providerReconciliationId,
+      creditApplied: credit.toString(),
+      additionalSpend: (BigInt(settlement.actualGross) - credit).toString(),
     },
   };
 }

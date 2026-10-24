@@ -3,12 +3,17 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  CREDIT_PROFILE,
   ManualTimers,
+  MemoryCreditSource,
   MockPaidProvider,
   NOV_02,
   OCT_15,
   TOKYO_NOV_START,
   barrier,
+  claudeRequest,
+  creditConfig,
+  creditObservation,
   loadedConfig,
   syntheticConfig,
   textRequest,
@@ -22,14 +27,19 @@ import {
 import { createApiContract } from '../../apps/core/dist/api-contract.js';
 
 export {
+  CREDIT_PROFILE,
   ManualTimers,
+  MemoryCreditSource,
   MockPaidProvider,
   NOV_02,
   OCT_15,
   TOKYO_NOV_START,
   barrier,
   checkBudgetConfigText,
+  claudeRequest,
   createApiContract,
+  creditConfig,
+  creditObservation,
   loadBudgetConfig,
   loadedConfig,
   syntheticConfig,
@@ -85,9 +95,10 @@ export function reservationRows(harness) {
     .sql((db) =>
       db
         .prepare(
-          `SELECT reservation_id, request_id, pool_id, requested_pool_id, origin, budget_month, price_version,
+          `SELECT reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, price_version,
                   status, reserved_amount, max_liability, actual_gross, dispatch_intent_at, approval_id,
-                  provider_reconciliation_id, settlement_kind, overrun_reviewed
+                  provider_reconciliation_id, settlement_kind, overrun_reviewed,
+                  credit_applied, additional_spend, credit_cycle_id
              FROM budget_reservations ORDER BY rowid`,
         )
         .all(),
@@ -95,6 +106,7 @@ export function reservationRows(harness) {
     .map((row) => ({
       reservation_id: row.reservation_id,
       request_id: row.request_id,
+      profile_id: row.profile_id,
       pool_id: row.pool_id,
       requested_pool_id: row.requested_pool_id,
       origin: row.origin,
@@ -109,6 +121,11 @@ export function reservationRows(harness) {
       reconciliation_id: row.provider_reconciliation_id,
       settlement_kind: row.settlement_kind,
       overrun_reviewed: row.overrun_reviewed === 1,
+      credit_applied:
+        row.credit_applied === null ? null : String(row.credit_applied),
+      additional_spend:
+        row.additional_spend === null ? null : String(row.additional_spend),
+      credit_cycle_id: row.credit_cycle_id,
     }));
 }
 
@@ -295,6 +312,74 @@ export const CLEAN = {
   settled_not_matching_truth: [],
   reused_reconciliation_ids: [],
   over_limit_pools: [],
+};
+
+// クレジットの区分の突き合わせ（B07-07、ADR 0042）。予約の行だけから、実装の判定とは別に数える。
+// - 周期のない行（音声・検索・指定のない profile）にクレジットがない。
+// - 精算済みの行は、実費 = クレジット + 追加の支出。クレジットは最大負担 M を超えない。
+// - 周期に結び付く行は、クレジットを充てる profile の LLM の枠（音声・検索の枠でない）だけ。
+// - 精算していない行にクレジットの区分はない（実費を 0 と確定しない）。
+// - 周期ごとのクレジットの合計は、その周期で観測した最も大きい残高（予算の通貨）を超えない（cap を渡したとき）。
+export function creditFindings({ rows, cap = {} }) {
+  const ids = (list) => list.map((row) => row.request_id);
+  const over = Object.entries(cap)
+    .filter(([cycle, limit]) => {
+      const total = rows
+        .filter((row) => row.credit_cycle_id === cycle)
+        .reduce((sum, row) => sum + BigInt(row.credit_applied ?? '0'), 0n);
+      return total > BigInt(limit);
+    })
+    .map(([cycle]) => cycle);
+  return {
+    credit_without_cycle: ids(
+      rows.filter(
+        (row) =>
+          row.credit_applied !== null &&
+          BigInt(row.credit_applied) > 0n &&
+          row.credit_cycle_id === null,
+      ),
+    ),
+    split_not_adding_up: ids(
+      rows.filter(
+        (row) =>
+          row.status === 'settled' &&
+          BigInt(row.actual_gross) !==
+            BigInt(row.credit_applied) + BigInt(row.additional_spend),
+      ),
+    ),
+    credit_above_m: ids(
+      rows.filter(
+        (row) =>
+          row.credit_applied !== null &&
+          BigInt(row.credit_applied) > BigInt(row.max_liability),
+      ),
+    ),
+    cycle_on_uncredited_row: ids(
+      rows.filter(
+        (row) =>
+          row.credit_cycle_id !== null &&
+          (row.profile_id !== CREDIT_PROFILE ||
+            ['voice', 'search'].includes(row.pool_id)),
+      ),
+    ),
+    split_on_unsettled_row: ids(
+      rows.filter(
+        (row) =>
+          row.status !== 'settled' &&
+          (row.credit_applied !== null || row.additional_spend !== null),
+      ),
+    ),
+    credit_over_observed_balance: over,
+  };
+}
+
+export const CLEAN_CREDIT = {
+  credit_without_cycle: [],
+  split_not_adding_up: [],
+  credit_above_m: [],
+  cycle_on_uncredited_row: [],
+  split_on_unsettled_row: [],
+  credit_over_observed_balance: [],
 };
 
 // 同時の予約では、受付の命令がすべて精算の前に並ぶ（関門）ので、M の合計も上限以内でなければならない。

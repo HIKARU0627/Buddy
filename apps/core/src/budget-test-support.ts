@@ -14,8 +14,13 @@ import {
   storagePlatform,
 } from '@buddy/storage';
 import type { SqliteDatabase } from '@buddy/storage';
+import type { CreditObservationInput } from '@buddy/domain';
 import { createApiContract } from './api-contract.js';
 import { checkBudgetConfigText } from './budget-config.js';
+import type {
+  CreditObservationSource,
+  LoadedCreditObservations,
+} from './budget-credit.js';
 import type { LoadedBudgetConfig } from './budget-config.js';
 import { BudgetGate } from './budget-gate.js';
 import type {
@@ -143,6 +148,78 @@ export function syntheticConfig(
   };
   change(config);
   return config;
+}
+
+// 付帯クレジットの合成の設定（B07-07）。クレジットを充てる profile は claude.synthetic.v1 だけ。残高の通貨は ISO の
+// 通貨なしコード XXX で、予算の通貨 XTS へ 1 単位あたり 2（残高 50 XXX = 100 XTS）。共有の観測は 1 時間で古くなる。
+export const CREDIT_PROFILE = 'claude.synthetic.v1';
+export function creditConfig(
+  change: (config: Record<string, unknown>) => void = () => undefined,
+): Record<string, unknown> {
+  return syntheticConfig((config) => {
+    config['credit'] = {
+      provider: 'anthropic',
+      profile_ids: [CREDIT_PROFILE],
+      balance_currency: 'XXX',
+      balance_to_budget_rate: '2',
+      shared_observation_max_age_ms: 3_600_000,
+    };
+    change(config);
+  });
+}
+
+// 合成の残高の観測（周期 2030-10-01〜2030-11-01、2030-10-15 に 50 XXX を観測、専用の組織）。
+export function creditObservation(
+  overrides: Partial<CreditObservationInput> = {},
+): CreditObservationInput {
+  return {
+    provider: 'anthropic',
+    organization_ref: 'synthetic-organization',
+    cycle_id: 'anthropic:2030-10-01',
+    observed_at: '2030-10-15T00:00:00.000Z',
+    expires_at: '2030-11-01T00:00:00.000Z',
+    balance: { currency: 'XXX', amount: '50' },
+    status: 'observed',
+    shared: false,
+    ...overrides,
+  };
+}
+
+// 本人が書く観測のファイルの代わり（メモリ）。読めない・ファイルがない状態も作れる。
+export class MemoryCreditSource implements CreditObservationSource {
+  observations: CreditObservationInput[];
+  failure: 'missing' | 'unreadable' | null = null;
+  reads = 0;
+  constructor(observations: readonly CreditObservationInput[] = []) {
+    this.observations = [...observations];
+  }
+  read(): Promise<LoadedCreditObservations> {
+    this.reads += 1;
+    if (this.failure === 'missing')
+      return Promise.resolve({
+        ok: false,
+        reasons: ['credit_missing'],
+        missing: true,
+      });
+    if (this.failure === 'unreadable')
+      return Promise.resolve({
+        ok: false,
+        reasons: ['credit_unreadable'],
+        missing: false,
+      });
+    return Promise.resolve({
+      ok: true,
+      observations: this.observations.map((item) => ({ ...item })),
+    });
+  }
+}
+
+// クレジットを充てる profile（Claude）の文字の要求。
+export function claudeRequest(
+  requestId: string,
+  overrides: Partial<PaidRequest> = {},
+): PaidRequest {
+  return textRequest(requestId, { profile_id: CREDIT_PROFILE, ...overrides });
 }
 
 export function loadedConfig(

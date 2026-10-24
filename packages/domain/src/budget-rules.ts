@@ -868,7 +868,8 @@ const isOverrunPending = (item: ReservationRecord): boolean =>
   !item.overrunReviewed &&
   BigInt(item.actualGross ?? '0') > BigInt(item.maxLiability);
 
-// 契約の BudgetReservation へ写す。クレジットの区分は B07-07 までの初期の規則（クレジット 0・追加の支出＝実費、ADR 0034）。
+// 契約の BudgetReservation へ写す。クレジットの区分は保存した値（B07-07、ADR 0042）。記録のない行は初期の規則
+// （クレジット 0・追加の支出＝実費・周期なし、ADR 0034）と同じ。
 export function toReservationView(
   item: ReservationRecord,
 ): BudgetReservationView {
@@ -890,9 +891,11 @@ export function toReservationView(
     status: item.status,
     provider_reconciliation_id: item.providerReconciliationId,
     actual_gross: settled ? money(item.actualGross as string) : null,
-    credit_applied: settled ? money('0') : null,
-    additional_spend: settled ? money(item.actualGross as string) : null,
-    credit_cycle_id: null,
+    credit_applied: settled ? money(item.creditApplied ?? '0') : null,
+    additional_spend: settled
+      ? money(item.additionalSpend ?? (item.actualGross as string))
+      : null,
+    credit_cycle_id: item.creditCycleId ?? null,
     approval_id: item.approvalId,
     overrun_reviewed: item.overrunReviewed,
     ...(item.createdAt === undefined
@@ -1235,6 +1238,11 @@ export interface ManualSettlementInput {
   readonly manualReconciliationId: string;
   readonly currency: string;
   readonly actualGross: string;
+  // クレジットの区分（本人が請求の照合で得た値。省略は「クレジット 0・追加の支出＝実費」）。クレジットは、受付時に
+  // 周期へ結び付いた予約（creditCycleId）の同じ周期にだけ充てられ、別の周期へ付け替えない。実費 = クレジット + 追加の支出。
+  readonly creditApplied?: string;
+  readonly additionalSpend?: string;
+  readonly creditCycleId?: string | null;
 }
 
 // 不明な費用の手での精算（本人の判断 2026-10-23）。usage 不明の予約だけに、元の月・元の枠のまま一度だけ適用する。
@@ -1261,12 +1269,31 @@ export function settleManually(
     reasons.push('invalid_amount');
   if (reservation.revision !== input.expectedRevision)
     reasons.push('revision_conflict');
-  if (reasons.length > 0) return { ok: false, reasonCodes: reasons };
+  // クレジットの区分。省略は初期の規則（クレジット 0・追加の支出＝実費・周期なし）。
+  const credit = toInteger(input.creditApplied ?? '0');
+  const additional =
+    input.additionalSpend === undefined
+      ? actual
+      : toInteger(input.additionalSpend);
+  const cycle = input.creditCycleId ?? null;
+  if (credit === null || additional === null || credit > BUDGET_AMOUNT_MAX)
+    reasons.push('invalid_amount');
+  else if (actual !== null && credit + additional !== actual)
+    reasons.push('settlement_sum');
+  if (credit !== null && credit > 0n && cycle === null)
+    reasons.push('missing_credit_cycle');
+  if (cycle !== null && cycle !== (reservation.creditCycleId ?? null))
+    reasons.push('credit_cycle_mismatch');
+  if (reasons.length > 0) return { ok: false, reasonCodes: unique(reasons) };
   const overrun = (actual as bigint) > BigInt(reservation.maxLiability);
   if (reservation.status === 'settled') {
+    // 同じ手での精算の再適用は、照合 ID・実費・クレジットの区分がすべて同じときだけ（本人が入れた値なので区分も照合する）。
     const same =
       reservation.providerReconciliationId === input.manualReconciliationId &&
-      reservation.actualGross === input.actualGross;
+      reservation.actualGross === input.actualGross &&
+      (reservation.creditApplied ?? '0') === (credit as bigint).toString() &&
+      (reservation.additionalSpend ?? reservation.actualGross) ===
+        (additional as bigint).toString();
     return same
       ? { ok: true, reservation, duplicate: true, overrun }
       : { ok: false, reasonCodes: ['already_settled'] };
@@ -1284,6 +1311,8 @@ export function settleManually(
       status: 'settled',
       actualGross: (actual as bigint).toString(),
       providerReconciliationId: input.manualReconciliationId,
+      creditApplied: (credit as bigint).toString(),
+      additionalSpend: (additional as bigint).toString(),
     },
   };
 }

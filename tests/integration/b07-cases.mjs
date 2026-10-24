@@ -8,8 +8,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   CLEAN,
+  CLEAN_CREDIT,
   Labels,
   ManualTimers,
+  MemoryCreditSource,
   MockPaidProvider,
   OCT_15,
   TOKYO_NOV_START,
@@ -18,8 +20,12 @@ import {
   assertPoolTable,
   barrier,
   checkBudgetConfigText,
+  claudeRequest,
   counterIds,
   createApiContract,
+  creditConfig,
+  creditFindings,
+  creditObservation,
   currentMonth,
   findings,
   live,
@@ -42,6 +48,10 @@ import {
 
 const HOUR = 3_600_000;
 const BASE = Date.parse('2030-10-15T00:00:00.000Z');
+// クレジットの周期（B07-07）。周期 2030-10-01 は 2030-11-01T00:00:00Z まで。予算月（東京）の境目 2030-10-31T15:00Z とは別。
+const CYCLE_OCT = 'anthropic:2030-10-01';
+const CYCLE_NOV = 'anthropic:2030-11-01';
+const CYCLE_END = Date.parse('2030-11-01T00:00:00.000Z');
 
 // 結果の正規化（金額・ID・時刻の乱数を含めず、手書きの期待値と同じ形にする）。
 function outcome(result) {
@@ -99,6 +109,14 @@ async function world(ctx, options, body) {
         pools: specification.pools,
         gate: (gateOptions = {}) =>
           harness.gate({ newId: env.newId, ...gateOptions }),
+        // クレジットの設定（B07-07）と、観測の口（メモリ）をつけた門。
+        creditGate: (source, gateOptions = {}) =>
+          harness.gate({
+            newId: env.newId,
+            config: loadedConfig(creditConfig()),
+            creditObservations: source,
+            ...gateOptions,
+          }),
       };
       const bodyChecked = await body(env);
       await env.settled?.();
@@ -117,6 +135,12 @@ async function world(ctx, options, body) {
         pools: env.pools,
       });
       assert.deepEqual(found, CLEAN, '予約の行と provider の記録の不一致');
+      // クレジットの区分の突き合わせ（B07-07）。クレジットを使わない世界では、すべての行にクレジットがない。
+      assert.deepEqual(
+        creditFindings({ rows, cap: options.creditCap }),
+        CLEAN_CREDIT,
+        'クレジットの区分の不一致',
+      );
       if (options.wave)
         assert.deepEqual(
           waveMaxOverLimit({ rows, pools: env.pools }),
@@ -165,6 +189,29 @@ const settledTotal = (harness, month, pool) =>
     )
     .reduce((sum, row) => sum + BigInt(row.actual_gross), 0n)
     .toString();
+
+// クレジットの区分を含む予約の行（精算済みは実費・クレジット・追加の支出、周期）。
+const creditRowsView = (env) =>
+  reservationRows(env.harness).map((row) => [
+    env.labels.label(row.request_id),
+    row.status,
+    row.budget_month,
+    row.actual_gross,
+    row.credit_applied,
+    row.additional_spend,
+    row.credit_cycle_id,
+  ]);
+
+// 本人が見るクレジットの状態（予算の通貨の百万分の一）。
+const creditView = (status) => ({
+  cycle: status.cycle_id,
+  status: status.status,
+  balance: status.balance,
+  allocated_since: status.allocated_since,
+  outstanding: status.outstanding,
+  available: status.available,
+  hold: status.hold,
+});
 
 const rowsView = (env) =>
   reservationRows(env.harness).map((row) => [
@@ -1351,6 +1398,543 @@ export const cases = {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  },
+
+  // MA03: 同じ usage を通常料金・クレジット・追加の支出へ一度だけ分ける。クレジットで追加の支出が 0 でも、通常料金の
+  // R / M で枠の上限を守る。usage 不明では M を解放せず、クレジットの残りからも確保し続ける。
+  async 'MA03-credit-split-once'(ctx) {
+    // 残高 20 XXX（1 単位あたり 2 で 40 XTS）。
+    const split = await world(
+      ctx,
+      { creditCap: { [CYCLE_OCT]: 40n } },
+      async (env) => {
+        const { provider, labels } = env;
+        const source = new MemoryCreditSource([
+          creditObservation({ balance: { currency: 'XXX', amount: '20' } }),
+        ]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        // a: M 40 は残り 40 にちょうど収まる。実費 25 は全額クレジット。同じ精算 5 件の同時は 1 件だけ。
+        provider.plan(labels.id('a'), { kind: 'usage', actual: '25' });
+        const a = await admitAndSend(
+          gate,
+          provider,
+          claudeRequest(labels.id('a')),
+        );
+        const same = await Promise.all(
+          [1, 2, 3, 4, 5].map(() => gate.settle(a.ticket, a.outcome)),
+        );
+        const conflict = await gate.settle(a.ticket, {
+          ...a.outcome,
+          actual_gross: '26',
+        });
+        // b: M 15 は残り 15 にちょうど収まる。実費 12 は全額クレジット。
+        provider.plan(labels.id('b'), { kind: 'usage', actual: '12' });
+        const b = await gate.run(
+          claudeRequest(labels.id('b'), {
+            quantities: { input_tokens: '10', output_tokens: '5' },
+          }),
+          provider.send,
+        );
+        // c: M 40 は残り 3 に足りない。provider へ送らない。
+        const c = await gate.run(claudeRequest(labels.id('c')), provider.send);
+        // 追加の支出 0 でも通常料金は llm の上限に数える。クレジットを充てない Luna は、40 が入り、次は上限で止まる。
+        const llmAfterClaude = await usage(env.harness, '2030-10', 'llm');
+        provider.plan(labels.id('d'), { kind: 'usage', actual: '40' });
+        const d = await gate.run(owner(labels.id('d')), provider.send);
+        const e = await gate.run(owner(labels.id('e')), provider.send);
+        return {
+          concurrent_settle_of_a: {
+            ok: same.filter((r) => r.ok).length,
+            fresh: same.filter((r) => r.ok && !r.duplicate).length,
+            duplicate: same.filter((r) => r.ok && r.duplicate).length,
+          },
+          different_amount_for_settled: conflict.ok
+            ? { ok: true }
+            : { ok: false, reasons: [...conflict.reasons] },
+          second_settles: outcome(b),
+          third_is_held: outcome(c),
+          llm_after_claude_settlements: llmAfterClaude,
+          luna_settles: outcome(d),
+          luna_over_the_gross_limit: outcome(e),
+          rows: creditRowsView(env),
+          credit: creditView(await gate.creditStatus()),
+          provider_requests: provider.receipts.length,
+          llm: await usage(env.harness, '2030-10', 'llm'),
+        };
+      },
+    );
+    // 残高 100 XTS（50 XXX）。応答を失った要求は usage 不明のまま M を保持し、クレジットの残りから確保し続ける。
+    const unknown = await world(
+      ctx,
+      { creditCap: { [CYCLE_OCT]: 100n } },
+      async (env) => {
+        const { provider, labels } = env;
+        const source = new MemoryCreditSource([creditObservation()]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        provider.plan(labels.id('b'), { kind: 'drop', actual: '8' });
+        const b = await gate.run(claudeRequest(labels.id('b')), provider.send);
+        // a: 実費 55 は M 40 を超える。クレジットは M までで、b の確保を食わない。超えた 15 は追加の支出。
+        provider.plan(labels.id('a'), { kind: 'usage', actual: '55' });
+        const a = await gate.run(claudeRequest(labels.id('a')), provider.send);
+        return {
+          lost_response: outcome(b),
+          over_m: outcome(a),
+          rows: creditRowsView(env),
+          credit: creditView(await gate.creditStatus()),
+          llm: await usage(env.harness, '2030-10', 'llm'),
+        };
+      },
+    );
+    // 影モード（自発の枠 llm.background、上限 50）の Claude の要求は、クレジットで追加の支出が 0 でも、通常料金の実費で
+    // その枠の上限に達したら止まる。
+    const shadow = await world(
+      ctx,
+      { creditCap: { [CYCLE_OCT]: 100n } },
+      async (env) => {
+        const { provider, labels } = env;
+        const source = new MemoryCreditSource([creditObservation()]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        provider.plan(labels.id('s1'), { kind: 'usage', actual: '40' });
+        const first = await gate.run(
+          claudeRequest(labels.id('s1'), { origin: 'shadow_mode' }),
+          provider.send,
+        );
+        const second = await gate.run(
+          claudeRequest(labels.id('s2'), { origin: 'shadow_mode' }),
+          provider.send,
+        );
+        return {
+          first_settles: outcome(first),
+          second_is_stopped_by_the_pool: outcome(second),
+          rows: creditRowsView(env),
+          credit: creditView(await gate.creditStatus()),
+          llm_background: await usage(env.harness, '2030-10', 'llm.background'),
+        };
+      },
+    );
+    return {
+      split,
+      unknown_usage_keeps_m: unknown,
+      shadow_mode_limit_with_credit: shadow,
+    };
+  },
+
+  // MA04: 請求周期の終わり（失効）と暦月の予算の更新を別々に起こす。月替わりで残高を戻さず、古い周期の未精算の要求を
+  // 新しい周期へ付け替えない。
+  async 'MA04-cycle-and-month-are-separate'(ctx) {
+    return world(
+      ctx,
+      { creditCap: { [CYCLE_OCT]: 100n, [CYCLE_NOV]: 200n } },
+      async (env) => {
+        const { provider, labels, harness } = env;
+        const source = new MemoryCreditSource([creditObservation()]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        provider.plan(labels.id('a'), { kind: 'usage', actual: '30' });
+        const a = await gate.run(claudeRequest(labels.id('a')), provider.send);
+        // 東京の 11 月の始まりの 1 時間後: 予算月は 11 月へ替わる。周期は 11 月 1 日 0 時（UTC）まで続き、残高は戻らない。
+        harness.clock.set(TOKYO_NOV_START + HOUR);
+        await gate.tick();
+        const rolled = {
+          month: await currentMonth(harness),
+          credit: creditView(await gate.creditStatus()),
+        };
+        provider.plan(labels.id('b'), { kind: 'usage', actual: '40' });
+        const b = await gate.run(claudeRequest(labels.id('b')), provider.send);
+        const afterB = creditView(await gate.creditStatus());
+        // 周期の終わりの 1 ミリ秒前: c は受け付ける（送ったが、精算は周期の終わりより後）。f は応答を失う。
+        harness.clock.set(CYCLE_END - 1);
+        provider.plan(labels.id('c'), { kind: 'usage', actual: '8' });
+        const c = await admitAndSend(
+          gate,
+          provider,
+          claudeRequest(labels.id('c'), {
+            quantities: { input_tokens: '5', output_tokens: '5' },
+          }),
+        );
+        provider.plan(labels.id('f'), { kind: 'drop', actual: '8' });
+        const f = await gate.run(
+          claudeRequest(labels.id('f'), {
+            quantities: { input_tokens: '5', output_tokens: '5' },
+          }),
+          provider.send,
+        );
+        assert.equal(f.kind, 'usage_unknown');
+        // 周期の終わりちょうど: Claude は失効で保留。予算月は変わらず、Luna は受け付ける。
+        harness.clock.set(CYCLE_END);
+        const expired = await gate.run(
+          claudeRequest(labels.id('d')),
+          provider.send,
+        );
+        const hold = (await gate.holdState()).credit_hold ?? null;
+        provider.plan(labels.id('e'), { kind: 'usage', actual: '3' });
+        const luna = await gate.run(owner(labels.id('e')), provider.send);
+        const monthAtExpiry = await currentMonth(harness);
+        // 本人が新しい周期の観測を書く。古い周期の c の精算は、周期が終わっているのでクレジット 0 で、周期は古いまま。
+        harness.clock.set(CYCLE_END + 1);
+        source.observations.push(
+          creditObservation({
+            cycle_id: CYCLE_NOV,
+            observed_at: '2030-11-01T00:00:00.001Z',
+            expires_at: '2030-12-01T00:00:00.000Z',
+            balance: { currency: 'XXX', amount: '100' },
+          }),
+        );
+        const settledC = await gate.settle(c.ticket, c.outcome);
+        const newCycle = creditView(await gate.creditStatus());
+        provider.plan(labels.id('g'), { kind: 'usage', actual: '25' });
+        const g = await gate.run(
+          claudeRequest(labels.id('g'), {
+            quantities: { input_tokens: '10', output_tokens: '20' },
+          }),
+          provider.send,
+        );
+        // 古い周期の usage 不明 f は、新しい周期への付け替えを拒否し、古い周期のままの区分だけを受け付ける。
+        const ticketF = f.ticket;
+        const manual = (cycle) =>
+          harness.store.budget({
+            kind: 'budget.settle_manual',
+            reservation_id: ticketF.reservation_id,
+            expected_revision: ticketF.revision,
+            manual_reconciliation_id: 'manual:invoice-f',
+            currency: 'XTS',
+            actual_gross: '8',
+            credit_applied: '6',
+            additional_spend: '2',
+            credit_cycle_id: cycle,
+            now: harness.clock.now(),
+            request: null,
+          });
+        const toNew = await manual(CYCLE_NOV);
+        const toOld = await manual(CYCLE_OCT);
+        return {
+          first_settlement: outcome(a),
+          after_month_rolled: rolled,
+          second_in_new_month: outcome(b),
+          after_second: afterB,
+          at_cycle_end: {
+            claude: outcome(expired),
+            hold,
+            luna: outcome(luna),
+            budget_month: monthAtExpiry,
+          },
+          old_cycle_unsettled_settles: settledC.ok,
+          new_cycle_after_observation: newCycle,
+          new_cycle_request: outcome(g),
+          after_new_cycle_request: creditView(await gate.creditStatus()),
+          manual_into_new_cycle: toNew.ok
+            ? { ok: true }
+            : { ok: false, reasons: [...toNew.reasons] },
+          manual_into_own_cycle: toOld.ok
+            ? { ok: true }
+            : { ok: false, reasons: [...toOld.reasons] },
+          rows: creditRowsView(env),
+        };
+      },
+    );
+  },
+
+  // MA05: 残高不明・失効・枯渇・共有の組織の他用途消費・同時要求を注入する。Claude の処理を保留し、provider へ送らず、
+  // 購入残高・後払いへ移らない。共有の組織の観測は、古くなったら信じずに保留する（専有できるとは扱わない）。
+  async 'MA05-hold-until-balance-is-known'(ctx) {
+    const matrix = await world(ctx, {}, async (env) => {
+      const { provider, labels } = env;
+      const source = new MemoryCreditSource([]);
+      const gate = env.creditGate(source);
+      await gate.start();
+      let n = 0;
+      const attempt = async () => {
+        n += 1;
+        const result = await gate.admit(claudeRequest(labels.id(`h${n}`)));
+        return result.ok
+          ? { ok: true }
+          : {
+              ok: false,
+              reasons: [...result.reasons],
+              budget_held: result.budgetHeld,
+            };
+      };
+      const held = {};
+      held.no_observation = await attempt();
+      source.failure = 'missing';
+      held.file_missing = await attempt();
+      source.failure = 'unreadable';
+      held.file_unreadable = await attempt();
+      source.failure = null;
+      source.observations = [
+        creditObservation({ status: 'unknown', balance: null, shared: true }),
+      ];
+      held.status_unknown = await attempt();
+      source.observations = [creditObservation({ status: 'expired' })];
+      held.status_expired = await attempt();
+      source.observations = [
+        creditObservation({ balance: { currency: 'XXX', amount: '0' } }),
+      ];
+      held.zero_balance = await attempt();
+      source.observations = [
+        creditObservation({ balance: { currency: 'XTS', amount: '500' } }),
+      ];
+      held.balance_in_another_currency = await attempt();
+      source.observations = [
+        creditObservation({
+          provider: 'openai',
+          cycle_id: 'openai:2030-10-01',
+        }),
+      ];
+      held.another_provider = await attempt();
+      const hold = (await gate.holdState()).credit_hold ?? null;
+      // クレジットを充てない profile は保留しない（観測がなくても受け付ける）。
+      source.observations = [];
+      provider.plan(labels.id('luna'), { kind: 'usage', actual: '5' });
+      const luna = await gate.run(owner(labels.id('luna')), provider.send);
+      // 有効な観測が届けば再開する。
+      source.observations = [creditObservation()];
+      provider.plan(labels.id('resume'), { kind: 'usage', actual: '20' });
+      const resumed = await gate.run(
+        claudeRequest(labels.id('resume')),
+        provider.send,
+      );
+      return {
+        held,
+        status_hold: hold,
+        luna_is_not_held: outcome(luna),
+        resumed_after_observation: outcome(resumed),
+        provider_requests: provider.receipts.length,
+        rows: creditRowsView(env),
+      };
+    });
+    const shared = await world(ctx, {}, async (env) => {
+      const source = new MemoryCreditSource([
+        creditObservation({ shared: true }),
+      ]);
+      const gate = env.creditGate(source);
+      await gate.start();
+      const at = (offset) => env.harness.clock.set(OCT_15 + offset);
+      const reasons = (result) =>
+        result.ok ? 'admitted' : [...result.reasons];
+      // 観測から上限（1 時間）ちょうどまでは新しい。1 ミリ秒でも過ぎたら古く、新しい観測が届くまで保留。
+      at(HOUR);
+      env.provider.plan(env.labels.id('a'), { kind: 'usage', actual: '8' });
+      const fresh = await admitAndSend(
+        gate,
+        env.provider,
+        claudeRequest(env.labels.id('a')),
+      );
+      at(HOUR + 1);
+      const stale = await gate.admit(claudeRequest(env.labels.id('b')));
+      const staleHold = (await gate.holdState()).credit_hold ?? null;
+      // 他の用途が使って残高が減った新しい観測（5 XXX = 10 XTS）。未精算の a の M 40 を引くと残りがない。
+      at(2 * HOUR);
+      source.observations.push(
+        creditObservation({
+          shared: true,
+          observed_at: '2030-10-15T02:00:00.000Z',
+          balance: { currency: 'XXX', amount: '5' },
+        }),
+      );
+      const afterOther = await gate.admit(claudeRequest(env.labels.id('c')));
+      // a を精算すると（実費 8）観測の後の精算としてクレジット 8、残り 2。M 11 は足りず、M 2 はちょうど収まる。
+      const settled = await gate.settle(fresh.ticket, fresh.outcome);
+      const tooBig = await gate.admit(
+        claudeRequest(env.labels.id('d'), {
+          quantities: { input_tokens: '5', output_tokens: '6' },
+        }),
+      );
+      const small = await gate.admit(
+        claudeRequest(env.labels.id('e'), {
+          quantities: { input_tokens: '1', output_tokens: '1' },
+        }),
+      );
+      return {
+        at_the_age_limit: 'admitted',
+        one_ms_past_the_limit: reasons(stale),
+        status_hold_when_stale: staleHold,
+        after_other_use_lowered_the_balance: reasons(afterOther),
+        settled_after_the_new_observation: settled.ok,
+        m_above_the_remaining: reasons(tooBig),
+        m_exactly_the_remaining: reasons(small),
+        rows: creditRowsView(env),
+        credit: creditView(await gate.creditStatus()),
+      };
+    });
+    // 同時要求: M 25 の 3 つを関門で同時に受付へ送る。残高 60 XTS に収まる 2 つだけ受け付け、確保した M の合計は残高以内。
+    const concurrent = await world(
+      ctx,
+      { wave: true, creditCap: { [CYCLE_OCT]: 60n } },
+      async (env) => {
+        const { labels } = env;
+        const source = new MemoryCreditSource([
+          creditObservation({ balance: { currency: 'XXX', amount: '30' } }),
+        ]);
+        const gate = env.creditGate(source, {
+          faults: { beforeAdmit: barrier(3) },
+        });
+        await gate.start();
+        const order = shuffled(['x', 'y', 'z'], ctx.seed);
+        const results = new Map();
+        await Promise.all(
+          order.map(async (label) =>
+            results.set(
+              label,
+              await gate.admit(
+                claudeRequest(labels.id(label), {
+                  quantities: { input_tokens: '10', output_tokens: '15' },
+                }),
+              ),
+            ),
+          ),
+        );
+        const all = [...results.values()];
+        return {
+          admitted: all.filter((r) => r.ok).length,
+          held: all.filter((r) => !r.ok).map((r) => [...r.reasons]),
+          reserved_m_total: reservationRows(env.harness)
+            .reduce((sum, row) => sum + BigInt(row.max_liability), 0n)
+            .toString(),
+          provider_requests: env.provider.receipts.length,
+          credit: creditView(await gate.creditStatus()),
+        };
+      },
+    );
+    // 精算の時に残高を読めない（書き換えの途中など）: クレジット 0 で確定せず、usage 不明で M を保持し、読めたら一度だけ精算。
+    const unreadable = await world(
+      ctx,
+      { creditCap: { [CYCLE_OCT]: 100n } },
+      async (env) => {
+        const { provider, labels } = env;
+        const source = new MemoryCreditSource([creditObservation()]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        provider.plan(labels.id('a'), { kind: 'usage', actual: '25' });
+        const a = await gate.run(claudeRequest(labels.id('a')), (context) => {
+          source.failure = 'unreadable';
+          return provider.send(context);
+        });
+        const heldRow = creditRowsView(env).map((row) => [...row]);
+        source.failure = null;
+        const retried = await gate.settle(a.ticket, {
+          kind: 'usage',
+          provider: 'mockpaid',
+          reconciliation_id: `rcpt-${labels.id('a')}`,
+          actual_gross: '25',
+        });
+        // ファイルがない（消した）ときは観測なしとして、クレジット 0（確認できない）。
+        provider.plan(labels.id('b'), { kind: 'usage', actual: '10' });
+        const b = await gate.run(claudeRequest(labels.id('b')), (context) => {
+          source.failure = 'missing';
+          return provider.send(context);
+        });
+        return {
+          unreadable_at_settlement: outcome(a),
+          row_while_unreadable: heldRow,
+          settled_once_readable: retried.ok,
+          missing_file_at_settlement: outcome(b),
+          rows: creditRowsView(env),
+        };
+      },
+    );
+    return {
+      hold_matrix: matrix,
+      shared_organization: shared,
+      concurrent_requests: concurrent,
+      unreadable_balance_at_settlement: unreadable,
+    };
+  },
+
+  // MA06: 音声・Luna・検索に Claude のクレジットを充てない。本文・応答の実料金が不明なものを 0 円と確定しない。
+  async 'MA06-credit-only-for-claude'(ctx) {
+    const others = await world(ctx, {}, async (env) => {
+      const { provider, labels } = env;
+      // 観測がない状態でも、Claude の保留は音声・検索・Luna に及ばない。
+      const source = new MemoryCreditSource([]);
+      const gate = env.creditGate(source);
+      await gate.start();
+      const voiceRequest = (id) =>
+        claudeRequest(id, {
+          service: 'voice',
+          price_key: 'synthetic.live',
+          quantities: { live_seconds: '20' },
+        });
+      provider.plan(labels.id('voice'), { kind: 'usage', actual: '12' });
+      const voice = await gate.run(
+        voiceRequest(labels.id('voice')),
+        provider.send,
+      );
+      provider.plan(labels.id('search'), { kind: 'usage', actual: '7' });
+      const search = await gate.run(
+        claudeRequest(labels.id('search'), { service: 'search' }),
+        provider.send,
+      );
+      provider.plan(labels.id('luna'), { kind: 'usage', actual: '9' });
+      const luna = await gate.run(owner(labels.id('luna')), provider.send);
+      // 観測があっても同じ。クレジットの残りは動かない。
+      source.observations = [creditObservation()];
+      provider.plan(labels.id('voice2'), { kind: 'usage', actual: '11' });
+      const voice2 = await gate.run(
+        voiceRequest(labels.id('voice2')),
+        provider.send,
+      );
+      const credit = creditView(await gate.creditStatus());
+      // 周期に結び付かない予約へのクレジットは、手での精算でも記録しない。
+      const manual = await env.harness.store.budget({
+        kind: 'budget.settle_manual',
+        reservation_id: voice2.ticket.reservation_id,
+        expected_revision: voice2.ticket.revision,
+        manual_reconciliation_id: 'manual:voice',
+        currency: 'XTS',
+        actual_gross: '11',
+        credit_applied: '5',
+        additional_spend: '6',
+        credit_cycle_id: CYCLE_OCT,
+        now: env.harness.clock.now(),
+        request: null,
+      });
+      return {
+        voice: outcome(voice),
+        search: outcome(search),
+        luna: outcome(luna),
+        voice_with_an_observation: outcome(voice2),
+        credit_untouched: credit,
+        manual_credit_on_voice: manual.ok
+          ? { ok: true }
+          : { ok: false, reasons: [...manual.reasons] },
+        rows: creditRowsView(env),
+      };
+    });
+    const unknown = await world(
+      ctx,
+      { creditCap: { [CYCLE_OCT]: 100n } },
+      async (env) => {
+        const { provider, labels } = env;
+        const source = new MemoryCreditSource([creditObservation()]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        // 応答を失った Claude の要求は usage 不明。実費を 0 と確定せず、クレジットを充てた扱いにもしない。
+        provider.plan(labels.id('a'), { kind: 'drop', actual: '17' });
+        const lost = await gate.run(
+          claudeRequest(labels.id('a')),
+          provider.send,
+        );
+        // 設定に credit がなければ、Claude の profile も初期の規則（クレジット 0・追加の支出＝実費・周期なし）。
+        const plain = env.gate({ creditObservations: source });
+        provider.plan(labels.id('b'), { kind: 'usage', actual: '14' });
+        const initial = await plain.run(
+          claudeRequest(labels.id('b')),
+          provider.send,
+        );
+        return {
+          lost_response: outcome(lost),
+          without_the_credit_setting: outcome(initial),
+          status_without_the_setting: creditView(await plain.creditStatus()),
+          rows: creditRowsView(env),
+          credit: creditView(await gate.creditStatus()),
+        };
+      },
+    );
+    return { not_credited: others, unknown_is_not_zero: unknown };
   },
 
   // 失敗: provider の例外は usage 不明で M を保持し送り直さない。送る前の中断と期限切れは解放し、provider へ送らない。

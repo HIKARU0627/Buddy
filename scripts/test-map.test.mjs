@@ -487,8 +487,8 @@ test('B07 のケース・seed・観測値・対応表の範囲が証拠と一致
     assert.equal(record.db_version, spec.db_version);
     assert.match(record.deviation, /実請求.*未実施/u);
   }
-  // 対応表: B07 だけが担当の X18・X53 は simulated。QA42 は B04 の送出の境界（操作の送出意図と予約の送出意図の
-  // 結び付け）、QA20 は B10 の評価（意図判定）が未実施なので simulated_partial。クレジット（MA03〜MA06）は B07-07 で未実施。
+  // 対応表: B07 だけが担当の X18・X53・MA03〜MA06 は simulated。QA42 は B04 の送出の境界（操作の送出意図と予約の送出意図の
+  // 結び付け）、QA20 は B10 の評価（意図判定）が未実施なので simulated_partial。クレジットの実残高の照合は B15。
   const expectedMap = {
     X18: [
       'X18-boundary-concurrency',
@@ -507,6 +507,10 @@ test('B07 のケース・seed・観測値・対応表の範囲が証拠と一致
       'QA42-voice-isolation',
     ],
     QA20: ['QA20-price-boundary', 'QA20-limit-unknown'],
+    MA03: ['MA03-credit-split-once'],
+    MA04: ['MA04-cycle-and-month-are-separate'],
+    MA05: ['MA05-hold-until-balance-is-known'],
+    MA06: ['MA06-credit-only-for-claude'],
   };
   for (const [id, cases] of Object.entries(expectedMap)) {
     const entry = map.tests.find((e) => e.id === id);
@@ -525,9 +529,12 @@ test('B07 のケース・seed・観測値・対応表の範囲が証拠と一致
     assert.match(entry.product_scope, /実請求.*未実施/u, id);
     assert.match(entry.product_scope, /B15/u, id);
   }
-  // クレジットの区分（MA03〜MA06）は B07-07 の範囲で、このケースでは確認していない。
-  for (const id of ['MA03', 'MA04', 'MA05', 'MA06'])
-    assert.equal(map.tests.find((e) => e.id === id).product_test, 'not_run');
+  // クレジットの区分（MA03〜MA06）は B07-07 の模擬で確認した。Console の実残高との照合・実請求・実 API は未実施。
+  for (const id of ['MA03', 'MA04', 'MA05', 'MA06']) {
+    const entry = map.tests.find((e) => e.id === id);
+    assert.match(entry.product_scope, /Console|実残高|実請求/u, id);
+    assert.match(entry.product_scope, /未実施/u, id);
+  }
   // 期待値は個人の金額を含まない（合成の通貨 XTS だけ）。
   const text = JSON.stringify(spec);
   assert(!/"(JPY|USD|EUR)"/u.test(text));
@@ -573,6 +580,7 @@ test('B07 の証拠の対象は実行器が読み込むファイルだけで、B
     'apps/core/src/budget-config.ts',
     'apps/core/src/budget-test-support.ts',
     'packages/domain/src/budget-rules.ts',
+    'packages/domain/src/budget-credit.ts',
     'packages/storage/src/budget-store.ts',
     'packages/storage/src/db-worker.ts',
     'packages/storage/migrations/0006_budget.sql',

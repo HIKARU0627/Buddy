@@ -79,6 +79,8 @@ import {
   createBudgetRoutes,
 } from './api-budget.js';
 import { BUDGET_CONFIG_FILE, loadBudgetConfig } from './budget-config.js';
+import { BUDGET_CREDIT_FILE, fileCreditSource } from './budget-credit.js';
+import type { CreditObservationSource } from './budget-credit.js';
 import { BudgetGate } from './budget-gate.js';
 import type { UsageReconciler } from './budget-gate.js';
 import { createOperationRunner } from './operation-runner.js';
@@ -236,6 +238,10 @@ export interface StartCoreOptions {
 
 export interface CoreBudgetOptions {
   readonly configPath?: string;
+  // 付帯クレジットの残高の観測（ADR 0042）。省略したものは、データディレクトリの budget-credit-observations.json を
+  // 受付・精算・状態欄のたびに読む。設定（budget-runtime.json）に credit がなければ使わない。
+  readonly creditPath?: string;
+  readonly creditObservations?: CreditObservationSource;
   readonly osTimeZone?: () => string;
   readonly reconciler?: UsageReconciler;
   // 予算月を進める間隔（月替わりの知らせ）。0 なら定期には進めない（受付のたびには進める）。
@@ -1015,6 +1021,12 @@ async function startBudgetGate(
     config,
     now: settings.now ?? (() => now().getTime()),
     log,
+    creditObservations:
+      settings.creditObservations ??
+      fileCreditSource({
+        path: settings.creditPath ?? join(dataDir, BUDGET_CREDIT_FILE),
+        contract: createApiContract(),
+      }),
     ...(settings.p95ProfileIds === undefined
       ? {}
       : { p95ProfileIds: settings.p95ProfileIds }),

@@ -10,7 +10,14 @@ import test from 'node:test';
 import { createApiContract } from './api-contract.js';
 import { tempDir } from './api-test-support.js';
 import { BUDGET_CONFIG_FILE } from './budget-config.js';
-import { OCT_15, syntheticConfig } from './budget-test-support.js';
+import { BUDGET_CREDIT_FILE } from './budget-credit.js';
+import {
+  CREDIT_PROFILE,
+  OCT_15,
+  creditConfig,
+  creditObservation,
+  syntheticConfig,
+} from './budget-test-support.js';
 import { callControl } from './control-channel.js';
 import { parseControlRequest } from './control-protocol.js';
 import { getJson, insertDevice, startEventCore } from './event-test-support.js';
@@ -181,3 +188,47 @@ test('the budget calendar control requests are checked strictly', () => {
   );
   assert.deepEqual(status, { ok: false, reason: 'unknown_field' });
 });
+
+test(
+  'a credit setting without an observation file shows the credit hold in the snapshot, and a valid observation file clears it',
+  { timeout: 30_000 },
+  async (t) => {
+    const dataDir = join(await tempDir(t, 'buddy-bcc-'), 'data');
+    await mkdir(dataDir, { recursive: true, mode: 0o700 });
+    await writeFile(
+      join(dataDir, BUDGET_CONFIG_FILE),
+      JSON.stringify(creditConfig()),
+      { mode: 0o600 },
+    );
+    const core = await startEventCore(t, {
+      dataDir,
+      budget: { tickIntervalMs: 0, now: () => OCT_15 },
+    });
+    const device = await insertDevice(core.handle.store);
+    // 観測のファイルがない: 残高不明で Claude の処理を保留する（状態欄の予算保留。理由と profile だけ・金額なし）。
+    const held = await getJson(core, device, '/v1/snapshot');
+    assert(contract.valid('Snapshot', held.json), held.text);
+    assert.deepEqual(held.json?.['budget_hold'], {
+      held: true,
+      reasons: [],
+      held_pools: [],
+      credit_hold: { reason: 'credit_unknown', profile_ids: [CREDIT_PROFILE] },
+    });
+    // 本人が観測を書くと、次のスナップショットから保留がなくなる（Core の再起動は要らない）。
+    await writeFile(
+      join(dataDir, BUDGET_CREDIT_FILE),
+      JSON.stringify({
+        schema: 'buddy.budget-credit-observations.v1',
+        observations: [creditObservation()],
+      }),
+      { mode: 0o600 },
+    );
+    const clear = await getJson(core, device, '/v1/snapshot');
+    assert(contract.valid('Snapshot', clear.json), clear.text);
+    assert.deepEqual(clear.json?.['budget_hold'], {
+      held: false,
+      reasons: [],
+      held_pools: [],
+    });
+  },
+);

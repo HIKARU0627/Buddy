@@ -6356,6 +6356,9 @@
         },
         "routing": {
           "$ref": "#/$defs/BudgetRouting"
+        },
+        "credit": {
+          "$ref": "#/$defs/BudgetCreditConfig"
         }
       },
       "required": [
@@ -6366,7 +6369,96 @@
         "routing"
       ],
       "additionalProperties": false,
-      "description": "予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。routing は起点から計上する枠と超過枠（B07-04）。秘密情報（API キーなど）を含めない。"
+      "description": "予算の実行時の設定ファイル（本人の判断 2026-10-23、ADR 0034）。リポジトリの外に置き、中枢の起動時にこの定義と意味検査で確かめてから読み込む。検査に通らなければ有料処理を始めない。time_zone は予算月の境目を決める IANA タイムゾーンで、null は中枢の OS の設定。変えた値は翌月から反映し、その月に使ったタイムゾーンは Core が記録する。routing は起点から計上する枠と超過枠（B07-04）。credit は付帯クレジットの区分の設定（B07-07、ADR 0042）で、省略するとクレジットを使わない（精算はクレジット 0・追加の支出＝実費）。秘密情報（API キーなど）を含めない。"
+    },
+    "BudgetCreditConfig": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "const": "anthropic"
+        },
+        "profile_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ProfileId"
+          },
+          "description": "クレジットを充てる profile。ここにない profile（音声・検索・他社の LLM）には充てない（MA06）。LLM のサービスの要求だけが対象で、音声・検索の要求はここにあっても充てない。"
+        },
+        "balance_currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "残高の観測の通貨（provider が示す通貨）。"
+        },
+        "balance_to_budget_rate": {
+          "$ref": "#/$defs/DecimalString",
+          "description": "残高 1 単位あたりの予算の通貨の量。残高を予算の通貨にするときに使い、小数点以下は切り捨てる（クレジットを多く見積もらない）。残高の通貨が予算の通貨と同じなら 1。"
+        },
+        "shared_observation_max_age_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "共有の組織の残高の観測（shared: true）を、観測の時刻からこの時間より後は古いものとして扱い、Claude の処理を保留する長さ（ミリ秒）。共有の組織では他の用途が残高を減らすので、新しい観測が届くまで残高を信じ続けない。専用の組織の観測（shared: false）には使わない。"
+        }
+      },
+      "required": [
+        "provider",
+        "profile_ids",
+        "balance_currency",
+        "balance_to_budget_rate",
+        "shared_observation_max_age_ms"
+      ],
+      "additionalProperties": false,
+      "description": "付帯クレジットの区分の設定（設計 05 クレジットの追補、09 MA03〜MA06、B07-07、ADR 0042）。通常料金の R と M で上限を守る規則は変えず、精算を通常料金・クレジット・追加の支出に分ける。クレジットを充てる profile は、残高が不明・失効・枯渇・古い・M に足りないとき受け付けない（購入残高・後払いへ自動で移らない）。残高の観測は別のファイル（BudgetCreditObservations）に本人が書く。"
+    },
+    "BudgetCreditObservations": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.budget-credit-observations.v1"
+        },
+        "observations": {
+          "type": "array",
+          "maxItems": 120,
+          "items": {
+            "$ref": "#/$defs/CreditObservation"
+          }
+        }
+      },
+      "required": ["schema", "observations"],
+      "additionalProperties": false,
+      "description": "付帯クレジットの残高の観測の一覧（B07-07、ADR 0042）。本人がリポジトリの外のデータディレクトリに書く（残高を取得する公式の手段を確かめるまで、非公開の API を推測して使わない。原本）。Core は受付・精算のたびに読み、周期ごとに最も新しい観測（今より後の観測は無視）を使う。今の周期は周期の開始日が最も新しい周期。"
+    },
+    "BudgetCreditHoldReason": {
+      "type": "string",
+      "enum": [
+        "credit_unknown",
+        "credit_expired",
+        "credit_stale",
+        "credit_exhausted"
+      ],
+      "description": "クレジットを充てる profile（Claude）の保留の理由（MA05、ADR 0042）。credit_unknown は残高の観測がない・不明・読めない、credit_expired は周期が終わった・失効、credit_stale は共有の組織の観測が古い、credit_exhausted は残高から未精算の最大負担を引くと残りがない。枠の予算保留（BudgetHoldReason）とは別で、その profile だけを止める。理由のコードを利用者に見せない。"
+    },
+    "BudgetCreditHold": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/BudgetCreditHoldReason"
+        },
+        "profile_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ProfileId"
+          }
+        }
+      },
+      "required": ["reason", "profile_ids"],
+      "additionalProperties": false,
+      "description": "クレジットを充てる profile の保留（MA05）。金額・残高を含めない。"
     },
     "BudgetOrigin": {
       "type": "string",
@@ -6517,11 +6609,14 @@
             "required": ["pool_id", "hold_reasons"],
             "additionalProperties": false
           }
+        },
+        "credit_hold": {
+          "$ref": "#/$defs/BudgetCreditHold"
         }
       },
       "required": ["held", "reasons", "held_pools"],
       "additionalProperties": false,
-      "description": "状態欄の「予算保留」（設計 01 いつも見える状態、B07-04、ADR 0037）。reasons は有料の受付全体を止めている理由、held_pools は今月に保留している枠とその理由。held はどちらかがあるとき true。金額を含めない。"
+      "description": "状態欄の「予算保留」（設計 01 いつも見える状態、B07-04、ADR 0037）。reasons は有料の受付全体を止めている理由、held_pools は今月に保留している枠とその理由、credit_hold はクレジットを充てる profile の保留（B07-07、省略は保留なし）。held はどれかがあるとき true。金額を含めない。"
     },
     "BudgetPoolUsage": {
       "type": "object",

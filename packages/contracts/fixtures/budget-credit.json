@@ -1,0 +1,2664 @@
+{
+  "status": "recorded_by_hand",
+  "description": "B07-07 の付帯クレジットの純粋な規則（ADR 0042）の期待値（手書き）。予算の通貨は XTS、残高の通貨は ISO の通貨なしコード XXX の合成値だけを使い、個人の金額・単価・為替を含まない。期待値は設計 05 のクレジットの追補と 09 の MA03〜MA06 の規則から手で計算した値で、実装の処理から作っていない。時刻は ISO 文字列で書き、試験がミリ秒へ変える。",
+  "config": {
+    "provider": "anthropic",
+    "profile_ids": ["claude.synthetic.v1"],
+    "balance_currency": "XXX",
+    "balance_to_budget_rate": "2.5",
+    "shared_observation_max_age_ms": 3600000
+  },
+  "cycle_start_cases": [
+    {
+      "id": "ma04-cycle-october",
+      "cycle_id": "anthropic:2030-10-01",
+      "expected": "2030-10-01T00:00:00.000Z"
+    },
+    {
+      "id": "ma04-cycle-year-end",
+      "cycle_id": "anthropic:2030-12-31",
+      "expected": "2030-12-31T00:00:00.000Z"
+    },
+    {
+      "id": "ma04-cycle-leap-day",
+      "cycle_id": "anthropic:2028-02-29",
+      "expected": "2028-02-29T00:00:00.000Z"
+    },
+    {
+      "id": "ma04-cycle-not-leap",
+      "cycle_id": "anthropic:2030-02-29",
+      "expected": null
+    },
+    {
+      "id": "ma04-cycle-april-31",
+      "cycle_id": "anthropic:2030-04-31",
+      "expected": null
+    },
+    {
+      "id": "ma04-cycle-before-1970",
+      "cycle_id": "anthropic:1969-12-31",
+      "expected": null
+    },
+    {
+      "id": "ma04-cycle-month-13",
+      "cycle_id": "anthropic:2030-13-01",
+      "expected": null
+    },
+    {
+      "id": "ma04-cycle-uppercase-provider",
+      "cycle_id": "Anthropic:2030-10-01",
+      "expected": null
+    },
+    {
+      "id": "ma04-cycle-trailing-text",
+      "cycle_id": "anthropic:2030-10-01x",
+      "expected": null
+    },
+    {
+      "id": "ma04-cycle-date-only",
+      "cycle_id": "2030-10-01",
+      "expected": null
+    },
+    {
+      "id": "ma04-cycle-email",
+      "cycle_id": "someone@example.invalid:2030-10-01",
+      "expected": null
+    }
+  ],
+  "eligible_cases": [
+    {
+      "id": "ma06-claude-llm",
+      "profile": "claude.synthetic.v1",
+      "service": "llm",
+      "configured": true,
+      "expected": true
+    },
+    {
+      "id": "ma06-claude-voice",
+      "profile": "claude.synthetic.v1",
+      "service": "voice",
+      "configured": true,
+      "expected": false
+    },
+    {
+      "id": "ma06-claude-search",
+      "profile": "claude.synthetic.v1",
+      "service": "search",
+      "configured": true,
+      "expected": false
+    },
+    {
+      "id": "ma06-luna-llm",
+      "profile": "intent.synthetic.v1",
+      "service": "llm",
+      "configured": true,
+      "expected": false
+    },
+    {
+      "id": "ma06-prefix-is-not-a-match",
+      "profile": "claude.synthetic.v1.beta",
+      "service": "llm",
+      "configured": true,
+      "expected": false
+    },
+    {
+      "id": "ma06-no-credit-setting",
+      "profile": "claude.synthetic.v1",
+      "service": "llm",
+      "configured": false,
+      "expected": false
+    }
+  ],
+  "bases_cases": [
+    {
+      "id": "ma03-balance-floor",
+      "title": "残高 7 XXX × 2.5 = 17.5 を、予算の通貨へ切り捨てて 17（クレジットを多く見積もらない）",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "7"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-15T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "observed",
+          "shared": false,
+          "balance": "17"
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-15T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "17"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma03-balance-floor-large",
+      "title": "残高 12345 XXX × 2.5 = 30862.5 を 30862 に切り捨てる",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "12345"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-15T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "observed",
+          "shared": false,
+          "balance": "30862"
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-15T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "30862"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma04-latest-observation-of-a-cycle",
+      "title": "同じ周期は観測の時刻が新しい方（残高 10 XXX = 25）。古い方（50 XXX）に戻らない",
+      "now": "2030-10-20T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-16T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "10"
+          },
+          "status": "observed",
+          "shared": false
+        },
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "50"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-16T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "observed",
+          "shared": false,
+          "balance": "25"
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-16T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "25"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma04-future-observation-ignored",
+      "title": "今より後の観測は読まない（10 月 20 日の観測は 10 月 16 日には存在しない）",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "10"
+          },
+          "status": "observed",
+          "shared": false
+        },
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-20T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "50"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-15T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "observed",
+          "shared": false,
+          "balance": "25"
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-15T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "25"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma04-observation-at-now-is-read",
+      "title": "観測の時刻がちょうど今なら読む",
+      "now": "2030-10-15T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "10"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-15T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "observed",
+          "shared": false,
+          "balance": "25"
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-15T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "25"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma04-newer-cycle-is-current",
+      "title": "今の周期は開始日が最も新しい周期（古い周期の観測が後に書かれても）。周期ごとの基準は新しい周期が先",
+      "now": "2030-11-02T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-11-01",
+          "observed_at": "2030-11-01T00:00:00.000Z",
+          "expires_at": "2030-12-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "100"
+          },
+          "status": "observed",
+          "shared": false
+        },
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-11-01T12:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "4"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-11-01",
+          "cycleStart": "2030-11-01T00:00:00.000Z",
+          "observedAt": "2030-11-01T00:00:00.000Z",
+          "expiresAt": "2030-12-01T00:00:00.000Z",
+          "status": "observed",
+          "shared": false,
+          "balance": "250"
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-11-01",
+            "cycleStart": "2030-11-01T00:00:00.000Z",
+            "observedAt": "2030-11-01T00:00:00.000Z",
+            "expiresAt": "2030-12-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "250"
+          },
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-11-01T12:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "10"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma05-currency-mismatch-is-unknown",
+      "title": "残高の通貨が設定と違う観測は、残高として読まず不明にする（通貨を取り違えて換算しない）",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XTS",
+            "amount": "500"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-15T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "unknown",
+          "shared": false,
+          "balance": null
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-15T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "unknown",
+            "shared": false,
+            "balance": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma05-unknown-and-expired-status",
+      "title": "不明と失効の記録は残高を持たない",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-09-01",
+          "observed_at": "2030-09-15T00:00:00.000Z",
+          "expires_at": "2030-10-01T00:00:00.000Z",
+          "balance": null,
+          "status": "expired",
+          "shared": false
+        },
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": null,
+          "status": "unknown",
+          "shared": true
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-15T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "unknown",
+          "shared": true,
+          "balance": null
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-15T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "unknown",
+            "shared": true,
+            "balance": null
+          },
+          {
+            "cycleId": "anthropic:2030-09-01",
+            "cycleStart": "2030-09-01T00:00:00.000Z",
+            "observedAt": "2030-09-15T00:00:00.000Z",
+            "expiresAt": "2030-10-01T00:00:00.000Z",
+            "status": "expired",
+            "shared": false,
+            "balance": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma06-other-provider-ignored",
+      "title": "別の provider の観測は読まない",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "openai",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "openai:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "50"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": null,
+        "bases": []
+      }
+    },
+    {
+      "id": "ma04-invalid-cycle-date-skipped",
+      "title": "暦にない周期の日付の観測は読まない",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-02-30",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "50"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": null,
+        "bases": []
+      }
+    },
+    {
+      "id": "ma03-balance-capped-at-18-digits",
+      "title": "換算後が 18 桁を超えたら上限の 999999999999999999 に切る（多く見積もらない）",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "999999999999999999"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-15T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "observed",
+          "shared": false,
+          "balance": "999999999999999999"
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-15T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "999999999999999999"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ma05-no-observations",
+      "title": "観測がなければ周期もない",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [],
+      "expected": {
+        "current": null,
+        "bases": []
+      }
+    },
+    {
+      "id": "ma03-rate-one",
+      "title": "換算が 1 の設定なら残高のまま（設定の上書き）",
+      "now": "2030-10-16T00:00:00.000Z",
+      "observations": [
+        {
+          "provider": "anthropic",
+          "organization_ref": "synthetic-organization",
+          "cycle_id": "anthropic:2030-10-01",
+          "observed_at": "2030-10-15T00:00:00.000Z",
+          "expires_at": "2030-11-01T00:00:00.000Z",
+          "balance": {
+            "currency": "XXX",
+            "amount": "12345"
+          },
+          "status": "observed",
+          "shared": false
+        }
+      ],
+      "expected": {
+        "current": {
+          "cycleId": "anthropic:2030-10-01",
+          "cycleStart": "2030-10-01T00:00:00.000Z",
+          "observedAt": "2030-10-15T00:00:00.000Z",
+          "expiresAt": "2030-11-01T00:00:00.000Z",
+          "status": "observed",
+          "shared": false,
+          "balance": "12345"
+        },
+        "bases": [
+          {
+            "cycleId": "anthropic:2030-10-01",
+            "cycleStart": "2030-10-01T00:00:00.000Z",
+            "observedAt": "2030-10-15T00:00:00.000Z",
+            "expiresAt": "2030-11-01T00:00:00.000Z",
+            "status": "observed",
+            "shared": false,
+            "balance": "12345"
+          }
+        ]
+      },
+      "config_override": {
+        "balance_to_budget_rate": "1"
+      }
+    }
+  ],
+  "availability_cases": [
+    {
+      "id": "ma03-available-all",
+      "title": "残高 100・使用なし → 残り 100",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": true,
+        "available": "100"
+      }
+    },
+    {
+      "id": "ma03-available-after-use",
+      "title": "残高 100 − 精算したクレジット 30 − 未精算の M 20 = 50",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "30",
+        "outstanding": "20"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": true,
+        "available": "50"
+      }
+    },
+    {
+      "id": "ma05-exhausted-zero",
+      "title": "残高 100 − 60 − 40 = 0 は枯渇（0 では M を賄えない）",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "60",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_exhausted"
+      }
+    },
+    {
+      "id": "ma05-exhausted-negative",
+      "title": "残高 100 − 70 − 40 = −10 も枯渇",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "70",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_exhausted"
+      }
+    },
+    {
+      "id": "ma05-no-basis",
+      "title": "観測がなければ残高不明",
+      "basis": null,
+      "ledger": null,
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_unknown"
+      }
+    },
+    {
+      "id": "ma05-status-unknown",
+      "title": "不明と記録された観測は残高不明",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "unknown",
+        "shared": false,
+        "balance": null
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_unknown"
+      }
+    },
+    {
+      "id": "ma05-status-expired",
+      "title": "失効と記録された観測は失効",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "expired",
+        "shared": false,
+        "balance": null
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    },
+    {
+      "id": "ma04-now-at-expiry",
+      "title": "周期の終わりちょうどは失効",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-11-01T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    },
+    {
+      "id": "ma04-one-ms-before-expiry",
+      "title": "周期の終わりの 1 ミリ秒前はまだ有効",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-31T23:59:59.999Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": true,
+        "available": "100"
+      }
+    },
+    {
+      "id": "ma04-expired-wins-over-unknown",
+      "title": "周期が終わった不明な観測は、不明より失効を先に返す",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "unknown",
+        "shared": false,
+        "balance": null
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-11-02T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    },
+    {
+      "id": "ma05-ledger-missing",
+      "title": "台帳を読めなければ残高不明（閉じた側）",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": null,
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_unknown"
+      }
+    },
+    {
+      "id": "ma05-shared-age-equals-limit",
+      "title": "共有の観測は、観測から上限ちょうどまでは新しい",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": true,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-15T01:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": true,
+        "available": "100"
+      }
+    },
+    {
+      "id": "ma05-shared-one-ms-over-limit",
+      "title": "共有の観測は、上限を 1 ミリ秒でも過ぎたら古い",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": true,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-15T01:00:00.001Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_stale"
+      }
+    },
+    {
+      "id": "ma05-unshared-old-is-fine",
+      "title": "専用の観測は古くなっても残高を信じる（Buddy の使用だけが減らす）",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-31T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": true,
+        "available": "100"
+      }
+    },
+    {
+      "id": "ma05-stale-before-exhausted",
+      "title": "共有の観測が古く、かつ枯渇なら、古いを先に返す",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": true,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "100",
+        "outstanding": "0"
+      },
+      "now": "2030-10-15T02:00:00.000Z",
+      "max_age_ms": 3600000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_stale"
+      }
+    },
+    {
+      "id": "ma05-short-age-limit",
+      "title": "上限の長さは設定の値（1,000 ミリ秒）で、1,001 ミリ秒で古い",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": true,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-15T00:00:01.001Z",
+      "max_age_ms": 1000,
+      "expected": {
+        "ok": false,
+        "reason": "credit_stale"
+      }
+    }
+  ],
+  "admission_cases": [
+    {
+      "id": "ma03-m-fits-exactly",
+      "title": "残り 50 に M 50 はちょうど収まる",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "30",
+        "outstanding": "20"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "max_liability": "50",
+      "expected": {
+        "ok": true,
+        "cycleId": "anthropic:2030-10-01"
+      }
+    },
+    {
+      "id": "ma05-m-one-over",
+      "title": "残り 50 に M 51 は収まらない（賄えない分が購入残高へ移らないよう保留）",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "30",
+        "outstanding": "20"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "max_liability": "51",
+      "expected": {
+        "ok": false,
+        "reason": "credit_insufficient"
+      }
+    },
+    {
+      "id": "ma05-m-zero",
+      "title": "M 0 は残りがあれば収まる",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "30",
+        "outstanding": "20"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "max_liability": "0",
+      "expected": {
+        "ok": true,
+        "cycleId": "anthropic:2030-10-01"
+      }
+    },
+    {
+      "id": "ma05-hold-reason-first",
+      "title": "残りがないときは足りないより枯渇",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "100",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "max_liability": "1",
+      "expected": {
+        "ok": false,
+        "reason": "credit_exhausted"
+      }
+    },
+    {
+      "id": "ma04-cycle-recorded-is-the-basis-cycle",
+      "title": "結び付ける周期は基準の周期（新しい周期の観測なら新しい周期）",
+      "basis": {
+        "cycleId": "anthropic:2030-11-01",
+        "cycleStart": "2030-11-01T00:00:00.000Z",
+        "observedAt": "2030-11-01T00:00:00.000Z",
+        "expiresAt": "2030-12-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "200"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-11-02T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "max_liability": "40",
+      "expected": {
+        "ok": true,
+        "cycleId": "anthropic:2030-11-01"
+      }
+    },
+    {
+      "id": "ma05-expired-cycle",
+      "title": "失効した周期には結び付けない",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-11-01T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "max_liability": "1",
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    }
+  ],
+  "allocation_cases": [
+    {
+      "id": "ma03-all-credit",
+      "title": "実費 30・M 40・残り 100 → 全額クレジット",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "30",
+        "additional_spend": "0",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma03-capped-by-m",
+      "title": "実費 55 は M 40 までがクレジット、超えた 15 は追加の支出。消費の見積もりは M で止めず実費の 55",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "55",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "40",
+        "additional_spend": "15",
+        "estimate": "55"
+      }
+    },
+    {
+      "id": "ma03-capped-by-remaining",
+      "title": "残り 100 − 70 − 20 = 10 なら、実費 30 のうちクレジットは 10、追加の支出は 20。消費の見積もりは割り当てに関わらず min(実費, M) の 30",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "70",
+        "outstanding": "20"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "10",
+        "additional_spend": "20",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma03-remaining-zero",
+      "title": "残りが 0 ならクレジット 0・追加の支出＝実費。ほかの予約が占めていても provider は消費したかもしれないので、消費の見積もりは min(実費, M) の 30",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "60",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma03-remaining-negative",
+      "title": "残りが負でもクレジットは負にならない",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "90",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma03-remaining-zero-capped-by-m",
+      "title": "残りが 0 で実費 55 が M 40 を超えるとき、割り当て 0・追加の支出 55、消費の見積もりは実費の 55",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "55",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "60",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "55",
+        "estimate": "55"
+      }
+    },
+    {
+      "id": "ma03-zero-actual",
+      "title": "実費 0 はどちらも 0",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "0",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "0",
+        "estimate": "0"
+      }
+    },
+    {
+      "id": "ma06-no-cycle",
+      "title": "周期に結び付かない予約（音声・検索・Luna）はクレジット 0",
+      "cycle_id": null,
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "0"
+      }
+    },
+    {
+      "id": "ma05-no-basis",
+      "title": "観測がなければ確認できないのでクレジット 0",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": null,
+      "ledger": null,
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma05-no-ledger",
+      "title": "台帳がなければクレジット 0",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": null,
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma04-basis-of-another-cycle",
+      "title": "予約の周期と違う周期の基準では充てない（付け替えない）",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-11-01",
+        "cycleStart": "2030-11-01T00:00:00.000Z",
+        "observedAt": "2030-11-01T00:00:00.000Z",
+        "expiresAt": "2030-12-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "200"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-11-02T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma04-cycle-ended",
+      "title": "周期が終わった後の精算は、クレジットを確認できないので 0（追加の支出＝実費）",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-11-01T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma04-one-ms-before-end",
+      "title": "周期の終わりの 1 ミリ秒前の精算は有効",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-31T23:59:59.999Z",
+      "expected": {
+        "credit_applied": "30",
+        "additional_spend": "0",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma05-status-unknown",
+      "title": "不明の観測ではクレジット 0",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "unknown",
+        "shared": false,
+        "balance": null
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma05-status-expired",
+      "title": "失効の観測ではクレジット 0",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "30",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "expired",
+        "shared": false,
+        "balance": null
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "0"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "estimate": "30"
+      }
+    }
+  ],
+  "settle_cases": [
+    {
+      "id": "ma03-settle-with-credit",
+      "title": "受付時に周期へ結び付いた予約を、クレジット 30・追加の支出 0 で精算する",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "reserved",
+        "cycle": "anthropic:2030-10-01"
+      },
+      "settlement": {
+        "actualGross": "30",
+        "creditApplied": "30",
+        "providerReconciliationId": "mockpaid:p1"
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": false,
+        "record": {
+          "status": "settled",
+          "actualGross": "30",
+          "creditApplied": "30",
+          "additionalSpend": "0",
+          "creditCycleId": "anthropic:2030-10-01"
+        }
+      }
+    },
+    {
+      "id": "ma03-settle-default-is-initial-rule",
+      "title": "クレジットを省略すると、初期の規則（クレジット 0・追加の支出＝実費）",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "reserved",
+        "cycle": "anthropic:2030-10-01"
+      },
+      "settlement": {
+        "actualGross": "30",
+        "providerReconciliationId": "mockpaid:p1"
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": false,
+        "record": {
+          "status": "settled",
+          "actualGross": "30",
+          "creditApplied": "0",
+          "additionalSpend": "30",
+          "creditCycleId": "anthropic:2030-10-01"
+        }
+      }
+    },
+    {
+      "id": "ma03-settle-credit-above-actual",
+      "title": "クレジットが実費を超える精算は拒否する",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "reserved",
+        "cycle": "anthropic:2030-10-01"
+      },
+      "settlement": {
+        "actualGross": "30",
+        "creditApplied": "31",
+        "providerReconciliationId": "mockpaid:p1"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["credit_exceeds_actual"]
+      }
+    },
+    {
+      "id": "ma06-settle-credit-without-cycle",
+      "title": "周期に結び付かない予約にクレジットを充てる精算は拒否する",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "reserved",
+        "cycle": null
+      },
+      "settlement": {
+        "actualGross": "30",
+        "creditApplied": "1",
+        "providerReconciliationId": "mockpaid:p1"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["credit_not_eligible"]
+      }
+    },
+    {
+      "id": "ma03-settle-duplicate-ignores-credit",
+      "title": "精算済みへの同じ usage の再適用は変化なし（区分は Buddy の台帳の値なので照合に使わない）",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "settled",
+        "cycle": "anthropic:2030-10-01",
+        "actual": "30",
+        "receipt": "mockpaid:p1",
+        "credit": "30",
+        "additional": "0"
+      },
+      "settlement": {
+        "actualGross": "30",
+        "creditApplied": "0",
+        "providerReconciliationId": "mockpaid:p1"
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": true,
+        "record": {
+          "status": "settled",
+          "actualGross": "30",
+          "creditApplied": "30",
+          "additionalSpend": "0",
+          "creditCycleId": "anthropic:2030-10-01"
+        }
+      }
+    },
+    {
+      "id": "ma03-settle-conflict-by-actual",
+      "title": "精算済みへ違う実費の精算は競合",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "settled",
+        "cycle": "anthropic:2030-10-01",
+        "actual": "30",
+        "receipt": "mockpaid:p1",
+        "credit": "30",
+        "additional": "0"
+      },
+      "settlement": {
+        "actualGross": "31",
+        "creditApplied": "30",
+        "providerReconciliationId": "mockpaid:p1"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["settlement_conflict"]
+      }
+    }
+  ],
+  "manual_cases": [
+    {
+      "id": "ma03-manual-split",
+      "title": "本人が照合した区分（クレジット 20・追加の支出 10）を、予約の周期で記録する",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "20",
+        "additionalSpend": "10",
+        "creditCycleId": "anthropic:2030-10-01"
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": false,
+        "record": {
+          "status": "settled",
+          "actualGross": "30",
+          "creditApplied": "20",
+          "additionalSpend": "10",
+          "creditCycleId": "anthropic:2030-10-01"
+        }
+      }
+    },
+    {
+      "id": "ma03-manual-default",
+      "title": "区分を省略すると初期の規則",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30"
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": false,
+        "record": {
+          "status": "settled",
+          "actualGross": "30",
+          "creditApplied": "0",
+          "additionalSpend": "30",
+          "creditCycleId": "anthropic:2030-10-01"
+        }
+      }
+    },
+    {
+      "id": "ma03-manual-zero-credit-null-cycle",
+      "title": "クレジット 0 で周期なしの入力は、周期のある予約にも受け付ける（予約の周期は変えない）",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "0",
+        "additionalSpend": "30",
+        "creditCycleId": null
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": false,
+        "record": {
+          "status": "settled",
+          "actualGross": "30",
+          "creditApplied": "0",
+          "additionalSpend": "30",
+          "creditCycleId": "anthropic:2030-10-01"
+        }
+      }
+    },
+    {
+      "id": "ma04-manual-other-cycle",
+      "title": "別の周期への付け替えは拒否",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "20",
+        "additionalSpend": "10",
+        "creditCycleId": "anthropic:2030-11-01"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["credit_cycle_mismatch"]
+      }
+    },
+    {
+      "id": "ma04-manual-cycle-on-uncredited-reservation",
+      "title": "周期のない予約に周期を付ける入力は拒否",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": null,
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "0",
+        "additionalSpend": "30",
+        "creditCycleId": "anthropic:2030-10-01"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["credit_cycle_mismatch"]
+      }
+    },
+    {
+      "id": "ma06-manual-credit-on-uncredited-reservation",
+      "title": "周期のない予約（音声・検索・Luna）へクレジットを充てる入力は拒否",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": null,
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "5",
+        "additionalSpend": "25",
+        "creditCycleId": "anthropic:2030-10-01"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["credit_cycle_mismatch"]
+      }
+    },
+    {
+      "id": "ma03-manual-credit-needs-cycle",
+      "title": "クレジットを充てたのに周期がない入力は拒否",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "5",
+        "additionalSpend": "25",
+        "creditCycleId": null
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["missing_credit_cycle"]
+      }
+    },
+    {
+      "id": "ma03-manual-sum-mismatch",
+      "title": "クレジット + 追加の支出が実費と合わない入力は拒否",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "5",
+        "additionalSpend": "24",
+        "creditCycleId": "anthropic:2030-10-01"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["settlement_sum"]
+      }
+    },
+    {
+      "id": "ma03-manual-credit-not-integer",
+      "title": "クレジットが整数でない入力は拒否",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "usage_unknown",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "1.5",
+        "additionalSpend": "28.5",
+        "creditCycleId": "anthropic:2030-10-01"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["invalid_amount"]
+      }
+    },
+    {
+      "id": "ma03-manual-replay-same-split",
+      "title": "同じ区分の再適用は変化なし",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "settled",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1",
+        "actual": "30",
+        "receipt": "manual:inv-1",
+        "credit": "20",
+        "additional": "10"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "20",
+        "additionalSpend": "10",
+        "creditCycleId": "anthropic:2030-10-01"
+      },
+      "expected": {
+        "ok": true,
+        "duplicate": true,
+        "record": {
+          "status": "settled",
+          "actualGross": "30",
+          "creditApplied": "20",
+          "additionalSpend": "10",
+          "creditCycleId": "anthropic:2030-10-01"
+        }
+      }
+    },
+    {
+      "id": "ma03-manual-replay-other-split",
+      "title": "区分を変えた再適用は拒否",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "settled",
+        "cycle": "anthropic:2030-10-01",
+        "revision": "1",
+        "actual": "30",
+        "receipt": "manual:inv-1",
+        "credit": "20",
+        "additional": "10"
+      },
+      "input": {
+        "expectedRevision": "1",
+        "manualReconciliationId": "manual:inv-1",
+        "currency": "XTS",
+        "actualGross": "30",
+        "creditApplied": "30",
+        "additionalSpend": "0",
+        "creditCycleId": "anthropic:2030-10-01"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": ["already_settled"]
+      }
+    }
+  ],
+  "view_cases": [
+    {
+      "id": "ma03-view-with-split",
+      "title": "精算済みの予約を契約の形にすると、保存した区分と周期を出す",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "settled",
+        "cycle": "anthropic:2030-10-01",
+        "actual": "30",
+        "receipt": "mockpaid:p1",
+        "credit": "20",
+        "additional": "10"
+      },
+      "expected": {
+        "actual_gross": "30",
+        "credit_applied": "20",
+        "additional_spend": "10",
+        "credit_cycle_id": "anthropic:2030-10-01"
+      }
+    },
+    {
+      "id": "ma03-view-without-split",
+      "title": "区分の記録がない精算済みの行は、初期の規則（クレジット 0・追加の支出＝実費・周期なし）",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "settled",
+        "cycle": null,
+        "actual": "30",
+        "receipt": "mockpaid:p1"
+      },
+      "expected": {
+        "actual_gross": "30",
+        "credit_applied": "0",
+        "additional_spend": "30",
+        "credit_cycle_id": null
+      }
+    },
+    {
+      "id": "ma04-view-reserved-keeps-cycle",
+      "title": "未精算の予約は金額の区分を持たず、結び付いた周期だけを出す",
+      "reservation": {
+        "pool": "llm",
+        "month": "2030-10",
+        "r": "40",
+        "m": "40",
+        "status": "reserved",
+        "cycle": "anthropic:2030-10-01"
+      },
+      "expected": {
+        "actual_gross": null,
+        "credit_applied": null,
+        "additional_spend": null,
+        "credit_cycle_id": "anthropic:2030-10-01"
+      }
+    }
+  ],
+  "still_covers_cases": [
+    {
+      "id": "ma05-covers-with-nothing-left",
+      "title": "送出の直前: 確保した M を含めて残りがちょうど 0 なら、まだ賄える（残高 100 − 精算 0 − 未精算 100）",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "100"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "id": "ma05-balance-dropped-below-reserved",
+      "title": "受付の後に観測が減り、確保した M を賄えない（残り −1）なら、送らない",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "101"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_exhausted"
+      }
+    },
+    {
+      "id": "ma05-bound-expiry-passed",
+      "title": "受付の時点の期限（10-20）を過ぎたら、観測が期限を延ばしていても失効",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-12-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    },
+    {
+      "id": "ma05-bound-expiry-one-ms-before",
+      "title": "受付の時点の期限の 1 ミリ秒前はまだ有効",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-12-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-19T23:59:59.999Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "id": "ma05-observed-expiry-passed",
+      "title": "観測の周期の終わりを過ぎたら失効（受付の時点の期限がなくても）",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-11-01T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    },
+    {
+      "id": "ma05-status-expired-now",
+      "title": "失効と記録された観測は失効",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "expired",
+        "shared": false,
+        "balance": null
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    },
+    {
+      "id": "ma05-status-unknown-now",
+      "title": "不明と記録された観測は不明",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "unknown",
+        "shared": false,
+        "balance": null
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_unknown"
+      }
+    },
+    {
+      "id": "ma05-no-basis-now",
+      "title": "観測がなければ不明",
+      "basis": null,
+      "ledger": null,
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_unknown"
+      }
+    },
+    {
+      "id": "ma05-ledger-missing-now",
+      "title": "台帳を読めなければ不明",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": null,
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_unknown"
+      }
+    },
+    {
+      "id": "ma05-shared-stale-now",
+      "title": "共有の観測は上限を 1 ミリ秒過ぎたら古い",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": true,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-15T01:00:00.001Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_stale"
+      }
+    },
+    {
+      "id": "ma05-shared-at-limit-now",
+      "title": "共有の観測は上限ちょうどまでは新しい",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": true,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-15T01:00:00.000Z",
+      "max_age_ms": 3600000,
+      "bound_expires_at": null,
+      "expected": {
+        "ok": true
+      }
+    }
+  ],
+  "top_up_cases": [
+    {
+      "id": "ma05-top-up-fits-exactly",
+      "title": "追加予約: 確保した M を含む台帳で残り 30 に、追加 30 はちょうど収まる",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "70"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "30",
+      "bound_expires_at": null,
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "id": "ma05-top-up-one-over",
+      "title": "追加 31 は残り 30 に収まらない",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "70"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "31",
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_insufficient"
+      }
+    },
+    {
+      "id": "ma05-top-up-nothing-left",
+      "title": "残りが 0 なら、追加 1 は枯渇",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "100"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "1",
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_exhausted"
+      }
+    },
+    {
+      "id": "ma05-top-up-zero-delta-covered",
+      "title": "追加 0 で残りが負でなければ通る",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "100"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "0",
+      "bound_expires_at": null,
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "id": "ma05-top-up-zero-delta-negative",
+      "title": "追加 0 でも、残りが負（観測が減った）なら通さない",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "105"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "0",
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_exhausted"
+      }
+    },
+    {
+      "id": "ma05-top-up-expired",
+      "title": "周期の終わりの後の追加は失効",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-11-01T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "1",
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    },
+    {
+      "id": "ma05-top-up-bound-expiry",
+      "title": "受付の時点の期限を過ぎた追加は、観測が期限を延ばしていても失効",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-12-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "1",
+      "bound_expires_at": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "ok": false,
+        "reason": "credit_expired"
+      }
+    },
+    {
+      "id": "ma05-top-up-unknown",
+      "title": "不明と記録された観測では追加できない",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "unknown",
+        "shared": false,
+        "balance": null
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "1",
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_unknown"
+      }
+    },
+    {
+      "id": "ma05-top-up-stale",
+      "title": "共有の観測が古ければ追加できない",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": true,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "0",
+        "outstanding": "40"
+      },
+      "now": "2030-10-15T01:00:00.001Z",
+      "max_age_ms": 3600000,
+      "delta_max_liability": "1",
+      "bound_expires_at": null,
+      "expected": {
+        "ok": false,
+        "reason": "credit_stale"
+      }
+    }
+  ],
+  "adoption_cases": [
+    {
+      "id": "ma05-adopt-first",
+      "title": "初めての観測は採用する",
+      "input": {
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "contentId": "aa",
+        "sameTime": null,
+        "latestObservedAtOfCycle": null,
+        "maxCycleStart": null
+      },
+      "expected": "adopt"
+    },
+    {
+      "id": "ma05-adopt-newer",
+      "title": "同じ周期で観測の時刻が新しければ採用する",
+      "input": {
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-16T00:00:00.000Z",
+        "contentId": "aa",
+        "sameTime": null,
+        "latestObservedAtOfCycle": "2030-10-15T00:00:00.000Z",
+        "maxCycleStart": "2030-10-01T00:00:00.000Z"
+      },
+      "expected": "adopt"
+    },
+    {
+      "id": "ma05-adopt-new-cycle",
+      "title": "周期の開始が採用済みの最大より新しければ採用する",
+      "input": {
+        "cycleStart": "2030-11-01T00:00:00.000Z",
+        "observedAt": "2030-11-01T00:00:00.000Z",
+        "contentId": "aa",
+        "sameTime": null,
+        "latestObservedAtOfCycle": null,
+        "maxCycleStart": "2030-10-01T00:00:00.000Z"
+      },
+      "expected": "adopt"
+    },
+    {
+      "id": "ma05-same-time-same-content",
+      "title": "同じ時刻・同じ内容は変化なし（ファイルを前の状態へ戻しても採用済みは残る）",
+      "input": {
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "contentId": "aa",
+        "sameTime": {
+          "contentId": "aa"
+        },
+        "latestObservedAtOfCycle": "2030-10-16T00:00:00.000Z",
+        "maxCycleStart": "2030-10-01T00:00:00.000Z"
+      },
+      "expected": "same"
+    },
+    {
+      "id": "ma05-same-time-other-content",
+      "title": "同じ時刻で内容が違う観測は矛盾として拒否する",
+      "input": {
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "contentId": "aa",
+        "sameTime": {
+          "contentId": "bb"
+        },
+        "latestObservedAtOfCycle": "2030-10-15T00:00:00.000Z",
+        "maxCycleStart": "2030-10-01T00:00:00.000Z"
+      },
+      "expected": "conflict"
+    },
+    {
+      "id": "ma05-older-time",
+      "title": "採用済みより古い時刻の新しい観測は巻き戻りとして拒否する",
+      "input": {
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-14T00:00:00.000Z",
+        "contentId": "aa",
+        "sameTime": null,
+        "latestObservedAtOfCycle": "2030-10-15T00:00:00.000Z",
+        "maxCycleStart": "2030-10-01T00:00:00.000Z"
+      },
+      "expected": "rollback"
+    },
+    {
+      "id": "ma05-older-cycle",
+      "title": "周期の開始が採用済みの最大より古い観測は拒否する",
+      "input": {
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-11-02T00:00:00.000Z",
+        "contentId": "aa",
+        "sameTime": null,
+        "latestObservedAtOfCycle": null,
+        "maxCycleStart": "2030-11-01T00:00:00.000Z"
+      },
+      "expected": "cycle_regression"
+    },
+    {
+      "id": "ma05-older-cycle-already-adopted",
+      "title": "古い周期でも、採用済みと同じ観測なら変化なし",
+      "input": {
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "contentId": "aa",
+        "sameTime": {
+          "contentId": "aa"
+        },
+        "latestObservedAtOfCycle": "2030-10-15T00:00:00.000Z",
+        "maxCycleStart": "2030-11-01T00:00:00.000Z"
+      },
+      "expected": "same"
+    }
+  ]
+}

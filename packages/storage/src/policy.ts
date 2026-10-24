@@ -176,6 +176,12 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'permanent',
     transaction: 'budget',
   },
+  // 0008（B07-07、ADR 0042）: 採用した付帯クレジットの残高の観測（書き換えず消さない。巻き戻りを拒否する）。
+  budget_credit_observations: {
+    body: 'none',
+    retention: 'permanent',
+    transaction: 'budget',
+  },
   sync_scopes: {
     body: 'none',
     retention: 'until_disconnected',

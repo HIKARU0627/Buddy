@@ -710,7 +710,9 @@ export class BudgetBridge {
     if (typeof confirmed === 'string') return fail(confirmed);
     const after = this.#fresh(record);
     if (after !== null) return fail(after);
-    // クレジットの区分は B07-07 まで初期の規則（クレジット 0・追加の支出＝実費・周期なし。ADR 0034・0039）。
+    // 画面で入れるのは実費だけなので、区分は初期の規則（クレジット 0・追加の支出＝実費・周期なし。ADR 0034・0039）。
+    // API は本人が請求の照合で得た区分（クレジット・周期）も受け付ける（B07-07、ADR 0042）が、その入力欄は
+    // キャンバス UI の後に足す。
     return this.#send(
       gen,
       scope,

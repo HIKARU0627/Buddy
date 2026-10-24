@@ -16,11 +16,17 @@
 // - 再起動の照合（reconcile）: 送出意図のない受付中の予約は解放し、ある予約は provider の照合の口で usage が分かれば
 //   精算、分からなければ usage 不明にする（X28 の仕組み）。provider へ送り直さない。
 // - 月替わり・保留の解除を知らせる（onResumable）。予算を待っている解析（B10）が再開に使う。
+// - 付帯クレジット（B07-07、ADR 0042）: 設定の credit で指定した profile の LLM の要求だけ、クレジットの残りで M の全額を
+//   賄えるときに受け付け（残高が不明・失効・枯渇・古い・足りないなら保留。購入残高・後払いへ自動で移らない）、予約を
+//   今の周期に結び付ける。精算は通常料金の実費をクレジットと追加の支出に一度だけ分ける（枠の上限は実費の全額で守る）。
+//   音声・検索・指定のない profile にはクレジットを充てない。残高の観測は本人が書くファイルから読む。
 // 結果の理由にはコードだけを入れ、金額・本文を記録へ出さない。
 
 import { randomUUID } from 'node:crypto';
 import {
   computeReservation,
+  creditAvailability,
+  creditEligible,
   overageRouteOf,
   routePool,
   toReservationView,
@@ -31,18 +37,23 @@ import type {
   BudgetReservationView,
   BudgetService,
   BudgetUsageSummaryView,
+  CreditHoldReason,
   OverageApprovalRecord,
   P95Measurement,
   PriceCategory,
 } from '@buddy/domain';
 import type {
   BudgetCalendarCheck,
+  BudgetCreditInput,
+  BudgetCreditSettings,
+  BudgetCreditState,
   BudgetOp,
   BudgetOpKind,
   BudgetOpOutcome,
   BudgetRequestRef,
   BudgetReservationValue,
 } from '@buddy/storage';
+import type { CreditObservationSource } from './budget-credit.js';
 import type { LoadedBudgetConfig } from './budget-config.js';
 
 export interface BudgetStore {
@@ -82,6 +93,9 @@ export interface BudgetTicket {
   readonly routed: boolean;
   // 応答の期限（UTC のミリ秒）。
   readonly deadline: number;
+  // 受付で結び付けたクレジットの有効期限（UTC のミリ秒。クレジットを充てない予約は null）。provider へ送る直前にも
+  // この時刻を過ぎていないことを確かめる。
+  readonly credit_expires_at: number | null;
 }
 
 export type AdmitResult =
@@ -158,6 +172,12 @@ export type BudgetGateHoldReason =
   | 'reservation_pool_unknown'
   | 'calendar_unavailable';
 
+// 契約の BudgetCreditHold と同じ形（クレジットを充てる profile の保留。金額・残高を含めない）。
+export interface BudgetCreditHoldView {
+  readonly reason: CreditHoldReason;
+  readonly profile_ids: readonly string[];
+}
+
 // 契約の BudgetHoldState と同じ形。
 export interface BudgetHoldStateView {
   readonly held: boolean;
@@ -166,11 +186,32 @@ export interface BudgetHoldStateView {
     readonly pool_id: string;
     readonly hold_reasons: readonly BudgetHoldReason[];
   }[];
+  readonly credit_hold?: BudgetCreditHoldView;
+}
+
+// 本人が見るクレジットの状態（ローカルの確認・試験用。金額は予算の通貨の百万分の一）。API・スナップショットには
+// 出さない（スナップショットの保留は BudgetCreditHold の理由だけ）。
+export interface CreditStatusView {
+  readonly configured: boolean;
+  readonly profile_ids: readonly string[];
+  readonly cycle_id: string | null;
+  readonly status: 'observed' | 'unknown' | 'expired' | null;
+  readonly shared: boolean | null;
+  readonly expires_at: string | null;
+  readonly observed_at: string | null;
+  // 予算の通貨にした残高と、観測の後に精算したクレジット・未精算の最大負担 M の合計・残り。
+  readonly balance: string | null;
+  readonly allocated_since: string | null;
+  readonly outstanding: string | null;
+  readonly available: string | null;
+  // 保留の理由（受け付けられるなら null）。
+  readonly hold: CreditHoldReason | null;
 }
 
 export interface BudgetResumeEvent {
-  // month_rolled: 予算月が替わった。hold_cleared: 本人の確かめ直しで予算月の保留が解けた。
-  readonly kind: 'month_rolled' | 'hold_cleared';
+  // month_rolled: 予算月が替わった。hold_cleared: 本人の確かめ直しで予算月の保留が解けた。credit_resumed: クレジットを
+  // 充てる profile の保留（残高不明・失効・枯渇・古い）が、新しい観測で解けた（定期の確認で気づく。B07-07）。
+  readonly kind: 'month_rolled' | 'hold_cleared' | 'credit_resumed';
   readonly month: string;
 }
 
@@ -230,7 +271,11 @@ export interface BudgetGateOptions {
   readonly newId?: () => string;
   // p95 × 1.2 で予約してよい profile（05: 意図判定の比較 profile だけ。他は R = M）。
   readonly p95ProfileIds?: readonly string[];
+  // 付帯クレジットの残高の観測の口（設定に credit があるとき使う。なければ「観測なし」＝保留）。
+  readonly creditObservations?: CreditObservationSource;
   readonly timers?: GateTimers;
+  // 観測のファイルを読む待ち時間の上限（ミリ秒。既定 10 秒）。超えたら観測なしとして続け、遅れて届いた結果は採用しない。
+  readonly creditReadTimeoutMs?: number;
   // 試験用の故障点。受付の命令を送る直前に呼ぶ（同時の受付を関門でそろえる）。
   readonly faults?: {
     readonly beforeAdmit?: (request: PaidRequest) => Promise<void> | void;
@@ -260,7 +305,9 @@ const isBudgetHeld = (reasons: readonly string[]): boolean =>
   reasons.some(
     (code) =>
       GATE_HOLD_CODES.has(code) ||
-      /^(r_limit|m_limit|overrun_hold):/u.test(code),
+      /^(r_limit|m_limit|overrun_hold):/u.test(code) ||
+      // クレジットを充てる profile の保留（残高の観測が届く・周期が替わると再開できる。B07-07）。
+      /^credit_(unknown|expired|stale|exhausted|insufficient)$/u.test(code),
   );
 
 const HOLD_ORDER: readonly BudgetGateHoldReason[] = [
@@ -272,6 +319,25 @@ const HOLD_ORDER: readonly BudgetGateHoldReason[] = [
 ];
 
 const iso = (millis: number): string => new Date(millis).toISOString();
+
+// 観測の採用の結果。設定がなければ configured: false。採用の書込みが失敗したときは state が null（理由つき）。
+type CreditAdoptionResult =
+  | { readonly configured: false }
+  | {
+      readonly configured: true;
+      readonly settings: BudgetCreditSettings;
+      readonly state: BudgetCreditState | null;
+      readonly reasons: readonly string[];
+    };
+
+// 送出の直前にこの理由で止めた要求は、クレジットが回復したときに知らせる（credit_resumed）。
+const CREDIT_WAIT_REASONS: ReadonlySet<string> = new Set([
+  'credit_exhausted',
+  'credit_insufficient',
+  'credit_expired',
+  'credit_unknown',
+  'credit_stale',
+]);
 
 const toTicket = (
   reservation: BudgetReservationValue,
@@ -287,6 +353,7 @@ const toTicket = (
   revision: reservation.revision,
   routed,
   deadline,
+  credit_expires_at: reservation.creditExpiresAt,
 });
 
 export class BudgetGate {
@@ -296,11 +363,21 @@ export class BudgetGate {
   readonly #log: (message: string) => void;
   readonly #newId: () => string;
   readonly #p95ProfileIds: readonly string[];
+  readonly #creditSource: CreditObservationSource | null;
   readonly #timers: GateTimers;
+  readonly #creditReadTimeoutMs: number;
   readonly #beforeAdmit: (request: PaidRequest) => Promise<void> | void;
   readonly #beforeDispatch: (ticket: BudgetTicket) => Promise<void> | void;
   readonly #afterDispatch: (ticket: BudgetTicket) => Promise<void> | void;
   readonly #listeners = new Set<(event: BudgetResumeEvent) => void>();
+  // 前回の確認でクレジットの保留があったか（null は設定なし・まだ確認していない）。保留が解けたときだけ知らせる。
+  #creditHeld: boolean | null = null;
+  // クレジットの確認は直列にする（並行する確認が古い結果で状態を上書きして、再開を重複して知らせないように。Codex P2）。
+  #creditWatch: Promise<void> = Promise.resolve();
+  // 残りが M に足りず保留した要求の必要な M（request_id → M）。残りが増えて足りるようになったら再開を知らせる。
+  readonly #creditWaiting = new Map<string, bigint>();
+  // 拒否した観測の理由を記録に出した組（同じ理由を繰り返し出さない）。
+  readonly #creditRejectedLogged = new Set<string>();
   readonly #pending = new Set<Promise<unknown>>();
 
   constructor(options: BudgetGateOptions) {
@@ -310,7 +387,9 @@ export class BudgetGate {
     this.#log = options.log ?? (() => undefined);
     this.#newId = options.newId ?? (() => randomUUID());
     this.#p95ProfileIds = options.p95ProfileIds ?? [];
+    this.#creditSource = options.creditObservations ?? null;
     this.#timers = options.timers ?? DEFAULT_TIMERS;
+    this.#creditReadTimeoutMs = options.creditReadTimeoutMs ?? 10_000;
     this.#beforeAdmit = options.faults?.beforeAdmit ?? (() => undefined);
     this.#beforeDispatch = options.faults?.beforeDispatch ?? (() => undefined);
     this.#afterDispatch = options.faults?.afterDispatch ?? (() => undefined);
@@ -331,7 +410,9 @@ export class BudgetGate {
     this.#log(
       event.kind === 'month_rolled'
         ? `予算月が ${event.month} に替わりました。予算を待っている処理を再開できます。`
-        : `予算月 ${event.month} の保留が本人の確認で解けました。`,
+        : event.kind === 'credit_resumed'
+          ? 'クレジットの残高を確認できました。クレジットを待っている処理を再開できます。'
+          : `予算月 ${event.month} の保留が本人の確認で解けました。`,
     );
     for (const listener of [...this.#listeners]) {
       try {
@@ -346,6 +427,111 @@ export class BudgetGate {
     const tracked = promise.catch(() => undefined);
     this.#pending.add(tracked);
     void tracked.finally(() => this.#pending.delete(tracked));
+  }
+
+  // 付帯クレジットの設定（B07-07）。設定に credit がなければ null。
+  #creditSettings(): BudgetCreditSettings | null {
+    const config = this.#config;
+    if (!config.ok) return null;
+    const credit = config.config.credit;
+    if (credit === undefined) return null;
+    return { config: credit, budget_currency: config.settings.currency };
+  }
+
+  // 本人が書いた観測のファイルを、待ち時間の上限つきで読む。口がない・読めない・ファイルがない・待ち時間を超えたときは観測
+  // なし。超えた後に届いた結果は捨てる（採用しない）。観測を採用するか（巻き戻りを拒否するか）は DB が決める。
+  async #readObservations(): Promise<BudgetCreditInput['observations']> {
+    const source = this.#creditSource;
+    if (source === null) return [];
+    const read = (async (): Promise<BudgetCreditInput['observations']> => {
+      try {
+        const loaded = await source.read();
+        if (!loaded.ok && !loaded.missing)
+          this.#noteReadFailure(loaded.reasons);
+        return loaded.ok ? loaded.observations : [];
+      } catch {
+        return [];
+      }
+    })();
+    return new Promise((resolve) => {
+      let done = false;
+      const cancel = this.#timers.set(this.#creditReadTimeoutMs, () => {
+        if (done) return;
+        done = true;
+        this.#log(
+          'クレジットの観測のファイルを待ち時間内に読めませんでした。観測なしとして続けます（遅れて届いた結果は採用しません）。',
+        );
+        resolve([]);
+      });
+      void read.then((value) => {
+        if (done) return;
+        done = true;
+        cancel();
+        resolve(value);
+      });
+    });
+  }
+
+  // 観測のファイルを読み、予約の判定とは別の transaction で採用して確定する。判定を拒否しても、判定に使った新しい観測は
+  // 残る（拒否した判定の巻き戻しに巻き込まない）。ファイルを読めなくても採用済みの観測は残る。設定がなければ configured:
+  // false。採用の書込みが失敗したときは state が null（理由つき）。
+  async #adoptCredit(): Promise<CreditAdoptionResult> {
+    const settings = this.#creditSettings();
+    if (settings === null) return { configured: false };
+    const observations = await this.#readObservations();
+    const adopted = await this.#store.budget({
+      kind: 'budget.credit_adopt',
+      credit: { ...settings, observations },
+      now: this.#now(),
+    });
+    if (!adopted.ok)
+      return {
+        configured: true,
+        settings,
+        state: null,
+        reasons: adopted.reasons,
+      };
+    this.#noteRejected(adopted.value.rejected);
+    return { configured: true, settings, state: adopted.value, reasons: [] };
+  }
+
+  // 予約がクレジットの周期に結び付いている（受付で有効期限を結び付けた）ときだけ、観測を読んで採用する。結び付かない予約
+  // （対象外の profile・音声・検索）は観測のファイルを待たず、クレジットなしで判定する（読み込みが詰まっても巻き込まない）。
+  async #adoptForTicket(ticket: BudgetTicket): Promise<CreditAdoptionResult> {
+    return ticket.credit_expires_at === null
+      ? { configured: false }
+      : this.#adoptCredit();
+  }
+
+  // 残りが M に足りずに止めた要求の必要な M を覚える（残りが増えて足りるようになったら credit_resumed を知らせる）。
+  #waitForCredit(requestId: string, needed: bigint): void {
+    if (this.#creditWaiting.size >= 256) {
+      const oldest = this.#creditWaiting.keys().next();
+      if (oldest.done !== true) this.#creditWaiting.delete(oldest.value);
+    }
+    this.#creditWaiting.set(requestId, needed);
+  }
+
+  // 観測のファイルを読めなかった理由（件数の上限・形の誤りなど）を、同じ理由を繰り返さず記録に出す。残高・中身は出さない。
+  #noteReadFailure(reasons: readonly string[]): void {
+    for (const reason of reasons) {
+      const key = `read:${reason}`;
+      if (this.#creditRejectedLogged.has(key)) continue;
+      this.#creditRejectedLogged.add(key);
+      this.#log(
+        `クレジットの観測のファイルを読めませんでした（${reason}）。観測なしとして続けます。`,
+      );
+    }
+  }
+
+  #noteRejected(reasons: readonly string[]): void {
+    for (const reason of reasons) {
+      if (this.#creditRejectedLogged.has(reason)) continue;
+      this.#creditRejectedLogged.add(reason);
+      this.#log(
+        `クレジットの観測を採用しませんでした（${reason}）。採用済みの観測のまま判定します。`,
+      );
+    }
   }
 
   // 遅れて届いた usage の精算など、門が後ろで続けている処理を待つ（試験・停止の前に使う）。
@@ -379,7 +565,41 @@ export class BudgetGate {
     if (!advanced.ok) return false;
     if (advanced.value.rolled_over)
       this.#emit({ kind: 'month_rolled', month: advanced.value.state.month });
+    await this.#watchCredit(advanced.value.state.month);
     return true;
+  }
+
+  // クレジットを充てる profile の保留が解けたら知らせる（本人が観測を書いても、予算を待つ処理はファイルを見ないので、
+  // 定期の確認で気づく）。保留が続いている間・保留のなかった間・設定がない間は知らせない。残りが M に足りずに保留した要求は、
+  // 残りが増えて足りるようになったときに知らせる。確認は直列で、古い結果が新しい結果を上書きしない。
+  #watchCredit(month: string): Promise<void> {
+    const run = async (): Promise<void> => {
+      try {
+        const status = await this.creditStatus();
+        if (!status.configured) {
+          this.#creditHeld = null;
+          this.#creditWaiting.clear();
+          return;
+        }
+        const held = status.hold !== null;
+        const resumed = this.#creditHeld === true && !held;
+        this.#creditHeld = held;
+        let satisfied = false;
+        if (status.available !== null) {
+          const available = BigInt(status.available);
+          for (const [id, needed] of [...this.#creditWaiting])
+            if (needed <= available) {
+              this.#creditWaiting.delete(id);
+              satisfied = true;
+            }
+        }
+        if (resumed || satisfied) this.#emit({ kind: 'credit_resumed', month });
+      } catch {
+        // 確認の失敗で月の確認を止めない（次の確認でやり直す）。
+      }
+    };
+    this.#creditWatch = this.#creditWatch.then(run, run);
+    return this.#creditWatch;
   }
 
   // R と M の計算（受付と超過の承認の要求で同じ値を使う）。課金され得る期間は受付の時刻から応答の期限まで。
@@ -421,7 +641,17 @@ export class BudgetGate {
     if (!Number.isSafeInteger(request.timeout_ms) || request.timeout_ms <= 0)
       return reject(['timeout_invalid']);
     const route = overageRouteOf(config.config.routing);
+    const eligible = creditEligible(
+      config.config.credit,
+      request.service,
+      request.profile_id,
+    );
     for (let attempt = 0; ; attempt += 1) {
+      // クレジットを充てる要求（設定で指定した profile の LLM）は、先に観測を採用して確定する（受付を拒否しても残る）。
+      // 判定の時刻は、観測を読んだ後に取る。それ以外は周期に結び付けない。
+      const adoption = eligible ? await this.#adoptCredit() : null;
+      if (adoption !== null && adoption.configured && adoption.state === null)
+        return reject(['credit_adoption_failed', ...adoption.reasons]);
       const now = this.#now();
       const calendar = await this.#store.budget({
         kind: 'budget.calendar_advance',
@@ -434,6 +664,8 @@ export class BudgetGate {
       const deadline = now + request.timeout_ms;
       const estimate = this.#estimate(config, request, now);
       if (!estimate.ok) return reject(estimate.reasonCodes);
+      const creditInput =
+        adoption !== null && adoption.configured ? adoption.settings : null;
       await this.#beforeAdmit(request);
       const admitted = await this.#store.budget({
         kind: 'budget.admit',
@@ -455,6 +687,7 @@ export class BudgetGate {
                 routable_pool_ids: route.routablePoolIds,
                 overage_pool_id: route.overagePoolId,
               },
+        credit: creditInput,
         now,
       });
       if (!admitted.ok) {
@@ -475,8 +708,16 @@ export class BudgetGate {
         );
       }
       const value = admitted.value;
-      if (!value.admitted || value.reservation === null)
+      if (!value.admitted || value.reservation === null) {
+        // 残りが M に足りずに保留した要求は、残りが増えて足りるようになったときに知らせるため、必要な M を覚える。
+        if (value.reason_codes.includes('credit_insufficient'))
+          this.#waitForCredit(
+            request.request_id,
+            BigInt(estimate.maxLiability),
+          );
         return reject(value.reason_codes);
+      }
+      this.#creditWaiting.delete(request.request_id);
       return {
         ok: true,
         ticket: toTicket(value.reservation, value.routed, deadline),
@@ -495,13 +736,30 @@ export class BudgetGate {
         readonly uncertain: boolean;
       }
   > {
+    // クレジットの周期に結び付いた予約は、送る直前にクレジットを確かめ直す（失効・不明・古い・枯渇なら送らない）。先に観測を
+    // 採用して確定し（拒否しても残る）、判定の時刻は観測を読んだ後に取る。
+    const adoption = await this.#adoptForTicket(ticket);
+    if (adoption.configured && adoption.state === null)
+      return {
+        ok: false,
+        reasons: ['credit_adoption_failed', ...adoption.reasons],
+        uncertain: false,
+      };
     const result = await this.#store.budget({
       kind: 'budget.dispatch_intent',
       reservation_id: ticket.reservation_id,
       now: this.#now(),
       deadline: ticket.deadline,
+      credit: adoption.configured ? adoption.settings : null,
     });
     if (result.ok) return { ok: true };
+    // 送出直前にクレジットの理由（残りが M に足りない・失効・不明・古い）で止めて解放する要求は、回復したら知らせるため、
+    // 必要な M を覚える。
+    if (
+      result.outcome !== 'unknown' &&
+      result.reasons.some((reason) => CREDIT_WAIT_REASONS.has(reason))
+    )
+      this.#waitForCredit(ticket.request_id, BigInt(ticket.max_liability));
     return {
       ok: false,
       reasons: result.reasons,
@@ -520,6 +778,12 @@ export class BudgetGate {
       }
     | { readonly ok: false; readonly reasons: readonly string[] }
   > {
+    // クレジットの区分は、DB の transaction が採用済みの観測から決める。観測を先に採用して確定する。観測のファイルを読めなく
+    // ても・採用に失敗しても、採用済みの観測で精算できる（精算は止めない）。採用済みの観測がなく確認できないときは、
+    // クレジット 0（追加の支出＝実費）で、消費の見積もりは残る。
+    const adoption = await this.#adoptForTicket(ticket);
+    const creditInput = adoption.configured ? adoption.settings : null;
+    const now = this.#now();
     const result = await this.#store.budget({
       kind: 'budget.settle',
       reservation_id: ticket.reservation_id,
@@ -527,7 +791,8 @@ export class BudgetGate {
       provider: usage.provider,
       provider_reconciliation_id: usage.reconciliation_id,
       actual_gross: usage.actual_gross,
-      now: this.#now(),
+      credit: creditInput,
+      now,
     });
     if (!result.ok) return { ok: false, reasons: result.reasons };
     if (result.value.overrun && !result.value.duplicate)
@@ -580,6 +845,13 @@ export class BudgetGate {
   > {
     const config = this.#config;
     if (!config.ok) return { ok: false, reasons: ['config_invalid'] };
+    // クレジットの周期に結び付いた予約は、追加の M もクレジットの残りで賄えるときだけ増やす。先に観測を採用して確定する。
+    const adoption = await this.#adoptForTicket(ticket);
+    if (adoption.configured && adoption.state === null)
+      return {
+        ok: false,
+        reasons: ['credit_adoption_failed', ...adoption.reasons],
+      };
     const result = await this.#store.budget({
       kind: 'budget.top_up',
       reservation_id: ticket.reservation_id,
@@ -588,6 +860,7 @@ export class BudgetGate {
       delta_max_liability: delta.max_liability,
       settings: config.settings,
       now: this.#now(),
+      credit: adoption.configured ? adoption.settings : null,
     });
     if (!result.ok) return { ok: false, reasons: result.reasons };
     return {
@@ -642,7 +915,7 @@ export class BudgetGate {
     // 送出意図を記録した後は解放しない。記録を待つ間に中断された・期限を過ぎたなら送らず、usage 不明として保持する
     // （記録の上では送った可能性があるため。Codex のレビュー P1・P2）。ここから send を呼ぶまでは同期で進める。
     const stop = async (
-      reason: 'discarded' | 'reservation_expired',
+      reason: 'discarded' | 'reservation_expired' | 'credit_expired',
     ): Promise<RunResult> => {
       await this.unknown(ticket);
       return { kind: 'usage_unknown', ticket, reasons: [reason, 'not_sent'] };
@@ -674,6 +947,14 @@ export class BudgetGate {
       const expired =
         controller.signal.reason === 'timeout' || sendAt >= ticket.deadline;
       return stop(expired ? 'reservation_expired' : 'discarded');
+    }
+    // 受付で結び付けたクレジットの有効期限も、送る直前まで守る（観測の読み込みや待ちの間に失効したら送らない）。
+    if (
+      ticket.credit_expires_at !== null &&
+      sendAt >= ticket.credit_expires_at
+    ) {
+      teardown();
+      return stop('credit_expired');
     }
     let sending: Promise<PaidOutcome>;
     try {
@@ -934,8 +1215,21 @@ export class BudgetGate {
     readonly expected_revision: string;
     readonly manual_reconciliation_id: string;
     readonly actual_gross: Money;
+    // 本人が請求の照合で得た区分（省略は「クレジット 0・追加の支出＝実費・周期なし」）。クレジットは予約が受付時に
+    // 結び付いた同じ周期にだけ充てられる（B07-07）。
+    readonly credit_applied?: Money;
+    readonly additional_spend?: Money;
+    readonly credit_cycle_id?: string | null;
     readonly request: BudgetRequestRef;
   }): Promise<GateResult<BudgetReservationView>> {
+    const split = [input.credit_applied, input.additional_spend];
+    if (
+      split.some(
+        (item) =>
+          item !== undefined && item.currency !== input.actual_gross.currency,
+      )
+    )
+      return gateFailure(['currency_mismatch']);
     const result = await this.#store.budget({
       kind: 'budget.settle_manual',
       reservation_id: input.reservation_id,
@@ -943,6 +1237,15 @@ export class BudgetGate {
       manual_reconciliation_id: input.manual_reconciliation_id,
       currency: input.actual_gross.currency,
       actual_gross: input.actual_gross.amount,
+      ...(input.credit_applied === undefined
+        ? {}
+        : { credit_applied: input.credit_applied.amount }),
+      ...(input.additional_spend === undefined
+        ? {}
+        : { additional_spend: input.additional_spend.amount }),
+      ...(input.credit_cycle_id === undefined
+        ? {}
+        : { credit_cycle_id: input.credit_cycle_id }),
       now: this.#now(),
       request: input.request,
     });
@@ -1006,10 +1309,71 @@ export class BudgetGate {
       reasons.add('reservation_pool_unknown');
     else reasons.add('calendar_unavailable');
     const ordered = HOLD_ORDER.filter((reason) => reasons.has(reason));
+    const creditStatus = await this.creditStatus();
+    const creditHold: BudgetCreditHoldView | null =
+      creditStatus.hold === null
+        ? null
+        : { reason: creditStatus.hold, profile_ids: creditStatus.profile_ids };
     return {
-      held: ordered.length > 0 || heldPools.length > 0,
+      held: ordered.length > 0 || heldPools.length > 0 || creditHold !== null,
       reasons: ordered,
       held_pools: heldPools,
+      ...(creditHold === null ? {} : { credit_hold: creditHold }),
+    };
+  }
+
+  // クレジットを充てる profile の今の状態（B07-07）。設定に credit がなければ configured: false。周期の基準と台帳から、
+  // 受け付けられる残りか、保留の理由を求める。台帳を読めないときは不明として保留する（閉じた側）。
+  async creditStatus(): Promise<CreditStatusView> {
+    const config = this.#config;
+    const adoption = await this.#adoptCredit();
+    if (!adoption.configured || !config.ok)
+      return {
+        configured: false,
+        profile_ids: [],
+        cycle_id: null,
+        status: null,
+        shared: null,
+        expires_at: null,
+        observed_at: null,
+        balance: null,
+        allocated_since: null,
+        outstanding: null,
+        available: null,
+        hold: null,
+      };
+    // 採用した観測から今の状態を求める。採用に失敗したときは不明として保留する（閉じた側）。判定の時刻は観測を読んだ後に取る。
+    const now = this.#now();
+    const input = adoption.settings;
+    const basis = adoption.state?.current ?? null;
+    const stored = adoption.state?.ledger ?? null;
+    const ledger =
+      stored === null
+        ? null
+        : {
+            allocatedSince: BigInt(stored.allocated_since),
+            outstanding: BigInt(stored.outstanding),
+          };
+    const availability = creditAvailability({
+      basis,
+      ledger,
+      now,
+      sharedMaxAgeMs: input.config.shared_observation_max_age_ms,
+    });
+    return {
+      configured: true,
+      profile_ids: [...input.config.profile_ids],
+      cycle_id: basis?.cycleId ?? null,
+      status: basis?.status ?? null,
+      shared: basis?.shared ?? null,
+      expires_at: basis === null ? null : iso(basis.expiresAt),
+      observed_at: basis === null ? null : iso(basis.observedAt),
+      balance: basis?.balance ?? null,
+      allocated_since:
+        ledger === null ? null : ledger.allocatedSince.toString(),
+      outstanding: ledger === null ? null : ledger.outstanding.toString(),
+      available: availability.ok ? availability.available.toString() : null,
+      hold: availability.ok ? null : availability.reason,
     };
   }
 

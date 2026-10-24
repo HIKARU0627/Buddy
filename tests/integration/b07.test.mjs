@@ -15,7 +15,7 @@ const ids = cases.map((c) => c.id);
 assert.equal(new Set(ids).size, ids.length);
 
 test(
-  'B07-06: X18・QA42・QA20・X53 と同時予約・月替わり・失敗・精算の重複を固定 seed で反復照合する',
+  'B07-06・07: X18・QA42・QA20・X53・MA03〜MA06 と同時予約・月替わり・失敗・精算の重複・クレジットの区分を固定 seed で反復照合する',
   { timeout: 600000 },
   async (t) => {
     // 子試験の時間切れ・取り消しの後に遅れて終わった結果は、成功に数えない（evidence-run.mjs）。
@@ -81,7 +81,7 @@ test(
         const evidence = {
           status: 'recorded',
           description:
-            'B07-06 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。予算の門・DB worker・模擬の有料 provider をつないだ統合で、予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせた。実 API・実請求・実機・HTTP の経路・画面は未実施。実請求の照合は B15。クレジットの区分（MA03〜MA06）は B07-07。',
+            'B07-06 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。予算の門・DB worker・模擬の有料 provider をつないだ統合で、予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせた。実 API・実請求・実機・HTTP の経路・画面は未実施。実請求の照合は B15。B07-07 でクレジットの区分と保留（MA03〜MA06。模擬の残高の観測）を足した。Console の実残高との照合は未実施で、B15。',
           command: 'node --test tests/integration/b07.test.mjs',
           source_sha256: sourceSha256,
           records,

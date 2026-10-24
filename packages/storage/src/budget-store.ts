@@ -15,6 +15,7 @@
 // - 端末からの要求（承認の決定・M 超過の確認・手での精算）は、受付（command_receipts）を同じ transaction で書く。
 // 結果の理由にはコードだけを入れ、SQL・金額の値を入れない。
 
+import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
 import {
   BUDGET_AMOUNT_MAX,
@@ -23,7 +24,14 @@ import {
   admitBudget,
   admitWithOverage,
   advanceBudgetMonth,
+  allocateCredit,
   budgetMonthStart,
+  creditAdmission,
+  creditAdoptionDecision,
+  creditBasesOf,
+  creditCycleStart,
+  creditStillCovers,
+  creditTopUp,
   dispatchReasons,
   markUsageUnknown,
   releaseUnsent,
@@ -35,11 +43,15 @@ import {
 } from '@buddy/domain';
 import type {
   AdmissionRequest,
+  BudgetCreditConfigInput,
+  CreditObservationInput,
   BudgetCalendarResult,
   BudgetCalendarState,
   BudgetOrigin,
   BudgetSettings,
   BudgetUsageSummaryView,
+  CreditBasis,
+  CreditLedger,
   OverageApprovalRecord,
   ReservationRecord,
 } from '@buddy/domain';
@@ -91,6 +103,11 @@ export interface BudgetReservationValue extends ReservationRecord {
   readonly createdAt: number;
   // 送出意図の時刻（0007）。provider へ送る直前に記録する。記録した予約は解放しない。
   readonly dispatchIntentAt: number | null;
+  // クレジットの受付の消費の見積もり（精算した予約。0008）。精算の区分（creditApplied）とは別で、台帳の残りから引く。
+  readonly creditEstimate: string;
+  // 受付で結び付けたクレジットの有効期限（UTC のミリ秒）と、採用した観測の番号（0008）。周期に結び付かない予約は null。
+  readonly creditExpiresAt: number | null;
+  readonly creditObservationSeq: number | null;
 }
 
 // 保存した超過の承認（契約の BudgetOverageApproval の形）と、使った予約。
@@ -103,6 +120,20 @@ export interface BudgetApprovalValue {
 export interface BudgetOverageRouteInput {
   readonly routable_pool_ids: readonly string[];
   readonly overage_pool_id: string;
+}
+
+// クレジットの設定（B07-07、ADR 0042）。受付・追加予約・送出の直前・精算は、**採用済みの観測**から周期ごとの基準と台帳を求めて
+// 判定する。観測の採用（巻き戻りの拒否と永続化）は、予約の判定とは別の transaction（budget.credit_adopt）で先に確定する。
+// 判定を拒否しても、判定に使った新しい観測は残る。
+export interface BudgetCreditSettings {
+  readonly config: BudgetCreditConfigInput;
+  // 予算の通貨（残高をこの通貨へ換算する）。
+  readonly budget_currency: string;
+}
+
+// 観測を採用するときの入力（設定と、本人が書いた観測のファイルの内容）。
+export interface BudgetCreditInput extends BudgetCreditSettings {
+  readonly observations: readonly CreditObservationInput[];
 }
 
 export type BudgetOp =
@@ -122,6 +153,10 @@ export type BudgetOp =
       readonly max_liability: string;
       readonly settings: BudgetSettings;
       readonly overage: BudgetOverageRouteInput | null;
+      // クレジットを充てる profile の LLM の要求だけ。残高が不明・失効・枯渇・古い・M に足りなければ受け付けず、
+      // 受け付けた予約は今の周期・その有効期限・採用した観測に結び付ける。充てない要求は null（結び付けない）。
+      // 省略は null（充てない）。
+      readonly credit?: BudgetCreditSettings | null;
       readonly now: number;
     }
   // 追加予約（版の CAS）。
@@ -134,6 +169,9 @@ export type BudgetOp =
       readonly settings: BudgetSettings;
       // 予算月の状態の検査に使う時刻（計上先は予約の元の月のまま）。
       readonly now: number;
+      // 予約がクレジットの周期に結び付いているとき、追加の M も同じ transaction で検査する（観測・失効・古さ・残り）。
+      // 結び付いているのに null・省略なら、確認できないので拒否する（credit_unknown）。
+      readonly credit?: BudgetCreditSettings | null;
     }
   // provider の usage による精算。照合 ID は provider の名前を前に付けて保存する。
   | {
@@ -143,6 +181,9 @@ export type BudgetOp =
       readonly provider: string;
       readonly provider_reconciliation_id: string;
       readonly actual_gross: string;
+      // 予約が周期に結び付いているとき、その周期の台帳でクレジットを分ける。null ならクレジット 0・追加の支出＝実費。
+      // 省略は null。
+      readonly credit?: BudgetCreditSettings | null;
       readonly now: number;
     }
   | { readonly kind: 'budget.mark_unknown'; readonly reservation_id: string }
@@ -169,6 +210,11 @@ export type BudgetOp =
       readonly manual_reconciliation_id: string;
       readonly currency: string;
       readonly actual_gross: string;
+      // 本人が請求の照合で得た区分。クレジットは予約が受付時に結び付いた同じ周期にだけ充てられる。
+      // 省略は初期の規則（クレジット 0・追加の支出＝実費・周期なし）。
+      readonly credit_applied?: string;
+      readonly additional_spend?: string;
+      readonly credit_cycle_id?: string | null;
       readonly now: number;
       readonly request: BudgetRequestRef | null;
     }
@@ -210,6 +256,22 @@ export type BudgetOp =
       readonly time_zone: string;
     }
   | { readonly kind: 'budget.calendar_read' }
+  // 観測を採用して、今のクレジットの状態を返す（本人の観測のファイルを採用する書込み。巻き戻った観測は拒否する）。予約の
+  // 判定の前に、別の transaction で確定する（拒否した判定でも、判定に使った新しい観測を残す）。
+  | {
+      readonly kind: 'budget.credit_adopt';
+      readonly credit: BudgetCreditInput;
+      readonly now: number;
+    }
+  // 周期の台帳（書かない）。観測の時刻以後に精算したクレジットと、未精算の最大負担 M の合計（B07-07）。
+  // exclude_reservation_id の予約の M は未精算に数えない（その予約を精算するとき）。
+  | {
+      readonly kind: 'budget.credit_ledger';
+      readonly cycle_id: string;
+      // 基準にした観測の採用の連番。この連番以前に採用した観測の後（同じ連番を含む）に精算した予約の見積もりを引く。
+      readonly basis_seq: number;
+      readonly exclude_reservation_id: string | null;
+    }
   // 予算月の状態の確認（書かない）。時計の戻り・tz データの食い違い・月を進めていないことを、今の月の
   // タイムゾーンで確かめる（予算保留の表示と、本人が確かめ直す前の表示に使う。0007）。
   | { readonly kind: 'budget.calendar_check'; readonly now: number }
@@ -236,6 +298,9 @@ export type BudgetOp =
       readonly now: number;
       // 応答の期限（受付で M を計算した課金期間の終わり）。この時刻以降は送らない。
       readonly deadline: number;
+      // 予約がクレジットの周期に結び付いているとき、送る直前にクレジットを確かめ直す（失効・不明・古い・枯渇なら送らない）。
+      // 結び付いているのに null・省略なら、確認できないので送らない（credit_unknown）。
+      readonly credit?: BudgetCreditSettings | null;
     }
   // 精算していない受付中（reserved）の予約。再起動の照合に使う（X28 の仕組み）。
   | { readonly kind: 'budget.unsettled_list' }
@@ -318,6 +383,11 @@ export interface BudgetOpValues {
   'budget.summary': BudgetUsageSummaryView;
   'budget.calendar_advance': BudgetCalendarValue;
   'budget.calendar_read': BudgetCalendarState | null;
+  'budget.credit_ledger': {
+    readonly allocated_since: string;
+    readonly outstanding: string;
+  };
+  'budget.credit_adopt': BudgetCreditState;
   'budget.calendar_check': BudgetCalendarCheck;
   'budget.calendar_confirm': BudgetCalendarCheck & {
     readonly confirmation_id: string;
@@ -326,6 +396,19 @@ export interface BudgetOpValues {
   'budget.unsettled_list': readonly BudgetUnsettledItem[];
   'budget.reservation_find': BudgetReservationValue | null;
   'budget.approval_find': BudgetApprovalValue | null;
+}
+
+export interface BudgetCreditState {
+  // 採用済みの観測から求めた、周期ごとの基準（開始が新しい順）と今の周期。
+  readonly bases: readonly CreditBasis[];
+  readonly current: CreditBasis | null;
+  // 拒否した観測の理由（credit_observation_rollback・credit_observation_conflict・credit_observation_cycle_regression）。
+  readonly rejected: readonly string[];
+  // 今の周期の台帳。観測がなければ null。
+  readonly ledger: {
+    readonly allocated_since: string;
+    readonly outstanding: string;
+  } | null;
 }
 
 export type BudgetOpValue = BudgetOpValues[BudgetOpKind];
@@ -358,6 +441,7 @@ export const BUDGET_WRITE_OPS: ReadonlySet<BudgetOpKind> = new Set([
   'budget.calendar_advance',
   'budget.calendar_confirm',
   'budget.dispatch_intent',
+  'budget.credit_adopt',
 ]);
 
 class BudgetRejection extends Error {
@@ -431,6 +515,68 @@ function settingsReasons(settings: BudgetSettings | undefined): string[] {
   return [];
 }
 
+const CYCLE_ID = /^[a-z][a-z0-9-]*:[0-9]{4}-[0-9]{2}-[0-9]{2}$/u;
+const isCycleId = (value: unknown): value is string =>
+  typeof value === 'string' && CYCLE_ID.test(value);
+
+const DECIMAL = /^(0|[1-9][0-9]{0,11})(\.[0-9]{1,6})?$/u;
+
+// 観測 1 件の形。時刻は Date で読めること。
+function isObservation(value: unknown): value is CreditObservationInput {
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as Record<string, unknown>;
+  const balance = item['balance'];
+  return (
+    typeof item['provider'] === 'string' &&
+    PROVIDER.test(item['provider']) &&
+    typeof item['organization_ref'] === 'string' &&
+    item['organization_ref'].length >= 1 &&
+    item['organization_ref'].length <= 128 &&
+    isCycleId(item['cycle_id']) &&
+    typeof item['observed_at'] === 'string' &&
+    !Number.isNaN(Date.parse(item['observed_at'])) &&
+    typeof item['expires_at'] === 'string' &&
+    !Number.isNaN(Date.parse(item['expires_at'])) &&
+    (item['status'] === 'observed' ||
+      item['status'] === 'unknown' ||
+      item['status'] === 'expired') &&
+    typeof item['shared'] === 'boolean' &&
+    (balance === null ||
+      (typeof balance === 'object' &&
+        isCurrency((balance as Record<string, unknown>)['currency']) &&
+        isAmount((balance as Record<string, unknown>)['amount']))) &&
+    (item['status'] !== 'observed' || balance !== null)
+  );
+}
+
+// クレジットの設定の形（設定・予算の通貨）。withObservations なら観測の一覧（120 件まで。契約の
+// BudgetCreditObservations と同じ）も確かめる。
+function creditInputOk(value: unknown, withObservations = false): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value !== 'object') return false;
+  const input = value as Record<string, unknown>;
+  const config = input['config'];
+  if (typeof config !== 'object' || config === null) return false;
+  const c = config as Record<string, unknown>;
+  return (
+    typeof c['provider'] === 'string' &&
+    PROVIDER.test(c['provider']) &&
+    Array.isArray(c['profile_ids']) &&
+    c['profile_ids'].every(isName) &&
+    isCurrency(c['balance_currency']) &&
+    typeof c['balance_to_budget_rate'] === 'string' &&
+    DECIMAL.test(c['balance_to_budget_rate']) &&
+    typeof c['shared_observation_max_age_ms'] === 'number' &&
+    Number.isSafeInteger(c['shared_observation_max_age_ms']) &&
+    c['shared_observation_max_age_ms'] >= 1 &&
+    isCurrency(input['budget_currency']) &&
+    (!withObservations ||
+      (Array.isArray(input['observations']) &&
+        input['observations'].length <= 120 &&
+        input['observations'].every(isObservation)))
+  );
+}
+
 function requestReasons(
   request: BudgetRequestRef | null | undefined,
 ): string[] {
@@ -470,6 +616,7 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       check(isAmount(op.max_liability), 'amount_invalid');
       check(isTime(op.now), 'now_invalid');
       reasons.push(...settingsReasons(op.settings));
+      check(creditInputOk(op.credit), 'credit_invalid');
       const route = op.overage;
       if (
         route !== null &&
@@ -487,6 +634,7 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       check(isAmount(op.delta_reserved), 'amount_invalid');
       check(isAmount(op.delta_max_liability), 'amount_invalid');
       check(isTime(op.now), 'now_invalid');
+      check(creditInputOk(op.credit), 'credit_invalid');
       reasons.push(...settingsReasons(op.settings));
       break;
     case 'budget.settle':
@@ -503,6 +651,7 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
         'reconciliation_id_invalid',
       );
       check(isAmount(op.actual_gross), 'amount_invalid');
+      check(creditInputOk(op.credit), 'credit_invalid');
       check(isTime(op.now), 'now_invalid');
       break;
     case 'budget.mark_unknown':
@@ -534,6 +683,20 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       );
       check(isCurrency(op.currency), 'currency_invalid');
       check(isAmount(op.actual_gross), 'amount_invalid');
+      check(
+        op.credit_applied === undefined || isAmount(op.credit_applied),
+        'amount_invalid',
+      );
+      check(
+        op.additional_spend === undefined || isAmount(op.additional_spend),
+        'amount_invalid',
+      );
+      check(
+        op.credit_cycle_id === undefined ||
+          op.credit_cycle_id === null ||
+          isCycleId(op.credit_cycle_id),
+        'credit_cycle_invalid',
+      );
       check(isTime(op.now), 'now_invalid');
       reasons.push(...requestReasons(op.request));
       break;
@@ -580,6 +743,26 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
     case 'budget.calendar_read':
     case 'budget.unsettled_list':
       break;
+    case 'budget.credit_adopt':
+      check(
+        typeof op.credit === 'object' &&
+          op.credit !== null &&
+          creditInputOk(op.credit, true),
+        'credit_invalid',
+      );
+      check(isTime(op.now), 'now_invalid');
+      break;
+    case 'budget.credit_ledger':
+      check(isCycleId(op.cycle_id), 'credit_cycle_invalid');
+      check(
+        Number.isSafeInteger(op.basis_seq) && op.basis_seq >= 0,
+        'credit_seq_invalid',
+      );
+      check(
+        op.exclude_reservation_id === null || isUuid(op.exclude_reservation_id),
+        'reservation_id_invalid',
+      );
+      break;
     case 'budget.calendar_check':
       check(isTime(op.now), 'now_invalid');
       break;
@@ -604,6 +787,7 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
       check(isUuid(op.reservation_id), 'reservation_id_invalid');
       check(isTime(op.now), 'now_invalid');
       check(isTime(op.deadline), 'deadline_invalid');
+      check(creditInputOk(op.credit), 'credit_invalid');
       break;
     case 'budget.reservation_find':
       check(
@@ -625,7 +809,7 @@ export function budgetOpShapeReasons(op: BudgetOp): string[] {
 // --- 読み取り ---
 
 const RESERVATION_COLUMNS =
-  'reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, provider_reconciliation_id, settlement_kind, settled_at, overrun_reviewed, overrun_reviewed_at, created_at, dispatch_intent_at';
+  'reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, actual_gross, provider_reconciliation_id, settlement_kind, settled_at, overrun_reviewed, overrun_reviewed_at, created_at, dispatch_intent_at, credit_applied, additional_spend, credit_cycle_id, credit_estimate, credit_expires_at, credit_observation_seq';
 
 interface ReservationRow {
   reservation_id: string;
@@ -650,6 +834,12 @@ interface ReservationRow {
   overrun_reviewed_at: bigint | null;
   created_at: bigint;
   dispatch_intent_at: bigint | null;
+  credit_applied: bigint | null;
+  additional_spend: bigint | null;
+  credit_cycle_id: string | null;
+  credit_estimate: bigint;
+  credit_expires_at: bigint | null;
+  credit_observation_seq: bigint | null;
 }
 
 const timeOrNull = (value: bigint | null): number | null =>
@@ -679,6 +869,14 @@ function toReservation(row: ReservationRow): BudgetReservationValue {
     requestedPoolId: row.requested_pool_id,
     origin: row.origin,
     dispatchIntentAt: timeOrNull(row.dispatch_intent_at),
+    creditApplied:
+      row.credit_applied === null ? null : row.credit_applied.toString(),
+    additionalSpend:
+      row.additional_spend === null ? null : row.additional_spend.toString(),
+    creditCycleId: row.credit_cycle_id,
+    creditEstimate: row.credit_estimate.toString(),
+    creditExpiresAt: timeOrNull(row.credit_expires_at),
+    creditObservationSeq: timeOrNull(row.credit_observation_seq),
   };
 }
 
@@ -723,6 +921,277 @@ function admissionRows(
     "WHERE budget_month = ? OR (status = 'settled' AND overrun_reviewed = 0 AND actual_gross > max_liability) ORDER BY created_at, reservation_id",
     month,
   );
+}
+
+// 周期の台帳（B07-07）。その周期に結び付いた予約から、基準にした観測（採用の連番 basisSeq）が採用された後に精算した予約の
+// 消費の見積もりと、未精算の最大負担 M の合計を数える。金額は 18 桁まであるので BigInt で足す（SQL の SUM を使わない）。
+// **時刻（settled_at と observed_at）は使わず、採用の連番で決める**: 精算した時点で採用済みの最新の観測の連番
+// （credit_settled_seq）が basisSeq 以上なら、その観測は精算の前に採用されていて消費を含まないので引く。精算の後に採用された
+// 観測は消費を含むとみなして引かない（時計を戻しても・観測の時刻が前後しても変わらない）。0007 から移した精算済みの行は
+// 順序が分からないので、連番を最大にして常に引く。クレジットを充てない予約（周期に結び付かない）は数えない。
+function creditLedger(
+  db: SqliteDatabase,
+  cycleId: string,
+  basisSeq: number,
+  excludeReservationId: string | null,
+): CreditLedger {
+  const basisObservedAt = db
+    .prepare(
+      'SELECT observed_at FROM budget_credit_observations WHERE observation_seq = ?',
+    )
+    .pluck()
+    .safeIntegers(true)
+    .get(basisSeq) as bigint | undefined;
+  const rows = db
+    .prepare(
+      'SELECT reservation_id, status, max_liability, credit_estimate, credit_settled_seq, settled_at FROM budget_reservations WHERE credit_cycle_id = ?',
+    )
+    .safeIntegers(true)
+    .all(cycleId) as {
+    reservation_id: string;
+    status: ReservationRecord['status'];
+    max_liability: bigint;
+    credit_estimate: bigint;
+    credit_settled_seq: bigint | null;
+    settled_at: bigint | null;
+  }[];
+  let allocatedSince = 0n;
+  let outstanding = 0n;
+  for (const row of rows) {
+    if (row.status === 'settled') {
+      // 精算の区分（credit_applied）ではなく、受付の消費の見積もり（credit_estimate）を引く。他の予約が残りを占めていて
+      // クレジットを割り当てられなかった精算や、観測がなくてクレジット 0 で記録した精算も、provider が消費したかもしれない分を、
+      // 後の連番の観測が採用されるまで引き続ける（ADR 0042）。
+      // 引くのは、(1) 精算した時点で基準の観測が採用済みだった（連番）か、(2) 基準の観測が精算より前に観測された（時刻。
+      // 精算した時点で観測がファイルになく、後から届いた観測を含む。0006 までの行は連番がないのでこれだけ）とき。どちらかなら
+      // 観測は精算した消費を含まない。(1) は時計を戻しても成り立つので、壁時計だけで見積もりを消さない。
+      const bySeq =
+        row.credit_settled_seq !== null &&
+        row.credit_settled_seq >= BigInt(basisSeq);
+      const byTime =
+        basisObservedAt !== undefined &&
+        row.settled_at !== null &&
+        row.settled_at >= basisObservedAt;
+      if (bySeq || byTime) allocatedSince += row.credit_estimate;
+    } else if (
+      (row.status === 'reserved' || row.status === 'usage_unknown') &&
+      row.reservation_id !== excludeReservationId
+    )
+      outstanding += row.max_liability;
+  }
+  return { allocatedSince, outstanding };
+}
+
+// --- 残高の観測の採用（0008） ---
+
+interface ObservationRow {
+  observation_seq: bigint;
+  cycle_id: string;
+  cycle_start: bigint;
+  observed_at: bigint;
+  expires_at: bigint;
+  status: 'observed' | 'unknown' | 'expired';
+  shared: bigint;
+  organization_ref: string;
+  balance_currency: string | null;
+  balance_amount: bigint | null;
+  content_id: string;
+}
+
+// 観測の内容の識別子（採用した観測と、ファイルの観測が同じ内容かを比べる）。
+function observationContentId(item: CreditObservationInput): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        item.provider,
+        item.organization_ref,
+        item.cycle_id,
+        Date.parse(item.observed_at),
+        Date.parse(item.expires_at),
+        item.balance === null
+          ? null
+          : [item.balance.currency, item.balance.amount],
+        item.status,
+        item.shared,
+      ]),
+    )
+    .digest('hex');
+}
+
+// 本人が書いた観測を採用する。今より後の観測は採用しない（時刻が来たら採用する）。採用済みの観測は永続化され、巻き戻った
+// 観測（同じ周期で古い時刻・古い周期）と、同じ時刻で内容の違う観測は拒否する（ファイルを古い状態へ戻しても、時計を戻しても、
+// 採用済みの観測は変わらない）。拒否した理由のコードを返す。
+function adoptObservations(
+  db: SqliteDatabase,
+  credit: BudgetCreditInput,
+  now: number,
+): string[] {
+  const rejected = new Set<string>();
+  const candidates = credit.observations
+    .map((item) => ({
+      item,
+      observedAt: Date.parse(item.observed_at),
+      expiresAt: Date.parse(item.expires_at),
+      cycleStart: creditCycleStart(item.cycle_id),
+      contentId: observationContentId(item),
+    }))
+    .filter(
+      (candidate) =>
+        candidate.item.provider === credit.config.provider &&
+        candidate.cycleStart !== null &&
+        candidate.observedAt <= now,
+    )
+    .sort(
+      (a, b) =>
+        a.observedAt - b.observedAt || (a.contentId < b.contentId ? -1 : 1),
+    );
+  for (const candidate of candidates) {
+    const cycleStart = candidate.cycleStart as number;
+    const sameTime = db
+      .prepare(
+        'SELECT content_id FROM budget_credit_observations WHERE cycle_id = ? AND observed_at = ?',
+      )
+      .get(candidate.item.cycle_id, candidate.observedAt) as
+      { content_id: string } | undefined;
+    const latest = db
+      .prepare(
+        'SELECT max(observed_at) FROM budget_credit_observations WHERE cycle_id = ?',
+      )
+      .pluck()
+      .safeIntegers(false)
+      .get(candidate.item.cycle_id) as number | null;
+    const maxCycle = db
+      .prepare('SELECT max(cycle_start) FROM budget_credit_observations')
+      .pluck()
+      .get() as number | null;
+    const decision = creditAdoptionDecision({
+      cycleStart,
+      observedAt: candidate.observedAt,
+      contentId: candidate.contentId,
+      sameTime:
+        sameTime === undefined ? null : { contentId: sameTime.content_id },
+      latestObservedAtOfCycle: latest,
+      maxCycleStart: maxCycle,
+    });
+    if (decision === 'adopt') {
+      const balance = candidate.item.balance;
+      db.prepare(
+        'INSERT INTO budget_credit_observations (cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(
+        candidate.item.cycle_id,
+        cycleStart,
+        candidate.observedAt,
+        candidate.expiresAt,
+        candidate.item.status,
+        candidate.item.shared ? 1 : 0,
+        candidate.item.organization_ref,
+        balance === null ? null : balance.currency,
+        balance === null ? null : BigInt(balance.amount),
+        candidate.contentId,
+        now,
+      );
+    } else if (decision !== 'same')
+      rejected.add(`credit_observation_${decision}`);
+  }
+  return [...rejected];
+}
+
+interface ResolvedCredit extends BudgetCreditState {
+  // 周期ごとの、基準にした観測の番号。
+  readonly seqOf: ReadonlyMap<string, number>;
+}
+
+// 周期ごとに最後に採用した観測（採用の連番が最大のもの）の最新の連番。観測がなければ 0。
+function latestSeq(db: SqliteDatabase, cycleId: string): number {
+  const value = db
+    .prepare(
+      'SELECT max(observation_seq) FROM budget_credit_observations WHERE cycle_id = ?',
+    )
+    .pluck()
+    .get(cycleId) as number | null;
+  return value ?? 0;
+}
+
+// 採用済みの観測（周期ごとに最後に採用したもの）から周期ごとの基準を求める（採用はしない。採用は budget.credit_adopt で先に
+// 確定する）。採用済みの観測は時計を戻しても消えないので、今より後の時刻の観測でも基準にする。
+function resolveCredit(
+  db: SqliteDatabase,
+  credit: BudgetCreditSettings,
+  rejected: readonly string[] = [],
+): ResolvedCredit {
+  const rows = db
+    .prepare(
+      'SELECT o.* FROM budget_credit_observations o WHERE o.observation_seq = (SELECT max(observation_seq) FROM budget_credit_observations WHERE cycle_id = o.cycle_id)',
+    )
+    .safeIntegers(true)
+    .all() as ObservationRow[];
+  const observations: CreditObservationInput[] = rows.map((row) => ({
+    provider: row.cycle_id.split(':')[0] ?? '',
+    organization_ref: row.organization_ref,
+    cycle_id: row.cycle_id,
+    observed_at: iso(row.observed_at),
+    expires_at: iso(row.expires_at),
+    balance:
+      row.balance_currency === null || row.balance_amount === null
+        ? null
+        : {
+            currency: row.balance_currency,
+            amount: row.balance_amount.toString(),
+          },
+    status: row.status,
+    shared: row.shared === 1n,
+  }));
+  const seqOf = new Map(
+    rows.map((row) => [row.cycle_id, Number(row.observation_seq)]),
+  );
+  const { bases, current } = creditBasesOf({
+    config: credit.config,
+    budgetCurrency: credit.budget_currency,
+    observations,
+    now: MAX_TIME,
+  });
+  const ledger =
+    current === null
+      ? null
+      : (() => {
+          const value = creditLedger(
+            db,
+            current.cycleId,
+            seqOf.get(current.cycleId) ?? 0,
+            null,
+          );
+          return {
+            allocated_since: value.allocatedSince.toString(),
+            outstanding: value.outstanding.toString(),
+          };
+        })();
+  return { bases, current, rejected, ledger, seqOf };
+}
+
+// 予約が結び付いた周期の基準（採用済みの観測から）と、その台帳（この予約自身の M を未精算に含む）。
+function reservationCredit(
+  db: SqliteDatabase,
+  reservation: BudgetReservationValue,
+  resolved: ResolvedCredit,
+):
+  | {
+      readonly basis: CreditBasis;
+      readonly ledger: CreditLedger;
+    }
+  | { readonly basis: null; readonly ledger: null } {
+  const basis =
+    resolved.bases.find((item) => item.cycleId === reservation.creditCycleId) ??
+    null;
+  if (basis === null) return { basis: null, ledger: null };
+  return {
+    basis,
+    ledger: creditLedger(
+      db,
+      basis.cycleId,
+      resolved.seqOf.get(basis.cycleId) ?? 0,
+      null,
+    ),
+  };
 }
 
 interface ApprovalRow {
@@ -967,18 +1436,26 @@ function settledUpdate(
   db: SqliteDatabase,
   reservationId: string,
   actualGross: string,
+  creditApplied: string,
+  additionalSpend: string,
+  creditEstimate: string,
+  creditSettledSeq: number | null,
   reconciliationId: string,
   kind: 'provider' | 'manual',
   now: number,
 ): void {
-  // クレジットの区分は B07-07 までの初期の規則（クレジット 0・追加の支出＝実費、ADR 0034）。
+  // 実費をクレジットと追加の支出に分けて記録する（B07-07。実費 = クレジット + 追加の支出は DB の CHECK が守る）。
+  // 周期（credit_cycle_id）は受付時に結び付けた値のまま変えない。
   const updated = db
     .prepare(
-      "UPDATE budget_reservations SET status = 'settled', actual_gross = ?, credit_applied = 0, additional_spend = ?, provider_reconciliation_id = ?, settlement_kind = ?, settled_at = ? WHERE reservation_id = ? AND status IN ('reserved', 'usage_unknown')",
+      "UPDATE budget_reservations SET status = 'settled', actual_gross = ?, credit_applied = ?, additional_spend = ?, credit_estimate = ?, credit_settled_seq = ?, provider_reconciliation_id = ?, settlement_kind = ?, settled_at = ? WHERE reservation_id = ? AND status IN ('reserved', 'usage_unknown')",
     )
     .run(
       BigInt(actualGross),
-      BigInt(actualGross),
+      BigInt(creditApplied),
+      BigInt(additionalSpend),
+      BigInt(creditEstimate),
+      creditSettledSeq,
       reconciliationId,
       kind,
       now,
@@ -1048,6 +1525,36 @@ function admit(
   if (month.month !== op.budget_month)
     throw new BudgetRejection(['budget_month_not_current']);
   const rows = admissionRows(db, op.budget_month);
+  // クレジットを充てる要求は、枠の上限の検査と別に、クレジットの残りで M の全額を賄えるときだけ受け付ける
+  // （残高が不明・失効・枯渇・古い・足りないなら保留。賄えない分が購入残高・後払いへ移らないように）。
+  let creditCycleId: string | null = null;
+  let creditReasons: string[] = [];
+  let creditExpiresAt: number | null = null;
+  let creditSeq: number | null = null;
+  if (op.credit !== undefined && op.credit !== null) {
+    const resolved = resolveCredit(db, op.credit);
+    const basis = resolved.current;
+    const credit = creditAdmission({
+      basis,
+      ledger:
+        basis === null
+          ? null
+          : creditLedger(
+              db,
+              basis.cycleId,
+              resolved.seqOf.get(basis.cycleId) ?? 0,
+              null,
+            ),
+      now: op.now,
+      sharedMaxAgeMs: op.credit.config.shared_observation_max_age_ms,
+      maxLiability: BigInt(op.max_liability),
+    });
+    if (credit.ok && basis !== null) {
+      creditCycleId = credit.cycleId;
+      creditExpiresAt = basis.expiresAt;
+      creditSeq = resolved.seqOf.get(basis.cycleId) ?? null;
+    } else if (!credit.ok) creditReasons = [credit.reason];
+  }
   const request: AdmissionRequest = {
     requestId: op.request_id,
     profileId: op.profile_id,
@@ -1064,10 +1571,10 @@ function admit(
   let routed = false;
   if (op.overage === null) {
     const decision = admitBudget(op.settings, rows, request);
-    if (!decision.admitted)
+    if (!decision.admitted || creditReasons.length > 0)
       return {
         admitted: false,
-        reason_codes: decision.reasonCodes,
+        reason_codes: [...decision.reasonCodes, ...creditReasons],
         reservation: null,
         duplicate: false,
         routed: false,
@@ -1088,10 +1595,14 @@ function admit(
       approval: approvalRow === null ? null : toApproval(approvalRow).approval,
       now: iso(op.now),
     });
-    if (!decision.admitted || decision.poolId === null)
+    if (
+      !decision.admitted ||
+      decision.poolId === null ||
+      creditReasons.length > 0
+    )
       return {
         admitted: false,
-        reason_codes: decision.reasonCodes,
+        reason_codes: [...decision.reasonCodes, ...creditReasons],
         reservation: null,
         duplicate: false,
         routed: decision.routed,
@@ -1101,7 +1612,7 @@ function admit(
     routed = decision.routed;
   }
   db.prepare(
-    "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved', 1, ?, ?)",
+    "INSERT INTO budget_reservations (reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, currency, price_version, reserved_amount, max_liability, status, reservation_revision, approval_id, credit_cycle_id, credit_expires_at, credit_observation_seq, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved', 1, ?, ?, ?, ?, ?)",
   ).run(
     op.reservation_id,
     op.request_id,
@@ -1115,6 +1626,9 @@ function admit(
     BigInt(op.reserved_amount),
     BigInt(op.max_liability),
     approvalId,
+    creditCycleId,
+    creditExpiresAt,
+    creditSeq,
     op.now,
   );
   if (approvalId !== null) {
@@ -1160,6 +1674,23 @@ function topUp(
   const next = decision.reservation;
   if (BigInt(next.maxLiability) > BUDGET_AMOUNT_MAX)
     throw new BudgetRejection(['amount_overflow']);
+  // クレジットの周期に結び付いた予約は、追加の M もクレジットの残りで賄えるときだけ増やす（更新と同じ transaction。
+  // 観測・失効・古さ・残りを受付と同じ規則で確かめ、確認できなければ拒否する。ADR 0042）。
+  if (current.creditCycleId !== null && current.creditCycleId !== undefined) {
+    if (op.credit === undefined || op.credit === null)
+      throw new BudgetRejection(['credit_unknown']);
+    const resolved = resolveCredit(db, op.credit);
+    const found = reservationCredit(db, current, resolved);
+    const covered = creditTopUp({
+      basis: found.basis,
+      ledger: found.ledger,
+      now: op.now,
+      sharedMaxAgeMs: op.credit.config.shared_observation_max_age_ms,
+      deltaMaxLiability: BigInt(op.delta_max_liability),
+      boundExpiresAt: current.creditExpiresAt ?? null,
+    });
+    if (!covered.ok) throw new BudgetRejection([covered.reason]);
+  }
   // 版の CAS。期待の版と reserved のときだけ 1 行を更新する。
   const updated = db
     .prepare(
@@ -1185,10 +1716,51 @@ function settle(
   const current = requireReservation(db, op.reservation_id);
   const reconciliationId = `${op.provider}:${op.provider_reconciliation_id}`;
   requireReconciliationFree(db, reconciliationId, op.reservation_id);
+  // クレジットの区分（B07-07）。精算済みの再適用は、保存した区分のまま変化なしにする（台帳は精算した後の値なので
+  // 求め直さない）。まだ精算していない予約だけ、予約が結び付いた周期の台帳で分ける。結び付かない予約はクレジット 0・見積もり 0。
+  // 結び付いた予約で、確認できない（観測がない・不明・失効・周期が終わった）ときはクレジット 0（追加の支出＝実費）だが、
+  // 受付の消費の見積もりは min(実費, M) を残し、新しい観測が届くまで残りから引き続ける。
+  let credit = 0n;
+  let estimate = 0n;
+  let settledSeq: number | null = null;
+  if (
+    current.status !== 'settled' &&
+    current.creditCycleId !== null &&
+    current.creditCycleId !== undefined
+  ) {
+    const resolved =
+      op.credit === undefined || op.credit === null
+        ? null
+        : resolveCredit(db, op.credit);
+    const basis =
+      resolved?.bases.find((item) => item.cycleId === current.creditCycleId) ??
+      null;
+    const allocation = allocateCredit({
+      cycleId: current.creditCycleId,
+      actualGross: BigInt(op.actual_gross),
+      maxLiability: BigInt(current.maxLiability),
+      basis,
+      ledger:
+        basis === null
+          ? null
+          : creditLedger(
+              db,
+              basis.cycleId,
+              resolved?.seqOf.get(basis.cycleId) ?? 0,
+              current.reservationId,
+            ),
+      now: op.now,
+    });
+    credit = allocation.creditApplied;
+    estimate = allocation.estimate;
+    // 精算した時点で採用済みの、この周期の最新の観測の連番。台帳は、これ以前の連番の観測を基準にしている間だけ見積もりを引く。
+    settledSeq = latestSeq(db, current.creditCycleId);
+  }
   const decision = settleReservation(current, {
     requestId: op.request_id,
     providerReconciliationId: reconciliationId,
     actualGross: op.actual_gross,
+    creditApplied: credit.toString(),
   });
   if (!decision.ok) throw new BudgetRejection(decision.reasonCodes);
   if (decision.duplicate)
@@ -1197,6 +1769,10 @@ function settle(
     db,
     op.reservation_id,
     op.actual_gross,
+    credit.toString(),
+    (BigInt(op.actual_gross) - credit).toString(),
+    estimate.toString(),
+    settledSeq,
     reconciliationId,
     'provider',
     op.now,
@@ -1318,6 +1894,15 @@ function settleByHand(
     manualReconciliationId: op.manual_reconciliation_id,
     currency: op.currency,
     actualGross: op.actual_gross,
+    ...(op.credit_applied === undefined
+      ? {}
+      : { creditApplied: op.credit_applied }),
+    ...(op.additional_spend === undefined
+      ? {}
+      : { additionalSpend: op.additional_spend }),
+    ...(op.credit_cycle_id === undefined
+      ? {}
+      : { creditCycleId: op.credit_cycle_id }),
   });
   if (!decision.ok) throw new BudgetRejection(decision.reasonCodes);
   if (!decision.duplicate)
@@ -1325,6 +1910,18 @@ function settleByHand(
       db,
       op.reservation_id,
       op.actual_gross,
+      op.credit_applied ?? '0',
+      op.additional_spend ?? op.actual_gross,
+      // 本人が区分を明示したときは、請求の照合で得た値なので、見積もりも同じ（明示した 0 は 0）。区分を省略したときは、周期に
+      // 結び付いた予約の見積もりを保守側（実費）にする（省略を「消費なし」とみなして残りを戻さない）。連番は精算した時点の最新。
+      op.credit_applied !== undefined
+        ? op.credit_applied
+        : current.creditCycleId === null || current.creditCycleId === undefined
+          ? '0'
+          : op.actual_gross,
+      current.creditCycleId === null || current.creditCycleId === undefined
+        ? null
+        : latestSeq(db, current.creditCycleId),
       op.manual_reconciliation_id,
       'manual',
       op.now,
@@ -1547,6 +2144,22 @@ function dispatchIntent(
     deadline: op.deadline,
   });
   if (reasons.length > 0) throw new BudgetRejection(reasons);
+  // クレジットの周期に結び付いた予約は、送る直前にクレジットを確かめ直す（受付の後の失効・不明・古い・残高の減少。
+  // 送れないなら記録せず、購入残高・後払いへ移らない）。確認できなければ送らない。ADR 0042。
+  if (current.creditCycleId !== null && current.creditCycleId !== undefined) {
+    if (op.credit === undefined || op.credit === null)
+      throw new BudgetRejection(['credit_unknown']);
+    const resolved = resolveCredit(db, op.credit);
+    const found = reservationCredit(db, current, resolved);
+    const covered = creditStillCovers({
+      basis: found.basis,
+      ledger: found.ledger,
+      now: op.now,
+      sharedMaxAgeMs: op.credit.config.shared_observation_max_age_ms,
+      boundExpiresAt: current.creditExpiresAt ?? null,
+    });
+    if (!covered.ok) throw new BudgetRejection([covered.reason]);
+  }
   const updated = db
     .prepare(
       "UPDATE budget_reservations SET dispatch_intent_at = ? WHERE reservation_id = ? AND status = 'reserved' AND dispatch_intent_at IS NULL",
@@ -1585,6 +2198,16 @@ function applyWrite(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
       return confirmCalendar(db, op);
     case 'budget.dispatch_intent':
       return dispatchIntent(db, op);
+    case 'budget.credit_adopt': {
+      const rejected = adoptObservations(db, op.credit, op.now);
+      const resolved = resolveCredit(db, op.credit, rejected);
+      return {
+        bases: resolved.bases,
+        current: resolved.current,
+        rejected: resolved.rejected,
+        ledger: resolved.ledger,
+      };
+    }
     default:
       throw new BudgetRejection(['kind_invalid']);
   }
@@ -1635,6 +2258,15 @@ function readOnly(db: SqliteDatabase, op: BudgetOp): BudgetOpValue {
       return db.transaction(() => summary(db, op))();
     case 'budget.calendar_read':
       return readEffectiveCalendar(db)?.state ?? null;
+    case 'budget.credit_ledger': {
+      const ledger = db.transaction(() =>
+        creditLedger(db, op.cycle_id, op.basis_seq, op.exclude_reservation_id),
+      )();
+      return {
+        allocated_since: ledger.allocatedSince.toString(),
+        outstanding: ledger.outstanding.toString(),
+      };
+    }
     case 'budget.calendar_check':
       return db.transaction(() => checkCalendar(db, op.now))();
     case 'budget.unsettled_list':

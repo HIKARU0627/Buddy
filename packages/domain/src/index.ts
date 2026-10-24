@@ -6,6 +6,8 @@ export * from './audio.js';
 export * from './budget.js';
 // B07-02: M と R の計算・予算月・利用状況・超過枠への経路・手での精算（ADR 0035）。
 export * from './budget-rules.js';
+// B07-07: 付帯クレジットの区分と保留（ADR 0042）。
+export * from './budget-credit.js';
 // B07-04: 起点から計上する枠・実行時の設定の意味検査・タイムゾーンの正規化・送る前の検査（ADR 0037）。
 export * from './budget-gate.js';
 // B07-05: 金額の表示と小数の入力の変換（ADR 0039）。

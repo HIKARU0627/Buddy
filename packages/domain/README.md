@@ -20,6 +20,7 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `desktop.ts`: デスクトップの限定 IPC の受付（送信元・ロック・画面操作・停止の範囲・io_epoch）、状態欄の非表示、入出力・ロックの状態遷移（[ADR 0014](../../docs/adr/0014-b01-desktop-ipc-contract.md)）
 - `conversation.ts`: 意図ごとの結果表示、会話の操作の照合
 - `retention.ts`: 削除期限の計算（起点から一度だけ）
+- `retention-sweep.ts`: 保存期限の掃除の計画（`sweepPlan`。時計を注入。期限は延ばさず、個人の内容は消す側・予算の記録は消さない側へ倒す）、時計の巻き戻りの判定、派生物の期限（由来の最も早い期限）、保存モードの変更で期限を延ばさないこと、予算の記録の 13 か月（J4）、終わった操作の本文 7 日（J5）、起動時・復帰時のゲート（掃除が済むまで検索とクラウドへの送信を許さない）（[ADR 0043](../../docs/adr/0043-b06-retention-sweep-rules.md)）。削除の実行は B06-06
 - `sync.ts`: 同期の走査の排他、公開前の compare-and-swap、時計の後退の保留（[ADR 0007](../../docs/adr/0007-sync-extraction-and-related-analysis.md)）
 - `extraction.ts`: モデル出力の期限の変換、候補起点の自動実行の共通検査と操作ごとの検査
 - `analysis.ts`: 関連集合の ready 判定、取消・完了の順序に依存しない解決、自動作成の一度だけの制限

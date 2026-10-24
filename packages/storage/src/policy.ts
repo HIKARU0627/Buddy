@@ -90,7 +90,7 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
   },
   operation_versions: {
     body: 'sealed_refs',
-    retention: 'operation_receipt',
+    retention: 'operation_body_then_operation_receipt',
     transaction: 'operation',
   },
   approvals: {
@@ -151,7 +151,7 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
   },
   budget_reservations: {
     body: 'none',
-    retention: 'until_settled_and_month_closed',
+    retention: 'budget_record_after_settled_and_month_closed',
     transaction: 'budget',
   },
   live_sessions: {

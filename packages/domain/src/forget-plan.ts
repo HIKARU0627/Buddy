@@ -200,6 +200,8 @@ export interface OperationContentPlan {
     readonly reason: 'in_flight' | 'state_unknown';
     readonly send_blocked: true;
     readonly provenance: readonly LedgerSource[];
+    // 由来が 1 件でも辿れたか。false（空）なら「完全」とは扱わず、送出の検査へ provenance: 'unknown' を渡す。
+    readonly provenance_complete: boolean;
   }[];
 }
 
@@ -364,7 +366,14 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
           if (!doomed.has(nodeKey(member)) && !origins.has(nodeKey(member)))
             origins.set(nodeKey(member), member);
         changed = true;
-      } else if (members.some((member) => origins.has(nodeKey(member)))) {
+      } else if (
+        members.some(
+          (member) =>
+            origins.has(nodeKey(member)) || doomed.has(nodeKey(member)),
+        )
+      ) {
+        // 除外する由来、または広げて消す物に属する派生物。消す（操作の確定内容は後で状態に応じて扱う）。
+        // core には上げず、範囲の由来をさらに除外へ広げない（連鎖して消えるのを防ぐ境界）。
         doomed.set(nodeKey(item.artifact), item.artifact);
         changed = true;
       }
@@ -429,28 +438,42 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
     reason: 'in_flight' | 'state_unknown';
     send_blocked: true;
     provenance: LedgerSource[];
+    provenance_complete: boolean;
   }[] = [];
-  // 残す操作の確定内容の由来（本文なし）。元情報は HMAC に通す。
+  // 残す操作の確定内容の由来（本文なし）。間接の由来（確定内容 ← 要約 ← 記憶 ← 元情報）も辿る。
+  // 由来を引けない派生物は、属する範囲の構成要素から辿る。元情報は HMAC に通す。
   const provenanceOf = (operationId: string): LedgerSource[] => {
     const out = new Map<string, LedgerSource>();
-    for (const edge of graph.edges) {
-      if (
-        edge.artifact.kind !== 'operation_content' ||
-        edge.artifact.id !== operationId
-      )
-        continue;
-      if (edge.source.kind === 'source_item')
-        out.set(nodeKey(edge.source), {
+    const seen = new Set<string>();
+    const queue: ForgetNode[] = [
+      { kind: 'operation_content', id: operationId },
+    ];
+    while (queue.length > 0) {
+      const current = queue.shift() as ForgetNode;
+      const key = nodeKey(current);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (current.kind === 'source_item')
+        out.set(key, {
           source_kind: 'source_item',
-          source_id_hmac: checkHmac(hmac(edge.source)),
+          source_id_hmac: checkHmac(hmac(current)),
         });
-      else if (edge.source.kind === 'turn' || edge.source.kind === 'memory')
-        out.set(nodeKey(edge.source), {
-          source_kind: edge.source.kind,
-          source_id: edge.source.id,
-        });
+      else if (current.kind === 'turn' || current.kind === 'memory')
+        out.set(key, { source_kind: current.kind, source_id: current.id });
+      for (const edge of graph.edges)
+        if (nodeKey(edge.artifact) === key) queue.push(edge.source);
+      for (const item of graph.unattributed)
+        if (nodeKey(item.artifact) === key)
+          queue.push(...scopeMembers(item.scope));
     }
     return [...out.values()].sort(compareLedgerSource);
+  };
+  // 由来が 1 件も辿れない操作は、由来が完全とは言えない（Core は送出の検査に provenance: 'unknown' を渡す）。
+  const provenanceFor = (
+    operationId: string,
+  ): { provenance: LedgerSource[]; provenance_complete: boolean } => {
+    const provenance = provenanceOf(operationId);
+    return { provenance, provenance_complete: provenance.length > 0 };
   };
   for (const node of doomedList.filter((n) => n.kind === 'operation_content')) {
     const state = states.get(node.id);
@@ -464,7 +487,7 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
         state: known ? state : 'unknown',
         reason: known ? 'in_flight' : 'state_unknown',
         send_blocked: true,
-        provenance: provenanceOf(node.id),
+        ...provenanceFor(node.id),
       });
     }
   }

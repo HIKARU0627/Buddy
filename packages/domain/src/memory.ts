@@ -74,8 +74,12 @@ export interface MemoryAdmission {
 }
 
 // 由来が台帳の忘却と関係するかの判定に使う入力。memoryAdmission と、一般の遅着の検査（late-result.ts）で共有する。
+// 台帳との照合に渡す由来。生の ID（MemorySource）か、台帳・保持した由来と同じ形（LedgerSource。元情報は HMAC）。
+// HMAC の形の元情報は、HMAC の関数を通さず、台帳の HMAC と直接比べる（B06-03 の再確認 P3）。
+export type SourceRefLike = MemorySource | LedgerSource;
+
 export interface LedgerRelationInput {
-  readonly sources: readonly MemorySource[];
+  readonly sources: readonly SourceRefLike[];
   // 処理開始時の忘却世代と、今の世代。
   readonly startedGeneration: string;
   readonly currentGeneration: string;
@@ -94,13 +98,14 @@ export const isHmacHex = (value: unknown): value is string =>
 // 台帳が由来の元の種類と ID（または HMAC）に一致するか。
 function ledgerForgets(
   entry: ForgetEntry,
-  source: MemorySource,
+  source: SourceRefLike,
   hmac: string,
 ): boolean {
   return entry.forgotten.some((item) =>
     item.source_kind === 'source_item'
       ? source.source_kind === 'source_item' && item.source_id_hmac === hmac
       : item.source_kind === source.source_kind &&
+        'source_id' in source &&
         item.source_id === source.source_id,
   );
 }
@@ -124,7 +129,11 @@ export function ledgerRelationReasons(input: LedgerRelationInput): string[] {
     }
   // 注入された関数の戻り値が HMAC の形（64 桁の小文字 16 進）でなければ、台帳と照合できない。
   // 「一致しない」と読んで通すと忘れた由来を見逃すので、結果を通さない（閉じた側）。
-  const hmacs = input.sources.map((source) => input.sourceHmac(source));
+  const hmacs = input.sources.map((source) =>
+    'source_id_hmac' in source
+      ? source.source_id_hmac
+      : input.sourceHmac(source),
+  );
   if (hmacs.some((value) => !isHmacHex(value)))
     reasons.push('source_hmac_malformed');
   else if (

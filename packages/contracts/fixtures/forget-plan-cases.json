@@ -313,6 +313,53 @@
         ]
       ],
       "operations": [["op-w", "toString"]]
+    },
+    "widened-unattributed": {
+      "note": "記憶 mem-m と mem-sib は同じメール mail-a から作った。mem-sib は mem-m を忘れるために広げて消す。要約 sum-u と確定内容 op-u は由来の記録がなく、mem-sib に属することだけが分かる。mem-sib は発言 t-b からも作られ、mem-b と要約 sum-b（由来の記録なし）は t-b だけに属する。mem-sib は忘れる対象ではない（広げて消すだけ）ので、t-b へは広げない。",
+      "edges": [
+        ["memory:mem-m", "source_item:mail-a"],
+        ["memory:mem-sib", "source_item:mail-a"],
+        ["memory:mem-sib", "turn:t-b"],
+        ["memory:mem-b", "turn:t-b"]
+      ],
+      "unattributed": [
+        ["session_summary:sum-u", "memory:mem-sib"],
+        ["operation_content:op-u", "memory:mem-sib"],
+        ["session_summary:sum-b", "turn:t-b"]
+      ],
+      "turn_sessions": [],
+      "memories": [
+        [
+          "mem-m",
+          "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+        ],
+        [
+          "mem-sib",
+          "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2"
+        ],
+        [
+          "mem-b",
+          "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+        ]
+      ],
+      "operations": [["op-u", "awaiting_approval"]]
+    },
+    "indirect-provenance": {
+      "note": "確定内容 op-i は要約 sum-i から、sum-i は記憶 mem-i から、mem-i はメール mail-a から作られた（間接の由来）。",
+      "edges": [
+        ["memory:mem-i", "source_item:mail-a"],
+        ["session_summary:sum-i", "memory:mem-i"],
+        ["operation_content:op-i", "session_summary:sum-i"]
+      ],
+      "unattributed": [],
+      "turn_sessions": [],
+      "memories": [
+        [
+          "mem-i",
+          "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4"
+        ]
+      ],
+      "operations": [["op-i", "awaiting_approval"]]
     }
   },
   "plans": [
@@ -409,22 +456,52 @@
             {
               "source_kind": "memory",
               "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-1"
             }
           ],
           "op-pending": [
             {
               "source_kind": "memory",
               "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-1"
             }
           ],
           "op-unknown": [
             {
               "source_kind": "memory",
               "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-1"
             }
           ]
+        },
+        "retained_provenance_complete": {
+          "op-disp": true,
+          "op-pending": true,
+          "op-unknown": true
         }
-      }
+      },
+      "note": "残す操作の由来は、確定内容の直接の由来（記憶 mem-tea）から、その記憶の由来（メール mail-a の HMAC・発言 t-1）まで辿る。"
     },
     {
       "id": "x15-forget-memory-without-instruction-turn",
@@ -497,28 +574,67 @@
             {
               "source_kind": "memory",
               "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-1"
             }
           ],
           "op-pending": [
             {
               "source_kind": "memory",
               "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-1"
             }
           ],
           "op-unknown": [
             {
               "source_kind": "memory",
               "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-1"
             }
           ],
           "op-forget": [
             {
               "source_kind": "memory",
               "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-1"
             }
           ]
+        },
+        "retained_provenance_complete": {
+          "op-disp": true,
+          "op-pending": true,
+          "op-unknown": true,
+          "op-forget": true
         }
-      }
+      },
+      "note": "残す操作の由来は、確定内容の直接の由来（記憶 mem-tea）から、その記憶の由来（メール mail-a の HMAC・発言 t-1）まで辿る。"
     },
     {
       "id": "x15-forget-turn-removes-memories-made-from-it",
@@ -1034,6 +1150,123 @@
           ]
         },
         "notice_forgotten": ["memory:mem-w"],
+        "notice_derived": []
+      }
+    },
+    {
+      "id": "x15-widened-memory-unattributed-derivatives-removed-without-chaining",
+      "title": "mem-m を忘れる。広げて消す mem-sib に属する、由来を引けない要約 sum-u を消し、確定内容 op-u は消さず送出禁止にする。mem-sib の別の由来 t-b へは広げない（t-b だけに属する mem-b・sum-b は残る）",
+      "refs": ["X15", "03 判別が不確かな場合は元メッセージ全体を除外", "08 §6"],
+      "world": "widened-unattributed",
+      "input": {
+        "target": "memory:mem-m",
+        "instruction_turn_id": null,
+        "executing_operation_id": null
+      },
+      "expected": {
+        "ok": true,
+        "targets": ["memory:mem-m"],
+        "deletions": [
+          "session_summary:sum-u",
+          "memory:mem-m",
+          "memory:mem-sib"
+        ],
+        "purge_operation_contents": [],
+        "retained_operations": [["op-u", "awaiting_approval", "in_flight"]],
+        "retained_provenance": {
+          "op-u": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-sib"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-b"
+            }
+          ]
+        },
+        "retained_provenance_complete": {
+          "op-u": true
+        },
+        "ledger": {
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-m"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-sib"
+            }
+          ],
+          "blocked_source_hmacs": [
+            "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ],
+          "blocked_content_keys": [
+            "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2"
+          ]
+        },
+        "notice_forgotten": ["memory:mem-m"],
+        "notice_derived": ["memory:mem-sib"],
+        "survivors": [
+          "memory:mem-b",
+          "session_summary:sum-b",
+          "turn:t-b",
+          "source_item:mail-a"
+        ]
+      }
+    },
+    {
+      "id": "x15-indirect-provenance-is-traced-for-retained-operation",
+      "title": "確定内容 op-i が 要約 ← 記憶 ← 元情報 の間接の由来でも、残す操作の由来（本文なし）は空にならず、記憶と元情報（HMAC）を含む",
+      "refs": ["X15", "08 §6"],
+      "world": "indirect-provenance",
+      "input": {
+        "target": "memory:mem-i",
+        "instruction_turn_id": null,
+        "executing_operation_id": null
+      },
+      "expected": {
+        "ok": true,
+        "targets": ["memory:mem-i"],
+        "deletions": ["session_summary:sum-i", "memory:mem-i"],
+        "purge_operation_contents": [],
+        "retained_operations": [["op-i", "awaiting_approval", "in_flight"]],
+        "retained_provenance": {
+          "op-i": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-i"
+            },
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            }
+          ]
+        },
+        "retained_provenance_complete": {
+          "op-i": true
+        },
+        "ledger": {
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-i"
+            }
+          ],
+          "blocked_source_hmacs": [
+            "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ],
+          "blocked_content_keys": [
+            "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4"
+          ]
+        },
+        "notice_forgotten": ["memory:mem-i"],
         "notice_derived": []
       }
     }
@@ -1997,6 +2230,89 @@
           "action": "reject",
           "reasons": ["forgetting_generation_changed"]
         }
+      },
+      {
+        "id": "hmac-reference-blocked-in-ledger-rejects",
+        "title": "保持した操作の由来（元情報の HMAC）が、台帳の再登録の禁止にある。拒否する",
+        "refs": ["X15", "08 §6"],
+        "scope": {
+          "provenance": "complete",
+          "sources": [
+            "source_item_hmac:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ]
+        },
+        "ledger_extra": [
+          {
+            "forgetting_generation": "3",
+            "forgotten": [],
+            "blocked_source_hmacs": [
+              "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "blocked_content_keys": []
+          }
+        ],
+        "expected_scoped": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed"]
+        },
+        "expected_strict": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed"]
+        }
+      },
+      {
+        "id": "hmac-reference-unrelated-passes",
+        "title": "元情報の HMAC の参照が忘却と無関係なら通す",
+        "scope": {
+          "provenance": "complete",
+          "sources": [
+            "source_item_hmac:b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9"
+          ]
+        },
+        "expected_scoped": {
+          "action": "apply",
+          "reasons": []
+        },
+        "expected_strict": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed"]
+        }
+      },
+      {
+        "id": "complete-but-empty-provenance-is-unknown-for-external",
+        "title": "由来が 1 件も渡されない命令は、complete と名乗っても完全とは扱わない。外部へ送るなら世代が同じでも拒否する",
+        "refs": ["X15", "08 §6"],
+        "external": true,
+        "scope": {
+          "provenance": "complete",
+          "sources": []
+        },
+        "command": {
+          "forgetting_generation": "3"
+        },
+        "expected_scoped": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed", "provenance_unknown"]
+        },
+        "expected_strict": {
+          "action": "apply",
+          "reasons": []
+        }
+      },
+      {
+        "id": "complete-but-empty-provenance-different-generation",
+        "scope": {
+          "provenance": "complete",
+          "sources": []
+        },
+        "expected_scoped": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed"]
+        },
+        "expected_strict": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed"]
+        }
       }
     ],
     "malformed_hmac": {
@@ -2007,6 +2323,16 @@
         "action": "reject",
         "reasons": ["forgetting_generation_changed"]
       }
+    },
+    "hmac_ref_note": "由来は「種類:ID」の生の ID のほか、「source_item_hmac:<64 桁の 16 進>」で元情報の HMAC の参照（保持した操作の由来と同じ形）を渡せる。HMAC の参照は HMAC の関数を通さず、台帳の HMAC と直接比べる。",
+    "malformed_hmac_reference": {
+      "note": "元情報の HMAC の参照そのものが形を満たさない（生の ID・大文字・桁数不足）。拒否する。",
+      "values": [
+        "mail-a",
+        "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1",
+        "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+      ],
+      "expected_scoped_reasons": ["source_hmac_malformed"]
     }
   }
 }

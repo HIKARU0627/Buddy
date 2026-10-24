@@ -34,6 +34,14 @@ const ref = (text) => {
   return { source_kind: kind, source_id: id };
 };
 const nodeText = (value) => `${value.kind}:${value.id}`;
+// 命令の由来。「source_item_hmac:<HMAC>」は元情報の HMAC の参照（保持した操作の由来と同じ形）。
+const scopeRef = (text) =>
+  text.startsWith('source_item_hmac:')
+    ? {
+        source_kind: 'source_item',
+        source_id_hmac: text.slice('source_item_hmac:'.length),
+      }
+    : ref(text);
 const refText = (value) => `${value.source_kind}:${value.source_id}`;
 
 function hmacFrom(...tables) {
@@ -188,12 +196,29 @@ test('the derivation closure matches the hand-written plans', () => {
   for (const entry of spec.plans) {
     const result = planForget(planInput(entry));
     assert.equal(result.ok, true, entry.id);
-    const { survivors, ok, retained_provenance, ...expected } = entry.expected;
+    const {
+      survivors,
+      ok,
+      retained_provenance,
+      retained_provenance_complete,
+      ...expected
+    } = entry.expected;
     assert.equal(ok, true);
     assert.deepEqual(summarize(result.plan), expected, entry.id);
     // 残す操作には、送出禁止の印と、本文を持たない由来（元情報は HMAC）を必ず付ける。
     for (const item of result.plan.operation_contents.retained)
       assert.equal(item.send_blocked, true, `${entry.id} ${item.operation_id}`);
+    if (retained_provenance_complete !== undefined)
+      assert.deepEqual(
+        Object.fromEntries(
+          result.plan.operation_contents.retained.map((item) => [
+            item.operation_id,
+            item.provenance_complete,
+          ]),
+        ),
+        retained_provenance_complete,
+        entry.id,
+      );
     if (retained_provenance !== undefined)
       assert.deepEqual(
         Object.fromEntries(
@@ -516,14 +541,21 @@ test('the forgetting generation check of DB commands can be scoped to related so
   for (const entry of section.cases) {
     const command = { ...section.base_command, ...entry.command };
     const external = entry.external ?? false;
-    const ledger = section.base_ledger.filter(
+    let ledger = section.base_ledger.filter(
       (item) =>
         entry.scope.ledger_generations === undefined ||
         entry.scope.ledger_generations.includes(item.forgetting_generation),
     );
+    // 同じ世代の台帳の項目を差し替える（元情報の HMAC の参照を台帳の禁止に入れるため）。
+    for (const extra of entry.ledger_extra ?? [])
+      ledger = ledger
+        .filter(
+          (item) => item.forgetting_generation !== extra.forgetting_generation,
+        )
+        .concat(extra);
     const scope = {
       provenance: entry.scope.provenance,
-      sources: entry.scope.sources.map(ref),
+      sources: entry.scope.sources.map(scopeRef),
       ledger,
       sourceHmac: hmacFrom(section.hmacs),
     };
@@ -603,5 +635,25 @@ test('a malformed HMAC from the injected function rejects save, display, send, c
     );
     assert.equal(admission.action, 'reject', `${label} admission`);
     assert.deepEqual(admission.reasons, malformed.expected_reasons, label);
+  }
+});
+
+test('a malformed HMAC reference of a retained source is rejected too', () => {
+  const section = spec.scoped_command_guard;
+  const spec2 = section.malformed_hmac_reference;
+  for (const value of spec2.values) {
+    const scope = {
+      provenance: 'complete',
+      sources: [{ source_kind: 'source_item', source_id_hmac: value }],
+      ledger: section.base_ledger,
+      sourceHmac: () => {
+        throw new Error('a HMAC reference must not go through the function');
+      },
+    };
+    assert.deepEqual(
+      scopedForgettingReasons('1', '3', scope),
+      spec2.expected_scoped_reasons,
+      value,
+    );
   }
 });

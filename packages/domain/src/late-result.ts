@@ -8,6 +8,7 @@ import {
   type ForgetEntry,
   type MemorySource,
   type SourceHmac,
+  type SourceRefLike,
 } from './memory.js';
 
 export type LateResultUse = 'persist' | 'display' | 'send';
@@ -76,8 +77,10 @@ export function lateResultCheck(
 // DB 命令の再検査で、忘却の世代の検査を「関係する由来のときだけ」に絞るための入力（commandGuard の options.forgetting）。
 export interface ForgettingScope {
   // 命令の由来（確定内容の元になった発言・元情報・記憶）。Core が async_context_guards などから読む。
-  readonly sources: readonly MemorySource[];
+  // 保持した操作の由来（forget-plan の provenance。元情報は source_id_hmac）はそのまま渡せる。
+  readonly sources: readonly SourceRefLike[];
   // 由来を把握しているか。unknown なら絞らず、世代が変わったら拒否する従来の規則のまま。
+  // complete でも sources が空なら、由来を 1 件も把握していないので unknown と同じに扱う。
   readonly provenance: 'complete' | 'unknown';
   readonly ledger: readonly ForgetEntry[];
   readonly sourceHmac: SourceHmac;
@@ -97,7 +100,7 @@ export function scopedForgettingReasons(
   external = false,
 ): string[] {
   const reasons: string[] = [];
-  if (scope.provenance === 'unknown') {
+  if (scope.provenance === 'unknown' || scope.sources.length === 0) {
     if (commandGeneration !== currentGeneration)
       reasons.push('forgetting_generation_changed');
     if (external) reasons.push('provenance_unknown');

@@ -1,7 +1,7 @@
 # Desktop クライアント
 
 Electron / React / TypeScript / Vite のクライアントです。画面は HeroUI（v3）と Tailwind CSS（v4）で作ります（[ADR 0024](../../docs/adr/0024-ui-heroui-desktop-renderer.md)）。B01 はトレイ常駐・端末状態（ロック・この端末の入出力停止・io_epoch）の記録・限定 IPC の開発起動までです（[ADR 0015](../../docs/adr/0015-b01-desktop-minimal-app.md)、IPC の契約は [ADR 0014](../../docs/adr/0014-b01-desktop-ipc-contract.md)）。
-B03 で中枢（Core）に HTTPS（TLS のピン留め）と WSS で接続し、ペアリング・接続状態の表示・ロック状態の申告・自宅の指紋の報告を行います（[ADR 0025](../../docs/adr/0025-b03-client-desktop-connection.md)）。端末トークンは main だけが持ち、safeStorage で暗号化して保存します（Renderer・IPC・ログに出さない）。Core の存続を Electron の起動に依存させないでください。インストーラー・署名・自動更新・音声レンダラーは未実装です。
+B03 で中枢（Core）に HTTPS（TLS のピン留め）と WSS で接続し、ペアリング・接続状態の表示・ロック状態の申告・自宅の指紋の報告を行います（[ADR 0025](../../docs/adr/0025-b03-client-desktop-connection.md)）。端末トークンは main だけが持ち、safeStorage で暗号化して保存します（Renderer・IPC・ログに出さない）。Core の存続を Electron の起動に依存させないでください。インストーラー・署名・自動更新・実際の音声（マイク・WebRTC）は未実装です（音声レンダラーは模擬だけ。B05-06）。
 
 ## 開発起動
 
@@ -40,6 +40,10 @@ pnpm --filter @buddy/desktop dev
 
 同じフラグのとき、キャンバスの窓は物の位置と大きさを配置のエンジン（`@buddy/domain` の `layoutCanvas`）で決めます。意味（強調・まとまり・関係・格子のヒント）から置き、下の中央（入力バー）と右の端（状態の層）を空け、使わない物は下の棚に並べます。幅が 840 未満なら 1 列で、入りきらない物は棚の場所の札になり、札を押すとその物を見せます（作業領域の高さが 272 未満なら物を置かず、棚は上の端の小さな帯です）。作業領域の外の幅（メニューバー・Dock）は main が知らせます（`desktop.canvas_work_area`）。キャンバスを前に出している間だけ、見出しの帯を掴んで動かす・右下の角で大きさを変える・×で閉じる・下向きの矢印で棚へ片付ける・棚の物を押して出すことができ、キーボードでも同じことができます（Tab・矢印・Shift ＋ 矢印・Delete・Alt ＋ ↓）。操作は main を通して中枢に記録します（`desktop.canvas_user_op` → `POST /v1/canvas/user-ops`。`src/main/canvas-bridge.ts`）。キャンバスを置く画面の設定はユーザーのデータの場所の `canvas-display.json` だけで（既定は主の画面。`src/main/canvas-display.ts`）、キャンバスの本文・見出しは端末に保存しません。試した範囲は [docs/ui/canvas-layout.md](../../docs/ui/canvas-layout.md) です。
 
+### 音声レンダラーと 3 層の停止（B05-06）
+
+同じフラグに `--buddy-voice=mock`（または環境変数 `BUDDY_DESKTOP_VOICE=mock`）を足すと、隠した音声レンダラーの窓（模擬のレンダラー。合成の PCM で、マイク・WebRTC・実 API を使わない）と、端末の中だけで答える模擬の中枢を使います（[ADR 0050](../../docs/adr/0050-b05-desktop-voice-renderer-isolation-and-stop.md)）。音声レンダラーは専用のスキーム（`buddy-voice://renderer/`）と保存しないセッションで、ビルド済みの `dist/voice` の HTML と JS だけを読み、ほかの通信・権限・遷移を全て拒否します。main は 6 つの限定 IPC だけを送り、ACK の期限（suspend_io は 300 ms）を過ぎた・失敗した・固まったときは強制終了して、この端末の入出力も止めます（`src/main/voice-controller.ts`）。状態の層のパネルに音声の段（状態・「音声を外部へ送っている」の印・同意の取り消し・最小の「続ける」）を出します。外部への送信の同意は、初めて「続ける」を押したときに main の OS の確認ダイアログで 1 回だけ取り、userData の `voice-consent.json` に記録します（表示と確認を出すかの判断だけ。正本は中枢）。模擬のレンダラーの故障は `--buddy-voice-fault=delay=250,hang=suspend_io,drop=stop_playback:play,fail=start` で注入できます。どれも開発の起動だけで、配布版と既定は音声レンダラーを作りません。
+
 ## 確かめられること
 
 - ウィンドウを閉じてもトレイ（macOS はメニューバー）に残ります。終了はトレイの「Buddy を終了」か画面のボタンです。どちらも中枢を止めません。
@@ -51,12 +55,14 @@ pnpm --filter @buddy/desktop dev
 
 ## 構成
 
-| 場所                        | 役割                                                                                                                                                                                                                                                                               |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/*.ts`             | Electron に依存しない純粋なモジュール（IPC の受付・端末状態・保存・ウィンドウとトレイの判断、中枢との接続: `hub-transport`・`pairing-flow`・`credential-store`・`home-reporter`・`home-registration`・`core-link`）と試験（2 クライアントの統合試験 `two-clients.test.ts` を含む） |
-| `src/main/electron/main.ts` | Electron のアダプター（BrowserWindow・Tray・ipcMain・powerMonitor・protocol・safeStorage・app のライフサイクル）                                                                                                                                                                   |
-| `src/preload/preload.cts`   | sandbox の preload。contextBridge で限定 API（invoke・onNotification）だけを公開する                                                                                                                                                                                               |
-| `src/renderer`              | React と HeroUI の画面。状態帯・停止と再開・登録・中枢の画面・電源とロックの記録。Electron・Node.js の API を使わない                                                                                                                                                              |
+| 場所                            | 役割                                                                                                                                                                                                                                                                               |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main/*.ts`                 | Electron に依存しない純粋なモジュール（IPC の受付・端末状態・保存・ウィンドウとトレイの判断、中枢との接続: `hub-transport`・`pairing-flow`・`credential-store`・`home-reporter`・`home-registration`・`core-link`）と試験（2 クライアントの統合試験 `two-clients.test.ts` を含む） |
+| `src/main/electron/main.ts`     | Electron のアダプター（BrowserWindow・Tray・ipcMain・powerMonitor・protocol・safeStorage・app のライフサイクル）                                                                                                                                                                   |
+| `src/preload/preload.cts`       | sandbox の preload。contextBridge で限定 API（invoke・onNotification）だけを公開する                                                                                                                                                                                               |
+| `src/preload/voice-preload.cts` | 音声レンダラーの preload。命令の受け取り・ACK の返送・故障の指定だけを公開する（B05-06）                                                                                                                                                                                           |
+| `src/voice`                     | 音声レンダラーの画面（模擬のレンダラーを動かすだけ。`vite.voice.config.mjs` で `dist/voice` へ出す）                                                                                                                                                                               |
+| `src/renderer`                  | React と HeroUI の画面。状態帯・停止と再開・登録・中枢の画面・電源とロックの記録。Electron・Node.js の API を使わない                                                                                                                                                              |
 
 試験は `pnpm test` がビルド後の `dist/main/*.test.js`・`dist/renderer-test/**/*.test.js` を実行します（Electron は起動しません）。実機でのロック・スリープの確認は B01-05 で行います。
 

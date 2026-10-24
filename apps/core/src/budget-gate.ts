@@ -24,6 +24,7 @@
 
 import { randomUUID } from 'node:crypto';
 import {
+  computeLiveSecondsAmount,
   computeReservation,
   creditAvailability,
   creditEligible,
@@ -86,6 +87,8 @@ export interface BudgetTicket {
   readonly request_id: string;
   readonly pool_id: string;
   readonly budget_month: string;
+  // 受付で固定した単価の版（追加予約・精算の金額を同じ版で求める。B05-04）。
+  readonly price_version: string;
   readonly reserved: string;
   readonly max_liability: string;
   readonly revision: string;
@@ -93,6 +96,10 @@ export interface BudgetTicket {
   readonly routed: boolean;
   // 応答の期限（UTC のミリ秒）。
   readonly deadline: number;
+  // 課金され得る期間（UTC のミリ秒。予約の受付から応答の期限まで）。会話の秒数の金額は、この窓にかかる
+  // 単価の版のうち高い方で求める（ADR 0049・U85）。
+  readonly billable_from: number;
+  readonly billable_until: number;
   // 受付で結び付けたクレジットの有効期限（UTC のミリ秒。クレジットを充てない予約は null）。provider へ送る直前にも
   // この時刻を過ぎていないことを確かめる。
   readonly credit_expires_at: number | null;
@@ -320,6 +327,10 @@ const HOLD_ORDER: readonly BudgetGateHoldReason[] = [
 
 const iso = (millis: number): string => new Date(millis).toISOString();
 
+// 会話の課金され得る期間（予約から 2 時間。live-budget.ts の LIVE_SESSION_MAX_MS がこの値を参照する）。保存した
+// 予約から券を作り直すとき、受付の時刻（createdAt）にこの長さを足して窓を作る。
+export const LIVE_BILLABLE_WINDOW_MS = 7_200_000;
+
 // 観測の採用の結果。設定がなければ configured: false。採用の書込みが失敗したときは state が null（理由つき）。
 type CreditAdoptionResult =
   | { readonly configured: false }
@@ -343,16 +354,21 @@ const toTicket = (
   reservation: BudgetReservationValue,
   routed: boolean,
   deadline: number,
+  billableFrom: number,
+  billableUntil: number,
 ): BudgetTicket => ({
   reservation_id: reservation.reservationId,
   request_id: reservation.requestId,
   pool_id: reservation.poolId,
   budget_month: reservation.budgetMonth,
+  price_version: reservation.priceVersion,
   reserved: reservation.reserved,
   max_liability: reservation.maxLiability,
   revision: reservation.revision,
   routed,
   deadline,
+  billable_from: billableFrom,
+  billable_until: billableUntil,
   credit_expires_at: reservation.creditExpiresAt,
 });
 
@@ -720,7 +736,13 @@ export class BudgetGate {
       this.#creditWaiting.delete(request.request_id);
       return {
         ok: true,
-        ticket: toTicket(value.reservation, value.routed, deadline),
+        ticket: toTicket(
+          value.reservation,
+          value.routed,
+          deadline,
+          now,
+          deadline,
+        ),
         duplicate: value.duplicate,
       };
     }
@@ -869,6 +891,8 @@ export class BudgetGate {
         result.value.reservation,
         ticket.routed,
         ticket.deadline,
+        ticket.billable_from,
+        ticket.billable_until,
       ),
     };
   }
@@ -1023,7 +1047,13 @@ export class BudgetGate {
     let failed = 0;
     for (const item of listed.value) {
       const reservation = item.reservation;
-      const ticket = toTicket(reservation, reservation.approvalId !== null, 0);
+      const ticket = toTicket(
+        reservation,
+        reservation.approvalId !== null,
+        0,
+        reservation.createdAt,
+        reservation.createdAt + LIVE_BILLABLE_WINDOW_MS,
+      );
       const possiblySent =
         reservation.dispatchIntentAt !== null ||
         item.live_session ||
@@ -1252,6 +1282,75 @@ export class BudgetGate {
     return result.ok
       ? { ok: true, value: toReservationView(result.value.reservation) }
       : gateFailure(result.reasons, result.outcome === 'unknown');
+  }
+
+  // 会話（Live）の秒数を、予約に固定した単価の版で金額にする（追加予約は increment、精算の実費は actual。ADR 0049）。
+  // 設定が使えない・版がない・確認されていない・通貨が違う・単価がないときは理由のコードを返す。
+  liveSecondsAmount(
+    ticket: BudgetTicket,
+    seconds: number,
+    basis: 'increment' | 'actual',
+  ):
+    | { readonly ok: true; readonly amount: string }
+    | { readonly ok: false; readonly reasons: readonly string[] } {
+    const config = this.#config;
+    if (!config.ok) return { ok: false, reasons: ['config_invalid'] };
+    const version = config.config.price_versions.find(
+      (item) => item.price_version === ticket.price_version,
+    );
+    if (version === undefined)
+      return { ok: false, reasons: ['price_version_unknown'] };
+    const result = computeLiveSecondsAmount({
+      budgetCurrency: config.settings.currency,
+      priceKey: version.price_key,
+      priceVersion: ticket.price_version,
+      priceVersions: config.config.price_versions,
+      verifiedPriceVersions: config.settings.verifiedPriceVersions,
+      billableFrom: iso(ticket.billable_from),
+      billableUntil: iso(ticket.billable_until),
+      seconds,
+      basis,
+    });
+    return result.ok
+      ? { ok: true, amount: result.amount }
+      : { ok: false, reasons: result.reasonCodes };
+  }
+
+  // live_seconds の単価がある単価の系列（price_key）。ちょうど 1 つあるときだけ返す（なければ・複数あれば、どれを使うか
+  // 設定からは決められないので null。会話の予約を受け付けない）。
+  livePriceKey(): string | null {
+    const config = this.#config;
+    if (!config.ok) return null;
+    const keys = new Set(
+      config.config.price_versions
+        .filter((version) =>
+          version.rates.some((rate) => rate.category === 'live_seconds'),
+        )
+        .map((version) => version.price_key),
+    );
+    return keys.size === 1 ? ([...keys][0] ?? null) : null;
+  }
+
+  // 保存済みの予約から、精算・追加予約に渡す券を作り直す（再起動の後の照合・遅れて届いた使用量の精算で使う）。
+  // 応答の期限は保存されていないので 0（精算・追加予約では使わない）。なければ null、読めなければ 'unavailable'。
+  async ticketOf(
+    reservationId: string,
+  ): Promise<BudgetTicket | null | 'unavailable'> {
+    const result = await this.#store.budget({
+      kind: 'budget.reservation_find',
+      reservation_id: reservationId,
+      request_id: null,
+    });
+    if (!result.ok) return 'unavailable';
+    if (result.value === null) return null;
+    // 保存した予約の受付の時刻から、会話の課金され得る期間（2 時間）を作る。
+    return toTicket(
+      result.value,
+      result.value.approvalId !== null,
+      0,
+      result.value.createdAt,
+      result.value.createdAt + LIVE_BILLABLE_WINDOW_MS,
+    );
   }
 
   // 予約の今の版（経路の検査の「版の照合」に使う）。読めなければ 'unavailable'、なければ null。

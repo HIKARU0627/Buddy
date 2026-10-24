@@ -28,6 +28,10 @@ const LEGACY_EXCLUDED_CHANNELS: readonly string[] = [
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',
+  // 音声の状態・「続ける」・同意の取り消し（B05-06）は状態の層だけ。従来の窓には音声の画面がない（音声レンダラーも作らない）。
+  'desktop.get_voice',
+  'desktop.voice_continue',
+  'desktop.voice_consent_revoke',
 ];
 
 // 窓の組み立て方。既定は従来の 1 つの窓。canvas は 3 つの役割の窓（試作）。
@@ -92,11 +96,13 @@ export function notificationAllowedForWindow(
   channel: string,
 ): boolean {
   // 従来の窓はキャンバスの記述（UI-03）と作業領域の外の幅（UI-06）を受けない（キャンバスの窓だけ）。
+  // 音声の状態（B05-06）も受けない（状態の層だけ）。
   if (role === 'legacy')
     return (
       (DESKTOP_NOTIFICATION_CHANNELS as readonly string[]).includes(channel) &&
       channel !== 'desktop.canvas_changed' &&
-      channel !== 'desktop.canvas_work_area'
+      channel !== 'desktop.canvas_work_area' &&
+      channel !== 'desktop.voice_changed'
     );
   return (DESKTOP_ROLE_NOTIFICATIONS[role] as readonly string[]).includes(
     channel,

@@ -6,8 +6,8 @@
   "type": "module",
   "main": "dist/main/electron/main.js",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.pure.json && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json && tsc -p tsconfig.renderer-test.json --noEmit",
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json && vite build --logLevel warn && tsc -p tsconfig.renderer-test.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.pure.json && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json && tsc -p tsconfig.renderer-test.json --noEmit && tsc -p tsconfig.voice.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json && vite build --logLevel warn && vite build --config vite.voice.config.mjs --logLevel warn && tsc -p tsconfig.renderer-test.json",
     "dev": "pnpm --filter \"@buddy/desktop...\" --workspace-concurrency=1 run build && electron .",
     "start": "electron ."
   },

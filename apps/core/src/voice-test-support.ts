@@ -2,13 +2,14 @@
 // - 手で進める単調時計とタイマー（固定の sleep を使わない）。
 // - 模擬の Live の provider（同じプロセス）。SDP の交換とサイドバンド（ping・pong・session.close・session.closed・断線）を
 //   試験が決める。実際の音声・実 API は使わない。
-// - 予算の門（BudgetGate）への境界の模擬の写し。会話は合成の単価 1 秒 1 単位（通貨は試験用の XTS）。
+// - 予算の門（BudgetGate）への境界（本番と同じ createLiveBudget）に呼び出しの記録を付けたもの。会話は合成の単価 1 秒 1 単位（通貨は試験用の XTS）。
 // 期待値は各試験に手で書く（ここでは作らない）。
 
-import { randomUUID } from 'node:crypto';
-import type { BudgetGate, BudgetTicket } from './budget-gate.js';
+import { createLiveBudget } from './live-budget.js';
+import type { BudgetGate } from './budget-gate.js';
 import type {
   LiveBudgetPort,
+  LiveLookup,
   LiveProvider,
   LiveSideband,
   LiveSidebandHandlers,
@@ -36,6 +37,12 @@ export class ManualVoiceClock implements VoiceTimers {
 
   clear(handle: unknown): void {
     if (typeof handle === 'number') this.#timers.delete(handle);
+  }
+
+  // 時計を戻す（時計の逆行の模擬）。置いた timer の時刻は変えない（実際の timer は経過した時間で発火するので、
+  // 戻した時計を読むのは、時計を読む処理だけ）。
+  rewind(ms: number): void {
+    this.#now -= ms;
   }
 
   get pending(): number {
@@ -74,6 +81,9 @@ export async function flush(): Promise<void> {
 export class MockSideband implements LiveSideband {
   pings = 0;
   closes = 0;
+  // appendInstructions で送った指示（予算の上限）の数と、送れない状態にするか。
+  instructions: string[] = [];
+  canInstruct = true;
   terminated = false;
   readonly #handlers: LiveSidebandHandlers;
   constructor(handlers: LiveSidebandHandlers) {
@@ -85,11 +95,20 @@ export class MockSideband implements LiveSideband {
   sendClose(): void {
     this.closes += 1;
   }
+  appendInstructions(kind: 'budget_reached'): boolean {
+    if (!this.canInstruct) return false;
+    this.instructions.push(kind);
+    return true;
+  }
   terminate(): void {
     this.terminated = true;
   }
   pong(): void {
     this.#handlers.onPong();
+  }
+  // モデルの発話の終わり（provider のイベント）。
+  utteranceEnded(): void {
+    this.#handlers.onModelUtteranceEnded();
   }
   closed(usageSeconds: number | null): void {
     this.#handlers.onSessionClosed(usageSeconds);
@@ -109,6 +128,12 @@ export class MockLiveProvider implements LiveProvider {
   readonly connectCalls: string[] = [];
   createPlan: 'ok' | 'fail' = 'ok';
   readonly sidebandPlans: SidebandPlan[] = [];
+  // lookupSession の答え（live_session_id ごと）。なければ not_found。照会の記録も残す。
+  readonly lookups = new Map<string, LiveLookup>();
+  readonly lookupCalls: string[] = [];
+  // 作成の応答を保留して、遅れて成功させる（期限切れの後に作られる孤児のセッション）。
+  holdCreate = false;
+  readonly #heldCreates: (() => void)[] = [];
   readonly #held: ((value: MockSideband | null) => void)[] = [];
   readonly #heldHandlers: LiveSidebandHandlers[] = [];
 
@@ -125,11 +150,28 @@ export class MockLiveProvider implements LiveProvider {
       sdp_offer: input.sdp_offer,
     });
     if (this.createPlan === 'fail') return Promise.resolve({ ok: false });
-    return Promise.resolve({
-      ok: true,
+    const answer = {
+      ok: true as const,
       provider_session_id: `prov-${input.live_session_id}`,
       sdp_answer: 'v=0 synthetic-answer',
-    });
+    };
+    if (this.holdCreate)
+      return new Promise((resolve) => {
+        this.#heldCreates.push(() => resolve(answer));
+      });
+    return Promise.resolve(answer);
+  }
+
+  // 保留した作成の応答を遅れて返す。
+  releaseCreate(): void {
+    this.#heldCreates.shift()?.();
+  }
+
+  lookupSession(liveSessionId: string): Promise<LiveLookup> {
+    this.lookupCalls.push(liveSessionId);
+    return Promise.resolve(
+      this.lookups.get(liveSessionId) ?? { state: 'not_found' },
+    );
   }
 
   connectSideband(
@@ -167,56 +209,61 @@ export class MockLiveProvider implements LiveProvider {
   }
 }
 
-// 予算の門への境界の写し。会話の秒数を live_seconds の量として渡し、精算は合成の単価（1 秒 1 単位）で実費にする。
+// 予算の門への境界（本番と同じ createLiveBudget）に、呼び出しの記録を付ける。会話は合成の単価（1 秒 1 単位。通貨は XTS）。
+// calls は呼び出しの名前の列（reserve:秒数・dispatch・release・topup:秒数・settle:使用秒数・hold）。
 export function gateLiveBudget(gate: BudgetGate): LiveBudgetPort & {
   readonly calls: string[];
+  // 次の追加予約を失敗させる（予算の上限・DB の失敗の模擬）。
+  failTopUps: 'none' | 'reject' | 'throw';
+  failSettles: number;
 } {
+  const real = createLiveBudget(gate, {
+    profile_id: 'live.synthetic.v1',
+    profile_revision: '1',
+    price_key: 'synthetic.live',
+  });
   const calls: string[] = [];
-  return {
+  const port = {
     calls,
-    async reserve({ request_id, seconds }) {
-      calls.push(`reserve:${seconds}`);
-      const admitted = await gate.admit({
-        request_id,
-        origin: 'owner_request',
-        service: 'voice',
-        profile_id: 'live.synthetic.v1',
-        profile_revision: '1',
-        price_key: 'synthetic.live',
-        quantities: { live_seconds: String(seconds) },
-        timeout_ms: 7_200_000,
-      });
-      return admitted.ok
-        ? {
-            ok: true,
-            reservation_id: admitted.ticket.reservation_id,
-            ticket: admitted.ticket,
-          }
-        : { ok: false, budget_held: admitted.budgetHeld };
+    failTopUps: 'none' as 'none' | 'reject' | 'throw',
+    failSettles: 0,
+    reserve(input: { request_id: string; seconds: number }) {
+      calls.push(`reserve:${input.seconds}`);
+      return real.reserve(input);
     },
-    async dispatch(ticket) {
+    dispatch(ticket: unknown) {
       calls.push('dispatch');
-      const result = await gate.dispatch(ticket as BudgetTicket);
-      return result.ok
-        ? { ok: true, uncertain: false }
-        : { ok: false, uncertain: result.uncertain };
+      return real.dispatch(ticket);
     },
-    async release(ticket) {
+    release(ticket: unknown) {
       calls.push('release');
-      await gate.release(ticket as BudgetTicket);
+      return real.release(ticket);
     },
-    async settle(ticket, billableSeconds) {
-      calls.push(`settle:${billableSeconds}`);
-      await gate.settle(ticket as BudgetTicket, {
-        kind: 'usage',
-        provider: 'mocklive',
-        reconciliation_id: `live-${randomUUID()}`,
-        actual_gross: String(billableSeconds),
-      });
+    async topUp(ticket: unknown, seconds: number) {
+      calls.push(`topup:${seconds}`);
+      if (port.failTopUps === 'throw') throw new Error('synthetic');
+      if (port.failTopUps === 'reject')
+        return { ok: false as const, reasons: ['r_limit:voice'] };
+      return real.topUp(ticket, seconds);
     },
-    async hold(ticket) {
+    async settle(
+      ticket: unknown,
+      input: { live_session_id: string; usage_seconds: number },
+    ) {
+      calls.push(`settle:${input.usage_seconds}`);
+      if (port.failSettles > 0) {
+        port.failSettles -= 1;
+        return { ok: false as const, reasons: ['synthetic_failure'] };
+      }
+      return real.settle(ticket, input);
+    },
+    hold(ticket: unknown) {
       calls.push('hold');
-      await gate.unknown(ticket as BudgetTicket);
+      return real.hold(ticket);
+    },
+    ticketOf(reservationId: string) {
+      return real.ticketOf(reservationId);
     },
   };
+  return port;
 }

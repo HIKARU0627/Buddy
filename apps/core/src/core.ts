@@ -87,6 +87,15 @@ import { BUDGET_CREDIT_FILE, fileCreditSource } from './budget-credit.js';
 import type { CreditObservationSource } from './budget-credit.js';
 import { BudgetGate } from './budget-gate.js';
 import { createVoiceRoutes } from './api-voice.js';
+import {
+  createLiveBudget,
+  DEFAULT_LIVE_PROFILE_ID,
+  DEFAULT_LIVE_PROFILE_REVISION,
+} from './live-budget.js';
+import {
+  combineReconcilers,
+  createLiveUsageReconciler,
+} from './live-reconcile.js';
 import { VoiceControl } from './voice-control.js';
 import type {
   LiveBudgetPort,
@@ -797,7 +806,16 @@ async function startHttps(
       ? {}
       : { timers: voiceOptions.timers }),
     provider: voiceOptions.provider ?? null,
-    budget: voiceOptions.budget ?? null,
+    // 会話の予約は予算の門から作る（設定に live_seconds の単価の系列がちょうど 1 つあるときだけ。なければ Live は開かない）。
+    budget:
+      voiceOptions.budget ??
+      (budget.livePriceKey() === null
+        ? null
+        : createLiveBudget(budget, {
+            profile_id: DEFAULT_LIVE_PROFILE_ID,
+            profile_revision: DEFAULT_LIVE_PROFILE_REVISION,
+            price_key: budget.livePriceKey() as string,
+          })),
     ...(voiceOptions.consent === undefined
       ? {}
       : { consent: voiceOptions.consent }),
@@ -1115,8 +1133,16 @@ async function startBudgetGate(
       ? {}
       : { p95ProfileIds: settings.p95ProfileIds }),
   });
+  // 再起動の照合の口。provider があれば、会話（Live）の使用量も provider へ照会する（読み取りだけ。送り直さない）。
+  const liveProvider = options.https?.voice?.provider ?? null;
+  const reconciler = combineReconcilers(
+    settings.reconciler,
+    liveProvider === null
+      ? null
+      : createLiveUsageReconciler({ gate, store, provider: liveProvider }),
+  );
   try {
-    await gate.start(settings.reconciler);
+    await gate.start(reconciler);
   } catch {
     log(
       '予算の再起動の照合に失敗しました。有料の受付は DB の検査で止まります。',

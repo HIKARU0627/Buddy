@@ -140,6 +140,10 @@ test('requests go only to the contract channels', async () => {
       'desktop.budget_overage_decide',
       'desktop.budget_overrun_review',
       'desktop.budget_manual_settle',
+      // B05-06: 音声の状態・最小の「続ける」・同意の取り消し（状態の層だけ）。
+      'desktop.get_voice',
+      'desktop.voice_continue',
+      'desktop.voice_consent_revoke',
     ],
   );
   for (const channel of channels) {
@@ -162,6 +166,14 @@ test('requests go only to the contract channels', async () => {
     { channel: 'desktop.budget_manual_settle' },
     // キャンバスの物の中身の読み取りも使わない（UI-07）。
     { channel: 'desktop.canvas_content' },
+    // 音声の状態・「続ける」・同意の取り消しは状態の層だけ（B05-06）。
+    { channel: 'desktop.get_voice' },
+    { channel: 'desktop.voice_continue' },
+    { channel: 'desktop.voice_consent_revoke' },
+    // 音声レンダラーの限定 IPC は UI レンダラーの preload に出さない（B05-06）。
+    { channel: 'voice.start' },
+    { channel: 'voice.suspend_io' },
+    { channel: 'voice.ack' },
     { channel: 'desktop.hub_stop' },
     { channel: 'desktop.power_event' },
     { channel: 'desktop.connection_changed' },
@@ -182,12 +194,14 @@ test('notifications pass only the body, never the Electron event', () => {
   const received: unknown[] = [];
   const unsubscribe = api.onNotification((value) => received.push(value));
   // 役割の引数がない窓（従来の窓）はキャンバスの記述（UI-03）と作業領域の外の幅（UI-06）を受けない（キャンバスの窓だけ）。
+  // 音声の状態（B05-06）も受けない（状態の層だけ）。
   assert.deepEqual(
     [...listeners.keys()],
     DESKTOP_NOTIFICATION_CHANNELS.filter(
       (channel) =>
         channel !== 'desktop.canvas_changed' &&
-        channel !== 'desktop.canvas_work_area',
+        channel !== 'desktop.canvas_work_area' &&
+        channel !== 'desktop.voice_changed',
     ),
   );
   assert.deepEqual(
@@ -255,6 +269,10 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.budget_overage_decide',
     'desktop.budget_overrun_review',
     'desktop.budget_manual_settle',
+    // 音声の状態・最小の「続ける」・同意の取り消し（B05-06）。
+    'desktop.get_voice',
+    'desktop.voice_continue',
+    'desktop.voice_consent_revoke',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
@@ -271,6 +289,8 @@ const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
       'desktop.state_changed',
       'desktop.power_event',
       'desktop.connection_changed',
+      // 音声の状態（B05-06）は状態の層だけが受ける。
+      'desktop.voice_changed',
     ],
   };
 
@@ -349,7 +369,11 @@ test('the legacy role argument keeps every existing channel and notification', a
       channel === 'desktop.canvas_user_op' ||
       // 予算の確認（B07-05）は状態の層だけ。従来の窓には予算の画面がない。
       channel.startsWith('desktop.budget_') ||
-      channel === 'desktop.canvas_content'
+      channel === 'desktop.canvas_content' ||
+      // 音声の状態・「続ける」・同意の取り消し（B05-06）は状態の層だけ。
+      channel === 'desktop.get_voice' ||
+      channel === 'desktop.voice_continue' ||
+      channel === 'desktop.voice_consent_revoke'
     )
       await assert.rejects(
         api.invoke({ channel, request_id: 'r', payload: null }),
@@ -361,15 +385,17 @@ test('the legacy role argument keeps every existing channel and notification', a
         { ok: channel },
       );
   api.onNotification(() => undefined);
-  // 従来の窓はキャンバスの記述（UI-03）と作業領域の外の幅（UI-06）を受けない。ほかの通知はすべて受ける。
+  // 従来の窓はキャンバスの記述（UI-03）と作業領域の外の幅（UI-06）と音声の状態（B05-06）を受けない。ほかの通知はすべて受ける。
   assert.deepEqual(
     [...loaded.listeners.keys()],
     DESKTOP_NOTIFICATION_CHANNELS.filter(
       (channel) =>
         channel !== 'desktop.canvas_changed' &&
-        channel !== 'desktop.canvas_work_area',
+        channel !== 'desktop.canvas_work_area' &&
+        channel !== 'desktop.voice_changed',
     ),
   );
   assert(!loaded.listeners.has('desktop.canvas_changed'));
   assert(!loaded.listeners.has('desktop.canvas_work_area'));
+  assert(!loaded.listeners.has('desktop.voice_changed'));
 });

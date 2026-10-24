@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "Live の文字断片と端末の ASR の結果の比較の期待値（設計 10 §5A、09 QA08・X50・QA05、ADR 0041）。手書きで、domain の実装から生成していない。判定の正本は「ほぼ完全一致」だけ（初期。U36）: proceed になるのは、Unicode の NFKC・前後の空白の除去・文末の句点・読点・感嘆符・疑問符の除去だけをした文字列が完全に一致したときだけで、それ以外は、表記ゆれ（漢数字・読み・かな/カタカナ・曜日・敬称・記号・空白・桁区切り）も含めて、すべて ask_back。数字・日時・否定・宛先の抽出は differences の説明の補助で、判定には使わない（説明が付かない差は reasons が text_differs で、differences が空になる）。言い換えの許容は、B05 の実測（T08）で、安全を確かめた正規化だけを足す。どちらかが空・ASR がない場合は比べられないので聞き返す。合成の発話だけで、実際の音声・実在の人名・実在のメールアドレスは含まない。メールアドレスの形の文字列は公開情報の検査に誤検出されるので、@ を {at} と書き、試験が @ に置き換えて渡す。",
+  "description": "Live の文字断片と端末の ASR の結果の比較の期待値（設計 10 §5A、09 QA08・X50・QA05、ADR 0041）。手書きで、domain の実装から生成していない。判定の正本は「完全一致」だけ（初期。U36）: proceed になるのは、Unicode の NFC（同じ文字の別の符号化だけをそろえる）と前後の空白の除去だけをした文字列が完全に一致したときだけで、それ以外は、全角と半角・文末の記号（「？」と「。」、「5!」と「5」）・上付き数字や丸数字・漢数字・読み・かな/カタカナ・曜日・敬称・記号・空白・桁区切りの違いも含めて、すべて ask_back。NFKC は意味を持つ差（10⁴ と 104、①② と 12）を消すので使わない。数字・日時・否定・宛先の抽出は differences の説明の補助で、判定には使わない（説明が付かない差は reasons が text_differs で、differences が空になる）。許容は、B05 の実測（T08）で、1 つずつ安全を確かめて足す。空の判定は正規化の後（空白だけの入力）に行い、どちらかが空・ASR がない場合は比べられないので聞き返す。合成の発話だけで、実際の音声・実在の人名・実在のメールアドレスは含まない。メールアドレスの形の文字列は公開情報の検査に誤検出されるので、@ を {at} と書き、試験が @ に置き換えて渡す。",
   "cases": [
     {
       "id": "identical",
@@ -58,14 +58,14 @@
       }
     },
     {
-      "id": "fullwidth-digits",
+      "id": "fullwidth-digits-are-asked-back",
       "refs": ["QA08"],
       "live": "１５時に会う",
       "asr": "15時に会う",
       "expected": {
-        "action": "proceed",
+        "action": "ask_back",
         "differences": [],
-        "reasons": []
+        "reasons": ["text_differs"]
       }
     },
     {
@@ -1037,25 +1037,25 @@
       }
     },
     {
-      "id": "trailing-marks-and-outer-spaces-are-ignored",
+      "id": "trailing-marks-differ-is-asked-back",
       "refs": ["QA08"],
       "live": " 予定を入れて。",
       "asr": "予定を入れて！？ ",
       "expected": {
-        "action": "proceed",
+        "action": "ask_back",
         "differences": [],
-        "reasons": []
+        "reasons": ["text_differs"]
       }
     },
     {
-      "id": "fullwidth-and-halfwidth-forms-are-the-same-under-nfkc",
+      "id": "fullwidth-and-halfwidth-forms-are-asked-back",
       "refs": ["QA08"],
       "live": "ＡＢＣ１２３に送って",
       "asr": "ABC123に送って",
       "expected": {
-        "action": "proceed",
+        "action": "ask_back",
         "differences": [],
-        "reasons": []
+        "reasons": ["text_differs"]
       }
     },
     {
@@ -1067,6 +1067,171 @@
         "action": "ask_back",
         "differences": ["number"],
         "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-question-and-statement",
+      "refs": ["QA08", "X50"],
+      "live": "明日の予定を削除する？",
+      "asr": "明日の予定を削除する。",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-question-and-command-in-english",
+      "refs": ["QA08"],
+      "live": "Delete the event?",
+      "asr": "Delete the event!",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-factorial-and-number",
+      "refs": ["QA08"],
+      "live": "計算して、5!",
+      "asr": "計算して、5",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-superscript-ten-to-the-fourth-and-104",
+      "refs": ["QA08", "X51"],
+      "live": "予算は10⁴円にして",
+      "asr": "予算は104円にして",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-circled-numbers-and-12",
+      "refs": ["QA08", "X51"],
+      "live": "項目①②を削除して",
+      "asr": "項目12を削除して",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "codex-v4-question-mark-only-and-full-stop-only",
+      "refs": ["QA08"],
+      "live": "？",
+      "asr": "。",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "subscript-and-plain-digits",
+      "refs": ["QA08"],
+      "live": "H₂O",
+      "asr": "H2O",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "halfwidth-and-fullwidth-kana",
+      "refs": ["QA08"],
+      "live": "ｱｲｳ",
+      "asr": "アイウ",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "a-trailing-full-stop-and-none",
+      "refs": ["QA08"],
+      "live": "予定を入れて。",
+      "asr": "予定を入れて",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "an-exclamation-mark-and-a-full-stop",
+      "refs": ["QA08"],
+      "live": "消して！",
+      "asr": "消して。",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["text_differs"]
+      }
+    },
+    {
+      "id": "nfc-composed-and-decomposed-voiced-kana",
+      "refs": ["QA08"],
+      "live": "がくしゅう",
+      "asr": "がくしゅう",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "only-the-outer-spaces-differ",
+      "refs": ["QA08"],
+      "live": "  予定を入れて ",
+      "asr": "予定を入れて",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "only-the-outer-ideographic-spaces-differ",
+      "refs": ["QA08"],
+      "live": "　予定を入れて　",
+      "asr": "予定を入れて",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "a-question-mark-only-on-both-sides-is-the-same-sentence",
+      "refs": ["QA08"],
+      "live": "？",
+      "asr": "？",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "only-spaces-after-the-normalization-is-empty",
+      "refs": ["QA08", "X50"],
+      "live": "　 \t",
+      "asr": "　 \t",
+      "expected": {
+        "action": "ask_back",
+        "differences": [],
+        "reasons": ["live_transcript_empty", "asr_transcript_empty"]
       }
     }
   ]

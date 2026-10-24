@@ -541,26 +541,32 @@ function transcriptFeatures(text: string): TranscriptFeatures {
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((item, index) => item === b[index]);
 
-// Live の文字断片と端末の ASR の結果を比べる。判定の正本は、ほぼ完全一致だけ（初期。ADR 0041、U36）。
-// proceed にするのは、次の正規化だけをした文字列が完全に一致したときだけ: Unicode の NFKC・前後の空白の除去・文末の
-// 句点・読点・感嘆符・疑問符の除去（normalizeUtterance）。それ以外は、すべて ask_back。記号・空白・数字・漢数字・読み・
-// 表記ゆれの正規化は判定に使わない（区切りの記号・符号・通貨・単語の区切りのような、意味を持つ差を消さないため）。
-// 数字・日時・否定・宛先の抽出は、差分の説明（differences）のための補助で、判定には使わない。説明が付かない差は text_differs。
-// どちらかが空・ASR がない（null）ときは比べられないので聞き返す。一致しても、完全一致や誤認識のなさの証明ではない
-// （C は照合の成功を前提にしない。QA08）。言い換えの許容は、B05 の実測（T08）で、安全を確かめた正規化だけを足す。
+// 比較用の鍵。Unicode の NFC（同じ文字の別の符号化だけをそろえる）と、前後の空白の除去だけ。NFKC（上付き・丸数字・
+// 全角半角を別の文字に畳む）や、文末の記号の除去（「？」と「。」、「5!」と「5」）は、意味を持つ差を消すので使わない。
+// 会話の操作の照合（conversation.ts の normalizeUtterance）とは別の関数で、そちらの動作は変えない。
+export const transcriptKey = (text: string): string =>
+  text.normalize('NFC').trim();
+
+// Live の文字断片と端末の ASR の結果を比べる。判定の正本は、完全一致だけ（初期。ADR 0041、U36）。
+// proceed にするのは、`transcriptKey`（NFC と前後の空白の除去だけ）が完全に一致したときだけで、それ以外は、全角と半角・
+// 文末の記号・記号・空白・数字・漢数字・読み・表記ゆれの違いも含めて、すべて ask_back。許容は、B05 の実測（T08）で、
+// 1 つずつ安全を確かめて足す。数字・日時・否定・宛先の抽出は、差分の説明（differences）のための補助で、判定には使わない。
+// 説明が付かない差は text_differs。空の判定は正規化の後に行い、どちらかが空・ASR がない（null）ときは比べられないので
+// 聞き返す。一致しても、完全一致や誤認識のなさの証明ではない（C は照合の成功を前提にしない。QA08）。
 export function compareTranscripts(
   live: string,
   asr: string | null,
 ): TranscriptComparison {
   if (asr === null)
     return { action: 'ask_back', differences: [], reasons: ['asr_missing'] };
+  const liveKey = transcriptKey(live);
+  const asrKey = transcriptKey(asr);
   const reasons: string[] = [];
-  if (live.normalize('NFKC').trim() === '')
-    reasons.push('live_transcript_empty');
-  if (asr.normalize('NFKC').trim() === '') reasons.push('asr_transcript_empty');
+  if (liveKey === '') reasons.push('live_transcript_empty');
+  if (asrKey === '') reasons.push('asr_transcript_empty');
   if (reasons.length > 0)
     return { action: 'ask_back', differences: [], reasons };
-  if (normalizeUtterance(live) === normalizeUtterance(asr))
+  if (liveKey === asrKey)
     return { action: 'proceed', differences: [], reasons: [] };
   const a = transcriptFeatures(live);
   const b = transcriptFeatures(asr);

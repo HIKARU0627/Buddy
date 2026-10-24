@@ -956,31 +956,39 @@ test('transcript comparison: numbers, dates, negation and recipients that differ
     );
 });
 
-test('transcript comparison: only a near-exact match proceeds, whatever the extraction says', () => {
-  const real = (text) => (text === null ? null : text.replaceAll('{at}', '@'));
-  // 手書きの規則（実装の関数を使わない）: NFKC・前後の空白・文末の句点・読点・感嘆符・疑問符だけを除いた文字列の一致。
-  const oracle = (text) =>
-    text
-      .normalize('NFKC')
-      .trim()
-      .replace(/[\s。．、，,.!！?？…]+$/u, '');
-  const texts = [];
+test('transcript comparison: only an exact match (NFC and outer spaces aside) proceeds', () => {
+  // proceed を期待する例は、手書きのこの一覧だけ。実装の正規化を写して期待値を作らない。
+  const identical = [
+    'a-question-mark-only-on-both-sides-is-the-same-sentence',
+    'identical',
+    'identical-text-with-an-unreadable-recipient-proceeds',
+    'send-without-a-recipient-is-implicit',
+    'the-same-fractional-duration',
+    'the-same-range-in-the-same-order',
+    'time-particle-before-send-is-not-a-recipient',
+    'two-negations-on-the-same-targets',
+  ];
+  const sameAfterNfcAndOuterSpaces = [
+    'nfc-composed-and-decomposed-voiced-kana',
+    'only-the-outer-ideographic-spaces-differ',
+    'only-the-outer-spaces-differ',
+  ];
+  const proceeding = asr.cases
+    .filter((entry) => entry.expected.action === 'proceed')
+    .map((entry) => entry.id)
+    .sort();
+  assert.deepEqual(
+    proceeding,
+    [...identical, ...sameAfterNfcAndOuterSpaces].sort(),
+  );
+  // 同一の文の例は、文字列がそのまま同じ。それ以外の proceed は、NFC と前後の空白だけが違う 3 つに限る。
   for (const entry of asr.cases)
-    for (const text of [entry.live, entry.asr])
-      if (text !== null && oracle(real(text)) !== '') texts.push(real(text));
-  assert(texts.length > 100);
-  for (const left of texts)
-    for (const right of texts) {
-      const result = compareTranscripts(left, right);
-      assert.equal(
-        result.action === 'proceed',
-        oracle(left) === oracle(right),
-        `${left} | ${right}`,
-      );
-      // proceed の説明は空、ask_back は必ず理由がある（説明が付かない差は text_differs）。
-      if (result.action === 'proceed') assert.deepEqual(result.reasons, []);
-      else assert(result.reasons.length > 0, `${left} | ${right}`);
-    }
+    if (identical.includes(entry.id))
+      assert.equal(entry.live, entry.asr, entry.id);
+  // ask_back には必ず理由がある（説明が付かない差は text_differs）。
+  for (const entry of asr.cases)
+    if (entry.expected.action === 'ask_back')
+      assert(entry.expected.reasons.length > 0, entry.id);
 });
 
 // ---- 10. 会話の操作の照合 -------------------------------------------------------------------------------------------

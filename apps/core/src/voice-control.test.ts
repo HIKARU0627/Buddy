@@ -165,6 +165,24 @@ async function withRig(
   });
 }
 
+// 実時間の上限つきで、条件が満たされるまで中枢の処理を消化する。遅い実行機でも回数で打ち切らない。
+// 上限を超えたら、何を待っていたかが分かるメッセージで失敗させる。
+async function waitUntil(
+  rig: Rig,
+  description: string,
+  done: () => boolean,
+  limitMs = 10_000,
+): Promise<void> {
+  const deadline = Date.now() + limitMs;
+  while (!done()) {
+    if (Date.now() >= deadline)
+      assert.fail(
+        `${description} を実時間で ${limitMs} ms 待っても確認できませんでした`,
+      );
+    await rig.wait();
+  }
+}
+
 interface LeaseRequestInput {
   readonly lease_id: string;
   readonly nonce: string;
@@ -1778,10 +1796,14 @@ test(
         [503, 'dependency_unavailable'],
       );
       release();
-      // 遅れた予約（DB worker の受付）が返り、解放が終わるまで待つ（上限つき）。
-      for (let i = 0; i < 50 && !rig.budget.calls.includes('release'); i += 1)
-        await rig.wait();
-      await rig.wait();
+      // 遅れた予約（DB worker の受付）が返り、解放が終わるまで実時間の上限つきで待つ。
+      await waitUntil(
+        rig,
+        '遅れた予約の解放（予算の解放の呼び出しと予約の状態 released）',
+        () =>
+          rig.budget.calls.includes('release') &&
+          reservationStatus(rig).includes('released'),
+      );
       assert.deepEqual(rig.budget.calls, ['reserve:195', 'release']);
       assert.deepEqual(reservationStatus(rig), ['released']);
       assert.equal(rig.provider.created.length, 0);

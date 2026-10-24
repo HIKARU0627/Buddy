@@ -1,7 +1,7 @@
 -- 保存案 0008（B05-03、ADR 0046。案は ADR 0038）。音声の世代（epoch）の永続と、入出力の停止の状態。
 -- 1. device_epochs: 端末ごとの io・output・audio・session の epoch と、端末単位の停止（local_stop）。
---    どの epoch も戻さない（BEFORE UPDATE）・行を消さない（BEFORE DELETE）。中枢の再起動で巻き戻さない（ADR 0005）。
---    既存の端末の行はここで作り、以後の端末は中枢が最初の書込みの transaction で作る（INSERT OR IGNORE）。
+--    どの epoch も戻さない（BEFORE UPDATE）・行を消さない（BEFORE DELETE）・INSERT OR REPLACE で入れ直さない（BEFORE INSERT）。中枢の再起動で巻き戻さない（ADR 0005）。
+--    既存の端末の行はここで作り、以後の端末は中枢が最初の書込みの transaction で作る（行がないときだけ挿入する）。
 --    io_epoch・output_epoch は停止（/v1/io/stop）で中枢が進める。audio_epoch・session_epoch は Live の開始・再接続・
 --    端末の交代で中枢が発行する（live_sessions の挿入と同じ transaction）。
 -- 2. io_stop_state: 来客モードと全体停止（家ごとに 1 行）。中枢の再起動で自動解除しない（07 §5）。
@@ -35,6 +35,13 @@ BEGIN
   SELECT RAISE(ABORT, 'device_epochs_permanent');
 END;
 
+-- INSERT OR REPLACE は、既存の行を消してから入れ直すので、戻さない・消さない trigger をすり抜ける。既にある行への挿入を拒否する。
+CREATE TRIGGER device_epochs_no_replace BEFORE INSERT ON device_epochs
+  WHEN EXISTS (SELECT 1 FROM device_epochs WHERE device_id = NEW.device_id)
+BEGIN
+  SELECT RAISE(ABORT, 'device_epochs_permanent');
+END;
+
 CREATE TABLE io_stop_state (
   stop_id INTEGER PRIMARY KEY CHECK (stop_id = 1),
   guest_mode INTEGER NOT NULL CHECK (guest_mode IN (0, 1)),
@@ -45,6 +52,12 @@ CREATE TABLE io_stop_state (
 INSERT INTO io_stop_state (stop_id, guest_mode, global_stop, updated_at) VALUES (1, 0, 0, 0);
 
 CREATE TRIGGER io_stop_state_permanent BEFORE DELETE ON io_stop_state
+BEGIN
+  SELECT RAISE(ABORT, 'io_stop_state_permanent');
+END;
+
+CREATE TRIGGER io_stop_state_no_replace BEFORE INSERT ON io_stop_state
+  WHEN EXISTS (SELECT 1 FROM io_stop_state WHERE stop_id = NEW.stop_id)
 BEGIN
   SELECT RAISE(ABORT, 'io_stop_state_permanent');
 END;
@@ -71,6 +84,13 @@ CREATE TRIGGER live_sessions_no_return BEFORE UPDATE OF control_state ON live_se
     OR (OLD.control_state = 'closed' AND NEW.control_state <> 'closed')
 BEGIN
   SELECT RAISE(ABORT, 'live_control_state_regressed');
+END;
+
+-- INSERT OR REPLACE で制御の状態の trigger をすり抜けないよう、既にある接続への挿入を拒否する。
+CREATE TRIGGER live_sessions_no_replace BEFORE INSERT ON live_sessions
+  WHEN EXISTS (SELECT 1 FROM live_sessions WHERE live_session_id = NEW.live_session_id)
+BEGIN
+  SELECT RAISE(ABORT, 'live_session_issued_fixed');
 END;
 
 CREATE TRIGGER live_sessions_close_confirmed_final BEFORE UPDATE OF closure, usage_seconds ON live_sessions

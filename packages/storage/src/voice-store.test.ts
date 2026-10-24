@@ -156,6 +156,22 @@ test('世代は戻せず、行も消せない（trigger）', () => {
       () => db.exec('INSERT INTO io_stop_state VALUES (2, 0, 0, 0)'),
       /CHECK/u,
     );
+    // INSERT OR REPLACE（消してから入れ直す）で、戻さない・消さない trigger をすり抜けない。
+    assert.throws(
+      () =>
+        db.exec(
+          `INSERT OR REPLACE INTO device_epochs (device_id, io_epoch, output_epoch, audio_epoch, session_epoch, updated_at) VALUES ('${DEV_A}', 0, 0, 0, 0, 1)`,
+        ),
+      /device_epochs_permanent/u,
+    );
+    assert.throws(
+      () => db.exec('INSERT OR REPLACE INTO io_stop_state VALUES (1, 0, 0, 9)'),
+      /io_stop_state_permanent/u,
+    );
+    assert.deepEqual(
+      db.prepare('SELECT io_epoch, audio_epoch FROM device_epochs').get(),
+      { io_epoch: 5, audio_epoch: 6 },
+    );
   });
 });
 
@@ -176,6 +192,15 @@ test('Live の行は control_epoch を戻さず、lost・closing・closed から
     );
     assert.throws(
       () => db.exec('UPDATE live_sessions SET audio_epoch = 5'),
+      /live_session_issued_fixed/u,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT OR REPLACE INTO live_sessions (live_session_id, device_id, session_id, purpose, control_state, control_epoch, closure, usage_seconds, reservation_id, started_at, audio_epoch, session_epoch) VALUES (?, ?, NULL, 'conversation', 'connecting', 0, 'open', NULL, ?, 1000, 0, 0)",
+          )
+          .run(LIVE_1, DEV_A, RES_1),
       /live_session_issued_fixed/u,
     );
     db.exec(

@@ -1113,15 +1113,13 @@ test(
     });
     // サイドバンドだけの lost: 端末とのハートビートは届くが、中枢が拒否する。
     await withRig(async (rig) => {
-      const live = await openLive(rig);
       const device = new SimulatedDevice(rig, A, uuid(0x1a));
-      // openLive が n1 で取得した。端末の記録として 10 ms の送信を受理済みにする。
-      device.held = {
-        lease_id: uuid(0x1a),
-        expires_at_mono_ms: 6010,
-        sent_at: { mono_ms: 10, wall_ms: 10 },
-        last_observed: { mono_ms: 15, wall_ms: 15 },
-      };
+      await device.send('n1', null, 10);
+      assert.equal(device.held?.expires_at_mono_ms, 6010);
+      const created = await rig.voice.createLiveSession(A, liveBody());
+      assert.equal(created.status, 201);
+      await rig.wait();
+      const live = bodyOf(created)['live_session_id'] as string;
       rig.provider.sidebands[0]?.disconnect();
       await rig.wait();
       assert.equal(rig.voice.liveRecord(live)?.control_state, 'closing');
@@ -1148,86 +1146,506 @@ test(
   },
 );
 
-test('端末の模擬: 時計の逆行・ACK の失敗・音声レンダラーの無応答は、停止側に倒れる（domain の規則をそのまま使う）', () => {
-  // 時計の逆行（単調時計が 1 ms 戻る）で、期限の前でもリースを捨てる。
-  const held: HeldLease = {
-    lease_id: 'lease',
-    expires_at_mono_ms: 6000,
-    sent_at: { mono_ms: 0, wall_ms: 0 },
-    last_observed: { mono_ms: 3000, wall_ms: 3000 },
+test(
+  '端末の模擬: 中枢が送った停止を受けた端末は、時計の逆行・ACK の失敗・音声レンダラーの無応答で停止側に倒れる',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const device = new SimulatedDevice(rig, B, uuid(0x2b));
+      await device.send('b1', null, 0);
+      await rig.voice.stopIo(A, {
+        request_id: uuid(0x91),
+        command_scope_id: SCOPE_A,
+        scope: 'global',
+      });
+      // 中枢が B へ送った停止の命令（イベント）を、端末の main が受ける。
+      const event = (rig.events.get(DEV_B) ?? []).find(
+        (item) => item['event_type'] === 'audio_control',
+      );
+      const control = event?.['audio_control'] as JsonObject;
+      assert.deepEqual(
+        [control['action'], control['reason'], control['scope']],
+        ['suspend_io', 'global_stop', 'global'],
+      );
+      const reason = control['reason'] as 'global_stop';
+      // 第 1 層は Live を閉じて収音を止め、第 2 層の ACK は 300 ms、第 3 層は中枢がサイドバンドから閉じる。
+      const plan = planStop(reason);
+      assert.deepEqual(
+        [plan.action, plan.ack_deadline_ms, plan.core],
+        [
+          'suspend_io',
+          300,
+          [
+            'invalidate_old_epoch_results',
+            'core_sideband_close',
+            'reconcile_usage_hold_reservation',
+          ],
+        ],
+      );
+      const base = {
+        reason,
+        requested_at_mono_ms: 1000,
+        local_stop_completed_at_mono_ms: 1150,
+        ack_timeout_ms: 300,
+        previous_observed_mono_ms: null,
+      };
+      // ACK の失敗（受理済みで failed）は待たずに強制終了。
+      const failed = assessStop({
+        ...base,
+        ack_at_mono_ms: 1100,
+        ack_accepted: true,
+        ack_outcome: 'failed',
+        now_mono_ms: 1100,
+      });
+      assert.deepEqual(
+        [failed.layer2.status, failed.fallback],
+        ['failed', 'force_kill_renderer'],
+      );
+      // 音声レンダラーの無応答: 300 ms ちょうどは待ち、301 ms で強制終了。
+      const noAck = {
+        ...base,
+        ack_at_mono_ms: null,
+        ack_accepted: null,
+        ack_outcome: null,
+      };
+      assert.equal(
+        assessStop({ ...noAck, now_mono_ms: 1300 }).layer2.status,
+        'waiting',
+      );
+      const killed = assessStop({ ...noAck, now_mono_ms: 1301 });
+      assert.deepEqual(
+        [
+          killed.layer2.status,
+          killed.fallback,
+          killed.invalidate_old_epoch_results,
+        ],
+        ['timed_out', 'force_kill_renderer', true],
+      );
+      // 時計が要求より前へ戻った: 期限を数えられないので、待たずに強制終了。
+      assert.deepEqual(assessStop({ ...noAck, now_mono_ms: 999 }).reasons, [
+        'now_clock_regressed',
+      ]);
+      // 中枢から受理したリースも、単調時計が直前の観測より 1 ms 戻れば期限の前でも捨てる。
+      assert.equal(device.held?.expires_at_mono_ms, 6000);
+      assert.deepEqual(
+        observeLease(device.held, { mono_ms: 4, wall_ms: 4 }).status,
+        { status: 'discarded', reason: 'mono_clock_regressed' },
+      );
+    });
+  },
+);
+
+// ---- レビュー（Sonnet）の再現: 取り直し・DB の失敗・外部の待ち・同時の Live ------------------------------------------
+
+// DB の書込みを試験が決めて失敗させる store（それ以外は本物の DB worker）。
+function failingStore(
+  rig: Rig,
+  fail: (kind: string) => boolean,
+): VoiceControlOptions['store'] {
+  const real = rig.harness.store;
+  return {
+    conversation: ((op: never) => real.conversation(op)) as never,
+    voice: ((op: { kind: string }) =>
+      fail(op.kind)
+        ? Promise.resolve({
+            ok: false,
+            outcome: 'rejected',
+            reasons: ['database_busy'],
+          })
+        : real.voice(op as never)) as never,
   };
-  assert.deepEqual(
-    observeLease(held, { mono_ms: 2999, wall_ms: 3001 }).status,
-    { status: 'discarded', reason: 'mono_clock_regressed' },
-  );
-  // 中枢が送った停止（全体停止）の理由の手順: Live を閉じ収音を止める（第 1 層）、ACK 300 ms（第 2 層）、
-  // 中枢がサイドバンドから閉じる（第 3 層）。
-  const plan = planStop('global_stop');
-  assert.deepEqual(
-    [plan.action, plan.ack_deadline_ms, plan.core],
-    [
-      'suspend_io',
-      300,
-      [
-        'invalidate_old_epoch_results',
-        'core_sideband_close',
-        'reconcile_usage_hold_reservation',
-      ],
-    ],
-  );
-  const base = {
-    reason: 'global_stop' as const,
-    requested_at_mono_ms: 1000,
-    local_stop_completed_at_mono_ms: 1150,
-    ack_timeout_ms: 300,
-    previous_observed_mono_ms: null,
-  };
-  // ACK の失敗（受理済みで failed）は待たずに強制終了。
-  const failed = assessStop({
-    ...base,
-    ack_at_mono_ms: 1100,
-    ack_accepted: true,
-    ack_outcome: 'failed',
-    now_mono_ms: 1100,
+}
+
+async function useStore(rig: Rig, store: VoiceControlOptions['store']) {
+  await rig.voice.close();
+  const voice = new VoiceControl({
+    store,
+    coreInstanceId: CORE,
+    monoNow: rig.clock.mono,
+    wallNow: () => Date.parse('2030-10-15T00:00:00.000Z') + rig.clock.mono(),
+    timers: rig.clock,
+    provider: rig.provider,
+    budget: rig.budget,
+    consent: () => 'granted',
   });
-  assert.deepEqual(
-    [failed.layer2.status, failed.fallback],
-    ['failed', 'force_kill_renderer'],
-  );
-  // 音声レンダラーの無応答: 300 ms ちょうどは待ち、301 ms で強制終了。
-  const waiting = assessStop({
-    ...base,
-    ack_at_mono_ms: null,
-    ack_accepted: null,
-    ack_outcome: null,
-    now_mono_ms: 1300,
-  });
-  assert.equal(waiting.layer2.status, 'waiting');
-  const killed = assessStop({
-    ...base,
-    ack_at_mono_ms: null,
-    ack_accepted: null,
-    ack_outcome: null,
-    now_mono_ms: 1301,
-  });
-  assert.deepEqual(
-    [
-      killed.layer2.status,
-      killed.fallback,
-      killed.invalidate_old_epoch_results,
-    ],
-    ['timed_out', 'force_kill_renderer', true],
-  );
-  // 時計が要求より前へ戻った: 期限を数えられないので、待たずに強制終了。
-  const regressed = assessStop({
-    ...base,
-    ack_at_mono_ms: null,
-    ack_accepted: null,
-    ack_outcome: null,
-    now_mono_ms: 999,
-  });
-  assert.deepEqual(
-    [regressed.layer2.status, regressed.reasons],
-    ['timed_out', ['now_clock_regressed']],
-  );
-});
+  for (const id of [DEV_A, DEV_B])
+    voice.subscribe(id, (event) => {
+      const list = rig.events.get(id) ?? [];
+      list.push(event as JsonObject);
+      rig.events.set(id, list);
+    });
+  rig.voice = voice;
+  await voice.start();
+}
+
+test(
+  'P1: Live を開いたまま lease_id を取り直して更新を止めると、取り直しから 6 秒で中枢が core_lease_lost で閉じる',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const live = await openLive(rig, uuid(0x1a));
+      assert.equal(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: uuid(0x1b),
+            nonce: 'm1',
+            previous_nonce: null,
+            at: 500,
+          }),
+        )['result'],
+        'renewed',
+      );
+      // サイドバンドは生きている（pong を返す）。
+      for (const step of [2000, 2000, 1999]) {
+        await rig.clock.advance(step);
+        rig.provider.sidebands[0]?.pong();
+        await rig.wait();
+      }
+      assert.deepEqual(
+        [
+          rig.voice.liveRecord(live)?.control_state,
+          rig.voice.liveRecord(live)?.closure,
+        ],
+        ['ready', 'open'],
+      );
+      await rig.clock.advance(1);
+      await rig.wait();
+      assert.deepEqual(
+        [
+          rig.voice.liveRecord(live)?.closure,
+          rig.voice.liveRecord(live)?.end_reason,
+        ],
+        ['close_requested', 'core_lease_lost'],
+      );
+      assert.deepEqual(audioControls(rig, DEV_A), [
+        ['suspend_io', 'core_lease_lost', '0'],
+      ]);
+      // 中枢の見積もりで切れたリースへの遅れた更新は受けない（取り直しを求める）。
+      assert.deepEqual(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: uuid(0x1b),
+            nonce: 'm2',
+            previous_nonce: 'm1',
+            at: 6600,
+          }),
+        )['reasons'],
+        ['lease_rotation_required'],
+      );
+    });
+  },
+);
+
+test(
+  'P1: 1800 回の後に取り直したリースでも、サイドバンドの喪失で更新を拒否する（sideband_lost）',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const first = uuid(0x1a);
+      await openLive(rig, first);
+      let previous = 'n1';
+      for (let i = 2; i <= 1800; i += 1) {
+        const result = bodyOf(
+          await renew(rig, A, {
+            lease_id: first,
+            nonce: `n${i}`,
+            previous_nonce: previous,
+            at: 10 + i,
+          }),
+        );
+        assert.equal(result['result'], 'renewed', String(i));
+        previous = `n${i}`;
+      }
+      assert.deepEqual(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: first,
+            nonce: 'n1801',
+            previous_nonce: 'n1800',
+            at: 3000,
+          }),
+        )['reasons'],
+        ['lease_rotation_required'],
+      );
+      const rotated = uuid(0x1c);
+      assert.equal(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: rotated,
+            nonce: 'r1',
+            previous_nonce: null,
+            at: 3001,
+          }),
+        )['result'],
+        'renewed',
+      );
+      rig.provider.sidebands[0]?.disconnect();
+      await rig.wait();
+      assert.deepEqual(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: rotated,
+            nonce: 'r2',
+            previous_nonce: 'r1',
+            at: 3002,
+          }),
+        )['reasons'],
+        ['sideband_lost'],
+      );
+    });
+  },
+);
+
+test(
+  'P1: voice.stop を DB へ書けなくても、他の端末の更新を拒否して停止を送り、書けるまで再試行し、その間は再開しない',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      let failing = true;
+      await useStore(
+        rig,
+        failingStore(rig, (kind) => failing && kind === 'voice.stop'),
+      );
+      await renew(rig, A, {
+        lease_id: uuid(0x1a),
+        nonce: 'n1',
+        previous_nonce: null,
+        at: 10,
+      });
+      const stopped = await rig.voice.stopIo(B, {
+        request_id: uuid(0x91),
+        command_scope_id: SCOPE_B,
+        scope: 'global',
+      });
+      assert.deepEqual(
+        [stopped.status, bodyOf(stopped)['code']],
+        [503, 'dependency_unavailable'],
+      );
+      assert.deepEqual(audioControls(rig, DEV_A), [
+        ['suspend_io', 'global_stop', '1'],
+      ]);
+      assert.deepEqual(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: uuid(0x1a),
+            nonce: 'n2',
+            previous_nonce: 'n1',
+            at: 2010,
+          }),
+        )['reasons'],
+        ['io_suspended'],
+      );
+      assert.deepEqual(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: uuid(0x1b),
+            nonce: 'm1',
+            previous_nonce: null,
+            at: 2011,
+          }),
+        )['reasons'],
+        ['io_suspended'],
+      );
+      assert.equal(rig.voice.audioOwner(A), 'none');
+      const resume = await rig.voice.resumeIo(
+        B,
+        {
+          request_id: uuid(0x97),
+          command_scope_id: SCOPE_B,
+          scope: 'global',
+          expected_io_epoch: '0',
+        },
+        'unlocked',
+      );
+      assert.equal(resume.status, 503);
+      // DB が戻ると、再試行で全体停止が保存される（世代は 1 つ進む）。
+      failing = false;
+      await rig.clock.advance(1000);
+      await rig.wait();
+      const state = (await rig.voice.ioState(A, 'unlocked')) as JsonObject;
+      assert.deepEqual(
+        [state['stop_scope'], state['io_epoch']],
+        ['global', '1'],
+      );
+    });
+  },
+);
+
+test(
+  'P2: 予算の門の予約が返らないままでも全体停止は返り、Live の受付は期限（5 秒）で結果不明として断る',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      await renew(rig, A, {
+        lease_id: uuid(0x1a),
+        nonce: 'n1',
+        previous_nonce: null,
+        at: 10,
+      });
+      (rig.budget as { reserve: unknown }).reserve = () =>
+        new Promise(() => undefined);
+      const pending = rig.voice.createLiveSession(A, liveBody());
+      await rig.clock.settle();
+      const stopped = await rig.voice.stopIo(B, {
+        request_id: uuid(0x91),
+        command_scope_id: SCOPE_B,
+        scope: 'global',
+      });
+      assert.equal(stopped.status, 202);
+      await rig.clock.advance(4999);
+      await rig.clock.advance(1);
+      const created = await pending;
+      assert.deepEqual(
+        [created.status, bodyOf(created)['code']],
+        [503, 'dependency_unavailable'],
+      );
+      assert.equal(rig.provider.created.length, 0);
+    });
+  },
+);
+
+test(
+  'P2: lost の DB 書込みが失敗しても、更新の拒否・停止のイベント・閉じるための再接続はメモリーの状態で先に行い、DB へは再試行で書く',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      let failing = false;
+      await useStore(
+        rig,
+        failingStore(rig, (kind) => failing && kind === 'voice.live_update'),
+      );
+      const live = await openLive(rig, uuid(0x1a));
+      failing = true;
+      rig.provider.sidebands[0]?.disconnect();
+      await rig.wait();
+      assert.deepEqual(
+        [
+          rig.voice.liveRecord(live)?.control_state,
+          rig.voice.liveRecord(live)?.control_epoch,
+        ],
+        ['closing', '1'],
+      );
+      assert.deepEqual(audioControls(rig, DEV_A), [
+        ['close_voice_session', 'sideband_lost', '0'],
+      ]);
+      assert.deepEqual(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: uuid(0x1a),
+            nonce: 'n2',
+            previous_nonce: 'n1',
+            at: 2010,
+          }),
+        )['reasons'],
+        ['sideband_lost'],
+      );
+      assert.equal(rig.provider.sidebands[1]?.closes, 1);
+      const row = () =>
+        rig.harness.sql((db) =>
+          db
+            .prepare(
+              'SELECT control_state, control_epoch, end_reason FROM live_sessions WHERE live_session_id = ?',
+            )
+            .get(live),
+        );
+      assert.deepEqual(row(), {
+        control_state: 'ready',
+        control_epoch: 0,
+        end_reason: null,
+      });
+      failing = false;
+      await rig.clock.advance(1000);
+      await rig.wait();
+      assert.deepEqual(row(), {
+        control_state: 'closing',
+        control_epoch: 1,
+        end_reason: 'sideband_lost',
+      });
+    });
+  },
+);
+
+test(
+  'P2: 受付の途中の Live がある間は、交代した端末も 2 つ目を開けず（409）、途中の受付は所有者が変わったので断る',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      await renew(rig, A, {
+        lease_id: uuid(0x1a),
+        nonce: 'n1',
+        previous_nonce: null,
+        at: 10,
+      });
+      let release: () => void = () => undefined;
+      const original = rig.budget.reserve.bind(rig.budget);
+      (rig.budget as { reserve: unknown }).reserve = (input: {
+        request_id: string;
+        seconds: number;
+      }) =>
+        new Promise((resolve) => {
+          release = () => resolve(original(input));
+        });
+      const pendingA = rig.voice.createLiveSession(A, liveBody());
+      await rig.clock.settle();
+      await rig.clock.advance(301);
+      assert.equal(
+        bodyOf(
+          await renew(rig, B, {
+            lease_id: uuid(0x2b),
+            nonce: 'b1',
+            previous_nonce: null,
+            at: 5,
+          }),
+        )['result'],
+        'renewed',
+      );
+      const createdB = await rig.voice.createLiveSession(B, liveBody(SCOPE_B));
+      assert.deepEqual(
+        [createdB.status, bodyOf(createdB)['code']],
+        [409, 'conflict'],
+      );
+      release();
+      await rig.wait();
+      const createdA = await pendingA;
+      assert.deepEqual(
+        [createdA.status, bodyOf(createdA)['code']],
+        [409, 'audio_owned_elsewhere'],
+      );
+      await rig.wait();
+      assert.equal(rig.provider.created.length, 0);
+      // 送出意図を記録した予約は解放せず保持する。
+      assert.deepEqual(rig.budget.calls, ['reserve:195', 'dispatch', 'hold']);
+    });
+  },
+);
+
+test(
+  'P3: 正常に終わった Live のリースの更新は取り直しを求め、終わった Live はメモリーから外す',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const live = await openLive(rig, uuid(0x1a));
+      await rig.voice.closeLiveSession(A, live, {
+        request_id: uuid(0x93),
+        command_scope_id: SCOPE_A,
+        reason: 'conversation_ended',
+        audio_epoch: '1',
+      });
+      rig.provider.sidebands[0]?.closed(20);
+      await rig.wait();
+      assert.equal(rig.voice.liveRecord(live)?.closure, 'close_confirmed');
+      assert.equal(rig.voice.liveCount, 0);
+      assert.deepEqual(
+        bodyOf(
+          await renew(rig, A, {
+            lease_id: uuid(0x1a),
+            nonce: 'n2',
+            previous_nonce: 'n1',
+            at: 2010,
+          }),
+        )['reasons'],
+        ['lease_rotation_required'],
+      );
+    });
+  },
+);

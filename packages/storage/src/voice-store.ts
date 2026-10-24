@@ -387,8 +387,8 @@ function requireActiveDevice(db: SqliteDatabase, deviceId: string): void {
 
 function ensureEpochRow(db: SqliteDatabase, deviceId: string, now: number) {
   db.prepare(
-    'INSERT OR IGNORE INTO device_epochs (device_id, updated_at) VALUES (?, ?)',
-  ).run(deviceId, now);
+    'INSERT INTO device_epochs (device_id, updated_at) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM device_epochs WHERE device_id = ?)',
+  ).run(deviceId, now, deviceId);
 }
 
 function applyWrite(db: SqliteDatabase, op: VoiceOp): VoiceOpValue {

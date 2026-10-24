@@ -3,15 +3,18 @@
 // 持つもの:
 // - リース（音声・機密表示）。RAM だけで、中枢の再起動（起動 ID の変更）で全て無効になる（07 §4・§5）。更新の可否は domain の
 //   leaseRenewalReasons、音声所有権の調停は arbitrateAudioClaim、返す期限は grantedLeaseTtlMs で決め、ここで判定を作り直さない。
+//   Live とリースの結び付きは端末単位（その端末の開いている Live）で見る。lease_id を取り直しても Live は管理から外れない。
 // - 世代と停止の状態。DB（0008）が正本で、中枢の再起動で巻き戻さない。Live の世代は issueLiveEpochs で決めて DB に書く。
-// - Live の制御接続（サイドバンド）。遷移は nextLiveControl だけで決め、DB へ compare-and-set で書く。ping 2 秒・期限 6 秒
-//   （設計初期値）で lost にし、lost では音声リースを更新せず（leaseRenewalReasons の sideband_lost）、停止のイベントを送り、
-//   閉じるためだけの再接続を 1 回・3 秒まで試して session.close を送る。終了と使用秒数を確認できなければ予約を保持する。
-// - 停止（/v1/io/stop）。停止は版を求めず常に受け付け、中枢が io・output の世代を進め（ADR 0046・U70）、対象の端末の
-//   リースを取り消し、開いている Live をサイドバンドから閉じ（planStop の第 3 層）、停止のイベントを送る。
+// - Live の制御接続（サイドバンド）。遷移は nextLiveControl だけで決め、まずメモリーの状態を変えて副作用（更新の拒否・停止の
+//   イベント・session.close・再接続）を行い、DB へは compare-and-set で書く（失敗すれば再試行する）。ping 2 秒・期限 6 秒
+//   （設計初期値）で lost にし、lost では音声リースを更新せず、停止のイベントを送り、閉じるためだけの再接続を 1 回・3 秒まで
+//   試して session.close を送る。終了と使用秒数を確認できなければ予約を保持する。
+// - 停止（/v1/io/stop）。停止は版を求めず常に受け付ける。DB の成否・他の要求の待ちにかかわらず、まずメモリーで止め（停止中の印・
+//   リースの取り消し・Live を閉じ始める・停止のイベント）、その後に DB へ書く（中枢が io・output の世代を進める。ADR 0046・U70）。
+//   書けなければ再試行し、保存できるまでは停止中の印で更新と Live の受付を拒否する。
 // - 再開（/v1/io/resume）は画面操作と版の一致だけ。リースは戻さず、端末は新しいリースを取り直す（10 §1A）。
-// provider（OpenAI の Live）と予算の門は注入する境界（LiveProvider・LiveBudgetPort）で、製品の起動ではまだ渡さない
-// （実 API は使わない。渡されなければ Live の接続は 503）。結果不明の外部への送信を自動で送り直さない。
+// provider（OpenAI の Live）と予算の門・同意は注入する境界で、呼び出しには期限を付ける（切れたら結果不明。予約は保持）。
+// 製品の起動ではまだ渡さない（実 API は使わない。渡されなければ Live の接続は 503）。結果不明の外部への送信を自動で送り直さない。
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -33,6 +36,7 @@ import type {
   AudioReason,
   ConsentStatus,
   LiveControl,
+  LiveControlStateName,
   LiveControlTrigger,
   LiveEpochEvent,
   StoredLease,
@@ -58,6 +62,15 @@ export const SIDEBAND_CLOSE_RECONNECT_MS = 3000;
 // session.close を送ってから session.closed を待つ上限（ms）。原本は「close から精算まで 2 秒以内」の目標まで。
 // 待つ時間は原本に決めなし（仮置き。U72）。過ぎたら終了未確認として予約を保持する。
 export const CORE_CLOSE_CONFIRM_MS = 2000;
+// 外部（同意・予算の門）の呼び出しの期限（ms）。原本に決めなし（仮置き）。切れたら結果不明として扱う。
+export const VOICE_EXTERNAL_TIMEOUT_MS = 5000;
+// provider のセッション作成の期限（ms）。原本は「OpenAI の応答は実測」まで（仮置き）。切れたら結果不明（予約を保持）。
+export const LIVE_CREATE_TIMEOUT_MS = 10000;
+// DB への書込みの再試行の間隔（ms）と、停止の応答の前に試す回数。原本に決めなし（仮置き）。
+export const VOICE_PERSIST_RETRY_MS = 1000;
+export const STOP_WRITE_ATTEMPTS = 3;
+// 終わった Live の記録を診断のために残す数（メモリーが増え続けないように、古いものから捨てる）。
+const FINISHED_KEPT = 32;
 
 type Status = { status: number; body: object };
 
@@ -95,7 +108,7 @@ export interface LiveSideband {
 
 // OpenAI の Live（の模擬）。実 API の実装は B05 の後の作業。
 export interface LiveProvider {
-  // SDP offer を交換してセッションを作る。ok でない・例外は、送った可能性があるので結果不明として扱う（送り直さない）。
+  // SDP offer を交換してセッションを作る。ok でない・例外・期限切れは、送った可能性があるので結果不明として扱う（送り直さない）。
   createSession(input: {
     readonly live_session_id: string;
     readonly purpose: 'conversation' | 'notification';
@@ -162,6 +175,13 @@ export interface VoiceControlOptions {
   readonly log?: (message: string) => void;
 }
 
+// このリースで開いた Live の結果。更新で作り直すエントリーの間で同じものを持ち回る。
+interface OpenedLive {
+  readonly live_session_id: string;
+  // open: 終わっていない。lost: サイドバンドの喪失を経て終わった。normal: それ以外で終わった。
+  outcome: 'open' | 'lost' | 'normal';
+}
+
 interface LeaseEntry {
   readonly lease_id: string;
   readonly kind: 'audio' | 'display';
@@ -174,10 +194,10 @@ interface LeaseEntry {
   // 端末の期限はこれより前に来る）。
   readonly renewed_at: number;
   // このリースで開いた Live（1 つのリースで 1 つまで）。
-  live_session_id: string | null;
+  opened: OpenedLive | null;
   // 端末の交代で前の所有者から取ったリースか（Live の世代の発行の出来事を device_move にする）。
   readonly via_takeover: boolean;
-  // 停止・交代で取り消した（以後の更新を受けない。端末は自分の期限で止まる）。
+  // 停止・交代・中枢の見積もりの期限切れで取り消した（以後の更新を受けない。端末は自分の期限で止まる）。
   revoked: boolean;
   expiry: unknown;
 }
@@ -189,7 +209,12 @@ interface OwnerRecord {
 }
 
 interface LiveRuntime {
+  // メモリーの今の状態（正本として判定に使う）。DB には persisted まで書けている。
   record: LiveSessionRecord;
+  persisted: LiveControlValues;
+  persisting: Promise<void> | null;
+  retryTimer: unknown;
+  readonly opened: OpenedLive;
   readonly ticket: unknown;
   provider_session_id: string | null;
   sideband: LiveSideband | null;
@@ -197,9 +222,18 @@ interface LiveRuntime {
   pingTimer: unknown;
   deadlineTimer: unknown;
   confirmTimer: unknown;
-  // 遷移を 1 つずつ行う（compare-and-set の競合を作らない）。
-  queue: Promise<void>;
+  // サイドバンドの喪失を経たか。
+  lost: boolean;
   settled: boolean;
+  // 予算の門の呼び出しを 1 つずつ行う（保持の後に精算する順を守る）。
+  budgetChain: Promise<void>;
+}
+
+interface PendingStop {
+  readonly scope: VoiceStopScope;
+  readonly device_id: string;
+  readonly at: number;
+  retry: unknown;
 }
 
 const reservationOf = (
@@ -220,12 +254,20 @@ const controlOf = (record: LiveSessionRecord): LiveControl => ({
   reservation_state: reservationOf(record),
 });
 
-const valuesOf = (control: LiveControl): LiveControlValues => ({
-  control_state: control.control_state,
-  control_epoch: control.control_epoch,
-  closure: control.closure,
-  usage_seconds: control.usage_seconds,
+const valuesOf = (
+  value: LiveControl | LiveSessionRecord,
+): LiveControlValues => ({
+  control_state: value.control_state,
+  control_epoch: value.control_epoch,
+  closure: value.closure,
+  usage_seconds: value.usage_seconds,
 });
+
+const sameValues = (a: LiveControlValues, b: LiveControlValues): boolean =>
+  a.control_state === b.control_state &&
+  a.control_epoch === b.control_epoch &&
+  a.closure === b.closure &&
+  a.usage_seconds === b.usage_seconds;
 
 export function liveControlState(record: LiveSessionRecord): object {
   return {
@@ -250,6 +292,10 @@ const error = (status: number, code: ApiErrorCode, requestId: string | null) =>
 const str = (body: JsonObject | null, key: string): string =>
   typeof body?.[key] === 'string' ? (body[key] as string) : '';
 
+const bump = (epoch: string): string => (BigInt(epoch) + 1n).toString();
+
+const TIMED_OUT: unique symbol = Symbol('timed_out');
+
 export class VoiceControl {
   readonly #store: VoiceStore;
   readonly #coreInstanceId: string;
@@ -266,9 +312,20 @@ export class VoiceControl {
   readonly #log: (message: string) => void;
   readonly #leases = new Map<string, Map<'audio' | 'display', LeaseEntry>>();
   readonly #lives = new Map<string, LiveRuntime>();
+  readonly #finished = new Map<string, LiveSessionRecord>();
   readonly #listeners = new Map<string, Set<(event: object) => void>>();
+  // 最後に読んだ（または停止で進めた）端末の世代。停止のイベントを DB の読み書きを待たずに作るために使う。
+  readonly #known = new Map<string, DeviceVoiceState>();
+  // DB へ書けていない停止（保存できるまで、停止中の印として更新と Live の受付を拒否する）。
+  readonly #pendingStops: PendingStop[] = [];
+  // Live の受付の 1 段目と 2 段目の間にいる端末（2 つ目の受付を 409 にする）。
+  readonly #opening = new Set<string>();
+  // 応答を待たずに進めた予算の門の呼び出し（試験の idle が待つ）。
+  readonly #inflight = new Set<Promise<void>>();
   #owner: OwnerRecord | null = null;
   #serial: Promise<unknown> = Promise.resolve();
+  // 停止を受けるたびに進める。DB を読んだ後にこれが変わっていれば読み直す（停止の前の状態で判定しない）。
+  #stopGen = 0;
   #closed = false;
 
   constructor(options: VoiceControlOptions) {
@@ -287,11 +344,44 @@ export class VoiceControl {
 
   // ---- 共通 -----------------------------------------------------------------------------------------------
 
-  // 状態を変える処理を 1 つずつ行う（リース・所有者・停止・Live の開始の間で判定と書込みを割り込ませない）。
+  // リース・所有者・Live の受付の判定と書込みを 1 つずつ行う。中には外部の待ちを入れない（DB の短い読み書きだけ）。
+  // 停止はこの列に並ばない。
   #exclusive<T>(run: () => Promise<T>): Promise<T> {
     const next = this.#serial.then(run, run);
     this.#serial = next.catch(() => undefined);
     return next;
+  }
+
+  // 外部の呼び出しに期限を付ける。切れた・例外なら TIMED_OUT（結果不明）。
+  #within<T>(
+    ms: number,
+    run: () => Promise<T> | T,
+  ): Promise<T | typeof TIMED_OUT> {
+    return new Promise((resolve) => {
+      let done = false;
+      const timer = this.#timers.set(ms, () => {
+        if (done) return;
+        done = true;
+        resolve(TIMED_OUT);
+      });
+      Promise.resolve()
+        .then(run)
+        .then(
+          (value) => {
+            if (done) return;
+            done = true;
+            this.#timers.clear(timer);
+            resolve(value);
+          },
+          () => {
+            // 例外も結果不明として扱う。
+            if (done) return;
+            done = true;
+            this.#timers.clear(timer);
+            resolve(TIMED_OUT);
+          },
+        );
+    });
   }
 
   subscribe(deviceId: string, listener: (event: object) => void): () => void {
@@ -318,20 +408,21 @@ export class VoiceControl {
     }
   }
 
-  // 停止のイベント（VoiceEvent の audio_control）。届かなくても端末はリースの期限で止まる。
+  // 停止のイベント（VoiceEvent の audio_control）。届かなくても端末はリースの期限で止まる。世代は最後に知った値を使い、
+  // DB の読み書きを待たない（知らなければ 0）。
   #emitAudioControl(
-    state: DeviceVoiceState,
+    deviceId: string,
     reason: AudioReason,
     live: LiveSessionRecord | null,
   ): void {
     const rule = AUDIO_CONTROL_RULES[reason];
+    const known = this.#known.get(deviceId);
     const at = new Date(this.#wallNow()).toISOString();
-    const audioEpoch = live?.audio_epoch ?? state.audio_epoch;
-    this.#emit(state.device_id, {
+    this.#emit(deviceId, {
       schema: 'buddy.voice-event.v1',
       event_id: this.#newId(),
       event_type: 'audio_control',
-      device_id: state.device_id,
+      device_id: deviceId,
       session_id: live?.session_id ?? null,
       live_session_id: live?.live_session_id ?? null,
       audio_epoch: live?.audio_epoch ?? null,
@@ -340,11 +431,11 @@ export class VoiceControl {
       audio_control: {
         action: rule.action,
         reason,
-        device_id: state.device_id,
+        device_id: deviceId,
         scope: rule.scope,
-        io_epoch: state.io_epoch,
-        audio_epoch: audioEpoch,
-        output_epoch: state.output_epoch,
+        io_epoch: known?.io_epoch ?? '0',
+        audio_epoch: live?.audio_epoch ?? known?.audio_epoch ?? '0',
+        output_epoch: known?.output_epoch ?? '0',
         issued_by: 'core',
         issued_at: at,
       },
@@ -358,7 +449,38 @@ export class VoiceControl {
       device_id: deviceId,
     });
     if (!found.ok) throw new Error('voice_state_unavailable');
+    if (found.value !== null) this.#known.set(deviceId, found.value);
     return found.value;
+  }
+
+  // 停止と並んで読んだ値で判定しないよう、読んでいる間に停止が来たら読み直す。
+  async #freshState(deviceId: string): Promise<DeviceVoiceState | null> {
+    for (;;) {
+      const generation = this.#stopGen;
+      const state = await this.#deviceState(deviceId);
+      if (generation === this.#stopGen) return state;
+    }
+  }
+
+  // DB の停止の印と、まだ DB へ書けていない停止の印を合わせる。
+  #stopScope(state: DeviceVoiceState): 'none' | 'local' | 'guest' | 'global' {
+    const pending = this.#pendingStops;
+    if (state.global_stop || pending.some((stop) => stop.scope === 'global'))
+      return 'global';
+    if (state.guest_mode || pending.some((stop) => stop.scope === 'guest'))
+      return 'guest';
+    if (
+      state.local_stop ||
+      pending.some(
+        (stop) => stop.scope === 'local' && stop.device_id === state.device_id,
+      )
+    )
+      return 'local';
+    return 'none';
+  }
+
+  #suspended(state: DeviceVoiceState): boolean {
+    return this.#stopScope(state) !== 'none';
   }
 
   #leaseExpiresAt(entry: LeaseEntry): number {
@@ -408,12 +530,34 @@ export class VoiceControl {
     if (this.#owner?.device_id === deviceId) this.#owner = null;
   }
 
+  // 端末の Live のうち、閉じる要求をまだ出していないもの。
   #openLives(deviceId: string): LiveRuntime[] {
     return [...this.#lives.values()].filter(
       (runtime) =>
         runtime.record.device_id === deviceId &&
         runtime.record.closure === 'open',
     );
+  }
+
+  // 端末の Live のうち、閉じ終えていないもの。
+  #unfinishedLives(deviceId: string): LiveRuntime[] {
+    return [...this.#lives.values()].filter(
+      (runtime) =>
+        runtime.record.device_id === deviceId &&
+        runtime.record.control_state !== 'closed',
+    );
+  }
+
+  // 中枢が知っている端末（リース・Live・購読・読んだ世代のどれかがある）。DB を読めないときの停止の対象。
+  #knownDevices(): Set<string> {
+    const ids = new Set<string>([
+      ...this.#leases.keys(),
+      ...this.#listeners.keys(),
+      ...this.#known.keys(),
+    ]);
+    for (const runtime of this.#lives.values())
+      ids.add(runtime.record.device_id);
+    return ids;
   }
 
   // 入出力の状態（DeviceIOState）。getBootstrap と再開の応答。
@@ -423,13 +567,7 @@ export class VoiceControl {
   ): Promise<object | null> {
     const state = await this.#deviceState(device.device_id);
     if (state === null) return null;
-    const stop = state.global_stop
-      ? 'global'
-      : state.guest_mode
-        ? 'guest'
-        : state.local_stop
-          ? 'local'
-          : 'none';
+    const stop = this.#stopScope(state);
     const lockState = lock ?? 'unknown';
     const live = this.#openLives(device.device_id).some(
       (runtime) =>
@@ -480,6 +618,40 @@ export class VoiceControl {
     return this.#exclusive(() => this.#renew(device, body, lock));
   }
 
+  // 音声リースの更新に使う制御接続の状態。端末単位で、閉じ終えていない Live を見る（取り直したリースでも同じ）。
+  // 閉じる要求を出した後の Live は、喪失を経たものだけを数える（正常に閉じている途中の Live のために、次の呼びかけの
+  // リースを止めない）。このリースで開いた Live が喪失を経て終わっていれば lost。
+  #controlFor(
+    deviceId: string,
+    entry: LeaseEntry | null,
+  ): LiveControlStateName | 'none' {
+    const relevant = this.#unfinishedLives(deviceId).filter(
+      (runtime) => runtime.record.closure === 'open' || runtime.lost,
+    );
+    const states = relevant.map((runtime) => runtime.record.control_state);
+    for (const state of ['lost', 'closing', 'closed'] as const)
+      if (states.includes(state)) return state;
+    if (relevant.some((runtime) => runtime.lost)) return 'lost';
+    if (states.includes('ready')) return 'ready';
+    if (states.includes('connecting')) return 'connecting';
+    if (entry?.opened?.outcome === 'lost') return 'lost';
+    return 'none';
+  }
+
+  // このリースで開いた Live が、喪失を経ずに閉じた・閉じ始めたか。
+  #openedEnded(entry: LeaseEntry): boolean {
+    const opened = entry.opened;
+    if (opened === null) return false;
+    if (opened.outcome === 'normal') return true;
+    if (opened.outcome === 'lost') return false;
+    const runtime = this.#lives.get(opened.live_session_id);
+    return (
+      runtime !== undefined &&
+      !runtime.lost &&
+      runtime.record.closure !== 'open'
+    );
+  }
+
   async #renew(
     device: DeviceRecord,
     body: JsonObject,
@@ -516,22 +688,29 @@ export class VoiceControl {
     // 本文の端末は認証した端末と一致しなければならない（他の端末として処理しない。07 §2）。
     if (request.device_id !== device.device_id)
       return rejected(['device_mismatch']);
-    let state: DeviceVoiceState | null;
+    let read: DeviceVoiceState | null;
     try {
-      state = await this.#deviceState(device.device_id);
+      read = await this.#freshState(device.device_id);
     } catch {
       return error(503, 'dependency_unavailable', requestId);
     }
-    if (state === null) return error(401, 'unauthenticated', requestId);
+    if (read === null) return error(401, 'unauthenticated', requestId);
+    const state = read;
+    // ロック中・ロック状態が分からない端末にはリースを渡さない（解除済みと扱わない。07 §2）。
+    const ioSuspended = this.#suspended(state) || lock !== 'unlocked';
     const current = this.#leases.get(device.device_id)?.get(request.kind);
-    // 同じ lease_id の、取り消していないリースだけを更新の対象にする。別の lease_id は新しい取得。
-    const same =
-      current !== undefined &&
-      current.lease_id === request.lease_id &&
-      !current.revoked
-        ? current
-        : null;
-    // 取り消した（停止・交代した）リースは、同じ lease_id では更新しない。交代で別の端末が所有していれば 409、
+    const context = (entry: LeaseEntry | null) => ({
+      core_instance_id: this.#coreInstanceId,
+      command_scope_id: entry?.command_scope_id ?? request.command_scope_id,
+      io_epoch: state.io_epoch,
+      io_suspended: ioSuspended,
+      device_revoked: !state.active,
+      control:
+        request.kind === 'audio'
+          ? this.#controlFor(device.device_id, entry)
+          : ('none' as const),
+    });
+    // 取り消した（停止・交代・期限切れ）リースは、同じ lease_id では更新しない。交代で別の端末が所有していれば 409、
     // それ以外は更新の拒否の理由（停止なら世代の古さ）を返し、理由がなくても取り直し（lease_rotation_required）を求める。
     if (
       current !== undefined &&
@@ -545,44 +724,30 @@ export class VoiceControl {
         owner.device_id !== device.device_id
       )
         return error(409, 'audio_owned_elsewhere', requestId);
-      const reasons = leaseRenewalReasons(current.stored, request, {
-        core_instance_id: this.#coreInstanceId,
-        command_scope_id: current.command_scope_id,
-        io_epoch: state.io_epoch,
-        io_suspended:
-          state.local_stop ||
-          state.guest_mode ||
-          state.global_stop ||
-          lock !== 'unlocked',
-        device_revoked: !state.active,
-        control: 'none',
-      });
+      const reasons = leaseRenewalReasons(
+        current.stored,
+        request,
+        context(current),
+      );
       return rejected(
         reasons.length > 0 ? reasons : ['lease_rotation_required'],
       );
     }
-    const live =
-      same?.live_session_id === null || same === null
-        ? null
-        : (this.#lives.get(same.live_session_id) ?? null);
-    const control =
-      request.kind !== 'audio' || same === null || same.live_session_id === null
-        ? ('none' as const)
-        : (live?.record.control_state ?? 'closed');
-    const reasons = leaseRenewalReasons(same?.stored ?? null, request, {
-      core_instance_id: this.#coreInstanceId,
-      command_scope_id: same?.command_scope_id ?? request.command_scope_id,
-      io_epoch: state.io_epoch,
-      // ロック中・ロック状態が分からない端末にはリースを渡さない（解除済みと扱わない。07 §2）。
-      io_suspended:
-        state.local_stop ||
-        state.guest_mode ||
-        state.global_stop ||
-        lock !== 'unlocked',
-      device_revoked: !state.active,
-      control,
-    });
+    // 同じ lease_id の、取り消していないリースだけを更新の対象にする。別の lease_id は新しい取得。
+    const same =
+      current !== undefined && current.lease_id === request.lease_id
+        ? current
+        : null;
+    const reasons = leaseRenewalReasons(
+      same?.stored ?? null,
+      request,
+      context(same),
+    );
     if (leaseRotationRequired(same?.stored ?? null))
+      reasons.push('lease_rotation_required');
+    // 正常に終わった（終わりかけの）Live を開いたリースは、同じ lease_id で更新せず取り直させる（1 つのリースで 1 つの
+    // Live。喪失による終わりは sideband_lost）。
+    if (reasons.length === 0 && same !== null && this.#openedEnded(same))
       reasons.push('lease_rotation_required');
     if (reasons.length > 0) return rejected(reasons);
 
@@ -606,7 +771,7 @@ export class VoiceControl {
       if (decision.replaces !== null) {
         // 前の所有者の Live を先に閉じ（閉じる要求を記録してサイドバンドへ送る）、リースを取り消してから発行する（10 §8）。
         viaTakeover = true;
-        await this.#releaseOwner(decision.replaces);
+        this.#releaseOwner(decision.replaces);
       }
     }
     // 他の端末が交代で所有権を取った後の、前の所有者の音声リースの更新は受けない（期限で止まる）。
@@ -634,7 +799,7 @@ export class VoiceControl {
         last_requested_at_mono_ms: request.requested_at_mono_ms,
       },
       renewed_at: now,
-      live_session_id: same?.live_session_id ?? null,
+      opened: same?.opened ?? null,
       via_takeover: viaTakeover,
       revoked: false,
       expiry: null,
@@ -671,82 +836,148 @@ export class VoiceControl {
   }
 
   // 端末の交代: 前の所有者の音声リースを取り消し、開いている Live を device_move で閉じ、停止のイベントを送る。
-  async #releaseOwner(deviceId: string): Promise<void> {
+  #releaseOwner(deviceId: string): void {
     const entry = this.#leases.get(deviceId)?.get('audio');
     if (entry !== undefined) entry.revoked = true;
     if (this.#owner?.device_id === deviceId) this.#owner = null;
-    const state = await this.#deviceState(deviceId).catch(() => null);
     const lives = this.#openLives(deviceId);
-    for (const runtime of lives) await this.#beginClose(runtime, 'device_move');
-    if (state !== null)
-      this.#emitAudioControl(state, 'device_move', lives[0]?.record ?? null);
+    for (const runtime of lives) this.#beginClose(runtime, 'device_move');
+    this.#emitAudioControl(deviceId, 'device_move', lives[0]?.record ?? null);
   }
 
-  // 中枢の見積もりでリースが切れた。音声リースで開いている Live は中枢からも閉じる（07 §5）。
+  // 中枢の見積もりでリースが切れた。以後の遅れた更新は受けず、音声リースなら端末の開いている Live を中枢からも閉じる（07 §5）。
   #onLeaseExpired(entry: LeaseEntry): void {
     if (this.#closed) return;
     const current = this.#leases.get(entry.device_id)?.get(entry.kind);
     if (current !== entry) return;
+    entry.revoked = true;
     if (this.#owner?.lease_id === entry.lease_id) this.#owner = null;
-    if (entry.kind !== 'audio' || entry.live_session_id === null) return;
-    const runtime = this.#lives.get(entry.live_session_id);
-    if (runtime === undefined || runtime.record.closure !== 'open') return;
-    void this.#exclusive(async () => {
-      await this.#beginClose(runtime, 'core_lease_lost');
-      const state = await this.#deviceState(entry.device_id).catch(() => null);
-      if (state !== null)
-        this.#emitAudioControl(state, 'core_lease_lost', runtime.record);
-    });
+    if (entry.kind !== 'audio') return;
+    const lives = this.#openLives(entry.device_id);
+    if (lives.length === 0) return;
+    for (const runtime of lives) this.#beginClose(runtime, 'core_lease_lost');
+    this.#emitAudioControl(
+      entry.device_id,
+      'core_lease_lost',
+      lives[0]?.record ?? null,
+    );
   }
 
   // ---- 停止と再開 ---------------------------------------------------------------------------------------------
 
-  stopIo(device: DeviceRecord, body: JsonObject): Promise<Status> {
-    return this.#exclusive(async () => {
-      const requestId = str(body, 'request_id');
-      const scope = body['scope'] as VoiceStopScope;
-      const stopped = await this.#store.voice({
-        kind: 'voice.stop',
+  // 停止は他の要求の待ち（#exclusive）に並ばず、DB の成否にかかわらずまずメモリーで止める。
+  async stopIo(device: DeviceRecord, body: JsonObject): Promise<Status> {
+    const requestId = str(body, 'request_id');
+    const scope = body['scope'] as VoiceStopScope;
+    const reason = STOP_REASON[scope];
+    this.#stopGen += 1;
+    const stop: PendingStop = {
+      scope,
+      device_id: device.device_id,
+      at: this.#wallNow(),
+      retry: null,
+    };
+    this.#pendingStops.push(stop);
+    const targets =
+      scope === 'local'
+        ? new Set([device.device_id])
+        : new Set([...this.#knownDevices(), device.device_id]);
+    const plan = planStop(reason);
+    for (const deviceId of targets) {
+      this.#revokeLeases(deviceId);
+      const known = this.#known.get(deviceId);
+      if (known !== undefined)
+        this.#known.set(deviceId, {
+          ...known,
+          io_epoch: bump(known.io_epoch),
+          output_epoch: bump(known.output_epoch),
+        });
+      const lives = this.#openLives(deviceId);
+      // 第 3 層: 中枢がサイドバンドから閉じ、使用量を照合する（planStop の core）。
+      if (plan.core.includes('core_sideband_close'))
+        for (const runtime of lives) this.#beginClose(runtime, reason);
+      if (deviceId !== device.device_id)
+        this.#emitAudioControl(deviceId, reason, lives[0]?.record ?? null);
+    }
+    const written = await this.#writeStop(stop, STOP_WRITE_ATTEMPTS);
+    if (written === null) {
+      this.#scheduleStopRetry(stop);
+      return error(503, 'dependency_unavailable', requestId);
+    }
+    if (written === 'rejected') return error(401, 'unauthenticated', requestId);
+    const reach = ioStopReach(
+      written.map((state) => ({
+        device_id: state.device_id,
+        requester: state.device_id === device.device_id,
+        lease_expires_at_mono_ms: this.#latestExpiry(state.device_id),
+      })),
+      this.#monoNow(),
+    );
+    const own = written.find((state) => state.device_id === device.device_id);
+    return {
+      status: 202,
+      body: {
         scope,
-        device_id: device.device_id,
-        now: this.#wallNow(),
-      });
-      if (!stopped.ok)
-        return stopped.reasons.includes('device_revoked') ||
-          stopped.reasons.includes('device_not_found')
-          ? error(401, 'unauthenticated', requestId)
-          : error(503, 'dependency_unavailable', requestId);
-      const reason = STOP_REASON[scope];
-      const plan = planStop(reason);
-      for (const state of stopped.value.devices) {
-        this.#revokeLeases(state.device_id);
-        const lives = this.#openLives(state.device_id);
-        // 第 3 層: 中枢がサイドバンドから閉じ、使用量を照合する（planStop の core）。
-        if (plan.core.includes('core_sideband_close'))
-          for (const runtime of lives) await this.#beginClose(runtime, reason);
-        if (state.device_id !== device.device_id)
-          this.#emitAudioControl(state, reason, lives[0]?.record ?? null);
+        io_epoch: own?.io_epoch ?? '0',
+        devices: reach.devices,
+        all_confirmed: reach.all_confirmed,
+      },
+    };
+  }
+
+  // 停止を DB へ書く。書けたら停止中の印を外し、知っている世代を DB の値にそろえる。書けなければ null。
+  async #writeStop(
+    stop: PendingStop,
+    attempts: number,
+  ): Promise<readonly DeviceVoiceState[] | 'rejected' | null> {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const result = await this.#store
+        .voice({
+          kind: 'voice.stop',
+          scope: stop.scope,
+          device_id: stop.device_id,
+          now: stop.at,
+        })
+        .catch(() => null);
+      if (result?.ok === true) {
+        this.#removePendingStop(stop);
+        for (const state of result.value.devices)
+          this.#known.set(state.device_id, state);
+        return result.value.devices;
       }
-      const reach = ioStopReach(
-        stopped.value.devices.map((state) => ({
-          device_id: state.device_id,
-          requester: state.device_id === device.device_id,
-          lease_expires_at_mono_ms: this.#latestExpiry(state.device_id),
-        })),
-        this.#monoNow(),
-      );
-      const own = stopped.value.devices.find(
-        (state) => state.device_id === device.device_id,
-      );
-      return {
-        status: 202,
-        body: {
-          scope,
-          io_epoch: own?.io_epoch ?? '0',
-          devices: reach.devices,
-          all_confirmed: reach.all_confirmed,
-        },
-      };
+      if (
+        result !== null &&
+        !result.ok &&
+        (result.reasons.includes('device_revoked') ||
+          result.reasons.includes('device_not_found'))
+      ) {
+        // 失効した端末の停止は書かない。メモリーで止めた分はそのまま（安全側）だが、印は外す。
+        this.#removePendingStop(stop);
+        return 'rejected';
+      }
+    }
+    return null;
+  }
+
+  #removePendingStop(stop: PendingStop): void {
+    const index = this.#pendingStops.indexOf(stop);
+    if (index !== -1) this.#pendingStops.splice(index, 1);
+    if (stop.retry !== null) this.#timers.clear(stop.retry);
+    stop.retry = null;
+  }
+
+  #scheduleStopRetry(stop: PendingStop): void {
+    if (this.#closed) return;
+    this.#log(
+      '停止を DB へ書けませんでした。停止中の印を保ったまま再試行します。',
+    );
+    stop.retry = this.#timers.set(VOICE_PERSIST_RETRY_MS, () => {
+      stop.retry = null;
+      const retried = this.#writeStop(stop, 1).then((written) => {
+        if (written === null) this.#scheduleStopRetry(stop);
+      });
+      this.#inflight.add(retried);
+      void retried.finally(() => this.#inflight.delete(retried));
     });
   }
 
@@ -757,6 +988,9 @@ export class VoiceControl {
   ): Promise<Status> {
     return this.#exclusive(async () => {
       const requestId = str(body, 'request_id');
+      // DB へ書けていない停止があるうちは再開しない（後から書けた停止が再開を上書きしないように）。
+      if (this.#pendingStops.length > 0)
+        return error(503, 'dependency_unavailable', requestId);
       const resumed = await this.#store.voice({
         kind: 'voice.resume',
         scope: body['scope'] as VoiceStopScope,
@@ -783,40 +1017,247 @@ export class VoiceControl {
 
   // ---- Live の接続と終了の通知 ---------------------------------------------------------------------------------
 
+  // 受付の判定（所有者・停止・リース・同意など）。外部を待たない値だけで決める。拒否なら応答、受けるならリース。
+  #liveAdmission(
+    device: DeviceRecord,
+    state: DeviceVoiceState,
+    body: JsonObject,
+    consent: ConsentStatus,
+    requestId: string,
+  ): Status | LeaseEntry {
+    const lease = this.#leases.get(device.device_id)?.get('audio');
+    const owner = this.audioOwner(device);
+    // 古い世代・期限切れ・取り消し・別の接続範囲・すでに Live を開いたリースでは開かない（07 §5）。
+    const leaseValid =
+      lease !== undefined &&
+      owner === 'self' &&
+      this.#leaseLive(lease) &&
+      lease.io_epoch === state.io_epoch &&
+      lease.command_scope_id === str(body, 'command_scope_id') &&
+      lease.opened === null;
+    const admission = admitLiveStart({
+      purpose: body['purpose'] as 'conversation' | 'notification',
+      audioOwner: owner,
+      ioSuspended: this.#suspended(state),
+      audioLeaseValid: leaseValid,
+      // 返し方の正本は中枢にまだない（U71）。文字で返す端末はこの経路を呼ばない（07 §2）。
+      outputMode: 'voice',
+      // 記録しない会話は B04-03 で受け付けていない（会話がないので記録しない会話中にならない。U71）。
+      privateConversation: false,
+      consent,
+      // 予約の可否はこの後の予算の門で決める（できなければ 422）。
+      budgetReservable: true,
+    });
+    if (!admission.ok)
+      return error(admission.status, admission.code as ApiErrorCode, requestId);
+    // 中枢で同時に開いてよい Live は 1 つ（端末の交代でも、前の Live の閉じる要求の後）。受付の途中の端末も数える。
+    if (
+      [...this.#lives.values()].some(
+        (runtime) => runtime.record.closure === 'open',
+      ) ||
+      this.#opening.size > 0
+    )
+      return error(409, 'conflict', requestId);
+    return lease as LeaseEntry;
+  }
+
   async createLiveSession(
     device: DeviceRecord,
     body: JsonObject,
   ): Promise<Status> {
     const requestId = str(body, 'request_id');
-    const admitted = await this.#exclusive(() =>
-      this.#admitLive(device, body, requestId),
+    const provider = this.#provider;
+    const budget = this.#budget;
+    // 同意は外部の値なので、受付の列の外で期限を付けて読む（読めなければ missing）。
+    const consent = await this.#within(VOICE_EXTERNAL_TIMEOUT_MS, () =>
+      this.#consent(device.device_id),
     );
-    if ('status' in admitted) return admitted;
-    const { runtime, provider } = admitted;
-    let created:
-      | { ok: true; provider_session_id: string; sdp_answer: string }
-      | { ok: false };
+    const consentStatus: ConsentStatus =
+      consent === TIMED_OUT ? 'missing' : consent;
+    // 1 段目: 受付の判定と、受付の途中の印（短い。外部を待たない）。
+    const first = await this.#exclusive(async (): Promise<Status | null> => {
+      let state: DeviceVoiceState | null;
+      try {
+        state = await this.#freshState(device.device_id);
+      } catch {
+        return error(503, 'dependency_unavailable', requestId);
+      }
+      if (state === null) return error(401, 'unauthenticated', requestId);
+      const admitted = this.#liveAdmission(
+        device,
+        state,
+        body,
+        consentStatus,
+        requestId,
+      );
+      if ('status' in admitted) return admitted;
+      if (provider === null || budget === null)
+        return error(503, 'dependency_unavailable', requestId);
+      this.#opening.add(device.device_id);
+      return null;
+    });
+    if (first !== null) return first;
     try {
-      created = await provider.createSession({
+      return await this.#openLive(
+        device,
+        body,
+        requestId,
+        provider as LiveProvider,
+        budget as LiveBudgetPort,
+        consentStatus,
+      );
+    } finally {
+      this.#opening.delete(device.device_id);
+    }
+  }
+
+  async #openLive(
+    device: DeviceRecord,
+    body: JsonObject,
+    requestId: string,
+    provider: LiveProvider,
+    budget: LiveBudgetPort,
+    consent: ConsentStatus,
+  ): Promise<Status> {
+    const sessionId = str(body, 'session_id');
+    const session = await this.#store
+      .conversation({ kind: 'session.get', session_id: sessionId })
+      .catch(() => null);
+    if (session === null || !session.ok)
+      return error(503, 'dependency_unavailable', requestId);
+    if (session.value === null || session.value.ended_at !== null)
+      return error(409, 'conflict', requestId);
+    // 外部の待ち（予算の門）は列の外で、期限を付ける。切れたら結果不明（予約ができたかは門の照合に任せる）。
+    const reserved = await this.#within(VOICE_EXTERNAL_TIMEOUT_MS, () =>
+      budget.reserve({
+        request_id: requestId,
+        seconds: LIVE_INITIAL_RESERVE_SECONDS,
+      }),
+    );
+    if (reserved === TIMED_OUT)
+      return error(503, 'dependency_unavailable', requestId);
+    if (!reserved.ok)
+      return reserved.budget_held
+        ? error(422, 'budget_held', requestId)
+        : error(503, 'dependency_unavailable', requestId);
+    const ticket = reserved.ticket;
+    const dispatched = await this.#within(VOICE_EXTERNAL_TIMEOUT_MS, () =>
+      budget.dispatch(ticket),
+    );
+    if (dispatched === TIMED_OUT || !dispatched.ok) {
+      // 期限切れ・成否不明は送出意図を記録したかもしれない（解放しない）。
+      if (dispatched === TIMED_OUT || dispatched.uncertain)
+        this.#budgetLater(null, () => budget.hold(ticket));
+      else this.#budgetLater(null, () => budget.release(ticket));
+      return error(503, 'dependency_unavailable', requestId);
+    }
+    // 2 段目: 外部を待っている間に停止・交代・期限切れがあれば開かない。世代を発行して記録する。
+    const second = await this.#exclusive(
+      async (): Promise<Status | LiveRuntime> => {
+        let state: DeviceVoiceState | null;
+        try {
+          state = await this.#freshState(device.device_id);
+        } catch {
+          return error(503, 'dependency_unavailable', requestId);
+        }
+        if (state === null) return error(401, 'unauthenticated', requestId);
+        this.#opening.delete(device.device_id);
+        const admitted = this.#liveAdmission(
+          device,
+          state,
+          body,
+          consent,
+          requestId,
+        );
+        if ('status' in admitted) return admitted;
+        const lease = admitted;
+        const event: LiveEpochEvent = lease.via_takeover
+          ? 'device_move'
+          : 'live_start';
+        const issued = issueLiveEpochs(
+          {
+            audio_epoch: state.audio_epoch,
+            session_epoch: state.session_epoch,
+            control_epoch: '0',
+          },
+          event,
+        );
+        const liveSessionId = this.#newId();
+        const opened = await this.#store
+          .voice({
+            kind: 'voice.live_open',
+            live_session_id: liveSessionId,
+            device_id: device.device_id,
+            session_id: sessionId,
+            purpose: body['purpose'] as 'conversation' | 'notification',
+            reservation_id: reserved.reservation_id,
+            expected: {
+              audio_epoch: state.audio_epoch,
+              session_epoch: state.session_epoch,
+            },
+            next: {
+              audio_epoch: issued.next.audio_epoch,
+              session_epoch: issued.next.session_epoch,
+            },
+            started_at: this.#wallNow(),
+          })
+          .catch(() => null);
+        if (opened === null || !opened.ok)
+          return error(503, 'dependency_unavailable', requestId);
+        this.#known.set(device.device_id, {
+          ...state,
+          audio_epoch: opened.value.audio_epoch,
+          session_epoch: opened.value.session_epoch,
+        });
+        const live: OpenedLive = {
+          live_session_id: liveSessionId,
+          outcome: 'open',
+        };
+        lease.opened = live;
+        const runtime: LiveRuntime = {
+          record: opened.value,
+          persisted: valuesOf(opened.value),
+          persisting: null,
+          retryTimer: null,
+          opened: live,
+          ticket,
+          provider_session_id: null,
+          sideband: null,
+          connectTimer: null,
+          pingTimer: null,
+          deadlineTimer: null,
+          confirmTimer: null,
+          lost: false,
+          settled: false,
+          budgetChain: Promise.resolve(),
+        };
+        this.#lives.set(liveSessionId, runtime);
+        return runtime;
+      },
+    );
+    if ('status' in second) {
+      // 送出意図を記録した後なので解放しない（ADR 0037）。
+      this.#budgetLater(null, () => budget.hold(ticket));
+      return second;
+    }
+    const runtime = second;
+    const created = await this.#within(LIVE_CREATE_TIMEOUT_MS, () =>
+      provider.createSession({
         live_session_id: runtime.record.live_session_id,
         purpose: runtime.record.purpose,
         sdp_offer: str(body, 'sdp_offer'),
-      });
-    } catch {
-      created = { ok: false };
-    }
-    if (!created.ok) {
+      }),
+    );
+    if (created === TIMED_OUT || !created.ok) {
       // 送った可能性がある。送り直さず、終了未確認として予約を保持する。
-      await this.#enqueue(runtime, async () => {
-        await this.#step(runtime, 'close_requested', null, 'provider_failure');
-        await this.#markUnconfirmed(runtime);
-      });
+      this.#step(runtime, 'close_requested', null, 'provider_failure');
+      this.#markUnconfirmed(runtime);
       return error(503, 'dependency_unavailable', requestId);
     }
     runtime.provider_session_id = created.provider_session_id;
     if (runtime.record.closure !== 'open') {
-      // 作成の途中で停止・交代が来た。閉じるためだけに接続して session.close を送る。
-      void this.#enqueue(runtime, () => this.#closeOnlyReconnect(runtime));
+      // 作成の途中で停止・交代・期限切れが来た。閉じるためだけに接続して session.close を送る。
+      this.#closeOnlyReconnect(runtime);
       return error(409, 'conflict', requestId);
     }
     this.#connectSideband(runtime);
@@ -833,136 +1274,6 @@ export class VoiceControl {
     };
   }
 
-  async #admitLive(
-    device: DeviceRecord,
-    body: JsonObject,
-    requestId: string,
-  ): Promise<Status | { runtime: LiveRuntime; provider: LiveProvider }> {
-    let state: DeviceVoiceState | null;
-    try {
-      state = await this.#deviceState(device.device_id);
-    } catch {
-      return error(503, 'dependency_unavailable', requestId);
-    }
-    if (state === null) return error(401, 'unauthenticated', requestId);
-    const lease = this.#leases.get(device.device_id)?.get('audio');
-    const owner = this.audioOwner(device);
-    // 古い世代・期限切れ・取り消し・別の接続範囲・すでに Live を開いたリースでは開かない（07 §5）。
-    const leaseValid =
-      lease !== undefined &&
-      owner === 'self' &&
-      this.#leaseLive(lease) &&
-      lease.io_epoch === state.io_epoch &&
-      lease.command_scope_id === str(body, 'command_scope_id') &&
-      lease.live_session_id === null;
-    let consent: ConsentStatus;
-    try {
-      consent = await this.#consent(device.device_id);
-    } catch {
-      consent = 'missing';
-    }
-    const purpose = body['purpose'] as 'conversation' | 'notification';
-    const admission = admitLiveStart({
-      purpose,
-      audioOwner: owner,
-      ioSuspended: state.local_stop || state.guest_mode || state.global_stop,
-      audioLeaseValid: leaseValid,
-      // 返し方の正本は中枢にまだない（U71）。文字で返す端末はこの経路を呼ばない（07 §2）。
-      outputMode: 'voice',
-      // 記録しない会話は B04-03 で受け付けていない（会話がないので記録しない会話中にならない。U71）。
-      privateConversation: false,
-      consent,
-      // 予約の可否はこの後の予算の門で決める（できなければ 422）。
-      budgetReservable: true,
-    });
-    if (!admission.ok)
-      return error(admission.status, admission.code as ApiErrorCode, requestId);
-    const sessionId = str(body, 'session_id');
-    const session = await this.#store.conversation({
-      kind: 'session.get',
-      session_id: sessionId,
-    });
-    if (!session.ok) return error(503, 'dependency_unavailable', requestId);
-    if (session.value === null || session.value.ended_at !== null)
-      return error(409, 'conflict', requestId);
-    const provider = this.#provider;
-    const budget = this.#budget;
-    if (provider === null || budget === null)
-      return error(503, 'dependency_unavailable', requestId);
-    if (
-      this.#openLives(device.device_id).some(
-        (runtime) =>
-          runtime.record.control_state === 'connecting' ||
-          runtime.record.control_state === 'ready',
-      )
-    )
-      return error(409, 'conflict', requestId);
-    const reserved = await budget
-      .reserve({ request_id: requestId, seconds: LIVE_INITIAL_RESERVE_SECONDS })
-      .catch(() => ({ ok: false as const, budget_held: false }));
-    if (!reserved.ok)
-      return reserved.budget_held
-        ? error(422, 'budget_held', requestId)
-        : error(503, 'dependency_unavailable', requestId);
-    const dispatched = await budget
-      .dispatch(reserved.ticket)
-      .catch(() => ({ ok: false, uncertain: true }));
-    if (!dispatched.ok) {
-      if (dispatched.uncertain)
-        await budget.hold(reserved.ticket).catch(() => undefined);
-      else await budget.release(reserved.ticket).catch(() => undefined);
-      return error(503, 'dependency_unavailable', requestId);
-    }
-    const event: LiveEpochEvent =
-      lease?.via_takeover === true ? 'device_move' : 'live_start';
-    const issued = issueLiveEpochs(
-      {
-        audio_epoch: state.audio_epoch,
-        session_epoch: state.session_epoch,
-        control_epoch: '0',
-      },
-      event,
-    );
-    const liveSessionId = this.#newId();
-    const opened = await this.#store.voice({
-      kind: 'voice.live_open',
-      live_session_id: liveSessionId,
-      device_id: device.device_id,
-      session_id: sessionId,
-      purpose,
-      reservation_id: reserved.reservation_id,
-      expected: {
-        audio_epoch: state.audio_epoch,
-        session_epoch: state.session_epoch,
-      },
-      next: {
-        audio_epoch: issued.next.audio_epoch,
-        session_epoch: issued.next.session_epoch,
-      },
-      started_at: this.#wallNow(),
-    });
-    if (!opened.ok) {
-      // 送出意図を記録した後なので解放しない（送っていないが、記録した予約は保持する。ADR 0037）。
-      await budget.hold(reserved.ticket).catch(() => undefined);
-      return error(503, 'dependency_unavailable', requestId);
-    }
-    const runtime: LiveRuntime = {
-      record: opened.value,
-      ticket: reserved.ticket,
-      provider_session_id: null,
-      sideband: null,
-      connectTimer: null,
-      pingTimer: null,
-      deadlineTimer: null,
-      confirmTimer: null,
-      queue: Promise.resolve(),
-      settled: false,
-    };
-    this.#lives.set(liveSessionId, runtime);
-    (lease as LeaseEntry).live_session_id = liveSessionId;
-    return { runtime, provider };
-  }
-
   // 端末からの終了の通知（いつでも受け付ける）。使用秒数が確認できるまで予約を精算済みにしない。
   async closeLiveSession(
     device: DeviceRecord,
@@ -971,13 +1282,13 @@ export class VoiceControl {
   ): Promise<Status> {
     const requestId = str(body, 'request_id');
     const runtime = this.#lives.get(liveSessionId);
-    let record = runtime?.record ?? null;
+    let record = runtime?.record ?? this.#finished.get(liveSessionId) ?? null;
     if (record === null) {
-      const found = await this.#store.voice({
-        kind: 'voice.live_get',
-        live_session_id: liveSessionId,
-      });
-      if (!found.ok) return error(503, 'dependency_unavailable', requestId);
+      const found = await this.#store
+        .voice({ kind: 'voice.live_get', live_session_id: liveSessionId })
+        .catch(() => null);
+      if (found === null || !found.ok)
+        return error(503, 'dependency_unavailable', requestId);
       record = found.value;
     }
     if (record === null || record.device_id !== device.device_id)
@@ -985,9 +1296,7 @@ export class VoiceControl {
     if (record.audio_epoch !== str(body, 'audio_epoch'))
       return error(409, 'conflict', requestId);
     if (runtime !== undefined && runtime.record.closure === 'open')
-      await this.#exclusive(() =>
-        this.#beginClose(runtime, str(body, 'reason')),
-      );
+      this.#beginClose(runtime, str(body, 'reason'));
     return {
       status: 202,
       body: liveControlState(runtime?.record ?? record),
@@ -996,38 +1305,135 @@ export class VoiceControl {
 
   // ---- 制御接続（サイドバンド） ---------------------------------------------------------------------------------
 
-  #enqueue(runtime: LiveRuntime, run: () => Promise<void>): Promise<void> {
-    const next = runtime.queue.then(run, run);
-    runtime.queue = next.catch(() => undefined);
-    return next;
+  // 予算の門の呼び出しを、Live ごとに 1 つずつ・期限つきで行う（応答を待たない）。
+  #budgetLater(runtime: LiveRuntime | null, run: () => Promise<void>): void {
+    const call = () =>
+      this.#within(VOICE_EXTERNAL_TIMEOUT_MS, run)
+        .then((value) => {
+          if (value === TIMED_OUT)
+            this.#log('予算の門の応答が期限までにありませんでした。');
+        })
+        .catch(() => undefined);
+    const track = (promise: Promise<void>) => {
+      this.#inflight.add(promise);
+      void promise.finally(() => this.#inflight.delete(promise));
+    };
+    if (runtime === null) {
+      track(call());
+      return;
+    }
+    runtime.budgetChain = runtime.budgetChain.then(call, call);
+    track(runtime.budgetChain);
   }
 
-  // nextLiveControl で次の状態を決め、DB へ compare-and-set で書く。遷移できなければ false。
-  async #step(
+  // nextLiveControl で次の状態を決め、まずメモリーの状態を変える（判定と副作用はこの値で行う）。DB へは後から書く。
+  #step(
     runtime: LiveRuntime,
     trigger: LiveControlTrigger,
     usageSeconds: number | null = null,
     endReason: string | null = null,
-  ): Promise<boolean> {
-    const current = controlOf(runtime.record);
-    const next = nextLiveControl(current, trigger, usageSeconds);
+  ): boolean {
+    const next = nextLiveControl(
+      controlOf(runtime.record),
+      trigger,
+      usageSeconds,
+    );
     if (!next.ok) return false;
-    const updated = await this.#store.voice({
-      kind: 'voice.live_update',
-      live_session_id: runtime.record.live_session_id,
-      expected: valuesOf(current),
-      next: valuesOf(next.next),
-      ended_at: next.next.control_state === 'closed' ? this.#wallNow() : null,
-      end_reason: endReason,
-    });
-    if (!updated.ok) {
-      this.#log(
-        `Live の制御の状態を記録できませんでした（${updated.reasons.join(', ')}）。`,
-      );
-      return false;
-    }
-    runtime.record = updated.value;
+    const closed = next.next.control_state === 'closed';
+    runtime.record = {
+      ...runtime.record,
+      ...valuesOf(next.next),
+      end_reason: runtime.record.end_reason ?? endReason,
+      ended_at: closed
+        ? (runtime.record.ended_at ?? this.#wallNow())
+        : runtime.record.ended_at,
+    };
+    if (
+      trigger === 'sideband_connect_failed' ||
+      trigger === 'sideband_disconnected' ||
+      trigger === 'ping_timeout' ||
+      trigger === 'core_restarted'
+    )
+      runtime.lost = true;
+    if (closed && runtime.opened.outcome === 'open')
+      runtime.opened.outcome = runtime.lost ? 'lost' : 'normal';
+    void this.#persist(runtime);
     return true;
+  }
+
+  // メモリーの状態を DB へ compare-and-set で書く（途中の状態は飛ばして今の値を書く。trigger が戻す更新を拒否する）。
+  // 書けなければ間隔を置いて再試行する。応答を失って DB が先に進んでいれば、DB の値を書けた値として読み直す。
+  #persist(runtime: LiveRuntime): Promise<void> {
+    if (runtime.persisting !== null) return runtime.persisting;
+    if (runtime.retryTimer !== null) {
+      this.#timers.clear(runtime.retryTimer);
+      runtime.retryTimer = null;
+    }
+    const run = async () => {
+      while (!sameValues(runtime.persisted, valuesOf(runtime.record))) {
+        const target = valuesOf(runtime.record);
+        const updated = await this.#store
+          .voice({
+            kind: 'voice.live_update',
+            live_session_id: runtime.record.live_session_id,
+            expected: runtime.persisted,
+            next: target,
+            ended_at: runtime.record.ended_at,
+            end_reason: runtime.record.end_reason,
+          })
+          .catch(() => null);
+        if (updated !== null && updated.ok) {
+          runtime.persisted = target;
+          continue;
+        }
+        if (
+          updated !== null &&
+          !updated.ok &&
+          updated.reasons.includes('live_state_conflict')
+        ) {
+          const found = await this.#store
+            .voice({
+              kind: 'voice.live_get',
+              live_session_id: runtime.record.live_session_id,
+            })
+            .catch(() => null);
+          if (found !== null && found.ok && found.value !== null) {
+            runtime.persisted = valuesOf(found.value);
+            continue;
+          }
+        }
+        this.#log('Live の制御の状態を DB へ書けませんでした。再試行します。');
+        if (!this.#closed)
+          runtime.retryTimer = this.#timers.set(VOICE_PERSIST_RETRY_MS, () => {
+            runtime.retryTimer = null;
+            void this.#persist(runtime);
+          });
+        return;
+      }
+      this.#retire(runtime);
+    };
+    runtime.persisting = run().finally(() => {
+      runtime.persisting = null;
+    });
+    return runtime.persisting;
+  }
+
+  // 閉じ終え、DB へ書け、予算の扱いを決めた Live をメモリーから外す（終わった記録は少しだけ残す）。
+  // 外した後も、サイドバンドの受け口は Live を持ち続けるので、遅れて届いた使用秒数で照合できる。
+  #retire(runtime: LiveRuntime): void {
+    const record = runtime.record;
+    if (record.control_state !== 'closed') return;
+    if (!sameValues(runtime.persisted, valuesOf(record))) return;
+    if (!this.#lives.has(record.live_session_id)) {
+      this.#finished.set(record.live_session_id, record);
+      return;
+    }
+    this.#lives.delete(record.live_session_id);
+    this.#finished.set(record.live_session_id, record);
+    while (this.#finished.size > FINISHED_KEPT) {
+      const oldest = this.#finished.keys().next().value as string;
+      this.#finished.delete(oldest);
+    }
   }
 
   #clearTimers(runtime: LiveRuntime): void {
@@ -1053,20 +1459,14 @@ export class VoiceControl {
         if (handleRef.handle !== runtime.sideband) return;
         this.#armDeadline(runtime);
       },
-      onSessionClosed: (usage) => {
-        void this.#enqueue(runtime, () =>
-          this.#onSessionClosed(runtime, usage),
-        );
-      },
+      onSessionClosed: (usage) => this.#onSessionClosed(runtime, usage),
       onDisconnected: () => {
         if (handleRef.handle !== runtime.sideband) return;
-        void this.#enqueue(runtime, () =>
-          this.#onLost(
-            runtime,
-            runtime.record.control_state === 'connecting'
-              ? 'sideband_connect_failed'
-              : 'sideband_disconnected',
-          ),
+        this.#onLost(
+          runtime,
+          runtime.record.control_state === 'connecting'
+            ? 'sideband_connect_failed'
+            : 'sideband_disconnected',
         );
       },
     };
@@ -1081,9 +1481,7 @@ export class VoiceControl {
       () => {
         runtime.connectTimer = null;
         if (runtime.record.control_state === 'connecting')
-          void this.#enqueue(runtime, () =>
-            this.#onLost(runtime, 'sideband_connect_failed'),
-          );
+          this.#onLost(runtime, 'sideband_connect_failed');
       },
     );
     void provider
@@ -1092,48 +1490,43 @@ export class VoiceControl {
         this.#handlers(runtime, ref),
       )
       .catch(() => null)
-      .then((handle) =>
-        this.#enqueue(runtime, async () => {
-          if (runtime.connectTimer !== null) {
-            this.#timers.clear(runtime.connectTimer);
-            runtime.connectTimer = null;
-          }
-          if (handle === null) {
-            if (runtime.record.control_state === 'connecting')
-              await this.#onLost(runtime, 'sideband_connect_failed');
-            return;
-          }
-          if (runtime.record.control_state !== 'connecting') {
-            // 期限の後に接続できた・閉じ始めた後。閉じる手順は閉じるためだけの再接続が受け持つので、この接続は使わない。
-            handle.terminate();
-            return;
-          }
-          ref.handle = handle;
-          runtime.sideband = handle;
-          if (!(await this.#step(runtime, 'sideband_connected'))) return;
-          this.#armDeadline(runtime);
-          runtime.pingTimer = this.#timers.set(SIDEBAND_PING_INTERVAL_MS, () =>
-            this.#ping(runtime),
-          );
-          const state = await this.#deviceState(runtime.record.device_id).catch(
-            () => null,
-          );
-          if (state !== null)
-            this.#emit(state.device_id, {
-              schema: 'buddy.voice-event.v1',
-              event_id: this.#newId(),
-              event_type: 'sideband_connected',
-              device_id: state.device_id,
-              session_id: runtime.record.session_id,
-              live_session_id: runtime.record.live_session_id,
-              audio_epoch: runtime.record.audio_epoch,
-              control_epoch: runtime.record.control_epoch,
-              candidate_ids: [],
-              audio_control: null,
-              occurred_at: new Date(this.#wallNow()).toISOString(),
-            });
-        }),
-      );
+      .then((handle) => {
+        if (runtime.connectTimer !== null) {
+          this.#timers.clear(runtime.connectTimer);
+          runtime.connectTimer = null;
+        }
+        if (handle === null) {
+          if (runtime.record.control_state === 'connecting')
+            this.#onLost(runtime, 'sideband_connect_failed');
+          return;
+        }
+        if (runtime.record.control_state !== 'connecting') {
+          // 期限の後に接続できた・閉じ始めた後。閉じる手順は閉じるためだけの再接続が受け持つので、この接続は使わない。
+          handle.terminate();
+          return;
+        }
+        ref.handle = handle;
+        runtime.sideband = handle;
+        if (!this.#step(runtime, 'sideband_connected')) return;
+        this.#armDeadline(runtime);
+        runtime.pingTimer = this.#timers.set(SIDEBAND_PING_INTERVAL_MS, () =>
+          this.#ping(runtime),
+        );
+        const deviceId = runtime.record.device_id;
+        this.#emit(deviceId, {
+          schema: 'buddy.voice-event.v1',
+          event_id: this.#newId(),
+          event_type: 'sideband_connected',
+          device_id: deviceId,
+          session_id: runtime.record.session_id,
+          live_session_id: runtime.record.live_session_id,
+          audio_epoch: runtime.record.audio_epoch,
+          control_epoch: runtime.record.control_epoch,
+          candidate_ids: [],
+          audio_control: null,
+          occurred_at: new Date(this.#wallNow()).toISOString(),
+        });
+      });
   }
 
   #ping(runtime: LiveRuntime): void {
@@ -1152,50 +1545,46 @@ export class VoiceControl {
     runtime.deadlineTimer = this.#timers.set(SIDEBAND_PING_DEADLINE_MS, () => {
       runtime.deadlineTimer = null;
       if (runtime.record.control_state === 'ready')
-        void this.#enqueue(runtime, () =>
-          this.#onLost(runtime, 'ping_timeout'),
-        );
+        this.#onLost(runtime, 'ping_timeout');
     });
   }
 
   // lost: control_epoch を進め（nextLiveControl）、新規の委譲・読み上げを止め、音声リースを更新しない（sideband_lost）。
-  // 停止のイベントを送り、閉じるためだけの再接続を 1 回試す（10 §2A）。
-  async #onLost(
+  // 停止のイベントを送り、閉じるためだけの再接続を 1 回試す（10 §2A）。DB の書込みを待たない。
+  #onLost(
     runtime: LiveRuntime,
     trigger:
       'sideband_connect_failed' | 'sideband_disconnected' | 'ping_timeout',
-  ): Promise<void> {
-    if (!(await this.#step(runtime, trigger))) return;
+  ): void {
+    if (!this.#step(runtime, trigger)) return;
     const old = runtime.sideband;
     runtime.sideband = null;
     old?.terminate();
     this.#clearTimers(runtime);
-    const state = await this.#deviceState(runtime.record.device_id).catch(
-      () => null,
+    this.#emitAudioControl(
+      runtime.record.device_id,
+      'sideband_lost',
+      runtime.record,
     );
-    if (state !== null)
-      this.#emitAudioControl(state, 'sideband_lost', runtime.record);
-    if (!(await this.#step(runtime, 'close_requested', null, 'sideband_lost')))
-      return;
-    await this.#closeOnlyReconnect(runtime);
+    if (!this.#step(runtime, 'close_requested', null, 'sideband_lost')) return;
+    this.#closeOnlyReconnect(runtime);
   }
 
   // 閉じるためだけのサイドバンドの再接続（1 回・3 秒まで）。接続できたら session.close を送って終了を待つ。
   // できなければ終了未確認にして予約を保持する（端末側の停止は待たせない）。
-  async #closeOnlyReconnect(runtime: LiveRuntime): Promise<void> {
+  #closeOnlyReconnect(runtime: LiveRuntime): void {
     const provider = this.#provider;
     const sessionId = runtime.provider_session_id;
     if (provider === null || sessionId === null) {
-      await this.#markUnconfirmed(runtime);
+      this.#markUnconfirmed(runtime);
       return;
     }
-    // 接続の待ちの間は遷移の待ち行列を止めない（その間に届く session.closed などを受ける）。結果は待ち行列へ戻して扱う。
     const ref: { handle: LiveSideband | null } = { handle: null };
     let done = false;
     const timer = this.#timers.set(SIDEBAND_CLOSE_RECONNECT_MS, () => {
       if (done) return;
       done = true;
-      void this.#enqueue(runtime, () => this.#markUnconfirmed(runtime));
+      this.#markUnconfirmed(runtime);
     });
     void provider
       .connectSideband(sessionId, this.#handlers(runtime, ref))
@@ -1208,111 +1597,103 @@ export class VoiceControl {
         }
         done = true;
         this.#timers.clear(timer);
-        void this.#enqueue(runtime, async () => {
-          if (handle === null) {
-            await this.#markUnconfirmed(runtime);
-            return;
-          }
-          if (runtime.record.control_state !== 'closing') {
-            handle.terminate();
-            return;
-          }
-          ref.handle = handle;
-          runtime.sideband = handle;
-          handle.sendClose();
-          this.#armConfirm(runtime);
-        });
+        if (handle === null) {
+          this.#markUnconfirmed(runtime);
+          return;
+        }
+        if (runtime.record.control_state !== 'closing') {
+          handle.terminate();
+          return;
+        }
+        ref.handle = handle;
+        runtime.sideband = handle;
+        handle.sendClose();
+        this.#armConfirm(runtime);
       });
   }
 
-  // 中枢から閉じ始める。閉じる要求を記録し、サイドバンドが使えれば session.close を送る（lost なら再接続を試す）。
-  // 終了の確認（session.closed）は待たずに戻る（停止を遅らせない）。
-  async #beginClose(runtime: LiveRuntime, reason: string): Promise<void> {
-    await this.#enqueue(runtime, async () => {
-      if (runtime.record.closure !== 'open') return;
-      const wasLost = runtime.record.control_state === 'lost';
-      if (!(await this.#step(runtime, 'close_requested', null, reason))) return;
-      if (runtime.connectTimer !== null) {
-        this.#timers.clear(runtime.connectTimer);
-        runtime.connectTimer = null;
-      }
-      if (runtime.pingTimer !== null) this.#timers.clear(runtime.pingTimer);
-      runtime.pingTimer = null;
-      if (runtime.deadlineTimer !== null)
-        this.#timers.clear(runtime.deadlineTimer);
-      runtime.deadlineTimer = null;
-      if (!wasLost && runtime.sideband !== null) {
-        runtime.sideband.sendClose();
-        this.#armConfirm(runtime);
-        return;
-      }
-      if (runtime.provider_session_id === null) {
-        // provider のセッションがまだない（作成中）。作成の応答の後に閉じるためだけに接続する（createLiveSession）。
-        return;
-      }
-      void this.#enqueue(runtime, () => this.#closeOnlyReconnect(runtime));
-    });
+  // 中枢から閉じ始める。閉じる要求をメモリーに記録し、サイドバンドが使えれば session.close を送る（lost なら再接続を試す）。
+  // 終了の確認（session.closed）と DB の書込みは待たない（停止を遅らせない）。
+  #beginClose(runtime: LiveRuntime, reason: string): void {
+    if (runtime.record.closure !== 'open') return;
+    const wasLost = runtime.record.control_state === 'lost';
+    if (!this.#step(runtime, 'close_requested', null, reason)) return;
+    if (runtime.connectTimer !== null) {
+      this.#timers.clear(runtime.connectTimer);
+      runtime.connectTimer = null;
+    }
+    if (runtime.pingTimer !== null) this.#timers.clear(runtime.pingTimer);
+    runtime.pingTimer = null;
+    if (runtime.deadlineTimer !== null)
+      this.#timers.clear(runtime.deadlineTimer);
+    runtime.deadlineTimer = null;
+    if (!wasLost && runtime.sideband !== null) {
+      runtime.sideband.sendClose();
+      this.#armConfirm(runtime);
+      return;
+    }
+    // provider のセッションがまだない（作成中）なら、作成の応答の後に閉じるためだけに接続する（createLiveSession）。
+    if (runtime.provider_session_id === null) return;
+    this.#closeOnlyReconnect(runtime);
   }
 
   #armConfirm(runtime: LiveRuntime): void {
     if (runtime.confirmTimer !== null) this.#timers.clear(runtime.confirmTimer);
     runtime.confirmTimer = this.#timers.set(CORE_CLOSE_CONFIRM_MS, () => {
       runtime.confirmTimer = null;
-      void this.#enqueue(runtime, () => this.#markUnconfirmed(runtime));
+      this.#markUnconfirmed(runtime);
     });
   }
 
   // 終了・使用秒数を確認できない。予約を解放せず保持する（10 §2A）。
-  async #markUnconfirmed(runtime: LiveRuntime): Promise<void> {
+  #markUnconfirmed(runtime: LiveRuntime): void {
     if (runtime.record.control_state !== 'closing') return;
-    if (!(await this.#step(runtime, 'close_unconfirmed'))) return;
+    if (!this.#step(runtime, 'close_unconfirmed')) return;
     this.#clearTimers(runtime);
-    if (this.#budget !== null)
-      await this.#budget.hold(runtime.ticket).catch(() => undefined);
+    const budget = this.#budget;
+    if (budget !== null && runtime.ticket !== null)
+      this.#budgetLater(runtime, () => budget.hold(runtime.ticket));
   }
 
-  async #onSessionClosed(
-    runtime: LiveRuntime,
-    usage: number | null,
-  ): Promise<void> {
+  #onSessionClosed(runtime: LiveRuntime, usage: number | null): void {
     if (usage === null) {
       // 使用秒数のない終了は断線として扱う（精算しない）。
       if (runtime.record.control_state === 'ready')
-        await this.#onLost(runtime, 'sideband_disconnected');
+        this.#onLost(runtime, 'sideband_disconnected');
       else if (runtime.record.control_state === 'connecting')
-        await this.#onLost(runtime, 'sideband_connect_failed');
+        this.#onLost(runtime, 'sideband_connect_failed');
       return;
     }
     const providerFirst =
       runtime.record.closure === 'open' &&
       runtime.record.control_state !== 'lost';
     if (
-      !(await this.#step(
-        runtime,
-        'session_closed_received',
-        usage,
-        'provider_failure',
-      ))
+      !this.#step(runtime, 'session_closed_received', usage, 'provider_failure')
     )
       return;
     this.#clearTimers(runtime);
     runtime.sideband?.terminate();
     runtime.sideband = null;
     const settlement = settleLiveSeconds(usage, LIVE_INITIAL_RESERVE_SECONDS);
-    if (settlement.settled && this.#budget !== null && !runtime.settled) {
+    const budget = this.#budget;
+    if (
+      settlement.settled &&
+      budget !== null &&
+      runtime.ticket !== null &&
+      !runtime.settled
+    ) {
       runtime.settled = true;
-      await this.#budget
-        .settle(runtime.ticket, settlement.billable_seconds)
-        .catch(() => undefined);
-    }
-    if (providerFirst) {
-      // provider が先に閉じた。端末へ close_voice_session（provider_failure）を送る（ADR 0038）。
-      const state = await this.#deviceState(runtime.record.device_id).catch(
-        () => null,
+      this.#budgetLater(runtime, () =>
+        budget.settle(runtime.ticket, settlement.billable_seconds),
       );
-      if (state !== null)
-        this.#emitAudioControl(state, 'provider_failure', runtime.record);
     }
+    // provider が先に閉じた。端末へ close_voice_session（provider_failure）を送る（ADR 0038）。
+    if (providerFirst)
+      this.#emitAudioControl(
+        runtime.record.device_id,
+        'provider_failure',
+        runtime.record,
+      );
   }
 
   // ---- 起動と停止 -----------------------------------------------------------------------------------------------
@@ -1326,6 +1707,10 @@ export class VoiceControl {
     for (const record of found.value) {
       const runtime: LiveRuntime = {
         record,
+        persisted: valuesOf(record),
+        persisting: null,
+        retryTimer: null,
+        opened: { live_session_id: record.live_session_id, outcome: 'open' },
         ticket: null,
         provider_session_id: null,
         sideband: null,
@@ -1333,18 +1718,23 @@ export class VoiceControl {
         pingTimer: null,
         deadlineTimer: null,
         confirmTimer: null,
-        queue: Promise.resolve(),
+        lost: false,
         settled: false,
+        budgetChain: Promise.resolve(),
       };
       if (
         record.control_state === 'connecting' ||
         record.control_state === 'ready'
       )
-        await this.#step(runtime, 'core_restarted');
+        this.#step(runtime, 'core_restarted');
       if (runtime.record.closure === 'open')
-        await this.#step(runtime, 'close_requested', null, 'core_lease_lost');
+        this.#step(runtime, 'close_requested', null, 'core_lease_lost');
       if (runtime.record.control_state === 'closing')
-        await this.#step(runtime, 'close_unconfirmed');
+        this.#step(runtime, 'close_unconfirmed');
+      await this.#persist(runtime);
+      // 書けなかったものは、再試行の間もメモリーに置く（閉じ終えた記録として扱う）。
+      if (!sameValues(runtime.persisted, valuesOf(runtime.record)))
+        this.#lives.set(record.live_session_id, runtime);
       ids.push(record.live_session_id);
     }
     if (ids.length > 0)
@@ -1360,22 +1750,36 @@ export class VoiceControl {
     await this.#serial.catch(() => undefined);
     for (const runtime of this.#lives.values()) {
       this.#clearTimers(runtime);
+      if (runtime.retryTimer !== null) this.#timers.clear(runtime.retryTimer);
+      runtime.retryTimer = null;
       runtime.sideband?.terminate();
       runtime.sideband = null;
     }
+    for (const stop of this.#pendingStops)
+      if (stop.retry !== null) this.#timers.clear(stop.retry);
     for (const byKind of this.#leases.values())
       for (const entry of byKind.values()) this.#timers.clear(entry.expiry);
   }
 
-  // 試験・診断用。Live の今の記録。
+  // 試験・診断用。Live の今の記録（終わって外したものは、残している範囲で返す）。
   liveRecord(liveSessionId: string): LiveSessionRecord | null {
-    return this.#lives.get(liveSessionId)?.record ?? null;
+    return (
+      this.#lives.get(liveSessionId)?.record ??
+      this.#finished.get(liveSessionId) ??
+      null
+    );
   }
 
-  // 試験・診断用。runtime の遷移の待ち行列が空になるまで待つ。
+  // 試験・診断用。メモリーに置いている Live の数（終わったものは外す）。
+  get liveCount(): number {
+    return this.#lives.size;
+  }
+
+  // 試験・診断用。受付の列・DB の書込み・予算の門の呼び出しが落ち着くまで待つ（再試行のタイマーは待たない）。
   async idle(): Promise<void> {
     await this.#serial.catch(() => undefined);
-    for (const runtime of this.#lives.values())
-      await runtime.queue.catch(() => undefined);
+    for (const runtime of [...this.#lives.values()])
+      await runtime.persisting?.catch(() => undefined);
+    await Promise.all([...this.#inflight]).catch(() => undefined);
   }
 }

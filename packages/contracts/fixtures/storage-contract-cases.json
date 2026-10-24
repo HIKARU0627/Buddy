@@ -4380,6 +4380,54 @@
         "restore_unverified_at": "2026-10-09T01:05:00Z",
         "valid_approval_count": 1
       }
+    },
+    {
+      "id": "x16-restored-operation-local-command-approval-remains",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "B06-01 の Codex の P3: J3 は全承認の失効。印を付けない LocalCommand でも、有効な承認が残っていれば拒否する。",
+      "semantic_errors": ["approval_not_revoked"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "local_command",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 1
+      }
+    },
+    {
+      "id": "x16-restored-operation-terminal-approval-remains",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "B06-01 の Codex の P3: 印のない終端の外部変更でも、有効な承認が残っていれば拒否する（印の有無に関係なく検査する）。",
+      "semantic_errors": ["approval_not_revoked"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "succeeded",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 1
+      }
+    },
+    {
+      "id": "x16-restored-operation-unmarked-awaiting-approval-remains",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "印の漏れと承認の残りは、両方とも返す（承認の検査を印の検査の後ろに隠さない）。",
+      "semantic_errors": ["not_quarantined", "approval_not_revoked"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 1
+      }
     }
   ],
   "scenarios": [

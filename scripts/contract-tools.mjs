@@ -237,7 +237,9 @@ function restoredOperationErrors(op) {
     if (RESTORE_IN_FLIGHT_STATES.includes(op.state))
       errors.add('in_flight_not_held');
   }
-  if (marked && op.valid_approval_count > 0) errors.add('approval_not_revoked');
+  // J3: 有効だった承認はすべて失効させる。隔離の印の有無・経路（LocalCommand を含む）・状態によらない
+  // （B06-01 の Codex の P3。B06-05、ADR 0047）。
+  if (op.valid_approval_count > 0) errors.add('approval_not_revoked');
   return [...errors];
 }
 

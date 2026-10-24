@@ -232,7 +232,8 @@
         "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-derived-from-forgotten",
         "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-item-with-body-field-rejected",
         "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-item-id-is-sentence-rejected",
-        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-with-summary-field-rejected"
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-notice-with-summary-field-rejected",
+        "tests/fixtures/backup-restore-cases.json#x15-b0605-retention-forgetting-superseded"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -281,7 +282,18 @@
         "packages/contracts/fixtures/storage-contract-cases.json#x16-restored-operation-not-executed-unmarked",
         "packages/contracts/fixtures/storage-contract-cases.json#x16-restore-scenario-not-executed-retry-then-restore",
         "packages/contracts/fixtures/storage-contract-cases.json#x16-restore-scenario-unmarked-not-executed-passes-guard",
-        "packages/contracts/fixtures/storage-contract-cases.json#x16-restore-scenario-reconcile-holds-unless-positive-evidence"
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-restore-scenario-reconcile-holds-unless-positive-evidence",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-ledger-lost-everywhere",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-ledger-only-old-copy",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-ledger-key-swapped-against-existing-ledger",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-open-clock-behind-last-check-by-1ms",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-retention-clock-rolled-back",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-setup-ledger-key-missing-for-existing-ledger",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-install-same-id-different-material",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-quarantine-all-states",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-sequence-revise-then-late-marker-then-owner",
+        "tests/fixtures/backup-restore-cases.json#x16-b0605-result-ledger-lost-settings-only",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-restored-operation-local-command-approval-remains"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -299,7 +311,8 @@
         "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private-opens-live-rejected",
         "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private-persists-turns-rejected",
         "packages/contracts/fixtures/storage-contract-cases.json#x17-backup-manifest-includes-private-rejected",
-        "packages/contracts/fixtures/storage-contract-cases.json#x17-backup-manifest-private-exclusion-missing-rejected"
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-backup-manifest-private-exclusion-missing-rejected",
+        "tests/fixtures/backup-restore-cases.json#x17-b0605-manifest-private-included"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

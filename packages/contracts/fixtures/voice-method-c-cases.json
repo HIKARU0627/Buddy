@@ -1,0 +1,340 @@
+{
+  "status": "specification_only",
+  "description": "方式 C（Live の文字起こしから進める暫定入力）の 4 操作の限定の期待値（設計 10 §5A、09 X51・QA41・QA05・X21、質問 130、ADR 0041）。手書きで、domain の実装から生成していない。進めてよいのは自動実行の 4 操作（用事・メモの登録、ラベルの変更、返信の下書きの保存、自分だけの予定の作成）だけ。参照と聞き返しは入力が確定していなくてもよい。観測の条件が欠ければ blocked（既知の欠落・対応不明・未解決の訂正は C でも blocked）、4 操作でなければ requires_full_text（全文の確定・方式 A・③へ戻す。C のまま画面承認へ昇格させない）。proceed は実行の許可ではなく、実行の可否は readiness.ts と 08 の最終検査が別に決める。",
+  "operations": [
+    "register_task_or_note",
+    "change_label",
+    "save_reply_draft",
+    "create_own_event"
+  ],
+  "stable_ms": 300,
+  "facts_base": {
+    "end_candidate_observed": true,
+    "target_range_mapped": true,
+    "stable_ms": 300,
+    "known_fragment_gap": false,
+    "target_turn_unique": true,
+    "unresolved_correction": false,
+    "missing_args": false,
+    "utterance_hold": false,
+    "policy_version": "1",
+    "own_event_only": true
+  },
+  "cases": [
+    {
+      "id": "create-task",
+      "refs": ["QA41", "X21", "X51"],
+      "intent": "create_task",
+      "expected": {
+        "decision": "proceed",
+        "operation": "register_task_or_note",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "create-note",
+      "refs": ["QA41", "X21"],
+      "intent": "create_note",
+      "expected": {
+        "decision": "proceed",
+        "operation": "register_task_or_note",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "label-mail",
+      "refs": ["QA41", "X21"],
+      "intent": "label_mail",
+      "expected": {
+        "decision": "proceed",
+        "operation": "change_label",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "draft-reply",
+      "refs": ["QA41", "X21"],
+      "intent": "draft_reply",
+      "expected": {
+        "decision": "proceed",
+        "operation": "save_reply_draft",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "create-an-event-only-for-myself",
+      "refs": ["QA41", "X21"],
+      "intent": "create_event",
+      "expected": {
+        "decision": "proceed",
+        "operation": "create_own_event",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "create-an-event-with-other-people-needs-full-text",
+      "refs": ["QA41", "X51"],
+      "intent": "create_event",
+      "facts": { "own_event_only": false },
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["event_not_own_only"]
+      }
+    },
+    {
+      "id": "memory-save-needs-full-text",
+      "refs": ["QA41", "X59"],
+      "intent": "memory_save",
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "memory-forget-needs-full-text",
+      "refs": ["QA41"],
+      "intent": "memory_forget",
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "memory-correct-needs-full-text",
+      "refs": ["QA41"],
+      "intent": "memory_correct",
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "update-event-needs-full-text",
+      "refs": ["QA41", "X51"],
+      "intent": "update_event",
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "send-mail-needs-full-text",
+      "refs": ["QA41", "X51"],
+      "intent": "send_mail",
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "trash-mail-needs-full-text",
+      "refs": ["QA41"],
+      "intent": "trash_mail",
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "update-task-needs-full-text",
+      "refs": ["QA41", "X61"],
+      "intent": "update_task",
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "handoff-screen-is-not-one-of-the-four",
+      "refs": ["QA41"],
+      "intent": "handoff_screen",
+      "expected": {
+        "decision": "requires_full_text",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "stable-for-exactly-300ms",
+      "refs": ["10 §5A", "X51"],
+      "intent": "create_task",
+      "facts": { "stable_ms": 300 },
+      "expected": {
+        "decision": "proceed",
+        "operation": "register_task_or_note",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "stable-for-299ms",
+      "refs": ["10 §5A", "X51"],
+      "intent": "create_task",
+      "facts": { "stable_ms": 299 },
+      "expected": { "decision": "blocked", "reasons": ["not_stable"] }
+    },
+    {
+      "id": "time-alone-does-not-make-it-ready-without-the-end-candidate",
+      "refs": ["10 §5A", "X51"],
+      "intent": "create_task",
+      "facts": { "end_candidate_observed": false, "stable_ms": 5000 },
+      "expected": {
+        "decision": "blocked",
+        "reasons": ["end_candidate_missing"]
+      }
+    },
+    {
+      "id": "time-mapping-not-confirmed",
+      "refs": ["10 §5A", "X51", "QA05"],
+      "intent": "label_mail",
+      "facts": { "target_range_mapped": false },
+      "expected": {
+        "decision": "blocked",
+        "reasons": ["time_mapping_unconfirmed"]
+      }
+    },
+    {
+      "id": "known-fragment-gap",
+      "refs": ["10 §5A", "QA05", "X51"],
+      "intent": "create_task",
+      "facts": { "known_fragment_gap": true },
+      "expected": { "decision": "blocked", "reasons": ["known_fragment_gap"] }
+    },
+    {
+      "id": "target-turn-not-unique",
+      "refs": ["10 §5A", "QA05", "X51"],
+      "intent": "draft_reply",
+      "facts": { "target_turn_unique": false },
+      "expected": {
+        "decision": "blocked",
+        "reasons": ["target_turn_not_unique"]
+      }
+    },
+    {
+      "id": "unresolved-correction-is-blocked-in-c-too",
+      "refs": ["10 §5A", "QA05", "X51"],
+      "intent": "create_event",
+      "facts": { "unresolved_correction": true },
+      "expected": {
+        "decision": "blocked",
+        "reasons": ["unresolved_correction"]
+      }
+    },
+    {
+      "id": "missing-arguments",
+      "refs": ["10 §5A", "X51"],
+      "intent": "create_task",
+      "facts": { "missing_args": true },
+      "expected": { "decision": "blocked", "reasons": ["missing_args"] }
+    },
+    {
+      "id": "a-new-utterance-started-holds-the-change",
+      "refs": ["10 §5A", "X51"],
+      "intent": "create_task",
+      "facts": { "utterance_hold": true },
+      "expected": { "decision": "blocked", "reasons": ["utterance_hold"] }
+    },
+    {
+      "id": "policy-version-missing",
+      "refs": ["07 §1", "QA41"],
+      "intent": "create_task",
+      "facts": { "policy_version": null },
+      "expected": {
+        "decision": "blocked",
+        "reasons": ["policy_version_missing"]
+      }
+    },
+    {
+      "id": "policy-version-empty",
+      "refs": ["07 §1", "QA41"],
+      "intent": "create_task",
+      "facts": { "policy_version": "" },
+      "expected": {
+        "decision": "blocked",
+        "reasons": ["policy_version_missing"]
+      }
+    },
+    {
+      "id": "several-conditions-missing-are-all-listed-in-order",
+      "refs": ["10 §5A", "QA05", "X51"],
+      "intent": "label_mail",
+      "facts": {
+        "end_candidate_observed": false,
+        "target_range_mapped": false,
+        "stable_ms": 0,
+        "known_fragment_gap": true,
+        "unresolved_correction": true
+      },
+      "expected": {
+        "decision": "blocked",
+        "reasons": [
+          "end_candidate_missing",
+          "time_mapping_unconfirmed",
+          "not_stable",
+          "known_fragment_gap",
+          "unresolved_correction"
+        ]
+      }
+    },
+    {
+      "id": "blocked-wins-over-outside-the-four",
+      "refs": ["10 §5A", "QA41"],
+      "intent": "memory_save",
+      "facts": { "known_fragment_gap": true },
+      "expected": { "decision": "blocked", "reasons": ["known_fragment_gap"] }
+    },
+    {
+      "id": "blocked-wins-over-an-event-with-other-people",
+      "refs": ["10 §5A", "QA41"],
+      "intent": "create_event",
+      "facts": { "own_event_only": false, "stable_ms": 100 },
+      "expected": { "decision": "blocked", "reasons": ["not_stable"] }
+    },
+    {
+      "id": "reading-the-schedule-needs-no-confirmed-input",
+      "refs": ["10 §5A", "X51"],
+      "intent": "query_schedule",
+      "facts": {
+        "end_candidate_observed": false,
+        "target_range_mapped": false,
+        "stable_ms": 0,
+        "known_fragment_gap": true,
+        "unresolved_correction": true,
+        "policy_version": null
+      },
+      "expected": { "decision": "read_allowed" }
+    },
+    {
+      "id": "research-is-a-read",
+      "refs": ["10 §5A"],
+      "intent": "research",
+      "facts": { "known_fragment_gap": true },
+      "expected": { "decision": "read_allowed" }
+    },
+    {
+      "id": "smalltalk-is-a-read",
+      "refs": ["10 §5A"],
+      "intent": "smalltalk",
+      "facts": { "end_candidate_observed": false },
+      "expected": { "decision": "read_allowed" }
+    },
+    {
+      "id": "undo-opens-the-undo-list-only",
+      "refs": ["10 §5A", "10 §5"],
+      "intent": "undo_action",
+      "facts": { "known_fragment_gap": true },
+      "expected": { "decision": "read_allowed" }
+    },
+    {
+      "id": "unclear-is-asked-back",
+      "refs": ["10 §5A"],
+      "intent": "unclear",
+      "facts": { "known_fragment_gap": true },
+      "expected": { "decision": "read_allowed" }
+    }
+  ]
+}

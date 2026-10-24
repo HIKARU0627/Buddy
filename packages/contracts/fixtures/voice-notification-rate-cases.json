@@ -1,0 +1,445 @@
+{
+  "status": "specification_only",
+  "description": "音声の通知の頻度の制限の期待値（設計 10 §7、09 X29・X35、ADR 0041）。手で書いたもので、domain の実装から生成していない。60 秒以内に届いた気づきは 1 回にまとめ（最初の気づきから 60 秒ちょうどに届いたものまで含める）、音声通知の接続は前の接続の開始から 5 分に 1 回まで（5 分ちょうどから可）、1 回に読むのは古い順の最大 5 件。ロック中・来客モード・全体停止中・会話予算の上限到達後・音声通知モードでないときは、読み上げず画面通知だけにする。時刻は注入した単調時計（ms）。steps は時刻順で、add はその時刻に届いた気づきの id、context は既定（mode_enabled が true・blocked が null・conversation_open が false）を上書きする項目だけを書く。expect は判定のうち書いた項目だけを比べる。",
+  "constants": {
+    "batch_window_ms": 60000,
+    "min_interval_ms": 300000,
+    "max_items": 5
+  },
+  "context_defaults": {
+    "mode_enabled": true,
+    "blocked": null,
+    "conversation_open": false
+  },
+  "scenarios": [
+    {
+      "id": "x35-three-in-sixty-seconds-then-two-within-five-minutes",
+      "refs": ["10 §7", "X35"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["n1"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 60000
+          }
+        },
+        {
+          "at": 20000,
+          "add": ["n2"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 60000
+          }
+        },
+        {
+          "at": 59999,
+          "add": ["n3"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 60000
+          }
+        },
+        {
+          "at": 60000,
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["n1", "n2", "n3"]
+          }
+        },
+        {
+          "at": 100000,
+          "add": ["n4"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 160000
+          }
+        },
+        {
+          "at": 150000,
+          "add": ["n5"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 160000
+          }
+        },
+        {
+          "at": 160000,
+          "expect": {
+            "action": "defer",
+            "retry_at_ms": 360000
+          }
+        },
+        {
+          "at": 359999,
+          "expect": {
+            "action": "defer",
+            "retry_at_ms": 360000
+          }
+        },
+        {
+          "at": 360000,
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["n4", "n5"]
+          }
+        },
+        {
+          "at": 360001,
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-notice-after-the-window-belongs-to-the-next-batch",
+      "refs": ["10 §7", "X35"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["a1"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 60000
+          }
+        },
+        {
+          "at": 60001,
+          "add": ["a2"],
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["a1"]
+          }
+        },
+        {
+          "at": 120001,
+          "expect": {
+            "action": "defer",
+            "retry_at_ms": 360001
+          }
+        },
+        {
+          "at": 360001,
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["a2"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-notice-exactly-at-the-end-of-the-window-is-in-the-batch",
+      "refs": ["10 §7", "X35"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["a1"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 60000
+          }
+        },
+        {
+          "at": 60000,
+          "add": ["a2"],
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["a1", "a2"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "at-most-five-items-per-reading-and-the-rest-wait-for-the-next-one",
+      "refs": ["10 §7", "X35"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["a1", "a2", "a3", "a4", "a5", "a6", "a7"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 60000
+          }
+        },
+        {
+          "at": 60000,
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["a1", "a2", "a3", "a4", "a5"]
+          }
+        },
+        {
+          "at": 60001,
+          "expect": {
+            "action": "defer",
+            "retry_at_ms": 360000
+          }
+        },
+        {
+          "at": 360000,
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["a6", "a7"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "an-open-conversation-gets-the-notice-without-a-new-connection",
+      "refs": ["10 §7", "X35"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["c1"],
+          "context": {
+            "conversation_open": true
+          },
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 60000
+          }
+        },
+        {
+          "at": 60000,
+          "context": {
+            "conversation_open": true
+          },
+          "expect": {
+            "action": "append_to_open_conversation",
+            "item_ids": ["c1"]
+          }
+        },
+        {
+          "at": 60001,
+          "add": ["c2"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 120001
+          }
+        },
+        {
+          "at": 120001,
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["c2"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "locked-device-gets-a-screen-notice-only",
+      "refs": ["10 §7", "X29"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["b1", "b2"],
+          "context": {
+            "blocked": "locked"
+          },
+          "expect": {
+            "action": "screen_only",
+            "reason": "locked",
+            "item_ids": ["b1", "b2"]
+          }
+        },
+        {
+          "at": 100000,
+          "context": {
+            "blocked": "locked"
+          },
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": null
+          }
+        },
+        {
+          "at": 200000,
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "guest-mode-gets-a-screen-notice-only",
+      "refs": ["10 §7", "X29"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["g1"],
+          "context": {
+            "blocked": "guest_mode"
+          },
+          "expect": {
+            "action": "screen_only",
+            "reason": "guest_mode",
+            "item_ids": ["g1"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "global-stop-gets-a-screen-notice-only",
+      "refs": ["10 §7", "X29"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["s1"],
+          "context": {
+            "blocked": "global_stop"
+          },
+          "expect": {
+            "action": "screen_only",
+            "reason": "global_stop",
+            "item_ids": ["s1"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "budget-reached-gets-a-screen-notice-only",
+      "refs": ["10 §7", "X29"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["u1"],
+          "context": {
+            "blocked": "budget_reached"
+          },
+          "expect": {
+            "action": "screen_only",
+            "reason": "budget_reached",
+            "item_ids": ["u1"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "mode-off-gets-a-screen-notice-only",
+      "refs": ["10 §7", "D07"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["m1"],
+          "context": {
+            "mode_enabled": false
+          },
+          "expect": {
+            "action": "screen_only",
+            "reason": "mode_off",
+            "item_ids": ["m1"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "the-block-wins-over-an-open-conversation",
+      "refs": ["10 §7", "X29"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["w1"],
+          "context": {
+            "blocked": "locked",
+            "conversation_open": true
+          },
+          "expect": {
+            "action": "screen_only",
+            "reason": "locked",
+            "item_ids": ["w1"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "the-same-notice-twice-is-read-once",
+      "refs": ["10 §7", "X12"],
+      "steps": [
+        {
+          "at": 0,
+          "add": ["d1", "d1"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 60000
+          }
+        },
+        {
+          "at": 60000,
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["d1"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-clock-that-went-back-keeps-waiting",
+      "refs": ["10 §7"],
+      "steps": [
+        {
+          "at": 100000,
+          "add": ["e1"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 160000
+          }
+        },
+        {
+          "at": 50000,
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 160000
+          }
+        },
+        {
+          "at": 160000,
+          "expect": {
+            "action": "read_new_connection",
+            "item_ids": ["e1"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "a-clock-that-went-back-does-not-open-a-new-connection-early",
+      "refs": ["10 §7"],
+      "initial": {
+        "pending": [],
+        "last_connection_at_ms": 500000
+      },
+      "steps": [
+        {
+          "at": 100000,
+          "add": ["f1"],
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": 160000
+          }
+        },
+        {
+          "at": 200000,
+          "expect": {
+            "action": "defer",
+            "retry_at_ms": 800000
+          }
+        }
+      ]
+    },
+    {
+      "id": "nothing-pending",
+      "refs": ["10 §7"],
+      "steps": [
+        {
+          "at": 0,
+          "expect": {
+            "action": "wait",
+            "retry_at_ms": null
+          }
+        }
+      ]
+    }
+  ]
+}

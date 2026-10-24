@@ -4,13 +4,34 @@
   "table": {
     "version": "1",
     "phrases": [
-      { "phrase": "ちょっと待って", "action": "extend_silence" },
-      { "phrase": "少し待って", "action": "extend_silence" },
-      { "phrase": "読み上げを止めて", "action": "stop_playback" },
-      { "phrase": "もう終わり", "action": "end_conversation" },
-      { "phrase": "会話を終わる", "action": "end_conversation" },
-      { "phrase": "記録しないで", "action": "start_private_conversation" },
-      { "phrase": "文字で返して", "action": "reply_in_text" }
+      {
+        "phrase": "ちょっと待って",
+        "action": "extend_silence"
+      },
+      {
+        "phrase": "少し待って",
+        "action": "extend_silence"
+      },
+      {
+        "phrase": "読み上げを止めて",
+        "action": "stop_playback"
+      },
+      {
+        "phrase": "もう終わり",
+        "action": "end_conversation"
+      },
+      {
+        "phrase": "会話を終わる",
+        "action": "end_conversation"
+      },
+      {
+        "phrase": "記録しないで",
+        "action": "start_private_conversation"
+      },
+      {
+        "phrase": "文字で返して",
+        "action": "reply_in_text"
+      }
     ]
   },
   "matches": [
@@ -93,6 +114,30 @@
       "expected": null
     },
     {
+      "id": "polite-form-of-a-phrase-is-not-in-the-table",
+      "refs": ["X58"],
+      "utterance": "ちょっと待ってください",
+      "expected": null
+    },
+    {
+      "id": "phrase-with-a-suffix",
+      "refs": ["X58"],
+      "utterance": "もう終わりにして",
+      "expected": null
+    },
+    {
+      "id": "phrase-followed-by-a-request-about-the-end",
+      "refs": ["X58"],
+      "utterance": "会話を終わる前に予定を教えて",
+      "expected": null
+    },
+    {
+      "id": "phrase-repeated",
+      "refs": ["X58"],
+      "utterance": "ちょっと待って待って",
+      "expected": null
+    },
+    {
       "id": "cancel-the-workflow-is-not-a-session-control",
       "refs": ["10 §1A", "X58", "QA43"],
       "utterance": "処理を取り消して",
@@ -164,13 +209,21 @@
       "valid": true,
       "table": {
         "version": "1",
-        "phrases": [{ "phrase": "もう終わり", "action": "end_conversation" }]
+        "phrases": [
+          {
+            "phrase": "もう終わり",
+            "action": "end_conversation"
+          }
+        ]
       }
     },
     {
       "id": "table-without-phrases",
       "valid": false,
-      "table": { "version": "1", "phrases": [] }
+      "table": {
+        "version": "1",
+        "phrases": []
+      }
     },
     {
       "id": "table-with-cancel-workflow",
@@ -179,7 +232,10 @@
       "table": {
         "version": "1",
         "phrases": [
-          { "phrase": "処理を取り消して", "action": "cancel_workflow" }
+          {
+            "phrase": "処理を取り消して",
+            "action": "cancel_workflow"
+          }
         ]
       }
     },
@@ -188,7 +244,12 @@
       "valid": false,
       "table": {
         "version": "1",
-        "phrases": [{ "phrase": "", "action": "end_conversation" }]
+        "phrases": [
+          {
+            "phrase": "",
+            "action": "end_conversation"
+          }
+        ]
       }
     },
     {
@@ -196,7 +257,12 @@
       "valid": false,
       "table": {
         "version": "v1",
-        "phrases": [{ "phrase": "もう終わり", "action": "end_conversation" }]
+        "phrases": [
+          {
+            "phrase": "もう終わり",
+            "action": "end_conversation"
+          }
+        ]
       }
     },
     {
@@ -213,5 +279,279 @@
         ]
       }
     }
-  ]
+  ],
+  "table_error_cases": [
+    {
+      "id": "valid-table",
+      "refs": ["X58"],
+      "table": {
+        "version": "1",
+        "phrases": [
+          {
+            "phrase": "もう終わり",
+            "action": "end_conversation"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "id": "version-label-is-not-numeric",
+      "refs": ["X58"],
+      "table": {
+        "version": "v1",
+        "phrases": [
+          {
+            "phrase": "もう終わり",
+            "action": "end_conversation"
+          }
+        ]
+      },
+      "expected": ["version_not_numeric"]
+    },
+    {
+      "id": "version-with-a-leading-zero",
+      "refs": ["X58"],
+      "table": {
+        "version": "01",
+        "phrases": [
+          {
+            "phrase": "もう終わり",
+            "action": "end_conversation"
+          }
+        ]
+      },
+      "expected": ["version_not_numeric"]
+    },
+    {
+      "id": "no-phrases",
+      "refs": ["X58"],
+      "table": {
+        "version": "1",
+        "phrases": []
+      },
+      "expected": ["no_phrases"]
+    },
+    {
+      "id": "phrase-of-only-marks",
+      "refs": ["X58"],
+      "table": {
+        "version": "1",
+        "phrases": [
+          {
+            "phrase": " 。",
+            "action": "end_conversation"
+          }
+        ]
+      },
+      "expected": ["empty_phrase"]
+    },
+    {
+      "id": "cancel-workflow-is-not-a-session-control",
+      "refs": ["10 §1A", "X58", "QA43"],
+      "table": {
+        "version": "1",
+        "phrases": [
+          {
+            "phrase": "処理を取り消して",
+            "action": "cancel_workflow"
+          }
+        ]
+      },
+      "expected": ["unknown_action"]
+    },
+    {
+      "id": "same-phrase-bound-to-two-actions",
+      "refs": ["X58"],
+      "table": {
+        "version": "1",
+        "phrases": [
+          {
+            "phrase": "もう終わり",
+            "action": "end_conversation"
+          },
+          {
+            "phrase": "もう終わり！",
+            "action": "stop_playback"
+          }
+        ]
+      },
+      "expected": ["ambiguous_phrase"]
+    },
+    {
+      "id": "same-phrase-twice-for-the-same-action",
+      "refs": ["X58"],
+      "table": {
+        "version": "1",
+        "phrases": [
+          {
+            "phrase": "もう終わり",
+            "action": "end_conversation"
+          },
+          {
+            "phrase": "もう終わり。",
+            "action": "end_conversation"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "id": "several-errors-are-listed-in-order",
+      "refs": ["X58"],
+      "table": {
+        "version": "0",
+        "phrases": []
+      },
+      "expected": ["version_not_numeric", "no_phrases"]
+    }
+  ],
+  "resolve_cases": [
+    {
+      "id": "wait-in-a-live-conversation",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "ちょっと待って",
+      "input_kind": "voice_live",
+      "expected": {
+        "action": "extend_silence",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": true
+      }
+    },
+    {
+      "id": "wait-by-local-asr-has-no-connection-to-extend",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "ちょっと待って",
+      "input_kind": "voice_local",
+      "expected": {
+        "action": "extend_silence",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": false
+      }
+    },
+    {
+      "id": "end-in-a-live-conversation",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "もう終わり",
+      "input_kind": "voice_live",
+      "expected": {
+        "action": "end_conversation",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": true
+      }
+    },
+    {
+      "id": "end-typed-is-handled-like-the-screen-button",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "もう終わり",
+      "input_kind": "text",
+      "expected": {
+        "action": "end_conversation",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": false
+      }
+    },
+    {
+      "id": "stop-reading-in-a-live-conversation",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "読み上げを止めて",
+      "input_kind": "voice_live",
+      "expected": {
+        "action": "stop_playback",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": true
+      }
+    },
+    {
+      "id": "stop-reading-typed-has-no-playback",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "読み上げを止めて",
+      "input_kind": "text",
+      "expected": {
+        "action": "stop_playback",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": false
+      }
+    },
+    {
+      "id": "reply-in-text-in-a-live-conversation",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "文字で返して",
+      "input_kind": "voice_live",
+      "expected": {
+        "action": "reply_in_text",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": true
+      }
+    },
+    {
+      "id": "reply-in-text-typed",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "文字で返して",
+      "input_kind": "text",
+      "expected": {
+        "action": "reply_in_text",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": false
+      }
+    },
+    {
+      "id": "private-by-local-asr",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "記録しないで",
+      "input_kind": "voice_local",
+      "expected": {
+        "action": "start_private_conversation",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": false
+      }
+    },
+    {
+      "id": "private-in-a-live-conversation",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "記録しないで",
+      "input_kind": "voice_live",
+      "expected": {
+        "action": "start_private_conversation",
+        "bypass_intent_llm": true,
+        "applies_to_live_connection": true
+      }
+    },
+    {
+      "id": "a-request-about-the-end-time-goes-to-intent-detection",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "終わりの時間教えて",
+      "input_kind": "voice_live",
+      "expected": null
+    },
+    {
+      "id": "a-phrase-followed-by-a-request-goes-to-intent-detection",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "ちょっと待って、明日の予定を入れて",
+      "input_kind": "voice_live",
+      "expected": null
+    },
+    {
+      "id": "cancel-the-workflow-is-another-command",
+      "refs": ["10 §3", "10 §5", "X58"],
+      "utterance": "処理を取り消して",
+      "input_kind": "voice_live",
+      "expected": null
+    }
+  ],
+  "resolve_with_an_invalid_table": {
+    "refs": ["X58"],
+    "utterance": "もう終わり",
+    "input_kind": "voice_live",
+    "table": {
+      "version": "v1",
+      "phrases": [
+        {
+          "phrase": "もう終わり",
+          "action": "end_conversation"
+        }
+      ]
+    },
+    "expected": null
+  }
 }

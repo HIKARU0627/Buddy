@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  AMOUNT_PATTERN,
   BUDGET_RECORD_RETENTION_MONTHS,
   RETENTION_RULES,
   SWEEP_INTERVAL_MS,
@@ -52,7 +53,7 @@ const deepFreeze = (value) => {
 };
 
 test('hand-written sweep cases: actions, holds, notices and clock state', () => {
-  assert(cases.sweep_cases.length >= 45);
+  assert(cases.sweep_cases.length >= 50);
   const seen = new Set();
   for (const entry of cases.sweep_cases) {
     assert(!seen.has(entry.id), `duplicate ${entry.id}`);
@@ -653,4 +654,14 @@ test('inherited property names are never rules, even when called directly', () =
     plan.holds.map((hold) => hold.reason),
     ['unknown_unit'],
   );
+});
+
+test('the shared amount pattern is the contract Amount pattern', async () => {
+  const schema = parseStrictJson(
+    await readFile(
+      new URL('packages/contracts/schemas/buddy.schema.json', root),
+      'utf8',
+    ),
+  );
+  assert.equal(AMOUNT_PATTERN.source, schema.$defs.Amount.pattern);
 });

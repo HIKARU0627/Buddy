@@ -4,7 +4,7 @@
 // 予算の記録は消さない側へ倒す（J4・J5、03 の「混在部分を分離できなければ短い期限」）。
 // 原本に決めがないこと（時計の巻き戻りの解消の条件・掃除の間隔・巻き戻りの許容幅など）は docs/b00/contract-map.md の U53〜U57 に記録した。
 
-import { budgetMonthStart } from './budget-rules.js';
+import { AMOUNT_PATTERN, budgetMonthStart } from './budget-rules.js';
 import {
   MEMORY_DELETE_AFTER_REVIEW_DAYS,
   applyMemoryEvent,
@@ -229,8 +229,8 @@ export interface BudgetReservationRow {
   readonly approval_ids: readonly string[];
 }
 
-// 契約の Amount（先頭ゼロのない非負の 10 進整数・18 桁まで）。空文字・符号・空白・小数・19 桁以上は不正。
-const AMOUNT = /^(0|[1-9][0-9]{0,17})$/u;
+// 金額は契約の Amount（budget-rules.ts の AMOUNT_PATTERN。先頭ゼロのない非負の 10 進整数・18 桁まで）。空文字・符号・空白・小数・19 桁以上は不正。
+const AMOUNT = AMOUNT_PATTERN;
 
 // 消してよい状態か（J4）。精算済み・解放済みで、M 超過の確認が済んでいる（または実費が M 以内）もの。
 // reserved・usage_unknown・M 超過の確認待ちは、手で精算（確認）するまで消さない。実費・最大負担が契約の金額として読めない行は、
@@ -606,12 +606,20 @@ function planMemory(
     });
     return;
   }
+  // 範囲外の状態は判定できない。残して使わない。
+  if (row.status !== 'active' && row.status !== 'review_pending') {
+    holds.push({
+      family: row.family,
+      rule: 'memory_review',
+      id: row.id,
+      reason: 'unknown_unit',
+    });
+    return;
+  }
   const reviewAt = parseUtc(row.review_at);
   const storedDelete = row.delete_at === null ? null : parseUtc(row.delete_at);
-  if (
-    reviewAt === null ||
-    (row.status === 'review_pending' && storedDelete === null)
-  ) {
+  // 見直し日が読めない記憶は、削除日が読めて過去でも消さずに残して使わない（見直し日がないと期限を確かめられない）。
+  if (reviewAt === null) {
     holds.push({
       family: row.family,
       rule: 'memory_review',
@@ -624,7 +632,13 @@ function planMemory(
   // 削除の期限は、保存した期限と、見直し日＋30 日の小さい方（保存した期限が 30 日を超えて延ばされていても戻す）。
   // memory.ts は変えず、ここで制限してから既存の遷移に渡す。
   const cap = reviewAt + MEMORY_DELETE_AFTER_REVIEW_DAYS * 86_400_000;
-  const stored = storedDelete === null ? null : Math.min(storedDelete, cap);
+  // 見直し待ちで削除日がない（または読めない）ときは、見直し日＋30 日をそのまま削除日にする（延ばさない側）。
+  const stored =
+    storedDelete === null
+      ? row.status === 'review_pending'
+        ? cap
+        : null
+      : Math.min(storedDelete, cap);
   const clamped = storedDelete !== null && storedDelete > cap;
   let memory: MemorySchedule = {
     status: row.status,
@@ -681,7 +695,9 @@ function planDerived(
   let deleteAt: string | null = null;
   let clamped = false;
   const stored = row.delete_at === null ? null : parseUtc(row.delete_at);
-  if (row.origins.length === 0) reason = 'no_origin';
+  // 保存した期限があるのに読めないときは、由来の期限に戻すと延ばす側に倒れる。閉じる側（消す）へ倒す。
+  if (row.delete_at !== null && stored === null) reason = 'deadline_unreadable';
+  else if (row.origins.length === 0) reason = 'no_origin';
   else if (row.origins.some((origin) => origin.expires_at === null))
     reason = 'origin_gone';
   else {

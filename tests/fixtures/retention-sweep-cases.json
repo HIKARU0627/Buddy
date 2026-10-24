@@ -593,7 +593,7 @@
       }
     },
     {
-      "id": "x44-memory-unreadable-or-inconsistent-is-held",
+      "id": "x44-memory-unreadable-review-at-is-held-and-missing-delete-at-uses-30-days",
       "now": "2026-10-24T12:00:00Z",
       "last_checked_at": null,
       "rows": [
@@ -623,6 +623,13 @@
         "actions": [
           {
             "action": "delete_row",
+            "id": "pending-without-delete-at",
+            "reason": "review_unanswered",
+            "delete_at": "2026-07-31T00:00:00Z",
+            "clamped": false
+          },
+          {
+            "action": "delete_row",
             "id": "status-deleted-leftover",
             "reason": "status_deleted"
           }
@@ -630,10 +637,6 @@
         "holds": [
           {
             "id": "bad-review-at",
-            "reason": "deadline_unreadable"
-          },
-          {
-            "id": "pending-without-delete-at",
             "reason": "deadline_unreadable"
           }
         ],
@@ -644,11 +647,17 @@
             "family": "memory",
             "id": "bad-review-at",
             "reason": "deadline_unreadable"
-          },
+          }
+        ],
+        "notice_drafts": [
           {
-            "family": "memory",
-            "id": "pending-without-delete-at",
-            "reason": "deadline_unreadable"
+            "reason": "review_unanswered",
+            "items": [
+              {
+                "item_kind": "memory",
+                "item_id": "pending-without-delete-at"
+              }
+            ]
           }
         ]
       }
@@ -2004,7 +2013,7 @@
       }
     },
     {
-      "id": "x15-derived-stored-deadline-unreadable-falls-back-to-origins",
+      "id": "x15-derived-stored-deadline-unreadable-closes-to-delete",
       "now": "2026-10-25T00:00:00Z",
       "last_checked_at": null,
       "rows": [
@@ -2031,15 +2040,77 @@
             }
           ],
           "delete_at": "2026-10-25"
+        },
+        {
+          "family": "derived",
+          "artifact_kind": "carried_summary",
+          "id": "seg-u",
+          "origins": [
+            {
+              "origin_id": "c",
+              "expires_at": "2026-11-20T00:00:00Z"
+            }
+          ],
+          "delete_at": ""
+        },
+        {
+          "family": "derived",
+          "artifact_kind": "other",
+          "id": "seg-n",
+          "origins": [
+            {
+              "origin_id": "c",
+              "expires_at": "2026-11-20T00:00:00Z"
+            }
+          ],
+          "delete_at": null
         }
       ],
       "expected": {
         "holds": [],
         "clock_state": "ok",
         "auto_use_blocked": false,
-        "actions": [],
-        "notice_drafts": []
-      }
+        "actions": [
+          {
+            "action": "delete_row",
+            "id": "seg-s",
+            "reason": "deadline_unreadable",
+            "delete_at": null
+          },
+          {
+            "action": "delete_row",
+            "id": "seg-t",
+            "reason": "deadline_unreadable",
+            "delete_at": null
+          },
+          {
+            "action": "delete_row",
+            "id": "seg-u",
+            "reason": "deadline_unreadable",
+            "delete_at": null
+          }
+        ],
+        "notice_drafts": [
+          {
+            "reason": "summary_origin_expired",
+            "items": [
+              {
+                "item_kind": "carried_summary",
+                "item_id": "seg-s"
+              },
+              {
+                "item_kind": "carried_summary",
+                "item_id": "seg-t"
+              },
+              {
+                "item_kind": "carried_summary",
+                "item_id": "seg-u"
+              }
+            ]
+          }
+        ]
+      },
+      "note": "保存した期限があるのに読めない派生物は、由来の期限（11-20）に戻さず消す（戻すと延ばす側に倒れる）。保存した期限がない（null）行は由来の期限で判定する。"
     },
     {
       "id": "x44-memory-pending-deadline-extended-beyond-30-days-is-clamped-at-exact-time",
@@ -2492,6 +2563,205 @@
         ]
       },
       "note": "確認済みのフラグより先に金額を調べる。18 桁の最大値と 0 は正しい金額。"
+    },
+    {
+      "id": "x44-memory-pending-without-delete-at-deleted-at-30-days-exactly",
+      "now": "2026-08-25T12:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "m",
+          "status": "review_pending",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": null
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [
+          {
+            "action": "delete_row",
+            "id": "m",
+            "reason": "review_unanswered",
+            "delete_at": "2026-08-25T12:00:00Z",
+            "clamped": false
+          }
+        ],
+        "notice_drafts": [
+          {
+            "reason": "review_unanswered",
+            "items": [
+              {
+                "item_kind": "memory",
+                "item_id": "m"
+              }
+            ]
+          }
+        ]
+      },
+      "note": "削除日がない見直し待ちは、見直し日＋30 日（7-26 12:00 の 30 日後は 8-25 12:00）。"
+    },
+    {
+      "id": "x44-memory-pending-without-delete-at-one-ms-before-30-days-stays",
+      "now": "2026-08-25T11:59:59.999Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "m",
+          "status": "review_pending",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": null
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [],
+        "notice_drafts": []
+      }
+    },
+    {
+      "id": "x44-memory-pending-with-unreadable-delete-at-uses-30-days",
+      "now": "2026-08-25T12:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "m",
+          "status": "review_pending",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": "soon"
+        },
+        {
+          "family": "memory",
+          "id": "n",
+          "status": "review_pending",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": "2026-10-24"
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [
+          {
+            "action": "delete_row",
+            "id": "m",
+            "reason": "review_unanswered",
+            "delete_at": "2026-08-25T12:00:00Z"
+          },
+          {
+            "action": "delete_row",
+            "id": "n",
+            "reason": "review_unanswered",
+            "delete_at": "2026-08-25T12:00:00Z"
+          }
+        ],
+        "notice_drafts": [
+          {
+            "reason": "review_unanswered",
+            "items": [
+              {
+                "item_kind": "memory",
+                "item_id": "m"
+              },
+              {
+                "item_kind": "memory",
+                "item_id": "n"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "x44-memory-with-unknown-status-is-held-and-use-blocked",
+      "now": "2030-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "weird",
+          "status": "weird",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": "2026-08-25T12:00:00Z"
+        },
+        {
+          "family": "memory",
+          "id": "empty",
+          "status": "",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": null
+        }
+      ],
+      "expected": {
+        "holds": [
+          {
+            "id": "weird",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "empty",
+            "reason": "unknown_unit"
+          }
+        ],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [],
+        "use_blocked": [
+          {
+            "family": "memory",
+            "id": "weird",
+            "reason": "unknown_unit"
+          },
+          {
+            "family": "memory",
+            "id": "empty",
+            "reason": "unknown_unit"
+          }
+        ],
+        "notice_drafts": []
+      }
+    },
+    {
+      "id": "x44-memory-pending-with-unreadable-review-at-stays-held-even-if-delete-at-is-past",
+      "now": "2030-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "m",
+          "status": "review_pending",
+          "review_at": "soon",
+          "delete_at": "2026-08-25T12:00:00Z"
+        }
+      ],
+      "expected": {
+        "holds": [
+          {
+            "id": "m",
+            "reason": "deadline_unreadable"
+          }
+        ],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [],
+        "use_blocked": [
+          {
+            "family": "memory",
+            "id": "m",
+            "reason": "deadline_unreadable"
+          }
+        ],
+        "notice_drafts": []
+      },
+      "note": "見直し日が読めない記憶は、削除日が読めて過去でも消さず、残して使わない（ADR 0043）。"
     }
   ],
   "sweep_rejections": [

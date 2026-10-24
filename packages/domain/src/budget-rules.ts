@@ -14,6 +14,8 @@ import {
 
 // 契約の Amount の上限（18 桁）。SQLite の 64 ビット整数に収まる（ADR 0034）。
 export const BUDGET_AMOUNT_MAX = 999_999_999_999_999_999n;
+// 契約の Amount（先頭ゼロのない非負の 10 進整数・18 桁まで。通貨単位の百万分の一）の文字列の形。
+export const AMOUNT_PATTERN = /^(0|[1-9][0-9]{0,17})$/u;
 
 const INTEGER = /^(0|[1-9][0-9]*)$/u;
 const DECIMAL = /^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$/u;

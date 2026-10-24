@@ -121,7 +121,15 @@ export type BuddyContract =
   | CanvasContent
   | CanvasContentRequest
   | CanvasContentResponse
-  | DesktopCanvasDisplaySettings;
+  | DesktopCanvasDisplaySettings
+  | VoiceRendererRequest
+  | VoiceRendererAck
+  | LiveControlTransition
+  | LeaseRenewalRequest
+  | LeaseRenewalResponse
+  | InputKindRule
+  | ExternalSendConsent
+  | ExternalSendConsentChange;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -258,7 +266,7 @@ export type AudioEpoch = string;
  */
 export type Sequence = string;
 /**
- * 自動実行などの方針の版（設計 08 §1）。
+ * 自動実行などの方針の版（設計 08 §1）。外部への送信の同意の文面の版にも使う（ADR 0038）。
  */
 export type PolicyVersion = string;
 export type IntentName =
@@ -459,7 +467,8 @@ export type AudioControl =
         | 'conversation_ended'
         | 'device_move'
         | 'provider_failure'
-        | 'sideband_lost';
+        | 'sideband_lost'
+        | 'consent_revoked';
       device_id: Id;
       scope: null;
       io_epoch: IoEpoch;
@@ -1406,6 +1415,274 @@ export type DesktopCanvasDisplaySettings =
       schema_version: 1;
       target: 'display';
       display_id: number;
+    };
+/**
+ * main から音声レンダラーへの限定 IPC の要求（設計 10 §1、ADR 0038）。ack_timeout_ms は ACK の待ち時間で、チャネルごとの上限と、ACK が来ないときの動作は domain の表（VOICE_IPC_TIMEOUTS）。理由と範囲の組・世代の新旧は意味検査。
+ */
+export type VoiceRendererRequest =
+  | {
+      channel: 'voice.start';
+      request_id: Id;
+      ack_timeout_ms: number;
+      payload: {
+        live_session_id: Id;
+        purpose: 'conversation' | 'notification';
+        sdp_answer: string;
+        io_epoch: IoEpoch;
+        audio_epoch: AudioEpoch;
+        output_epoch: OutputEpoch;
+        session_epoch: SessionEpoch;
+      };
+    }
+  | {
+      channel: 'voice.stop_playback';
+      request_id: Id;
+      ack_timeout_ms: number;
+      payload: {
+        reason: 'user_stop' | 'barge_in';
+        scope: null;
+        io_epoch: IoEpoch;
+        audio_epoch: AudioEpoch | null;
+        output_epoch: OutputEpoch;
+      };
+    }
+  | {
+      channel: 'voice.close_voice_session';
+      request_id: Id;
+      ack_timeout_ms: number;
+      payload: {
+        reason:
+          | 'silence'
+          | 'output_mode_text'
+          | 'budget_reached'
+          | 'private_conversation'
+          | 'conversation_ended'
+          | 'device_move'
+          | 'provider_failure'
+          | 'sideband_lost'
+          | 'consent_revoked';
+        scope: null;
+        io_epoch: IoEpoch;
+        audio_epoch: AudioEpoch;
+        output_epoch: OutputEpoch;
+      };
+    }
+  | {
+      channel: 'voice.suspend_io';
+      request_id: Id;
+      ack_timeout_ms: number;
+      payload: {
+        reason:
+          | 'device_io_stop'
+          | 'os_lock'
+          | 'guest_mode'
+          | 'global_stop'
+          | 'device_revoked'
+          | 'core_lease_lost';
+        scope: 'local' | 'guest' | 'global';
+        io_epoch: IoEpoch;
+        audio_epoch: AudioEpoch | null;
+        output_epoch: OutputEpoch;
+      };
+    }
+  | {
+      channel: 'voice.play';
+      request_id: Id;
+      ack_timeout_ms: number;
+      payload: {
+        clip_id: VoiceClipId;
+        io_epoch: IoEpoch;
+        output_epoch: OutputEpoch;
+      };
+    }
+  | {
+      channel: 'voice.set_silence_timeout';
+      request_id: Id;
+      ack_timeout_ms: number;
+      payload: {
+        timeout_ms: number;
+        audio_epoch: AudioEpoch;
+      };
+    };
+/**
+ * 音声レンダラーが再生してよい効果音の識別子（設計 10 §2、質問 99）。定型句（話し言葉）の識別子は持たない。呼びかけの検知・聞き取り開始・まだ接続中・条件を満たさず開けない・文字で返す呼びかけ・通知の呼びかけ。
+ */
+export type VoiceClipId =
+  | 'wake_detected'
+  | 'listening_started'
+  | 'still_connecting'
+  | 'refused'
+  | 'text_reply_wake'
+  | 'notification_wake';
+/**
+ * main から音声レンダラーへの限定 IPC のチャネル（設計 10 §1、ADR 0038）。start・stop_playback・close_voice_session・suspend_io・play・set_silence_timeout の 6 つだけ。これ以外の名前は拒否する。音声レンダラーは中枢・端末トークン・OpenAI の資格情報を持たず、中枢への通信もしない。
+ */
+export type VoiceIpcChannel =
+  | 'voice.start'
+  | 'voice.stop_playback'
+  | 'voice.close_voice_session'
+  | 'voice.suspend_io'
+  | 'voice.play'
+  | 'voice.set_silence_timeout';
+/**
+ * Live の制御接続（サイドバンド）の状態を動かす出来事（設計 10 §2A、ADR 0038）。session_closed_received と usage_reconciled は OpenAI が数えた使用秒数を伴う。
+ */
+export type LiveControlTrigger =
+  | 'sideband_connected'
+  | 'sideband_connect_failed'
+  | 'sideband_disconnected'
+  | 'ping_timeout'
+  | 'core_restarted'
+  | 'close_requested'
+  | 'session_closed_received'
+  | 'close_unconfirmed'
+  | 'usage_reconciled';
+/**
+ * リースの更新の応答（設計 07 §5）。端末は nonce が自分の要求と一致するときだけ受け取る。遅れて届いても、受信時刻から期限を足し直さない。 使う前に、待っている要求（要求 ID・リース ID・nonce）と今の中枢の起動 ID・接続範囲・入出力の世代・端末の停止の状態を照合する（domain の applyLeaseResponse）。使い済みの nonce は中枢が拒否する。
+ */
+export type LeaseRenewalResponse =
+  | {
+      request_id: Id;
+      lease_id: Id;
+      nonce: string;
+      result: 'renewed';
+      /**
+       * @maxItems 0
+       */
+      reasons: [];
+      ttl_ms: number;
+    }
+  | {
+      request_id: Id;
+      lease_id: Id;
+      nonce: string;
+      result: 'rejected';
+      /**
+       * @minItems 1
+       */
+      reasons: [LeaseRenewalRejectReason, ...LeaseRenewalRejectReason[]];
+      ttl_ms: null;
+    };
+/**
+ * リースの更新を中枢が拒否する理由（設計 07 §5、10 §2A）。
+ */
+export type LeaseRenewalRejectReason =
+  | 'core_restarted'
+  | 'scope_changed'
+  | 'stale_io_epoch'
+  | 'unknown_io_epoch'
+  | 'device_revoked'
+  | 'io_suspended'
+  | 'sideband_lost'
+  | 'unexpected_previous_nonce'
+  | 'device_mismatch'
+  | 'lease_kind_mismatch'
+  | 'nonce_reused'
+  | 'nonce_replayed'
+  | 'mono_clock_regressed'
+  | 'heartbeat_not_shorter_than_ttl';
+/**
+ * input_kind の受付の規則（設計 10 §4・§6・§6A、ADR 0038）。どの経路で受け付け、何が必要か。表の値は domain の INPUT_KIND_RULES と一致する。
+ */
+export type InputKindRule =
+  | {
+      input_kind: 'text';
+      route: 'http_turn';
+      origin: 'client';
+      output_mode: 'text';
+      requires: InputCondition[];
+    }
+  | {
+      input_kind: 'voice_local';
+      route: 'http_turn';
+      origin: 'client';
+      output_mode: 'text';
+      requires: InputCondition[];
+    }
+  | {
+      input_kind: 'voice_live';
+      route: 'sideband_transcript';
+      origin: 'core';
+      output_mode: 'voice';
+      requires: InputCondition[];
+    };
+/**
+ * 入力を受け付けるために満たす条件（設計 07 §2・§5、10 §6・§6A、ADR 0038）。
+ */
+export type InputCondition =
+  | 'device_authenticated'
+  | 'home_network'
+  | 'command_scope_current'
+  | 'device_unlocked'
+  | 'io_permitted'
+  | 'local_asr_on_device'
+  | 'live_control_ready'
+  | 'audio_epoch_current'
+  | 'session_epoch_current'
+  | 'audio_lease_valid'
+  | 'voice_output_mode'
+  | 'not_private_conversation'
+  | 'external_send_consent'
+  | 'budget_reserved';
+/**
+ * 外部への送信の同意の記録（本人の判断 2026-10-23、ADR 0038）。端末ごと・送り先ごとに、初めて使うときに main の OS の確認ダイアログで 1 回だけ取り、中枢が正本として保存する。送り先か同意の文面の版（policy_version）が変わったら取り直す。音声・文字起こし・認証情報を含めない。
+ */
+export type ExternalSendConsent =
+  | {
+      consent_id: Id;
+      device_id: Id;
+      kind: 'voice_live_audio';
+      provider: 'openai_live';
+      policy_version: PolicyVersion;
+      confirmation: {
+        method: 'os_dialog_main';
+        confirmed_at: UtcTime;
+      };
+      state: 'granted';
+      granted_at: UtcTime;
+      revoked_at: null;
+    }
+  | {
+      consent_id: Id;
+      device_id: Id;
+      kind: 'voice_live_audio';
+      provider: 'openai_live';
+      policy_version: PolicyVersion;
+      confirmation: {
+        method: 'os_dialog_main';
+        confirmed_at: UtcTime;
+      };
+      state: 'revoked';
+      granted_at: UtcTime;
+      revoked_at: UtcTime;
+    };
+/**
+ * 外部への送信の同意の変更の要求（ADR 0038）。main が中枢へ送る。経路の追加は B05-02 以降。
+ */
+export type ExternalSendConsentChange =
+  | {
+      request_id: Id;
+      command_scope_id: Id;
+      kind: 'voice_live_audio';
+      provider: 'openai_live';
+      policy_version: PolicyVersion;
+      action: 'grant';
+      confirmation: {
+        method: 'os_dialog_main';
+        confirmed_at: UtcTime;
+      };
+    }
+  | {
+      request_id: Id;
+      command_scope_id: Id;
+      kind: 'voice_live_audio';
+      provider: 'openai_live';
+      policy_version: PolicyVersion;
+      action: 'revoke';
+      confirmation: {
+        method: 'os_dialog_main';
+        confirmed_at: UtcTime;
+      } | null;
     };
 
 export interface AudioRange {
@@ -2544,7 +2821,8 @@ export interface LiveSessionClose {
     | 'guest_mode'
     | 'global_stop'
     | 'device_revoked'
-    | 'core_lease_lost';
+    | 'core_lease_lost'
+    | 'consent_revoked';
   audio_epoch: AudioEpoch;
 }
 /**
@@ -4840,4 +5118,45 @@ export interface CanvasContentResponse {
   item_id: CanvasItemId;
   open_index: CanvasOpenIndex | null;
   content: CanvasContent;
+}
+/**
+ * 音声レンダラーから main への ACK（設計 10 §1・§1A、X30）。applied は要求の世代をそのまま返す（世代を進めるのは main）。ignored_stale_epoch は音声レンダラーの現在の世代（要求より新しい）を返す。遅れて届いた古い世代の ACK で再開しない。 使う前に、待っている要求との対応と今の世代・入出力の状態を照合する（domain の acceptVoiceAck）。停止・失効・世代の更新で捨てた要求の ACK は、後から届いても使わない。
+ */
+export interface VoiceRendererAck {
+  request_id: Id;
+  channel: VoiceIpcChannel;
+  outcome: 'applied' | 'ignored_stale_epoch' | 'rejected_invalid' | 'failed';
+  io_epoch: IoEpoch;
+  audio_epoch: AudioEpoch | null;
+  output_epoch: OutputEpoch;
+  session_epoch: SessionEpoch | null;
+  acked_at: UtcTime;
+}
+/**
+ * 制御接続の状態の遷移の記録（設計 10 §2A）。lost・closing・closed から ready へは戻らず、lost へ入るとき control_epoch を進める。使用秒数が確認できるまで予約を精算済みにしない。遷移の可否は domain の表（nextLiveControl）。 使用秒数つきの session.closed は、こちらが閉じる要求を出した後のほか、provider が先に閉じた場合と、終了を待つ時間が切れた後に届いた場合も受け付ける。
+ */
+export interface LiveControlTransition {
+  live_session_id: Id;
+  trigger: LiveControlTrigger;
+  usage_seconds: number | null;
+  before: LiveControlState;
+  after: LiveControlState;
+  occurred_at: UtcTime;
+}
+/**
+ * リースの更新の入力（設計 07 §5、10 §2A）。リースは中枢の起動 ID・端末・接続範囲・入出力の世代に結び付ける。nonce は更新ごとに新しく、previous_nonce は前に受け付けられた nonce（初回は null）。requested_at_mono_ms は要求を送った時点の端末の単調時計で、期限はここから数える。初回と更新で形は同じ。heartbeat_ms は ttl_ms より短い。
+ */
+export interface LeaseRenewalRequest {
+  request_id: Id;
+  lease_id: Id;
+  kind: 'audio' | 'display';
+  device_id: Id;
+  core_instance_id: Id;
+  command_scope_id: Id;
+  io_epoch: IoEpoch;
+  nonce: string;
+  previous_nonce: string | null;
+  requested_at_mono_ms: number;
+  heartbeat_ms: number;
+  ttl_ms: number;
 }

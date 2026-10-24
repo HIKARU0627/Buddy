@@ -38,3 +38,5 @@ export * from './operations.js';
 export * from './readiness.js';
 export * from './retention.js';
 export * from './sync.js';
+// B05-01: 音声レンダラーの限定 IPC・Live の制御接続・リースの更新・input_kind の受付・外部への送信の同意（ADR 0038）。
+export * from './voice.js';

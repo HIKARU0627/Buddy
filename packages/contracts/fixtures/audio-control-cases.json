@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "停止理由ごとの動作と再開条件の期待値（設計 10 §1A F03、QA43、X13・X30・X58）。原本の表から手で書き、domain の実装から生成していない。keeps_mic は収音・Live 入力・VAD を維持すること。",
+  "description": "停止理由ごとの動作と再開条件の期待値（設計 10 §1A F03、QA43、X13・X30・X58）。原本の表から手で書き、domain の実装から生成していない。consent_revoked は ADR 0038 の追加で、原本に決めがない（外部への送信の同意の取り消しで Live を閉じる。③は使える）。keeps_mic は収音・Live 入力・VAD を維持すること。",
   "cases": [
     {
       "reason": "user_stop",
@@ -93,6 +93,15 @@
       "resume": "local_asr_or_wake_word"
     },
     {
+      "reason": "consent_revoked",
+      "action": "close_voice_session",
+      "closes_live": true,
+      "keeps_mic": true,
+      "ends_session": false,
+      "scope": null,
+      "resume": "local_asr_until_consent"
+    },
+    {
       "reason": "device_io_stop",
       "action": "suspend_io",
       "closes_live": true,
@@ -155,6 +164,11 @@
       "expected": "core_lease_lost"
     },
     { "first": "global_stop", "second": "silence", "expected": "global_stop" },
+    {
+      "first": "consent_revoked",
+      "second": "user_stop",
+      "expected": "consent_revoked"
+    },
     {
       "first": "user_stop",
       "second": "budget_reached",

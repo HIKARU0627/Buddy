@@ -45,6 +45,11 @@ export * from './retention.js';
 export * from './retention-sweep.js';
 // B06-04: 記録しない会話の保存の境界（許可表・入る／出るの遷移・独立した確認の中身。ADR 0045）。
 export * from './storage-mode.js';
+// B06-05: バックアップの中身と世代・鍵の運用・復元の 6 段階・復元の後の保留（ADR 0047）。
+export * from './backup-plan.js';
+export * from './backup-keys.js';
+export * from './restore-plan.js';
+export * from './restore-aftermath.js';
 export * from './sync.js';
 // B05-01: 音声レンダラーの限定 IPC・Live の制御接続・リースの更新・input_kind の受付・外部への送信の同意（ADR 0038）。
 export * from './voice.js';

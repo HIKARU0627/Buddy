@@ -4073,13 +4073,19 @@ export interface AutoActionList {
   items: AutoActionItem[];
 }
 /**
- * 安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。
+ * 安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。restored_from_backup はバックアップからの復元の後の停止で、本人が再開するまで自動実行を止める（ADR 0047）。
  */
 export interface SafetyState {
   state: 'running' | 'stopped';
   safety_revision: SafetyRevision;
   stop_reason:
-    ('rate_exceeded' | 'same_target_repeated' | 'compensation_failures') | null;
+    | (
+        | 'rate_exceeded'
+        | 'same_target_repeated'
+        | 'compensation_failures'
+        | 'restored_from_backup'
+      )
+    | null;
   stopped_at: UtcTime | null;
 }
 /**
@@ -5579,7 +5585,7 @@ export interface BackupLocationCheck {
     ('icloud' | 'onedrive' | 'dropbox' | 'google_drive' | 'other') | null;
 }
 /**
- * 復元の直後の操作の記録（ADR 0040）。外部サービスを変える操作（remote_mutation）で、復元の時点から再実行に届き得る 7 つの状態（awaiting_approval・approved・preparing・dispatching・reconciling・unknown_held・not_executed）はすべて restore_unverified_at を持ち、承認はすべて失効している。進行中の 4 つ（approved・preparing・dispatching・reconciling）は復元の後に unknown_held になる。終端（succeeded・cancelled・superseded）と LocalCommand には印を付けない。印のある操作は、承認・送出準備・試行の作成ができない。印を外せるのは、実行済みの積極的な証拠で結果を取り込んだとき（状態は succeeded）と、本人が手で決着させたときだけ。意味検査は restoreGuard（scripts/contract-tools.mjs）の表と同じ。
+ * 復元の直後の操作の記録（ADR 0040）。外部サービスを変える操作（remote_mutation）で、復元の時点から再実行に届き得る 7 つの状態（awaiting_approval・approved・preparing・dispatching・reconciling・unknown_held・not_executed）はすべて restore_unverified_at を持つ。有効な承認は、経路・状態・印の有無によらずすべて失効している（valid_approval_count は 0。J3、ADR 0047）。進行中の 4 つ（approved・preparing・dispatching・reconciling）は復元の後に unknown_held になる。終端（succeeded・cancelled・superseded）と LocalCommand には印を付けない。印のある操作は、承認・送出準備・試行の作成ができない。印を外せるのは、実行済みの積極的な証拠で結果を取り込んだとき（状態は succeeded）と、本人が手で決着させたときだけ。意味検査は restoreGuard（scripts/contract-tools.mjs）の表と同じ。
  */
 export interface RestoredOperation {
   schema: 'buddy.restored-operation.v1';

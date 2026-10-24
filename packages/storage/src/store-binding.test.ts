@@ -105,7 +105,7 @@ test('first binding stores the check and a new generation, later bindings match 
       generation = first.storeGeneration;
       assert.deepEqual(meta(db), {
         'data_key_check:data-key-v1': CHECK_A,
-        schema_version: '8',
+        schema_version: '9',
         store_generation: generation,
       });
     } finally {
@@ -228,7 +228,7 @@ test('the B01 state file generation moves into the DB once; a conflicting DB val
         'store_generation_mismatch',
       );
       assert.deepEqual(meta(db), {
-        schema_version: '8',
+        schema_version: '9',
         store_generation: OTHER_GENERATION,
       });
     } finally {
@@ -251,7 +251,7 @@ test('ciphertext without a stored check, an old schema, and invalid stored value
         ).reason,
         'data_key_check_missing',
       );
-      assert.deepEqual(meta(db), { schema_version: '8' });
+      assert.deepEqual(meta(db), { schema_version: '9' });
     } finally {
       db.close();
     }
@@ -353,7 +353,7 @@ test('a corrupted DB fails the integrity check and no binding is written', async
         ).reason,
         'database_integrity_failed',
       );
-      assert.deepEqual(meta(reopened), { schema_version: '8' });
+      assert.deepEqual(meta(reopened), { schema_version: '9' });
     } finally {
       reopened.close();
     }
@@ -369,7 +369,7 @@ test('the DB worker binds before accepting commands and refuses to start on a mi
     });
     try {
       assert.equal(first.storeGeneration, LEGACY);
-      assert.equal(first.schemaVersion, 8);
+      assert.equal(first.schemaVersion, 9);
       assert.deepEqual(first.binding, {
         storeGeneration: LEGACY,
         storeGenerationSource: 'state_file',

@@ -29,7 +29,7 @@
     },
     {
       "path": "packages/contracts/schemas/buddy.schema.json",
-      "sha256": "248820b18cf4daa53c31e128aa0e52f9f6a4f2f71c6646e335e0313a99eb6089"
+      "sha256": "7a0834f763991c0008b0f4cdefcd5c7bc3dcaca05aaa5b627014f66b74936c2c"
     },
     {
       "path": "packages/domain/package.json",
@@ -41,7 +41,7 @@
     },
     {
       "path": "packages/domain/src/api.ts",
-      "sha256": "bf50ef2a97a11cee93f0aac01246f89ca2ae331cca2245d63313334c76c7bcc1"
+      "sha256": "c4dadb05747aecfd147ba3504771568e14095a934dce05c635d504b1d81173b0"
     },
     {
       "path": "packages/domain/src/approval.ts",
@@ -117,7 +117,7 @@
     },
     {
       "path": "packages/domain/src/index.ts",
-      "sha256": "094314bb491eb05685729a676cbb1f1b0e3e0c40fe54161893289c6870fd3b4c"
+      "sha256": "301af9009eeef70ad00f62528e89f9f9ec8e30ee4926f13e634e51073d33438b"
     },
     {
       "path": "packages/domain/src/intents.ts",
@@ -184,6 +184,10 @@
       "sha256": "48b49a55d6713763b208ce04338b79eae17d77c3ef7146cb549644a0bfc79b69"
     },
     {
+      "path": "packages/domain/src/voice-ownership.ts",
+      "sha256": "50280cf059c4903e231d4678b777c74fe32e18fc7d46847d6d377e5254a54165"
+    },
+    {
       "path": "packages/domain/src/voice-reservation.ts",
       "sha256": "71a33f400c01b804627e37e85b581672340439eadbde64f2609d9c27dceedc54"
     },
@@ -236,6 +240,10 @@
       "sha256": "0208fdf1f7e330b7dd07e72e76118f6464347bf94112d999c462eaea0f8df37a"
     },
     {
+      "path": "packages/storage/migrations/0009_voice_epochs.sql",
+      "sha256": "9a8d8ce9c10e0f78942d6b2eb7c8818d2f29c882244ef36965d822a1c84adafe"
+    },
+    {
       "path": "packages/storage/migrations/connection.sql",
       "sha256": "f0ed88de074a08bb5e5b2805ac97a78767de2926acc8375a207920ec2f6e5db5"
     },
@@ -265,15 +273,15 @@
     },
     {
       "path": "packages/storage/src/db-client.ts",
-      "sha256": "184452571d4da0a901cefa3428e0a570b06720b68bc9dd3bff781819f0e453ac"
+      "sha256": "eb83610d62a1cf9312c5cfe9ba5ec54fe34a0e9e5bdc5506446c1a11e06a4cb8"
     },
     {
       "path": "packages/storage/src/db-protocol.ts",
-      "sha256": "d70e2fd4bf7ad58dc7cc98f097aa5fdbb8788b9c7c4e7c017bf61b21d101c840"
+      "sha256": "95639528da8ce1f6655b1ce60dd67c782da72f512bb1b81b37bb49ad498a6ec2"
     },
     {
       "path": "packages/storage/src/db-worker.ts",
-      "sha256": "0301a4955e0cd847c6b18d738bd72c22d1a9f4d739bcf54a17119995b391c410"
+      "sha256": "0680a789d28325efb6c4fd55b1838706ee6057e9533f6af51b37040c523420c8"
     },
     {
       "path": "packages/storage/src/device-store.ts",
@@ -293,7 +301,7 @@
     },
     {
       "path": "packages/storage/src/index.ts",
-      "sha256": "b1729266f140d25de0edcb3a74a0f9dda395c64933491718aebc2975398d96ca"
+      "sha256": "297265f5533c6356b952be3e02170953e96d1f1f645589e1974f9988701cd6f1"
     },
     {
       "path": "packages/storage/src/migrations.ts",
@@ -313,7 +321,7 @@
     },
     {
       "path": "packages/storage/src/policy.ts",
-      "sha256": "4e6293a0a0e5a775012bab966c4faf05b6a592837be75b060b94d5a6700e0067"
+      "sha256": "b7614fa57786219378d233334de932924a965ced66eb184207773e84b5575134"
     },
     {
       "path": "packages/storage/src/sealed-blob.ts",
@@ -326,6 +334,10 @@
     {
       "path": "packages/storage/src/store-binding.ts",
       "sha256": "d3b442c704a90cafa5a598a080b9caa8671df38c78dde09f1133b5f3944779e9"
+    },
+    {
+      "path": "packages/storage/src/voice-store.ts",
+      "sha256": "e193e9c2095e157156f4d6c503a889332bf29638525b73d08a0691132779fde1"
     },
     {
       "path": "scripts/b07-evidence-sources.mjs",
@@ -341,7 +353,7 @@
     },
     {
       "path": "tests/integration/b07-expectations.json",
-      "sha256": "fd52867fd516be1155e1042665cd7c6732bfe1292c36bdcd10e82fbc048c0b4d"
+      "sha256": "499f302170d6cd5a1ccc82002637016847f3ca18a167f0d26dc260a59bb236b4"
     },
     {
       "path": "tests/integration/b07-support.mjs",
@@ -364,9 +376,9 @@
     {
       "case_id": "X18-boundary-concurrency",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -378,7 +390,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -386,9 +398,9 @@
     {
       "case_id": "X18-overage-concurrency",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -400,7 +412,7 @@
       "provider_state_changes": 4,
       "approvals": 3,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -408,9 +420,9 @@
     {
       "case_id": "X18-pools-concurrency",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -422,7 +434,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:2,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -430,9 +442,9 @@
     {
       "case_id": "X18-topup-concurrency",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -444,7 +456,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -452,9 +464,9 @@
     {
       "case_id": "QA42-admission-by-m",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -466,7 +478,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:1,released:0,reserved:1",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -474,9 +486,9 @@
     {
       "case_id": "QA42-usage-duplicate-missing",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -488,7 +500,7 @@
       "provider_state_changes": 2,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:1,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -496,9 +508,9 @@
     {
       "case_id": "QA42-timeout-discard",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -510,7 +522,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -518,9 +530,9 @@
     {
       "case_id": "QA42-month-rollover",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -532,7 +544,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -540,9 +552,9 @@
     {
       "case_id": "QA42-overrun-hold",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -554,7 +566,7 @@
       "provider_state_changes": 2,
       "approvals": 1,
       "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -562,9 +574,9 @@
     {
       "case_id": "QA42-overage-approval",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -576,7 +588,7 @@
       "provider_state_changes": 4,
       "approvals": 3,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -584,9 +596,9 @@
     {
       "case_id": "QA42-voice-isolation",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -598,7 +610,7 @@
       "provider_state_changes": 8,
       "approvals": 1,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:5,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -606,9 +618,9 @@
     {
       "case_id": "QA20-price-boundary",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -620,7 +632,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "settled:0,usage_unknown:0,released:0,reserved:3 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -628,9 +640,9 @@
     {
       "case_id": "QA20-limit-unknown",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -642,7 +654,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -650,9 +662,9 @@
     {
       "case_id": "X53-autonomous-own-slot",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -664,7 +676,7 @@
       "provider_state_changes": 3,
       "approvals": 1,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -672,9 +684,9 @@
     {
       "case_id": "B07-runtime-config",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -686,7 +698,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -694,9 +706,9 @@
     {
       "case_id": "B07-failure-paths",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -708,7 +720,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:1,released:2,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -716,9 +728,9 @@
     {
       "case_id": "B07-settlement-once",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -730,7 +742,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -738,9 +750,9 @@
     {
       "case_id": "B07-restart-reconcile",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -752,7 +764,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:1,released:1,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -760,9 +772,9 @@
     {
       "case_id": "MA03-credit-split-once",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -774,7 +786,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -782,9 +794,9 @@
     {
       "case_id": "MA04-cycle-and-month-are-separate",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -796,7 +808,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:6,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -804,9 +816,9 @@
     {
       "case_id": "MA05-hold-until-balance-is-known",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -818,7 +830,7 @@
       "provider_state_changes": 12,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:2,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -826,9 +838,9 @@
     {
       "case_id": "MA05-credit-rechecked-before-sending-and-top-up",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -840,7 +852,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:0,usage_unknown:0,released:0,reserved:1",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -848,9 +860,9 @@
     {
       "case_id": "MA05-observations-are-adopted-once",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -862,7 +874,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:0,usage_unknown:0,released:0,reserved:1 | settled:1,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -870,9 +882,9 @@
     {
       "case_id": "MA06-credit-only-for-claude",
       "kind": "simulated",
-      "commit": "f03a3d0c3ba6b2ef0d187b6d7c4e5283cdc8da72",
+      "commit": "13eef82afa15cf2ed22ecd6b3d7179ae2a337253",
       "contract_version": "1.0.0",
-      "db_version": "8",
+      "db_version": "9",
       "environment": {
         "os": "darwin 27.0.0 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
@@ -884,7 +896,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0",
-      "observed_at": "2026-10-24T13:08:58.121Z",
+      "observed_at": "2026-10-24T12:56:28.522Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1078,7 +1090,7 @@
         "provider_state_changes": 2,
         "approvals": 1,
         "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -1292,7 +1304,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -2196,7 +2208,7 @@
         "provider_state_changes": 12,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:2,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -2379,7 +2391,7 @@
         "provider_state_changes": 4,
         "approvals": 3,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -2635,7 +2647,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -2795,7 +2807,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:1,released:0,reserved:1",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -2994,7 +3006,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -3268,7 +3280,7 @@
         "provider_state_changes": 8,
         "approvals": 1,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:5,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -3516,7 +3528,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:6,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -3660,7 +3672,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:1,released:1,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -3902,7 +3914,7 @@
         "provider_state_changes": 0,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:0,reserved:3 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -4061,7 +4073,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:1,released:2,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -4226,7 +4238,7 @@
         "provider_state_changes": 2,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:1,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -4422,7 +4434,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:0,reserved:1 | settled:1,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -4686,7 +4698,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -5173,7 +5185,7 @@
         "provider_state_changes": 0,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:0,usage_unknown:0,released:0,reserved:1",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -5372,7 +5384,7 @@
         "provider_state_changes": 3,
         "approvals": 1,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -5526,7 +5538,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -5691,7 +5703,7 @@
         "provider_state_changes": 4,
         "approvals": 3,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -5952,7 +5964,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -6106,7 +6118,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -6238,7 +6250,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:2,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -6476,7 +6488,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -6862,7 +6874,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -7027,7 +7039,7 @@
         "provider_state_changes": 4,
         "approvals": 3,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -7275,7 +7287,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:6,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -7471,7 +7483,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:0,reserved:1 | settled:1,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -7636,7 +7648,7 @@
         "provider_state_changes": 2,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:1,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -7795,7 +7807,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:1,released:2,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -7955,7 +7967,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:1,released:0,reserved:1",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -8859,7 +8871,7 @@
         "provider_state_changes": 12,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:2,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -9003,7 +9015,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:1,released:1,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -9241,7 +9253,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -9497,7 +9509,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -9696,7 +9708,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -10183,7 +10195,7 @@
         "provider_state_changes": 0,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:0,usage_unknown:0,released:0,reserved:1",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -10382,7 +10394,7 @@
         "provider_state_changes": 3,
         "approvals": 1,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -10572,7 +10584,7 @@
         "provider_state_changes": 2,
         "approvals": 1,
         "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -10786,7 +10798,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -10940,7 +10952,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -11214,7 +11226,7 @@
         "provider_state_changes": 8,
         "approvals": 1,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:5,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -11478,7 +11490,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -11739,7 +11751,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -12125,7 +12137,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -12367,7 +12379,7 @@
         "provider_state_changes": 0,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:0,reserved:3 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -12521,7 +12533,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -12704,7 +12716,7 @@
         "provider_state_changes": 4,
         "approvals": 3,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -12836,7 +12848,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:2,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -13001,7 +13013,7 @@
         "provider_state_changes": 4,
         "approvals": 3,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -13161,7 +13173,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:1,released:0,reserved:1",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -13375,7 +13387,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -13540,7 +13552,7 @@
         "provider_state_changes": 2,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:1,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -13782,7 +13794,7 @@
         "provider_state_changes": 0,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:0,reserved:3 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -14168,7 +14180,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -14322,7 +14334,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -14521,7 +14533,7 @@
         "provider_state_changes": 3,
         "approvals": 1,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -15008,7 +15020,7 @@
         "provider_state_changes": 0,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:0,usage_unknown:0,released:0,reserved:1",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -15162,7 +15174,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -15352,7 +15364,7 @@
         "provider_state_changes": 2,
         "approvals": 1,
         "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -15511,7 +15523,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:1,released:2,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -16415,7 +16427,7 @@
         "provider_state_changes": 12,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:2,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -16611,7 +16623,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:0,usage_unknown:0,released:0,reserved:1 | settled:1,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -16867,7 +16879,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -17011,7 +17023,7 @@
         "provider_state_changes": 1,
         "approvals": 0,
         "final_state": "settled:1,usage_unknown:1,released:1,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -17210,7 +17222,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -17484,7 +17496,7 @@
         "provider_state_changes": 8,
         "approvals": 1,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:5,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -17667,7 +17679,7 @@
         "provider_state_changes": 4,
         "approvals": 3,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -17931,7 +17943,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:4,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -18192,7 +18204,7 @@
         "provider_state_changes": 3,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -18430,7 +18442,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -18678,7 +18690,7 @@
         "provider_state_changes": 6,
         "approvals": 0,
         "final_state": "settled:6,usage_unknown:0,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     },
     {
@@ -18810,7 +18822,7 @@
         "provider_state_changes": 4,
         "approvals": 0,
         "final_state": "settled:2,usage_unknown:2,released:0,reserved:0",
-        "db_version": "8"
+        "db_version": "9"
       }
     }
   ]

@@ -303,6 +303,8 @@ async function liveLink(
     networkSignature: () => 'x',
     onChange: () => shown.push(link.view('unlocked')),
     log: (code) => logs.push(code),
+    // 中枢への要求の数を数える試験なので、予算の背景の読み取りは混ぜない（B07-05）。
+    budgetAuto: false,
     homeReportIntervalMs: 600_000,
     windowFocused: () => focus.value,
     confirmAdmin: (request, signal) => {

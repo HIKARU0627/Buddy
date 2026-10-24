@@ -331,6 +331,7 @@ const connectionView = (
   hub_target: null,
   home_network: null,
   operations: [],
+  budget_items: [],
 });
 
 test('the one-time success notice appears only on the change to registered', () => {

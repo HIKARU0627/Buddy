@@ -60,6 +60,7 @@ test('the strip view: state mark, external mark, continue and revoke follow the 
     external: 'off',
     continueState: 'ready',
     revocable: true,
+    showText: true,
     notice: null,
   });
   assert.deepEqual(
@@ -72,10 +73,12 @@ test('the strip view: state mark, external mark, continue and revoke follow the 
     ),
     {
       kind: 'shown',
-      line: { tone: 'warning', mark: 'warning', text: '会話中' },
+      // 段の面の色と印で示すので、文言の前に ⚠ を重ねない。
+      line: { tone: 'warning', mark: 'none', text: '会話中' },
       external: 'on',
       continueState: 'unavailable',
       revocable: true,
+      showText: true,
       notice: null,
     },
   );
@@ -92,10 +95,12 @@ test('the strip view: state mark, external mark, continue and revoke follow the 
     ),
     {
       kind: 'shown',
-      line: { tone: 'warning', mark: 'warning', text: 'この端末では停止中' },
+      line: { tone: 'warning', mark: 'square', text: 'この端末では停止中' },
       external: 'on',
       continueState: 'unavailable',
       revocable: false,
+      // 停止中は ■ だけ（文言は読み上げの名前だけ）。
+      showText: false,
       notice: '入力を中断しました。',
     },
   );
@@ -118,8 +123,22 @@ test('the strip view: state mark, external mark, continue and revoke follow the 
       external: 'unknown',
       continueState: 'unavailable',
       revocable: true,
+      showText: true,
       notice: '声の会話を始められませんでした。',
     },
+  );
+  // 取り消しを保存できなかった: 同意は「要る」でも、取り消しをやり直せる。
+  const unsaved = voiceStripView(
+    shownVoice({ consent: 'required', notice: 'consent_not_saved' }),
+  );
+  assert.equal(unsaved.revocable, true);
+  assert.match(unsaved.notice ?? '', /保存できませんでした/u);
+  // 文言のない値は、列挙の値をそのまま出さない。
+  assert.equal(
+    voiceStripView(
+      shownVoice({ voice_state: 'x_future' as never, can_continue: false }),
+    ).line.text,
+    '不明',
   );
   assert.equal(voiceStripView({ visibility: 'hidden' }).kind, 'hidden');
   assert.equal(voiceStripView(null).kind, 'hidden');
@@ -267,10 +286,14 @@ test('talking: the external mark is filled, "続ける" is disabled, no reason c
       ?.getAttribute('data-external'),
     'on',
   );
-  assert.equal(
-    buttonNamed(strip.container, VOICE_LABELS.continueName).disabled,
-    true,
+  const continueButton = buttonNamed(
+    strip.container,
+    VOICE_LABELS.continueName,
   );
+  assert.equal(continueButton.disabled, true);
+  // 押せない間は主のボタンの形にしない（枠だけ）。文字だけで、マイクの形を重ねない。
+  assert.equal(continueButton.getAttribute('data-continue'), 'unavailable');
+  assert.equal(continueButton.querySelector('svg'), null);
   const text = strip.container.textContent ?? '';
   assert.match(text, /会話中/u);
   for (const banned of [
@@ -306,6 +329,10 @@ test('without consent there is no revoke button; notices and refusals are shown 
     ),
     null,
   );
+  // 取り消しがなくても 2 段目の場所は残す（下の 8 項目が動かない）。
+  const row = strip.container.querySelector('[data-revoke-row]');
+  assert.ok(row);
+  assert.equal(row.children.length, 0);
   const alerts = [...strip.container.querySelectorAll('[role="alert"]')].map(
     (node) => node.textContent,
   );

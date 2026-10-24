@@ -179,7 +179,7 @@ export function StatusPanel({
             </span>
           ) : control.kind === 'resume' ? (
             <Button
-              variant="secondary"
+              variant="primary"
               size="sm"
               aria-label={PANEL_LABELS.resumeName}
               onPress={() => onResume(control.expectedIoEpoch)}

@@ -106,6 +106,9 @@ export interface HarnessOptions {
   readonly open?: () => LiveOpenResult;
   readonly openMs?: number;
   readonly coreConnected?: boolean;
+  // 同意の記録の保存・消去に失敗する。
+  readonly consentSaveFails?: boolean;
+  readonly consentRemoveFails?: boolean;
   readonly enabled?: boolean;
   readonly initial?: DeviceIoRecord;
 }
@@ -231,7 +234,12 @@ export function voiceHarness(options: HarnessOptions = {}) {
   const consent = new VoiceConsentStore({
     load: () => consentRecord,
     save: (record) => {
+      if (options.consentSaveFails === true) throw new Error('disk full');
       consentRecord = record;
+    },
+    remove: () => {
+      if (options.consentRemoveFails === true) throw new Error('read only');
+      consentRecord = null;
     },
     now: () => new Date(clock.wall).toISOString(),
     log,
@@ -246,14 +254,16 @@ export function voiceHarness(options: HarnessOptions = {}) {
       renew: (body) => {
         renewals.push(body);
         const answer =
-          options.renew?.(body) ??
-          ({
-            request_id: body.request_id,
-            lease_id: body.lease_id,
-            nonce: body.nonce,
-            result: 'renewed',
-            ttl_ms: body.ttl_ms,
-          } as const);
+          // 答えを決めていなければ受け付ける。null（結果不明）は null のまま渡す（成功に変えない）。
+          options.renew === undefined
+            ? ({
+                request_id: body.request_id,
+                lease_id: body.lease_id,
+                nonce: body.nonce,
+                result: 'renewed',
+                ttl_ms: body.ttl_ms,
+              } as const)
+            : options.renew(body);
         if (answer === 'never') return new Promise(() => undefined);
         return delayed(options.renewMs ?? 10, () => answer);
       },

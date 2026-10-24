@@ -197,7 +197,8 @@ export function statusItems(
 
 function voiceLine(status: Shown): StatusLine | null {
   if (status.voice_state === null) return null;
-  const text = VOICE_STATE_LABELS[status.voice_state] ?? status.voice_state;
+  // 文言のない状態は、列挙の値をそのまま出さず「不明」にする（PR #160 のレビュー P3-6）。
+  const text = VOICE_STATE_LABELS[status.voice_state] ?? UNKNOWN_VOICE_TEXT;
   // 停止中は入出力の記号と同じ ■（B05-06。音声の段と同じ形）。
   return voiceSendsExternally(status.voice_state)
     ? { tone: 'warning', mark: 'warning', text }
@@ -207,13 +208,22 @@ function voiceLine(status: Shown): StatusLine | null {
       : { tone: 'neutral', mark: 'circle', text };
 }
 
-// 音声を外部へ送っている状態（B05-06 で確かめ直した。ADR 0050）。会話中と読み上げ中（音声の通知も Live の接続を開く。
-// 設計 10 §7）は Live の接続へ音声を送る。聞き取り中（文字で返す）は端末の中で文字にし、音声を外へ出さない（10 §6A の③）。
+// 音声を外部へ送っている状態（UI-04 の読み取り・B05-06、ADR 0050 の U93）。会話中・読み上げ中（音声の通知も Live の接続を
+// 開く。設計 10 §7）と、聞き取り中（文字で返す）を「外部へ送っている」とみなす。聞き取り中は設計 10 §6A の③では端末の中で
+// 文字にするが、③と KWS が実際につながって確かめられるまでは、外し方を誤ったときに「送っていない」側へ倒れないよう、
+// 送っている側に数える（司令塔の判断。PR #160 のレビュー）。
 export function voiceSendsExternally(
   voice: NonNullable<Shown['voice_state']>,
 ): boolean {
-  return voice === 'conversation_live' || voice === 'reading_aloud';
+  return (
+    voice === 'conversation_live' ||
+    voice === 'reading_aloud' ||
+    voice === 'listening_text_reply'
+  );
 }
+
+// 文言のない音声の状態の表示（列挙の値を画面に出さない）。
+export const UNKNOWN_VOICE_TEXT = '不明';
 
 // つまみの専用の記号（プライバシーと権限）。並びは固定。
 export type PrivacyMarkKey = 'voice_external' | 'private_mode' | 'safety_stop';
@@ -343,17 +353,21 @@ export interface VoiceStripView {
   readonly external: 'on' | 'off' | 'unknown';
   // 「続ける」: 押せる・始めている途中・押せない。
   readonly continueState: 'ready' | 'starting' | 'unavailable';
-  // 外部への送信の同意を取り消せる（同意している）。
+  // 外部への送信の同意を取り消せる（同意している、または取り消しを保存できなかったのでやり直せる）。
   readonly revocable: boolean;
+  // 状態の文言を画面に出すか（停止中は ■ だけで、文言は読み上げの名前だけ）。
+  readonly showText: boolean;
   // 知らせ（入力の中断・始められなかった）。理由のコード・送り先の名前は出さない。
   readonly notice: string | null;
 }
 
 export const VOICE_NOTICE_TEXT: Readonly<
-  Record<'input_interrupted' | 'not_started', string>
+  Record<'input_interrupted' | 'not_started' | 'consent_not_saved', string>
 > = {
   input_interrupted: '入力を中断しました。',
   not_started: '声の会話を始められませんでした。',
+  consent_not_saved:
+    '同意の取り消しを保存できませんでした。もう一度「同意を取り消す」を押してください。',
 };
 
 // 隠しているときの文言（読み上げ）。
@@ -367,18 +381,26 @@ export function voiceStripView(voice: DesktopVoiceView | null): VoiceStripView {
       external: 'unknown',
       continueState: 'unavailable',
       revocable: false,
+      showText: false,
       notice: null,
     };
   const state = voice.voice_state;
   const text =
-    state === null ? NOT_RECEIVED_TEXT : (VOICE_STATE_LABELS[state] ?? state);
+    state === null
+      ? NOT_RECEIVED_TEXT
+      : (VOICE_STATE_LABELS[state] ?? UNKNOWN_VOICE_TEXT);
+  const stopped = state === 'device_stopped' || state === 'global_stopped';
+  // 外部へ送っている間は、段の面の色と印で示すので、文言の前に ⚠ を重ねない（見た目のレビュー）。
+  // 停止中は ■（停止の ACK を待つ間に外部へ送っているかもしれなければ警告の色）。
+  const external =
+    voice.external_send || (state !== null && voiceSendsExternally(state));
   const line: StatusLine =
     state === null
       ? { tone: 'neutral', mark: 'none', text }
-      : voice.external_send || voiceSendsExternally(state)
-        ? { tone: 'warning', mark: 'warning', text }
-        : state === 'device_stopped' || state === 'global_stopped'
-          ? { tone: 'neutral', mark: 'square', text }
+      : stopped
+        ? { tone: external ? 'warning' : 'neutral', mark: 'square', text }
+        : external
+          ? { tone: 'warning', mark: 'none', text }
           : { tone: 'neutral', mark: 'circle', text };
   return {
     kind: 'shown',
@@ -389,7 +411,10 @@ export function voiceStripView(voice: DesktopVoiceView | null): VoiceStripView {
       : state === 'waiting_wake_word' && !voice.external_send
         ? 'starting'
         : 'unavailable',
-    revocable: voice.consent === 'granted',
+    revocable:
+      voice.consent === 'granted' || voice.notice === 'consent_not_saved',
+    // 停止中は入出力の段と同じ「停止中」を重ねず、■ だけを出す（見た目のレビュー）。
+    showText: !stopped,
     notice: voice.notice === null ? null : VOICE_NOTICE_TEXT[voice.notice],
   };
 }

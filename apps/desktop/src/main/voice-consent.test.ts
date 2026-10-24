@@ -17,6 +17,7 @@ import {
   consentRecordFrom,
   loadVoiceConsentFile,
   localConsentStatus,
+  removeVoiceConsentFile,
   saveVoiceConsentFile,
   voiceConsentText,
   type LocalVoiceConsent,
@@ -124,8 +125,10 @@ test('a failed save keeps the decision for this run (granted stays granted, revo
   assert.equal(store.status, 'required');
   store.grant();
   assert.equal(store.status, 'granted');
+  // 消す手段もないので、取り消しは保存できなかったと記録する（画面に知らせる）。
   assert.deepEqual(logs, [
     'voice_consent_save_failed',
+    'voice_consent_revoke_unsaved',
     'voice_consent_save_failed',
   ]);
 });
@@ -145,6 +148,70 @@ test('the file is written atomically with owner-only permissions and read back',
     );
     writeFileSync(path, '{not json');
     assert.throws(() => loadVoiceConsentFile(path));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// PR #160 のレビュー P2: 取り消しの保存に失敗しても、再起動で同意が戻らない。
+test('after a restart a revoke is never undone: a clock behind the consent time, or a failed save, still ends in "required"', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'buddy-voice-consent-'));
+  try {
+    const path = join(dir, VOICE_CONSENT_FILE);
+    const reopen = () =>
+      new VoiceConsentStore({
+        load: () => loadVoiceConsentFile(path),
+        save: (record) => saveVoiceConsentFile(path, record),
+        now: () => '2030-10-06T00:00:00.000Z',
+      });
+    // (a) 時計が同意した時刻より前に戻っている: 取り消した時刻は同意した時刻にそろえて保存する。
+    saveVoiceConsentFile(path, GRANTED);
+    const behind = new VoiceConsentStore({
+      load: () => loadVoiceConsentFile(path),
+      save: (record) => saveVoiceConsentFile(path, record),
+      remove: () => removeVoiceConsentFile(path),
+      now: () => '2030-10-03T00:00:00.000Z',
+    });
+    behind.revoke();
+    assert.deepEqual(loadVoiceConsentFile(path), {
+      ...GRANTED,
+      state: 'revoked',
+      revoked_at: GRANTED.confirmed_at,
+    });
+    assert.equal(behind.revokeUnsaved, false);
+    assert.equal(reopen().status, 'required');
+    // (b) 保存に失敗する: 記録を消す（記録がない＝同意がない）。
+    saveVoiceConsentFile(path, GRANTED);
+    const failing = new VoiceConsentStore({
+      load: () => loadVoiceConsentFile(path),
+      save: () => {
+        throw new Error('disk full');
+      },
+      remove: () => removeVoiceConsentFile(path),
+      now: () => '2030-10-05T00:00:00.000Z',
+    });
+    failing.revoke();
+    assert.equal(failing.revokeUnsaved, false);
+    assert.equal(loadVoiceConsentFile(path), null);
+    assert.equal(reopen().status, 'required');
+    // (c) 消すこともできない: この起動の間は取り消したままにし、保存できなかったことを知らせる。
+    saveVoiceConsentFile(path, GRANTED);
+    const stuck = new VoiceConsentStore({
+      load: () => loadVoiceConsentFile(path),
+      save: () => {
+        throw new Error('disk full');
+      },
+      remove: () => {
+        throw new Error('read only');
+      },
+      now: () => '2030-10-05T00:00:00.000Z',
+    });
+    stuck.revoke();
+    assert.equal(stuck.status, 'required');
+    assert.equal(stuck.revokeUnsaved, true);
+    // 取り直しに成功すれば知らせは消える。
+    stuck.grant();
+    assert.equal(stuck.revokeUnsaved, false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

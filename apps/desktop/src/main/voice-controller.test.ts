@@ -663,6 +663,115 @@ test('X13: when renewals stop arriving, the lease expires 6 s after the last acc
   );
 });
 
+// PR #160 のレビュー P1: 「続ける」の途中（Live の接続を待っている間）にリースを失ったら、リースのないまま始めない。
+test('a lease lost while the live session is pending (rejected or expired) starts nothing and closes the opened session', async () => {
+  const renewed = (body: {
+    request_id: string;
+    lease_id: string;
+    nonce: string;
+    ttl_ms: number;
+  }) => ({
+    request_id: body.request_id,
+    lease_id: body.lease_id,
+    nonce: body.nonce,
+    result: 'renewed' as const,
+    ttl_ms: body.ttl_ms,
+  });
+  // (a) 2 回目の更新（最初の更新の受付から 2 秒後）が拒否される。接続の答えは 3 秒後。
+  let calls = 0;
+  const rejected = granted({
+    openMs: 3000,
+    renew: (body) => {
+      calls += 1;
+      return calls === 1
+        ? renewed(body)
+        : {
+            request_id: body.request_id,
+            lease_id: body.lease_id,
+            nonce: body.nonce,
+            result: 'rejected',
+            ttl_ms: null,
+          };
+    },
+  });
+  await ready(rejected);
+  const a = rejected.voice.continueConversation();
+  await rejected.clock.advance(2100);
+  assert.equal(rejected.voice.leaseActive, false);
+  await rejected.clock.advance(1000);
+  assert.equal(await a, 'voice_unavailable');
+  assert.ok(!rejected.sentChannels().includes('voice.start'));
+  assert.equal(rejected.closed.at(-1)?.reason, 'core_lease_lost');
+  assert.equal(rejected.voice.externalSend, false);
+  assert.equal(shown(rejected.voice.view()).notice, 'not_started');
+  // 会話は始まっていないので、端末は止めない（呼びかけ待ちに戻る）。
+  assert.equal(rejected.device.state.stopScope, 'none');
+  assert.equal(shown(rejected.voice.view()).can_continue, true);
+  await rejected.clock.advance(30_000);
+  assert.ok(!rejected.sentChannels().includes('voice.start'));
+
+  // (b) 2 回目以降の更新が届かない: 最初の要求から 6 秒で切れる。接続の答えは 7 秒後。
+  let n = 0;
+  const expired = granted({
+    openMs: 7000,
+    renew: (body) => ((n += 1) === 1 ? renewed(body) : 'never'),
+  });
+  await ready(expired);
+  const b = expired.voice.continueConversation();
+  await expired.clock.advance(7100);
+  assert.equal(await b, 'voice_unavailable');
+  assert.ok(!expired.sentChannels().includes('voice.start'));
+  assert.equal(expired.closed.at(-1)?.reason, 'core_lease_lost');
+  assert.equal(expired.voice.leaseActive, false);
+});
+
+test('a renewal with an unknown result is not treated as success (the lease runs out)', async () => {
+  let n = 0;
+  const h = granted({
+    renew: (body) =>
+      (n += 1) === 1
+        ? {
+            request_id: body.request_id,
+            lease_id: body.lease_id,
+            nonce: body.nonce,
+            result: 'renewed',
+            ttl_ms: body.ttl_ms,
+          }
+        : null,
+  });
+  await live(h);
+  const sentAt = h.renewals[0]?.requested_at_mono_ms ?? 0;
+  await h.clock.advance(sentAt + 6000 - h.clock.mono);
+  assert.equal(h.device.state.stopScope, 'local');
+  assert.equal(
+    (lastSent(h)?.request['payload'] as Record<string, unknown>)['reason'],
+    'core_lease_lost',
+  );
+});
+
+// PR #160 のレビュー P2: 取り消しを保存できなければ記録を消す。消せなければ画面で知らせ、やり直させる。
+test('a revoke that cannot be saved removes the record; if that also fails the screen is told and can retry', async () => {
+  const removed = granted({ consentSaveFails: true });
+  await ready(removed);
+  removed.voice.revokeConsent();
+  assert.equal(removed.consentRecord(), null);
+  assert.equal(shown(removed.voice.view()).consent, 'required');
+  assert.equal(shown(removed.voice.view()).notice, null);
+
+  const stuck = granted({ consentSaveFails: true, consentRemoveFails: true });
+  await ready(stuck);
+  stuck.voice.revokeConsent();
+  // この起動の間は取り消したまま。記録は残っているので、知らせてやり直させる。
+  assert.equal(shown(stuck.voice.view()).consent, 'required');
+  assert.equal(shown(stuck.voice.view()).notice, 'consent_not_saved');
+  assert.equal(stuck.consentRecord()?.state, 'granted');
+  assert.ok(stuck.logs.includes('voice_consent_revoke_unsaved'));
+  assert.equal(
+    await stuck.voice.continueConversation(),
+    'confirmation_declined',
+  );
+});
+
 test('without a core connection (product start), continue does not start and plays the refused sound', async () => {
   const h = granted({ coreConnected: false });
   await ready(h);

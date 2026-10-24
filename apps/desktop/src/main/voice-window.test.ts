@@ -11,8 +11,12 @@ import {
   VOICE_CONTENT_SECURITY_POLICY,
   VOICE_ENTRY_URL,
   VOICE_FAULT_ARG,
+  VOICE_ACK_MAX_BYTES,
+  VOICE_ACK_MAX_PER_SECOND,
   VOICE_PARTITION,
+  VoiceAckLimiter,
   isVoiceSender,
+  voiceAckSizeOk,
   resolveVoiceAsset,
   voiceFaultSpec,
   voiceMode,
@@ -300,4 +304,25 @@ test('the voice preload exposes only command delivery, ACK and the fault spec', 
       null,
       argv.join(' '),
     );
+});
+
+// PR #160 のレビュー P3-5: 音声レンダラーからの ACK の大きさと頻度の上限。
+test('ACKs larger than 2 KB, more than 50 within a second, or with a clock going back are not taken', () => {
+  assert.equal(VOICE_ACK_MAX_BYTES, 2048);
+  assert.equal(VOICE_ACK_MAX_PER_SECOND, 50);
+  assert.equal(voiceAckSizeOk({ request_id: 'x', outcome: 'applied' }), true);
+  assert.equal(voiceAckSizeOk({ pad: 'a'.repeat(2048) }), false);
+  const cyclic: Record<string, unknown> = {};
+  cyclic['self'] = cyclic;
+  assert.equal(voiceAckSizeOk(cyclic), false);
+  assert.equal(voiceAckSizeOk(10n), false);
+  const limiter = new VoiceAckLimiter();
+  for (let i = 0; i < 50; i += 1)
+    assert.equal(limiter.accept(1000 + i), true, String(i));
+  assert.equal(limiter.accept(1050), false);
+  assert.equal(limiter.accept(1999), false);
+  // 最初の受け取りから 1 秒後には、また受け取れる。
+  assert.equal(limiter.accept(2000), true);
+  assert.equal(limiter.accept(1990), false);
+  assert.equal(limiter.accept(Number.NaN), false);
 });

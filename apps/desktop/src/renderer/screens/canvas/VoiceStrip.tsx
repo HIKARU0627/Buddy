@@ -1,14 +1,15 @@
 // 状態の層のパネルの音声の段（B05-06、本人の判断 2026-10-23、ADR 0050）。説明文は置かず、並びと形で伝える。
-// 1 段目は左から: マイクの記号（音声の状態の形）・音声の状態の文言・「音声を外部へ送っている」の印（つまみの専用の記号と
-// 同じ形。送っていれば塗った面、送っていなければ線だけ）・「続ける」。2 段目は、印の真下の右寄せに同意の取り消し
-// （同意しているときだけ。印と縦に並べて、何の同意かを位置で示す）。
+// 1 段目は左から: マイクの記号・音声の状態（停止中は ■ だけ）・「音声を外部へ送っている」の印（つまみの専用の記号と
+// 同じ形。送っていれば塗った面、送っていなければ線だけ）・「続ける」（押せる間だけ塗った面、押せない間は枠だけ）。
+// 2 段目は、印の列の右端にそろえて同意の取り消し（同意しているときだけ。印と縦に並べて、何の同意かを位置で示す）。
+// 2 段目の高さはいつも取っておき、取り消しが出入りしても下が動かないようにする。
 // 「続ける」は呼びかけ語なしで声の会話を始める最小のボタンで、押せるのは呼びかけ待ちで外部へ送っていないときだけ
 // （受付と同意の確認は main。同意がなければ main が OS の確認ダイアログを 1 回だけ出す）。
 // ロック中・不明は、位置だけを残して中身を隠す（灰色の面）。理由のコード・送り先の名前は出さない。
 import { Button, Spinner, Tooltip } from '@heroui/react';
 import { InlineNotice } from '../../components/InlineNotice.js';
 import { PrivacyIcon, StatusItemIcon } from '../../components/StatusIcons.js';
-import { StatusText } from '../../components/StatusText.js';
+import { StatusMark, StatusText } from '../../components/StatusText.js';
 import type { VoiceStripView } from '../../state/status-panel-state.js';
 
 export const VOICE_LABELS = {
@@ -34,24 +35,6 @@ const EXTERNAL_NAME: Readonly<Record<VoiceStripView['external'], string>> = {
   off: VOICE_LABELS.externalOff,
   unknown: VOICE_LABELS.externalUnknown,
 };
-
-function MicIcon({ className }: { readonly className: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 16 16"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="6" y="2" width="4" height="7.5" rx="2" />
-      <path d="M3.5 8a4.5 4.5 0 0 0 9 0M8 12.5V14" />
-    </svg>
-  );
-}
 
 export function VoiceStrip({
   view,
@@ -89,7 +72,14 @@ export function VoiceStrip({
           className={`size-5 shrink-0 ${live ? 'text-warning-soft-foreground' : 'text-muted'}`}
         />
         <p role="status" className="min-w-0 truncate text-sm">
-          <StatusText line={view.line} />
+          {view.showText ? (
+            <StatusText line={view.line} />
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <StatusMark line={view.line} />
+              <span className="sr-only">{view.line.text}</span>
+            </span>
+          )}
         </p>
         <Tooltip delay={250} closeDelay={0}>
           <Tooltip.Trigger
@@ -108,35 +98,38 @@ export function VoiceStrip({
             <span className="text-xs">{EXTERNAL_NAME[view.external]}</span>
           </Tooltip.Content>
         </Tooltip>
+        {/* 押せる間だけ主のボタン（塗った面）。押せない間は枠だけにする（位置は変えない。見た目のレビュー）。 */}
         <Button
-          variant="primary"
+          variant={view.continueState === 'ready' ? 'primary' : 'outline'}
           size="sm"
           aria-label={VOICE_LABELS.continueName}
           isDisabled={view.continueState !== 'ready'}
           onPress={onContinue}
-          className="shrink-0 gap-1.5"
+          data-continue={view.continueState}
+          className="w-20 shrink-0 gap-1.5"
         >
           {view.continueState === 'starting' ? (
             <Spinner size="sm" color="current" aria-hidden="true" />
-          ) : (
-            <MicIcon className="size-4" />
-          )}
+          ) : null}
           {VOICE_LABELS.continue}
         </Button>
-        {view.revocable ? (
-          // 印の列の右端にそろえ、文言の列にかかってよい（印と取り消しが縦に並ぶ）。
-          <span className="col-span-2 col-start-2 -mr-1 flex justify-end">
+        {/* 2 段目の高さはいつも取っておく（取り消しが出入りしても、下の 8 項目が動かない。見た目のレビュー）。 */}
+        <span
+          data-revoke-row
+          className="col-span-2 col-start-2 -mr-1 flex h-8 items-center justify-end"
+        >
+          {view.revocable ? (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               aria-label={VOICE_LABELS.revokeName}
               onPress={onRevoke}
-              className="h-7 px-1.5 text-xs text-muted"
+              className="h-8 px-2 text-xs text-muted"
             >
               {VOICE_LABELS.revoke}
             </Button>
-          </span>
-        ) : null}
+          ) : null}
+        </span>
       </div>
       {view.notice === null ? null : (
         <InlineNotice tone="warning" text={view.notice} />

@@ -134,6 +134,40 @@ export function isVoiceSender(facts: VoiceSenderFacts): boolean {
   );
 }
 
+// 音声レンダラーからの ACK の大きさと頻度の上限（PR #160 のレビュー P3-5）。ACK は数百バイトで、命令 1 つに 1 つ。
+// 上限を超えたものは受け取らない（停止の ACK なら、期限で強制終了する側へ倒れる）。値は原本に決めなし（仮置き）。
+export const VOICE_ACK_MAX_BYTES = 2048;
+export const VOICE_ACK_MAX_PER_SECOND = 50;
+
+export function voiceAckSizeOk(raw: unknown): boolean {
+  try {
+    const text = JSON.stringify(raw);
+    return typeof text === 'string' && text.length <= VOICE_ACK_MAX_BYTES;
+  } catch {
+    return false;
+  }
+}
+
+// 直近 1 秒の受け取りの数で絞る。時計が戻ったら（読めない値を含む）受け取らない。
+export class VoiceAckLimiter {
+  readonly #limit: number;
+  #times: number[] = [];
+
+  constructor(limit: number = VOICE_ACK_MAX_PER_SECOND) {
+    this.#limit = limit;
+  }
+
+  accept(nowMs: number): boolean {
+    const last = this.#times.at(-1);
+    if (!Number.isFinite(nowMs) || (last !== undefined && nowMs < last))
+      return false;
+    this.#times = this.#times.filter((at) => nowMs - at < 1000);
+    if (this.#times.length >= this.#limit) return false;
+    this.#times.push(nowMs);
+    return true;
+  }
+}
+
 export interface VoiceWebPreferences {
   readonly preload: string;
   readonly partition: string;

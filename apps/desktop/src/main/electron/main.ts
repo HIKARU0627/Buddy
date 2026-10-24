@@ -116,8 +116,10 @@ import {
   VOICE_ENTRY_URL,
   VOICE_PARTITION,
   VOICE_SCHEME,
+  VoiceAckLimiter,
   isVoiceSender,
   resolveVoiceAsset,
+  voiceAckSizeOk,
   voiceFaultSpec,
   voiceMode,
   voiceNavigationAllowed,
@@ -134,6 +136,7 @@ import {
   VOICE_CONSENT_FILE,
   VoiceConsentStore,
   loadVoiceConsentFile,
+  removeVoiceConsentFile,
   saveVoiceConsentFile,
   voiceConsentText,
 } from '../voice-consent.js';
@@ -162,11 +165,23 @@ const TRAY_ICON_1X =
 const TRAY_ICON_2X =
   'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAlklEQVR4nO3UyQ2AMAxEUXdEaXRMK3COTJYZxk6QcvAR/wciseO8bOYwD92dCQH0ojQmMj6EiAwPQbLiVURm/BWxHCA67hAz4gWCBSh+XgqgvLgKwNc3Z78EBBiNQzs3YAN+BQg9htMvIkTdgsA72IcV4wCZCKsBMhC2PCAS4VqKs0zHewAVpLlffbNBcQSAYKB9DEA6DxdGPimEe0K2AAAAAElFTkSuQmCC';
 
+// 音声（B05-06、ADR 0050）。開発の起動で 3 つの窓の組み立てのときに、--buddy-voice=mock（または BUDDY_DESKTOP_VOICE=mock）で
+// 模擬の音声レンダラーと端末の中の模擬の中枢を使う。既定・配布版は音声レンダラーを作らず、音声のスキーム・セッションも作らない。
+const voiceEnabled =
+  uiWindowMode(process.argv, process.env, { packaged: app.isPackaged }) ===
+    'canvas' &&
+  voiceMode(process.argv, process.env, { packaged: app.isPackaged }) === 'mock';
+const voiceFault = voiceFaultSpec(process.argv, process.env, {
+  packaged: app.isPackaged,
+});
+
 // 画面は登録した特権スキームから読み込む（file:// を使わない）。ready の前に登録する必要がある。
-// 音声レンダラーのスキーム（B05-06）は、音声レンダラーの専用のセッションにだけ登録する。
+// 音声レンダラーのスキーム（B05-06）は、音声を使う組み立てのときだけ、音声レンダラーの専用のセッションにだけ登録する。
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true } },
-  { scheme: VOICE_SCHEME, privileges: { standard: true, secure: true } },
+  ...(voiceEnabled
+    ? [{ scheme: VOICE_SCHEME, privileges: { standard: true, secure: true } }]
+    : []),
 ]);
 // すべてのレンダラーを sandbox にする。
 app.enableSandbox();
@@ -176,14 +191,6 @@ const lifecycle = new ClientLifecycle();
 // キャンバス・状態の層・入力バーの 3 つの窓（試作）にする。
 // 開発の起動（app.isPackaged が false）のときだけフラグと環境変数を受け、配布版は必ず従来の窓。
 const uiMode = uiWindowMode(process.argv, process.env, {
-  packaged: app.isPackaged,
-});
-// 音声（B05-06、ADR 0050）。開発の起動で 3 つの窓の組み立てのときに、--buddy-voice=mock（または BUDDY_DESKTOP_VOICE=mock）で
-// 模擬の音声レンダラーと端末の中の模擬の中枢を使う。既定・配布版は音声レンダラーを作らない。
-const voiceEnabled =
-  uiMode === 'canvas' &&
-  voiceMode(process.argv, process.env, { packaged: app.isPackaged }) === 'mock';
-const voiceFault = voiceFaultSpec(process.argv, process.env, {
   packaged: app.isPackaged,
 });
 // キャンバスを前に出しているか（UI-02、本人の判断 2026-10-22）。正本は main。
@@ -698,22 +705,19 @@ function registerPowerMonitor(): void {
 function hardenWebContents(): void {
   app.on('web-contents-created', (_event, contents) => {
     contents.on('will-attach-webview', (event) => event.preventDefault());
+    const voiceContents = isVoiceContents(contents);
+    const allowed = (url: string) =>
+      voiceContents ? voiceNavigationAllowed(url) : navigationAllowed(url);
     contents.on('will-navigate', (event) => {
-      if (
-        contents.session === voiceSession()
-          ? !voiceNavigationAllowed(event.url)
-          : !navigationAllowed(event.url)
-      )
-        event.preventDefault();
+      if (!allowed(event.url)) event.preventDefault();
     });
     contents.on('will-redirect', (event) => {
-      if (!navigationAllowed(event.url)) event.preventDefault();
+      if (!allowed(event.url)) event.preventDefault();
     });
     // 新しいウィンドウはすべて拒否し、https のリンクだけを通常のブラウザーへ渡す。
     contents.setWindowOpenHandler(({ url }) => {
       // 音声レンダラーは外部のページも開かない（B05-06）。
-      const target =
-        contents.session === voiceSession() ? null : externalOpenTarget(url);
+      const target = voiceContents ? null : externalOpenTarget(url);
       if (target !== null)
         void shell
           .openExternal(target)
@@ -855,6 +859,11 @@ async function confirmAdminWithDialog(
 
 let voiceSessionPrepared = false;
 
+// 音声レンダラーのセッションの webContents か（音声を使わない組み立てでは、音声のセッションを作らない）。
+function isVoiceContents(contents: Electron.WebContents): boolean {
+  return voiceEnabled && contents.session === voiceSession();
+}
+
 // 音声レンダラーの専用のセッション（保存しない）。音声レンダラーの画面のファイルだけを返し、ほかの要求・権限をすべて拒否する。
 function voiceSession(): Electron.Session {
   const voiceSes = session.fromPartition(VOICE_PARTITION);
@@ -953,7 +962,17 @@ const voiceRenderer: VoiceRendererPort = {
 
 // 音声レンダラーからの ACK。送信元が今の音声レンダラーの主フレームのときだけ渡す。
 function registerVoiceIpc(): void {
+  if (!voiceEnabled) return;
+  const limiter = new VoiceAckLimiter();
+  let dropping = false;
   ipcMain.on(VOICE_ACK_CHANNEL, (event, raw: unknown) => {
+    // 大きすぎる・多すぎる ACK は受け取らない（停止の ACK なら期限で強制終了する側へ倒れる）。
+    if (!voiceAckSizeOk(raw) || !limiter.accept(performance.now())) {
+      if (!dropping) log('voice_ack_dropped_limit');
+      dropping = true;
+      return;
+    }
+    dropping = false;
     const current = voiceWindow;
     const window =
       current !== null && !current.window.isDestroyed() ? current.window : null;
@@ -1043,6 +1062,7 @@ function createVoice(
     consent: new VoiceConsentStore({
       load: () => loadVoiceConsentFile(consentPath),
       save: (record) => saveVoiceConsentFile(consentPath, record),
+      remove: () => removeVoiceConsentFile(consentPath),
       now: () => new Date().toISOString(),
       log,
     }),
@@ -1095,22 +1115,32 @@ function start(): void {
     persist,
     onPersistError: () => log('device_io_state_save_failed'),
     onNotification: (notification) => {
-      sendToRenderer(notification.channel, notification);
-      if (notification.channel === 'desktop.state_changed') {
-        updateTray();
-        // ロック状態は要求の Buddy-Lock-State と接続の表示の範囲に使う。
-        if (link && controller) {
-          // 停止した（トレイ・画面・電源の事象のどれでも）: 表示している承認・取消・再試行の確認を閉じて送らない。
-          if (controller.state.stopScope !== 'none') link.closeConfirm();
-          link.setLockState(controller.state.lockState);
-          // 停止・io_epoch の変化では、キャンバスの記述と参照を捨てる（再開したら取り直す）。
-          link.ioStateChanged();
-          // ロック中・不明になったら、前に出したキャンバスを後ろへ戻す（中身を出したままにしない）。
-          summoner.lockChanged(controller.state.lockState);
-          pushConnection();
-        }
-        // 止まった・ロックした・再開した: 音声レンダラーへ suspend_io を送る・用意する（B05-06）。
+      if (notification.channel !== 'desktop.state_changed') {
+        sendToRenderer(notification.channel, notification);
+        return;
+      }
+      // 止まった・ロックした・再開した: 最初に音声レンダラーへ suspend_io を送る・用意する（B05-06。PR #160 のレビュー P2-3:
+      // ほかの処理の例外で停止が遅れない・届かないことがないよう、ほかより先に呼ぶ）。
+      try {
         if (controller) voice?.deviceChanged(controller.state);
+      } finally {
+        // 音声の状態で状態欄が更新されることがあるので、届いた通知ではなく今の状態欄を送る（古い状態欄を後から送らない）。
+        sendToRenderer('desktop.state_changed', {
+          channel: 'desktop.state_changed',
+          status: controller?.statusBar ?? notification.status,
+        });
+      }
+      updateTray();
+      // ロック状態は要求の Buddy-Lock-State と接続の表示の範囲に使う。
+      if (link && controller) {
+        // 停止した（トレイ・画面・電源の事象のどれでも）: 表示している承認・取消・再試行の確認を閉じて送らない。
+        if (controller.state.stopScope !== 'none') link.closeConfirm();
+        link.setLockState(controller.state.lockState);
+        // 停止・io_epoch の変化では、キャンバスの記述と参照を捨てる（再開したら取り直す）。
+        link.ioStateChanged();
+        // ロック中・不明になったら、前に出したキャンバスを後ろへ戻す（中身を出したままにしない）。
+        summoner.lockChanged(controller.state.lockState);
+        pushConnection();
       }
     },
   });

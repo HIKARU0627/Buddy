@@ -245,13 +245,13 @@ test('the eight items of ADR 0014 keep a fixed order, and each carries a mark an
 });
 
 test('the privacy marks: on, off, frame only when there is no value yet, hidden while locked', () => {
-  // 音声を外部へ送っているのは、会話中と読み上げ中（音声の通知も Live の接続を開く。設計 10 §7）。聞き取り中（文字で返す）は
-  // 端末の中で文字にし、音声を外へ出さない（10 §6A の③）。B05-06 で確かめ直した（ADR 0050）。
+  // 音声を外部へ送っているのは、会話中・読み上げ中（音声の通知も Live の接続を開く。設計 10 §7）と、聞き取り中（③と KWS が
+  // つながって確かめられるまでは送っている側に数える。ADR 0050 の U93、PR #160 のレビュー）。
   assert.equal(voiceSendsExternally('conversation_live'), true);
   assert.equal(voiceSendsExternally('reading_aloud'), true);
+  assert.equal(voiceSendsExternally('listening_text_reply'), true);
   for (const voice of [
     'waiting_wake_word',
-    'listening_text_reply',
     'device_stopped',
     'global_stopped',
     'budget_voice_stopped',

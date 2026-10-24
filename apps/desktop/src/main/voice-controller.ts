@@ -414,6 +414,16 @@ export class VoiceController {
     } catch {
       opened = { kind: 'unknown' };
     }
+    // 待っている間にリースを失った（更新の拒否・期限切れ・時計の不整合）: リースのないまま始めない。開いた接続は閉じる。
+    if (
+      !this.#lease.active &&
+      permitted(this.#device) &&
+      this.#options.consent.status === 'granted'
+    ) {
+      if (opened.kind === 'answer')
+        this.#options.core.closeLive(opened.liveSessionId, 'core_lease_lost');
+      return this.#notStarted();
+    }
     if (aborted() || this.#options.consent.status !== 'granted') {
       // 待っている間に止まった・同意を取り消した: 開いていれば閉じ、音声レンダラーへは渡さない。
       if (opened.kind === 'answer')
@@ -547,7 +557,7 @@ export class VoiceController {
         external_send: false,
         consent,
         can_continue: true,
-        notice: this.#notice,
+        notice: this.#currentNotice(),
       };
     return {
       visibility: 'shown',
@@ -555,11 +565,19 @@ export class VoiceController {
       external_send: this.#external,
       consent,
       can_continue: false,
-      notice: this.#notice,
+      notice: this.#currentNotice(),
     };
   }
 
   // ---- 内部 -----------------------------------------------------------------------------------------------
+
+  // 同意の取り消しを保存できなかったことを最優先で知らせる（次の起動で同意が戻るおそれがある）。
+  #currentNotice():
+    'input_interrupted' | 'not_started' | 'consent_not_saved' | null {
+    return this.#options.consent.revokeUnsaved
+      ? 'consent_not_saved'
+      : this.#notice;
+  }
 
   #current(): VoiceCurrentState {
     const base = {
@@ -658,6 +676,14 @@ export class VoiceController {
   }
 
   #leaseLost(): void {
+    // 「続ける」の途中（Live の接続を待っている）でリースを失った: 始めない（待っている手順を捨てる。PR #160 のレビュー P1）。
+    if (this.#starting) {
+      this.#options.cancelConsent?.();
+      this.#flow += 1;
+      this.#starting = false;
+      this.#emit();
+      return;
+    }
     // 会話中にリースを失った: 中枢のリースの喪失として、この端末の入出力を止める（07 §5）。
     if (this.#live === null && !this.#external) return;
     this.#stopDevice('core_lease_lost');

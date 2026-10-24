@@ -90,6 +90,8 @@ export interface VoiceConsentStoreOptions {
   // 保存した記録を読む（なければ null。読めなければ例外）。
   readonly load: () => unknown;
   readonly save: (record: LocalVoiceConsent) => void;
+  // 保存した記録を消す（取り消しを保存できなかったとき。記録がなければ「同意がない」なので安全側）。
+  readonly remove?: () => void;
   // UTC の RFC 3339。
   readonly now: () => string;
   readonly log?: (code: string) => void;
@@ -98,6 +100,8 @@ export interface VoiceConsentStoreOptions {
 export class VoiceConsentStore {
   readonly #options: VoiceConsentStoreOptions;
   #record: LocalVoiceConsent | null;
+  // 取り消しを保存も消去もできなかった（次の起動で同意が戻るおそれがある）。画面で知らせ、取り消しをやり直させる。
+  #revokeUnsaved = false;
 
   constructor(options: VoiceConsentStoreOptions) {
     this.#options = options;
@@ -120,6 +124,10 @@ export class VoiceConsentStore {
     return this.#record;
   }
 
+  get revokeUnsaved(): boolean {
+    return this.#revokeUnsaved;
+  }
+
   // OS の確認ダイアログで同意した後だけ呼ぶ。保存に失敗しても、この起動の間は同意として扱う（次の起動で取り直す）。
   grant(): void {
     const now = this.#options.now();
@@ -132,31 +140,48 @@ export class VoiceConsentStore {
       confirmed_at: now,
       revoked_at: null,
     };
+    this.#revokeUnsaved = false;
     this.#persist();
   }
 
-  // 取り消す。記録がなくても取り消した記録を残す（保存に失敗しても、この起動の間は取り消したまま）。
+  // 取り消す。記録がなくても取り消した記録を残す（この起動の間はいつでも取り消したまま）。
+  // 取り消した時刻は、同意した時刻より前にしない（時計が戻っても記録の形が壊れず、保存できる）。
+  // 保存に失敗したら記録のファイルを消す（記録がない＝同意がない）。それにも失敗したら revokeUnsaved で知らせる。
   revoke(): void {
     const now = this.#options.now();
     const previous = this.#record;
+    const confirmed = previous?.confirmed_at ?? now;
     this.#record = {
       kind: 'voice_live_audio',
       provider: 'openai_live',
       policy_version: previous?.policy_version ?? VOICE_CONSENT_POLICY_VERSION,
       state: 'revoked',
       method: 'os_dialog_main',
-      confirmed_at: previous?.confirmed_at ?? now,
-      revoked_at: now,
+      confirmed_at: confirmed,
+      revoked_at: Date.parse(now) < Date.parse(confirmed) ? confirmed : now,
     };
-    this.#persist();
+    if (this.#persist()) {
+      this.#revokeUnsaved = false;
+      return;
+    }
+    try {
+      if (this.#options.remove === undefined) throw new Error('no_remove');
+      this.#options.remove();
+      this.#revokeUnsaved = false;
+    } catch {
+      this.#options.log?.('voice_consent_revoke_unsaved');
+      this.#revokeUnsaved = true;
+    }
   }
 
-  #persist(): void {
-    if (this.#record === null) return;
+  #persist(): boolean {
+    if (this.#record === null) return true;
     try {
       this.#options.save(this.#record);
+      return true;
     } catch {
       this.#options.log?.('voice_consent_save_failed');
+      return false;
     }
   }
 }
@@ -171,6 +196,11 @@ export function loadVoiceConsentFile(path: string): unknown {
     throw error;
   }
   return JSON.parse(text) as unknown;
+}
+
+// 保存した記録を消す。ファイルがなければ何もしない（消せなければ例外）。
+export function removeVoiceConsentFile(path: string): void {
+  rmSync(path, { force: true });
 }
 
 // 一時ファイルに書いて fsync し、rename で置き換える（device-io-store と同じ手順）。

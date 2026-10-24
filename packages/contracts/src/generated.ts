@@ -1336,7 +1336,7 @@ export type CanvasChartValue = number;
  */
 export type CanvasContentUrl = string;
 /**
- * 状態の層に出す音声の状態（設計 10 §1〜§3、01 いつも見える状態、B05-06、ADR 0050）。main が音声レンダラーと端末状態から作り、画面は表示するだけ。voice_state は状態欄と同じ値（null は音声レンダラーがまだ使えない）。external_send は音声を外部（Live の接続）へ送っている、または送っているかもしれない間（開始の命令を出してから、閉じる・停止の ACK を受けるか音声レンダラーを強制終了するまで）の true で、印を早く消さない側へ倒す。consent は端末が最後に記録した外部への送信の同意で、表示と確認ダイアログを出すかの判断にだけ使い、送ってよいかの正本ではない（正本は中枢。ADR 0038）。notice は入力の中断（再生停止の ACK が返らず全停止した）と、始められなかった（接続できない）の知らせ。理由のコード・送り先の名前は含めない。
+ * 状態の層に出す音声の状態（設計 10 §1〜§3、01 いつも見える状態、B05-06、ADR 0050）。main が音声レンダラーと端末状態から作り、画面は表示するだけ。voice_state は状態欄と同じ値（null は音声レンダラーがまだ使えない）。external_send は音声を外部（Live の接続）へ送っている、または送っているかもしれない間（開始の命令を出してから、閉じる・停止の ACK を受けるか音声レンダラーを強制終了するまで）の true で、印を早く消さない側へ倒す。consent は端末が最後に記録した外部への送信の同意で、表示と確認ダイアログを出すかの判断にだけ使い、送ってよいかの正本ではない（正本は中枢。ADR 0038）。notice は入力の中断（再生停止の ACK が返らず全停止した）・始められなかった（接続できない・待っている間にリースを失った）・同意の取り消しを保存できなかった（次の起動で同意が戻るおそれがある。取り消しをやり直させる）の知らせ。理由のコード・送り先の名前は含めない。
  */
 export type DesktopVoiceView =
   | {
@@ -1348,7 +1348,8 @@ export type DesktopVoiceView =
       external_send: false;
       consent: 'granted' | 'required';
       can_continue: true;
-      notice: ('input_interrupted' | 'not_started') | null;
+      notice:
+        ('input_interrupted' | 'not_started' | 'consent_not_saved') | null;
     }
   | {
       visibility: 'shown';
@@ -1356,7 +1357,8 @@ export type DesktopVoiceView =
       external_send: boolean;
       consent: 'granted' | 'required';
       can_continue: false;
-      notice: ('input_interrupted' | 'not_started') | null;
+      notice:
+        ('input_interrupted' | 'not_started' | 'consent_not_saved') | null;
     };
 /**
  * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。

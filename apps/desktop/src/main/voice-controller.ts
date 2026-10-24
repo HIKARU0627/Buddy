@@ -150,6 +150,20 @@ export function suspendReasonFor(state: DesktopIoState): {
   return { reason: 'device_io_stop', scope: 'local' };
 }
 
+// 状態の通知の処理（electron/main.ts）で、音声の制御の例外を記録だけして投げ直さない。トレイの更新・ロックしたときに
+// キャンバスを戻す処理などを飛ばさない（PR #160 のレビュー P3、Issue #162）。
+export function notifyVoiceDeviceChanged(
+  voice: { deviceChanged(state: DesktopIoState): void } | null,
+  state: DesktopIoState,
+  log: (code: string) => void,
+): void {
+  try {
+    voice?.deviceChanged(state);
+  } catch {
+    log('voice_device_changed_failed');
+  }
+}
+
 export class VoiceController {
   readonly #options: VoiceControllerOptions;
   readonly #lease: VoiceLeaseKeeper;
@@ -389,6 +403,10 @@ export class VoiceController {
 
   async #continue(flow: number): Promise<'ok' | DesktopIpcRejectReason> {
     const aborted = () => flow !== this.#flow || !permitted(this.#device);
+    // 置き換えられた古い手順からは、新しい手順のリースを止めない（Issue #162）。
+    const stopLeaseIfCurrent = () => {
+      if (flow === this.#flow) this.#lease.stop();
+    };
     if (this.#options.consent.status !== 'granted') {
       let confirmed: boolean | 'not_shown';
       try {
@@ -404,7 +422,7 @@ export class VoiceController {
     }
     const leased = await this.#lease.start();
     if (aborted()) {
-      this.#lease.stop();
+      stopLeaseIfCurrent();
       return 'input_stopped';
     }
     if (!leased) return this.#notStarted();
@@ -426,14 +444,17 @@ export class VoiceController {
     }
     if (aborted() || this.#options.consent.status !== 'granted') {
       // 待っている間に止まった・同意を取り消した: 開いていれば閉じ、音声レンダラーへは渡さない。
+      // 置き換えられただけ（端末は止まっていない）なら、その手順を捨てた理由にする（Issue #162）。
       if (opened.kind === 'answer')
         this.#options.core.closeLive(
           opened.liveSessionId,
           this.#options.consent.status !== 'granted'
             ? 'consent_revoked'
-            : suspendReasonFor(this.#device).reason,
+            : permitted(this.#device)
+              ? 'provider_failure'
+              : suspendReasonFor(this.#device).reason,
         );
-      this.#lease.stop();
+      stopLeaseIfCurrent();
       return aborted() ? 'input_stopped' : 'voice_unavailable';
     }
     if (opened.kind !== 'answer') {

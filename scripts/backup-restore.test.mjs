@@ -44,6 +44,7 @@ import {
   restoreOverageApprovalPlan,
   restoreSafetyBreaker,
   restoreVoicePlan,
+  nextLiveControl,
   RESTORE_EVIDENCE_TRANSITIONS,
   restoreDbVerifyCheck,
   restoreForgetCheck,
@@ -1010,7 +1011,11 @@ test('credit after restore waits for an observation taken after the restore', ()
 test('devices: every device except the hub must pair again after restore (U78)', () => {
   for (const entry of cases.device_cases)
     assert.deepEqual(
-      restoreDevicePlan(entry.devices, entry.restored_at),
+      restoreDevicePlan(
+        entry.devices,
+        entry.restored_at,
+        entry.pre_restore_devices,
+      ),
       entry.expect,
       entry.id,
     );
@@ -1060,4 +1065,55 @@ test('restore evidence transitions are an explicit table', () => {
 test('voice epochs never roll back and io is stopped after restore (0009)', () => {
   for (const entry of cases.voice_cases)
     assert.deepEqual(restoreVoicePlan(entry.input), entry.expect, entry.id);
+  // Live の接続の出力は、中枢の起動時の照合（voice-control.ts の start()）が nextLiveControl でたどる連鎖の結果と同じ形
+  // （Sonnet の再確認の P2-A）。閉じ終えていない入力の全件で、連鎖の結果と照合し、使用量の照合と遅着の終了を受け付けることも確かめる。
+  for (const entry of cases.voice_cases.filter((c) => c.expect.ok)) {
+    const plan = restoreVoicePlan(entry.input);
+    const byId = new Map(
+      plan.live_sessions.map((row) => [row.live_session_id, row]),
+    );
+    for (const row of entry.input.live_sessions) {
+      let state = {
+        live_session_id: row.live_session_id,
+        control_state: row.control_state,
+        control_epoch: row.control_epoch,
+        closure: row.closure,
+        usage_seconds: null,
+        reservation_state: 'reserved',
+      };
+      const step = (trigger) => {
+        const next = nextLiveControl(state, trigger);
+        assert.equal(
+          next.ok,
+          true,
+          `${entry.id} ${row.live_session_id} ${trigger}`,
+        );
+        state = next.next;
+      };
+      if (state.control_state === 'closed') {
+        assert.equal(byId.has(row.live_session_id), false, row.live_session_id);
+        continue;
+      }
+      if (['connecting', 'ready'].includes(state.control_state))
+        step('core_restarted');
+      if (state.closure === 'open') step('close_requested');
+      if (state.control_state === 'closing') step('close_unconfirmed');
+      const out = byId.get(row.live_session_id);
+      assert.deepEqual(
+        [out.control_state, out.control_epoch, out.closure, out.usage_seconds],
+        [
+          state.control_state,
+          state.control_epoch,
+          state.closure,
+          state.usage_seconds,
+        ],
+        `${entry.id} ${row.live_session_id}`,
+      );
+      assert.equal(nextLiveControl(state, 'usage_reconciled', 30).ok, true);
+      assert.equal(
+        nextLiveControl(state, 'session_closed_received', 30).ok,
+        true,
+      );
+    }
+  }
 });

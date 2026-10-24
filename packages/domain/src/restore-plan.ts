@@ -4,6 +4,7 @@
 // Core（B06-08）が行い、その観測を入力として渡す。最新の台帳を確認できない・判別できないときは記憶と会話を戻さない。
 
 import {
+  BACKUP_INCLUDED_TABLES,
   BACKUP_ZERO_HASH,
   backupManifestProblems,
   backupTablePlan,
@@ -357,6 +358,8 @@ export interface RestoreDbVerifyInput {
     readonly store_generation: string;
     readonly ledger_id: string;
     readonly forgetting_generation: string;
+    // 封筒の excluded_tables（含める表のうち、これ以外はすべてあること。Sonnet の再確認の P3-1）。
+    readonly excluded_tables: readonly string[];
   };
 }
 
@@ -383,6 +386,12 @@ export function restoreDbVerifyCheck(
     !input.operations_plan_ok ||
     // 表の一覧に未知の表・必須の表の欠けがない（取れない DB・別の作りの DB を戻さない）。
     !backupTablePlan(input.restored_tables).ok ||
+    // 含める表（封筒が除外した表を除く）が、すべてある（業務の表を抜いた DB を戻さない）。
+    BACKUP_INCLUDED_TABLES.some(
+      (table) =>
+        !input.expected.excluded_tables.includes(table) &&
+        !input.restored_tables.includes(table),
+    ) ||
     // DB の中の世代・系譜が、封筒と当てた台帳に一致する（封筒と中身の取り違えを戻さない）。
     input.restored_store_generation !== input.expected.store_generation ||
     input.restored_ledger_id !== input.expected.ledger_id ||

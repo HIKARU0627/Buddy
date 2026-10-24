@@ -699,7 +699,7 @@ export interface RestoredDevice {
 export type RestoreDevicePlan =
   | {
       readonly ok: true;
-      // 復元の時刻で失効させる端末（中枢以外で、まだ失効していないもの）。
+      // 復元の時刻で失効させる端末（まだ失効していないもの。中枢と同じマシンの端末は、下の条件のときだけ）。
       readonly revoke: readonly string[];
       readonly devices_revoked_count: number;
     }
@@ -707,15 +707,28 @@ export type RestoreDevicePlan =
 
 // 復元したバックアップは古いので、バックアップの後に取り消した端末が有効に戻る（revoked_at・token_hash の巻き戻り。
 // Sonnet の P1-1）。本人の判断（2026-10-24。U78）で、中枢以外のすべての端末を、ペアリングし直すまで認可しない。
-// 失効済みの端末は元の時刻のまま。中枢と同じマシンの端末だけは残す（中枢の画面の操作の経路）。
+// 失効済みの端末は元の時刻のまま。中枢と同じマシンの端末（hub_local）は、復元の前の中枢が生きていて（復元の前の
+// devices が読める）、その時点で同じ端末が失効していないときだけ残す（中枢の画面の操作の経路）。復元の前に失効していた・
+// 復元の前の DB にない hub_local の端末と、中枢を失ったとき（復元の前の値がない。新しい中枢で付け直す）は失効させる
+// （Sonnet の再確認の P2-C）。
 export function restoreDevicePlan(
   devices: readonly RestoredDevice[],
   restoredAt: string,
+  preRestoreDevices: readonly RestoredDevice[] | null = null,
 ): RestoreDevicePlan {
   if (parseBackupTime(restoredAt) === null)
     return { ok: false, reason: 'restored_at_invalid' };
+  const liveBefore = new Set(
+    (preRestoreDevices ?? [])
+      .filter((device) => device.revoked_at === null)
+      .map((device) => device.device_id),
+  );
+  const keepHub = (device: RestoredDevice): boolean =>
+    device.hub_local &&
+    preRestoreDevices !== null &&
+    liveBefore.has(device.device_id);
   const revoke = devices
-    .filter((device) => !device.hub_local && device.revoked_at === null)
+    .filter((device) => device.revoked_at === null && !keepHub(device))
     .map((device) => device.device_id)
     .sort();
   return { ok: true, revoke, devices_revoked_count: revoke.length };
@@ -756,18 +769,27 @@ export type RestoreSafetyState =
 // 司令塔の判断で、復元の後は止めて、本人が画面で再開するまで止める（03 の解除は本人の画面操作だけ）。理由は契約の
 // SafetyState.stop_reason に足した restored_from_backup（既存の 3 つは件数・同じ対象・補償の失敗で、意味が違う）。
 // 止めている間は、方針による自動承認（候補起点・本人の依頼起点の両方。auto_actions・取り消しの補償を含む）が起きない。
+// safety_revision は、復元した値と復元の前の値（中枢を失ったときは null）の大きい方に 1 を足す（端末が持つ古い版で
+// 解除の操作を通さない。Sonnet の再確認の P3-2）。
 export function restoreSafetyBreaker(input: {
   readonly safety_revision: string;
+  readonly pre_restore_safety_revision?: string | null;
   readonly restored_at: string;
 }): RestoreSafetyState {
   if (parseBackupTime(input.restored_at) === null)
     return { ok: false, reason: 'restored_at_invalid' };
-  if (!DECIMAL.test(input.safety_revision))
+  const before = input.pre_restore_safety_revision ?? null;
+  if (
+    !DECIMAL.test(input.safety_revision) ||
+    (before !== null && !DECIMAL.test(before))
+  )
     return { ok: false, reason: 'safety_revision_invalid' };
+  const restored = BigInt(input.safety_revision);
+  const previous = before === null ? 0n : BigInt(before);
   return {
     ok: true,
     state: 'stopped',
-    safety_revision: String(BigInt(input.safety_revision) + 1n),
+    safety_revision: String((restored > previous ? restored : previous) + 1n),
     stop_reason: 'restored_from_backup',
     stopped_at: input.restored_at,
   };
@@ -813,6 +835,22 @@ export interface RestoredLiveSession {
   readonly control_state: string;
   readonly control_epoch: string;
   readonly closure: string;
+  readonly ended_at?: string | null;
+  readonly end_reason?: string | null;
+}
+
+// 復元の後の Live の接続（変える行だけ）。中枢の起動時の照合（voice-control.ts の start()）が nextLiveControl でたどる
+// 連鎖（connecting・ready → core_restarted → lost、open → close_requested → closing、closing → close_unconfirmed →
+// closed）と同じ形にする。closed・close_unconfirmed は使用量の照合（usage_reconciled）と遅着の
+// session_closed_received を受け付ける形で、未完了として数え直されない（Sonnet の再確認の P2-A）。
+export interface RestoredLiveSessionUpdate {
+  readonly live_session_id: string;
+  readonly control_state: 'closed';
+  readonly control_epoch: string;
+  readonly closure: 'close_unconfirmed';
+  readonly usage_seconds: null;
+  readonly ended_at: string;
+  readonly end_reason: string;
 }
 
 export type RestoreVoicePlan =
@@ -820,13 +858,15 @@ export type RestoreVoicePlan =
       readonly ok: true;
       readonly device_epochs: readonly DeviceEpochRow[];
       readonly io_stop: IoStopRow;
-      // 変える Live の接続だけ。
-      readonly live_sessions: readonly RestoredLiveSession[];
+      readonly live_sessions: readonly RestoredLiveSessionUpdate[];
     }
   | {
       readonly ok: false;
       readonly reasons: readonly (
-        'epoch_invalid' | 'duplicate_device' | 'live_session_invalid'
+        | 'restored_at_invalid'
+        | 'epoch_invalid'
+        | 'duplicate_device'
+        | 'live_session_invalid'
       )[];
     };
 
@@ -837,18 +877,31 @@ const EPOCH_KEYS = [
   'session_epoch',
 ] as const;
 
+// 状態機械（nextLiveControl）で到達できる制御の状態と閉じ方の組。これ以外の組の記録は、何が起きたか分からないので
+// 計画しない（保留の側）。
+const LIVE_REACHABLE: Readonly<Record<string, readonly string[]>> = {
+  connecting: ['open'],
+  ready: ['open'],
+  lost: ['open'],
+  closing: ['close_requested'],
+  closed: ['close_confirmed', 'close_unconfirmed'],
+};
+
 // 復元の後の音声の状態（ADR 0047。原本に決めなし）。
-// - 世代: 復元した device_epochs は、バックアップの後に進めた世代を失っている（巻き戻り）。端末ごとに 4 つの世代を、
-//   復元した値と復元の前の DB の値（中枢を失ったときは null）の大きい方より 1 つ進める（ADR 0005 の巻き戻さない、
-//   ADR 0038 の「復元後の最初の発行の前に進める」）。中枢を失ったときは復元した値より 1 つ進めるだけで、復元の前の値は
-//   取り戻せないが、DB の世代の更新（旧接続を無効にする）と、中枢以外の端末の失効（U78。ペアリングし直すと新しい端末の
-//   行になる）で、古い世代を持つ接続は受け付けない。バックアップの後に登録した端末の行は、端末の行ごと復元で失われる。
+// - 世代: 復元した device_epochs は、バックアップの後に進めた世代を失っている（巻き戻り）。復元した devices の端末ごとに
+//   4 つの世代を、復元した値と復元の前の DB の値（中枢を失ったときは null）の大きい方より 1 つ進める（ADR 0005 の巻き
+//   戻さない、ADR 0038 の「復元後の最初の発行の前に進める」）。復元した device_epochs に行がない端末（devices にはある）は、
+//   復元の前の値があればそれより 1 つ、なければ 0 より 1 つ進めた行を作る（再確認の P2-B）。中枢を失ったときは復元の前の
+//   値を取り戻せないが、DB の世代の更新と端末の失効（U78）で、古い世代を持つ接続は受け付けない。
 // - 停止: 全体停止と端末ごとの停止を立てる（本人が解除するまで止める。07 §5 の自動解除しない）。来客モードは、復元した
 //   値と復元の前の値のどちらかで立っていれば立てる（解除された状態に戻さない）。
-// - Live の接続: 復元で開いたまま（open・close_requested）に戻った接続は、閉じたことを確認できないので
-//   close_unconfirmed にし、connecting・ready なら lost にして control_epoch を 1 進める（nextLiveControl と同じ規則）。
-//   予約は restoreBudgetHold で使用量不明のまま残る。
+// - Live の接続: 閉じ終えていない接続（closed 以外）は、中枢の起動時の照合と同じ連鎖で
+//   closed・close_unconfirmed・usage_seconds null にする。connecting・ready は control_epoch を 1 進める。終了の時刻がなければ
+//   復元の時刻、理由がなければ core_lease_lost（起動時の照合と同じ）。予約は restoreBudgetHold で使用量不明のまま残る。
 export function restoreVoicePlan(input: {
+  readonly restored_at: string;
+  // 復元した devices の端末（世代の行を作る相手）。
+  readonly restored_device_ids: readonly string[];
   readonly device_epochs: readonly DeviceEpochRow[];
   readonly pre_restore_device_epochs: readonly DeviceEpochRow[] | null;
   readonly io_stop: IoStopRow;
@@ -856,52 +909,59 @@ export function restoreVoicePlan(input: {
   readonly live_sessions: readonly RestoredLiveSession[];
 }): RestoreVoicePlan {
   const reasons = new Set<
-    'epoch_invalid' | 'duplicate_device' | 'live_session_invalid'
+    | 'restored_at_invalid'
+    | 'epoch_invalid'
+    | 'duplicate_device'
+    | 'live_session_invalid'
   >();
+  if (parseBackupTime(input.restored_at) === null)
+    reasons.add('restored_at_invalid');
   const rows = [
     ...input.device_epochs,
     ...(input.pre_restore_device_epochs ?? []),
   ];
   if (rows.some((row) => EPOCH_KEYS.some((key) => !DECIMAL.test(row[key]))))
     reasons.add('epoch_invalid');
-  const ids = input.device_epochs.map((row) => row.device_id);
-  const preIds = (input.pre_restore_device_epochs ?? []).map(
-    (row) => row.device_id,
-  );
-  if (
-    new Set(ids).size !== ids.length ||
-    new Set(preIds).size !== preIds.length
-  )
-    reasons.add('duplicate_device');
-  const LIVE_STATES = ['connecting', 'ready', 'lost', 'closing', 'closed'];
-  const CLOSURES = [
-    'open',
-    'close_requested',
-    'close_confirmed',
-    'close_unconfirmed',
+  const lists = [
+    input.restored_device_ids,
+    input.device_epochs.map((row) => row.device_id),
+    (input.pre_restore_device_epochs ?? []).map((row) => row.device_id),
   ];
+  if (lists.some((ids) => new Set(ids).size !== ids.length))
+    reasons.add('duplicate_device');
   if (
     input.live_sessions.some(
       (row) =>
-        !LIVE_STATES.includes(row.control_state) ||
-        !CLOSURES.includes(row.closure) ||
+        !Object.hasOwn(LIVE_REACHABLE, row.control_state) ||
+        !(LIVE_REACHABLE[row.control_state] ?? []).includes(row.closure) ||
         !DECIMAL.test(row.control_epoch),
     )
   )
     reasons.add('live_session_invalid');
   if (reasons.size > 0) return { ok: false, reasons: [...reasons] };
+  const restored = new Map(
+    input.device_epochs.map((row) => [row.device_id, row]),
+  );
   const pre = new Map(
     (input.pre_restore_device_epochs ?? []).map((row) => [row.device_id, row]),
   );
-  const device_epochs = input.device_epochs.map((row): DeviceEpochRow => {
-    const before = pre.get(row.device_id);
+  // 復元した devices の端末の順、続けて devices にないが device_epochs にある行（外部キーの上ではない形。進めて残す）。
+  const ids = [
+    ...input.restored_device_ids,
+    ...input.device_epochs
+      .map((row) => row.device_id)
+      .filter((id) => !input.restored_device_ids.includes(id)),
+  ];
+  const device_epochs = ids.map((id): DeviceEpochRow => {
+    const now = restored.get(id);
+    const before = pre.get(id);
     const next = (key: (typeof EPOCH_KEYS)[number]): string => {
-      const a = BigInt(row[key]);
+      const a = now === undefined ? 0n : BigInt(now[key]);
       const b = before === undefined ? 0n : BigInt(before[key]);
       return ((a > b ? a : b) + 1n).toString();
     };
     return {
-      device_id: row.device_id,
+      device_id: id,
       io_epoch: next('io_epoch'),
       output_epoch: next('output_epoch'),
       audio_epoch: next('audio_epoch'),
@@ -910,19 +970,22 @@ export function restoreVoicePlan(input: {
     };
   });
   const live_sessions = input.live_sessions.flatMap(
-    (row): RestoredLiveSession[] => {
-      if (row.closure !== 'open' && row.closure !== 'close_requested')
-        return [];
-      const toLost =
+    (row): RestoredLiveSessionUpdate[] => {
+      // 閉じ終えた接続（closed）は触らない（起動時の照合の対象外）。
+      if (row.control_state === 'closed') return [];
+      const bumped =
         row.control_state === 'connecting' || row.control_state === 'ready';
       return [
         {
           live_session_id: row.live_session_id,
-          control_state: toLost ? 'lost' : row.control_state,
-          control_epoch: toLost
+          control_state: 'closed',
+          control_epoch: bumped
             ? (BigInt(row.control_epoch) + 1n).toString()
             : row.control_epoch,
           closure: 'close_unconfirmed',
+          usage_seconds: null,
+          ended_at: row.ended_at ?? input.restored_at,
+          end_reason: row.end_reason ?? 'core_lease_lost',
         },
       ];
     },

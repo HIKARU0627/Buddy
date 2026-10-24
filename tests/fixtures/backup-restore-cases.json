@@ -771,6 +771,10 @@
         "forgetting_checked": true,
         "notices": [
           {
+            "backup_id": "00000000-0000-4000-8000-000000009173",
+            "reason": "future_timestamp"
+          },
+          {
             "backup_id": "00000000-0000-4000-8000-000000009174",
             "reason": "generation_ahead_of_ledger"
           }
@@ -1085,35 +1089,6 @@
       }
     },
     {
-      "id": "b0605-retention-duplicate-backup-id",
-      "input": {
-        "now": "2026-10-24T03:00:00Z",
-        "last_checked_at": null,
-        "keep_generations": 7,
-        "ledger": null,
-        "backups": [
-          {
-            "backup_id": "00000000-0000-4000-8000-000000009101",
-            "created_at": "2026-10-22T02:00:00Z",
-            "ledger_id": "00000000-0000-4000-8000-000000009301",
-            "forgetting_generation": "3",
-            "manifest_valid": true
-          },
-          {
-            "backup_id": "00000000-0000-4000-8000-000000009101",
-            "created_at": "2026-10-23T02:00:00Z",
-            "ledger_id": "00000000-0000-4000-8000-000000009301",
-            "forgetting_generation": "3",
-            "manifest_valid": true
-          }
-        ]
-      },
-      "expect": {
-        "ok": false,
-        "reason": "duplicate_backup_id"
-      }
-    },
-    {
       "id": "x16-b0605-retention-stale-unusable-envelopes-expire",
       "note": "Sonnet の P2-4 の再現: 2025-01-01 に作った別の系譜・読めない封筒が、2026-10-24 でも残っていた。期限で消す。作成時刻の読めない封筒はファイルの更新時刻で判定する。",
       "input": {
@@ -1254,6 +1229,184 @@
           {
             "backup_id": "00000000-0000-4000-8000-000000009307",
             "reason": "generation_ahead_of_ledger"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-retention-future-anchors-do-not-extend",
+      "note": "Sonnet の再確認の P2-D の再現: 作成時刻 2099（更新時刻なし）、読めない封筒で更新時刻 2099。今より先の値は「今作った」として扱い（Math.min(now, ...)）、期限を延ばさない。Core が記録した初めて見た時刻があれば、それで数えて消す。今より先の時刻は知らせる。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009401",
+            "created_at": "2099-01-01T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009402",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false,
+            "file_modified_at": "2099-01-01T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009403",
+            "created_at": "2099-01-01T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true,
+            "first_seen_at": "2026-10-10T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009404",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false,
+            "file_modified_at": "2099-01-01T00:00:00Z",
+            "first_seen_at": "2026-10-17T03:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009409",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["keep", ["created_in_future"]],
+          ["keep", ["manifest_unreadable"]],
+          ["delete", ["expired", "created_in_future"]],
+          ["delete", ["expired", "manifest_unreadable"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009401",
+            "reason": "future_timestamp"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009402",
+            "reason": "future_timestamp"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009403",
+            "reason": "future_timestamp"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009404",
+            "reason": "future_timestamp"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-retention-duplicate-id-holds-only-itself",
+      "note": "Sonnet の再確認の P2-E の再現: 同じ backup_id の封筒が 2 つあると、前は計画全体が止まり、期限切れの封筒も消えなかった。重複した封筒だけを保留して知らせ、ほかは計画どおり。重複した封筒も期限が来れば両方消す。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009490",
+            "created_at": "2026-10-22T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009490",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009491",
+            "created_at": "2026-10-01T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009491",
+            "created_at": "2026-10-02T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009405",
+            "created_at": "2026-10-10T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009409",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["keep", ["duplicate_backup_id"]],
+          ["keep", ["duplicate_backup_id"]],
+          ["delete", ["expired", "duplicate_backup_id"]],
+          ["delete", ["expired", "duplicate_backup_id"]],
+          ["delete", ["expired"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009490",
+            "reason": "duplicate_backup_id"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009490",
+            "reason": "duplicate_backup_id"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009491",
+            "reason": "duplicate_backup_id"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009491",
+            "reason": "duplicate_backup_id"
           }
         ]
       }
@@ -2769,7 +2922,9 @@
           "budget_months",
           "budget_month_confirmations",
           "budget_credit_observations",
-          "mystery"
+          "mystery",
+          "device_epochs",
+          "io_stop_state"
         ]
       },
       "expect": {
@@ -2831,7 +2986,9 @@
           "budget_overage_approvals",
           "budget_months",
           "budget_month_confirmations",
-          "budget_credit_observations"
+          "budget_credit_observations",
+          "device_epochs",
+          "io_stop_state"
         ]
       },
       "expect": {
@@ -2876,6 +3033,151 @@
         "stage": "db_verify",
         "status": "failed",
         "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-business-table-missing",
+      "note": "Sonnet の再確認の P3-1 の再現: 封筒が除外していない業務の表（operations）がない DB。",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "sealed_blobs",
+          "devices",
+          "pairing_sessions",
+          "pairing_claims",
+          "command_scopes",
+          "connections",
+          "sessions",
+          "turns",
+          "workflows",
+          "input_snapshots",
+          "operation_versions",
+          "approvals",
+          "operation_attempts",
+          "operation_steps",
+          "command_receipts",
+          "event_outbox",
+          "async_context_guards",
+          "auto_actions",
+          "undo_records",
+          "safety_breaker",
+          "safety_window_counts",
+          "budget_reservations",
+          "live_sessions",
+          "sync_scopes",
+          "sync_batches",
+          "sync_staging",
+          "source_items",
+          "request_entities",
+          "request_entity_operations",
+          "related_analyses",
+          "notification_candidates",
+          "deliveries",
+          "memories",
+          "memory_sources",
+          "forget_ledger",
+          "forget_ledger_items",
+          "user_directives",
+          "intent_shadow",
+          "deployments",
+          "evaluation_results",
+          "home_networks",
+          "home_network_reports",
+          "turn_responses",
+          "tasks",
+          "budget_overage_approvals",
+          "budget_months",
+          "budget_month_confirmations",
+          "budget_credit_observations",
+          "device_epochs",
+          "io_stop_state"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-only-required-tables",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "forget_ledger",
+          "forget_ledger_items"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "b0605-db-excluded-tables-may-be-absent",
+      "note": "封筒が除外した短命の表は、なくてもよい。",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "sealed_blobs",
+          "devices",
+          "pairing_sessions",
+          "pairing_claims",
+          "command_scopes",
+          "connections",
+          "sessions",
+          "turns",
+          "workflows",
+          "input_snapshots",
+          "operations",
+          "operation_versions",
+          "approvals",
+          "operation_attempts",
+          "operation_steps",
+          "command_receipts",
+          "async_context_guards",
+          "auto_actions",
+          "undo_records",
+          "safety_breaker",
+          "safety_window_counts",
+          "budget_reservations",
+          "live_sessions",
+          "sync_scopes",
+          "sync_batches",
+          "sync_staging",
+          "request_entities",
+          "request_entity_operations",
+          "related_analyses",
+          "notification_candidates",
+          "deliveries",
+          "memories",
+          "memory_sources",
+          "forget_ledger",
+          "forget_ledger_items",
+          "user_directives",
+          "intent_shadow",
+          "deployments",
+          "evaluation_results",
+          "home_networks",
+          "home_network_reports",
+          "turn_responses",
+          "tasks",
+          "budget_overage_approvals",
+          "budget_months",
+          "budget_month_confirmations",
+          "budget_credit_observations",
+          "device_epochs",
+          "io_stop_state"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "passed",
+        "reasons": []
       }
     }
   ],
@@ -4374,7 +4676,9 @@
       "budget_overage_approvals",
       "budget_months",
       "budget_month_confirmations",
-      "budget_credit_observations"
+      "budget_credit_observations",
+      "device_epochs",
+      "io_stop_state"
     ],
     "restored_store_generation": "00000000-0000-4000-8000-000000009201",
     "restored_ledger_id": "00000000-0000-4000-8000-000000009301",
@@ -4382,13 +4686,25 @@
     "expected": {
       "store_generation": "00000000-0000-4000-8000-000000009201",
       "ledger_id": "00000000-0000-4000-8000-000000009301",
-      "forgetting_generation": "5"
+      "forgetting_generation": "5",
+      "excluded_tables": [
+        "async_context_guards",
+        "command_receipts",
+        "command_scopes",
+        "event_outbox",
+        "home_network_reports",
+        "pairing_claims",
+        "pairing_sessions",
+        "source_items",
+        "sync_batches",
+        "sync_staging"
+      ]
     }
   },
   "device_cases": [
     {
       "id": "x16-b0605-devices-revoked-after-backup-stay-revoked",
-      "note": "Sonnet の P1-1 の再現と本人の判断（U78）: バックアップの後に取り消した端末（復元で revoked_at が空に戻った端末）を含め、中枢以外のすべての端末を失効させる。中枢と同じマシンの端末は残す。失効済みの端末は元の時刻のまま。",
+      "note": "Sonnet の P1-1 の再現と本人の判断（U78）: バックアップの後に取り消した端末（復元で revoked_at が空に戻った端末）を含め、中枢以外のすべての端末を失効させる。中枢と同じマシンの端末は、復元の前の中枢でも失効していなければ残す。失効済みの端末は元の時刻のまま。",
       "restored_at": "2026-10-24T03:10:00Z",
       "devices": [
         {
@@ -4412,6 +4728,18 @@
           "revoked_at": "2026-10-01T00:00:00Z"
         }
       ],
+      "pre_restore_devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        },
+        {
+          "device_id": "00000000-0000-4000-8000-000000008102",
+          "hub_local": false,
+          "revoked_at": "2026-10-22T00:00:00Z"
+        }
+      ],
       "expect": {
         "ok": true,
         "revoke": [
@@ -4422,9 +4750,70 @@
       }
     },
     {
+      "id": "x16-b0605-devices-hub-local-revoked-before-restore",
+      "note": "Sonnet の再確認の P2-C の再現: 中枢と同じマシンの端末を、バックアップの後・復元の前に失効させていた。復元で有効に戻らないよう失効させる。",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        }
+      ],
+      "pre_restore_devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": "2026-10-22T00:00:00Z"
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "revoke": ["00000000-0000-4000-8000-000000008101"],
+        "devices_revoked_count": 1
+      }
+    },
+    {
+      "id": "x16-b0605-devices-hub-lost",
+      "note": "中枢を失った（復元の前の devices がない）。中枢と同じマシンの端末も、新しい中枢で付け直す。",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        }
+      ],
+      "pre_restore_devices": null,
+      "expect": {
+        "ok": true,
+        "revoke": ["00000000-0000-4000-8000-000000008101"],
+        "devices_revoked_count": 1
+      }
+    },
+    {
+      "id": "b0605-devices-hub-local-unknown-before",
+      "note": "復元の前の中枢にない hub_local の端末（バックアップにだけある）は、残す根拠がないので失効させる。",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        }
+      ],
+      "pre_restore_devices": [],
+      "expect": {
+        "ok": true,
+        "revoke": ["00000000-0000-4000-8000-000000008101"],
+        "devices_revoked_count": 1
+      }
+    },
+    {
       "id": "b0605-devices-bad-time",
       "restored_at": "yesterday",
       "devices": [],
+      "pre_restore_devices": null,
       "expect": {
         "ok": false,
         "reason": "restored_at_invalid"
@@ -4480,6 +4869,22 @@
       }
     },
     {
+      "id": "x16-b0605-safety-revision-above-pre-restore",
+      "note": "Sonnet の再確認の P3-2: 復元した版（3）より復元の前の版（9）が大きい。大きい方に 1 を足す（端末の持つ古い版で解除を通さない）。",
+      "input": {
+        "safety_revision": "3",
+        "pre_restore_safety_revision": "9",
+        "restored_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": {
+        "ok": true,
+        "state": "stopped",
+        "safety_revision": "10",
+        "stop_reason": "restored_from_backup",
+        "stopped_at": "2026-10-24T03:10:00Z"
+      }
+    },
+    {
       "id": "b0605-safety-bad-revision",
       "input": {
         "safety_revision": "-1",
@@ -4499,6 +4904,18 @@
       "expect": {
         "ok": false,
         "reason": "restored_at_invalid"
+      }
+    },
+    {
+      "id": "b0605-safety-bad-pre-revision",
+      "input": {
+        "safety_revision": "3",
+        "pre_restore_safety_revision": "x",
+        "restored_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": {
+        "ok": false,
+        "reason": "safety_revision_invalid"
       }
     }
   ],
@@ -4537,26 +4954,9 @@
   "voice_cases": [
     {
       "id": "x16-b0605-voice-epochs-never-roll-back",
-      "note": "復元した世代はバックアップの時点の値（巻き戻り）。復元の前の DB の値との大きい方より 1 つ進める（ADR 0005）。全体停止と端末ごとの停止を立て、来客モードは復元の前に立っていれば立てる。開いたままに戻った Live は lost・close_unconfirmed にする。",
+      "note": "復元した世代はバックアップの時点の値（巻き戻り）。復元の前の DB の値との大きい方より 1 つ進める（ADR 0005）。全体停止と端末ごとの停止を立て、来客モードは復元の前に立っていれば立てる。閉じ終えていない Live は、中枢の起動時の照合と同じ連鎖で closed・close_unconfirmed にする（Sonnet の再確認の P2-A。lost・closing のままの形は状態機械で使用量を照合できない）。",
       "input": {
-        "device_epochs": [
-          {
-            "device_id": "00000000-0000-4000-8000-000000008101",
-            "io_epoch": "3",
-            "output_epoch": "3",
-            "audio_epoch": "10",
-            "session_epoch": "10",
-            "local_stop": false
-          },
-          {
-            "device_id": "00000000-0000-4000-8000-000000008102",
-            "io_epoch": "5",
-            "output_epoch": "2",
-            "audio_epoch": "4",
-            "session_epoch": "4",
-            "local_stop": true
-          }
-        ],
+        "restored_at": "2026-10-24T03:10:00Z",
         "pre_restore_device_epochs": [
           {
             "device_id": "00000000-0000-4000-8000-000000008101",
@@ -4594,13 +4994,15 @@
             "live_session_id": "live-b",
             "control_state": "connecting",
             "control_epoch": "0",
-            "closure": "close_requested"
+            "closure": "open"
           },
           {
             "live_session_id": "live-c",
             "control_state": "closing",
             "control_epoch": "2",
-            "closure": "close_requested"
+            "closure": "close_requested",
+            "ended_at": "2026-10-20T02:59:00Z",
+            "end_reason": "user_stop"
           },
           {
             "live_session_id": "live-d",
@@ -4612,7 +5014,35 @@
             "live_session_id": "live-e",
             "control_state": "lost",
             "control_epoch": "3",
+            "closure": "open"
+          },
+          {
+            "live_session_id": "live-f",
+            "control_state": "closed",
+            "control_epoch": "6",
             "closure": "close_unconfirmed"
+          }
+        ],
+        "restored_device_ids": [
+          "00000000-0000-4000-8000-000000008101",
+          "00000000-0000-4000-8000-000000008102"
+        ],
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "3",
+            "output_epoch": "3",
+            "audio_epoch": "10",
+            "session_epoch": "10",
+            "local_stop": false
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "5",
+            "output_epoch": "2",
+            "audio_epoch": "4",
+            "session_epoch": "4",
+            "local_stop": true
           }
         ]
       },
@@ -4643,29 +5073,128 @@
         "live_sessions": [
           {
             "live_session_id": "live-a",
-            "control_state": "lost",
+            "control_state": "closed",
             "control_epoch": "5",
-            "closure": "close_unconfirmed"
+            "closure": "close_unconfirmed",
+            "usage_seconds": null,
+            "ended_at": "2026-10-24T03:10:00Z",
+            "end_reason": "core_lease_lost"
           },
           {
             "live_session_id": "live-b",
-            "control_state": "lost",
+            "control_state": "closed",
             "control_epoch": "1",
-            "closure": "close_unconfirmed"
+            "closure": "close_unconfirmed",
+            "usage_seconds": null,
+            "ended_at": "2026-10-24T03:10:00Z",
+            "end_reason": "core_lease_lost"
           },
           {
             "live_session_id": "live-c",
-            "control_state": "closing",
+            "control_state": "closed",
             "control_epoch": "2",
-            "closure": "close_unconfirmed"
+            "closure": "close_unconfirmed",
+            "usage_seconds": null,
+            "ended_at": "2026-10-20T02:59:00Z",
+            "end_reason": "user_stop"
+          },
+          {
+            "live_session_id": "live-e",
+            "control_state": "closed",
+            "control_epoch": "3",
+            "closure": "close_unconfirmed",
+            "usage_seconds": null,
+            "ended_at": "2026-10-24T03:10:00Z",
+            "end_reason": "core_lease_lost"
           }
         ]
+      }
+    },
+    {
+      "id": "x16-b0605-voice-device-without-epoch-row",
+      "note": "Sonnet の再確認の P2-B の再現: 復元した devices にあるが device_epochs に行がない端末。復元の前の値（audio 5）があればそれより 1 つ、なければ 0 より 1 つ進めた行を作る（巻き戻さない）。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "3",
+            "output_epoch": "3",
+            "audio_epoch": "5",
+            "session_epoch": "5",
+            "local_stop": false
+          }
+        ],
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": [
+          "00000000-0000-4000-8000-000000008101",
+          "00000000-0000-4000-8000-000000008102",
+          "00000000-0000-4000-8000-000000008105"
+        ],
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "2",
+            "output_epoch": "2",
+            "audio_epoch": "2",
+            "session_epoch": "2",
+            "local_stop": false
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "3",
+            "output_epoch": "3",
+            "audio_epoch": "3",
+            "session_epoch": "3",
+            "local_stop": true
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "4",
+            "output_epoch": "4",
+            "audio_epoch": "6",
+            "session_epoch": "6",
+            "local_stop": true
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008105",
+            "io_epoch": "1",
+            "output_epoch": "1",
+            "audio_epoch": "1",
+            "session_epoch": "1",
+            "local_stop": true
+          }
+        ],
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": true
+        },
+        "live_sessions": []
       }
     },
     {
       "id": "x16-b0605-voice-hub-lost",
       "note": "中枢を失った（復元の前の値がない）。復元した値より 1 つ進め、停止に倒す。来客モードは復元した値のまま（立っていなければ立てない）。",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": ["00000000-0000-4000-8000-000000008101"],
         "device_epochs": [
           {
             "device_id": "00000000-0000-4000-8000-000000008101",
@@ -4675,14 +5204,7 @@
             "session_epoch": "0",
             "local_stop": false
           }
-        ],
-        "pre_restore_device_epochs": null,
-        "io_stop": {
-          "guest_mode": false,
-          "global_stop": false
-        },
-        "pre_restore_io_stop": null,
-        "live_sessions": []
+        ]
       },
       "expect": {
         "ok": true,
@@ -4706,6 +5228,15 @@
     {
       "id": "b0605-voice-epoch-invalid",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": ["00000000-0000-4000-8000-000000008101"],
         "device_epochs": [
           {
             "device_id": "00000000-0000-4000-8000-000000008101",
@@ -4715,14 +5246,7 @@
             "session_epoch": "0",
             "local_stop": false
           }
-        ],
-        "pre_restore_device_epochs": null,
-        "io_stop": {
-          "guest_mode": false,
-          "global_stop": false
-        },
-        "pre_restore_io_stop": null,
-        "live_sessions": []
+        ]
       },
       "expect": {
         "ok": false,
@@ -4732,6 +5256,15 @@
     {
       "id": "b0605-voice-duplicate-device",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": ["00000000-0000-4000-8000-000000008101"],
         "device_epochs": [
           {
             "device_id": "00000000-0000-4000-8000-000000008101",
@@ -4749,14 +5282,7 @@
             "session_epoch": "2",
             "local_stop": false
           }
-        ],
-        "pre_restore_device_epochs": null,
-        "io_stop": {
-          "guest_mode": false,
-          "global_stop": false
-        },
-        "pre_restore_io_stop": null,
-        "live_sessions": []
+        ]
       },
       "expect": {
         "ok": false,
@@ -4766,7 +5292,7 @@
     {
       "id": "b0605-voice-live-state-unknown",
       "input": {
-        "device_epochs": [],
+        "restored_at": "2026-10-24T03:10:00Z",
         "pre_restore_device_epochs": null,
         "io_stop": {
           "guest_mode": false,
@@ -4780,11 +5306,59 @@
             "control_epoch": "1",
             "closure": "open"
           }
-        ]
+        ],
+        "restored_device_ids": [],
+        "device_epochs": []
       },
       "expect": {
         "ok": false,
         "reasons": ["live_session_invalid"]
+      }
+    },
+    {
+      "id": "b0605-voice-live-unreachable-combination",
+      "note": "状態機械で到達できない組（lost・close_requested）の記録は、何が起きたか分からないので計画しない。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [
+          {
+            "live_session_id": "live-y",
+            "control_state": "lost",
+            "control_epoch": "1",
+            "closure": "close_requested"
+          }
+        ],
+        "restored_device_ids": [],
+        "device_epochs": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["live_session_invalid"]
+      }
+    },
+    {
+      "id": "b0605-voice-restored-at-invalid",
+      "input": {
+        "restored_at": "2026-10-24",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": [],
+        "device_epochs": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["restored_at_invalid"]
       }
     }
   ]

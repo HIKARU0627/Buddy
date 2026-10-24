@@ -434,6 +434,9 @@ export interface StoredBackupEntry {
   readonly manifest_valid: boolean;
   // ファイルの更新時刻（Core がファイルシステムから読む。封筒の作成時刻が読めない・信じられないときの期限の起点）。
   readonly file_modified_at?: string | null;
+  // Core がこのファイルを初めて一覧で見た時刻（Core が記録し、後から変えない）。作成時刻・更新時刻が今より先の封筒の
+  // 期限の起点が、掃除のたびに「今」へずれて延び続けないための錨（Sonnet の再確認の P2-D）。
+  readonly first_seen_at?: string | null;
 }
 
 export interface BackupRetentionInput {
@@ -465,6 +468,8 @@ export type BackupRetentionHold =
   | 'foreign_lineage'
   | 'created_in_future'
   | 'generation_ahead_of_ledger'
+  // 同じ backup_id の封筒が 2 つ以上ある（どちらを復元に使うか決められない）。その封筒だけを保留する。
+  | 'duplicate_backup_id'
   // 封筒の作成時刻もファイルの更新時刻も読めず、期限を判定できない（消さずに本人に知らせる）。
   | 'age_unknown'
   // 忘却の世代が古いが、置き換えるバックアップがまだない（新しいバックアップを取ってから消す。ADR 0040）。
@@ -483,7 +488,12 @@ export interface BackupRetentionDecision {
 export interface BackupRetentionNotice {
   readonly backup_id: string;
   readonly reason:
-    'generation_ahead_of_ledger' | 'age_unknown' | 'last_backup_kept';
+    | 'generation_ahead_of_ledger'
+    | 'age_unknown'
+    | 'last_backup_kept'
+    | 'duplicate_backup_id'
+    // 作成時刻・更新時刻が今より先（時計か封筒が信じられない）。
+    | 'future_timestamp';
 }
 
 export type BackupRetentionPlan =
@@ -491,6 +501,7 @@ export type BackupRetentionPlan =
       readonly ok: true;
       readonly clock_state: 'ok' | 'regressed';
       readonly effective_now: string;
+      // 入力と同じ順・同じ数（同じ ID の封筒が 2 つあれば、決定も 2 つ）。
       readonly decisions: readonly BackupRetentionDecision[];
       // 今の忘却の世代のバックアップがない（置き換えを待つ封筒がある、または 1 つもない）、または期限を過ぎた最新の 1 つだけが残る。
       readonly needs_new_backup: boolean;
@@ -505,16 +516,17 @@ export type BackupRetentionPlan =
         | 'invalid_now'
         | 'invalid_last_checked_at'
         | 'keep_generations_invalid'
-        | 'ledger_invalid'
-        | 'duplicate_backup_id';
+        | 'ledger_invalid';
     };
 
 // アプリが管理する古いバックアップにも、期限と忘却を当てる（03「アプリ管理下の古いバックアップにも忘却・期限を適用し、
 // 必要に応じて置換または削除」）。期限は世代の数 × 1 日（1 日 1 回の設計なので、初期 7 世代は 7 日）。時計が戻ったときは
 // 最終確認時刻で判定する（延ばさない。ADR 0043 の U54 と同じく消し続ける）。ただし期限内の封筒が 1 つもなくなるときは、
 // 成功した最新の 1 つを残す（司令塔の判断。U74）。残した封筒にも、復元の段階 2・3 で期限と忘却を当てる。
-// 復元に使えない封筒（読めない・別の系譜・今より先の作成・台帳より新しい世代）も期限で消す（Sonnet の P2-4）。起点は
-// 封筒の作成時刻とファイルの更新時刻の早い方（読める方）。台帳より新しい世代だけは 30 日まで残して知らせる。
+// 復元に使えない封筒（読めない・別の系譜・今より先の作成・台帳より新しい世代・同じ ID の重複）も期限で消す（Sonnet の P2-4、
+// 再確認の P2-E）。起点は、作成時刻・ファイルの更新時刻・初めて見た時刻のうち読めるものと、今の、最も早いもの
+// （Math.min(now, ...)。今より先の値は「今作った」として扱い、期限を延ばさない。再確認の P2-D）。台帳より新しい世代
+// だけは 30 日まで残して知らせる。
 export function backupRetentionPlan(
   input: BackupRetentionInput,
 ): BackupRetentionPlan {
@@ -533,60 +545,66 @@ export function backupRetentionPlan(
       !isBackupGeneration(ledger.forgetting_generation))
   )
     return { ok: false, reason: 'ledger_invalid' };
-  // 同じ ID の封筒が 2 つあると、どちらを消すかを決められない（取り違えを推測で選ばない）。
-  if (
-    new Set(input.backups.map((entry) => entry.backup_id)).size !==
-    input.backups.length
-  )
-    return { ok: false, reason: 'duplicate_backup_id' };
   const now = parseBackupTime(clock.effective_now) ?? 0;
   const ledgerGeneration =
     ledger === null ? null : BigInt(ledger.forgetting_generation);
+  // 同じ ID の封筒は、どちらを消す・使うかを決められない。その封筒だけを保留し、ほかは計画どおりに扱う（再確認の P2-E）。
+  const idCount = new Map<string, number>();
+  for (const entry of input.backups)
+    idCount.set(entry.backup_id, (idCount.get(entry.backup_id) ?? 0) + 1);
 
-  const decided = new Map<string, BackupRetentionDecision>();
-  const notices = new Map<string, BackupRetentionNotice>();
+  const decided: (BackupRetentionDecision | undefined)[] = input.backups.map(
+    () => undefined,
+  );
+  const noticeAt: BackupRetentionNotice[][] = input.backups.map(() => []);
   const candidates: {
+    index: number;
     entry: StoredBackupEntry;
     created: number;
     generation: bigint;
   }[] = [];
-  for (const entry of input.backups) {
+  input.backups.forEach((entry, index) => {
     const created = parseBackupTime(entry.created_at);
     const id = entry.backup_id;
     const hold = (kind: BackupRetentionHold): void => {
-      const modified =
-        entry.file_modified_at === undefined || entry.file_modified_at === null
-          ? null
-          : parseBackupTime(entry.file_modified_at);
-      const anchors = [created, modified].filter(
-        (value): value is number => value !== null,
-      );
+      const read = (value: string | null | undefined): number | null =>
+        value === undefined || value === null ? null : parseBackupTime(value);
+      const anchors = [
+        created,
+        read(entry.file_modified_at),
+        read(entry.first_seen_at),
+      ].filter((value): value is number => value !== null);
+      const notify = (reason: BackupRetentionNotice['reason']): void => {
+        noticeAt[index]?.push({ backup_id: id, reason });
+      };
+      if (kind === 'duplicate_backup_id') notify(kind);
       if (anchors.length === 0) {
-        decided.set(id, {
+        decided[index] = {
           backup_id: id,
           action: 'keep',
           reasons: [kind, 'age_unknown'],
-        });
-        notices.set(id, { backup_id: id, reason: 'age_unknown' });
+        };
+        notify('age_unknown');
         return;
       }
+      if (anchors.some((value) => value > now)) notify('future_timestamp');
       const days =
         kind === 'generation_ahead_of_ledger'
           ? BACKUP_GENERATION_AHEAD_MAX_DAYS
           : input.keep_generations;
-      if (Math.min(...anchors) + days * DAY_MS <= now) {
-        decided.set(id, {
+      if (Math.min(now, ...anchors) + days * DAY_MS <= now) {
+        decided[index] = {
           backup_id: id,
           action: 'delete',
           reasons: ['expired', kind],
-        });
+        };
         return;
       }
-      decided.set(id, { backup_id: id, action: 'keep', reasons: [kind] });
-      if (kind === 'generation_ahead_of_ledger')
-        notices.set(id, { backup_id: id, reason: kind });
+      decided[index] = { backup_id: id, action: 'keep', reasons: [kind] };
+      if (kind === 'generation_ahead_of_ledger') notify(kind);
     };
-    if (
+    if ((idCount.get(id) ?? 0) > 1) hold('duplicate_backup_id');
+    else if (
       !entry.manifest_valid ||
       created === null ||
       !isBackupGeneration(entry.forgetting_generation) ||
@@ -603,11 +621,12 @@ export function backupRetentionPlan(
       hold('generation_ahead_of_ledger');
     else
       candidates.push({
+        index,
         entry,
         created,
         generation: BigInt(entry.forgetting_generation),
       });
-  }
+  });
 
   // 新しい順（同時刻は backup_id の大きい方を新しいとする。決まった順序にするためだけ）。
   candidates.sort((a, b) =>
@@ -619,11 +638,11 @@ export function backupRetentionPlan(
   );
   const alive = candidates.filter((candidate) => {
     if (candidate.created + input.keep_generations * DAY_MS <= now) {
-      decided.set(candidate.entry.backup_id, {
+      decided[candidate.index] = {
         backup_id: candidate.entry.backup_id,
         action: 'delete',
         reasons: ['expired'],
-      });
+      };
       return false;
     }
     return true;
@@ -633,11 +652,11 @@ export function backupRetentionPlan(
   if (lastKept !== null) alive.push(lastKept);
   const kept = alive.slice(0, input.keep_generations);
   for (const candidate of alive.slice(input.keep_generations))
-    decided.set(candidate.entry.backup_id, {
+    decided[candidate.index] = {
       backup_id: candidate.entry.backup_id,
       action: 'delete',
       reasons: ['beyond_generations'],
-    });
+    };
   const hasCurrent =
     ledgerGeneration !== null &&
     kept.some((candidate) => candidate.generation === ledgerGeneration);
@@ -649,37 +668,40 @@ export function backupRetentionPlan(
       const stale =
         ledgerGeneration !== null && candidate.generation < ledgerGeneration;
       if (stale) awaiting = true;
-      decided.set(id, {
+      decided[candidate.index] = {
         backup_id: id,
         action: 'keep',
         reasons: stale
           ? ['last_backup_kept', 'awaiting_replacement']
           : ['last_backup_kept'],
-      });
+      };
       // 期限を過ぎた封筒が残っていることを知らせる（Sonnet の P3-8）。
-      notices.set(id, { backup_id: id, reason: 'last_backup_kept' });
+      noticeAt[candidate.index]?.push({
+        backup_id: id,
+        reason: 'last_backup_kept',
+      });
       restorable += 1;
       continue;
     }
     if (ledgerGeneration !== null && candidate.generation < ledgerGeneration) {
       if (hasCurrent) {
-        decided.set(id, {
+        decided[candidate.index] = {
           backup_id: id,
           action: 'delete',
           reasons: ['forgetting_superseded'],
-        });
+        };
         continue;
       }
       awaiting = true;
-      decided.set(id, {
+      decided[candidate.index] = {
         backup_id: id,
         action: 'keep',
         reasons: ['awaiting_replacement'],
-      });
+      };
       restorable += 1;
       continue;
     }
-    decided.set(id, { backup_id: id, action: 'keep', reasons: [] });
+    decided[candidate.index] = { backup_id: id, action: 'keep', reasons: [] };
     restorable += 1;
   }
   return {
@@ -687,8 +709,8 @@ export function backupRetentionPlan(
     clock_state: clock.state,
     effective_now: clock.effective_now,
     decisions: input.backups.map(
-      (entry) =>
-        decided.get(entry.backup_id) ?? {
+      (entry, index) =>
+        decided[index] ?? {
           backup_id: entry.backup_id,
           action: 'keep',
           reasons: ['manifest_unreadable'],
@@ -700,9 +722,6 @@ export function backupRetentionPlan(
     restorable_count: restorable,
     forgetting_checked: ledgerGeneration !== null,
     // 入力の順に並べる。
-    notices: input.backups.flatMap((entry) => {
-      const notice = notices.get(entry.backup_id);
-      return notice === undefined ? [] : [notice];
-    }),
+    notices: noticeAt.flat(),
   };
 }

@@ -1,6 +1,11 @@
 // 承認の受付と、DB worker へ渡す命令の再検査（設計 08 §1・§3・§5、03 承認は操作の版に結び付ける、ADR 0010）。
 // DB の一意制約（approvals_one_effective など）と同じ結論になる純粋な判定。最終の保証は DB の制約と transaction。
 
+import {
+  scopedForgettingReasons,
+  type ForgettingScope,
+} from './late-result.js';
+
 export interface OperationVersionState {
   readonly operation_id: string;
   readonly current_content_version: string;
@@ -82,10 +87,15 @@ export interface DbCurrent {
 }
 
 // 同じ command_id の再到着は既存の結果を返し、再度変更しない。版が一つでも違えば適用しない。
+// options.forgetting を渡さなければ、忘却世代が違えば拒否する（従来どおり）。渡したときだけ、
+// 世代の検査を命令の由来が忘却と関係するときに絞る（ADR 0044。storage への配線は B06 の後続）。
 export function commandGuard(
   command: DbCommand,
   current: DbCurrent,
-  options: { readonly external: boolean },
+  options: {
+    readonly external: boolean;
+    readonly forgetting?: ForgettingScope;
+  },
 ): {
   readonly action: 'apply' | 'already_applied' | 'reject';
   readonly reasons: string[];
@@ -99,8 +109,15 @@ export function commandGuard(
     reasons.push('request_revision_changed');
   if (command.permission_revision !== current.permission_revision)
     reasons.push('permission_changed');
-  if (command.forgetting_generation !== current.forgetting_generation)
-    reasons.push('forgetting_generation_changed');
+  const forgettingRejected =
+    options.forgetting === undefined
+      ? command.forgetting_generation !== current.forgetting_generation
+      : scopedForgettingReasons(
+          command.forgetting_generation,
+          current.forgetting_generation,
+          options.forgetting,
+        ).length > 0;
+  if (forgettingRejected) reasons.push('forgetting_generation_changed');
   // 外部へ送る直前の transaction では、安全停止と予算予約の有効性も見る（08 §3 P01）。
   if (options.external && current.safety_stopped)
     reasons.push('safety_stopped');

@@ -11,10 +11,28 @@ export interface MemorySource {
   readonly source_id: string;
 }
 
+// 忘却台帳の由来の参照（contracts の LedgerSourceRef と同じ形。ADR 0040）。
+// 発言・別の記憶は Buddy 内の ID、元情報（source_item）は元サービスの ID の生の値ではなく HMAC だけを持つ。
+export type LedgerSource =
+  | {
+      readonly source_kind: 'turn' | 'memory';
+      readonly source_id: string;
+    }
+  | {
+      readonly source_kind: 'source_item';
+      readonly source_id_hmac: string;
+    };
+
+// 由来 1 件の台帳用 HMAC（64 桁の小文字 16 進）を返す関数。鍵は domain が持たず、Core が注入する（ADR 0040）。
+// 入力は種類と ID で、用途の名前を含む HMAC の入力の組み立ては Core 側。
+export type SourceHmac = (source: MemorySource) => string;
+
+// 忘却台帳の 1 件の判定に使う部分（contracts の ForgetLedgerEntry。blocked_source_hmacs は B06-03 で
+// 旧い blocked_source_ids から改名した。生の元情報の ID は持たない）。
 export interface ForgetEntry {
   readonly forgetting_generation: string;
-  readonly forgotten: readonly MemorySource[];
-  readonly blocked_source_ids: readonly string[];
+  readonly forgotten: readonly LedgerSource[];
+  readonly blocked_source_hmacs: readonly string[];
   readonly blocked_content_keys: readonly string[];
 }
 
@@ -43,6 +61,8 @@ export interface MemoryAdmissionContext {
   readonly currentPermissionRevision: string;
   // 処理開始時の世代以降を含む、Core が保持する台帳の全件。
   readonly ledger: readonly ForgetEntry[];
+  // 台帳の HMAC と比べるために、由来を同じ HMAC へ通す関数（Core が鍵を持つ。ADR 0040）。
+  readonly sourceHmac: SourceHmac;
   readonly expiredSourceIds: readonly string[];
   readonly existing: readonly StoredMemory[];
 }
@@ -53,8 +73,71 @@ export interface MemoryAdmission {
   readonly conflictingMemoryIds: string[];
 }
 
-const sameSource = (a: MemorySource, b: MemorySource): boolean =>
-  a.source_kind === b.source_kind && a.source_id === b.source_id;
+// 由来が台帳の忘却と関係するかの判定に使う入力。memoryAdmission と、一般の遅着の検査（late-result.ts）で共有する。
+export interface LedgerRelationInput {
+  readonly sources: readonly MemorySource[];
+  // 処理開始時の忘却世代と、今の世代。
+  readonly startedGeneration: string;
+  readonly currentGeneration: string;
+  readonly ledger: readonly ForgetEntry[];
+  readonly sourceHmac: SourceHmac;
+  // 自動抽出の候補の内容の HMAC。null なら内容の禁止は見ない（明示の保存・表示・送信）。
+  readonly contentKey: string | null;
+}
+
+// 台帳が由来の元の種類と ID（または HMAC）に一致するか。
+function ledgerForgets(
+  entry: ForgetEntry,
+  source: MemorySource,
+  hmac: string,
+): boolean {
+  return entry.forgotten.some((item) =>
+    item.source_kind === 'source_item'
+      ? source.source_kind === 'source_item' && item.source_id_hmac === hmac
+      : item.source_kind === source.source_kind &&
+        item.source_id === source.source_id,
+  );
+}
+
+// 台帳との関係で結果を通せない理由（ADR 0040 の「忘却の関連の判定」の表）。
+// 世代の新旧ではなく、由来が忘却と関係するかで決める。世代が同じでも、忘れた由来から作った結果は通さない。
+// 無関係な忘却で世代が進んだだけでは破棄しない。開始の後の世代が台帳に揃っていなければ判定できないので破棄する。
+export function ledgerRelationReasons(input: LedgerRelationInput): string[] {
+  const reasons: string[] = [];
+  const base = BigInt(input.startedGeneration);
+  const current = BigInt(input.currentGeneration);
+  if (base > current) reasons.push('generation_ahead');
+  // 開始後の世代が台帳に揃っていなければ、忘却済みかを判定できない（03 復元）。
+  const known = new Set(
+    input.ledger.map((entry) => BigInt(entry.forgetting_generation)),
+  );
+  for (let generation = base + 1n; generation <= current; generation += 1n)
+    if (!known.has(generation)) {
+      reasons.push('forget_ledger_gap');
+      break;
+    }
+  const hmacs = input.sources.map((source) => input.sourceHmac(source));
+  if (
+    input.ledger.some((entry) =>
+      input.sources.some(
+        (source, index) =>
+          ledgerForgets(entry, source, hmacs[index] as string) ||
+          entry.blocked_source_hmacs.includes(hmacs[index] as string),
+      ),
+    )
+  )
+    reasons.push('source_forgotten');
+  // 同じ内容の自動記憶化を黙って再開しない。本人の新しい明示依頼は別に扱う（ADR 0008）。
+  const contentKey = input.contentKey;
+  if (
+    contentKey !== null &&
+    input.ledger.some((entry) =>
+      entry.blocked_content_keys.includes(contentKey),
+    )
+  )
+    reasons.push('content_forgotten');
+  return reasons;
+}
 
 // 保存直前の検査（08 §6）。遅れて返った結果も、忘却・許可・期限を現在値で見直す。
 // 忘却した由来・派生からの再保存は、台帳の世代の新旧によらず拒否する。
@@ -68,36 +151,17 @@ export function memoryAdmission(
     reasons.push('kind_not_allowed');
   if (candidate.permission_revision !== context.currentPermissionRevision)
     reasons.push('permission_changed');
-  const base = BigInt(candidate.forgetting_generation);
-  const current = BigInt(context.currentForgettingGeneration);
-  if (base > current) reasons.push('generation_ahead');
-  // 開始後の世代が台帳に揃っていなければ、忘却済みかを判定できない（03 復元）。
-  const known = new Set(
-    context.ledger.map((entry) => BigInt(entry.forgetting_generation)),
+  reasons.push(
+    ...ledgerRelationReasons({
+      sources: candidate.sources,
+      startedGeneration: candidate.forgetting_generation,
+      currentGeneration: context.currentForgettingGeneration,
+      ledger: context.ledger,
+      sourceHmac: context.sourceHmac,
+      contentKey:
+        candidate.origin === 'auto_extraction' ? candidate.dedupe_key : null,
+    }),
   );
-  for (let generation = base + 1n; generation <= current; generation += 1n)
-    if (!known.has(generation)) {
-      reasons.push('forget_ledger_gap');
-      break;
-    }
-  if (
-    context.ledger.some((entry) =>
-      candidate.sources.some(
-        (source) =>
-          entry.forgotten.some((item) => sameSource(item, source)) ||
-          entry.blocked_source_ids.includes(source.source_id),
-      ),
-    )
-  )
-    reasons.push('source_forgotten');
-  // 同じ内容の自動記憶化を黙って再開しない。本人の新しい明示依頼は別に扱う（ADR 0008）。
-  if (
-    candidate.origin === 'auto_extraction' &&
-    context.ledger.some((entry) =>
-      entry.blocked_content_keys.includes(candidate.dedupe_key),
-    )
-  )
-    reasons.push('content_forgotten');
   if (
     candidate.sources.some((source) =>
       context.expiredSourceIds.includes(source.source_id),

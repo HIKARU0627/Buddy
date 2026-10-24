@@ -376,7 +376,9 @@ const FAULT_CASES: readonly FaultCase[] = [
   {
     name: 'a worker that never answers',
     faults: { ignore: 'operation.dispatch_intent' },
-    options: { responseTimeoutMs: 300 },
+    // 応答の期限は命令ごとに同じ値で、作成・承認・準備にも当たる。300 ms だと遅い実行機で
+    // 準備まで時間切れになるため、無視させる送出意図がその長さで時間切れになるまで待てる値にする。
+    options: { responseTimeoutMs: 3_000 },
     expected: { outcome: 'unknown', reason: 'worker_timeout' },
     brokenReason: 'worker_timeout',
   },

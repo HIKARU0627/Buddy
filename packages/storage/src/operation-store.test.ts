@@ -689,8 +689,10 @@ test('bulk writes are split into transactions of at most 50 items or 20 ms', asy
       db.prepare('INSERT INTO bulk (n) VALUES (?)').run(n);
     };
     const ends: number[] = [];
+    // 20ms に達しない時計を渡し、実時間に依存せず件数の上限だけで区切る。
+    const frozenClock = (): number => 0;
     for (let index = 0; index < items.length;) {
-      index = writeBulkSlice(db, items, index, write);
+      index = writeBulkSlice(db, items, index, write, { clock: frozenClock });
       ends.push(index);
     }
     assert.deepEqual(ends, [50, 100, 120]);
@@ -712,6 +714,29 @@ test('bulk writes are split into transactions of at most 50 items or 20 ms', asy
       (db.prepare('SELECT count(*) AS n FROM bulk').get() as { n: number }).n,
       130,
     );
+  });
+});
+
+test('the bulk write with the default clock splits every item when the time limit is zero', async () => {
+  await withStore((db) => {
+    db.exec('CREATE TEMP TABLE bulk (n INTEGER NOT NULL)');
+    const items = [1, 2, 3];
+    const write = (n: number): void => {
+      db.prepare('INSERT INTO bulk (n) VALUES (?)').run(n);
+    };
+    // 時計を渡さず、実時間（performance.now）を使う。上限 0ms では 1 件書いた時点で
+    // 経過が必ず 0 以上になるため、実測の値に関係なく 1 件ずつ区切られる。
+    const ends: number[] = [];
+    for (let index = 0; index < items.length;) {
+      index = writeBulkSlice(db, items, index, write, { maxMilliseconds: 0 });
+      ends.push(index);
+    }
+    assert.deepEqual(ends, [1, 2, 3]);
+    assert.deepEqual(db.prepare('SELECT n FROM bulk ORDER BY n').all(), [
+      { n: 1 },
+      { n: 2 },
+      { n: 3 },
+    ]);
   });
 });
 

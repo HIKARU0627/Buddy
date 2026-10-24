@@ -94,7 +94,14 @@ export type ApiErrorCode =
   | 'audio_owned_elsewhere'
   | 'audio_ownership_required'
   | 'payload_too_large'
-  | 'pairing_failed';
+  | 'pairing_failed'
+  // Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。
+  | 'io_suspended'
+  | 'audio_lease_invalid'
+  | 'private_conversation'
+  | 'output_mode_text'
+  | 'external_send_consent_required'
+  | 'budget_held';
 
 const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unauthenticated: '端末トークンがない、無効、または失効しています。',
@@ -112,6 +119,12 @@ const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   audio_ownership_required: '音声の所有権がありません。',
   payload_too_large: '要求が大きすぎます。',
   pairing_failed: 'ペアリングは無効です。最初からやり直してください。',
+  io_suspended: '入出力が停止しています。画面から再開してください。',
+  audio_lease_invalid: '音声のリースが無効です。取り直してください。',
+  private_conversation: '記録しない会話中は音声の接続を開きません。',
+  output_mode_text: '返し方が文字のため、音声の接続を開きません。',
+  external_send_consent_required: '音声を外部へ送ることへの同意が必要です。',
+  budget_held: '会話の予算を予約できません。',
 };
 
 // 経路の処理（handlers）が返す拒否の応答。本文は ApiError（code・message・request_id）だけ。
@@ -208,6 +221,11 @@ export interface ApiServerOptions {
   readonly handlers?: Readonly<Partial<Record<string, ApiRouteHandler>>>;
   // WSS の配信。渡さなければ切り替えた後に 1013 で閉じる。
   readonly eventStream?: ApiEventStream;
+  // getBootstrap の入出力の状態（B05-03、ADR 0046）。渡さなければ安全側の値（ロック状態は不明・入力不可・世代 0）。
+  readonly ioState?: (
+    device: DeviceRecord,
+    declaredLockState: DeclaredLockState | null,
+  ) => Promise<object | null>;
 }
 
 export class ApiListenError extends Error {
@@ -750,6 +768,19 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     request_id: rejection.requestId,
   });
 
+  // 入出力の状態を読めなければ（DB の失敗）安全側の値に倒す。
+  const ioStateOf = async (
+    device: DeviceRecord,
+    lock: DeclaredLockState | null,
+  ): Promise<object | null> => {
+    if (options.ioState === undefined) return null;
+    try {
+      return await options.ioState(device, lock);
+    } catch {
+      return null;
+    }
+  };
+
   // 実装した経路の処理。getBootstrap と handlers に渡された経路。
   const handle = async (
     admitted: Admitted,
@@ -804,8 +835,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         ).toISOString(),
         // 端末能力の一覧は B03-04 以降で決める（ADR 0020 の読み取り）。
         capabilities: [],
-        // 入出力の状態の正本は B03-04・B05 で作る。今は安全側の値（ロック状態は不明・入力不可）。
-        io_state: {
+        // 入出力の状態の正本は中枢の音声の制御（B05-03）。渡されなければ安全側の値（ロック状態は不明・入力不可）。
+        io_state: (await ioStateOf(device, admitted.declaredLockState)) ?? {
           device_id: device.device_id,
           io_epoch: '0',
           output_epoch: '0',

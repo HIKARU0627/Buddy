@@ -77,7 +77,7 @@
   "table_plan_cases": [
     {
       "id": "b0605-tables-all-migration-tables",
-      "note": "マイグレーション 0001〜0008 の表すべて（0008 の budget_credit_observations を含む）。短命の 10 表だけを除き、忘却台帳の 2 表は含める。",
+      "note": "マイグレーション 0001〜0009 の表すべて（0008 の budget_credit_observations、0009 の device_epochs・io_stop_state を含む）。短命の 10 表だけを除き、忘却台帳の 2 表は含める。",
       "tables": [
         "schema_meta",
         "sealed_blobs",
@@ -128,7 +128,9 @@
         "budget_overage_approvals",
         "budget_months",
         "budget_month_confirmations",
-        "budget_credit_observations"
+        "budget_credit_observations",
+        "device_epochs",
+        "io_stop_state"
       ],
       "expect": {
         "ok": true,
@@ -144,7 +146,7 @@
           "sync_batches",
           "sync_staging"
         ],
-        "included_count": 40
+        "included_count": 42
       }
     },
     {
@@ -4156,6 +4158,8 @@
     "reset_send_consents",
     "renew_store_generation",
     "advance_epochs",
+    "stop_io",
+    "close_restored_live_sessions",
     "revoke_command_scopes",
     "require_connection_reauth",
     "reset_sync_cursors",
@@ -4527,6 +4531,260 @@
       "expect": {
         "demote": ["dep-a", "dep-b"],
         "deployments_demoted_count": 2
+      }
+    }
+  ],
+  "voice_cases": [
+    {
+      "id": "x16-b0605-voice-epochs-never-roll-back",
+      "note": "復元した世代はバックアップの時点の値（巻き戻り）。復元の前の DB の値との大きい方より 1 つ進める（ADR 0005）。全体停止と端末ごとの停止を立て、来客モードは復元の前に立っていれば立てる。開いたままに戻った Live は lost・close_unconfirmed にする。",
+      "input": {
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "3",
+            "output_epoch": "3",
+            "audio_epoch": "10",
+            "session_epoch": "10",
+            "local_stop": false
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "5",
+            "output_epoch": "2",
+            "audio_epoch": "4",
+            "session_epoch": "4",
+            "local_stop": true
+          }
+        ],
+        "pre_restore_device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "7",
+            "output_epoch": "2",
+            "audio_epoch": "15",
+            "session_epoch": "12",
+            "local_stop": false
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "5",
+            "output_epoch": "9",
+            "audio_epoch": "3",
+            "session_epoch": "4",
+            "local_stop": false
+          }
+        ],
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": {
+          "guest_mode": true,
+          "global_stop": false
+        },
+        "live_sessions": [
+          {
+            "live_session_id": "live-a",
+            "control_state": "ready",
+            "control_epoch": "4",
+            "closure": "open"
+          },
+          {
+            "live_session_id": "live-b",
+            "control_state": "connecting",
+            "control_epoch": "0",
+            "closure": "close_requested"
+          },
+          {
+            "live_session_id": "live-c",
+            "control_state": "closing",
+            "control_epoch": "2",
+            "closure": "close_requested"
+          },
+          {
+            "live_session_id": "live-d",
+            "control_state": "closed",
+            "control_epoch": "1",
+            "closure": "close_confirmed"
+          },
+          {
+            "live_session_id": "live-e",
+            "control_state": "lost",
+            "control_epoch": "3",
+            "closure": "close_unconfirmed"
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "8",
+            "output_epoch": "4",
+            "audio_epoch": "16",
+            "session_epoch": "13",
+            "local_stop": true
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "6",
+            "output_epoch": "10",
+            "audio_epoch": "5",
+            "session_epoch": "5",
+            "local_stop": true
+          }
+        ],
+        "io_stop": {
+          "guest_mode": true,
+          "global_stop": true
+        },
+        "live_sessions": [
+          {
+            "live_session_id": "live-a",
+            "control_state": "lost",
+            "control_epoch": "5",
+            "closure": "close_unconfirmed"
+          },
+          {
+            "live_session_id": "live-b",
+            "control_state": "lost",
+            "control_epoch": "1",
+            "closure": "close_unconfirmed"
+          },
+          {
+            "live_session_id": "live-c",
+            "control_state": "closing",
+            "control_epoch": "2",
+            "closure": "close_unconfirmed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-voice-hub-lost",
+      "note": "中枢を失った（復元の前の値がない）。復元した値より 1 つ進め、停止に倒す。来客モードは復元した値のまま（立っていなければ立てない）。",
+      "input": {
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "0",
+            "output_epoch": "0",
+            "audio_epoch": "0",
+            "session_epoch": "0",
+            "local_stop": false
+          }
+        ],
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": []
+      },
+      "expect": {
+        "ok": true,
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "1",
+            "output_epoch": "1",
+            "audio_epoch": "1",
+            "session_epoch": "1",
+            "local_stop": true
+          }
+        ],
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": true
+        },
+        "live_sessions": []
+      }
+    },
+    {
+      "id": "b0605-voice-epoch-invalid",
+      "input": {
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "-1",
+            "output_epoch": "0",
+            "audio_epoch": "0",
+            "session_epoch": "0",
+            "local_stop": false
+          }
+        ],
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["epoch_invalid"]
+      }
+    },
+    {
+      "id": "b0605-voice-duplicate-device",
+      "input": {
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "1",
+            "output_epoch": "1",
+            "audio_epoch": "1",
+            "session_epoch": "1",
+            "local_stop": false
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "2",
+            "output_epoch": "2",
+            "audio_epoch": "2",
+            "session_epoch": "2",
+            "local_stop": false
+          }
+        ],
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["duplicate_device"]
+      }
+    },
+    {
+      "id": "b0605-voice-live-state-unknown",
+      "input": {
+        "device_epochs": [],
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [
+          {
+            "live_session_id": "live-x",
+            "control_state": "paused",
+            "control_epoch": "1",
+            "closure": "open"
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["live_session_invalid"]
       }
     }
   ]

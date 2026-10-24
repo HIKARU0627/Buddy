@@ -674,11 +674,11 @@
           "ok"
         ],
         [
-          "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'closed', 1, 'close_confirmed', NULL, 'r-live', 1000, 2000, 'silence')",
+          "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'closed', 1, 'close_confirmed', NULL, 'r-live', 1000, 2000, 'silence', 0, 0)",
           "check"
         ],
         [
-          "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'closed', 1, 'close_unconfirmed', NULL, 'r-live', 1000, 2000, 'silence')",
+          "INSERT INTO live_sessions VALUES ('ls-1', 'dev-1', 's-1', 'conversation', 'closed', 1, 'close_unconfirmed', NULL, 'r-live', 1000, 2000, 'silence', 0, 0)",
           "ok"
         ],
         [

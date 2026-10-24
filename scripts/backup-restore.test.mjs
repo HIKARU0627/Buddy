@@ -43,6 +43,7 @@ import {
   restoreDevicePlan,
   restoreOverageApprovalPlan,
   restoreSafetyBreaker,
+  restoreVoicePlan,
   RESTORE_EVIDENCE_TRANSITIONS,
   restoreDbVerifyCheck,
   restoreForgetCheck,
@@ -1054,4 +1055,9 @@ test('restore evidence transitions are an explicit table', () => {
     (o) => o.restore_unverified_at !== null,
   ))
     assert(Object.hasOwn(RESTORE_EVIDENCE_TRANSITIONS, op.state), op.state);
+});
+
+test('voice epochs never roll back and io is stopped after restore (0009)', () => {
+  for (const entry of cases.voice_cases)
+    assert.deepEqual(restoreVoicePlan(entry.input), entry.expect, entry.id);
 });

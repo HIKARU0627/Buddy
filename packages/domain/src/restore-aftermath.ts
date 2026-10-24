@@ -548,8 +548,14 @@ export const RESTORE_RESETS = [
   'reset_send_consents',
   // DB の世代を新しくする（イベントのカーソル・端末の snapshot を取り直させる）。
   'renew_store_generation',
-  // 音声のリース・出力先の世代（io_epoch・session_epoch・audio_epoch）を進め、復元の前の結果を受け付けない。
+  // 端末ごとの音声・出力先の世代（device_epochs の io・output・audio・session）を、復元した値と復元の前の値の大きい方
+  // より 1 つ進め、復元の前の結果を受け付けない（巻き戻さない。ADR 0005。restoreVoicePlan）。
   'advance_epochs',
+  // 入出力を止めた状態に倒す（io_stop_state の全体停止・端末ごとの停止。ADR 0046 の残ること。restoreVoicePlan）。
+  'stop_io',
+  // 復元で開いたままに戻った Live の接続を lost・close_unconfirmed にする（新しい Live を開けなくなる 409 を防ぎ、
+  // 使用量は確認できないとして扱う。restoreVoicePlan）。
+  'close_restored_live_sessions',
   // 接続範囲（command_scopes）をすべて失効させ、端末に取り直させる。
   'revoke_command_scopes',
   // 外部サービスの接続を再認証が要る状態にする（OAuth トークンはバックアップにない）。
@@ -784,4 +790,152 @@ export function restoreDeploymentPlan(
     .map((row) => row.deployment_id)
     .sort();
   return { demote, deployments_demoted_count: demote.length };
+}
+
+// --- 音声の世代・入出力の停止・Live の接続（0009、B05-03。ADR 0005・0038・0046） ---
+
+export interface DeviceEpochRow {
+  readonly device_id: string;
+  readonly io_epoch: string;
+  readonly output_epoch: string;
+  readonly audio_epoch: string;
+  readonly session_epoch: string;
+  readonly local_stop: boolean;
+}
+
+export interface IoStopRow {
+  readonly guest_mode: boolean;
+  readonly global_stop: boolean;
+}
+
+export interface RestoredLiveSession {
+  readonly live_session_id: string;
+  readonly control_state: string;
+  readonly control_epoch: string;
+  readonly closure: string;
+}
+
+export type RestoreVoicePlan =
+  | {
+      readonly ok: true;
+      readonly device_epochs: readonly DeviceEpochRow[];
+      readonly io_stop: IoStopRow;
+      // 変える Live の接続だけ。
+      readonly live_sessions: readonly RestoredLiveSession[];
+    }
+  | {
+      readonly ok: false;
+      readonly reasons: readonly (
+        'epoch_invalid' | 'duplicate_device' | 'live_session_invalid'
+      )[];
+    };
+
+const EPOCH_KEYS = [
+  'io_epoch',
+  'output_epoch',
+  'audio_epoch',
+  'session_epoch',
+] as const;
+
+// 復元の後の音声の状態（ADR 0047。原本に決めなし）。
+// - 世代: 復元した device_epochs は、バックアップの後に進めた世代を失っている（巻き戻り）。端末ごとに 4 つの世代を、
+//   復元した値と復元の前の DB の値（中枢を失ったときは null）の大きい方より 1 つ進める（ADR 0005 の巻き戻さない、
+//   ADR 0038 の「復元後の最初の発行の前に進める」）。中枢を失ったときは復元した値より 1 つ進めるだけで、復元の前の値は
+//   取り戻せないが、DB の世代の更新（旧接続を無効にする）と、中枢以外の端末の失効（U78。ペアリングし直すと新しい端末の
+//   行になる）で、古い世代を持つ接続は受け付けない。バックアップの後に登録した端末の行は、端末の行ごと復元で失われる。
+// - 停止: 全体停止と端末ごとの停止を立てる（本人が解除するまで止める。07 §5 の自動解除しない）。来客モードは、復元した
+//   値と復元の前の値のどちらかで立っていれば立てる（解除された状態に戻さない）。
+// - Live の接続: 復元で開いたまま（open・close_requested）に戻った接続は、閉じたことを確認できないので
+//   close_unconfirmed にし、connecting・ready なら lost にして control_epoch を 1 進める（nextLiveControl と同じ規則）。
+//   予約は restoreBudgetHold で使用量不明のまま残る。
+export function restoreVoicePlan(input: {
+  readonly device_epochs: readonly DeviceEpochRow[];
+  readonly pre_restore_device_epochs: readonly DeviceEpochRow[] | null;
+  readonly io_stop: IoStopRow;
+  readonly pre_restore_io_stop: IoStopRow | null;
+  readonly live_sessions: readonly RestoredLiveSession[];
+}): RestoreVoicePlan {
+  const reasons = new Set<
+    'epoch_invalid' | 'duplicate_device' | 'live_session_invalid'
+  >();
+  const rows = [
+    ...input.device_epochs,
+    ...(input.pre_restore_device_epochs ?? []),
+  ];
+  if (rows.some((row) => EPOCH_KEYS.some((key) => !DECIMAL.test(row[key]))))
+    reasons.add('epoch_invalid');
+  const ids = input.device_epochs.map((row) => row.device_id);
+  const preIds = (input.pre_restore_device_epochs ?? []).map(
+    (row) => row.device_id,
+  );
+  if (
+    new Set(ids).size !== ids.length ||
+    new Set(preIds).size !== preIds.length
+  )
+    reasons.add('duplicate_device');
+  const LIVE_STATES = ['connecting', 'ready', 'lost', 'closing', 'closed'];
+  const CLOSURES = [
+    'open',
+    'close_requested',
+    'close_confirmed',
+    'close_unconfirmed',
+  ];
+  if (
+    input.live_sessions.some(
+      (row) =>
+        !LIVE_STATES.includes(row.control_state) ||
+        !CLOSURES.includes(row.closure) ||
+        !DECIMAL.test(row.control_epoch),
+    )
+  )
+    reasons.add('live_session_invalid');
+  if (reasons.size > 0) return { ok: false, reasons: [...reasons] };
+  const pre = new Map(
+    (input.pre_restore_device_epochs ?? []).map((row) => [row.device_id, row]),
+  );
+  const device_epochs = input.device_epochs.map((row): DeviceEpochRow => {
+    const before = pre.get(row.device_id);
+    const next = (key: (typeof EPOCH_KEYS)[number]): string => {
+      const a = BigInt(row[key]);
+      const b = before === undefined ? 0n : BigInt(before[key]);
+      return ((a > b ? a : b) + 1n).toString();
+    };
+    return {
+      device_id: row.device_id,
+      io_epoch: next('io_epoch'),
+      output_epoch: next('output_epoch'),
+      audio_epoch: next('audio_epoch'),
+      session_epoch: next('session_epoch'),
+      local_stop: true,
+    };
+  });
+  const live_sessions = input.live_sessions.flatMap(
+    (row): RestoredLiveSession[] => {
+      if (row.closure !== 'open' && row.closure !== 'close_requested')
+        return [];
+      const toLost =
+        row.control_state === 'connecting' || row.control_state === 'ready';
+      return [
+        {
+          live_session_id: row.live_session_id,
+          control_state: toLost ? 'lost' : row.control_state,
+          control_epoch: toLost
+            ? (BigInt(row.control_epoch) + 1n).toString()
+            : row.control_epoch,
+          closure: 'close_unconfirmed',
+        },
+      ];
+    },
+  );
+  return {
+    ok: true,
+    device_epochs,
+    io_stop: {
+      guest_mode:
+        input.io_stop.guest_mode ||
+        (input.pre_restore_io_stop?.guest_mode ?? false),
+      global_stop: true,
+    },
+    live_sessions,
+  };
 }

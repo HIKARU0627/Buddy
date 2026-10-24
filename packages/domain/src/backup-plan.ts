@@ -99,6 +99,10 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   // 採用したクレジットの残高の観測（0008。本文なし・書き換え・削除不可）。予算の記録と同じく含める。復元の後に古い観測で
   // 残高を多く見ないよう、restore-aftermath.ts の restoreCreditReasons で新しい観測まで止める。
   'budget_credit_observations',
+  // 音声の世代と入出力の停止（0009、B05-03）。含めるが、復元の後は世代を巻き戻さず（ADR 0005）、停止に倒す
+  // （ADR 0046 の残ること）。restore-aftermath.ts の restoreVoicePlan。
+  'device_epochs',
+  'io_stop_state',
   'live_sessions',
   'sync_scopes',
   'request_entities',

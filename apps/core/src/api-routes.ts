@@ -126,6 +126,10 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/live/sessions/{live_session_id}/close',
     { body: 'LiveSessionClose' },
   ),
+  // リースの取得と更新（heartbeat。ADR 0046）。
+  route('renewLease', 'POST', '/v1/leases/renew', {
+    body: 'LeaseRenewalRequest',
+  }),
   route('startPairing', 'POST', '/v1/pairing/sessions', {
     body: 'PairingStartRequest',
     ...SCREEN,

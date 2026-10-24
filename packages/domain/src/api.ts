@@ -57,6 +57,9 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   createLiveSession: [...COMMAND, 'audio_owner'],
   // 終了の通知はいつでも受け付ける。中枢はリース切れでも自分から閉じる。
   closeLiveSession: READ,
+  // リースの取得と更新（heartbeat。ADR 0046）。ロック中でも端末が自分で止まるまでの更新の拒否は中身の検査で行う。
+  // 古い接続範囲は新しい接続で取り直させる。
+  renewLease: [...READ, 'command_scope'],
   startPairing: [...SCREEN, 'hub_screen'],
   // 承認待ちの申請の一覧は中枢の画面だけ（B03-06、ADR 0026）。読み取りなので接続範囲・画面操作は求めない。
   listPairingClaims: [...READ, 'unlocked', 'hub_screen'],

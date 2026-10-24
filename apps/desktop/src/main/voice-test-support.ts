@@ -106,6 +106,8 @@ export interface HarnessOptions {
   readonly open?: () => LiveOpenResult;
   readonly openMs?: number;
   readonly coreConnected?: boolean;
+  // 中枢へ閉じる要求（closeLive）が例外を投げる。
+  readonly closeFails?: boolean;
   // 同意の記録の保存・消去に失敗する。
   readonly consentSaveFails?: boolean;
   readonly consentRemoveFails?: boolean;
@@ -282,6 +284,7 @@ export function voiceHarness(options: HarnessOptions = {}) {
         });
       },
       closeLive: (id, reason) => {
+        if (options.closeFails === true) throw new Error('core link down');
         closed.push({ id, reason });
       },
     },

@@ -152,8 +152,13 @@ export function suspendReasonFor(state: DesktopIoState): {
 
 // 状態の通知の処理（electron/main.ts）で、音声の制御の例外を記録だけして投げ直さない。トレイの更新・ロックしたときに
 // キャンバスを戻す処理などを飛ばさない（PR #160 のレビュー P3、Issue #162）。
+// 例外の後はフォールバックで必ず止める（音声レンダラーの強制終了とこの端末の停止）。途中で例外が出ても、停止が
+// 黙って失われないようにする（Issue #162 の P2）。
 export function notifyVoiceDeviceChanged(
-  voice: { deviceChanged(state: DesktopIoState): void } | null,
+  voice: {
+    deviceChanged(state: DesktopIoState): void;
+    failSafeStop(): void;
+  } | null,
   state: DesktopIoState,
   log: (code: string) => void,
 ): void {
@@ -161,6 +166,11 @@ export function notifyVoiceDeviceChanged(
     voice?.deviceChanged(state);
   } catch {
     log('voice_device_changed_failed');
+    try {
+      voice?.failSafeStop();
+    } catch {
+      log('voice_fail_safe_stop_failed');
+    }
   }
 }
 
@@ -251,7 +261,7 @@ export class VoiceController {
       const scope = this.#nextStopReason === null ? stop.scope : 'local';
       this.#nextStopReason = null;
       if (this.#live !== null) {
-        this.#options.core.closeLive(this.#live.liveSessionId, reason);
+        this.#closeLive(this.#live.liveSessionId, reason);
         this.#live = null;
       }
       if (this.#alive && this.#suspendedIo !== state.ioEpoch) {
@@ -265,6 +275,13 @@ export class VoiceController {
     }
     this.#retain();
     this.#emit();
+  }
+
+  // 例外の後でも必ず止める（notifyVoiceDeviceChanged のフォールバック。Issue #162 の P2）。音声レンダラーを強制終了して
+  // 外部への送信を止め、この端末の入出力も止める（判別できないときは止める側へ倒す）。
+  failSafeStop(): void {
+    this.#kill('fail_safe');
+    this.#stopDevice('device_io_stop');
   }
 
   // ---- 音声レンダラーの出来事 -------------------------------------------------------------------------------
@@ -632,7 +649,7 @@ export class VoiceController {
     for (const entry of this.#pending.values()) entry.cancel();
     this.#pending.clear();
     if (this.#live !== null) {
-      this.#options.core.closeLive(
+      this.#closeLive(
         this.#live.liveSessionId,
         this.#nextStopReason ?? 'device_io_stop',
       );
@@ -652,6 +669,16 @@ export class VoiceController {
     this.#nextStopReason = null;
   }
 
+  // 中枢へ閉じる要求を送る（第 3 層）。送れなくても（例外でも）記録して、この端末の停止を続ける
+  // （Issue #162 の P2: 停止が黙って失われないようにする）。
+  #closeLive(liveSessionId: string, reason: AudioReason): void {
+    try {
+      this.#options.core.closeLive(liveSessionId, reason);
+    } catch {
+      this.#options.log('voice_core_close_failed');
+    }
+  }
+
   #suspend(reason: AudioReason, scope: 'local' | 'guest' | 'global'): void {
     this.#output = advanceEpoch(this.#output);
     this.#suspendedIo = this.#device.ioEpoch;
@@ -668,7 +695,7 @@ export class VoiceController {
   #closeSession(reason: AudioReason): void {
     this.#lease.stop();
     if (this.#live !== null) {
-      this.#options.core.closeLive(this.#live.liveSessionId, reason);
+      this.#closeLive(this.#live.liveSessionId, reason);
       this.#live = null;
     }
     if (!this.#alive || this.#audio === null) {

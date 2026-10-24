@@ -107,7 +107,9 @@ export type VoiceOp =
     }
   | { readonly kind: 'voice.live_get'; readonly live_session_id: string }
   // 閉じ終えていない（closed でない）接続。再起動の照合で使う。
-  | { readonly kind: 'voice.live_unfinished' };
+  | { readonly kind: 'voice.live_unfinished' }
+  // 閉じ終えたが使用量を確認できていない（closure が close_unconfirmed）接続。終了後の照合で使う（B05-04）。
+  | { readonly kind: 'voice.live_held' };
 
 export type VoiceOpKind = VoiceOp['kind'];
 
@@ -126,6 +128,7 @@ export interface VoiceOpValues {
   'voice.live_update': LiveSessionRecord;
   'voice.live_get': LiveSessionRecord | null;
   'voice.live_unfinished': readonly LiveSessionRecord[];
+  'voice.live_held': readonly LiveSessionRecord[];
 }
 
 export type VoiceOpValue = VoiceOpValues[VoiceOpKind];
@@ -217,6 +220,7 @@ export function voiceOpShapeReasons(op: VoiceOp): string[] {
       break;
     case 'voice.active_devices':
     case 'voice.live_unfinished':
+    case 'voice.live_held':
       break;
     case 'voice.stop':
       if (!SCOPES.includes(op.scope)) reasons.push('scope_invalid');
@@ -568,6 +572,20 @@ export function executeVoiceOp(
           db
             .prepare(
               `${LIVE_SELECT} WHERE control_state <> 'closed' ORDER BY started_at, live_session_id`,
+            )
+            .all() as LiveRow[]
+        ).map(toLive),
+      },
+      halt: false,
+    };
+  if (op.kind === 'voice.live_held')
+    return {
+      result: {
+        ok: true,
+        value: (
+          db
+            .prepare(
+              `${LIVE_SELECT} WHERE closure = 'close_unconfirmed' ORDER BY started_at, live_session_id`,
             )
             .all() as LiveRow[]
         ).map(toLive),

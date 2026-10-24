@@ -13,256 +13,32 @@ import {
 } from '@buddy/domain';
 import type { HeldLease, LeaseSendRecord } from '@buddy/domain';
 import type { DeviceRecord } from '@buddy/storage';
-import {
-  syntheticConfig,
-  loadedConfig,
-  uuid,
-  withBudgetStore,
-} from './budget-test-support.js';
-import type { BudgetHarness } from './budget-test-support.js';
+import { uuid } from './budget-test-support.js';
 import type { JsonObject } from './strict-json.js';
 import { VoiceControl } from './voice-control.js';
 import type { VoiceControlOptions } from './voice-control.js';
 import {
-  ManualVoiceClock,
-  MockLiveProvider,
-  gateLiveBudget,
-} from './voice-test-support.js';
-
-const TIMEOUT = { timeout: 20_000 };
-const CORE = uuid(0xc0);
-const CORE_2 = uuid(0xc1);
-const DEV_A = uuid(0xa1);
-const DEV_B = uuid(0xb1);
-const SCOPE_A = uuid(0x5a);
-const SCOPE_B = uuid(0x5b);
-const SESSION = uuid(0x55);
-
-const device = (id: string): DeviceRecord => ({
-  device_id: id,
-  device_name: '合成の端末',
-  platform: 'macos',
-  hub_local: false,
-  registered_at: 1000,
-  last_seen_at: null,
-  revoked_at: null,
-});
-const A = device(DEV_A);
-const B = device(DEV_B);
-
-// 予算: 会話の 195 秒を受け付けられるよう、合成の上限と 1 要求の秒数の上限を広げる（金額は合成の XTS）。
-function liveConfig() {
-  return loadedConfig(
-    syntheticConfig((config) => {
-      const budget = config['budget'] as {
-        pools: { pool_id: string; limit: { amount: string } }[];
-      };
-      for (const pool of budget.pools) {
-        if (pool.pool_id === 'total') pool.limit.amount = '5000';
-        if (pool.pool_id === 'voice') pool.limit.amount = '2000';
-      }
-      const prices = config['price_versions'] as {
-        price_key: string;
-        rates: { max_quantity_per_request: string | null }[];
-      }[];
-      for (const price of prices)
-        if (price.price_key === 'synthetic.live')
-          for (const rate of price.rates) rate.max_quantity_per_request = '400';
-    }),
-  );
-}
-
-interface Rig {
-  readonly harness: BudgetHarness;
-  readonly clock: ManualVoiceClock;
-  readonly provider: MockLiveProvider;
-  budget: ReturnType<typeof gateLiveBudget>;
-  readonly events: Map<string, JsonObject[]>;
-  voice: VoiceControl;
-  restart(coreInstanceId: string): Promise<void>;
-  wait(): Promise<void>;
-}
-
-async function withRig(
-  body: (rig: Rig) => Promise<void>,
-  overrides: Partial<VoiceControlOptions> = {},
-): Promise<void> {
-  await withBudgetStore(async (harness) => {
-    harness.sql((db) => {
-      for (const [id, fill] of [
-        [DEV_A, 'a'],
-        [DEV_B, 'b'],
-      ] as const)
-        db.prepare(
-          `INSERT INTO devices VALUES (?, '合成の端末', 'macos', 0, X'${fill.repeat(64)}', 1000, NULL, NULL)`,
-        ).run(id);
-      db.prepare(
-        "INSERT INTO sessions VALUES (?, 'normal', NULL, 0, NULL, 1000, NULL)",
-      ).run(SESSION);
-    });
-    const gate = harness.gate({ config: liveConfig() });
-    await gate.start();
-    const clock = new ManualVoiceClock();
-    const provider = new MockLiveProvider();
-    const budget = gateLiveBudget(gate);
-    const events = new Map<string, JsonObject[]>();
-    const make = (coreInstanceId: string) => {
-      const voice = new VoiceControl({
-        store: harness.store,
-        coreInstanceId,
-        monoNow: clock.mono,
-        wallNow: () => Date.parse('2030-10-15T00:00:00.000Z') + clock.mono(),
-        timers: clock,
-        provider,
-        budget: rig.budget,
-        consent: () => 'granted',
-        ...overrides,
-      });
-      for (const id of [DEV_A, DEV_B])
-        voice.subscribe(id, (event) => {
-          const list = events.get(id) ?? [];
-          list.push(event as JsonObject);
-          events.set(id, list);
-        });
-      return voice;
-    };
-    const rig: Rig = {
-      harness,
-      clock,
-      provider,
-      budget,
-      events,
-      voice: null as unknown as VoiceControl,
-      // 中枢の再起動の模擬。DB worker は試験側が先に起動し直す（harness.restart）。予算の門も新しい worker で作り直す。
-      async restart(coreInstanceId) {
-        await rig.voice.close();
-        const next = harness.gate({ config: liveConfig() });
-        await next.start();
-        rig.budget = gateLiveBudget(next);
-        rig.voice = make(coreInstanceId);
-        await rig.voice.start();
-      },
-      async wait() {
-        for (let i = 0; i < 4; i += 1) {
-          await rig.voice.idle();
-          await clock.settle();
-        }
-      },
-    };
-    rig.voice = make(CORE);
-    clock.settle = async () => {
-      for (let i = 0; i < 3; i += 1) {
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        await rig.voice.idle();
-      }
-    };
-    await rig.voice.start();
-    try {
-      await body(rig);
-    } finally {
-      await rig.voice.close();
-    }
-  });
-}
-
-// 実時間の上限つきで、条件が満たされるまで中枢の処理を消化する。遅い実行機でも回数で打ち切らない。
-// 上限を超えたら、何を待っていたかが分かるメッセージで失敗させる。
-async function waitUntil(
-  rig: Rig,
-  description: string,
-  done: () => boolean,
-  limitMs = 10_000,
-): Promise<void> {
-  const deadline = Date.now() + limitMs;
-  while (!done()) {
-    if (Date.now() >= deadline)
-      assert.fail(
-        `${description} を実時間で ${limitMs} ms 待っても確認できませんでした`,
-      );
-    await rig.wait();
-  }
-}
-
-interface LeaseRequestInput {
-  readonly lease_id: string;
-  readonly nonce: string;
-  readonly previous_nonce: string | null;
-  readonly at: number;
-  readonly io_epoch?: string;
-  readonly scope?: string;
-  readonly core?: string;
-  readonly kind?: 'audio' | 'display';
-  readonly device_id?: string;
-  readonly ttl_ms?: number;
-}
-
-const leaseBody = (owner: string, input: LeaseRequestInput): JsonObject => ({
-  request_id: uuid(Math.floor(Math.random() * 0xffffff)),
-  lease_id: input.lease_id,
-  kind: input.kind ?? 'audio',
-  device_id: input.device_id ?? owner,
-  core_instance_id: input.core ?? CORE,
-  command_scope_id: input.scope ?? (owner === DEV_A ? SCOPE_A : SCOPE_B),
-  io_epoch: input.io_epoch ?? '0',
-  nonce: input.nonce,
-  previous_nonce: input.previous_nonce,
-  requested_at_mono_ms: input.at,
-  heartbeat_ms: 2000,
-  ttl_ms: input.ttl_ms ?? 6000,
-});
-
-async function renew(
-  rig: Rig,
-  who: DeviceRecord,
-  input: LeaseRequestInput,
-  lock: 'unlocked' | 'locked' | null = 'unlocked',
-) {
-  return rig.voice.renewLease(who, leaseBody(who.device_id, input), lock);
-}
-
-const liveBody = (scope = SCOPE_A): JsonObject => ({
-  request_id: uuid(0x700000 + Math.floor(Math.random() * 0xffff)),
-  command_scope_id: scope,
-  session_id: SESSION,
-  purpose: 'conversation',
-  sdp_offer: 'v=0 synthetic-offer',
-});
-
-const bodyOf = (result: { body: object }) => result.body as JsonObject;
-
-async function openLive(rig: Rig, leaseId = uuid(0x1a)): Promise<string> {
-  const lease = await renew(rig, A, {
-    lease_id: leaseId,
-    nonce: 'n1',
-    previous_nonce: null,
-    at: 10,
-  });
-  assert.equal(bodyOf(lease)['result'], 'renewed');
-  const created = await rig.voice.createLiveSession(A, liveBody());
-  assert.equal(created.status, 201, JSON.stringify(created.body));
-  await rig.wait();
-  return bodyOf(created)['live_session_id'] as string;
-}
-
-function reservationStatus(rig: Rig): string[] {
-  return rig.harness.sql(
-    (db) =>
-      db
-        .prepare(
-          "SELECT status FROM budget_reservations WHERE pool_id = 'voice' ORDER BY created_at, reservation_id",
-        )
-        .pluck()
-        .all() as string[],
-  );
-}
-
-const audioControls = (rig: Rig, id: string) =>
-  (rig.events.get(id) ?? [])
-    .filter((event) => event['event_type'] === 'audio_control')
-    .map((event) => {
-      const control = event['audio_control'] as JsonObject;
-      return [control['action'], control['reason'], control['io_epoch']];
-    });
+  A,
+  B,
+  CORE,
+  CORE_2,
+  DEV_A,
+  DEV_B,
+  SCOPE_A,
+  SCOPE_B,
+  TIMEOUT,
+  actualGross,
+  audioControls,
+  bodyOf,
+  leaseBody,
+  liveBody,
+  openLive,
+  renew,
+  reservationStatus,
+  waitUntil,
+  withRig,
+} from './voice-rig-test-support.js';
+import type { Rig } from './voice-rig-test-support.js';
 
 // ---- リースの取得と更新 --------------------------------------------------------------------------------------------
 
@@ -676,13 +452,14 @@ test(
         [closed?.control_state, closed?.closure, closed?.usage_seconds],
         ['closed', 'close_confirmed', 9],
       );
-      // 15 秒の最低課金で精算した。
+      // 使用 9 秒を渡し、15 秒の最低課金（1 秒 1 単位の合成の単価で 15）で精算した。
       assert.deepEqual(rig.budget.calls, [
         'reserve:195',
         'dispatch',
-        'settle:15',
+        'settle:9',
       ]);
       assert.deepEqual(reservationStatus(rig), ['settled']);
+      assert.deepEqual(actualGross(rig), [15]);
     });
   },
 );
@@ -1633,8 +1410,9 @@ test(
       );
       await rig.wait();
       assert.equal(rig.provider.created.length, 0);
-      // 送出意図を記録した予約は解放せず保持する。
-      assert.deepEqual(rig.budget.calls, ['reserve:195', 'dispatch', 'hold']);
+      // 送出意図の前の再確認で断ったので、送っていない予約を解放する（ADR 0049・U84）。
+      assert.deepEqual(rig.budget.calls, ['reserve:195', 'release']);
+      assert.deepEqual(reservationStatus(rig), ['released']);
     });
   },
 );
@@ -1812,7 +1590,7 @@ test(
 );
 
 test(
-  'P3: 予約を待っている間の局所停止で、受付は 403 になり、provider へ送らず、送出意図の後の予約を保持する',
+  'P3: 予約を待っている間の局所停止で、受付は 403 になり、provider へ送らず、送出意図の前なので予約を解放する',
   TIMEOUT,
   async () => {
     await withRig(async (rig) => {
@@ -1848,8 +1626,8 @@ test(
       );
       await rig.wait();
       assert.equal(rig.provider.created.length, 0);
-      assert.deepEqual(rig.budget.calls, ['reserve:195', 'dispatch', 'hold']);
-      assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+      assert.deepEqual(rig.budget.calls, ['reserve:195', 'release']);
+      assert.deepEqual(reservationStatus(rig), ['released']);
     });
   },
 );

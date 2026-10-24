@@ -52,14 +52,15 @@ export interface TopUpSchedule {
   readonly exhausted: boolean;
 }
 
-// 追加予約の計画。elapsed_ms は接続の予約を取ってからの経過（単調時計）、completed は成功した追加予約の回数。
-// 60 秒ちょうどで 1 回目が期限になる。経過が負（時計の戻り）なら追加予約は期限になっていないとして扱う。
+// 追加予約の計画。elapsed_ms は接続の予約を取ってからの経過（単調時計）、requested は追加予約を要求した回数
+// （成功した回数ではない。失敗・結果不明も数え、同じ券で送り直さない）。60 秒ちょうどで 1 回目が期限になる。
+// 経過が負（時計の戻り）なら追加予約は期限になっていないとして扱う。
 export function topUpSchedule(
   elapsed_ms: number,
-  completed: number,
+  requested: number,
 ): TopUpSchedule {
   const elapsed = Number.isFinite(elapsed_ms) ? Math.max(0, elapsed_ms) : 0;
-  const done = Math.max(0, Math.trunc(completed));
+  const done = Math.max(0, Math.trunc(requested));
   const reached = Math.floor(elapsed / LIVE_TOP_UP_INTERVAL_MS);
   const reserved = LIVE_INITIAL_RESERVE_SECONDS + done * LIVE_TOP_UP_SECONDS;
   const coverage = reserved - elapsed / 1000;

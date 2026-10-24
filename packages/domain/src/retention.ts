@@ -6,8 +6,16 @@ const DAY_MS = 24 * HOUR_MS;
 
 export interface RetentionRule {
   readonly anchor:
-    'created' | 'occurred' | 'issued' | 'fetched' | 'completed' | 'closed';
+    | 'created'
+    | 'occurred'
+    | 'issued'
+    | 'fetched'
+    | 'completed'
+    | 'closed'
+    | 'month_closed';
   readonly ms: number;
+  // 暦の月で数える規則（予算の記録）。ms では数えられないので、deleteAt は使えない（retention-sweep.ts の budgetRecordDeleteAt）。
+  readonly months?: number;
 }
 
 export const RETENTION_RULES: Readonly<Record<string, RetentionRule>> = {
@@ -24,18 +32,25 @@ export const RETENTION_RULES: Readonly<Record<string, RetentionRule>> = {
   sync_batch: { anchor: 'created', ms: 24 * HOUR_MS },
   // 完了した依頼の結果・未確定案（03）。
   workflow_result: { anchor: 'completed', ms: 7 * DAY_MS },
-  // 完了後の本文なし操作レシート（03）。
+  // 完了した操作の本文（確定 intent の暗号文）。完了から 7 日で本文だけ消す（J5、ADR 0040）。生きている用事の正本は対象外。
+  operation_body: { anchor: 'completed', ms: 7 * DAY_MS },
+  // 完了後の本文なし操作レシート（03）。本文のない hash とレシートは 90 日残す（J5）。
   operation_receipt: { anchor: 'completed', ms: 90 * DAY_MS },
   // 自動実行の取り消し一覧と取り消しに必要な情報（J12）。
   undo_window: { anchor: 'completed', ms: 30 * DAY_MS },
   // 気づきの抄録と、再通知の重複を防ぐキー（11 §4）。
   candidate_excerpt: { anchor: 'closed', ms: 7 * DAY_MS },
   candidate_key: { anchor: 'closed', ms: 97 * DAY_MS },
+  // 予算の記録（予約・Live の接続・使われなかった承認）。予算月の締め（次の予算月の始まり）から 13 か月後に、月ごとにまとめて消す（J4）。
+  // 精算されていない行・使用量不明の行・M 超過の確認待ちの行は消さない。暦の月で数えるので ms は使わない。
+  budget_record: { anchor: 'month_closed', ms: 0, months: 13 },
 };
 
 export function deleteAt(ruleId: string, anchorTime: string): string {
   const rule = RETENTION_RULES[ruleId];
   if (!rule) throw new Error(`unknown retention rule ${ruleId}`);
+  if (rule.months !== undefined)
+    throw new Error(`retention rule ${ruleId} is calendar based`);
   return new Date(Date.parse(anchorTime) + rule.ms)
     .toISOString()
     .replace('.000Z', 'Z');

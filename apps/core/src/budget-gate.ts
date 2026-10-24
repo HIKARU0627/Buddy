@@ -327,9 +327,9 @@ const HOLD_ORDER: readonly BudgetGateHoldReason[] = [
 
 const iso = (millis: number): string => new Date(millis).toISOString();
 
-// 会話の課金され得る期間（予約から 2 時間。live-budget.ts の LIVE_SESSION_MAX_MS と同じ）。保存した予約から券を
-// 作り直すとき、受付の時刻（createdAt）にこの長さを足して窓を作る。
-const LIVE_BILLABLE_WINDOW_MS = 7_200_000;
+// 会話の課金され得る期間（予約から 2 時間。live-budget.ts の LIVE_SESSION_MAX_MS がこの値を参照する）。保存した
+// 予約から券を作り直すとき、受付の時刻（createdAt）にこの長さを足して窓を作る。
+export const LIVE_BILLABLE_WINDOW_MS = 7_200_000;
 
 // 観測の採用の結果。設定がなければ configured: false。採用の書込みが失敗したときは state が null（理由つき）。
 type CreditAdoptionResult =

@@ -779,6 +779,71 @@ test(
   },
 );
 
+// ---- サイドバンドを切る失敗（P2-A） --------------------------------------------------------------------------------------
+
+test(
+  '閉じる手順: terminate が例外でも、終了未確認の保持と照合の timer まで進む（P2-A）',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const live = await openLive(rig);
+      const sideband = rig.provider.sidebands[0];
+      assert(sideband !== undefined);
+      await rig.voice.closeLiveSession(A, live, {
+        request_id: uuid(0x94),
+        command_scope_id: SCOPE_A,
+        reason: 'conversation_ended',
+        audio_epoch: '1',
+      });
+      sideband.terminate = () => {
+        throw new Error('合成の terminate の失敗');
+      };
+      // session.closed が来ないまま 2 秒待つと、終了未確認で予約を保持する。
+      await rig.clock.advance(1999);
+      await rig.wait();
+      assert.deepEqual(reservationStatus(rig), ['reserved']);
+      await rig.clock.advance(1);
+      await rig.wait();
+      assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+      assert(rig.budget.calls.includes('hold'));
+      const record = rig.voice.liveRecord(live);
+      assert.deepEqual(
+        [record?.closure, record?.usage_seconds],
+        ['close_unconfirmed', null],
+      );
+      // 照合の timer も仕掛かっている（60 秒後に provider へ読み取りの照会をする）。
+      assert.deepEqual(rig.provider.lookupCalls, []);
+      await rig.clock.advance(LIVE_RECONCILE_INTERVAL_MS);
+      await rig.wait();
+      assert.deepEqual(rig.provider.lookupCalls, [live]);
+    });
+  },
+);
+
+test(
+  '精算: terminate が例外でも、session.closed(60) の精算まで進む（P2-A）',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const live = await openLive(rig);
+      const sideband = rig.provider.sidebands[0];
+      assert(sideband !== undefined);
+      sideband.terminate = () => {
+        throw new Error('合成の terminate の失敗');
+      };
+      sideband.closed(60);
+      await rig.wait();
+      const record = rig.voice.liveRecord(live);
+      assert.deepEqual(
+        [record?.closure, record?.usage_seconds],
+        ['close_confirmed', 60],
+      );
+      assert.deepEqual(actualGross(rig), [60]);
+      assert.deepEqual(reservationStatus(rig), ['settled']);
+    });
+  },
+);
+
 // ---- 結果不明の保持と終了後の照合 ------------------------------------------------------------------------------------------
 
 // サイドバンドが切れ、閉じるための再接続もできず、終了未確認（予約を保持）になった Live を作る。
@@ -851,6 +916,56 @@ test(
         assert.deepEqual(actualGross(rig), [null as unknown as number]);
       });
     }
+  },
+);
+
+test(
+  '精算: session.closed の使用秒数が安全な整数でない・上限を超えるときは、確認済みにせず保持する（P3-B）',
+  TIMEOUT,
+  async () => {
+    for (const usage of [Number.MAX_SAFE_INTEGER + 1, 7_300]) {
+      await withRig(async (rig) => {
+        const live = await openLive(rig);
+        await rig.voice.closeLiveSession(A, live, {
+          request_id: uuid(0x95),
+          command_scope_id: SCOPE_A,
+          reason: 'conversation_ended',
+          audio_epoch: '1',
+        });
+        rig.provider.sidebands[0]?.closed(usage);
+        await rig.wait();
+        const record = rig.voice.liveRecord(live);
+        assert.deepEqual(
+          [record?.closure, record?.usage_seconds],
+          ['close_unconfirmed', null],
+        );
+        assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+        assert.deepEqual(actualGross(rig), [null as unknown as number]);
+        assert(!rig.budget.calls.some((call) => call.startsWith('settle')));
+      });
+    }
+  },
+);
+
+test(
+  '予算の口: 実費の使用秒数が安全な整数でない・上限を超えるときは金額にしない（P3-B）',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const live = await openLive(rig);
+      const ticket = await rig.budget.ticketOf(reservationIdOf(rig));
+      for (const usage of [Number.MAX_SAFE_INTEGER + 1, 7_300]) {
+        assert.deepEqual(
+          await rig.budget.settle(ticket, {
+            live_session_id: live,
+            usage_seconds: usage,
+          }),
+          { ok: false, reasons: ['usage_not_priced'] },
+        );
+      }
+      assert.deepEqual(actualGross(rig), [null as unknown as number]);
+      assert.deepEqual(reservationStatus(rig), ['reserved']);
+    });
   },
 );
 

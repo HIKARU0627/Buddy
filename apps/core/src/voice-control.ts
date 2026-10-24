@@ -62,7 +62,11 @@ import type {
 import { apiErrorResponse } from './api-server.js';
 import type { ApiErrorCode } from './api-server.js';
 import type { DeclaredLockState } from './api-environment.js';
+import { validLiveUsageSeconds } from './live-budget.js';
 import type { JsonObject } from './strict-json.js';
+
+// 確認済みにしてよい使用秒数の上限（live-budget.ts）。参照だけ残し、値は 1 か所で持つ。
+export { LIVE_MAX_USAGE_SECONDS } from './live-budget.js';
 
 // サイドバンドの ping の間隔と期限（ms）。設計初期値（10 §2A）。合格値ではない。
 export const SIDEBAND_PING_INTERVAL_MS = 2000;
@@ -83,9 +87,6 @@ export const STOP_WRITE_ATTEMPTS = 3;
 export const LIVE_RECONCILE_INTERVAL_MS = 60000;
 // 精算の失敗（DB の書込みの失敗など）を、同じ照合 ID で試す回数。尽きたら予約を保持して本人の手での精算に回す。
 export const BUDGET_SETTLE_ATTEMPTS = 3;
-// 確認済みにしてよい使用秒数の上限（会話の最長 2 時間 + 60 秒の余裕）。provider の照会の値がこれを超える・
-// 安全な整数でないときは、使用量を確認できたと扱わない（予約を保持し、本人の手での精算に回す。P3-4）。
-export const LIVE_MAX_USAGE_SECONDS = 7_200 + 60;
 // 精算の拒否のうち、試し直しても変わらないもの（予算の門の理由のコード）。
 const SETTLE_PERMANENT: ReadonlySet<string> = new Set([
   'settlement_conflict',
@@ -475,11 +476,14 @@ export class VoiceControl {
   }
 
   // timer・provider の受け口の入口。1 つの想定外の例外で中枢の処理を止めない（記録して次の観測に任せる）。
+  // 例外の名前だけを残す（メッセージの本文は秘密を含み得るので出さない。P3-C）。
   #guard(run: () => void): void {
     try {
       run();
-    } catch {
-      this.#log('音声の制御の処理で例外が起きました。');
+    } catch (error) {
+      this.#log(
+        `音声の制御の処理で例外が起きました（${error instanceof Error ? error.name : 'unknown'}）。`,
+      );
     }
   }
 
@@ -494,6 +498,15 @@ export class VoiceControl {
       sideband?.sendClose();
     } catch {
       this.#log('session.close を送れませんでした。');
+    }
+  }
+
+  // サイドバンドを切る。切れなくても、閉じる・精算する・保持するの後続へ進む（P2-A）。
+  #terminate(sideband: LiveSideband | null): void {
+    try {
+      sideband?.terminate();
+    } catch {
+      this.#log('サイドバンドを切れませんでした。');
     }
   }
 
@@ -1694,7 +1707,7 @@ export class VoiceControl {
         }
         if (runtime.record.control_state !== 'connecting') {
           // 期限の後に接続できた・閉じ始めた後。閉じる手順は閉じるためだけの再接続が受け持つので、この接続は使わない。
-          handle.terminate();
+          this.#terminate(handle);
           return;
         }
         ref.handle = handle;
@@ -1756,7 +1769,7 @@ export class VoiceControl {
     if (!this.#step(runtime, trigger)) return;
     const old = runtime.sideband;
     runtime.sideband = null;
-    old?.terminate();
+    this.#terminate(old);
     this.#clearTimers(runtime);
     this.#emitAudioControl(
       runtime.record.device_id,
@@ -1789,7 +1802,7 @@ export class VoiceControl {
       .then((handle) => {
         if (done) {
           // 3 秒の後に成り立った接続は使わない。
-          handle?.terminate();
+          this.#terminate(handle);
           return;
         }
         done = true;
@@ -1799,7 +1812,7 @@ export class VoiceControl {
           return;
         }
         if (runtime.record.control_state !== 'closing') {
-          handle.terminate();
+          this.#terminate(handle);
           return;
         }
         ref.handle = handle;
@@ -1855,7 +1868,7 @@ export class VoiceControl {
     if (!this.#step(runtime, 'close_unconfirmed')) return;
     this.#clearTimers(runtime);
     // 終了を確認できなかった接続は切る（使用量の照合は予算の門の照合に任せる）。
-    runtime.sideband?.terminate();
+    this.#terminate(runtime.sideband);
     runtime.sideband = null;
     const budget = this.#budget;
     if (budget !== null && runtime.ticket !== null)
@@ -2172,13 +2185,8 @@ export class VoiceControl {
         unconfirmed += 1;
         continue;
       }
-      const usage = looked.usage_seconds;
-      if (
-        usage === null ||
-        !Number.isSafeInteger(usage) ||
-        usage < 0 ||
-        usage > LIVE_MAX_USAGE_SECONDS
-      ) {
+      const usage = validLiveUsageSeconds(looked.usage_seconds);
+      if (usage === null) {
         unconfirmed += 1;
         continue;
       }
@@ -2221,13 +2229,13 @@ export class VoiceControl {
       .catch(() => null)
       .then((handle) => {
         if (done || this.#closed) {
-          handle?.terminate();
+          this.#terminate(handle);
           return;
         }
         done = true;
         this.#timers.clear(timer);
         if (handle === null || runtime.record.closure !== 'close_unconfirmed') {
-          handle?.terminate();
+          this.#terminate(handle);
           return;
         }
         ref.handle = handle;
@@ -2236,7 +2244,7 @@ export class VoiceControl {
         // 終了を確認できなければ切って、次の照合に任せる。
         runtime.confirmTimer = this.#schedule(CORE_CLOSE_CONFIRM_MS, () => {
           runtime.confirmTimer = null;
-          runtime.sideband?.terminate();
+          this.#terminate(runtime.sideband);
           runtime.sideband = null;
         });
       })
@@ -2244,25 +2252,33 @@ export class VoiceControl {
   }
 
   #onSessionClosed(runtime: LiveRuntime, usage: number | null): void {
-    if (usage === null) {
-      // 使用秒数のない終了は断線として扱う（精算しない）。
+    const confirmed = validLiveUsageSeconds(usage);
+    if (confirmed === null) {
+      // 使用秒数のない終了・確認済みにできない値は断線として扱う（精算しない。P3-B）。
       if (runtime.record.control_state === 'ready')
         this.#onLost(runtime, 'sideband_disconnected');
       else if (runtime.record.control_state === 'connecting')
         this.#onLost(runtime, 'sideband_connect_failed');
+      else if (runtime.record.control_state === 'closing')
+        this.#markUnconfirmed(runtime);
       return;
     }
     const providerFirst =
       runtime.record.closure === 'open' &&
       runtime.record.control_state !== 'lost';
     if (
-      !this.#step(runtime, 'session_closed_received', usage, 'provider_failure')
+      !this.#step(
+        runtime,
+        'session_closed_received',
+        confirmed,
+        'provider_failure',
+      )
     )
       return;
     this.#clearTimers(runtime);
-    runtime.sideband?.terminate();
+    this.#terminate(runtime.sideband);
     runtime.sideband = null;
-    this.#settleLive(runtime, usage);
+    this.#settleLive(runtime, confirmed);
     // provider が先に閉じた。端末へ close_voice_session（provider_failure）を送る（ADR 0038）。
     if (providerFirst)
       this.#emitAudioControl(
@@ -2368,7 +2384,7 @@ export class VoiceControl {
       runtime.retryTimer = null;
       if (runtime.settleTimer !== null) this.#timers.clear(runtime.settleTimer);
       runtime.settleTimer = null;
-      runtime.sideband?.terminate();
+      this.#terminate(runtime.sideband);
       runtime.sideband = null;
     }
     if (this.#reconcileTimer !== null) this.#timers.clear(this.#reconcileTimer);

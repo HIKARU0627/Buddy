@@ -10,13 +10,26 @@
 // - 送出意図・解放・保持は門へそのまま渡す。結果が分からないときは自動で送り直さない。
 
 import { settleLiveSeconds } from '@buddy/domain';
+import { LIVE_BILLABLE_WINDOW_MS } from './budget-gate.js';
 import type { BudgetGate, BudgetTicket, PaidUsage } from './budget-gate.js';
 import type { LiveBudgetPort } from './voice-control.js';
 
 // 精算の provider 名。実費の照合 ID は Live の ID から決めるので、同じ Live の精算は何度呼んでも 1 回にしかならない。
 export const LIVE_PROVIDER_NAME = 'openai-live';
 // 会話の最長（接続中の通話は 2 時間まで。設計 10 の確認した事実）。課金され得る期間の終わりに使う。
-export const LIVE_SESSION_MAX_MS = 7_200_000;
+// 予算の門が券を作り直すときの窓（budget-gate.ts の LIVE_BILLABLE_WINDOW_MS）と同じ値を参照する（P3-D）。
+export const LIVE_SESSION_MAX_MS = LIVE_BILLABLE_WINDOW_MS;
+// 確認済みにしてよい使用秒数の上限（会話の最長 2 時間 + 60 秒の余裕）。provider の値がこれを超える・
+// 安全な整数でないときは、使用量を確認できたと扱わない（予約を保持し、本人の手での精算に回す。P3-B）。
+export const LIVE_MAX_USAGE_SECONDS = LIVE_SESSION_MAX_MS / 1000 + 60;
+
+// 確認済みにしてよい使用秒数か。確認できなければ null（予約を保持する）。
+export function validLiveUsageSeconds(usage: number | null): number | null {
+  if (usage === null) return null;
+  if (!Number.isSafeInteger(usage) || usage < 0) return null;
+  if (usage > LIVE_MAX_USAGE_SECONDS) return null;
+  return usage;
+}
 
 export interface LiveBudgetProfile {
   // 予算の記録に残す profile（会話の接続の設定の版を結び付ける）。
@@ -40,7 +53,8 @@ export function liveUsageGross(
   usageSeconds: number | null,
 ): { readonly usage: PaidUsage; readonly billable_seconds: number } | null {
   // 精算してよい秒数かの判定は domain の規則（15 秒と使用秒数の大きい方）。reserved_seconds は照会の項目で、精算の可否には関係しない。
-  const settlement = settleLiveSeconds(usageSeconds, 0);
+  // 安全な整数でない・会話の最長を超える使用秒数は、確認済みにせず保持する（P3-B）。
+  const settlement = settleLiveSeconds(validLiveUsageSeconds(usageSeconds), 0);
   if (!settlement.settled) return null;
   const amount = gate.liveSecondsAmount(
     ticket,

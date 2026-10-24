@@ -58,6 +58,7 @@ import {
   issueControlEpoch,
   issueLiveEpochs,
   nextLiveControl,
+  observeLease,
   observeSilence,
   planBudgetFailure,
   planStop,
@@ -116,6 +117,28 @@ test('lease status: expiry is counted from the request, the deadline itself is e
   for (const entry of lease.lease_cases) {
     const held = 'held' in entry ? entry.held : lease.held_base;
     assert.deepEqual(evaluateLease(held, entry.now), entry.expected, entry.id);
+  }
+});
+
+test('lease observation: the previous reading is kept and a monotonic regression is refused without any tolerance', () => {
+  for (const scenario of lease.observe_scenarios) {
+    let held = lease.held_base;
+    for (const [index, step] of scenario.steps.entries()) {
+      const observation = observeLease(held, step.now);
+      assert.deepEqual(
+        observation.status,
+        step.expected,
+        `${scenario.id} #${index}`,
+      );
+      // 有効なときだけ状態を持ち越す（直前の観測を今の時計にする）。それ以外は捨てる。
+      if (step.expected.status === 'valid')
+        assert.deepEqual(observation.held, {
+          ...held,
+          last_observed: step.now,
+        });
+      else assert.equal(observation.held, null);
+      held = observation.held;
+    }
   }
 });
 
@@ -353,12 +376,9 @@ test('stop timing: what each reason stops locally, and what the core closes afte
 });
 
 test('stop timing: layer 2 is judged at the deadline inclusive, a late ack is never used', () => {
-  for (const entry of stop.assess_cases) {
-    const result = assessStop(entry.observation);
-    const { action, ...rest } = result;
-    assert.equal(action, planStop(entry.observation.reason).action, entry.id);
-    assert.deepEqual(rest, entry.expected, entry.id);
-  }
+  for (const entry of stop.assess_cases)
+    // action も fixture に手書きした値と比べる（planStop から取らない）。
+    assert.deepEqual(assessStop(entry.observation), entry.expected, entry.id);
   // 要求から 0〜400 ms の各時点で、ACK がなければ 300 ms まで待ち、1 ms 過ぎたら強制終了する（手書きの規則）。
   for (let waited = 0; waited <= 400; waited += 1) {
     const result = assessStop({
@@ -367,8 +387,10 @@ test('stop timing: layer 2 is judged at the deadline inclusive, a late ack is ne
       local_stop_completed_at_mono_ms: null,
       ack_at_mono_ms: null,
       ack_accepted: null,
+      ack_outcome: null,
       ack_timeout_ms: 300,
       now_mono_ms: 5000 + waited,
+      previous_observed_mono_ms: null,
     });
     assert.equal(
       result.layer2.status,
@@ -381,23 +403,78 @@ test('stop timing: layer 2 is judged at the deadline inclusive, a late ack is ne
       `${waited}`,
     );
   }
-  // どの時点で届いた ACK でも、期限（300 ms）より後なら使わない。
-  for (let ackAfter = 0; ackAfter <= 400; ackAfter += 1) {
+  // どの時点で届いた ACK でも、期限（300 ms）より後なら使わない。applied 以外は、いつ届いても停止の完了にしない。
+  for (const outcome of [
+    'applied',
+    'failed',
+    'rejected_invalid',
+    'ignored_stale_epoch',
+  ])
+    for (let ackAfter = 0; ackAfter <= 400; ackAfter += 1) {
+      const result = assessStop({
+        reason: 'os_lock',
+        requested_at_mono_ms: 5000,
+        local_stop_completed_at_mono_ms: null,
+        ack_at_mono_ms: 5000 + ackAfter,
+        ack_accepted: true,
+        ack_outcome: outcome,
+        ack_timeout_ms: 300,
+        now_mono_ms: 5000 + 500,
+        previous_observed_mono_ms: null,
+      });
+      assert.equal(
+        result.layer2.status,
+        outcome !== 'applied'
+          ? 'failed'
+          : ackAfter <= 300
+            ? 'acked'
+            : 'timed_out',
+        `${outcome} ${ackAfter}`,
+      );
+      assert.equal(
+        result.fallback,
+        outcome === 'applied' && ackAfter <= 300 ? null : 'force_kill_renderer',
+        `${outcome} ${ackAfter}`,
+      );
+    }
+  // 現在の時刻が要求より前（時計の逆行）なら、ACK がなければいつでも待たずに停止する側（期限を延ばさない）。
+  for (const now of [0, 1, 2999, 3599999, 3600000 - 1]) {
     const result = assessStop({
       reason: 'os_lock',
-      requested_at_mono_ms: 5000,
+      requested_at_mono_ms: 3600000,
       local_stop_completed_at_mono_ms: null,
-      ack_at_mono_ms: 5000 + ackAfter,
-      ack_accepted: true,
+      ack_at_mono_ms: null,
+      ack_accepted: null,
+      ack_outcome: null,
       ack_timeout_ms: 300,
-      now_mono_ms: 5000 + 500,
+      now_mono_ms: now,
+      previous_observed_mono_ms: null,
     });
-    assert.equal(
-      result.layer2.status,
-      ackAfter <= 300 ? 'acked' : 'timed_out',
-      `${ackAfter}`,
-    );
+    assert.equal(result.layer2.status, 'timed_out', `${now}`);
+    assert.equal(result.fallback, 'force_kill_renderer', `${now}`);
   }
+  // 直前の観測より前の時刻も同じ。同じ値は逆行ではない。
+  for (const [now, previous, expected] of [
+    [5100, 5200, 'timed_out'],
+    [5199, 5200, 'timed_out'],
+    [5200, 5200, 'waiting'],
+    [5201, 5200, 'waiting'],
+  ])
+    assert.equal(
+      assessStop({
+        reason: 'os_lock',
+        requested_at_mono_ms: 5000,
+        local_stop_completed_at_mono_ms: null,
+        ack_at_mono_ms: null,
+        ack_accepted: null,
+        ack_outcome: null,
+        ack_timeout_ms: 300,
+        now_mono_ms: now,
+        previous_observed_mono_ms: previous,
+      }).layer2.status,
+      expected,
+      `${now} ${previous}`,
+    );
 });
 
 // ---- 4. 無音の規則 --------------------------------------------------------------------------------------------------
@@ -525,6 +602,7 @@ test('reservation: failing to top up tells the user once, closes at the earlier 
         entry.now_ms,
         entry.instructed_at_ms,
         entry.utterance_ended_at_ms,
+        entry.previous_observed_ms,
       ),
       entry.expected,
       entry.id,

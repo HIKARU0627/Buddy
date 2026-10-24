@@ -110,16 +110,22 @@ export function budgetCloseDeadline(
   return Math.min(limit, utterance_ended_at_ms);
 }
 
-// now が閉じる時刻に達したか（ちょうどで閉じる）。時計が戻って指示より前なら、閉じない。
+// now が閉じる時刻に達したか（ちょうどで閉じる）。予算の上限に達した後なので、時計を信用できないとき
+// （now が指示の時刻より前・直前の観測より前＝時計の逆行、または有限でない）は、10 秒以内に閉じることを数えられないので、
+// 待たずに閉じる（継続できる側に倒さない。原本に決めなし。ADR 0041）。
 export function shouldCloseForBudget(
   now_ms: number,
   instructed_at_ms: number,
   utterance_ended_at_ms: number | null,
+  previous_observed_ms: number | null,
 ): boolean {
-  return (
-    now_ms >= instructed_at_ms &&
-    now_ms >= budgetCloseDeadline(instructed_at_ms, utterance_ended_at_ms)
-  );
+  if (
+    !Number.isFinite(now_ms) ||
+    now_ms < instructed_at_ms ||
+    (previous_observed_ms !== null && now_ms < previous_observed_ms)
+  )
+    return true;
+  return now_ms >= budgetCloseDeadline(instructed_at_ms, utterance_ended_at_ms);
 }
 
 export type LiveSettlement =

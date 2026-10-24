@@ -62,6 +62,8 @@ export interface HeldLease {
   readonly expires_at_mono_ms: number;
   // 期限を数えた起点の要求を送った時点の時計。以後の整合の検査の起点になる。
   readonly sent_at: ClockReading;
+  // 直前の観測（前回の判定・更新を受けたときの時計）。単調時計がここより戻ったら、許容とは別に捨てる。
+  readonly last_observed: ClockReading;
 }
 
 export type LeaseStatus =
@@ -69,21 +71,47 @@ export type LeaseStatus =
   | { readonly status: 'expired' }
   | { readonly status: 'discarded'; readonly reason: string };
 
-// リースを使ってよいか。時計が整合していなければ期限を見る前に捨てる（時計を信用できないので延命しない）。
-// 期限ちょうどは失効（残りが 0 のリースで音声を続けない）。
+export interface LeaseObservation {
+  readonly status: LeaseStatus;
+  // 次の観測に持ち越す状態。有効なときだけ（直前の観測を今の時計に更新）。失効・捨てたときは null。
+  readonly held: HeldLease | null;
+}
+
+// リースを使ってよいかの観測。時計が整合していなければ期限を見る前に捨てる（時計を信用できないので延命しない）。
+// 整合は、要求を送った時点からの進みの差（許容つき）に加えて、直前の観測からの単調時計の逆行（許容なし）も見る
+// （要求の時点より後に 1ms でも戻れば、残り時間が増えるので捨てる）。期限ちょうどは失効。
+// 呼び出し側は、有効なときに返る held を次の観測に渡す（状態を持つのは呼び出し側）。
+export function observeLease(
+  held: HeldLease | null,
+  now: ClockReading | null,
+  toleranceMs: number = LEASE_CLOCK_TOLERANCE_MS,
+): LeaseObservation {
+  const discard = (reason: string): LeaseObservation => ({
+    status: { status: 'discarded', reason },
+    held: null,
+  });
+  if (held === null) return discard('no_lease');
+  const verdict = assessLeaseClock(held.sent_at, now, toleranceMs);
+  if (verdict !== 'consistent') return discard(CLOCK_REASON[verdict]);
+  const reading = now as ClockReading;
+  if (reading.mono_ms < held.last_observed.mono_ms)
+    return discard(CLOCK_REASON.mono_regressed);
+  const remaining = held.expires_at_mono_ms - reading.mono_ms;
+  return remaining > 0
+    ? {
+        status: { status: 'valid', remaining_ms: remaining },
+        held: { ...held, last_observed: reading },
+      }
+    : { status: { status: 'expired' }, held: null };
+}
+
+// observeLease の判定だけ（状態を更新しない呼び出し）。
 export function evaluateLease(
   held: HeldLease | null,
   now: ClockReading | null,
   toleranceMs: number = LEASE_CLOCK_TOLERANCE_MS,
 ): LeaseStatus {
-  if (held === null) return { status: 'discarded', reason: 'no_lease' };
-  const verdict = assessLeaseClock(held.sent_at, now, toleranceMs);
-  if (verdict !== 'consistent')
-    return { status: 'discarded', reason: CLOCK_REASON[verdict] };
-  const remaining = held.expires_at_mono_ms - (now as ClockReading).mono_ms;
-  return remaining > 0
-    ? { status: 'valid', remaining_ms: remaining }
-    : { status: 'expired' };
+  return observeLease(held, now, toleranceMs).status;
 }
 
 // 端末が更新要求を送った時点の記録。applyLeaseResponse の pending に壁時計の読みを足したもの。
@@ -137,6 +165,7 @@ export function acceptLeaseRenewal(
       lease_id: pending.lease_id,
       expires_at_mono_ms: result.expires_at_mono_ms,
       sent_at: sentAt,
+      last_observed: now as ClockReading,
     },
     clock,
     reasons: [],

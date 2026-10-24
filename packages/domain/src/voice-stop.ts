@@ -81,7 +81,12 @@ export function planStop(reason: AudioReason): StopPlan {
 }
 
 export type StopLayer1Status = 'met' | 'missed' | 'not_reported';
-export type StopLayer2Status = 'acked' | 'waiting' | 'timed_out';
+// ACK の結果（VoiceRendererAck.outcome）。停止を適用できたと認めるのは applied だけ。
+export type StopAckOutcome =
+  'applied' | 'ignored_stale_epoch' | 'rejected_invalid' | 'failed';
+
+// failed: 受理済みの ACK が、停止を適用できなかったと報告した（待たずに強制終了・全停止へ進む）。
+export type StopLayer2Status = 'acked' | 'waiting' | 'timed_out' | 'failed';
 
 export interface StopObservation {
   readonly reason: AudioReason;
@@ -93,9 +98,15 @@ export interface StopObservation {
   readonly ack_at_mono_ms: number | null;
   // acceptVoiceAck の結果（受け付けたか）。ACK がなければ null。受け付けなかった ACK は、なかったものとして扱う。
   readonly ack_accepted: boolean | null;
+  // ACK の outcome。ACK がなければ null。停止の完了と認めるのは、受理済みで applied のものだけ。
+  // 受理済みで applied 以外（failed・rejected_invalid・ignored_stale_epoch）は、停止できなかった報告として待たずに
+  // 強制終了・全停止へ進む。
+  readonly ack_outcome: StopAckOutcome | null;
   // 要求に付けた ACK の待ち時間。チャネルの上限（VOICE_IPC_TIMEOUTS）を超えた分は切り詰める。
   readonly ack_timeout_ms: number;
   readonly now_mono_ms: number;
+  // 直前の観測（前回の assessStop に渡した now_mono_ms）。初回は null。現在時刻がこれより小さければ時計の逆行。
+  readonly previous_observed_mono_ms: number | null;
 }
 
 export interface StopAssessment {
@@ -128,6 +139,9 @@ export interface StopAssessment {
 
 // 3 層の停止の判定。境界は「以内」で、ACK が期限ちょうどなら間に合い、期限を 1ms 過ぎれば強制終了する。
 // 受け付けなかった ACK・要求より前の時刻の ACK（時計の戻り）は、ACK がなかったものとして期限まで待ち、期限で強制終了する。
+// 受理済みの ACK でも outcome が applied でなければ停止できていないので、待たずに強制終了・全停止へ進む。
+// 現在の時刻が要求の時刻・直前の観測より前（時計の逆行・読めない時計）なら、期限を数えられないので待たずに停止する側へ倒す
+// （停止の期限を時計の戻りで延ばさない）。すでに applied の ACK が期限内に届いていれば、その完了は変えない。
 export function assessStop(observation: StopObservation): StopAssessment {
   const plan = planStop(observation.reason);
   const rule = VOICE_IPC_TIMEOUTS[plan.channel];
@@ -151,24 +165,32 @@ export function assessStop(observation: StopObservation): StopAssessment {
     reasons.push('ack_clock_regressed');
   if (ackElapsed !== null && observation.ack_accepted === false)
     reasons.push('ack_not_accepted');
-  const usableAck =
+  const received =
     ackElapsed !== null && ackElapsed >= 0 && observation.ack_accepted === true;
-  const inTime = usableAck && (ackElapsed as number) <= deadline;
-  const waited = observation.now_mono_ms - observation.requested_at_mono_ms;
+  const applied = received && observation.ack_outcome === 'applied';
+  const usableAck = applied;
+  const inTime = applied && (ackElapsed as number) <= deadline;
+  const failedAck = received && !applied;
+  if (failedAck) reasons.push('ack_outcome_not_applied');
+  const now = observation.now_mono_ms;
+  const previous = observation.previous_observed_mono_ms;
+  const clockFault =
+    !Number.isFinite(now) ||
+    now < observation.requested_at_mono_ms ||
+    (previous !== null && now < previous);
+  if (clockFault && !inTime) reasons.push('now_clock_regressed');
+  const waited = now - observation.requested_at_mono_ms;
 
   let layer2: StopLayer2Status;
-  let lateAck = false;
   if (inTime) layer2 = 'acked';
-  else if (waited <= deadline) layer2 = 'waiting';
-  else {
-    layer2 = 'timed_out';
-    if (usableAck) {
-      lateAck = true;
-      reasons.push('late_ack_ignored');
-    }
-  }
+  else if (failedAck) layer2 = 'failed';
+  else if (clockFault || waited > deadline) layer2 = 'timed_out';
+  else layer2 = 'waiting';
+  // 期限の後に届いた applied の ACK は、強制終了・全停止の後なので使わない。
+  const lateAck = layer2 === 'timed_out' && usableAck;
+  if (lateAck) reasons.push('late_ack_ignored');
 
-  const timedOut = layer2 === 'timed_out';
+  const timedOut = layer2 === 'timed_out' || layer2 === 'failed';
   const fallback = timedOut ? rule.onTimeout : null;
   const escalates = fallback === 'escalate_suspend_io';
   return {

@@ -1,27 +1,39 @@
 {
   "status": "specification_only",
-  "description": "Live の文字断片と端末の ASR の結果の比較の期待値（設計 10 §5A、09 QA08・X50・QA05、ADR 0041）。手書きで、domain の実装から生成していない。正規化（全角・半角、漢数字、「半」、カタカナとひらがな、記号と空白）のあとで、数字・日時・否定・宛先の 4 種類を比べ、差があれば実行せず聞き返す。この 4 種類以外の差は検出しない（limitation の例）。差がなくても完全一致や誤認識のなさの証明ではない。どちらかが空・ASR がない場合は比べられないので聞き返す。正規化と特徴の取り方は原本に決めがなく、初期の規則（B05 の実測で調整する）。宛先は名前だけで比べ（さん・様・宛の違いは同じ人）、かな書きと漢字書きの名前は別の人として聞き返す側に倒す。合成の発話だけで、実際の音声・実在の人名・実在のメールアドレスは含まない。メールアドレスの形の文字列は公開情報の検査に誤検出されるので、@ を {at} と書き、試験が @ に置き換えて渡す。",
+  "description": "Live の文字断片と端末の ASR の結果の比較の期待値（設計 10 §5A、09 QA08・X50・QA05、ADR 0041）。手書きで、domain の実装から生成していない。正規化（全角・半角、漢数字、「半」、カタカナとひらがな、記号と空白）のあとで、数字・日時・否定・宛先の 4 種類を比べ、差があれば実行せず聞き返す。この 4 種類以外の差は検出しない（limitation の例）。差がなくても完全一致や誤認識のなさの証明ではない。どちらかが空・ASR がない場合は比べられないので聞き返す。正規化と特徴の取り方は原本に決めがなく、初期の規則（B05 の実測で調整する）。宛先は名前だけで比べ（さん・様・宛の違いは同じ人）、かな書きと漢字書きの名前は別の人として聞き返す側に倒す。合成の発話だけで、実際の音声・実在の人名・実在のメールアドレスは含まない。メールアドレスの形の文字列は公開情報の検査に誤検出されるので、@ を {at} と書き、試験が @ に置き換えて渡す。 数字・日時は出現順と範囲の役割（から・まで・より）を保ち、否定は直前の 3 文字（対象）と組にして順に比べる。対応を確かめられなければ聞き返す（否定の言い換えも、対象の文字が違えば聞き返す側に倒す）。敬称のない宛先は、漢字・ひらがな・カタカナ・英字のどの書き方でも「に・へ + 送る表現」の直前から取り出し、取り出せなければ聞き返す。",
   "cases": [
     {
       "id": "identical",
       "refs": ["QA08"],
       "live": "明日の予定を教えて",
       "asr": "明日の予定を教えて",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "punctuation-and-spacing-only",
       "refs": ["QA08"],
       "live": "カレンダーに登録して。",
       "asr": "カレンダー に 登録して",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "katakana-and-hiragana",
       "refs": ["QA08"],
       "live": "ラベルを付けて",
       "asr": "らべるを付けて",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "hour-differs-15-16",
@@ -39,21 +51,33 @@
       "refs": ["QA08"],
       "live": "明日十五時に予定を入れて",
       "asr": "あした15時に予定を入れて",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "fullwidth-digits",
       "refs": ["QA08"],
       "live": "１５時に会う",
       "asr": "15時に会う",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "half-past",
       "refs": ["QA08"],
       "live": "十時半に会う",
       "asr": "10時30分に会う",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "minutes-differ",
@@ -93,7 +117,11 @@
       "refs": ["QA08"],
       "live": "2026年10月7日",
       "asr": "二〇二六年十月七日",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "weekday-differs",
@@ -111,7 +139,11 @@
       "refs": ["QA08"],
       "live": "月曜に会う",
       "asr": "月曜日に会う",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "morning-and-afternoon-differ",
@@ -151,7 +183,11 @@
       "refs": ["QA08"],
       "live": "あさってにする",
       "asr": "明後日にする",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "duration-differs",
@@ -169,28 +205,44 @@
       "refs": ["QA08"],
       "live": "3000円払う",
       "asr": "三千円払う",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "amount-with-a-thousand-word",
       "refs": ["QA08"],
       "live": "3000円払う",
       "asr": "3千円払う",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "amount-with-ten-thousands",
       "refs": ["QA08"],
       "live": "30000円払う",
       "asr": "3万円払う",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "amount-mixed-digits-and-kanji",
       "refs": ["QA08"],
       "live": "15000円払う",
       "asr": "1万5千円払う",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "amount-differs-by-a-zero",
@@ -252,7 +304,11 @@
       "refs": ["QA08"],
       "live": "1,000円",
       "asr": "1000円",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "negation-added",
@@ -292,7 +348,11 @@
       "refs": ["QA08"],
       "live": "予定はありません",
       "asr": "予定はないです",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
     },
     {
       "id": "negation-with-a-kanji-prefix",
@@ -321,21 +381,33 @@
       "refs": ["QA08"],
       "live": "田中さんに送って",
       "asr": "田中様に送って",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "addressed-to-the-same-person",
       "refs": ["QA08"],
       "live": "田中さんに送って",
       "asr": "田中宛に送って",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "same-recipients-in-another-order",
       "refs": ["QA08"],
       "live": "田中さんと山田さんに送って",
       "asr": "山田さんと田中さんに送って",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "one-recipient-missing",
@@ -386,7 +458,11 @@
       "refs": ["QA08"],
       "live": "Taro{at}Example.test に送って",
       "asr": "taro{at}example.test に送って",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "datetime-negation-and-recipient-all-differ",
@@ -404,7 +480,11 @@
       "refs": ["QA08"],
       "live": "ゼミの資料を作る",
       "asr": "プレゼンの資料を作る",
-      "expected": { "action": "proceed", "differences": [], "reasons": [] }
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
     },
     {
       "id": "asr-result-missing",
@@ -448,6 +528,204 @@
         "action": "ask_back",
         "differences": [],
         "reasons": ["live_transcript_empty", "asr_transcript_empty"]
+      }
+    },
+    {
+      "id": "codex-regression-swapped-times-in-a-range",
+      "refs": ["QA08", "X51"],
+      "live": "3時から5時へ変更して",
+      "asr": "5時から3時へ変更して",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "the-same-range-in-the-same-order",
+      "refs": ["QA08"],
+      "live": "3時から5時まで会議",
+      "asr": "3時から5時まで会議",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "range-role-from-and-until-swapped",
+      "refs": ["QA08"],
+      "live": "3時から5時",
+      "asr": "3時まで5時",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "swapped-counts-keep-their-order",
+      "refs": ["QA08"],
+      "live": "3個と5件",
+      "asr": "5件と3個",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["number"],
+        "reasons": ["number_differs"]
+      }
+    },
+    {
+      "id": "swapped-dates",
+      "refs": ["QA08"],
+      "live": "10月7日を10月9日に変えて",
+      "asr": "10月9日を10月7日に変えて",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["datetime"],
+        "reasons": ["datetime_differs"]
+      }
+    },
+    {
+      "id": "codex-regression-negation-moved-to-another-verb",
+      "refs": ["QA08", "X50"],
+      "live": "送らないで保存して",
+      "asr": "送って保存しないで",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "the-same-negation-target-in-another-ending",
+      "refs": ["QA08"],
+      "live": "送らないで保存して",
+      "asr": "送らなくて保存して",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "two-negations-on-the-same-targets",
+      "refs": ["QA08"],
+      "live": "消さないで送らないで",
+      "asr": "消さないで送らないで",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "two-negations-swapped-between-targets",
+      "refs": ["QA08"],
+      "live": "消さないで送って",
+      "asr": "消して送らないで",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["negation"],
+        "reasons": ["negation_differs"]
+      }
+    },
+    {
+      "id": "codex-regression-hiragana-recipient-without-an-honorific",
+      "refs": ["QA08", "X51"],
+      "live": "たろうにメールして",
+      "asr": "はなこにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "katakana-recipient-without-an-honorific",
+      "refs": ["QA08"],
+      "live": "タロウにメールして",
+      "asr": "ハナコにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "the-same-name-in-hiragana-and-katakana",
+      "refs": ["QA08"],
+      "live": "たろうにメールして",
+      "asr": "タロウにメールして",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "mixed-writing-with-a-time-word-before-the-name",
+      "refs": ["QA08"],
+      "live": "明日たろうにメールして",
+      "asr": "あしたタロウにメールして",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "latin-recipient-without-an-honorific",
+      "refs": ["QA08"],
+      "live": "taroにメールして",
+      "asr": "hanakoにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "kanji-name-and-kana-name-without-an-honorific-are-asked-back",
+      "refs": ["QA08", "X56"],
+      "live": "太郎にメールして",
+      "asr": "たろうにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_differs"]
+      }
+    },
+    {
+      "id": "send-to-a-time-word-only-cannot-be-compared",
+      "refs": ["QA08"],
+      "live": "あしたにメールして",
+      "asr": "あしたにメールして",
+      "expected": {
+        "action": "ask_back",
+        "differences": ["recipient"],
+        "reasons": ["recipient_not_comparable"]
+      }
+    },
+    {
+      "id": "time-particle-before-send-is-not-a-recipient",
+      "refs": ["QA08"],
+      "live": "明日15時に送って",
+      "asr": "明日15時に送って",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
+      }
+    },
+    {
+      "id": "send-without-a-recipient-is-implicit",
+      "refs": ["QA08"],
+      "live": "この返信を送って",
+      "asr": "この返信を送って",
+      "expected": {
+        "action": "proceed",
+        "differences": [],
+        "reasons": []
       }
     }
   ]

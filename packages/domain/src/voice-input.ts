@@ -205,8 +205,13 @@ export function sealSegment(
       if (gap) blocked.push('frame_gap');
       else {
         const tail = inside.at(-1) as RingFrame;
-        if (tail.start_sample + tail.sample_count < end)
-          collecting.push('segment_not_fully_captured');
+        if (tail.start_sample + tail.sample_count < end) {
+          // 区間の終わりまで取得できていない。区間の後ろに、つながらない後続のフレームがすでに届いていれば、
+          // 間のフレームは後から届いても番号の逆行として拒否されるので、取得待ちではなく既知の欠落（blocked）。
+          if (ring.frames.some((frame) => frame.frame_seq > tail.frame_seq))
+            blocked.push('frame_gap');
+          else collecting.push('segment_not_fully_captured');
+        }
       }
     }
   }
@@ -396,24 +401,53 @@ const COUNTER_AFTER_KANJI = '年月日時分秒週回個件円人本枚番歳';
 const DATETIME_TOKEN =
   /\d+(?:年|月|日|時間|時|分|秒|週間|か月|週)|明々後日|明後日|明日|一昨日|昨日|今日|再来週|来週|今週|先週|再来月|来月|今月|先月|来年|去年|今年|午前|午後|正午|夕方|今晩|今朝|明朝|[月火水木金土日]曜日?/gu;
 const NUMBER_TOKEN = /\d+(?:\.\d+)?[円個件人本枚番歳回]?/gu;
+// 数字・日時は、出現順と、範囲の役割（から・まで・より）を保って並べる（「3時から5時へ」と「5時から3時へ」を区別する）。
+const VALUE_TOKEN = new RegExp(
+  `(?:${DATETIME_TOKEN.source})|(?:${NUMBER_TOKEN.source})`,
+  'gu',
+);
+const ROLE_SUFFIX = /^(?:から|まで|より)/u;
 const NEGATION = /ません|ない|なかっ|なく|ぬ|ず|なし|[不無未非]/gu;
+// 否定は、その直前の 3 文字（対象の述語）と組にして順に並べる（「送らないで保存して」と「送って保存しないで」を区別する）。
+const NEGATION_TARGET_CHARS = 3;
 const EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gu;
-const HONORIFIC_NAME =
-  /([\p{Script=Han}]{1,6}|[\p{Script=Hiragana}]{2,8}|[a-z]{2,16})(さん|さま|様|せんせい|先生|どの|殿|くん|君|ちゃん|氏|あて|宛)/gu;
-// 照合の前にカタカナをひらがなへそろえるので、「メール」は「めーる」と書く。
-const NAME_BEFORE_SEND =
-  /([\p{Script=Han}]{2,6})(?=(?:に|へ)(?:送|返信|めーる|連絡))/gu;
+const HONORIFIC =
+  '(?:さん|さま|様|せんせい|先生|どの|殿|くん|君|ちゃん|氏|あて|宛)';
+const HONORIFIC_NAME = new RegExp(
+  `([\\p{Script=Han}]{1,6}|[\\p{Script=Hiragana}]{2,8}|[a-z]{2,16})${HONORIFIC}`,
+  'gu',
+);
+const HONORIFIC_TAIL = new RegExp(`${HONORIFIC}$`, 'u');
+// 送る表現（に・へ + 送る・返信・メール・連絡・転送・伝える）の直前を宛先とする。敬称がなくても、漢字・ひらがな・
+// カタカナ・英字のどの書き方でも取り出す（カタカナは照合の前にひらがなへそろえるので、ここは折りたたむ前の文字で見る）。
+const SEND_EXPRESSION = '(?:送|返信|メール|めーる|連絡|転送|伝え)';
+// 数字・日時の直後の「に」（「15時に送って」）は時刻の助詞で、宛先ではない（数字・日時は \u0001 に置き換えて見る）。
+const SEND_TO = new RegExp(`(?<!\u0001)(?:に|へ)${SEND_EXPRESSION}`, 'u');
+const BEFORE_SEND = new RegExp(
+  `([\\p{Script=Han}々]+|[\\p{Script=Hiragana}]+|[\\p{Script=Katakana}ー]+|[a-z]+)(?:に|へ|宛て?|あて)(?=${SEND_EXPRESSION})`,
+  'gu',
+);
+const RECIPIENT_MAX_CHARS = 10;
 
 interface TranscriptFeatures {
+  // 出現順（範囲の役割つき）。並べ替えない。
   readonly numbers: string[];
   readonly datetimes: string[];
-  readonly negations: number;
+  // 否定ごとの対象（直前の文字）。出現順。
+  readonly negations: string[];
   readonly recipients: string[];
+  // 「に・へ + 送る表現」があるのに、宛先を取り出せなかった（比べられない）。
+  readonly recipient_not_comparable: boolean;
 }
+
+const foldKana = (text: string): string =>
+  text.replace(/[ァ-ヶ]/gu, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0x60),
+  );
 
 // 正規化（NFKC・小文字・漢数字を数へ・「半」・カタカナをひらがなへ・記号と空白の除去）から、数字・日時・否定・宛先を取り出す。
 // 正規化の細部と特徴の取り方は原本に決めなし（初期の規則。B05 の実測で調整する）。同じ語は両方に同じように現れるので、
-// 取り違えは差として現れ、聞き返しになる（安全側）。
+// 取り違えは差として現れ、聞き返しになる（安全側）。対応を確かめられない（宛先を取り出せない等）ときも聞き返す。
 function transcriptFeatures(text: string): TranscriptFeatures {
   let t = text.normalize('NFKC').toLowerCase();
   const recipients: string[] = [];
@@ -434,31 +468,59 @@ function transcriptFeatures(text: string): TranscriptFeatures {
   );
   t = t.replace(/(\d+)時半/gu, '$1時30分');
   t = t.replace(/(?<=\d)[,，](?=\d{3})/gu, '');
-  t = t.replace(/[ァ-ヶ]/gu, (ch) =>
-    String.fromCharCode(ch.charCodeAt(0) - 0x60),
-  );
   t = t.replace(/[\s\p{P}\p{S}]/gu, (mark) => (mark === '.' ? mark : ''));
-  t = t.replace(/(?<!\d)\.|\.(?!\d)/gu, '');
+  // 折りたたむ前の文字（カタカナのまま）。折りたたみは文字数を変えないので、位置は tFolded と同じ。
+  const raw = t.replace(/(?<!\d)\.|\.(?!\d)/gu, '');
+  const folded = foldKana(raw);
+  let normalized = folded;
   for (const [reading, word] of READING_TO_WORD)
-    t = t.split(reading).join(word);
-  const datetimes = (t.match(DATETIME_TOKEN) ?? []).map((token) =>
-    token.replace(/曜日$/u, '曜'),
-  );
-  const rest = t.replace(DATETIME_TOKEN, '');
-  const numbers = rest.match(NUMBER_TOKEN) ?? [];
-  const negations = (rest.match(NEGATION) ?? []).length;
-  // 宛先は名前だけで比べる（さん・様・宛のような敬称の違いは別の人にしない）。
-  for (const match of t.matchAll(HONORIFIC_NAME))
-    recipients.push(match[1] as string);
-  for (const match of t.matchAll(NAME_BEFORE_SEND))
-    recipients.push(
-      (match[1] as string).replace(/(?:先生|[様殿君氏宛])$/u, ''),
+    normalized = normalized.split(reading).join(word);
+
+  const numbers: string[] = [];
+  const datetimes: string[] = [];
+  for (const match of normalized.matchAll(VALUE_TOKEN)) {
+    const after = normalized.slice((match.index ?? 0) + match[0].length);
+    const role = ROLE_SUFFIX.exec(after)?.[0] ?? '';
+    if (new RegExp(`^(?:${DATETIME_TOKEN.source})$`, 'u').test(match[0]))
+      datetimes.push(`${match[0].replace(/曜日$/u, '曜')}${role}`);
+    else numbers.push(`${match[0]}${role}`);
+  }
+  const negations: string[] = [];
+  for (const match of normalized.matchAll(NEGATION)) {
+    const at = match.index ?? 0;
+    negations.push(
+      normalized.slice(Math.max(0, at - NEGATION_TARGET_CHARS), at),
     );
+  }
+
+  // 宛先は名前だけで比べる（さん・様・宛のような敬称の違いは別の人にしない）。
+  for (const match of normalized.matchAll(HONORIFIC_NAME))
+    recipients.push(match[1] as string);
+  // 数字・日時の文字は宛先の候補から外す（「15時に送って」の「時」を名前にしない）。
+  let masked = raw;
+  for (const match of folded.matchAll(VALUE_TOKEN)) {
+    const at = match.index ?? 0;
+    masked =
+      masked.slice(0, at) +
+      '\u0001'.repeat(match[0].length) +
+      masked.slice(at + match[0].length);
+  }
+  for (const match of masked.matchAll(BEFORE_SEND)) {
+    let name = foldKana(match[1] as string);
+    for (const [reading, word] of READING_TO_WORD)
+      name = name.split(reading).join(word);
+    name = name.replace(new RegExp(DATETIME_TOKEN.source, 'gu'), '');
+    name = name.replace(HONORIFIC_TAIL, '');
+    name = name.slice(-RECIPIENT_MAX_CHARS);
+    if (name !== '') recipients.push(name);
+  }
+  const unique = [...new Set(recipients)].filter((name) => name !== '');
   return {
-    numbers: [...numbers].sort(),
-    datetimes: [...datetimes].sort(),
+    numbers,
+    datetimes,
     negations,
-    recipients: [...new Set(recipients)].filter((name) => name !== '').sort(),
+    recipients: unique.sort(),
+    recipient_not_comparable: SEND_TO.test(masked) && unique.length === 0,
   };
 }
 
@@ -485,12 +547,19 @@ export function compareTranscripts(
   const differences: TranscriptDifference[] = [];
   if (!sameList(a.numbers, b.numbers)) differences.push('number');
   if (!sameList(a.datetimes, b.datetimes)) differences.push('datetime');
-  if (a.negations !== b.negations) differences.push('negation');
-  if (!sameList(a.recipients, b.recipients)) differences.push('recipient');
+  if (!sameList(a.negations, b.negations)) differences.push('negation');
+  const recipientsDiffer = !sameList(a.recipients, b.recipients);
+  const notComparable =
+    a.recipient_not_comparable || b.recipient_not_comparable;
+  if (recipientsDiffer || notComparable) differences.push('recipient');
   return {
     action: differences.length === 0 ? 'proceed' : 'ask_back',
     differences,
-    reasons: differences.map((kind) => `${kind}_differs`),
+    reasons: differences.map((kind) =>
+      kind === 'recipient' && !recipientsDiffer
+        ? 'recipient_not_comparable'
+        : `${kind}_differs`,
+    ),
   };
 }
 

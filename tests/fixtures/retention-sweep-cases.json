@@ -29,7 +29,12 @@
         "notice_drafts": [
           {
             "reason": "retention_due",
-            "items": [{ "item_kind": "turn", "item_id": "t1" }]
+            "items": [
+              {
+                "item_kind": "turn",
+                "item_id": "t1"
+              }
+            ]
           }
         ],
         "clock_state": "ok",
@@ -181,8 +186,14 @@
           {
             "reason": "retention_due",
             "items": [
-              { "item_kind": "turn", "item_id": "no-anchor-no-stored" },
-              { "item_kind": "source_item", "item_id": "garbage" }
+              {
+                "item_kind": "turn",
+                "item_id": "no-anchor-no-stored"
+              },
+              {
+                "item_kind": "source_item",
+                "item_id": "garbage"
+              }
             ]
           }
         ],
@@ -305,7 +316,10 @@
           }
         ],
         "holds": [
-          { "id": "budget_month:2025-08", "reason": "clock_regression" }
+          {
+            "id": "budget_month:2025-08",
+            "reason": "clock_regression"
+          }
         ],
         "clock_state": "regressed",
         "effective_now": "2026-10-24T12:00:00Z",
@@ -412,7 +426,11 @@
       ],
       "expected": {
         "actions": [
-          { "action": "delete_row", "id": "old-turn", "reason": "due" },
+          {
+            "action": "delete_row",
+            "id": "old-turn",
+            "reason": "due"
+          },
           {
             "action": "delete_row",
             "id": "body-1",
@@ -456,13 +474,24 @@
           {
             "reason": "retention_due",
             "items": [
-              { "item_kind": "turn", "item_id": "old-turn" },
-              { "item_kind": "source_item", "item_id": "body-1" }
+              {
+                "item_kind": "turn",
+                "item_id": "old-turn"
+              },
+              {
+                "item_kind": "source_item",
+                "item_id": "body-1"
+              }
             ]
           },
           {
             "reason": "review_unanswered",
-            "items": [{ "item_kind": "memory", "item_id": "m-lapsed" }]
+            "items": [
+              {
+                "item_kind": "memory",
+                "item_id": "m-lapsed"
+              }
+            ]
           }
         ],
         "clock_state": "ok",
@@ -513,7 +542,7 @@
           "family": "memory",
           "id": "m2",
           "status": "review_pending",
-          "review_at": "2026-07-26T12:00:00Z",
+          "review_at": "2026-09-24T12:00:00Z",
           "delete_at": "2026-10-24T12:00:00Z"
         }
       ],
@@ -534,7 +563,7 @@
           "family": "memory",
           "id": "m2",
           "status": "review_pending",
-          "review_at": "2026-07-26T12:00:00Z",
+          "review_at": "2026-09-24T12:00:00Z",
           "delete_at": "2026-10-24T12:00:00Z"
         }
       ],
@@ -551,7 +580,12 @@
         "notice_drafts": [
           {
             "reason": "review_unanswered",
-            "items": [{ "item_kind": "memory", "item_id": "m2" }]
+            "items": [
+              {
+                "item_kind": "memory",
+                "item_id": "m2"
+              }
+            ]
           }
         ],
         "clock_state": "ok",
@@ -594,11 +628,29 @@
           }
         ],
         "holds": [
-          { "id": "bad-review-at", "reason": "deadline_unreadable" },
-          { "id": "pending-without-delete-at", "reason": "deadline_unreadable" }
+          {
+            "id": "bad-review-at",
+            "reason": "deadline_unreadable"
+          },
+          {
+            "id": "pending-without-delete-at",
+            "reason": "deadline_unreadable"
+          }
         ],
         "clock_state": "ok",
-        "auto_use_blocked": false
+        "auto_use_blocked": false,
+        "use_blocked": [
+          {
+            "family": "memory",
+            "id": "bad-review-at",
+            "reason": "deadline_unreadable"
+          },
+          {
+            "family": "memory",
+            "id": "pending-without-delete-at",
+            "reason": "deadline_unreadable"
+          }
+        ]
       }
     },
     {
@@ -611,9 +663,16 @@
           "artifact_kind": "carried_summary",
           "id": "seg-summary-1",
           "origins": [
-            { "origin_id": "seg-a", "expires_at": "2026-11-01T00:00:00Z" },
-            { "origin_id": "seg-b", "expires_at": "2026-10-24T12:00:00Z" }
-          ]
+            {
+              "origin_id": "seg-a",
+              "expires_at": "2026-11-01T00:00:00Z"
+            },
+            {
+              "origin_id": "seg-b",
+              "expires_at": "2026-10-24T12:00:00Z"
+            }
+          ],
+          "delete_at": null
         }
       ],
       "expected": {
@@ -630,7 +689,10 @@
           {
             "reason": "summary_origin_expired",
             "items": [
-              { "item_kind": "carried_summary", "item_id": "seg-summary-1" }
+              {
+                "item_kind": "carried_summary",
+                "item_id": "seg-summary-1"
+              }
             ]
           }
         ],
@@ -648,9 +710,16 @@
           "artifact_kind": "carried_summary",
           "id": "seg-summary-1",
           "origins": [
-            { "origin_id": "seg-a", "expires_at": "2026-11-01T00:00:00Z" },
-            { "origin_id": "seg-b", "expires_at": "2026-10-24T12:00:00Z" }
-          ]
+            {
+              "origin_id": "seg-a",
+              "expires_at": "2026-11-01T00:00:00Z"
+            },
+            {
+              "origin_id": "seg-b",
+              "expires_at": "2026-10-24T12:00:00Z"
+            }
+          ],
+          "delete_at": null
         }
       ],
       "expected": {
@@ -671,29 +740,47 @@
           "artifact_kind": "other",
           "id": "excerpt-gone",
           "origins": [
-            { "origin_id": "turn-a", "expires_at": "2026-12-01T00:00:00Z" },
-            { "origin_id": "turn-gone", "expires_at": null }
-          ]
+            {
+              "origin_id": "turn-a",
+              "expires_at": "2026-12-01T00:00:00Z"
+            },
+            {
+              "origin_id": "turn-gone",
+              "expires_at": null
+            }
+          ],
+          "delete_at": null
         },
         {
           "family": "derived",
           "artifact_kind": "other",
           "id": "excerpt-no-origin",
-          "origins": []
+          "origins": [],
+          "delete_at": null
         },
         {
           "family": "derived",
           "artifact_kind": "other",
           "id": "excerpt-unreadable",
-          "origins": [{ "origin_id": "turn-b", "expires_at": "tomorrow" }]
+          "origins": [
+            {
+              "origin_id": "turn-b",
+              "expires_at": "tomorrow"
+            }
+          ],
+          "delete_at": null
         },
         {
           "family": "derived",
           "artifact_kind": "other",
           "id": "excerpt-live",
           "origins": [
-            { "origin_id": "turn-c", "expires_at": "2026-12-01T00:00:00Z" }
-          ]
+            {
+              "origin_id": "turn-c",
+              "expires_at": "2026-12-01T00:00:00Z"
+            }
+          ],
+          "delete_at": null
         }
       ],
       "expected": {
@@ -779,9 +866,21 @@
             "reason": "due",
             "delete_at": "2026-10-24T12:00:00Z"
           },
-          { "action": "erase_body", "id": "op-cancelled", "reason": "due" },
-          { "action": "erase_body", "id": "op-not-executed", "reason": "due" },
-          { "action": "erase_body", "id": "op-superseded", "reason": "due" }
+          {
+            "action": "erase_body",
+            "id": "op-cancelled",
+            "reason": "due"
+          },
+          {
+            "action": "erase_body",
+            "id": "op-not-executed",
+            "reason": "due"
+          },
+          {
+            "action": "erase_body",
+            "id": "op-superseded",
+            "reason": "due"
+          }
         ],
         "holds": [],
         "notice_drafts": [],
@@ -856,7 +955,11 @@
             "id": "op-not-erased-yet",
             "reason": "due"
           },
-          { "action": "delete_row", "id": "op-not-erased-yet", "reason": "due" }
+          {
+            "action": "delete_row",
+            "id": "op-not-erased-yet",
+            "reason": "due"
+          }
         ],
         "holds": [],
         "notice_drafts": [],
@@ -963,7 +1066,12 @@
       ],
       "expected": {
         "actions": [],
-        "holds": [{ "id": "op-unknown", "reason": "unknown_held" }],
+        "holds": [
+          {
+            "id": "op-unknown",
+            "reason": "unknown_held"
+          }
+        ],
         "notice_drafts": [],
         "clock_state": "ok",
         "auto_use_blocked": false
@@ -1018,8 +1126,14 @@
             "rule": "operation_receipt",
             "reason": "task_depends"
           },
-          { "id": "op-compensation", "reason": "compensation_open" },
-          { "id": "undo-open", "reason": "compensation_open" }
+          {
+            "id": "op-compensation",
+            "reason": "compensation_open"
+          },
+          {
+            "id": "undo-open",
+            "reason": "compensation_open"
+          }
         ],
         "clock_state": "ok",
         "auto_use_blocked": false
@@ -1098,8 +1212,16 @@
       "now": "2035-01-01T00:00:00Z",
       "last_checked_at": null,
       "rows": [
-        { "family": "owner_content", "kind": "task", "id": "task-1" },
-        { "family": "owner_content", "kind": "note", "id": "note-1" }
+        {
+          "family": "owner_content",
+          "kind": "task",
+          "id": "task-1"
+        },
+        {
+          "family": "owner_content",
+          "kind": "note",
+          "id": "note-1"
+        }
       ],
       "expected": {
         "actions": [],
@@ -1117,7 +1239,8 @@
         ],
         "notice_drafts": [],
         "clock_state": "ok",
-        "auto_use_blocked": false
+        "auto_use_blocked": false,
+        "use_blocked": []
       }
     },
     {
@@ -1157,13 +1280,47 @@
       "expected": {
         "actions": [],
         "holds": [
-          { "id": "unknown", "reason": "unknown_unit" },
-          { "id": "budget-as-timed", "reason": "unknown_unit" },
-          { "id": "operation-as-timed", "reason": "unknown_unit" },
-          { "id": "receipt-as-timed", "reason": "unknown_unit" }
+          {
+            "id": "unknown",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "budget-as-timed",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "operation-as-timed",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "receipt-as-timed",
+            "reason": "unknown_unit"
+          }
         ],
         "clock_state": "ok",
-        "auto_use_blocked": false
+        "auto_use_blocked": false,
+        "use_blocked": [
+          {
+            "family": "timed",
+            "id": "unknown",
+            "reason": "unknown_unit"
+          },
+          {
+            "family": "timed",
+            "id": "budget-as-timed",
+            "reason": "unknown_unit"
+          },
+          {
+            "family": "timed",
+            "id": "operation-as-timed",
+            "reason": "unknown_unit"
+          },
+          {
+            "family": "timed",
+            "id": "receipt-as-timed",
+            "reason": "unknown_unit"
+          }
+        ]
       }
     },
     {
@@ -1223,7 +1380,11 @@
             "table": "budget_reservations",
             "id": "r1"
           },
-          { "action": "delete_row", "table": "budget_reservations", "id": "r2" }
+          {
+            "action": "delete_row",
+            "table": "budget_reservations",
+            "id": "r2"
+          }
         ],
         "holds": [],
         "clock_state": "ok",
@@ -1566,9 +1727,18 @@
       "expected": {
         "actions": [],
         "holds": [
-          { "id": "budget_month:2026-09", "reason": "calendar_invalid" },
-          { "id": "budget_month:2026-13", "reason": "calendar_invalid" },
-          { "id": "budget_month:9999-12", "reason": "calendar_invalid" }
+          {
+            "id": "budget_month:2026-09",
+            "reason": "calendar_invalid"
+          },
+          {
+            "id": "budget_month:2026-13",
+            "reason": "calendar_invalid"
+          },
+          {
+            "id": "budget_month:9999-12",
+            "reason": "calendar_invalid"
+          }
         ],
         "clock_state": "ok",
         "auto_use_blocked": false
@@ -1583,7 +1753,13 @@
           "family": "derived",
           "artifact_kind": "carried_summary",
           "id": "seg-s",
-          "origins": [{ "origin_id": "seg-o", "expires_at": null }]
+          "origins": [
+            {
+              "origin_id": "seg-o",
+              "expires_at": null
+            }
+          ],
+          "delete_at": null
         },
         {
           "family": "memory",
@@ -1630,44 +1806,692 @@
       ],
       "expected": {
         "actions": [
-          { "action": "delete_row", "id": "seg-s", "reason": "origin_gone" },
+          {
+            "action": "delete_row",
+            "id": "seg-s",
+            "reason": "origin_gone"
+          },
           {
             "action": "delete_row",
             "id": "m-x",
             "reason": "review_unanswered"
           },
-          { "action": "delete_row", "id": "t-a", "reason": "due" },
-          { "action": "delete_row", "id": "t-b", "reason": "due" },
-          { "action": "delete_row", "id": "sb-a", "reason": "due" },
+          {
+            "action": "delete_row",
+            "id": "t-a",
+            "reason": "due"
+          },
+          {
+            "action": "delete_row",
+            "id": "t-b",
+            "reason": "due"
+          },
+          {
+            "action": "delete_row",
+            "id": "sb-a",
+            "reason": "due"
+          },
           {
             "action": "delete_row",
             "id": "receipt-no-notice",
             "reason": "due"
           },
-          { "action": "delete_row", "id": "t-a", "reason": "due" }
+          {
+            "action": "delete_row",
+            "id": "t-a",
+            "reason": "due"
+          }
         ],
         "holds": [],
         "notice_drafts": [
           {
             "reason": "retention_due",
             "items": [
-              { "item_kind": "turn", "item_id": "t-a" },
-              { "item_kind": "turn", "item_id": "t-b" },
-              { "item_kind": "source_item", "item_id": "sb-a" }
+              {
+                "item_kind": "turn",
+                "item_id": "t-a"
+              },
+              {
+                "item_kind": "turn",
+                "item_id": "t-b"
+              },
+              {
+                "item_kind": "source_item",
+                "item_id": "sb-a"
+              }
             ]
           },
           {
             "reason": "review_unanswered",
-            "items": [{ "item_kind": "memory", "item_id": "m-x" }]
+            "items": [
+              {
+                "item_kind": "memory",
+                "item_id": "m-x"
+              }
+            ]
           },
           {
             "reason": "summary_origin_expired",
-            "items": [{ "item_kind": "carried_summary", "item_id": "seg-s" }]
+            "items": [
+              {
+                "item_kind": "carried_summary",
+                "item_id": "seg-s"
+              }
+            ]
           }
         ],
         "clock_state": "ok",
         "auto_use_blocked": false
       }
+    },
+    {
+      "id": "x15-derived-stored-deadline-caps-the-origin-deadline-at-exact-time",
+      "now": "2026-10-25T00:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "derived",
+          "artifact_kind": "carried_summary",
+          "id": "seg-s",
+          "origins": [
+            {
+              "origin_id": "c",
+              "expires_at": "2026-11-20T00:00:00Z"
+            }
+          ],
+          "delete_at": "2026-10-25T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [
+          {
+            "action": "delete_row",
+            "id": "seg-s",
+            "reason": "due",
+            "delete_at": "2026-10-25T00:00:00Z",
+            "clamped": false
+          }
+        ],
+        "notice_drafts": [
+          {
+            "reason": "summary_origin_expired",
+            "items": [
+              {
+                "item_kind": "carried_summary",
+                "item_id": "seg-s"
+              }
+            ]
+          }
+        ]
+      },
+      "note": "要約し直しで前の要約の期限（10-25）を上限にした値を保存した行は、由来が 11-20 まで有効でも 10-25 に消える。"
+    },
+    {
+      "id": "x15-derived-stored-deadline-one-ms-before-stays",
+      "now": "2026-10-24T23:59:59.999Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "derived",
+          "artifact_kind": "carried_summary",
+          "id": "seg-s",
+          "origins": [
+            {
+              "origin_id": "c",
+              "expires_at": "2026-11-20T00:00:00Z"
+            }
+          ],
+          "delete_at": "2026-10-25T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [],
+        "notice_drafts": []
+      }
+    },
+    {
+      "id": "x15-derived-stored-deadline-later-than-origins-is-clamped",
+      "now": "2026-10-25T00:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "derived",
+          "artifact_kind": "carried_summary",
+          "id": "seg-s",
+          "origins": [
+            {
+              "origin_id": "c",
+              "expires_at": "2026-10-25T00:00:00Z"
+            },
+            {
+              "origin_id": "d",
+              "expires_at": "2026-11-20T00:00:00Z"
+            }
+          ],
+          "delete_at": "2026-12-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [
+          {
+            "action": "delete_row",
+            "id": "seg-s",
+            "reason": "origin_expired",
+            "delete_at": "2026-10-25T00:00:00Z",
+            "clamped": true
+          }
+        ],
+        "notice_drafts": [
+          {
+            "reason": "summary_origin_expired",
+            "items": [
+              {
+                "item_kind": "carried_summary",
+                "item_id": "seg-s"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-derived-stored-deadline-unreadable-falls-back-to-origins",
+      "now": "2026-10-25T00:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "derived",
+          "artifact_kind": "carried_summary",
+          "id": "seg-s",
+          "origins": [
+            {
+              "origin_id": "c",
+              "expires_at": "2026-11-20T00:00:00Z"
+            }
+          ],
+          "delete_at": "soon"
+        },
+        {
+          "family": "derived",
+          "artifact_kind": "carried_summary",
+          "id": "seg-t",
+          "origins": [
+            {
+              "origin_id": "c",
+              "expires_at": "2026-11-20T00:00:00Z"
+            }
+          ],
+          "delete_at": "2026-10-25"
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [],
+        "notice_drafts": []
+      }
+    },
+    {
+      "id": "x44-memory-pending-deadline-extended-beyond-30-days-is-clamped-at-exact-time",
+      "now": "2026-08-25T12:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "m",
+          "status": "review_pending",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": "2026-10-24T12:00:00Z"
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [
+          {
+            "action": "delete_row",
+            "id": "m",
+            "reason": "review_unanswered",
+            "delete_at": "2026-08-25T12:00:00Z",
+            "clamped": true
+          }
+        ],
+        "notice_drafts": [
+          {
+            "reason": "review_unanswered",
+            "items": [
+              {
+                "item_kind": "memory",
+                "item_id": "m"
+              }
+            ]
+          }
+        ]
+      },
+      "note": "見直し日の 30 日後は 8-25。保存した 90 日後（10-24）を信用しない。"
+    },
+    {
+      "id": "x44-memory-pending-deadline-extended-one-ms-before-30-days-stays",
+      "now": "2026-08-25T11:59:59.999Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "m",
+          "status": "review_pending",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": "2026-10-24T12:00:00Z"
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [],
+        "notice_drafts": []
+      }
+    },
+    {
+      "id": "x44-memory-pending-stored-earlier-than-30-days-is-kept",
+      "now": "2026-08-10T00:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "m",
+          "status": "review_pending",
+          "review_at": "2026-07-26T12:00:00Z",
+          "delete_at": "2026-08-10T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "holds": [],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [
+          {
+            "action": "delete_row",
+            "id": "m",
+            "reason": "review_unanswered",
+            "delete_at": "2026-08-10T00:00:00Z",
+            "clamped": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "u57-unreadable-memory-and-unknown-rule-are-held-and-use-blocked",
+      "now": "2026-10-24T12:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "memory",
+          "id": "m",
+          "status": "active",
+          "review_at": "soon",
+          "delete_at": null
+        },
+        {
+          "family": "timed",
+          "rule": "no_such_rule",
+          "id": "u",
+          "anchor_at": "2026-01-01T00:00:00Z",
+          "delete_at": null
+        },
+        {
+          "family": "owner_content",
+          "kind": "task",
+          "id": "task-1"
+        }
+      ],
+      "expected": {
+        "holds": [
+          {
+            "id": "m",
+            "reason": "deadline_unreadable"
+          },
+          {
+            "id": "u",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "task-1",
+            "reason": "owner_content_excluded"
+          }
+        ],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [],
+        "use_blocked": [
+          {
+            "family": "memory",
+            "id": "m",
+            "reason": "deadline_unreadable"
+          },
+          {
+            "family": "timed",
+            "id": "u",
+            "reason": "unknown_unit"
+          }
+        ]
+      },
+      "note": "利用禁止の一覧には、期限を判定できない行だけを入れる。正常な対象外（用事・メモ）は入れない。"
+    },
+    {
+      "id": "x16-inherited-property-names-are-unknown-rules-and-do-not-stop-the-sweep",
+      "now": "2026-10-24T12:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "timed",
+          "rule": "constructor",
+          "id": "bad-0",
+          "anchor_at": "2026-10-01T00:00:00Z",
+          "delete_at": null
+        },
+        {
+          "family": "timed",
+          "rule": "toString",
+          "id": "bad-1",
+          "anchor_at": "2026-10-01T00:00:00Z",
+          "delete_at": null
+        },
+        {
+          "family": "timed",
+          "rule": "__proto__",
+          "id": "bad-2",
+          "anchor_at": "2026-10-01T00:00:00Z",
+          "delete_at": null
+        },
+        {
+          "family": "timed",
+          "rule": "hasOwnProperty",
+          "id": "bad-3",
+          "anchor_at": "2026-10-01T00:00:00Z",
+          "delete_at": null
+        },
+        {
+          "family": "timed",
+          "rule": "valueOf",
+          "id": "bad-4",
+          "anchor_at": "2026-10-01T00:00:00Z",
+          "delete_at": null
+        },
+        {
+          "family": "timed",
+          "rule": "turn_normal",
+          "id": "good-turn",
+          "anchor_at": "2026-10-01T00:00:00Z",
+          "delete_at": null
+        }
+      ],
+      "expected": {
+        "holds": [
+          {
+            "id": "bad-0",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "bad-1",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "bad-2",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "bad-3",
+            "reason": "unknown_unit"
+          },
+          {
+            "id": "bad-4",
+            "reason": "unknown_unit"
+          }
+        ],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [
+          {
+            "action": "delete_row",
+            "id": "good-turn",
+            "reason": "due"
+          }
+        ],
+        "use_blocked": [
+          {
+            "family": "timed",
+            "id": "bad-0",
+            "reason": "unknown_unit"
+          },
+          {
+            "family": "timed",
+            "id": "bad-1",
+            "reason": "unknown_unit"
+          },
+          {
+            "family": "timed",
+            "id": "bad-2",
+            "reason": "unknown_unit"
+          },
+          {
+            "family": "timed",
+            "id": "bad-3",
+            "reason": "unknown_unit"
+          },
+          {
+            "family": "timed",
+            "id": "bad-4",
+            "reason": "unknown_unit"
+          }
+        ],
+        "notice_drafts": [
+          {
+            "reason": "retention_due",
+            "items": [
+              {
+                "item_kind": "turn",
+                "item_id": "good-turn"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "j4-budget-month-with-malformed-amounts-keeps-the-whole-month",
+      "now": "2030-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "rows": [
+        {
+          "family": "budget_month",
+          "budget_month": "2026-09",
+          "time_zone": "Asia/Tokyo",
+          "reservations": [
+            {
+              "reservation_id": "r-ok",
+              "status": "released",
+              "actual_gross": null,
+              "max_liability": "100",
+              "overrun_reviewed": false,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-empty",
+              "status": "settled",
+              "actual_gross": "",
+              "max_liability": "1000",
+              "overrun_reviewed": false,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-12x",
+              "status": "settled",
+              "actual_gross": "12x",
+              "max_liability": "1000",
+              "overrun_reviewed": true,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-negative",
+              "status": "settled",
+              "actual_gross": "-1",
+              "max_liability": "1000",
+              "overrun_reviewed": true,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-leading-zero",
+              "status": "settled",
+              "actual_gross": "01",
+              "max_liability": "1000",
+              "overrun_reviewed": true,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-space",
+              "status": "settled",
+              "actual_gross": " 5",
+              "max_liability": "1000",
+              "overrun_reviewed": true,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-decimal",
+              "status": "settled",
+              "actual_gross": "1.5",
+              "max_liability": "1000",
+              "overrun_reviewed": true,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-19-digits",
+              "status": "settled",
+              "actual_gross": "1000000000000000000",
+              "max_liability": "2000000000000000000",
+              "overrun_reviewed": true,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-bad-max",
+              "status": "settled",
+              "actual_gross": "5",
+              "max_liability": "x",
+              "overrun_reviewed": true,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-empty-max",
+              "status": "settled",
+              "actual_gross": "5",
+              "max_liability": "",
+              "overrun_reviewed": true,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-released-bad-max",
+              "status": "released",
+              "actual_gross": null,
+              "max_liability": "",
+              "overrun_reviewed": false,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-released-bad-actual",
+              "status": "released",
+              "actual_gross": "7x",
+              "max_liability": "100",
+              "overrun_reviewed": false,
+              "live_session_ids": [],
+              "approval_ids": []
+            }
+          ],
+          "unused_approval_ids": []
+        },
+        {
+          "family": "budget_month",
+          "budget_month": "2026-10",
+          "time_zone": "Asia/Tokyo",
+          "reservations": [
+            {
+              "reservation_id": "r-max-18-digits",
+              "status": "settled",
+              "actual_gross": "999999999999999999",
+              "max_liability": "999999999999999999",
+              "overrun_reviewed": false,
+              "live_session_ids": [],
+              "approval_ids": []
+            },
+            {
+              "reservation_id": "r-zero",
+              "status": "settled",
+              "actual_gross": "0",
+              "max_liability": "0",
+              "overrun_reviewed": false,
+              "live_session_ids": [],
+              "approval_ids": []
+            }
+          ],
+          "unused_approval_ids": []
+        }
+      ],
+      "expected": {
+        "holds": [
+          {
+            "id": "budget_month:2026-09",
+            "reason": "month_has_open_rows",
+            "blocking_ids": [
+              "r-empty",
+              "r-12x",
+              "r-negative",
+              "r-leading-zero",
+              "r-space",
+              "r-decimal",
+              "r-19-digits",
+              "r-bad-max",
+              "r-empty-max",
+              "r-released-bad-max",
+              "r-released-bad-actual"
+            ]
+          }
+        ],
+        "clock_state": "ok",
+        "auto_use_blocked": false,
+        "actions": [
+          {
+            "action": "delete_row",
+            "table": "budget_reservations",
+            "id": "r-max-18-digits"
+          },
+          {
+            "action": "delete_row",
+            "table": "budget_reservations",
+            "id": "r-zero"
+          }
+        ]
+      },
+      "note": "確認済みのフラグより先に金額を調べる。18 桁の最大値と 0 は正しい金額。"
     }
   ],
   "sweep_rejections": [
@@ -1714,35 +2538,50 @@
       "rule": "turn_normal",
       "anchor_at": "2026-10-10T00:00:00Z",
       "stored": "2027-01-01T00:00:00Z",
-      "expected": { "delete_at": "2026-10-17T00:00:00Z", "clamped": true }
+      "expected": {
+        "delete_at": "2026-10-17T00:00:00Z",
+        "clamped": true
+      }
     },
     {
       "id": "stored-equal-to-rule",
       "rule": "turn_normal",
       "anchor_at": "2026-10-10T00:00:00Z",
       "stored": "2026-10-17T00:00:00Z",
-      "expected": { "delete_at": "2026-10-17T00:00:00Z", "clamped": false }
+      "expected": {
+        "delete_at": "2026-10-17T00:00:00Z",
+        "clamped": false
+      }
     },
     {
       "id": "stored-one-ms-later-than-rule",
       "rule": "turn_normal",
       "anchor_at": "2026-10-10T00:00:00Z",
       "stored": "2026-10-17T00:00:00.001Z",
-      "expected": { "delete_at": "2026-10-17T00:00:00Z", "clamped": true }
+      "expected": {
+        "delete_at": "2026-10-17T00:00:00Z",
+        "clamped": true
+      }
     },
     {
       "id": "stored-earlier-than-rule",
       "rule": "turn_normal",
       "anchor_at": "2026-10-10T00:00:00Z",
       "stored": "2026-10-11T00:00:00Z",
-      "expected": { "delete_at": "2026-10-11T00:00:00Z", "clamped": false }
+      "expected": {
+        "delete_at": "2026-10-11T00:00:00Z",
+        "clamped": false
+      }
     },
     {
       "id": "anchor-missing-uses-stored",
       "rule": "turn_normal",
       "anchor_at": null,
       "stored": "2026-10-11T00:00:00Z",
-      "expected": { "delete_at": "2026-10-11T00:00:00Z", "clamped": false }
+      "expected": {
+        "delete_at": "2026-10-11T00:00:00Z",
+        "clamped": false
+      }
     },
     {
       "id": "both-missing",
@@ -1761,6 +2600,41 @@
     {
       "id": "calendar-rule-is-not-ms-based",
       "rule": "budget_record",
+      "anchor_at": "2026-10-10T00:00:00Z",
+      "stored": null,
+      "expected": null
+    },
+    {
+      "id": "inherited-name-constructor",
+      "rule": "constructor",
+      "anchor_at": "2026-10-10T00:00:00Z",
+      "stored": null,
+      "expected": null
+    },
+    {
+      "id": "inherited-name-toString",
+      "rule": "toString",
+      "anchor_at": "2026-10-10T00:00:00Z",
+      "stored": null,
+      "expected": null
+    },
+    {
+      "id": "inherited-name-__proto__",
+      "rule": "__proto__",
+      "anchor_at": "2026-10-10T00:00:00Z",
+      "stored": null,
+      "expected": null
+    },
+    {
+      "id": "inherited-name-hasOwnProperty",
+      "rule": "hasOwnProperty",
+      "anchor_at": "2026-10-10T00:00:00Z",
+      "stored": null,
+      "expected": null
+    },
+    {
+      "id": "inherited-name-valueOf",
+      "rule": "valueOf",
       "anchor_at": "2026-10-10T00:00:00Z",
       "stored": null,
       "expected": null
@@ -1786,7 +2660,11 @@
       "origins": ["2026-10-25T00:00:00.002Z", "2026-10-25T00:00:00.001Z"],
       "expected": "2026-10-25T00:00:00.001Z"
     },
-    { "id": "no-origins", "origins": [], "expected": null },
+    {
+      "id": "no-origins",
+      "origins": [],
+      "expected": null
+    },
     {
       "id": "one-unreadable",
       "origins": ["2026-10-30T00:00:00Z", "soon"],
@@ -1799,10 +2677,22 @@
       "now": "2026-10-24T12:00:00Z",
       "previous_delete_at": null,
       "materials": [
-        { "origin_id": "a", "expires_at": "2026-10-24T12:00:00Z" },
-        { "origin_id": "b", "expires_at": "2026-10-26T00:00:00Z" },
-        { "origin_id": "c", "expires_at": "2026-11-01T00:00:00Z" },
-        { "origin_id": "d", "expires_at": "2026-10-24T11:59:59.999Z" }
+        {
+          "origin_id": "a",
+          "expires_at": "2026-10-24T12:00:00Z"
+        },
+        {
+          "origin_id": "b",
+          "expires_at": "2026-10-26T00:00:00Z"
+        },
+        {
+          "origin_id": "c",
+          "expires_at": "2026-11-01T00:00:00Z"
+        },
+        {
+          "origin_id": "d",
+          "expires_at": "2026-10-24T11:59:59.999Z"
+        }
       ],
       "expected": {
         "delete_at": "2026-10-26T00:00:00Z",
@@ -1813,21 +2703,42 @@
       "id": "previous-deadline-caps-the-new-one",
       "now": "2026-10-24T12:00:00Z",
       "previous_delete_at": "2026-10-28T00:00:00Z",
-      "materials": [{ "origin_id": "c", "expires_at": "2026-11-01T00:00:00Z" }],
-      "expected": { "delete_at": "2026-10-28T00:00:00Z", "origin_ids": ["c"] }
+      "materials": [
+        {
+          "origin_id": "c",
+          "expires_at": "2026-11-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "delete_at": "2026-10-28T00:00:00Z",
+        "origin_ids": ["c"]
+      }
     },
     {
       "id": "one-ms-before-exact-deadline-is-still-usable",
       "now": "2026-10-24T11:59:59.999Z",
       "previous_delete_at": null,
-      "materials": [{ "origin_id": "a", "expires_at": "2026-10-24T12:00:00Z" }],
-      "expected": { "delete_at": "2026-10-24T12:00:00Z", "origin_ids": ["a"] }
+      "materials": [
+        {
+          "origin_id": "a",
+          "expires_at": "2026-10-24T12:00:00Z"
+        }
+      ],
+      "expected": {
+        "delete_at": "2026-10-24T12:00:00Z",
+        "origin_ids": ["a"]
+      }
     },
     {
       "id": "all-expired-makes-no-summary",
       "now": "2026-10-24T12:00:00Z",
       "previous_delete_at": "2026-10-30T00:00:00Z",
-      "materials": [{ "origin_id": "a", "expires_at": "2026-10-24T12:00:00Z" }],
+      "materials": [
+        {
+          "origin_id": "a",
+          "expires_at": "2026-10-24T12:00:00Z"
+        }
+      ],
       "expected": null
     },
     {
@@ -1842,23 +2753,45 @@
       "now": "2026-10-24T12:00:00Z",
       "previous_delete_at": null,
       "materials": [
-        { "origin_id": "x", "expires_at": "next week" },
-        { "origin_id": "y", "expires_at": "2026-11-01T00:00:00Z" }
+        {
+          "origin_id": "x",
+          "expires_at": "next week"
+        },
+        {
+          "origin_id": "y",
+          "expires_at": "2026-11-01T00:00:00Z"
+        }
       ],
-      "expected": { "delete_at": "2026-11-01T00:00:00Z", "origin_ids": ["y"] }
+      "expected": {
+        "delete_at": "2026-11-01T00:00:00Z",
+        "origin_ids": ["y"]
+      }
     },
     {
       "id": "expired-previous-does-not-cap",
       "now": "2026-10-24T12:00:00Z",
       "previous_delete_at": "2026-10-20T00:00:00Z",
-      "materials": [{ "origin_id": "y", "expires_at": "2026-11-01T00:00:00Z" }],
-      "expected": { "delete_at": "2026-11-01T00:00:00Z", "origin_ids": ["y"] }
+      "materials": [
+        {
+          "origin_id": "y",
+          "expires_at": "2026-11-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "delete_at": "2026-11-01T00:00:00Z",
+        "origin_ids": ["y"]
+      }
     },
     {
       "id": "invalid-now",
       "now": "later",
       "previous_delete_at": null,
-      "materials": [{ "origin_id": "y", "expires_at": "2026-11-01T00:00:00Z" }],
+      "materials": [
+        {
+          "origin_id": "y",
+          "expires_at": "2026-11-01T00:00:00Z"
+        }
+      ],
       "expected": null
     }
   ],
@@ -1869,8 +2802,14 @@
       {
         "now": "2026-10-20T00:00:00Z",
         "materials": [
-          { "origin_id": "a", "expires_at": "2026-10-25T00:00:00Z" },
-          { "origin_id": "b", "expires_at": "2026-10-30T00:00:00Z" }
+          {
+            "origin_id": "a",
+            "expires_at": "2026-10-25T00:00:00Z"
+          },
+          {
+            "origin_id": "b",
+            "expires_at": "2026-10-30T00:00:00Z"
+          }
         ],
         "expected": {
           "delete_at": "2026-10-25T00:00:00Z",
@@ -1880,8 +2819,14 @@
       {
         "now": "2026-10-22T00:00:00Z",
         "materials": [
-          { "origin_id": "b", "expires_at": "2026-10-30T00:00:00Z" },
-          { "origin_id": "c", "expires_at": "2026-11-20T00:00:00Z" }
+          {
+            "origin_id": "b",
+            "expires_at": "2026-10-30T00:00:00Z"
+          },
+          {
+            "origin_id": "c",
+            "expires_at": "2026-11-20T00:00:00Z"
+          }
         ],
         "expected": {
           "delete_at": "2026-10-25T00:00:00Z",
@@ -1891,9 +2836,15 @@
       {
         "now": "2026-10-26T00:00:00Z",
         "materials": [
-          { "origin_id": "c", "expires_at": "2026-11-20T00:00:00Z" }
+          {
+            "origin_id": "c",
+            "expires_at": "2026-11-20T00:00:00Z"
+          }
         ],
-        "expected": { "delete_at": "2026-11-20T00:00:00Z", "origin_ids": ["c"] }
+        "expected": {
+          "delete_at": "2026-11-20T00:00:00Z",
+          "origin_ids": ["c"]
+        }
       }
     ]
   },
@@ -2056,7 +3007,10 @@
         "last_checked_at": null,
         "sweep": null
       },
-      "expected": { "open": false, "reasons": ["sweep_not_started"] }
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_not_started"]
+      }
     },
     {
       "id": "x16-gate-sweep-running",
@@ -2068,10 +3022,14 @@
           "epoch": "boot-2",
           "status": "running",
           "completed_at": null,
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["sweep_running"] }
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_running"]
+      }
     },
     {
       "id": "x16-gate-sweep-failed",
@@ -2083,10 +3041,14 @@
           "epoch": "boot-2",
           "status": "failed",
           "completed_at": null,
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["sweep_failed"] }
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_failed"]
+      }
     },
     {
       "id": "x16-gate-sweep-completed-with-failed-actions",
@@ -2098,10 +3060,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2026-10-24T11:59:00Z",
-          "failed_actions": 2
+          "failed_actions": 2,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["sweep_incomplete"] }
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_incomplete"]
+      }
     },
     {
       "id": "x16-gate-sweep-from-previous-boot-after-offline",
@@ -2113,10 +3079,14 @@
           "epoch": "boot-1",
           "status": "completed",
           "completed_at": "2026-10-24T11:59:00Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["sweep_for_other_epoch"] }
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_for_other_epoch"]
+      }
     },
     {
       "id": "x16-gate-resume-from-sleep-needs-a-new-sweep",
@@ -2128,10 +3098,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2026-10-24T11:59:00Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["sweep_for_other_epoch"] }
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_for_other_epoch"]
+      }
     },
     {
       "id": "x16-gate-opens-after-sweep-for-this-boot",
@@ -2143,10 +3117,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2027-02-01T00:00:05Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": true, "reasons": [] }
+      "expected": {
+        "open": true,
+        "reasons": []
+      }
     },
     {
       "id": "x16-gate-closed-while-clock-is-rolled-back-even-after-sweep",
@@ -2158,10 +3136,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2026-10-20T00:00:00Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["clock_regression"] }
+      "expected": {
+        "open": false,
+        "reasons": ["clock_regression"]
+      }
     },
     {
       "id": "x16-gate-opens-again-when-clock-catches-up",
@@ -2173,10 +3155,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2026-10-24T11:59:00Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": true, "reasons": [] }
+      "expected": {
+        "open": true,
+        "reasons": []
+      }
     },
     {
       "id": "x16-gate-stale-exactly-at-limit-is-open",
@@ -2188,10 +3174,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2026-10-24T12:00:00Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": true, "reasons": [] }
+      "expected": {
+        "open": true,
+        "reasons": []
+      }
     },
     {
       "id": "x16-gate-stale-one-ms-over-limit-is-closed",
@@ -2203,10 +3193,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2026-10-24T12:00:00Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["sweep_stale"] }
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_stale"]
+      }
     },
     {
       "id": "x16-gate-completed-time-unreadable",
@@ -2218,10 +3212,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": null,
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["sweep_time_unreadable"] }
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_time_unreadable"]
+      }
     },
     {
       "id": "x16-gate-invalid-now",
@@ -2233,10 +3231,14 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2026-10-24T11:59:00Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
-      "expected": { "open": false, "reasons": ["clock_invalid_now"] }
+      "expected": {
+        "open": false,
+        "reasons": ["clock_invalid_now"]
+      }
     },
     {
       "id": "x16-gate-invalid-last-checked",
@@ -2248,7 +3250,8 @@
           "epoch": "boot-2",
           "status": "completed",
           "completed_at": "2026-10-24T11:59:00Z",
-          "failed_actions": 0
+          "failed_actions": 0,
+          "use_blocked": []
         }
       },
       "expected": {
@@ -2267,6 +3270,150 @@
       "expected": {
         "open": false,
         "reasons": ["clock_regression", "sweep_not_started"]
+      }
+    },
+    {
+      "id": "x16-gate-clock-rolled-back-after-sweep-completed-is-closed",
+      "input": {
+        "epoch": "boot-2",
+        "now": "2026-10-24T12:00:05Z",
+        "last_checked_at": "2026-10-24T12:00:00Z",
+        "sweep": {
+          "epoch": "boot-2",
+          "status": "completed",
+          "completed_at": "2026-10-24T12:00:10Z",
+          "failed_actions": 0,
+          "use_blocked": []
+        }
+      },
+      "expected": {
+        "open": false,
+        "reasons": ["clock_regression", "sweep_time_in_future"]
+      }
+    },
+    {
+      "id": "x16-gate-completed-one-ms-in-the-future-is-closed-even-without-last-checked",
+      "input": {
+        "epoch": "boot-2",
+        "now": "2026-10-24T12:00:00Z",
+        "last_checked_at": null,
+        "sweep": {
+          "epoch": "boot-2",
+          "status": "completed",
+          "completed_at": "2026-10-24T12:00:00.001Z",
+          "failed_actions": 0,
+          "use_blocked": []
+        }
+      },
+      "expected": {
+        "open": false,
+        "reasons": ["clock_regression", "sweep_time_in_future"]
+      }
+    },
+    {
+      "id": "x16-gate-completed-exactly-now-is-open",
+      "input": {
+        "epoch": "boot-2",
+        "now": "2026-10-24T12:00:00Z",
+        "last_checked_at": "2026-10-24T11:59:00Z",
+        "sweep": {
+          "epoch": "boot-2",
+          "status": "completed",
+          "completed_at": "2026-10-24T12:00:00Z",
+          "failed_actions": 0,
+          "use_blocked": []
+        }
+      },
+      "expected": {
+        "open": true,
+        "reasons": []
+      }
+    },
+    {
+      "id": "u57-gate-carries-use-blocked-rows-through",
+      "input": {
+        "epoch": "boot-2",
+        "now": "2026-10-24T12:00:00Z",
+        "last_checked_at": null,
+        "sweep": {
+          "epoch": "boot-2",
+          "status": "completed",
+          "completed_at": "2026-10-24T11:59:00Z",
+          "failed_actions": 0,
+          "use_blocked": [
+            {
+              "family": "memory",
+              "id": "m1",
+              "reason": "deadline_unreadable"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "open": true,
+        "reasons": [],
+        "use_blocked": [
+          {
+            "family": "memory",
+            "id": "m1",
+            "reason": "deadline_unreadable"
+          }
+        ],
+        "usable": [
+          {
+            "family": "memory",
+            "id": "m1",
+            "usable": false
+          },
+          {
+            "family": "memory",
+            "id": "m2",
+            "usable": true
+          },
+          {
+            "family": "derived",
+            "id": "m1",
+            "usable": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "u57-gate-sweep-record-without-use-blocked-is-closed",
+      "input": {
+        "epoch": "boot-2",
+        "now": "2026-10-24T12:00:00Z",
+        "last_checked_at": null,
+        "sweep": {
+          "epoch": "boot-2",
+          "status": "completed",
+          "completed_at": "2026-10-24T11:59:00Z",
+          "failed_actions": 0
+        }
+      },
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_use_blocked_missing"]
+      }
+    },
+    {
+      "id": "u57-gate-closed-gate-makes-every-row-unusable",
+      "input": {
+        "epoch": "boot-2",
+        "now": "2026-10-24T12:00:00Z",
+        "last_checked_at": null,
+        "sweep": null
+      },
+      "expected": {
+        "open": false,
+        "reasons": ["sweep_not_started"],
+        "usable": [
+          {
+            "family": "memory",
+            "id": "m2",
+            "usable": false
+          }
+        ]
       }
     }
   ],
@@ -2307,5 +3454,39 @@
       "now": "?",
       "expected": true
     }
-  ]
+  ],
+  "resummarize_to_sweep": {
+    "id": "x15-resummarize-then-save-then-sweep-keeps-the-previous-cap",
+    "note": "再要約 → 保存 → 掃除をつなぐ。要約し直した結果の期限（前の要約の 10-25）を行に保存し、由来が 11-20 まで有効でも 10-25 に消える。",
+    "resummarize": {
+      "now": "2026-10-22T00:00:00Z",
+      "previous_delete_at": "2026-10-25T00:00:00Z",
+      "materials": [
+        {
+          "origin_id": "c",
+          "expires_at": "2026-11-20T00:00:00Z"
+        }
+      ]
+    },
+    "expected_delete_at": "2026-10-25T00:00:00Z",
+    "row": {
+      "family": "derived",
+      "artifact_kind": "carried_summary",
+      "id": "seg-s",
+      "origins": [
+        {
+          "origin_id": "c",
+          "expires_at": "2026-11-20T00:00:00Z"
+        }
+      ]
+    },
+    "sweep_one_ms_before": "2026-10-24T23:59:59.999Z",
+    "sweep_at": "2026-10-25T00:00:00Z",
+    "expected_action": {
+      "action": "delete_row",
+      "id": "seg-s",
+      "reason": "due",
+      "delete_at": "2026-10-25T00:00:00Z"
+    }
+  }
 }

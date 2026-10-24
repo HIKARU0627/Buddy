@@ -8,12 +8,14 @@ import {
   SWEEP_STALE_MS,
   applyMemoryEvent,
   budgetRecordDeleteAt,
+  budgetReservationDeletable,
   checkClock,
   clampedDeadline,
   deadlineAfterModeChange,
   deleteAt,
   derivedDeadline,
   isDue,
+  isRowUsable,
   resummarizedDeadline,
   sweepDue,
   sweepPlan,
@@ -50,7 +52,7 @@ const deepFreeze = (value) => {
 };
 
 test('hand-written sweep cases: actions, holds, notices and clock state', () => {
-  assert(cases.sweep_cases.length >= 30);
+  assert(cases.sweep_cases.length >= 45);
   const seen = new Set();
   for (const entry of cases.sweep_cases) {
     assert(!seen.has(entry.id), `duplicate ${entry.id}`);
@@ -72,6 +74,12 @@ test('hand-written sweep cases: actions, holds, notices and clock state', () => 
         plan.notice_drafts.map(({ reason, items }) => ({ reason, items })),
         want.notice_drafts,
         `${entry.id} notices`,
+      );
+    if (want.use_blocked !== undefined)
+      assert.deepEqual(
+        plan.use_blocked,
+        want.use_blocked,
+        `${entry.id} use_blocked`,
       );
     assert.equal(plan.clock.state, want.clock_state, entry.id);
     assert.equal(plan.auto_use_blocked, want.auto_use_blocked, entry.id);
@@ -437,13 +445,25 @@ test('notices: 300 expired turns are split at the contract limit of 256 and carr
 });
 
 test('startup gate: search and cloud send stay closed until a sweep for this boot completed', () => {
-  assert(cases.gate_cases.length >= 15);
+  assert(cases.gate_cases.length >= 21);
   for (const entry of cases.gate_cases) {
     const decision = startupGate(structuredClone(entry.input));
     assert.equal(decision.search, entry.expected.open, entry.id);
     assert.equal(decision.cloud_send, entry.expected.open, entry.id);
     assert.equal(decision.auto_use, entry.expected.open, entry.id);
     assert.deepEqual(decision.reasons, entry.expected.reasons, entry.id);
+    if (entry.expected.use_blocked !== undefined)
+      assert.deepEqual(
+        decision.use_blocked,
+        entry.expected.use_blocked,
+        entry.id,
+      );
+    for (const row of entry.expected.usable ?? [])
+      assert.equal(
+        isRowUsable(decision, row.family, row.id),
+        row.usable,
+        `${entry.id} ${row.family}:${row.id}`,
+      );
   }
   assert.equal(SWEEP_INTERVAL_MS, 300_000);
   assert.equal(SWEEP_STALE_MS, 900_000);
@@ -485,6 +505,7 @@ test('the gate follows the plan: a sweep that planned deletions is only done whe
         status: 'completed',
         completed_at: now,
         failed_actions: failed,
+        use_blocked: [],
       },
     });
   assert.equal(gateAfter(0).search, true);
@@ -497,5 +518,139 @@ test('the gate follows the plan: a sweep that planned deletions is only done whe
       sweep: null,
     }).cloud_send,
     false,
+  );
+});
+
+test('resummarize, save the deadline, then sweep: the previous cap survives the sweep', () => {
+  const entry = cases.resummarize_to_sweep;
+  const resummarized = resummarizedDeadline(entry.resummarize);
+  assert.equal(resummarized.delete_at, entry.expected_delete_at);
+  // 保存: 要約し直した結果の期限を行の delete_at に書く。由来だけからの計算し直しでは 11 月まで残ってしまう。
+  const row = {
+    ...structuredClone(entry.row),
+    delete_at: resummarized.delete_at,
+  };
+  const unsaved = { ...structuredClone(entry.row), delete_at: null };
+  assert.equal(
+    sweepPlan({ now: entry.sweep_at, last_checked_at: null, rows: [unsaved] })
+      .actions.length,
+    0,
+    'without the saved deadline the origins alone keep it (the bug this guards)',
+  );
+  assert.equal(
+    sweepPlan({
+      now: entry.sweep_one_ms_before,
+      last_checked_at: null,
+      rows: [row],
+    }).actions.length,
+    0,
+  );
+  const plan = sweepPlan({
+    now: entry.sweep_at,
+    last_checked_at: null,
+    rows: [row],
+  });
+  assertSubset(plan.actions, [entry.expected_action], entry.id);
+});
+
+test('budget reservation amounts must be contract amounts before the reviewed flag counts', () => {
+  const row = (actual, max, reviewed, status = 'settled') => ({
+    reservation_id: 'r',
+    status,
+    actual_gross: actual,
+    max_liability: max,
+    overrun_reviewed: reviewed,
+    live_session_ids: [],
+    approval_ids: [],
+  });
+  // 正しい金額（0・18 桁の最大・M 超過でも確認済み・M ちょうど）
+  assert.equal(budgetReservationDeletable(row('0', '0', false)), true);
+  assert.equal(
+    budgetReservationDeletable(
+      row('999999999999999999', '999999999999999999', false),
+    ),
+    true,
+  );
+  assert.equal(budgetReservationDeletable(row('1000', '1000', false)), true);
+  assert.equal(budgetReservationDeletable(row('1001', '1000', false)), false);
+  assert.equal(budgetReservationDeletable(row('1001', '1000', true)), true);
+  assert.equal(
+    budgetReservationDeletable(row(null, '100', false, 'released')),
+    true,
+  );
+  // 不正な金額は、確認済みでも消さない。
+  for (const bad of [
+    '',
+    '12x',
+    '-1',
+    '01',
+    ' 5',
+    '5 ',
+    '1.5',
+    '1e3',
+    '１２',
+    '1000000000000000000',
+  ])
+    assert.equal(
+      budgetReservationDeletable(row(bad, '1000', true)),
+      false,
+      `actual ${JSON.stringify(bad)}`,
+    );
+  for (const bad of ['', 'x', '-1', '00', '1000000000000000000', null, 5])
+    assert.equal(
+      budgetReservationDeletable(row('5', bad, true)),
+      false,
+      `max ${JSON.stringify(bad)}`,
+    );
+  assert.equal(
+    budgetReservationDeletable(row('7x', '100', false, 'released')),
+    false,
+  );
+  assert.equal(
+    budgetReservationDeletable(row('', '100', false, 'released')),
+    false,
+  );
+  assert.equal(
+    budgetReservationDeletable(row(null, '100', true, 'usage_unknown')),
+    false,
+  );
+  assert.equal(
+    budgetReservationDeletable(row(null, '100', true, 'reserved')),
+    false,
+  );
+});
+
+test('inherited property names are never rules, even when called directly', () => {
+  for (const name of [
+    'constructor',
+    'toString',
+    '__proto__',
+    'hasOwnProperty',
+    'valueOf',
+    'isPrototypeOf',
+  ])
+    assert.equal(
+      clampedDeadline(name, '2026-10-10T00:00:00Z', '2026-10-17T00:00:00Z'),
+      null,
+      name,
+    );
+  const plan = sweepPlan({
+    now: '2026-10-24T12:00:00Z',
+    last_checked_at: null,
+    rows: [
+      {
+        family: 'timed',
+        rule: 'constructor',
+        id: 'x',
+        anchor_at: '2026-10-01T00:00:00Z',
+        delete_at: null,
+      },
+    ],
+  });
+  assert.equal(plan.ok, true);
+  assert.deepEqual(plan.actions, []);
+  assert.deepEqual(
+    plan.holds.map((hold) => hold.reason),
+    ['unknown_unit'],
   );
 });

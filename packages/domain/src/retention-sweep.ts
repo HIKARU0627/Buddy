@@ -5,8 +5,12 @@
 // 原本に決めがないこと（時計の巻き戻りの解消の条件・掃除の間隔・巻き戻りの許容幅など）は docs/b00/contract-map.md の U53〜U57 に記録した。
 
 import { budgetMonthStart } from './budget-rules.js';
-import { applyMemoryEvent, type MemorySchedule } from './memory.js';
-import { RETENTION_RULES } from './retention.js';
+import {
+  MEMORY_DELETE_AFTER_REVIEW_DAYS,
+  applyMemoryEvent,
+  type MemorySchedule,
+} from './memory.js';
+import { RETENTION_RULES, type RetentionRule } from './retention.js';
 import type { OperationState } from './operations.js';
 
 // --- 時刻の読み取り ---
@@ -75,6 +79,13 @@ export function checkClock(
 
 // --- 期限の計算 ---
 
+// 定義済みの規則だけを返す。`constructor`・`toString`・`__proto__` のような継承されたプロパティ名は未知の規則（undefined）。
+function ruleOf(ruleId: string): RetentionRule | undefined {
+  return Object.hasOwn(RETENTION_RULES, ruleId)
+    ? RETENTION_RULES[ruleId]
+    : undefined;
+}
+
 // 保存した期限と、起点＋規則から求めた期限のうち早い方。保存した期限が規則より遅いとき（延ばされたとき）は規則に戻す。
 // どちらも読めなければ null。
 export function clampedDeadline(
@@ -85,7 +96,7 @@ export function clampedDeadline(
   readonly delete_at: string;
   readonly clamped: boolean;
 } | null {
-  const rule = RETENTION_RULES[ruleId];
+  const rule = ruleOf(ruleId);
   if (rule === undefined || rule.months !== undefined) return null;
   const anchor = anchorAt === null ? null : parseUtc(anchorAt);
   const computed = anchor === null ? null : anchor + rule.ms;
@@ -218,19 +229,26 @@ export interface BudgetReservationRow {
   readonly approval_ids: readonly string[];
 }
 
+// 契約の Amount（先頭ゼロのない非負の 10 進整数・18 桁まで）。空文字・符号・空白・小数・19 桁以上は不正。
+const AMOUNT = /^(0|[1-9][0-9]{0,17})$/u;
+
 // 消してよい状態か（J4）。精算済み・解放済みで、M 超過の確認が済んでいる（または実費が M 以内）もの。
-// reserved・usage_unknown・M 超過の確認待ち・実費が読めない精算済みは、手で精算（確認）するまで消さない。
+// reserved・usage_unknown・M 超過の確認待ちは、手で精算（確認）するまで消さない。実費・最大負担が契約の金額として読めない行は、
+// 確認済みのフラグより先に拒否する（読めない金額の月を消して使用額が少なく見えるのを防ぐ）。
 export function budgetReservationDeletable(row: BudgetReservationRow): boolean {
+  if (typeof row.max_liability !== 'string' || !AMOUNT.test(row.max_liability))
+    return false;
+  if (
+    row.actual_gross !== null &&
+    (typeof row.actual_gross !== 'string' || !AMOUNT.test(row.actual_gross))
+  )
+    return false;
   if (row.status === 'released') return true;
   if (row.status !== 'settled' || row.actual_gross === null) return false;
-  try {
-    return (
-      row.overrun_reviewed ||
-      BigInt(row.actual_gross) <= BigInt(row.max_liability)
-    );
-  } catch {
-    return false;
-  }
+  return (
+    row.overrun_reviewed ||
+    BigInt(row.actual_gross) <= BigInt(row.max_liability)
+  );
 }
 
 // --- 掃除の入力 ---
@@ -266,6 +284,9 @@ export interface DerivedRow {
   readonly artifact_kind: 'carried_summary' | 'other';
   readonly id: string;
   readonly origins: readonly DerivedOrigin[];
+  // 派生物自身の保存した期限（作る・要約し直すときに決めた値）。今の由来の最も早い期限との小さい方で判定する。
+  // 再要約で前の要約の期限を上限にした値が、由来だけからの計算し直しで失われないようにする。まだ決めていなければ null。
+  readonly delete_at: string | null;
 }
 
 const COMPLETED_STATES: readonly OperationState[] = [
@@ -371,6 +392,12 @@ export interface SweepHold {
   readonly blocking_ids?: readonly string[];
 }
 
+export interface SweepUseBlock {
+  readonly family: SweepRow['family'];
+  readonly id: string;
+  readonly reason: 'deadline_unreadable' | 'unknown_unit';
+}
+
 export type NoticeReason =
   'retention_due' | 'review_unanswered' | 'summary_origin_expired';
 
@@ -402,15 +429,18 @@ export type SweepPlanResult =
       readonly notice_drafts: SweepNoticeDraft[];
       // 時計が巻き戻っている間、残る行の自動利用を止める（期限内でも）。
       readonly auto_use_blocked: boolean;
+      // 期限を判定できないので残して使わない行（U57）。掃除の記録（SweepRecord.use_blocked）に必ず写し、
+      // startupGate の判定（use_blocked）と isRowUsable で利用の側へ渡す。用事・メモ（owner_content_excluded）は含まない。
+      readonly use_blocked: SweepUseBlock[];
     };
 
 const NOTICE_ITEMS_MAX = 256;
 
-const TIMED_NOTICE_KIND: Readonly<Record<string, NoticeItemKind>> = {
-  turn_normal: 'turn',
-  turn_extended: 'turn',
-  source_body: 'source_item',
-};
+const TIMED_NOTICE_KIND: ReadonlyMap<string, NoticeItemKind> = new Map([
+  ['turn_normal', 'turn'],
+  ['turn_extended', 'turn'],
+  ['source_body', 'source_item'],
+]);
 
 const OWNER_CONTENT_RULE = { task: 'task_content', note: 'user_note' } as const;
 
@@ -450,7 +480,7 @@ export function sweepPlan(input: SweepInput): SweepPlanResult {
         reason: 'owner_content_excluded',
       });
     } else if (row.family === 'timed') {
-      const rule = RETENTION_RULES[row.rule];
+      const rule = ruleOf(row.rule);
       if (
         rule === undefined ||
         rule.months !== undefined ||
@@ -486,7 +516,7 @@ export function sweepPlan(input: SweepInput): SweepPlanResult {
           delete_at: null,
           clamped: false,
         });
-        notice('retention_due', TIMED_NOTICE_KIND[row.rule], row.id);
+        notice('retention_due', TIMED_NOTICE_KIND.get(row.rule), row.id);
         continue;
       }
       if (!due(deadline.delete_at)) continue;
@@ -508,7 +538,7 @@ export function sweepPlan(input: SweepInput): SweepPlanResult {
         delete_at: deadline.delete_at,
         clamped: deadline.clamped,
       });
-      notice('retention_due', TIMED_NOTICE_KIND[row.rule], row.id);
+      notice('retention_due', TIMED_NOTICE_KIND.get(row.rule), row.id);
     } else if (row.family === 'memory') {
       planMemory(row, effective, actions, holds, notice);
     } else if (row.family === 'derived') {
@@ -531,7 +561,23 @@ export function sweepPlan(input: SweepInput): SweepPlanResult {
     holds,
     notice_drafts: noticeDrafts(notices),
     auto_use_blocked: regressed,
+    use_blocked: useBlocked(holds),
   };
+}
+
+// 期限を判定できない行は、残すが使わない（U57）。同じ行の重複は 1 件にする。
+function useBlocked(holds: readonly SweepHold[]): SweepUseBlock[] {
+  const blocked: SweepUseBlock[] = [];
+  for (const hold of holds) {
+    if (hold.reason !== 'deadline_unreadable' && hold.reason !== 'unknown_unit')
+      continue;
+    if (
+      blocked.some((item) => item.family === hold.family && item.id === hold.id)
+    )
+      continue;
+    blocked.push({ family: hold.family, id: hold.id, reason: hold.reason });
+  }
+  return blocked;
 }
 
 function planMemory(
@@ -575,10 +621,15 @@ function planMemory(
     return;
   }
   const now = toIso(effective);
+  // 削除の期限は、保存した期限と、見直し日＋30 日の小さい方（保存した期限が 30 日を超えて延ばされていても戻す）。
+  // memory.ts は変えず、ここで制限してから既存の遷移に渡す。
+  const cap = reviewAt + MEMORY_DELETE_AFTER_REVIEW_DAYS * 86_400_000;
+  const stored = storedDelete === null ? null : Math.min(storedDelete, cap);
+  const clamped = storedDelete !== null && storedDelete > cap;
   let memory: MemorySchedule = {
     status: row.status,
     review_at: row.review_at,
-    delete_at: row.delete_at,
+    delete_at: stored === null ? null : toIso(stored),
   };
   const wasActive = row.status === 'active';
   if (wasActive) {
@@ -594,6 +645,7 @@ function planMemory(
       action: 'delete_row',
       reason: 'review_unanswered',
       delete_at: memory.delete_at,
+      clamped,
     });
     notice('review_unanswered', 'memory', row.id);
   } else if (wasActive) {
@@ -602,6 +654,7 @@ function planMemory(
       action: 'start_review',
       reason: 'review_due',
       delete_at: memory.delete_at,
+      clamped,
     });
   }
 }
@@ -626,19 +679,30 @@ function planDerived(
   } as const;
   let reason: SweepActionReason | null = null;
   let deleteAt: string | null = null;
+  let clamped = false;
+  const stored = row.delete_at === null ? null : parseUtc(row.delete_at);
   if (row.origins.length === 0) reason = 'no_origin';
   else if (row.origins.some((origin) => origin.expires_at === null))
     reason = 'origin_gone';
   else {
-    deleteAt = derivedDeadline(
+    const fromOrigins = derivedDeadline(
       row.origins.map((origin) => origin.expires_at as string),
     );
     // 読めない由来の期限は期限切れとして扱う（閉じた側）。
-    if (deleteAt === null) reason = 'origin_gone';
-    else if (effective >= Date.parse(deleteAt)) reason = 'origin_expired';
+    if (fromOrigins === null) reason = 'origin_gone';
+    else {
+      // 保存した期限と、今の由来の最も早い期限の小さい方。保存した期限の方が遅ければ（延ばされていれば）由来の期限に戻す。
+      const originMillis = Date.parse(fromOrigins);
+      const limit =
+        stored === null ? originMillis : Math.min(stored, originMillis);
+      clamped = stored !== null && stored > originMillis;
+      deleteAt = toIso(limit);
+      if (effective >= limit)
+        reason = limit < originMillis ? 'due' : 'origin_expired';
+    }
   }
   if (reason === null) return;
-  actions.push({ ...base, reason, delete_at: deleteAt });
+  actions.push({ ...base, reason, delete_at: deleteAt, clamped });
   // 要約全体を捨てる（一部の由来だけを残さない）。知らせの対象は要約をつないだ区間。
   if (row.artifact_kind === 'carried_summary')
     notice('summary_origin_expired', 'carried_summary', row.id);
@@ -827,6 +891,8 @@ export interface SweepRecord {
   readonly completed_at: string | null;
   // 計画のうち実行に失敗した件数（0 のときだけ済みとみなす）。
   readonly failed_actions: number;
+  // 計画の use_blocked（期限を判定できず、残して使わない行）。必ず写す（空なら空の配列）。
+  readonly use_blocked: readonly SweepUseBlock[];
 }
 
 export interface StartupGateInput {
@@ -842,31 +908,68 @@ export interface StartupGateDecision {
   readonly cloud_send: boolean;
   readonly auto_use: boolean;
   readonly reasons: string[];
+  // 門が開いていても使ってはならない行（掃除の記録の use_blocked）。個々の利用は isRowUsable で判定する。
+  readonly use_blocked: readonly SweepUseBlock[];
+}
+
+// 行 1 件を検索・送信・自動利用に使ってよいか。門が閉じている・その行が use_blocked にある、ならば使わない。
+export function isRowUsable(
+  decision: StartupGateDecision,
+  family: SweepRow['family'],
+  id: string,
+): boolean {
+  return (
+    decision.search &&
+    decision.cloud_send &&
+    decision.auto_use &&
+    !decision.use_blocked.some(
+      (item) => item.family === family && item.id === id,
+    )
+  );
 }
 
 // 掃除が済むまで、検索とクラウドへの送信を許さない（03「期限処理は起動時・復帰時に検索やクラウド送信より先に行う」）。
 // 時計が巻き戻っている間、掃除の記録が古い間も許さない。判定が読めないときは閉じる。
 export function startupGate(input: StartupGateInput): StartupGateDecision {
   const reasons: string[] = [];
-  const clock = checkClock(input.now, input.last_checked_at);
-  if (!clock.ok) reasons.push(`clock_${clock.reason}`);
-  else if (clock.state === 'regressed') reasons.push('clock_regression');
   const sweep = input.sweep;
+  const clock = checkClock(input.now, input.last_checked_at);
+  const now = parseUtc(input.now);
+  // 掃除の完了時刻も時計の後退の判定に使う。完了時刻が今より先なら、掃除の後に時計が戻った（または記録が偽）。
+  const completed =
+    sweep === null || sweep.completed_at === null
+      ? null
+      : parseUtc(sweep.completed_at);
+  const completedInFuture =
+    now !== null && completed !== null && completed > now;
+  if (!clock.ok) reasons.push(`clock_${clock.reason}`);
+  else if (clock.state === 'regressed' || completedInFuture)
+    reasons.push('clock_regression');
   if (sweep === null) reasons.push('sweep_not_started');
   else if (sweep.epoch !== input.epoch) reasons.push('sweep_for_other_epoch');
   else if (sweep.status === 'running') reasons.push('sweep_running');
   else if (sweep.status === 'failed') reasons.push('sweep_failed');
   else {
     if (sweep.failed_actions !== 0) reasons.push('sweep_incomplete');
-    const completed =
-      sweep.completed_at === null ? null : parseUtc(sweep.completed_at);
-    const now = parseUtc(input.now);
+    // 使ってはならない行の一覧を必ず写す（欠けた記録では、何を使わないかが分からないので閉じる）。
+    if (!Array.isArray(sweep.use_blocked))
+      reasons.push('sweep_use_blocked_missing');
     if (completed === null) reasons.push('sweep_time_unreadable');
+    else if (completedInFuture) reasons.push('sweep_time_in_future');
     else if (now !== null && now - completed > SWEEP_STALE_MS)
       reasons.push('sweep_stale');
   }
   const open = reasons.length === 0;
-  return { search: open, cloud_send: open, auto_use: open, reasons };
+  return {
+    search: open,
+    cloud_send: open,
+    auto_use: open,
+    reasons,
+    use_blocked:
+      sweep !== null && Array.isArray(sweep.use_blocked)
+        ? [...sweep.use_blocked]
+        : [],
+  };
 }
 
 // 起動中の定期実行で、次の掃除を始めるか。まだ一度も済んでいない・間隔が過ぎた・記録が読めないときは始める。

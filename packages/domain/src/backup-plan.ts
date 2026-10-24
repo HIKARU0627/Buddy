@@ -226,7 +226,8 @@ export type KeyWrapProblem =
   | 'key_wrap_duplicated'
   | 'key_wrap_unknown_purpose'
   | 'recovery_key_mismatch'
-  | 'key_wrap_malformed';
+  | 'key_wrap_malformed'
+  | 'key_id_reused';
 
 // 3 つの鍵の包み（本体・DB の暗号文・台帳の HMAC）が 1 つずつ、同じ復旧キーで包まれているか（ADR 0040）。
 // 一部が欠けた封筒・同じ用途が 2 つある封筒（取り違え）・別の復旧キーで包んだ封筒を拒否する。
@@ -250,6 +251,9 @@ export function keyWrapProblems(
     problems.add('key_wrap_unknown_purpose');
   if (new Set(wraps.map((wrap) => wrap.recovery_key_id)).size > 1)
     problems.add('recovery_key_mismatch');
+  // 3 つの鍵の ID は互いに違う（用途をまたいで同じ ID だと、KeyStore で別の用途の鍵を上書き・削除し得る。Sonnet の P2-3）。
+  if (new Set(wraps.map((wrap) => wrap.key_id)).size !== wraps.length)
+    problems.add('key_id_reused');
   for (const wrap of wraps)
     if (
       !KEY_ID.test(wrap.key_id) ||
@@ -289,7 +293,10 @@ export type BackupManifestProblem =
   | 'storage_mode_unknown'
   | 'excluded_data_missing'
   | 'required_table_excluded'
-  | 'payload_invalid';
+  | 'payload_invalid'
+  | 'excluded_table_unknown'
+  | 'excluded_tables_duplicate'
+  | 'excluded_tables_unsorted';
 
 // 封筒の意味の検査（Schema の検査の後に Core が呼ぶ。読めない値は不正として扱う）。1 つでもあれば復元の段階 1 は
 // manifest_invalid で止める。
@@ -338,6 +345,27 @@ export function backupManifestProblems(
     )
   )
     problems.add('required_table_excluded');
+  // 除外できるのは短命の運用データの表だけ（業務の表・予算・台帳を黙って抜いた封筒を拒否する。Sonnet の P2-6）。
+  if (
+    manifest.excluded_tables.some(
+      (table) =>
+        !BACKUP_REQUIRED_TABLES.includes(table) &&
+        !has(BACKUP_EXCLUDED_TABLES, table),
+    )
+  )
+    problems.add('excluded_table_unknown');
+  if (
+    new Set(manifest.excluded_tables).size !== manifest.excluded_tables.length
+  )
+    problems.add('excluded_tables_duplicate');
+  if (
+    manifest.excluded_tables.some(
+      (table, index) =>
+        index > 0 && (manifest.excluded_tables[index - 1] ?? '') >= table,
+    ) &&
+    new Set(manifest.excluded_tables).size === manifest.excluded_tables.length
+  )
+    problems.add('excluded_tables_unsorted');
   if (
     !Number.isSafeInteger(manifest.payload.bytes) ||
     manifest.payload.bytes < 1 ||
@@ -400,6 +428,8 @@ export interface StoredBackupEntry {
   readonly forgetting_generation: string;
   // 封筒の Schema と backupManifestProblems を通ったか。
   readonly manifest_valid: boolean;
+  // ファイルの更新時刻（Core がファイルシステムから読む。封筒の作成時刻が読めない・信じられないときの期限の起点）。
+  readonly file_modified_at?: string | null;
 }
 
 export interface BackupRetentionInput {
@@ -414,8 +444,12 @@ export interface BackupRetentionInput {
   readonly backups: readonly StoredBackupEntry[];
 }
 
+// 台帳より新しい世代の封筒（台帳の巻き戻りの証拠になり得る）を残す上限。通常の期限（世代の数 × 1 日）とは別に、
+// 設定の上限（30 世代）と同じ 30 日まで残し、その間は本人に知らせる（U74）。
+export const BACKUP_GENERATION_AHEAD_MAX_DAYS = 30;
+
 export type BackupRetentionDelete =
-  // 世代の数（keep_generations 日）を超えて古い。止まっていても延ばさない。
+  // 期限（世代の数 × 1 日。台帳より新しい世代は 30 日）を過ぎた。止まっていても延ばさない。
   | 'expired'
   // 新しい方から keep_generations 個の外。
   | 'beyond_generations'
@@ -427,6 +461,8 @@ export type BackupRetentionHold =
   | 'foreign_lineage'
   | 'created_in_future'
   | 'generation_ahead_of_ledger'
+  // 封筒の作成時刻もファイルの更新時刻も読めず、期限を判定できない（消さずに本人に知らせる）。
+  | 'age_unknown'
   // 忘却の世代が古いが、置き換えるバックアップがまだない（新しいバックアップを取ってから消す。ADR 0040）。
   | 'awaiting_replacement'
   // 期限を過ぎたが、成功した最新のバックアップなので 1 つだけ残す（司令塔の判断。U74。失敗が続いても手元を 0 にしない）。
@@ -436,6 +472,14 @@ export interface BackupRetentionDecision {
   readonly backup_id: string;
   readonly action: 'keep' | 'delete';
   readonly reasons: readonly (BackupRetentionDelete | BackupRetentionHold)[];
+}
+
+// 本人への知らせ（ID と理由だけ）。RetentionNotice（キャンバス向け。対象は発言・元情報・記憶・要約）には
+// バックアップの種類がないので、運び方は U40（UI-05）・B06-08 で決める。
+export interface BackupRetentionNotice {
+  readonly backup_id: string;
+  readonly reason:
+    'generation_ahead_of_ledger' | 'age_unknown' | 'last_backup_kept';
 }
 
 export type BackupRetentionPlan =
@@ -449,6 +493,7 @@ export type BackupRetentionPlan =
       // 残る、復元に使えるバックアップの数。
       readonly restorable_count: number;
       readonly forgetting_checked: boolean;
+      readonly notices: readonly BackupRetentionNotice[];
     }
   | {
       readonly ok: false;
@@ -464,6 +509,8 @@ export type BackupRetentionPlan =
 // 必要に応じて置換または削除」）。期限は世代の数 × 1 日（1 日 1 回の設計なので、初期 7 世代は 7 日）。時計が戻ったときは
 // 最終確認時刻で判定する（延ばさない。ADR 0043 の U54 と同じく消し続ける）。ただし期限内の封筒が 1 つもなくなるときは、
 // 成功した最新の 1 つを残す（司令塔の判断。U74）。残した封筒にも、復元の段階 2・3 で期限と忘却を当てる。
+// 復元に使えない封筒（読めない・別の系譜・今より先の作成・台帳より新しい世代）も期限で消す（Sonnet の P2-4）。起点は
+// 封筒の作成時刻とファイルの更新時刻の早い方（読める方）。台帳より新しい世代だけは 30 日まで残して知らせる。
 export function backupRetentionPlan(
   input: BackupRetentionInput,
 ): BackupRetentionPlan {
@@ -493,6 +540,7 @@ export function backupRetentionPlan(
     ledger === null ? null : BigInt(ledger.forgetting_generation);
 
   const decided = new Map<string, BackupRetentionDecision>();
+  const notices = new Map<string, BackupRetentionNotice>();
   const candidates: {
     entry: StoredBackupEntry;
     created: number;
@@ -500,12 +548,39 @@ export function backupRetentionPlan(
   }[] = [];
   for (const entry of input.backups) {
     const created = parseBackupTime(entry.created_at);
-    const hold = (reason: BackupRetentionHold): void => {
-      decided.set(entry.backup_id, {
-        backup_id: entry.backup_id,
-        action: 'keep',
-        reasons: [reason],
-      });
+    const id = entry.backup_id;
+    const hold = (kind: BackupRetentionHold): void => {
+      const modified =
+        entry.file_modified_at === undefined || entry.file_modified_at === null
+          ? null
+          : parseBackupTime(entry.file_modified_at);
+      const anchors = [created, modified].filter(
+        (value): value is number => value !== null,
+      );
+      if (anchors.length === 0) {
+        decided.set(id, {
+          backup_id: id,
+          action: 'keep',
+          reasons: [kind, 'age_unknown'],
+        });
+        notices.set(id, { backup_id: id, reason: 'age_unknown' });
+        return;
+      }
+      const days =
+        kind === 'generation_ahead_of_ledger'
+          ? BACKUP_GENERATION_AHEAD_MAX_DAYS
+          : input.keep_generations;
+      if (Math.min(...anchors) + days * DAY_MS <= now) {
+        decided.set(id, {
+          backup_id: id,
+          action: 'delete',
+          reasons: ['expired', kind],
+        });
+        return;
+      }
+      decided.set(id, { backup_id: id, action: 'keep', reasons: [kind] });
+      if (kind === 'generation_ahead_of_ledger')
+        notices.set(id, { backup_id: id, reason: kind });
     };
     if (
       !entry.manifest_valid ||
@@ -577,6 +652,8 @@ export function backupRetentionPlan(
           ? ['last_backup_kept', 'awaiting_replacement']
           : ['last_backup_kept'],
       });
+      // 期限を過ぎた封筒が残っていることを知らせる（Sonnet の P3-8）。
+      notices.set(id, { backup_id: id, reason: 'last_backup_kept' });
       restorable += 1;
       continue;
     }
@@ -618,5 +695,10 @@ export function backupRetentionPlan(
       (ledgerGeneration !== null && (awaiting || !hasCurrent)),
     restorable_count: restorable,
     forgetting_checked: ledgerGeneration !== null,
+    // 入力の順に並べる。
+    notices: input.backups.flatMap((entry) => {
+      const notice = notices.get(entry.backup_id);
+      return notice === undefined ? [] : [notice];
+    }),
   };
 }

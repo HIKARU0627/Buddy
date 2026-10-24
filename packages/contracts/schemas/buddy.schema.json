@@ -8854,7 +8854,8 @@
               "enum": [
                 "rate_exceeded",
                 "same_target_repeated",
-                "compensation_failures"
+                "compensation_failures",
+                "restored_from_backup"
               ]
             },
             {
@@ -8875,7 +8876,7 @@
       },
       "required": ["state", "safety_revision", "stop_reason", "stopped_at"],
       "additionalProperties": false,
-      "description": "安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。"
+      "description": "安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。restored_from_backup はバックアップからの復元の後の停止で、本人が再開するまで自動実行を止める（ADR 0047）。"
     },
     "AutoActionItem": {
       "type": "object",
@@ -14092,6 +14093,7 @@
         "manifest_invalid",
         "backup_unreadable",
         "clock_regression",
+        "expiry_purge_failed",
         "forget_apply_failed",
         "db_integrity_failed",
         "schema_newer_than_code",

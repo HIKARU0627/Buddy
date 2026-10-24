@@ -129,7 +129,11 @@ const RESTORE_STAGE_REASONS = {
     'backup_ledger_hash_mismatch',
     'manifest_invalid',
   ],
-  expiry_purge: ['backup_unreadable', 'clock_regression'],
+  expiry_purge: [
+    'backup_unreadable',
+    'clock_regression',
+    'expiry_purge_failed',
+  ],
   forget_apply: ['forget_apply_failed'],
   db_verify: ['db_integrity_failed', 'schema_newer_than_code'],
   rebuild_views: ['rebuild_failed'],
@@ -230,6 +234,9 @@ function restoredOperationErrors(op) {
   const marked = op.restore_unverified_at !== null;
   if (op.effect_route === 'local_command') {
     if (marked) errors.add('local_command_quarantined');
+    // 承認が失効した LocalCommand は、承認済み・準備中に残さない（B06-05、ADR 0047）。
+    if (op.state === 'approved' || op.state === 'preparing')
+      errors.add('local_command_unapproved_state');
   } else {
     const open = RESTORE_OPEN_STATES.includes(op.state);
     if (open && !marked) errors.add('not_quarantined');
@@ -286,10 +293,17 @@ export function restoreGuard(op, step) {
           throw new Error(`unknown observation ${o.kind}`);
       }
     }
+    // 本人の決着は、本人が見た内容版（confirmed_content_version）が今の内容版と同じで、確認の ID（UUID）があるときだけ
+    // 印を外す（B06-05、ADR 0047）。
     case 'owner_resolve':
-      return marked
+      if (!marked) return { result: 'rejected', reason: 'not_quarantined' };
+      return step.confirmed_content_version === op.content_version &&
+        typeof step.confirmation_id === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+          step.confirmation_id,
+        )
         ? { result: 'released', reason: null }
-        : { result: 'rejected', reason: 'not_quarantined' };
+        : { result: 'rejected', reason: 'owner_confirmation_mismatch' };
     default:
       throw new Error(`unknown event ${step.event}`);
   }
@@ -778,6 +792,12 @@ export function semanticErrors(name, value) {
     // 3 つの鍵は同じ復旧キーで包む。
     if (new Set(value.key_wraps.map((wrap) => wrap.recovery_key_id)).size !== 1)
       errors.push('recovery_key_mismatch');
+    // 3 つの鍵の ID は互いに違う（用途をまたいで同じ ID だと KeyStore で取り違える。B06-05、ADR 0047）。
+    if (
+      new Set(value.key_wraps.map((wrap) => wrap.key_id)).size !==
+      value.key_wraps.length
+    )
+      errors.push('key_id_reused');
   }
   if (name === 'RestoreResult') errors.push(...restoreResultErrors(value));
   if (name === 'RestoredOperation')

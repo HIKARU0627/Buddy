@@ -268,7 +268,7 @@
           "key_id": "data-key-v1"
         }
       },
-      "problems": ["key_wrap_duplicated", "key_wrap_missing"],
+      "problems": ["key_id_reused", "key_wrap_duplicated", "key_wrap_missing"],
       "contract": {
         "schema_valid": false
       }
@@ -334,6 +334,45 @@
         "created_at": "2026-02-30T00:00:00Z"
       },
       "problems": ["created_at_invalid"]
+    },
+    {
+      "id": "x16-b0605-manifest-key-id-reused",
+      "note": "Sonnet の P2-3: データ鍵の包みが本体の鍵と同じ ID。",
+      "replace_wrap": {
+        "purpose": "data_key",
+        "with": {
+          "key_id": "backup-file-v1"
+        }
+      },
+      "problems": ["key_id_reused"],
+      "contract": {
+        "schema_valid": true,
+        "semantic_errors": ["key_id_reused"]
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-business-tables-excluded",
+      "note": "Sonnet の P2-6 の再現: 業務の表・予算・存在しない表を除外した封筒（並びも違う）。",
+      "override": {
+        "excluded_tables": [
+          "operations",
+          "approvals",
+          "budget_months",
+          "nonexistent"
+        ]
+      },
+      "problems": ["excluded_table_unknown", "excluded_tables_unsorted"],
+      "contract": {
+        "schema_valid": true,
+        "semantic_errors": []
+      }
+    },
+    {
+      "id": "b0605-manifest-excluded-tables-unsorted",
+      "override": {
+        "excluded_tables": ["source_items", "event_outbox"]
+      },
+      "problems": ["excluded_tables_unsorted"]
     }
   ],
   "coverage_cases": [
@@ -469,7 +508,8 @@
         ],
         "needs_new_backup": false,
         "restorable_count": 7,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": []
       }
     },
     {
@@ -510,7 +550,8 @@
         ],
         "needs_new_backup": false,
         "restorable_count": 1,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": []
       }
     },
     {
@@ -567,7 +608,8 @@
         ],
         "needs_new_backup": false,
         "restorable_count": 3,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": []
       }
     },
     {
@@ -616,7 +658,8 @@
         ],
         "needs_new_backup": false,
         "restorable_count": 1,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": []
       }
     },
     {
@@ -657,12 +700,13 @@
         ],
         "needs_new_backup": true,
         "restorable_count": 2,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": []
       }
     },
     {
       "id": "b0605-retention-holds-are-not-counted",
-      "note": "封筒が読めない・別の系譜・今より先の作成・台帳より新しい世代は、消さずに残し、世代の数にも数えない。",
+      "note": "封筒が読めない・別の系譜・今より先の作成・台帳より新しい世代は、世代の数に数えない。ただし期限は当てる（Sonnet の P2-4）。世代 1 の期限（1 日）を過ぎた、読めない封筒と別の系譜は消す。今より先の作成は期限を数えられず残す。台帳より新しい世代は 30 日まで残して知らせる。",
       "input": {
         "now": "2026-10-24T03:00:00Z",
         "last_checked_at": null,
@@ -714,15 +758,21 @@
         "clock_state": "ok",
         "effective_now": "2026-10-24T03:00:00Z",
         "decisions": [
-          ["keep", ["manifest_unreadable"]],
-          ["keep", ["foreign_lineage"]],
+          ["delete", ["expired", "manifest_unreadable"]],
+          ["delete", ["expired", "foreign_lineage"]],
           ["keep", ["created_in_future"]],
           ["keep", ["generation_ahead_of_ledger"]],
           ["keep", []]
         ],
         "needs_new_backup": false,
         "restorable_count": 1,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009174",
+            "reason": "generation_ahead_of_ledger"
+          }
+        ]
       }
     },
     {
@@ -771,7 +821,13 @@
         ],
         "needs_new_backup": true,
         "restorable_count": 1,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009202",
+            "reason": "last_backup_kept"
+          }
+        ]
       }
     },
     {
@@ -802,7 +858,13 @@
         "decisions": [["keep", ["last_backup_kept", "awaiting_replacement"]]],
         "needs_new_backup": true,
         "restorable_count": 1,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009204",
+            "reason": "last_backup_kept"
+          }
+        ]
       }
     },
     {
@@ -839,7 +901,13 @@
         ],
         "needs_new_backup": true,
         "restorable_count": 1,
-        "forgetting_checked": false
+        "forgetting_checked": false,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009206",
+            "reason": "last_backup_kept"
+          }
+        ]
       }
     },
     {
@@ -888,7 +956,13 @@
         ],
         "needs_new_backup": true,
         "restorable_count": 1,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009209",
+            "reason": "last_backup_kept"
+          }
+        ]
       }
     },
     {
@@ -937,7 +1011,8 @@
         ],
         "needs_new_backup": false,
         "restorable_count": 2,
-        "forgetting_checked": true
+        "forgetting_checked": true,
+        "notices": []
       }
     },
     {
@@ -975,7 +1050,8 @@
         ],
         "needs_new_backup": false,
         "restorable_count": 2,
-        "forgetting_checked": false
+        "forgetting_checked": false,
+        "notices": []
       }
     },
     {
@@ -1033,6 +1109,151 @@
       "expect": {
         "ok": false,
         "reason": "duplicate_backup_id"
+      }
+    },
+    {
+      "id": "x16-b0605-retention-stale-unusable-envelopes-expire",
+      "note": "Sonnet の P2-4 の再現: 2025-01-01 に作った別の系譜・読めない封筒が、2026-10-24 でも残っていた。期限で消す。作成時刻の読めない封筒はファイルの更新時刻で判定する。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009301",
+            "created_at": "2025-01-01T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009399",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009302",
+            "created_at": "2025-01-01T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009303",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false,
+            "file_modified_at": "2026-10-01T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009304",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false,
+            "file_modified_at": "2026-10-23T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009305",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009309",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired", "foreign_lineage"]],
+          ["delete", ["expired", "manifest_unreadable"]],
+          ["delete", ["expired", "manifest_unreadable"]],
+          ["keep", ["manifest_unreadable"]],
+          ["keep", ["manifest_unreadable", "age_unknown"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009305",
+            "reason": "age_unknown"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-retention-generation-ahead-30-days",
+      "note": "台帳より新しい世代は、通常の期限ではなく 30 日まで残して知らせる。30 日ちょうどで消す。ファイルの更新時刻が作成より早ければ、早い方で数える。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009306",
+            "created_at": "2026-09-24T03:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "6",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009307",
+            "created_at": "2026-09-24T03:00:00.001Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "6",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009308",
+            "created_at": "2026-10-20T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "7",
+            "manifest_valid": true,
+            "file_modified_at": "2026-09-20T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009309",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired", "generation_ahead_of_ledger"]],
+          ["keep", ["generation_ahead_of_ledger"]],
+          ["delete", ["expired", "generation_ahead_of_ledger"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009307",
+            "reason": "generation_ahead_of_ledger"
+          }
+        ]
       }
     }
   ],
@@ -1270,13 +1491,22 @@
           },
           {
             "step": "retain_previous_keys",
-            "key_ids": []
+            "keys": []
           }
         ],
         "discard_on_failure": [
-          "backup-file-v1",
-          "data-key-v1",
-          "ledger-hmac-v1"
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-v1"
+          }
         ]
       }
     },
@@ -1330,7 +1560,7 @@
           },
           {
             "step": "retain_previous_keys",
-            "key_ids": []
+            "keys": []
           }
         ],
         "discard_on_failure": []
@@ -1387,10 +1617,28 @@
           },
           {
             "step": "retain_previous_keys",
-            "key_ids": ["backup-file-v2", "data-key-v2"]
+            "keys": [
+              {
+                "purpose": "backup_file",
+                "key_id": "backup-file-v2"
+              },
+              {
+                "purpose": "data_key",
+                "key_id": "data-key-v2"
+              }
+            ]
           }
         ],
-        "discard_on_failure": ["backup-file-v1", "data-key-v1"]
+        "discard_on_failure": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          }
+        ]
       }
     },
     {
@@ -1444,6 +1692,106 @@
       "expect": {
         "ok": false,
         "reasons": ["key_wrap_unusable"]
+      }
+    },
+    {
+      "id": "x16-b0605-install-same-id-other-purpose",
+      "note": "Sonnet の P2-3 の再現: 包みは backup_file='bf-1'・data_key='shared'・ledger_hmac_key='lk-1'、KeyStore の本体の鍵が 'shared'。データ鍵として足すと本体の鍵を上書き・削除し得る。",
+      "wrap_key_ids": {
+        "backup_file": "bf-1",
+        "data_key": "shared",
+        "ledger_hmac_key": "lk-1"
+      },
+      "keystore": [
+        {
+          "purpose": "backup_file",
+          "key_id": "shared",
+          "material_matches_restored": null
+        }
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["key_material_conflict"]
+      }
+    },
+    {
+      "id": "x16-b0605-install-wraps-reuse-key-id",
+      "wrap_key_ids": {
+        "backup_file": "shared",
+        "data_key": "shared",
+        "ledger_hmac_key": "lk-1"
+      },
+      "keystore": [],
+      "expect": {
+        "ok": false,
+        "reasons": ["key_wrap_unusable"]
+      }
+    },
+    {
+      "id": "b0605-install-retain-by-purpose-and-id",
+      "note": "既存の鍵を残す判定は用途と ID の組で行う（同じ ID の別の用途の鍵を、使っている鍵と取り違えない）。",
+      "keystore": [
+        {
+          "purpose": "backup_file",
+          "key_id": "backup-file-v1",
+          "material_matches_restored": true
+        },
+        {
+          "purpose": "data_key",
+          "key_id": "data-key-v1",
+          "material_matches_restored": true
+        },
+        {
+          "purpose": "ledger_hmac_key",
+          "key_id": "ledger-hmac-v1",
+          "material_matches_restored": true
+        },
+        {
+          "purpose": "data_key",
+          "key_id": "data-key-v0",
+          "material_matches_restored": null
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "steps": [
+          {
+            "step": "keep_existing_key",
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "step": "keep_existing_key",
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          },
+          {
+            "step": "keep_existing_key",
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-v1"
+          },
+          {
+            "step": "verify_staged_keys"
+          },
+          {
+            "step": "swap_database",
+            "active_key_ids": {
+              "backup_file": "backup-file-v1",
+              "data_key": "data-key-v1",
+              "ledger_hmac_key": "ledger-hmac-v1"
+            }
+          },
+          {
+            "step": "retain_previous_keys",
+            "keys": [
+              {
+                "purpose": "data_key",
+                "key_id": "data-key-v0"
+              }
+            ]
+          }
+        ],
+        "discard_on_failure": []
       }
     }
   ],
@@ -1977,7 +2325,8 @@
       "ledger_hmac_key": "ok"
     },
     "key_install_ok": true,
-    "payload_matches": true
+    "payload_matches": true,
+    "purge_applied_at": "2026-10-24T03:04:00Z"
   },
   "open_check_cases": [
     {
@@ -2063,7 +2412,8 @@
     {
       "id": "b0605-open-clock-equal-last-check",
       "override": {
-        "now": "2026-10-24T03:00:00Z"
+        "now": "2026-10-24T03:00:00Z",
+        "purge_applied_at": "2026-10-24T03:00:00Z"
       },
       "expect": {
         "status": "passed",
@@ -2123,6 +2473,65 @@
         "reasons": ["clock_regression"],
         "effective_now": null
       }
+    },
+    {
+      "id": "x16-b0605-open-purge-not-applied",
+      "note": "Sonnet の P2-5 の再現: 開けて時計も正しいが、期限切れの削除を当てた記録がない。",
+      "override": {
+        "purge_applied_at": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["expiry_purge_failed"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-purge-before-restore-started",
+      "note": "前の復元の試みで当てた記録を、今回の削除と取り違えない。",
+      "override": {
+        "purge_applied_at": "2026-10-24T02:59:59.999Z"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["expiry_purge_failed"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-purge-after-now",
+      "override": {
+        "purge_applied_at": "2026-10-24T03:05:00.001Z"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["clock_regression"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "b0605-open-purge-at-start",
+      "override": {
+        "purge_applied_at": "2026-10-24T03:00:00Z"
+      },
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "effective_now": "2026-10-24T03:05:00Z"
+      }
+    },
+    {
+      "id": "b0605-open-unreadable-hides-purge",
+      "note": "開けなければ削除もできない。理由は開けないことだけ。",
+      "override": {
+        "payload_matches": false,
+        "purge_applied_at": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_unreadable"],
+        "effective_now": null
+      }
     }
   ],
   "stage_cases": [
@@ -2168,103 +2577,103 @@
     {
       "id": "b0605-db-ok-older-schema",
       "kind": "db",
-      "input": {
+      "expect": {
+        "stage": "db_verify",
+        "status": "passed",
+        "reasons": []
+      },
+      "override": {
         "integrity_ok": true,
         "foreign_keys_ok": true,
         "restored_schema_version": 6,
         "manifest_schema_version": 6,
         "code_schema_version": 7,
         "operations_plan_ok": true
-      },
-      "expect": {
-        "stage": "db_verify",
-        "status": "passed",
-        "reasons": []
       }
     },
     {
       "id": "b0605-db-schema-newer",
       "kind": "db",
-      "input": {
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["schema_newer_than_code"]
+      },
+      "override": {
         "integrity_ok": true,
         "foreign_keys_ok": true,
         "restored_schema_version": 8,
         "manifest_schema_version": 8,
         "code_schema_version": 7,
         "operations_plan_ok": true
-      },
-      "expect": {
-        "stage": "db_verify",
-        "status": "failed",
-        "reasons": ["schema_newer_than_code"]
       }
     },
     {
       "id": "b0605-db-manifest-version-differs",
       "kind": "db",
-      "input": {
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      },
+      "override": {
         "integrity_ok": true,
         "foreign_keys_ok": true,
         "restored_schema_version": 6,
         "manifest_schema_version": 7,
         "code_schema_version": 7,
         "operations_plan_ok": true
-      },
-      "expect": {
-        "stage": "db_verify",
-        "status": "failed",
-        "reasons": ["db_integrity_failed"]
       }
     },
     {
       "id": "b0605-db-foreign-key-broken",
       "kind": "db",
-      "input": {
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      },
+      "override": {
         "integrity_ok": true,
         "foreign_keys_ok": false,
         "restored_schema_version": 7,
         "manifest_schema_version": 7,
         "code_schema_version": 7,
         "operations_plan_ok": true
-      },
-      "expect": {
-        "stage": "db_verify",
-        "status": "failed",
-        "reasons": ["db_integrity_failed"]
       }
     },
     {
       "id": "b0605-db-unknown-operation-state",
       "kind": "db",
-      "input": {
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      },
+      "override": {
         "integrity_ok": true,
         "foreign_keys_ok": true,
         "restored_schema_version": 7,
         "manifest_schema_version": 7,
         "code_schema_version": 7,
         "operations_plan_ok": false
-      },
-      "expect": {
-        "stage": "db_verify",
-        "status": "failed",
-        "reasons": ["db_integrity_failed"]
       }
     },
     {
       "id": "b0605-db-newer-and-corrupt",
       "kind": "db",
-      "input": {
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed", "schema_newer_than_code"]
+      },
+      "override": {
         "integrity_ok": false,
         "foreign_keys_ok": true,
         "restored_schema_version": 8,
         "manifest_schema_version": 8,
         "code_schema_version": 7,
         "operations_plan_ok": true
-      },
-      "expect": {
-        "stage": "db_verify",
-        "status": "failed",
-        "reasons": ["db_integrity_failed", "schema_newer_than_code"]
       }
     },
     {
@@ -2301,6 +2710,170 @@
         "stage": "external_reconcile",
         "status": "passed",
         "reasons": []
+      }
+    },
+    {
+      "id": "x16-b0605-db-unknown-table",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "sealed_blobs",
+          "devices",
+          "pairing_sessions",
+          "pairing_claims",
+          "command_scopes",
+          "connections",
+          "sessions",
+          "turns",
+          "workflows",
+          "input_snapshots",
+          "operations",
+          "operation_versions",
+          "approvals",
+          "operation_attempts",
+          "operation_steps",
+          "command_receipts",
+          "event_outbox",
+          "async_context_guards",
+          "auto_actions",
+          "undo_records",
+          "safety_breaker",
+          "safety_window_counts",
+          "budget_reservations",
+          "live_sessions",
+          "sync_scopes",
+          "sync_batches",
+          "sync_staging",
+          "source_items",
+          "request_entities",
+          "request_entity_operations",
+          "related_analyses",
+          "notification_candidates",
+          "deliveries",
+          "memories",
+          "memory_sources",
+          "forget_ledger",
+          "forget_ledger_items",
+          "user_directives",
+          "intent_shadow",
+          "deployments",
+          "evaluation_results",
+          "home_networks",
+          "home_network_reports",
+          "turn_responses",
+          "tasks",
+          "budget_overage_approvals",
+          "budget_months",
+          "budget_month_confirmations",
+          "budget_credit_observations",
+          "mystery"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-ledger-table-missing",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "sealed_blobs",
+          "devices",
+          "pairing_sessions",
+          "pairing_claims",
+          "command_scopes",
+          "connections",
+          "sessions",
+          "turns",
+          "workflows",
+          "input_snapshots",
+          "operations",
+          "operation_versions",
+          "approvals",
+          "operation_attempts",
+          "operation_steps",
+          "command_receipts",
+          "event_outbox",
+          "async_context_guards",
+          "auto_actions",
+          "undo_records",
+          "safety_breaker",
+          "safety_window_counts",
+          "budget_reservations",
+          "live_sessions",
+          "sync_scopes",
+          "sync_batches",
+          "sync_staging",
+          "source_items",
+          "request_entities",
+          "request_entity_operations",
+          "related_analyses",
+          "notification_candidates",
+          "deliveries",
+          "memories",
+          "memory_sources",
+          "forget_ledger",
+          "user_directives",
+          "intent_shadow",
+          "deployments",
+          "evaluation_results",
+          "home_networks",
+          "home_network_reports",
+          "turn_responses",
+          "tasks",
+          "budget_overage_approvals",
+          "budget_months",
+          "budget_month_confirmations",
+          "budget_credit_observations"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-store-generation-differs",
+      "note": "封筒と中身の取り違え（別のバックアップの本体）。",
+      "kind": "db",
+      "override": {
+        "restored_store_generation": "00000000-0000-4000-8000-000000009299"
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-ledger-id-differs",
+      "kind": "db",
+      "override": {
+        "restored_ledger_id": "00000000-0000-4000-8000-000000009399"
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-forgetting-not-at-applied-head",
+      "note": "段階 3 で当てた台帳の世代まで DB の台帳が進んでいない。",
+      "kind": "db",
+      "override": {
+        "restored_forgetting_generation": "3"
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
       }
     }
   ],
@@ -2568,6 +3141,26 @@
           "after_restore_mismatch"
         ]
       }
+    },
+    {
+      "id": "x16-b0605-result-purge-not-applied",
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "failed", ["expiry_purge_failed"]]
+      ],
+      "expect": {
+        "ok": true,
+        "outcome": "rejected",
+        "failed_stage": "expiry_purge",
+        "statuses": [
+          "passed",
+          "failed",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run"
+        ]
+      }
     }
   ],
   "aftermath_same_generation": {
@@ -2583,7 +3176,7 @@
   },
   "quarantine_case": {
     "id": "x16-b0605-quarantine-all-states",
-    "note": "外部変更の 10 状態と LocalCommand の 4 状態。承認は経路・状態によらずすべて失効（J3）。7 状態に印、進行中の 4 つは結果不明へ。LocalCommand の承認済み・準備中は承認待ちへ戻す（U77）。",
+    "note": "外部変更の 10 状態と LocalCommand の 4 状態。承認は経路・状態によらずすべて失効（J3）。7 状態に印、進行中の 4 つは結果不明へ。LocalCommand の承認済み・準備中は承認待ちへ戻す（U77）。 承認の要らない LocalCommand（none）の承認済み・準備中は、承認待ちへ戻すと行き場がないので取り消す（Sonnet の P3-5）。",
     "restored_at": "2026-10-24T03:10:00Z",
     "input": [
       [
@@ -2683,6 +3276,22 @@
         "succeeded",
         "1",
         0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007215",
+        "local_command",
+        "approved",
+        "1",
+        0,
+        "none"
+      ],
+      [
+        "00000000-0000-4000-8000-000000007216",
+        "local_command",
+        "preparing",
+        "1",
+        0,
+        "none"
       ]
     ],
     "expect": [
@@ -2699,7 +3308,9 @@
       ["awaiting_approval", false],
       ["awaiting_approval", false],
       ["awaiting_approval", false],
-      ["succeeded", false]
+      ["succeeded", false],
+      ["cancelled", false],
+      ["cancelled", false]
     ],
     "expect_counts": {
       "approvals_revoked_count": 6,
@@ -2814,7 +3425,9 @@
         [
           {
             "event": "owner_resolve",
-            "resolution": "not_executed"
+            "resolution": "not_executed",
+            "confirmed_content_version": "2",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
           },
           "released",
           null,
@@ -2883,7 +3496,9 @@
         [
           {
             "event": "owner_resolve",
-            "resolution": "not_executed"
+            "resolution": "not_executed",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
           },
           "rejected",
           "not_quarantined",
@@ -2949,7 +3564,9 @@
         [
           {
             "event": "owner_resolve",
-            "resolution": "cancel"
+            "resolution": "cancel",
+            "confirmed_content_version": "3",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
           },
           "rejected",
           "transition_not_allowed",
@@ -2958,7 +3575,9 @@
         [
           {
             "event": "owner_resolve",
-            "resolution": "executed"
+            "resolution": "executed",
+            "confirmed_content_version": "3",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
           },
           "released",
           null,
@@ -2972,7 +3591,9 @@
       "steps": [
         [
           {
-            "event": "owner_resolve"
+            "event": "owner_resolve",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
           },
           "rejected",
           "resolution_missing",
@@ -2989,7 +3610,9 @@
         [
           {
             "event": "owner_resolve",
-            "resolution": "cancel"
+            "resolution": "cancel",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
           },
           "released",
           null,
@@ -3034,7 +3657,9 @@
         [
           {
             "event": "owner_resolve",
-            "resolution": "not_executed"
+            "resolution": "not_executed",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
           },
           "released",
           null,
@@ -3099,6 +3724,84 @@
           "rejected",
           "not_quarantined",
           ["approved", "1", false, 1]
+        ]
+      ]
+    },
+    {
+      "id": "x16-b0605-sequence-owner-saw-old-version",
+      "note": "Sonnet の P3-3: 本人が内容版 1 を見て決着させたが、その間に内容を更新して内容版 2 になった。見ていない内容版の印を外さない。確認の ID がない決着も通さない。",
+      "initial": ["remote_mutation", "not_executed", "1", true, 0],
+      "steps": [
+        [
+          {
+            "event": "revise_content"
+          },
+          "allowed",
+          null,
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "rejected",
+          "owner_confirmation_mismatch",
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "2"
+          },
+          "rejected",
+          "owner_confirmation_mismatch",
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "2",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "released",
+          null,
+          ["awaiting_approval", "2", false, 0]
+        ]
+      ]
+    },
+    {
+      "id": "x16-b0605-sequence-evidence-outside-table",
+      "note": "Sonnet の P3-4: 復元の証拠による成功への遷移は、承認待ち・結果不明・未実行からだけ。印のある dispatching（復元の直後の記録の検査で拒否される形）が渡されても、証拠・本人の「実行済み」で成功へ進めない。",
+      "initial": ["remote_mutation", "dispatching", "1", true, 0],
+      "steps": [
+        [
+          {
+            "event": "reconcile",
+            "observation": {
+              "kind": "found",
+              "marker_content_version": "1",
+              "content_matches": true
+            }
+          },
+          "rejected",
+          "transition_not_allowed",
+          ["dispatching", "1", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "executed",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "rejected",
+          "transition_not_allowed",
+          ["dispatching", "1", true, 0]
         ]
       ]
     }
@@ -3199,72 +3902,137 @@
     {
       "id": "b0605-budget-gate-held-unconfirmed",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
         "held_months": ["2026-08", "2026-09", "2026-10"],
         "current_month": "2026-10",
-        "confirmed_months": []
+        "confirmations": []
       },
       "expect": ["budget_restore_hold"]
     },
     {
       "id": "b0605-budget-gate-held-confirmed",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
         "held_months": ["2026-08", "2026-09", "2026-10"],
         "current_month": "2026-10",
-        "confirmed_months": ["2026-10"]
+        "confirmations": [
+          {
+            "month": "2026-10",
+            "confirmed_at": "2026-10-24T04:00:00Z"
+          }
+        ]
       },
       "expect": []
     },
     {
       "id": "b0605-budget-gate-confirmed-other-month",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
         "held_months": ["2026-09", "2026-10"],
         "current_month": "2026-10",
-        "confirmed_months": ["2026-09"]
+        "confirmations": [
+          {
+            "month": "2026-09",
+            "confirmed_at": "2026-10-24T04:00:00Z"
+          }
+        ]
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "x16-b0605-budget-gate-confirmation-before-restore",
+      "note": "Sonnet の P3-2: 復元した DB に残っていた、復元より前の確認では解かない。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-10"],
+        "current_month": "2026-10",
+        "confirmations": [
+          {
+            "month": "2026-10",
+            "confirmed_at": "2026-10-24T03:09:59.999Z"
+          }
+        ]
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "b0605-budget-gate-confirmation-at-restore",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-10"],
+        "current_month": "2026-10",
+        "confirmations": [
+          {
+            "month": "2026-10",
+            "confirmed_at": "2026-10-24T03:10:00Z"
+          }
+        ]
+      },
+      "expect": []
+    },
+    {
+      "id": "x16-b0605-budget-gate-restored-without-held-months",
+      "note": "Sonnet の P3-2: 復元したのに保留の月が空（計画できなかった）なら止める。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": [],
+        "current_month": "2026-10",
+        "confirmations": []
       },
       "expect": ["budget_restore_hold"]
     },
     {
       "id": "b0605-budget-gate-next-month",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
         "held_months": ["2026-08", "2026-09", "2026-10"],
         "current_month": "2026-11",
-        "confirmed_months": []
+        "confirmations": []
       },
       "expect": []
     },
     {
       "id": "b0605-budget-gate-clock-before-held",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
         "held_months": ["2026-10"],
         "current_month": "2026-07",
-        "confirmed_months": []
+        "confirmations": []
       },
       "expect": ["budget_restore_hold"]
     },
     {
       "id": "b0605-budget-gate-month-unknown",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
         "held_months": ["2026-10"],
         "current_month": null,
-        "confirmed_months": ["2026-10"]
+        "confirmations": [
+          {
+            "month": "2026-10",
+            "confirmed_at": "2026-10-24T04:00:00Z"
+          }
+        ]
       },
       "expect": ["budget_restore_hold"]
     },
     {
       "id": "b0605-budget-gate-month-malformed",
       "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
         "held_months": ["2026-10"],
         "current_month": "2026-13",
-        "confirmed_months": []
+        "confirmations": []
       },
       "expect": ["budget_restore_hold"]
     },
     {
-      "id": "b0605-budget-gate-no-hold",
+      "id": "b0605-budget-gate-no-restore",
       "input": {
+        "restored_at": null,
         "held_months": [],
         "current_month": "2026-10",
-        "confirmed_months": []
+        "confirmations": []
       },
       "expect": []
     }
@@ -3393,7 +4161,11 @@
     "reset_sync_cursors",
     "block_candidate_auto_execution",
     "hold_budget",
-    "require_new_credit_observation"
+    "require_new_credit_observation",
+    "revoke_non_hub_devices",
+    "expire_overage_approvals",
+    "stop_safety_breaker",
+    "demote_active_deployments"
   ],
   "crypto_known_values": {
     "note": "Python の hmac・hashlib で RFC 5869 を別に実装して求めた値。recovery_key は 0x00〜0x1f、ledger_hmac_key は 0x20〜0x3f の合成の値。",
@@ -3468,6 +4240,18 @@
       "id": "b0605-code-trailing-bits-set",
       "text": "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ",
       "bytes_hex": null
+    },
+    {
+      "id": "b0605-code-dotless-i",
+      "note": "Sonnet の P3-1: 'ı' は toUpperCase で I（→ 1）になるが、ASCII でないので読まない。",
+      "text": "000G-40R4-0M30-E209-ı85G-R38E-1W81-24GK-2GAH-C5RR-34D1-P70X-3RFG",
+      "bytes_hex": null
+    },
+    {
+      "id": "b0605-code-long-s",
+      "note": "'ſ' は toUpperCase で S になるが、読まない。",
+      "text": "000G-40R4-0M30-E209-185G-R38E-1W81-24GK-2GAH-C5RR-34D1-P70X-ſRFG",
+      "bytes_hex": null
     }
   ],
   "credit_restore_cases": [
@@ -3527,6 +4311,223 @@
         "latest_observed_at": "2026-10-24T05:00:00Z"
       },
       "expect": ["credit_restore_unverified"]
+    }
+  ],
+  "db_verify_base": {
+    "integrity_ok": true,
+    "foreign_keys_ok": true,
+    "restored_schema_version": 7,
+    "manifest_schema_version": 7,
+    "code_schema_version": 7,
+    "operations_plan_ok": true,
+    "restored_tables": [
+      "schema_meta",
+      "sealed_blobs",
+      "devices",
+      "pairing_sessions",
+      "pairing_claims",
+      "command_scopes",
+      "connections",
+      "sessions",
+      "turns",
+      "workflows",
+      "input_snapshots",
+      "operations",
+      "operation_versions",
+      "approvals",
+      "operation_attempts",
+      "operation_steps",
+      "command_receipts",
+      "event_outbox",
+      "async_context_guards",
+      "auto_actions",
+      "undo_records",
+      "safety_breaker",
+      "safety_window_counts",
+      "budget_reservations",
+      "live_sessions",
+      "sync_scopes",
+      "sync_batches",
+      "sync_staging",
+      "source_items",
+      "request_entities",
+      "request_entity_operations",
+      "related_analyses",
+      "notification_candidates",
+      "deliveries",
+      "memories",
+      "memory_sources",
+      "forget_ledger",
+      "forget_ledger_items",
+      "user_directives",
+      "intent_shadow",
+      "deployments",
+      "evaluation_results",
+      "home_networks",
+      "home_network_reports",
+      "turn_responses",
+      "tasks",
+      "budget_overage_approvals",
+      "budget_months",
+      "budget_month_confirmations",
+      "budget_credit_observations"
+    ],
+    "restored_store_generation": "00000000-0000-4000-8000-000000009201",
+    "restored_ledger_id": "00000000-0000-4000-8000-000000009301",
+    "restored_forgetting_generation": "5",
+    "expected": {
+      "store_generation": "00000000-0000-4000-8000-000000009201",
+      "ledger_id": "00000000-0000-4000-8000-000000009301",
+      "forgetting_generation": "5"
+    }
+  },
+  "device_cases": [
+    {
+      "id": "x16-b0605-devices-revoked-after-backup-stay-revoked",
+      "note": "Sonnet の P1-1 の再現と本人の判断（U78）: バックアップの後に取り消した端末（復元で revoked_at が空に戻った端末）を含め、中枢以外のすべての端末を失効させる。中枢と同じマシンの端末は残す。失効済みの端末は元の時刻のまま。",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008103",
+          "hub_local": false,
+          "revoked_at": null
+        },
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        },
+        {
+          "device_id": "00000000-0000-4000-8000-000000008102",
+          "hub_local": false,
+          "revoked_at": null
+        },
+        {
+          "device_id": "00000000-0000-4000-8000-000000008104",
+          "hub_local": false,
+          "revoked_at": "2026-10-01T00:00:00Z"
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "revoke": [
+          "00000000-0000-4000-8000-000000008102",
+          "00000000-0000-4000-8000-000000008103"
+        ],
+        "devices_revoked_count": 2
+      }
+    },
+    {
+      "id": "b0605-devices-bad-time",
+      "restored_at": "yesterday",
+      "devices": [],
+      "expect": {
+        "ok": false,
+        "reason": "restored_at_invalid"
+      }
+    }
+  ],
+  "overage_cases": [
+    {
+      "id": "x16-b0605-overage-approved-then-consumed-after-backup",
+      "note": "Sonnet の P2-1 の再現: バックアップの時点で approved、その後に使った承認が、復元で approved に戻る。pending・approved を失効させる。",
+      "approvals": [
+        {
+          "approval_id": "ov-3",
+          "status": "approved"
+        },
+        {
+          "approval_id": "ov-1",
+          "status": "pending"
+        },
+        {
+          "approval_id": "ov-2",
+          "status": "consumed"
+        },
+        {
+          "approval_id": "ov-4",
+          "status": "rejected"
+        },
+        {
+          "approval_id": "ov-5",
+          "status": "expired"
+        }
+      ],
+      "expect": {
+        "expire": ["ov-1", "ov-3"],
+        "overage_approvals_expired_count": 2
+      }
+    }
+  ],
+  "safety_cases": [
+    {
+      "id": "x16-b0605-safety-running-stops",
+      "note": "Sonnet の P2-2 と司令塔の判断: 復元で running に戻った安全停止を止める。",
+      "input": {
+        "safety_revision": "7",
+        "restored_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": {
+        "ok": true,
+        "state": "stopped",
+        "safety_revision": "8",
+        "stop_reason": "restored_from_backup",
+        "stopped_at": "2026-10-24T03:10:00Z"
+      }
+    },
+    {
+      "id": "b0605-safety-bad-revision",
+      "input": {
+        "safety_revision": "-1",
+        "restored_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": {
+        "ok": false,
+        "reason": "safety_revision_invalid"
+      }
+    },
+    {
+      "id": "b0605-safety-bad-time",
+      "input": {
+        "safety_revision": "7",
+        "restored_at": "2026-10-24"
+      },
+      "expect": {
+        "ok": false,
+        "reason": "restored_at_invalid"
+      }
+    }
+  ],
+  "deployment_cases": [
+    {
+      "id": "x16-b0605-deployments-active-demoted",
+      "note": "Sonnet の P2-7 の再現と司令塔の判断: バックアップの後に停止・退役した配備が active に戻る。active は evaluated に落とし、suspended・retired はそのまま。",
+      "deployments": [
+        {
+          "deployment_id": "dep-b",
+          "stage": "active"
+        },
+        {
+          "deployment_id": "dep-a",
+          "stage": "active"
+        },
+        {
+          "deployment_id": "dep-c",
+          "stage": "suspended"
+        },
+        {
+          "deployment_id": "dep-d",
+          "stage": "retired"
+        },
+        {
+          "deployment_id": "dep-e",
+          "stage": "evaluated"
+        }
+      ],
+      "expect": {
+        "demote": ["dep-a", "dep-b"],
+        "deployments_demoted_count": 2
+      }
     }
   ]
 }

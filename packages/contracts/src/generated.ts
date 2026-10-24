@@ -4012,13 +4012,19 @@ export interface AutoActionList {
   items: AutoActionItem[];
 }
 /**
- * 安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。
+ * 安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。restored_from_backup はバックアップからの復元の後の停止で、本人が再開するまで自動実行を止める（ADR 0047）。
  */
 export interface SafetyState {
   state: 'running' | 'stopped';
   safety_revision: SafetyRevision;
   stop_reason:
-    ('rate_exceeded' | 'same_target_repeated' | 'compensation_failures') | null;
+    | (
+        | 'rate_exceeded'
+        | 'same_target_repeated'
+        | 'compensation_failures'
+        | 'restored_from_backup'
+      )
+    | null;
   stopped_at: UtcTime | null;
 }
 /**

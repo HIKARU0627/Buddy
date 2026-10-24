@@ -7,6 +7,7 @@ import {
   BACKUP_KEY_PURPOSES,
   isBackupGeneration,
   keyWrapFor,
+  keyWrapProblems,
   type BackupKeyPurpose,
   type BackupKeyWrapLike,
 } from './backup-plan.js';
@@ -200,7 +201,9 @@ export function encodeRecoveryCode(key: Uint8Array): string {
 
 // 本人が入力した復旧キーを 32 バイトに戻す。区切りの - と空白は無視し、小文字は大文字に、Crockford の読み替え
 // （I・L → 1、O → 0）だけを許す。U などの使わない文字・文字数の違い・末尾の 4 ビットが 0 でないものは null。
+// 正規化の前に ASCII の英数字・空白・- だけに絞る（toUpperCase は 'ı' を I、'ſ' を S にするので。Sonnet の P3-1）。
 export function decodeRecoveryCode(text: string): Uint8Array | null {
+  if (!/^[0-9A-Za-z\s-]*$/u.test(text)) return null;
   const normalized = text
     .replace(/[\s-]/gu, '')
     .toUpperCase()
@@ -338,8 +341,14 @@ export type KeyInstallStep =
   // 使わなくなった既存の鍵は消さずに残す（消すのは本人が確かめた後の別の操作）。
   | {
       readonly step: 'retain_previous_keys';
-      readonly key_ids: readonly string[];
+      readonly keys: readonly KeyRef[];
     };
+
+// 鍵は用途と ID の組で指す（同じ ID が別の用途にあっても取り違えない。Sonnet の P2-3）。
+export interface KeyRef {
+  readonly purpose: BackupKeyPurpose;
+  readonly key_id: string;
+}
 
 export type KeyInstallProblem =
   | 'key_wrap_unusable'
@@ -351,14 +360,14 @@ export type KeyInstallPlan =
   | {
       readonly ok: true;
       readonly steps: readonly KeyInstallStep[];
-      // 差し替えの前に失敗したときに消してよい鍵（この計画で足した鍵だけ）。既存の鍵は含まない。
-      readonly discard_on_failure: readonly string[];
+      // 差し替えの前に失敗したときに消してよい鍵（この計画で足した鍵だけ。用途と ID の組）。既存の鍵は含まない。
+      readonly discard_on_failure: readonly KeyRef[];
     }
   | { readonly ok: false; readonly reasons: readonly KeyInstallProblem[] };
 
 // 復元で鍵を KeyStore に入れる計画。足すだけで上書き・削除をしない。差し替え（段階 5 の後）より前のどこで失敗しても、
 // 足した鍵を消すだけで、稼働中の鍵と DB は元のまま。同じ ID で素材が違う鍵（取り違え）、台帳の鍵が別の ID で
-// すでにある（別の HMAC の空間）ときは入れない。
+// すでにある（別の HMAC の空間）ときは入れない。同じ ID の鍵が別の用途で KeyStore にあるときも、取り違えとして入れない。
 export function keyInstallPlan(input: {
   readonly key_wraps: readonly BackupKeyWrapLike[];
   readonly keystore: readonly KeyStoreEntry[];
@@ -371,9 +380,11 @@ export function keyInstallPlan(input: {
       problems.add('key_wrap_unusable');
     else restored[purpose] = wrap.key_id;
   }
+  if (keyWrapProblems(input.key_wraps).length > 0)
+    problems.add('key_wrap_unusable');
   if (problems.size > 0) return { ok: false, reasons: [...problems] };
   const steps: KeyInstallStep[] = [];
-  const staged: string[] = [];
+  const staged: KeyRef[] = [];
   for (const purpose of BACKUP_KEY_PURPOSES) {
     const keyId = restored[purpose];
     const same = input.keystore.filter(
@@ -386,9 +397,15 @@ export function keyInstallPlan(input: {
       )
     )
       problems.add('ledger_key_conflict');
+    if (
+      input.keystore.some(
+        (entry) => entry.key_id === keyId && entry.purpose !== purpose,
+      )
+    )
+      problems.add('key_material_conflict');
     if (same.length === 0) {
       steps.push({ step: 'stage_key', purpose, key_id: keyId });
-      staged.push(keyId);
+      staged.push({ purpose, key_id: keyId });
     } else if (same.some((entry) => entry.material_matches_restored === false))
       problems.add('key_material_conflict');
     else if (same.some((entry) => entry.material_matches_restored !== true))
@@ -396,19 +413,30 @@ export function keyInstallPlan(input: {
     else steps.push({ step: 'keep_existing_key', purpose, key_id: keyId });
   }
   if (problems.size > 0) return { ok: false, reasons: [...problems] };
-  const used = new Set(Object.values(restored));
+  const isRestored = (entry: KeyRef): boolean =>
+    restored[entry.purpose] === entry.key_id;
+  const seen = new Set<string>();
+  const retained: KeyRef[] = [];
+  for (const entry of input.keystore) {
+    const key = `${entry.purpose}\u0000${entry.key_id}`;
+    if (isRestored(entry) || seen.has(key)) continue;
+    seen.add(key);
+    retained.push({ purpose: entry.purpose, key_id: entry.key_id });
+  }
+  retained.sort((a, b) =>
+    a.purpose !== b.purpose
+      ? a.purpose < b.purpose
+        ? -1
+        : 1
+      : a.key_id < b.key_id
+        ? -1
+        : a.key_id > b.key_id
+          ? 1
+          : 0,
+  );
   steps.push({ step: 'verify_staged_keys' });
   steps.push({ step: 'swap_database', active_key_ids: { ...restored } });
-  steps.push({
-    step: 'retain_previous_keys',
-    key_ids: [
-      ...new Set(
-        input.keystore
-          .filter((entry) => !used.has(entry.key_id))
-          .map((entry) => entry.key_id),
-      ),
-    ].sort(),
-  });
+  steps.push({ step: 'retain_previous_keys', keys: retained });
   return { ok: true, steps, discard_on_failure: staged };
 }
 

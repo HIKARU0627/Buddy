@@ -54,6 +54,9 @@ export interface OperationBeforeRestore {
   readonly state: string;
   readonly content_version: string;
   readonly valid_approval_count: number;
+  // 意図の承認の要否（ADR 0004 の意図表。memory_forget・memory_save・handoff_screen などは none）。省略は required
+  // として扱う（承認待ちへ戻すのが保留の側）。
+  readonly approval_requirement?: 'required' | 'none';
 }
 
 // 契約の RestoredOperation の形。
@@ -72,9 +75,11 @@ export type RestoredOperationProblem =
   | 'not_quarantined'
   | 'terminal_quarantined'
   | 'in_flight_not_held'
-  | 'approval_not_revoked';
+  | 'approval_not_revoked'
+  | 'local_command_unapproved_state';
 
 // 復元の直後の記録の検査（契約の意味検査と同じ）。承認の失効は、印の有無・経路によらず検査する（J3 は全承認）。
+// 承認が失効した後に、LocalCommand が承認済み・準備中のまま残っていないことも検査する（Sonnet の P3-5）。
 export function restoredOperationProblems(
   op: RestoredOperationLike,
 ): RestoredOperationProblem[] {
@@ -82,6 +87,8 @@ export function restoredOperationProblems(
   const marked = op.restore_unverified_at !== null;
   if (op.effect_route === 'local_command') {
     if (marked) problems.push('local_command_quarantined');
+    if (op.state === 'approved' || op.state === 'preparing')
+      problems.push('local_command_unapproved_state');
   } else {
     const open = RESTORE_QUARANTINE_STATES.includes(op.state);
     if (open && !marked) problems.push('not_quarantined');
@@ -169,11 +176,14 @@ export function quarantineRestoredOperations(
     revoked += op.valid_approval_count;
     if (op.effect_route === 'local_command') {
       // LocalCommand の効果は DB と一緒に戻るので隔離しない。承認は失効するので、承認済み・準備中は承認待ちへ戻す
-      // （承認のないまま承認済みに残すと、本人がもう一度承認する経路がない。U77）。
-      const next =
-        state === 'approved' || state === 'preparing'
-          ? 'awaiting_approval'
-          : state;
+      // （承認のないまま承認済みに残すと、本人がもう一度承認する経路がない。U77）。承認の要らない意図（none）は
+      // 承認待ちへ戻すと行き場がないので取り消す（本人がもう一度頼む。復元した DB では適用されていない。Sonnet の P3-5）。
+      const inFlight = state === 'approved' || state === 'preparing';
+      const next = !inFlight
+        ? state
+        : op.approval_requirement === 'none'
+          ? 'cancelled'
+          : 'awaiting_approval';
       return {
         schema: 'buddy.restored-operation.v1',
         operation_id: op.operation_id,
@@ -234,7 +244,24 @@ export type RestoreEvent =
       readonly event: 'owner_resolve';
       // 実行済みとして取り込む・元サービスで確かめて未実行とする・取り消す（ADR 0040）。
       readonly resolution?: 'executed' | 'not_executed' | 'cancel';
+      // 本人が画面で見て決着させた内容版と、その確認の ID（Sonnet の P3-3。見ていない内容版の印を外さない）。
+      readonly confirmed_content_version?: string;
+      readonly confirmation_id?: string;
     };
+
+// 復元の証拠による遷移（08 §3 の通常の遷移表の外。Sonnet の P3-4）。印のある操作は、復元の後に承認待ち・結果不明・
+// 未実行のどれかにある。積極的な証拠（import_result）と本人の「実行済み」は、そこから成功へ直接進める（バックアップの後に
+// 承認・送出・成功したことを取り込む。再送しない）。ほかの状態からは進めない。
+export const RESTORE_EVIDENCE_TRANSITIONS: Readonly<
+  Partial<Record<OperationState, readonly OperationState[]>>
+> = {
+  awaiting_approval: ['succeeded'],
+  unknown_held: ['succeeded'],
+  not_executed: ['succeeded'],
+};
+
+const evidenceAllows = (from: OperationState): boolean =>
+  RESTORE_EVIDENCE_TRANSITIONS[from]?.includes('succeeded') ?? false;
 
 export type RestoreGuardResult =
   | { readonly result: 'allowed'; readonly reason: null }
@@ -283,9 +310,13 @@ export function restoreMarkGuard(
       }
     }
     case 'owner_resolve':
-      return marked
+      if (!marked) return { result: 'rejected', reason: 'not_quarantined' };
+      // 本人が見た内容版が今の内容版と同じで、確認の ID があるときだけ印を外す。
+      return step.confirmed_content_version === op.content_version &&
+        typeof step.confirmation_id === 'string' &&
+        UUID_V4.test(step.confirmation_id)
         ? { result: 'released', reason: null }
-        : { result: 'rejected', reason: 'not_quarantined' };
+        : { result: 'rejected', reason: 'owner_confirmation_mismatch' };
     default:
       return { result: 'rejected', reason: 'unknown_event' };
   }
@@ -349,17 +380,20 @@ export function applyRestoreEvent(
       };
     case 'reconcile':
       // import_result: 結果を取り込む（再送しない）。
+      if (!evidenceAllows(op.state)) return reject('transition_not_allowed');
       return {
         decision: guard,
         operation: { ...op, state: 'succeeded', restore_unverified_at: null },
       };
     case 'owner_resolve': {
       const resolution = step.resolution;
-      if (resolution === 'executed')
+      if (resolution === 'executed') {
+        if (!evidenceAllows(op.state)) return reject('transition_not_allowed');
         return {
           decision: guard,
           operation: { ...op, state: 'succeeded', restore_unverified_at: null },
         };
+      }
       if (resolution === 'not_executed')
         return {
           decision: guard,
@@ -445,22 +479,35 @@ export function restoreBudgetHold(input: {
 
 // 有料の受付の前の検査（予算の門に足す理由）。今の予算月が保留の月で、本人が確かめていなければ止める。保留の月より
 // 前（時計が戻った）・読めない月も止める。保留の月を過ぎた新しい月は、失われた予約がないので止めない。
+// 復元していれば、保留の月が空（計画できなかった）でも止める。確認は、復元の時刻以後にしたものだけを数える（復元した
+// DB に残っていた古い確認で解かない。Sonnet の P3-2）。
 export function restoreBudgetHoldReasons(input: {
+  // 効いている復元の時刻（復元していなければ null）。
+  readonly restored_at: string | null;
   readonly held_months: readonly string[];
   readonly current_month: string | null;
-  readonly confirmed_months: readonly string[];
+  readonly confirmations: readonly {
+    readonly month: string;
+    readonly confirmed_at: string;
+  }[];
 }): readonly 'budget_restore_hold'[] {
+  if (input.restored_at === null) return [];
+  const restored = parseBackupTime(input.restored_at);
   const current = input.current_month;
-  if (current === null || !/^[0-9]{4}-(0[1-9]|1[0-2])$/u.test(current))
+  if (
+    restored === null ||
+    current === null ||
+    !/^[0-9]{4}-(0[1-9]|1[0-2])$/u.test(current) ||
+    input.held_months.length === 0
+  )
     return ['budget_restore_hold'];
-  if (input.held_months.length === 0) return [];
   const last = [...input.held_months].sort().at(-1) ?? current;
   if (current > last) return [];
-  if (
-    input.held_months.includes(current) &&
-    input.confirmed_months.includes(current)
-  )
-    return [];
+  const confirmed = input.confirmations.some((row) => {
+    const at = parseBackupTime(row.confirmed_at);
+    return row.month === current && at !== null && at >= restored;
+  });
+  if (input.held_months.includes(current) && confirmed) return [];
   return ['budget_restore_hold'];
 }
 
@@ -515,6 +562,14 @@ export const RESTORE_RESETS = [
   'hold_budget',
   // 付帯クレジットは、復元の後に採用した新しい観測まで充てない（restoreCreditReasons）。
   'require_new_credit_observation',
+  // 中枢以外のすべての端末を、ペアリングし直すまで認可しない（本人の判断 2026-10-24。U78。restoreDevicePlan）。
+  'revoke_non_hub_devices',
+  // 予算の超過枠の承認（pending・approved）を失効させる（restoreOverageApprovalPlan。Sonnet の P2-1）。
+  'expire_overage_approvals',
+  // 安全停止を stopped にし、本人が再開するまで自動実行を止める（司令塔の判断。restoreSafetyBreaker）。
+  'stop_safety_breaker',
+  // 有効だった配備を evaluated に落とし、有効にし直すのは本人の操作にする（司令塔の判断。restoreDeploymentPlan）。
+  'demote_active_deployments',
 ] as const;
 export type RestoreReset = (typeof RESTORE_RESETS)[number];
 
@@ -624,4 +679,109 @@ export function buildRestoreAftermath(input: {
       connections_reauth_required: true,
     },
   };
+}
+
+// --- 端末・超過枠の承認・安全停止・配備（差し替えと同じ transaction で書く） ---
+
+export interface RestoredDevice {
+  readonly device_id: string;
+  // 中枢と同じマシンの端末（devices.hub_local）。
+  readonly hub_local: boolean;
+  readonly revoked_at: string | null;
+}
+
+export type RestoreDevicePlan =
+  | {
+      readonly ok: true;
+      // 復元の時刻で失効させる端末（中枢以外で、まだ失効していないもの）。
+      readonly revoke: readonly string[];
+      readonly devices_revoked_count: number;
+    }
+  | { readonly ok: false; readonly reason: 'restored_at_invalid' };
+
+// 復元したバックアップは古いので、バックアップの後に取り消した端末が有効に戻る（revoked_at・token_hash の巻き戻り。
+// Sonnet の P1-1）。本人の判断（2026-10-24。U78）で、中枢以外のすべての端末を、ペアリングし直すまで認可しない。
+// 失効済みの端末は元の時刻のまま。中枢と同じマシンの端末だけは残す（中枢の画面の操作の経路）。
+export function restoreDevicePlan(
+  devices: readonly RestoredDevice[],
+  restoredAt: string,
+): RestoreDevicePlan {
+  if (parseBackupTime(restoredAt) === null)
+    return { ok: false, reason: 'restored_at_invalid' };
+  const revoke = devices
+    .filter((device) => !device.hub_local && device.revoked_at === null)
+    .map((device) => device.device_id)
+    .sort();
+  return { ok: true, revoke, devices_revoked_count: revoke.length };
+}
+
+// 超過枠の承認（budget_overage_approvals）。バックアップの時点で approved でも、その後に使った（consumed）かもしれない。
+// 復元で approved に戻ると、もう一度使えて二重に払い得る（Sonnet の P2-1）。pending・approved を expired にする。
+export function restoreOverageApprovalPlan(
+  approvals: readonly {
+    readonly approval_id: string;
+    readonly status: string;
+  }[],
+): {
+  readonly expire: readonly string[];
+  readonly overage_approvals_expired_count: number;
+} {
+  const expire = approvals
+    .filter((row) => row.status === 'pending' || row.status === 'approved')
+    .map((row) => row.approval_id)
+    .sort();
+  return { expire, overage_approvals_expired_count: expire.length };
+}
+
+export type RestoreSafetyState =
+  | {
+      readonly ok: true;
+      readonly state: 'stopped';
+      readonly safety_revision: string;
+      readonly stop_reason: 'restored_from_backup';
+      readonly stopped_at: string;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: 'restored_at_invalid' | 'safety_revision_invalid';
+    };
+
+// 安全停止（safety_breaker）。復元で running に戻ると、バックアップの後に止めた自動実行が動き出す（Sonnet の P2-2）。
+// 司令塔の判断で、復元の後は止めて、本人が画面で再開するまで止める（03 の解除は本人の画面操作だけ）。理由は契約の
+// SafetyState.stop_reason に足した restored_from_backup（既存の 3 つは件数・同じ対象・補償の失敗で、意味が違う）。
+// 止めている間は、方針による自動承認（候補起点・本人の依頼起点の両方。auto_actions・取り消しの補償を含む）が起きない。
+export function restoreSafetyBreaker(input: {
+  readonly safety_revision: string;
+  readonly restored_at: string;
+}): RestoreSafetyState {
+  if (parseBackupTime(input.restored_at) === null)
+    return { ok: false, reason: 'restored_at_invalid' };
+  if (!DECIMAL.test(input.safety_revision))
+    return { ok: false, reason: 'safety_revision_invalid' };
+  return {
+    ok: true,
+    state: 'stopped',
+    safety_revision: String(BigInt(input.safety_revision) + 1n),
+    stop_reason: 'restored_from_backup',
+    stopped_at: input.restored_at,
+  };
+}
+
+// 配備（deployments）。復元で、バックアップの後に停止・退役した配備が active に戻り得る（Sonnet の P2-7）。司令塔の判断で、
+// active は evaluated に落とし、有効にし直すのは本人の操作にする。suspended・retired はそのまま（有効に戻さない）。
+// settings_only で戻すときも同じ。
+export function restoreDeploymentPlan(
+  deployments: readonly {
+    readonly deployment_id: string;
+    readonly stage: string;
+  }[],
+): {
+  readonly demote: readonly string[];
+  readonly deployments_demoted_count: number;
+} {
+  const demote = deployments
+    .filter((row) => row.stage === 'active')
+    .map((row) => row.deployment_id)
+    .sort();
+  return { demote, deployments_demoted_count: demote.length };
 }

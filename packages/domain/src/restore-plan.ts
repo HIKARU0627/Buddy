@@ -6,6 +6,7 @@
 import {
   BACKUP_ZERO_HASH,
   backupManifestProblems,
+  backupTablePlan,
   isBackupGeneration,
   keyWrapFor,
   parseBackupTime,
@@ -36,6 +37,7 @@ export const RESTORE_REJECTIONS = [
   'manifest_invalid',
   'backup_unreadable',
   'clock_regression',
+  'expiry_purge_failed',
   'forget_apply_failed',
   'db_integrity_failed',
   'schema_newer_than_code',
@@ -56,7 +58,11 @@ export const RESTORE_STAGE_REJECTIONS: Readonly<
     'backup_ledger_hash_mismatch',
     'manifest_invalid',
   ],
-  expiry_purge: ['backup_unreadable', 'clock_regression'],
+  expiry_purge: [
+    'backup_unreadable',
+    'clock_regression',
+    'expiry_purge_failed',
+  ],
   forget_apply: ['forget_apply_failed'],
   db_verify: ['db_integrity_failed', 'schema_newer_than_code'],
   rebuild_views: ['rebuild_failed'],
@@ -260,6 +266,9 @@ export interface RestoreOpenInput {
   readonly key_install_ok: boolean;
   // 本体の大きさと SHA-256 が封筒と一致したか。
   readonly payload_matches: boolean;
+  // 期限切れの削除（sweepPlan の計画の実行）を作業用の DB に当て終えた時刻（Core が記録する）。null は実行していない
+  // （Sonnet の P2-5。開けることと時計だけでは、期限切れの内容を消したことにならない）。
+  readonly purge_applied_at: string | null;
 }
 
 export interface RestoreOpenCheck {
@@ -270,6 +279,8 @@ export interface RestoreOpenCheck {
 
 // 開けない（鍵がない・取り違え・本体の破損）は backup_unreadable。時計が最終確認時刻・復元の開始・バックアップの
 // 作成より前へ戻っているときは clock_regression（期限を判定できない。03）。掃除と違い、復元は戻った時計で進めない。
+// 開けて時計も正しいのに、削除を当てた記録がない・復元の開始より前の記録は expiry_purge_failed。当てた時刻が今より
+// 先なら、時計が戻った（clock_regression）。
 export function restoreOpenCheck(input: RestoreOpenInput): RestoreOpenCheck {
   const reasons = new Set<RestoreRejection>();
   if (
@@ -295,6 +306,17 @@ export function restoreOpenCheck(input: RestoreOpenInput): RestoreOpenCheck {
     now < created
   )
     reasons.add('clock_regression');
+  const purged =
+    input.purge_applied_at === null
+      ? null
+      : parseBackupTime(input.purge_applied_at);
+  if (now !== null && purged !== null && purged > now)
+    reasons.add('clock_regression');
+  if (
+    reasons.size === 0 &&
+    (purged === null || started === null || purged < started)
+  )
+    reasons.add('expiry_purge_failed');
   const result = decision('expiry_purge', reasons);
   return {
     decision: result,
@@ -325,6 +347,17 @@ export interface RestoreDbVerifyInput {
   readonly code_schema_version: number;
   // 操作の隔離の計画（quarantineRestoredOperations）が通ったか（読めない状態・経路の操作がない）。
   readonly operations_plan_ok: boolean;
+  // 取り出した DB の実際の表（Core が sqlite_schema から、SQLite の内部の表を除いて読む）と、DB の中の値（Sonnet の P2-6）。
+  readonly restored_tables: readonly string[];
+  readonly restored_store_generation: string;
+  readonly restored_ledger_id: string;
+  readonly restored_forgetting_generation: string;
+  // 照合の相手: 封筒の store_generation・ledger_id と、段階 1 で選び段階 3 で当てた台帳の head の世代。
+  readonly expected: {
+    readonly store_generation: string;
+    readonly ledger_id: string;
+    readonly forgetting_generation: string;
+  };
 }
 
 export function restoreDbVerifyCheck(
@@ -347,7 +380,14 @@ export function restoreDbVerifyCheck(
     !input.integrity_ok ||
     !input.foreign_keys_ok ||
     input.restored_schema_version !== input.manifest_schema_version ||
-    !input.operations_plan_ok
+    !input.operations_plan_ok ||
+    // 表の一覧に未知の表・必須の表の欠けがない（取れない DB・別の作りの DB を戻さない）。
+    !backupTablePlan(input.restored_tables).ok ||
+    // DB の中の世代・系譜が、封筒と当てた台帳に一致する（封筒と中身の取り違えを戻さない）。
+    input.restored_store_generation !== input.expected.store_generation ||
+    input.restored_ledger_id !== input.expected.ledger_id ||
+    input.restored_forgetting_generation !==
+      input.expected.forgetting_generation
   )
     reasons.add('db_integrity_failed');
   return decision('db_verify', reasons);

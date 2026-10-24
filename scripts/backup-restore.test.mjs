@@ -39,6 +39,11 @@ import {
   restoreBudgetHoldReasons,
   restoreCandidateAutoReasons,
   restoreCreditReasons,
+  restoreDeploymentPlan,
+  restoreDevicePlan,
+  restoreOverageApprovalPlan,
+  restoreSafetyBreaker,
+  RESTORE_EVIDENCE_TRANSITIONS,
   restoreDbVerifyCheck,
   restoreForgetCheck,
   restoreLedgerCheck,
@@ -90,6 +95,11 @@ function manifestFor(entry) {
     manifest.key_wraps = manifest.key_wraps.map((wrap) =>
       wrap.purpose === replace.purpose ? { ...wrap, ...replace.with } : wrap,
     );
+  if (entry.wrap_key_ids)
+    manifest.key_wraps = manifest.key_wraps.map((wrap) => ({
+      ...wrap,
+      key_id: entry.wrap_key_ids[wrap.purpose],
+    }));
   if (entry.add_wrap)
     manifest.key_wraps.push({ ...manifest.key_wraps[0], ...entry.add_wrap });
   return manifest;
@@ -263,6 +273,11 @@ test('old backups: expiry, generations, forgetting replacement, clock regression
       entry.expect.forgetting_checked,
       entry.id,
     );
+    assert.deepEqual(
+      plan.notices,
+      entry.expect.notices,
+      `${entry.id}: notices`,
+    );
   }
 });
 
@@ -331,6 +346,7 @@ test('a failure at any step before the swap leaves the running keys untouched', 
       key_wraps: manifestFor(entry).key_wraps,
       keystore: entry.keystore,
     });
+    // KeyStore の模型は ID だけで引く（実際の KeyStore も ID で名前を付ける）。用途をまたいで同じ ID を足すと上書きになる。
     const original = sorted(entry.keystore.map((k) => k.key_id));
     for (let stop = 0; stop <= plan.steps.length; stop += 1) {
       const store = new Set(original);
@@ -348,7 +364,14 @@ test('a failure at any step before the swap leaves the running keys untouched', 
       for (const key of original)
         assert(store.has(key), `${entry.id}: lost ${key} at ${stop}`);
       if (!swapped) {
-        for (const key of plan.discard_on_failure) store.delete(key);
+        for (const key of plan.discard_on_failure) {
+          // 消してよいのは、この計画で足した鍵（用途と ID の組）で、元からある鍵ではない。
+          assert(
+            !original.includes(key.key_id),
+            `${entry.id}: discard ${key.key_id}`,
+          );
+          store.delete(key.key_id);
+        }
         assert.deepEqual(
           sorted(store),
           original,
@@ -611,7 +634,15 @@ test('stages 3 to 6', () => {
     reconcile: restoreReconcileCheck,
   };
   for (const entry of cases.stage_cases)
-    assert.deepEqual(run[entry.kind](entry.input), entry.expect, entry.id);
+    assert.deepEqual(
+      run[entry.kind](
+        entry.kind === 'db'
+          ? { ...clone(cases.db_verify_base), ...entry.override }
+          : entry.input,
+      ),
+      entry.expect,
+      entry.id,
+    );
 });
 
 test('restore result: outcome, settings-only and agreement with the contract', () => {
@@ -715,12 +746,14 @@ const toOp = ([
   state,
   content_version,
   valid_approval_count,
+  approval_requirement,
 ]) => ({
   operation_id,
   effect_route,
   state,
   content_version,
   valid_approval_count,
+  ...(approval_requirement === undefined ? {} : { approval_requirement }),
 });
 
 test('quarantine: all approvals revoked, seven states marked, in-flight held', () => {
@@ -855,6 +888,22 @@ test('mark guard gives the same answers as the contract restoreGuard', () => {
     { event: 'create_attempt' },
     { event: 'revise_content' },
     { event: 'owner_resolve' },
+    { event: 'owner_resolve', confirmed_content_version: '1' },
+    {
+      event: 'owner_resolve',
+      confirmed_content_version: '2',
+      confirmation_id: '00000000-0000-4000-8000-000000007901',
+    },
+    {
+      event: 'owner_resolve',
+      confirmed_content_version: '1',
+      confirmation_id: '00000000-0000-4000-8000-000000007901',
+    },
+    {
+      event: 'owner_resolve',
+      confirmed_content_version: '1',
+      confirmation_id: 'not-an-id',
+    },
     ...observations.map((observation) => ({ event: 'reconcile', observation })),
   ];
   for (const mark of [null, '2026-10-24T03:10:00Z'])
@@ -955,4 +1004,54 @@ test('aftermath: new store generation and counts from the quarantine', () => {
 test('credit after restore waits for an observation taken after the restore', () => {
   for (const entry of cases.credit_restore_cases)
     assert.deepEqual(restoreCreditReasons(entry.input), entry.expect, entry.id);
+});
+
+test('devices: every device except the hub must pair again after restore (U78)', () => {
+  for (const entry of cases.device_cases)
+    assert.deepEqual(
+      restoreDevicePlan(entry.devices, entry.restored_at),
+      entry.expect,
+      entry.id,
+    );
+});
+
+test('overage approvals, safety breaker and deployments after restore', () => {
+  for (const entry of cases.overage_cases)
+    assert.deepEqual(
+      restoreOverageApprovalPlan(entry.approvals),
+      entry.expect,
+      entry.id,
+    );
+  for (const entry of cases.safety_cases) {
+    const result = restoreSafetyBreaker(entry.input);
+    assert.deepEqual(result, entry.expect, entry.id);
+    if (result.ok) {
+      const state = { ...result };
+      delete state.ok;
+      assert.equal(validators.SafetyState(state), true, entry.id);
+    }
+  }
+  for (const entry of cases.deployment_cases)
+    assert.deepEqual(
+      restoreDeploymentPlan(entry.deployments),
+      entry.expect,
+      entry.id,
+    );
+});
+
+test('restore evidence transitions are an explicit table', () => {
+  assert.deepEqual(RESTORE_EVIDENCE_TRANSITIONS, {
+    awaiting_approval: ['succeeded'],
+    unknown_held: ['succeeded'],
+    not_executed: ['succeeded'],
+  });
+  // 印のある状態（隔離の計画の出力）は、すべてこの表の起点にある。
+  const plan = quarantineRestoredOperations(
+    cases.quarantine_case.input.map(toOp),
+    cases.quarantine_case.restored_at,
+  );
+  for (const op of plan.operations.filter(
+    (o) => o.restore_unverified_at !== null,
+  ))
+    assert(Object.hasOwn(RESTORE_EVIDENCE_TRANSITIONS, op.state), op.state);
 });

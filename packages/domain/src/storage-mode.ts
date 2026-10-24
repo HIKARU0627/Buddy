@@ -315,8 +315,9 @@ const ORIGINAL_SOURCE_ID = /^[A-Za-z0-9._:=+~-]{1,256}$/u;
 const SOURCE_REVISION = /^[\x21-\x7e]{1,256}$/u;
 const UTC_TIME =
   /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9](\.[0-9]+)?Z$/u;
-// 宛先（RFC 5322 の厳密な検査ではなく、空白・制御文字のない local@domain の形と長さだけ）。
-const MAIL_ADDRESS = /^[^\s@\p{Cc}]{1,64}@[^\s@\p{Cc}]{1,189}$/u;
+// 宛先（RFC 5322 の厳密な検査ではなく、空白・制御文字・区切りの記号（, < >）のない local@domain の形と長さだけ。
+// 「名前 <addr>」や複数の宛先を 1 つの要素に入れられない）。
+const MAIL_ADDRESS = /^[^\s@\p{Cc},<>]{1,64}@[^\s@\p{Cc},<>]{1,189}$/u;
 // 1 行の文字列（ラベル名・件名）に制御文字を入れられない。本文は改行とタブだけを許す。
 const CONTROL = /\p{Cc}/u;
 const BODY_CONTROL = /[^\P{Cc}\n\r\t]/u;
@@ -325,6 +326,16 @@ const LABELS_MAX = 100;
 const SUBJECT_MAX = 998;
 const BODY_MAX = 100_000;
 const RECIPIENTS_MAX = 100;
+
+// UTC の時刻の形で、実在する日時か（2030-02-31 のような値は Date が翌月へ繰り上げるので、書き戻して比べる）。
+function utcTimeOk(value: unknown): boolean {
+  if (!matches(value, UTC_TIME)) return false;
+  const time = Date.parse(value);
+  return (
+    !Number.isNaN(time) &&
+    new Date(time).toISOString().slice(0, 19) === value.slice(0, 19)
+  );
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -355,7 +366,10 @@ function stringListOk(
   return (
     Array.isArray(value) &&
     value.length <= max &&
-    value.every((entry) => typeof entry === 'string' && item(entry)) &&
+    // 疎な配列（穴）は every が飛ばすので、Array.from で穴を undefined にしてから確かめる。
+    Array.from(value as unknown[]).every(
+      (entry) => typeof entry === 'string' && item(entry),
+    ) &&
     new Set(value).size === value.length
   );
 }
@@ -486,9 +500,7 @@ export function privateApprovalErrors(approval: unknown): string[] {
   if (approval['route'] !== 'screen') errors.push('route_not_screen');
   if (!matches(approval['device_id'], UUID_V4))
     errors.push('device_id_invalid');
-  const at = approval['approved_at'];
-  if (!matches(at, UTC_TIME) || Number.isNaN(Date.parse(at)))
-    errors.push('approved_at_invalid');
+  if (!utcTimeOk(approval['approved_at'])) errors.push('approved_at_invalid');
   if (!matches(approval['segment_generation'], DECIMAL))
     errors.push('segment_generation_invalid');
   if (!matches(approval['operation_id'], UUID_V4))
@@ -663,6 +675,10 @@ export interface StorageBoundaryState {
   readonly pending_confirmations: readonly PendingPrivateConfirmation[];
   // この区切りの世代で使った確認の ID（承認・取り下げ・失敗の後も再利用させない）。
   readonly used_confirmation_ids: readonly string[];
+  // この区切りの世代で受け付けた操作の ID（保留中と承認済み）。同じ操作の新しい確認を受けない。
+  readonly accepted_operation_ids: readonly string[];
+  // この区切りの世代で承認済みの確認の ID。承認の再送には記録を出さずに already_approved を返す。
+  readonly approved_confirmation_ids: readonly string[];
 }
 
 export type StorageBoundaryEvent =
@@ -675,7 +691,12 @@ export type StorageBoundaryEvent =
   | { readonly type: 'live_requested' }
   | { readonly type: 'live_connected' }
   | { readonly type: 'live_closed' }
-  | { readonly type: 'input'; readonly input_kind: unknown }
+  | {
+      readonly type: 'input';
+      readonly input_kind: unknown;
+      // 端末が見ていた区切りの ID・世代・保存モード（必須）。出た後に届いた記録しない区切りの文字を通常の発言にしない。
+      readonly origin: unknown;
+    }
   | {
       readonly type: 'write';
       readonly effect: unknown;
@@ -758,7 +779,9 @@ export type StorageBoundaryRejection =
   | 'confirmation_id_reused'
   | 'confirmation_not_found'
   | 'approval_invalid'
-  | 'approval_mismatch';
+  | 'approval_mismatch'
+  | 'operation_id_reused'
+  | 'already_approved';
 
 export interface StorageBoundaryResult {
   readonly state: StorageBoundaryState;
@@ -841,6 +864,8 @@ export function applyStorageBoundaryEvent(
         private_ram: [],
         pending_confirmations: [],
         used_confirmation_ids: [],
+        accepted_operation_ids: [],
+        approved_confirmation_ids: [],
       },
       [
         ...(liveActive ? [CLOSE_LIVE] : []),
@@ -879,6 +904,8 @@ export function applyStorageBoundaryEvent(
           private_ram: null,
           pending_confirmations: [],
           used_confirmation_ids: [],
+          accepted_operation_ids: [],
+          approved_confirmation_ids: [],
         },
         [
           {
@@ -912,6 +939,11 @@ export function applyStorageBoundaryEvent(
           { ...state, live: 'closing' },
           state.live === 'closing' ? [] : [CLOSE_LIVE],
         );
+      // 閉じているはずなのに届いた接続は、使わずに閉じる（安全な側）。開いている・閉じる途中なら重ねない。
+      if (state.live === 'closed')
+        return reject('invalid_transition', [], { ...state, live: 'closing' }, [
+          CLOSE_LIVE,
+        ]);
       if (state.live !== 'connecting') return reject('invalid_transition');
       return done({ ...state, live: 'open' });
     case 'live_closed':
@@ -926,6 +958,9 @@ export function applyStorageBoundaryEvent(
         const asr = storageModeDecision(state.mode, 'local_asr');
         if (!asr.allowed) return reject(asr.reason);
       } else if (kind !== 'text') return reject('input_kind_unknown');
+      // 端末が見ていた区切りと今の区切りを照合する（enter → exit → input の順で届いた記録しない区切りの文字を拒否）。
+      const staleInput = storageOriginRejection(state, event.origin);
+      if (staleInput !== null) return reject(staleInput);
       // 入力は今の区切りで始まる処理。命令に由来を付けて返す。
       return write(state, 'persist_turns', current, done, reject);
     }
@@ -959,10 +994,20 @@ export function applyStorageBoundaryEvent(
       const content = confirmationContent(
         event.draft as Record<string, unknown>,
       );
+      // 同じ世代で受け付けた操作（保留中・承認済み）の新しい確認は受けない。世代をまたぐ重複は Core・DB の一意制約で防ぐ。
+      if (state.accepted_operation_ids.includes(content.operation.operation_id))
+        return reject('operation_id_reused', [], {
+          ...state,
+          used_confirmation_ids: used,
+        });
       return done(
         {
           ...state,
           used_confirmation_ids: used,
+          accepted_operation_ids: [
+            ...state.accepted_operation_ids,
+            content.operation.operation_id,
+          ],
           pending_confirmations: [
             ...state.pending_confirmations,
             { confirmation_id: event.confirmation_id, content },
@@ -982,8 +1027,14 @@ export function applyStorageBoundaryEvent(
       const pending = state.pending_confirmations.find(
         (entry) => entry.confirmation_id === event.confirmation_id,
       );
+      // 承認済みの確認への再送は、記録を出さずに決まった応答を返す。
       // 出るときに捨てた確認・知らない確認は承認できない（記録も外部変更も作らない）。
-      if (pending === undefined) return reject('confirmation_not_found');
+      if (pending === undefined)
+        return reject(
+          state.approved_confirmation_ids.includes(event.confirmation_id)
+            ? 'already_approved'
+            : 'confirmation_not_found',
+        );
       const errors = privateApprovalErrors(event.approval);
       if (errors.length > 0) return reject('approval_invalid', errors);
       const approval = event.approval as Record<string, string>;
@@ -1015,6 +1066,10 @@ export function applyStorageBoundaryEvent(
           pending_confirmations: state.pending_confirmations.filter(
             (entry) => entry !== pending,
           ),
+          approved_confirmation_ids: [
+            ...state.approved_confirmation_ids,
+            event.confirmation_id,
+          ],
         },
         [
           {
@@ -1034,12 +1089,25 @@ export function applyStorageBoundaryEvent(
       );
     }
     case 'confirmation_declined': {
-      const remaining = state.pending_confirmations.filter(
-        (entry) => entry.confirmation_id !== event.confirmation_id,
+      const declined = state.pending_confirmations.find(
+        (entry) => entry.confirmation_id === event.confirmation_id,
       );
-      if (remaining.length === state.pending_confirmations.length)
-        return reject('confirmation_not_found');
-      return done({ ...state, pending_confirmations: remaining });
+      if (declined === undefined)
+        return reject(
+          state.approved_confirmation_ids.includes(event.confirmation_id)
+            ? 'already_approved'
+            : 'confirmation_not_found',
+        );
+      // 取り下げた操作は受け付けた一覧から外す（同じ操作を新しい確認の ID で頼み直せる）。
+      return done({
+        ...state,
+        pending_confirmations: state.pending_confirmations.filter(
+          (entry) => entry !== declined,
+        ),
+        accepted_operation_ids: state.accepted_operation_ids.filter(
+          (id) => id !== declined.content.operation.operation_id,
+        ),
+      });
     }
     default:
       return reject('invalid_transition');
@@ -1081,5 +1149,7 @@ export function initialStorageBoundaryState(
     private_ram: null,
     pending_confirmations: [],
     used_confirmation_ids: [],
+    accepted_operation_ids: [],
+    approved_confirmation_ids: [],
   };
 }

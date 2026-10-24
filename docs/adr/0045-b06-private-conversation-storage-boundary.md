@@ -3,6 +3,7 @@
 - 日付: 2026-10-24
 - 状態: B06-04（#140、親 #11）の判断。`packages/domain/src/storage-mode.ts` の純粋な規則と、手書きの期待値（`packages/contracts/fixtures/storage-mode-cases.json`）による模擬の試験だけ。Core の StorageModeGate（B06-07）・DB の `operations.record_kind` の列と制約（B06-06）・UI-05 の区切りの選び方と画面・音声の実機は未実装・未実施。契約（Schema）は変えていない（確認の中身は既存の `OperationIntent` を使う）。
 - 追記（2026-10-24、PR #152 の Codex のレビュー。P1 2 件・P2 2 件）: ①確認の中身を、解釈の段階の引数（`INTENT_POLICIES`）から、Core が解決した確定済みの変更（契約の `OperationIntent`）と内容の hash に替え、配列の要素・文字列・宛先まで値を検査するようにした（P1-1・P2-4）。②処理の由来（区切りの ID・世代・保存モード）を結果まで持たせ、保存の直前に照合するようにした（P1-2）。③確認の ID の再利用を拒否し、承認を区切りの世代・操作の ID・内容版・内容の hash に結び付けた（P2-3）。④既存の保存先の分類を足した（許可表の 5 行と「保存先の分類」）。各件の再現の入力と順序は fixture に足した。
+- 追記（2026-10-24、PR #152 の再確認。Codex の利用上限のため Sonnet が代行。P2 2 件・P3 5 件）: ①入力（`input`）にも端末が見ていた区切りの由来を必須にした（P2-1）。②同じ世代で受け付けた操作の ID の新しい確認を拒否し、承認済みの確認への再送に決まった応答（`already_approved`）を返すようにした（P2-2）。③承認の受付の記録の扱いを揃え、閉じているのに届いた接続を閉じ、疎な配列・宛先の区切りの記号・存在しない日付を拒否し、2 つ目の 120 通りの試験で「出る側」の数も別に数え、保存先の分類に依頼の行を前提にする表を足した（P3）。再現の入力は fixture に足した。
 - 根拠: 設計 03（データの分離・保存期限・記録しない会話の境界）、10（§1A の停止の理由、§6 の会話の文脈）、09（X17・X36・X44・X48・X59・X31）、ADR 0005・0008・0027・0032・0038・0040、本人の判断（2026-10-24、#11 のコメント）と司令塔の判断（同日）。原本は権限のある接続で読み取りだけ行い、全文は写していない。原本に決めがないことは「原本に決めなし」と書いた。ADR 0032・0038・0040 で決めたことは変えていない。既存の domain の関数（`canvas.ts`・`voice.ts`・`memory.ts`・`intents.ts`・`retention.ts`）の動作も変えていない（新しいファイルから読むだけ）。
 - 番号: ADR は 0045、未決事項は U63〜U67（並行する B06-02・B06-03 と分けた）。
 
@@ -47,24 +48,25 @@
 
 ### 保存先の分類（Codex のレビューで未分類とされた保存先を含む）
 
-| 既存の保存先・経路                                                                                        | 行                                                                                                                                                            |
-| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessions`・`turns`・本文の `sealed_blobs`                                                                | `persist_turns`                                                                                                                                               |
-| `input_snapshots`                                                                                         | `persist_input_snapshot`                                                                                                                                      |
-| 会話の要約（`sessions.summary_blob_id`）・つなぐ要約                                                      | `persist_summary`                                                                                                                                             |
-| `user_directives`                                                                                         | `persist_this_time_directive`・`persist_from_now_on_directive`                                                                                                |
-| `memories`・`memory_sources`                                                                              | `save_memory`（抽出の起動は `extract_memory`）                                                                                                                |
-| `intent_shadow`                                                                                           | `record_shadow`                                                                                                                                               |
-| `request_entities`・`related_analyses` の要約、`notification_candidates` の題・抄録（会話から作ったもの） | `persist_derived_summary`。メール・予定の同期から作るもの（会話が由来でない）はこの門の対象外で、同期の規則（11）に従う                                       |
-| `workflows`                                                                                               | `persist_workflow`（`session_id` が NOT NULL なので、記録しない会話からは作れない。ADR 0040）                                                                 |
-| 完了した依頼の結果・未確定案                                                                              | `persist_workflow_result`                                                                                                                                     |
-| `turn_responses`（同じ要求の再送に同じ応答を返す記録）                                                    | `persist_turn_response`。記録しない間は RAM だけで、Core の再起動の後の再送は新しい要求として扱われ得る（U66 の判断。会話の内容を残さない側を選んだ）         |
-| `command_receipts`                                                                                        | `persist_command_receipt`。記録しない間は RAM だけ。独立した確認の承認の受付は、最小の記録（`record_minimal_operation`）と同じ transaction に含める（B06-07） |
-| `event_outbox` の発言のイベント                                                                           | `persist_turn_events`                                                                                                                                         |
-| スナップショット・キャンバスの記述・操作の履歴                                                            | `write_persisted_canvas`（記録しない間は一時の記述）                                                                                                          |
-| `operations`・`operation_versions`・承認・試行・工程・用事                                                | 通常は `record_full_operation`。記録しない会話からは `record_minimal_operation` だけ（U64）                                                                   |
-| `budget_reservations`                                                                                     | `reserve_budget`                                                                                                                                              |
-| 診断ログ                                                                                                  | 03 のとおり ID・状態・時間・件数・費用だけ。本文を持たないので表の行にしない                                                                                  |
+| 既存の保存先・経路                                                                                                                           | 行                                                                                                                                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions`・`turns`・本文の `sealed_blobs`                                                                                                   | `persist_turns`                                                                                                                                                                                                                          |
+| `input_snapshots`                                                                                                                            | `persist_input_snapshot`                                                                                                                                                                                                                 |
+| 会話の要約（`sessions.summary_blob_id`）・つなぐ要約                                                                                         | `persist_summary`                                                                                                                                                                                                                        |
+| `user_directives`                                                                                                                            | `persist_this_time_directive`・`persist_from_now_on_directive`                                                                                                                                                                           |
+| `memories`・`memory_sources`                                                                                                                 | `save_memory`（抽出の起動は `extract_memory`）                                                                                                                                                                                           |
+| `intent_shadow`                                                                                                                              | `record_shadow`                                                                                                                                                                                                                          |
+| `request_entities`・`related_analyses` の要約、`notification_candidates` の題・抄録（会話から作ったもの）                                    | `persist_derived_summary`。メール・予定の同期から作るもの（会話が由来でない）はこの門の対象外で、同期の規則（11）に従う                                                                                                                  |
+| `workflows`                                                                                                                                  | `persist_workflow`（`session_id` が NOT NULL なので、記録しない会話からは作れない。ADR 0040）                                                                                                                                            |
+| 完了した依頼の結果・未確定案                                                                                                                 | `persist_workflow_result`                                                                                                                                                                                                                |
+| `turn_responses`（同じ要求の再送に同じ応答を返す記録）                                                                                       | `persist_turn_response`。記録しない間は RAM だけで、Core の再起動の後の再送は新しい要求として扱われ得る（U66 の判断。会話の内容を残さない側を選んだ）                                                                                    |
+| `command_receipts`                                                                                                                           | `persist_command_receipt`。記録しない間は RAM だけで、永続化は禁止。独立した確認の承認の受付（受付の ID と結果）は `command_receipts` に別に書かず、`record_minimal_operation` の中身として最小の記録に含める（B06-07 で記録の欄にする） |
+| `event_outbox` の発言のイベント                                                                                                              | `persist_turn_events`                                                                                                                                                                                                                    |
+| スナップショット・キャンバスの記述・操作の履歴                                                                                               | `write_persisted_canvas`（記録しない間は一時の記述）                                                                                                                                                                                     |
+| `operations`・`operation_versions`・承認・試行・工程・用事                                                                                   | 通常は `record_full_operation`。記録しない会話からは `record_minimal_operation` だけ（U64）                                                                                                                                              |
+| `budget_reservations`                                                                                                                        | `reserve_budget`                                                                                                                                                                                                                         |
+| 診断ログ                                                                                                                                     | 03 のとおり ID・状態・時間・件数・費用だけ。本文を持たないので表の行にしない                                                                                                                                                             |
+| `undo_records`・`auto_actions`・`async_context_guards`・`live_sessions`・`evaluation_results`・`request_entity_operations`・`command_scopes` | 本文を持たず、依頼の行（`workflows`）や通常の操作・Live の接続を前提にするため、記録しない会話では作られない（依頼の行と通常の操作の記録は禁止、Live は開かない）。表の行にしない                                                        |
 
 表にない保存先は、知らない行として拒否される（すぐに保存が許されることはない）。ただし、表と fixture が一致しても既存の保存先をすべて網羅した証明にはならない。Core の StorageModeGate（B06-07）は、各保存先の書き込みをこの表の行に結び付け、行のない書き込みを作らない。
 
@@ -76,11 +78,13 @@
 - **出る**（`exit_private`）: 命令は ①RAM を捨てる（発言・要約・入力の版・聞き返し・「今回は」・派生物・依頼と結果・受付の記録・一時のキャンバス・承認前の確認。捨てた確認の ID を命令に載せる）②一時のキャンバスを終える ③前の要約を持ち込まない区切りを開く（`private_ended`・`carried_summary: null`）の順。出る先が normal・extended のどちらか判別できなければ出ない（U66）。Live は開き直さない（次の呼びかけで、通常の受付を通す）。
 - **区切りの世代**: 入る・出るたびに 1 進める（10 進の文字列）。世代が読めない状態では次の世代を決められないので、入ることも含めて何もせず、開いている Live を閉じる（`state_invalid`）。
 - **記録しない区切りの間**: Live の要求・Live の文字起こしの入力は拒否する。入った後に届いた接続（X31 の SDP の answer の後の接続など）は使わずに閉じる（閉じる命令を出し済みなら重ねない）。文字と③の入力は RAM に持つ。
+- **閉じているのに届いた接続**: 通常の区切りでも、Live が閉じている（`closed`）のに接続が届いたら、使わずに閉じる命令を出す（enter → live_closed → exit → live_connected など。安全な側）。開いている・閉じる途中なら命令を重ねない。
 - **区切りの ID**: 入る・出るで開く区切りは、今の区切りと別の ID でなければ拒否する。
 
 ## 処理の由来と遅れて届いた結果（`StorageOrigin`・`storageOriginRejection`。P1-2）
 
-- 入力（`input`）の命令（`write`・`hold_in_ram`）には、処理を始めた区切りの ID・世代・保存モード（`origin`）を付けて返す。Core は後段の処理（要約・記憶の抽出・影モード・派生物・依頼の結果）の結果にこの由来をそのまま持たせ、保存の直前に `write` の事象で戻す。外部変更の頼み（`external_change_requested`）にも由来を付ける。
+- 入力（`input`）の事象には、**端末が見ていた区切りの ID・世代・保存モード（`origin`）を必須**にし、`storageOriginRejection` で照合する（P2-1）。記録しない区切りで書いた文字が出た後に届いても（enter → exit → input）、通常の発言として保存しない（`origin_private`）。契約の `TurnRequest` に区切りの欄を足す変更はこの PR ではせず、B06-07 で契約と Core をつなぐ（下の「未解決」）。
+- 入力の命令（`write`・`hold_in_ram`）には、処理を始めた区切りの ID・世代・保存モード（`origin`）を付けて返す。Core は後段の処理（要約・記憶の抽出・影モード・派生物・依頼の結果）の結果にこの由来をそのまま持たせ、保存の直前に `write` の事象で戻す。外部変更の頼み（`external_change_requested`）にも由来を付ける。
 - 保存の直前の照合:
   - 由来の形が違う・保存モードが判別できない: `origin_invalid`（記録しない由来かもしれないので捨てる）。
   - 記録しない区切りが由来で、今の区切り・世代と違う（出た後・入り直した後）: `origin_private`。永続化しない。RAM も捨て済みなので、新しい記録しない区切りの RAM にも入れない。
@@ -101,7 +105,8 @@
 
 - **値まで検査する**: 契約の Schema と意味検査（空の変更・ラベルの重なり・宛先と CC の重なり）に加えて、domain は次を検査する。知らない欄は、どの階層でも拒否する。
   - ラベル: 文字列の配列（重複なし・100 件まで）。各要素は 1〜225 文字・前後に空白なし・制御文字なし。追加と削除の両方が空なら拒否、同じラベルの追加と削除も拒否。物・数値の要素は拒否。
-  - 下書き: 宛先は 1 件以上・CC は 0 件以上の、空白と制御文字のない `local@domain` の形（254 文字まで・100 件まで・重複なし・宛先と CC の重なりなし）。件名は空白だけでない 1 行（制御文字なし・998 文字まで）。本文は空白だけでない文字列（改行とタブ以外の制御文字なし・100,000 文字まで）。宛先・件名・本文が揃っていなければ拒否する（元サービスへ実際に渡す内容が揃わない）。
+  - 配列は、疎な配列（穴）も拒否する（`Array.from` で穴を値にしてから検査する）。
+  - 下書き: 宛先は 1 件以上・CC は 0 件以上の、空白・制御文字・区切りの記号（`,` `<` `>`）のない `local@domain` の形（254 文字まで・100 件まで・重複なし・宛先と CC の重なりなし）。件名は空白だけでない 1 行（制御文字なし・998 文字まで）。本文は空白だけでない文字列（改行とタブ以外の制御文字なし・100,000 文字まで）。宛先・件名・本文が揃っていなければ拒否する（元サービスへ実際に渡す内容が揃わない）。
   - 対象: `remote_id` は `OriginalSourceId` と同じ文字種、`source_revision` は空白のない表示可能な ASCII（256 文字まで）。契約の `SourceRevision` より狭く、空白や日本語を含む版は、記録しない会話からは切り出さない。
   - `external_recipients` は空、`reconcile_scope` は種類ごとの値（ラベルは `exact_target`、下書きは `operation_marker`）。
 - **対象は Core が解決した値**: `target.remote_id` と `source_revision` には、Core が元サービスの読み取り（`readTarget`）から解決した対象の ID と実際の版を入れる（ADR 0027 の `api-turns.ts` と同じ）。domain は型と形だけを検査し、元サービスとの一致は Core が保証する。文字種の検査は文を入れにくくするだけで、ID と文を区別できない（ADR 0040 の `OriginalSourceId` と同じ限界）。
@@ -112,6 +117,8 @@
 ### 確認の ID と承認の結び付け（P2-3）
 
 - 確認の ID は、区切りの世代ごとに一意にする。同じ世代の中では、承認・取り下げ・検査の失敗の後も同じ ID を使わせない（`confirmation_id_reused`）。入ると世代が変わるので、ID の一意性は（世代・ID）の組で保つ。
+- 同じ世代の中では、受け付けた操作の ID（保留中と承認済み）の新しい確認を拒否する（`operation_id_reused`）。取り下げた操作は一覧から外し、新しい確認の ID で頼み直せる。承認済みの確認の ID へ承認・取り下げが再送されたら、記録を出さずに決まった応答 `already_approved` を返す（P2-2）。世代をまたぐ同じ操作の重複は、Core・DB の一意制約（`operations.operation_id`）で防ぐ（domain の状態は世代ごとに空に戻る）。
+- 承認の時刻（`approved_at`）は、UTC の形で、実在する日時に限る（2030-02-31 のような値は、書き戻して一致しないので拒否する）。
 - 承認は画面での一度だけ（`route` は `screen`）で、確認を出した区切りの世代（`segment_generation`）・操作の ID・内容版・内容の hash を持つ。保留中の確認と 1 つでも違えば拒否する（`approval_mismatch`、違う項目を返す）。入り直した後に古い承認が遅れて届いても、同じ ID の新しい確認には当たらない。声の「はい」・方針による自動承認は使わない。通常は自動実行のラベル変更・下書きも、記録しない会話からは画面で一度承認する（03 の「その記録内容を示して一度承認」。U64）。
 - **出るときの確認**（U65）: 承認の前に出たら確認を捨て、出た後の承認では記録も外部変更も作らない。承認済みの記録は出ても変わらない（操作の状態機械で続く）。
 
@@ -130,10 +137,10 @@
 `scripts/storage-mode.test.mjs` がビルド後の domain を、手書きの `storage-mode-cases.json` と照合する。期待値は実装から作っていない。下書きの `content_hash` は、Python の `json.dumps`（キーの整列・区切りなし・`ensure_ascii=False`）と `hashlib` で別に求めた値を写し、試験で Node.js の `canonicalize` と `node:crypto` の値と照合する。
 
 - **許可表**: 22 行すべてに許可側と拒否側のケースがあること（normal・extended・private と判別できない保存モードを各行に書いた）、各升目の判定、知らない行、契約の `StorageModeState` の `const` と表から作る `effects` の一致。
-- **確認の中身**（41 件）: 正常 3 件と、Codex の再現（ラベルの要素に物・版に文・本文に物・宛先と件名と本文のない下書き）、宛先・件名・本文・ラベルの値の検査、本文・会話への ID・影モード・記憶の由来の欄、`operation`・`target`・`action` の余分な欄、用事・送信の種類、`effects` の違い、形の違う ID の拒否。各件で、手書きの「契約で有効か」と契約の Schema・意味検査を照合し、domain が通す下書きは必ず契約も通ることを確かめる。
-- **承認**（9 件）: 画面だけ、世代・操作の ID・内容版・内容の hash を持たない承認と形の違う値の拒否。
-- **遷移の順序**（20 本）: これまでの例に加えて、入る→入力→出る→遅れて届く結果（要約・記憶・影モード・キャンバス・発言のイベント・抽出・派生物・依頼の結果・発言。すべて `origin_private`）、出て入り直した後の古い結果、失効した区切り・形の違う由来、入り直した後の古い承認（`approval_mismatch`）と前の世代の頼み、内容に結び付いた承認、確認の ID の再利用、世代の読めない状態。
-- **すべての順序**: 入る・頼む・承認・出る・遅れて届く接続の 5 つ（120 通り）と、入る・出る・入り直す・遅れて届く要約・古い承認の 5 つ（120 通り）を当て、記録・確認・Live を閉じる回数・最後の保存モード・永続化の有無が、実装を通さずに書いた規則どおりかを確かめる。
+- **確認の中身**（44 件）: 正常 3 件と、Codex の再現（ラベルの要素に物・版に文・本文に物・宛先と件名と本文のない下書き）、宛先・件名・本文・ラベルの値の検査（宛先の区切りの記号を含む）、本文・会話への ID・影モード・記憶の由来の欄、`operation`・`target`・`action` の余分な欄、用事・送信の種類、`effects` の違い、形の違う ID の拒否。各件で、手書きの「契約で有効か」と契約の Schema・意味検査を照合し、domain が通す下書きは必ず契約も通ることを確かめる。
+- **承認**（12 件）: 画面だけ、世代・操作の ID・内容版・内容の hash を持たない承認と形の違う値・存在しない日付の拒否。疎な配列は JSON で書けないので、試験の中で作って拒否を確かめる。
+- **遷移の順序**（23 本）: これまでの例に加えて、enter → exit → input（出た後に届いた記録しない区切りの文字、`origin_private`）、同じ操作の ID の確認と承認済みの確認への再送（`operation_id_reused`・`already_approved`）、enter → live_closed → exit → live_connected（閉じる命令）、入る→入力→出る→遅れて届く結果（要約・記憶・影モード・キャンバス・発言のイベント・抽出・派生物・依頼の結果・発言。すべて `origin_private`）、出て入り直した後の古い結果、失効した区切り・形の違う由来、入り直した後の古い承認（`approval_mismatch`）と前の世代の頼み、内容に結び付いた承認、確認の ID の再利用、世代の読めない状態。
+- **すべての順序**: 入る・頼む・承認・出る・遅れて届く接続の 5 つ（120 通り）と、入る・出る・入り直す・遅れて届く要約・古い承認の 5 つ（120 通り）を当て、記録・確認・Live を閉じる回数・最後の保存モード・永続化の有無が、実装を通さずに書いた規則どおりかを確かめる。2 つ目は、RAM に持つ数と記録の数を、区切り・世代・確認の有無だけの小さな模型で別に数えて照合し、全体で 1 件以上あること（出る側）も確かめる。
 - **性質**: すべての系列で、書く命令の由来は事象を当てる前の今の区切りで、記録しない由来で書くのは予算の予約だけ。最小の記録は契約の `OperationIntent` を通り、欄は決まった物だけ。
 - **既存の規則との整合**: `admitLiveStart`（409）・`SESSION_CONTROL_EFFECTS`・`AUDIO_CONTROL_RULES`・`INPUT_KIND_RULES`・`shouldExtractMemories`・`memoryAdmission`（由来の保存モードを渡す）・`turnRetentionRule`・`streamSegmentErrors`・`nextCarriedSummary` と食い違わないこと。
 
@@ -142,7 +149,9 @@
 ## 未解決
 
 - Core の StorageModeGate（B06-07）がこの関数をどこで呼ぶか（上の「保存先の分類」の各保存先）、後段の処理へ由来を渡す経路、命令の実行が途中で失敗したときの扱い（Live を閉じる命令の失敗は voice.ts の close_unconfirmed と同じく予約を保持）。
-- 内容の hash と `operation` の一致の検査は Core（B06-07）で行う（domain は形だけ）。
+- 内容の hash と `operation` の一致の検査は Core（B06-07）で行う（domain は形だけ）。自由な文字列の欄（`target.remote_id`・`source_revision`・ラベル・件名・本文）が Core の解決した値と一致することと、hash の一致は、B06-07 の試験の完了条件に入れる。
+- 入力の由来（P2-1）: 契約の `TurnRequest` に、端末が見ていた区切りの ID と世代の欄を足し、Core が受け付けた入力を `input` の事象の `origin` として渡す（B06-07。契約の変更を含む）。それまで domain の `input` は由来を必須にしているので、Core は由来のない入力を保存しない。
+- 世代をまたぐ同じ操作の確認の重複は、Core・DB の一意制約で防ぐ（B06-06・B06-07）。
 - `operations.record_kind` の列と `workflow_id IS NULL` の CHECK（B06-06）。最小の記録の確定内容の暗号文は J5 で 7 日後に消え、hash とレシートは 90 日残る（ADR 0040）。
 - 送信・予定・ごみ箱の確定した型（契約の `OperationIntent` の追加）は、各 connector の Issue。型ができるまで、記録しない会話からは切り出せない。
 - クラウドへ送った文字（Gemini など）は保存ゼロにならない（03）。画面の表示は UI-05。

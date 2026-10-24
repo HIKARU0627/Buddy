@@ -221,7 +221,7 @@ test('入る・出る・外部変更・音声の接続・遅れて届く結果�
       assert.deepEqual(result.errors, step.errors ?? [], label);
       state = result.state;
     });
-    assert.deepEqual(state, sequence.final, sequence.id);
+    assert.deepEqual(state, expand(sequence.final), sequence.id);
   }
 });
 
@@ -366,7 +366,45 @@ test('5 つの事象のすべての順序で、記録と Live の閉じ方が規
 // 確認を頼む事象は置かない（頼みは「入る」の直後に自動で当てる）。規則:
 // - 要約は、由来（seg-2・世代 2・private）と今の区切りが同じときだけ RAM に持ち、それ以外はどの順序でも永続化しない。
 // - 古い承認が記録を作るのは、seg-2 の確認が出ていて、まだ出ていないときだけ（入り直した後の同じ ID の確認には当たらない）。
+// 「条件が揃えば出る」側も確かめるため、RAM に持つ数と記録の数を、実装を通さない小さな模型（区切り・世代・確認の有無だけ）で
+// 別に数えて照合する。
+function expectedLateCounts(order) {
+  let mode = 'normal';
+  let segment = 'seg-1';
+  let generation = 1;
+  let firstPending = false;
+  let holds = 0;
+  let records = 0;
+  for (const name of order) {
+    if ((name === 'enter' || name === 'reenter') && mode === 'normal') {
+      mode = 'private';
+      segment = name === 'enter' ? 'seg-2' : 'seg-4';
+      generation += 1;
+      // seg-2 の確認（由来は seg-2・世代 2）が出るのは、入った区切りが seg-2・世代 2 のときだけ。
+      firstPending = segment === 'seg-2' && generation === 2;
+    } else if (name === 'exit' && mode === 'private') {
+      mode = 'normal';
+      segment = 'seg-3';
+      generation += 1;
+      firstPending = false;
+    } else if (
+      name === 'late_summary' &&
+      mode === 'private' &&
+      segment === 'seg-2' &&
+      generation === 2
+    )
+      holds += 1;
+    else if (name === 'old_approval' && firstPending && generation === 2) {
+      records += 1;
+      firstPending = false;
+    }
+  }
+  return { holds, records };
+}
+
 test('出た後・入り直した後に遅れて届く結果と承認は、どの順序でも永続化しない', () => {
+  let totalHolds = 0;
+  let totalRecords = 0;
   const second = {
     type: 'external_change_requested',
     confirmation_id: 'c-1',
@@ -397,6 +435,8 @@ test('出た後・入り直した後に遅れて届く結果と承認は、ど�
   for (const order of permutations(Object.keys(events))) {
     let state = initialStorageBoundaryState('seg-1', 'normal');
     const label = order.join(',');
+    let holds = 0;
+    let records = 0;
     for (const name of order) {
       const before = state;
       const result = applyStorageBoundaryEvent(state, events[name]);
@@ -404,11 +444,13 @@ test('出た後・入り直した後に遅れて届く結果と承認は、ど�
       for (const command of result.commands) {
         assert.notEqual(command.type, 'write', label);
         if (command.type === 'hold_in_ram') {
+          holds += 1;
           assert.equal(name, 'late_summary', label);
           assert.equal(before.segment_id, 'seg-2', label);
           assert.equal(before.segment_generation, '2', label);
         }
         if (command.type === 'record_minimal_operation') {
+          records += 1;
           assert.equal(name, 'old_approval', label);
           assert.equal(before.segment_generation, '2', label);
           assert.equal(
@@ -431,7 +473,29 @@ test('出た後・入り直した後に遅れて届く結果と承認は、ど�
           },
         }).state;
     }
+    assert.deepEqual({ holds, records }, expectedLateCounts(order), label);
+    totalHolds += holds;
+    totalRecords += records;
   }
+  // 出る側の例が実際にある（どの順序でも 0 という空の合格にしない）。
+  assert(totalHolds > 0 && totalRecords > 0);
+});
+
+test('疎な配列のラベル・宛先は拒否する（JSON では書けないので試験の中で作る）', () => {
+  const label = structuredClone(spec.drafts.label_mail);
+  label.operation.action.add = ['follow-up'];
+  label.operation.action.add.length = 2;
+  assert.deepEqual(privateConfirmationErrors(label), ['labels_add_invalid']);
+  const sparse = structuredClone(spec.drafts.label_mail);
+  sparse.operation.action.remove = [];
+  sparse.operation.action.remove[1] = 'waiting';
+  assert.deepEqual(privateConfirmationErrors(sparse), [
+    'labels_remove_invalid',
+  ]);
+  const draft = structuredClone(spec.drafts.draft_reply);
+  draft.operation.action.cc = [];
+  draft.operation.action.cc.length = 1;
+  assert.deepEqual(privateConfirmationErrors(draft), ['recipients_cc_invalid']);
 });
 
 function permutations(list) {

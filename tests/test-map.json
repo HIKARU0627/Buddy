@@ -307,6 +307,9 @@
         "packages/contracts/fixtures/storage-mode-cases.json#x17-external-change-exit-before-approval",
         "packages/contracts/fixtures/storage-mode-cases.json#x17-late-results-after-exit",
         "packages/contracts/fixtures/storage-mode-cases.json#x17-reentry-stale-approval",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-input-after-exit",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-operation-id-reused",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-live-connected-while-closed",
         "packages/contracts/fixtures/storage-mode-cases.json#x17-confirmation-label-item-is-object",
         "packages/contracts/fixtures/storage-mode-cases.json#x17-confirmation-turn-text-rejected",
         "packages/contracts/fixtures/storage-mode-cases.json#x17-approval-voice-yes-rejected",
@@ -532,6 +535,7 @@
       "phases": ["B03", "B05", "B06", "B10"],
       "contract_fixtures": [
         "packages/contracts/fixtures/storage-mode-cases.json#x36-normal-writes-and-invalid-events",
+        "packages/contracts/fixtures/storage-mode-cases.json#x17-input-after-exit",
         "packages/contracts/fixtures/storage-mode-cases.json#x17-enter-while-live-open",
         "packages/contracts/fixtures/storage-mode-cases.json#row-persist-turns"
       ],

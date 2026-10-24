@@ -1279,6 +1279,46 @@
       "id": "x17-confirmation-null",
       "draft": null,
       "errors": ["not_object"]
+    },
+    {
+      "id": "x17-confirmation-recipient-with-comma",
+      "note": "複数の宛先を 1 つの要素に入れられない（再確認の P3）。",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "to": ["a,b@example.invalid"]
+          }
+        }
+      },
+      "errors": ["recipients_to_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-recipient-with-angle-brackets",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "to": ["<sender@example.invalid>"]
+          }
+        }
+      },
+      "errors": ["recipients_to_invalid"],
+      "contract_valid": true
+    },
+    {
+      "id": "x17-confirmation-cc-with-angle-bracket",
+      "draft": {
+        "$draft": "draft_reply",
+        "operation": {
+          "action": {
+            "cc": ["x>y@example.invalid"]
+          }
+        }
+      },
+      "errors": ["recipients_cc_invalid"],
+      "contract_valid": true
     }
   ],
   "approvals": {
@@ -1391,6 +1431,31 @@
       "id": "x17-approval-not-object",
       "approval": "screen",
       "errors": ["not_object"]
+    },
+    {
+      "id": "x17-approval-nonexistent-date",
+      "note": "存在しない日付（再確認の P3）。Date は翌月へ繰り上げるので、書き戻して比べる。",
+      "approval": {
+        "$approval": "label_g2",
+        "approved_at": "2030-02-31T00:01:00Z"
+      },
+      "errors": ["approved_at_invalid"]
+    },
+    {
+      "id": "x17-approval-leap-day-in-common-year",
+      "approval": {
+        "$approval": "label_g2",
+        "approved_at": "2031-02-29T00:01:00.250Z"
+      },
+      "errors": ["approved_at_invalid"]
+    },
+    {
+      "id": "x17-approval-fractional-seconds",
+      "approval": {
+        "$approval": "label_g2",
+        "approved_at": "2030-10-05T00:01:00.123456Z"
+      },
+      "errors": []
     }
   ],
   "sequences": [
@@ -1405,7 +1470,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -1430,7 +1497,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "text"
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "commands": [
             {
@@ -1445,7 +1515,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "voice_local"
+            "input_kind": "voice_local",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "commands": [
             {
@@ -1752,7 +1825,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "text"
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg3"
+            }
           },
           "commands": [
             {
@@ -1808,7 +1884,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -1822,7 +1900,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -1847,7 +1927,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "text"
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "commands": [
             {
@@ -1999,7 +2082,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -2013,7 +2098,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -2136,7 +2223,9 @@
         "live": "closed",
         "private_ram": ["summary"],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -2149,7 +2238,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -2307,7 +2398,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -2321,7 +2414,9 @@
         "live": "open",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -2350,7 +2445,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "voice_live"
+            "input_kind": "voice_live",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "rejected": "private_conversation"
         },
@@ -2375,7 +2473,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "voice_local"
+            "input_kind": "voice_local",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "commands": [
             {
@@ -2430,7 +2531,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "voice_live"
+            "input_kind": "voice_live",
+            "origin": {
+              "$origin": "seg3e"
+            }
           },
           "commands": [
             {
@@ -2450,7 +2554,9 @@
         "live": "open",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -2464,7 +2570,9 @@
         "live": "connecting",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -2529,7 +2637,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -2543,7 +2653,9 @@
         "live": "closing",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -2573,7 +2685,9 @@
         "live": "closing",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -2587,7 +2701,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -2612,7 +2728,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "text"
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "commands": [
             {
@@ -2747,7 +2866,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -2761,7 +2882,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -2880,7 +3003,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -2894,7 +3019,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -3068,7 +3195,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": ["c-1"]
+        "used_confirmation_ids": ["c-1"],
+        "accepted_operation_ids": ["00000000-0000-4000-8000-000000000403"],
+        "approved_confirmation_ids": ["c-1"]
       }
     },
     {
@@ -3082,7 +3211,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -3212,7 +3343,7 @@
               "$approval": "label_g2"
             }
           },
-          "rejected": "confirmation_not_found"
+          "rejected": "already_approved"
         }
       ],
       "final": {
@@ -3222,7 +3353,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": ["c-1"]
+        "used_confirmation_ids": ["c-1"],
+        "accepted_operation_ids": ["00000000-0000-4000-8000-000000000401"],
+        "approved_confirmation_ids": ["c-1"]
       }
     },
     {
@@ -3236,7 +3369,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -3349,7 +3484,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": ["c-1", "c-2"]
+        "used_confirmation_ids": ["c-1", "c-2"],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -3363,7 +3500,9 @@
         "live": "open",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -3483,7 +3622,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -3496,7 +3637,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -3558,7 +3701,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -3572,7 +3717,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -3687,7 +3834,9 @@
         "live": "closed",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": ["c-1", "c-2", "c-3", "c-4"]
+        "used_confirmation_ids": ["c-1", "c-2", "c-3", "c-4"],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -3701,7 +3850,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -3726,7 +3877,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "text"
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "commands": [
             {
@@ -3824,7 +3978,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -3838,13 +3994,18 @@
         "live": "open",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
           "event": {
             "type": "input",
-            "input_kind": "text"
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg1"
+            }
           },
           "rejected": "storage_mode_unknown",
           "commands": [
@@ -3915,7 +4076,9 @@
         "live": "closing",
         "private_ram": [],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -3929,13 +4092,18 @@
         "live": "open",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
           "event": {
             "type": "input",
-            "input_kind": "text"
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg1"
+            }
           },
           "rejected": "state_invalid",
           "commands": [
@@ -3961,7 +4129,9 @@
         "live": "closing",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -3974,7 +4144,9 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
@@ -3999,7 +4171,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "voice_local"
+            "input_kind": "voice_local",
+            "origin": {
+              "$origin": "seg2p"
+            }
           },
           "commands": [
             {
@@ -4037,7 +4212,9 @@
         "live": "closed",
         "private_ram": ["turn", "clarification"],
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     },
     {
@@ -4050,20 +4227,28 @@
         "live": "closed",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       },
       "steps": [
         {
           "event": {
             "type": "input",
-            "input_kind": "voice_live"
+            "input_kind": "voice_live",
+            "origin": {
+              "$origin": "seg1"
+            }
           },
           "rejected": "live_not_open"
         },
         {
           "event": {
             "type": "input",
-            "input_kind": "voice_remote"
+            "input_kind": "voice_remote",
+            "origin": {
+              "$origin": "seg1"
+            }
           },
           "rejected": "input_kind_unknown"
         },
@@ -4071,7 +4256,19 @@
           "event": {
             "type": "live_connected"
           },
-          "rejected": "invalid_transition"
+          "rejected": "invalid_transition",
+          "commands": [
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "live_closed"
+          },
+          "commands": []
         },
         {
           "event": {
@@ -4378,7 +4575,10 @@
         {
           "event": {
             "type": "input",
-            "input_kind": "voice_live"
+            "input_kind": "voice_live",
+            "origin": {
+              "$origin": "seg1"
+            }
           },
           "commands": [
             {
@@ -4398,7 +4598,460 @@
         "live": "open",
         "private_ram": null,
         "pending_confirmations": [],
-        "used_confirmation_ids": []
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
+      }
+    },
+    {
+      "id": "x17-input-after-exit",
+      "tests": ["X17", "X36"],
+      "note": "再確認の P2-1 の再現。enter → exit → input（記録しない区切りで書いた文字が、出た後に届く）。端末が見ていた区切りの由来で拒否し、通常の発言として保存しない。記録しない区切りの間に届いた通常の区切りの文字も捨てる。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "1",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
+          "commands": [
+            {
+              "type": "begin_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "segment_generation": "2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "rejected": "origin_stale"
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "segment_generation": "3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "voice_local",
+            "origin": {
+              "$origin": "seg2p"
+            }
+          },
+          "rejected": "origin_private"
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg1"
+            }
+          },
+          "rejected": "origin_stale"
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "text"
+          },
+          "rejected": "origin_invalid"
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg3e"
+            }
+          },
+          "rejected": "origin_mismatch"
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "text",
+            "origin": {
+              "$origin": "seg3"
+            }
+          },
+          "commands": [
+            {
+              "type": "write",
+              "effect": "persist_turns",
+              "origin": {
+                "$origin": "seg3"
+              }
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "segment_generation": "3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
+      }
+    },
+    {
+      "id": "x17-operation-id-reused",
+      "tests": ["X17"],
+      "note": "再確認の P2-2 の再現。同じ世代で受け付けた操作（保留中・承認済み）の新しい確認は operation_id_reused。承認済みの確認への承認・取り下げの再送は already_approved（記録を出さない決まった応答）。取り下げた操作は新しい確認の ID で頼み直せる。",
+      "start": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "segment_generation": "2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": [],
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-1",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-1",
+              "segment_generation": "2",
+              "view": {
+                "$draft": "label_mail",
+                "intent": "label_mail",
+                "conversation_saved": false
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-2",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
+          },
+          "rejected": "operation_id_reused"
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2"
+            }
+          },
+          "commands": [
+            {
+              "type": "record_minimal_operation",
+              "record": {
+                "$draft": "label_mail",
+                "intent": "label_mail",
+                "record_kind": "private_minimal",
+                "workflow_id": null,
+                "approval": {
+                  "route": "screen",
+                  "device_id": "00000000-0000-4000-8000-000000000050",
+                  "approved_at": "2030-10-05T00:01:00Z"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_approved",
+            "confirmation_id": "c-1",
+            "approval": {
+              "$approval": "label_g2"
+            }
+          },
+          "rejected": "already_approved"
+        },
+        {
+          "event": {
+            "type": "confirmation_declined",
+            "confirmation_id": "c-1"
+          },
+          "rejected": "already_approved"
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-3",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail"
+            }
+          },
+          "rejected": "operation_id_reused"
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-4",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail_b"
+            }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-4",
+              "segment_generation": "2",
+              "view": {
+                "$draft": "label_mail_b",
+                "intent": "label_mail",
+                "conversation_saved": false
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "confirmation_declined",
+            "confirmation_id": "c-4"
+          },
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "external_change_requested",
+            "confirmation_id": "c-5",
+            "origin": {
+              "$origin": "seg2p"
+            },
+            "draft": {
+              "$draft": "label_mail_b"
+            }
+          },
+          "commands": [
+            {
+              "type": "show_independent_confirmation",
+              "confirmation_id": "c-5",
+              "segment_generation": "2",
+              "view": {
+                "$draft": "label_mail_b",
+                "intent": "label_mail",
+                "conversation_saved": false
+              }
+            }
+          ]
+        }
+      ],
+      "final": {
+        "mode": "private",
+        "segment_id": "seg-2",
+        "segment_generation": "2",
+        "live": "closed",
+        "private_ram": [],
+        "pending_confirmations": [
+          {
+            "confirmation_id": "c-5",
+            "content": {
+              "$draft": "label_mail_b",
+              "intent": "label_mail"
+            }
+          }
+        ],
+        "used_confirmation_ids": ["c-1", "c-2", "c-3", "c-4", "c-5"],
+        "accepted_operation_ids": [
+          "00000000-0000-4000-8000-000000000401",
+          "00000000-0000-4000-8000-000000000403"
+        ],
+        "approved_confirmation_ids": ["c-1"]
+      }
+    },
+    {
+      "id": "x17-live-connected-while-closed",
+      "tests": ["X17"],
+      "note": "再確認の P3 の再現。enter → live_closed → exit → live_connected。閉じているはずなのに届いた接続は、使わずに閉じる。閉じる途中に重ねては出さない。",
+      "start": {
+        "mode": "normal",
+        "segment_id": "seg-1",
+        "segment_generation": "1",
+        "live": "open",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "enter_private",
+            "segment_id": "seg-2"
+          },
+          "commands": [
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            },
+            {
+              "type": "begin_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-2",
+              "segment_generation": "2",
+              "storage_mode": "private",
+              "open_reason": "private_started",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "live_closed"
+          },
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "exit_private",
+            "segment_id": "seg-3",
+            "mode": "normal"
+          },
+          "commands": [
+            {
+              "type": "discard_private_ram",
+              "confirmation_ids": []
+            },
+            {
+              "type": "end_private_canvas"
+            },
+            {
+              "type": "open_segment",
+              "segment_id": "seg-3",
+              "segment_generation": "3",
+              "storage_mode": "normal",
+              "open_reason": "private_ended",
+              "carried_summary": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "live_connected"
+          },
+          "rejected": "invalid_transition",
+          "commands": [
+            {
+              "type": "close_voice_session",
+              "reason": "private_conversation"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "live_connected"
+          },
+          "rejected": "invalid_transition",
+          "commands": []
+        },
+        {
+          "event": {
+            "type": "input",
+            "input_kind": "voice_live",
+            "origin": {
+              "$origin": "seg3"
+            }
+          },
+          "rejected": "live_not_open"
+        },
+        {
+          "event": {
+            "type": "live_closed"
+          },
+          "commands": []
+        }
+      ],
+      "final": {
+        "mode": "normal",
+        "segment_id": "seg-3",
+        "segment_generation": "3",
+        "live": "closed",
+        "private_ram": null,
+        "pending_confirmations": [],
+        "used_confirmation_ids": [],
+        "accepted_operation_ids": [],
+        "approved_confirmation_ids": []
       }
     }
   ]

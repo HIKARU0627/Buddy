@@ -65,7 +65,7 @@ pnpm run contracts:check
 
 | 検証                                         | 結果                                                                                    |
 | -------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `node scripts/clean.mjs && pnpm run check`   | 成功、1480 件・失敗 0。書式・lint・ビルド・型・契約・公開情報検査を含む                 |
+| `node scripts/clean.mjs && pnpm run check`   | 成功、1493 件・失敗 0。書式・lint・ビルド・型・契約・公開情報検査を含む                 |
 | `pnpm run contracts:check`                   | 成功。生成型の直接変更なし                                                              |
 | `node --test tests/integration/b07.test.mjs` | 54 回の観測が手書きの期待値に一致（親試験を含む 55 件）。範囲は本書のケース別表のとおり |
 
@@ -97,7 +97,7 @@ BUDDY_B07_EVIDENCE_PATH=tests/integration/evidence-b07-simulated.json node --tes
 pnpm exec prettier --write tests/integration/evidence-b07-simulated.json
 ```
 
-全反復が成功し、case と seed のすべての組が完了したときだけ出力します（子試験の時間切れ・取り消しは失敗として扱い、時間切れの後に遅れて正常に終わった結果は成功に数えません。指定があるのに完了していなければ試験を失敗させて保存しません。B04 の実行器も同じ共通の部品 `tests/integration/evidence-run.mjs` を使い、遅れて終わる場合は `evidence-run.test.mjs` が実際の node:test を子プロセスで動かして確かめます）。通常の試験は証拠を書き換えません。失敗した実行で以前の記録を今回の成功証拠と扱わず、終了コードを確認してください。
+全反復が成功し、case と seed のすべての組が完了したときだけ出力します（子試験の時間切れ・取り消しは失敗として扱い、時間切れの後に遅れて正常に終わった結果は成功に数えません。指定があるのに完了していなければ試験を失敗させて保存しません。保存は、子試験の後始末がすべて終わった後の親の `t.after()` で行い、親の試験が中断されていれば保存せず、親の期限（後始末の途中を含む）を過ぎていれば試験を失敗させます。B04 の実行器も同じ共通の部品 `tests/integration/evidence-run.mjs` を使い、遅れて終わる場合と親の後始末が期限を過ぎる場合は `evidence-run.test.mjs` が実際の node:test を子プロセスで動かして確かめます）。通常の試験は証拠を書き換えません。失敗した実行で以前の記録を今回の成功証拠と扱わず、終了コードを確認してください。
 
 ## 未実施・残る判断
 

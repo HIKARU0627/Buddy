@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "会話の操作の照合表の例と照合の期待値（設計 10 §3・§5、X58）。言い回しは原本の例。実際の表は版管理して B05・B10 で調整する。",
+  "description": "会話の操作の照合表の例と、照合・効果・表の形の期待値（設計 10 §3・§5・§1A、X58、QA43、ADR 0038）。言い回しは原本の例。実際の表は版管理して B05・B10 で調整する。手で書いた期待値で、domain の実装から生成していない。短い発話の全体が言い回しに一致したときだけ操作にし、依頼を含む発話は意図判定へ回す。「読み上げを止める」「会話を終わる」「処理を取り消す」は別の操作で、同じ終了処理に束ねない。",
   "table": {
     "version": "1",
     "phrases": [
@@ -14,13 +14,204 @@
     ]
   },
   "matches": [
-    { "utterance": "ちょっと待って", "expected": "extend_silence" },
-    { "utterance": "ちょっと待って。", "expected": "extend_silence" },
-    { "utterance": " もう終わり！ ", "expected": "end_conversation" },
-    { "utterance": "記録しないで", "expected": "start_private_conversation" },
-    { "utterance": "終わりの時間教えて", "expected": null },
-    { "utterance": "待ち合わせ場所どこだっけ", "expected": null },
-    { "utterance": "ちょっと待って、明日の予定を入れて", "expected": null },
-    { "utterance": "", "expected": null }
+    {
+      "id": "wait-a-moment",
+      "refs": ["10 §3", "X58"],
+      "utterance": "ちょっと待って",
+      "expected": "extend_silence"
+    },
+    {
+      "id": "wait-a-moment-with-punctuation",
+      "refs": ["X58"],
+      "utterance": "ちょっと待って。",
+      "expected": "extend_silence"
+    },
+    {
+      "id": "wait-a-little",
+      "refs": ["10 §3", "X58"],
+      "utterance": "少し待って",
+      "expected": "extend_silence"
+    },
+    {
+      "id": "wait-with-fullwidth-marks",
+      "refs": ["X58"],
+      "utterance": "ちょっと待って！！",
+      "expected": "extend_silence"
+    },
+    {
+      "id": "stop-reading-aloud",
+      "refs": ["10 §1A", "X58", "QA43"],
+      "utterance": "読み上げを止めて",
+      "expected": "stop_playback"
+    },
+    {
+      "id": "that-is-all-with-spaces",
+      "refs": ["X58"],
+      "utterance": " もう終わり！ ",
+      "expected": "end_conversation"
+    },
+    {
+      "id": "end-the-conversation",
+      "refs": ["10 §1A", "X58"],
+      "utterance": "会話を終わる",
+      "expected": "end_conversation"
+    },
+    {
+      "id": "do-not-record",
+      "refs": ["X58"],
+      "utterance": "記録しないで",
+      "expected": "start_private_conversation"
+    },
+    {
+      "id": "reply-in-text",
+      "refs": ["10 §6A", "X58"],
+      "utterance": "文字で返して。",
+      "expected": "reply_in_text"
+    },
+    {
+      "id": "request-about-the-end-time",
+      "refs": ["10 §5", "X58"],
+      "utterance": "終わりの時間教えて",
+      "expected": null
+    },
+    {
+      "id": "request-about-a-meeting-place",
+      "refs": ["10 §5", "X58"],
+      "utterance": "待ち合わせ場所どこだっけ",
+      "expected": null
+    },
+    {
+      "id": "phrase-followed-by-a-request",
+      "refs": ["10 §5", "X58"],
+      "utterance": "ちょっと待って、明日の予定を入れて",
+      "expected": null
+    },
+    {
+      "id": "stop-reading-followed-by-a-request",
+      "refs": ["10 §5", "X58"],
+      "utterance": "読み上げを止めて、予定を教えて",
+      "expected": null
+    },
+    {
+      "id": "cancel-the-workflow-is-not-a-session-control",
+      "refs": ["10 §1A", "X58", "QA43"],
+      "utterance": "処理を取り消して",
+      "expected": null
+    },
+    {
+      "id": "empty-utterance",
+      "refs": ["X58"],
+      "utterance": "",
+      "expected": null
+    },
+    {
+      "id": "only-spaces-and-marks",
+      "refs": ["X58"],
+      "utterance": "  。 ",
+      "expected": null
+    }
+  ],
+  "effects": [
+    {
+      "action": "extend_silence",
+      "audio_action": null,
+      "audio_reason": null,
+      "extends_silence_ms": 60000,
+      "sets_output_mode_text": false,
+      "starts_private_conversation": false,
+      "ends_session": false
+    },
+    {
+      "action": "stop_playback",
+      "audio_action": "stop_playback",
+      "audio_reason": "user_stop",
+      "extends_silence_ms": null,
+      "sets_output_mode_text": false,
+      "starts_private_conversation": false,
+      "ends_session": false
+    },
+    {
+      "action": "end_conversation",
+      "audio_action": "close_voice_session",
+      "audio_reason": "conversation_ended",
+      "extends_silence_ms": null,
+      "sets_output_mode_text": false,
+      "starts_private_conversation": false,
+      "ends_session": true
+    },
+    {
+      "action": "start_private_conversation",
+      "audio_action": "close_voice_session",
+      "audio_reason": "private_conversation",
+      "extends_silence_ms": null,
+      "sets_output_mode_text": false,
+      "starts_private_conversation": true,
+      "ends_session": false
+    },
+    {
+      "action": "reply_in_text",
+      "audio_action": "close_voice_session",
+      "audio_reason": "output_mode_text",
+      "extends_silence_ms": null,
+      "sets_output_mode_text": true,
+      "starts_private_conversation": false,
+      "ends_session": false
+    }
+  ],
+  "table_cases": [
+    {
+      "id": "table-valid",
+      "valid": true,
+      "table": {
+        "version": "1",
+        "phrases": [{ "phrase": "もう終わり", "action": "end_conversation" }]
+      }
+    },
+    {
+      "id": "table-without-phrases",
+      "valid": false,
+      "table": { "version": "1", "phrases": [] }
+    },
+    {
+      "id": "table-with-cancel-workflow",
+      "refs": ["10 §1A", "X58"],
+      "valid": false,
+      "table": {
+        "version": "1",
+        "phrases": [
+          { "phrase": "処理を取り消して", "action": "cancel_workflow" }
+        ]
+      }
+    },
+    {
+      "id": "table-with-an-empty-phrase",
+      "valid": false,
+      "table": {
+        "version": "1",
+        "phrases": [{ "phrase": "", "action": "end_conversation" }]
+      }
+    },
+    {
+      "id": "table-with-an-unversioned-label",
+      "valid": false,
+      "table": {
+        "version": "v1",
+        "phrases": [{ "phrase": "もう終わり", "action": "end_conversation" }]
+      }
+    },
+    {
+      "id": "table-with-an-extra-field",
+      "valid": false,
+      "table": {
+        "version": "1",
+        "phrases": [
+          {
+            "phrase": "もう終わり",
+            "action": "end_conversation",
+            "intent": "unclear"
+          }
+        ]
+      }
+    }
   ]
 }

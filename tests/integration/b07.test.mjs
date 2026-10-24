@@ -19,12 +19,17 @@ test(
   { timeout: 600000 },
   async (t) => {
     // 子試験の時間切れ・取り消しの後に遅れて終わった結果は、成功に数えない（evidence-run.mjs）。
-    const result = await collectRuns({
+    // 保存は親の t.after() で行う。親が時間切れ・取り消しで本体が最後まで進まない場合も、後始末の後に判定するため、
+    // 集計の前に登録する（結果がなければ保存しない）。
+    let result = null;
+    t.after(() => writeEvidence());
+    result = await collectRuns({
       t,
       cases,
       seeds: specification.seeds,
       shuffled,
       timeoutMs: 60000,
+      parentTimeoutMs: 600000,
       execute: (sub, spec, seed, round) => runCase(spec, seed, round),
       toRun: (spec, seed, order, observed) => ({
         case_id: spec.id,
@@ -34,54 +39,59 @@ test(
         observed,
       }),
     });
-    const { runs } = result;
-    // 通常の CI では書き出さない。全反復が時間内に成功し、case と seed のすべての組がそろったときだけ、証拠を作る。
-    if (shouldWriteEvidence(process.env.BUDDY_B07_EVIDENCE_PATH, result)) {
-      const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
-        encoding: 'utf8',
-      }).trim();
-      const sourceSha256 = b07SourceSha256();
-      const observedAt = new Date().toISOString();
-      const records = cases.map((spec) => {
-        const run = runs.find((r) => r.case_id === spec.id);
-        const o = run.observed;
-        return {
-          case_id: spec.id,
-          kind: 'simulated',
-          commit,
-          contract_version: '1.0.0',
-          db_version: o.db_version,
-          environment: {
-            os: `${platform()} ${release()} / ${process.version}`,
-            hub: '同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）',
-            devices: [],
-          },
-          seed: specification.seeds.join(','),
-          fault_point: spec.faults.join(',') || null,
-          provider_requests: o.provider_requests,
-          provider_state_changes: o.provider_state_changes,
-          approvals: o.approvals,
-          final_state: o.final_state,
-          observed_at: observedAt,
-          deviation:
-            '模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。',
-          voice_stop_ms: null,
-          outcome: 'matched_expectation',
+    function writeEvidence() {
+      if (result === null) return;
+      const { runs } = result;
+      // 通常の CI では書き出さない。全反復が時間内に成功し、case と seed のすべての組がそろったときだけ、証拠を作る。
+      // 親の中断の状態・期限も確かめる。
+
+      if (shouldWriteEvidence(process.env.BUDDY_B07_EVIDENCE_PATH, result, t)) {
+        const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
+          encoding: 'utf8',
+        }).trim();
+        const sourceSha256 = b07SourceSha256();
+        const observedAt = new Date().toISOString();
+        const records = cases.map((spec) => {
+          const run = runs.find((r) => r.case_id === spec.id);
+          const o = run.observed;
+          return {
+            case_id: spec.id,
+            kind: 'simulated',
+            commit,
+            contract_version: '1.0.0',
+            db_version: o.db_version,
+            environment: {
+              os: `${platform()} ${release()} / ${process.version}`,
+              hub: '同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）',
+              devices: [],
+            },
+            seed: specification.seeds.join(','),
+            fault_point: spec.faults.join(',') || null,
+            provider_requests: o.provider_requests,
+            provider_state_changes: o.provider_state_changes,
+            approvals: o.approvals,
+            final_state: o.final_state,
+            observed_at: observedAt,
+            deviation:
+              '模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。',
+            voice_stop_ms: null,
+            outcome: 'matched_expectation',
+          };
+        });
+        const evidence = {
+          status: 'recorded',
+          description:
+            'B07-06 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。予算の門・DB worker・模擬の有料 provider をつないだ統合で、予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせた。実 API・実請求・実機・HTTP の経路・画面は未実施。実請求の照合は B15。クレジットの区分（MA03〜MA06）は B07-07。',
+          command: 'node --test tests/integration/b07.test.mjs',
+          source_sha256: sourceSha256,
+          records,
+          runs,
         };
-      });
-      const evidence = {
-        status: 'recorded',
-        description:
-          'B07-06 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。予算の門・DB worker・模擬の有料 provider をつないだ統合で、予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせた。実 API・実請求・実機・HTTP の経路・画面は未実施。実請求の照合は B15。クレジットの区分（MA03〜MA06）は B07-07。',
-        command: 'node --test tests/integration/b07.test.mjs',
-        source_sha256: sourceSha256,
-        records,
-        runs,
-      };
-      writeFileSync(
-        process.env.BUDDY_B07_EVIDENCE_PATH,
-        JSON.stringify(evidence, null, 2) + '\n',
-      );
+        writeFileSync(
+          process.env.BUDDY_B07_EVIDENCE_PATH,
+          JSON.stringify(evidence, null, 2) + '\n',
+        );
+      }
     }
   },
 );

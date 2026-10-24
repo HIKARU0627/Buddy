@@ -862,7 +862,7 @@ paths:
     post:
       operationId: createLiveSession
       summary: Live の接続
-      description: 音声所有権を持つ端末だけ。端末の SDP offer を中枢が交換し、SDP answer を返す。OpenAI の資格情報は渡さない。予算不足は 422（budget_held）、記録しない会話中は 409（private_conversation）（07 §2、10 §2）。
+      description: 音声所有権を持つ端末だけ。端末の SDP offer を中枢が交換し、SDP answer を返す。OpenAI の資格情報は渡さない。予算不足は 422（budget_held）、記録しない会話中は 409（private_conversation）、外部への送信の同意が有効でなければ 403（external_send_consent_required。経路の検査の後段 admitLiveStart。ADR 0038）（07 §2、10 §2）。
       x-buddy-core-checks:
         - device_token
         - home_network

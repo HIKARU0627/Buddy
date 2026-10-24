@@ -32,7 +32,7 @@ function runFixture(env) {
   }
 }
 
-test('時間内に終わった全ケースは成功に数え、完了として扱う', () => {
+test('時間内に終わった全ケースは成功に数え、完了として保存の判定が通る', () => {
   const { status, result } = runFixture({
     TIMEOUT_MS: '2000',
     SLOW_MS: '20',
@@ -43,38 +43,92 @@ test('時間内に終わった全ケースは成功に数え、完了として�
     runs: ['slow', 'next'],
     failed: false,
     complete: true,
+    decision: true,
+    overlap: false,
   });
 });
 
 test('時間切れの後、次のケースの実行中に遅れて正常に終わった結果は、成功に数えず、証拠を保存しない', () => {
-  // slow は子試験の期限（200ms）を過ぎた 500ms で終わる。next は 200ms 以降に始まり、期限内の 50ms で終わる。
-  // slow は next の実行中に正常に終わるが、runs に足されない。
+  // slow は子試験の期限（400ms）を過ぎた 600ms で終わる。next は 400ms 以降に始まり、期限内の 350ms で終わるので、
+  // 約 400〜750ms の間に実行される。slow の終了（600ms）は next の実行中に重なり、正常に終わるが、runs に足されない。
   const { status, result } = runFixture({
-    TIMEOUT_MS: '200',
-    SLOW_MS: '500',
-    NEXT_MS: '50',
+    TIMEOUT_MS: '400',
+    SLOW_MS: '600',
+    NEXT_MS: '350',
   });
+  assert.equal(
+    result.overlap,
+    true,
+    'slow の終了が next の実行中に重なっていない',
+  );
   assert.notEqual(status, 0);
   assert.deepEqual(result.runs, ['next']);
   assert.equal(result.failed, true);
   assert.equal(result.complete, false);
+  assert.equal(result.decision, false);
 });
 
-test('保存の判定: 指定がなければ保存せず、失敗なら保存せず、未完了なら試験を失敗させ、完了なら保存する', () => {
+test('最後のケースの後始末が親の期限を過ぎても、証拠を保存しない（保存の判定が拒否する）', () => {
+  // 全ケースは時間内に成功するが、親の後始末が 800ms かかり、親の期限（300ms）を過ぎる。
+  const { result } = runFixture({
+    TIMEOUT_MS: '2000',
+    SLOW_MS: '20',
+    NEXT_MS: '20',
+    PARENT_AFTER_MS: '800',
+    PARENT_TIMEOUT_MS: '300',
+  });
+  assert.deepEqual(result.runs, ['slow', 'next']);
+  assert.equal(result.complete, true);
+  assert.equal(result.decision, 'rejected');
+});
+
+test('最後のケースの子試験の後始末の途中で親が時間切れになっても、証拠を保存しない', () => {
+  // 最後のケースの後始末（子試験の t.after()）が 800ms かかり、親の期限（300ms）の途中で親と子が取り消される。
+  const { status, result } = runFixture({
+    TIMEOUT_MS: '2000',
+    SLOW_MS: '20',
+    NEXT_MS: '20',
+    AFTER_MS: '800',
+    PARENT_TIMEOUT_MS: '300',
+  });
+  assert.notEqual(status, 0);
+  assert.notEqual(result.decision, true);
+  assert.equal(result.complete === true && result.decision === true, false);
+});
+
+test('保存の判定: 指定がなければ保存せず、失敗・親の中断なら保存せず、未完了・期限超過なら試験を失敗させ、完了なら保存する', () => {
+  const ok = { failed: false, complete: true, deadlineAt: null };
+  assert.equal(shouldWriteEvidence(undefined, ok), false);
   assert.equal(
-    shouldWriteEvidence(undefined, { failed: false, complete: true }),
-    false,
-  );
-  assert.equal(
-    shouldWriteEvidence('out.json', { failed: true, complete: false }),
+    shouldWriteEvidence('out.json', { ...ok, failed: true, complete: false }),
     false,
   );
   assert.throws(
-    () => shouldWriteEvidence('out.json', { failed: false, complete: false }),
+    () => shouldWriteEvidence('out.json', { ...ok, complete: false }),
     /証拠を保存しません/u,
   );
+  assert.equal(shouldWriteEvidence('out.json', ok), true);
+  // 親の試験が中断されていれば保存しない。
+  const aborted = new AbortController();
+  aborted.abort();
   assert.equal(
-    shouldWriteEvidence('out.json', { failed: false, complete: true }),
+    shouldWriteEvidence('out.json', ok, { signal: aborted.signal }),
+    false,
+  );
+  assert.equal(
+    shouldWriteEvidence('out.json', ok, {
+      signal: new AbortController().signal,
+    }),
+    true,
+  );
+  // 親の期限を過ぎていれば（後始末の途中を含む）保存せず、試験を失敗させる。
+  assert.throws(
+    () =>
+      shouldWriteEvidence('out.json', { ...ok, deadlineAt: Date.now() - 1 }),
+    /親の試験の期限を過ぎた/u,
+  );
+  assert.equal(
+    shouldWriteEvidence('out.json', { ...ok, deadlineAt: Date.now() + 60000 }),
     true,
   );
 });

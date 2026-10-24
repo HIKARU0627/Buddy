@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 
 // execute: (sub, spec, seed, round) => 観測。toRun: (spec, seed, order, observed) => runs の 1 件。
-// 戻り値: { runs, failed, complete }。failed は 1 件でも失敗・時間切れ・取り消しがあったこと。
+// 戻り値: { runs, failed, complete, deadlineAt }。failed は 1 件でも失敗・時間切れ・取り消しがあったこと。
 export async function collectRuns({
   t,
   cases,
@@ -14,7 +14,11 @@ export async function collectRuns({
   execute,
   toRun,
   timeoutMs,
+  parentTimeoutMs,
 }) {
+  // 親の試験の期限（node:test の timeout）を自分でも数える。後始末の途中で期限を過ぎても node:test が親を失敗にしない
+  // 場合があるので、保存の判定のときに経過時間を見直す。
+  const deadlineAt = parentTimeoutMs ? Date.now() + parentTimeoutMs : null;
   const runs = [];
   let failed = false;
   for (const [round, seed] of seeds.entries()) {
@@ -49,6 +53,8 @@ export async function collectRuns({
       );
     }
   }
+  // 最後のケースの後始末の途中で親の試験が時間切れ・取り消しになった場合も失敗とする。
+  if (t.signal?.aborted) failed = true;
   const finished = new Set(runs.map((run) => `${run.case_id}/${run.seed}`));
   const complete =
     !failed &&
@@ -57,12 +63,19 @@ export async function collectRuns({
     cases.every((spec) =>
       seeds.every((seed) => finished.has(`${spec.id}/${seed}`)),
     );
-  return { runs, failed, complete };
+  return { runs, failed, complete, deadlineAt };
 }
 
 // 証拠を保存してよいか。指定があるのに完了していなければ、試験を失敗させる（前の証拠を今回の成功として上書きしない）。
-export function shouldWriteEvidence(path, { failed, complete }) {
-  if (!path || failed) return false;
+// 親の試験の t を渡し、親が時間切れ・取り消しになっていれば（後始末の途中を含む）保存しない。保存は、子試験の
+// 後始末がすべて終わった後（親の t.after()）で呼ぶ。
+export function shouldWriteEvidence(path, result, t) {
+  const { failed, complete, deadlineAt } = result;
+  if (!path || failed || t?.signal?.aborted) return false;
+  assert(
+    deadlineAt == null || Date.now() <= deadlineAt,
+    '親の試験の期限を過ぎた（後始末の途中を含む）ため、証拠を保存しません',
+  );
   assert(
     complete,
     '時間切れ・取り消しなどで完了していない実行があるため、証拠を保存しません',

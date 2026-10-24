@@ -1,0 +1,577 @@
+{
+  "status": "specification_only",
+  "description": "Live の制御接続（サイドバンド）の遷移の期待値（設計 10 §2・§2A、X25・X28・X31・X54、ADR 0038）。手で書いたもので、domain の実装から生成していない。lost へ入るとき control_epoch を進める。lost・closing・closed から ready へは戻らない（同じ Live セッションへ再接続して会話を継続しない）。使用秒数が確認できるまで予約を精算済みにしない。 provider が先に閉じた場合（使用秒数つきの session.closed が connecting・ready・lost で届く）と、終了を待つ時間が切れた（close_unconfirmed）後に届いた場合は、そのまま確認済み・精算済みにする（usage_reconciled と同じ結果）。確認済みの後の重複は受け付けない。",
+  "live_session_id": "00000000-0000-4000-8000-000000000090",
+  "transitions": [
+    {
+      "id": "connecting-to-ready",
+      "refs": ["10 §2"],
+      "from": {
+        "control_state": "connecting",
+        "control_epoch": "1",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "sideband_connected",
+      "usage_seconds": null,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "ready",
+          "control_epoch": "1",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        }
+      }
+    },
+    {
+      "id": "connect-failed-goes-lost-and-advances-epoch",
+      "refs": ["X54"],
+      "from": {
+        "control_state": "connecting",
+        "control_epoch": "1",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "sideband_connect_failed",
+      "usage_seconds": null,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "lost",
+          "control_epoch": "2",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        }
+      }
+    },
+    {
+      "id": "websocket-closed-goes-lost",
+      "refs": ["10 §2A", "X25"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "2",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "sideband_disconnected",
+      "usage_seconds": null,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "lost",
+          "control_epoch": "3",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        }
+      }
+    },
+    {
+      "id": "ping-timeout-goes-lost",
+      "refs": ["10 §2A", "X25"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "2",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "ping_timeout",
+      "usage_seconds": null,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "lost",
+          "control_epoch": "3",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        }
+      }
+    },
+    {
+      "id": "core-restart-orphan-goes-lost",
+      "refs": ["07 §5", "X28"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "5",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "core_restarted",
+      "usage_seconds": null,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "lost",
+          "control_epoch": "6",
+          "closure": "open",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        }
+      }
+    },
+    {
+      "id": "lost-then-close-only-reconnect",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "lost",
+        "control_epoch": "3",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "close_requested",
+      "usage_seconds": null,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closing",
+          "control_epoch": "3",
+          "closure": "close_requested",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        }
+      }
+    },
+    {
+      "id": "ready-close-requested",
+      "refs": ["10 §2"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "2",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "close_requested",
+      "usage_seconds": null,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closing",
+          "control_epoch": "2",
+          "closure": "close_requested",
+          "usage_seconds": null,
+          "reservation_state": "reserved"
+        }
+      }
+    },
+    {
+      "id": "session-closed-with-usage-settles",
+      "refs": ["10 §2", "X34"],
+      "from": {
+        "control_state": "closing",
+        "control_epoch": "2",
+        "closure": "close_requested",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 27,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "2",
+          "closure": "close_confirmed",
+          "usage_seconds": 27,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "close-unconfirmed-holds-the-reservation",
+      "refs": ["10 §2A", "X25", "QA24"],
+      "from": {
+        "control_state": "closing",
+        "control_epoch": "3",
+        "closure": "close_requested",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "close_unconfirmed",
+      "usage_seconds": null,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "3",
+          "closure": "close_unconfirmed",
+          "usage_seconds": null,
+          "reservation_state": "held"
+        }
+      }
+    },
+    {
+      "id": "usage-reconciled-after-unconfirmed",
+      "refs": ["10 §2A", "X28"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "3",
+        "closure": "close_unconfirmed",
+        "usage_seconds": null,
+        "reservation_state": "held"
+      },
+      "trigger": "usage_reconciled",
+      "usage_seconds": 15,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "3",
+          "closure": "close_confirmed",
+          "usage_seconds": 15,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "provider-closed-while-ready-with-usage",
+      "refs": ["10 §2", "10 §2A", "X28"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "2",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 41,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "2",
+          "closure": "close_confirmed",
+          "usage_seconds": 41,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "provider-closed-while-connecting-with-usage",
+      "refs": ["10 §2", "X31"],
+      "from": {
+        "control_state": "connecting",
+        "control_epoch": "1",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 15,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "1",
+          "closure": "close_confirmed",
+          "usage_seconds": 15,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "provider-closed-while-lost-with-usage",
+      "refs": ["10 §2A", "X25"],
+      "from": {
+        "control_state": "lost",
+        "control_epoch": "3",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 27,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "3",
+          "closure": "close_confirmed",
+          "usage_seconds": 27,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "session-closed-after-the-wait-expired-is-accepted-as-reconciliation",
+      "refs": ["10 §2A", "X25", "QA24"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "3",
+        "closure": "close_unconfirmed",
+        "usage_seconds": null,
+        "reservation_state": "held"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 15,
+      "expected": {
+        "ok": true,
+        "next": {
+          "control_state": "closed",
+          "control_epoch": "3",
+          "closure": "close_confirmed",
+          "usage_seconds": 15,
+          "reservation_state": "settled"
+        }
+      }
+    },
+    {
+      "id": "provider-closed-while-ready-without-usage",
+      "refs": ["10 §2A", "X25"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "2",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "usage_required"
+      }
+    },
+    {
+      "id": "session-closed-again-after-it-was-confirmed",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "2",
+        "closure": "close_confirmed",
+        "usage_seconds": 27,
+        "reservation_state": "settled"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": 30,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
+      "id": "lost-cannot-return-to-ready",
+      "refs": ["10 §2A", "X25"],
+      "from": {
+        "control_state": "lost",
+        "control_epoch": "3",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "sideband_connected",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
+      "id": "closing-cannot-return-to-ready",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "closing",
+        "control_epoch": "2",
+        "closure": "close_requested",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "sideband_connected",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
+      "id": "closed-cannot-reconnect",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "2",
+        "closure": "close_confirmed",
+        "usage_seconds": 27,
+        "reservation_state": "settled"
+      },
+      "trigger": "sideband_connected",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
+      "id": "ready-cannot-connect-again",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "ready",
+        "control_epoch": "2",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "sideband_connected",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
+      "id": "lost-does-not-advance-the-epoch-twice",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "lost",
+        "control_epoch": "3",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "ping_timeout",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
+      "id": "session-closed-without-usage-is-not-confirmed",
+      "refs": ["10 §2A", "X25"],
+      "from": {
+        "control_state": "closing",
+        "control_epoch": "2",
+        "closure": "close_requested",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "usage_required"
+      }
+    },
+    {
+      "id": "session-closed-with-negative-usage",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "closing",
+        "control_epoch": "2",
+        "closure": "close_requested",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "session_closed_received",
+      "usage_seconds": -1,
+      "expected": {
+        "ok": false,
+        "reason": "usage_required"
+      }
+    },
+    {
+      "id": "unconfirmed-needs-closing-first",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "lost",
+        "control_epoch": "3",
+        "closure": "open",
+        "usage_seconds": null,
+        "reservation_state": "reserved"
+      },
+      "trigger": "close_unconfirmed",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
+      "id": "reconcile-needs-an-unconfirmed-close",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "2",
+        "closure": "close_confirmed",
+        "usage_seconds": 27,
+        "reservation_state": "settled"
+      },
+      "trigger": "usage_reconciled",
+      "usage_seconds": 30,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    },
+    {
+      "id": "reconcile-without-usage",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "3",
+        "closure": "close_unconfirmed",
+        "usage_seconds": null,
+        "reservation_state": "held"
+      },
+      "trigger": "usage_reconciled",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "usage_required"
+      }
+    },
+    {
+      "id": "closed-cannot-be-closed-again",
+      "refs": ["10 §2A"],
+      "from": {
+        "control_state": "closed",
+        "control_epoch": "2",
+        "closure": "close_confirmed",
+        "usage_seconds": 27,
+        "reservation_state": "settled"
+      },
+      "trigger": "close_requested",
+      "usage_seconds": null,
+      "expected": {
+        "ok": false,
+        "reason": "invalid_transition"
+      }
+    }
+  ],
+  "permits": [
+    {
+      "control_state": "connecting",
+      "voice_work": false,
+      "audio_lease": true
+    },
+    {
+      "control_state": "ready",
+      "voice_work": true,
+      "audio_lease": true
+    },
+    {
+      "control_state": "lost",
+      "voice_work": false,
+      "audio_lease": false
+    },
+    {
+      "control_state": "closing",
+      "voice_work": false,
+      "audio_lease": false
+    },
+    {
+      "control_state": "closed",
+      "voice_work": false,
+      "audio_lease": false
+    }
+  ]
+}

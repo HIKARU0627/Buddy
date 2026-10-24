@@ -820,6 +820,16 @@ export function semanticErrors(name, value) {
   }
   if (name === 'Lease' && value.heartbeat_ms >= value.ttl_ms)
     errors.push('heartbeat_not_shorter_than_ttl');
+  // リースの更新の入力（B05-01、ADR 0038）。期限が確認の間隔より短い・同じなら更新が間に合わない。
+  if (name === 'LeaseRenewalRequest' && value.heartbeat_ms >= value.ttl_ms)
+    errors.push('heartbeat_not_shorter_than_ttl');
+  // 外部への送信の同意（B05-01、ADR 0038）。取り消しが同意より前の時刻にならない。
+  if (
+    name === 'ExternalSendConsent' &&
+    value.revoked_at !== null &&
+    Date.parse(value.revoked_at) < Date.parse(value.granted_at)
+  )
+    errors.push('revoked_before_granted');
   if (
     name === 'PendingClarification' &&
     Date.parse(value.expires_at) <= Date.parse(value.created_at)

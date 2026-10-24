@@ -207,6 +207,12 @@ export interface BudgetViewState {
   // 前の一覧で「結果不明」だった項目の参照。保留が解けたら（正常に読み直せたら）、その項目の「更新されるまで待って
   // ください」の通知を消す（解けた後にも残さない。Codex の再確認 P3）。
   readonly held: readonly string[];
+  // 保留が解けた（または一覧から消えた）項目の参照と、そのときの一覧の版。要求を送ったときの版がこれより古い
+  // 結果不明の応答では、待機の文言を足さない（解除の後に遅れて届いた応答で、文言を戻さない。Codex の再確認 P3）。
+  // 項目ごとに覚えるので、別の項目の保留が変わっても、この項目の文言は消えない（レビュー P2）。
+  readonly releasedAt: Readonly<Record<string, number>>;
+  // 一覧を受け取って状態が変わった回数（増えるだけ）。要求を送ったときの回数と比べ、応答が一覧より古いかを見る。
+  readonly listRevision: number;
 }
 
 export const INITIAL_BUDGET_STATE: BudgetViewState = {
@@ -215,6 +221,8 @@ export const INITIAL_BUDGET_STATE: BudgetViewState = {
   inputs: {},
   checked: [],
   held: [],
+  releasedAt: {},
+  listRevision: 0,
 };
 
 // ロック・切断・接続待ちで内容を捨てる（ロック中は内容を隠す）。
@@ -280,9 +288,18 @@ export function applyBudgetResponse(
   channel: Channel,
   decision: 'approve' | 'reject',
   response: DesktopIpcResponse,
+  sentListRevision: number,
 ): BudgetViewState {
   const busy = state.busy.filter((item) => item !== ref);
-  if (response.outcome === 'rejected')
+  if (response.outcome === 'rejected') {
+    // 送った後に、この項目の保留が解けている（または一覧から消えている）なら、待機の文言は足さない（解除の
+    // 後に遅れて届いた結果不明の応答で、文言が戻らないようにする）。別の項目の保留が変わっただけでは、この
+    // 項目は解除されていないので文言を出す。まだ保留の一覧に残っていれば足し、解除の同期で消す。
+    if (
+      response.reason === 'outcome_unknown' &&
+      sentListRevision < (state.releasedAt[ref] ?? -1)
+    )
+      return { ...state, busy };
     return {
       ...state,
       busy,
@@ -291,6 +308,7 @@ export function applyBudgetResponse(
         [ref]: warn(budgetFailureText(channel, response.reason, decision)),
       },
     };
+  }
   // 受け付けた（中枢が記録した）。項目は次の読み取りで一覧から消える。入力は捨てる。
   const inputs = { ...state.inputs };
   delete inputs[ref];
@@ -355,10 +373,9 @@ export function syncBudget(
   const heldNow = items
     .filter((entry) => entry.delivery_unknown)
     .map((entry) => entry.ref);
-  // 保留が解けた項目（前は結果不明で、今も一覧にあり、もう結果不明ではない）の通知は消す。
-  const released = new Set(
-    state.held.filter((ref) => keep(ref) && !heldNow.includes(ref)),
-  );
+  // 保留が解けた項目（前は結果不明で、もう結果不明ではない）の通知は消す。一覧から消えた項目も、表示する行が
+  // ないので同じく消える（keep で落とす）。
+  const released = new Set(state.held.filter((ref) => !heldNow.includes(ref)));
   const notices = Object.entries(state.notices).filter(
     ([ref]) => keep(ref) && !released.has(ref),
   );
@@ -374,12 +391,20 @@ export function syncBudget(
     heldNow.every((ref, index) => state.held[index] === ref)
   )
     return state;
+  const listRevision = state.listRevision + 1;
+  // 解除した版を項目ごとに覚える。送信中に一覧から消えた項目も、表示する行のない文言を遅れて届いた結果不明の
+  // 応答で戻さないため、同じく解除として覚える。
+  const releasedAt = { ...state.releasedAt };
+  for (const ref of released) releasedAt[ref] = listRevision;
+  for (const ref of state.busy) if (!keep(ref)) releasedAt[ref] = listRevision;
   return {
     notices: Object.fromEntries(notices),
     inputs: Object.fromEntries(inputs),
     busy,
     checked,
     held: heldNow,
+    releasedAt,
+    listRevision,
   };
 }
 
@@ -414,14 +439,24 @@ export function budgetActions(sink: BudgetSink): BudgetActions {
     built: DesktopIpcRequest,
     ref: string,
     decision: 'approve' | 'reject',
-  ) =>
-    sink.send(
+  ) => {
+    // 送った時点の一覧の版。応答が届いたときに一覧が進んでいれば、結果不明の待機の文言を足さない。
+    const sentListRevision = sink.state().listRevision;
+    return sink.send(
       built,
       (state, response) =>
-        applyBudgetResponse(state, ref, built.channel, decision, response),
+        applyBudgetResponse(
+          state,
+          ref,
+          built.channel,
+          decision,
+          response,
+          sentListRevision,
+        ),
       (state) => applyBudgetFailure(state, ref),
       (state) => markBusy(state, ref),
     );
+  };
   return {
     decide: (ref, decision) => {
       if (sink.state().busy.includes(ref)) return;

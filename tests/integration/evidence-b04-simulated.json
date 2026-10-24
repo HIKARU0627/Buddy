@@ -245,7 +245,7 @@
     },
     {
       "path": "packages/contracts/schemas/buddy.schema.json",
-      "sha256": "5ace89600135f6cecb6e5bec7d88247f74803745c0e7e33496dca2bbb3dfecb1"
+      "sha256": "7a0834f763991c0008b0f4cdefcd5c7bc3dcaca05aaa5b627014f66b74936c2c"
     },
     {
       "path": "packages/domain/package.json",
@@ -266,14 +266,6 @@
     {
       "path": "packages/domain/src/audio.ts",
       "sha256": "a801ed9ae08f25dd013524afe407758e82c9b6a552615f91f55afd1245be0292"
-    },
-    {
-      "path": "packages/domain/src/backup-keys.ts",
-      "sha256": "1eeda7fa6bea1c3c98086d4370cccca2ad1bfacf397154f70c5be4596ffe21ed"
-    },
-    {
-      "path": "packages/domain/src/backup-plan.ts",
-      "sha256": "164e42cf943fd1f6efc5375fe5fbbd9a45fd29d990689a98e65d33c482216992"
     },
     {
       "path": "packages/domain/src/budget-credit.ts",
@@ -341,7 +333,7 @@
     },
     {
       "path": "packages/domain/src/index.ts",
-      "sha256": "d98e965684a5891edc68e2632adbe2fb644058196d20cda78b2643b51d563346"
+      "sha256": "301af9009eeef70ad00f62528e89f9f9ec8e30ee4926f13e634e51073d33438b"
     },
     {
       "path": "packages/domain/src/intents.ts",
@@ -378,14 +370,6 @@
     {
       "path": "packages/domain/src/readiness.ts",
       "sha256": "f61ff1b9737ab29db8197efebd047cbdecce1bde88794d523a0071f0285e844c"
-    },
-    {
-      "path": "packages/domain/src/restore-aftermath.ts",
-      "sha256": "8e9b14c97b469b8940dce6e50158a3e2d2af8df9f17788ec7835437c15e139e1"
-    },
-    {
-      "path": "packages/domain/src/restore-plan.ts",
-      "sha256": "6fb6c2ad7c7c634baca7b09a1c9495614fd3a65660dcf2436cce27c9e8e0e759"
     },
     {
       "path": "packages/domain/src/retention-sweep.ts",
@@ -656,7 +640,7 @@
     {
       "case_id": "X01",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -672,7 +656,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -680,7 +664,7 @@
     {
       "case_id": "X02",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -696,7 +680,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -704,7 +688,7 @@
     {
       "case_id": "X03",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -720,7 +704,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "awaiting_approval",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -728,7 +712,7 @@
     {
       "case_id": "X04",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -744,7 +728,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "awaiting_approval",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -752,7 +736,7 @@
     {
       "case_id": "X05-before-dispatch",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -768,7 +752,7 @@
       "provider_state_changes": 0,
       "approvals": 1,
       "final_state": "cancelled",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -776,7 +760,7 @@
     {
       "case_id": "X05-after-dispatch",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -792,7 +776,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "reconciling",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -800,7 +784,7 @@
     {
       "case_id": "X06",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -816,7 +800,7 @@
       "provider_state_changes": 0,
       "approvals": 1,
       "final_state": "unknown_held",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -824,7 +808,7 @@
     {
       "case_id": "X07",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -840,7 +824,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -848,7 +832,7 @@
     {
       "case_id": "X08",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -864,7 +848,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -872,7 +856,7 @@
     {
       "case_id": "X09",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -888,7 +872,7 @@
       "provider_state_changes": 0,
       "approvals": 1,
       "final_state": "awaiting_approval",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -896,7 +880,7 @@
     {
       "case_id": "B04-x10-after-draft-mechanism",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -912,7 +896,7 @@
       "provider_state_changes": 0,
       "approvals": 1,
       "final_state": "unknown_held",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -920,7 +904,7 @@
     {
       "case_id": "B04-x10-after-send-accepted-mechanism",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -936,7 +920,7 @@
       "provider_state_changes": 0,
       "approvals": 1,
       "final_state": "unknown_held",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": "工程の送出意図・結果不明の保存と再起動後の照合判断だけ。下書き・送信の縦断合格は B14。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -944,7 +928,7 @@
     {
       "case_id": "X11",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -960,7 +944,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -968,7 +952,7 @@
     {
       "case_id": "X05-after-dispatch-draft",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -984,7 +968,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "reconciling",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -992,7 +976,7 @@
     {
       "case_id": "X06-draft",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1008,7 +992,7 @@
       "provider_state_changes": 0,
       "approvals": 1,
       "final_state": "unknown_held",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1016,7 +1000,7 @@
     {
       "case_id": "X07-draft",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1032,7 +1016,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1040,7 +1024,7 @@
     {
       "case_id": "X08-draft",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1056,7 +1040,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1064,7 +1048,7 @@
     {
       "case_id": "QA27-read",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1080,7 +1064,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "answered",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": "Core の API で確認。同じ画面からの 3 経路はデスクトップの main の部品の試験（two-clients.test.ts）で別に確認。Electron の画面と本物の OS 確認ダイアログは未実施。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1088,7 +1072,7 @@
     {
       "case_id": "QA27-local",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1104,7 +1088,7 @@
       "provider_state_changes": 0,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": "Core の API で確認。同じ画面からの 3 経路はデスクトップの main の部品の試験（two-clients.test.ts）で別に確認。Electron の画面と本物の OS 確認ダイアログは未実施。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1112,7 +1096,7 @@
     {
       "case_id": "QA27-remote",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1128,7 +1112,7 @@
       "provider_state_changes": 1,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": "Core の API で確認。同じ画面からの 3 経路はデスクトップの main の部品の試験（two-clients.test.ts）で別に確認。Electron の画面と本物の OS 確認ダイアログは未実施。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1136,7 +1120,7 @@
     {
       "case_id": "QA27-auth",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1152,7 +1136,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "refused_401",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": "Core の API で確認。同じ画面からの 3 経路はデスクトップの main の部品の試験（two-clients.test.ts）で別に確認。Electron の画面と本物の OS 確認ダイアログは未実施。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1160,7 +1144,7 @@
     {
       "case_id": "QA27-expiry",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1176,7 +1160,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "refused_410",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": "Core の API で確認。同じ画面からの 3 経路はデスクトップの main の部品の試験（two-clients.test.ts）で別に確認。Electron の画面と本物の OS 確認ダイアログは未実施。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1184,7 +1168,7 @@
     {
       "case_id": "QA28",
       "kind": "simulated",
-      "commit": "66918e25bacf81b883202bc888f6dabec797ba11",
+      "commit": "d2a29d4276c70ec7db8a50cfc06f08726bac14a8",
       "contract_version": "1.0.0",
       "db_version": "9",
       "environment": {
@@ -1200,7 +1184,7 @@
       "provider_state_changes": 0,
       "approvals": 1,
       "final_state": "succeeded",
-      "observed_at": "2026-10-24T14:29:57.435Z",
+      "observed_at": "2026-10-24T13:55:17.983Z",
       "deviation": null,
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1237,7 +1221,7 @@
       ],
       "faults": ["after_external_apply_before_response"],
       "observed": {
-        "operation_id": "ad547566-1e9f-4d41-8f03-359dc355c316",
+        "operation_id": "5cfa6257-3856-49e8-abed-3967b7cb36ed",
         "db_version": "9",
         "state_history": [
           {
@@ -1273,7 +1257,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "b26b2c0b-2046-49a1-a20e-4cf1ba18536e",
+            "approval_id": "831a2d14-7fa1-4e85-b480-7cd08d134098",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -1281,11 +1265,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "c3803116-c794-414b-a8a5-f52dc30e3cfc",
+            "attempt_id": "8fd36984-ed22-407e-a3c5-ea09425a2e7b",
             "content_version": "1",
-            "approval_id": "b26b2c0b-2046-49a1-a20e-4cf1ba18536e",
+            "approval_id": "831a2d14-7fa1-4e85-b480-7cd08d134098",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852048059,
+            "dispatch_intent_at": 1792850065659,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -1294,15 +1278,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852048059,
+            "dispatch_intent_at": 1792850065659,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "ad547566-1e9f-4d41-8f03-359dc355c316",
-            "attempt_id": "c3803116-c794-414b-a8a5-f52dc30e3cfc",
+            "operation_id": "5cfa6257-3856-49e8-abed-3967b7cb36ed",
+            "attempt_id": "8fd36984-ed22-407e-a3c5-ea09425a2e7b",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -1356,7 +1340,7 @@
       ],
       "faults": ["core_restart"],
       "observed": {
-        "operation_id": "90481673-03bc-4b11-9393-b1d23aa665f0",
+        "operation_id": "4d1eb671-f41a-47c0-a490-09bf7adff198",
         "db_version": "9",
         "state_history": [
           {
@@ -1408,7 +1392,7 @@
       ],
       "faults": ["local_commit_before_ack"],
       "observed": {
-        "operation_id": "4da6c1c0-851a-48e0-ad42-d18c04d25642",
+        "operation_id": "b90bb806-73f2-4ea1-8635-0c2301fea842",
         "db_version": "9",
         "state_history": [
           {
@@ -1429,7 +1413,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "7e894b3b-1883-496a-bc5a-81da713fd6d5",
+            "approval_id": "37c3b0fe-6c4d-49b8-af44-b3635e6ecf4a",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -1437,12 +1421,12 @@
         ],
         "attempts": [
           {
-            "attempt_id": "e3a112c6-89c7-46af-808d-8f0ee0730cbc",
+            "attempt_id": "8a5e9d46-dc8b-4a9d-b5d3-d1cf057918da",
             "content_version": "1",
-            "approval_id": "7e894b3b-1883-496a-bc5a-81da713fd6d5",
+            "approval_id": "37c3b0fe-6c4d-49b8-af44-b3635e6ecf4a",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852050445,
-            "external_id": "27747d9b-8071-4f2c-8283-32101de431ca",
+            "dispatch_intent_at": 1792850067099,
+            "external_id": "04d639c0-7479-4ab8-b427-74821c09649c",
             "result_status": "confirmed_success"
           }
         ],
@@ -1590,7 +1574,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "30b8ffa0-177e-444a-82b9-77855656e228",
+        "operation_id": "6c7242aa-4d4a-477a-9024-bb81d8e08307",
         "db_version": "9",
         "state_history": [
           {
@@ -1621,7 +1605,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "8eccb7cd-f359-43c5-a26d-a0e0bd65466f",
+            "approval_id": "9082be1c-e1a6-4f9c-907f-01f0856afe41",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -1629,11 +1613,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "6ed827ec-a538-486c-91a1-bff836862f1b",
+            "attempt_id": "089dd60c-e0b7-40d3-b53c-b9de5c09f8d9",
             "content_version": "1",
-            "approval_id": "8eccb7cd-f359-43c5-a26d-a0e0bd65466f",
+            "approval_id": "9082be1c-e1a6-4f9c-907f-01f0856afe41",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852053177,
+            "dispatch_intent_at": 1792850068968,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -1642,7 +1626,7 @@
           {
             "step_id": "2-send",
             "step_kind": "send",
-            "dispatch_intent_at": 1792852053177,
+            "dispatch_intent_at": 1792850068968,
             "result_status": "unknown",
             "external_id": null
           }
@@ -1692,7 +1676,7 @@
       ],
       "faults": ["approval_barrier"],
       "observed": {
-        "operation_id": "40bfc024-cfa9-495a-b8ef-a7a265aa2b71",
+        "operation_id": "b9c40d3c-cb8a-4276-8138-4c3b6581eb7d",
         "db_version": "9",
         "state_history": [
           {
@@ -1728,7 +1712,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "c31e05ab-6d8f-4b08-8fe5-c7a1cf4d324e",
+            "approval_id": "05f61ffb-255d-4edb-b5bd-c75b01655ca7",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -1736,11 +1720,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "43d5768f-6f39-4478-9a39-d0519cc77885",
+            "attempt_id": "58097b33-37d3-4e5a-b93b-b4dd130571c6",
             "content_version": "1",
-            "approval_id": "c31e05ab-6d8f-4b08-8fe5-c7a1cf4d324e",
+            "approval_id": "05f61ffb-255d-4edb-b5bd-c75b01655ca7",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852055257,
+            "dispatch_intent_at": 1792850070340,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -1749,15 +1733,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852055257,
+            "dispatch_intent_at": 1792850070340,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "40bfc024-cfa9-495a-b8ef-a7a265aa2b71",
-            "attempt_id": "43d5768f-6f39-4478-9a39-d0519cc77885",
+            "operation_id": "b9c40d3c-cb8a-4276-8138-4c3b6581eb7d",
+            "attempt_id": "58097b33-37d3-4e5a-b93b-b4dd130571c6",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -1811,7 +1795,7 @@
       ],
       "faults": ["response_timeout_then_late_apply"],
       "observed": {
-        "operation_id": "901af664-ad37-44e9-bcc2-00575b89ce7e",
+        "operation_id": "561e72c2-e9e1-4734-b9ac-6e3c95732b96",
         "db_version": "9",
         "state_history": [
           {
@@ -1852,7 +1836,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "aaa0b6bf-85e6-401d-854f-789323bd10f3",
+            "approval_id": "db539ace-563b-44dd-9e42-27b7cab9aedc",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -1860,11 +1844,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "123291c8-7944-42b9-a4b9-16ba4ace6212",
+            "attempt_id": "2c5028fa-ceaa-46e8-8361-804068248bf6",
             "content_version": "1",
-            "approval_id": "aaa0b6bf-85e6-401d-854f-789323bd10f3",
+            "approval_id": "db539ace-563b-44dd-9e42-27b7cab9aedc",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852057450,
+            "dispatch_intent_at": 1792850071962,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -1873,15 +1857,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852057450,
+            "dispatch_intent_at": 1792850071962,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "901af664-ad37-44e9-bcc2-00575b89ce7e",
-            "attempt_id": "123291c8-7944-42b9-a4b9-16ba4ace6212",
+            "operation_id": "561e72c2-e9e1-4734-b9ac-6e3c95732b96",
+            "attempt_id": "2c5028fa-ceaa-46e8-8361-804068248bf6",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -1981,7 +1965,7 @@
       ],
       "faults": ["after_external_apply_before_response"],
       "observed": {
-        "operation_id": "b472c5a6-f3db-4110-972f-80af48ae748d",
+        "operation_id": "c4b6b21a-0a2a-45a6-8963-0c2a3ecc97f2",
         "db_version": "9",
         "state_history": [
           {
@@ -2017,7 +2001,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "4235d40d-b263-4987-a13f-99b144b0c292",
+            "approval_id": "95ce4f05-280c-42d7-a08e-085d2f4c812d",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -2025,11 +2009,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "e87b44da-576c-4342-82c7-b2691ebdc4b4",
+            "attempt_id": "d3a03996-e08c-427b-96b8-db557b590a70",
             "content_version": "1",
-            "approval_id": "4235d40d-b263-4987-a13f-99b144b0c292",
+            "approval_id": "95ce4f05-280c-42d7-a08e-085d2f4c812d",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852061098,
+            "dispatch_intent_at": 1792850073271,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -2038,15 +2022,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852061098,
+            "dispatch_intent_at": 1792850073271,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "b472c5a6-f3db-4110-972f-80af48ae748d",
-            "attempt_id": "e87b44da-576c-4342-82c7-b2691ebdc4b4",
+            "operation_id": "c4b6b21a-0a2a-45a6-8963-0c2a3ecc97f2",
+            "attempt_id": "d3a03996-e08c-427b-96b8-db557b590a70",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -2064,7 +2048,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:b472c5a6-f3db-4110-972f-80af48ae748d:1",
+            "marker": "buddy-op:c4b6b21a-0a2a-45a6-8963-0c2a3ecc97f2:1",
             "status": "draft"
           }
         ],
@@ -2103,7 +2087,7 @@
       ],
       "faults": ["after_target_recheck"],
       "observed": {
-        "operation_id": "2fa239c4-d83f-4cd3-acaa-e36e305e0be4",
+        "operation_id": "fab3f1b3-d88c-4149-a81a-a43306b8ccc1",
         "db_version": "9",
         "state_history": [
           {
@@ -2129,7 +2113,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "8c9bda9d-7cf5-41a5-9f38-2874197c5922",
+            "approval_id": "d0878fa2-3f72-4c0c-a2c9-f858a37e7391",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -2137,9 +2121,9 @@
         ],
         "attempts": [
           {
-            "attempt_id": "40c06622-d008-4707-a94b-c8453cb46f38",
+            "attempt_id": "3b2bd0e1-e86f-4207-8208-eed08503b30a",
             "content_version": "1",
-            "approval_id": "8c9bda9d-7cf5-41a5-9f38-2874197c5922",
+            "approval_id": "d0878fa2-3f72-4c0c-a2c9-f858a37e7391",
             "status": "cancelled",
             "dispatch_intent_at": null,
             "external_id": null,
@@ -2187,7 +2171,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send"],
       "observed": {
-        "operation_id": "a175a0a5-d76d-43a1-9498-bf4ba06422d5",
+        "operation_id": "f6a54732-d2e8-419a-a151-d4e3a3dd68ae",
         "db_version": "9",
         "state_history": [
           {
@@ -2218,7 +2202,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "0e862371-ad28-458e-a7b0-631b62418569",
+            "approval_id": "ab252cd9-fda8-43d4-8613-2969415a284d",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -2226,11 +2210,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "c7b86af8-d643-45af-88bf-ad282b05985e",
+            "attempt_id": "e3032236-06a2-4c1f-b22e-2cca46190c07",
             "content_version": "1",
-            "approval_id": "0e862371-ad28-458e-a7b0-631b62418569",
+            "approval_id": "ab252cd9-fda8-43d4-8613-2969415a284d",
             "status": "reconciling",
-            "dispatch_intent_at": 1792852065565,
+            "dispatch_intent_at": 1792850074793,
             "external_id": "draft-001",
             "result_status": null
           }
@@ -2239,15 +2223,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852065565,
+            "dispatch_intent_at": 1792850074793,
             "result_status": null,
             "external_id": null
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "a175a0a5-d76d-43a1-9498-bf4ba06422d5",
-            "attempt_id": "c7b86af8-d643-45af-88bf-ad282b05985e",
+            "operation_id": "f6a54732-d2e8-419a-a151-d4e3a3dd68ae",
+            "attempt_id": "e3032236-06a2-4c1f-b22e-2cca46190c07",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -2265,7 +2249,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:a175a0a5-d76d-43a1-9498-bf4ba06422d5:1",
+            "marker": "buddy-op:f6a54732-d2e8-419a-a151-d4e3a3dd68ae:1",
             "status": "draft"
           }
         ],
@@ -2303,7 +2287,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send"],
       "observed": {
-        "operation_id": "04591385-6428-4cdf-a1e4-d9af9ce1dbbc",
+        "operation_id": "6610486b-e5f9-4792-a3c3-421cdbf6c2b3",
         "db_version": "9",
         "state_history": [
           {
@@ -2334,7 +2318,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "81c0fa00-7439-491b-b7b4-9addb418388f",
+            "approval_id": "51756189-ea8a-45f7-a7e4-6e6374ef7328",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -2342,11 +2326,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "009f85ee-0ab0-4370-8501-e30589b51283",
+            "attempt_id": "e4c736e2-e434-4afe-902a-e42fb9ac68ea",
             "content_version": "1",
-            "approval_id": "81c0fa00-7439-491b-b7b4-9addb418388f",
+            "approval_id": "51756189-ea8a-45f7-a7e4-6e6374ef7328",
             "status": "reconciling",
-            "dispatch_intent_at": 1792852067969,
+            "dispatch_intent_at": 1792850075521,
             "external_id": "mail-001",
             "result_status": null
           }
@@ -2355,15 +2339,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852067969,
+            "dispatch_intent_at": 1792850075521,
             "result_status": null,
             "external_id": null
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "04591385-6428-4cdf-a1e4-d9af9ce1dbbc",
-            "attempt_id": "009f85ee-0ab0-4370-8501-e30589b51283",
+            "operation_id": "6610486b-e5f9-4792-a3c3-421cdbf6c2b3",
+            "attempt_id": "e4c736e2-e434-4afe-902a-e42fb9ac68ea",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -2416,7 +2400,7 @@
       ],
       "faults": ["response_timeout_then_late_apply"],
       "observed": {
-        "operation_id": "d970fec5-6ac2-4c4e-887a-e46457964b51",
+        "operation_id": "68ec5456-c167-4758-bbba-e698ff57f3ba",
         "db_version": "9",
         "state_history": [
           {
@@ -2457,7 +2441,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "5f78791f-c5a6-4881-8478-4fd926380735",
+            "approval_id": "d117826d-abc5-45df-935e-19ef77d906f1",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -2465,11 +2449,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "73dee525-db4d-466d-856b-892fa98cedb6",
+            "attempt_id": "62ac5237-e169-4524-9987-0159214305ac",
             "content_version": "1",
-            "approval_id": "5f78791f-c5a6-4881-8478-4fd926380735",
+            "approval_id": "d117826d-abc5-45df-935e-19ef77d906f1",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852070426,
+            "dispatch_intent_at": 1792850076253,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -2478,15 +2462,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852070426,
+            "dispatch_intent_at": 1792850076253,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "d970fec5-6ac2-4c4e-887a-e46457964b51",
-            "attempt_id": "73dee525-db4d-466d-856b-892fa98cedb6",
+            "operation_id": "68ec5456-c167-4758-bbba-e698ff57f3ba",
+            "attempt_id": "62ac5237-e169-4524-9987-0159214305ac",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -2504,7 +2488,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:d970fec5-6ac2-4c4e-887a-e46457964b51:1",
+            "marker": "buddy-op:68ec5456-c167-4758-bbba-e698ff57f3ba:1",
             "status": "draft"
           }
         ],
@@ -2543,7 +2527,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "ccf045b6-5c6d-4cbc-a851-8e761dd048e7",
+        "operation_id": "57d0d6ad-2200-4eb4-a53d-494234bbde0f",
         "db_version": "9",
         "state_history": [
           {
@@ -2574,7 +2558,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "617ded1f-3c55-42b8-b631-f8e9a0bdaae9",
+            "approval_id": "d0375c00-91f1-4205-9c2d-6a6f02361289",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -2582,11 +2566,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "71e05a73-5051-4c97-b280-9ffd7841950c",
+            "attempt_id": "a295f714-52d0-4289-abfd-ae9fb5dce0b9",
             "content_version": "1",
-            "approval_id": "617ded1f-3c55-42b8-b631-f8e9a0bdaae9",
+            "approval_id": "d0375c00-91f1-4205-9c2d-6a6f02361289",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852072130,
+            "dispatch_intent_at": 1792850076799,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -2595,7 +2579,7 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852072130,
+            "dispatch_intent_at": 1792850076799,
             "result_status": "unknown",
             "external_id": null
           }
@@ -2645,7 +2629,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "5fe0635d-4bda-4fff-bb7b-ada31bd01509",
+        "operation_id": "a54084aa-7395-42ee-a66e-5d28f4d3d9ca",
         "db_version": "9",
         "state_history": [
           {
@@ -2676,7 +2660,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "dd7f196c-f72a-4c01-a010-a489833e0768",
+            "approval_id": "18ae033d-5010-45ae-a08d-216ecc012de5",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -2684,11 +2668,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "38c6deb4-a29d-4760-9d8e-91af87e19f81",
+            "attempt_id": "8909d264-1176-4fca-8423-72e8aeac3ea9",
             "content_version": "1",
-            "approval_id": "dd7f196c-f72a-4c01-a010-a489833e0768",
+            "approval_id": "18ae033d-5010-45ae-a08d-216ecc012de5",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852074810,
+            "dispatch_intent_at": 1792850077619,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -2697,7 +2681,7 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852074810,
+            "dispatch_intent_at": 1792850077619,
             "result_status": "unknown",
             "external_id": null
           }
@@ -2743,7 +2727,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "6517e609-b9f4-4f71-9654-1886e1b5b78a",
+        "operation_id": "13a5d813-91a1-43f2-9320-dcacd9a33d0c",
         "db_version": "9",
         "state_history": [
           {
@@ -2779,7 +2763,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "1a1cbd3c-3b27-4c77-89c8-015317a9e645",
+            "approval_id": "0c1bf606-fb42-4039-8352-6247ed399ff0",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -2787,11 +2771,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "582580a7-f33b-4f74-bfa1-2a17f3d33616",
+            "attempt_id": "d7a3bea1-7056-4809-8a12-39febf1c955c",
             "content_version": "1",
-            "approval_id": "1a1cbd3c-3b27-4c77-89c8-015317a9e645",
+            "approval_id": "0c1bf606-fb42-4039-8352-6247ed399ff0",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852078810,
+            "dispatch_intent_at": 1792850078856,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -2800,15 +2784,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852078810,
+            "dispatch_intent_at": 1792850078856,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "6517e609-b9f4-4f71-9654-1886e1b5b78a",
-            "attempt_id": "582580a7-f33b-4f74-bfa1-2a17f3d33616",
+            "operation_id": "13a5d813-91a1-43f2-9320-dcacd9a33d0c",
+            "attempt_id": "d7a3bea1-7056-4809-8a12-39febf1c955c",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -2826,7 +2810,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:6517e609-b9f4-4f71-9654-1886e1b5b78a:1",
+            "marker": "buddy-op:13a5d813-91a1-43f2-9320-dcacd9a33d0c:1",
             "status": "draft"
           }
         ],
@@ -2864,7 +2848,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "2ab49b29-e331-4de6-a61b-f5362f1fd1a8",
+        "operation_id": "4a4f65ab-c059-42a0-bbb2-225026e59e40",
         "db_version": "9",
         "state_history": [
           {
@@ -2895,7 +2879,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "58fa3c3d-95ba-4123-a047-bb66326bcb0d",
+            "approval_id": "0270d92d-1b6d-4c6a-b999-6013acdd5413",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -2903,11 +2887,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "a044a62d-a1f3-4125-8545-7d21d7652182",
+            "attempt_id": "5a066ddb-4677-43d1-b1b0-e3a70883af66",
             "content_version": "1",
-            "approval_id": "58fa3c3d-95ba-4123-a047-bb66326bcb0d",
+            "approval_id": "0270d92d-1b6d-4c6a-b999-6013acdd5413",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852080921,
+            "dispatch_intent_at": 1792850079582,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -2916,7 +2900,7 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852080921,
+            "dispatch_intent_at": 1792850079582,
             "result_status": "unknown",
             "external_id": null
           }
@@ -2961,7 +2945,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "7ea724a7-337b-40ad-8264-615748a38844",
+        "operation_id": "583212c0-06e6-4027-9b77-cfd6aa598fc7",
         "db_version": "9",
         "state_history": [
           {
@@ -2982,7 +2966,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "4644d636-bbed-40a8-9599-07bda13e18ac",
+            "approval_id": "9d071687-16cb-4832-ae66-022cf29807dc",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -2990,12 +2974,12 @@
         ],
         "attempts": [
           {
-            "attempt_id": "0c391255-f990-49fe-8639-c9a7b14f9a0b",
+            "attempt_id": "32622821-76d1-440f-a69e-85450d4c4a8f",
             "content_version": "1",
-            "approval_id": "4644d636-bbed-40a8-9599-07bda13e18ac",
+            "approval_id": "9d071687-16cb-4832-ae66-022cf29807dc",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852085199,
-            "external_id": "825f01fb-d5ca-44fd-8e23-6350ee63fda9",
+            "dispatch_intent_at": 1792850080779,
+            "external_id": "5b71e00e-5010-4fba-b764-ecc582e5fcad",
             "result_status": "confirmed_success"
           }
         ],
@@ -3041,7 +3025,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "54ca559b-2bd2-4a36-89c6-06ab13d7ca54",
+        "operation_id": "0e06442f-413b-4545-9622-4ec7103aad69",
         "db_version": "9",
         "state_history": [
           {
@@ -3098,7 +3082,7 @@
       ],
       "faults": ["core_restart"],
       "observed": {
-        "operation_id": "06dfeeec-0624-4b03-827f-177b121354d6",
+        "operation_id": "666fcd1b-931f-48f1-865f-8a5569afd854",
         "db_version": "9",
         "state_history": [
           {
@@ -3134,7 +3118,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "67ab089a-6924-40c2-82b7-bab9cafbdee5",
+            "approval_id": "662c2a6b-3525-4832-93c1-7317fde60106",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -3142,11 +3126,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "f61b312a-706a-4566-9c91-3426a42a8e77",
+            "attempt_id": "cf2fb647-8c0c-4a2a-a79d-55126e1fddf7",
             "content_version": "1",
-            "approval_id": "67ab089a-6924-40c2-82b7-bab9cafbdee5",
+            "approval_id": "662c2a6b-3525-4832-93c1-7317fde60106",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852089345,
+            "dispatch_intent_at": 1792850081867,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -3155,15 +3139,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852089345,
+            "dispatch_intent_at": 1792850081867,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "06dfeeec-0624-4b03-827f-177b121354d6",
-            "attempt_id": "f61b312a-706a-4566-9c91-3426a42a8e77",
+            "operation_id": "666fcd1b-931f-48f1-865f-8a5569afd854",
+            "attempt_id": "cf2fb647-8c0c-4a2a-a79d-55126e1fddf7",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -3216,7 +3200,7 @@
       ],
       "faults": ["after_event_delivery_before_ack", "core_restart"],
       "observed": {
-        "operation_id": "91fce068-75ab-41b6-b39a-3057e1067540",
+        "operation_id": "47b9472a-a592-4984-ab43-87bb0e9d3659",
         "db_version": "9",
         "state_history": [
           {
@@ -3252,7 +3236,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "d2cf5557-ef22-42d7-ba8c-37df1a335455",
+            "approval_id": "d8fd91f3-4fca-44fc-a3f4-2be2277aff8f",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -3260,11 +3244,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "2a71362c-9932-4d6f-aa1c-b4cd4928a7c9",
+            "attempt_id": "05d03624-1c7b-4cc9-a123-0a5c2ac61d88",
             "content_version": "1",
-            "approval_id": "d2cf5557-ef22-42d7-ba8c-37df1a335455",
+            "approval_id": "d8fd91f3-4fca-44fc-a3f4-2be2277aff8f",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852092916,
+            "dispatch_intent_at": 1792850082762,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -3273,15 +3257,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852092916,
+            "dispatch_intent_at": 1792850082762,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "91fce068-75ab-41b6-b39a-3057e1067540",
-            "attempt_id": "2a71362c-9932-4d6f-aa1c-b4cd4928a7c9",
+            "operation_id": "47b9472a-a592-4984-ab43-87bb0e9d3659",
+            "attempt_id": "05d03624-1c7b-4cc9-a123-0a5c2ac61d88",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -3335,7 +3319,7 @@
       ],
       "faults": ["after_approval_save"],
       "observed": {
-        "operation_id": "a3f0a604-f403-4252-804c-c911d5c8aa37",
+        "operation_id": "3158d842-ca89-4375-9e70-0823be98fabd",
         "db_version": "9",
         "state_history": [
           {
@@ -3361,7 +3345,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "226309aa-a7b4-4a34-af50-74fde99cb02f",
+            "approval_id": "cf4cf2ed-46bd-4106-a970-ed92d853cedb",
             "content_version": "1",
             "route": "screen",
             "status": "revoked"
@@ -3369,9 +3353,9 @@
         ],
         "attempts": [
           {
-            "attempt_id": "94bf9dd7-b584-4fd0-87ff-4ff9e90f1436",
+            "attempt_id": "2188c850-188b-4244-9ffd-658dfd5393ba",
             "content_version": "1",
-            "approval_id": "226309aa-a7b4-4a34-af50-74fde99cb02f",
+            "approval_id": "cf4cf2ed-46bd-4106-a970-ed92d853cedb",
             "status": "superseded",
             "dispatch_intent_at": null,
             "external_id": null,
@@ -3420,7 +3404,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "3554bc19-8f83-4f5d-bdb5-348ffc850791",
+        "operation_id": "609b7b8f-ef1b-4ad3-95f2-805c85575622",
         "db_version": "9",
         "state_history": [
           {
@@ -3456,7 +3440,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "b29ef1ca-9898-4efc-a74e-ca38710300ba",
+            "approval_id": "a7921a74-54dd-4bd0-83fb-cd18b43774f0",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -3464,11 +3448,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "fc2d02df-a3f7-4b99-a2f9-24a0d596a670",
+            "attempt_id": "977d3497-fa9f-4ba5-8607-682c8f76bd9d",
             "content_version": "1",
-            "approval_id": "b29ef1ca-9898-4efc-a74e-ca38710300ba",
+            "approval_id": "a7921a74-54dd-4bd0-83fb-cd18b43774f0",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852097994,
+            "dispatch_intent_at": 1792850084307,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -3477,15 +3461,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852097994,
+            "dispatch_intent_at": 1792850084307,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "3554bc19-8f83-4f5d-bdb5-348ffc850791",
-            "attempt_id": "fc2d02df-a3f7-4b99-a2f9-24a0d596a670",
+            "operation_id": "609b7b8f-ef1b-4ad3-95f2-805c85575622",
+            "attempt_id": "977d3497-fa9f-4ba5-8607-682c8f76bd9d",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -3503,7 +3487,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:3554bc19-8f83-4f5d-bdb5-348ffc850791:1",
+            "marker": "buddy-op:609b7b8f-ef1b-4ad3-95f2-805c85575622:1",
             "status": "draft"
           }
         ],
@@ -3587,7 +3571,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "ccb228e3-acc7-47c9-938f-aecf3a27684e",
+        "operation_id": "2753123b-e3e3-4d95-a89d-2468e29c0aa0",
         "db_version": "9",
         "state_history": [
           {
@@ -3618,7 +3602,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "c28cdb48-d5fa-47e3-ae6d-707ae04fc32f",
+            "approval_id": "ac8f2c29-696e-407c-876c-6946e5d1d121",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -3626,11 +3610,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "0bdcf66d-af78-4acc-9dc5-9769a0c55907",
+            "attempt_id": "7ec029c8-d867-4875-982b-75507f9f91f1",
             "content_version": "1",
-            "approval_id": "c28cdb48-d5fa-47e3-ae6d-707ae04fc32f",
+            "approval_id": "ac8f2c29-696e-407c-876c-6946e5d1d121",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852101232,
+            "dispatch_intent_at": 1792850085259,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -3639,7 +3623,7 @@
           {
             "step_id": "2-send",
             "step_kind": "send",
-            "dispatch_intent_at": 1792852101232,
+            "dispatch_intent_at": 1792850085259,
             "result_status": "unknown",
             "external_id": null
           }
@@ -3689,7 +3673,7 @@
       ],
       "faults": ["after_external_apply_before_response"],
       "observed": {
-        "operation_id": "576ed464-7f2d-4b12-8a9a-fceda54b7109",
+        "operation_id": "0d9c8870-7359-488c-8165-80b38e1f6fb8",
         "db_version": "9",
         "state_history": [
           {
@@ -3725,7 +3709,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "d94804b3-e03a-4de0-820c-2c8045a826f9",
+            "approval_id": "801ba8d9-0f54-4322-af06-45b138cc6593",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -3733,11 +3717,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "3a279845-2287-4abe-b713-c1d4fccd93a2",
+            "attempt_id": "726d7ca9-ced0-4d1c-8a55-b837f2b98410",
             "content_version": "1",
-            "approval_id": "d94804b3-e03a-4de0-820c-2c8045a826f9",
+            "approval_id": "801ba8d9-0f54-4322-af06-45b138cc6593",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852103677,
+            "dispatch_intent_at": 1792850086054,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -3746,15 +3730,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852103677,
+            "dispatch_intent_at": 1792850086054,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "576ed464-7f2d-4b12-8a9a-fceda54b7109",
-            "attempt_id": "3a279845-2287-4abe-b713-c1d4fccd93a2",
+            "operation_id": "0d9c8870-7359-488c-8165-80b38e1f6fb8",
+            "attempt_id": "726d7ca9-ced0-4d1c-8a55-b837f2b98410",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -3808,7 +3792,7 @@
       ],
       "faults": ["approval_barrier"],
       "observed": {
-        "operation_id": "a1b08d9d-85d6-43fd-9d7e-dce6c300d79d",
+        "operation_id": "3fc5f41e-a7e9-4edf-a94c-797c544306d7",
         "db_version": "9",
         "state_history": [
           {
@@ -3844,7 +3828,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "d3ffcd52-8f44-4b01-91a6-b027d061e365",
+            "approval_id": "833f0144-f08c-4ea2-a043-40d1c1a3b00e",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -3852,11 +3836,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "3db32a9d-4b8a-45b5-a762-e88831acd36b",
+            "attempt_id": "8d342b5f-cf5a-47b7-bcee-fd76478f324c",
             "content_version": "1",
-            "approval_id": "d3ffcd52-8f44-4b01-91a6-b027d061e365",
+            "approval_id": "833f0144-f08c-4ea2-a043-40d1c1a3b00e",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852107387,
+            "dispatch_intent_at": 1792850087003,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -3865,15 +3849,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852107387,
+            "dispatch_intent_at": 1792850087003,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "a1b08d9d-85d6-43fd-9d7e-dce6c300d79d",
-            "attempt_id": "3db32a9d-4b8a-45b5-a762-e88831acd36b",
+            "operation_id": "3fc5f41e-a7e9-4edf-a94c-797c544306d7",
+            "attempt_id": "8d342b5f-cf5a-47b7-bcee-fd76478f324c",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -3927,7 +3911,7 @@
       ],
       "faults": ["core_restart"],
       "observed": {
-        "operation_id": "04061a2d-6706-46f9-b846-4d5cf7bcab1a",
+        "operation_id": "bf02a4d1-3e21-4de2-b89c-7ebeeb615a6e",
         "db_version": "9",
         "state_history": [
           {
@@ -3963,7 +3947,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "0003571d-820b-4e4c-b3bd-d6e18db61fb3",
+            "approval_id": "d939514c-692d-4159-bdb1-5dc2a3c38850",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -3971,11 +3955,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "c572a4e8-f2d2-450f-afd5-93a1ad29d765",
+            "attempt_id": "e733680b-9000-4522-8b9c-915e9ddecbe3",
             "content_version": "1",
-            "approval_id": "0003571d-820b-4e4c-b3bd-d6e18db61fb3",
+            "approval_id": "d939514c-692d-4159-bdb1-5dc2a3c38850",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852111046,
+            "dispatch_intent_at": 1792850087936,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -3984,15 +3968,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852111046,
+            "dispatch_intent_at": 1792850087936,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "04061a2d-6706-46f9-b846-4d5cf7bcab1a",
-            "attempt_id": "c572a4e8-f2d2-450f-afd5-93a1ad29d765",
+            "operation_id": "bf02a4d1-3e21-4de2-b89c-7ebeeb615a6e",
+            "attempt_id": "e733680b-9000-4522-8b9c-915e9ddecbe3",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -4045,7 +4029,7 @@
       ],
       "faults": ["after_approval_save"],
       "observed": {
-        "operation_id": "5bf3f189-52f7-45ac-81f3-e7e8ac73073f",
+        "operation_id": "f3d4f098-6f4e-4f25-882e-81a82eda74d2",
         "db_version": "9",
         "state_history": [
           {
@@ -4071,7 +4055,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "00f42659-7919-4abf-a986-a19794454325",
+            "approval_id": "950555af-29c7-4f4a-99d5-7e4a3d613c1b",
             "content_version": "1",
             "route": "screen",
             "status": "revoked"
@@ -4079,9 +4063,9 @@
         ],
         "attempts": [
           {
-            "attempt_id": "42ec8b7c-6872-43ea-95f4-aaa7611f3506",
+            "attempt_id": "baf03ba7-ff05-464f-aaef-b1f1ea28c811",
             "content_version": "1",
-            "approval_id": "00f42659-7919-4abf-a986-a19794454325",
+            "approval_id": "950555af-29c7-4f4a-99d5-7e4a3d613c1b",
             "status": "superseded",
             "dispatch_intent_at": null,
             "external_id": null,
@@ -4130,7 +4114,7 @@
       ],
       "faults": ["after_external_apply_before_response"],
       "observed": {
-        "operation_id": "82563939-f10b-484f-9951-e7a907959b79",
+        "operation_id": "5ddc40ec-1d32-4df6-bcd7-58eafbaa579b",
         "db_version": "9",
         "state_history": [
           {
@@ -4166,7 +4150,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "108ce615-b530-4a48-8904-40daec5cd946",
+            "approval_id": "cc3efff2-cbb5-4701-9f9c-f57f0d0f551f",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -4174,11 +4158,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "0c03593b-ea53-49b3-b6cb-34136af8196f",
+            "attempt_id": "ef38abcc-4f89-403d-894b-7c0060d4eb8a",
             "content_version": "1",
-            "approval_id": "108ce615-b530-4a48-8904-40daec5cd946",
+            "approval_id": "cc3efff2-cbb5-4701-9f9c-f57f0d0f551f",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852116346,
+            "dispatch_intent_at": 1792850089236,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -4187,15 +4171,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852116346,
+            "dispatch_intent_at": 1792850089236,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "82563939-f10b-484f-9951-e7a907959b79",
-            "attempt_id": "0c03593b-ea53-49b3-b6cb-34136af8196f",
+            "operation_id": "5ddc40ec-1d32-4df6-bcd7-58eafbaa579b",
+            "attempt_id": "ef38abcc-4f89-403d-894b-7c0060d4eb8a",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -4213,7 +4197,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:82563939-f10b-484f-9951-e7a907959b79:1",
+            "marker": "buddy-op:5ddc40ec-1d32-4df6-bcd7-58eafbaa579b:1",
             "status": "draft"
           }
         ],
@@ -4252,7 +4236,7 @@
       ],
       "faults": ["response_timeout_then_late_apply"],
       "observed": {
-        "operation_id": "da9f37cb-50fb-43c8-92a3-449ece79404f",
+        "operation_id": "14c0d5d4-3088-4ed1-9111-985a54b3530f",
         "db_version": "9",
         "state_history": [
           {
@@ -4293,7 +4277,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "d02fe370-2d7b-4dc8-8ae7-0970801453a5",
+            "approval_id": "8352ec9d-965e-42d8-b9b2-637e2b733896",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -4301,11 +4285,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "95098db2-282a-4af6-a8f9-0bfcff46be7a",
+            "attempt_id": "fabe32d2-6025-4f97-9afa-e54e122f7424",
             "content_version": "1",
-            "approval_id": "d02fe370-2d7b-4dc8-8ae7-0970801453a5",
+            "approval_id": "8352ec9d-965e-42d8-b9b2-637e2b733896",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852119119,
+            "dispatch_intent_at": 1792850089852,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -4314,15 +4298,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852119119,
+            "dispatch_intent_at": 1792850089852,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "da9f37cb-50fb-43c8-92a3-449ece79404f",
-            "attempt_id": "95098db2-282a-4af6-a8f9-0bfcff46be7a",
+            "operation_id": "14c0d5d4-3088-4ed1-9111-985a54b3530f",
+            "attempt_id": "fabe32d2-6025-4f97-9afa-e54e122f7424",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -4340,7 +4324,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:da9f37cb-50fb-43c8-92a3-449ece79404f:1",
+            "marker": "buddy-op:14c0d5d4-3088-4ed1-9111-985a54b3530f:1",
             "status": "draft"
           }
         ],
@@ -4379,7 +4363,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send"],
       "observed": {
-        "operation_id": "592433e2-ef6b-4800-9c1b-119738d107b5",
+        "operation_id": "5a5e69f8-7eb0-4d98-85a5-ef96106f6a79",
         "db_version": "9",
         "state_history": [
           {
@@ -4410,7 +4394,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "dbba6682-9aee-4e17-a679-9e4026074dc0",
+            "approval_id": "05d88a8f-3467-407e-9938-3883a8b65946",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -4418,11 +4402,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "0fbaa33d-f8f3-4900-ae81-c5041f4d3cd9",
+            "attempt_id": "aceb64a1-a8f2-42bc-bb7b-6ecb3a200f4d",
             "content_version": "1",
-            "approval_id": "dbba6682-9aee-4e17-a679-9e4026074dc0",
+            "approval_id": "05d88a8f-3467-407e-9938-3883a8b65946",
             "status": "reconciling",
-            "dispatch_intent_at": 1792852123916,
+            "dispatch_intent_at": 1792850090484,
             "external_id": "draft-001",
             "result_status": null
           }
@@ -4431,15 +4415,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852123916,
+            "dispatch_intent_at": 1792850090484,
             "result_status": null,
             "external_id": null
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "592433e2-ef6b-4800-9c1b-119738d107b5",
-            "attempt_id": "0fbaa33d-f8f3-4900-ae81-c5041f4d3cd9",
+            "operation_id": "5a5e69f8-7eb0-4d98-85a5-ef96106f6a79",
+            "attempt_id": "aceb64a1-a8f2-42bc-bb7b-6ecb3a200f4d",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -4457,7 +4441,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:592433e2-ef6b-4800-9c1b-119738d107b5:1",
+            "marker": "buddy-op:5a5e69f8-7eb0-4d98-85a5-ef96106f6a79:1",
             "status": "draft"
           }
         ],
@@ -4495,7 +4479,7 @@
       ],
       "faults": ["core_restart"],
       "observed": {
-        "operation_id": "5bf3071f-d292-423f-9a8b-a6905af74091",
+        "operation_id": "8c0113d1-8233-4259-814a-3746faf94627",
         "db_version": "9",
         "state_history": [
           {
@@ -4547,7 +4531,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "d4adf196-4ae1-48f7-a0ec-2fbb3d0b2f53",
+        "operation_id": "cc0f8d6f-409c-41e4-af56-79bc877419cc",
         "db_version": "9",
         "state_history": [
           {
@@ -4578,7 +4562,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "3c1d733c-f30f-476e-aae8-748f55a7e788",
+            "approval_id": "d4b2a3b9-0d40-4f9a-bf82-8dae485f4fe7",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -4586,11 +4570,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "139c796e-f794-42ed-9128-eef1610344b0",
+            "attempt_id": "b590adec-fec5-4554-a957-b13b7bc0a17b",
             "content_version": "1",
-            "approval_id": "3c1d733c-f30f-476e-aae8-748f55a7e788",
+            "approval_id": "d4b2a3b9-0d40-4f9a-bf82-8dae485f4fe7",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852129112,
+            "dispatch_intent_at": 1792850091810,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -4599,7 +4583,7 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852129112,
+            "dispatch_intent_at": 1792850091810,
             "result_status": "unknown",
             "external_id": null
           }
@@ -4649,7 +4633,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send"],
       "observed": {
-        "operation_id": "abf0b0ff-33af-4534-9b9c-122e44da7303",
+        "operation_id": "e465c39d-7714-401d-8e3b-0760cb99da5d",
         "db_version": "9",
         "state_history": [
           {
@@ -4680,7 +4664,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "83aac608-eeaf-4f9f-8c19-ce196958c168",
+            "approval_id": "03ee1c07-0f9a-4eb4-b18e-a0729d14a47f",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -4688,11 +4672,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "a3363374-3cdd-487b-af6a-3593fb2a1f26",
+            "attempt_id": "ac37a80a-ee8d-428c-891c-07bfa0edcbda",
             "content_version": "1",
-            "approval_id": "83aac608-eeaf-4f9f-8c19-ce196958c168",
+            "approval_id": "03ee1c07-0f9a-4eb4-b18e-a0729d14a47f",
             "status": "reconciling",
-            "dispatch_intent_at": 1792852132041,
+            "dispatch_intent_at": 1792850092670,
             "external_id": "mail-001",
             "result_status": null
           }
@@ -4701,15 +4685,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852132041,
+            "dispatch_intent_at": 1792850092670,
             "result_status": null,
             "external_id": null
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "abf0b0ff-33af-4534-9b9c-122e44da7303",
-            "attempt_id": "a3363374-3cdd-487b-af6a-3593fb2a1f26",
+            "operation_id": "e465c39d-7714-401d-8e3b-0760cb99da5d",
+            "attempt_id": "ac37a80a-ee8d-428c-891c-07bfa0edcbda",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -4762,7 +4746,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "64b21a4d-bed1-4d9c-a507-6d3076a497ee",
+        "operation_id": "1e42c208-1dda-4437-a125-78b42775b5b7",
         "db_version": "9",
         "state_history": [
           {
@@ -4819,7 +4803,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "658422ba-fa0a-402f-b547-b2f14a410f4a",
+        "operation_id": "5995377f-257f-4b4a-8b26-93484e4359e4",
         "db_version": "9",
         "state_history": [
           {
@@ -4850,7 +4834,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "508091b5-23db-4d17-b843-953fd8083831",
+            "approval_id": "c91a94c8-98e1-45ca-b0c2-f89c608ba813",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -4858,11 +4842,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "46e21294-ff83-42d1-9d5c-471769e07adc",
+            "attempt_id": "69cdba80-f9ee-43ec-a50f-8b1e5656164d",
             "content_version": "1",
-            "approval_id": "508091b5-23db-4d17-b843-953fd8083831",
+            "approval_id": "c91a94c8-98e1-45ca-b0c2-f89c608ba813",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852137058,
+            "dispatch_intent_at": 1792850093908,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -4871,7 +4855,7 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852137058,
+            "dispatch_intent_at": 1792850093908,
             "result_status": "unknown",
             "external_id": null
           }
@@ -4917,7 +4901,7 @@
       ],
       "faults": ["local_commit_before_ack"],
       "observed": {
-        "operation_id": "6bf0732f-eced-4884-bea7-078e8f1003cf",
+        "operation_id": "6efe542e-3031-41c7-bfe9-52249839a56e",
         "db_version": "9",
         "state_history": [
           {
@@ -4938,7 +4922,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "3a5fde2f-532e-46de-88f3-4d4251277a7c",
+            "approval_id": "0edad232-09c4-43d7-850a-939dc84092a2",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -4946,12 +4930,12 @@
         ],
         "attempts": [
           {
-            "attempt_id": "d62ab5d9-d029-4a0e-9cc6-7a06c81d6fe9",
+            "attempt_id": "f1b01611-537e-4e1e-8a47-0ea8ddfb6702",
             "content_version": "1",
-            "approval_id": "3a5fde2f-532e-46de-88f3-4d4251277a7c",
+            "approval_id": "0edad232-09c4-43d7-850a-939dc84092a2",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852142015,
-            "external_id": "72f27600-30da-445d-936f-fc62de707356",
+            "dispatch_intent_at": 1792850095052,
+            "external_id": "516aa414-498d-4e06-b05a-3673193a5d62",
             "result_status": "confirmed_success"
           }
         ],
@@ -4998,7 +4982,7 @@
       ],
       "faults": ["after_target_recheck"],
       "observed": {
-        "operation_id": "1797a2e7-b9af-46eb-8683-54d30cdbcc96",
+        "operation_id": "49dc2729-a2af-4666-8b31-65fc0af00bc3",
         "db_version": "9",
         "state_history": [
           {
@@ -5024,7 +5008,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "82f08bd6-74ea-4c62-aa27-1e21f92bb84e",
+            "approval_id": "84afff1d-98c8-4337-b71a-91cc10b7a3e0",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -5032,9 +5016,9 @@
         ],
         "attempts": [
           {
-            "attempt_id": "11f0a9b1-6dfe-4308-bd23-384ff158a3e6",
+            "attempt_id": "06be4b29-8d05-49e7-82dd-179bc21d0e11",
             "content_version": "1",
-            "approval_id": "82f08bd6-74ea-4c62-aa27-1e21f92bb84e",
+            "approval_id": "84afff1d-98c8-4337-b71a-91cc10b7a3e0",
             "status": "cancelled",
             "dispatch_intent_at": null,
             "external_id": null,
@@ -5082,7 +5066,7 @@
       ],
       "faults": ["after_event_delivery_before_ack", "core_restart"],
       "observed": {
-        "operation_id": "a7756bdb-67d0-4d4f-a684-ad365069ca93",
+        "operation_id": "88dff374-bcbc-4e7c-b02d-6b1ce3945a90",
         "db_version": "9",
         "state_history": [
           {
@@ -5118,7 +5102,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "c9881324-3653-4d61-a129-5976919572ab",
+            "approval_id": "0f123f64-1fe8-4de2-a7a2-85be7579a683",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -5126,11 +5110,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "0f1b7825-b1f9-4629-9dd2-d39e74096da6",
+            "attempt_id": "ffce7e22-634d-4c23-b122-24acad268958",
             "content_version": "1",
-            "approval_id": "c9881324-3653-4d61-a129-5976919572ab",
+            "approval_id": "0f123f64-1fe8-4de2-a7a2-85be7579a683",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852148934,
+            "dispatch_intent_at": 1792850096601,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -5139,15 +5123,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852148934,
+            "dispatch_intent_at": 1792850096601,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "a7756bdb-67d0-4d4f-a684-ad365069ca93",
-            "attempt_id": "0f1b7825-b1f9-4629-9dd2-d39e74096da6",
+            "operation_id": "88dff374-bcbc-4e7c-b02d-6b1ce3945a90",
+            "attempt_id": "ffce7e22-634d-4c23-b122-24acad268958",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -5201,7 +5185,7 @@
       ],
       "faults": ["response_timeout_then_late_apply"],
       "observed": {
-        "operation_id": "d44073de-3c0b-47e4-bc8e-3cd3192971e6",
+        "operation_id": "ab5a6741-0983-466c-9f65-8db75ae90578",
         "db_version": "9",
         "state_history": [
           {
@@ -5242,7 +5226,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "8c1535d4-6ded-4acd-86cc-18129ab142a9",
+            "approval_id": "f65d2515-2922-4c14-a800-89e1f8fa7199",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -5250,11 +5234,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "b8cc1a0f-f98c-45ac-a64e-11b0b8759958",
+            "attempt_id": "129126c5-9ebb-41d8-b8f2-2f5684f2766d",
             "content_version": "1",
-            "approval_id": "8c1535d4-6ded-4acd-86cc-18129ab142a9",
+            "approval_id": "f65d2515-2922-4c14-a800-89e1f8fa7199",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852153294,
+            "dispatch_intent_at": 1792850097608,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -5263,15 +5247,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852153294,
+            "dispatch_intent_at": 1792850097608,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "d44073de-3c0b-47e4-bc8e-3cd3192971e6",
-            "attempt_id": "b8cc1a0f-f98c-45ac-a64e-11b0b8759958",
+            "operation_id": "ab5a6741-0983-466c-9f65-8db75ae90578",
+            "attempt_id": "129126c5-9ebb-41d8-b8f2-2f5684f2766d",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -5325,7 +5309,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "1f45396e-1469-4ccf-ab4b-632bd68a3c11",
+        "operation_id": "80e8aea1-c53f-4751-940c-3f322954cddf",
         "db_version": "9",
         "state_history": [
           {
@@ -5346,7 +5330,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "3384ae71-353a-49a7-9389-d109310bfaff",
+            "approval_id": "8260d762-c2b3-4974-b8eb-4ab258a9ed89",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -5354,12 +5338,12 @@
         ],
         "attempts": [
           {
-            "attempt_id": "bcb6ed96-006d-4468-9eb0-511724f49bd6",
+            "attempt_id": "590c1c1d-67d5-4c4e-90a0-93e922a9c4ab",
             "content_version": "1",
-            "approval_id": "3384ae71-353a-49a7-9389-d109310bfaff",
+            "approval_id": "8260d762-c2b3-4974-b8eb-4ab258a9ed89",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852155971,
-            "external_id": "5d27e2e6-c34d-4a1d-84df-26d83cf872ca",
+            "dispatch_intent_at": 1792850098254,
+            "external_id": "2f431617-c40f-4327-8870-b28a058fc589",
             "result_status": "confirmed_success"
           }
         ],
@@ -5506,7 +5490,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "8dc1d0dc-62f1-4875-ac36-d48c0104a561",
+        "operation_id": "cecb4531-fcb7-42ea-983c-0dcb370338d7",
         "db_version": "9",
         "state_history": [
           {
@@ -5537,7 +5521,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "3408e7b7-9e19-43a4-bd4a-496a40187f35",
+            "approval_id": "e34a1007-162a-46dc-b06b-a8def8f11922",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -5545,11 +5529,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "3d555845-61a3-4751-9d77-262a46b3a48d",
+            "attempt_id": "6ad26f10-9e03-45fe-8837-b1ca68c45ece",
             "content_version": "1",
-            "approval_id": "3408e7b7-9e19-43a4-bd4a-496a40187f35",
+            "approval_id": "e34a1007-162a-46dc-b06b-a8def8f11922",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852161704,
+            "dispatch_intent_at": 1792850099941,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -5558,7 +5542,7 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852161704,
+            "dispatch_intent_at": 1792850099941,
             "result_status": "unknown",
             "external_id": null
           }
@@ -5603,7 +5587,7 @@
       ],
       "faults": ["local_commit_before_ack"],
       "observed": {
-        "operation_id": "c0108348-6f59-4d1a-aa2f-ecb889427e32",
+        "operation_id": "64f170dc-0038-47c1-8f4b-4fd2456e873b",
         "db_version": "9",
         "state_history": [
           {
@@ -5624,7 +5608,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "46af03e2-99b7-47cb-b097-9649851fcffb",
+            "approval_id": "9d31833c-33dd-4fb8-9c0a-ca863611b325",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -5632,12 +5616,12 @@
         ],
         "attempts": [
           {
-            "attempt_id": "14d539a4-c52a-484c-b0b4-57cf8f837007",
+            "attempt_id": "0d7ec45a-070c-415b-9509-36f5854b1502",
             "content_version": "1",
-            "approval_id": "46af03e2-99b7-47cb-b097-9649851fcffb",
+            "approval_id": "9d31833c-33dd-4fb8-9c0a-ca863611b325",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852164867,
-            "external_id": "16a64727-3ad5-437a-bf06-196ea7158a90",
+            "dispatch_intent_at": 1792850101027,
+            "external_id": "03177648-eb26-46dc-87dd-672a32737429",
             "result_status": "confirmed_success"
           }
         ],
@@ -5684,7 +5668,7 @@
       ],
       "faults": ["core_restart"],
       "observed": {
-        "operation_id": "44759ffb-c5cc-475f-a700-2902fb5875b5",
+        "operation_id": "4b7007f5-40b2-417c-9d85-92c9e8b46610",
         "db_version": "9",
         "state_history": [
           {
@@ -5736,7 +5720,7 @@
       ],
       "faults": ["core_restart"],
       "observed": {
-        "operation_id": "8a800b34-df35-434d-9b7f-93afa3ae6e7a",
+        "operation_id": "17eec297-5e3a-4529-b9cb-6cba2cb15ac4",
         "db_version": "9",
         "state_history": [
           {
@@ -5772,7 +5756,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "7cb5b6db-3c7b-4859-b03b-d16638e30253",
+            "approval_id": "30177f19-6e5c-486d-8839-b6bf44103a3d",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -5780,11 +5764,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "abdfaa34-4d79-455e-9682-3fcc8f5f83a1",
+            "attempt_id": "bd19965e-ead6-4a1b-aa0d-b680650a6bbf",
             "content_version": "1",
-            "approval_id": "7cb5b6db-3c7b-4859-b03b-d16638e30253",
+            "approval_id": "30177f19-6e5c-486d-8839-b6bf44103a3d",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852168231,
+            "dispatch_intent_at": 1792850102715,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -5793,15 +5777,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852168231,
+            "dispatch_intent_at": 1792850102715,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "8a800b34-df35-434d-9b7f-93afa3ae6e7a",
-            "attempt_id": "abdfaa34-4d79-455e-9682-3fcc8f5f83a1",
+            "operation_id": "17eec297-5e3a-4529-b9cb-6cba2cb15ac4",
+            "attempt_id": "bd19965e-ead6-4a1b-aa0d-b680650a6bbf",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -5854,7 +5838,7 @@
       ],
       "faults": ["after_external_apply_before_response"],
       "observed": {
-        "operation_id": "c103de1c-cf58-43f3-9c14-66d8caf2d96c",
+        "operation_id": "c58a2c41-0fd8-4b0f-8a68-a6f3e3628a8a",
         "db_version": "9",
         "state_history": [
           {
@@ -5890,7 +5874,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "eace7786-af37-4e28-9a8b-d5b0ef39dc11",
+            "approval_id": "468d6ec9-e1c1-401c-b7e1-0cd036cc1a95",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -5898,11 +5882,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "5812768b-e92f-4c54-9a28-a7a12d68aeee",
+            "attempt_id": "8a73504c-d69f-4395-8309-05d5917a4ac8",
             "content_version": "1",
-            "approval_id": "eace7786-af37-4e28-9a8b-d5b0ef39dc11",
+            "approval_id": "468d6ec9-e1c1-401c-b7e1-0cd036cc1a95",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852170028,
+            "dispatch_intent_at": 1792850103500,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -5911,15 +5895,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852170028,
+            "dispatch_intent_at": 1792850103500,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "c103de1c-cf58-43f3-9c14-66d8caf2d96c",
-            "attempt_id": "5812768b-e92f-4c54-9a28-a7a12d68aeee",
+            "operation_id": "c58a2c41-0fd8-4b0f-8a68-a6f3e3628a8a",
+            "attempt_id": "8a73504c-d69f-4395-8309-05d5917a4ac8",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -5973,7 +5957,7 @@
       ],
       "faults": ["after_approval_save"],
       "observed": {
-        "operation_id": "865f5000-2a26-4719-9ae3-c0ed6c093259",
+        "operation_id": "f606ae3c-fa73-48d6-bf2f-c4f237c202e4",
         "db_version": "9",
         "state_history": [
           {
@@ -5999,7 +5983,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "c02f52fa-4df3-43bf-9fca-bc66694ad2c2",
+            "approval_id": "5115d96b-cbb1-4646-90c4-78ea3ecc25f8",
             "content_version": "1",
             "route": "screen",
             "status": "revoked"
@@ -6007,9 +5991,9 @@
         ],
         "attempts": [
           {
-            "attempt_id": "7b22cea6-b09b-4617-acd7-7de12c03cba9",
+            "attempt_id": "d117dac4-1ffd-4526-adf4-83c4643f6004",
             "content_version": "1",
-            "approval_id": "c02f52fa-4df3-43bf-9fca-bc66694ad2c2",
+            "approval_id": "5115d96b-cbb1-4646-90c4-78ea3ecc25f8",
             "status": "superseded",
             "dispatch_intent_at": null,
             "external_id": null,
@@ -6104,7 +6088,7 @@
       ],
       "faults": ["response_timeout_then_late_apply"],
       "observed": {
-        "operation_id": "2f71e551-4113-4599-b604-9ae41a47fbd0",
+        "operation_id": "38769707-3d4b-4982-8c70-8bd5576042bd",
         "db_version": "9",
         "state_history": [
           {
@@ -6145,7 +6129,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "c3d1d37a-07c0-4057-9bd5-2ae325d352a8",
+            "approval_id": "f3251dee-ea12-42e5-8fd6-c9a9dc66de3c",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -6153,11 +6137,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "465b1f69-df5f-4ae2-9889-31a47c4fd954",
+            "attempt_id": "62713ed7-7b67-4081-8329-a7f52b0d9db5",
             "content_version": "1",
-            "approval_id": "c3d1d37a-07c0-4057-9bd5-2ae325d352a8",
+            "approval_id": "f3251dee-ea12-42e5-8fd6-c9a9dc66de3c",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852173605,
+            "dispatch_intent_at": 1792850105307,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -6166,15 +6150,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852173605,
+            "dispatch_intent_at": 1792850105307,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "2f71e551-4113-4599-b604-9ae41a47fbd0",
-            "attempt_id": "465b1f69-df5f-4ae2-9889-31a47c4fd954",
+            "operation_id": "38769707-3d4b-4982-8c70-8bd5576042bd",
+            "attempt_id": "62713ed7-7b67-4081-8329-a7f52b0d9db5",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -6228,7 +6212,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "8364114b-0cf0-438f-9db6-deca56e7b13d",
+        "operation_id": "18281657-b43f-49dc-849f-26e1ca44f5e3",
         "db_version": "9",
         "state_history": [
           {
@@ -6259,7 +6243,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "8c9a9cec-5bc3-4c85-b03a-2e9c052b592e",
+            "approval_id": "68081d98-3714-4a78-852d-a4d1fa1fd3dd",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -6267,11 +6251,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "99f12834-8120-4f25-bee2-281ac7c15743",
+            "attempt_id": "3f322306-7cdd-4dfa-b1e3-9d5af0056020",
             "content_version": "1",
-            "approval_id": "8c9a9cec-5bc3-4c85-b03a-2e9c052b592e",
+            "approval_id": "68081d98-3714-4a78-852d-a4d1fa1fd3dd",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852174603,
+            "dispatch_intent_at": 1792850105863,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -6280,7 +6264,7 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852174603,
+            "dispatch_intent_at": 1792850105863,
             "result_status": "unknown",
             "external_id": null
           }
@@ -6330,7 +6314,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send"],
       "observed": {
-        "operation_id": "d66729f6-55c8-4305-bbea-29d79c55b5d3",
+        "operation_id": "363ade84-9c7e-4334-bebf-6caacb87a531",
         "db_version": "9",
         "state_history": [
           {
@@ -6361,7 +6345,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "fc2dcf7f-a532-4afb-b09d-3dc5c7cad5c6",
+            "approval_id": "e9335a9d-01d5-4d86-9894-3118dca9f73d",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -6369,11 +6353,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "f451290b-39cf-4e58-9908-69bbbefa0d0a",
+            "attempt_id": "cd4fcfb0-c054-4eaa-9444-26a3b282f48e",
             "content_version": "1",
-            "approval_id": "fc2dcf7f-a532-4afb-b09d-3dc5c7cad5c6",
+            "approval_id": "e9335a9d-01d5-4d86-9894-3118dca9f73d",
             "status": "reconciling",
-            "dispatch_intent_at": 1792852176136,
+            "dispatch_intent_at": 1792850106738,
             "external_id": "mail-001",
             "result_status": null
           }
@@ -6382,15 +6366,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852176136,
+            "dispatch_intent_at": 1792850106738,
             "result_status": null,
             "external_id": null
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "d66729f6-55c8-4305-bbea-29d79c55b5d3",
-            "attempt_id": "f451290b-39cf-4e58-9908-69bbbefa0d0a",
+            "operation_id": "363ade84-9c7e-4334-bebf-6caacb87a531",
+            "attempt_id": "cd4fcfb0-c054-4eaa-9444-26a3b282f48e",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -6443,7 +6427,7 @@
       ],
       "faults": ["after_target_recheck"],
       "observed": {
-        "operation_id": "e01d5778-6d9a-4b29-a2df-b6d75b1e00b4",
+        "operation_id": "383cfca5-dcd4-4df0-851c-911777931726",
         "db_version": "9",
         "state_history": [
           {
@@ -6469,7 +6453,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "6f280c91-17ac-472c-b1f4-ee0ba4b121e6",
+            "approval_id": "d3188398-bd07-4d0a-846e-cfa2514bd5fa",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -6477,9 +6461,9 @@
         ],
         "attempts": [
           {
-            "attempt_id": "a556ab62-830d-4ae4-8c8c-f21e8c2934ff",
+            "attempt_id": "eb02f5a7-558d-4f31-8029-1b0ae04a2bba",
             "content_version": "1",
-            "approval_id": "6f280c91-17ac-472c-b1f4-ee0ba4b121e6",
+            "approval_id": "d3188398-bd07-4d0a-846e-cfa2514bd5fa",
             "status": "cancelled",
             "dispatch_intent_at": null,
             "external_id": null,
@@ -6527,7 +6511,7 @@
       ],
       "faults": ["response_timeout_then_late_apply"],
       "observed": {
-        "operation_id": "f509c941-ccb0-47cf-a91f-73beeaa7d685",
+        "operation_id": "2a2480d7-6a8e-4963-bacc-319bbfc38090",
         "db_version": "9",
         "state_history": [
           {
@@ -6568,7 +6552,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "e5c89750-0f23-40a8-8b96-2f45a43ef2d3",
+            "approval_id": "17c3f74f-72bc-481a-b9a8-17e13c992f47",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -6576,11 +6560,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "d5f8ef91-84a9-486f-ac47-33f7c456f1ab",
+            "attempt_id": "221ce775-d8cb-44cc-8528-74f67bb9fe27",
             "content_version": "1",
-            "approval_id": "e5c89750-0f23-40a8-8b96-2f45a43ef2d3",
+            "approval_id": "17c3f74f-72bc-481a-b9a8-17e13c992f47",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852178735,
+            "dispatch_intent_at": 1792850108109,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -6589,15 +6573,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852178735,
+            "dispatch_intent_at": 1792850108109,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "f509c941-ccb0-47cf-a91f-73beeaa7d685",
-            "attempt_id": "d5f8ef91-84a9-486f-ac47-33f7c456f1ab",
+            "operation_id": "2a2480d7-6a8e-4963-bacc-319bbfc38090",
+            "attempt_id": "221ce775-d8cb-44cc-8528-74f67bb9fe27",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -6615,7 +6599,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:f509c941-ccb0-47cf-a91f-73beeaa7d685:1",
+            "marker": "buddy-op:2a2480d7-6a8e-4963-bacc-319bbfc38090:1",
             "status": "draft"
           }
         ],
@@ -6654,7 +6638,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send"],
       "observed": {
-        "operation_id": "41f7a59a-c02c-43a2-94b3-e4aad0aaec60",
+        "operation_id": "e0e1cc6c-8e28-48b9-a35c-19f6a9e7818e",
         "db_version": "9",
         "state_history": [
           {
@@ -6685,7 +6669,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "a0cc6748-b420-491d-92e8-e4f6b9ce96ed",
+            "approval_id": "48187de5-9f67-4dde-b0a3-aa6966d7192d",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -6693,11 +6677,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "6dbb775f-3cfa-4eca-a5ac-7912e8777382",
+            "attempt_id": "d1575476-878a-4c90-9355-d388f8dc44a5",
             "content_version": "1",
-            "approval_id": "a0cc6748-b420-491d-92e8-e4f6b9ce96ed",
+            "approval_id": "48187de5-9f67-4dde-b0a3-aa6966d7192d",
             "status": "reconciling",
-            "dispatch_intent_at": 1792852180157,
+            "dispatch_intent_at": 1792850108876,
             "external_id": "draft-001",
             "result_status": null
           }
@@ -6706,15 +6690,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852180157,
+            "dispatch_intent_at": 1792850108876,
             "result_status": null,
             "external_id": null
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "41f7a59a-c02c-43a2-94b3-e4aad0aaec60",
-            "attempt_id": "6dbb775f-3cfa-4eca-a5ac-7912e8777382",
+            "operation_id": "e0e1cc6c-8e28-48b9-a35c-19f6a9e7818e",
+            "attempt_id": "d1575476-878a-4c90-9355-d388f8dc44a5",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -6732,7 +6716,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:41f7a59a-c02c-43a2-94b3-e4aad0aaec60:1",
+            "marker": "buddy-op:e0e1cc6c-8e28-48b9-a35c-19f6a9e7818e:1",
             "status": "draft"
           }
         ],
@@ -6821,7 +6805,7 @@
       ],
       "faults": ["after_external_apply_before_response"],
       "observed": {
-        "operation_id": "f2ce31ad-fc3b-4f80-8bb7-b50e45d97006",
+        "operation_id": "f015b388-4db3-4559-ad1b-e7c9d9e496f3",
         "db_version": "9",
         "state_history": [
           {
@@ -6857,7 +6841,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "8bd1a928-e958-4503-a7b4-a2afacd2704f",
+            "approval_id": "02928fb1-ffd8-41c7-b4be-424629b68408",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -6865,11 +6849,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "e3f42d41-fecc-4a17-bb03-b43950774e16",
+            "attempt_id": "a9d79919-71f7-45a7-91f9-7912cf8ae70a",
             "content_version": "1",
-            "approval_id": "8bd1a928-e958-4503-a7b4-a2afacd2704f",
+            "approval_id": "02928fb1-ffd8-41c7-b4be-424629b68408",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852182644,
+            "dispatch_intent_at": 1792850110057,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -6878,15 +6862,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852182644,
+            "dispatch_intent_at": 1792850110057,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "f2ce31ad-fc3b-4f80-8bb7-b50e45d97006",
-            "attempt_id": "e3f42d41-fecc-4a17-bb03-b43950774e16",
+            "operation_id": "f015b388-4db3-4559-ad1b-e7c9d9e496f3",
+            "attempt_id": "a9d79919-71f7-45a7-91f9-7912cf8ae70a",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -6904,7 +6888,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:f2ce31ad-fc3b-4f80-8bb7-b50e45d97006:1",
+            "marker": "buddy-op:f015b388-4db3-4559-ad1b-e7c9d9e496f3:1",
             "status": "draft"
           }
         ],
@@ -6943,7 +6927,7 @@
       ],
       "faults": ["approval_barrier"],
       "observed": {
-        "operation_id": "11515505-c9ae-4321-b210-993d8a0606e7",
+        "operation_id": "c3f0a6a1-0cff-4cbe-bae4-8810e63e3f59",
         "db_version": "9",
         "state_history": [
           {
@@ -6979,7 +6963,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "993b6ddd-fc72-44d7-ac77-cb8e20b395db",
+            "approval_id": "96c89297-aa2e-4435-8191-e227c11a9006",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -6987,11 +6971,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "42713df9-13ce-40c3-916a-806e133a693b",
+            "attempt_id": "c25d25df-c1fb-4b32-8ca2-d620a22fb7f2",
             "content_version": "1",
-            "approval_id": "993b6ddd-fc72-44d7-ac77-cb8e20b395db",
+            "approval_id": "96c89297-aa2e-4435-8191-e227c11a9006",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852184634,
+            "dispatch_intent_at": 1792850111086,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -7000,15 +6984,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852184634,
+            "dispatch_intent_at": 1792850111086,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "11515505-c9ae-4321-b210-993d8a0606e7",
-            "attempt_id": "42713df9-13ce-40c3-916a-806e133a693b",
+            "operation_id": "c3f0a6a1-0cff-4cbe-bae4-8810e63e3f59",
+            "attempt_id": "c25d25df-c1fb-4b32-8ca2-d620a22fb7f2",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -7062,7 +7046,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "b8eb26ea-5202-4cde-9ac7-d7f92452e491",
+        "operation_id": "d40104fe-a4b6-4a37-b110-9d396b378f21",
         "db_version": "9",
         "state_history": [
           {
@@ -7083,7 +7067,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "ee157103-3096-4134-ad1b-f68e1e1e80a7",
+            "approval_id": "47242ad4-604f-4d46-953a-eca374028be8",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -7091,12 +7075,12 @@
         ],
         "attempts": [
           {
-            "attempt_id": "82ac10e6-e995-4232-a7a7-12be5242cdc5",
+            "attempt_id": "48752a46-a26f-4c85-b61c-da7c58c2a27d",
             "content_version": "1",
-            "approval_id": "ee157103-3096-4134-ad1b-f68e1e1e80a7",
+            "approval_id": "47242ad4-604f-4d46-953a-eca374028be8",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852185921,
-            "external_id": "ac72bbbb-457c-45f6-ae77-3f429e113b17",
+            "dispatch_intent_at": 1792850111891,
+            "external_id": "b4c137d4-bee3-4df7-969f-2531a0c940d9",
             "result_status": "confirmed_success"
           }
         ],
@@ -7192,7 +7176,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "a75f5e55-e25f-4d64-a7e2-7112abe8122e",
+        "operation_id": "e00e9839-ac7a-4e6c-b0e0-1edc08281073",
         "db_version": "9",
         "state_history": [
           {
@@ -7249,7 +7233,7 @@
       ],
       "faults": [],
       "observed": {
-        "operation_id": "fab75a81-3fcb-45ef-8db2-929551e870bb",
+        "operation_id": "fb5fe5a5-7fd9-4068-8d2a-10dba8594808",
         "db_version": "9",
         "state_history": [
           {
@@ -7285,7 +7269,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "343dd36d-ce43-4098-911c-2e29fff506f1",
+            "approval_id": "8c73304b-e2b5-402b-a921-56f77ceee9b6",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -7293,11 +7277,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "d3ffcc21-c5f3-4bf5-84c8-8cf106373273",
+            "attempt_id": "72f32cec-a517-4bf9-bd4f-daba812d9ebb",
             "content_version": "1",
-            "approval_id": "343dd36d-ce43-4098-911c-2e29fff506f1",
+            "approval_id": "8c73304b-e2b5-402b-a921-56f77ceee9b6",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852189556,
+            "dispatch_intent_at": 1792850113751,
             "external_id": "draft-001",
             "result_status": "confirmed_success"
           }
@@ -7306,15 +7290,15 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852189556,
+            "dispatch_intent_at": 1792850113751,
             "result_status": "confirmed_success",
             "external_id": "draft-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "fab75a81-3fcb-45ef-8db2-929551e870bb",
-            "attempt_id": "d3ffcc21-c5f3-4bf5-84c8-8cf106373273",
+            "operation_id": "fb5fe5a5-7fd9-4068-8d2a-10dba8594808",
+            "attempt_id": "72f32cec-a517-4bf9-bd4f-daba812d9ebb",
             "step_id": "1-create_draft",
             "receive_order": 1,
             "applied": true,
@@ -7332,7 +7316,7 @@
         },
         "provider_drafts": [
           {
-            "marker": "buddy-op:fab75a81-3fcb-45ef-8db2-929551e870bb:1",
+            "marker": "buddy-op:fb5fe5a5-7fd9-4068-8d2a-10dba8594808:1",
             "status": "draft"
           }
         ],
@@ -7370,7 +7354,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "fd20b306-0784-4ed4-a02b-cd4744ba95e9",
+        "operation_id": "1c25927b-b4e9-4761-895b-286c1d42bfb5",
         "db_version": "9",
         "state_history": [
           {
@@ -7401,7 +7385,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "12dffd35-8f4b-44b3-a94c-41e2f5f42f91",
+            "approval_id": "dd49b56a-95c8-458e-bcae-b6f6e82ce89a",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -7409,11 +7393,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "a9f50e61-0a26-416e-8b78-7283227638a0",
+            "attempt_id": "c8f24873-f4dc-4c6f-a5a0-1cdae26d41bb",
             "content_version": "1",
-            "approval_id": "12dffd35-8f4b-44b3-a94c-41e2f5f42f91",
+            "approval_id": "dd49b56a-95c8-458e-bcae-b6f6e82ce89a",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852190913,
+            "dispatch_intent_at": 1792850114380,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -7422,7 +7406,7 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852190913,
+            "dispatch_intent_at": 1792850114380,
             "result_status": "unknown",
             "external_id": null
           }
@@ -7467,7 +7451,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "ae321afa-173b-4fb5-8757-7fbfce730775",
+        "operation_id": "e23d639c-cd7a-4242-bc7d-4526e9b62684",
         "db_version": "9",
         "state_history": [
           {
@@ -7498,7 +7482,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "781a6d7f-c6e7-4cf2-a8e2-c25ed0db7cdc",
+            "approval_id": "230f6e52-cf2e-41b1-b328-72803bfd757d",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -7506,11 +7490,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "f7e2bd8d-5451-4b33-87d3-c3b6f5e22d37",
+            "attempt_id": "23cdb942-07e5-4e8b-9e74-34c18b54ef28",
             "content_version": "1",
-            "approval_id": "781a6d7f-c6e7-4cf2-a8e2-c25ed0db7cdc",
+            "approval_id": "230f6e52-cf2e-41b1-b328-72803bfd757d",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852192963,
+            "dispatch_intent_at": 1792850115482,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -7519,7 +7503,7 @@
           {
             "step_id": "2-send",
             "step_kind": "send",
-            "dispatch_intent_at": 1792852192963,
+            "dispatch_intent_at": 1792850115482,
             "result_status": "unknown",
             "external_id": null
           }
@@ -7569,7 +7553,7 @@
       ],
       "faults": ["after_event_delivery_before_ack", "core_restart"],
       "observed": {
-        "operation_id": "dcc4f247-96af-4567-8ef2-bb4b8d4711d5",
+        "operation_id": "c1af425c-e692-49d8-9fd1-ec3ba7185be8",
         "db_version": "9",
         "state_history": [
           {
@@ -7605,7 +7589,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "0054075d-8c54-4fa4-8d83-a26e01876b91",
+            "approval_id": "9365e67b-2750-4e79-bd15-069e0175de54",
             "content_version": "1",
             "route": "screen",
             "status": "consumed"
@@ -7613,11 +7597,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "b07fd1d1-301e-492f-ae2f-98bb804bf858",
+            "attempt_id": "15ac0d6a-5035-419c-ad6c-6ecbf8f4c9fb",
             "content_version": "1",
-            "approval_id": "0054075d-8c54-4fa4-8d83-a26e01876b91",
+            "approval_id": "9365e67b-2750-4e79-bd15-069e0175de54",
             "status": "succeeded",
-            "dispatch_intent_at": 1792852194692,
+            "dispatch_intent_at": 1792850116411,
             "external_id": "mail-001",
             "result_status": "confirmed_success"
           }
@@ -7626,15 +7610,15 @@
           {
             "step_id": "1-apply_labels",
             "step_kind": "apply_labels",
-            "dispatch_intent_at": 1792852194692,
+            "dispatch_intent_at": 1792850116411,
             "result_status": "confirmed_success",
             "external_id": "mail-001"
           }
         ],
         "provider_receipts": [
           {
-            "operation_id": "dcc4f247-96af-4567-8ef2-bb4b8d4711d5",
-            "attempt_id": "b07fd1d1-301e-492f-ae2f-98bb804bf858",
+            "operation_id": "c1af425c-e692-49d8-9fd1-ec3ba7185be8",
+            "attempt_id": "15ac0d6a-5035-419c-ad6c-6ecbf8f4c9fb",
             "step_id": "1-apply_labels",
             "receive_order": 1,
             "applied": true,
@@ -7688,7 +7672,7 @@
       ],
       "faults": ["after_dispatch_intent_before_send", "core_restart"],
       "observed": {
-        "operation_id": "00fb818f-b3b7-4624-b130-98301915e466",
+        "operation_id": "a0ccb352-f483-4123-affd-75490e07552b",
         "db_version": "9",
         "state_history": [
           {
@@ -7719,7 +7703,7 @@
         ],
         "approvals": [
           {
-            "approval_id": "78507e0c-71ab-48e4-833d-3d3a4e468bed",
+            "approval_id": "b25e8d64-feb5-4ad0-b228-10063dbb75fd",
             "content_version": "1",
             "route": "screen",
             "status": "valid"
@@ -7727,11 +7711,11 @@
         ],
         "attempts": [
           {
-            "attempt_id": "06197ad0-1572-4cec-ab92-ebccab7e3836",
+            "attempt_id": "e36029fc-e88d-40d4-9848-f9c3054ac8fa",
             "content_version": "1",
-            "approval_id": "78507e0c-71ab-48e4-833d-3d3a4e468bed",
+            "approval_id": "b25e8d64-feb5-4ad0-b228-10063dbb75fd",
             "status": "unknown_held",
-            "dispatch_intent_at": 1792852196311,
+            "dispatch_intent_at": 1792850117361,
             "external_id": null,
             "result_status": "unknown"
           }
@@ -7740,7 +7724,7 @@
           {
             "step_id": "1-create_draft",
             "step_kind": "create_draft",
-            "dispatch_intent_at": 1792852196311,
+            "dispatch_intent_at": 1792850117361,
             "result_status": "unknown",
             "external_id": null
           }

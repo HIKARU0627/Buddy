@@ -1,0 +1,5365 @@
+{
+  "note": "B06-05（ADR 0047）のバックアップの中身・世代・鍵の運用・復元の 6 段階・復元の後の保留の期待値。すべて手で書いた合成の値で、domain の出力から生成していない。HKDF の既知値は Python の hmac・hashlib で RFC 5869 を別に実装して求めた値を写した（試験は node:crypto で計算する）。",
+  "base_manifest": {
+    "schema": "buddy.backup-manifest.v1",
+    "backup_id": "00000000-0000-4000-8000-000000009101",
+    "created_at": "2026-10-20T03:00:00Z",
+    "store_generation": "00000000-0000-4000-8000-000000009201",
+    "db_schema_version": 7,
+    "forgetting_generation": "3",
+    "ledger_id": "00000000-0000-4000-8000-000000009301",
+    "ledger_head_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "included_storage_modes": ["normal", "extended"],
+    "excluded_data": [
+      "raw_audio",
+      "private_conversation",
+      "oauth_tokens",
+      "api_keys"
+    ],
+    "excluded_tables": [
+      "async_context_guards",
+      "command_receipts",
+      "command_scopes",
+      "event_outbox",
+      "home_network_reports",
+      "pairing_claims",
+      "pairing_sessions",
+      "source_items",
+      "sync_batches",
+      "sync_staging"
+    ],
+    "payload": {
+      "bytes": 4096,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "key_wraps": [
+      {
+        "purpose": "backup_file",
+        "key_id": "backup-file-v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000009001",
+        "kdf": {
+          "algorithm": "hkdf-sha256",
+          "salt": "AAECAwQFBgcICQoLDA0ODw=="
+        },
+        "cipher": "aes-256-gcm",
+        "nonce": "AAAAAAAAAAAAAAAA",
+        "wrapped_material": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "tag": "AAAAAAAAAAAAAAAAAAAAAA=="
+      },
+      {
+        "purpose": "data_key",
+        "key_id": "data-key-v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000009001",
+        "kdf": {
+          "algorithm": "hkdf-sha256",
+          "salt": "AAECAwQFBgcICQoLDA0ODw=="
+        },
+        "cipher": "aes-256-gcm",
+        "nonce": "AAAAAAAAAAAAAAAB",
+        "wrapped_material": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "tag": "AAAAAAAAAAAAAAAAAAAAAA=="
+      },
+      {
+        "purpose": "ledger_hmac_key",
+        "key_id": "ledger-hmac-v1",
+        "recovery_key_id": "00000000-0000-4000-8000-000000009001",
+        "kdf": {
+          "algorithm": "hkdf-sha256",
+          "salt": "AAECAwQFBgcICQoLDA0ODw=="
+        },
+        "cipher": "aes-256-gcm",
+        "nonce": "AAAAAAAAAAAAAAAC",
+        "wrapped_material": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "tag": "AAAAAAAAAAAAAAAAAAAAAA=="
+      }
+    ]
+  },
+  "table_plan_cases": [
+    {
+      "id": "b0605-tables-all-migration-tables",
+      "note": "マイグレーション 0001〜0009 の表すべて（0008 の budget_credit_observations、0009 の device_epochs・io_stop_state を含む）。短命の 10 表だけを除き、忘却台帳の 2 表は含める。",
+      "tables": [
+        "schema_meta",
+        "sealed_blobs",
+        "devices",
+        "pairing_sessions",
+        "pairing_claims",
+        "command_scopes",
+        "connections",
+        "sessions",
+        "turns",
+        "workflows",
+        "input_snapshots",
+        "operations",
+        "operation_versions",
+        "approvals",
+        "operation_attempts",
+        "operation_steps",
+        "command_receipts",
+        "event_outbox",
+        "async_context_guards",
+        "auto_actions",
+        "undo_records",
+        "safety_breaker",
+        "safety_window_counts",
+        "budget_reservations",
+        "live_sessions",
+        "sync_scopes",
+        "sync_batches",
+        "sync_staging",
+        "source_items",
+        "request_entities",
+        "request_entity_operations",
+        "related_analyses",
+        "notification_candidates",
+        "deliveries",
+        "memories",
+        "memory_sources",
+        "forget_ledger",
+        "forget_ledger_items",
+        "user_directives",
+        "intent_shadow",
+        "deployments",
+        "evaluation_results",
+        "home_networks",
+        "home_network_reports",
+        "turn_responses",
+        "tasks",
+        "budget_overage_approvals",
+        "budget_months",
+        "budget_month_confirmations",
+        "budget_credit_observations",
+        "device_epochs",
+        "io_stop_state"
+      ],
+      "expect": {
+        "ok": true,
+        "excluded_tables": [
+          "async_context_guards",
+          "command_receipts",
+          "command_scopes",
+          "event_outbox",
+          "home_network_reports",
+          "pairing_claims",
+          "pairing_sessions",
+          "source_items",
+          "sync_batches",
+          "sync_staging"
+        ],
+        "included_count": 42
+      }
+    },
+    {
+      "id": "b0605-tables-unknown-table-blocks-backup",
+      "note": "まだ分類していない表（B06-06 で足す予定の derivations など）があれば、黙って含めも捨てもせず、取らない。",
+      "tables": [
+        "schema_meta",
+        "forget_ledger",
+        "forget_ledger_items",
+        "derivations"
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["unknown_table"],
+        "unknown_tables": ["derivations"],
+        "missing_required_tables": []
+      }
+    },
+    {
+      "id": "b0605-tables-ledger-items-missing",
+      "tables": ["schema_meta", "forget_ledger", "memories"],
+      "expect": {
+        "ok": false,
+        "reasons": ["required_table_missing"],
+        "unknown_tables": [],
+        "missing_required_tables": ["forget_ledger_items"]
+      }
+    },
+    {
+      "id": "b0605-tables-duplicate",
+      "tables": [
+        "schema_meta",
+        "forget_ledger",
+        "forget_ledger_items",
+        "memories",
+        "memories"
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["duplicate_table"],
+        "unknown_tables": [],
+        "missing_required_tables": []
+      }
+    }
+  ],
+  "manifest_cases": [
+    {
+      "id": "x16-b0605-manifest-base-valid",
+      "override": {},
+      "problems": [],
+      "contract": {
+        "schema_valid": true,
+        "semantic_errors": []
+      }
+    },
+    {
+      "id": "x17-b0605-manifest-private-included",
+      "override": {
+        "included_storage_modes": ["normal", "private"]
+      },
+      "problems": ["private_included"],
+      "contract": {
+        "schema_valid": false
+      }
+    },
+    {
+      "id": "x17-b0605-manifest-private-conversation-exclusion-missing",
+      "override": {
+        "excluded_data": ["raw_audio", "oauth_tokens", "api_keys"]
+      },
+      "problems": ["excluded_data_missing"],
+      "contract": {
+        "schema_valid": false
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-ledger-table-excluded",
+      "override": {
+        "excluded_tables": ["forget_ledger", "source_items"]
+      },
+      "problems": ["required_table_excluded"],
+      "contract": {
+        "schema_valid": true,
+        "semantic_errors": ["required_table_excluded"]
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-genesis-with-hash",
+      "override": {
+        "forgetting_generation": "0"
+      },
+      "problems": ["genesis_ledger_hash_mismatch"],
+      "contract": {
+        "schema_valid": true,
+        "semantic_errors": ["genesis_ledger_hash_mismatch"]
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-zero-hash-with-generation",
+      "override": {
+        "ledger_head_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "problems": ["genesis_ledger_hash_mismatch"]
+    },
+    {
+      "id": "x16-b0605-manifest-ledger-key-wrap-missing",
+      "note": "3 つの包みの一部（台帳の HMAC の鍵）が欠けた封筒。",
+      "drop_wraps": ["ledger_hmac_key"],
+      "problems": ["key_wrap_count", "key_wrap_missing"],
+      "contract": {
+        "schema_valid": false
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-data-key-wrap-in-ledger-slot",
+      "note": "取り違え: 台帳の鍵の包みの代わりに、データ鍵の包みが 2 つある。",
+      "replace_wrap": {
+        "purpose": "ledger_hmac_key",
+        "with": {
+          "purpose": "data_key",
+          "key_id": "data-key-v1"
+        }
+      },
+      "problems": ["key_id_reused", "key_wrap_duplicated", "key_wrap_missing"],
+      "contract": {
+        "schema_valid": false
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-recovery-key-mismatch",
+      "note": "取り違え: 1 つだけ別の復旧キーで包んである。",
+      "replace_wrap": {
+        "purpose": "data_key",
+        "with": {
+          "recovery_key_id": "00000000-0000-4000-8000-000000009002"
+        }
+      },
+      "problems": ["recovery_key_mismatch"],
+      "contract": {
+        "schema_valid": true,
+        "semantic_errors": ["recovery_key_mismatch"]
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-unknown-wrap-purpose",
+      "replace_wrap": {
+        "purpose": "ledger_hmac_key",
+        "with": {
+          "purpose": "ledger_key"
+        }
+      },
+      "problems": ["key_wrap_missing", "key_wrap_unknown_purpose"],
+      "contract": {
+        "schema_valid": false
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-extra-wrap",
+      "add_wrap": {
+        "purpose": "backup_file",
+        "key_id": "backup-file-v2"
+      },
+      "problems": ["key_wrap_count", "key_wrap_duplicated"],
+      "contract": {
+        "schema_valid": false
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-short-salt",
+      "replace_wrap": {
+        "purpose": "backup_file",
+        "with": {
+          "kdf": {
+            "algorithm": "hkdf-sha256",
+            "salt": "AAECAwQFBgc="
+          }
+        }
+      },
+      "problems": ["key_wrap_malformed"],
+      "contract": {
+        "schema_valid": false
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-created-on-february-30",
+      "override": {
+        "created_at": "2026-02-30T00:00:00Z"
+      },
+      "problems": ["created_at_invalid"]
+    },
+    {
+      "id": "x16-b0605-manifest-key-id-reused",
+      "note": "Sonnet の P2-3: データ鍵の包みが本体の鍵と同じ ID。",
+      "replace_wrap": {
+        "purpose": "data_key",
+        "with": {
+          "key_id": "backup-file-v1"
+        }
+      },
+      "problems": ["key_id_reused"],
+      "contract": {
+        "schema_valid": true,
+        "semantic_errors": ["key_id_reused"]
+      }
+    },
+    {
+      "id": "x16-b0605-manifest-business-tables-excluded",
+      "note": "Sonnet の P2-6 の再現: 業務の表・予算・存在しない表を除外した封筒（並びも違う）。",
+      "override": {
+        "excluded_tables": [
+          "operations",
+          "approvals",
+          "budget_months",
+          "nonexistent"
+        ]
+      },
+      "problems": ["excluded_table_unknown", "excluded_tables_unsorted"],
+      "contract": {
+        "schema_valid": true,
+        "semantic_errors": []
+      }
+    },
+    {
+      "id": "b0605-manifest-excluded-tables-unsorted",
+      "override": {
+        "excluded_tables": ["source_items", "event_outbox"]
+      },
+      "problems": ["excluded_tables_unsorted"]
+    }
+  ],
+  "coverage_cases": [
+    {
+      "id": "b0605-coverage-ok",
+      "db_blob_key_ids": ["data-key-v1"],
+      "recorded_ledger_key_id": "ledger-hmac-v1",
+      "forgetting_generation": "3",
+      "problems": []
+    },
+    {
+      "id": "b0605-coverage-two-data-keys",
+      "note": "データ鍵の入れ替えの途中で、暗号文が 2 つの鍵を使っている。包みは 1 つなので、実機を失うと v0 の暗号文が読めない。",
+      "db_blob_key_ids": ["data-key-v0", "data-key-v1"],
+      "recorded_ledger_key_id": "ledger-hmac-v1",
+      "forgetting_generation": "3",
+      "problems": ["data_key_not_covering_db"]
+    },
+    {
+      "id": "b0605-coverage-ledger-key-swapped",
+      "db_blob_key_ids": ["data-key-v1"],
+      "recorded_ledger_key_id": "ledger-hmac-v2",
+      "forgetting_generation": "3",
+      "problems": ["ledger_key_not_covered"]
+    },
+    {
+      "id": "b0605-coverage-ledger-key-unrecorded",
+      "db_blob_key_ids": [],
+      "recorded_ledger_key_id": null,
+      "forgetting_generation": "3",
+      "problems": ["ledger_key_unrecorded"]
+    },
+    {
+      "id": "b0605-coverage-empty-ledger-before-record",
+      "db_blob_key_ids": [],
+      "recorded_ledger_key_id": null,
+      "forgetting_generation": "0",
+      "problems": []
+    }
+  ],
+  "retention_cases": [
+    {
+      "id": "x16-b0605-retention-daily-seven-generations",
+      "note": "1 日 1 回 02:00 に取り、今は 10-24 03:00。7 日（世代 7）を過ぎた 10-16・10-17 を消し、10-18〜10-24 の 7 個を残す。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": "2026-10-24T02:55:00Z",
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009116",
+            "created_at": "2026-10-16T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009117",
+            "created_at": "2026-10-17T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009118",
+            "created_at": "2026-10-18T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009119",
+            "created_at": "2026-10-19T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009120",
+            "created_at": "2026-10-20T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009121",
+            "created_at": "2026-10-21T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009122",
+            "created_at": "2026-10-22T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009123",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009124",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired"]],
+          ["delete", ["expired"]],
+          ["keep", []],
+          ["keep", []],
+          ["keep", []],
+          ["keep", []],
+          ["keep", []],
+          ["keep", []],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 7,
+        "forgetting_checked": true,
+        "notices": []
+      }
+    },
+    {
+      "id": "x16-b0605-retention-expiry-exact-boundary",
+      "note": "作成から 7 日ちょうどは消す。1 ミリ秒後に作ったものは残す。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009131",
+            "created_at": "2026-10-17T03:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009132",
+            "created_at": "2026-10-17T03:00:00.001Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": []
+      }
+    },
+    {
+      "id": "b0605-retention-beyond-generations",
+      "note": "手で追加で取ったので 3 日の間に 4 個ある。新しい 3 個を残す。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 3,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009141",
+            "created_at": "2026-10-23T10:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009142",
+            "created_at": "2026-10-23T20:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009143",
+            "created_at": "2026-10-24T01:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009144",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["beyond_generations"]],
+          ["keep", []],
+          ["keep", []],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 3,
+        "forgetting_checked": true,
+        "notices": []
+      }
+    },
+    {
+      "id": "x15-b0605-retention-forgetting-superseded",
+      "note": "忘却で台帳が世代 5 へ進み、世代 5 のバックアップができた。世代 4 の古い封筒は消す（置き換え済み）。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009151",
+            "created_at": "2026-10-22T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "4",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009152",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "4",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009153",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["forgetting_superseded"]],
+          ["delete", ["forgetting_superseded"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": []
+      }
+    },
+    {
+      "id": "x15-b0605-retention-awaiting-replacement",
+      "note": "世代 5 のバックアップがまだない。世代 4 の封筒は消さずに残し、新しいバックアップを求める（取ってから消す）。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009161",
+            "created_at": "2026-10-22T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "4",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009162",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "4",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["keep", ["awaiting_replacement"]],
+          ["keep", ["awaiting_replacement"]]
+        ],
+        "needs_new_backup": true,
+        "restorable_count": 2,
+        "forgetting_checked": true,
+        "notices": []
+      }
+    },
+    {
+      "id": "b0605-retention-holds-are-not-counted",
+      "note": "封筒が読めない・別の系譜・今より先の作成・台帳より新しい世代は、世代の数に数えない。ただし期限は当てる（Sonnet の P2-4）。世代 1 の期限（1 日）を過ぎた、読めない封筒と別の系譜は消す。今より先の作成は期限を数えられず残す。台帳より新しい世代は 30 日まで残して知らせる。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 1,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009171",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009172",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009399",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009173",
+            "created_at": "2026-10-25T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009174",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "6",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009175",
+            "created_at": "2026-10-24T02:30:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired", "manifest_unreadable"]],
+          ["delete", ["expired", "foreign_lineage"]],
+          ["keep", ["created_in_future"]],
+          ["keep", ["generation_ahead_of_ledger"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009173",
+            "reason": "future_timestamp"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009174",
+            "reason": "generation_ahead_of_ledger"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-retention-last-backup-kept-after-failures",
+      "note": "司令塔の判断（U74）: バックアップが 10 日失敗し続け、すべて期限（7 日）を過ぎた。成功した最新の 1 つ（10-14）だけは残し、新しいバックアップを求める。ほかは消す。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009201",
+            "created_at": "2026-10-12T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009202",
+            "created_at": "2026-10-14T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009203",
+            "created_at": "2026-10-13T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired"]],
+          ["keep", ["last_backup_kept"]],
+          ["delete", ["expired"]]
+        ],
+        "needs_new_backup": true,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009202",
+            "reason": "last_backup_kept"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-b0605-retention-last-backup-kept-before-forgetting",
+      "note": "残した最新の 1 つが忘却より前の世代。消さずに残すが置き換えを待つ（復元の段階 3 で台帳を当てるので、忘れた内容は戻らない）。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009204",
+            "created_at": "2026-10-10T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "4",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [["keep", ["last_backup_kept", "awaiting_replacement"]]],
+        "needs_new_backup": true,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009204",
+            "reason": "last_backup_kept"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b0605-retention-last-backup-kept-ledger-unconfirmed",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 3,
+        "ledger": null,
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009205",
+            "created_at": "2026-10-01T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "2",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009206",
+            "created_at": "2026-10-02T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "2",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired"]],
+          ["keep", ["last_backup_kept"]]
+        ],
+        "needs_new_backup": true,
+        "restorable_count": 1,
+        "forgetting_checked": false,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009206",
+            "reason": "last_backup_kept"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b0605-retention-unreadable-is-not-the-last-backup",
+      "note": "読めない封筒は「成功した最新」に数えない。期限内の封筒がなければ、読める中で最も新しいものを残す。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009207",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009208",
+            "created_at": "2026-10-15T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009209",
+            "created_at": "2026-10-16T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["keep", ["manifest_unreadable"]],
+          ["delete", ["expired"]],
+          ["keep", ["last_backup_kept"]]
+        ],
+        "needs_new_backup": true,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009209",
+            "reason": "last_backup_kept"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-retention-clock-rolled-back",
+      "note": "時計が 10-20 へ戻った。最終確認時刻 10-24 03:00 で判定する（延ばさない）。10-17 の封筒は消え、10-22 の封筒は今より先ではない（最終確認時刻より前）。",
+      "input": {
+        "now": "2026-10-20T00:00:00Z",
+        "last_checked_at": "2026-10-24T03:00:00Z",
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009181",
+            "created_at": "2026-10-17T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009182",
+            "created_at": "2026-10-19T23:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009183",
+            "created_at": "2026-10-22T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "regressed",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired"]],
+          ["keep", []],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 2,
+        "forgetting_checked": true,
+        "notices": []
+      }
+    },
+    {
+      "id": "x16-b0605-retention-ledger-unconfirmed",
+      "note": "台帳を確認できないときは、忘却の世代による置き換えを判定しない（世代の古い封筒を消さない）。期限と世代の数は当てる。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": null,
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009191",
+            "created_at": "2026-10-22T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "3",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009192",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "4",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["keep", []],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 2,
+        "forgetting_checked": false,
+        "notices": []
+      }
+    },
+    {
+      "id": "b0605-retention-invalid-now",
+      "input": {
+        "now": "2026-10-24 03:00",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": null,
+        "backups": []
+      },
+      "expect": {
+        "ok": false,
+        "reason": "invalid_now"
+      }
+    },
+    {
+      "id": "b0605-retention-keep-zero",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 0,
+        "ledger": null,
+        "backups": []
+      },
+      "expect": {
+        "ok": false,
+        "reason": "keep_generations_invalid"
+      }
+    },
+    {
+      "id": "x16-b0605-retention-stale-unusable-envelopes-expire",
+      "note": "Sonnet の P2-4 の再現: 2025-01-01 に作った別の系譜・読めない封筒が、2026-10-24 でも残っていた。期限で消す。作成時刻の読めない封筒はファイルの更新時刻で判定する。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009301",
+            "created_at": "2025-01-01T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009399",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009302",
+            "created_at": "2025-01-01T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009303",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false,
+            "file_modified_at": "2026-10-01T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009304",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false,
+            "file_modified_at": "2026-10-23T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009305",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009309",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired", "foreign_lineage"]],
+          ["delete", ["expired", "manifest_unreadable"]],
+          ["delete", ["expired", "manifest_unreadable"]],
+          ["keep", ["manifest_unreadable"]],
+          ["keep", ["manifest_unreadable", "age_unknown"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009305",
+            "reason": "age_unknown"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-retention-generation-ahead-30-days",
+      "note": "台帳より新しい世代は、通常の期限ではなく 30 日まで残して知らせる。30 日ちょうどで消す。ファイルの更新時刻が作成より早ければ、早い方で数える。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009306",
+            "created_at": "2026-09-24T03:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "6",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009307",
+            "created_at": "2026-09-24T03:00:00.001Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "6",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009308",
+            "created_at": "2026-10-20T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "7",
+            "manifest_valid": true,
+            "file_modified_at": "2026-09-20T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009309",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["delete", ["expired", "generation_ahead_of_ledger"]],
+          ["keep", ["generation_ahead_of_ledger"]],
+          ["delete", ["expired", "generation_ahead_of_ledger"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009307",
+            "reason": "generation_ahead_of_ledger"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-retention-future-anchors-do-not-extend",
+      "note": "Sonnet の再確認の P2-D の再現: 作成時刻 2099（更新時刻なし）、読めない封筒で更新時刻 2099。今より先の値は「今作った」として扱い（Math.min(now, ...)）、期限を延ばさない。Core が記録した初めて見た時刻があれば、それで数えて消す。今より先の時刻は知らせる。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009401",
+            "created_at": "2099-01-01T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009402",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false,
+            "file_modified_at": "2099-01-01T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009403",
+            "created_at": "2099-01-01T00:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true,
+            "first_seen_at": "2026-10-10T00:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009404",
+            "created_at": "not-a-time",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": false,
+            "file_modified_at": "2099-01-01T00:00:00Z",
+            "first_seen_at": "2026-10-17T03:00:00Z"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009409",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["keep", ["created_in_future"]],
+          ["keep", ["manifest_unreadable"]],
+          ["delete", ["expired", "created_in_future"]],
+          ["delete", ["expired", "manifest_unreadable"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009401",
+            "reason": "future_timestamp"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009402",
+            "reason": "future_timestamp"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009403",
+            "reason": "future_timestamp"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009404",
+            "reason": "future_timestamp"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-retention-duplicate-id-holds-only-itself",
+      "note": "Sonnet の再確認の P2-E の再現: 同じ backup_id の封筒が 2 つあると、前は計画全体が止まり、期限切れの封筒も消えなかった。重複した封筒だけを保留して知らせ、ほかは計画どおり。重複した封筒も期限が来れば両方消す。",
+      "input": {
+        "now": "2026-10-24T03:00:00Z",
+        "last_checked_at": null,
+        "keep_generations": 7,
+        "ledger": {
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "forgetting_generation": "5"
+        },
+        "backups": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009490",
+            "created_at": "2026-10-22T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009490",
+            "created_at": "2026-10-23T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009491",
+            "created_at": "2026-10-01T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009491",
+            "created_at": "2026-10-02T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009405",
+            "created_at": "2026-10-10T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009409",
+            "created_at": "2026-10-24T02:00:00Z",
+            "ledger_id": "00000000-0000-4000-8000-000000009301",
+            "forgetting_generation": "5",
+            "manifest_valid": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "clock_state": "ok",
+        "effective_now": "2026-10-24T03:00:00Z",
+        "decisions": [
+          ["keep", ["duplicate_backup_id"]],
+          ["keep", ["duplicate_backup_id"]],
+          ["delete", ["expired", "duplicate_backup_id"]],
+          ["delete", ["expired", "duplicate_backup_id"]],
+          ["delete", ["expired"]],
+          ["keep", []]
+        ],
+        "needs_new_backup": false,
+        "restorable_count": 1,
+        "forgetting_checked": true,
+        "notices": [
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009490",
+            "reason": "duplicate_backup_id"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009490",
+            "reason": "duplicate_backup_id"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009491",
+            "reason": "duplicate_backup_id"
+          },
+          {
+            "backup_id": "00000000-0000-4000-8000-000000009491",
+            "reason": "duplicate_backup_id"
+          }
+        ]
+      }
+    }
+  ],
+  "setup_key_cases": [
+    {
+      "id": "b0605-setup-first-time",
+      "input": {
+        "keystore": {
+          "backup_file": null,
+          "data_key": {
+            "key_id": "data-key-v1"
+          },
+          "ledger_hmac_key": null
+        },
+        "recorded_ledger_key_id": null,
+        "forgetting_generation": "0",
+        "db_blob_key_ids": ["data-key-v1"]
+      },
+      "expect": {
+        "ok": true,
+        "actions": {
+          "backup_file": "generate",
+          "data_key": "reuse",
+          "ledger_hmac_key": "generate"
+        },
+        "record_ledger_key_id": true,
+        "rewrap_all": true
+      }
+    },
+    {
+      "id": "b0605-setup-rerun-keeps-keys",
+      "note": "設定をやり直しても、ある鍵は作り直さない（包み直すだけ）。",
+      "input": {
+        "keystore": {
+          "backup_file": {
+            "key_id": "backup-file-v1"
+          },
+          "data_key": {
+            "key_id": "data-key-v1"
+          },
+          "ledger_hmac_key": {
+            "key_id": "ledger-hmac-v1"
+          }
+        },
+        "recorded_ledger_key_id": "ledger-hmac-v1",
+        "forgetting_generation": "5",
+        "db_blob_key_ids": ["data-key-v1"]
+      },
+      "expect": {
+        "ok": true,
+        "actions": {
+          "backup_file": "reuse",
+          "data_key": "reuse",
+          "ledger_hmac_key": "reuse"
+        },
+        "record_ledger_key_id": false,
+        "rewrap_all": true
+      }
+    },
+    {
+      "id": "x16-b0605-setup-ledger-key-missing-for-existing-ledger",
+      "note": "台帳に項目があるのに台帳の鍵が KeyStore にない。新しい鍵を作ると、忘れた元情報の HMAC を照合できなくなるので止める。",
+      "input": {
+        "keystore": {
+          "backup_file": {
+            "key_id": "backup-file-v1"
+          },
+          "data_key": {
+            "key_id": "data-key-v1"
+          },
+          "ledger_hmac_key": null
+        },
+        "recorded_ledger_key_id": "ledger-hmac-v1",
+        "forgetting_generation": "5",
+        "db_blob_key_ids": ["data-key-v1"]
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["ledger_key_missing"]
+      }
+    },
+    {
+      "id": "x16-b0605-setup-ledger-key-swapped",
+      "input": {
+        "keystore": {
+          "backup_file": {
+            "key_id": "backup-file-v1"
+          },
+          "data_key": {
+            "key_id": "data-key-v1"
+          },
+          "ledger_hmac_key": {
+            "key_id": "ledger-hmac-v2"
+          }
+        },
+        "recorded_ledger_key_id": "ledger-hmac-v1",
+        "forgetting_generation": "5",
+        "db_blob_key_ids": ["data-key-v1"]
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["ledger_key_mismatch"]
+      }
+    },
+    {
+      "id": "x16-b0605-setup-ledger-key-unrecorded",
+      "input": {
+        "keystore": {
+          "backup_file": null,
+          "data_key": {
+            "key_id": "data-key-v1"
+          },
+          "ledger_hmac_key": {
+            "key_id": "ledger-hmac-v1"
+          }
+        },
+        "recorded_ledger_key_id": null,
+        "forgetting_generation": "2",
+        "db_blob_key_ids": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["ledger_key_unrecorded"]
+      }
+    },
+    {
+      "id": "b0605-setup-recorded-key-lost-with-empty-ledger",
+      "note": "台帳は空でも、記録した鍵から記憶の重複の鍵を導いている。失った鍵を作り直さない。",
+      "input": {
+        "keystore": {
+          "backup_file": null,
+          "data_key": {
+            "key_id": "data-key-v1"
+          },
+          "ledger_hmac_key": null
+        },
+        "recorded_ledger_key_id": "ledger-hmac-v1",
+        "forgetting_generation": "0",
+        "db_blob_key_ids": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["ledger_key_missing"]
+      }
+    },
+    {
+      "id": "b0605-setup-data-key-missing",
+      "input": {
+        "keystore": {
+          "backup_file": null,
+          "data_key": null,
+          "ledger_hmac_key": null
+        },
+        "recorded_ledger_key_id": null,
+        "forgetting_generation": "0",
+        "db_blob_key_ids": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["data_key_missing"]
+      }
+    },
+    {
+      "id": "b0605-setup-data-key-not-covering-db",
+      "input": {
+        "keystore": {
+          "backup_file": null,
+          "data_key": {
+            "key_id": "data-key-v1"
+          },
+          "ledger_hmac_key": null
+        },
+        "recorded_ledger_key_id": null,
+        "forgetting_generation": "0",
+        "db_blob_key_ids": ["data-key-v0", "data-key-v1"]
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["data_key_not_covering_db"]
+      }
+    },
+    {
+      "id": "b0605-setup-key-id-invalid",
+      "input": {
+        "keystore": {
+          "backup_file": null,
+          "data_key": {
+            "key_id": "Data-Key"
+          },
+          "ledger_hmac_key": null
+        },
+        "recorded_ledger_key_id": null,
+        "forgetting_generation": "0",
+        "db_blob_key_ids": ["Data-Key"]
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["key_id_invalid"]
+      }
+    }
+  ],
+  "key_install_cases": [
+    {
+      "id": "x16-b0605-install-hub-lost",
+      "note": "中枢を失った: KeyStore は空。3 つを足して確かめてから差し替える。失敗したら足した 3 つだけを消す。",
+      "keystore": [],
+      "expect": {
+        "ok": true,
+        "steps": [
+          {
+            "step": "stage_key",
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "step": "stage_key",
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          },
+          {
+            "step": "stage_key",
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-v1"
+          },
+          {
+            "step": "verify_staged_keys"
+          },
+          {
+            "step": "swap_database",
+            "active_key_ids": {
+              "backup_file": "backup-file-v1",
+              "data_key": "data-key-v1",
+              "ledger_hmac_key": "ledger-hmac-v1"
+            }
+          },
+          {
+            "step": "retain_previous_keys",
+            "keys": []
+          }
+        ],
+        "discard_on_failure": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-v1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "b0605-install-same-hub-same-keys",
+      "keystore": [
+        {
+          "purpose": "backup_file",
+          "key_id": "backup-file-v1",
+          "material_matches_restored": true
+        },
+        {
+          "purpose": "data_key",
+          "key_id": "data-key-v1",
+          "material_matches_restored": true
+        },
+        {
+          "purpose": "ledger_hmac_key",
+          "key_id": "ledger-hmac-v1",
+          "material_matches_restored": true
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "steps": [
+          {
+            "step": "keep_existing_key",
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "step": "keep_existing_key",
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          },
+          {
+            "step": "keep_existing_key",
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-v1"
+          },
+          {
+            "step": "verify_staged_keys"
+          },
+          {
+            "step": "swap_database",
+            "active_key_ids": {
+              "backup_file": "backup-file-v1",
+              "data_key": "data-key-v1",
+              "ledger_hmac_key": "ledger-hmac-v1"
+            }
+          },
+          {
+            "step": "retain_previous_keys",
+            "keys": []
+          }
+        ],
+        "discard_on_failure": []
+      }
+    },
+    {
+      "id": "b0605-install-after-data-key-rotation",
+      "note": "中枢はデータ鍵を v2 へ入れ替え済み。v1 のバックアップを戻すと v1 を足し、v2 は消さずに残す。",
+      "keystore": [
+        {
+          "purpose": "backup_file",
+          "key_id": "backup-file-v2",
+          "material_matches_restored": null
+        },
+        {
+          "purpose": "data_key",
+          "key_id": "data-key-v2",
+          "material_matches_restored": null
+        },
+        {
+          "purpose": "ledger_hmac_key",
+          "key_id": "ledger-hmac-v1",
+          "material_matches_restored": true
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "steps": [
+          {
+            "step": "stage_key",
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "step": "stage_key",
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          },
+          {
+            "step": "keep_existing_key",
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-v1"
+          },
+          {
+            "step": "verify_staged_keys"
+          },
+          {
+            "step": "swap_database",
+            "active_key_ids": {
+              "backup_file": "backup-file-v1",
+              "data_key": "data-key-v1",
+              "ledger_hmac_key": "ledger-hmac-v1"
+            }
+          },
+          {
+            "step": "retain_previous_keys",
+            "keys": [
+              {
+                "purpose": "backup_file",
+                "key_id": "backup-file-v2"
+              },
+              {
+                "purpose": "data_key",
+                "key_id": "data-key-v2"
+              }
+            ]
+          }
+        ],
+        "discard_on_failure": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-install-same-id-different-material",
+      "note": "取り違え: 同じ ID の鍵が KeyStore にあるが、素材が違う。上書きしない。",
+      "keystore": [
+        {
+          "purpose": "data_key",
+          "key_id": "data-key-v1",
+          "material_matches_restored": false
+        }
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["key_material_conflict"]
+      }
+    },
+    {
+      "id": "b0605-install-same-id-not-compared",
+      "keystore": [
+        {
+          "purpose": "data_key",
+          "key_id": "data-key-v1",
+          "material_matches_restored": null
+        }
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["key_material_unverified"]
+      }
+    },
+    {
+      "id": "x16-b0605-install-ledger-key-conflict",
+      "note": "中枢に別の ID の台帳の鍵がある（別の HMAC の空間）。",
+      "keystore": [
+        {
+          "purpose": "ledger_hmac_key",
+          "key_id": "ledger-hmac-v2",
+          "material_matches_restored": null
+        }
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["ledger_key_conflict"]
+      }
+    },
+    {
+      "id": "x16-b0605-install-wrap-missing",
+      "drop_wraps": ["ledger_hmac_key"],
+      "keystore": [],
+      "expect": {
+        "ok": false,
+        "reasons": ["key_wrap_unusable"]
+      }
+    },
+    {
+      "id": "x16-b0605-install-same-id-other-purpose",
+      "note": "Sonnet の P2-3 の再現: 包みは backup_file='bf-1'・data_key='shared'・ledger_hmac_key='lk-1'、KeyStore の本体の鍵が 'shared'。データ鍵として足すと本体の鍵を上書き・削除し得る。",
+      "wrap_key_ids": {
+        "backup_file": "bf-1",
+        "data_key": "shared",
+        "ledger_hmac_key": "lk-1"
+      },
+      "keystore": [
+        {
+          "purpose": "backup_file",
+          "key_id": "shared",
+          "material_matches_restored": null
+        }
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["key_material_conflict"]
+      }
+    },
+    {
+      "id": "x16-b0605-install-wraps-reuse-key-id",
+      "wrap_key_ids": {
+        "backup_file": "shared",
+        "data_key": "shared",
+        "ledger_hmac_key": "lk-1"
+      },
+      "keystore": [],
+      "expect": {
+        "ok": false,
+        "reasons": ["key_wrap_unusable"]
+      }
+    },
+    {
+      "id": "b0605-install-retain-by-purpose-and-id",
+      "note": "既存の鍵を残す判定は用途と ID の組で行う（同じ ID の別の用途の鍵を、使っている鍵と取り違えない）。",
+      "keystore": [
+        {
+          "purpose": "backup_file",
+          "key_id": "backup-file-v1",
+          "material_matches_restored": true
+        },
+        {
+          "purpose": "data_key",
+          "key_id": "data-key-v1",
+          "material_matches_restored": true
+        },
+        {
+          "purpose": "ledger_hmac_key",
+          "key_id": "ledger-hmac-v1",
+          "material_matches_restored": true
+        },
+        {
+          "purpose": "data_key",
+          "key_id": "data-key-v0",
+          "material_matches_restored": null
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "steps": [
+          {
+            "step": "keep_existing_key",
+            "purpose": "backup_file",
+            "key_id": "backup-file-v1"
+          },
+          {
+            "step": "keep_existing_key",
+            "purpose": "data_key",
+            "key_id": "data-key-v1"
+          },
+          {
+            "step": "keep_existing_key",
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-v1"
+          },
+          {
+            "step": "verify_staged_keys"
+          },
+          {
+            "step": "swap_database",
+            "active_key_ids": {
+              "backup_file": "backup-file-v1",
+              "data_key": "data-key-v1",
+              "ledger_hmac_key": "ledger-hmac-v1"
+            }
+          },
+          {
+            "step": "retain_previous_keys",
+            "keys": [
+              {
+                "purpose": "data_key",
+                "key_id": "data-key-v0"
+              }
+            ]
+          }
+        ],
+        "discard_on_failure": []
+      }
+    }
+  ],
+  "install_order_cases": [
+    {
+      "id": "b0605-order-correct",
+      "steps": [
+        "stage_key",
+        "stage_key",
+        "verify_staged_keys",
+        "swap_database",
+        "retain_previous_keys"
+      ],
+      "problems": []
+    },
+    {
+      "id": "b0605-order-swap-before-verify",
+      "steps": ["stage_key", "swap_database", "verify_staged_keys"],
+      "problems": ["step_after_swap", "swap_before_verify"]
+    },
+    {
+      "id": "b0605-order-verify-before-staging",
+      "steps": ["verify_staged_keys", "stage_key", "swap_database"],
+      "problems": ["verify_before_staging"]
+    },
+    {
+      "id": "b0605-order-swap-missing",
+      "steps": ["stage_key", "verify_staged_keys"],
+      "problems": ["swap_missing"]
+    },
+    {
+      "id": "b0605-order-stage-after-swap",
+      "steps": [
+        "stage_key",
+        "verify_staged_keys",
+        "swap_database",
+        "stage_key"
+      ],
+      "problems": [
+        "step_after_swap",
+        "swap_before_staging",
+        "verify_before_staging"
+      ]
+    }
+  ],
+  "ledger_check_cases": [
+    {
+      "id": "x16-b0605-ledger-hub-current",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v1"
+      },
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "ledger": {
+          "holder": "hub",
+          "head_generation": "5"
+        },
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-hub-lost-replica-current",
+      "note": "中枢を失い、端末の複製が最新。中枢の鍵の記録はない（新しい中枢）。",
+      "ledgers": [
+        {
+          "holder": "device-a",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": null,
+        "keystore_key_id": null
+      },
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "ledger": {
+          "holder": "device-a",
+          "head_generation": "5"
+        },
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-lost-everywhere",
+      "note": "中枢と全端末から台帳が失われた（03）。記憶と会話は戻さない。設定だけは戻せる。",
+      "ledgers": [],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": null,
+        "keystore_key_id": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["latest_ledger_missing"],
+        "ledger": null,
+        "settings_only_eligible": true
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-latest-unconfirmed",
+      "ledgers": [
+        {
+          "holder": "device-a",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": null,
+      "hub_ledger_key": {
+        "recorded_key_id": null,
+        "keystore_key_id": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["latest_ledger_unconfirmed"],
+        "ledger": null,
+        "settings_only_eligible": true
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-only-old-copy",
+      "note": "古いバックアップと、最新より古い複製しかない（X16）。",
+      "ledgers": [
+        {
+          "holder": "device-a",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "4",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": null,
+        "keystore_key_id": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["latest_ledger_missing"],
+        "ledger": null,
+        "settings_only_eligible": true
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-partial-copy",
+      "ledgers": [
+        {
+          "holder": "device-a",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": false,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": null,
+        "keystore_key_id": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["latest_ledger_missing"],
+        "ledger": null,
+        "settings_only_eligible": true
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-backup-newer-than-ledger",
+      "note": "中枢の台帳が世代 2 に巻き戻り、バックアップは世代 3。",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "2",
+          "hash_at_backup_generation": null
+        }
+      ],
+      "latest_known_generation": "2",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v1"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_newer_than_ledger"],
+        "ledger": null,
+        "settings_only_eligible": true
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-lineage-mismatch",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009399",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v1"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["latest_ledger_missing", "ledger_lineage_mismatch"],
+        "ledger": null,
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-hub-chain-broken",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": false,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v1"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["latest_ledger_missing", "ledger_chain_invalid"],
+        "ledger": null,
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-hash-at-backup-generation-differs",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v1"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_ledger_hash_mismatch"],
+        "ledger": null,
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-key-swapped-against-existing-ledger",
+      "note": "鍵の取り違え: 封筒の台帳の鍵は v1、中枢が台帳に使っている鍵は v2。",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v2",
+        "keystore_key_id": "ledger-hmac-v2"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["ledger_lineage_mismatch"],
+        "ledger": null,
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-key-recorded-differs-keystore-lost",
+      "note": "鍵の欠落と取り違え: KeyStore の台帳の鍵は失われたが、中枢の記録は v2。封筒の v1 を入れると記録と食い違う。",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v2",
+        "keystore_key_id": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["ledger_lineage_mismatch"],
+        "ledger": null,
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-key-keystore-differs-from-record",
+      "note": "中枢の記録（v1）と KeyStore（v2）が食い違う。どちらが台帳の鍵か決められない。",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v2"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["ledger_lineage_mismatch"],
+        "ledger": null,
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-key-unrecorded-for-existing-ledger",
+      "note": "鍵の欠落: 中枢の台帳に項目があるのに鍵の記録がなく、KeyStore の鍵は別の ID。",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": null,
+        "keystore_key_id": "ledger-hmac-v2"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["latest_ledger_unconfirmed", "ledger_lineage_mismatch"],
+        "ledger": null,
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "x16-b0605-ledger-manifest-invalid",
+      "manifest_replace_wrap": {
+        "purpose": "data_key",
+        "with": {
+          "recovery_key_id": "00000000-0000-4000-8000-000000009002"
+        }
+      },
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v1"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["manifest_invalid"],
+        "ledger": null,
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "b0605-ledger-duplicate-holder",
+      "ledgers": [
+        {
+          "holder": "device-a",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "holder": "device-a",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "6",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "6",
+      "hub_ledger_key": {
+        "recorded_key_id": null,
+        "keystore_key_id": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["latest_ledger_unconfirmed"],
+        "ledger": null,
+        "settings_only_eligible": true
+      }
+    },
+    {
+      "id": "b0605-ledger-foreign-replica-ignored",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "holder": "device-b",
+          "ledger_id": "00000000-0000-4000-8000-000000009399",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "9",
+          "hash_at_backup_generation": null
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v1"
+      },
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "ledger": {
+          "holder": "hub",
+          "head_generation": "5"
+        },
+        "settings_only_eligible": false
+      }
+    },
+    {
+      "id": "b0605-ledger-replica-newer-than-known",
+      "note": "端末の複製が、中枢の知る最新より新しい（世代 6）。最も新しい台帳を当てる。",
+      "ledgers": [
+        {
+          "holder": "hub",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "5",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "holder": "device-a",
+          "ledger_id": "00000000-0000-4000-8000-000000009301",
+          "chain_valid": true,
+          "complete": true,
+          "head_generation": "6",
+          "hash_at_backup_generation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "latest_known_generation": "5",
+      "hub_ledger_key": {
+        "recorded_key_id": "ledger-hmac-v1",
+        "keystore_key_id": "ledger-hmac-v1"
+      },
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "ledger": {
+          "holder": "device-a",
+          "head_generation": "6"
+        },
+        "settings_only_eligible": false
+      }
+    }
+  ],
+  "open_check_base": {
+    "manifest_created_at": "2026-10-20T03:00:00Z",
+    "started_at": "2026-10-24T03:00:00Z",
+    "now": "2026-10-24T03:05:00Z",
+    "last_checked_at": "2026-10-24T03:00:00Z",
+    "recovery_check": "match",
+    "unwrap": {
+      "backup_file": "ok",
+      "data_key": "ok",
+      "ledger_hmac_key": "ok"
+    },
+    "key_install_ok": true,
+    "payload_matches": true,
+    "purge_applied_at": "2026-10-24T03:04:00Z"
+  },
+  "open_check_cases": [
+    {
+      "id": "b0605-open-ok",
+      "override": {},
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "effective_now": "2026-10-24T03:05:00Z"
+      }
+    },
+    {
+      "id": "b0605-open-no-check-record",
+      "override": {
+        "recovery_check": "unavailable"
+      },
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "effective_now": "2026-10-24T03:05:00Z"
+      }
+    },
+    {
+      "id": "x16-b0605-open-recovery-key-typo",
+      "override": {
+        "recovery_check": "mismatch"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_unreadable"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-ledger-wrap-auth-failed",
+      "override": {
+        "unwrap": {
+          "backup_file": "ok",
+          "data_key": "ok",
+          "ledger_hmac_key": "failed"
+        }
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_unreadable"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-key-install-conflict",
+      "override": {
+        "key_install_ok": false
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_unreadable"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "b0605-open-payload-corrupted",
+      "override": {
+        "payload_matches": false
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_unreadable"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-clock-behind-last-check-by-1ms",
+      "override": {
+        "now": "2026-10-24T02:59:59.999Z",
+        "started_at": "2026-10-24T02:59:00Z"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["clock_regression"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "b0605-open-clock-equal-last-check",
+      "override": {
+        "now": "2026-10-24T03:00:00Z",
+        "purge_applied_at": "2026-10-24T03:00:00Z"
+      },
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "effective_now": "2026-10-24T03:00:00Z"
+      }
+    },
+    {
+      "id": "x16-b0605-open-clock-rolled-back-during-restore",
+      "override": {
+        "now": "2026-10-24T03:00:30Z",
+        "started_at": "2026-10-24T03:01:00Z"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["clock_regression"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-new-hub-clock-before-backup",
+      "override": {
+        "now": "2026-10-19T00:00:00Z",
+        "started_at": "2026-10-19T00:00:00Z",
+        "last_checked_at": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["clock_regression"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "b0605-open-unreadable-and-clock",
+      "override": {
+        "now": "2026-10-24T02:00:00Z",
+        "started_at": "2026-10-24T01:59:00Z",
+        "unwrap": {
+          "backup_file": "failed",
+          "data_key": "ok",
+          "ledger_hmac_key": "ok"
+        }
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_unreadable", "clock_regression"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "b0605-open-now-unreadable",
+      "override": {
+        "now": "yesterday"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["clock_regression"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-purge-not-applied",
+      "note": "Sonnet の P2-5 の再現: 開けて時計も正しいが、期限切れの削除を当てた記録がない。",
+      "override": {
+        "purge_applied_at": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["expiry_purge_failed"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-purge-before-restore-started",
+      "note": "前の復元の試みで当てた記録を、今回の削除と取り違えない。",
+      "override": {
+        "purge_applied_at": "2026-10-24T02:59:59.999Z"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["expiry_purge_failed"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "x16-b0605-open-purge-after-now",
+      "override": {
+        "purge_applied_at": "2026-10-24T03:05:00.001Z"
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["clock_regression"],
+        "effective_now": null
+      }
+    },
+    {
+      "id": "b0605-open-purge-at-start",
+      "override": {
+        "purge_applied_at": "2026-10-24T03:00:00Z"
+      },
+      "expect": {
+        "status": "passed",
+        "reasons": [],
+        "effective_now": "2026-10-24T03:05:00Z"
+      }
+    },
+    {
+      "id": "b0605-open-unreadable-hides-purge",
+      "note": "開けなければ削除もできない。理由は開けないことだけ。",
+      "override": {
+        "payload_matches": false,
+        "purge_applied_at": null
+      },
+      "expect": {
+        "status": "failed",
+        "reasons": ["backup_unreadable"],
+        "effective_now": null
+      }
+    }
+  ],
+  "stage_cases": [
+    {
+      "id": "b0605-forget-applied-to-head",
+      "kind": "forget",
+      "input": {
+        "applied_generation": "6",
+        "required_generation": "6"
+      },
+      "expect": {
+        "stage": "forget_apply",
+        "status": "passed",
+        "reasons": []
+      }
+    },
+    {
+      "id": "b0605-forget-short-of-head",
+      "kind": "forget",
+      "input": {
+        "applied_generation": "5",
+        "required_generation": "6"
+      },
+      "expect": {
+        "stage": "forget_apply",
+        "status": "failed",
+        "reasons": ["forget_apply_failed"]
+      }
+    },
+    {
+      "id": "b0605-forget-not-applied",
+      "kind": "forget",
+      "input": {
+        "applied_generation": null,
+        "required_generation": "0"
+      },
+      "expect": {
+        "stage": "forget_apply",
+        "status": "failed",
+        "reasons": ["forget_apply_failed"]
+      }
+    },
+    {
+      "id": "b0605-db-ok-older-schema",
+      "kind": "db",
+      "expect": {
+        "stage": "db_verify",
+        "status": "passed",
+        "reasons": []
+      },
+      "override": {
+        "integrity_ok": true,
+        "foreign_keys_ok": true,
+        "restored_schema_version": 6,
+        "manifest_schema_version": 6,
+        "code_schema_version": 7,
+        "operations_plan_ok": true
+      }
+    },
+    {
+      "id": "b0605-db-schema-newer",
+      "kind": "db",
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["schema_newer_than_code"]
+      },
+      "override": {
+        "integrity_ok": true,
+        "foreign_keys_ok": true,
+        "restored_schema_version": 8,
+        "manifest_schema_version": 8,
+        "code_schema_version": 7,
+        "operations_plan_ok": true
+      }
+    },
+    {
+      "id": "b0605-db-manifest-version-differs",
+      "kind": "db",
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      },
+      "override": {
+        "integrity_ok": true,
+        "foreign_keys_ok": true,
+        "restored_schema_version": 6,
+        "manifest_schema_version": 7,
+        "code_schema_version": 7,
+        "operations_plan_ok": true
+      }
+    },
+    {
+      "id": "b0605-db-foreign-key-broken",
+      "kind": "db",
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      },
+      "override": {
+        "integrity_ok": true,
+        "foreign_keys_ok": false,
+        "restored_schema_version": 7,
+        "manifest_schema_version": 7,
+        "code_schema_version": 7,
+        "operations_plan_ok": true
+      }
+    },
+    {
+      "id": "b0605-db-unknown-operation-state",
+      "kind": "db",
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      },
+      "override": {
+        "integrity_ok": true,
+        "foreign_keys_ok": true,
+        "restored_schema_version": 7,
+        "manifest_schema_version": 7,
+        "code_schema_version": 7,
+        "operations_plan_ok": false
+      }
+    },
+    {
+      "id": "b0605-db-newer-and-corrupt",
+      "kind": "db",
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed", "schema_newer_than_code"]
+      },
+      "override": {
+        "integrity_ok": false,
+        "foreign_keys_ok": true,
+        "restored_schema_version": 8,
+        "manifest_schema_version": 8,
+        "code_schema_version": 7,
+        "operations_plan_ok": true
+      }
+    },
+    {
+      "id": "b0605-rebuild-failed",
+      "kind": "rebuild",
+      "input": {
+        "ok": false
+      },
+      "expect": {
+        "stage": "rebuild_views",
+        "status": "failed",
+        "reasons": ["rebuild_failed"]
+      }
+    },
+    {
+      "id": "b0605-reconcile-before-reauth",
+      "kind": "reconcile",
+      "input": {
+        "reauth_complete": false
+      },
+      "expect": {
+        "stage": "external_reconcile",
+        "status": "pending",
+        "reasons": []
+      }
+    },
+    {
+      "id": "b0605-reconcile-after-reauth",
+      "kind": "reconcile",
+      "input": {
+        "reauth_complete": true
+      },
+      "expect": {
+        "stage": "external_reconcile",
+        "status": "passed",
+        "reasons": []
+      }
+    },
+    {
+      "id": "x16-b0605-db-unknown-table",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "sealed_blobs",
+          "devices",
+          "pairing_sessions",
+          "pairing_claims",
+          "command_scopes",
+          "connections",
+          "sessions",
+          "turns",
+          "workflows",
+          "input_snapshots",
+          "operations",
+          "operation_versions",
+          "approvals",
+          "operation_attempts",
+          "operation_steps",
+          "command_receipts",
+          "event_outbox",
+          "async_context_guards",
+          "auto_actions",
+          "undo_records",
+          "safety_breaker",
+          "safety_window_counts",
+          "budget_reservations",
+          "live_sessions",
+          "sync_scopes",
+          "sync_batches",
+          "sync_staging",
+          "source_items",
+          "request_entities",
+          "request_entity_operations",
+          "related_analyses",
+          "notification_candidates",
+          "deliveries",
+          "memories",
+          "memory_sources",
+          "forget_ledger",
+          "forget_ledger_items",
+          "user_directives",
+          "intent_shadow",
+          "deployments",
+          "evaluation_results",
+          "home_networks",
+          "home_network_reports",
+          "turn_responses",
+          "tasks",
+          "budget_overage_approvals",
+          "budget_months",
+          "budget_month_confirmations",
+          "budget_credit_observations",
+          "mystery",
+          "device_epochs",
+          "io_stop_state"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-ledger-table-missing",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "sealed_blobs",
+          "devices",
+          "pairing_sessions",
+          "pairing_claims",
+          "command_scopes",
+          "connections",
+          "sessions",
+          "turns",
+          "workflows",
+          "input_snapshots",
+          "operations",
+          "operation_versions",
+          "approvals",
+          "operation_attempts",
+          "operation_steps",
+          "command_receipts",
+          "event_outbox",
+          "async_context_guards",
+          "auto_actions",
+          "undo_records",
+          "safety_breaker",
+          "safety_window_counts",
+          "budget_reservations",
+          "live_sessions",
+          "sync_scopes",
+          "sync_batches",
+          "sync_staging",
+          "source_items",
+          "request_entities",
+          "request_entity_operations",
+          "related_analyses",
+          "notification_candidates",
+          "deliveries",
+          "memories",
+          "memory_sources",
+          "forget_ledger",
+          "user_directives",
+          "intent_shadow",
+          "deployments",
+          "evaluation_results",
+          "home_networks",
+          "home_network_reports",
+          "turn_responses",
+          "tasks",
+          "budget_overage_approvals",
+          "budget_months",
+          "budget_month_confirmations",
+          "budget_credit_observations",
+          "device_epochs",
+          "io_stop_state"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-store-generation-differs",
+      "note": "封筒と中身の取り違え（別のバックアップの本体）。",
+      "kind": "db",
+      "override": {
+        "restored_store_generation": "00000000-0000-4000-8000-000000009299"
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-ledger-id-differs",
+      "kind": "db",
+      "override": {
+        "restored_ledger_id": "00000000-0000-4000-8000-000000009399"
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-forgetting-not-at-applied-head",
+      "note": "段階 3 で当てた台帳の世代まで DB の台帳が進んでいない。",
+      "kind": "db",
+      "override": {
+        "restored_forgetting_generation": "3"
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-business-table-missing",
+      "note": "Sonnet の再確認の P3-1 の再現: 封筒が除外していない業務の表（operations）がない DB。",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "sealed_blobs",
+          "devices",
+          "pairing_sessions",
+          "pairing_claims",
+          "command_scopes",
+          "connections",
+          "sessions",
+          "turns",
+          "workflows",
+          "input_snapshots",
+          "operation_versions",
+          "approvals",
+          "operation_attempts",
+          "operation_steps",
+          "command_receipts",
+          "event_outbox",
+          "async_context_guards",
+          "auto_actions",
+          "undo_records",
+          "safety_breaker",
+          "safety_window_counts",
+          "budget_reservations",
+          "live_sessions",
+          "sync_scopes",
+          "sync_batches",
+          "sync_staging",
+          "source_items",
+          "request_entities",
+          "request_entity_operations",
+          "related_analyses",
+          "notification_candidates",
+          "deliveries",
+          "memories",
+          "memory_sources",
+          "forget_ledger",
+          "forget_ledger_items",
+          "user_directives",
+          "intent_shadow",
+          "deployments",
+          "evaluation_results",
+          "home_networks",
+          "home_network_reports",
+          "turn_responses",
+          "tasks",
+          "budget_overage_approvals",
+          "budget_months",
+          "budget_month_confirmations",
+          "budget_credit_observations",
+          "device_epochs",
+          "io_stop_state"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "x16-b0605-db-only-required-tables",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "forget_ledger",
+          "forget_ledger_items"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "failed",
+        "reasons": ["db_integrity_failed"]
+      }
+    },
+    {
+      "id": "b0605-db-excluded-tables-may-be-absent",
+      "note": "封筒が除外した短命の表は、なくてもよい。",
+      "kind": "db",
+      "override": {
+        "restored_tables": [
+          "schema_meta",
+          "sealed_blobs",
+          "devices",
+          "pairing_sessions",
+          "pairing_claims",
+          "command_scopes",
+          "connections",
+          "sessions",
+          "turns",
+          "workflows",
+          "input_snapshots",
+          "operations",
+          "operation_versions",
+          "approvals",
+          "operation_attempts",
+          "operation_steps",
+          "command_receipts",
+          "async_context_guards",
+          "auto_actions",
+          "undo_records",
+          "safety_breaker",
+          "safety_window_counts",
+          "budget_reservations",
+          "live_sessions",
+          "sync_scopes",
+          "sync_batches",
+          "sync_staging",
+          "request_entities",
+          "request_entity_operations",
+          "related_analyses",
+          "notification_candidates",
+          "deliveries",
+          "memories",
+          "memory_sources",
+          "forget_ledger",
+          "forget_ledger_items",
+          "user_directives",
+          "intent_shadow",
+          "deployments",
+          "evaluation_results",
+          "home_networks",
+          "home_network_reports",
+          "turn_responses",
+          "tasks",
+          "budget_overage_approvals",
+          "budget_months",
+          "budget_month_confirmations",
+          "budget_credit_observations",
+          "device_epochs",
+          "io_stop_state"
+        ]
+      },
+      "expect": {
+        "stage": "db_verify",
+        "status": "passed",
+        "reasons": []
+      }
+    }
+  ],
+  "result_base": {
+    "restore_id": "00000000-0000-4000-8000-000000009401",
+    "backup_id": "00000000-0000-4000-8000-000000009101",
+    "backup_store_generation": "00000000-0000-4000-8000-000000009201",
+    "started_at": "2026-10-24T03:00:00Z",
+    "finished_at": "2026-10-24T03:20:00Z",
+    "settings_only": {
+      "eligible": false,
+      "settings_readable": false
+    },
+    "after_restore": null
+  },
+  "aftermath_example": {
+    "new_store_generation": "00000000-0000-4000-8000-000000009202",
+    "applied_forgetting_generation": "5",
+    "expired_deleted_count": 12,
+    "forgotten_applied_count": 2,
+    "approvals_revoked_count": 6,
+    "operations_held_count": 5,
+    "operations_unverified_count": 7,
+    "consents_reset": true,
+    "connections_reauth_required": true
+  },
+  "result_cases": [
+    {
+      "id": "x16-b0605-result-restored-reconcile-pending",
+      "override": {
+        "after_restore": "aftermath_example"
+      },
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "passed", []],
+        ["forget_apply", "passed", []],
+        ["db_verify", "passed", []],
+        ["rebuild_views", "passed", []],
+        ["external_reconcile", "pending", []]
+      ],
+      "expect": {
+        "ok": true,
+        "outcome": "restored",
+        "failed_stage": null,
+        "statuses": [
+          "passed",
+          "passed",
+          "passed",
+          "passed",
+          "passed",
+          "pending"
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-result-ledger-lost-settings-only",
+      "override": {
+        "settings_only": {
+          "eligible": true,
+          "settings_readable": true
+        }
+      },
+      "decisions": [["ledger_check", "failed", ["latest_ledger_missing"]]],
+      "expect": {
+        "ok": true,
+        "outcome": "settings_only",
+        "failed_stage": "ledger_check",
+        "statuses": [
+          "failed",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run"
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-result-ledger-lost-settings-unreadable",
+      "note": "台帳がなく、本体も開けない（復旧キーがない）なら、設定も戻せない。",
+      "override": {
+        "settings_only": {
+          "eligible": true,
+          "settings_readable": false
+        }
+      },
+      "decisions": [["ledger_check", "failed", ["latest_ledger_missing"]]],
+      "expect": {
+        "ok": true,
+        "outcome": "rejected",
+        "failed_stage": "ledger_check",
+        "statuses": [
+          "failed",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run"
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-result-lineage-never-settings-only",
+      "override": {
+        "settings_only": {
+          "eligible": true,
+          "settings_readable": true
+        }
+      },
+      "decisions": [
+        [
+          "ledger_check",
+          "failed",
+          ["latest_ledger_missing", "ledger_lineage_mismatch"]
+        ]
+      ],
+      "expect": {
+        "ok": true,
+        "outcome": "rejected",
+        "failed_stage": "ledger_check",
+        "statuses": [
+          "failed",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run"
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-result-clock-regression-reversed-times",
+      "override": {
+        "started_at": "2026-10-24T03:00:00Z",
+        "finished_at": "2026-10-24T02:58:00Z"
+      },
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "failed", ["clock_regression"]]
+      ],
+      "expect": {
+        "ok": true,
+        "outcome": "rejected",
+        "failed_stage": "expiry_purge",
+        "statuses": [
+          "passed",
+          "failed",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run"
+        ]
+      }
+    },
+    {
+      "id": "b0605-result-schema-newer",
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "passed", []],
+        ["forget_apply", "passed", []],
+        ["db_verify", "failed", ["schema_newer_than_code"]]
+      ],
+      "expect": {
+        "ok": true,
+        "outcome": "rejected",
+        "failed_stage": "db_verify",
+        "statuses": [
+          "passed",
+          "passed",
+          "passed",
+          "failed",
+          "not_run",
+          "not_run"
+        ]
+      }
+    },
+    {
+      "id": "b0605-result-reversed-times-other-failure",
+      "override": {
+        "finished_at": "2026-10-24T02:58:00Z"
+      },
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "passed", []],
+        ["forget_apply", "failed", ["forget_apply_failed"]]
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["finished_before_started"]
+      }
+    },
+    {
+      "id": "b0605-result-stages-swapped",
+      "decisions": [
+        ["expiry_purge", "passed", []],
+        ["ledger_check", "failed", ["latest_ledger_missing"]]
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["stage_order_invalid"]
+      }
+    },
+    {
+      "id": "b0605-result-incomplete",
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "passed", []],
+        ["forget_apply", "passed", []]
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["after_restore_mismatch", "stages_incomplete"]
+      }
+    },
+    {
+      "id": "b0605-result-stage-after-failure",
+      "decisions": [
+        ["ledger_check", "failed", ["latest_ledger_missing"]],
+        ["expiry_purge", "passed", []]
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["stage_after_failure"]
+      }
+    },
+    {
+      "id": "x16-b0605-result-store-generation-not-renewed",
+      "override": {
+        "after_restore": "aftermath_same_generation"
+      },
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "passed", []],
+        ["forget_apply", "passed", []],
+        ["db_verify", "passed", []],
+        ["rebuild_views", "passed", []],
+        ["external_reconcile", "pending", []]
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["store_generation_not_renewed"]
+      }
+    },
+    {
+      "id": "b0605-result-reason-for-wrong-stage",
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "passed", []],
+        ["forget_apply", "passed", []],
+        ["db_verify", "failed", ["rebuild_failed"]]
+      ],
+      "expect": {
+        "ok": false,
+        "reasons": ["reason_not_allowed_for_stage"]
+      }
+    },
+    {
+      "id": "b0605-result-pending-ledger",
+      "decisions": [["ledger_check", "pending", []]],
+      "expect": {
+        "ok": false,
+        "reasons": [
+          "pending_outside_reconcile",
+          "stages_incomplete",
+          "after_restore_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-result-purge-not-applied",
+      "decisions": [
+        ["ledger_check", "passed", []],
+        ["expiry_purge", "failed", ["expiry_purge_failed"]]
+      ],
+      "expect": {
+        "ok": true,
+        "outcome": "rejected",
+        "failed_stage": "expiry_purge",
+        "statuses": [
+          "passed",
+          "failed",
+          "not_run",
+          "not_run",
+          "not_run",
+          "not_run"
+        ]
+      }
+    }
+  ],
+  "aftermath_same_generation": {
+    "new_store_generation": "00000000-0000-4000-8000-000000009201",
+    "applied_forgetting_generation": "5",
+    "expired_deleted_count": 0,
+    "forgotten_applied_count": 0,
+    "approvals_revoked_count": 0,
+    "operations_held_count": 0,
+    "operations_unverified_count": 0,
+    "consents_reset": true,
+    "connections_reauth_required": true
+  },
+  "quarantine_case": {
+    "id": "x16-b0605-quarantine-all-states",
+    "note": "外部変更の 10 状態と LocalCommand の 4 状態。承認は経路・状態によらずすべて失効（J3）。7 状態に印、進行中の 4 つは結果不明へ。LocalCommand の承認済み・準備中は承認待ちへ戻す（U77）。 承認の要らない LocalCommand（none）の承認済み・準備中は、承認待ちへ戻すと行き場がないので取り消す（Sonnet の P3-5）。",
+    "restored_at": "2026-10-24T03:10:00Z",
+    "input": [
+      [
+        "00000000-0000-4000-8000-000000007201",
+        "remote_mutation",
+        "awaiting_approval",
+        "1",
+        1
+      ],
+      [
+        "00000000-0000-4000-8000-000000007202",
+        "remote_mutation",
+        "approved",
+        "1",
+        1
+      ],
+      [
+        "00000000-0000-4000-8000-000000007203",
+        "remote_mutation",
+        "preparing",
+        "2",
+        1
+      ],
+      [
+        "00000000-0000-4000-8000-000000007204",
+        "remote_mutation",
+        "dispatching",
+        "1",
+        0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007205",
+        "remote_mutation",
+        "reconciling",
+        "1",
+        0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007206",
+        "remote_mutation",
+        "unknown_held",
+        "3",
+        0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007207",
+        "remote_mutation",
+        "not_executed",
+        "1",
+        1
+      ],
+      [
+        "00000000-0000-4000-8000-000000007208",
+        "remote_mutation",
+        "succeeded",
+        "1",
+        0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007209",
+        "remote_mutation",
+        "cancelled",
+        "1",
+        0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007210",
+        "remote_mutation",
+        "superseded",
+        "1",
+        0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007211",
+        "local_command",
+        "awaiting_approval",
+        "1",
+        1
+      ],
+      [
+        "00000000-0000-4000-8000-000000007212",
+        "local_command",
+        "approved",
+        "1",
+        1
+      ],
+      [
+        "00000000-0000-4000-8000-000000007213",
+        "local_command",
+        "preparing",
+        "1",
+        0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007214",
+        "local_command",
+        "succeeded",
+        "1",
+        0
+      ],
+      [
+        "00000000-0000-4000-8000-000000007215",
+        "local_command",
+        "approved",
+        "1",
+        0,
+        "none"
+      ],
+      [
+        "00000000-0000-4000-8000-000000007216",
+        "local_command",
+        "preparing",
+        "1",
+        0,
+        "none"
+      ]
+    ],
+    "expect": [
+      ["awaiting_approval", true],
+      ["unknown_held", true],
+      ["unknown_held", true],
+      ["unknown_held", true],
+      ["unknown_held", true],
+      ["unknown_held", true],
+      ["not_executed", true],
+      ["succeeded", false],
+      ["cancelled", false],
+      ["superseded", false],
+      ["awaiting_approval", false],
+      ["awaiting_approval", false],
+      ["awaiting_approval", false],
+      ["succeeded", false],
+      ["cancelled", false],
+      ["cancelled", false]
+    ],
+    "expect_counts": {
+      "approvals_revoked_count": 6,
+      "operations_held_count": 5,
+      "operations_unverified_count": 7
+    }
+  },
+  "quarantine_rejections": [
+    {
+      "id": "b0605-quarantine-unknown-state",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "input": [
+        [
+          "00000000-0000-4000-8000-000000007301",
+          "remote_mutation",
+          "paused",
+          "1",
+          0
+        ]
+      ],
+      "expect": {
+        "reasons": ["unknown_operation_state"],
+        "operation_ids": ["00000000-0000-4000-8000-000000007301"]
+      }
+    },
+    {
+      "id": "b0605-quarantine-unknown-route",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "input": [
+        [
+          "00000000-0000-4000-8000-000000007302",
+          "read",
+          "awaiting_approval",
+          "1",
+          0
+        ]
+      ],
+      "expect": {
+        "reasons": ["unknown_effect_route"],
+        "operation_ids": ["00000000-0000-4000-8000-000000007302"]
+      }
+    },
+    {
+      "id": "b0605-quarantine-duplicate",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "input": [
+        [
+          "00000000-0000-4000-8000-000000007303",
+          "remote_mutation",
+          "unknown_held",
+          "1",
+          0
+        ],
+        [
+          "00000000-0000-4000-8000-000000007303",
+          "remote_mutation",
+          "unknown_held",
+          "1",
+          0
+        ]
+      ],
+      "expect": {
+        "reasons": ["duplicate_operation"],
+        "operation_ids": ["00000000-0000-4000-8000-000000007303"]
+      }
+    },
+    {
+      "id": "b0605-quarantine-bad-time",
+      "restored_at": "2026-10-24",
+      "input": [],
+      "expect": {
+        "reasons": ["restored_at_invalid"],
+        "operation_ids": []
+      }
+    }
+  ],
+  "event_sequences": [
+    {
+      "id": "x16-b0605-sequence-revise-then-late-marker-then-owner",
+      "note": "not_executed に印。内容を更新すると内容版 2 になり、旧版（1）の目印の作成物が見つかっても取り込まない。本人が未実行と決着させるまで、承認・試行は作れない。",
+      "initial": ["remote_mutation", "not_executed", "1", true, 0],
+      "steps": [
+        [
+          {
+            "event": "revise_content"
+          },
+          "allowed",
+          null,
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "create_approval"
+          },
+          "rejected",
+          "restore_unverified",
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "reconcile",
+            "observation": {
+              "kind": "found",
+              "marker_content_version": "1",
+              "content_matches": true
+            }
+          },
+          "hold",
+          "content_version_mismatch",
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "2",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "released",
+          null,
+          ["awaiting_approval", "2", false, 0]
+        ],
+        [
+          {
+            "event": "create_approval"
+          },
+          "allowed",
+          null,
+          ["awaiting_approval", "2", false, 1]
+        ],
+        [
+          {
+            "event": "enter_approved"
+          },
+          "allowed",
+          null,
+          ["approved", "2", false, 1]
+        ],
+        [
+          {
+            "event": "enter_preparing"
+          },
+          "allowed",
+          null,
+          ["preparing", "2", false, 1]
+        ],
+        [
+          {
+            "event": "create_attempt"
+          },
+          "allowed",
+          null,
+          ["preparing", "2", false, 1]
+        ]
+      ]
+    },
+    {
+      "id": "x16-b0605-sequence-positive-evidence-first",
+      "note": "順序を入れ替える: 先に積極的な証拠で取り込むと終端になり、その後の内容の更新・本人の決着・承認は通らない。",
+      "initial": ["remote_mutation", "not_executed", "1", true, 0],
+      "steps": [
+        [
+          {
+            "event": "reconcile",
+            "observation": {
+              "kind": "found",
+              "marker_content_version": "1",
+              "content_matches": true
+            }
+          },
+          "import_result",
+          null,
+          ["succeeded", "1", false, 0]
+        ],
+        [
+          {
+            "event": "revise_content"
+          },
+          "rejected",
+          "operation_finished",
+          ["succeeded", "1", false, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "rejected",
+          "not_quarantined",
+          ["succeeded", "1", false, 0]
+        ],
+        [
+          {
+            "event": "create_approval"
+          },
+          "rejected",
+          "transition_not_allowed",
+          ["succeeded", "1", false, 0]
+        ]
+      ]
+    },
+    {
+      "id": "x16-b0605-sequence-unknown-held-holds-until-owner",
+      "note": "結果不明に印。見つからない・複数は保留のまま。取り消しは送出の境界を越えているので遷移として許さず、印も外れない。本人が実行済みとして取り込むと終わる。",
+      "initial": ["remote_mutation", "unknown_held", "3", true, 0],
+      "steps": [
+        [
+          {
+            "event": "reconcile",
+            "observation": {
+              "kind": "not_found",
+              "marker_content_version": null,
+              "content_matches": null
+            }
+          },
+          "hold",
+          "not_found_may_apply_late",
+          ["unknown_held", "3", true, 0]
+        ],
+        [
+          {
+            "event": "reconcile",
+            "observation": {
+              "kind": "multiple",
+              "marker_content_version": null,
+              "content_matches": null
+            }
+          },
+          "hold",
+          "multiple_matches",
+          ["unknown_held", "3", true, 0]
+        ],
+        [
+          {
+            "event": "create_attempt"
+          },
+          "rejected",
+          "restore_unverified",
+          ["unknown_held", "3", true, 0]
+        ],
+        [
+          {
+            "event": "revise_content"
+          },
+          "rejected",
+          "dispatch_boundary_crossed",
+          ["unknown_held", "3", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "cancel",
+            "confirmed_content_version": "3",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "rejected",
+          "transition_not_allowed",
+          ["unknown_held", "3", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "executed",
+            "confirmed_content_version": "3",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "released",
+          null,
+          ["succeeded", "3", false, 0]
+        ]
+      ]
+    },
+    {
+      "id": "x16-b0605-sequence-owner-resolve-without-choice",
+      "initial": ["remote_mutation", "awaiting_approval", "1", true, 0],
+      "steps": [
+        [
+          {
+            "event": "owner_resolve",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "rejected",
+          "resolution_missing",
+          ["awaiting_approval", "1", true, 0]
+        ],
+        [
+          {
+            "event": "create_approval"
+          },
+          "rejected",
+          "restore_unverified",
+          ["awaiting_approval", "1", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "cancel",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "released",
+          null,
+          ["cancelled", "1", false, 0]
+        ],
+        [
+          {
+            "event": "reconcile",
+            "observation": {
+              "kind": "found",
+              "marker_content_version": "1",
+              "content_matches": true
+            }
+          },
+          "rejected",
+          "not_quarantined",
+          ["cancelled", "1", false, 0]
+        ]
+      ]
+    },
+    {
+      "id": "x16-b0605-sequence-release-before-approval",
+      "note": "承認待ちに印。印のある間は承認も承認済みへの遷移も拒否。決着の後でも、承認を作る前に承認済みへは進めない。",
+      "initial": ["remote_mutation", "awaiting_approval", "1", true, 0],
+      "steps": [
+        [
+          {
+            "event": "create_approval"
+          },
+          "rejected",
+          "restore_unverified",
+          ["awaiting_approval", "1", true, 0]
+        ],
+        [
+          {
+            "event": "enter_approved"
+          },
+          "rejected",
+          "restore_unverified",
+          ["awaiting_approval", "1", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "released",
+          null,
+          ["awaiting_approval", "1", false, 0]
+        ],
+        [
+          {
+            "event": "enter_approved"
+          },
+          "rejected",
+          "approval_missing",
+          ["awaiting_approval", "1", false, 0]
+        ],
+        [
+          {
+            "event": "create_approval"
+          },
+          "allowed",
+          null,
+          ["awaiting_approval", "1", false, 1]
+        ],
+        [
+          {
+            "event": "enter_approved"
+          },
+          "allowed",
+          null,
+          ["approved", "1", false, 1]
+        ]
+      ]
+    },
+    {
+      "id": "b0605-sequence-local-command-not-quarantined",
+      "note": "LocalCommand は印がない。復元で承認待ちへ戻った後は、通常どおり承認から適用まで進める（approved から succeeded は経路の遷移で別）。",
+      "initial": ["local_command", "awaiting_approval", "1", false, 0],
+      "steps": [
+        [
+          {
+            "event": "create_approval"
+          },
+          "allowed",
+          null,
+          ["awaiting_approval", "1", false, 1]
+        ],
+        [
+          {
+            "event": "enter_approved"
+          },
+          "allowed",
+          null,
+          ["approved", "1", false, 1]
+        ],
+        [
+          {
+            "event": "reconcile",
+            "observation": {
+              "kind": "found",
+              "marker_content_version": "1",
+              "content_matches": true
+            }
+          },
+          "rejected",
+          "not_quarantined",
+          ["approved", "1", false, 1]
+        ]
+      ]
+    },
+    {
+      "id": "x16-b0605-sequence-owner-saw-old-version",
+      "note": "Sonnet の P3-3: 本人が内容版 1 を見て決着させたが、その間に内容を更新して内容版 2 になった。見ていない内容版の印を外さない。確認の ID がない決着も通さない。",
+      "initial": ["remote_mutation", "not_executed", "1", true, 0],
+      "steps": [
+        [
+          {
+            "event": "revise_content"
+          },
+          "allowed",
+          null,
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "rejected",
+          "owner_confirmation_mismatch",
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "2"
+          },
+          "rejected",
+          "owner_confirmation_mismatch",
+          ["awaiting_approval", "2", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "not_executed",
+            "confirmed_content_version": "2",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "released",
+          null,
+          ["awaiting_approval", "2", false, 0]
+        ]
+      ]
+    },
+    {
+      "id": "x16-b0605-sequence-evidence-outside-table",
+      "note": "Sonnet の P3-4: 復元の証拠による成功への遷移は、承認待ち・結果不明・未実行からだけ。印のある dispatching（復元の直後の記録の検査で拒否される形）が渡されても、証拠・本人の「実行済み」で成功へ進めない。",
+      "initial": ["remote_mutation", "dispatching", "1", true, 0],
+      "steps": [
+        [
+          {
+            "event": "reconcile",
+            "observation": {
+              "kind": "found",
+              "marker_content_version": "1",
+              "content_matches": true
+            }
+          },
+          "rejected",
+          "transition_not_allowed",
+          ["dispatching", "1", true, 0]
+        ],
+        [
+          {
+            "event": "owner_resolve",
+            "resolution": "executed",
+            "confirmed_content_version": "1",
+            "confirmation_id": "00000000-0000-4000-8000-000000007901"
+          },
+          "rejected",
+          "transition_not_allowed",
+          ["dispatching", "1", true, 0]
+        ]
+      ]
+    }
+  ],
+  "budget_hold_cases": [
+    {
+      "id": "b0605-budget-hold-two-months-back",
+      "input": {
+        "backup_created_at": "2026-08-20T00:00:00Z",
+        "restored_at": "2026-10-24T03:00:00Z",
+        "time_zone": "Asia/Tokyo",
+        "reservations": [
+          {
+            "reservation_id": "res-b",
+            "status": "reserved"
+          },
+          {
+            "reservation_id": "res-c",
+            "status": "usage_unknown"
+          },
+          {
+            "reservation_id": "res-d",
+            "status": "settled"
+          },
+          {
+            "reservation_id": "res-a",
+            "status": "reserved"
+          },
+          {
+            "reservation_id": "res-e",
+            "status": "released"
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "held_months": ["2026-08", "2026-09", "2026-10"],
+        "mark_usage_unknown": ["res-a", "res-b"]
+      }
+    },
+    {
+      "id": "b0605-budget-hold-same-month",
+      "input": {
+        "backup_created_at": "2026-10-20T03:00:00Z",
+        "restored_at": "2026-10-24T03:00:00Z",
+        "time_zone": "Asia/Tokyo",
+        "reservations": []
+      },
+      "expect": {
+        "ok": true,
+        "held_months": ["2026-10"],
+        "mark_usage_unknown": []
+      }
+    },
+    {
+      "id": "b0605-budget-hold-new-year-in-tokyo",
+      "note": "UTC では 12 月 31 日だが、東京では 1 月 1 日。",
+      "input": {
+        "backup_created_at": "2026-12-31T16:00:00Z",
+        "restored_at": "2027-02-01T00:00:00Z",
+        "time_zone": "Asia/Tokyo",
+        "reservations": []
+      },
+      "expect": {
+        "ok": true,
+        "held_months": ["2027-01", "2027-02"],
+        "mark_usage_unknown": []
+      }
+    },
+    {
+      "id": "b0605-budget-hold-restored-before-backup",
+      "input": {
+        "backup_created_at": "2026-10-20T03:00:00Z",
+        "restored_at": "2026-09-30T00:00:00Z",
+        "time_zone": "Asia/Tokyo",
+        "reservations": []
+      },
+      "expect": {
+        "ok": false,
+        "reason": "clock_regression"
+      }
+    },
+    {
+      "id": "b0605-budget-hold-bad-zone",
+      "input": {
+        "backup_created_at": "2026-10-20T03:00:00Z",
+        "restored_at": "2026-10-24T03:00:00Z",
+        "time_zone": "Mars/Base",
+        "reservations": []
+      },
+      "expect": {
+        "ok": false,
+        "reason": "time_invalid"
+      }
+    }
+  ],
+  "budget_gate_cases": [
+    {
+      "id": "b0605-budget-gate-held-unconfirmed",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-08", "2026-09", "2026-10"],
+        "current_month": "2026-10",
+        "confirmations": []
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "b0605-budget-gate-held-confirmed",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-08", "2026-09", "2026-10"],
+        "current_month": "2026-10",
+        "confirmations": [
+          {
+            "month": "2026-10",
+            "confirmed_at": "2026-10-24T04:00:00Z"
+          }
+        ]
+      },
+      "expect": []
+    },
+    {
+      "id": "b0605-budget-gate-confirmed-other-month",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-09", "2026-10"],
+        "current_month": "2026-10",
+        "confirmations": [
+          {
+            "month": "2026-09",
+            "confirmed_at": "2026-10-24T04:00:00Z"
+          }
+        ]
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "x16-b0605-budget-gate-confirmation-before-restore",
+      "note": "Sonnet の P3-2: 復元した DB に残っていた、復元より前の確認では解かない。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-10"],
+        "current_month": "2026-10",
+        "confirmations": [
+          {
+            "month": "2026-10",
+            "confirmed_at": "2026-10-24T03:09:59.999Z"
+          }
+        ]
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "b0605-budget-gate-confirmation-at-restore",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-10"],
+        "current_month": "2026-10",
+        "confirmations": [
+          {
+            "month": "2026-10",
+            "confirmed_at": "2026-10-24T03:10:00Z"
+          }
+        ]
+      },
+      "expect": []
+    },
+    {
+      "id": "x16-b0605-budget-gate-restored-without-held-months",
+      "note": "Sonnet の P3-2: 復元したのに保留の月が空（計画できなかった）なら止める。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": [],
+        "current_month": "2026-10",
+        "confirmations": []
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "b0605-budget-gate-next-month",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-08", "2026-09", "2026-10"],
+        "current_month": "2026-11",
+        "confirmations": []
+      },
+      "expect": []
+    },
+    {
+      "id": "b0605-budget-gate-clock-before-held",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-10"],
+        "current_month": "2026-07",
+        "confirmations": []
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "b0605-budget-gate-month-unknown",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-10"],
+        "current_month": null,
+        "confirmations": [
+          {
+            "month": "2026-10",
+            "confirmed_at": "2026-10-24T04:00:00Z"
+          }
+        ]
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "b0605-budget-gate-month-malformed",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "held_months": ["2026-10"],
+        "current_month": "2026-13",
+        "confirmations": []
+      },
+      "expect": ["budget_restore_hold"]
+    },
+    {
+      "id": "b0605-budget-gate-no-restore",
+      "input": {
+        "restored_at": null,
+        "held_months": [],
+        "current_month": "2026-10",
+        "confirmations": []
+      },
+      "expect": []
+    }
+  ],
+  "candidate_auto_cases": [
+    {
+      "id": "b0605-candidate-no-restore-hold",
+      "input": {
+        "scope_id": "scope-mail",
+        "restore_hold_active": false,
+        "scopes": []
+      },
+      "expect": []
+    },
+    {
+      "id": "b0605-candidate-resynced-and-planned",
+      "input": {
+        "scope_id": "scope-mail",
+        "restore_hold_active": true,
+        "scopes": [
+          {
+            "scope_id": "scope-mail",
+            "full_resync_generation": "12",
+            "analysis_plan_complete_generation": "12"
+          }
+        ]
+      },
+      "expect": []
+    },
+    {
+      "id": "b0605-candidate-plan-behind-resync",
+      "input": {
+        "scope_id": "scope-mail",
+        "restore_hold_active": true,
+        "scopes": [
+          {
+            "scope_id": "scope-mail",
+            "full_resync_generation": "12",
+            "analysis_plan_complete_generation": "11"
+          }
+        ]
+      },
+      "expect": ["restore_resync_pending"]
+    },
+    {
+      "id": "b0605-candidate-not-resynced",
+      "input": {
+        "scope_id": "scope-mail",
+        "restore_hold_active": true,
+        "scopes": [
+          {
+            "scope_id": "scope-mail",
+            "full_resync_generation": null,
+            "analysis_plan_complete_generation": "12"
+          }
+        ]
+      },
+      "expect": ["restore_resync_pending"]
+    },
+    {
+      "id": "b0605-candidate-other-scope-resynced",
+      "input": {
+        "scope_id": "scope-mail",
+        "restore_hold_active": true,
+        "scopes": [
+          {
+            "scope_id": "scope-calendar",
+            "full_resync_generation": "3",
+            "analysis_plan_complete_generation": "3"
+          }
+        ]
+      },
+      "expect": ["restore_resync_pending"]
+    }
+  ],
+  "aftermath_cases": [
+    {
+      "id": "x16-b0605-aftermath-ok",
+      "input": {
+        "new_store_generation": "00000000-0000-4000-8000-000000009202",
+        "backup_store_generation": "00000000-0000-4000-8000-000000009201",
+        "current_store_generation": "00000000-0000-4000-8000-000000009209",
+        "applied_forgetting_generation": "5",
+        "expired_deleted_count": 12,
+        "forgotten_applied_count": 2
+      },
+      "expect": "aftermath_example"
+    },
+    {
+      "id": "x16-b0605-aftermath-same-as-backup",
+      "input": {
+        "new_store_generation": "00000000-0000-4000-8000-000000009201",
+        "backup_store_generation": "00000000-0000-4000-8000-000000009201",
+        "current_store_generation": "00000000-0000-4000-8000-000000009209",
+        "applied_forgetting_generation": "5",
+        "expired_deleted_count": 0,
+        "forgotten_applied_count": 0
+      },
+      "expect": {
+        "reasons": ["store_generation_not_renewed"]
+      }
+    },
+    {
+      "id": "x16-b0605-aftermath-same-as-current",
+      "input": {
+        "new_store_generation": "00000000-0000-4000-8000-000000009209",
+        "backup_store_generation": "00000000-0000-4000-8000-000000009201",
+        "current_store_generation": "00000000-0000-4000-8000-000000009209",
+        "applied_forgetting_generation": "5",
+        "expired_deleted_count": 0,
+        "forgotten_applied_count": 0
+      },
+      "expect": {
+        "reasons": ["store_generation_not_renewed"]
+      }
+    }
+  ],
+  "restore_resets": [
+    "revoke_all_approvals",
+    "quarantine_operations",
+    "reset_send_consents",
+    "renew_store_generation",
+    "advance_epochs",
+    "stop_io",
+    "close_restored_live_sessions",
+    "revoke_command_scopes",
+    "require_connection_reauth",
+    "reset_sync_cursors",
+    "block_candidate_auto_execution",
+    "hold_budget",
+    "require_new_credit_observation",
+    "revoke_non_hub_devices",
+    "expire_overage_approvals",
+    "stop_safety_breaker",
+    "demote_active_deployments"
+  ],
+  "crypto_known_values": {
+    "note": "Python の hmac・hashlib で RFC 5869 を別に実装して求めた値。recovery_key は 0x00〜0x1f、ledger_hmac_key は 0x20〜0x3f の合成の値。",
+    "rfc5869_case1": {
+      "ikm_hex": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+      "salt_hex": "000102030405060708090a0b0c",
+      "info_hex": "f0f1f2f3f4f5f6f7f8f9",
+      "length": 42,
+      "okm_hex": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+    },
+    "recovery_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "ledger_hmac_key_hex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+    "salt_hex": "000102030405060708090a0b0c0d0e0f",
+    "wrap_keys": [
+      {
+        "purpose": "backup_file",
+        "info_hex": "62756464792f6261636b75702f6b65792d777261702f7631006261636b75705f66696c65006261636b75702d66696c652d7631",
+        "okm_hex": "34a624797096932accd3126787d6a55c90f0db2d00ba5095b840ec27494b04e3"
+      },
+      {
+        "purpose": "data_key",
+        "info_hex": "62756464792f6261636b75702f6b65792d777261702f763100646174615f6b657900646174612d6b65792d7631",
+        "okm_hex": "b0b31064fa59569e7d5e4cf4b697816fa8748544f506adfe63b3400623c9861f"
+      },
+      {
+        "purpose": "ledger_hmac_key",
+        "info_hex": "62756464792f6261636b75702f6b65792d777261702f7631006c65646765725f686d61635f6b6579006c65646765722d686d61632d7631",
+        "okm_hex": "70b19e7e972b6838f5e36db6a03a39930c0e54a6b4abe74b140797f391fbe6d3"
+      }
+    ],
+    "data_key_aad_hex": "62756464792f6261636b75702f6b65792d777261702f763100646174615f6b657900646174612d6b65792d76310030303030303030302d303030302d343030302d383030302d303030303030303039303031",
+    "ledger_subkeys": {
+      "source_id": "b162f415db7deb5373d60ff03511adec11c0a13d14949c7ddf56be139b41b6dd",
+      "memory_dedupe": "24b82552f8ba4c1486b4affa743027eba9e0730b43b5213c7237e5be8adcdb81"
+    },
+    "recovery_check_value": "E2A14B25"
+  },
+  "recovery_code_cases": [
+    {
+      "id": "b0605-code-sequence",
+      "bytes_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "code": "000G-40R4-0M30-E209-185G-R38E-1W81-24GK-2GAH-C5RR-34D1-P70X-3RFG"
+    },
+    {
+      "id": "b0605-code-all-ones",
+      "bytes_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "code": "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZG"
+    }
+  ],
+  "recovery_code_inputs": [
+    {
+      "id": "b0605-code-lowercase",
+      "text": "000g-40r4-0m30-e209-185g-r38e-1w81-24gk-2gah-c5rr-34d1-p70x-3rfg",
+      "bytes_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "id": "b0605-code-o-and-l-read-as-digits",
+      "text": "OOOG 4OR4 OM3O E2O9 l85G R38E 1W81 24GK 2GAH C5RR 34D1 P7OX 3RFG",
+      "bytes_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "id": "b0605-code-letter-u",
+      "text": "000G-40R4-0M30-E209-185G-R38E-1W81-24GK-2GAH-C5RR-34D1-P70X-3RFU",
+      "bytes_hex": null
+    },
+    {
+      "id": "b0605-code-too-short",
+      "text": "000G-40R4-0M30-E209-185G-R38E-1W81-24GK-2GAH-C5RR-34D1-P70X",
+      "bytes_hex": null
+    },
+    {
+      "id": "b0605-code-trailing-bits-set",
+      "text": "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ",
+      "bytes_hex": null
+    },
+    {
+      "id": "b0605-code-dotless-i",
+      "note": "Sonnet の P3-1: 'ı' は toUpperCase で I（→ 1）になるが、ASCII でないので読まない。",
+      "text": "000G-40R4-0M30-E209-ı85G-R38E-1W81-24GK-2GAH-C5RR-34D1-P70X-3RFG",
+      "bytes_hex": null
+    },
+    {
+      "id": "b0605-code-long-s",
+      "note": "'ſ' は toUpperCase で S になるが、読まない。",
+      "text": "000G-40R4-0M30-E209-185G-R38E-1W81-24GK-2GAH-C5RR-34D1-P70X-ſRFG",
+      "bytes_hex": null
+    }
+  ],
+  "credit_restore_cases": [
+    {
+      "id": "b0605-credit-no-restore",
+      "input": {
+        "restored_at": null,
+        "latest_observed_at": "2026-10-20T00:00:00Z"
+      },
+      "expect": []
+    },
+    {
+      "id": "b0605-credit-only-old-observation",
+      "note": "復元した DB にはバックアップの時点までの観測しかない。古い観測で残高を多く見ない。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "latest_observed_at": "2026-10-20T00:00:00Z"
+      },
+      "expect": ["credit_restore_unverified"]
+    },
+    {
+      "id": "b0605-credit-no-observation",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "latest_observed_at": null
+      },
+      "expect": ["credit_restore_unverified"]
+    },
+    {
+      "id": "b0605-credit-observed-one-ms-before-restore",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "latest_observed_at": "2026-10-24T03:09:59.999Z"
+      },
+      "expect": ["credit_restore_unverified"]
+    },
+    {
+      "id": "b0605-credit-observed-at-restore",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "latest_observed_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": []
+    },
+    {
+      "id": "b0605-credit-new-observation",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "latest_observed_at": "2026-10-24T05:00:00Z"
+      },
+      "expect": []
+    },
+    {
+      "id": "b0605-credit-restore-time-unreadable",
+      "input": {
+        "restored_at": "2026-10-24",
+        "latest_observed_at": "2026-10-24T05:00:00Z"
+      },
+      "expect": ["credit_restore_unverified"]
+    }
+  ],
+  "db_verify_base": {
+    "integrity_ok": true,
+    "foreign_keys_ok": true,
+    "restored_schema_version": 7,
+    "manifest_schema_version": 7,
+    "code_schema_version": 7,
+    "operations_plan_ok": true,
+    "restored_tables": [
+      "schema_meta",
+      "sealed_blobs",
+      "devices",
+      "pairing_sessions",
+      "pairing_claims",
+      "command_scopes",
+      "connections",
+      "sessions",
+      "turns",
+      "workflows",
+      "input_snapshots",
+      "operations",
+      "operation_versions",
+      "approvals",
+      "operation_attempts",
+      "operation_steps",
+      "command_receipts",
+      "event_outbox",
+      "async_context_guards",
+      "auto_actions",
+      "undo_records",
+      "safety_breaker",
+      "safety_window_counts",
+      "budget_reservations",
+      "live_sessions",
+      "sync_scopes",
+      "sync_batches",
+      "sync_staging",
+      "source_items",
+      "request_entities",
+      "request_entity_operations",
+      "related_analyses",
+      "notification_candidates",
+      "deliveries",
+      "memories",
+      "memory_sources",
+      "forget_ledger",
+      "forget_ledger_items",
+      "user_directives",
+      "intent_shadow",
+      "deployments",
+      "evaluation_results",
+      "home_networks",
+      "home_network_reports",
+      "turn_responses",
+      "tasks",
+      "budget_overage_approvals",
+      "budget_months",
+      "budget_month_confirmations",
+      "budget_credit_observations",
+      "device_epochs",
+      "io_stop_state"
+    ],
+    "restored_store_generation": "00000000-0000-4000-8000-000000009201",
+    "restored_ledger_id": "00000000-0000-4000-8000-000000009301",
+    "restored_forgetting_generation": "5",
+    "expected": {
+      "store_generation": "00000000-0000-4000-8000-000000009201",
+      "ledger_id": "00000000-0000-4000-8000-000000009301",
+      "forgetting_generation": "5",
+      "excluded_tables": [
+        "async_context_guards",
+        "command_receipts",
+        "command_scopes",
+        "event_outbox",
+        "home_network_reports",
+        "pairing_claims",
+        "pairing_sessions",
+        "source_items",
+        "sync_batches",
+        "sync_staging"
+      ]
+    }
+  },
+  "device_cases": [
+    {
+      "id": "x16-b0605-devices-revoked-after-backup-stay-revoked",
+      "note": "Sonnet の P1-1 の再現と本人の判断（U78）: バックアップの後に取り消した端末（復元で revoked_at が空に戻った端末）を含め、中枢以外のすべての端末を失効させる。中枢と同じマシンの端末は、復元の前の中枢でも失効していなければ残す。失効済みの端末は元の時刻のまま。",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008103",
+          "hub_local": false,
+          "revoked_at": null
+        },
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        },
+        {
+          "device_id": "00000000-0000-4000-8000-000000008102",
+          "hub_local": false,
+          "revoked_at": null
+        },
+        {
+          "device_id": "00000000-0000-4000-8000-000000008104",
+          "hub_local": false,
+          "revoked_at": "2026-10-01T00:00:00Z"
+        }
+      ],
+      "pre_restore_devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        },
+        {
+          "device_id": "00000000-0000-4000-8000-000000008102",
+          "hub_local": false,
+          "revoked_at": "2026-10-22T00:00:00Z"
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "revoke": [
+          "00000000-0000-4000-8000-000000008102",
+          "00000000-0000-4000-8000-000000008103"
+        ],
+        "devices_revoked_count": 2
+      }
+    },
+    {
+      "id": "x16-b0605-devices-hub-local-revoked-before-restore",
+      "note": "Sonnet の再確認の P2-C の再現: 中枢と同じマシンの端末を、バックアップの後・復元の前に失効させていた。復元で有効に戻らないよう失効させる。",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        }
+      ],
+      "pre_restore_devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": "2026-10-22T00:00:00Z"
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "revoke": ["00000000-0000-4000-8000-000000008101"],
+        "devices_revoked_count": 1
+      }
+    },
+    {
+      "id": "x16-b0605-devices-hub-lost",
+      "note": "中枢を失った（復元の前の devices がない）。中枢と同じマシンの端末も、新しい中枢で付け直す。",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        }
+      ],
+      "pre_restore_devices": null,
+      "expect": {
+        "ok": true,
+        "revoke": ["00000000-0000-4000-8000-000000008101"],
+        "devices_revoked_count": 1
+      }
+    },
+    {
+      "id": "b0605-devices-hub-local-unknown-before",
+      "note": "復元の前の中枢にない hub_local の端末（バックアップにだけある）は、残す根拠がないので失効させる。",
+      "restored_at": "2026-10-24T03:10:00Z",
+      "devices": [
+        {
+          "device_id": "00000000-0000-4000-8000-000000008101",
+          "hub_local": true,
+          "revoked_at": null
+        }
+      ],
+      "pre_restore_devices": [],
+      "expect": {
+        "ok": true,
+        "revoke": ["00000000-0000-4000-8000-000000008101"],
+        "devices_revoked_count": 1
+      }
+    },
+    {
+      "id": "b0605-devices-bad-time",
+      "restored_at": "yesterday",
+      "devices": [],
+      "pre_restore_devices": null,
+      "expect": {
+        "ok": false,
+        "reason": "restored_at_invalid"
+      }
+    }
+  ],
+  "overage_cases": [
+    {
+      "id": "x16-b0605-overage-approved-then-consumed-after-backup",
+      "note": "Sonnet の P2-1 の再現: バックアップの時点で approved、その後に使った承認が、復元で approved に戻る。pending・approved を失効させる。",
+      "approvals": [
+        {
+          "approval_id": "ov-3",
+          "status": "approved"
+        },
+        {
+          "approval_id": "ov-1",
+          "status": "pending"
+        },
+        {
+          "approval_id": "ov-2",
+          "status": "consumed"
+        },
+        {
+          "approval_id": "ov-4",
+          "status": "rejected"
+        },
+        {
+          "approval_id": "ov-5",
+          "status": "expired"
+        }
+      ],
+      "expect": {
+        "expire": ["ov-1", "ov-3"],
+        "overage_approvals_expired_count": 2
+      }
+    }
+  ],
+  "safety_cases": [
+    {
+      "id": "x16-b0605-safety-running-stops",
+      "note": "Sonnet の P2-2 と司令塔の判断: 復元で running に戻った安全停止を止める。",
+      "input": {
+        "safety_revision": "7",
+        "restored_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": {
+        "ok": true,
+        "state": "stopped",
+        "safety_revision": "8",
+        "stop_reason": "restored_from_backup",
+        "stopped_at": "2026-10-24T03:10:00Z"
+      }
+    },
+    {
+      "id": "x16-b0605-safety-revision-above-pre-restore",
+      "note": "Sonnet の再確認の P3-2: 復元した版（3）より復元の前の版（9）が大きい。大きい方に 1 を足す（端末の持つ古い版で解除を通さない）。",
+      "input": {
+        "safety_revision": "3",
+        "pre_restore_safety_revision": "9",
+        "restored_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": {
+        "ok": true,
+        "state": "stopped",
+        "safety_revision": "10",
+        "stop_reason": "restored_from_backup",
+        "stopped_at": "2026-10-24T03:10:00Z"
+      }
+    },
+    {
+      "id": "b0605-safety-bad-revision",
+      "input": {
+        "safety_revision": "-1",
+        "restored_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": {
+        "ok": false,
+        "reason": "safety_revision_invalid"
+      }
+    },
+    {
+      "id": "b0605-safety-bad-time",
+      "input": {
+        "safety_revision": "7",
+        "restored_at": "2026-10-24"
+      },
+      "expect": {
+        "ok": false,
+        "reason": "restored_at_invalid"
+      }
+    },
+    {
+      "id": "b0605-safety-bad-pre-revision",
+      "input": {
+        "safety_revision": "3",
+        "pre_restore_safety_revision": "x",
+        "restored_at": "2026-10-24T03:10:00Z"
+      },
+      "expect": {
+        "ok": false,
+        "reason": "safety_revision_invalid"
+      }
+    }
+  ],
+  "deployment_cases": [
+    {
+      "id": "x16-b0605-deployments-active-demoted",
+      "note": "Sonnet の P2-7 の再現と司令塔の判断: バックアップの後に停止・退役した配備が active に戻る。active は evaluated に落とし、suspended・retired はそのまま。",
+      "deployments": [
+        {
+          "deployment_id": "dep-b",
+          "stage": "active"
+        },
+        {
+          "deployment_id": "dep-a",
+          "stage": "active"
+        },
+        {
+          "deployment_id": "dep-c",
+          "stage": "suspended"
+        },
+        {
+          "deployment_id": "dep-d",
+          "stage": "retired"
+        },
+        {
+          "deployment_id": "dep-e",
+          "stage": "evaluated"
+        }
+      ],
+      "expect": {
+        "demote": ["dep-a", "dep-b"],
+        "deployments_demoted_count": 2
+      }
+    }
+  ],
+  "voice_cases": [
+    {
+      "id": "x16-b0605-voice-epochs-never-roll-back",
+      "note": "復元した世代はバックアップの時点の値（巻き戻り）。復元の前の DB の値との大きい方より 1 つ進める（ADR 0005）。全体停止と端末ごとの停止を立て、来客モードは復元の前に立っていれば立てる。閉じ終えていない Live は、中枢の起動時の照合と同じ連鎖で closed・close_unconfirmed にする（Sonnet の再確認の P2-A。lost・closing のままの形は状態機械で使用量を照合できない）。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "7",
+            "output_epoch": "2",
+            "audio_epoch": "15",
+            "session_epoch": "12",
+            "local_stop": false
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "5",
+            "output_epoch": "9",
+            "audio_epoch": "3",
+            "session_epoch": "4",
+            "local_stop": false
+          }
+        ],
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": {
+          "guest_mode": true,
+          "global_stop": false
+        },
+        "live_sessions": [
+          {
+            "live_session_id": "live-a",
+            "control_state": "ready",
+            "control_epoch": "4",
+            "closure": "open"
+          },
+          {
+            "live_session_id": "live-b",
+            "control_state": "connecting",
+            "control_epoch": "0",
+            "closure": "open"
+          },
+          {
+            "live_session_id": "live-c",
+            "control_state": "closing",
+            "control_epoch": "2",
+            "closure": "close_requested",
+            "ended_at": "2026-10-20T02:59:00Z",
+            "end_reason": "user_stop"
+          },
+          {
+            "live_session_id": "live-d",
+            "control_state": "closed",
+            "control_epoch": "1",
+            "closure": "close_confirmed"
+          },
+          {
+            "live_session_id": "live-e",
+            "control_state": "lost",
+            "control_epoch": "3",
+            "closure": "open"
+          },
+          {
+            "live_session_id": "live-f",
+            "control_state": "closed",
+            "control_epoch": "6",
+            "closure": "close_unconfirmed"
+          }
+        ],
+        "restored_device_ids": [
+          "00000000-0000-4000-8000-000000008101",
+          "00000000-0000-4000-8000-000000008102"
+        ],
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "3",
+            "output_epoch": "3",
+            "audio_epoch": "10",
+            "session_epoch": "10",
+            "local_stop": false
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "5",
+            "output_epoch": "2",
+            "audio_epoch": "4",
+            "session_epoch": "4",
+            "local_stop": true
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "8",
+            "output_epoch": "4",
+            "audio_epoch": "16",
+            "session_epoch": "13",
+            "local_stop": true
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "6",
+            "output_epoch": "10",
+            "audio_epoch": "5",
+            "session_epoch": "5",
+            "local_stop": true
+          }
+        ],
+        "io_stop": {
+          "guest_mode": true,
+          "global_stop": true
+        },
+        "live_sessions": [
+          {
+            "live_session_id": "live-a",
+            "control_state": "closed",
+            "control_epoch": "5",
+            "closure": "close_unconfirmed",
+            "usage_seconds": null,
+            "ended_at": "2026-10-24T03:10:00Z",
+            "end_reason": "core_lease_lost"
+          },
+          {
+            "live_session_id": "live-b",
+            "control_state": "closed",
+            "control_epoch": "1",
+            "closure": "close_unconfirmed",
+            "usage_seconds": null,
+            "ended_at": "2026-10-24T03:10:00Z",
+            "end_reason": "core_lease_lost"
+          },
+          {
+            "live_session_id": "live-c",
+            "control_state": "closed",
+            "control_epoch": "2",
+            "closure": "close_unconfirmed",
+            "usage_seconds": null,
+            "ended_at": "2026-10-20T02:59:00Z",
+            "end_reason": "user_stop"
+          },
+          {
+            "live_session_id": "live-e",
+            "control_state": "closed",
+            "control_epoch": "3",
+            "closure": "close_unconfirmed",
+            "usage_seconds": null,
+            "ended_at": "2026-10-24T03:10:00Z",
+            "end_reason": "core_lease_lost"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-b0605-voice-device-without-epoch-row",
+      "note": "Sonnet の再確認の P2-B の再現: 復元した devices にあるが device_epochs に行がない端末。復元の前の値（audio 5）があればそれより 1 つ、なければ 0 より 1 つ進めた行を作る（巻き戻さない）。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "3",
+            "output_epoch": "3",
+            "audio_epoch": "5",
+            "session_epoch": "5",
+            "local_stop": false
+          }
+        ],
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": [
+          "00000000-0000-4000-8000-000000008101",
+          "00000000-0000-4000-8000-000000008102",
+          "00000000-0000-4000-8000-000000008105"
+        ],
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "2",
+            "output_epoch": "2",
+            "audio_epoch": "2",
+            "session_epoch": "2",
+            "local_stop": false
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "3",
+            "output_epoch": "3",
+            "audio_epoch": "3",
+            "session_epoch": "3",
+            "local_stop": true
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008102",
+            "io_epoch": "4",
+            "output_epoch": "4",
+            "audio_epoch": "6",
+            "session_epoch": "6",
+            "local_stop": true
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008105",
+            "io_epoch": "1",
+            "output_epoch": "1",
+            "audio_epoch": "1",
+            "session_epoch": "1",
+            "local_stop": true
+          }
+        ],
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": true
+        },
+        "live_sessions": []
+      }
+    },
+    {
+      "id": "x16-b0605-voice-hub-lost",
+      "note": "中枢を失った（復元の前の値がない）。復元した値より 1 つ進め、停止に倒す。来客モードは復元した値のまま（立っていなければ立てない）。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": ["00000000-0000-4000-8000-000000008101"],
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "0",
+            "output_epoch": "0",
+            "audio_epoch": "0",
+            "session_epoch": "0",
+            "local_stop": false
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "1",
+            "output_epoch": "1",
+            "audio_epoch": "1",
+            "session_epoch": "1",
+            "local_stop": true
+          }
+        ],
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": true
+        },
+        "live_sessions": []
+      }
+    },
+    {
+      "id": "b0605-voice-epoch-invalid",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": ["00000000-0000-4000-8000-000000008101"],
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "-1",
+            "output_epoch": "0",
+            "audio_epoch": "0",
+            "session_epoch": "0",
+            "local_stop": false
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["epoch_invalid"]
+      }
+    },
+    {
+      "id": "b0605-voice-duplicate-device",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": ["00000000-0000-4000-8000-000000008101"],
+        "device_epochs": [
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "1",
+            "output_epoch": "1",
+            "audio_epoch": "1",
+            "session_epoch": "1",
+            "local_stop": false
+          },
+          {
+            "device_id": "00000000-0000-4000-8000-000000008101",
+            "io_epoch": "2",
+            "output_epoch": "2",
+            "audio_epoch": "2",
+            "session_epoch": "2",
+            "local_stop": false
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["duplicate_device"]
+      }
+    },
+    {
+      "id": "b0605-voice-live-state-unknown",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [
+          {
+            "live_session_id": "live-x",
+            "control_state": "paused",
+            "control_epoch": "1",
+            "closure": "open"
+          }
+        ],
+        "restored_device_ids": [],
+        "device_epochs": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["live_session_invalid"]
+      }
+    },
+    {
+      "id": "b0605-voice-live-unreachable-combination",
+      "note": "状態機械で到達できない組（lost・close_requested）の記録は、何が起きたか分からないので計画しない。",
+      "input": {
+        "restored_at": "2026-10-24T03:10:00Z",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [
+          {
+            "live_session_id": "live-y",
+            "control_state": "lost",
+            "control_epoch": "1",
+            "closure": "close_requested"
+          }
+        ],
+        "restored_device_ids": [],
+        "device_epochs": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["live_session_invalid"]
+      }
+    },
+    {
+      "id": "b0605-voice-restored-at-invalid",
+      "input": {
+        "restored_at": "2026-10-24",
+        "pre_restore_device_epochs": null,
+        "io_stop": {
+          "guest_mode": false,
+          "global_stop": false
+        },
+        "pre_restore_io_stop": null,
+        "live_sessions": [],
+        "restored_device_ids": [],
+        "device_epochs": []
+      },
+      "expect": {
+        "ok": false,
+        "reasons": ["restored_at_invalid"]
+      }
+    }
+  ]
+}

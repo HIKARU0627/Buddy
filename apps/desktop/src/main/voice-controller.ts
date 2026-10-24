@@ -456,14 +456,14 @@ export class VoiceController {
       this.#options.consent.status === 'granted'
     ) {
       if (opened.kind === 'answer')
-        this.#options.core.closeLive(opened.liveSessionId, 'core_lease_lost');
+        this.#closeLive(opened.liveSessionId, 'core_lease_lost');
       return this.#notStarted();
     }
     if (aborted() || this.#options.consent.status !== 'granted') {
       // 待っている間に止まった・同意を取り消した: 開いていれば閉じ、音声レンダラーへは渡さない。
       // 置き換えられただけ（端末は止まっていない）なら、その手順を捨てた理由にする（Issue #162）。
       if (opened.kind === 'answer')
-        this.#options.core.closeLive(
+        this.#closeLive(
           opened.liveSessionId,
           this.#options.consent.status !== 'granted'
             ? 'consent_revoked'
@@ -486,7 +486,7 @@ export class VoiceController {
         classifyEpoch(opened.sessionEpoch, this.#session) === 'stale')
     ) {
       this.#options.log('voice_live_epoch_not_newer');
-      this.#options.core.closeLive(opened.liveSessionId, 'provider_failure');
+      this.#closeLive(opened.liveSessionId, 'provider_failure');
       this.#lease.stop();
       return this.#notStarted();
     }

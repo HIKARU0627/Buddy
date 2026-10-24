@@ -1639,6 +1639,76 @@
       }
     },
     {
+      "id": "x16-backup-manifest-key-id-reused-across-purposes",
+      "schema": "BackupManifest",
+      "valid": true,
+      "note": "Sonnet の P2-3: データ鍵の包みが、本体の鍵と同じ ID を名乗る（KeyStore で別の用途の鍵を上書き・削除し得る）。",
+      "semantic_errors": ["key_id_reused"],
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "3",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
+          }
+        ]
+      }
+    },
+    {
       "id": "x16-backup-manifest-empty-ledger",
       "schema": "BackupManifest",
       "valid": true,
@@ -2647,6 +2717,106 @@
             "stage": "db_verify",
             "status": "failed",
             "reasons": ["schema_newer_than_code"]
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-expiry-purge-not-applied-rejected",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "Sonnet の P2-5: 開けて時計も正しいが、期限切れの削除を当てた記録がない。段階 2 で止める。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "rejected",
+        "failed_stage": "expiry_purge",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "failed",
+            "reasons": ["expiry_purge_failed"]
+          },
+          {
+            "stage": "forget_apply",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "rebuild_views",
+            "status": "not_run",
+            "reasons": []
+          },
+          {
+            "stage": "external_reconcile",
+            "status": "not_run",
+            "reasons": []
+          }
+        ],
+        "after_restore": null
+      }
+    },
+    {
+      "id": "x16-restore-expiry-purge-failed-at-wrong-stage",
+      "schema": "RestoreResult",
+      "valid": true,
+      "note": "expiry_purge_failed は期限切れの削除の段階だけの理由。",
+      "semantic_errors": ["reason_not_allowed_for_stage"],
+      "value": {
+        "schema": "buddy.restore-result.v1",
+        "restore_id": "00000000-0000-4000-8000-000000007001",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "backup_store_generation": "00000000-0000-4000-8000-000000005001",
+        "started_at": "2026-10-09T01:00:00Z",
+        "finished_at": "2026-10-09T01:05:00Z",
+        "outcome": "rejected",
+        "failed_stage": "forget_apply",
+        "stages": [
+          {
+            "stage": "ledger_check",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "expiry_purge",
+            "status": "passed",
+            "reasons": []
+          },
+          {
+            "stage": "forget_apply",
+            "status": "failed",
+            "reasons": ["expiry_purge_failed"]
+          },
+          {
+            "stage": "db_verify",
+            "status": "not_run",
+            "reasons": []
           },
           {
             "stage": "rebuild_views",
@@ -4380,6 +4550,109 @@
         "restore_unverified_at": "2026-10-09T01:05:00Z",
         "valid_approval_count": 1
       }
+    },
+    {
+      "id": "x16-restored-operation-local-command-approval-remains",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "B06-01 の Codex の P3: J3 は全承認の失効。印を付けない LocalCommand でも、有効な承認が残っていれば拒否する。",
+      "semantic_errors": ["approval_not_revoked"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "local_command",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 1
+      }
+    },
+    {
+      "id": "x16-restored-operation-terminal-approval-remains",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "B06-01 の Codex の P3: 印のない終端の外部変更でも、有効な承認が残っていれば拒否する（印の有無に関係なく検査する）。",
+      "semantic_errors": ["approval_not_revoked"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "succeeded",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 1
+      }
+    },
+    {
+      "id": "x16-restored-operation-unmarked-awaiting-approval-remains",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "印の漏れと承認の残りは、両方とも返す（承認の検査を印の検査の後ろに隠さない）。",
+      "semantic_errors": ["not_quarantined", "approval_not_revoked"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 1
+      }
+    },
+    {
+      "id": "x16-restored-operation-local-command-left-approved",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "Sonnet の P3-5: 承認が失効した LocalCommand を承認済みのまま残さない（承認待ちへ戻すか、承認の要らない意図は取り消す）。",
+      "semantic_errors": ["local_command_unapproved_state"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0,
+        "effect_route": "local_command",
+        "state": "approved"
+      }
+    },
+    {
+      "id": "x16-restored-operation-local-command-left-preparing",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "semantic_errors": ["local_command_unapproved_state"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0,
+        "effect_route": "local_command",
+        "state": "preparing"
+      }
+    },
+    {
+      "id": "x16-safety-state-restored-from-backup",
+      "schema": "SafetyState",
+      "valid": true,
+      "note": "司令塔の判断（ADR 0047）: 復元の後は安全停止を stopped にし、本人が再開するまで自動実行を止める。",
+      "value": {
+        "state": "stopped",
+        "safety_revision": "8",
+        "stop_reason": "restored_from_backup",
+        "stopped_at": "2026-10-24T03:10:00Z"
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "x16-safety-state-unknown-reason-rejected",
+      "schema": "SafetyState",
+      "valid": false,
+      "value": {
+        "state": "stopped",
+        "safety_revision": "8",
+        "stop_reason": "restored",
+        "stopped_at": "2026-10-24T03:10:00Z"
+      }
     }
   ],
   "scenarios": [
@@ -4645,7 +4918,7 @@
     },
     {
       "id": "x16-restore-scenario-owner-resolve",
-      "note": "本人が手で決着させれば隔離を解除できる（実行済みとして取り込む・元サービスで確かめて未実行とする・取消）。",
+      "note": "本人が手で決着させれば隔離を解除できる（実行済みとして取り込む・元サービスで確かめて未実行とする・取消）。 本人の決着は、本人が見た内容版が今の内容版（3）と同じで、確認の ID があるときだけ印を外す（B06-05、ADR 0047）。",
       "initial": {
         "schema": "buddy.restored-operation.v1",
         "operation_id": "00000000-0000-4000-8000-000000007101",
@@ -4659,6 +4932,34 @@
       "steps": [
         {
           "event": "owner_resolve",
+          "confirmed_content_version": "2",
+          "confirmation_id": "00000000-0000-4000-8000-000000007901",
+          "expect": {
+            "result": "rejected",
+            "reason": "owner_confirmation_mismatch"
+          }
+        },
+        {
+          "event": "owner_resolve",
+          "confirmed_content_version": "3",
+          "expect": {
+            "result": "rejected",
+            "reason": "owner_confirmation_mismatch"
+          }
+        },
+        {
+          "event": "owner_resolve",
+          "confirmed_content_version": "3",
+          "confirmation_id": "not-an-id",
+          "expect": {
+            "result": "rejected",
+            "reason": "owner_confirmation_mismatch"
+          }
+        },
+        {
+          "event": "owner_resolve",
+          "confirmed_content_version": "3",
+          "confirmation_id": "00000000-0000-4000-8000-000000007901",
           "expect": {
             "result": "released",
             "reason": null
@@ -4685,7 +4986,9 @@
           "expect": {
             "result": "rejected",
             "reason": "not_quarantined"
-          }
+          },
+          "confirmed_content_version": "1",
+          "confirmation_id": "00000000-0000-4000-8000-000000007901"
         },
         {
           "event": "reconcile",

@@ -234,6 +234,8 @@ interface PendingStop {
   readonly device_id: string;
   readonly at: number;
   retry: unknown;
+  // DB へ書けたときに呼ぶ（世代を知らなかった端末への停止のイベント）。
+  onWritten: ((states: readonly DeviceVoiceState[]) => void) | null;
 }
 
 const reservationOf = (
@@ -353,9 +355,11 @@ export class VoiceControl {
   }
 
   // 外部の呼び出しに期限を付ける。切れた・例外なら TIMED_OUT（結果不明）。
+  // onLate は、期限の後に遅れて届いた値を受ける（遅れて成功した予約の解放など）。
   #within<T>(
     ms: number,
     run: () => Promise<T> | T,
+    onLate?: (value: T) => void,
   ): Promise<T | typeof TIMED_OUT> {
     return new Promise((resolve) => {
       let done = false;
@@ -368,7 +372,10 @@ export class VoiceControl {
         .then(run)
         .then(
           (value) => {
-            if (done) return;
+            if (done) {
+              onLate?.(value);
+              return;
+            }
             done = true;
             this.#timers.clear(timer);
             resolve(value);
@@ -391,6 +398,9 @@ export class VoiceControl {
       this.#listeners.set(deviceId, set);
     }
     set.add(listener);
+    // 停止のイベントに正しい世代を載せるため、まだ読んでいない端末の世代を読んでおく（失敗しても購読は続ける）。
+    if (!this.#known.has(deviceId))
+      void this.#deviceState(deviceId).catch(() => null);
     return () => {
       const current = this.#listeners.get(deviceId);
       current?.delete(listener);
@@ -409,14 +419,16 @@ export class VoiceControl {
   }
 
   // 停止のイベント（VoiceEvent の audio_control）。届かなくても端末はリースの期限で止まる。世代は最後に知った値を使い、
-  // DB の読み書きを待たない（知らなければ 0）。
+  // DB の読み書きを待たない。世代を知らない端末へは送らない（0 の世代は音声レンダラーが古い命令として無視するので、
+  // 送っても止まらない。停止では DB の値が返った後に送り、DB を書けない間はリースの期限に任せる）。
   #emitAudioControl(
     deviceId: string,
     reason: AudioReason,
     live: LiveSessionRecord | null,
-  ): void {
+  ): boolean {
     const rule = AUDIO_CONTROL_RULES[reason];
     const known = this.#known.get(deviceId);
+    if (known === undefined) return false;
     const at = new Date(this.#wallNow()).toISOString();
     this.#emit(deviceId, {
       schema: 'buddy.voice-event.v1',
@@ -433,14 +445,15 @@ export class VoiceControl {
         reason,
         device_id: deviceId,
         scope: rule.scope,
-        io_epoch: known?.io_epoch ?? '0',
-        audio_epoch: live?.audio_epoch ?? known?.audio_epoch ?? '0',
-        output_epoch: known?.output_epoch ?? '0',
+        io_epoch: known.io_epoch,
+        audio_epoch: live?.audio_epoch ?? known.audio_epoch,
+        output_epoch: known.output_epoch,
         issued_by: 'core',
         issued_at: at,
       },
       occurred_at: at,
     });
+    return true;
   }
 
   async #deviceState(deviceId: string): Promise<DeviceVoiceState | null> {
@@ -876,6 +889,7 @@ export class VoiceControl {
       device_id: device.device_id,
       at: this.#wallNow(),
       retry: null,
+      onWritten: null,
     };
     this.#pendingStops.push(stop);
     const targets =
@@ -883,6 +897,8 @@ export class VoiceControl {
         ? new Set([device.device_id])
         : new Set([...this.#knownDevices(), device.device_id]);
     const plan = planStop(reason);
+    const notified = new Set<string>([device.device_id]);
+    const firstLive = new Map<string, LiveSessionRecord | null>();
     for (const deviceId of targets) {
       this.#revokeLeases(deviceId);
       const known = this.#known.get(deviceId);
@@ -896,9 +912,26 @@ export class VoiceControl {
       // 第 3 層: 中枢がサイドバンドから閉じ、使用量を照合する（planStop の core）。
       if (plan.core.includes('core_sideband_close'))
         for (const runtime of lives) this.#beginClose(runtime, reason);
-      if (deviceId !== device.device_id)
-        this.#emitAudioControl(deviceId, reason, lives[0]?.record ?? null);
+      firstLive.set(deviceId, lives[0]?.record ?? null);
+      if (
+        deviceId !== device.device_id &&
+        this.#emitAudioControl(deviceId, reason, lives[0]?.record ?? null)
+      )
+        notified.add(deviceId);
     }
+    // 世代を知らなかった端末（DB の書込みの後に分かる）へは、DB の値が返った後に送る。
+    const notifyRest = (states: readonly DeviceVoiceState[]) => {
+      for (const state of states)
+        if (!notified.has(state.device_id)) {
+          notified.add(state.device_id);
+          this.#emitAudioControl(
+            state.device_id,
+            reason,
+            firstLive.get(state.device_id) ?? null,
+          );
+        }
+    };
+    stop.onWritten = notifyRest;
     const written = await this.#writeStop(stop, STOP_WRITE_ATTEMPTS);
     if (written === null) {
       this.#scheduleStopRetry(stop);
@@ -931,18 +964,22 @@ export class VoiceControl {
     attempts: number,
   ): Promise<readonly DeviceVoiceState[] | 'rejected' | null> {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const result = await this.#store
-        .voice({
+      // DB の応答にも期限を付ける。切れたら書けなかったものとして再試行へ回す（遅れて書けていれば世代が余分に進むだけ）。
+      const answered = await this.#within(VOICE_EXTERNAL_TIMEOUT_MS, () =>
+        this.#store.voice({
           kind: 'voice.stop',
           scope: stop.scope,
           device_id: stop.device_id,
           now: stop.at,
-        })
-        .catch(() => null);
+        }),
+      );
+      const result = answered === TIMED_OUT ? null : answered;
       if (result?.ok === true) {
         this.#removePendingStop(stop);
         for (const state of result.value.devices)
           this.#known.set(state.device_id, state);
+        stop.onWritten?.(result.value.devices);
+        stop.onWritten = null;
         return result.value.devices;
       }
       if (
@@ -1128,11 +1165,17 @@ export class VoiceControl {
     if (session.value === null || session.value.ended_at !== null)
       return error(409, 'conflict', requestId);
     // 外部の待ち（予算の門）は列の外で、期限を付ける。切れたら結果不明（予約ができたかは門の照合に任せる）。
-    const reserved = await this.#within(VOICE_EXTERNAL_TIMEOUT_MS, () =>
-      budget.reserve({
-        request_id: requestId,
-        seconds: LIVE_INITIAL_RESERVE_SECONDS,
-      }),
+    // 期限の後に遅れて成功した予約は、送出意図の前なので解放する（残しておく理由がない）。
+    const reserved = await this.#within(
+      VOICE_EXTERNAL_TIMEOUT_MS,
+      () =>
+        budget.reserve({
+          request_id: requestId,
+          seconds: LIVE_INITIAL_RESERVE_SECONDS,
+        }),
+      (late) => {
+        if (late.ok) this.#budgetLater(null, () => budget.release(late.ticket));
+      },
     );
     if (reserved === TIMED_OUT)
       return error(503, 'dependency_unavailable', requestId);
@@ -1650,6 +1693,9 @@ export class VoiceControl {
     if (runtime.record.control_state !== 'closing') return;
     if (!this.#step(runtime, 'close_unconfirmed')) return;
     this.#clearTimers(runtime);
+    // 終了を確認できなかった接続は切る（使用量の照合は予算の門の照合に任せる）。
+    runtime.sideband?.terminate();
+    runtime.sideband = null;
     const budget = this.#budget;
     if (budget !== null && runtime.ticket !== null)
       this.#budgetLater(runtime, () => budget.hold(runtime.ticket));
@@ -1701,6 +1747,10 @@ export class VoiceControl {
   // 起動時の照合。前の起動の閉じ終えていない Live は lost にし（core_restarted）、閉じる要求の後に終了未確認として予約を
   // 保持する（provider のセッションの ID は保存していないので、前の起動のサイドバンドからは閉じられない。U72）。
   async start(): Promise<{ readonly unfinished: readonly string[] }> {
+    // 停止のイベントに正しい世代を載せるため、失効していない端末の世代を読んでおく（再起動の後に一度も読んでいなくてもよい）。
+    const devices = await this.#store.voice({ kind: 'voice.active_devices' });
+    if (!devices.ok) throw new Error('voice_state_unavailable');
+    for (const state of devices.value) this.#known.set(state.device_id, state);
     const found = await this.#store.voice({ kind: 'voice.live_unfinished' });
     if (!found.ok) throw new Error('voice_state_unavailable');
     const ids: string[] = [];

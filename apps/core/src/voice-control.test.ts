@@ -727,6 +727,8 @@ test(
       await rig.clock.advance(1);
       await rig.wait();
       assert.equal(rig.voice.liveRecord(live)?.closure, 'close_unconfirmed');
+      // 終了未確認にした接続は切る。後から使用秒数が分かったとき（模擬では切った後の受け口へ届ける）は照合して精算する。
+      assert.equal(rig.provider.sidebands[0]?.terminated, true);
       rig.provider.sidebands[0]?.closed(40);
       await rig.wait();
       assert.deepEqual(
@@ -1646,6 +1648,186 @@ test(
         )['reasons'],
         ['lease_rotation_required'],
       );
+    });
+  },
+);
+
+// ---- 再確認（Sonnet）の再現: 停止のイベントの世代・遅れて成功した予約・受付の途中の停止 ------------------------------
+
+test(
+  'P2-A: 再起動の後に一度も読んでいない端末にも、全体停止のイベントは DB の世代（0 ではない）で届く',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      // 前の起動で B の世代を 2 まで進めておく（局所停止 2 回）。
+      for (const id of [0x91, 0x92])
+        await rig.voice.stopIo(B, {
+          request_id: uuid(id),
+          command_scope_id: SCOPE_B,
+          scope: 'local',
+        });
+      await rig.harness.restart();
+      await rig.restart(CORE_2);
+      rig.events.clear();
+      const stopped = await rig.voice.stopIo(A, {
+        request_id: uuid(0x93),
+        command_scope_id: SCOPE_A,
+        scope: 'global',
+      });
+      assert.equal(stopped.status, 202);
+      assert.deepEqual(audioControls(rig, DEV_B), [
+        ['suspend_io', 'global_stop', '3'],
+      ]);
+    });
+  },
+);
+
+test(
+  'P2-A: 中枢が世代をまだ読めていない端末へは、DB の値が返った後に停止のイベントを送る（DB を書けない間は送らない）',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const DEV_C = uuid(0xc3);
+      rig.harness.sql((db) =>
+        db
+          .prepare(
+            `INSERT INTO devices VALUES (?, '合成の端末', 'macos', 0, X'${'c'.repeat(64)}', 1000, NULL, NULL)`,
+          )
+          .run(DEV_C),
+      );
+      const seen: JsonObject[] = [];
+      // 購読と同時に停止が来る（購読のときの読み取りが終わる前）。
+      rig.voice.subscribe(DEV_C, (event) => seen.push(event as JsonObject));
+      const stopped = await rig.voice.stopIo(A, {
+        request_id: uuid(0x91),
+        command_scope_id: SCOPE_A,
+        scope: 'global',
+      });
+      assert.equal(stopped.status, 202);
+      assert.deepEqual(
+        seen.map((event) => {
+          const control = event['audio_control'] as JsonObject;
+          return [
+            control['reason'],
+            control['io_epoch'],
+            control['output_epoch'],
+            control['audio_epoch'],
+          ];
+        }),
+        [['global_stop', '1', '1', '0']],
+      );
+    });
+    await withRig(async (rig) => {
+      const DEV_C = uuid(0xc3);
+      // 起動の後に登録された端末（起動のときには世代を読んでいない）。
+      await useStore(
+        rig,
+        failingStore(rig, (kind) => kind === 'voice.stop'),
+      );
+      rig.harness.sql((db) =>
+        db
+          .prepare(
+            `INSERT INTO devices VALUES (?, '合成の端末', 'macos', 0, X'${'c'.repeat(64)}', 1000, NULL, NULL)`,
+          )
+          .run(DEV_C),
+      );
+      const seen: JsonObject[] = [];
+      rig.voice.subscribe(DEV_C, (event) => seen.push(event as JsonObject));
+      const stopped = await rig.voice.stopIo(A, {
+        request_id: uuid(0x91),
+        command_scope_id: SCOPE_A,
+        scope: 'global',
+      });
+      assert.equal(stopped.status, 503);
+      assert.deepEqual(seen, []);
+    });
+  },
+);
+
+test(
+  'P2-B: 予約が 5 秒の期限の後に遅れて成功したら、送出意図の前なので解放する',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      await renew(rig, A, {
+        lease_id: uuid(0x1a),
+        nonce: 'n1',
+        previous_nonce: null,
+        at: 10,
+      });
+      let release: () => void = () => undefined;
+      let called = false;
+      const original = rig.budget.reserve.bind(rig.budget);
+      (rig.budget as { reserve: unknown }).reserve = (input: {
+        request_id: string;
+        seconds: number;
+      }) =>
+        new Promise((resolve) => {
+          called = true;
+          release = () => resolve(original(input));
+        });
+      const pending = rig.voice.createLiveSession(A, liveBody());
+      // 予約の呼び出し（5 秒の期限を数え始める）まで進める。
+      while (!called) await rig.clock.settle();
+      await rig.clock.advance(4999);
+      assert.equal(rig.budget.calls.length, 0);
+      await rig.clock.advance(1);
+      const created = await pending;
+      assert.deepEqual(
+        [created.status, bodyOf(created)['code']],
+        [503, 'dependency_unavailable'],
+      );
+      release();
+      // 遅れた予約（DB worker の受付）が返り、解放が終わるまで待つ（上限つき）。
+      for (let i = 0; i < 50 && !rig.budget.calls.includes('release'); i += 1)
+        await rig.wait();
+      await rig.wait();
+      assert.deepEqual(rig.budget.calls, ['reserve:195', 'release']);
+      assert.deepEqual(reservationStatus(rig), ['released']);
+      assert.equal(rig.provider.created.length, 0);
+    });
+  },
+);
+
+test(
+  'P3: 予約を待っている間の局所停止で、受付は 403 になり、provider へ送らず、送出意図の後の予約を保持する',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      await renew(rig, A, {
+        lease_id: uuid(0x1a),
+        nonce: 'n1',
+        previous_nonce: null,
+        at: 10,
+      });
+      let release: () => void = () => undefined;
+      const original = rig.budget.reserve.bind(rig.budget);
+      (rig.budget as { reserve: unknown }).reserve = (input: {
+        request_id: string;
+        seconds: number;
+      }) =>
+        new Promise((resolve) => {
+          release = () => resolve(original(input));
+        });
+      const pending = rig.voice.createLiveSession(A, liveBody());
+      await rig.clock.settle();
+      const stopped = await rig.voice.stopIo(A, {
+        request_id: uuid(0x91),
+        command_scope_id: SCOPE_A,
+        scope: 'local',
+      });
+      assert.equal(stopped.status, 202);
+      release();
+      await rig.wait();
+      const created = await pending;
+      assert.deepEqual(
+        [created.status, bodyOf(created)['code']],
+        [403, 'audio_ownership_required'],
+      );
+      await rig.wait();
+      assert.equal(rig.provider.created.length, 0);
+      assert.deepEqual(rig.budget.calls, ['reserve:195', 'dispatch', 'hold']);
+      assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
     });
   },
 );

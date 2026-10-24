@@ -37,13 +37,17 @@ const PASSING: RequestEnvironment = {
   claimSecretMatches: () => true,
 };
 
-async function freePort(): Promise<number> {
-  const server = netServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  assert(address !== null && typeof address === 'object');
-  return address.port;
+// 試験側が確保したポートへ接続し、待ち受けの相手が返すバイト列を読む。
+// 同じポートを Core が開いていれば、応答は試験側のものにならない。
+function readGreeting(port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = netConnect({ host: '127.0.0.1', port });
+    let text = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk: string) => (text += chunk));
+    socket.once('error', reject);
+    socket.once('close', () => resolve(text));
+  });
 }
 
 // 待ち受けていないか（接続が拒否されるか）。Windows では拒否の通知に 1〜2 秒かかるため、
@@ -177,7 +181,20 @@ test(
   { timeout: 30_000 },
   async (t) => {
     const dataDir = join(await tempDir(t, 'buddy-https-core-'), 'data');
-    const port = await freePort();
+    // ポートは試験側で確保したまま起動を試す。Core が待ち受けを開こうとしても
+    // 同じポートは二重に開けないため、開いたかどうかを他の試験のポートの取り合いと切り離して確かめられる。
+    const holder = netServer();
+    holder.on('connection', (socket) => socket.end('test-holder'));
+    await new Promise<void>((resolve) =>
+      holder.listen(0, '127.0.0.1', resolve),
+    );
+    onCleanup(
+      t,
+      () => new Promise<void>((resolve) => holder.close(() => resolve())),
+    );
+    const address = holder.address();
+    assert(address !== null && typeof address === 'object');
+    const port = address.port;
     // TLS の秘密鍵を鍵保護から取得できない。
     const unavailable = createMockTlsKeyStore({ available: false });
     await assert.rejects(
@@ -191,7 +208,9 @@ test(
         error.code === 'tls_unavailable' &&
         error.reasons[0] === 'tls_key_unavailable:mock_unavailable',
     );
-    assert.equal(await refusesConnections(port), true);
+    // 失敗の後も、そのポートの持ち主は Core ではなく試験側の待ち受けのまま。
+    assert.equal(holder.listening, true);
+    assert.equal(await readGreeting(port), 'test-holder');
     // データ鍵の鍵保護（起動前の検査）が使えなければ、TLS の鍵にも触れずに拒否する。
     const untouched = createMockTlsKeyStore();
     await assert.rejects(
@@ -204,14 +223,15 @@ test(
       (error: CoreStartError) => error.code === 'preflight_failed',
     );
     assert.equal(untouched.writes, 0);
-    assert.equal(await refusesConnections(port), true);
+    assert.equal(holder.listening, true);
+    assert.equal(await readGreeting(port), 'test-holder');
     // ロックを返しているので、鍵保護が使えれば同じデータディレクトリで起動できる。
+    // ポートは OS に任せ、開いたポートが実際に接続を受けることを確かめる。
     const handle = await startWithHttps(t, dataDir, {
-      port,
       tlsKeyStore: createMockTlsKeyStore(),
     });
-    assert.equal(handle.https?.port, port);
-    assert.equal(await refusesConnections(port), false);
+    assert(handle.https !== null);
+    assert.equal(await refusesConnections(handle.https.port), false);
   },
 );
 

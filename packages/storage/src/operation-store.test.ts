@@ -689,8 +689,10 @@ test('bulk writes are split into transactions of at most 50 items or 20 ms', asy
       db.prepare('INSERT INTO bulk (n) VALUES (?)').run(n);
     };
     const ends: number[] = [];
+    // 20ms に達しない時計を渡し、実時間に依存せず件数の上限だけで区切る。
+    const frozenClock = (): number => 0;
     for (let index = 0; index < items.length;) {
-      index = writeBulkSlice(db, items, index, write);
+      index = writeBulkSlice(db, items, index, write, { clock: frozenClock });
       ends.push(index);
     }
     assert.deepEqual(ends, [50, 100, 120]);

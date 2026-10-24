@@ -364,24 +364,27 @@ function numberRunToValue(run: string): number | null {
     }
     return digits === '' ? null : Number(digits);
   }
+  // 係数が書かれていない（「十」「万」だけ）ときの 1 と、明示された 0（「0万」「〇万」）は区別する。
   let total = 0;
   let section = 0;
-  let current = 0;
+  let current: number | null = null;
   for (const token of tokens) {
     const digit = KANJI_DIGITS[token];
     const unit = KANJI_UNITS[token];
     if (digit !== undefined) current = digit;
     else if (/^\d+$/u.test(token)) current = Number(token);
     else if (unit !== undefined) {
-      section += (current === 0 ? 1 : current) * unit;
-      current = 0;
+      section += (current ?? 1) * unit;
+      current = null;
     } else {
-      total += (section + current === 0 ? 1 : section + current) * 10000;
+      const block =
+        section === 0 && current === null ? 1 : section + (current ?? 0);
+      total += block * 10000;
       section = 0;
-      current = 0;
+      current = null;
     }
   }
-  return total + section + current;
+  return total + section + (current ?? 0);
 }
 
 const READING_TO_WORD: ReadonlyArray<readonly [string, string]> = [
@@ -427,20 +430,6 @@ const BEFORE_SEND = new RegExp(
   'gu',
 );
 const RECIPIENT_MAX_CHARS = 10;
-// 危険な印（送る表現・否定・数字・日時・宛先の印「に・へ」・敬称・メールアドレス）。どちらかの文に 1 つでもあれば、
-// 正規化した文の全体が一致しなければ聞き返す（抽出の取りこぼしで見逃さない安全側の方針。ADR 0041、U36）。
-const RISK_MARKER = new RegExp(
-  [
-    SEND_EXPRESSION,
-    NEGATION.source,
-    '\\d',
-    DATETIME_TOKEN.source,
-    '[にへ]',
-    HONORIFIC,
-  ].join('|'),
-  'u',
-);
-
 interface TranscriptFeatures {
   // 出現順（範囲の役割つき）。並べ替えない。
   readonly numbers: string[];
@@ -493,7 +482,7 @@ function normalizeText(text: string): NormalizedText {
 }
 
 // 数字・日時・否定・宛先を取り出す。差分の説明（differences）のための補助で、聞き返すかどうかの正本ではない
-// （危険な印のある文は、文の全体の一致で決める）。
+// （判定は文の全体の一致で決める）。
 function transcriptFeatures(text: string): TranscriptFeatures {
   const nfkc = text.normalize('NFKC').toLowerCase();
   const recipients: string[] = [];
@@ -552,12 +541,13 @@ function transcriptFeatures(text: string): TranscriptFeatures {
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((item, index) => item === b[index]);
 
-// Live の文字断片と端末の ASR の結果を比べ、危険な印のある文は、正規化した文の全体が一致しなければ実行せず聞き返す。
-// 危険な印（送る表現・否定・数字・日時・宛先の印の「に・へ」・敬称・メールアドレス）が、2 つの文のどちらかに 1 つでもあれば、
-// 全体の一致だけが proceed で、抽出（数字・日時・否定・宛先）は差分の説明のための補助にとどめる。抽出の取りこぼし
-// （混在表記・送信動詞から離れた宛先・否定の対象の入れ替わりなど）で見逃さないため。危険な印がない文は、4 種類の特徴の比較のまま。
+// Live の文字断片と端末の ASR の結果を比べる。判定の正本は、ほぼ完全一致だけ（初期。ADR 0041、U36）。
+// proceed にするのは、次の正規化だけをした文字列が完全に一致したときだけ: Unicode の NFKC・前後の空白の除去・文末の
+// 句点・読点・感嘆符・疑問符の除去（normalizeUtterance）。それ以外は、すべて ask_back。記号・空白・数字・漢数字・読み・
+// 表記ゆれの正規化は判定に使わない（区切りの記号・符号・通貨・単語の区切りのような、意味を持つ差を消さないため）。
+// 数字・日時・否定・宛先の抽出は、差分の説明（differences）のための補助で、判定には使わない。説明が付かない差は text_differs。
 // どちらかが空・ASR がない（null）ときは比べられないので聞き返す。一致しても、完全一致や誤認識のなさの証明ではない
-// （C は照合の成功を前提にしない。QA08）。
+// （C は照合の成功を前提にしない。QA08）。言い換えの許容は、B05 の実測（T08）で、安全を確かめた正規化だけを足す。
 export function compareTranscripts(
   live: string,
   asr: string | null,
@@ -570,6 +560,8 @@ export function compareTranscripts(
   if (asr.normalize('NFKC').trim() === '') reasons.push('asr_transcript_empty');
   if (reasons.length > 0)
     return { action: 'ask_back', differences: [], reasons };
+  if (normalizeUtterance(live) === normalizeUtterance(asr))
+    return { action: 'proceed', differences: [], reasons: [] };
   const a = transcriptFeatures(live);
   const b = transcriptFeatures(asr);
   const differences: TranscriptDifference[] = [];
@@ -577,27 +569,13 @@ export function compareTranscripts(
   if (!sameList(a.datetimes, b.datetimes)) differences.push('datetime');
   if (!sameList(a.negations, b.negations)) differences.push('negation');
   if (!sameList(a.recipients, b.recipients)) differences.push('recipient');
-  const liveText = normalizeText(live).normalized;
-  const asrText = normalizeText(asr).normalized;
-  // メールアドレスは、記号を除く正規化で「@」が消えるので、元の文で見る。
-  const hasMail = (text: string): boolean =>
-    text.normalize('NFKC').includes('@');
-  const risky =
-    RISK_MARKER.test(liveText) ||
-    RISK_MARKER.test(asrText) ||
-    hasMail(live) ||
-    hasMail(asr);
-  const textDiffers = liveText !== asrText;
-  const ask = differences.length > 0 || (risky && textDiffers);
   return {
-    action: ask ? 'ask_back' : 'proceed',
+    action: 'ask_back',
     differences,
     reasons:
       differences.length > 0
         ? differences.map((kind) => `${kind}_differs`)
-        : ask
-          ? ['text_differs']
-          : [],
+        : ['text_differs'],
   };
 }
 

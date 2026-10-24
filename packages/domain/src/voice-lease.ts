@@ -136,11 +136,16 @@ export function acceptLeaseRenewal(
   response: LeaseRenewalResponseLike,
   now: ClockReading | null,
   current: LeaseCurrentState,
-  // 更新で置き換える今のリース（なければ null）。その直前の観測より応答の単調時計が戻っていれば、更新も拒否する
+  // 更新で置き換える今のリース。必須で、初回（置き換えるリースがない）だけ明示的に null を渡す。その直前の観測より応答の単調時計が戻っていれば、更新も拒否する
   // （旧い状態の観測と更新の適用を 1 つの遷移として検査する。拒否したときの旧いリースは、呼び出し側が捨てる）。
-  previousHeld: HeldLease | null = null,
+  previousHeld: HeldLease | null,
   toleranceMs: number = LEASE_CLOCK_TOLERANCE_MS,
 ): LeaseRenewalOutcome {
+  // 省略（undefined）は、前の観測を渡し忘れた呼び出しなので、受理せず例外にする（null は「置き換えるリースがない」）。
+  if ((previousHeld as HeldLease | null | undefined) === undefined)
+    throw new TypeError(
+      'acceptLeaseRenewal needs previousHeld (null for the first lease)',
+    );
   const sentAt: ClockReading | null =
     pending === null
       ? null

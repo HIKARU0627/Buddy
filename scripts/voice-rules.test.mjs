@@ -150,6 +150,7 @@ test('lease renewal: a late response never extends the lease and clock faults re
       { ...response, ...entry.response },
       entry.now,
       { ...current, ...entry.current },
+      null,
     );
     assert.deepEqual(outcome, entry.expected, entry.id);
   }
@@ -160,6 +161,7 @@ test('lease renewal: a late response never extends the lease and clock faults re
       response,
       { mono_ms: 10000 + delay, wall_ms: 5000000 + delay },
       current,
+      null,
     );
     assert.equal(outcome.held.expires_at_mono_ms, 16000, `delay ${delay}`);
   }
@@ -170,6 +172,7 @@ test('lease renewal: a late response never extends the lease and clock faults re
       response,
       { mono_ms: 10000 + delay, wall_ms: 5000000 + delay },
       current,
+      null,
     );
     assert.equal(outcome.held, null, `delay ${delay}`);
     assert.deepEqual(outcome.reasons, ['expired_before_applied']);
@@ -209,6 +212,11 @@ test('lease renewal: the old lease last observation and the renewal are checked 
     acceptLeaseRenewal(request, response, late, current, observed.held).held,
     null,
   );
+  // 前の観測の引数を省略した呼び出し（渡し忘れ）は受理せず、例外にする。初回だけ明示的に null を渡す。
+  assert.throws(
+    () => acceptLeaseRenewal(request, response, late, current),
+    TypeError,
+  );
   // 同じ応答でも、旧いリースの観測を渡さなければ（状態を持たない呼び出し）受理される。これが前回の穴で、渡すのが規則。
   assert.notEqual(
     acceptLeaseRenewal(request, response, late, current, null).held,
@@ -235,6 +243,7 @@ test('lease renewal then evaluation: a renewed lease is valid until the counted 
     response,
     { mono_ms: 10100, wall_ms: 5000100 },
     current,
+    null,
   );
   assert.deepEqual(evaluateLease(held, { mono_ms: 15999, wall_ms: 5005999 }), {
     status: 'valid',
@@ -945,6 +954,33 @@ test('transcript comparison: numbers, dates, negation and recipients that differ
       entry.expected,
       entry.id,
     );
+});
+
+test('transcript comparison: only a near-exact match proceeds, whatever the extraction says', () => {
+  const real = (text) => (text === null ? null : text.replaceAll('{at}', '@'));
+  // 手書きの規則（実装の関数を使わない）: NFKC・前後の空白・文末の句点・読点・感嘆符・疑問符だけを除いた文字列の一致。
+  const oracle = (text) =>
+    text
+      .normalize('NFKC')
+      .trim()
+      .replace(/[\s。．、，,.!！?？…]+$/u, '');
+  const texts = [];
+  for (const entry of asr.cases)
+    for (const text of [entry.live, entry.asr])
+      if (text !== null && oracle(real(text)) !== '') texts.push(real(text));
+  assert(texts.length > 100);
+  for (const left of texts)
+    for (const right of texts) {
+      const result = compareTranscripts(left, right);
+      assert.equal(
+        result.action === 'proceed',
+        oracle(left) === oracle(right),
+        `${left} | ${right}`,
+      );
+      // proceed の説明は空、ask_back は必ず理由がある（説明が付かない差は text_differs）。
+      if (result.action === 'proceed') assert.deepEqual(result.reasons, []);
+      else assert(result.reasons.length > 0, `${left} | ${right}`);
+    }
 });
 
 // ---- 10. 会話の操作の照合 -------------------------------------------------------------------------------------------

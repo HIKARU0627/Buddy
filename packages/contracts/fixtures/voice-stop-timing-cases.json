@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "3 層の停止の時間モデルの期待値（設計 10 §1・§1A・§9、09 X13・X30・QA43、ADR 0039）。手で書いたもので、domain の実装から生成していない。第 1 層の 200ms は目標、第 2 層の 300ms は強制終了の期限で、どちらも設計の初期値であり合格値ではない（質問 44。実測は T04）。時刻は注入した単調時計の値（ms）。stop_playback の ACK が返らないときの全停止の理由は、新しい理由を足さず既存の device_io_stop（local）を使う（ADR 0039）。",
+  "description": "3 層の停止の時間モデルの期待値（設計 10 §1・§1A・§9、09 X13・X30・QA43、ADR 0041）。手で書いたもので、domain の実装から生成していない。第 1 層の 200ms は目標、第 2 層の 300ms は強制終了の期限で、どちらも設計の初期値であり合格値ではない（質問 44。実測は T04）。時刻は注入した単調時計の値（ms）。stop_playback の ACK が返らないときの全停止の理由は、新しい理由を足さず既存の device_io_stop（local）を使う（ADR 0041）。",
   "constants": { "layer1_target_ms": 200, "layer2_deadline_ms": 300 },
   "plan_cases": [
     {

@@ -74,7 +74,7 @@ import {
 } from '../packages/domain/dist/index.js';
 import { parseStrictJson, root } from './contract-tools.mjs';
 
-// B05-02（ADR 0039）の音声の純粋な規則を、手書きの期待値（fixtures）で検査する。
+// B05-02（ADR 0041）の音声の純粋な規則を、手書きの期待値（fixtures）で検査する。
 // 期待値は domain の実装から作らない。時計は注入した値で、実際の音声・実 API・実機は使わない。
 const read = async (name) =>
   parseStrictJson(

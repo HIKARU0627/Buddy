@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "世代（epoch）の発行と逆行の拒否の期待値（設計 07 §1、10 §1A、ADR 0005・0038・0039、X13・X30・QA06・QA43）。手で書いたもので、domain の実装から生成していない。世代は先頭ゼロのない非負整数の 10 進文字列で、JavaScript の数値精度（2 の 53 乗）を超える値も含む。端末が進めるのは io_epoch・output_epoch、中枢が発行するのは audio・control・session の epoch。throws は例外の名前。",
+  "description": "世代（epoch）の発行と逆行の拒否の期待値（設計 07 §1、10 §1A、ADR 0005・0038・0041、X13・X30・QA06・QA43）。手で書いたもので、domain の実装から生成していない。世代は先頭ゼロのない非負整数の 10 進文字列で、JavaScript の数値精度（2 の 53 乗）を超える値も含む。端末が進めるのは io_epoch・output_epoch、中枢が発行するのは audio・control・session の epoch。throws は例外の名前。",
   "classify_cases": [
     {
       "id": "same",

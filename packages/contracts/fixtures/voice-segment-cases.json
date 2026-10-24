@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "方式 A の区間リング（16kHz・mono・16bit・60 秒まで）と、区間の sealed・blocked・collecting・truncated の期待値（設計 10 §5A、07 §1、09 QA05・QA06・X51、ADR 0039）。手で書いたもので、domain の実装から生成していない。音声は含まず、フレームの番号（frame_seq）と sample の範囲だけを持つ。1 フレームは 20ms = 320 sample、リングの容量は 960000 sample（60 秒）。frames の gen は同じ大きさの連続フレームを n 個作る省略記法（first_seq から連番、start から連続）。sealed は区間を固定したという意味で、誤認識がないことでも実行の許可でもない。",
+  "description": "方式 A の区間リング（16kHz・mono・16bit・60 秒まで）と、区間の sealed・blocked・collecting・truncated の期待値（設計 10 §5A、07 §1、09 QA05・QA06・X51、ADR 0041）。手で書いたもので、domain の実装から生成していない。音声は含まず、フレームの番号（frame_seq）と sample の範囲だけを持つ。1 フレームは 20ms = 320 sample、リングの容量は 960000 sample（60 秒）。frames の gen は同じ大きさの連続フレームを n 個作る省略記法（first_seq から連番、start から連続）。sealed は区間を固定したという意味で、誤認識がないことでも実行の許可でもない。",
   "constants": {
     "sample_rate": 16000,
     "channels": 1,

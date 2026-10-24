@@ -1,4 +1,4 @@
-// 3 層の停止の時間モデル（B05-02、ADR 0039。設計 10 §1・§1A・§9、09 X13・X30・QA43）。
+// 3 層の停止の時間モデル（B05-02、ADR 0041。設計 10 §1・§1A・§9、09 X13・X30・QA43）。
 // 時刻は呼び出し側が単調時計で読んで渡す。200ms・300ms は設計の初期値（目標・期限）で、合格値ではない（質問 44）。
 // 第 1 層（端末のローカル停止）は ACK・session.close を待たない。第 2 層（main の強制終了）は ACK の期限、
 // 第 3 層（中枢のサイドバンドからの終了と使用量の照合）は終了を確認するまで予約を精算しない。
@@ -115,7 +115,7 @@ export interface StopAssessment {
   readonly fallback: VoiceIpcTimeoutAction | null;
   // stop_playback の ACK 喪失で全停止に上げるときは、入力の中断を画面で知らせる（10 §1）。
   readonly notify_input_interrupted: boolean;
-  // 全停止へ上げるときの端末の状態。理由は既存の device_io_stop（local）を使う（ADR 0039。新しい理由は足さない）。
+  // 全停止へ上げるときの端末の状態。理由は既存の device_io_stop（local）を使う（ADR 0041。新しい理由は足さない）。
   // 画面で明示再開するまで再開しない（安全側）。
   readonly escalation: {
     readonly action: 'suspend_io';

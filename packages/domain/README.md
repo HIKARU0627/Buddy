@@ -16,7 +16,7 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `operation-steps.ts`: 操作の工程（operation_steps）の進め方（D3、ADR 0027）
 - `approval.ts`: 承認の受付（同じ内容版の承認は一つ・方針の版）と DB worker の命令の再検査（[ADR 0010](../../docs/adr/0010-domain-boundary-and-storage-draft.md)）
 - `audio.ts`: 停止理由ごとの動作と再開条件、遅着した結果の受け入れ、出力先の決定（[ADR 0005](../../docs/adr/0005-conversation-and-voice-control.md)）
-- `voice-lease.ts`・`voice-stop.ts`・`voice-silence.ts`・`voice-reservation.ts`・`voice-notification.ts`・`voice-start.ts`・`voice-input.ts`: 音声の純粋な規則（リースの期限と世代の発行・3 層の停止の時間・無音・追加予約と精算の秒数・通知の頻度・接続開始の門・方式 A の区間リング・方式 C の 4 操作・ASR の比較・会話の操作の照合）。時計と乱数は呼び出し側が渡す（[ADR 0039](../../docs/adr/0039-b05-voice-pure-rules.md)）
+- `voice-lease.ts`・`voice-stop.ts`・`voice-silence.ts`・`voice-reservation.ts`・`voice-notification.ts`・`voice-start.ts`・`voice-input.ts`: 音声の純粋な規則（リースの期限と世代の発行・3 層の停止の時間・無音・追加予約と精算の秒数・通知の頻度・接続開始の門・方式 A の区間リング・方式 C の 4 操作・ASR の比較・会話の操作の照合）。時計と乱数は呼び出し側が渡す（[ADR 0041](../../docs/adr/0041-b05-voice-pure-rules.md)）
 - `desktop.ts`: デスクトップの限定 IPC の受付（送信元・ロック・画面操作・停止の範囲・io_epoch）、状態欄の非表示、入出力・ロックの状態遷移（[ADR 0014](../../docs/adr/0014-b01-desktop-ipc-contract.md)）
 - `conversation.ts`: 意図ごとの結果表示、会話の操作の照合
 - `retention.ts`: 削除期限の計算（起点から一度だけ）

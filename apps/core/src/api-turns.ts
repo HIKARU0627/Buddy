@@ -22,7 +22,7 @@ import {
   checkIntentArgs,
   isRealLocalDateTime,
 } from '@buddy/domain';
-import type { ArgValues, IntentName } from '@buddy/domain';
+import type { ArgValues, IntentName, StartupGateDecision } from '@buddy/domain';
 import {
   openOperationIntent,
   sealBlob,
@@ -76,6 +76,12 @@ export interface TurnRoutesOptions {
   readonly contract?: ApiContract;
   // 発言から操作を作った後に呼ぶ（イベントの配信を起こす。event-feed の notify）。
   readonly onOperationCreated?: () => void;
+  // 保存期限の掃除のゲート（ADR 0053）。Read・RemoteMutation の前に掃除が済むのを待ち、閉じていれば聞き返す。
+  // 検索（予定の照会）とクラウドへの送信（下書き・ラベル）の入口は、今あるものだけをここにつなぐ。
+  readonly retention?: {
+    readonly ready: () => Promise<void>;
+    readonly gate: () => StartupGateDecision;
+  };
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -671,6 +677,13 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             : clarify('unsupported', intent),
         permissionAtInput: null,
       };
+    // 掃除が済むまで、検索（予定の照会）とクラウドへの送信（下書き・ラベル）を行わない（ADR 0043・0053）。
+    if (options.retention !== undefined) {
+      await options.retention.ready();
+      const gate = options.retention.gate();
+      if (!gate.search || !gate.cloud_send || !gate.auto_use)
+        return { plan: clarify('blocked', intent), permissionAtInput: null };
+    }
     const plan =
       intent === 'query_schedule'
         ? await planRead(intent, args)

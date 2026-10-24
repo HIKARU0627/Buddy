@@ -1181,7 +1181,7 @@
       }
     },
     {
-      "id": "j5-operation-completed-time-unreadable-erases-body-keeps-row",
+      "id": "j5-operation-completed-time-unreadable-is-held-and-row-kept",
       "now": "2026-10-24T12:00:00Z",
       "last_checked_at": null,
       "rows": [
@@ -1198,14 +1198,13 @@
         }
       ],
       "expected": {
-        "actions": [
-          {
-            "action": "erase_body",
-            "id": "op-no-completed-at",
-            "reason": "deadline_unreadable"
-          }
-        ],
+        "actions": [],
         "holds": [
+          {
+            "id": "op-no-completed-at",
+            "rule": "operation_body",
+            "reason": "deadline_unreadable"
+          },
           {
             "id": "op-no-completed-at",
             "rule": "operation_receipt",

@@ -31,7 +31,7 @@ export function initialChannelsFor(
   role: Exclude<RendererWindowRole, 'legacy'>,
 ): readonly DesktopIpcRequest['channel'][] {
   return role === 'status'
-    ? ['desktop.get_state', 'desktop.get_connection']
+    ? ['desktop.get_state', 'desktop.get_connection', 'desktop.get_voice']
     : ['desktop.get_state'];
 }
 

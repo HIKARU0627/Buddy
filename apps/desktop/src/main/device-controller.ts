@@ -20,8 +20,8 @@ import {
 } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 import type { DeviceIoRecord } from './device-io-store.js';
-import { NOT_CONNECTED_HUB, buildStatusBar } from './status-bar.js';
-import type { StatusBarHub } from './status-bar.js';
+import { NOT_CONNECTED_HUB, NO_VOICE, buildStatusBar } from './status-bar.js';
+import type { StatusBarHub, StatusBarVoice } from './status-bar.js';
 
 export type PowerEventNotification = Extract<
   DesktopIpcNotification,
@@ -76,6 +76,7 @@ export class DesktopDeviceController {
   #state: DesktopIoState;
   #status: DesktopStatusBar;
   #hub: StatusBarHub = NOT_CONNECTED_HUB;
+  #voice: StatusBarVoice = NO_VOICE;
   readonly #powerLog: PowerEventNotification[] = [];
 
   constructor(options: DesktopDeviceControllerOptions) {
@@ -189,6 +190,17 @@ export class DesktopDeviceController {
     this.#refreshStatus();
   }
 
+  // 音声の状態（main の音声の制御から。B05-06）。状態欄が変わるときだけ通知する。
+  setVoice(voice: StatusBarVoice): void {
+    if (
+      voice.enabled === this.#voice.enabled &&
+      voice.state === this.#voice.state
+    )
+      return;
+    this.#voice = voice;
+    this.#refreshStatus();
+  }
+
   // main の中の本人の操作（トレイの「入出力を停止」・全体の停止のショートカット。UI-04）からのこの端末の入出力停止。
   // いつでも受け付ける。画面の停止（desktop.io_stop）と同じ状態の遷移（io_stop）を通る。
   stopFromMain(): void {
@@ -237,7 +249,7 @@ export class DesktopDeviceController {
   }
 
   #checkedStatus(): DesktopStatusBar {
-    const status = buildStatusBar(this.#state, this.#hub);
+    const status = buildStatusBar(this.#state, this.#hub, this.#voice);
     const errors = this.#options.contract.statusBarErrors(status);
     if (errors.length > 0) throw new DesktopContractError(errors);
     return status;

@@ -8,6 +8,7 @@ import type {
   DesktopIpcRequest,
   DesktopIpcResponse,
   DesktopStatusBar,
+  DesktopVoiceView,
 } from '@buddy/contracts';
 import { request } from '../desktop-api.js';
 import { rejectMessage } from '../labels.js';
@@ -56,6 +57,8 @@ export interface DesktopViewState {
   // キャンバスの窓の作業領域の外の幅（main が画面の作業領域から決めて送る。UI-06）。null は受け取っていない
   // （画面は window.screen から求めた値を使う）。
   readonly canvasInsets: CanvasWorkAreaInsets | null;
+  // 音声の状態（状態の層だけが受け取る。B05-06）。null は main からまだ受け取っていないこと。
+  readonly voice: DesktopVoiceView | null;
 }
 
 export type CanvasWorkAreaInsets = Extract<
@@ -74,6 +77,7 @@ export const INITIAL_VIEW_STATE: DesktopViewState = {
   submittedName: null,
   canvas: null,
   canvasInsets: null,
+  voice: null,
 };
 
 export const IPC_FAILURE_MESSAGE =
@@ -139,6 +143,8 @@ export function applyNotification(
     return { ...state, canvas: notification.canvas };
   if (notification.channel === 'desktop.canvas_work_area')
     return { ...state, canvasInsets: notification.insets };
+  if (notification.channel === 'desktop.voice_changed')
+    return { ...state, voice: notification.voice };
   return {
     ...state,
     powerLog: [notification, ...state.powerLog].slice(0, POWER_LOG_LIMIT),
@@ -192,6 +198,8 @@ export function applyResponse(
     };
   if ('connection' in response)
     return { ...state, message: null, connection: response.connection };
+  if ('voice' in response)
+    return { ...state, message: null, voice: response.voice };
   if ('status' in response)
     return { ...state, message: null, status: response.status };
   return { ...state, message: null };

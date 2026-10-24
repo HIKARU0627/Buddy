@@ -1,6 +1,7 @@
 // 状態の層のパネル（UI-04、本人の決定 2026-10-22、ADR 0032・0014・0024・0031）。つまみを押すと main が状態の層の窓を
 // 画面の端から広げ、この部品が窓いっぱいに描かれる。左の列にはつまみがそのまま残り（押すとしまう）、右に上から:
 // 1. この端末の入出力の記号と、停止（いつでも 1 回で効く。確認を挟まない）か再開。
+// 1.5. 音声の段（B05-06）: 音声の状態・「音声を外部へ送っている」の印・同意の取り消し・最小の「続ける」（VoiceStrip）。
 // 2. ADR 0014 の常に見せる 8 項目。記号と決まった位置（4 × 2 の格子）で示し、名前と値はフォーカス・ポインターで出す。
 //    値のない項目は点線の枠（未受信）、警告は塗りと ⚠ の形。ロック中・不明は、位置だけを灰色の面で残して値を隠す。
 //    停止のボタンの横に、全体の停止のショートカットのキーの形（登録できなければ打ち消しの線と ⚠）を置く。
@@ -122,6 +123,7 @@ export function StatusPanel({
   stopShortcut = null,
   stopKeys = '',
   operations,
+  voice = null,
 }: {
   // 左の列に残すつまみ（StatusTab）。
   readonly tab: ReactNode;
@@ -139,6 +141,8 @@ export function StatusPanel({
   readonly stopKeys?: string;
   // 確認が必要な操作の一覧と確認の欄（出せないときは null）。
   readonly operations: ReactNode;
+  // 音声の段（B05-06。音声を使わない組み立て・従来の試験では null）。
+  readonly voice?: ReactNode;
 }) {
   const control = stopControl(status);
   const regionRef = useRef<HTMLElement>(null);
@@ -175,7 +179,7 @@ export function StatusPanel({
             </span>
           ) : control.kind === 'resume' ? (
             <Button
-              variant="secondary"
+              variant="primary"
               size="sm"
               aria-label={PANEL_LABELS.resumeName}
               onPress={() => onResume(control.expectedIoEpoch)}
@@ -187,6 +191,7 @@ export function StatusPanel({
         {message === null ? null : (
           <InlineNotice tone="warning" text={message} />
         )}
+        {voice}
         <div className="grid grid-cols-4 gap-2">
           {items === null
             ? STATUS_ITEM_KEYS.map((key) => (

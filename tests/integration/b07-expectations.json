@@ -2,7 +2,7 @@
   "status": "recorded_by_hand",
   "description": "B07-06 の統合試験の期待値（手書き）。合成の通貨 XTS と縮めた上限だけを使い、個人の金額・単価・為替を含まない。期待値は設計 05（F02・D15）・09（X18・QA20・QA42・X53）と ADR 0006・0034〜0037 の規則から手で計算した値で、実装（domain・DB worker・予算の門）の処理から作っていない。M は入力 10 + 出力の上限 30 = 40（単価は 1 token 1 単位）、会話は 1 秒 1 単位（最低 15・上限 60）。",
   "seeds": [7, 1007, 20261023],
-  "db_version": "7",
+  "db_version": "8",
   "pools": {
     "total": {
       "limit": "200",
@@ -2010,72 +2010,309 @@
     },
     {
       "id": "MA05-hold-until-balance-is-known",
-      "title": "MA05: 残高の観測がない・ファイルがない・読めない・不明・失効・残高 0・残高の通貨が違う・別の provider の観測では、Claude の処理を保留して provider へ送らず（購入残高・後払いへ移らない）、クレジットを充てない profile は保留しない。共有の組織の観測は上限（1 時間）を 1 ミリ秒過ぎたら保留し、他の用途で残高が減った新しい観測と未精算の M で足りなければ保留する。同時の 3 要求は残高に収まる 2 件だけ。精算の時に観測を読めなければクレジット 0 で確定せず、読めたら一度だけ精算する",
+      "title": "MA05: 残高の観測がない・ファイルがない・読めない・不明・失効・残高 0・残高の通貨違い・別の provider の観測では、Claude の処理を保留して provider へ送らず（購入残高・後払いへ移らない）、クレジットを充てない profile は保留しない。有効な観測が後から届けば再開する。共有の観測は 1 時間ちょうどまで有効・1 ミリ秒過ぎたら古い。他の用途で残高が減った新しい観測と未精算の M で足りなければ保留。同時の 3 要求は残高に収まる 2 件だけ。精算は観測のファイルに頼らず、受付で採用した観測のまま行う",
       "expected": {
         "hold_matrix": {
-          "held": {
-            "no_observation": {
+          "no_observation": {
+            "admission": {
               "ok": false,
               "reasons": ["credit_unknown"],
               "budget_held": true
             },
-            "file_missing": {
+            "status_hold": {
+              "reason": "credit_unknown",
+              "profile_ids": ["claude.synthetic.v1"]
+            },
+            "luna_is_not_held": {
+              "kind": "settled",
+              "pool": "llm",
+              "month": "2030-10",
+              "routed": false,
+              "overrun": false
+            },
+            "provider_requests": 1,
+            "rows": [["luna", "settled", "2030-10", "5", "0", "5", null]],
+            "ledger": {
+              "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 1,
+              "provider_state_changes": 1,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "file_missing": {
+            "admission": {
               "ok": false,
               "reasons": ["credit_unknown"],
               "budget_held": true
             },
-            "file_unreadable": {
+            "status_hold": {
+              "reason": "credit_unknown",
+              "profile_ids": ["claude.synthetic.v1"]
+            },
+            "luna_is_not_held": {
+              "kind": "settled",
+              "pool": "llm",
+              "month": "2030-10",
+              "routed": false,
+              "overrun": false
+            },
+            "provider_requests": 1,
+            "rows": [["luna", "settled", "2030-10", "5", "0", "5", null]],
+            "ledger": {
+              "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 1,
+              "provider_state_changes": 1,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "file_unreadable": {
+            "admission": {
               "ok": false,
               "reasons": ["credit_unknown"],
               "budget_held": true
             },
-            "status_unknown": {
+            "status_hold": {
+              "reason": "credit_unknown",
+              "profile_ids": ["claude.synthetic.v1"]
+            },
+            "luna_is_not_held": {
+              "kind": "settled",
+              "pool": "llm",
+              "month": "2030-10",
+              "routed": false,
+              "overrun": false
+            },
+            "provider_requests": 1,
+            "rows": [["luna", "settled", "2030-10", "5", "0", "5", null]],
+            "ledger": {
+              "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 1,
+              "provider_state_changes": 1,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "status_unknown": {
+            "admission": {
               "ok": false,
               "reasons": ["credit_unknown"],
               "budget_held": true
             },
-            "status_expired": {
+            "status_hold": {
+              "reason": "credit_unknown",
+              "profile_ids": ["claude.synthetic.v1"]
+            },
+            "luna_is_not_held": {
+              "kind": "settled",
+              "pool": "llm",
+              "month": "2030-10",
+              "routed": false,
+              "overrun": false
+            },
+            "provider_requests": 1,
+            "rows": [["luna", "settled", "2030-10", "5", "0", "5", null]],
+            "ledger": {
+              "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 1,
+              "provider_state_changes": 1,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "status_expired": {
+            "admission": {
               "ok": false,
               "reasons": ["credit_expired"],
               "budget_held": true
             },
-            "zero_balance": {
+            "status_hold": {
+              "reason": "credit_expired",
+              "profile_ids": ["claude.synthetic.v1"]
+            },
+            "luna_is_not_held": {
+              "kind": "settled",
+              "pool": "llm",
+              "month": "2030-10",
+              "routed": false,
+              "overrun": false
+            },
+            "provider_requests": 1,
+            "rows": [["luna", "settled", "2030-10", "5", "0", "5", null]],
+            "ledger": {
+              "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 1,
+              "provider_state_changes": 1,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "zero_balance": {
+            "admission": {
               "ok": false,
               "reasons": ["credit_exhausted"],
               "budget_held": true
             },
-            "balance_in_another_currency": {
+            "status_hold": {
+              "reason": "credit_exhausted",
+              "profile_ids": ["claude.synthetic.v1"]
+            },
+            "luna_is_not_held": {
+              "kind": "settled",
+              "pool": "llm",
+              "month": "2030-10",
+              "routed": false,
+              "overrun": false
+            },
+            "provider_requests": 1,
+            "rows": [["luna", "settled", "2030-10", "5", "0", "5", null]],
+            "ledger": {
+              "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 1,
+              "provider_state_changes": 1,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "balance_in_another_currency": {
+            "admission": {
               "ok": false,
               "reasons": ["credit_unknown"],
               "budget_held": true
             },
-            "another_provider": {
+            "status_hold": {
+              "reason": "credit_unknown",
+              "profile_ids": ["claude.synthetic.v1"]
+            },
+            "luna_is_not_held": {
+              "kind": "settled",
+              "pool": "llm",
+              "month": "2030-10",
+              "routed": false,
+              "overrun": false
+            },
+            "provider_requests": 1,
+            "rows": [["luna", "settled", "2030-10", "5", "0", "5", null]],
+            "ledger": {
+              "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 1,
+              "provider_state_changes": 1,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "another_provider": {
+            "admission": {
               "ok": false,
               "reasons": ["credit_unknown"],
               "budget_held": true
+            },
+            "status_hold": {
+              "reason": "credit_unknown",
+              "profile_ids": ["claude.synthetic.v1"]
+            },
+            "luna_is_not_held": {
+              "kind": "settled",
+              "pool": "llm",
+              "month": "2030-10",
+              "routed": false,
+              "overrun": false
+            },
+            "provider_requests": 1,
+            "rows": [["luna", "settled", "2030-10", "5", "0", "5", null]],
+            "ledger": {
+              "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+              "provider_requests": 1,
+              "provider_state_changes": 1,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
             }
-          },
-          "status_hold": {
-            "reason": "credit_unknown",
-            "profile_ids": ["claude.synthetic.v1"]
-          },
-          "luna_is_not_held": {
+          }
+        },
+        "resumed_by_a_later_observation": {
+          "before_the_observation": ["credit_unknown"],
+          "after_the_observation": {
             "kind": "settled",
             "pool": "llm",
             "month": "2030-10",
             "routed": false,
             "overrun": false
           },
-          "resumed_after_observation": {
-            "kind": "settled",
-            "pool": "llm",
-            "month": "2030-10",
-            "routed": false,
-            "overrun": false
-          },
-          "provider_requests": 2,
+          "provider_requests": 1,
           "rows": [
-            ["luna", "settled", "2030-10", "5", "0", "5", null],
             [
               "resume",
               "settled",
@@ -2087,9 +2324,9 @@
             ]
           ],
           "ledger": {
-            "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
-            "provider_requests": 2,
-            "provider_state_changes": 2,
+            "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+            "provider_requests": 1,
+            "provider_state_changes": 1,
             "approvals": 0,
             "findings": {
               "duplicate_receipts": [],
@@ -2183,24 +2420,15 @@
             }
           }
         },
-        "unreadable_balance_at_settlement": {
-          "unreadable_at_settlement": {
-            "kind": "usage_unknown",
-            "reasons": ["credit_observations_unreadable"]
+        "settlement_does_not_depend_on_the_file": {
+          "file_unreadable_while_sending": {
+            "kind": "settled",
+            "pool": "llm",
+            "month": "2030-10",
+            "routed": false,
+            "overrun": false
           },
-          "row_while_unreadable": [
-            [
-              "a",
-              "usage_unknown",
-              "2030-10",
-              null,
-              null,
-              null,
-              "anthropic:2030-10-01"
-            ]
-          ],
-          "settled_once_readable": true,
-          "missing_file_at_settlement": {
+          "file_missing_at_admission": {
             "kind": "settled",
             "pool": "llm",
             "month": "2030-10",
@@ -2217,8 +2445,17 @@
               "0",
               "anthropic:2030-10-01"
             ],
-            ["b", "settled", "2030-10", "10", "0", "10", "anthropic:2030-10-01"]
+            ["b", "settled", "2030-10", "10", "10", "0", "anthropic:2030-10-01"]
           ],
+          "credit": {
+            "cycle": "anthropic:2030-10-01",
+            "status": "observed",
+            "balance": "100",
+            "allocated_since": "35",
+            "outstanding": "0",
+            "available": "65",
+            "hold": null
+          },
           "ledger": {
             "final_state": "settled:2,usage_unknown:0,released:0,reserved:0",
             "provider_requests": 2,
@@ -2244,6 +2481,340 @@
         "credit_exhausted",
         "shared_stale",
         "concurrent_admit_barrier"
+      ]
+    },
+    {
+      "id": "MA05-credit-rechecked-before-sending-and-top-up",
+      "title": "MA05: 受付の後に、クレジットの周期が終わった・残高が確保した M より減った・不明と記録された・共有の観測が古くなったときは、送る直前の再検査で provider へ送らず（送出意図を記録せず、解放する。購入残高・後払いへ移らない）、追加予約も、クレジットの残りで賄えるときだけ増やす（残りを超える追加・同時の追加予約で残りを超えるもの・周期の終わりの後の追加・クレジットの設定がない門からの追加は拒否）",
+      "expected": {
+        "dispatch": {
+          "expiry_between_admission_and_sending": {
+            "result": {
+              "kind": "released",
+              "reasons": ["credit_expired"]
+            },
+            "provider_requests": 0,
+            "rows": [
+              [
+                "a",
+                "released",
+                "2030-10",
+                null,
+                null,
+                null,
+                "anthropic:2030-10-01"
+              ]
+            ],
+            "ledger": {
+              "final_state": "settled:0,usage_unknown:0,released:1,reserved:0",
+              "provider_requests": 0,
+              "provider_state_changes": 0,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "balance_drops_below_the_reservation": {
+            "result": {
+              "kind": "released",
+              "reasons": ["credit_exhausted"]
+            },
+            "provider_requests": 0,
+            "rows": [
+              [
+                "a",
+                "released",
+                "2030-10",
+                null,
+                null,
+                null,
+                "anthropic:2030-10-01"
+              ]
+            ],
+            "ledger": {
+              "final_state": "settled:0,usage_unknown:0,released:1,reserved:0",
+              "provider_requests": 0,
+              "provider_state_changes": 0,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "balance_becomes_unknown": {
+            "result": {
+              "kind": "released",
+              "reasons": ["credit_unknown"]
+            },
+            "provider_requests": 0,
+            "rows": [
+              [
+                "a",
+                "released",
+                "2030-10",
+                null,
+                null,
+                null,
+                "anthropic:2030-10-01"
+              ]
+            ],
+            "ledger": {
+              "final_state": "settled:0,usage_unknown:0,released:1,reserved:0",
+              "provider_requests": 0,
+              "provider_state_changes": 0,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          },
+          "shared_observation_gets_stale": {
+            "result": {
+              "kind": "released",
+              "reasons": ["credit_stale"]
+            },
+            "provider_requests": 0,
+            "rows": [
+              [
+                "a",
+                "released",
+                "2030-10",
+                null,
+                null,
+                null,
+                "anthropic:2030-10-01"
+              ]
+            ],
+            "ledger": {
+              "final_state": "settled:0,usage_unknown:0,released:1,reserved:0",
+              "provider_requests": 0,
+              "provider_state_changes": 0,
+              "approvals": 0,
+              "findings": {
+                "duplicate_receipts": [],
+                "receipt_without_dispatched_row": [],
+                "receipt_reservation_mismatch": [],
+                "dispatched_without_receipt_not_unknown": [],
+                "released_after_send": [],
+                "settled_not_matching_truth": [],
+                "reused_reconciliation_ids": [],
+                "over_limit_pools": []
+              }
+            }
+          }
+        },
+        "top_up_over_the_remaining": {
+          "top_up": {
+            "ok": false,
+            "reasons": ["credit_exhausted"]
+          },
+          "max_liability": ["40"],
+          "credit": {
+            "cycle": "anthropic:2030-10-01",
+            "status": "observed",
+            "balance": "40",
+            "allocated_since": "0",
+            "outstanding": "40",
+            "available": null,
+            "hold": "credit_exhausted"
+          },
+          "ledger": {
+            "final_state": "settled:0,usage_unknown:0,released:0,reserved:1",
+            "provider_requests": 0,
+            "provider_state_changes": 0,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            }
+          }
+        },
+        "concurrent_top_ups": {
+          "results": ["credit_insufficient", "ok"],
+          "max_liability_total": "60",
+          "credit": {
+            "cycle": "anthropic:2030-10-01",
+            "status": "observed",
+            "balance": "70",
+            "allocated_since": "0",
+            "outstanding": "60",
+            "available": "10",
+            "hold": null
+          },
+          "ledger": {
+            "final_state": "settled:0,usage_unknown:0,released:0,reserved:2",
+            "provider_requests": 0,
+            "provider_state_changes": 0,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            }
+          }
+        },
+        "top_up_after_expiry": {
+          "after_the_cycle_ended": {
+            "ok": false,
+            "reasons": ["credit_expired"]
+          },
+          "without_the_credit_setting": {
+            "ok": false,
+            "reasons": ["credit_unknown"]
+          },
+          "max_liability": ["40"],
+          "ledger": {
+            "final_state": "settled:0,usage_unknown:0,released:0,reserved:1",
+            "provider_requests": 0,
+            "provider_state_changes": 0,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            }
+          }
+        }
+      },
+      "faults": [
+        "credit_expiry_before_dispatch",
+        "credit_drop_before_dispatch",
+        "credit_unknown_before_dispatch",
+        "shared_stale_before_dispatch",
+        "concurrent_top_up"
+      ]
+    },
+    {
+      "id": "MA05-observations-are-adopted-once",
+      "title": "MA05: 採用した観測は永続化する。一度確認した枯渇（残高 0）は、ファイルを古い観測だけに戻しても、同じ時刻で残高の違う観測（矛盾）・採用済みより古い時刻の観測（巻き戻り）を書いても、同じ月の中で時計を戻しても取り消せず、本人が新しい残高を書いたときだけ再開する。精算の前に残高が「不明」と書かれて確認できない精算は、クレジット 0・追加の支出＝実費だが、消費した min(実費, M) を後の観測が届くまで残りから引き続ける（精算より後に観測した残高は消費を含むので引かない）",
+      "expected": {
+        "rollback_is_refused": {
+          "first_check": ["credit_exhausted"],
+          "adopted_after_first_check": 2,
+          "file_rolled_back_to_the_old_observation": ["credit_exhausted"],
+          "conflicting_and_older_observations": ["credit_exhausted"],
+          "adopted_after_conflicts": 2,
+          "clock_set_back": ["credit_exhausted"],
+          "balance_after_the_clock_was_set_back": "0",
+          "after_a_newer_observation": "admitted",
+          "adopted_at_the_end": 3,
+          "rows": [
+            [
+              "h5",
+              "reserved",
+              "2030-10",
+              null,
+              null,
+              null,
+              "anthropic:2030-10-01"
+            ]
+          ],
+          "ledger": {
+            "final_state": "settled:0,usage_unknown:0,released:0,reserved:1",
+            "provider_requests": 0,
+            "provider_state_changes": 0,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            }
+          }
+        },
+        "unconfirmed_settlement_keeps_the_consumed_amount": {
+          "settled": true,
+          "rows": [
+            ["a", "settled", "2030-10", "30", "0", "30", "anthropic:2030-10-01"]
+          ],
+          "estimates": ["30"],
+          "hold_after_the_unknown_observation": {
+            "reason": "credit_unknown",
+            "profile_ids": ["claude.synthetic.v1"]
+          },
+          "observation_made_before_the_settlement": {
+            "cycle": "anthropic:2030-10-01",
+            "status": "observed",
+            "balance": "80",
+            "allocated_since": "30",
+            "outstanding": "0",
+            "available": "50",
+            "hold": null
+          },
+          "observation_made_after_the_settlement": {
+            "cycle": "anthropic:2030-10-01",
+            "status": "observed",
+            "balance": "80",
+            "allocated_since": "0",
+            "outstanding": "0",
+            "available": "80",
+            "hold": null
+          },
+          "ledger": {
+            "final_state": "settled:1,usage_unknown:0,released:0,reserved:0",
+            "provider_requests": 1,
+            "provider_state_changes": 1,
+            "approvals": 0,
+            "findings": {
+              "duplicate_receipts": [],
+              "receipt_without_dispatched_row": [],
+              "receipt_reservation_mismatch": [],
+              "dispatched_without_receipt_not_unknown": [],
+              "released_after_send": [],
+              "settled_not_matching_truth": [],
+              "reused_reconciliation_ids": [],
+              "over_limit_pools": []
+            }
+          }
+        }
+      },
+      "faults": [
+        "observation_rollback",
+        "observation_conflict",
+        "clock_set_back",
+        "credit_unknown_before_settlement"
       ]
     },
     {

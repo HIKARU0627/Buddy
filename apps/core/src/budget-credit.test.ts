@@ -191,11 +191,19 @@ test('the gate reads the file every time, so a balance the owner writes takes ef
       reasons: ['credit_insufficient'],
       budgetHeld: true,
     });
-    // 壊れた書き込み（不正な JSON）は、保留に倒れる（残高を読めた扱いにしない）。
+    // 壊れた書き込み（不正な JSON）は、新しい観測を採用しないだけで、採用済みの観測（残高 10）のまま判定する。壊れた書き込みを
+    // 残高が戻った（読めた）扱いにも、古い残高 100 へ戻る扱いにもしない。
     await writeFile(path, '{"schema":', { mode: 0o600 });
     assert.deepEqual(await gate.run(claudeRequest(uuid(4)), provider.send), {
       kind: 'rejected',
-      reasons: ['credit_unknown'],
+      reasons: ['credit_insufficient'],
+      budgetHeld: true,
+    });
+    // 古い観測だけに書き戻しても、採用済みの新しい観測（残高 10）のまま。
+    await writeFile(path, file(creditObservation()), { mode: 0o600 });
+    assert.deepEqual(await gate.run(claudeRequest(uuid(5)), provider.send), {
+      kind: 'rejected',
+      reasons: ['credit_insufficient'],
       budgetHeld: true,
     });
     assert.equal(provider.receipts.length, 1);

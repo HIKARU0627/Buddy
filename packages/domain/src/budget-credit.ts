@@ -240,26 +240,48 @@ export interface CreditAvailabilityInput {
   readonly sharedMaxAgeMs: number;
 }
 
-// 今、クレジットを充てて受け付けられる残り（予算の通貨）。保留の理由は MA05 の注入の種類に対応する。
-// 判定の順序: 観測なし → 周期の終わり・失効 → 不明 → 共有の観測が古い → 枯渇。
-export function creditAvailability(
-  input: CreditAvailabilityInput,
+// 観測と台帳から、残り（観測した残高 − 観測の後に精算した分 − 未精算の M。負になり得る）か、保留の理由を求める。
+// 判定の順序: 観測なし → 周期の終わり・失効 → 不明 → 共有の観測が古い。台帳を読めなければ不明（閉じた側）。
+// boundExpiresAt は、予約が受付で結び付けたクレジットの有効期限（受付の後の送出・追加予約で、観測が後から延びても
+// 受付の時点の期限を過ぎたら失効とする）。受付では null。
+function creditBalanceState(
+  input: CreditAvailabilityInput & { readonly boundExpiresAt?: number | null },
 ):
-  | { readonly ok: true; readonly available: bigint }
+  | { readonly ok: true; readonly remaining: bigint }
   | { readonly ok: false; readonly reason: CreditHoldReason } {
   const { basis, ledger } = input;
   if (basis === null) return { ok: false, reason: 'credit_unknown' };
-  if (basis.status === 'expired' || input.now >= basis.expiresAt)
+  if (
+    basis.status === 'expired' ||
+    input.now >= basis.expiresAt ||
+    (input.boundExpiresAt !== undefined &&
+      input.boundExpiresAt !== null &&
+      input.now >= input.boundExpiresAt)
+  )
     return { ok: false, reason: 'credit_expired' };
   if (basis.status !== 'observed' || basis.balance === null)
     return { ok: false, reason: 'credit_unknown' };
   if (ledger === null) return { ok: false, reason: 'credit_unknown' };
   if (basis.shared && input.now - basis.observedAt > input.sharedMaxAgeMs)
     return { ok: false, reason: 'credit_stale' };
-  const available =
-    BigInt(basis.balance) - ledger.allocatedSince - ledger.outstanding;
-  if (available <= 0n) return { ok: false, reason: 'credit_exhausted' };
-  return { ok: true, available };
+  return {
+    ok: true,
+    remaining:
+      BigInt(basis.balance) - ledger.allocatedSince - ledger.outstanding,
+  };
+}
+
+// 今、クレジットを充てて受け付けられる残り（予算の通貨）。保留の理由は MA05 の注入の種類に対応する。
+// 残りが 0 以下なら枯渇。
+export function creditAvailability(
+  input: CreditAvailabilityInput,
+):
+  | { readonly ok: true; readonly available: bigint }
+  | { readonly ok: false; readonly reason: CreditHoldReason } {
+  const state = creditBalanceState(input);
+  if (!state.ok) return state;
+  if (state.remaining <= 0n) return { ok: false, reason: 'credit_exhausted' };
+  return { ok: true, available: state.remaining };
 }
 
 // クレジットを充てる要求の受付。最大負担 M の全額を、残りで賄えるときだけ受け付ける（賄えない分が購入残高・後払い
@@ -274,6 +296,76 @@ export function creditAdmission(
   if (input.maxLiability > result.available)
     return { ok: false, reason: 'credit_insufficient' };
   return { ok: true, cycleId: (input.basis as CreditBasis).cycleId };
+}
+
+// 受け付けた予約の送出の直前の再検査。ledger はこの予約自身の M を未精算に含む。失効・不明・古い・残りが負（受付の後に
+// 観測が減って、確保した分を賄えなくなった）なら送らず、購入残高・後払いへ移らない（ADR 0042）。受付の時点の期限
+// （boundExpiresAt）も過ぎていないこと。
+export function creditStillCovers(
+  input: CreditAvailabilityInput & { readonly boundExpiresAt: number | null },
+):
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: CreditHoldReason } {
+  const state = creditBalanceState(input);
+  if (!state.ok) return state;
+  if (state.remaining < 0n) return { ok: false, reason: 'credit_exhausted' };
+  return { ok: true };
+}
+
+// 追加予約（受け付けた予約の M を増やす）の検査。ledger はこの予約自身の M を含むので、残りは追加の分だけを
+// 賄えればよい。受付と同じ理由で拒否する。
+export function creditTopUp(
+  input: CreditAvailabilityInput & {
+    readonly deltaMaxLiability: bigint;
+    readonly boundExpiresAt: number | null;
+  },
+):
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: CreditAdmissionReason } {
+  const state = creditBalanceState(input);
+  if (!state.ok) return state;
+  if (input.deltaMaxLiability === 0n && state.remaining >= 0n)
+    return { ok: true };
+  if (state.remaining <= 0n) return { ok: false, reason: 'credit_exhausted' };
+  if (input.deltaMaxLiability > state.remaining)
+    return { ok: false, reason: 'credit_insufficient' };
+  return { ok: true };
+}
+
+// --- 観測の採用（巻き戻りの拒否） ---
+
+export type CreditAdoption =
+  'adopt' | 'same' | 'conflict' | 'rollback' | 'cycle_regression';
+
+export interface CreditAdoptionInput {
+  // 採用しようとする観測の周期の開始・観測の時刻・内容の識別子（内容のハッシュ）。
+  readonly cycleStart: number;
+  readonly observedAt: number;
+  readonly contentId: string;
+  // 同じ周期・同じ観測の時刻で採用済みの観測（なければ null）。
+  readonly sameTime: { readonly contentId: string } | null;
+  // 同じ周期で採用済みの最も新しい観測の時刻（なければ null）。
+  readonly latestObservedAtOfCycle: number | null;
+  // 採用済みの周期の開始の最大（なければ null）。
+  readonly maxCycleStart: number | null;
+}
+
+// 採用した観測を永続化し、巻き戻った観測を拒否する（ADR 0042）。同じ周期・同じ時刻で内容が同じなら変化なし（ファイルを
+// 前の状態へ戻しても、採用済みの観測は残る）、内容が違えば矛盾（conflict）。周期の開始が採用済みより古い（cycle_regression）、
+// 同じ周期の観測の時刻が採用済みより古い（rollback）なら拒否する。時計を戻しても、採用済みの観測は消えない。
+export function creditAdoptionDecision(
+  input: CreditAdoptionInput,
+): CreditAdoption {
+  if (input.sameTime !== null)
+    return input.sameTime.contentId === input.contentId ? 'same' : 'conflict';
+  if (input.maxCycleStart !== null && input.cycleStart < input.maxCycleStart)
+    return 'cycle_regression';
+  if (
+    input.latestObservedAtOfCycle !== null &&
+    input.observedAt < input.latestObservedAtOfCycle
+  )
+    return 'rollback';
+  return 'adopt';
 }
 
 // --- 精算（通常料金を、クレジットと追加の支出へ一度だけ分ける） ---
@@ -293,6 +385,11 @@ export interface CreditAllocationInput {
 export interface CreditAllocation {
   readonly creditApplied: bigint;
   readonly additionalSpend: bigint;
+  // 受付の残りから引く消費の見積もり（精算の区分とは別。ADR 0042）。確認できて割り当てたときはクレジットと同じ。確認
+  // できないとき（観測がない・不明・失効・周期が終わった・読めなかった）は、provider がクレジットから消費したかもしれない
+  // ので min(実費, M) を見積もり、新しい観測が届くまで引き続ける（消費済みの残高を受付に使い回さない）。周期に結び付かない
+  // 予約・確認できて残りがなかったときは 0。
+  readonly estimate: bigint;
 }
 
 // クレジットは、予約の周期の、確認できる残りの範囲で、実費と最大負担 M の小さい方まで充てる。
@@ -303,13 +400,23 @@ export interface CreditAllocation {
 // - 残りは、観測した残高から、観測の後に精算したクレジットと、ほかの予約の未精算の M を引いた値。
 // この区分は精算の記録で、枠の上限の判定（実費の全額を数える）には使わない。
 export function allocateCredit(input: CreditAllocationInput): CreditAllocation {
-  const none: CreditAllocation = {
+  const capped =
+    input.maxLiability < input.actualGross
+      ? input.maxLiability
+      : input.actualGross;
+  if (input.cycleId === null)
+    return {
+      creditApplied: 0n,
+      additionalSpend: input.actualGross,
+      estimate: 0n,
+    };
+  const unconfirmed: CreditAllocation = {
     creditApplied: 0n,
     additionalSpend: input.actualGross,
+    estimate: capped,
   };
   const { basis, ledger } = input;
   if (
-    input.cycleId === null ||
     basis === null ||
     ledger === null ||
     basis.cycleId !== input.cycleId ||
@@ -317,15 +424,21 @@ export function allocateCredit(input: CreditAllocationInput): CreditAllocation {
     basis.balance === null ||
     input.now >= basis.expiresAt
   )
-    return none;
+    return unconfirmed;
   const remaining =
     BigInt(basis.balance) - ledger.allocatedSince - ledger.outstanding;
-  if (remaining <= 0n) return none;
+  if (remaining <= 0n)
+    return {
+      creditApplied: 0n,
+      additionalSpend: input.actualGross,
+      estimate: 0n,
+    };
   let credit = input.actualGross;
   if (input.maxLiability < credit) credit = input.maxLiability;
   if (remaining < credit) credit = remaining;
   return {
     creditApplied: credit,
     additionalSpend: input.actualGross - credit,
+    estimate: credit,
   };
 }

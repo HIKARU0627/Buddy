@@ -1640,68 +1640,93 @@ export const cases = {
   // MA05: 残高不明・失効・枯渇・共有の組織の他用途消費・同時要求を注入する。Claude の処理を保留し、provider へ送らず、
   // 購入残高・後払いへ移らない。共有の組織の観測は、古くなったら信じずに保留する（専有できるとは扱わない）。
   async 'MA05-hold-until-balance-is-known'(ctx) {
-    const matrix = await world(ctx, {}, async (env) => {
+    // 残高が確認できない場合。観測は採用すると永続化され、同じ時刻で内容の違う観測は採用しないので、場合ごとに新しい世界で確かめる。
+    const unconfirmed = {
+      no_observation: { observations: [], reason: 'credit_unknown' },
+      file_missing: {
+        observations: [],
+        failure: 'missing',
+        reason: 'credit_unknown',
+      },
+      file_unreadable: {
+        observations: [],
+        failure: 'unreadable',
+        reason: 'credit_unknown',
+      },
+      status_unknown: {
+        observations: [
+          creditObservation({ status: 'unknown', balance: null, shared: true }),
+        ],
+        reason: 'credit_unknown',
+      },
+      status_expired: {
+        observations: [creditObservation({ status: 'expired' })],
+        reason: 'credit_expired',
+      },
+      zero_balance: {
+        observations: [
+          creditObservation({ balance: { currency: 'XXX', amount: '0' } }),
+        ],
+        reason: 'credit_exhausted',
+      },
+      balance_in_another_currency: {
+        observations: [
+          creditObservation({ balance: { currency: 'XTS', amount: '500' } }),
+        ],
+        reason: 'credit_unknown',
+      },
+      another_provider: {
+        observations: [
+          creditObservation({
+            provider: 'openai',
+            cycle_id: 'openai:2030-10-01',
+          }),
+        ],
+        reason: 'credit_unknown',
+      },
+    };
+    const matrix = {};
+    for (const [name, item] of Object.entries(unconfirmed))
+      matrix[name] = await world(ctx, {}, async (env) => {
+        const { provider, labels } = env;
+        const source = new MemoryCreditSource(item.observations);
+        if (item.failure !== undefined) source.failure = item.failure;
+        const gate = env.creditGate(source);
+        await gate.start();
+        const result = await gate.admit(claudeRequest(labels.id('held')));
+        assert.equal(result.ok, false, name);
+        const hold = (await gate.holdState()).credit_hold ?? null;
+        // クレジットを充てない profile は保留しない。
+        provider.plan(labels.id('luna'), { kind: 'usage', actual: '5' });
+        const luna = await gate.run(owner(labels.id('luna')), provider.send);
+        return {
+          admission: {
+            ok: false,
+            reasons: [...result.reasons],
+            budget_held: result.budgetHeld,
+          },
+          status_hold: hold,
+          luna_is_not_held: outcome(luna),
+          provider_requests: provider.receipts.length,
+          rows: creditRowsView(env),
+        };
+      });
+    // 有効な観測が後から届けば再開する。
+    const resumed = await world(ctx, {}, async (env) => {
       const { provider, labels } = env;
       const source = new MemoryCreditSource([]);
       const gate = env.creditGate(source);
       await gate.start();
-      let n = 0;
-      const attempt = async () => {
-        n += 1;
-        const result = await gate.admit(claudeRequest(labels.id(`h${n}`)));
-        return result.ok
-          ? { ok: true }
-          : {
-              ok: false,
-              reasons: [...result.reasons],
-              budget_held: result.budgetHeld,
-            };
-      };
-      const held = {};
-      held.no_observation = await attempt();
-      source.failure = 'missing';
-      held.file_missing = await attempt();
-      source.failure = 'unreadable';
-      held.file_unreadable = await attempt();
-      source.failure = null;
-      source.observations = [
-        creditObservation({ status: 'unknown', balance: null, shared: true }),
-      ];
-      held.status_unknown = await attempt();
-      source.observations = [creditObservation({ status: 'expired' })];
-      held.status_expired = await attempt();
-      source.observations = [
-        creditObservation({ balance: { currency: 'XXX', amount: '0' } }),
-      ];
-      held.zero_balance = await attempt();
-      source.observations = [
-        creditObservation({ balance: { currency: 'XTS', amount: '500' } }),
-      ];
-      held.balance_in_another_currency = await attempt();
-      source.observations = [
-        creditObservation({
-          provider: 'openai',
-          cycle_id: 'openai:2030-10-01',
-        }),
-      ];
-      held.another_provider = await attempt();
-      const hold = (await gate.holdState()).credit_hold ?? null;
-      // クレジットを充てない profile は保留しない（観測がなくても受け付ける）。
-      source.observations = [];
-      provider.plan(labels.id('luna'), { kind: 'usage', actual: '5' });
-      const luna = await gate.run(owner(labels.id('luna')), provider.send);
-      // 有効な観測が届けば再開する。
+      const before = await gate.admit(claudeRequest(labels.id('first')));
       source.observations = [creditObservation()];
       provider.plan(labels.id('resume'), { kind: 'usage', actual: '20' });
-      const resumed = await gate.run(
+      const after = await gate.run(
         claudeRequest(labels.id('resume')),
         provider.send,
       );
       return {
-        held,
-        status_hold: hold,
-        luna_is_not_held: outcome(luna),
-        resumed_after_observation: outcome(resumed),
+        before_the_observation: before.ok ? 'admitted' : [...before.reasons],
+        after_the_observation: outcome(after),
         provider_requests: provider.receipts.length,
         rows: creditRowsView(env),
       };
@@ -1799,8 +1824,8 @@ export const cases = {
         };
       },
     );
-    // 精算の時に残高を読めない（書き換えの途中など）: クレジット 0 で確定せず、usage 不明で M を保持し、読めたら一度だけ精算。
-    const unreadable = await world(
+    // 精算は観測のファイルに頼らない: 受付で採用した観測のまま精算でき、ファイルが読めない・ない間も残りを数える。
+    const independent = await world(
       ctx,
       { creditCap: { [CYCLE_OCT]: 100n } },
       async (env) => {
@@ -1813,34 +1838,334 @@ export const cases = {
           source.failure = 'unreadable';
           return provider.send(context);
         });
-        const heldRow = creditRowsView(env).map((row) => [...row]);
-        source.failure = null;
-        const retried = await gate.settle(a.ticket, {
-          kind: 'usage',
-          provider: 'mockpaid',
-          reconciliation_id: `rcpt-${labels.id('a')}`,
-          actual_gross: '25',
-        });
-        // ファイルがない（消した）ときは観測なしとして、クレジット 0（確認できない）。
         provider.plan(labels.id('b'), { kind: 'usage', actual: '10' });
-        const b = await gate.run(claudeRequest(labels.id('b')), (context) => {
-          source.failure = 'missing';
-          return provider.send(context);
-        });
+        source.failure = 'missing';
+        const b = await gate.run(claudeRequest(labels.id('b')), provider.send);
         return {
-          unreadable_at_settlement: outcome(a),
-          row_while_unreadable: heldRow,
-          settled_once_readable: retried.ok,
-          missing_file_at_settlement: outcome(b),
+          file_unreadable_while_sending: outcome(a),
+          file_missing_at_admission: outcome(b),
           rows: creditRowsView(env),
+          credit: creditView(await gate.creditStatus()),
         };
       },
     );
     return {
       hold_matrix: matrix,
+      resumed_by_a_later_observation: resumed,
       shared_organization: shared,
       concurrent_requests: concurrent,
-      unreadable_balance_at_settlement: unreadable,
+      settlement_does_not_depend_on_the_file: independent,
+    };
+  },
+
+  // MA05（レビューの反映）: 受付の後の失効・不明・残高の減少で送らず（購入残高・後払いへ移らない）、追加予約もクレジットの
+  // 残りで賄えるときだけ増やす。
+  async 'MA05-credit-rechecked-before-sending-and-top-up'(ctx) {
+    const dispatch = {
+      expiry_between_admission_and_sending: {
+        start: OCT_15 + 2000,
+        observation: { expires_at: '2030-10-15T00:00:03.000Z' },
+        change: (harness) => harness.clock.set(OCT_15 + 3000),
+      },
+      balance_drops_below_the_reservation: {
+        change: (harness, source) => {
+          source.observations.push(
+            creditObservation({
+              observed_at: '2030-10-15T00:00:01.000Z',
+              balance: { currency: 'XXX', amount: '10' },
+            }),
+          );
+          harness.clock.set(OCT_15 + 2000);
+        },
+      },
+      balance_becomes_unknown: {
+        change: (harness, source) => {
+          source.observations.push(
+            creditObservation({
+              observed_at: '2030-10-15T00:00:01.000Z',
+              status: 'unknown',
+              balance: null,
+            }),
+          );
+          harness.clock.set(OCT_15 + 2000);
+        },
+      },
+      shared_observation_gets_stale: {
+        observation: { shared: true },
+        timeoutMs: 2 * HOUR,
+        change: (harness) => harness.clock.set(OCT_15 + HOUR + 1),
+      },
+    };
+    const results = {};
+    for (const [name, item] of Object.entries(dispatch))
+      results[name] = await world(
+        ctx,
+        { start: item.start ?? OCT_15 },
+        async (env) => {
+          const { provider, labels, harness } = env;
+          const source = new MemoryCreditSource([
+            creditObservation(item.observation ?? {}),
+          ]);
+          const gate = env.creditGate(source, {
+            faults: { beforeDispatch: () => item.change(harness, source) },
+          });
+          await gate.start();
+          provider.plan(labels.id('a'), { kind: 'usage', actual: '30' });
+          const result = await gate.run(
+            claudeRequest(
+              labels.id('a'),
+              item.timeoutMs === undefined
+                ? {}
+                : { timeout_ms: item.timeoutMs },
+            ),
+            provider.send,
+          );
+          return {
+            result: outcome(result),
+            provider_requests: provider.receipts.length,
+            rows: creditRowsView(env),
+          };
+        },
+      );
+    // 追加予約: 残高 20 XXX（40 XTS）で M 40 を受け付けた後は、追加の 20 を賄えない。
+    const overRemaining = await world(ctx, {}, async (env) => {
+      const { labels } = env;
+      const source = new MemoryCreditSource([
+        creditObservation({ balance: { currency: 'XXX', amount: '20' } }),
+      ]);
+      const gate = env.creditGate(source);
+      await gate.start();
+      const admitted = await gate.admit(claudeRequest(labels.id('a')));
+      assert(admitted.ok);
+      const topUp = await gate.topUp(admitted.ticket, {
+        reserved: '20',
+        max_liability: '20',
+      });
+      return {
+        top_up: topUp.ok
+          ? { ok: true }
+          : { ok: false, reasons: [...topUp.reasons] },
+        max_liability: reservationRows(env.harness).map(
+          (row) => row.max_liability,
+        ),
+        credit: creditView(await gate.creditStatus()),
+      };
+    });
+    // 同時の追加予約: 残高 70 XTS、M 20 の予約 2 つ（確保 40）で残り 30。追加の 20 を 2 件同時に求めると 1 件だけ通る。
+    const concurrent = await world(
+      ctx,
+      { creditCap: { [CYCLE_OCT]: 70n } },
+      async (env) => {
+        const { labels } = env;
+        const source = new MemoryCreditSource([
+          creditObservation({ balance: { currency: 'XXX', amount: '35' } }),
+        ]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        const small = {
+          quantities: { input_tokens: '10', output_tokens: '10' },
+        };
+        const tickets = new Map();
+        for (const label of ['x', 'y']) {
+          const admitted = await gate.admit(
+            claudeRequest(labels.id(label), small),
+          );
+          assert(admitted.ok);
+          tickets.set(label, admitted.ticket);
+        }
+        const order = shuffled(['x', 'y'], ctx.seed);
+        const results = await Promise.all(
+          order.map((label) =>
+            gate.topUp(tickets.get(label), {
+              reserved: '20',
+              max_liability: '20',
+            }),
+          ),
+        );
+        return {
+          results: results
+            .map((r) => (r.ok ? 'ok' : r.reasons.join(',')))
+            .sort(),
+          max_liability_total: reservationRows(env.harness)
+            .reduce((sum, row) => sum + BigInt(row.max_liability), 0n)
+            .toString(),
+          credit: creditView(await gate.creditStatus()),
+        };
+      },
+    );
+    // 周期の終わりの後の追加予約と、クレジットの設定がない門からの追加予約は拒否する。
+    const afterExpiry = await world(
+      ctx,
+      { start: CYCLE_END - 1 },
+      async (env) => {
+        const { labels, harness } = env;
+        const source = new MemoryCreditSource([creditObservation()]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        const admitted = await gate.admit(claudeRequest(labels.id('a')));
+        assert(admitted.ok);
+        harness.clock.set(CYCLE_END);
+        const late = await gate.topUp(admitted.ticket, {
+          reserved: '10',
+          max_liability: '10',
+        });
+        const plain = env.gate();
+        const without = await plain.topUp(admitted.ticket, {
+          reserved: '10',
+          max_liability: '10',
+        });
+        return {
+          after_the_cycle_ended: late.ok
+            ? { ok: true }
+            : { ok: false, reasons: [...late.reasons] },
+          without_the_credit_setting: without.ok
+            ? { ok: true }
+            : { ok: false, reasons: [...without.reasons] },
+          max_liability: reservationRows(harness).map(
+            (row) => row.max_liability,
+          ),
+        };
+      },
+    );
+    return {
+      dispatch: results,
+      top_up_over_the_remaining: overRemaining,
+      concurrent_top_ups: concurrent,
+      top_up_after_expiry: afterExpiry,
+    };
+  },
+
+  // MA05（レビューの反映）: 採用した観測は永続化し、ファイルの巻き戻し・矛盾する観測・時計の巻き戻りで、一度確認した枯渇を
+  // 取り消さない。観測がなくてクレジットを確認できない精算も、消費した分を、後の観測が届くまで残りから引き続ける。
+  async 'MA05-observations-are-adopted-once'(ctx) {
+    const rollback = await world(ctx, {}, async (env) => {
+      const { labels, harness } = env;
+      const t0 = creditObservation({
+        shared: true,
+        balance: { currency: 'XXX', amount: '20' },
+      });
+      const t1 = creditObservation({
+        shared: true,
+        observed_at: '2030-10-15T00:00:01.000Z',
+        balance: { currency: 'XXX', amount: '0' },
+      });
+      const source = new MemoryCreditSource([t0, t1]);
+      const gate = env.creditGate(source);
+      await gate.start();
+      harness.clock.set(OCT_15 + 2000);
+      let n = 0;
+      const attempt = async () => {
+        n += 1;
+        const result = await gate.admit(claudeRequest(labels.id(`h${n}`)));
+        return result.ok ? 'admitted' : [...result.reasons];
+      };
+      const rowsAdopted = () =>
+        harness.sql((db) =>
+          db
+            .prepare('SELECT count(*) FROM budget_credit_observations')
+            .pluck()
+            .get(),
+        );
+      const first = await attempt();
+      const adoptedAfterFirst = rowsAdopted();
+      source.observations = [t0];
+      const rolledBackFile = await attempt();
+      source.observations = [
+        t0,
+        { ...t1, balance: { currency: 'XXX', amount: '20' } },
+        creditObservation({
+          shared: true,
+          observed_at: '2030-10-15T00:00:00.500Z',
+          balance: { currency: 'XXX', amount: '50' },
+        }),
+      ];
+      const conflictingAndOlder = await attempt();
+      const adoptedAfterConflicts = rowsAdopted();
+      source.observations = [t0, t1];
+      harness.clock.set(OCT_15 + 500);
+      const clockSetBack = await attempt();
+      const balanceAfterClockBack = (await gate.creditStatus()).balance;
+      harness.clock.set(OCT_15 + 5000);
+      source.observations = [
+        t0,
+        t1,
+        creditObservation({
+          shared: true,
+          observed_at: '2030-10-15T00:00:04.000Z',
+          balance: { currency: 'XXX', amount: '30' },
+        }),
+      ];
+      const resumed = await attempt();
+      return {
+        first_check: first,
+        adopted_after_first_check: adoptedAfterFirst,
+        file_rolled_back_to_the_old_observation: rolledBackFile,
+        conflicting_and_older_observations: conflictingAndOlder,
+        adopted_after_conflicts: adoptedAfterConflicts,
+        clock_set_back: clockSetBack,
+        balance_after_the_clock_was_set_back: balanceAfterClockBack,
+        after_a_newer_observation: resumed,
+        adopted_at_the_end: rowsAdopted(),
+        rows: creditRowsView(env),
+      };
+    });
+    // 精算の時にクレジットを確認できない（精算の前に、本人が残高を「不明」と書いた）: クレジット 0・追加の支出＝実費だが、消費の
+    // 見積もり min(実費, M) は、後の観測が届くまで残りから引き続ける。精算より後に観測した残高は、消費を含むので引かない。
+    const unconfirmed = await world(
+      ctx,
+      { creditCap: { [CYCLE_OCT]: 80n } },
+      async (env) => {
+        const { provider, labels, harness } = env;
+        const source = new MemoryCreditSource([
+          creditObservation({ balance: { currency: 'XXX', amount: '20' } }),
+        ]);
+        const gate = env.creditGate(source);
+        await gate.start();
+        provider.plan(labels.id('a'), { kind: 'usage', actual: '30' });
+        const a = await admitAndSend(
+          gate,
+          provider,
+          claudeRequest(labels.id('a')),
+        );
+        source.observations.push(
+          creditObservation({
+            observed_at: '2030-10-15T00:00:01.000Z',
+            status: 'unknown',
+            balance: null,
+          }),
+        );
+        harness.clock.set(OCT_15 + 2000);
+        const settled = await gate.settle(a.ticket, a.outcome);
+        const held = (await gate.holdState()).credit_hold ?? null;
+        source.observations.push(
+          creditObservation({
+            observed_at: '2030-10-15T00:00:01.500Z',
+            balance: { currency: 'XXX', amount: '40' },
+          }),
+        );
+        harness.clock.set(OCT_15 + 3000);
+        const beforeSettlement = creditView(await gate.creditStatus());
+        source.observations.push(
+          creditObservation({
+            observed_at: '2030-10-15T00:00:02.500Z',
+            balance: { currency: 'XXX', amount: '40' },
+          }),
+        );
+        harness.clock.set(OCT_15 + 4000);
+        const afterSettlement = creditView(await gate.creditStatus());
+        return {
+          settled: settled.ok,
+          rows: creditRowsView(env),
+          estimates: reservationRows(harness).map((row) => row.credit_estimate),
+          hold_after_the_unknown_observation: held,
+          observation_made_before_the_settlement: beforeSettlement,
+          observation_made_after_the_settlement: afterSettlement,
+        };
+      },
+    );
+    return {
+      rollback_is_refused: rollback,
+      unconfirmed_settlement_keeps_the_consumed_amount: unconfirmed,
     };
   },
 

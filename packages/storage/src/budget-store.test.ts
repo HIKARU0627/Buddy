@@ -290,6 +290,9 @@ test('admission is decided inside the transaction against every pool on the path
         creditApplied: null,
         additionalSpend: null,
         creditCycleId: null,
+        creditEstimate: '0',
+        creditExpiresAt: null,
+        creditObservationSeq: null,
       },
     });
     // llm は 30＋50＝80 で上限ちょうど。次の M 1 は llm の上限を超える（R は 31 で収まる）。

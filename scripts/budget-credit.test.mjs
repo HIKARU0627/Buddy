@@ -5,12 +5,15 @@ import {
   allocateCredit,
   budgetRuntimeConfigErrors,
   creditAdmission,
+  creditAdoptionDecision,
   creditAvailability,
   creditBasesOf,
   creditConfigErrors,
   creditCycleStart,
   creditEligible,
   creditObservationsErrors,
+  creditStillCovers,
+  creditTopUp,
   settleManually,
   settleReservation,
   toReservationView,
@@ -165,6 +168,7 @@ for (const entry of spec.allocation_cases)
       {
         credit_applied: result.creditApplied.toString(),
         additional_spend: result.additionalSpend.toString(),
+        estimate: result.estimate.toString(),
       },
       entry.expected,
     );
@@ -172,6 +176,64 @@ for (const entry of spec.allocation_cases)
     assert.equal(
       result.creditApplied + result.additionalSpend,
       BigInt(entry.actual_gross),
+    );
+  });
+
+const verdict = (result) =>
+  result.ok ? { ok: true } : { ok: false, reason: result.reason };
+
+for (const entry of spec.still_covers_cases)
+  test(`creditStillCovers: ${entry.id}`, () => {
+    assert.deepEqual(
+      verdict(
+        creditStillCovers({
+          basis: toBasis(entry.basis),
+          ledger: toLedger(entry.ledger),
+          now: ms(entry.now),
+          sharedMaxAgeMs: entry.max_age_ms,
+          boundExpiresAt:
+            entry.bound_expires_at === null ? null : ms(entry.bound_expires_at),
+        }),
+      ),
+      entry.expected,
+    );
+  });
+
+for (const entry of spec.top_up_cases)
+  test(`creditTopUp: ${entry.id}`, () => {
+    assert.deepEqual(
+      verdict(
+        creditTopUp({
+          basis: toBasis(entry.basis),
+          ledger: toLedger(entry.ledger),
+          now: ms(entry.now),
+          sharedMaxAgeMs: entry.max_age_ms,
+          deltaMaxLiability: BigInt(entry.delta_max_liability),
+          boundExpiresAt:
+            entry.bound_expires_at === null ? null : ms(entry.bound_expires_at),
+        }),
+      ),
+      entry.expected,
+    );
+  });
+
+for (const entry of spec.adoption_cases)
+  test(`creditAdoptionDecision: ${entry.id}`, () => {
+    const input = entry.input;
+    assert.equal(
+      creditAdoptionDecision({
+        cycleStart: ms(input.cycleStart),
+        observedAt: ms(input.observedAt),
+        contentId: input.contentId,
+        sameTime: input.sameTime,
+        latestObservedAtOfCycle:
+          input.latestObservedAtOfCycle === null
+            ? null
+            : ms(input.latestObservedAtOfCycle),
+        maxCycleStart:
+          input.maxCycleStart === null ? null : ms(input.maxCycleStart),
+      }),
+      entry.expected,
     );
   });
 

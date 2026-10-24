@@ -656,8 +656,99 @@ test(
   },
 );
 
+// 残高が確認できない場合。観測は採用すると永続化され、同じ時刻で内容の違う観測は採用しないので、場合ごとに新しい DB で確かめる。
+const UNCONFIRMED: readonly {
+  readonly title: string;
+  readonly reasons: readonly string[];
+  readonly observations: () => ReturnType<typeof creditObservation>[];
+  readonly failure?: 'missing' | 'unreadable';
+}[] = [
+  {
+    title: 'no observation',
+    reasons: ['credit_unknown'],
+    observations: () => [],
+  },
+  {
+    title: 'the file is missing',
+    reasons: ['credit_unknown'],
+    observations: () => [],
+    failure: 'missing',
+  },
+  {
+    title: 'the file is unreadable',
+    reasons: ['credit_unknown'],
+    observations: () => [],
+    failure: 'unreadable',
+  },
+  {
+    title: 'the status is unknown',
+    reasons: ['credit_unknown'],
+    observations: () => [
+      creditObservation({ status: 'unknown', balance: null, shared: true }),
+    ],
+  },
+  {
+    title: 'the status is expired',
+    reasons: ['credit_expired'],
+    observations: () => [creditObservation({ status: 'expired' })],
+  },
+  {
+    title: 'the balance is zero',
+    reasons: ['credit_exhausted'],
+    observations: () => [
+      creditObservation({ balance: { currency: 'XXX', amount: '0' } }),
+    ],
+  },
+  {
+    title: 'the balance is in another currency',
+    reasons: ['credit_unknown'],
+    observations: () => [
+      creditObservation({ balance: { currency: 'XTS', amount: '500' } }),
+    ],
+  },
+  {
+    title: 'the observation is of another provider',
+    reasons: ['credit_unknown'],
+    observations: () => [
+      creditObservation({ provider: 'openai', cycle_id: 'openai:2030-10-01' }),
+    ],
+  },
+];
+
+for (const item of UNCONFIRMED)
+  test(
+    `MA05: an unconfirmed balance holds the credit profile without sending, and other profiles are not held: ${item.title}`,
+    TIMEOUT,
+    async () => {
+      await withBudgetStore(async (harness) => {
+        const provider = new MockPaidProvider();
+        const source = new MemoryCreditSource(item.observations());
+        if (item.failure !== undefined) source.failure = item.failure;
+        const gate = creditGate(harness, source, ids());
+        await gate.start();
+        const held = await gate.admit(claudeRequest(uuid(1)));
+        assert.deepEqual(held.ok ? 'admitted' : held.reasons, item.reasons);
+        assert.deepEqual(held.ok ? null : held.budgetHeld, true);
+        // provider へ送らず、予約も作らない。
+        assert.equal(provider.receipts.length, 0);
+        assert.equal(rows(harness).length, 0);
+        assert.equal(
+          (await gate.holdState()).credit_hold?.reason,
+          item.reasons[0],
+        );
+        // クレジットを充てない profile は、観測がなくても保留しない。
+        provider.plan(uuid(2), { kind: 'usage', actual: '5' });
+        assert.equal(
+          (await gate.run(textRequest(uuid(2)), provider.send)).kind,
+          'settled',
+        );
+        assert.deepEqual(view(harness, uuid(2)), ['settled', 5, 0, 5, null]);
+      });
+    },
+  );
+
 test(
-  'MA05: an unknown, unreadable, missing, unknown-status or expired balance holds the credit profile without sending, and other profiles are not held',
+  'MA05: a valid observation that arrives later resumes the credit profile',
   TIMEOUT,
   async () => {
     await withBudgetStore(async (harness) => {
@@ -665,69 +756,21 @@ test(
       const source = new MemoryCreditSource([]);
       const gate = creditGate(harness, source, ids());
       await gate.start();
-      const attempt = async (
-        n: number,
-      ): Promise<readonly string[] | 'admitted'> => {
-        const result = await gate.admit(claudeRequest(uuid(n)));
-        return result.ok ? 'admitted' : result.reasons;
-      };
-      // 観測が 1 つもない。
-      assert.deepEqual(await attempt(1), ['credit_unknown']);
-      // ファイルがない・読めない。
-      source.failure = 'missing';
-      assert.deepEqual(await attempt(2), ['credit_unknown']);
-      source.failure = 'unreadable';
-      assert.deepEqual(await attempt(3), ['credit_unknown']);
-      source.failure = null;
-      // 残高が不明と記録された観測。
-      source.observations = [
-        creditObservation({ status: 'unknown', balance: null, shared: true }),
-      ];
-      assert.deepEqual(await attempt(4), ['credit_unknown']);
-      // 失効と記録された観測。
-      source.observations = [creditObservation({ status: 'expired' })];
-      assert.deepEqual(await attempt(5), ['credit_expired']);
-      // 残高が 0。
-      source.observations = [
-        creditObservation({ balance: { currency: 'XXX', amount: '0' } }),
-      ];
-      assert.deepEqual(await attempt(6), ['credit_exhausted']);
-      // 残高の通貨が設定と違う観測は、残高として読まない。
-      source.observations = [
-        creditObservation({ balance: { currency: 'XTS', amount: '500' } }),
-      ];
-      assert.deepEqual(await attempt(7), ['credit_unknown']);
-      // 別の provider の観測は読まない。
-      source.observations = [
-        creditObservation({
-          provider: 'openai',
-          cycle_id: 'openai:2030-10-01',
-        }),
-      ];
-      assert.deepEqual(await attempt(8), ['credit_unknown']);
-      // 有効な観測が届けば受け付ける。保留した要求は provider へ送らず、予約も作らない（受け付けた 1 件だけ）。
+      assert.equal((await gate.admit(claudeRequest(uuid(1)))).ok, false);
       source.observations = [creditObservation()];
-      assert.equal(await attempt(9), 'admitted');
-      assert.equal(provider.receipts.length, 0);
-      assert.equal(rows(harness).length, 1);
-      // クレジットを充てない profile は、観測がなくても保留しない。
-      source.observations = [];
-      provider.plan(uuid(20), { kind: 'usage', actual: '5' });
+      provider.plan(uuid(2), { kind: 'usage', actual: '20' });
       assert.equal(
-        (await gate.run(textRequest(uuid(20)), provider.send)).kind,
+        (await gate.run(claudeRequest(uuid(2)), provider.send)).kind,
         'settled',
       );
-      assert.deepEqual(view(harness, uuid(20)), ['settled', 5, 0, 5, null]);
-      // 状態欄の保留（理由と profile だけ。金額・残高は含めない）。
-      assert.deepEqual(await gate.holdState(), {
-        held: true,
-        reasons: [],
-        held_pools: [],
-        credit_hold: {
-          reason: 'credit_unknown',
-          profile_ids: [CREDIT_PROFILE],
-        },
-      });
+      assert.deepEqual(view(harness, uuid(2)), [
+        'settled',
+        20,
+        20,
+        0,
+        CYCLE_OCT,
+      ]);
+      assert.equal((await gate.holdState()).credit_hold, undefined);
     });
   },
 );
@@ -907,7 +950,7 @@ test(
 );
 
 test(
-  'MA05: a settlement that cannot read the balance is not fixed with zero credit, and the same usage settles once the file is readable',
+  'MA05: a settlement does not depend on the observation file: the adopted observation stays when the file is unreadable or missing',
   TIMEOUT,
   async () => {
     await withBudgetStore(async (harness) => {
@@ -916,33 +959,12 @@ test(
       const gate = creditGate(harness, source, ids());
       await gate.start();
       provider.plan(uuid(1), { kind: 'usage', actual: '25' });
-      // 送っている間に観測のファイルが読めなくなる（書き換えの途中など）。
-      const result = await gate.run(claudeRequest(uuid(1)), (context) => {
+      // 送っている間に観測のファイルが読めなくなる（書き換えの途中など）。受付で採用した観測のまま精算する。
+      const first = await gate.run(claudeRequest(uuid(1)), (context) => {
         source.failure = 'unreadable';
         return provider.send(context);
       });
-      assert.equal(result.kind, 'usage_unknown');
-      assert.deepEqual(result.kind === 'usage_unknown' ? result.reasons : [], [
-        'credit_observations_unreadable',
-      ]);
-      // 精算を確定せず、M を保持している（実費もクレジットも記録しない）。
-      assert.deepEqual(view(harness, uuid(1)), [
-        'usage_unknown',
-        null,
-        null,
-        null,
-        CYCLE_OCT,
-      ]);
-      // 読めるようになったら、provider の記録（照合 ID・実費）のまま、一度だけ精算してクレジットを分ける。
-      source.failure = null;
-      const ticket = (
-        result as Extract<typeof result, { kind: 'usage_unknown' }>
-      ).ticket;
-      const settled = await gate.settle(
-        ticket,
-        usageOf(provider, uuid(1), '25'),
-      );
-      assert.equal(settled.ok, true, JSON.stringify(settled));
+      assert.equal(first.kind, 'settled');
       assert.deepEqual(view(harness, uuid(1)), [
         'settled',
         25,
@@ -950,20 +972,19 @@ test(
         0,
         CYCLE_OCT,
       ]);
-      // ファイルがない（本人がまだ書いていない・消した）ときは観測なしとして、精算はクレジット 0（確認できない）。
+      // ファイルがない（消した）ときも、採用済みの観測から受け付け、精算できる（残り 100 − 25 = 75）。
       provider.plan(uuid(2), { kind: 'usage', actual: '10' });
-      const second = await gate.run(claudeRequest(uuid(2)), (context) => {
-        source.failure = 'missing';
-        return provider.send(context);
-      });
+      source.failure = 'missing';
+      const second = await gate.run(claudeRequest(uuid(2)), provider.send);
       assert.equal(second.kind, 'settled');
       assert.deepEqual(view(harness, uuid(2)), [
         'settled',
         10,
-        0,
         10,
+        0,
         CYCLE_OCT,
       ]);
+      assert.equal((await gate.creditStatus()).available, '65');
     });
   },
 );

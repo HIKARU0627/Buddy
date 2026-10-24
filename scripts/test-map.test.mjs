@@ -509,7 +509,11 @@ test('B07 のケース・seed・観測値・対応表の範囲が証拠と一致
     QA20: ['QA20-price-boundary', 'QA20-limit-unknown'],
     MA03: ['MA03-credit-split-once'],
     MA04: ['MA04-cycle-and-month-are-separate'],
-    MA05: ['MA05-hold-until-balance-is-known'],
+    MA05: [
+      'MA05-hold-until-balance-is-known',
+      'MA05-credit-rechecked-before-sending-and-top-up',
+      'MA05-observations-are-adopted-once',
+    ],
     MA06: ['MA06-credit-only-for-claude'],
   };
   for (const [id, cases] of Object.entries(expectedMap)) {
@@ -585,6 +589,7 @@ test('B07 の証拠の対象は実行器が読み込むファイルだけで、B
     'packages/storage/src/db-worker.ts',
     'packages/storage/migrations/0006_budget.sql',
     'packages/storage/migrations/0007_budget_gate.sql',
+    'packages/storage/migrations/0008_budget_credit.sql',
     'packages/contracts/schemas/buddy.schema.json',
     'packages/domain/package.json',
     'packages/storage/package.json',

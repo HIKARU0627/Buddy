@@ -189,28 +189,23 @@ export function creditObservation(
 export class MemoryCreditSource implements CreditObservationSource {
   observations: CreditObservationInput[];
   failure: 'missing' | 'unreadable' | null = null;
+  // 読む途中で待たせる（並行する確認の試験）。観測は読み始めの値を返し、待った後に書き換えられても古い値を返す。
+  beforeRead: (() => Promise<void>) | null = null;
   reads = 0;
   constructor(observations: readonly CreditObservationInput[] = []) {
     this.observations = [...observations];
   }
-  read(): Promise<LoadedCreditObservations> {
+  async read(): Promise<LoadedCreditObservations> {
     this.reads += 1;
-    if (this.failure === 'missing')
-      return Promise.resolve({
-        ok: false,
-        reasons: ['credit_missing'],
-        missing: true,
-      });
-    if (this.failure === 'unreadable')
-      return Promise.resolve({
-        ok: false,
-        reasons: ['credit_unreadable'],
-        missing: false,
-      });
-    return Promise.resolve({
-      ok: true,
-      observations: this.observations.map((item) => ({ ...item })),
-    });
+    const wait = this.beforeRead;
+    const snapshot = this.observations.map((item) => ({ ...item }));
+    const failure = this.failure;
+    if (wait !== null) await wait();
+    if (failure === 'missing')
+      return { ok: false, reasons: ['credit_missing'], missing: true };
+    if (failure === 'unreadable')
+      return { ok: false, reasons: ['credit_unreadable'], missing: false };
+    return { ok: true, observations: snapshot };
   }
 }
 

@@ -98,7 +98,8 @@ export function reservationRows(harness) {
           `SELECT reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month, price_version,
                   status, reserved_amount, max_liability, actual_gross, dispatch_intent_at, approval_id,
                   provider_reconciliation_id, settlement_kind, overrun_reviewed,
-                  credit_applied, additional_spend, credit_cycle_id
+                  credit_applied, additional_spend, credit_cycle_id,
+                  credit_estimate, credit_expires_at, credit_observation_seq
              FROM budget_reservations ORDER BY rowid`,
         )
         .all(),
@@ -126,6 +127,9 @@ export function reservationRows(harness) {
       additional_spend:
         row.additional_spend === null ? null : String(row.additional_spend),
       credit_cycle_id: row.credit_cycle_id,
+      credit_estimate: String(row.credit_estimate),
+      credit_expires_at: row.credit_expires_at,
+      credit_observation_seq: row.credit_observation_seq,
     }));
 }
 
@@ -319,6 +323,9 @@ export const CLEAN = {
 // - 精算済みの行は、実費 = クレジット + 追加の支出。クレジットは最大負担 M を超えない。
 // - 周期に結び付く行は、クレジットを充てる profile の LLM の枠（音声・検索の枠でない）だけ。
 // - 精算していない行にクレジットの区分はない（実費を 0 と確定しない）。
+// - 周期に結び付く行は、受付の時点の有効期限と採用した観測の番号を持ち、持たない行は周期もない。
+// - 精算した行のクレジットは、受付の消費の見積もりを超えない（クレジットを充てた分は必ず台帳から引かれる）。精算していない行の
+//   見積もりは 0。周期のない行の見積もりは 0。
 // - 周期ごとのクレジットの合計は、その周期で観測した最も大きい残高（予算の通貨）を超えない（cap を渡したとき）。
 export function creditFindings({ rows, cap = {} }) {
   const ids = (list) => list.map((row) => row.request_id);
@@ -369,6 +376,23 @@ export function creditFindings({ rows, cap = {} }) {
           (row.credit_applied !== null || row.additional_spend !== null),
       ),
     ),
+    cycle_without_binding: ids(
+      rows.filter(
+        (row) =>
+          (row.credit_cycle_id === null) !== (row.credit_expires_at === null) ||
+          (row.credit_cycle_id === null) !==
+            (row.credit_observation_seq === null),
+      ),
+    ),
+    estimate_below_credit_or_misplaced: ids(
+      rows.filter(
+        (row) =>
+          (row.status === 'settled' &&
+            BigInt(row.credit_applied) > BigInt(row.credit_estimate)) ||
+          (row.status !== 'settled' && BigInt(row.credit_estimate) !== 0n) ||
+          (row.credit_cycle_id === null && BigInt(row.credit_estimate) !== 0n),
+      ),
+    ),
     credit_over_observed_balance: over,
   };
 }
@@ -379,6 +403,8 @@ export const CLEAN_CREDIT = {
   credit_above_m: [],
   cycle_on_uncredited_row: [],
   split_on_unsettled_row: [],
+  cycle_without_binding: [],
+  estimate_below_credit_or_misplaced: [],
   credit_over_observed_balance: [],
 };
 

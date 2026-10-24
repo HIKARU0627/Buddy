@@ -1451,15 +1451,23 @@
         "packages/contracts/fixtures/budget-credit.json#ma05-shared-one-ms-over-limit",
         "packages/contracts/fixtures/budget-credit.json#ma05-m-one-over",
         "packages/contracts/fixtures/budget-credit.json#ma05-status-unknown",
-        "packages/contracts/fixtures/budget-credit.json#ma05-no-basis"
+        "packages/contracts/fixtures/budget-credit.json#ma05-no-basis",
+        "packages/contracts/fixtures/budget-credit.json#ma05-covers-with-nothing-left",
+        "packages/contracts/fixtures/budget-credit.json#ma05-balance-dropped-below-reserved",
+        "packages/contracts/fixtures/budget-credit.json#ma05-top-up-fits-exactly",
+        "packages/contracts/fixtures/budget-credit.json#ma05-top-up-one-over",
+        "packages/contracts/fixtures/budget-credit.json#ma05-same-time-other-content",
+        "packages/contracts/fixtures/budget-credit.json#ma05-older-time"
       ],
       "status": "contract_fixture",
       "product_test": "simulated",
       "related": [],
       "product_evidence": [
-        "tests/integration/evidence-b07-simulated.json#MA05-hold-until-balance-is-known"
+        "tests/integration/evidence-b07-simulated.json#MA05-hold-until-balance-is-known",
+        "tests/integration/evidence-b07-simulated.json#MA05-credit-rechecked-before-sending-and-top-up",
+        "tests/integration/evidence-b07-simulated.json#MA05-observations-are-adopted-once"
       ],
-      "product_scope": "B07-07 の固定 seed 3 回・合成の通貨 XTS（予算）と XXX（残高）・縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。残高の観測はメモリの模擬（本人が書くファイルの読み込みは Core の試験で別に確認）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、クレジットの区分は予約の行だけから別に数えて検査。実 API・実請求・Console の実残高との照合は未実施で、実請求の照合は B15。 残高不明・失効・枯渇・共有の組織の他用途消費（古い観測と減った観測）・同時要求を注入し、Claude の処理を保留して provider へ送らず、購入残高・後払いへ移らない。専用の組織の上限だけで共有残高を専有できるとは扱わない。精算の時に観測を読めなければクレジット 0 で確定しない。"
+      "product_scope": "B07-07 の固定 seed 3 回・合成の通貨 XTS（予算）と XXX（残高）・縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。残高の観測はメモリの模擬（本人が書くファイルの読み込みは Core の試験で別に確認）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、クレジットの区分は予約の行だけから別に数えて検査。実 API・実請求・Console の実残高との照合は未実施で、実請求の照合は B15。 残高不明・失効・枯渇・共有の組織の他用途消費（古い観測と減った観測）・同時要求を注入し、Claude の処理を保留して provider へ送らず、購入残高・後払いへ移らない。専用の組織の上限だけで共有残高を専有できるとは扱わない。受付の後の失効・残高の減少は送る直前に再検査して送らず、追加予約も残りで賄えるときだけ増やす。採用した観測は永続化し、ファイルの巻き戻し・矛盾する観測・時計の巻き戻りで一度確認した枯渇を取り消せない。確認できない精算は、消費した分を後の観測が届くまで残りから引き続ける。"
     },
     {
       "id": "MA06",

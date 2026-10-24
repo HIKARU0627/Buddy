@@ -28,6 +28,7 @@ B00 時点の内容（[ADR 0004](../../docs/adr/0004-intent-table-and-readiness.
 - `memory.ts`: 記憶の保存直前の検査（忘却した由来・派生・同じ内容の再取り込み・遅着）、見直しと削除の期限、時計の巻き戻り、復元の可否、抽出の時点（[ADR 0008](../../docs/adr/0008-memory-forgetting-and-model-evaluation.md)）
 - `forget-plan.ts`: 忘却の対象の解決（不明・複数なら聞き返す）、派生の閉包（要約・気づき・永続のキャンバス・影モード・memory の操作の確定内容）、台帳のエントリの組み立て（元情報は注入した HMAC だけ）、進行中の操作を消さない扱い（[ADR 0044](../../docs/adr/0044-b06-forget-plan-closure-and-late-results.md)）
 - `late-result.ts`: 遅れて届いた結果（要約・表示・送信）の検査と、命令の再検査の忘却世代を関係する由来に絞る入力（ADR 0044）
+- `storage-mode.ts`: 記録しない会話の保存の境界（保存モードごとの許可表、入る・出るの遷移と命令の順序、処理の由来の照合、独立した確認の中身（確定した変更の値の検査）と世代・内容に結び付いた承認、最小の操作記録。判別できない値は禁止の側。[ADR 0045](../../docs/adr/0045-b06-private-conversation-storage-boundary.md)）
 - `evaluation.ts`: 配備×用途の採否、配備の段階、成果物の照合、同じモデル ID のままの変化の検知、戻し先、影モードの停止と skip
 
-contracts の生成型は import せず、意図名・引数名の一覧が schema と一致することを `scripts/domain.test.mjs`・`scripts/voice.test.mjs`・`scripts/budget.test.mjs`・`scripts/sync-analysis.test.mjs`・`scripts/memory-evaluation.test.mjs`・`scripts/forget-plan.test.mjs`・`scripts/api.test.mjs`・`scripts/boundary.test.mjs`・`scripts/desktop-ipc.test.mjs`・`scripts/voice-contract.test.mjs`・`scripts/voice-rules.test.mjs` で検査します。試験はビルド後の `dist` を対象にします。DB の transaction・最終検査・外部送出は未実装です。
+contracts の生成型は import せず、意図名・引数名の一覧が schema と一致することを `scripts/domain.test.mjs`・`scripts/voice.test.mjs`・`scripts/budget.test.mjs`・`scripts/sync-analysis.test.mjs`・`scripts/memory-evaluation.test.mjs`・`scripts/forget-plan.test.mjs`・`scripts/api.test.mjs`・`scripts/boundary.test.mjs`・`scripts/desktop-ipc.test.mjs`・`scripts/storage-mode.test.mjs`・`scripts/voice-contract.test.mjs`・`scripts/voice-rules.test.mjs` で検査します。試験はビルド後の `dist` を対象にします。DB の transaction・最終検査・外部送出は未実装です。

@@ -15,6 +15,7 @@ import {
   TABLE_POLICIES,
   applyConnectionPragmas,
   applyMigrations,
+  executeBudgetOp,
   initStoreGeneration,
   loadMigrations,
   migrationSha256,
@@ -593,7 +594,7 @@ test('0008 upgrades a version 7 DB holding reservations, keeps every row, gives 
       assert.deepEqual(
         db
           .prepare(
-            'SELECT reservation_id, status, credit_applied, additional_spend, credit_cycle_id, credit_estimate, credit_expires_at, credit_observation_seq FROM budget_reservations ORDER BY reservation_id',
+            'SELECT reservation_id, status, credit_applied, additional_spend, credit_cycle_id, credit_estimate, credit_settled_seq, credit_expires_at, credit_observation_seq FROM budget_reservations ORDER BY reservation_id',
           )
           .all(),
         [
@@ -604,6 +605,7 @@ test('0008 upgrades a version 7 DB holding reservations, keeps every row, gives 
             additional_spend: null,
             credit_cycle_id: 'anthropic:2030-10-01',
             credit_estimate: 0,
+            credit_settled_seq: null,
             credit_expires_at: null,
             credit_observation_seq: null,
           },
@@ -613,7 +615,9 @@ test('0008 upgrades a version 7 DB holding reservations, keeps every row, gives 
             credit_applied: 5,
             additional_spend: 10,
             credit_cycle_id: 'anthropic:2030-10-01',
-            credit_estimate: 0,
+            // 精算済みの行は、確認済みの消費（credit_applied 5）を見積もりへ引き継ぐ（連番は順序が分からないので空）。
+            credit_estimate: 5,
+            credit_settled_seq: null,
             credit_expires_at: null,
             credit_observation_seq: null,
           },
@@ -624,6 +628,7 @@ test('0008 upgrades a version 7 DB holding reservations, keeps every row, gives 
             additional_spend: null,
             credit_cycle_id: null,
             credit_estimate: 0,
+            credit_settled_seq: null,
             credit_expires_at: null,
             credit_observation_seq: null,
           },
@@ -646,6 +651,7 @@ test('0008 upgrades a version 7 DB holding reservations, keeps every row, gives 
         [
           'budget_credit_observations_cycle_forward',
           'budget_credit_observations_no_delete',
+          'budget_credit_observations_no_replace',
           'budget_credit_observations_no_update',
           'budget_credit_observations_time_forward',
           'budget_reservations_credit_binding_fixed',
@@ -655,6 +661,35 @@ test('0008 upgrades a version 7 DB holding reservations, keeps every row, gives 
           'budget_reservations_credit_split_valid',
         ],
       );
+      // 移した精算済みの行の消費（5）は、精算より前に観測した基準なら台帳から引き、後に観測した基準なら引かない（連番がないので
+      // 観測の時刻と精算の時刻で比べる）。精算前の周期付きの行 r-1 の M 20 は未精算として数える。観測は表へ直接書く（手で書いた値）。
+      const observe = db.prepare(
+        "INSERT INTO budget_credit_observations (observation_seq, cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES (?, 'anthropic:2030-10-01', 0, ?, 100000, 'observed', 0, 'synthetic-organization', 'XXX', 40, ?, 1)",
+      );
+      observe.run(1, 1000, 'a'.repeat(64));
+      observe.run(2, 2000, 'b'.repeat(64));
+      const ledgerAt = (basisSeq: number) => {
+        const result = executeBudgetOp(
+          db,
+          {
+            kind: 'budget.credit_ledger',
+            cycle_id: 'anthropic:2030-10-01',
+            basis_seq: basisSeq,
+            exclude_reservation_id: null,
+          },
+          { platform: 'macos', halted: false },
+        ).result;
+        assert.equal(result.ok, true);
+        return result.ok ? result.value : null;
+      };
+      assert.deepEqual(ledgerAt(1), {
+        allocated_since: '5',
+        outstanding: '20',
+      });
+      assert.deepEqual(ledgerAt(2), {
+        allocated_since: '0',
+        outstanding: '20',
+      });
       // 移した行の周期は、受付で結び付けたものではないので変えられない（精算前の行）。
       assert.throws(
         () =>

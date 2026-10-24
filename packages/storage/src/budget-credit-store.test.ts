@@ -1,5 +1,6 @@
 // 付帯クレジットの保存（B07-07、ADR 0042、マイグレーション 0008）を worker を介さずに同期で確かめる。
-// 観測は transaction の中で採用して永続化し（巻き戻りを拒否）、受付・追加予約・送出の直前・精算は採用済みの観測から判定する。
+// 観測は予約の判定とは別の transaction（budget.credit_adopt）で先に採用して永続化し（巻き戻りを拒否）、受付・追加予約・
+// 送出の直前・精算は採用済みの観測から判定する。試験の run は、観測つきの命令の前に採用を行ってから判定の命令を実行する。
 // 期待値（受付の可否・理由・クレジット・追加の支出・見積もり・台帳の合計）は、合成の上限（予算の通貨 XTS、残高の通貨 XXX は
 // 換算 1）と ADR 0042 の規則から手で書いた値で、実装の処理から作っていない。模擬の試験だけで、実 API・実請求は未実施。
 
@@ -9,6 +10,7 @@ import type { CreditObservationInput } from '@buddy/domain';
 import { executeBudgetOp } from './index.js';
 import type {
   BudgetCreditInput,
+  BudgetCreditSettings,
   BudgetOp,
   BudgetOpResult,
   BudgetOpValues,
@@ -38,9 +40,27 @@ const MAX_AGE = 3_600_000;
 const NOV_01 = Date.parse('2030-11-01T00:00:00.000Z');
 const DEC_01 = '2030-12-01T00:00:00.000Z';
 
-const run = (db: SqliteDatabase, op: BudgetOp): BudgetOpResult =>
+const exec = (db: SqliteDatabase, op: BudgetOp): BudgetOpResult =>
   executeBudgetOp(db, op, CONTEXT).result;
 
+// 観測つきの入力（BudgetCreditInput）を持つ命令は、先に別の transaction で採用してから、設定だけを渡して判定する。
+const run = (db: SqliteDatabase, op: BudgetOp): BudgetOpResult => {
+  const credit = (op as { credit?: BudgetCreditInput | null }).credit;
+  if (
+    credit === undefined ||
+    credit === null ||
+    !('observations' in credit) ||
+    op.kind === 'budget.credit_adopt'
+  )
+    return exec(db, op);
+  const now = (op as { now: number }).now;
+  const adopted = exec(db, { kind: 'budget.credit_adopt', credit, now });
+  if (!adopted.ok) return adopted;
+  return exec(db, {
+    ...op,
+    credit: { config: credit.config, budget_currency: credit.budget_currency },
+  } as BudgetOp);
+};
 function value<K extends keyof BudgetOpValues>(
   _kind: K,
   result: BudgetOpResult,
@@ -118,14 +138,14 @@ const input = (
 const credited = (
   n: number,
   amounts: { readonly reserved: string; readonly max: string },
-  credit: BudgetCreditInput | null,
+  credit: BudgetCreditSettings | null,
   overrides: Partial<Extract<BudgetOp, { kind: 'budget.admit' }>> = {},
 ) => admitOp(n, amounts, { credit, ...overrides });
 
 const settle = (
   n: number,
   actual: string,
-  credit: BudgetCreditInput | null,
+  credit: BudgetCreditSettings | null,
   now = OCT_15 + 1000,
 ): Extract<BudgetOp, { kind: 'budget.settle' }> => ({
   kind: 'budget.settle',
@@ -142,7 +162,7 @@ const topUp = (
   n: number,
   revision: string,
   delta: string,
-  credit: BudgetCreditInput | null,
+  credit: BudgetCreditSettings | null,
   now = OCT_15,
 ): Extract<BudgetOp, { kind: 'budget.top_up' }> => ({
   kind: 'budget.top_up',
@@ -157,7 +177,7 @@ const topUp = (
 
 const dispatch = (
   n: number,
-  credit: BudgetCreditInput | null,
+  credit: BudgetCreditSettings | null,
   now = OCT_15,
 ): Extract<BudgetOp, { kind: 'budget.dispatch_intent' }> => ({
   kind: 'budget.dispatch_intent',
@@ -169,7 +189,7 @@ const dispatch = (
 
 const ledger = (
   db: SqliteDatabase,
-  since = OCT_15,
+  basisSeq = 1,
   exclude: string | null = null,
 ) =>
   value(
@@ -177,15 +197,15 @@ const ledger = (
     run(db, {
       kind: 'budget.credit_ledger',
       cycle_id: CYCLE,
-      since,
+      basis_seq: basisSeq,
       exclude_reservation_id: exclude,
     }),
   );
 
 const state = (db: SqliteDatabase, now: number, credit: BudgetCreditInput) =>
   value(
-    'budget.credit_state',
-    run(db, { kind: 'budget.credit_state', credit, now }),
+    'budget.credit_adopt',
+    run(db, { kind: 'budget.credit_adopt', credit, now }),
   );
 
 const split = (db: SqliteDatabase, n: number) =>
@@ -194,6 +214,15 @@ const split = (db: SqliteDatabase, n: number) =>
       'SELECT status, actual_gross, credit_applied, additional_spend, credit_estimate, credit_cycle_id FROM budget_reservations WHERE reservation_id = ?',
     )
     .get(reservationId(n));
+
+// 精算した時点で採用済みだった、周期の最新の観測の連番（精算前は null）。
+const settledSeq = (db: SqliteDatabase, n: number) =>
+  db
+    .prepare(
+      'SELECT credit_settled_seq FROM budget_reservations WHERE reservation_id = ?',
+    )
+    .pluck()
+    .get(reservationId(n)) as number | null;
 
 const row = (db: SqliteDatabase, n: number) =>
   db
@@ -441,11 +470,22 @@ test('a settlement that cannot confirm the credit records zero credit but keeps 
       credit_estimate: 0,
       credit_cycle_id: null,
     });
-    // 見積もりは台帳に残る（観測の時刻を 1.5 秒後とすると、それより前の精算 1 は引かず、2・3 の 16）。
-    assert.deepEqual(ledger(db, OCT_15 + 1500), {
-      allocated_since: '16',
+    // 見積もりは台帳に残る。基準を連番 2（観測の時刻は 0.5 秒後）にすると、精算 1（1 秒後）・2（連番 2 の採用の後）・3 の 24。
+    assert.deepEqual(ledger(db, 2), {
+      allocated_since: '24',
       outstanding: '0',
     });
+    // 3 秒後に観測した新しい観測（連番 3）を採用すると、それより前に精算した 1・2 は引かず、後の精算 3 だけの 8。
+    state(
+      db,
+      OCT_15 + 4000,
+      input(
+        obs('100'),
+        obs(null, { status: 'unknown', observed_at: iso(OCT_15 + 500) }),
+        obs('90', { observed_at: iso(OCT_15 + 3000) }),
+      ),
+    );
+    assert.deepEqual(ledger(db, 3), { allocated_since: '8', outstanding: '0' });
   });
 });
 
@@ -1033,7 +1073,7 @@ test('malformed credit input is refused by the shape check before anything is wr
     assert.deepEqual(
       reasons(
         run(db, {
-          kind: 'budget.credit_state',
+          kind: 'budget.credit_adopt',
           credit: null as unknown as BudgetCreditInput,
           now: OCT_15,
         }),
@@ -1054,7 +1094,7 @@ test('malformed credit input is refused by the shape check before anything is wr
         run(db, {
           kind: 'budget.credit_ledger',
           cycle_id: 'someone@example.invalid',
-          since: 1,
+          basis_seq: 1,
           exclude_reservation_id: null,
         }),
       ),
@@ -1080,5 +1120,192 @@ test('malformed credit input is refused by the shape check before anything is wr
     );
     assert.equal(count(db, 'SELECT count(*) FROM budget_reservations'), 0);
     assert.equal(observationRows(db), 0);
+  });
+});
+
+// 設定だけ（観測を持たない）。観測は別に採用しておき、判定の命令は採用済みの観測から判定する。
+const SETTINGS_ONLY: BudgetCreditSettings = {
+  config: CONFIG,
+  budget_currency: 'XTS',
+};
+const CYCLE_START = Date.parse('2030-10-01T00:00:00.000Z');
+
+test('P1-1: a refused dispatch keeps the newer observation that decided it, so putting the old file back never lets the same reservation through', async () => {
+  await withBudget((db) => {
+    value(
+      'budget.admit',
+      run(db, credited(1, { reserved: '40', max: '40' }, input(obs('40')))),
+    );
+    // 本人が残高 0 の新しい観測を書いた。先に採用して確定する。送出の判定は設定だけで、採用済みの観測から判定して拒否する。
+    state(
+      db,
+      OCT_15 + 1000,
+      input(obs('40'), obs('0', { observed_at: iso(OCT_15 + 500) })),
+    );
+    assert.deepEqual(
+      reasons(run(db, dispatch(1, SETTINGS_ONLY, OCT_15 + 1000))),
+      ['credit_exhausted'],
+    );
+    // 拒否した後も採用済みの観測（連番 2）は残る。ファイルを元（残高 40 だけ）に戻しても、同じ予約は送れない。
+    assert.equal(observationRows(db), 2);
+    state(db, OCT_15 + 2000, input(obs('40')));
+    assert.deepEqual(
+      reasons(run(db, dispatch(1, SETTINGS_ONLY, OCT_15 + 2000))),
+      ['credit_exhausted'],
+    );
+    assert.equal(row(db, 1)['dispatch_intent_at'], null);
+    // 追加予約も同じ。拒否しても採用済みの観測は残る。
+    assert.deepEqual(
+      reasons(run(db, topUp(1, '1', '1', SETTINGS_ONLY, OCT_15 + 2000))),
+      ['credit_exhausted'],
+    );
+    assert.equal(observationRows(db), 2);
+  });
+});
+
+test('P1-3: after a clock set back, a settlement is still deducted by the adoption sequence, not by the wall clock', async () => {
+  await withBudget((db) => {
+    // 2 秒後に観測した残高 40 を、3 秒後に採用して受け付ける。
+    const credit = input(obs('40', { observed_at: iso(OCT_15 + 2000) }));
+    value(
+      'budget.admit',
+      run(
+        db,
+        credited(1, { reserved: '40', max: '40' }, credit, {
+          now: OCT_15 + 3000,
+        }),
+      ),
+    );
+    // 時計を 1 秒後へ戻して実費 30 を精算する（精算の時刻は観測の時刻より前）。割り当ては残り 40 から 30。
+    value('budget.settle', run(db, settle(1, '30', credit, OCT_15 + 1000)));
+    assert.deepEqual(split(db, 1), {
+      status: 'settled',
+      actual_gross: 30,
+      credit_applied: 30,
+      additional_spend: 0,
+      credit_estimate: 30,
+      credit_cycle_id: CYCLE,
+    });
+    assert.equal(settledSeq(db, 1), 1);
+    // 台帳は壁時計の前後に依らず 30 を引く。残り 40 − 30 = 10 に M 40 は収まらない。
+    assert.deepEqual(ledger(db), { allocated_since: '30', outstanding: '0' });
+    assert.deepEqual(
+      value(
+        'budget.admit',
+        run(
+          db,
+          credited(2, { reserved: '40', max: '40' }, credit, {
+            now: OCT_15 + 1500,
+          }),
+        ),
+      ).reason_codes,
+      ['credit_insufficient'],
+    );
+  });
+});
+
+test('P1-4: a request that Buddy allocated no credit to, because other reservations held the remainder, still counts min(actual, M) as consumed', async () => {
+  await withBudget((db) => {
+    const first = input(obs('100'));
+    for (const n of [1, 2])
+      value(
+        'budget.admit',
+        run(db, credited(n, { reserved: '40', max: '40' }, first)),
+      );
+    // 他の用途の消費の後、本人が残高 40 を観測した（0.5 秒後、連番 2）。
+    const second = input(
+      obs('100'),
+      obs('40', { observed_at: iso(OCT_15 + 500) }),
+    );
+    // A（1）が実費 30 で精算する。残り = 40 − 台帳 0 − B の M 40 = 0 なので、割り当て 0・追加の支出 30。
+    value('budget.settle', run(db, settle(1, '30', second)));
+    assert.deepEqual(split(db, 1), {
+      status: 'settled',
+      actual_gross: 30,
+      credit_applied: 0,
+      additional_spend: 30,
+      credit_estimate: 30,
+      credit_cycle_id: CYCLE,
+    });
+    // 未送信の B を解放する。残りは 40 − 30 = 10。次の M 40 は収まらない（割り当て 0 を消費 0 とみなすと 40 に戻っていた）。
+    value(
+      'budget.release_unsent',
+      run(db, {
+        kind: 'budget.release_unsent',
+        reservation_id: reservationId(2),
+        provider_request_sent: false,
+      }),
+    );
+    assert.deepEqual(ledger(db, 2), {
+      allocated_since: '30',
+      outstanding: '0',
+    });
+    assert.deepEqual(
+      value(
+        'budget.admit',
+        run(db, credited(3, { reserved: '40', max: '40' }, second)),
+      ).reason_codes,
+      ['credit_insufficient'],
+    );
+    assert.deepEqual(
+      value(
+        'budget.admit',
+        run(db, credited(4, { reserved: '10', max: '10' }, second)),
+      ).admitted,
+      true,
+    );
+  });
+});
+
+test('P3: an adopted observation cannot be replaced, not even by INSERT OR REPLACE', async () => {
+  await withBudget((db) => {
+    state(db, OCT_15 + 1000, input(obs('40')));
+    const replace = db.prepare(
+      "INSERT OR REPLACE INTO budget_credit_observations (observation_seq, cycle_id, cycle_start, observed_at, expires_at, status, shared, organization_ref, balance_currency, balance_amount, content_id, recorded_at) VALUES (1, ?, ?, ?, ?, 'observed', 0, 'synthetic-organization', 'XXX', 999, ?, 1)",
+    );
+    assert.throws(
+      () =>
+        replace.run(CYCLE, CYCLE_START, OCT_15 + 9000, NOV_01, 'a'.repeat(64)),
+      /budget_credit_observation_fixed/,
+    );
+    assert.equal(observationRows(db), 1);
+    assert.equal(
+      db
+        .prepare('SELECT balance_amount FROM budget_credit_observations')
+        .pluck()
+        .get(),
+      40,
+    );
+  });
+});
+
+test('the estimate and the settlement sequence stay fixed after settlement and are empty before it', async () => {
+  await withBudget((db) => {
+    const credit = input(obs('40'));
+    value(
+      'budget.admit',
+      run(db, credited(1, { reserved: '40', max: '40' }, credit)),
+    );
+    assert.equal(settledSeq(db, 1), null);
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            'UPDATE budget_reservations SET credit_settled_seq = 1 WHERE reservation_id = ?',
+          )
+          .run(reservationId(1)),
+      /budget_credit_split_invalid/,
+    );
+    value('budget.settle', run(db, settle(1, '30', credit)));
+    assert.equal(settledSeq(db, 1), 1);
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            'UPDATE budget_reservations SET credit_settled_seq = 0 WHERE reservation_id = ?',
+          )
+          .run(reservationId(1)),
+      /budget_credit_estimate_fixed/,
+    );
   });
 });

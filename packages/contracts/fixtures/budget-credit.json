@@ -1213,7 +1213,7 @@
     },
     {
       "id": "ma03-capped-by-remaining",
-      "title": "残り 100 − 70 − 20 = 10 なら、実費 30 のうちクレジットは 10、追加の支出は 20",
+      "title": "残り 100 − 70 − 20 = 10 なら、実費 30 のうちクレジットは 10、追加の支出は 20。消費の見積もりは割り当てに関わらず min(実費, M) の 30",
       "cycle_id": "anthropic:2030-10-01",
       "actual_gross": "30",
       "max_liability": "40",
@@ -1234,12 +1234,12 @@
       "expected": {
         "credit_applied": "10",
         "additional_spend": "20",
-        "estimate": "10"
+        "estimate": "30"
       }
     },
     {
       "id": "ma03-remaining-zero",
-      "title": "残りが 0 ならクレジット 0・追加の支出＝実費",
+      "title": "残りが 0 ならクレジット 0・追加の支出＝実費。ほかの予約が占めていても provider は消費したかもしれないので、消費の見積もりは min(実費, M) の 30",
       "cycle_id": "anthropic:2030-10-01",
       "actual_gross": "30",
       "max_liability": "40",
@@ -1260,7 +1260,7 @@
       "expected": {
         "credit_applied": "0",
         "additional_spend": "30",
-        "estimate": "0"
+        "estimate": "30"
       }
     },
     {
@@ -1286,7 +1286,33 @@
       "expected": {
         "credit_applied": "0",
         "additional_spend": "30",
-        "estimate": "0"
+        "estimate": "30"
+      }
+    },
+    {
+      "id": "ma03-remaining-zero-capped-by-m",
+      "title": "残りが 0 で実費 55 が M 40 を超えるとき、割り当て 0・追加の支出 55、消費の見積もりは M の 40",
+      "cycle_id": "anthropic:2030-10-01",
+      "actual_gross": "55",
+      "max_liability": "40",
+      "basis": {
+        "cycleId": "anthropic:2030-10-01",
+        "cycleStart": "2030-10-01T00:00:00.000Z",
+        "observedAt": "2030-10-15T00:00:00.000Z",
+        "expiresAt": "2030-11-01T00:00:00.000Z",
+        "status": "observed",
+        "shared": false,
+        "balance": "100"
+      },
+      "ledger": {
+        "allocated_since": "60",
+        "outstanding": "40"
+      },
+      "now": "2030-10-20T00:00:00.000Z",
+      "expected": {
+        "credit_applied": "0",
+        "additional_spend": "55",
+        "estimate": "40"
       }
     },
     {

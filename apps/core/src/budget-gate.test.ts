@@ -975,6 +975,7 @@ async function reservationTicket(
     revision: '1',
     routed: false,
     deadline: OCT_15 + 60_000,
+    credit_expires_at: null,
   };
 }
 

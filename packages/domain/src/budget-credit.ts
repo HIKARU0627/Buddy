@@ -385,10 +385,10 @@ export interface CreditAllocationInput {
 export interface CreditAllocation {
   readonly creditApplied: bigint;
   readonly additionalSpend: bigint;
-  // 受付の残りから引く消費の見積もり（精算の区分とは別。ADR 0042）。確認できて割り当てたときはクレジットと同じ。確認
-  // できないとき（観測がない・不明・失効・周期が終わった・読めなかった）は、provider がクレジットから消費したかもしれない
-  // ので min(実費, M) を見積もり、新しい観測が届くまで引き続ける（消費済みの残高を受付に使い回さない）。周期に結び付かない
-  // 予約・確認できて残りがなかったときは 0。
+  // 受付の残りから引く消費の見積もり（精算の区分とは別。ADR 0042）。周期に結び付いた予約（クレジットの対象の要求）は、
+  // Buddy が割り当てた額（creditApplied）に関わらず min(実費, M) を見積もる。ほかの予約が残りを占めていて割り当てが 0 でも、
+  // provider がクレジットから消費したかもしれないので、後の連番の観測が採用されるまで引き続ける（消費済みの残高を使い回さない）。
+  // 周期に結び付かない予約だけ 0。
   readonly estimate: bigint;
 }
 
@@ -427,18 +427,13 @@ export function allocateCredit(input: CreditAllocationInput): CreditAllocation {
     return unconfirmed;
   const remaining =
     BigInt(basis.balance) - ledger.allocatedSince - ledger.outstanding;
-  if (remaining <= 0n)
-    return {
-      creditApplied: 0n,
-      additionalSpend: input.actualGross,
-      estimate: 0n,
-    };
+  if (remaining <= 0n) return unconfirmed;
   let credit = input.actualGross;
   if (input.maxLiability < credit) credit = input.maxLiability;
   if (remaining < credit) credit = remaining;
   return {
     creditApplied: credit,
     additionalSpend: input.actualGross - credit,
-    estimate: credit,
+    estimate: capped,
   };
 }

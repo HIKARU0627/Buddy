@@ -43,10 +43,20 @@ const evalSpec = await read(
 );
 
 test('forgotten sources and their derivatives never come back as memories', () => {
-  const { base_candidate, base_context, cases } = memorySpec.admission;
+  const { base_candidate, base_context, cases, source_hmacs } =
+    memorySpec.admission;
+  // 鍵は domain が持たないので、手書きの対応表を HMAC の関数として注入する。表にない由来は試験の誤り。
+  const sourceHmac = (source) => {
+    const value = source_hmacs[`${source.source_kind}:${source.source_id}`];
+    assert.ok(
+      value,
+      `hmac missing for ${source.source_kind}:${source.source_id}`,
+    );
+    return value;
+  };
   for (const entry of cases) {
     const candidate = { ...base_candidate, ...entry.candidate };
-    const context = { ...base_context, ...entry.context };
+    const context = { ...base_context, ...entry.context, sourceHmac };
     assert.deepEqual(
       memoryAdmission(candidate, context),
       entry.expected,

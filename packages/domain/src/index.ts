@@ -22,11 +22,14 @@ export * from './connectors.js';
 export * from './desktop.js';
 export * from './evaluation.js';
 export * from './extraction.js';
+// B06-03: 忘却の計画（対象の解決・派生の閉包・台帳のエントリ）と遅着の検査（ADR 0044）。
+export * from './forget-plan.js';
 // B03-03: 自宅ネットワークの判定（ADR 0022）。
 export * from './home-network.js';
 // B03-05: 中枢の宛先の正規化とペアリングで受け付ける宛先（ADR 0025）。
 export * from './hub-host.js';
 export * from './intents.js';
+export * from './late-result.js';
 // B03-07: 中枢の待ち受けのアドレスの判定（ADR 0020）。
 export * from './listen-address.js';
 export * from './local-time.js';

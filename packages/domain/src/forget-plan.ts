@@ -39,13 +39,6 @@ export const FORGET_ARTIFACT_KINDS = [
 
 export type ForgetArtifactKind = (typeof FORGET_ARTIFACT_KINDS)[number];
 
-// 派生物のうち、判別が不確かなときに由来の除外を広げる要約の種類（ADR 0044）。構造化された抽出（気づき・依頼・解析）や
-// 本人が確認できる記憶は広げない。要約は再生成できるので、除外した由来を外して作り直す。
-export const FORGET_WIDEN_KINDS: readonly ForgetArtifactKind[] = [
-  'session_summary',
-  'carried_summary',
-];
-
 // 範囲（session）は、由来を引けない派生物が属する会話を表すときだけ使う。
 export type ForgetNodeKind = ForgetRootKind | ForgetArtifactKind | 'session';
 
@@ -197,10 +190,16 @@ export interface OperationContentPlan {
   // 確定内容（暗号文）を今消してよい操作。hash・レシートは残す（J5）。
   readonly purge: readonly string[];
   // 進行中・結果不明の操作。何も変えない（承認・試行・状態・内容のどれも）。終わってから J5 の削除に任せる。
+  // send_blocked は常に true。確定内容に忘れた内容が含まれ得るので、Core はこの操作に「送出禁止」の印（本文を持たない）を付け、
+  // 送出の直前の検査（dispatch_intent・LocalCommand の適用）で拒否する。承認・試行・状態は変えない。
+  // provenance は、その操作の確定内容の由来（発言・記憶の ID と元情報の HMAC。本文なし）。async_guard を消しても、
+  // 送出の検査（commandGuard の options.forgetting）はこの由来で台帳と照合できる。
   readonly retained: readonly {
     readonly operation_id: string;
     readonly state: string;
     readonly reason: 'in_flight' | 'state_unknown';
+    readonly send_blocked: true;
+    readonly provenance: readonly LedgerSource[];
   }[];
 }
 
@@ -232,13 +231,22 @@ const SHA256_HEX = /^[0-9a-f]{64}$/u;
 
 const nodeKey = (node: ForgetNode): string => `${node.kind}\u0000${node.id}`;
 
-// 操作の確定内容を今消してよい状態。遷移の先がない終端だけ（取消済み・成功・置換済み）。
+// 操作の確定内容を今消してよい状態。遷移の先がない終端だけ（取消済み・成功・置換済み）を明示して列挙する。
 // 送出境界の前後・結果不明・未実行（再試行できる）は、確定内容がまだ要るので消さない。
+// 知らない文字列（toString など継承された名前を含む）は終端と見なさない。
+const PURGEABLE_OPERATION_STATES: ReadonlySet<string> = new Set([
+  'succeeded',
+  'cancelled',
+  'superseded',
+]);
+
 export function operationContentPurgeable(state: string): boolean {
-  const transitions = (
-    OPERATION_TRANSITIONS as Readonly<Record<string, readonly OperationState[]>>
-  )[state];
-  return transitions !== undefined && transitions.length === 0;
+  return PURGEABLE_OPERATION_STATES.has(state);
+}
+
+// 操作の状態として知っている名前か（継承された名前は含めない）。
+function knownOperationState(state: string): state is OperationState {
+  return Object.hasOwn(OPERATION_TRANSITIONS, state);
 }
 
 export function planForget(input: ForgetPlanInput): ForgetPlanResult {
@@ -276,14 +284,20 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
       reasons.push('dedupe_key_malformed');
   if (reasons.length > 0) return { ok: false, reasons: [...new Set(reasons)] };
 
+  // doomed: 消す物すべて。core: 忘れる対象から確かに作られた物（対象・指示の発言・下流）。
+  // 残りの doomed は広げた物（除外する由来を共有するだけで、忘れる内容を含むかを証明できない派生物）。
   const doomed = new Map<string, ForgetNode>();
+  const core = new Set<string>();
   const origins = new Map<string, ForgetNode>();
   const targets: ForgetNode[] = [
     { kind: input.target.source_kind, id: input.target.source_id },
   ];
   if (input.instruction_turn_id !== null)
     targets.push({ kind: 'turn', id: input.instruction_turn_id });
-  for (const node of targets) doomed.set(nodeKey(node), node);
+  for (const node of targets) {
+    doomed.set(nodeKey(node), node);
+    core.add(nodeKey(node));
+  }
 
   const sessionTurns = (sessionId: string): ForgetNode[] =>
     graph.turn_sessions
@@ -296,21 +310,30 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
   let changed = true;
   while (changed) {
     changed = false;
-    // A. 忘れる物から作られた派生物は、種類によらず忘れる。
-    for (const edge of graph.edges)
-      if (
+    // A. 忘れる物から作られた派生物は、種類によらず忘れる。core から作られた物は core、
+    //    広げた物から作られた物は広げた物（core に昇格できるのは、後で core から届いたときだけ）。
+    for (const edge of graph.edges) {
+      const key = nodeKey(edge.artifact);
+      const fromCore = core.has(nodeKey(edge.source));
+      if (fromCore && !core.has(key)) {
+        doomed.set(key, edge.artifact);
+        core.add(key);
+        changed = true;
+      } else if (
+        !fromCore &&
         doomed.has(nodeKey(edge.source)) &&
-        !doomed.has(nodeKey(edge.artifact))
+        !doomed.has(key)
       ) {
-        doomed.set(nodeKey(edge.artifact), edge.artifact);
+        doomed.set(key, edge.artifact);
         changed = true;
       }
-    // B. 忘れる記憶の元の発言・元情報は、再登録を禁じる由来にする（消さない。別の事実の由来でもある）。
-    //    別の記憶が由来のときは広げない（本人が一覧で確認して消せる）。
+    }
+    // B. 忘れる記憶（core）の元の発言・元情報は、再登録を禁じる由来にする（消さない）。
+    //    別の記憶が由来のときは広げない。広げた記憶の由来は、さらに広げない。
     for (const edge of graph.edges)
       if (
         edge.artifact.kind === 'memory' &&
-        doomed.has(nodeKey(edge.artifact)) &&
+        core.has(nodeKey(edge.artifact)) &&
         (edge.source.kind === 'turn' || edge.source.kind === 'source_item') &&
         !doomed.has(nodeKey(edge.source)) &&
         !origins.has(nodeKey(edge.source))
@@ -318,31 +341,30 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
         origins.set(nodeKey(edge.source), edge.source);
         changed = true;
       }
-    // C. 除外する由来から作った要約は、どの部分が混じるか判別できないので消す（再生成できる）。
+    // C. 除外する由来を共有する派生物は、忘れる内容を含まないと証明できないので、種類によらず消す
+    //    （要約・気づき・依頼・関連解析・キャンバス・影モード・操作の確定内容・別の記憶）。部分ごとの由来が
+    //    記録できるようになるまでの閉じた側（ADR 0044 U59）。
     for (const edge of graph.edges)
       if (
-        FORGET_WIDEN_KINDS.includes(edge.artifact.kind as ForgetArtifactKind) &&
         origins.has(nodeKey(edge.source)) &&
         !doomed.has(nodeKey(edge.artifact))
       ) {
         doomed.set(nodeKey(edge.artifact), edge.artifact);
         changed = true;
       }
-    // D. 由来を引けない派生物。範囲が忘れる物に触れるなら消し、範囲全体（同じ会話・同じ元情報）を除外する。
-    //    範囲が除外する由来に触れるだけなら、要約の種類だけ消す。
+    // D. 由来を引けない派生物。範囲が忘れる物（core）に触れるなら消し、範囲全体（同じ会話・同じ元情報）を除外する。
+    //    範囲が除外する由来に触れるだけなら、種類によらず消す。
     for (const item of graph.unattributed) {
       if (doomed.has(nodeKey(item.artifact))) continue;
       const members = scopeMembers(item.scope);
-      if (members.some((member) => doomed.has(nodeKey(member)))) {
+      if (members.some((member) => core.has(nodeKey(member)))) {
         doomed.set(nodeKey(item.artifact), item.artifact);
+        core.add(nodeKey(item.artifact));
         for (const member of members)
           if (!doomed.has(nodeKey(member)) && !origins.has(nodeKey(member)))
             origins.set(nodeKey(member), member);
         changed = true;
-      } else if (
-        FORGET_WIDEN_KINDS.includes(item.artifact.kind as ForgetArtifactKind) &&
-        members.some((member) => origins.has(nodeKey(member)))
-      ) {
+      } else if (members.some((member) => origins.has(nodeKey(member)))) {
         doomed.set(nodeKey(item.artifact), item.artifact);
         changed = true;
       }
@@ -405,19 +427,49 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
     operation_id: string;
     state: string;
     reason: 'in_flight' | 'state_unknown';
+    send_blocked: true;
+    provenance: LedgerSource[];
   }[] = [];
+  // 残す操作の確定内容の由来（本文なし）。元情報は HMAC に通す。
+  const provenanceOf = (operationId: string): LedgerSource[] => {
+    const out = new Map<string, LedgerSource>();
+    for (const edge of graph.edges) {
+      if (
+        edge.artifact.kind !== 'operation_content' ||
+        edge.artifact.id !== operationId
+      )
+        continue;
+      if (edge.source.kind === 'source_item')
+        out.set(nodeKey(edge.source), {
+          source_kind: 'source_item',
+          source_id_hmac: checkHmac(hmac(edge.source)),
+        });
+      else if (edge.source.kind === 'turn' || edge.source.kind === 'memory')
+        out.set(nodeKey(edge.source), {
+          source_kind: edge.source.kind,
+          source_id: edge.source.id,
+        });
+    }
+    return [...out.values()].sort(compareLedgerSource);
+  };
   for (const node of doomedList.filter((n) => n.kind === 'operation_content')) {
     const state = states.get(node.id);
     if (input.executing_operation_id === node.id) purge.push(node.id);
-    else if (state === undefined)
+    else if (state !== undefined && operationContentPurgeable(state))
+      purge.push(node.id);
+    else {
+      const known = state !== undefined && knownOperationState(state);
       retained.push({
         operation_id: node.id,
-        state: 'unknown',
-        reason: 'state_unknown',
+        state: known ? state : 'unknown',
+        reason: known ? 'in_flight' : 'state_unknown',
+        send_blocked: true,
+        provenance: provenanceOf(node.id),
       });
-    else if (operationContentPurgeable(state)) purge.push(node.id);
-    else retained.push({ operation_id: node.id, state, reason: 'in_flight' });
+    }
   }
+  if (hmacProblems.length > 0)
+    return { ok: false, reasons: [...new Set(hmacProblems)] };
   purge.sort(compare);
   retained.sort((a, b) => compare(a.operation_id, b.operation_id));
 

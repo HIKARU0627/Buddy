@@ -85,6 +85,12 @@ export interface LedgerRelationInput {
   readonly contentKey: string | null;
 }
 
+const HMAC_HEX = /^[0-9a-f]{64}$/u;
+
+// 台帳用 HMAC（64 桁の小文字 16 進）の形か。
+export const isHmacHex = (value: unknown): value is string =>
+  typeof value === 'string' && HMAC_HEX.test(value);
+
 // 台帳が由来の元の種類と ID（または HMAC）に一致するか。
 function ledgerForgets(
   entry: ForgetEntry,
@@ -116,8 +122,12 @@ export function ledgerRelationReasons(input: LedgerRelationInput): string[] {
       reasons.push('forget_ledger_gap');
       break;
     }
+  // 注入された関数の戻り値が HMAC の形（64 桁の小文字 16 進）でなければ、台帳と照合できない。
+  // 「一致しない」と読んで通すと忘れた由来を見逃すので、結果を通さない（閉じた側）。
   const hmacs = input.sources.map((source) => input.sourceHmac(source));
-  if (
+  if (hmacs.some((value) => !isHmacHex(value)))
+    reasons.push('source_hmac_malformed');
+  else if (
     input.ledger.some((entry) =>
       input.sources.some(
         (source, index) =>

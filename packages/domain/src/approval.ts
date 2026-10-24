@@ -109,15 +109,25 @@ export function commandGuard(
     reasons.push('request_revision_changed');
   if (command.permission_revision !== current.permission_revision)
     reasons.push('permission_changed');
-  const forgettingRejected =
+  // 絞った検査でも、拒否の理由は従来と同じ名前にする（Core の応答の分類を変えない）。
+  // 外部へ送る命令の由来が不明なときだけ、理由を足す。
+  const scoped =
     options.forgetting === undefined
-      ? command.forgetting_generation !== current.forgetting_generation
+      ? null
       : scopedForgettingReasons(
           command.forgetting_generation,
           current.forgetting_generation,
           options.forgetting,
-        ).length > 0;
-  if (forgettingRejected) reasons.push('forgetting_generation_changed');
+          options.external,
+        );
+  if (
+    scoped === null
+      ? command.forgetting_generation !== current.forgetting_generation
+      : scoped.length > 0
+  )
+    reasons.push('forgetting_generation_changed');
+  if (scoped?.includes('provenance_unknown'))
+    reasons.push('provenance_unknown');
   // 外部へ送る直前の transaction では、安全停止と予算予約の有効性も見る（08 §3 P01）。
   if (options.external && current.safety_stopped)
     reasons.push('safety_stopped');

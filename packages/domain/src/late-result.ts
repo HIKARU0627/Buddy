@@ -84,24 +84,33 @@ export interface ForgettingScope {
 }
 
 // 忘却の世代の検査の理由。空なら通してよい。
+// - 判明している由来は、由来の全体が分からなくても、必ず台帳と照合する（忘れた由来を含む命令は通さない）。
 // - 世代が同じ: 台帳が由来を忘れていなければ通す（忘れた由来から作った命令は、世代が同じでも通さない）。
 // - 世代が進んだ: 由来が忘却と無関係なら通す。台帳に開始後の世代が揃っていなければ判定できないので拒否する。
-// - 由来を把握していない: 世代が変わっていれば拒否する（従来どおり）。
+// - 由来を把握していない: 世代が変わっていれば拒否する（従来どおり）。外部へ送る命令（external）は、由来が不明なら
+//   世代が同じでも拒否する（忘れた内容が送られないことを確かめられない）。
+// - 台帳との照合に使う HMAC が形（64 桁の小文字 16 進）を満たさなければ拒否する（source_hmac_malformed）。
 export function scopedForgettingReasons(
   commandGeneration: string,
   currentGeneration: string,
   scope: ForgettingScope,
+  external = false,
 ): string[] {
-  if (scope.provenance === 'unknown')
-    return commandGeneration === currentGeneration
-      ? []
-      : ['forgetting_generation_changed'];
-  return ledgerRelationReasons({
-    sources: scope.sources,
-    startedGeneration: commandGeneration,
-    currentGeneration,
-    ledger: scope.ledger,
-    sourceHmac: scope.sourceHmac,
-    contentKey: null,
-  });
+  const reasons: string[] = [];
+  if (scope.provenance === 'unknown') {
+    if (commandGeneration !== currentGeneration)
+      reasons.push('forgetting_generation_changed');
+    if (external) reasons.push('provenance_unknown');
+  }
+  reasons.push(
+    ...ledgerRelationReasons({
+      sources: scope.sources,
+      startedGeneration: commandGeneration,
+      currentGeneration,
+      ledger: scope.ledger,
+      sourceHmac: scope.sourceHmac,
+      contentKey: null,
+    }),
+  );
+  return reasons;
 }

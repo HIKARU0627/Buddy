@@ -8,9 +8,11 @@ import {
   commandGuard,
   forgetOperationContent,
   lateResultCheck,
+  memoryAdmission,
   operationContentPurgeable,
   planForget,
   resolveForgetTarget,
+  scopedForgettingReasons,
 } from '../packages/domain/dist/index.js';
 import { parseStrictJson, root } from './contract-tools.mjs';
 
@@ -186,9 +188,23 @@ test('the derivation closure matches the hand-written plans', () => {
   for (const entry of spec.plans) {
     const result = planForget(planInput(entry));
     assert.equal(result.ok, true, entry.id);
-    const { survivors, ok, ...expected } = entry.expected;
+    const { survivors, ok, retained_provenance, ...expected } = entry.expected;
     assert.equal(ok, true);
     assert.deepEqual(summarize(result.plan), expected, entry.id);
+    // 残す操作には、送出禁止の印と、本文を持たない由来（元情報は HMAC）を必ず付ける。
+    for (const item of result.plan.operation_contents.retained)
+      assert.equal(item.send_blocked, true, `${entry.id} ${item.operation_id}`);
+    if (retained_provenance !== undefined)
+      assert.deepEqual(
+        Object.fromEntries(
+          result.plan.operation_contents.retained.map((item) => [
+            item.operation_id,
+            item.provenance,
+          ]),
+        ),
+        retained_provenance,
+        entry.id,
+      );
     // 残る物は、消す一覧に入らない（元の発言・メールは再登録の禁止だけで、消さない）。
     const deleted = new Set(result.plan.deletions.map(nodeText));
     for (const survivor of survivors ?? [])
@@ -372,15 +388,15 @@ function permutations(items) {
   );
 }
 
-function runOrder(order, jobSources, section) {
-  const hmac = hmacFrom(section.hmacs);
+function runOrder(order, job, scenario) {
+  const hmac = hmacFrom(scenario.hmacs);
   const store = {
-    edges: section.initial_store.edges.map(([a, s]) => [a, s]),
-    present: new Set(section.initial_store.surviving_before),
+    edges: scenario.initial_store.edges.map(([a, s]) => [a, s]),
+    present: new Set(scenario.initial_store.surviving_before),
     ledger: [],
   };
   const forgets = {
-    F1: { target: 'turn:t-a', id: 'e-1' },
+    F1: { target: scenario.f1_target, id: 'e-1' },
     F2: { target: 'turn:t-c', id: 'e-2' },
   };
   let startedGeneration = null;
@@ -392,7 +408,7 @@ function runOrder(order, jobSources, section) {
       decision = lateResultCheck(
         {
           use: 'persist',
-          sources: jobSources.map(ref),
+          sources: job.job_sources.map(ref),
           provenance: 'complete',
           started_generation: startedGeneration,
           permission_revision: '1',
@@ -408,9 +424,9 @@ function runOrder(order, jobSources, section) {
         },
       );
       if (decision.action === 'accept') {
-        store.present.add('session_summary:art-job');
-        for (const source of jobSources)
-          store.edges.push(['session_summary:art-job', source]);
+        store.present.add(job.job_artifact);
+        for (const source of job.job_sources)
+          store.edges.push([job.job_artifact, source]);
       }
     } else {
       const forget = forgets[step];
@@ -427,7 +443,10 @@ function runOrder(order, jobSources, section) {
             })),
           unattributed: [],
           turn_sessions: [],
-          memories: [],
+          memories: scenario.memories.map(([memory_id, dedupe_key]) => ({
+            memory_id,
+            dedupe_key,
+          })),
           operations: [],
         },
         sourceHmac: hmac,
@@ -452,35 +471,43 @@ test('every order of forgetting and late arrival leaves no forgotten derivative 
   const orders = permutations(['S', 'A', 'F1', 'F2'])
     .filter((order) => order.indexOf('S') < order.indexOf('A'))
     .map((order) => order.join(' '));
-  // 手で書いた 12 通りと、入れ替えて得た順序が一致する（抜けも余りもない）。
-  assert.deepEqual(
-    [...orders].sort(),
-    Object.keys(section.related.expected_by_order).sort(),
-  );
-  for (const order of orders) {
-    const steps = order.split(' ');
-    const related = runOrder(steps, section.related.job_sources, section);
-    assert.equal(
-      related.decision.action,
-      section.related.expected_by_order[order],
-      `related ${order}`,
-    );
+  assert.equal(section.scenarios.length, 3);
+  for (const scenario of section.scenarios) {
+    // 手で書いた 12 通りと、入れ替えて得た順序が一致する（抜けも余りもない）。
     assert.deepEqual(
-      related.present,
-      [...section.related.final_present].sort(),
-      `related ${order}`,
+      [...orders].sort(),
+      Object.keys(scenario.related.expected_by_order).sort(),
+      scenario.id,
     );
-    assert.equal(
-      String(related.store.ledger.length),
-      section.final_ledger_generation,
-    );
-    const unrelated = runOrder(steps, section.unrelated.job_sources, section);
-    assert.equal(unrelated.decision.action, 'accept', `unrelated ${order}`);
-    assert.deepEqual(
-      unrelated.present,
-      [...section.unrelated.final_present].sort(),
-      `unrelated ${order}`,
-    );
+    for (const order of orders) {
+      const steps = order.split(' ');
+      const related = runOrder(steps, scenario.related, scenario);
+      assert.equal(
+        related.decision.action,
+        scenario.related.expected_by_order[order],
+        `${scenario.id} related ${order}`,
+      );
+      assert.deepEqual(
+        related.present,
+        [...scenario.related.final_present].sort(),
+        `${scenario.id} related ${order}`,
+      );
+      assert.equal(
+        String(related.store.ledger.length),
+        section.final_ledger_generation,
+      );
+      const unrelated = runOrder(steps, scenario.unrelated, scenario);
+      assert.equal(
+        unrelated.decision.action,
+        'accept',
+        `${scenario.id} unrelated ${order}`,
+      );
+      assert.deepEqual(
+        unrelated.present,
+        [...scenario.unrelated.final_present].sort(),
+        `${scenario.id} unrelated ${order}`,
+      );
+    }
   }
 });
 
@@ -488,6 +515,7 @@ test('the forgetting generation check of DB commands can be scoped to related so
   const section = spec.scoped_command_guard;
   for (const entry of section.cases) {
     const command = { ...section.base_command, ...entry.command };
+    const external = entry.external ?? false;
     const ledger = section.base_ledger.filter(
       (item) =>
         entry.scope.ledger_generations === undefined ||
@@ -501,16 +529,79 @@ test('the forgetting generation check of DB commands can be scoped to related so
     };
     assert.deepEqual(
       commandGuard(command, section.base_current, {
-        external: false,
+        external,
         forgetting: scope,
       }),
       entry.expected_scoped,
       `${entry.id} (scoped)`,
     );
     assert.deepEqual(
-      commandGuard(command, section.base_current, { external: false }),
+      commandGuard(command, section.base_current, { external }),
       entry.expected_strict,
       `${entry.id} (strict)`,
     );
+  }
+});
+
+test('a malformed HMAC from the injected function rejects save, display, send, command and memory admission', () => {
+  const late = spec.late_results;
+  const malformed = late.malformed_hmac;
+  const sources = malformed.sources.map(ref);
+  for (const [label, value] of Object.entries(malformed.values)) {
+    const sourceHmac = () => value;
+    for (const use of ['persist', 'display', 'send'])
+      assert.deepEqual(
+        lateResultCheck(
+          { ...late.base_result, use, sources, started_generation: '2' },
+          { ...late.base_context, sourceHmac },
+        ),
+        { action: 'discard', reasons: malformed.expected_reasons },
+        `${label} ${use}`,
+      );
+    // 命令の再検査（絞った検査）。直接の理由と、commandGuard の拒否。
+    const section = spec.scoped_command_guard;
+    const scope = {
+      provenance: 'complete',
+      sources,
+      ledger: section.base_ledger,
+      sourceHmac,
+    };
+    assert.deepEqual(
+      scopedForgettingReasons('1', '3', scope),
+      section.malformed_hmac.expected_scoped_reasons,
+      `${label} command reasons`,
+    );
+    assert.deepEqual(
+      commandGuard(section.base_command, section.base_current, {
+        external: false,
+        forgetting: scope,
+      }),
+      section.malformed_hmac.expected_command,
+      `${label} command`,
+    );
+    // 記憶の保存直前の検査。
+    const admission = memoryAdmission(
+      {
+        origin: 'auto_extraction',
+        kind: 'preference',
+        target_key: 'k',
+        sources,
+        dedupe_key: 'c'.repeat(64),
+        forgetting_generation: '2',
+        permission_revision: '7',
+      },
+      {
+        privateConversation: false,
+        allowedKinds: ['preference'],
+        currentForgettingGeneration: '2',
+        currentPermissionRevision: '7',
+        ledger: late.base_context.ledger,
+        sourceHmac,
+        expiredSourceIds: [],
+        existing: [],
+      },
+    );
+    assert.equal(admission.action, 'reject', `${label} admission`);
+    assert.deepEqual(admission.reasons, malformed.expected_reasons, label);
   }
 });

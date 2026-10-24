@@ -24,13 +24,22 @@
       {
         "id": "id-found",
         "refs": ["U41", "10 §5 memory_forget"],
-        "request": { "by": "id", "ref": "memory:mem-tea" },
-        "expected": { "outcome": "resolved", "target": "memory:mem-tea" }
+        "request": {
+          "by": "id",
+          "ref": "memory:mem-tea"
+        },
+        "expected": {
+          "outcome": "resolved",
+          "target": "memory:mem-tea"
+        }
       },
       {
         "id": "id-not-found",
         "title": "消えた・存在しない ID は確定せずに聞き返す",
-        "request": { "by": "id", "ref": "memory:mem-gone" },
+        "request": {
+          "by": "id",
+          "ref": "memory:mem-gone"
+        },
         "expected": {
           "outcome": "ask_back",
           "reason": "target_not_found",
@@ -40,7 +49,10 @@
       {
         "id": "query-no-match",
         "title": "検索語が 0 件に当たったときは確定しない",
-        "request": { "by": "query", "matches": [] },
+        "request": {
+          "by": "query",
+          "matches": []
+        },
         "expected": {
           "outcome": "ask_back",
           "reason": "no_match",
@@ -49,8 +61,14 @@
       },
       {
         "id": "query-one-match",
-        "request": { "by": "query", "matches": ["memory:mem-other"] },
-        "expected": { "outcome": "resolved", "target": "memory:mem-other" }
+        "request": {
+          "by": "query",
+          "matches": ["memory:mem-other"]
+        },
+        "expected": {
+          "outcome": "resolved",
+          "target": "memory:mem-other"
+        }
       },
       {
         "id": "query-same-match-twice",
@@ -59,7 +77,10 @@
           "by": "query",
           "matches": ["memory:mem-other", "memory:mem-other"]
         },
-        "expected": { "outcome": "resolved", "target": "memory:mem-other" }
+        "expected": {
+          "outcome": "resolved",
+          "target": "memory:mem-other"
+        }
       },
       {
         "id": "query-multiple-matches",
@@ -82,11 +103,17 @@
           "by": "query",
           "matches": ["memory:mem-gone", "turn:t-1"]
         },
-        "expected": { "outcome": "resolved", "target": "turn:t-1" }
+        "expected": {
+          "outcome": "resolved",
+          "target": "turn:t-1"
+        }
       },
       {
         "id": "query-only-stale",
-        "request": { "by": "query", "matches": ["memory:mem-gone"] },
+        "request": {
+          "by": "query",
+          "matches": ["memory:mem-gone"]
+        },
         "expected": {
           "outcome": "ask_back",
           "reason": "no_match",
@@ -97,7 +124,7 @@
   },
   "operation_content_purgeable": {
     "refs": ["08 §3 状態表", "08 §6 進行中の承認・結果不明を消さない"],
-    "note": "確定内容を今消してよいのは、遷移の先がない終端だけ。未実行は再試行できるので消さない。",
+    "note": "確定内容を今消してよいのは、終端の 3 状態（succeeded・cancelled・superseded）だけ。未実行は再試行できるので消さない。知らない文字列（toString など継承された名前を含む）は消さない。",
     "expected": {
       "awaiting_approval": false,
       "approved": false,
@@ -109,7 +136,12 @@
       "succeeded": true,
       "cancelled": true,
       "superseded": true,
-      "not_a_state": false
+      "not_a_state": false,
+      "toString": false,
+      "toLocaleString": false,
+      "valueOf": false,
+      "constructor": false,
+      "hasOwnProperty": false
     }
   },
   "worlds": {
@@ -235,12 +267,58 @@
         ["op-cancelled", "cancelled"],
         ["op-superseded", "superseded"]
       ]
+    },
+    "shared-origin": {
+      "note": "記憶 mem-m と、同じメール mail-a から作った別の派生物（別の記憶・気づき・依頼・関連解析・キャンバス・影モード・要約・つないだ要約・非同期処理の参照・確定内容）。どれが mem-m と同じ内容を含むかは、部分ごとの由来が記録されないので証明できない。",
+      "edges": [
+        ["memory:mem-m", "source_item:mail-a"],
+        ["memory:mem-sib", "source_item:mail-a"],
+        ["notification_candidate:notif-n", "source_item:mail-a"],
+        ["request_entity:req-r", "source_item:mail-a"],
+        ["related_analysis:ra-a", "source_item:mail-a"],
+        ["canvas_item:cv-c", "source_item:mail-a"],
+        ["intent_shadow:shadow-i", "source_item:mail-a"],
+        ["session_summary:sum-s", "source_item:mail-a"],
+        ["carried_summary:seg-c", "source_item:mail-a"],
+        ["async_guard:guard-g", "source_item:mail-a"],
+        ["operation_content:op-o", "source_item:mail-a"],
+        ["operation_content:op-p", "source_item:mail-a"]
+      ],
+      "unattributed": [],
+      "turn_sessions": [],
+      "memories": [
+        [
+          "mem-m",
+          "9191919191919191919191919191919191919191919191919191919191919191"
+        ],
+        [
+          "mem-sib",
+          "9292929292929292929292929292929292929292929292929292929292929292"
+        ]
+      ],
+      "operations": [
+        ["op-o", "succeeded"],
+        ["op-p", "awaiting_approval"]
+      ]
+    },
+    "weird-state": {
+      "note": "確定内容を持つ操作 op-w の状態が、操作の状態にない継承された名前（toString）で渡された。",
+      "edges": [["operation_content:op-w", "memory:mem-w"]],
+      "unattributed": [],
+      "turn_sessions": [],
+      "memories": [
+        [
+          "mem-w",
+          "9393939393939393939393939393939393939393939393939393939393939393"
+        ]
+      ],
+      "operations": [["op-w", "toString"]]
     }
   },
   "plans": [
     {
       "id": "x15-forget-memory-closure",
-      "title": "記憶 mem-tea を忘れる。派生した記憶・気づき・キャンバス・要約・影モード・確定内容まで閉じて消し、元の発言・メールは再登録を禁じるだけにする",
+      "title": "記憶 mem-tea を忘れる。派生した記憶・気づき・キャンバス・要約・影モード・確定内容まで閉じて消し、元の発言・メールを共有する派生物（別の記憶・気づき・依頼・関連解析・要約）も、忘れた内容を含まないと証明できないので消す。元の発言・メールは再登録を禁じるだけ",
       "refs": ["X15", "03 忘却と再取り込み", "ADR 0040 U47"],
       "world": "tea",
       "input": {
@@ -255,10 +333,14 @@
           "intent_shadow:shadow-1",
           "canvas_item:cv-1",
           "canvas_item:cv-3",
+          "notification_candidate:notif-1",
           "notification_candidate:notif-2",
+          "related_analysis:ra-1",
+          "request_entity:req-1",
           "async_guard:guard-1",
           "carried_summary:seg-1",
           "session_summary:sum-s1",
+          "memory:mem-shared",
           "memory:mem-tea",
           "memory:mem-tea-summary",
           "turn:t-instr",
@@ -272,10 +354,26 @@
         ],
         "ledger": {
           "forgotten": [
-            { "source_kind": "memory", "source_id": "mem-tea" },
-            { "source_kind": "memory", "source_id": "mem-tea-summary" },
-            { "source_kind": "turn", "source_id": "t-instr" },
-            { "source_kind": "turn", "source_id": "t-reply" }
+            {
+              "source_kind": "memory",
+              "source_id": "mem-shared"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea-summary"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-instr"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-reply"
+            }
           ],
           "blocked_source_hmacs": [
             "1111111111111111111111111111111111111111111111111111111111111111",
@@ -284,22 +382,20 @@
           ],
           "blocked_content_keys": [
             "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
-            "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2"
+            "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+            "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
           ]
         },
         "notice_forgotten": ["memory:mem-tea", "turn:t-instr"],
         "notice_derived": [
           "carried_summary:seg-1",
+          "memory:mem-shared",
           "memory:mem-tea-summary",
           "turn:t-reply"
         ],
         "survivors": [
           "memory:mem-other",
-          "memory:mem-shared",
           "session_summary:sum-s2",
-          "notification_candidate:notif-1",
-          "request_entity:req-1",
-          "related_analysis:ra-1",
           "canvas_item:cv-2",
           "intent_shadow:shadow-2",
           "async_guard:guard-2",
@@ -307,7 +403,27 @@
           "turn:t-2",
           "turn:t-3",
           "source_item:mail-a"
-        ]
+        ],
+        "retained_provenance": {
+          "op-disp": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
+          "op-pending": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
+          "op-unknown": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ]
+        }
       }
     },
     {
@@ -326,10 +442,14 @@
         "deletions": [
           "canvas_item:cv-1",
           "canvas_item:cv-3",
+          "notification_candidate:notif-1",
           "notification_candidate:notif-2",
+          "related_analysis:ra-1",
+          "request_entity:req-1",
           "async_guard:guard-1",
           "carried_summary:seg-1",
           "session_summary:sum-s1",
+          "memory:mem-shared",
           "memory:mem-tea",
           "memory:mem-tea-summary"
         ],
@@ -342,8 +462,18 @@
         ],
         "ledger": {
           "forgotten": [
-            { "source_kind": "memory", "source_id": "mem-tea" },
-            { "source_kind": "memory", "source_id": "mem-tea-summary" }
+            {
+              "source_kind": "memory",
+              "source_id": "mem-shared"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea-summary"
+            }
           ],
           "blocked_source_hmacs": [
             "1111111111111111111111111111111111111111111111111111111111111111",
@@ -352,11 +482,42 @@
           ],
           "blocked_content_keys": [
             "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
-            "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2"
+            "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+            "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
           ]
         },
         "notice_forgotten": ["memory:mem-tea"],
-        "notice_derived": ["carried_summary:seg-1", "memory:mem-tea-summary"]
+        "notice_derived": [
+          "carried_summary:seg-1",
+          "memory:mem-shared",
+          "memory:mem-tea-summary"
+        ],
+        "retained_provenance": {
+          "op-disp": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
+          "op-pending": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
+          "op-unknown": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
+          "op-forget": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ]
+        }
       }
     },
     {
@@ -376,7 +537,10 @@
           "intent_shadow:shadow-1",
           "canvas_item:cv-1",
           "canvas_item:cv-3",
+          "notification_candidate:notif-1",
           "notification_candidate:notif-2",
+          "related_analysis:ra-1",
+          "request_entity:req-1",
           "async_guard:guard-1",
           "carried_summary:seg-1",
           "session_summary:sum-s1",
@@ -395,12 +559,30 @@
         ],
         "ledger": {
           "forgotten": [
-            { "source_kind": "memory", "source_id": "mem-shared" },
-            { "source_kind": "memory", "source_id": "mem-tea" },
-            { "source_kind": "memory", "source_id": "mem-tea-summary" },
-            { "source_kind": "turn", "source_id": "t-1" },
-            { "source_kind": "turn", "source_id": "t-instr" },
-            { "source_kind": "turn", "source_id": "t-reply" }
+            {
+              "source_kind": "memory",
+              "source_id": "mem-shared"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea-summary"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-1"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-instr"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-reply"
+            }
           ],
           "blocked_source_hmacs": [
             "1212121212121212121212121212121212121212121212121212121212121212",
@@ -424,7 +606,7 @@
     },
     {
       "id": "x15-forget-source-item",
-      "title": "元のメール mail-a を忘れると、そこから作った記憶・気づき・依頼・関連解析も消え、台帳には HMAC だけが残る",
+      "title": "元のメール mail-a を忘れると、そこから作った記憶・気づき・依頼・関連解析も消え、元の発言 t-1・t-2 を共有する派生物（別の記憶・要約）も消える。台帳には HMAC だけが残る",
       "refs": ["X15", "03 忘却と再取り込み"],
       "world": "tea",
       "input": {
@@ -446,6 +628,7 @@
           "async_guard:guard-1",
           "carried_summary:seg-1",
           "session_summary:sum-s1",
+          "memory:mem-shared",
           "memory:mem-tea",
           "memory:mem-tea-summary",
           "turn:t-instr",
@@ -460,14 +643,30 @@
         ],
         "ledger": {
           "forgotten": [
-            { "source_kind": "memory", "source_id": "mem-tea" },
-            { "source_kind": "memory", "source_id": "mem-tea-summary" },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-shared"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea-summary"
+            },
             {
               "source_kind": "source_item",
               "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
             },
-            { "source_kind": "turn", "source_id": "t-instr" },
-            { "source_kind": "turn", "source_id": "t-reply" }
+            {
+              "source_kind": "turn",
+              "source_id": "t-instr"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-reply"
+            }
           ],
           "blocked_source_hmacs": [
             "1111111111111111111111111111111111111111111111111111111111111111",
@@ -475,12 +674,14 @@
           ],
           "blocked_content_keys": [
             "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
-            "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2"
+            "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+            "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
           ]
         },
         "notice_forgotten": ["source_item:mail-a", "turn:t-instr"],
         "notice_derived": [
           "carried_summary:seg-1",
+          "memory:mem-shared",
           "memory:mem-tea",
           "memory:mem-tea-summary",
           "turn:t-reply"
@@ -488,7 +689,7 @@
       }
     },
     {
-      "id": "x15-uncertain-memory-origin-widens-summary-only",
+      "id": "x15-uncertain-memory-origin-widens-unattributed-summary",
       "title": "記憶 mem-u の元の発言 u-2 は除外する。由来を引けない会話の要約 sum-s9 も消す。同じ会話の別の発言 u-1・u-3 は除外しない",
       "refs": ["X15", "03 判別が不確かな場合は元メッセージ全体を除外"],
       "world": "uncertain",
@@ -504,7 +705,12 @@
         "purge_operation_contents": [],
         "retained_operations": [],
         "ledger": {
-          "forgotten": [{ "source_kind": "memory", "source_id": "mem-u" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-u"
+            }
+          ],
           "blocked_source_hmacs": [
             "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
           ],
@@ -518,7 +724,7 @@
     },
     {
       "id": "x15-uncertain-forgotten-turn-excludes-whole-conversation",
-      "title": "発言 u-1 を忘れると、由来を引けない要約 sum-s9 を消し、同じ会話の u-2・u-3 を再登録の禁止にする（会話全体を除外）。別のメールの気づきは触れない",
+      "title": "発言 u-1 を忘れると、由来を引けない要約 sum-s9 を消し、同じ会話の u-2・u-3 を再登録の禁止にする（会話全体を除外）。u-2 から作った記憶 mem-u も、忘れた内容を含まないと証明できないので消す。別のメールの気づきは触れない",
       "refs": ["X15", "03 判別が不確かな場合は元メッセージ全体を除外"],
       "world": "uncertain",
       "input": {
@@ -529,19 +735,30 @@
       "expected": {
         "ok": true,
         "targets": ["turn:u-1"],
-        "deletions": ["session_summary:sum-s9", "turn:u-1"],
+        "deletions": ["session_summary:sum-s9", "memory:mem-u", "turn:u-1"],
         "purge_operation_contents": [],
         "retained_operations": [],
         "ledger": {
-          "forgotten": [{ "source_kind": "turn", "source_id": "u-1" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-u"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "u-1"
+            }
+          ],
           "blocked_source_hmacs": [
             "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
             "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3"
           ],
-          "blocked_content_keys": []
+          "blocked_content_keys": [
+            "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5"
+          ]
         },
         "notice_forgotten": ["turn:u-1"],
-        "notice_derived": []
+        "notice_derived": ["memory:mem-u"]
       }
     },
     {
@@ -604,19 +821,74 @@
           ["op-unknown_held", "unknown_held", "in_flight"]
         ],
         "ledger": {
-          "forgotten": [{ "source_kind": "memory", "source_id": "mem-s" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ],
           "blocked_source_hmacs": [],
           "blocked_content_keys": [
             "f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1"
           ]
         },
         "notice_forgotten": ["memory:mem-s"],
-        "notice_derived": []
+        "notice_derived": [],
+        "retained_provenance": {
+          "op-approved": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ],
+          "op-awaiting_approval": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ],
+          "op-dispatching": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ],
+          "op-no-record": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ],
+          "op-not_executed": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ],
+          "op-preparing": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ],
+          "op-reconciling": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ],
+          "op-unknown_held": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-s"
+            }
+          ]
+        }
       }
     },
     {
-      "id": "x15-forget-unrelated-memory-touches-only-its-own",
-      "title": "別の記憶 mem-other を忘れても、mem-tea の系譜（要約・キャンバス・気づき・操作）には触れない。同じ発言 t-3 から作った要約は、元の発言を除外するので消す",
+      "id": "x15-forget-other-memory-widens-only-its-own-origin",
+      "title": "別の記憶 mem-other を忘れても、mem-tea の系譜には触れない。mem-other と同じ発言 t-3 を共有する派生物（要約・影モード・非同期処理の参照）は消す",
       "refs": ["X15"],
       "world": "tea",
       "input": {
@@ -628,14 +900,21 @@
         "ok": true,
         "targets": ["memory:mem-other"],
         "deletions": [
+          "intent_shadow:shadow-2",
           "canvas_item:cv-2",
+          "async_guard:guard-2",
           "session_summary:sum-s2",
           "memory:mem-other"
         ],
         "purge_operation_contents": ["op-keep"],
         "retained_operations": [],
         "ledger": {
-          "forgotten": [{ "source_kind": "memory", "source_id": "mem-other" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-other"
+            }
+          ],
           "blocked_source_hmacs": [
             "1313131313131313131313131313131313131313131313131313131313131313"
           ],
@@ -653,12 +932,109 @@
           "carried_summary:seg-1",
           "canvas_item:cv-1",
           "canvas_item:cv-3",
+          "notification_candidate:notif-1",
           "notification_candidate:notif-2",
-          "intent_shadow:shadow-2",
           "async_guard:guard-1",
-          "async_guard:guard-2",
           "turn:t-3"
         ]
+      }
+    },
+    {
+      "id": "x15-shared-origin-derivatives-all-removed",
+      "title": "mem-m を忘れる。同じメール mail-a から作った派生物は、別の記憶・気づき・依頼・関連解析・キャンバス・影モード・要約・つないだ要約・非同期処理の参照・終端の操作の確定内容まですべて消す。進行中の操作 op-p は消さず、送出禁止と本文なしの由来（HMAC）を残す",
+      "refs": ["X15", "03 判別が不確かな場合は元メッセージ全体を除外", "08 §6"],
+      "world": "shared-origin",
+      "input": {
+        "target": "memory:mem-m",
+        "instruction_turn_id": null,
+        "executing_operation_id": null
+      },
+      "expected": {
+        "ok": true,
+        "targets": ["memory:mem-m"],
+        "deletions": [
+          "intent_shadow:shadow-i",
+          "canvas_item:cv-c",
+          "notification_candidate:notif-n",
+          "related_analysis:ra-a",
+          "request_entity:req-r",
+          "async_guard:guard-g",
+          "carried_summary:seg-c",
+          "session_summary:sum-s",
+          "memory:mem-m",
+          "memory:mem-sib"
+        ],
+        "purge_operation_contents": ["op-o"],
+        "retained_operations": [["op-p", "awaiting_approval", "in_flight"]],
+        "retained_provenance": {
+          "op-p": [
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            }
+          ]
+        },
+        "ledger": {
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-m"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-sib"
+            }
+          ],
+          "blocked_source_hmacs": [
+            "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ],
+          "blocked_content_keys": [
+            "9191919191919191919191919191919191919191919191919191919191919191",
+            "9292929292929292929292929292929292929292929292929292929292929292"
+          ]
+        },
+        "notice_forgotten": ["memory:mem-m"],
+        "notice_derived": ["carried_summary:seg-c", "memory:mem-sib"]
+      }
+    },
+    {
+      "id": "x15-unknown-operation-state-is-not-terminal",
+      "title": "操作の状態が toString のような継承された名前でも、終端とは見なさず確定内容を消さない（状態不明で残す）",
+      "refs": ["X15", "08 §6"],
+      "world": "weird-state",
+      "input": {
+        "target": "memory:mem-w",
+        "instruction_turn_id": null,
+        "executing_operation_id": null
+      },
+      "expected": {
+        "ok": true,
+        "targets": ["memory:mem-w"],
+        "deletions": ["memory:mem-w"],
+        "purge_operation_contents": [],
+        "retained_operations": [["op-w", "unknown", "state_unknown"]],
+        "retained_provenance": {
+          "op-w": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-w"
+            }
+          ]
+        },
+        "ledger": {
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-w"
+            }
+          ],
+          "blocked_source_hmacs": [],
+          "blocked_content_keys": [
+            "9393939393939393939393939393939393939393939393939393939393939393"
+          ]
+        },
+        "notice_forgotten": ["memory:mem-w"],
+        "notice_derived": []
       }
     }
   ],
@@ -735,10 +1111,26 @@
       "forgetting_generation": "5",
       "recorded_at": "2030-10-24T00:00:00Z",
       "forgotten": [
-        { "source_kind": "memory", "source_id": "mem-tea" },
-        { "source_kind": "memory", "source_id": "mem-tea-summary" },
-        { "source_kind": "turn", "source_id": "t-instr" },
-        { "source_kind": "turn", "source_id": "t-reply" }
+        {
+          "source_kind": "memory",
+          "source_id": "mem-shared"
+        },
+        {
+          "source_kind": "memory",
+          "source_id": "mem-tea"
+        },
+        {
+          "source_kind": "memory",
+          "source_id": "mem-tea-summary"
+        },
+        {
+          "source_kind": "turn",
+          "source_id": "t-instr"
+        },
+        {
+          "source_kind": "turn",
+          "source_id": "t-reply"
+        }
       ],
       "blocked_source_hmacs": [
         "1111111111111111111111111111111111111111111111111111111111111111",
@@ -747,7 +1139,8 @@
       ],
       "blocked_content_keys": [
         "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
-        "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2"
+        "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+        "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
       ]
     },
     "rejections": [
@@ -764,7 +1157,12 @@
         "id": "raw-source-id-in-blocked",
         "title": "元情報の生の ID（HMAC でない文字列）は台帳に書けない",
         "ledger": {
-          "forgotten": [{ "source_kind": "memory", "source_id": "mem-tea" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
           "blocked_source_hmacs": ["mail-a"],
           "blocked_content_keys": []
         },
@@ -774,7 +1172,10 @@
         "id": "raw-source-id-in-forgotten-source-item",
         "ledger": {
           "forgotten": [
-            { "source_kind": "source_item", "source_id_hmac": "mail-a" }
+            {
+              "source_kind": "source_item",
+              "source_id_hmac": "mail-a"
+            }
           ],
           "blocked_source_hmacs": [],
           "blocked_content_keys": []
@@ -784,7 +1185,12 @@
       {
         "id": "uppercase-hmac",
         "ledger": {
-          "forgotten": [{ "source_kind": "memory", "source_id": "mem-tea" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
           "blocked_source_hmacs": [],
           "blocked_content_keys": [
             "D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1"
@@ -796,8 +1202,14 @@
         "id": "duplicate-forgotten",
         "ledger": {
           "forgotten": [
-            { "source_kind": "memory", "source_id": "mem-tea" },
-            { "source_kind": "memory", "source_id": "mem-tea" }
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            },
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
           ],
           "blocked_source_hmacs": [],
           "blocked_content_keys": []
@@ -807,7 +1219,12 @@
       {
         "id": "duplicate-blocked-source",
         "ledger": {
-          "forgotten": [{ "source_kind": "memory", "source_id": "mem-tea" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
           "blocked_source_hmacs": [
             "1111111111111111111111111111111111111111111111111111111111111111",
             "1111111111111111111111111111111111111111111111111111111111111111"
@@ -818,9 +1235,16 @@
       },
       {
         "id": "previous-generation-invalid",
-        "meta_override": { "previous_generation": "-1" },
+        "meta_override": {
+          "previous_generation": "-1"
+        },
         "ledger": {
-          "forgotten": [{ "source_kind": "memory", "source_id": "mem-tea" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
           "blocked_source_hmacs": [],
           "blocked_content_keys": []
         },
@@ -828,9 +1252,16 @@
       },
       {
         "id": "entry-id-empty",
-        "meta_override": { "entry_id": "" },
+        "meta_override": {
+          "entry_id": ""
+        },
         "ledger": {
-          "forgotten": [{ "source_kind": "memory", "source_id": "mem-tea" }],
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-tea"
+            }
+          ],
           "blocked_source_hmacs": [],
           "blocked_content_keys": []
         },
@@ -855,7 +1286,12 @@
       "ledger": [
         {
           "forgetting_generation": "1",
-          "forgotten": [{ "source_kind": "turn", "source_id": "t-old" }],
+          "forgotten": [
+            {
+              "source_kind": "turn",
+              "source_id": "t-old"
+            }
+          ],
           "blocked_source_hmacs": [],
           "blocked_content_keys": []
         },
@@ -880,41 +1316,75 @@
         "id": "unrelated-accepted",
         "title": "世代が進んでいても、由来が忘却と無関係な結果は通す",
         "refs": ["ADR 0040 忘却の関連の判定"],
-        "result": { "started_generation": "0" },
-        "expected": { "action": "accept", "reasons": [] }
+        "result": {
+          "started_generation": "0"
+        },
+        "expected": {
+          "action": "accept",
+          "reasons": []
+        }
       },
       {
         "id": "forgotten-source-same-generation",
         "title": "世代が同じでも、忘れた由来から作った結果は通さない",
         "refs": ["X15", "QA34", "08 §6"],
-        "result": { "sources": ["turn:t-old"], "started_generation": "2" },
-        "expected": { "action": "discard", "reasons": ["source_forgotten"] }
+        "result": {
+          "sources": ["turn:t-old"],
+          "started_generation": "2"
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["source_forgotten"]
+        }
       },
       {
         "id": "forgotten-source-late",
         "title": "要約を依頼した後に由来を忘れた。遅れて返った要約は保存も表示もしない",
         "refs": ["X15", "QA34", "08 §6"],
-        "result": { "sources": ["turn:t-old"], "started_generation": "0" },
-        "expected": { "action": "discard", "reasons": ["source_forgotten"] }
+        "result": {
+          "sources": ["turn:t-old"],
+          "started_generation": "0"
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["source_forgotten"]
+        }
       },
       {
         "id": "blocked-origin-display",
         "title": "再登録を禁じた元メールから作った結果は、表示にも送信にも使わない",
         "refs": ["X15", "QA34"],
-        "result": { "use": "display", "sources": ["source_item:mail-a"] },
-        "expected": { "action": "discard", "reasons": ["source_forgotten"] }
+        "result": {
+          "use": "display",
+          "sources": ["source_item:mail-a"]
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["source_forgotten"]
+        }
       },
       {
         "id": "blocked-origin-send",
-        "result": { "use": "send", "sources": ["source_item:mail-a"] },
-        "expected": { "action": "discard", "reasons": ["source_forgotten"] }
+        "result": {
+          "use": "send",
+          "sources": ["source_item:mail-a"]
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["source_forgotten"]
+        }
       },
       {
         "id": "content-ban-does-not-stop-explicit-or-display",
         "title": "内容の禁止は自動抽出だけを止める。明示の保存・表示は内容の HMAC では止めない",
         "refs": ["X44", "ADR 0008"],
-        "result": { "content_key": null },
-        "expected": { "action": "accept", "reasons": [] }
+        "result": {
+          "content_key": null
+        },
+        "expected": {
+          "action": "accept",
+          "reasons": []
+        }
       },
       {
         "id": "content-ban-stops-auto-extraction",
@@ -922,14 +1392,19 @@
         "result": {
           "content_key": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"
         },
-        "expected": { "action": "discard", "reasons": ["content_forgotten"] }
+        "expected": {
+          "action": "discard",
+          "reasons": ["content_forgotten"]
+        }
       },
       {
         "id": "x59-private-conversation-persist",
         "title": "記録しない会話では、遅れて届いた結果を保存しない",
         "refs": ["X59", "X17"],
         "result": {},
-        "context": { "privateConversation": true },
+        "context": {
+          "privateConversation": true
+        },
         "expected": {
           "action": "discard",
           "reasons": ["private_conversation"]
@@ -939,15 +1414,25 @@
         "id": "x59-private-conversation-display-ok",
         "title": "記録しない会話でも、表示・送信は一時の文脈のまま判定できる（保存だけを止める）",
         "refs": ["X59"],
-        "result": { "use": "display" },
-        "context": { "privateConversation": true },
-        "expected": { "action": "accept", "reasons": [] }
+        "result": {
+          "use": "display"
+        },
+        "context": {
+          "privateConversation": true
+        },
+        "expected": {
+          "action": "accept",
+          "reasons": []
+        }
       },
       {
         "id": "provenance-unknown",
         "title": "由来を引けない結果は、閉じた側に倒して破棄する",
         "refs": ["03 判別が不確かな場合"],
-        "result": { "provenance": "unknown", "sources": [] },
+        "result": {
+          "provenance": "unknown",
+          "sources": []
+        },
         "expected": {
           "action": "discard",
           "reasons": ["provenance_unknown"]
@@ -956,7 +1441,9 @@
       {
         "id": "permission-changed",
         "refs": ["08 §6 権限喪失後の遅着"],
-        "result": { "permission_revision": "6" },
+        "result": {
+          "permission_revision": "6"
+        },
         "expected": {
           "action": "discard",
           "reasons": ["permission_changed"]
@@ -965,15 +1452,24 @@
       {
         "id": "source-expired",
         "refs": ["08 §6 期限切れ後の遅着"],
-        "result": { "sources": ["turn:t-new"] },
-        "context": { "expiredSourceIds": ["t-new"] },
-        "expected": { "action": "discard", "reasons": ["source_expired"] }
+        "result": {
+          "sources": ["turn:t-new"]
+        },
+        "context": {
+          "expiredSourceIds": ["t-new"]
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["source_expired"]
+        }
       },
       {
         "id": "ledger-gap",
         "title": "開始後の世代 1 が台帳にない。忘却済みかを判定できないので破棄する",
         "refs": ["03 バックアップ・復元", "QA34"],
-        "result": { "started_generation": "0" },
+        "result": {
+          "started_generation": "0"
+        },
         "context": {
           "ledger": [
             {
@@ -992,7 +1488,9 @@
       {
         "id": "generation-ahead",
         "title": "開始の世代が今の台帳より大きい（台帳が巻き戻った）",
-        "result": { "started_generation": "3" },
+        "result": {
+          "started_generation": "3"
+        },
         "expected": {
           "action": "discard",
           "reasons": ["generation_ahead"]
@@ -1019,45 +1517,192 @@
             "source_expired"
           ]
         }
+      },
+      {
+        "id": "provenance-unknown-still-checks-known-sources",
+        "title": "由来の全体が分からなくても、判明している由来が忘却済みなら、その理由も出す",
+        "refs": ["X15", "08 §6"],
+        "result": {
+          "provenance": "unknown",
+          "sources": ["turn:t-old"],
+          "started_generation": "2"
+        },
+        "expected": {
+          "action": "discard",
+          "reasons": ["provenance_unknown", "source_forgotten"]
+        }
       }
-    ]
+    ],
+    "malformed_hmac": {
+      "note": "注入された HMAC の関数が、形（64 桁の小文字 16 進）を満たさない値を返す。「台帳と一致しない」と読んで通すと、忘れた由来を見逃す。保存・表示・送信・命令・記憶の保存直前のすべてで拒否する。",
+      "sources": ["source_item:mail-a"],
+      "values": {
+        "raw_id": "mail-a",
+        "uppercase": "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1",
+        "too_short": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+        "too_long": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+        "empty": ""
+      },
+      "expected_reasons": ["source_hmac_malformed"]
+    }
   },
   "ordering": {
     "note": "忘却 F1（関係する）・F2（無関係）と、遅着する結果の開始 S・到着 A のすべての順序（S は A より前の 12 通り）。結果の由来は発言 t-a。F1 は t-a を忘れ、F2 は t-c を忘れる。関係する結果は、到着が F1 より後なら破棄し、前なら保存したあとで F1 の閉包が消す。どの順序でも、忘れた発言から作った結果は残らない。無関係な結果（由来 t-b）は、どの順序でも通り、残る。",
-    "hmacs": {
-      "turn:t-a": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
-      "turn:t-b": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
-      "turn:t-c": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5"
-    },
-    "initial_store": {
-      "edges": [
-        ["session_summary:art-c", "turn:t-c"],
-        ["session_summary:art-keep", "turn:t-b"]
-      ],
-      "surviving_before": ["session_summary:art-c", "session_summary:art-keep"]
-    },
-    "related": {
-      "job_sources": ["turn:t-a"],
-      "expected_by_order": {
-        "S A F1 F2": "accept",
-        "S A F2 F1": "accept",
-        "S F1 A F2": "discard",
-        "S F2 A F1": "accept",
-        "S F1 F2 A": "discard",
-        "S F2 F1 A": "discard",
-        "F1 S A F2": "discard",
-        "F2 S A F1": "accept",
-        "F1 S F2 A": "discard",
-        "F2 S F1 A": "discard",
-        "F1 F2 S A": "discard",
-        "F2 F1 S A": "discard"
+    "scenarios": [
+      {
+        "id": "forget-turn",
+        "title": "発言 t-a を忘れる。結果の由来は t-a",
+        "f1_target": "turn:t-a",
+        "hmacs": {
+          "turn:t-a": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "turn:t-b": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+          "turn:t-c": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5"
+        },
+        "memories": [],
+        "initial_store": {
+          "edges": [
+            ["session_summary:art-c", "turn:t-c"],
+            ["session_summary:art-keep", "turn:t-b"]
+          ],
+          "surviving_before": [
+            "session_summary:art-c",
+            "session_summary:art-keep"
+          ]
+        },
+        "related": {
+          "job_artifact": "session_summary:art-job",
+          "job_sources": ["turn:t-a"],
+          "expected_by_order": {
+            "S A F1 F2": "accept",
+            "S A F2 F1": "accept",
+            "S F1 A F2": "discard",
+            "S F2 A F1": "accept",
+            "S F1 F2 A": "discard",
+            "S F2 F1 A": "discard",
+            "F1 S A F2": "discard",
+            "F2 S A F1": "accept",
+            "F1 S F2 A": "discard",
+            "F2 S F1 A": "discard",
+            "F1 F2 S A": "discard",
+            "F2 F1 S A": "discard"
+          },
+          "final_present": ["session_summary:art-keep"]
+        },
+        "unrelated": {
+          "job_artifact": "session_summary:art-job",
+          "job_sources": ["turn:t-b"],
+          "final_present": [
+            "session_summary:art-keep",
+            "session_summary:art-job"
+          ]
+        }
       },
-      "final_present": ["session_summary:art-keep"]
-    },
-    "unrelated": {
-      "job_sources": ["turn:t-b"],
-      "final_present": ["session_summary:art-keep", "session_summary:art-job"]
-    },
+      {
+        "id": "forget-memory-shared-origin",
+        "title": "記憶 mem-m（元はメール mail-a）を忘れる。結果（気づき）の由来は mail-a で、mem-m と元を共有するだけ。忘却の前に届いても、後に届いても残らない",
+        "f1_target": "memory:mem-m",
+        "hmacs": {
+          "turn:t-a": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "turn:t-b": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+          "turn:t-c": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5",
+          "source_item:mail-a": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "memories": [
+          [
+            "mem-m",
+            "9191919191919191919191919191919191919191919191919191919191919191"
+          ]
+        ],
+        "initial_store": {
+          "edges": [
+            ["memory:mem-m", "source_item:mail-a"],
+            ["session_summary:art-c", "turn:t-c"],
+            ["session_summary:art-keep", "turn:t-b"]
+          ],
+          "surviving_before": [
+            "memory:mem-m",
+            "session_summary:art-c",
+            "session_summary:art-keep"
+          ]
+        },
+        "related": {
+          "job_artifact": "notification_candidate:art-job",
+          "job_sources": ["source_item:mail-a"],
+          "expected_by_order": {
+            "S A F1 F2": "accept",
+            "S A F2 F1": "accept",
+            "S F1 A F2": "discard",
+            "S F2 A F1": "accept",
+            "S F1 F2 A": "discard",
+            "S F2 F1 A": "discard",
+            "F1 S A F2": "discard",
+            "F2 S A F1": "accept",
+            "F1 S F2 A": "discard",
+            "F2 S F1 A": "discard",
+            "F1 F2 S A": "discard",
+            "F2 F1 S A": "discard"
+          },
+          "final_present": ["session_summary:art-keep"]
+        },
+        "unrelated": {
+          "job_artifact": "notification_candidate:art-job",
+          "job_sources": ["turn:t-b"],
+          "final_present": [
+            "session_summary:art-keep",
+            "notification_candidate:art-job"
+          ]
+        }
+      },
+      {
+        "id": "forget-source-item",
+        "title": "メール mail-a を忘れる。結果（気づき）の由来は mail-a",
+        "f1_target": "source_item:mail-a",
+        "hmacs": {
+          "turn:t-a": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "turn:t-b": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+          "turn:t-c": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5",
+          "source_item:mail-a": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "memories": [],
+        "initial_store": {
+          "edges": [
+            ["session_summary:art-c", "turn:t-c"],
+            ["session_summary:art-keep", "turn:t-b"]
+          ],
+          "surviving_before": [
+            "session_summary:art-c",
+            "session_summary:art-keep"
+          ]
+        },
+        "related": {
+          "job_artifact": "notification_candidate:art-job",
+          "job_sources": ["source_item:mail-a"],
+          "expected_by_order": {
+            "S A F1 F2": "accept",
+            "S A F2 F1": "accept",
+            "S F1 A F2": "discard",
+            "S F2 A F1": "accept",
+            "S F1 F2 A": "discard",
+            "S F2 F1 A": "discard",
+            "F1 S A F2": "discard",
+            "F2 S A F1": "accept",
+            "F1 S F2 A": "discard",
+            "F2 S F1 A": "discard",
+            "F1 F2 S A": "discard",
+            "F2 F1 S A": "discard"
+          },
+          "final_present": ["session_summary:art-keep"]
+        },
+        "unrelated": {
+          "job_artifact": "notification_candidate:art-job",
+          "job_sources": ["turn:t-b"],
+          "final_present": [
+            "session_summary:art-keep",
+            "notification_candidate:art-job"
+          ]
+        }
+      }
+    ],
     "final_ledger_generation": "2"
   },
   "scoped_command_guard": {
@@ -1082,19 +1727,34 @@
     "base_ledger": [
       {
         "forgetting_generation": "1",
-        "forgotten": [{ "source_kind": "turn", "source_id": "t-old" }],
+        "forgotten": [
+          {
+            "source_kind": "turn",
+            "source_id": "t-old"
+          }
+        ],
         "blocked_source_hmacs": [],
         "blocked_content_keys": []
       },
       {
         "forgetting_generation": "2",
-        "forgotten": [{ "source_kind": "turn", "source_id": "t-x" }],
+        "forgotten": [
+          {
+            "source_kind": "turn",
+            "source_id": "t-x"
+          }
+        ],
         "blocked_source_hmacs": [],
         "blocked_content_keys": []
       },
       {
         "forgetting_generation": "3",
-        "forgotten": [{ "source_kind": "memory", "source_id": "mem-y" }],
+        "forgotten": [
+          {
+            "source_kind": "memory",
+            "source_id": "mem-y"
+          }
+        ],
         "blocked_source_hmacs": [],
         "blocked_content_keys": []
       }
@@ -1111,8 +1771,14 @@
         "id": "unrelated-forgetting-passes-when-scoped",
         "title": "無関係な忘却（世代 2・3）で世代が進んだだけなら、絞った検査は通す。絞らない従来の検査は拒否する",
         "refs": ["QA34", "ADR 0040 忘却の関連の判定"],
-        "scope": { "provenance": "complete", "sources": ["turn:t-keep"] },
-        "expected_scoped": { "action": "apply", "reasons": [] },
+        "scope": {
+          "provenance": "complete",
+          "sources": ["turn:t-keep"]
+        },
+        "expected_scoped": {
+          "action": "apply",
+          "reasons": []
+        },
         "expected_strict": {
           "action": "reject",
           "reasons": ["forgetting_generation_changed"]
@@ -1121,7 +1787,10 @@
       {
         "id": "related-forgetting-rejects",
         "title": "由来の発言 t-x を世代 2 で忘れた。絞っても拒否する",
-        "scope": { "provenance": "complete", "sources": ["turn:t-x"] },
+        "scope": {
+          "provenance": "complete",
+          "sources": ["turn:t-x"]
+        },
         "expected_scoped": {
           "action": "reject",
           "reasons": ["forgetting_generation_changed"]
@@ -1134,7 +1803,10 @@
       {
         "id": "derived-memory-forgotten-rejects",
         "title": "由来の記憶 mem-y は、忘れた物から作った派生として台帳にある。拒否する",
-        "scope": { "provenance": "complete", "sources": ["memory:mem-y"] },
+        "scope": {
+          "provenance": "complete",
+          "sources": ["memory:mem-y"]
+        },
         "expected_scoped": {
           "action": "reject",
           "reasons": ["forgetting_generation_changed"]
@@ -1164,7 +1836,10 @@
       {
         "id": "unknown-provenance-keeps-strict-rule",
         "title": "由来を把握していない命令は、絞らず従来どおり世代が違えば拒否する",
-        "scope": { "provenance": "unknown", "sources": [] },
+        "scope": {
+          "provenance": "unknown",
+          "sources": []
+        },
         "expected_scoped": {
           "action": "reject",
           "reasons": ["forgetting_generation_changed"]
@@ -1176,27 +1851,51 @@
       },
       {
         "id": "unknown-provenance-same-generation-applies",
-        "scope": { "provenance": "unknown", "sources": [] },
-        "command": { "forgetting_generation": "3" },
-        "expected_scoped": { "action": "apply", "reasons": [] },
-        "expected_strict": { "action": "apply", "reasons": [] }
+        "scope": {
+          "provenance": "unknown",
+          "sources": []
+        },
+        "command": {
+          "forgetting_generation": "3"
+        },
+        "expected_scoped": {
+          "action": "apply",
+          "reasons": []
+        },
+        "expected_strict": {
+          "action": "apply",
+          "reasons": []
+        }
       },
       {
         "id": "same-generation-forgotten-source-rejects",
         "title": "世代が同じでも、忘れた由来から作った命令は絞った検査が拒否する（従来は通っていた）",
-        "scope": { "provenance": "complete", "sources": ["turn:t-old"] },
-        "command": { "forgetting_generation": "3" },
+        "scope": {
+          "provenance": "complete",
+          "sources": ["turn:t-old"]
+        },
+        "command": {
+          "forgetting_generation": "3"
+        },
         "expected_scoped": {
           "action": "reject",
           "reasons": ["forgetting_generation_changed"]
         },
-        "expected_strict": { "action": "apply", "reasons": [] }
+        "expected_strict": {
+          "action": "apply",
+          "reasons": []
+        }
       },
       {
         "id": "command-generation-ahead-rejects",
         "title": "命令の世代が今より大きい（台帳が巻き戻った）。拒否する",
-        "scope": { "provenance": "complete", "sources": ["turn:t-keep"] },
-        "command": { "forgetting_generation": "4" },
+        "scope": {
+          "provenance": "complete",
+          "sources": ["turn:t-keep"]
+        },
+        "command": {
+          "forgetting_generation": "4"
+        },
         "expected_scoped": {
           "action": "reject",
           "reasons": ["forgetting_generation_changed"]
@@ -1209,8 +1908,13 @@
       {
         "id": "other-versions-still-checked",
         "title": "絞っても、状態版・許可版の検査は変わらない",
-        "scope": { "provenance": "complete", "sources": ["turn:t-keep"] },
-        "command": { "permission_revision": "6" },
+        "scope": {
+          "provenance": "complete",
+          "sources": ["turn:t-keep"]
+        },
+        "command": {
+          "permission_revision": "6"
+        },
         "expected_scoped": {
           "action": "reject",
           "reasons": ["permission_changed"]
@@ -1219,7 +1923,90 @@
           "action": "reject",
           "reasons": ["permission_changed", "forgetting_generation_changed"]
         }
+      },
+      {
+        "id": "unknown-provenance-known-forgotten-source-same-generation",
+        "title": "由来の全体が分からなくても、判明している由来が忘却済みなら、世代が同じでも拒否する（従来は通っていた）",
+        "refs": ["X15", "08 §6"],
+        "scope": {
+          "provenance": "unknown",
+          "sources": ["memory:mem-y"]
+        },
+        "command": {
+          "forgetting_generation": "3"
+        },
+        "expected_scoped": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed"]
+        },
+        "expected_strict": {
+          "action": "apply",
+          "reasons": []
+        }
+      },
+      {
+        "id": "external-unknown-provenance-rejects-even-same-generation",
+        "title": "外部へ送る命令の由来が不明なら、世代が同じでも拒否する",
+        "refs": ["X15", "08 §6"],
+        "external": true,
+        "scope": {
+          "provenance": "unknown",
+          "sources": []
+        },
+        "command": {
+          "forgetting_generation": "3"
+        },
+        "expected_scoped": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed", "provenance_unknown"]
+        },
+        "expected_strict": {
+          "action": "apply",
+          "reasons": []
+        }
+      },
+      {
+        "id": "external-unknown-provenance-different-generation",
+        "external": true,
+        "scope": {
+          "provenance": "unknown",
+          "sources": []
+        },
+        "expected_scoped": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed", "provenance_unknown"]
+        },
+        "expected_strict": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed"]
+        }
+      },
+      {
+        "id": "external-complete-provenance-unrelated-applies",
+        "title": "外部へ送る命令でも、由来が分かっていて忘却と無関係なら通す",
+        "external": true,
+        "scope": {
+          "provenance": "complete",
+          "sources": ["turn:t-keep"]
+        },
+        "expected_scoped": {
+          "action": "apply",
+          "reasons": []
+        },
+        "expected_strict": {
+          "action": "reject",
+          "reasons": ["forgetting_generation_changed"]
+        }
       }
-    ]
+    ],
+    "malformed_hmac": {
+      "note": "命令の再検査でも、HMAC の関数が形を満たさない値を返したら拒否する。",
+      "scope_sources": ["source_item:mail-a"],
+      "expected_scoped_reasons": ["source_hmac_malformed"],
+      "expected_command": {
+        "action": "reject",
+        "reasons": ["forgetting_generation_changed"]
+      }
+    }
   }
 }

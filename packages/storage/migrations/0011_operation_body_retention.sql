@@ -3,12 +3,14 @@
 -- 1. 用事の正本を操作のレシートから分ける。sealed_blobs.purpose に task_content を足し、tasks に自分の暗号文の列
 --    （content_blob_id）を持たせ、tasks から operation_versions への外部キーを外す（operation_id の UNIQUE は残す）。
 --    0010 までの用事は暗号文を持たないので NULL のまま移し、Core の起動時のデータ移行が確定 intent を復号して
---    tasks を所有者に暗号化し直す（追加認証データが変わるので SQL では写せない）。移行の済んでいない用事がある間は、
---    その操作の本文の削除と内容版の行の削除を trigger で拒否する（task_content_not_migrated）。
+--    tasks を所有者に暗号化し直す（追加認証データが変わるので SQL では写せない）。sealed_blobs の行は書いた後に
+--    更新せず、INSERT OR REPLACE でも入れ替えない。移行の済んでいない用事がある間は、
+--    その用事の操作だけの本文の削除と内容版の行の削除を trigger で拒否する（task_content_not_migrated）。
 -- 2. operation_versions の本文（確定 intent の暗号文）を消せるようにする。intent_blob_id を NULL にでき、
 --    body_deleted_at と CHECK を足す。trigger は本文を消す更新だけを許し、内容版・hash・作成時刻の更新を拒否する。
 --    本文を消せるのは完了した操作（succeeded・not_executed・cancelled・superseded）だけ。本文の消えた内容版には、
---    承認・試行・送出の手前への遷移を作れない（operation_body_erased）。
+--    承認・試行・送出の手前への遷移を作れない（operation_body_erased）。0010 までに完了した操作の completed_at の
+--    穴を埋める（後述）。
 -- 3. request_entity_operations から operations への外部キーを外す（UNIQUE は残す）。依頼の一度だけの記録は、
 --    操作の 90 日の削除の後も依頼の期限まで残す。
 -- 4. safety_breaker.stop_reason に restored_from_backup を足す（ADR 0047）。
@@ -22,6 +24,23 @@
 -- 入れ直さなければ、COMMIT と適用側の PRAGMA foreign_key_check が拒否する（試験で確かめる）。ALTER TABLE の改名は、
 -- 外部キーの参照先を書き換えるので使わない（0005 の「改名では数え直されない」と同じ理由）。
 PRAGMA defer_foreign_keys = ON;
+
+-- --- 0. 子の外部キーの列の索引（親を作り直す前に作る） ---
+-- 親（sealed_blobs・operation_versions）を消して入れ直すとき、SQLite は子の外部キーを確かめるために子の列を引く。
+-- 子の列に索引がないと、親の 1 行ごとに子を全件走査し、適用の時間が件数の二乗で増える（操作・内容版・承認・
+-- 試行を 6000 件ずつ入れた DB で 22.9 秒。8000 件前後で DB worker の起動の期限 30 秒を超えた）。
+-- 索引は子の表を作り直さないので 0011 の後も残り、90 日の削除と sealed_blobs の削除も同じ索引を使う。
+-- 0001 の UNIQUE が自動で作る索引（turns.text_blob_id・source_items.body_blob_id・memories.text_blob_id・
+-- user_directives.text_blob_id・operation_versions.intent_blob_id・tasks.content_blob_id）はここでは作らない。
+CREATE INDEX connections_account_blob ON connections (account_blob_id);
+CREATE INDEX sessions_summary_blob ON sessions (summary_blob_id);
+CREATE INDEX request_entities_summary_blob ON request_entities (summary_blob_id);
+CREATE INDEX notification_candidates_title_blob ON notification_candidates (title_blob_id);
+CREATE INDEX notification_candidates_excerpt_blob ON notification_candidates (excerpt_blob_id);
+CREATE INDEX memories_target_key_blob ON memories (target_key_blob_id);
+-- operation_versions を参照する子（C の作り直しの前に作る）。
+CREATE INDEX approvals_operation_version ON approvals (operation_id, content_version);
+CREATE INDEX operation_attempts_operation_version ON operation_attempts (operation_id, content_version);
 
 -- --- A. sealed_blobs（purpose に task_content を足す） ---
 CREATE TABLE sealed_blobs_0011_copy AS SELECT * FROM sealed_blobs;
@@ -52,6 +71,28 @@ DROP TABLE sealed_blobs_0011_copy;
 -- 0001 と同じ索引。
 CREATE INDEX sealed_blobs_delete_at ON sealed_blobs (delete_at) WHERE delete_at IS NOT NULL;
 
+-- 書いた暗号文は変えない（本文・宛先・鍵の材料を書き換える経路を作らない）。0001〜0011 のコードに sealed_blobs を
+-- UPDATE する経路はなく、delete_at も予約の INSERT で書く。更新が必要になったら、許す列をこの trigger に足す。
+CREATE TRIGGER sealed_blobs_no_update BEFORE UPDATE ON sealed_blobs
+BEGIN
+  SELECT RAISE(ABORT, 'sealed_blob_immutable');
+END;
+
+-- INSERT OR REPLACE は、既存の行を消してから入れ直すので、BEFORE UPDATE・BEFORE DELETE の trigger をすり抜ける。
+-- 衝突の相手（主キー・持ち主と用途の UNIQUE・鍵と nonce の UNIQUE）をすべて見て、置き換えを止める。
+CREATE TRIGGER sealed_blobs_no_replace BEFORE INSERT ON sealed_blobs
+  WHEN EXISTS (SELECT 1 FROM sealed_blobs WHERE blob_id = NEW.blob_id)
+    OR EXISTS (
+      SELECT 1 FROM sealed_blobs
+       WHERE owner_table = NEW.owner_table AND owner_id = NEW.owner_id
+         AND owner_version = NEW.owner_version AND purpose = NEW.purpose)
+    OR EXISTS (
+      SELECT 1 FROM sealed_blobs
+       WHERE key_id = NEW.key_id AND nonce = NEW.nonce)
+BEGIN
+  SELECT RAISE(ABORT, 'sealed_blob_replace');
+END;
+
 -- --- B. tasks（自分の暗号文を持ち、operation_versions を参照しない） ---
 -- 子の表がないので、0005 の前例どおり作り直して改名する。
 CREATE TABLE tasks_0011 (
@@ -70,6 +111,17 @@ INSERT INTO tasks_0011 (task_id, operation_id, content_version, list_id, status,
   SELECT task_id, operation_id, content_version, list_id, status, created_at, NULL FROM tasks;
 DROP TABLE tasks;
 ALTER TABLE tasks_0011 RENAME TO tasks;
+
+-- 外部キー（operation_versions）を外したので、結び付ける操作と内容版がまだあることを挿入の時点で確かめる。
+-- 0005 の外部キーと同じ保証を trigger で残す（操作を 90 日で消した後も用事は残るが、その用事は 0011 より前に
+-- 作られたものだけで、新しく作る用事は消えた操作を指さない）。
+CREATE TRIGGER tasks_operation_exists BEFORE INSERT ON tasks
+  WHEN NOT EXISTS (
+    SELECT 1 FROM operation_versions
+     WHERE operation_id = NEW.operation_id AND content_version = NEW.content_version)
+BEGIN
+  SELECT RAISE(ABORT, 'task_operation_missing');
+END;
 
 -- 新しい用事は自分の暗号文を持つ（用事の正本を操作の暗号文に置かない）。
 CREATE TRIGGER tasks_content_required BEFORE INSERT ON tasks
@@ -164,7 +216,7 @@ BEGIN
   SELECT RAISE(ABORT, 'operation_body_not_finished');
 END;
 
--- 0010 までの用事の暗号文を移す前は、その用事の正本がこの本文なので消さない（起動時のゲートの DB の最後の保証）。
+-- 0010 までの用事の暗号文を移す前は、その用事の正本がこの本文なので消さない（操作ごとの DB の最後の保証）。
 CREATE TRIGGER operation_versions_body_erase_task BEFORE UPDATE OF intent_blob_id ON operation_versions
   WHEN NEW.intent_blob_id IS NULL AND EXISTS (
     SELECT 1 FROM tasks WHERE operation_id = NEW.operation_id AND content_blob_id IS NULL)
@@ -251,6 +303,14 @@ BEGIN
   SELECT RAISE(ABORT, 'operation_not_finished');
 END;
 
+-- 0010 までは succeeded・cancelled でだけ completed_at を書いていた。not_executed・superseded で終わった操作は
+-- NULL のままで、そのままだと本文が永久に残る（DB worker は起点のない完了を消さない）。0011 の適用の時刻を
+-- 起点として埋める（実際の完了より後になるので、早く消しすぎる側には倒れない）。succeeded・cancelled で NULL の
+-- 行は、0001〜0010 の経路では作られないが、復元などの異常な行も同じ扱いにする。
+UPDATE operations SET completed_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+WHERE state IN ('succeeded', 'not_executed', 'cancelled', 'superseded')
+  AND completed_at IS NULL;
+
 -- --- D. request_entity_operations（operations への外部キーを外す） ---
 -- 0010 の trigger（operations_record_kind_forward）がこの表を名前で読むので、改名ではなく、写して消して同じ名前で
 -- 作り直す（改名は schema 全体の参照を確かめ直すため）。
@@ -289,6 +349,13 @@ END;
 -- 外部キーを外したので、結び付ける操作がまだあることを挿入の時点で確かめる（作る時点の保証は 0001 と同じ）。
 -- 操作を 90 日で消した後も、結び付けの行は依頼の期限まで残る（再作成の抑止）。
 CREATE TRIGGER request_entity_operations_operation_exists BEFORE INSERT ON request_entity_operations
+  WHEN NOT EXISTS (SELECT 1 FROM operations WHERE operation_id = NEW.operation_id)
+BEGIN
+  SELECT RAISE(ABORT, 'request_entity_operation_missing');
+END;
+
+-- 操作を差し替える更新でも、結び付ける操作がまだあることを確かめる（外部キーを外した代わりの保証）。
+CREATE TRIGGER request_entity_operations_operation_exists_update BEFORE UPDATE OF operation_id ON request_entity_operations
   WHEN NOT EXISTS (SELECT 1 FROM operations WHERE operation_id = NEW.operation_id)
 BEGIN
   SELECT RAISE(ABORT, 'request_entity_operation_missing');

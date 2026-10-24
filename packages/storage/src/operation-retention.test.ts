@@ -743,7 +743,7 @@ async function withVersion10(
   });
 }
 
-test('0011 moves a version 10 DB: rows survive, old tasks have no content yet and the J5 jobs stay closed', async () => {
+test('0011 moves a version 10 DB: rows survive, old tasks have no content yet, and only their operations stay', async () => {
   await withVersion10((db) => {
     assert.deepEqual(applyMigrations(db), { from: 10, to: 11, applied: [11] });
     assert.deepEqual(
@@ -805,37 +805,63 @@ test('0011 moves a version 10 DB: rows survive, old tasks have no content yet an
       );
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
-    // 起動時のゲート: 移していない用事がある間は、本文の削除と 90 日の削除をすべて拒否する。
+    // 移していない用事がある操作（op-1）だけを残し、ほかの操作（op-2）の削除は進む。
     assert.deepEqual(value(retention(db, { kind: 'retention.gate' }).result), {
       tasks_pending: 1,
     });
     for (const op of [
       {
         kind: 'retention.erase_body',
-        operation_id: 'op-2',
+        operation_id: 'op-1',
         now: RECEIPT_DUE,
       },
       {
         kind: 'retention.purge_operation',
-        operation_id: 'op-2',
+        operation_id: 'op-1',
         now: RECEIPT_DUE,
-      },
-      {
-        kind: 'retention.erase_due_bodies',
-        now: RECEIPT_DUE,
-        limit: 10,
-        after: null,
-      },
-      {
-        kind: 'retention.purge_due_operations',
-        now: RECEIPT_DUE,
-        limit: 10,
-        after: null,
       },
     ] as const)
       assert.deepEqual(reasons(retention(db, op).result), [
-        'task_content_migration_pending',
+        'task_content_not_migrated',
       ]);
+    assert.deepEqual(
+      value(
+        retention(db, {
+          kind: 'retention.erase_body',
+          operation_id: 'op-2',
+          now: RECEIPT_DUE,
+        }).result,
+      ),
+      { operation_id: 'op-2', erased_versions: 1 },
+    );
+    assert.deepEqual(
+      value(
+        retention(db, {
+          kind: 'retention.purge_operation',
+          operation_id: 'op-2',
+          now: RECEIPT_DUE,
+        }).result,
+      ),
+      { operation_id: 'op-2', purged: true },
+    );
+    // バッチは移せない用事の操作を飛ばして続ける（全体のゲートは置かない）。
+    for (const kind of [
+      'retention.erase_due_bodies',
+      'retention.purge_due_operations',
+    ] as const)
+      assert.deepEqual(
+        value(
+          retention(db, { kind, now: RECEIPT_DUE, limit: 10, after: null })
+            .result,
+        ),
+        {
+          processed: [],
+          skipped: [
+            { operation_id: 'op-1', reasons: ['task_content_not_migrated'] },
+          ],
+          next: null,
+        },
+      );
     // DB の最後の保証: 移していない用事の操作の本文と内容版の行は消せない。
     assert.throws(
       () =>
@@ -1019,6 +1045,145 @@ test('0011: a re-created parent row that is missing is caught, and the migration
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     // 正しい 0011 はその後に適用できる。
     assert.deepEqual(applyMigrations(db), { from: 10, to: 11, applied: [11] });
+  });
+});
+
+test('0011 fills completed_at of finished operations from before 0011 (the body is not kept forever)', async () => {
+  await withTempDir((dir) => {
+    const db = openWriteConnection(join(dir, 'buddy.sqlite'), {
+      platform: 'macos',
+    });
+    try {
+      applyMigrations(db, loadMigrations().slice(0, 10));
+      initStoreGeneration(db, STORE_GENERATION);
+      const insert = db.prepare(
+        "INSERT INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at, completed_at) VALUES (?, NULL, 'mail.labels.change', 'remote_mutation', 1, ?, 5, 1000, ?)",
+      );
+      // 0010 までの not_executed・superseded は NULL。succeeded・cancelled は本来は値を持つが、異常な NULL も同じ扱い。
+      insert.run('op-not-executed', 'not_executed', null);
+      insert.run('op-superseded', 'superseded', null);
+      insert.run('op-succeeded-null', 'succeeded', null);
+      insert.run('op-cancelled-null', 'cancelled', null);
+      insert.run('op-succeeded-value', 'succeeded', 5000);
+      const before = Date.now() - 1000;
+      assert.deepEqual(applyMigrations(db), {
+        from: 10,
+        to: 11,
+        applied: [11],
+      });
+      const after = Date.now() + 1000;
+      const rows = db
+        .prepare(
+          'SELECT operation_id, completed_at FROM operations ORDER BY operation_id',
+        )
+        .all() as { operation_id: string; completed_at: number | null }[];
+      const completed = new Map(
+        rows.map((row) => [row.operation_id, row.completed_at]),
+      );
+      for (const id of [
+        'op-not-executed',
+        'op-superseded',
+        'op-succeeded-null',
+        'op-cancelled-null',
+      ]) {
+        const value = completed.get(id);
+        assert.equal(typeof value, 'number', id);
+        assert.ok(
+          typeof value === 'number' && value >= before && value <= after,
+          `${id}: ${String(value)}`,
+        );
+      }
+      // 既に値のある行は変えない。
+      assert.equal(completed.get('op-succeeded-value'), 5000);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('0011 applies to a version 10 DB with 6000 operations within 10 seconds (child foreign keys are indexed)', async () => {
+  const ROWS = 6000;
+  await withTempDir((dir) => {
+    const db = openWriteConnection(join(dir, 'buddy.sqlite'), {
+      platform: 'macos',
+    });
+    try {
+      applyMigrations(db, loadMigrations().slice(0, 10));
+      initStoreGeneration(db, STORE_GENERATION);
+      const insertOperation = db.prepare(
+        "INSERT INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at, completed_at) VALUES (?, NULL, 'mail.labels.change', 'remote_mutation', 1, 'succeeded', 5, 1000, 2000000)",
+      );
+      const insertBlob = db.prepare(
+        "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'operation_intent', 'operation_versions', ?, 1, 1, 'k-perf', randomblob(12), X'00', X'00000000000000000000000000000000', 1000, NULL)",
+      );
+      const insertVersion = db.prepare(
+        'INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at) VALUES (?, 1, ?, ?, 1000)',
+      );
+      const insertApproval = db.prepare(
+        "INSERT INTO approvals VALUES (?, ?, 1, ?, 'policy_auto', NULL, NULL, 3, 'consumed', 1100)",
+      );
+      const insertAttempt = db.prepare(
+        "INSERT INTO operation_attempts VALUES (?, ?, 1, ?, 'succeeded', 1200, NULL, 'confirmed_success', 1200)",
+      );
+      const insertConnection = db.prepare(
+        "INSERT INTO connections VALUES (?, 'google', ?, NULL, 'active', 'read', '[]', '{}', 0, 0)",
+      );
+      const insertSession = db.prepare(
+        "INSERT INTO sessions VALUES (?, 'normal', NULL, 1, ?, 1000, NULL)",
+      );
+      const insertRequestEntity = db.prepare(
+        "INSERT INTO request_entities VALUES (?, 'acct-perf', ?, ?, 1, 'active', 0, ?, 1000, NULL)",
+      );
+      const insertCandidate = db.prepare(
+        "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES (?, NULL, NULL, NULL, 'schedule_overlap', ?, ?, NULL, 'new', NULL, NULL)",
+      );
+      const insertMemory = db.prepare(
+        "INSERT INTO memories VALUES (?, 'auto_extraction', 'preference', ?, 'b-perf-0000', ?, ?, 'active', 1000, 7776001000, NULL)",
+      );
+      const hash = 'a'.repeat(64);
+      db.transaction(() => {
+        for (let index = 0; index < ROWS; index += 1) {
+          const suffix = String(index).padStart(4, '0');
+          const operation = `op-perf-${suffix}`;
+          const blob = `b-perf-${suffix}`;
+          const approval = `ap-perf-${suffix}`;
+          const attempt = `at-perf-${suffix}`;
+          insertOperation.run(operation);
+          insertBlob.run(blob, operation);
+          insertVersion.run(operation, hash, blob);
+          insertApproval.run(approval, operation, hash);
+          insertAttempt.run(attempt, operation, approval);
+          insertConnection.run(`c-perf-${suffix}`, blob);
+          insertSession.run(`s-perf-${suffix}`, blob);
+          insertRequestEntity.run(
+            `re-perf-${suffix}`,
+            `thread-${suffix}`,
+            `msg-${suffix}`,
+            blob,
+          );
+          insertCandidate.run(`nc-perf-${suffix}`, `key-${suffix}`, blob);
+          insertMemory.run(
+            `m-perf-${suffix}`,
+            blob,
+            'b'.repeat(64),
+            `d-${suffix}`.padEnd(64, '0'),
+          );
+        }
+      })();
+      const started = Date.now();
+      assert.deepEqual(applyMigrations(db), {
+        from: 10,
+        to: 11,
+        applied: [11],
+      });
+      const elapsed = Date.now() - started;
+      // 索引のない 0011 は同じ規模で 22.9 秒かかった。CI の遅い実行機でも通る上限（ADR 0051）。
+      assert.ok(elapsed < 10_000, `0011 took ${elapsed} ms`);
+      assert.equal(count(db, 'SELECT count(*) FROM operations'), ROWS);
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    } finally {
+      db.close();
+    }
   });
 });
 

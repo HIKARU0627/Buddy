@@ -36,6 +36,11 @@ export function taskContentOwner(taskId: string): SealedBlobOwner {
   };
 }
 
+// 孤立したサロゲートを含まないか（UTF-8 へ往復して変わらないか）。ワイヤの TaskOperationIntent は JSON Schema の
+// minLength だけで、Ajv 単体は孤立したサロゲートを通す。しかしワイヤの入力は parseStrictJson（RFC 8785 の正規化の
+// 前）が孤立したサロゲートを拒否し（scripts/contracts.test.mjs「raw JSON refuses lone surrogate value」）、
+// 平文を UTF-8 の暗号文にすると Buffer が U+FFFD に置き換えて内容が変わる。だから task-content も同じ境界
+// （孤立したサロゲートを拒否）に合わせる。
 function wellFormed(value: string): boolean {
   return Buffer.from(value, 'utf8').toString('utf8') === value;
 }

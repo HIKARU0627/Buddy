@@ -418,12 +418,12 @@ async function openStore(
       throw error;
     }
     // 起動時のデータ移行（ADR 0051）: 0010 までの用事の正本を、確定 intent から用事自身の暗号文へ移す。
-    // 移していない用事が残る間は、DB worker が J5 の本文の削除と 90 日の削除を拒否する（起動時のゲート）。
+    // 移していない用事がある操作だけを J5 の本文の削除と 90 日の削除から残し、ほかの操作の削除は進める。
     try {
       const migration = await migrateTaskContents(store, dataKey);
       if (migration.migrated > 0 || migration.pending > 0)
         log(
-          `用事の暗号文の移行: 移した ${migration.migrated} 件、移せなかった ${migration.failed.length} 件、残り ${migration.pending} 件。残りがある間は、終わった操作の本文の削除を止めます。`,
+          `用事の暗号文の移行: 移した ${migration.migrated} 件、移せなかった ${migration.failed.length} 件、残り ${migration.pending} 件。残りの用事がある操作だけが、終わった操作の本文の削除から残ります。`,
         );
     } catch (error) {
       if (error instanceof TaskMigrationError)

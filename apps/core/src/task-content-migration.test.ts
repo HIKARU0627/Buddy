@@ -178,16 +178,34 @@ test('migration re-encrypts the task content under the task, and leaves a task w
     });
     assert.equal(readTask(db, TASK_B).content, null);
     assert.equal(taskBlobs(db, TASK_B), 0);
-    // 移せない用事が残る間は、J5 の削除は止まったまま。
-    const erase = executeRetentionOp(
+    // 移せた用事の OP_A の本文は消せて、移せない用事の OP_B だけが残る（全体のゲートは置かない）。
+    const erased = executeRetentionOp(
       db,
       { kind: 'retention.erase_body', operation_id: OP_A, now: BODY_DUE },
       { platform: 'macos', halted: false },
     ).result;
-    assert.deepEqual(erase, {
+    assert.deepEqual(erased, {
+      ok: true,
+      value: { operation_id: OP_A, erased_versions: 1 },
+    });
+    assert.equal(
+      db
+        .prepare(
+          'SELECT intent_blob_id FROM operation_versions WHERE operation_id = ?',
+        )
+        .pluck()
+        .get(OP_A),
+      null,
+    );
+    const blocked = executeRetentionOp(
+      db,
+      { kind: 'retention.erase_body', operation_id: OP_B, now: BODY_DUE },
+      { platform: 'macos', halted: false },
+    ).result;
+    assert.deepEqual(blocked, {
       ok: false,
       outcome: 'rejected',
-      reasons: ['task_content_migration_pending'],
+      reasons: ['task_content_not_migrated'],
     });
   });
 });

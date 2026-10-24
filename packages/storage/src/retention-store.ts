@@ -5,8 +5,9 @@
 // 途中で止まっても、もう一度呼べば残りから続けられる（消した行は対象から外れ、同じ命令は何度呼んでも同じ結果になる）。
 // - 時刻は呼び出し側が渡す now をそのまま信じる（DB は時計を持たない）。時計の巻き戻しの保留は domain の sweepPlan が
 //   判定するので、B06-06d で必ずその判定を通してから呼ぶ（budget.purge_month と同じ）。
-// - 起動時のゲート: 0010 までの用事の暗号文の移行（Core の起動時のデータ移行）が済んでいない用事が 1 件でもある間は、
-//   本文の削除・90 日の削除をどれも行わない（task_content_migration_pending）。操作ごとの最後の保証は 0011 の trigger。
+// - 0010 までの用事の暗号文の移行（Core の起動時のデータ移行）が済んでいない用事がある操作だけを残し、ほかの操作の
+//   本文の削除・90 日の削除は進める。操作ごとに taskNotMigrated で確かめ、最後の保証は 0011 の trigger
+//   （task_content_not_migrated）。全体のゲートは置かない（1 件の移せない用事で全部の削除を止めない）。
 // - 結果不明（unknown_held）と進行中の操作は対象外。取り消しの補償の操作が完了していない間は 90 日の削除をしない。
 // 結果には ID と件数だけを入れ、本文・SQL・パスを入れない。
 
@@ -99,7 +100,7 @@ export interface TaskStagedBlob extends SealedEnvelope {
 }
 
 export type RetentionOp =
-  // 起動時のゲートの状態（暗号文を移していない用事の件数）。
+  // 暗号文を移していない用事の件数（その用事の操作だけが削除から残る。全体のゲートは置かない）。
   | { readonly kind: 'retention.gate' }
   // 1 つの操作の本文を消す（完了から 7 日）。すべての内容版の確定 intent の暗号文を消し、hash と行は残す。
   | {
@@ -472,11 +473,6 @@ interface OperationRow {
   completed_at: number | null;
 }
 
-function requireGateOpen(db: SqliteDatabase): void {
-  if (tasksPending(db) > 0)
-    throw new RetentionRejection(['task_content_migration_pending']);
-}
-
 // 本文の削除・90 日の削除に共通の前提。消してよければ操作の行を返し、既に消えていれば null。
 function finishedOperation(
   db: SqliteDatabase,
@@ -518,7 +514,6 @@ export function eraseOperationBody(
   operationId: string,
   now: number,
 ): EraseBodyValue {
-  requireGateOpen(db);
   const operation = finishedOperation(db, operationId, now, BODY_TTL_MS);
   if (operation === null) throw new RetentionRejection(['operation_not_found']);
   if (taskNotMigrated(db, operationId))
@@ -555,7 +550,6 @@ export function purgeOperation(
   operationId: string,
   now: number,
 ): PurgeOperationValue {
-  requireGateOpen(db);
   const operation = finishedOperation(db, operationId, now, RECEIPT_TTL_MS);
   if (operation === null) return { operation_id: operationId, purged: false };
   if (taskNotMigrated(db, operationId))
@@ -713,8 +707,6 @@ function runBatch(
   >,
   beforeCommit: (() => void) | undefined,
 ): RetentionBatchValue {
-  if (tasksPending(db) > 0)
-    throw new RetentionRejection(['task_content_migration_pending']);
   const body = op.kind === 'retention.erase_due_bodies';
   const due = dueOperations(
     db,

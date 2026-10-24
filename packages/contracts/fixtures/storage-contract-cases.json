@@ -23,13 +23,15 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           },
           {
             "entry": {
@@ -43,11 +45,11 @@
                   "source_id": "00000000-0000-4000-8000-000000003002"
                 }
               ],
-              "blocked_source_ids": [],
+              "blocked_source_hmacs": [],
               "blocked_content_keys": []
             },
-            "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
-            "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+            "previous_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844",
+            "entry_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1"
           },
           {
             "entry": {
@@ -58,19 +60,21 @@
               "forgotten": [
                 {
                   "source_kind": "source_item",
-                  "source_id": "mail-002"
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
                 }
               ],
-              "blocked_source_ids": ["mail-002"],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
               "blocked_content_keys": []
             },
-            "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
-            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+            "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
           }
         ],
         "head": {
           "forgetting_generation": "3",
-          "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+          "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -114,13 +118,15 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           },
           {
             "entry": {
@@ -131,19 +137,21 @@
               "forgotten": [
                 {
                   "source_kind": "source_item",
-                  "source_id": "mail-002"
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
                 }
               ],
-              "blocked_source_ids": ["mail-002"],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
               "blocked_content_keys": []
             },
-            "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
-            "entry_hash": "c90aea77c09e5302b0b695bdeab58ad3e0c867814b79e558070dfe225434c57d"
+            "previous_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844",
+            "entry_hash": "99d7dd84914cda63e3cb13ae18ad937ba9be4c8112a560be76ecc86d29b1a6db"
           }
         ],
         "head": {
           "forgetting_generation": "3",
-          "entry_hash": "c90aea77c09e5302b0b695bdeab58ad3e0c867814b79e558070dfe225434c57d"
+          "entry_hash": "99d7dd84914cda63e3cb13ae18ad937ba9be4c8112a560be76ecc86d29b1a6db"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -170,13 +178,15 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           },
           {
             "entry": {
@@ -190,11 +200,11 @@
                   "source_id": "00000000-0000-4000-8000-000000003002"
                 }
               ],
-              "blocked_source_ids": [],
+              "blocked_source_hmacs": [],
               "blocked_content_keys": []
             },
             "previous_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "entry_hash": "f178e7066589be383d6f1eff7dece24b8cff537f530f4b8c0c09f3b2bf42d551"
+            "entry_hash": "65d50d09c6f958088e74fb1897ce9b6cb54ebf11cad27cd57b0739f64d69fe9c"
           },
           {
             "entry": {
@@ -205,19 +215,21 @@
               "forgotten": [
                 {
                   "source_kind": "source_item",
-                  "source_id": "mail-002"
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
                 }
               ],
-              "blocked_source_ids": ["mail-002"],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
               "blocked_content_keys": []
             },
-            "previous_hash": "f178e7066589be383d6f1eff7dece24b8cff537f530f4b8c0c09f3b2bf42d551",
-            "entry_hash": "c8e3d32e6c067052e97469253788a3c225ee222143d683bdc844367bea931de3"
+            "previous_hash": "65d50d09c6f958088e74fb1897ce9b6cb54ebf11cad27cd57b0739f64d69fe9c",
+            "entry_hash": "8db9a15c26b83c5c665e0eecc44c9fded4478e9291820863fa2117634441c4e4"
           }
         ],
         "head": {
           "forgetting_generation": "3",
-          "entry_hash": "c8e3d32e6c067052e97469253788a3c225ee222143d683bdc844367bea931de3"
+          "entry_hash": "8db9a15c26b83c5c665e0eecc44c9fded4478e9291820863fa2117634441c4e4"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -244,13 +256,15 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           },
           {
             "entry": {
@@ -264,11 +278,13 @@
                   "source_id": "00000000-0000-4000-8000-000000003002"
                 }
               ],
-              "blocked_source_ids": ["mail-009"],
+              "blocked_source_hmacs": [
+                "d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9"
+              ],
               "blocked_content_keys": []
             },
-            "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
-            "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+            "previous_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844",
+            "entry_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1"
           },
           {
             "entry": {
@@ -279,19 +295,21 @@
               "forgotten": [
                 {
                   "source_kind": "source_item",
-                  "source_id": "mail-002"
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
                 }
               ],
-              "blocked_source_ids": ["mail-002"],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
               "blocked_content_keys": []
             },
-            "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
-            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+            "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
           }
         ],
         "head": {
           "forgetting_generation": "3",
-          "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+          "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -318,13 +336,15 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           },
           {
             "entry": {
@@ -338,11 +358,11 @@
                   "source_id": "00000000-0000-4000-8000-000000003002"
                 }
               ],
-              "blocked_source_ids": [],
+              "blocked_source_hmacs": [],
               "blocked_content_keys": []
             },
-            "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
-            "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+            "previous_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844",
+            "entry_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1"
           },
           {
             "entry": {
@@ -353,19 +373,21 @@
               "forgotten": [
                 {
                   "source_kind": "source_item",
-                  "source_id": "mail-002"
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
                 }
               ],
-              "blocked_source_ids": ["mail-002"],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
               "blocked_content_keys": []
             },
-            "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
-            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+            "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
           }
         ],
         "head": {
           "forgetting_generation": "2",
-          "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+          "entry_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -391,19 +413,21 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ],
               "text": "forgotten sentence"
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -429,19 +453,21 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844",
             "excerpt": "forgotten sentence"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -472,13 +498,15 @@
                     "source_id": "00000000-0000-4000-8000-000000003001"
                   }
                 ],
-                "blocked_source_ids": ["mail-001"],
+                "blocked_source_hmacs": [
+                  "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+                ],
                 "blocked_content_keys": [
                   "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
                 ]
               },
               "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-              "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+              "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
             },
             {
               "entry": {
@@ -492,11 +520,11 @@
                     "source_id": "00000000-0000-4000-8000-000000003002"
                   }
                 ],
-                "blocked_source_ids": [],
+                "blocked_source_hmacs": [],
                 "blocked_content_keys": []
               },
-              "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
-              "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+              "previous_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844",
+              "entry_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1"
             },
             {
               "entry": {
@@ -507,19 +535,21 @@
                 "forgotten": [
                   {
                     "source_kind": "source_item",
-                    "source_id": "mail-002"
+                    "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
                   }
                 ],
-                "blocked_source_ids": ["mail-002"],
+                "blocked_source_hmacs": [
+                  "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                ],
                 "blocked_content_keys": []
               },
-              "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
-              "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+              "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+              "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
             }
           ],
           "head": {
             "forgetting_generation": "3",
-            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
           },
           "written_at": "2026-10-07T21:15:05Z"
         }
@@ -551,11 +581,11 @@
                     "source_id": "00000000-0000-4000-8000-000000003002"
                   }
                 ],
-                "blocked_source_ids": [],
+                "blocked_source_hmacs": [],
                 "blocked_content_keys": []
               },
-              "previous_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f",
-              "entry_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af"
+              "previous_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844",
+              "entry_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1"
             },
             {
               "entry": {
@@ -566,19 +596,21 @@
                 "forgotten": [
                   {
                     "source_kind": "source_item",
-                    "source_id": "mail-002"
+                    "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
                   }
                 ],
-                "blocked_source_ids": ["mail-002"],
+                "blocked_source_hmacs": [
+                  "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                ],
                 "blocked_content_keys": []
               },
-              "previous_hash": "82114dada158d12d1563fcfaa60d080366a41990bf3b72a48c4bb0ee8d1d04af",
-              "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+              "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+              "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
             }
           ],
           "head": {
             "forgetting_generation": "3",
-            "entry_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05"
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
           },
           "written_at": "2026-10-07T21:15:05Z"
         }
@@ -605,18 +637,20 @@
                   "source_id": "合成の秘密を忘れてください"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -642,18 +676,20 @@
                   "source_id": "synthetic search sentence"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -679,27 +715,68 @@
                   "source_id": "turn-10"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
     },
     {
-      "id": "x16-ledger-source-item-id-sentence-rejected",
+      "id": "x16-ledger-turn-id-id-like-sentence-rejected",
       "schema": "ForgetLedgerFile",
       "valid": false,
-      "note": "元情報の ID に文を入れられない。",
+      "note": "許可文字だけの文（Forget.）も、発言の ID（UUID）の型では通らない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "Forget."
+                }
+              ],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-source-item-raw-id-rejected-1",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "元情報の ID の生の値（許可文字だけの文 Forget. を含む）は台帳に書けない。書けるのは HMAC（source_id_hmac）だけ。",
       "value": {
         "schema": "buddy.forget-ledger-file.v1",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
@@ -713,30 +790,32 @@
               "forgotten": [
                 {
                   "source_kind": "source_item",
-                  "source_id": "synthetic search sentence"
+                  "source_id": "Forget."
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
     },
     {
-      "id": "x16-ledger-source-item-id-too-long-rejected",
+      "id": "x16-ledger-source-item-hmac-id-like-sentence-rejected-1",
       "schema": "ForgetLedgerFile",
       "valid": false,
-      "note": "元情報の ID は 256 文字まで。",
+      "note": "source_id_hmac に許可文字だけの文（Forget.）を入れられない。64 桁の小文字 16 進だけ。",
       "value": {
         "schema": "buddy.forget-ledger-file.v1",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
@@ -750,30 +829,32 @@
               "forgotten": [
                 {
                   "source_kind": "source_item",
-                  "source_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "source_id_hmac": "Forget."
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
     },
     {
-      "id": "x16-ledger-blocked-source-id-sentence-rejected",
+      "id": "x16-ledger-blocked-source-hmac-id-like-sentence-rejected-1",
       "schema": "ForgetLedgerFile",
       "valid": false,
-      "note": "再登録を禁じる元の ID の欄に文（検索語）を入れられない。",
+      "note": "blocked_source_hmacs に文（Forget.）を入れられない。",
       "value": {
         "schema": "buddy.forget-ledger-file.v1",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
@@ -790,27 +871,105 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["synthetic search sentence"],
+              "blocked_source_hmacs": ["Forget."],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
     },
     {
-      "id": "x16-ledger-blocked-source-id-japanese-rejected",
+      "id": "x16-ledger-source-item-raw-id-rejected-2",
       "schema": "ForgetLedgerFile",
       "valid": false,
-      "note": "再登録を禁じる元の ID の欄に日本語の文を入れられない。",
+      "note": "元情報の ID の生の値（許可文字だけの文 Stop. を含む）は台帳に書けない。書けるのは HMAC（source_id_hmac）だけ。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "Stop."
+                }
+              ],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-source-item-hmac-id-like-sentence-rejected-2",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "source_id_hmac に許可文字だけの文（Stop.）を入れられない。64 桁の小文字 16 進だけ。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id_hmac": "Stop."
+                }
+              ],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-hmac-id-like-sentence-rejected-2",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "blocked_source_hmacs に文（Stop.）を入れられない。",
       "value": {
         "schema": "buddy.forget-ledger-file.v1",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
@@ -827,27 +986,105 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["合成の秘密を忘れてください"],
+              "blocked_source_hmacs": ["Stop."],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
     },
     {
-      "id": "x16-ledger-blocked-source-id-too-long-rejected",
+      "id": "x16-ledger-source-item-raw-id-rejected-3",
       "schema": "ForgetLedgerFile",
       "valid": false,
-      "note": "再登録を禁じる元の ID は 256 文字まで。",
+      "note": "元情報の ID の生の値（許可文字だけの文 my.password=synthetic を含む）は台帳に書けない。書けるのは HMAC（source_id_hmac）だけ。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id": "my.password=synthetic"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-source-item-hmac-id-like-sentence-rejected-3",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "source_id_hmac に許可文字だけの文（my.password=synthetic）を入れられない。64 桁の小文字 16 進だけ。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id_hmac": "my.password=synthetic"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-hmac-id-like-sentence-rejected-3",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "blocked_source_hmacs に文（my.password=synthetic）を入れられない。",
       "value": {
         "schema": "buddy.forget-ledger-file.v1",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
@@ -864,20 +1101,246 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": [
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              "blocked_source_hmacs": ["my.password=synthetic"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-hmac-sentence-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "再登録を禁じる由来の欄に文（検索語）を入れられない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_hmacs": ["synthetic search sentence"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-hmac-japanese-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "再登録を禁じる由来の欄に日本語の文を入れられない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_hmacs": ["合成の秘密を忘れてください"],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-hmac-63-hex-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "HMAC は 64 桁ちょうど（63 桁は拒否）。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
               ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-hmac-65-hex-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "HMAC は 64 桁ちょうど（65 桁は拒否）。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-blocked-source-hmac-uppercase-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "HMAC は小文字の 16 進だけ。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
+      "id": "x16-ledger-raw-blocked-source-ids-field-rejected",
+      "schema": "ForgetLedgerFile",
+      "valid": false,
+      "note": "旧い blocked_source_ids（生の ID の欄）は台帳にない。",
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "turn",
+                  "source_id": "00000000-0000-4000-8000-000000003001"
+                }
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "blocked_source_ids": ["mail-001"]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -886,7 +1349,7 @@
       "id": "x16-ledger-replica-id-sentence-rejected",
       "schema": "ForgetLedgerReplica",
       "valid": false,
-      "note": "端末への複製でも ID の欄に文を入れられない。",
+      "note": "端末への複製でも、由来の欄に文を入れられない。",
       "value": {
         "schema": "buddy.forget-ledger-replica.v1",
         "device_id": "00000000-0000-4000-8000-000000001101",
@@ -907,61 +1370,65 @@
                     "source_id": "00000000-0000-4000-8000-000000003001"
                   }
                 ],
-                "blocked_source_ids": ["synthetic search sentence"],
+                "blocked_source_hmacs": ["synthetic search sentence"],
                 "blocked_content_keys": [
                   "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
                 ]
               },
               "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-              "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+              "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
             }
           ],
           "head": {
             "forgetting_generation": "1",
-            "entry_hash": "ee7ffc8bbf3eaa825cb1e98774d1131a4786b49989fccb10b43ba1edcbfeb15f"
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
           },
           "written_at": "2026-10-07T21:15:05Z"
         }
       }
     },
     {
-      "id": "x16-ledger-file-boundary-256-char-source-ids",
-      "schema": "ForgetLedgerFile",
-      "valid": true,
-      "note": "元情報の ID・再登録を禁じる元の ID が 256 文字ちょうど（境界の正常例）。",
-      "semantic_errors": [],
+      "id": "x16-ledger-replica-raw-source-id-rejected",
+      "schema": "ForgetLedgerReplica",
+      "valid": false,
+      "note": "端末への複製にも、元情報の ID の生の値は書けない。",
       "value": {
-        "schema": "buddy.forget-ledger-file.v1",
-        "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "entries": [
-          {
-            "entry": {
-              "schema": "buddy.forget-ledger.v1",
-              "entry_id": "00000000-0000-4000-8000-000000002001",
-              "forgetting_generation": "1",
-              "recorded_at": "2026-10-01T09:00:00Z",
-              "forgotten": [
-                {
-                  "source_kind": "source_item",
-                  "source_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                }
-              ],
-              "blocked_source_ids": [
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-              ],
-              "blocked_content_keys": [
-                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
-              ]
-            },
-            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "c893c1bf1847378ef05c0337bd863589359307fbedec854540b117dd58263ac4"
-          }
-        ],
-        "head": {
-          "forgetting_generation": "1",
-          "entry_hash": "c893c1bf1847378ef05c0337bd863589359307fbedec854540b117dd58263ac4"
-        },
-        "written_at": "2026-10-07T21:15:05Z"
+        "schema": "buddy.forget-ledger-replica.v1",
+        "device_id": "00000000-0000-4000-8000-000000001101",
+        "replicated_at": "2026-10-07T21:16:00Z",
+        "ledger": {
+          "schema": "buddy.forget-ledger-file.v1",
+          "ledger_id": "00000000-0000-4000-8000-000000001001",
+          "entries": [
+            {
+              "entry": {
+                "schema": "buddy.forget-ledger.v1",
+                "entry_id": "00000000-0000-4000-8000-000000002001",
+                "forgetting_generation": "1",
+                "recorded_at": "2026-10-01T09:00:00Z",
+                "forgotten": [
+                  {
+                    "source_kind": "source_item",
+                    "source_id": "mail-001"
+                  }
+                ],
+                "blocked_source_hmacs": [
+                  "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+                ],
+                "blocked_content_keys": [
+                  "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+                ]
+              },
+              "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+              "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+            }
+          ],
+          "head": {
+            "forgetting_generation": "1",
+            "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+          },
+          "written_at": "2026-10-07T21:15:05Z"
+        }
       }
     },
     {
@@ -990,18 +1457,20 @@
                   "source_id": "00000000-0000-4000-8000-000000003001"
                 }
               ],
-              "blocked_source_ids": ["mail-001"],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
               "blocked_content_keys": [
                 "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
               ]
             },
             "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-            "entry_hash": "1477acc17047dad0d705819673668d778d6b374b5c7a12946224cb55d2783807"
+            "entry_hash": "1eec1342b44d9475047f64f69dafcb4f9e61fe7cbf22fdfbdb9f6eb6a2a79808"
           }
         ],
         "head": {
           "forgetting_generation": "1",
-          "entry_hash": "1477acc17047dad0d705819673668d778d6b374b5c7a12946224cb55d2783807"
+          "entry_hash": "1eec1342b44d9475047f64f69dafcb4f9e61fe7cbf22fdfbdb9f6eb6a2a79808"
         },
         "written_at": "2026-10-07T21:15:05Z"
       }
@@ -1036,28 +1505,74 @@
                     "source_id": "00000000-0000-4000-8000-000000003001"
                   }
                 ],
-                "blocked_source_ids": ["mail-001"],
+                "blocked_source_hmacs": [
+                  "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+                ],
                 "blocked_content_keys": [
                   "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
                 ]
               },
               "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-              "entry_hash": "1477acc17047dad0d705819673668d778d6b374b5c7a12946224cb55d2783807"
+              "entry_hash": "1eec1342b44d9475047f64f69dafcb4f9e61fe7cbf22fdfbdb9f6eb6a2a79808"
             }
           ],
           "head": {
             "forgetting_generation": "1",
-            "entry_hash": "1477acc17047dad0d705819673668d778d6b374b5c7a12946224cb55d2783807"
+            "entry_hash": "1eec1342b44d9475047f64f69dafcb4f9e61fe7cbf22fdfbdb9f6eb6a2a79808"
           },
           "written_at": "2026-10-07T21:15:05Z"
         }
       }
     },
     {
+      "id": "x16-ledger-file-duplicate-source-item-hmac",
+      "schema": "ForgetLedgerFile",
+      "valid": true,
+      "note": "元情報の HMAC が同じ対象を 2 回含む。",
+      "semantic_errors": ["duplicate_forgotten"],
+      "value": {
+        "schema": "buddy.forget-ledger-file.v1",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002001",
+              "forgetting_generation": "1",
+              "recorded_at": "2026-10-01T09:00:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                },
+                {
+                  "source_kind": "source_item",
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "blocked_content_keys": [
+                "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ]
+            },
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "entry_hash": "f308481a1a202cd2fdbf500442d3804e3c4aa38c25ba4cd67e33c437f94a95c7"
+          }
+        ],
+        "head": {
+          "forgetting_generation": "1",
+          "entry_hash": "f308481a1a202cd2fdbf500442d3804e3c4aa38c25ba4cd67e33c437f94a95c7"
+        },
+        "written_at": "2026-10-07T21:15:05Z"
+      }
+    },
+    {
       "id": "x16-backup-manifest-valid",
       "schema": "BackupManifest",
       "valid": true,
-      "note": "世代 3 の台帳と同じ head を持つ封筒。private は含まず、4 種類のデータを除外し、2 つの鍵を同じ復旧キーで包んでいる。",
+      "note": "世代 3 の台帳と同じ head を持つ封筒。private は含まず、4 種類のデータを除外し、3 つの鍵（本体・DB の暗号文・台帳の HMAC）を同じ復旧キーで包んでいる。",
       "semantic_errors": [],
       "value": {
         "schema": "buddy.backup-manifest.v1",
@@ -1067,7 +1582,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "extended"],
         "excluded_data": [
           "raw_audio",
@@ -1106,6 +1621,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -1163,6 +1691,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -1180,7 +1721,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "private"],
         "excluded_data": [
           "raw_audio",
@@ -1219,6 +1760,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -1236,7 +1790,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["private"],
         "excluded_data": [
           "raw_audio",
@@ -1275,6 +1829,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -1292,7 +1859,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "extended"],
         "excluded_data": ["raw_audio", "oauth_tokens", "api_keys"],
         "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
@@ -1326,6 +1893,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -1343,7 +1923,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "extended"],
         "excluded_data": ["private_conversation", "oauth_tokens", "api_keys"],
         "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
@@ -1377,6 +1957,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -1394,7 +1987,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "extended"],
         "excluded_data": [
           "raw_audio",
@@ -1433,6 +2026,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ],
         "memories": ["body text must not be here"]
@@ -1451,7 +2057,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "extended"],
         "excluded_data": [
           "raw_audio",
@@ -1490,25 +2096,37 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
     },
     {
-      "id": "x16-backup-manifest-genesis-hash-mismatch",
+      "id": "x16-backup-manifest-ledger-hmac-key-wrap-missing-rejected",
       "schema": "BackupManifest",
-      "valid": true,
-      "note": "世代 0 なのに台帳の hash が 0 でない。",
-      "semantic_errors": ["genesis_ledger_hash_mismatch"],
+      "valid": false,
+      "note": "台帳の HMAC の鍵（ledger_hmac_key）を包んでいない封筒では、復元の後に忘却済みの再取り込みを阻止できない。",
       "value": {
         "schema": "buddy.backup-manifest.v1",
         "backup_id": "00000000-0000-4000-8000-000000004001",
         "created_at": "2026-10-08T03:00:00Z",
         "store_generation": "00000000-0000-4000-8000-000000005001",
         "db_schema_version": 7,
-        "forgetting_generation": "0",
+        "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "extended"],
         "excluded_data": [
           "raw_audio",
@@ -1547,6 +2165,89 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v2",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "x16-backup-manifest-genesis-hash-mismatch",
+      "schema": "BackupManifest",
+      "valid": true,
+      "note": "世代 0 なのに台帳の hash が 0 でない。",
+      "semantic_errors": ["genesis_ledger_hash_mismatch"],
+      "value": {
+        "schema": "buddy.backup-manifest.v1",
+        "backup_id": "00000000-0000-4000-8000-000000004001",
+        "created_at": "2026-10-08T03:00:00Z",
+        "store_generation": "00000000-0000-4000-8000-000000005001",
+        "db_schema_version": 7,
+        "forgetting_generation": "0",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
+        "included_storage_modes": ["normal", "extended"],
+        "excluded_data": [
+          "raw_audio",
+          "private_conversation",
+          "oauth_tokens",
+          "api_keys"
+        ],
+        "excluded_tables": ["source_items", "sync_staging", "event_outbox"],
+        "payload": {
+          "bytes": 1048576,
+          "sha256": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+        },
+        "key_wraps": [
+          {
+            "purpose": "backup_file",
+            "key_id": "backup-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "BBBBBBBBBBBBBBBB",
+            "wrapped_material": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "tag": "BBBBBBBBBBBBBBBBBBBBBB=="
+          },
+          {
+            "purpose": "data_key",
+            "key_id": "data-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "CCCCCCCCCCCCCCCC",
+            "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -1565,7 +2266,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "extended"],
         "excluded_data": [
           "raw_audio",
@@ -1604,6 +2305,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -1612,7 +2326,7 @@
       "id": "x16-backup-manifest-two-recovery-keys",
       "schema": "BackupManifest",
       "valid": true,
-      "note": "2 つの鍵を別の復旧キーで包んでいる。",
+      "note": "3 つの鍵を別の復旧キーで包んでいる。",
       "semantic_errors": ["recovery_key_mismatch"],
       "value": {
         "schema": "buddy.backup-manifest.v1",
@@ -1622,7 +2336,7 @@
         "db_schema_version": 7,
         "forgetting_generation": "3",
         "ledger_id": "00000000-0000-4000-8000-000000001001",
-        "ledger_head_hash": "7df107c667bb32bbfc8c1dd61ff5bfb8e1ae6736e74f44937ee57bbb64f5bf05",
+        "ledger_head_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
         "included_storage_modes": ["normal", "extended"],
         "excluded_data": [
           "raw_audio",
@@ -1652,7 +2366,7 @@
           {
             "purpose": "data_key",
             "key_id": "data-key-v1",
-            "recovery_key_id": "00000000-0000-4000-8000-000000006002",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006001",
             "kdf": {
               "algorithm": "hkdf-sha256",
               "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
@@ -1661,6 +2375,19 @@
             "nonce": "CCCCCCCCCCCCCCCC",
             "wrapped_material": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
             "tag": "CCCCCCCCCCCCCCCCCCCCCC=="
+          },
+          {
+            "purpose": "ledger_hmac_key",
+            "key_id": "ledger-hmac-key-v1",
+            "recovery_key_id": "00000000-0000-4000-8000-000000006002",
+            "kdf": {
+              "algorithm": "hkdf-sha256",
+              "salt": "AAAAAAAAAAAAAAAAAAAAAA=="
+            },
+            "cipher": "aes-256-gcm",
+            "nonce": "DDDDDDDDDDDDDDDD",
+            "wrapped_material": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+            "tag": "DDDDDDDDDDDDDDDDDDDDDD=="
           }
         ]
       }
@@ -3397,6 +4124,582 @@
         "warnings": ["sync_folder_detected"],
         "sync_provider_hint": null
       }
+    },
+    {
+      "id": "x16-restored-operation-awaiting-approval-quarantined",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "復元の後も残る未完了の外部変更（awaiting_approval）は、印を付けて隔離する。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-unknown-held-quarantined",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "復元の後も残る未完了の外部変更（unknown_held）は、印を付けて隔離する。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "unknown_held",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-not-executed-quarantined",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "復元の後も残る未完了の外部変更（not_executed）は、印を付けて隔離する。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "not_executed",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-succeeded-unmarked",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "終端（成功）は再実行に届かないので印を付けない。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "succeeded",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-cancelled-unmarked",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "終端（取消）は印を付けない。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "cancelled",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-local-command-unmarked",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "LocalCommand の効果は DB と一緒に戻るので隔離しない。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "local_command",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-not-executed-unmarked",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "not_executed は再試行・内容の更新から再実行へ届くので、印がないものは拒否する（Codex の再現の漏れ）。",
+      "semantic_errors": ["not_quarantined"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "not_executed",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-awaiting-unmarked",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "承認待ちも、印がないものは拒否する。",
+      "semantic_errors": ["not_quarantined"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-unknown-held-unmarked",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "結果不明も、印がないものは拒否する。",
+      "semantic_errors": ["not_quarantined"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "unknown_held",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-approved-not-held",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "進行中の状態（approved）のまま復元してはならない。unknown_held にする。",
+      "semantic_errors": ["in_flight_not_held"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "approved",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-preparing-not-held",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "進行中の状態（preparing）のまま復元してはならない。unknown_held にする。",
+      "semantic_errors": ["in_flight_not_held"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "preparing",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-dispatching-not-held",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "進行中の状態（dispatching）のまま復元してはならない。unknown_held にする。",
+      "semantic_errors": ["in_flight_not_held"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "dispatching",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-reconciling-not-held",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "進行中の状態（reconciling）のまま復元してはならない。unknown_held にする。",
+      "semantic_errors": ["in_flight_not_held"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "reconciling",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-succeeded-marked",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "終端の操作に印を付けない。",
+      "semantic_errors": ["terminal_quarantined"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "succeeded",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-local-command-marked",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "LocalCommand に印を付けない。",
+      "semantic_errors": ["local_command_quarantined"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "local_command",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      }
+    },
+    {
+      "id": "x16-restored-operation-valid-approval-remains",
+      "schema": "RestoredOperation",
+      "valid": true,
+      "note": "隔離した操作に有効な承認が残っている。",
+      "semantic_errors": ["approval_not_revoked"],
+      "value": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "not_executed",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 1
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "x16-restore-scenario-not-executed-retry-then-restore",
+      "note": "Codex の再現: not_executed の時点でバックアップ → バックアップの後に再試行して外部変更が成功 → 復元すると not_executed に戻る。内容の更新 → 承認 → 試行の作成の順に進めても、印があるので承認・準備・試行は拒否される（内容の更新だけは外に出ないので通る）。",
+      "initial": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "not_executed",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      },
+      "initial_semantic_errors": [],
+      "steps": [
+        {
+          "event": "revise_content",
+          "expect": {
+            "result": "allowed",
+            "reason": null
+          }
+        },
+        {
+          "event": "create_approval",
+          "expect": {
+            "result": "rejected",
+            "reason": "restore_unverified"
+          }
+        },
+        {
+          "event": "enter_approved",
+          "expect": {
+            "result": "rejected",
+            "reason": "restore_unverified"
+          }
+        },
+        {
+          "event": "enter_preparing",
+          "expect": {
+            "result": "rejected",
+            "reason": "restore_unverified"
+          }
+        },
+        {
+          "event": "create_attempt",
+          "expect": {
+            "result": "rejected",
+            "reason": "restore_unverified"
+          }
+        }
+      ]
+    },
+    {
+      "id": "x16-restore-scenario-unmarked-not-executed-passes-guard",
+      "note": "対照: 印のない not_executed（上の漏れ）は、承認も試行もそのまま通ってしまう。だから not_quarantined を拒否する。",
+      "initial": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "not_executed",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0
+      },
+      "initial_semantic_errors": ["not_quarantined"],
+      "steps": [
+        {
+          "event": "revise_content",
+          "expect": {
+            "result": "allowed",
+            "reason": null
+          }
+        },
+        {
+          "event": "create_approval",
+          "expect": {
+            "result": "allowed",
+            "reason": null
+          }
+        },
+        {
+          "event": "create_attempt",
+          "expect": {
+            "result": "allowed",
+            "reason": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "x16-restore-scenario-awaiting-approval-quarantined",
+      "note": "バックアップの後に承認・実行されたかもしれない承認待ちも、新しい承認を作れない。",
+      "initial": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "awaiting_approval",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      },
+      "initial_semantic_errors": [],
+      "steps": [
+        {
+          "event": "create_approval",
+          "expect": {
+            "result": "rejected",
+            "reason": "restore_unverified"
+          }
+        },
+        {
+          "event": "enter_approved",
+          "expect": {
+            "result": "rejected",
+            "reason": "restore_unverified"
+          }
+        }
+      ]
+    },
+    {
+      "id": "x16-restore-scenario-unknown-held-quarantined",
+      "note": "結果不明の操作は、新しい承認・試行を作れない。",
+      "initial": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "unknown_held",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      },
+      "initial_semantic_errors": [],
+      "steps": [
+        {
+          "event": "create_approval",
+          "expect": {
+            "result": "rejected",
+            "reason": "restore_unverified"
+          }
+        },
+        {
+          "event": "create_attempt",
+          "expect": {
+            "result": "rejected",
+            "reason": "restore_unverified"
+          }
+        }
+      ]
+    },
+    {
+      "id": "x16-restore-scenario-reconcile-holds-unless-positive-evidence",
+      "note": "照合で隔離を解除（結果を取り込む）できるのは、目印つきの作成物が一つ見つかり、目印の内容版が復元した内容版と同じで、内容も照合できたときだけ。見つからない・複数・読めない・照合の手段がない・別の内容版・内容を照合できない、は保留。「見つからない」は、検索が完全でも未実行の証拠にしない（遅れて適用され得る）。",
+      "initial": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "not_executed",
+        "content_version": "1",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      },
+      "initial_semantic_errors": [],
+      "steps": [
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "not_found",
+            "marker_content_version": null,
+            "content_matches": null
+          },
+          "expect": {
+            "result": "hold",
+            "reason": "not_found_may_apply_late"
+          }
+        },
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "multiple",
+            "marker_content_version": null,
+            "content_matches": null
+          },
+          "expect": {
+            "result": "hold",
+            "reason": "multiple_matches"
+          }
+        },
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "unreadable",
+            "marker_content_version": null,
+            "content_matches": null
+          },
+          "expect": {
+            "result": "hold",
+            "reason": "lookup_unreadable"
+          }
+        },
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "unsupported",
+            "marker_content_version": null,
+            "content_matches": null
+          },
+          "expect": {
+            "result": "hold",
+            "reason": "lookup_unsupported"
+          }
+        },
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "found",
+            "marker_content_version": "2",
+            "content_matches": true
+          },
+          "expect": {
+            "result": "hold",
+            "reason": "content_version_mismatch"
+          }
+        },
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "found",
+            "marker_content_version": "1",
+            "content_matches": false
+          },
+          "expect": {
+            "result": "hold",
+            "reason": "content_unverified"
+          }
+        },
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "found",
+            "marker_content_version": "1",
+            "content_matches": null
+          },
+          "expect": {
+            "result": "hold",
+            "reason": "content_unverified"
+          }
+        },
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "found",
+            "marker_content_version": "1",
+            "content_matches": true
+          },
+          "expect": {
+            "result": "import_result",
+            "reason": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "x16-restore-scenario-owner-resolve",
+      "note": "本人が手で決着させれば隔離を解除できる（実行済みとして取り込む・元サービスで確かめて未実行とする・取消）。",
+      "initial": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "unknown_held",
+        "content_version": "3",
+        "restore_unverified_at": "2026-10-09T01:05:00Z",
+        "valid_approval_count": 0
+      },
+      "initial_semantic_errors": [],
+      "steps": [
+        {
+          "event": "owner_resolve",
+          "expect": {
+            "result": "released",
+            "reason": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "x16-restore-scenario-owner-resolve-without-mark",
+      "note": "印のない操作は、本人の決着の対象ではない（決着は印のある操作だけ）。",
+      "initial": {
+        "schema": "buddy.restored-operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000007101",
+        "effect_route": "remote_mutation",
+        "state": "succeeded",
+        "content_version": "1",
+        "restore_unverified_at": null,
+        "valid_approval_count": 0
+      },
+      "initial_semantic_errors": [],
+      "steps": [
+        {
+          "event": "owner_resolve",
+          "expect": {
+            "result": "rejected",
+            "reason": "not_quarantined"
+          }
+        },
+        {
+          "event": "reconcile",
+          "observation": {
+            "kind": "found",
+            "marker_content_version": "1",
+            "content_matches": true
+          },
+          "expect": {
+            "result": "rejected",
+            "reason": "not_quarantined"
+          }
+        }
+      ]
     }
   ]
 }

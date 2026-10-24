@@ -5,6 +5,7 @@ import SwaggerParser from '@apidevtools/swagger-parser';
 import {
   loadContracts,
   parseStrictJson,
+  restoreGuard,
   root,
   semanticErrors,
 } from './contract-tools.mjs';
@@ -110,6 +111,27 @@ for (const entry of storageCases.cases) {
     );
   else assert.equal(entry.semantic_errors, undefined, entry.id);
 }
+// 復元後の隔離のシナリオ（Codex の再確認 P1。ADR 0040）。初期の記録は形と意味検査を通し（意図的に漏れを含む対照は
+// initial_semantic_errors に手書きの理由を持つ）、各手順の結果は手書きの期待値と restoreGuard の出力を照合する。
+for (const entry of storageCases.scenarios) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  assert(
+    validators['RestoredOperation'](entry.initial),
+    `${entry.id}: ${JSON.stringify(validators['RestoredOperation'].errors)}`,
+  );
+  assert.deepEqual(
+    semanticErrors('RestoredOperation', entry.initial),
+    entry.initial_semantic_errors,
+    entry.id,
+  );
+  for (const [index, step] of entry.steps.entries())
+    assert.deepEqual(
+      restoreGuard(entry.initial, step),
+      step.expect,
+      `${entry.id} step ${index + 1} ${step.event}`,
+    );
+}
 const plan = parseStrictJson(
   await readFile(
     new URL('packages/contracts/model-evaluation.json', root),
@@ -127,5 +149,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

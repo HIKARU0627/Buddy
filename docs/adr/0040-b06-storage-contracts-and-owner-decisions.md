@@ -42,8 +42,14 @@
 - **版**: `schema` が `buddy.forget-ledger-file.v1`。DB の `forget_ledger`（0001）とは別に、本文なしで持つ。
 - **連続した世代**: `entries` は世代 1 から欠番なく 1 つずつ。先頭を削らず、追記だけ（DB の表の trigger と同じ）。`head` は最新の世代と `entry_hash`（空なら世代 0 と 64 個の 0）。
 - **本文なし**: 1 件の中身は既存の `ForgetLedgerEntry`（忘れた対象の ID・再登録を禁じる元の ID・内容の HMAC だけ）。Schema は追加の項目を拒否する。
-- **ID の欄は ID の型に限る**（Codex P1）: 追加の項目を拒否するだけでは、ID の欄に文（忘れたい内容・検索語）を入れられた。`MemorySourceRef` を、発言（`turn`）と別の記憶（`memory`）は Buddy 内の ID（`Id`＝UUID v4）、元情報（`source_item`）は新しい `OriginalSourceId`（英数字と `. _ : = + ~ -` だけ・1〜256 文字）に限り、`ForgetLedgerEntry.blocked_source_ids` の各要素と `RetentionNoticeItem.item_id` も `OriginalSourceId` にした。台帳のファイル・複製が参照する ID の欄はこれで全部（`entry_id`・`ledger_id`・`device_id` は `Id`）。256 文字は、Outlook（Graph）のメッセージ ID が 150 文字を超える長さになり得ることを見込んだ上限で、実際の長さは B08・B09 の実測で確かめる（原本に決めなし）。
-  - **影響の範囲**: 契約の fixture（`schema-cases.json`）の `MemoryCandidate`・`MemoryRecord`・台帳の例は、発言・記憶の ID が UUID、元情報の ID が `mail-001` などで、変更なしで通る。`memory-cases.json` の `turn-10`・`memory-1` は domain の関数（`memory.ts`。ID を文字列として扱う）だけが読み、Schema では検査しないので影響しない（Core が台帳・記憶へ書くときは UUID を使う）。`MemoryCandidateWire.source_turn_ids`（モデルの出力の 1 欄。`turn-1` を使う試験がある）はこの変更の対象外で、Core が検証して `MemoryCandidate` の `Id` へ変える段階で拒否する。生成型は `MemorySourceRef` が 2 つの形の和になる（利用側は `apps`・`packages` になかった）。
+- **元情報の ID の生の値は台帳に書かない（用途別の HMAC）**（Codex P1。再確認で方針を変えた）: 文字種と長さの制限（正規表現）では、文と ID を区別できない（`Forget.`・`my.password=synthetic` は許可文字だけで通る）。そこで台帳（`ForgetLedgerEntry`。ファイル・複製・DB の表に共通）は、元情報（`source_item`）の ID を生の値で持たず、台帳用の鍵による用途別の HMAC-SHA256（64 桁の小文字 16 進。`LedgerSourceRef` の `source_id_hmac`、再登録を禁じる由来の `blocked_source_hmacs`）だけを書く。発言（`turn`）と記憶（`memory`）は Buddy 内の UUID（`Id`）のまま。旧い `blocked_source_ids` は `blocked_source_hmacs` に改名した。
+  - **HMAC の入力**: `HMAC-SHA256(ledger_source_key, "buddy/ledger/source-id/v1" ‖ 0x00 ‖ source_kind ‖ 0x00 ‖ source_id)` の小文字 16 進。用途の名前と種類を入れるので、ほかの用途の HMAC（記憶の内容の `dedupe_key`）と混ざらない。
+  - **再取り込みの阻止**: 届いた元情報の ID を、Core が同じ HMAC に通して台帳の HMAC と等しいかを照合する。domain の `memoryAdmission` は、Core が候補の由来と台帳の項目を同じ HMAC に通した文字列を渡せば、今の比較（等しい文字列）のまま動く（名前の合わせ直しは B06-03）。DB の `forget_ledger_items.item_id` も `source_item`・`blocked_source` では HMAC を入れる（B06-06）。
+  - **鍵**: `ledger_hmac_key`（256 ビットの乱数）。設定のとき CLI のプロセスが作って KeyStore に置き、復旧キーで包む（封筒の `key_wraps` の 3 つ目）。**データ鍵から導かない**: データ鍵を入れ替える（`data-key-v2`。ADR 0017）と、旧い台帳の HMAC を照合できなくなり、忘れた元情報の再取り込みを止められなくなるため。用途別の鍵は HKDF-SHA256(`ledger_hmac_key`, info = 用途の名前) で導く（元情報の ID は `buddy/ledger/source-id/v1`、記憶の内容の `dedupe_key`・`blocked_content_keys` は `buddy/memory/dedupe/v1`）。後者の鍵管理は ADR 0008 が B06・B10 に残した点で、復元の後も阻止を続けるため同じ鍵から導くことにした。
+  - **復元・端末交代**: 復元は封筒の `ledger_hmac_key` の包みを復旧キーで開いて KeyStore に戻すので、復元した Core は同じ HMAC を計算できる（照合を続けられる）。端末は鍵を持たず、台帳の複製を世代・hash の比較にだけ使う（元情報の照合は Core）。端末を交代しても中枢の鍵は変わらない。鍵の包みを開けない（復旧キーがない）ときは、HMAC を照合できず再取り込みの阻止が効かないので、`latest_ledger_unconfirmed` と同じく記憶・会話を戻さない（B06-05）。
+  - **生の値を書かせない境界**: Schema の検査は 64 桁の 16 進かどうかだけで、HMAC であることは保証しない（32 バイト以下の文を 16 進にしたものは通る）。保証する境界は Core にある。台帳へ書くのは忘却の transaction だけで、その入力は Core が**自分の DB の行**（`source_items`・`memory_sources`・`turns`・`memories`。信頼できる元情報から取り込んだ ID）から解決した対象と、Core が計算した HMAC だけ。本人の発言・LLM の出力・クライアントの要求の文字列を台帳の欄へ直接渡す関数・経路を作らない（台帳の 1 件を組み立てる関数は、解決済みの対象と HMAC だけを受ける。B06-03）。クライアントの忘却の要求は記憶の UUID だけで、検索語は解決のためだけに使う（U41）。
+  - **生の ID が残る場所**: `memory_sources`（0001。由来の系譜）と知らせ（`RetentionNoticeItem.item_id`。一時で保存しない）は元情報の生の ID を持つ。どちらも Core が自分の DB の行から作る。`OriginalSourceId`（英数字と `. _ : = + ~ -` だけ・1〜256 文字）は形の最低限の検査で、文と ID を区別する保証ではない（256 文字は Outlook の ID の長さを見込んだ上限で、B08・B09 の実測で確かめる）。台帳・複製・バックアップの封筒には生の値が出ない。
+  - **影響の範囲**: 契約の fixture（`schema-cases.json`）の `ForgetLedgerEntry` の例を新しい項目へ直した（`MemoryCandidate`・`MemoryRecord` の例は発言・記憶の ID が UUID、元情報の ID が `mail-001` などで変更なし）。`memory-cases.json` の `turn-10`・`memory-1` は domain の関数（ID を不透明な文字列として扱う）だけが読み、Schema では検査しない（Core が台帳・記憶へ書くときは UUID を使う）。`MemoryCandidateWire.source_turn_ids`（モデルの出力の 1 欄。`turn-1` を使う試験がある）は対象外で、Core が検証して `Id` へ変える段階で拒否する。生成型は `MemorySourceRef`・`LedgerSourceRef` が 2 つの形の和になる（利用側は `apps`・`packages` になかった）。
 - **hash の連鎖**: `entry_hash` は `{entry, previous_hash}` を RFC 8785（JCS）で正規化した UTF-8 に SHA-256 を掛けた小文字 16 進。最初の世代の `previous_hash` は 64 個の 0。内容の hash（ADR 0003・0019）と同じ正規化・同じ関数を使う。
 - **系譜**: `ledger_id` は台帳の系譜で、復元しても変わらない。バックアップの `ledger_id` と今の台帳が違えば別の系譜として拒否する（`ledger_lineage_mismatch`）。新しく作った中枢は新しい `ledger_id`。
 - **端末への複製**（`ForgetLedgerReplica`）: 世代 1 から head までの全体だけを持つ。部分の複製は表せず、欠けた複製は意味検査に通らない（domain の `LedgerCopy.complete` は、この検査に通ったかどうか）。端末は複製を忘却の判定に使えるだけで、台帳の正本ではない（正本は中枢）。複製の頻度・取得の経路は後の工程（U40。OpenAPI に足す案）。
@@ -58,7 +64,7 @@
 - **除外した表**: 4 つのデータは表ではない（生音声は保存しない、記録しない会話は保存しない、OAuth・API キーは KeyStore）。表の除外は短命の運用データの案（`source_items`・`sync_staging`・`event_outbox` など）だが、一覧は原本に決めなし（B06-05 で決める）。忘却台帳の 2 つの表（`forget_ledger`・`forget_ledger_items`）は除外できない（`required_table_excluded`）。
 - **store_generation**: 取った時点の DB の世代。復元では新しい値にする（ADR 0016 の `initStoreGeneration` は既存の値を書き換えないので、B06 は別に更新する関数を作る）。
 - **台帳の hash**: `forgetting_generation` が 0 のときだけ `ledger_head_hash` は 64 個の 0（`genesis_ledger_hash_mismatch`）。
-- **2 つの鍵を同じ復旧キーで包む**: `backup_file`（バックアップ本体の鍵）と `data_key`（DB の暗号文の鍵。ADR 0017 の `data-key-v1`）。どちらかが欠けた封筒は拒否する。KeyStore は同じ中枢にあり、中枢の機器を失うとデータ鍵も失うので、バックアップだけでは暗号文が読めない。復旧キーで包んだ鍵が封筒にあることで、実機を失った後の復元ができる（B15 の実機の確認）。別々の復旧キーで包んだ封筒は拒否する（`recovery_key_mismatch`）。**包みは設定のときに CLI のプロセスが 1 度だけ作り**（Core は復旧キーを知らないので毎回は包めない）、毎回の封筒には同じ包みを写す。毎回の暗号化は、設定のときに作ったバックアップ本体の鍵（KeyStore に置く）と `backup_id` から導いた鍵で行う。データ鍵を入れ替えたとき（`data-key-v2`。ADR 0017）は、CLI で包み直す。
+- **3 つの鍵を同じ復旧キーで包む**: `backup_file`（バックアップ本体の鍵）・`data_key`（DB の暗号文の鍵。ADR 0017 の `data-key-v1`）・`ledger_hmac_key`（台帳・記憶の用途別の HMAC の鍵。上の「元情報の ID の生の値は台帳に書かない」）。どれかが欠けた封筒は拒否する。KeyStore は同じ中枢にあり、中枢の機器を失うとデータ鍵も失うので、バックアップだけでは暗号文が読めない。復旧キーで包んだ鍵が封筒にあることで、実機を失った後の復元ができる（B15 の実機の確認）。別々の復旧キーで包んだ封筒は拒否する（`recovery_key_mismatch`）。**包みは設定のときに CLI のプロセスが 1 度だけ作り**（Core は復旧キーを知らないので毎回は包めない）、毎回の封筒には同じ包みを写す。毎回の暗号化は、設定のときに作ったバックアップ本体の鍵（KeyStore に置く）と `backup_id` から導いた鍵で行う。データ鍵を入れ替えたとき（`data-key-v2`。ADR 0017）は、CLI で包み直す。
 
 ### 復元の結果（`RestoreResult`・`RestoreStageResult`・`RestoreAftermath`・`RestoreRejectionReason`）
 
@@ -76,11 +82,30 @@
 - **結果の 3 種類**: `restored`（全段階が成功。外部の照合は `pending` でもよい）、`settings_only`（台帳の確認で止まったときに、非機密の設定だけを戻す。03 の「新規開始または安全に分離できる非機密設定の復元だけ」）、`rejected`（何も戻さない）。`settings_only` が台帳の確認以外の失敗で出ることはない（`settings_only_without_ledger_stop`）。「非機密の設定」の範囲は原本に決めなし（B06-05 で決める。決めるまでは `settings_only` を選ばず `rejected` にする）。
 - **止まった後の整合**: 失敗は 1 つだけで、それより前は `passed`、後は `not_run`。失敗には理由が必要で、失敗していない段階に理由は付かない。`restored` と `after_restore`（復元後の状態）は対になる。
 - **作業は別の場所で行い、最後に差し替える**（案）: 段階 2〜5 は取り出した別の DB に対して行い、段階 5 まで成功してから現在の DB と差し替える。途中で止まれば今の DB に何も起きない。差し替えは 1 回で、`store_generation` を新しい値にする。
-- **J3 の反映**（`RestoreAftermath`）: 新しい DB の世代・適用した台帳の世代・期限切れで消した件数・忘却を適用した件数・失効した承認の件数・結果不明として保留した操作の件数（`operations_held_count`）・バックアップの後に実行された可能性があるとして隔離した操作の件数（`operations_unverified_count`。保留した件数を含む総数で、保留の件数を超えない＝`held_exceeds_unverified`）・同意の取り直し（`consents_reset`。ADR 0038）・外部サービスの再認証（`connections_reauth_required`。03）。件数だけで ID と本文は持たない。
-- **進行中の操作の保留と、バックアップの後に実行された可能性の隔離**（案。Codex P1）: 復元したバックアップは古い。バックアップの後に、本人が承認し、外部サービスへ送出され、変更が適用された可能性がある。**承認待ち（`awaiting_approval`）も例外ではない**（バックアップの後に承認・実行された操作が、復元した記録では承認待ちに見える）。そこで、外部サービスを変更する操作（RemoteMutation）のうち終わっていないもの（`awaiting_approval`・`approved`・`preparing`・`dispatching`・`reconciling`・`unknown_held`）すべてに、差し替えと同じ transaction で「復元後の未確認」の印（`operations.restore_unverified_at`。マイグレーションの案）を付け、**通常の承認・送出準備・送出から隔離する**（印のある操作への承認の作成・`approved` と `preparing` への遷移・試行の作成を DB の trigger で拒否する。最後の保証は DB）。有効な承認はすべて `revoked`（J3）。`approved`・`preparing`・`dispatching`・`reconciling` は `unknown_held` にする（`preparing` を未送出と判断しない。08 §4・ADR 0019）。LocalCommand（Buddy 内だけを変える）は外に出ないので対象外で、バックアップの後の変更は記録ごと戻る。
-  - **印を外せるのは照合だけ**（書込みなし。読み取りだけ）: (1) 実行済みと確かめられた（元サービスに作成物の目印がある。たとえば下書きの目印に操作 ID を入れる方式。ADR 0030。ラベル変更なら対象の今のラベルが変更後と一致し、作成物でなければ変更前の状態との差が説明できる）→ 結果を取り込んで完了にする。再送しない。(2) 未実行と確かめられた（目印を一意に引く検索・正確な対象の列挙で、取りこぼしのない範囲で目印がないことを確認）→ 印を外して `awaiting_approval` に戻す。承認は失効済みなので、本人が承認し直す（内容版は変えない。送出の準備では通常どおり最新の対象と許可を確認する）。(3) どちらも確かめられない（目印を持てない操作の種類・元サービスに接続できない・再認証がまだ・列挙が不完全）→ `unknown_held`（結果不明）で保留する。自動では再送せず、本人が元サービスで確かめる（08 §3）。単に見つからないことは未実行の証拠にしない。
-  - **ラベル変更の送出前の確認だけでは足りない**: 既存の送出準備の検査は、対象の版と許可の確認で、下書きの作成のように「作ったもの」の重複を、目印を探す照合の経路とは別に持つ。作成の操作は、この隔離と照合を通らない限り再承認・送出できない。
-  - バックアップより後に作った操作の記録は復元で失われ、この照合の相手がない（下の「未解決」）。
+- **J3 の反映**（`RestoreAftermath`）: 新しい DB の世代・適用した台帳の世代・期限切れで消した件数・忘却を適用した件数・失効した承認の件数・結果不明として保留した操作の件数（`operations_held_count`）・バックアップの後に実行された可能性があるとして隔離した操作の件数（`operations_unverified_count`。保留した件数は、隔離した総数を超えない＝`held_exceeds_unverified`）・同意の取り直し（`consents_reset`。ADR 0038）・外部サービスの再認証（`connections_reauth_required`。03）。件数だけで ID と本文は持たない。
+- **復元の時点から再実行に届き得る操作の隔離**（案。Codex P1・再確認で対象と解除条件を直した）: 復元したバックアップは古い。バックアップの後に、本人が承認し、外部サービスへ送出され、変更が適用された可能性がある。復元した記録でその操作がどの状態に見えても、そこから承認・送出準備・試行へ戻れる限り、再実行に届く。**対象の一覧**を、08 §3 の状態表と domain の遷移（`OPERATION_TRANSITIONS`）から手で列挙した。
+
+| 状態（復元した記録）   | そこから届き得る先（再実行へ）                                             | 隔離       | 復元の後の状態         |
+| ---------------------- | -------------------------------------------------------------------------- | ---------- | ---------------------- |
+| `awaiting_approval`    | 承認 → `approved` → `preparing` → `dispatching`                            | する（印） | そのまま（承認は失効） |
+| `approved`             | `preparing` → `dispatching`                                                | する（印） | `unknown_held`         |
+| `preparing`            | `dispatching`、`awaiting_approval`（内容の更新）                           | する（印） | `unknown_held`         |
+| `dispatching`          | `reconciling`・`unknown_held`                                              | する（印） | `unknown_held`         |
+| `reconciling`          | `succeeded`・`unknown_held`・`not_executed`（→ `preparing`）               | する（印） | `unknown_held`         |
+| `unknown_held`         | `reconciling`・`succeeded`・`not_executed`（→ `preparing`）                | する（印） | そのまま               |
+| `not_executed`         | `awaiting_approval`（内容の更新）・`preparing`（本人の再試行）             | する（印） | そのまま               |
+| `succeeded`            | なし（終端）                                                               | しない     | そのまま               |
+| `cancelled`            | なし（終端）                                                               | しない     | そのまま               |
+| `superseded`           | なし（終端）                                                               | しない     | そのまま               |
+| LocalCommand（全状態） | 外に出ない（効果は DB と一緒に戻る。バックアップの後の変更は記録ごと戻る） | しない     | そのまま               |
+
+- **隔離の中身**: 外部サービスを変える操作（RemoteMutation）の終端でない 7 つの状態すべてに、差し替えと同じ transaction で「復元後の未確認」の印（`operations.restore_unverified_at`。マイグレーションの案）を付け、**通常の承認・送出準備・送出から隔離する**。印のある操作は、承認の作成・`approved` と `preparing` への遷移・試行の作成を DB の trigger で拒否する（最後の保証は DB）。内容の更新は外に出ないので許すが、印は操作に付いたまま外れない（内容版を上げても外れない）。有効な承認はすべて `revoked`（J3）。`preparing` を未送出と判断しない（08 §4・ADR 0019）。復元の直後の記録の形と、この表の検査は `RestoredOperation`（契約）と `scripts/contract-tools.mjs` の表（手で列挙した 7 状態）。
+- **`not_executed` を含める理由**（Codex の再現）: `not_executed` の時点でバックアップ → バックアップの後に本人が再試行して外部変更が成功 → 復元すると `not_executed` に戻る → 内容を更新 → 承認 → 新しい試行、の順で、印がなければ二重に実行される。旧い承認を失効させるだけでは、新しい承認を作る経路を止められない。この順序を、印があるときの拒否のシナリオ（`x16-restore-scenario-not-executed-retry-then-restore`）と、印がないと通ってしまう対照（`x16-restore-scenario-unmarked-not-executed-passes-guard`）の fixture にした。
+- **印を外せるのは次の 2 つだけ**:
+  1. **実行済みの積極的な証拠**: 元サービスに、操作の目印（`buddy-op:<operation_id>:<content_version>`。ADR 0030 の `operationMarker`）つきの作成物が**ちょうど一つ**見つかり、目印の内容版が復元した記録の内容版と**同じ**で、作成物の内容を復元した確定内容と照合できた。このときは結果を取り込む（`succeeded`。再送しない）。
+  2. **本人が手で決着させた**: 実行済みとして取り込む、元サービスで確かめて未実行とする、取り消す、のいずれかを本人が選んだとき。
+- **それ以外はすべて保留**（印を残し、結果不明のまま）: 見つからない（`not_found_may_apply_late`）、複数（`multiple_matches`）、読めない（`lookup_unreadable`）、照合の手段がない操作の種類（`lookup_unsupported`）、目印の内容版が違う（`content_version_mismatch`。バックアップの後に別の内容版で実行された）、内容を照合できない（`content_unverified`）。**「目印がない」ことは、検索が完全でも未実行の証拠にしない**: 元サービスが要求を受け付けて適用を保留しているだけで、検索の時点では 0 件でも後から適用され得る（既存の `reconcileOutcome` の `not_found_may_apply_late`。08 §3「単なる一定時間の未発見は、送信が実行されなかった証拠にしない」）。目印の検索は `operation_id` の接頭辞で行い、どの内容版の目印も拾う（復元した内容版より後の内容版で実行された場合を見逃さない）。保留の期待値は fixture（`x16-restore-scenario-reconcile-holds-unless-positive-evidence`）にした。
+- バックアップより後に作った操作の記録は復元で失われ、この照合の相手がない（下の「未解決」）。
 - **時刻の規則**（Codex P2）: `started_at`・`finished_at` は実測の UTC。終わりが始まりより前になれるのは、**期限切れの削除の段階で `clock_regression`（処理中に時計が戻ったと判定した）で止めた拒否だけ**で、そのときは実測の値をそのまま記録する（時刻を補正せず、戻ったこと自体を結果に残す）。ほかの結果（復元できた結果、ほかの理由の拒否）の時刻の逆転は `finished_before_started` で拒否する。処理の長さは単調時計で別に測る（ログ。結果の契約には持たない）。
 
 ### 期限切れ・忘却の知らせ（`RetentionNotice`・`RetentionNoticeItem`）
@@ -110,9 +135,9 @@
 
 J1 を次の形にした（原本は「本人が管理する復旧用秘密で保護」までで、形は原本に決めなし）。
 
-- **復旧キー（司令塔の判断: 案 A）**: **CLI のプロセス**が OS の乱数で作る 256 ビット。人が書き写せるよう Crockford base32（4 文字 × 13 組。I・L・O・U を使わない）で、作った直後に 1 度だけ端末の画面へ出す（`RecoveryKeyDisplay`）。**Core には渡さない**（Core に渡すのは、包んだ鍵 `BackupKeyWrap` と確認値だけ）。制御チャネル・HTTP・イベント・ログ・DB・バックアップへ出さないので、ADR 0012 の「制御チャネルは秘密を扱わない」は緩めない。CLI のプロセスは、同じ OS の利用者として KeyStore からデータ鍵を読み（ADR 0017。読むだけで作らない）、バックアップ本体の鍵を作って KeyStore に置き、2 つの鍵を復旧キーで包んでから、復旧キーを破棄する（メモリ上の消去は保証できない。ADR 0017 のとおり）。
+- **復旧キー（司令塔の判断: 案 A）**: **CLI のプロセス**が OS の乱数で作る 256 ビット。人が書き写せるよう Crockford base32（4 文字 × 13 組。I・L・O・U を使わない）で、作った直後に 1 度だけ端末の画面へ出す（`RecoveryKeyDisplay`）。**Core には渡さない**（Core に渡すのは、包んだ鍵 `BackupKeyWrap` と確認値だけ）。制御チャネル・HTTP・イベント・ログ・DB・バックアップへ出さないので、ADR 0012 の「制御チャネルは秘密を扱わない」は緩めない。CLI のプロセスは、同じ OS の利用者として KeyStore からデータ鍵を読み（ADR 0017。読むだけで作らない）、バックアップ本体の鍵と台帳の HMAC の鍵（`ledger_hmac_key`）を作って KeyStore に置き、3 つの鍵を復旧キーで包んでから、復旧キーを破棄する（メモリ上の消去は保証できない。ADR 0017 のとおり）。
 - **記録**（`RecoveryKeyRecord`）: 復旧キーの ID・作成時刻・確認値（`check_value`）・表示した時刻。Core は復旧キーを知らないので、確認値は CLI が復旧キーから別の用途ラベルで導いた 32 ビットを Core へ渡す。復元で入力したキーの打ち間違いを先に見つけるためだけに使う（32 ビットでは復旧キーを導けない）。表示済みの記録は再表示できない。表示した時刻と状態の組が合わないものと、復旧キーそのものを持つものは Schema が拒否する。
-- **鍵の包み**: 復旧キーは高エントロピーの乱数なので、パスワード用の KDF（scrypt など）を使わず、HKDF-SHA256（salt 付き）で導いた鍵で AES-256-GCM により包む（Node.js の標準の `node:crypto` だけで足りる）。包んだ値は 12 バイトの nonce・32 バイトの暗号文・16 バイトの認証タグ。包む鍵は 2 つ（バックアップ本体の鍵・DB の暗号文の鍵）。包むのは設定のときの CLI（上の「バックアップの封筒」）。
+- **鍵の包み**: 復旧キーは高エントロピーの乱数なので、パスワード用の KDF（scrypt など）を使わず、HKDF-SHA256（salt 付き）で導いた鍵で AES-256-GCM により包む（Node.js の標準の `node:crypto` だけで足りる）。包んだ値は 12 バイトの nonce・32 バイトの暗号文・16 バイトの認証タグ。包む鍵は 3 つ（バックアップ本体の鍵・DB の暗号文の鍵・台帳の HMAC の鍵）。包むのは設定のときの CLI（上の「バックアップの封筒」）。
 
 ### バックアップの置き場所（`BackupConfig`・`BackupLocationCheck`）
 
@@ -164,7 +189,7 @@ J1 を次の形にした（原本は「本人が管理する復旧用秘密で�
 | 開始の後の世代が台帳に揃っていない | —                    | 破棄（`forget_ledger_gap`）。忘却済みかを判定できない                                               |
 | 開始の世代が今の台帳より大きい     | —                    | 破棄（`generation_ahead`）。台帳が巻き戻っている                                                    |
 
-- **「関係する」の定義**: 結果の由来（`MemorySourceRef`）のどれかが、台帳の `forgotten` と同じ（種類と ID）、または台帳の `blocked_source_ids` に元の ID がある（同じ元のメッセージ全体を自動記憶化から外す。03）、または自動抽出の候補の内容の HMAC が台帳の `blocked_content_keys` にある。台帳は全件を見る（世代の新旧によらない）。
+- **「関係する」の定義**: 結果の由来（`MemorySourceRef`）のどれかが、台帳の `forgotten` と同じ（種類と ID）、または台帳の `blocked_source_hmacs` に、元の ID を同じ HMAC に通した値がある（同じ元のメッセージ全体を自動記憶化から外す。03。元情報の ID は Core が HMAC に通してから比べる）、または自動抽出の候補の内容の HMAC が台帳の `blocked_content_keys` にある。台帳は全件を見る（世代の新旧によらない）。
 - **派生**: 忘れた記憶から作った記憶は、忘却のときに台帳へ派生として記録する（`forgotten` に入れる）。台帳に載っていない派生物は由来を引けない（下の「派生物の系譜」）。
 - **本人の明示の保存**（`memory_save`）は内容の禁止だけでは止めず、由来が忘却済みなら止める（ADR 0008）。
 
@@ -246,7 +271,9 @@ J5 の本人の意図は、**終わった操作の本文を長く残さない**�
 | バックアップより後の操作の記録の欠落、復元後の未確認の操作の隔離と照合       | 原本は「復元後の照合」まで。印・隔離・目印での照合はこの ADR の設計判断（下の「未解決」）                                     | B06-05・B04                      |
 | 用事の正本の置き場所と、操作のレシートの 90 日の削除の順序                   | 原本は「本人が確定保存したメモ・用事は本人の削除操作を正」「完了後の本文なし操作レシートは 90 日」まで                        | B06-06                           |
 | 台帳のファイルの真正性（署名・HMAC）                                         | 原本に記述なし。この ADR は付けない（上の「限界」）                                                                           | B06-07                           |
-| 元サービスの ID の文字種と長さ（`OriginalSourceId`）                         | 原本に記述なし。英数字と記号 7 種・256 文字まで                                                                               | B08・B09（実測で確かめる）       |
+| 元サービスの ID の文字種と長さ（`OriginalSourceId`）                         | 原本に記述なし。英数字と記号 7 種・256 文字まで（形の最低限の検査。台帳には HMAC だけを書く）                                 | B08・B09（実測で確かめる）       |
+| 台帳の HMAC の鍵（`ledger_hmac_key`）・入力・復元と端末交代での照合の継続    | 原本は「HMAC 等で同じ情報の再取り込みを検出」まで。鍵の持ち方は ADR 0008 が B06・B10 に残した                                 | B06-03・B06-08                   |
+| 復元の時点から再実行に届き得る操作の隔離の対象と、印を外す条件               | 原本は「古いバックアップからの復元では `preparing` を未送出と判断せず、復元後の照合を行う」まで                               | B06-05・B06-06                   |
 | 期限切れ・忘却の知らせの形と運び方                                           | 原本に記述なし。UI-05 のキャンバスが受けて消す（計画）                                                                        | UI-05（U40）                     |
 | 保存モードの状態の項目                                                       | 原本は記録しない会話の禁止の個別の文だけ（03・10）。この表は個別の文を 1 つに集めた                                           | B06-04（許可表）・B06-07（Gate） |
 | 検索語の扱い（確定内容に残さない）                                           | 原本の intent 表は「対象（ID または検索語）」まで                                                                             | B06-03・B06-07                   |
@@ -268,11 +295,11 @@ J5 の本人の意図は、**終わった操作の本文を長く残さない**�
 
 ## 試験
 
-契約の fixture `packages/contracts/fixtures/storage-contract-cases.json`（92 件。Codex のレビューの再現を足した）を `pnpm run contracts:check` が Schema と意味検査で確かめる。期待値は手書きで、検査する関数から作っていない。台帳の hash は、`{entry, previous_hash}` を Python の `json.dumps`（キーの整列・区切りなし。値は ASCII だけで RFC 8785 と同じ正規形）で書き出し、`hashlib` の SHA-256 で別に求めた値を写した（検査するのは Node.js の `canonicalize` と `node:crypto`）。
+契約の fixture `packages/contracts/fixtures/storage-contract-cases.json`（正常・拒否例 121 件とシナリオ 7 件。Codex のレビューの再現を足した）を `pnpm run contracts:check` が Schema と意味検査で確かめる。期待値は手書きで、検査する関数から作っていない。台帳の hash は、`{entry, previous_hash}` を Python の `json.dumps`（キーの整列・区切りなし。値は ASCII だけで RFC 8785 と同じ正規形）で書き出し、`hashlib` の SHA-256 で別に求めた値を写した（検査するのは Node.js の `canonicalize` と `node:crypto`）。
 
 - **正常例**: 台帳（3 世代・空）・複製・封筒（世代 3・空の台帳）・復元の結果（復元・外部の照合が保留・台帳が失われて設定だけ・台帳より新しいバックアップ・DB の版が新しい）・知らせ（期限切れ・忘却・派生）・保存モード 3 種・復旧キーの記録と表示・置き場所の設定と検査。
 - **拒否例（依頼の 4 つ）**: **世代の欠番**（`x16-ledger-file-generation-gap`）、**hash の連鎖の不一致**（`x16-ledger-file-hash-chain-broken`。内容の書き換え `x16-ledger-file-entry-rewritten` と末尾を隠した head `x16-ledger-file-head-behind`、世代 1 のない部分の複製 `x16-ledger-replica-partial-copy` も）、**private を含むバックアップ**（`x17-backup-manifest-includes-private-rejected`・`only-private`・除外の記録に記録しない会話がない封筒）、**本文の混入**（台帳の entry・連鎖の 1 件・封筒・復旧キーの記録・知らせの対象と知らせ本体の追加の欄、知らせの `item_id` に文を入れた例）、**知らせに本文が入る**（`x15-notice-item-with-body-field-rejected`・`x15-notice-with-summary-field-rejected`・`x15-notice-item-id-is-sentence-rejected`）。
-- **Codex のレビューの再現**（各件の入力を手書きで足した）: ID の欄への文（`x16-ledger-turn-id-sentence-rejected`・`memory-id-sentence`・`turn-id-not-internal-id`・`source-item-id-sentence`・`source-item-id-too-long`・`blocked-source-id-sentence`・`blocked-source-id-japanese`・`blocked-source-id-too-long`・複製 `x16-ledger-replica-id-sentence-rejected`）と 256 文字ちょうどの境界の正常例（`x16-ledger-file-boundary-256-char-source-ids`）、包んだ状態の `duplicate_forgotten`（ファイル・複製）、時計の巻き戻りの拒否の時刻の逆転（`x16-restore-clock-regression-rejected`）と、それ以外の逆転の拒否（`x16-restore-reversed-time-other-failure`・`x16-restore-ledger-stop-reversed-time`・`x16-restore-restored-reversed-time`）、隔離した操作の件数の欠落と保留との大小（`x16-restore-aftermath-without-unverified-count-rejected`・`x16-restore-held-exceeds-unverified`）。復元後の隔離・用事の正本の分離・90 日の削除の順序は SQL を書く B06-06 で試験する（この ADR は案）。
+- **Codex のレビューの再現**（各件の入力を手書きで足した）: 台帳の由来の欄に文・生の ID を入れられないこと（発言・記憶の UUID でない ID、許可文字だけの文 `Forget.`・`Stop.`・`my.password=synthetic` を元情報の生の ID として書く例と `source_id_hmac`・`blocked_source_hmacs` に入れる例、63・65 桁・大文字の HMAC、旧い `blocked_source_ids` の欄、複製に書く例。いずれも HMAC の型で拒否される）、元情報の HMAC の重複、包んだ状態の `duplicate_forgotten`（ファイル・複製）、時計の巻き戻りの拒否の時刻の逆転（`x16-restore-clock-regression-rejected`）と、それ以外の逆転の拒否（`x16-restore-reversed-time-other-failure`・`x16-restore-ledger-stop-reversed-time`・`x16-restore-restored-reversed-time`）、隔離した操作の件数の欠落と保留との大小（`x16-restore-aftermath-without-unverified-count-rejected`・`x16-restore-held-exceeds-unverified`）。復元の直後の操作の記録（`RestoredOperation`。7 状態の隔離・終端と LocalCommand は印なし・印の漏れ・進行中の状態のまま・承認の残り）と、隔離のシナリオ 7 件（`not_executed` の再現の順序、承認待ち・結果不明の隔離、照合で解除できるのは積極的な証拠だけ、本人の決着。期待値は手書きで、`restoreGuard` の出力と照合する）。復元の実際の処理・trigger・用事の正本の分離・90 日の削除の順序は SQL を書く B06-06 で試験する（この ADR は案）。
 - **そのほかの拒否例**: 復元の段階の順序の入れ替え・欠け、失敗の後に実行された段階、設定だけの復元が台帳の確認以外で出る、DB の世代が新しくならない復元、段階と合わない理由、外部の照合の失敗、記録しない会話で Live・保存・記憶の抽出・完全な操作記録を名乗る保存モード、再表示を許す復旧キー、小文字・短い・読み間違えやすい文字を含む復旧キー、相対パス・`..` を含む置き場所。
 - `scripts/common-contracts.test.mjs` に新しい版の項目（`backup_store_generation`・`new_store_generation`・`applied_forgetting_generation`・`db_schema_version`）の型を登録した（ADR 0003）。
 

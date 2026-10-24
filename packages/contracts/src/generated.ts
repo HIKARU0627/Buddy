@@ -139,7 +139,8 @@ export type BuddyContract =
   | RecoveryKeyRecord
   | RecoveryKeyDisplay
   | BackupConfig
-  | BackupLocationCheck;
+  | BackupLocationCheck
+  | RestoredOperation;
 /**
  * Coreが付与する入力根拠。LLMや端末の申告をそのまま信用しない。sealedだけでは実行許可にならない。
  */
@@ -624,9 +625,21 @@ export type MemorySourceRef =
       source_id: OriginalSourceId;
     };
 /**
- * 元サービスの対象 ID（メール・予定・添付などの provider の ID）と、忘却の台帳の再登録を禁じる元の ID の文字列表現（B06-01 の Codex のレビュー P1、ADR 0040）。英数字と . _ : = + ~ - だけで 256 文字まで。空白・日本語・文を入れられない（本文・検索語を ID の欄に混ぜて永続化させない）。内部の ID（turn・memory）は Id を使う。
+ * 元サービスの対象 ID（メール・予定・添付などの provider の ID）の文字列表現（ADR 0040）。英数字と . _ : = + ~ - だけで 256 文字まで。これは文字種と長さの制限で、文（Forget. など許可文字だけの文字列）と ID は区別できない。ID であることは、Core が信頼できる元情報（自分の DB の行）から解決した値だけを書くことで守る（台帳・複製には生の値を書かず HMAC にする。LedgerSourceRef）。内部の ID（turn・memory）は Id を使う。
  */
 export type OriginalSourceId = string;
+/**
+ * 忘却台帳の由来の参照（ADR 0040）。発言（turn）と別の記憶（memory）は Buddy 内の ID（Id）。元情報（source_item）は元サービスの ID の生の値を書かず、台帳用の鍵による用途別の HMAC-SHA256（64 桁の小文字 16 進。source_id_hmac）だけを書く。HMAC の入力と鍵は ADR 0040。Core が信頼できる元情報（自分の DB の行）から解決した値を HMAC に通したものだけを書く。形の検査は 64 桁の 16 進かどうかだけで、HMAC であること自体は保証しない。
+ */
+export type LedgerSourceRef =
+  | {
+      source_kind: 'turn' | 'memory';
+      source_id: Id;
+    }
+  | {
+      source_kind: 'source_item';
+      source_id_hmac: Hash;
+    };
 /**
  * 採否を決める用途（設計 05 評価の進め方）。全用途をまとめた値は置かない。memory_extraction は独立した用途で、正解付きセットができるまで未評価（ADR 0008）。
  */
@@ -3567,7 +3580,7 @@ export interface MemoryRecord {
   delete_at: UtcTime | null;
 }
 /**
- * 忘却台帳の 1 件（設計 03 forget_ledger、忘却と再取り込み・バックアップ）。本文を持たず、忘れた対象と派生した記憶、再登録を禁止する元の由来 ID、同じ内容の自動記憶化を止める HMAC だけを記録する。世代は 1 件ごとに 1 つ進む。
+ * 忘却台帳の 1 件（設計 03 forget_ledger、忘却と再取り込み・バックアップ）。本文を持たず、忘れた対象（発言・記憶は Buddy 内の ID、元情報は用途別の HMAC）と、再登録を禁じる元の由来の HMAC、同じ内容の自動記憶化を止める HMAC だけを記録する。元サービスの ID の生の値は書かない（ADR 0040）。世代は 1 件ごとに 1 つ進む。
  */
 export interface ForgetLedgerEntry {
   schema: 'buddy.forget-ledger.v1';
@@ -3577,8 +3590,8 @@ export interface ForgetLedgerEntry {
   /**
    * @minItems 1
    */
-  forgotten: [MemorySourceRef, ...MemorySourceRef[]];
-  blocked_source_ids: OriginalSourceId[];
+  forgotten: [LedgerSourceRef, ...LedgerSourceRef[]];
+  blocked_source_hmacs: Hash[];
   blocked_content_keys: Hash[];
 }
 /**
@@ -5363,16 +5376,16 @@ export interface BackupManifest {
     sha256: Hash;
   };
   /**
-   * @minItems 2
-   * @maxItems 2
+   * @minItems 3
+   * @maxItems 3
    */
-  key_wraps: unknown[] & [BackupKeyWrap, BackupKeyWrap];
+  key_wraps: unknown[] & [BackupKeyWrap, BackupKeyWrap, BackupKeyWrap];
 }
 /**
- * 復旧キーで包んだ鍵 1 つ（J1、ADR 0040）。復旧キーは 256 ビットの乱数で、HKDF-SHA256（salt 付き）で導いた鍵で AES-256-GCM により包む。包むのは設定のときに CLI のプロセスが 1 度だけ行い（Core は復旧キーを持たない）、毎回の封筒には同じ包みを写す。purpose が backup_file ならバックアップ本体の鍵（毎回の暗号化はこの鍵と backup_id から導く）、data_key なら DB の暗号文（sealed_blobs）の鍵。包んだ値だけで、平文の鍵・復旧キーを持たない。
+ * 復旧キーで包んだ鍵 1 つ（J1、ADR 0040）。復旧キーは 256 ビットの乱数で、HKDF-SHA256（salt 付き）で導いた鍵で AES-256-GCM により包む。包むのは設定のときに CLI のプロセスが 1 度だけ行い（Core は復旧キーを持たない）、毎回の封筒には同じ包みを写す。purpose が backup_file ならバックアップ本体の鍵（毎回の暗号化はこの鍵と backup_id から導く）、data_key なら DB の暗号文（sealed_blobs）の鍵、ledger_hmac_key なら台帳・記憶の用途別の HMAC の鍵（忘却の再取り込みの阻止を、復元・端末交代の後も続けるため。データ鍵とは別に持ち、データ鍵を入れ替えても変えない）。包んだ値だけで、平文の鍵・復旧キーを持たない。
  */
 export interface BackupKeyWrap {
-  purpose: 'backup_file' | 'data_key';
+  purpose: 'backup_file' | 'data_key' | 'ledger_hmac_key';
   key_id: string;
   recovery_key_id: Id;
   kdf: {
@@ -5427,7 +5440,7 @@ export interface RestoreAftermath {
   connections_reauth_required: true;
 }
 /**
- * 知らせの対象 1 件。ID だけ（OriginalSourceId の文字種に限り、空白・日本語を含む文を入れられない）。carried_summary の item_id は要約をつないだ区間の ID。
+ * 知らせの対象 1 件。ID だけ（OriginalSourceId の文字種と長さに限る。文字種の制限は文と ID を区別しないので、Core が自分の DB の行から作った ID だけを入れる）。carried_summary の item_id は要約をつないだ区間の ID。
  */
 export interface RetentionNoticeItem {
   item_kind: 'turn' | 'source_item' | 'memory' | 'carried_summary';
@@ -5462,4 +5475,26 @@ export interface BackupLocationCheck {
   warnings: 'sync_folder_detected'[];
   sync_provider_hint:
     ('icloud' | 'onedrive' | 'dropbox' | 'google_drive' | 'other') | null;
+}
+/**
+ * 復元の直後の操作の記録（ADR 0040）。外部サービスを変える操作（remote_mutation）で、復元の時点から再実行に届き得る 7 つの状態（awaiting_approval・approved・preparing・dispatching・reconciling・unknown_held・not_executed）はすべて restore_unverified_at を持ち、承認はすべて失効している。進行中の 4 つ（approved・preparing・dispatching・reconciling）は復元の後に unknown_held になる。終端（succeeded・cancelled・superseded）と LocalCommand には印を付けない。印のある操作は、承認・送出準備・試行の作成ができない。印を外せるのは、実行済みの積極的な証拠で結果を取り込んだとき（状態は succeeded）と、本人が手で決着させたときだけ。意味検査は restoreGuard（scripts/contract-tools.mjs）の表と同じ。
+ */
+export interface RestoredOperation {
+  schema: 'buddy.restored-operation.v1';
+  operation_id: Id;
+  effect_route: 'local_command' | 'remote_mutation';
+  state:
+    | 'awaiting_approval'
+    | 'approved'
+    | 'preparing'
+    | 'dispatching'
+    | 'reconciling'
+    | 'succeeded'
+    | 'unknown_held'
+    | 'not_executed'
+    | 'cancelled'
+    | 'superseded';
+  content_version: ContentVersion;
+  restore_unverified_at: UtcTime | null;
+  valid_approval_count: number;
 }

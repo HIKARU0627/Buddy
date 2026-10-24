@@ -176,6 +176,58 @@ test('lease renewal: a late response never extends the lease and clock faults re
   }
 });
 
+test('lease renewal: the old lease last observation and the renewal are checked as one transition', () => {
+  const { pending, response, current } = lease.renewal_base;
+  for (const entry of lease.renewal_with_previous_cases)
+    assert.deepEqual(
+      acceptLeaseRenewal(
+        { ...pending, ...entry.pending },
+        response,
+        entry.now,
+        current,
+        entry.previous_held,
+      ),
+      entry.expected,
+      entry.id,
+    );
+  // 1 つの遷移: 旧いリースを 15000 で観測し、その状態を渡して、14999 で受けた更新の応答を適用する（拒否される）。
+  const old = {
+    lease_id: pending.lease_id,
+    expires_at_mono_ms: 20000,
+    sent_at: { mono_ms: 7000, wall_ms: 4997000 },
+    last_observed: { mono_ms: 7000, wall_ms: 4997000 },
+  };
+  const observed = observeLease(old, { mono_ms: 15000, wall_ms: 5005000 });
+  assert.equal(observed.status.status, 'valid');
+  const request = {
+    ...pending,
+    requested_at_mono_ms: 12000,
+    requested_at_wall_ms: 5002000,
+  };
+  const late = { mono_ms: 14999, wall_ms: 5005001 };
+  assert.equal(
+    acceptLeaseRenewal(request, response, late, current, observed.held).held,
+    null,
+  );
+  // 同じ応答でも、旧いリースの観測を渡さなければ（状態を持たない呼び出し）受理される。これが前回の穴で、渡すのが規則。
+  assert.notEqual(
+    acceptLeaseRenewal(request, response, late, current, null).held,
+    null,
+  );
+  // 受理したリースの last_observed は、直前の観測より戻らない（応答の時計が同じか進んでいるときだけ受理される）。
+  for (const mono of [15000, 15001, 20000]) {
+    const out = acceptLeaseRenewal(
+      request,
+      response,
+      { mono_ms: mono, wall_ms: 5005000 + (mono - 15000) },
+      current,
+      observed.held,
+    );
+    if (out.held !== null)
+      assert(out.held.last_observed.mono_ms >= 15000, `${mono}`);
+  }
+});
+
 test('lease renewal then evaluation: a renewed lease is valid until the counted deadline and discarded after sleep', () => {
   const { pending, response, current } = lease.renewal_base;
   const { held } = acceptLeaseRenewal(

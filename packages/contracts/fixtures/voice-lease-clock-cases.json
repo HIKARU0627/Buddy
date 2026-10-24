@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "リースの期限の計算（要求を送った時点の単調時計から数える・遅れて届いた応答で延ばさない・スリープや時計の不整合ではリースを捨てる）の期待値（設計 07 §5、10 §2A、X13・X25、ADR 0041）。手で書いたもので、domain の実装から生成していない。時計は注入した値で、単位は ms。許容（tolerance_ms）の既定は 1000 で、原本に決めがなく T04・T07 の実測まで置く仮の値（合格値ではない）。 直前の観測（last_observed）を状態として持ち、単調時計の逆行は時計差の許容とは別に（許容なしで）捨てる（Codex のレビューの再現を observe_scenarios に手書き）。",
+  "description": "リースの期限の計算（要求を送った時点の単調時計から数える・遅れて届いた応答で延ばさない・スリープや時計の不整合ではリースを捨てる）の期待値（設計 07 §5、10 §2A、X13・X25、ADR 0041）。手で書いたもので、domain の実装から生成していない。時計は注入した値で、単位は ms。許容（tolerance_ms）の既定は 1000 で、原本に決めがなく T04・T07 の実測まで置く仮の値（合格値ではない）。 直前の観測（last_observed）を状態として持ち、単調時計の逆行は時計差の許容とは別に（許容なしで）捨てる（Codex のレビューの再現を observe_scenarios に手書き）。 更新の応答は、旧いリースの直前の観測（previous_held.last_observed）より単調時計が戻っていれば拒否し、last_observed は戻さない（旧い状態の観測と更新の適用を 1 つの遷移として検査する。Codex の 12000 → 15000 → 14999 を手書き）。",
   "tolerance_ms_default": 1000,
   "clock_cases": [
     {
@@ -632,6 +632,146 @@
           }
         }
       ]
+    }
+  ],
+  "renewal_with_previous_cases": [
+    {
+      "id": "codex-v2-renewal-response-behind-the-last-observation-of-the-old-lease",
+      "refs": ["07 §5", "X13"],
+      "pending": {
+        "requested_at_mono_ms": 12000,
+        "requested_at_wall_ms": 5002000
+      },
+      "previous_held": {
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "expires_at_mono_ms": 13000,
+        "sent_at": {
+          "mono_ms": 7000,
+          "wall_ms": 4997000
+        },
+        "last_observed": {
+          "mono_ms": 15000,
+          "wall_ms": 5005000
+        }
+      },
+      "now": {
+        "mono_ms": 14999,
+        "wall_ms": 5005001
+      },
+      "expected": {
+        "held": null,
+        "reasons": ["clock_inconsistent", "mono_clock_regressed"],
+        "clock": "mono_regressed"
+      }
+    },
+    {
+      "id": "renewal-response-exactly-at-the-last-observation-is-applied",
+      "refs": ["07 §5"],
+      "pending": {
+        "requested_at_mono_ms": 12000,
+        "requested_at_wall_ms": 5002000
+      },
+      "previous_held": {
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "expires_at_mono_ms": 13000,
+        "sent_at": {
+          "mono_ms": 7000,
+          "wall_ms": 4997000
+        },
+        "last_observed": {
+          "mono_ms": 15000,
+          "wall_ms": 5005000
+        }
+      },
+      "now": {
+        "mono_ms": 15000,
+        "wall_ms": 5005000
+      },
+      "expected": {
+        "held": {
+          "lease_id": "00000000-0000-4000-8000-000000000080",
+          "expires_at_mono_ms": 18000,
+          "sent_at": {
+            "mono_ms": 12000,
+            "wall_ms": 5002000
+          },
+          "last_observed": {
+            "mono_ms": 15000,
+            "wall_ms": 5005000
+          }
+        },
+        "reasons": [],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "renewal-response-after-the-last-observation-is-applied",
+      "refs": ["07 §5"],
+      "pending": {
+        "requested_at_mono_ms": 12000,
+        "requested_at_wall_ms": 5002000
+      },
+      "previous_held": {
+        "lease_id": "00000000-0000-4000-8000-000000000080",
+        "expires_at_mono_ms": 13000,
+        "sent_at": {
+          "mono_ms": 7000,
+          "wall_ms": 4997000
+        },
+        "last_observed": {
+          "mono_ms": 15000,
+          "wall_ms": 5005000
+        }
+      },
+      "now": {
+        "mono_ms": 15001,
+        "wall_ms": 5005001
+      },
+      "expected": {
+        "held": {
+          "lease_id": "00000000-0000-4000-8000-000000000080",
+          "expires_at_mono_ms": 18000,
+          "sent_at": {
+            "mono_ms": 12000,
+            "wall_ms": 5002000
+          },
+          "last_observed": {
+            "mono_ms": 15001,
+            "wall_ms": 5005001
+          }
+        },
+        "reasons": [],
+        "clock": "consistent"
+      }
+    },
+    {
+      "id": "renewal-without-a-previous-lease-has-no-last-observation-to-compare",
+      "refs": ["07 §5"],
+      "pending": {
+        "requested_at_mono_ms": 12000,
+        "requested_at_wall_ms": 5002000
+      },
+      "previous_held": null,
+      "now": {
+        "mono_ms": 14999,
+        "wall_ms": 5004999
+      },
+      "expected": {
+        "held": {
+          "lease_id": "00000000-0000-4000-8000-000000000080",
+          "expires_at_mono_ms": 18000,
+          "sent_at": {
+            "mono_ms": 12000,
+            "wall_ms": 5002000
+          },
+          "last_observed": {
+            "mono_ms": 14999,
+            "wall_ms": 5004999
+          }
+        },
+        "reasons": [],
+        "clock": "consistent"
+      }
     }
   ]
 }

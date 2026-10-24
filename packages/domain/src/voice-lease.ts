@@ -105,7 +105,8 @@ export function observeLease(
     : { status: { status: 'expired' }, held: null };
 }
 
-// observeLease の判定だけ（状態を更新しない呼び出し）。
+// observeLease の判定だけ（状態を更新しない単発の判定）。リースを継続して見張る処理では使わない（同じ held で時計が戻った値を
+// 続けて評価すると、残り時間が増えても検出できない）。継続して見張るときは observeLease が返す held を次の観測へ渡す。
 export function evaluateLease(
   held: HeldLease | null,
   now: ClockReading | null,
@@ -128,11 +129,16 @@ export interface LeaseRenewalOutcome {
 // 応答を受けたときの判定。期限は要求を送った時点の単調時計に ttl を足した値で、応答の受信時刻から足し直さない。
 // 時計が整合していなければ（スリープ復帰・時計の不整合・時計を読めない）延ばさず捨てる。
 // 判定の中身（要求 ID・nonce・世代・期限切れ）は applyLeaseResponse と同じで、ここは時計の整合を足すだけ。
+// 時計の整合は、要求を送った時点からの進み（許容つき）と、置き換える今のリースの直前の観測からの単調時計の逆行（許容なし）。
+// 受理したリースの last_observed は応答を受けた時計で、直前の観測より戻ることはない。
 export function acceptLeaseRenewal(
   pending: LeaseSendRecord | null,
   response: LeaseRenewalResponseLike,
   now: ClockReading | null,
   current: LeaseCurrentState,
+  // 更新で置き換える今のリース（なければ null）。その直前の観測より応答の単調時計が戻っていれば、更新も拒否する
+  // （旧い状態の観測と更新の適用を 1 つの遷移として検査する。拒否したときの旧いリースは、呼び出し側が捨てる）。
+  previousHeld: HeldLease | null = null,
   toleranceMs: number = LEASE_CLOCK_TOLERANCE_MS,
 ): LeaseRenewalOutcome {
   const sentAt: ClockReading | null =
@@ -142,7 +148,13 @@ export function acceptLeaseRenewal(
           mono_ms: pending.requested_at_mono_ms,
           wall_ms: pending.requested_at_wall_ms,
         };
-  const clock = assessLeaseClock(sentAt, now, toleranceMs);
+  let clock = assessLeaseClock(sentAt, now, toleranceMs);
+  if (
+    clock === 'consistent' &&
+    previousHeld !== null &&
+    (now as ClockReading).mono_ms < previousHeld.last_observed.mono_ms
+  )
+    clock = 'mono_regressed';
   const result = applyLeaseResponse(
     pending,
     response,

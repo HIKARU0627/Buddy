@@ -398,8 +398,9 @@ const READING_TO_WORD: ReadonlyArray<readonly [string, string]> = [
 ];
 
 const COUNTER_AFTER_KANJI = '年月日時分秒週回個件円人本枚番歳';
+// 小数も 1 つの値として単位まで取る（「1.5時間」と「1.5分」を区別する）。
 const DATETIME_TOKEN =
-  /\d+(?:年|月|日|時間|時|分|秒|週間|か月|週)|明々後日|明後日|明日|一昨日|昨日|今日|再来週|来週|今週|先週|再来月|来月|今月|先月|来年|去年|今年|午前|午後|正午|夕方|今晩|今朝|明朝|[月火水木金土日]曜日?/gu;
+  /\d+(?:\.\d+)?(?:年|月|日|時間|時|分|秒|週間|か月|週)|明々後日|明後日|明日|一昨日|昨日|今日|再来週|来週|今週|先週|再来月|来月|今月|先月|来年|去年|今年|午前|午後|正午|夕方|今晩|今朝|明朝|[月火水木金土日]曜日?/gu;
 const NUMBER_TOKEN = /\d+(?:\.\d+)?[円個件人本枚番歳回]?/gu;
 // 数字・日時は、出現順と、範囲の役割（から・まで・より）を保って並べる（「3時から5時へ」と「5時から3時へ」を区別する）。
 const VALUE_TOKEN = new RegExp(
@@ -408,7 +409,7 @@ const VALUE_TOKEN = new RegExp(
 );
 const ROLE_SUFFIX = /^(?:から|まで|より)/u;
 const NEGATION = /ません|ない|なかっ|なく|ぬ|ず|なし|[不無未非]/gu;
-// 否定は、その直前の 3 文字（対象の述語）と組にして順に並べる（「送らないで保存して」と「送って保存しないで」を区別する）。
+// 否定は、その直前の 3 文字（対象の述語）と組にして順に並べる（差分の説明のため。判定の正本ではない）。
 const NEGATION_TARGET_CHARS = 3;
 const EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gu;
 const HONORIFIC =
@@ -418,16 +419,27 @@ const HONORIFIC_NAME = new RegExp(
   'gu',
 );
 const HONORIFIC_TAIL = new RegExp(`${HONORIFIC}$`, 'u');
-// 送る表現（に・へ + 送る・返信・メール・連絡・転送・伝える）の直前を宛先とする。敬称がなくても、漢字・ひらがな・
-// カタカナ・英字のどの書き方でも取り出す（カタカナは照合の前にひらがなへそろえるので、ここは折りたたむ前の文字で見る）。
+// 送る表現（に・へ + 送る・返信・メール・連絡・転送・伝える）の直前を宛先とする（差分の説明のため。判定の正本ではない）。
+// 敬称がなくても、漢字・ひらがな・カタカナ・英字のどの書き方でも取り出す（カタカナは折りたたむ前の文字で見る）。
 const SEND_EXPRESSION = '(?:送|返信|メール|めーる|連絡|転送|伝え)';
-// 数字・日時の直後の「に」（「15時に送って」）は時刻の助詞で、宛先ではない（数字・日時は \u0001 に置き換えて見る）。
-const SEND_TO = new RegExp(`(?<!\u0001)(?:に|へ)${SEND_EXPRESSION}`, 'u');
 const BEFORE_SEND = new RegExp(
   `([\\p{Script=Han}々]+|[\\p{Script=Hiragana}]+|[\\p{Script=Katakana}ー]+|[a-z]+)(?:に|へ|宛て?|あて)(?=${SEND_EXPRESSION})`,
   'gu',
 );
 const RECIPIENT_MAX_CHARS = 10;
+// 危険な印（送る表現・否定・数字・日時・宛先の印「に・へ」・敬称・メールアドレス）。どちらかの文に 1 つでもあれば、
+// 正規化した文の全体が一致しなければ聞き返す（抽出の取りこぼしで見逃さない安全側の方針。ADR 0041、U36）。
+const RISK_MARKER = new RegExp(
+  [
+    SEND_EXPRESSION,
+    NEGATION.source,
+    '\\d',
+    DATETIME_TOKEN.source,
+    '[にへ]',
+    HONORIFIC,
+  ].join('|'),
+  'u',
+);
 
 interface TranscriptFeatures {
   // 出現順（範囲の役割つき）。並べ替えない。
@@ -436,8 +448,6 @@ interface TranscriptFeatures {
   // 否定ごとの対象（直前の文字）。出現順。
   readonly negations: string[];
   readonly recipients: string[];
-  // 「に・へ + 送る表現」があるのに、宛先を取り出せなかった（比べられない）。
-  readonly recipient_not_comparable: boolean;
 }
 
 const foldKana = (text: string): string =>
@@ -445,16 +455,18 @@ const foldKana = (text: string): string =>
     String.fromCharCode(ch.charCodeAt(0) - 0x60),
   );
 
-// 正規化（NFKC・小文字・漢数字を数へ・「半」・カタカナをひらがなへ・記号と空白の除去）から、数字・日時・否定・宛先を取り出す。
-// 正規化の細部と特徴の取り方は原本に決めなし（初期の規則。B05 の実測で調整する）。同じ語は両方に同じように現れるので、
-// 取り違えは差として現れ、聞き返しになる（安全側）。対応を確かめられない（宛先を取り出せない等）ときも聞き返す。
-function transcriptFeatures(text: string): TranscriptFeatures {
+interface NormalizedText {
+  // 折りたたむ前の文字（カタカナのまま）。折りたたみは文字数を変えないので、位置は folded と同じ。
+  readonly raw: string;
+  readonly folded: string;
+  // 読み・漢数字・曜日・敬称をそろえた、比較用の文。
+  readonly normalized: string;
+}
+
+// 正規化（NFKC・小文字・漢数字を数へ・「半」・曜日・敬称・カタカナをひらがなへ・記号と空白の除去）。
+// 正規化の細部は原本に決めなし（初期の規則。B05 の実測で調整する）。
+function normalizeText(text: string): NormalizedText {
   let t = text.normalize('NFKC').toLowerCase();
-  const recipients: string[] = [];
-  t = t.replace(EMAIL, (mail) => {
-    recipients.push(mail);
-    return '';
-  });
   t = t.replace(/[ヶヵケ]月/gu, 'か月');
   t = t.replace(
     new RegExp(
@@ -469,12 +481,27 @@ function transcriptFeatures(text: string): TranscriptFeatures {
   t = t.replace(/(\d+)時半/gu, '$1時30分');
   t = t.replace(/(?<=\d)[,，](?=\d{3})/gu, '');
   t = t.replace(/[\s\p{P}\p{S}]/gu, (mark) => (mark === '.' ? mark : ''));
-  // 折りたたむ前の文字（カタカナのまま）。折りたたみは文字数を変えないので、位置は tFolded と同じ。
   const raw = t.replace(/(?<!\d)\.|\.(?!\d)/gu, '');
   const folded = foldKana(raw);
   let normalized = folded;
   for (const [reading, word] of READING_TO_WORD)
     normalized = normalized.split(reading).join(word);
+  normalized = normalized
+    .replace(/([月火水木金土日])曜日/gu, '$1曜')
+    .replace(/様|さま/gu, 'さん');
+  return { raw, folded, normalized };
+}
+
+// 数字・日時・否定・宛先を取り出す。差分の説明（differences）のための補助で、聞き返すかどうかの正本ではない
+// （危険な印のある文は、文の全体の一致で決める）。
+function transcriptFeatures(text: string): TranscriptFeatures {
+  const nfkc = text.normalize('NFKC').toLowerCase();
+  const recipients: string[] = [];
+  const withoutMail = nfkc.replace(EMAIL, (mail) => {
+    recipients.push(mail);
+    return '';
+  });
+  const { raw, folded, normalized } = normalizeText(withoutMail);
 
   const numbers: string[] = [];
   const datetimes: string[] = [];
@@ -493,7 +520,7 @@ function transcriptFeatures(text: string): TranscriptFeatures {
     );
   }
 
-  // 宛先は名前だけで比べる（さん・様・宛のような敬称の違いは別の人にしない）。
+  // 宛先は名前だけで取り出す（さん・様・宛のような敬称は外す）。
   for (const match of normalized.matchAll(HONORIFIC_NAME))
     recipients.push(match[1] as string);
   // 数字・日時の文字は宛先の候補から外す（「15時に送って」の「時」を名前にしない）。
@@ -514,22 +541,23 @@ function transcriptFeatures(text: string): TranscriptFeatures {
     name = name.slice(-RECIPIENT_MAX_CHARS);
     if (name !== '') recipients.push(name);
   }
-  const unique = [...new Set(recipients)].filter((name) => name !== '');
   return {
     numbers,
     datetimes,
     negations,
-    recipients: unique.sort(),
-    recipient_not_comparable: SEND_TO.test(masked) && unique.length === 0,
+    recipients: [...new Set(recipients)].filter((name) => name !== '').sort(),
   };
 }
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((item, index) => item === b[index]);
 
-// Live の文字断片と端末の ASR の結果を正規化して比べ、数字・日時・否定・宛先に差があれば実行せず聞き返す。
-// どちらかが空・ASR がない（null）ときは比べられないので聞き返す。差がなくても、比べたのは 4 種類の特徴だけで、
-// 文全体の一致や誤認識のなさの証明ではない（C は照合の成功を前提にしない。QA08）。
+// Live の文字断片と端末の ASR の結果を比べ、危険な印のある文は、正規化した文の全体が一致しなければ実行せず聞き返す。
+// 危険な印（送る表現・否定・数字・日時・宛先の印の「に・へ」・敬称・メールアドレス）が、2 つの文のどちらかに 1 つでもあれば、
+// 全体の一致だけが proceed で、抽出（数字・日時・否定・宛先）は差分の説明のための補助にとどめる。抽出の取りこぼし
+// （混在表記・送信動詞から離れた宛先・否定の対象の入れ替わりなど）で見逃さないため。危険な印がない文は、4 種類の特徴の比較のまま。
+// どちらかが空・ASR がない（null）ときは比べられないので聞き返す。一致しても、完全一致や誤認識のなさの証明ではない
+// （C は照合の成功を前提にしない。QA08）。
 export function compareTranscripts(
   live: string,
   asr: string | null,
@@ -548,18 +576,28 @@ export function compareTranscripts(
   if (!sameList(a.numbers, b.numbers)) differences.push('number');
   if (!sameList(a.datetimes, b.datetimes)) differences.push('datetime');
   if (!sameList(a.negations, b.negations)) differences.push('negation');
-  const recipientsDiffer = !sameList(a.recipients, b.recipients);
-  const notComparable =
-    a.recipient_not_comparable || b.recipient_not_comparable;
-  if (recipientsDiffer || notComparable) differences.push('recipient');
+  if (!sameList(a.recipients, b.recipients)) differences.push('recipient');
+  const liveText = normalizeText(live).normalized;
+  const asrText = normalizeText(asr).normalized;
+  // メールアドレスは、記号を除く正規化で「@」が消えるので、元の文で見る。
+  const hasMail = (text: string): boolean =>
+    text.normalize('NFKC').includes('@');
+  const risky =
+    RISK_MARKER.test(liveText) ||
+    RISK_MARKER.test(asrText) ||
+    hasMail(live) ||
+    hasMail(asr);
+  const textDiffers = liveText !== asrText;
+  const ask = differences.length > 0 || (risky && textDiffers);
   return {
-    action: differences.length === 0 ? 'proceed' : 'ask_back',
+    action: ask ? 'ask_back' : 'proceed',
     differences,
-    reasons: differences.map((kind) =>
-      kind === 'recipient' && !recipientsDiffer
-        ? 'recipient_not_comparable'
-        : `${kind}_differs`,
-    ),
+    reasons:
+      differences.length > 0
+        ? differences.map((kind) => `${kind}_differs`)
+        : ask
+          ? ['text_differs']
+          : [],
   };
 }
 

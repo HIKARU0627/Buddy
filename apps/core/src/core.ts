@@ -61,6 +61,7 @@ import {
   TaskMigrationError,
   migrateTaskContents,
 } from './task-content-migration.js';
+import { ForgetLedgerError, syncForgetLedger } from './forget-ledger.js';
 import { createTurnRoutes } from './api-turns.js';
 import { CanvasHub, createStreamRoutes } from './canvas-stream.js';
 import { PreviewRegistry } from './previews.js';
@@ -133,7 +134,12 @@ import {
   releaseLock,
 } from './lock.js';
 import type { LockRefusal } from './lock.js';
-import { DB_FILE, controlEndpoint, socketPathTooLong } from './paths.js';
+import {
+  DB_FILE,
+  FORGET_LEDGER_FILE,
+  controlEndpoint,
+  socketPathTooLong,
+} from './paths.js';
 import { runPreflight } from './preflight.js';
 import type { PreflightCheck } from './preflight.js';
 import { RecoveryError, recoverInterruptedOperations } from './recovery.js';
@@ -439,6 +445,27 @@ async function openStore(
         throw new CoreStartError('store_recovery_failed', [
           'task_content_migration_failed',
           error.reason,
+        ]);
+      throw error;
+    }
+    // 忘却台帳の別ファイルを DB にそろえる（ADR 0054）。COMMIT の後・書く前に止まった忘却はここで書き直す。ファイルが
+    // DB より進んでいる・食い違う・壊れているときは起動しない（DB が古い状態へ戻された疑い）。
+    try {
+      const ledger = await syncForgetLedger(
+        store,
+        join(dataDir, FORGET_LEDGER_FILE),
+        new Date(),
+      );
+      if (ledger.action === 'written')
+        log(
+          `忘却台帳のファイルを DB に合わせて書きました（世代 ${ledger.forgetting_generation}）。`,
+        );
+    } catch (error) {
+      if (error instanceof ForgetLedgerError)
+        throw new CoreStartError('store_recovery_failed', [
+          'forget_ledger_file',
+          error.reason,
+          ...error.reasons,
         ]);
       throw error;
     }

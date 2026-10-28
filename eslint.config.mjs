@@ -352,6 +352,8 @@ export default tseslint.config(
       'apps/core/**/*.test.ts',
       'apps/core/src/*-test-support.ts',
       'packages/storage/**/*.test.ts',
+      // storage の試験の道具どうし（忘却の世界は操作の合成の命令を使う。ADR 0054）。
+      'packages/storage/src/*-test-support.ts',
       // 試験が子プロセスとして起動する道具。
       'packages/storage/src/crash-child.ts',
     ],

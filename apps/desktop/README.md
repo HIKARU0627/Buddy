@@ -44,6 +44,10 @@ pnpm --filter @buddy/desktop dev
 
 同じフラグに `--buddy-voice=mock`（または環境変数 `BUDDY_DESKTOP_VOICE=mock`）を足すと、隠した音声レンダラーの窓（模擬のレンダラー。合成の PCM で、マイク・WebRTC・実 API を使わない）と、端末の中だけで答える模擬の中枢を使います（[ADR 0050](../../docs/adr/0050-b05-desktop-voice-renderer-isolation-and-stop.md)）。音声レンダラーは専用のスキーム（`buddy-voice://renderer/`）と保存しないセッションで、ビルド済みの `dist/voice` の HTML と JS だけを読み、ほかの通信・権限・遷移を全て拒否します。main は 6 つの限定 IPC だけを送り、ACK の期限（suspend_io は 300 ms）を過ぎた・失敗した・固まったときは強制終了して、この端末の入出力も止めます（`src/main/voice-controller.ts`）。状態の層のパネルに音声の段（状態・「音声を外部へ送っている」の印・同意の取り消し・最小の「続ける」）を出します。外部への送信の同意は、初めて「続ける」を押したときに main の OS の確認ダイアログで 1 回だけ取り、userData の `voice-consent.json` に記録します（表示と確認を出すかの判断だけ。正本は中枢）。模擬のレンダラーの故障は `--buddy-voice-fault=delay=250,hang=suspend_io,drop=stop_playback:play,fail=start` で注入できます。どれも開発の起動だけで、配布版と既定は音声レンダラーを作りません。
 
+### 返し方（声／文字）と会話の操作（B05-05）
+
+端末ごとの返し方は main が持ちます（userData の `voice-reply-mode.json`。記録がなければ声、読めなければ文字。[ADR 0052](../../docs/adr/0052-b05-input-output-modes-and-conversation-control.md)）。文字で返す設定では「続ける」を押せず、同意・リース・Live の接続を求めません。声から文字へ切り替えると、開いている Live をすぐ閉じます（会話と文脈は続く）。状態の層のパネルの 3 段目に、返し方の 2 択（声／文字）・読み上げの停止・会話の終了を置きます（限定 IPC `desktop.voice_control`。文字では説明せず、記号と位置で伝えます。見た目の整えは UI-08）。会話の操作は、画面のボタン・文字の発言が照合表に当たった応答（`session_control`）・中枢が照合した Live の発話（音声イベント）のどれからでも同じ処理を通ります。デスクトップは中枢の WSS をまだ受けないので、中枢の音声イベントの受け口（`onCoreVoiceEvent`）は試験からだけ呼びます。
+
 ## 確かめられること
 
 - ウィンドウを閉じてもトレイ（macOS はメニューバー）に残ります。終了はトレイの「Buddy を終了」か画面のボタンです。どちらも中枢を止めません。
@@ -61,6 +65,7 @@ pnpm --filter @buddy/desktop dev
 | `src/main/electron/main.ts`     | Electron のアダプター（BrowserWindow・Tray・ipcMain・powerMonitor・protocol・safeStorage・app のライフサイクル）                                                                                                                                                                   |
 | `src/preload/preload.cts`       | sandbox の preload。contextBridge で限定 API（invoke・onNotification）だけを公開する                                                                                                                                                                                               |
 | `src/preload/voice-preload.cts` | 音声レンダラーの preload。命令の受け取り・ACK の返送・故障の指定だけを公開する（B05-06）                                                                                                                                                                                           |
+| `src/main/voice-reply-mode.ts`  | 端末ごとの返し方の記録（B05-05）。記録がなければ声、あるのに読めなければ文字                                                                                                                                                                                                       |
 | `src/voice`                     | 音声レンダラーの画面（模擬のレンダラーを動かすだけ。`vite.voice.config.mjs` で `dist/voice` へ出す）                                                                                                                                                                               |
 | `src/renderer`                  | React と HeroUI の画面。状態帯・停止と再開・登録・中枢の画面・電源とロックの記録。Electron・Node.js の API を使わない                                                                                                                                                              |
 

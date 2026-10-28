@@ -144,6 +144,8 @@ test('requests go only to the contract channels', async () => {
       'desktop.get_voice',
       'desktop.voice_continue',
       'desktop.voice_consent_revoke',
+      // B05-05: 音声の会話の操作（読み上げの停止・会話の終了・返し方の切り替え。状態の層だけ）。
+      'desktop.voice_control',
     ],
   );
   for (const channel of channels) {
@@ -170,6 +172,7 @@ test('requests go only to the contract channels', async () => {
     { channel: 'desktop.get_voice' },
     { channel: 'desktop.voice_continue' },
     { channel: 'desktop.voice_consent_revoke' },
+    { channel: 'desktop.voice_control' },
     // 音声レンダラーの限定 IPC は UI レンダラーの preload に出さない（B05-06）。
     { channel: 'voice.start' },
     { channel: 'voice.suspend_io' },
@@ -273,6 +276,7 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.get_voice',
     'desktop.voice_continue',
     'desktop.voice_consent_revoke',
+    'desktop.voice_control',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
@@ -373,7 +377,8 @@ test('the legacy role argument keeps every existing channel and notification', a
       // 音声の状態・「続ける」・同意の取り消し（B05-06）は状態の層だけ。
       channel === 'desktop.get_voice' ||
       channel === 'desktop.voice_continue' ||
-      channel === 'desktop.voice_consent_revoke'
+      channel === 'desktop.voice_consent_revoke' ||
+      channel === 'desktop.voice_control'
     )
       await assert.rejects(
         api.invoke({ channel, request_id: 'r', payload: null }),

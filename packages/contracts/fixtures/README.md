@@ -14,6 +14,7 @@
 - `voice-ownership-cases.json`: 音声所有権の調停（同時の呼びかけの 300 ms・表示先・端末の交代）、中枢が返すリースの期限（6 秒）、リースの取り直し（1800 回。U69）、停止の到達の状態の期待値（X13・X14・X32、ADR 0046）。手書きで、domain の実装から生成していない。
 - `voice-stop-timing-cases.json`・`voice-silence-cases.json`・`voice-start-gate-cases.json`: 3 層の停止の時間（200 ms 目標・300 ms 期限）、無音の規則、接続開始の送信トラックの門の期待値（X13・X25・X30・X31・X54・X55・X58・QA43、ADR 0041）。時間は設計の初期値で合格値ではない。
 - `voice-reservation-cases.json`・`voice-notification-rate-cases.json`: 追加予約の計画・予算到達の閉じ方・精算の秒数と、音声の通知の頻度の制限の期待値（X26・X34・X35、ADR 0041）。秒数だけで、金額は予算の規則（合成の通貨 XTS）が決める。
+- `voice-interaction-cases.json`: 入力ごとの出力先・結果の届け先・呼びかけでの ① か ③ の選び方・返し方の切り替え・発話開始の一時保留と訂正・取消・Live の文字起こしの整理（断片の連番・時刻の対応・対象のターン・300 ms の安定）・入力の受付と方式 C の 4 操作・声で返す定型文の期待値（X27・X47・X49・X51・X59・QA05・QA35・QA41、ADR 0052）。手書きで、domain の実装から生成していない。時間は合成の値（窓 2 秒・確定待ち 5 秒・保留の上限 30 秒は仮置き）。
 - `voice-segment-cases.json`・`voice-method-c-cases.json`・`voice-asr-compare-cases.json`: 方式 A の区間リングと sealed・blocked・truncated、方式 C の 4 操作の限定、Live と端末の ASR の比較の期待値（QA05・QA06・QA08・QA41・X51、ADR 0041）。音声は含まず、フレームの番号と sample の範囲、合成の発話だけ。
 - `budget-scenarios.json`: 合成設定（通貨 XTS、合成の上限）による予算の受付・精算のシナリオ。超過枠への経路・手での精算・M 超過の確認の手順と、QA42 の残り・X53・X18 の予算の行を含む（ADR 0035）。本人の金額を含まない。
 - `budget-credit.json`: 付帯クレジットの区分と保留の純粋な規則の期待値（周期の ID・誰に充てるか・周期ごとの基準と残高の換算・残りと保留の理由・受付・精算の割り当て・provider の精算と手での精算の区分。MA03〜MA06、ADR 0042）。予算の通貨は XTS、残高の通貨は XXX の合成値で、期待値は手計算。`scripts/budget-credit.test.mjs` がビルド後の domain で確かめる。

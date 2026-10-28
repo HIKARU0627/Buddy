@@ -29,6 +29,10 @@ export interface RoleWindowHandle {
   // 最小の「続ける」と、外部への送信の同意の取り消し（状態の層だけ。B05-06）。同意の確認は main の OS の確認ダイアログ。
   readonly continueVoice: () => void;
   readonly revokeVoiceConsent: () => void;
+  readonly controlVoice: (
+    action:
+      'stop_playback' | 'end_conversation' | 'reply_in_voice' | 'reply_in_text',
+  ) => void;
   // キャンバスの物のユーザーの操作（キャンバスの窓だけ。UI-06）。受け付けたら中枢が当てた後の版、拒否・失敗は null
   // （記述は main が取り直す）。
   readonly canvasUserOp: (
@@ -105,6 +109,17 @@ export function useRoleWindowState(
     () => send(request('desktop.voice_consent_revoke', null)),
     [send],
   );
+  // 音声の会話の操作（読み上げの停止・会話の終了・返し方の切り替え。B05-05）。
+  const controlVoice = useCallback(
+    (
+      action:
+        | 'stop_playback'
+        | 'end_conversation'
+        | 'reply_in_voice'
+        | 'reply_in_text',
+    ) => send(request('desktop.voice_control', { action })),
+    [send],
+  );
   const canvasUserOp = useCallback(
     (op: CanvasUserOp, expectedRevision: string) =>
       api
@@ -150,6 +165,7 @@ export function useRoleWindowState(
     resume,
     continueVoice,
     revokeVoiceConsent,
+    controlVoice,
     canvasUserOp,
     canvasContent,
   };

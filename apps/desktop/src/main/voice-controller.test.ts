@@ -76,6 +76,7 @@ test('the renderer is prepared only after the lock is confirmed open; nothing is
     consent: 'granted',
     can_continue: false,
     notice: null,
+    reply_mode: 'voice',
   });
   assert.equal(await h.voice.continueConversation(), 'voice_unavailable');
   await h.clock.advance(5);
@@ -86,6 +87,7 @@ test('the renderer is prepared only after the lock is confirmed open; nothing is
     consent: 'granted',
     can_continue: true,
     notice: null,
+    reply_mode: 'voice',
   });
   assert.equal(statusVoice(h), 'waiting_wake_word');
   // 用意しただけでは収音も送信も始めない（命令を送っていない）。
@@ -183,6 +185,7 @@ test('X13/QA43: an OS lock suspends IO at once; after the ACK nothing more is se
     consent: 'granted',
     can_continue: false,
     notice: null,
+    reply_mode: 'voice',
   });
   assert.equal(statusVoice(h), 'device_stopped');
   assert.equal(await h.voice.continueConversation(), 'input_stopped');
@@ -268,6 +271,7 @@ test('X30: a renderer that hangs on suspend keeps sending until main kills it at
     consent: 'granted',
     can_continue: false,
     notice: null,
+    reply_mode: 'voice',
   });
   // 前の音声レンダラーから遅れて届く ACK は使わない。
   h.voice.receiveAck(1, {
@@ -922,6 +926,7 @@ test('a disabled controller never creates a renderer and continue is unavailable
     consent: 'granted',
     can_continue: false,
     notice: null,
+    reply_mode: 'voice',
   });
   assert.equal(statusVoice(h), null);
   h.device.stopFromMain();

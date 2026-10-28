@@ -6,11 +6,21 @@
 // 「続ける」は呼びかけ語なしで声の会話を始める最小のボタンで、押せるのは呼びかけ待ちで外部へ送っていないときだけ
 // （受付と同意の確認は main。同意がなければ main が OS の確認ダイアログを 1 回だけ出す）。
 // ロック中・不明は、位置だけを残して中身を隠す（灰色の面）。理由のコード・送り先の名前は出さない。
-import { Button, Spinner, Tooltip } from '@heroui/react';
+import {
+  Button,
+  Spinner,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+} from '@heroui/react';
 import { InlineNotice } from '../../components/InlineNotice.js';
 import { PrivacyIcon, StatusItemIcon } from '../../components/StatusIcons.js';
 import { StatusMark, StatusText } from '../../components/StatusText.js';
-import type { VoiceStripView } from '../../state/status-panel-state.js';
+import { VoiceControlIcon } from '../../components/VoiceControlIcons.js';
+import type {
+  VoiceControlsView,
+  VoiceStripView,
+} from '../../state/status-panel-state.js';
 
 export const VOICE_LABELS = {
   region: '音声',
@@ -22,6 +32,12 @@ export const VOICE_LABELS = {
   externalOff: '音声を外部へ送っていない',
   externalUnknown: '音声を外部へ送っているかは未受信',
   hidden: '音声: 隠しています',
+  // 会話の操作（B05-05）。文字ではなく記号の形で伝え、名前は読み上げとフォーカスのためだけに持つ。
+  replyMode: '返し方',
+  replyVoice: '声で返す',
+  replyText: '文字で返す',
+  stopPlayback: '読み上げを止める',
+  endConversation: '会話を終える',
 } as const;
 
 const EXTERNAL_CLASS: Readonly<Record<VoiceStripView['external'], string>> = {
@@ -41,12 +57,21 @@ export function VoiceStrip({
   message,
   onContinue,
   onRevoke,
+  controls = null,
+  onReplyMode = () => undefined,
+  onStopPlayback = () => undefined,
+  onEndConversation = () => undefined,
 }: {
   readonly view: VoiceStripView;
   // 「続ける」・取り消しの拒否の文言（なければ null）。
   readonly message: string | null;
   readonly onContinue: () => void;
   readonly onRevoke: () => void;
+  // 会話の操作（返し方の選び・読み上げの停止・会話の終了）。なければ段を出さない。
+  readonly controls?: VoiceControlsView | null;
+  readonly onReplyMode?: (mode: 'voice' | 'text') => void;
+  readonly onStopPlayback?: () => void;
+  readonly onEndConversation?: () => void;
 }) {
   if (view.kind === 'hidden')
     return (
@@ -131,6 +156,71 @@ export function VoiceStrip({
           ) : null}
         </span>
       </div>
+      {controls === null ? null : (
+        // 3 段目: 左に返し方の 2 択（声／文字。選んだほうが塗られる）、右に読み上げの停止（■）と会話の終了（×）。
+        // 押せない間は枠だけにして、位置は変えない（段の高さも変えない）。
+        <div
+          data-controls-row
+          className="flex h-8 items-center justify-between gap-2 px-1"
+        >
+          <ToggleButtonGroup
+            aria-label={VOICE_LABELS.replyMode}
+            selectionMode="single"
+            disallowEmptySelection
+            size="sm"
+            selectedKeys={new Set([controls.replyMode])}
+            onSelectionChange={(keys) => {
+              const key = [...keys][0];
+              // 選んでいるほうをもう一度押しても、切り替えない（接続を閉じる操作を重ねない）。
+              if (
+                (key === 'voice' || key === 'text') &&
+                key !== controls.replyMode
+              )
+                onReplyMode(key);
+            }}
+            data-reply-mode={controls.replyMode}
+          >
+            <ToggleButton
+              id="voice"
+              isIconOnly
+              aria-label={VOICE_LABELS.replyVoice}
+            >
+              <VoiceControlIcon icon="reply_voice" className="size-4" />
+            </ToggleButton>
+            <ToggleButton
+              id="text"
+              isIconOnly
+              aria-label={VOICE_LABELS.replyText}
+            >
+              <VoiceControlIcon icon="reply_text" className="size-4" />
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <span className="flex items-center gap-1">
+            <Button
+              isIconOnly
+              variant="outline"
+              size="sm"
+              aria-label={VOICE_LABELS.stopPlayback}
+              isDisabled={!controls.canStopPlayback}
+              onPress={onStopPlayback}
+              data-stop-playback={controls.canStopPlayback ? 'ready' : 'off'}
+            >
+              <VoiceControlIcon icon="stop_playback" className="size-4" />
+            </Button>
+            <Button
+              isIconOnly
+              variant="outline"
+              size="sm"
+              aria-label={VOICE_LABELS.endConversation}
+              isDisabled={!controls.canEnd}
+              onPress={onEndConversation}
+              data-end-conversation={controls.canEnd ? 'ready' : 'off'}
+            >
+              <VoiceControlIcon icon="end_conversation" className="size-4" />
+            </Button>
+          </span>
+        </div>
+      )}
       {view.notice === null ? null : (
         <InlineNotice tone="warning" text={view.notice} />
       )}

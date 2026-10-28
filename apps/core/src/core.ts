@@ -83,6 +83,7 @@ import { BUDGET_CREDIT_FILE, fileCreditSource } from './budget-credit.js';
 import type { CreditObservationSource } from './budget-credit.js';
 import { BudgetGate } from './budget-gate.js';
 import { createVoiceRoutes } from './api-voice.js';
+import { LiveConversation } from './live-conversation.js';
 import {
   createLiveBudget,
   DEFAULT_LIVE_PROFILE_ID,
@@ -92,7 +93,7 @@ import {
   combineReconcilers,
   createLiveUsageReconciler,
 } from './live-reconcile.js';
-import { VoiceControl } from './voice-control.js';
+import { REAL_VOICE_TIMERS, VoiceControl } from './voice-control.js';
 import type {
   LiveBudgetPort,
   LiveProvider,
@@ -874,6 +875,9 @@ async function startHttps(
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
+    // 会話の操作（照合表に当たった文字の発言）は、その端末の開いている Live へも行う（画面のボタンと同じ処理。B05-05）。
+    onSessionControl: ({ device_id, action }) =>
+      voice.applySessionControlForDevice(device_id, action),
   });
   // 連携の口座と許可の版を一度確かめておく（発言の入力の時点の版を外部へ問い合わせずに持つ。B04-07）。
   await turns.prime().catch(() => undefined);
@@ -926,6 +930,23 @@ async function startHttps(
     faults,
     ...https.eventStream,
   });
+  // Live（声）の会話の処理（B05-05、ADR 0052）。委譲・文字起こしは共通の workflow（発言の処理）へ進め、声で返せない結果は
+  // 画面（キャンバス）へ回す。provider が渡されない起動（製品の既定）では何も受けない。
+  voice.setConversation(
+    new LiveConversation({
+      host: voice.conversationHost(),
+      turns: { interpret: turns.interpret, commitLive: turns.commitLive },
+      screen: {
+        show: (result) => {
+          stream.placeLate(result.turn);
+        },
+        heldDropped: (info) => log(`live_held_dropped:${info.reason}`),
+      },
+      monoNow: voiceOptions.monoNow ?? (() => performance.now()),
+      timers: voiceOptions.timers ?? REAL_VOICE_TIMERS,
+      log,
+    }),
+  );
   const voiceRoutes = createVoiceRoutes(voice);
   // 経路の処理の表は重ならない（同じ operationId を二つの処理が持たない）。重なれば起動しない。
   const handlerKeys = [

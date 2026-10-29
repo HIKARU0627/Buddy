@@ -573,6 +573,8 @@ export async function startCore(
     await step(() => control.close(options.shutdownGraceMs ?? 2000));
     // 音声の制御のタイマーとサイドバンドを止める（閉じ終えていない Live は次の起動の照合が扱う）。
     await step(async () => voice?.close());
+    // 実行中の掃除と後始末を終えてから DB を閉じる（閉じた後の命令で失敗を出さない）。掃除は次の区切りで中断する。
+    await step(async () => retention?.drain());
     // 処理中の命令を終えてから DB を閉じる。ロックはその後に返す。
     await step(async () => opened?.store.close());
     await step(removeSocketFile);
@@ -947,6 +949,17 @@ async function startHttps(
     faults,
     contract: createApiContract(),
     log,
+    // 外部へ送る前に、掃除が済んでクラウド送信が許されていることを確かめる（ADR 0053 の U108）。
+    ...(retention === null
+      ? {}
+      : {
+          cloudGate: {
+            ready: async () => {
+              await retention?.idle();
+            },
+            open: () => (retention as RetentionSweeper).gate().cloud_send,
+          },
+        }),
   });
   routes = createOperationRoutes({
     store: watched,

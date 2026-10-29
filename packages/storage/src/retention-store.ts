@@ -751,10 +751,8 @@ export function readSweepRows(
     family: 'operation',
     id: row.operation_id,
     operation_state: row.state as SweepOperationRow['operation_state'],
-    completed_at:
-      row.completed_at === null
-        ? null
-        : new Date(row.completed_at).toISOString().replace('.000Z', 'Z'),
+    // 読めない（範囲外の）時刻は null にして、計画に hold（deadline_unreadable）させる。1 行の異常で掃除全体を止めない。
+    completed_at: isoOrNull(row.completed_at),
     body_erased: row.body_erased === 1,
     compensation_open: row.compensation_open === 1,
     // 0011 の後は、生きている用事が操作の暗号文・行を参照しない（ADR 0051）。
@@ -839,6 +837,14 @@ export function purgeUndoRecords(
     )
     .run(UNDO_TTL_MS, now);
   return { purged: removed.changes };
+}
+
+function isoOrNull(millis: number | null): string | null {
+  if (millis === null) return null;
+  const date = new Date(millis);
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toISOString().replace('.000Z', 'Z');
 }
 
 function sqliteCode(error: unknown): string | null {
@@ -1035,6 +1041,11 @@ export function executeRetentionOp(
         halt: false,
       };
     } catch (error) {
+      // ディスクの空きが足りない（SQLITE_FULL）のは、一時領域を要する VACUUM とログの切り詰めで起こりうる。どちらも
+      // 1 つの transaction の外にあり、VACUUM は失敗しても元の DB が残るので、書込みを止める（halt）理由にしない
+      // （ADR 0053。承認・保存・予算の書込みまで止めない）。成否不明（CommitUncertain）・I/O の失敗は failure() のまま止める。
+      if (sqliteCode(error) === 'SQLITE_FULL')
+        return { result: rejected(['database_full']), halt: false };
       return failure(error);
     }
   }

@@ -4,7 +4,8 @@
 //   1. DB の行を読む（retention.sweep_rows）。
 //   2. domain の sweepPlan で計画を作る（時計は注入。時計が巻き戻ったら、命令へ渡す now を最終確認の時刻にする）。
 //   3. 計画の操作を DB worker の命令で実行する（本文の削除・90 日の削除・予算の月の削除・undo_records の掃除）。
-//   4. 削除を伴った掃除の後に WAL を切り詰め、間隔（既定 1 日）を空けて VACUUM する。
+//   4. 掃除の記録（SweepRecord）を確定してゲートを開いた後で、削除を伴ったときだけ WAL を切り詰め、間隔（既定 1 日）を
+//      空けて VACUUM する（後始末は記録の外。VACUUM の間もゲートを閉じない。ADR 0053）。
 // 掃除の記録（SweepRecord）を startupGate に渡し、済むまで検索・クラウドへの送信・自動利用を許さない。
 // 時計・最終確認時刻・epoch は Core のメモリーだけに置く（保存・復帰の検知は B06-07）。
 //
@@ -170,7 +171,11 @@ export class RetentionSweeper {
   readonly #sweepIntervalMs: number;
   #lastCheckedAt: string | null = null;
   #lastCompletedAt: string | null = null;
-  #lastVacuumAt: number | null = null;
+  // 起動時の VACUUM はしない（間隔は起動の時刻から数える。前回の時刻は保存しない。U114）。
+  #lastVacuumAt: number;
+  // 削除を伴った掃除の後の後始末（checkpoint・VACUUM）が済んでいない。
+  #maintenancePending = false;
+  #maintenance: Promise<void> | null = null;
   #record: SweepRecord;
   // まだ一度も掃除を始めていない（ゲートは sweep_not_started）。
   #started = false;
@@ -186,6 +191,7 @@ export class RetentionSweeper {
     this.#vacuumIntervalMs =
       options.vacuumIntervalMs ?? DEFAULT_VACUUM_INTERVAL_MS;
     this.#sweepIntervalMs = options.sweepIntervalMs ?? SWEEP_INTERVAL_MS;
+    this.#lastVacuumAt = this.#now();
     this.#record = {
       epoch: this.#epoch,
       status: 'running',
@@ -196,17 +202,24 @@ export class RetentionSweeper {
   }
 
   // 起動の直後はゲートを閉じたまま、最初の掃除を始める（済むまで検索・送信・自動利用を許さない）。
+  // 定期の確認は sweepIntervalMs の 1/5（既定は 1 分）ごとに sweepDue を見る。前回の完了から間隔が過ぎた最初の確認で
+  // 始めるので、掃除の所要時間の分だけ周期が 2 倍にずれることがない（P3）。
   start(): void {
     if (this.#closed) return;
     void this.runOnce(true).catch(() => undefined);
-    this.#timer = setInterval(() => {
-      const now = this.#now();
-      if (sweepDue(this.#lastCompletedAt, iso(now)))
-        void this.runOnce(false).catch(() => undefined);
-    }, this.#sweepIntervalMs);
+    this.#timer = setInterval(
+      () => {
+        const now = this.#now();
+        if (sweepDue(this.#lastCompletedAt, iso(now)))
+          void this.runOnce(false).catch(() => undefined);
+      },
+      Math.max(1, Math.floor(this.#sweepIntervalMs / 5)),
+    );
     this.#timer.unref?.();
   }
 
+  // 新しい掃除を始めず、実行中の掃除は次の区切りで中断する（失敗の記録は作らない。ゲートは閉じたまま）。
+  // 終わるまで待つのは drain()。
   close(): void {
     this.#closed = true;
     if (this.#timer !== null) clearInterval(this.#timer);
@@ -229,8 +242,21 @@ export class RetentionSweeper {
   }
 
   // 掃除が済むまで待つ（起動の直後の要求・試験）。失敗しても拒否しない（ゲートが閉じたままになる）。
+  // 後始末（checkpoint・VACUUM）は待たない（ゲートの判定に関わらないので、ターンを VACUUM の分だけ待たせない）。
   idle(): Promise<SweepRecord> {
     return this.#running ?? Promise.resolve(this.#record);
+  }
+
+  // 掃除と後始末がすべて終わるまで待つ（停止の前。DB を閉じる前に呼ぶ）。
+  async drain(): Promise<void> {
+    for (;;) {
+      const pending = this.#running ?? this.#maintenance;
+      if (pending === null) return;
+      await pending.then(
+        () => undefined,
+        () => undefined,
+      );
+    }
   }
 
   // 1 回の掃除。force が false のときは、前回から間隔が過ぎていなければ何もしない。
@@ -249,9 +275,15 @@ export class RetentionSweeper {
       use_blocked: [],
     };
     // 掃除の間は running の記録でゲートが閉じる（済んだことの記録だけを根拠に開く）。
-    this.#running = this.#sweep(now).finally(() => {
-      this.#running = null;
-    });
+    this.#running = this.#sweep(now)
+      .then((record) => {
+        // 記録を確定した後に後始末を始める（ゲートはもう開いている）。
+        this.#startMaintenance();
+        return record;
+      })
+      .finally(() => {
+        this.#running = null;
+      });
     return this.#running;
   }
 
@@ -277,6 +309,7 @@ export class RetentionSweeper {
         };
         return this.#record;
       }
+      this.#checkOpen();
       usedBlocked = plan.use_blocked;
       // 巻き戻り中は、命令へ渡す now を最終確認の時刻にする（期限を延ばさない。ADR 0043）。
       const effectiveNow = Date.parse(plan.clock.effective_now);
@@ -293,26 +326,41 @@ export class RetentionSweeper {
 
       // 補償のない取り消しの記録を先に消し、90 日の削除が止まらないようにする（ADR 0051 の引き継ぎ）。
       if (receiptPlanned) {
-        const undo = await this.#port.purgeUndoRecords(effectiveNow);
-        deleted += undo.purged;
+        this.#checkOpen();
+        try {
+          const undo = await this.#port.purgeUndoRecords(effectiveNow);
+          deleted += undo.purged;
+        } catch (error) {
+          // 取り消しの記録が消せなくても、本文・予算の削除は続ける（失敗に数え、ゲートは閉じる）。
+          if (!isExpectedHold(error)) failed += 1;
+        }
       }
       if (bodyPlanned) {
+        this.#checkOpen();
         const count = await this.#runBatch('body', effectiveNow);
         failed += count.failed;
         deleted += count.processed;
       }
       if (receiptPlanned) {
+        this.#checkOpen();
         const count = await this.#runBatch('receipt', effectiveNow);
         failed += count.failed;
         deleted += count.processed;
       }
 
-      const months = new Set(
-        plan.actions
-          .filter((action) => action.family === 'budget_month')
-          .map((action) => action.id.replace(/^budget_month:/u, '')),
-      );
+      // 月は、計画の操作の ID（live_session・承認・予約の ID）から、入力の予算の月の行を引いて決める。
+      const monthOf = budgetMonthOf(rows);
+      const months = new Set<string>();
+      for (const action of plan.actions) {
+        if (action.family !== 'budget_month' || action.table === undefined)
+          continue;
+        const month = monthOf.get(`${action.table}:${action.id}`);
+        // 入力に無い ID は計画の不整合。消さずに失敗に数える。
+        if (month === undefined) failed += 1;
+        else months.add(month);
+      }
       for (const month of months) {
+        this.#checkOpen();
         try {
           const purged = await this.#port.purgeBudgetMonth(month, effectiveNow);
           deleted +=
@@ -327,7 +375,8 @@ export class RetentionSweeper {
       // 時計の判定は進める（next_last_checked_at は戻らない）。予算の記録は巻き戻り中に消していない。
       this.#lastCheckedAt = plan.clock.next_last_checked_at;
 
-      if (deleted > 0) await this.#checkpointAndMaybeVacuum(startedAt);
+      // 削除があれば、記録の確定の後に checkpoint・VACUUM をする（記録の外）。
+      if (deleted > 0) this.#maintenancePending = true;
 
       completedAt = this.#now();
       this.#lastCompletedAt = iso(completedAt);
@@ -339,6 +388,8 @@ export class RetentionSweeper {
         use_blocked: usedBlocked,
       };
     } catch (error) {
+      // 停止による中断。失敗の記録は作らない（記録は running のまま。ゲートは閉じている）。
+      if (error instanceof SweepAborted) return this.#record;
       failed += 1;
       this.#log(
         `保存期限の掃除に失敗しました（${reasonOf(error)}）。検索・クラウドへの送信・自動利用は止めたままにします。`,
@@ -365,6 +416,7 @@ export class RetentionSweeper {
     // 同じ next を繰り返さない（命令が進まないときに無限に呼ばない）。
     const seen = new Set<string>();
     for (;;) {
+      this.#checkOpen();
       let batch: RetentionBatchValue;
       try {
         batch =
@@ -381,21 +433,58 @@ export class RetentionSweeper {
       ).length;
       if (batch.next === null) return { processed, failed };
       const key = `${batch.next.completed_at}:${batch.next.operation_id}`;
-      if (seen.has(key)) return { processed, failed };
+      if (seen.has(key)) {
+        // 進まない異常。静かに通さず、失敗に数える。
+        this.#log(
+          '保存期限の掃除の続きの位置が進みませんでした。この回の続きは次の周期にします。',
+        );
+        return { processed, failed: failed + 1 };
+      }
       seen.add(key);
       after = batch.next;
     }
   }
 
-  async #checkpointAndMaybeVacuum(now: number): Promise<void> {
-    await this.#port.checkpoint();
-    if (
-      this.#lastVacuumAt === null ||
-      now - this.#lastVacuumAt >= this.#vacuumIntervalMs
-    ) {
-      await this.#port.vacuum();
-      this.#lastVacuumAt = now;
+  #checkOpen(): void {
+    if (this.#closed) throw new SweepAborted();
+  }
+
+  // 後始末（記録の外）。同時に 1 つだけ。済んでいなければ次の掃除の後にもう一度試す。
+  #startMaintenance(): void {
+    if (!this.#maintenancePending || this.#maintenance !== null || this.#closed)
+      return;
+    this.#maintenancePending = false;
+    this.#maintenance = this.#maintain()
+      .catch((error: unknown) => {
+        this.#maintenancePending = true;
+        this.#log(
+          `保存期限の掃除の後始末（checkpoint・VACUUM）に失敗しました（${reasonOf(error)}）。次の掃除の後にもう一度試します。`,
+        );
+      })
+      .finally(() => {
+        this.#maintenance = null;
+      });
+  }
+
+  // checkpoint → VACUUM（間隔を過ぎたとき）→ checkpoint。ログが切り詰められなかった（busy）ときは VACUUM に進まず、
+  // 次の掃除の後に試す（VACUUM の時刻も進めない）。
+  async #maintain(): Promise<void> {
+    const before = await this.#port.checkpoint();
+    if (before.busy !== 0) {
+      this.#maintenancePending = true;
+      this.#log(
+        '保存期限の掃除の後始末で、ログを切り詰められませんでした（他の接続が使用中）。次の掃除の後にもう一度試します。',
+      );
+      return;
     }
+    const now = this.#now();
+    if (now - this.#lastVacuumAt < this.#vacuumIntervalMs) return;
+    this.#checkOpen();
+    await this.#port.vacuum();
+    this.#lastVacuumAt = now;
+    // VACUUM は DB 全体の写しをログに残す。次の自動 checkpoint まで大きいままにしない。
+    this.#checkOpen();
+    await this.#port.checkpoint();
   }
 
   #gateAt(now: number): StartupGateDecision {
@@ -406,6 +495,35 @@ export class RetentionSweeper {
       sweep: this.#started ? this.#record : null,
     });
   }
+}
+
+// 停止による中断（失敗ではない）。
+class SweepAborted extends Error {
+  constructor() {
+    super('sweep_aborted');
+    this.name = 'SweepAborted';
+  }
+}
+
+// 予算の月の行から、計画の操作の ID（表と ID）→ 月 を引く表。
+function budgetMonthOf(rows: readonly SweepRow[]): ReadonlyMap<string, string> {
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    if (row.family !== 'budget_month') continue;
+    for (const reservation of row.reservations) {
+      map.set(
+        `budget_reservations:${reservation.reservation_id}`,
+        row.budget_month,
+      );
+      for (const id of reservation.live_session_ids)
+        map.set(`live_sessions:${id}`, row.budget_month);
+      for (const id of reservation.approval_ids)
+        map.set(`budget_overage_approvals:${id}`, row.budget_month);
+    }
+    for (const id of row.unused_approval_ids)
+      map.set(`budget_overage_approvals:${id}`, row.budget_month);
+  }
+  return map;
 }
 
 function isExpectedHold(error: unknown): boolean {

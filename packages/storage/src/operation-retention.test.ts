@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import test from 'node:test';
+import Database from 'better-sqlite3';
 import {
   OPERATION_PURGE_STEPS,
   applyMigrations,
@@ -1422,6 +1423,78 @@ test('0010: all approvals are revoked whether or not the operation is marked', a
         "SELECT restore_unverified_at FROM operations WHERE operation_id = 'op-marked'",
       ),
       5000,
+    );
+  });
+});
+
+// exec だけが指定の SQLite の失敗コードで落ちる接続（VACUUM の失敗の写し方を確かめる）。
+function failingExec(db: SqliteDatabase, code: string): SqliteDatabase {
+  return new Proxy(db, {
+    get(target, property) {
+      if (property === 'exec')
+        return () => {
+          throw new Database.SqliteError('simulated', code);
+        };
+      const member = Reflect.get(target, property, target) as unknown;
+      return typeof member === 'function' ? member.bind(target) : member;
+    },
+  });
+}
+
+test('B06-06d1: a full disk during VACUUM is a rejection that keeps the writer running, while an I/O failure still halts it', async () => {
+  await withDb((db) => {
+    seedFullOperation(db);
+    const full = retention(failingExec(db, 'SQLITE_FULL'), {
+      kind: 'retention.vacuum',
+    });
+    assert.deepEqual(full.result, {
+      ok: false,
+      outcome: 'rejected',
+      reasons: ['database_full'],
+    });
+    assert.equal(full.halt, false);
+    // 書込みを止めていないので、続けて保存の命令を受けられる。
+    assert.equal(
+      retention(db, { kind: 'retention.checkpoint' }).result.ok,
+      true,
+    );
+    // I/O の失敗は、状態が分からないので今までどおり止める（ADR 0018）。
+    const io = retention(failingExec(db, 'SQLITE_IOERR'), {
+      kind: 'retention.vacuum',
+    });
+    assert.equal(io.result.ok, false);
+    assert.equal(io.halt, true);
+  });
+});
+
+test('B06-06d1: a completed_at outside the Date range becomes null in the sweep rows without failing the whole read', async () => {
+  await withDb((db) => {
+    seedFullOperation(db);
+    // 範囲外の整数（Date の上限 8.64e15 を超える）。1 行の異常で sweep_rows 全体を止めない。
+    db.pragma('foreign_keys = OFF');
+    db.prepare(
+      "UPDATE operations SET completed_at = ? WHERE operation_id = 'op-x'",
+    ).run(9_000_000_000_000_000);
+    const result = retention(db, {
+      kind: 'retention.sweep_rows',
+      now: RECEIPT_DUE,
+    }).result;
+    const rows = (
+      value(result) as {
+        readonly rows: readonly {
+          family: string;
+          id: string;
+          completed_at?: string | null;
+        }[];
+      }
+    ).rows;
+    const x = rows.find(
+      (row) => row.family === 'operation' && row.id === 'op-x',
+    );
+    assert.equal(x?.completed_at, null);
+    // もう 1 行（補償の操作）は読めたまま。
+    assert.ok(
+      rows.some((row) => row.family === 'operation' && row.id !== 'op-x'),
     );
   });
 });

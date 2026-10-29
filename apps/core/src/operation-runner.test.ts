@@ -732,3 +732,111 @@ test(
     assert.equal(viewCalls, 2);
   },
 );
+
+test(
+  'a remote mutation is not prepared or sent while the retention gate is closed, and is tried again after the retry interval',
+  { timeout: TIMEOUT },
+  async () => {
+    const operationId = randomUUID();
+    let queries = 0;
+    let conversations = 0;
+    const store = {
+      storeGeneration: 'g',
+      query: () => {
+        queries += 1;
+        return Promise.resolve({
+          operation_id: operationId,
+          state: 'approved',
+          operation_kind: 'mail.labels.change',
+          effect_route: 'remote_mutation',
+          attempt_id: null,
+        });
+      },
+      // 準備権・送出意図は submit。閉じている間は一度も呼ばない。
+      submit: () => assert.fail('ゲートが閉じている間は submit を呼ばない'),
+      // 確定 intent を読もうとした = ゲートを通った。ここで止める（読めない）。
+      conversation: () => {
+        conversations += 1;
+        return Promise.resolve({ ok: false });
+      },
+      consumeDispatchPermit: () => false,
+    };
+    let open = false;
+    let readyCalls = 0;
+    const logs: string[] = [];
+    const runner = createOperationRunner({
+      store: store as unknown as RunnerStore,
+      keyStore: {
+        loadDataKey: () => Promise.reject(new Error('unused')),
+      } as unknown as DataKeyProvider,
+      provider: {} as never,
+      writer: {} as never,
+      faults: new FaultInjector(),
+      contract: createApiContract(),
+      log: (message) => logs.push(message),
+      cloudGate: {
+        ready: () => {
+          readyCalls += 1;
+          return Promise.resolve();
+        },
+        open: () => open,
+      },
+      gateRetryMs: 20,
+    });
+    runner.start(operationId);
+    await runner.idle();
+    assert.equal(conversations, 0);
+    assert.equal(readyCalls, 1);
+    assert.equal(logs.length, 1);
+    // ゲートが開いた後の再試行で、最初から確かめ直して進む。
+    open = true;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await runner.idle();
+    assert.equal(conversations, 1);
+    assert.equal(queries, 2);
+    runner.close();
+  },
+);
+
+test(
+  'closing the runner cancels the retry of an operation held by the retention gate',
+  { timeout: TIMEOUT },
+  async () => {
+    const operationId = randomUUID();
+    let queries = 0;
+    const store = {
+      storeGeneration: 'g',
+      query: () => {
+        queries += 1;
+        return Promise.resolve({
+          operation_id: operationId,
+          state: 'approved',
+          operation_kind: 'mail.labels.change',
+          effect_route: 'remote_mutation',
+          attempt_id: null,
+        });
+      },
+      submit: () => assert.fail('submit は呼ばない'),
+      conversation: () => assert.fail('conversation は呼ばない'),
+      consumeDispatchPermit: () => false,
+    };
+    const runner = createOperationRunner({
+      store: store as unknown as RunnerStore,
+      keyStore: {
+        loadDataKey: () => Promise.reject(new Error('unused')),
+      } as unknown as DataKeyProvider,
+      provider: {} as never,
+      writer: {} as never,
+      faults: new FaultInjector(),
+      contract: createApiContract(),
+      log: () => undefined,
+      cloudGate: { ready: () => Promise.resolve(), open: () => false },
+      gateRetryMs: 20,
+    });
+    runner.start(operationId);
+    await runner.idle();
+    runner.close();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(queries, 1);
+  },
+);

@@ -12,9 +12,13 @@ import type {
 } from '@buddy/storage';
 import type { SweepRow } from '@buddy/domain';
 import {
+  RetentionSweepCallError,
   RetentionSweeper,
+  createRetentionSweepPort,
   type RetentionSweepPort,
+  type RetentionSweeperOptions,
 } from './retention-sweeper.js';
+import { ManualClock, withBudgetStore } from './budget-test-support.js';
 
 const T0 = Date.parse('2031-06-01T00:00:00Z');
 const REGRESSED = Date.parse('2031-05-01T00:00:00Z');
@@ -33,6 +37,7 @@ const operationRow = (id: string, overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as SweepRow;
 
+// 予算の月 2030-01 の 1 組。live_session・承認（予約に使った分と使わなかった分）・予約の ID は、月の文字列と別の値にする。
 const budgetRow = (): SweepRow => ({
   family: 'budget_month',
   budget_month: '2030-01',
@@ -44,11 +49,11 @@ const budgetRow = (): SweepRow => ({
       actual_gross: '10',
       max_liability: '10',
       overrun_reviewed: false,
-      live_session_ids: [],
-      approval_ids: [],
+      live_session_ids: ['ls-1'],
+      approval_ids: ['ap-1'],
     },
   ],
-  unused_approval_ids: [],
+  unused_approval_ids: ['ap-2'],
 });
 
 class FakePort implements RetentionSweepPort {
@@ -59,14 +64,32 @@ class FakePort implements RetentionSweepPort {
   undoCalls: number[] = [];
   checkpointCalls = 0;
   vacuumCalls = 0;
+  // 命令の失敗（呼び出しごとに差し替える）。
+  readError: Error | null = null;
+  budgetError: Error | null = null;
+  checkpointBusy = 0;
+  // 掃除の途中で止める関門（解放されるまで進まない）。
+  gateOn: string | null = null;
+  release: (() => void) | null = null;
+  reached: (() => void) | null = null;
+  vacuumGate: Promise<void> | null = null;
   // 本文の削除のバッチの残りの応答（呼ばれた順）。
   bodyBatches: RetentionBatchValue[] = [];
   // 90 日の削除が止まっているか（undo_records の掃除で解ける）。
   receiptBlocked = false;
   receiptProcessed: string[] = [];
 
+  async stopAt(step: string): Promise<void> {
+    if (this.gateOn !== step) return;
+    await new Promise<void>((resolve) => {
+      this.release = resolve;
+      this.reached?.();
+    });
+  }
   async readRows(): Promise<readonly SweepRow[]> {
     this.calls.push('read');
+    await this.stopAt('read');
+    if (this.readError !== null) throw this.readError;
     return this.rows;
   }
   async eraseDueBodies(
@@ -75,6 +98,7 @@ class FakePort implements RetentionSweepPort {
   ): Promise<RetentionBatchValue> {
     this.calls.push('erase');
     this.eraseCalls.push({ now, after });
+    await this.stopAt('erase');
     const next =
       this.bodyBatches.length === 0
         ? { processed: [], skipped: [], next: null }
@@ -105,6 +129,7 @@ class FakePort implements RetentionSweepPort {
   ): Promise<BudgetPurgeValue> {
     this.calls.push('budget');
     this.budgetCalls.push({ month, now });
+    if (this.budgetError !== null) throw this.budgetError;
     return {
       budget_month: month,
       deleted_live_sessions: 0,
@@ -121,16 +146,28 @@ class FakePort implements RetentionSweepPort {
   async checkpoint(): Promise<CheckpointValue> {
     this.calls.push('checkpoint');
     this.checkpointCalls += 1;
-    return { busy: 0, log_frames: 0, checkpointed_frames: 0 };
+    return { busy: this.checkpointBusy, log_frames: 0, checkpointed_frames: 0 };
   }
   async vacuum(): Promise<void> {
     this.calls.push('vacuum');
     this.vacuumCalls += 1;
+    await this.vacuumGate;
   }
 }
 
-const sweeper = (port: FakePort, now: () => number) =>
-  new RetentionSweeper({ port, epoch: 'boot-1', now });
+// VACUUM の間隔は 0（掃除のたびに呼ばれる）。間隔の試験だけ上書きする。
+const sweeper = (
+  port: FakePort,
+  now: () => number,
+  options: Partial<RetentionSweeperOptions> = {},
+) =>
+  new RetentionSweeper({
+    port,
+    epoch: 'boot-1',
+    now,
+    vacuumIntervalMs: 0,
+    ...options,
+  });
 
 test('B06-06d1: the gate is closed right after start and opens after the first sweep', async () => {
   const port = new FakePort();
@@ -202,23 +239,99 @@ test('B06-06d1: the batch follows next and reaches rows behind more than 50 unde
   assert.equal(record.failed_actions, 0);
 });
 
-test('B06-06d1: checkpoint and VACUUM run after the deletions', async () => {
+test('B06-06d1: checkpoint and VACUUM run after the record is final, with a checkpoint after the VACUUM', async () => {
   const port = new FakePort();
   port.rows = [operationRow('op-body'), budgetRow()];
+  // VACUUM は終わらせない（その間もゲートが開いていることを確かめる）。
+  let finishVacuum: () => void = () => undefined;
+  port.vacuumGate = new Promise<void>((resolve) => {
+    finishVacuum = resolve;
+  });
   const job = sweeper(port, () => T0);
   const record = await job.runOnce(true);
   assert.equal(record.status, 'completed');
-  assert.deepEqual(port.calls, [
+  assert.deepEqual(port.calls.slice(0, 5), [
     'read',
     // 90 日の削除の計画があるので、その前に取り消しの記録を片付ける。
     'undo',
     'erase',
     'purge',
     'budget',
-    'checkpoint',
-    'vacuum',
   ]);
+  // 後始末は記録の確定の後。VACUUM が終わらなくても、ゲートは開いていて idle() も待たせない。
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(port.calls.slice(5), ['checkpoint', 'vacuum']);
+  assert.equal(job.gate().search, true);
+  assert.deepEqual(job.gate().reasons, []);
+  await job.idle();
+  finishVacuum();
+  await job.drain();
+  assert.deepEqual(port.calls.slice(5), ['checkpoint', 'vacuum', 'checkpoint']);
+  assert.equal(port.vacuumCalls, 1);
+});
+
+test('B06-06d1: the budget month passed to the purge is the month of the row, not a reservation, approval or live session id', async () => {
+  const port = new FakePort();
+  port.rows = [budgetRow()];
+  const job = sweeper(port, () => T0);
+  const record = await job.runOnce(true);
+  assert.equal(record.status, 'completed');
+  // live_session 1 件・承認 2 件（予約に使った分と使わなかった分）・予約 1 件の行があっても、月ごとに 1 回。
+  assert.deepEqual(port.budgetCalls, [{ month: '2030-01', now: T0 }]);
+  await job.drain();
+});
+
+test('B06-06d1: a month with only unused approvals is purged by its month', async () => {
+  const port = new FakePort();
+  const row = budgetRow() as Extract<SweepRow, { family: 'budget_month' }>;
+  port.rows = [{ ...row, reservations: [], unused_approval_ids: ['ap-9'] }];
+  const job = sweeper(port, () => T0);
+  await job.runOnce(true);
+  assert.deepEqual(port.budgetCalls, [{ month: '2030-01', now: T0 }]);
+  await job.drain();
+});
+
+test('B06-06d1: no deletion means no checkpoint, and VACUUM follows its interval', async () => {
+  const quiet = new FakePort();
+  const job = sweeper(quiet, () => T0);
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(quiet.checkpointCalls, 0);
+  assert.equal(quiet.vacuumCalls, 0);
+
+  // 間隔は起動の時刻から数える（起動の直後は VACUUM しない）。
+  const port = new FakePort();
+  port.rows = [budgetRow()];
+  let now = T0;
+  const second = sweeper(port, () => now, { vacuumIntervalMs: 60_000 });
+  await second.runOnce(true);
+  await second.drain();
   assert.equal(port.checkpointCalls, 1);
+  assert.equal(port.vacuumCalls, 0);
+  now = T0 + 60_000;
+  await second.runOnce(true);
+  await second.drain();
+  assert.equal(port.vacuumCalls, 1);
+  // 直後の掃除では呼ばない。
+  now = T0 + 90_000;
+  await second.runOnce(true);
+  await second.drain();
+  assert.equal(port.vacuumCalls, 1);
+});
+
+test('B06-06d1: a busy checkpoint skips VACUUM and is tried again after the next sweep', async () => {
+  const port = new FakePort();
+  port.rows = [budgetRow()];
+  port.checkpointBusy = 1;
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.vacuumCalls, 0);
+  assert.equal(logs.length, 1);
+  port.checkpointBusy = 0;
+  await job.runOnce(true);
+  await job.drain();
   assert.equal(port.vacuumCalls, 1);
 });
 
@@ -232,12 +345,215 @@ test('B06-06d1: the undo_records cleanup runs before the 90-day purge and lets i
   assert.equal(record.status, 'completed');
   assert.deepEqual(port.undoCalls, [T0]);
   assert.deepEqual(port.receiptProcessed, ['op-receipt']);
-  // 掃除 → 90 日の削除 → checkpoint → VACUUM の順。
+  await job.drain();
+  // 掃除 → 90 日の削除 → checkpoint → VACUUM → checkpoint の順。
   assert.deepEqual(port.calls, [
     'read',
     'undo',
     'purge',
     'checkpoint',
     'vacuum',
+    'checkpoint',
   ]);
+});
+
+test('B06-06d1: an unexpected rejection counts as a failure and keeps the gate closed with sweep_failed', async () => {
+  const port = new FakePort();
+  port.rows = [budgetRow()];
+  port.budgetError = new RetentionSweepCallError(
+    ['transaction_failed'],
+    'rejected',
+  );
+  const job = sweeper(port, () => T0);
+  const record = await job.runOnce(true);
+  assert.equal(record.status, 'failed');
+  assert.equal(record.failed_actions, 1);
+  assert.deepEqual(job.gate().reasons, ['sweep_failed']);
+  assert.equal(job.gate().search, false);
+  await job.drain();
+});
+
+test('B06-06d1: an unknown outcome counts as a failure, an expected hold does not', async () => {
+  const unknown = new FakePort();
+  unknown.rows = [budgetRow()];
+  unknown.budgetError = new RetentionSweepCallError(
+    ['commit_failed'],
+    'unknown',
+  );
+  const failed = await sweeper(unknown, () => T0).runOnce(true);
+  assert.equal(failed.status, 'failed');
+
+  const held = new FakePort();
+  held.rows = [budgetRow()];
+  held.budgetError = new RetentionSweepCallError(
+    ['month_has_open_rows'],
+    'rejected',
+  );
+  const job = sweeper(held, () => T0);
+  const record = await job.runOnce(true);
+  assert.equal(record.status, 'completed');
+  assert.equal(record.failed_actions, 0);
+});
+
+test('B06-06d1: a read failure removes nothing and closes the gate', async () => {
+  const port = new FakePort();
+  port.readError = new RetentionSweepCallError(
+    ['retention_op_failed'],
+    'rejected',
+  );
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  const record = await job.runOnce(true);
+  assert.equal(record.status, 'failed');
+  assert.deepEqual(port.calls, ['read']);
+  assert.deepEqual(job.gate().reasons, ['sweep_failed']);
+  assert.equal(logs.length, 1);
+});
+
+test('B06-06d1: an unreadable clock removes nothing and closes the gate', async () => {
+  const port = new FakePort();
+  port.rows = [operationRow('op-body'), budgetRow()];
+  // 日付として読めない時刻（年が 9999 を超える）。sweepPlan は ok: false を返す。
+  const job = sweeper(port, () => 8_640_000_000_000_000);
+  const record = await job.runOnce(true);
+  assert.equal(record.status, 'failed');
+  assert.deepEqual(port.calls, ['read']);
+  assert.equal(job.gate().search, false);
+});
+
+test('B06-06d1: use_blocked rows from the plan are copied into the record and block only that row', async () => {
+  const port = new FakePort();
+  // 完了済みなのに完了時刻がない操作は、期限を判定できないので残して使わない（deadline_unreadable）。
+  port.rows = [operationRow('op-unreadable', { completed_at: null })];
+  const job = sweeper(port, () => T0);
+  const record = await job.runOnce(true);
+  assert.equal(record.status, 'completed');
+  assert.deepEqual(record.use_blocked, [
+    { family: 'operation', id: 'op-unreadable', reason: 'deadline_unreadable' },
+  ]);
+  assert.equal(job.isRowUsable('operation', 'op-unreadable'), false);
+  assert.equal(job.isRowUsable('operation', 'op-other'), true);
+});
+
+test('B06-06d1: the gate is closed with sweep_running while a sweep is in progress', async () => {
+  const port = new FakePort();
+  port.gateOn = 'read';
+  const reached = new Promise<void>((resolve) => {
+    port.reached = resolve;
+  });
+  const job = sweeper(port, () => T0);
+  const running = job.runOnce(true);
+  await reached;
+  assert.deepEqual(job.gate().reasons, ['sweep_running']);
+  assert.equal(job.gate().cloud_send, false);
+  port.release?.();
+  const record = await running;
+  assert.equal(record.status, 'completed');
+  assert.deepEqual(job.gate().reasons, []);
+});
+
+test('B06-06d1: close() stops a running sweep at the next step without a failure record', async () => {
+  const port = new FakePort();
+  port.rows = [operationRow('op-body'), budgetRow()];
+  port.gateOn = 'erase';
+  const reached = new Promise<void>((resolve) => {
+    port.reached = resolve;
+  });
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  const running = job.runOnce(true);
+  await reached;
+  job.close();
+  port.release?.();
+  const record = await running;
+  await job.drain();
+  // 本文の削除の後の 90 日の削除・予算・後始末へ進まない。失敗の記録も、ログも作らない。
+  assert.deepEqual(port.calls, ['read', 'undo', 'erase']);
+  assert.equal(record.status, 'running');
+  assert.deepEqual(logs, []);
+  assert.equal(job.gate().search, false);
+});
+
+test('B06-06d1: the timer runs the sweep again once the interval has passed, and close() stops it', async () => {
+  const port = new FakePort();
+  let now = T0;
+  const job = sweeper(port, () => now, { sweepIntervalMs: 50 });
+  job.start();
+  await job.idle();
+  assert.equal(port.calls.filter((call) => call === 'read').length, 1);
+  // 時計を 5 分進める。定期の確認（10 ms ごと）が次の掃除を始める。
+  now = T0 + 5 * 60_000;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  await job.idle();
+  assert.equal(port.calls.filter((call) => call === 'read').length, 2);
+  job.close();
+  now = T0 + 20 * 60_000;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(port.calls.filter((call) => call === 'read').length, 2);
+});
+
+test('B06-06d1: a real SQLite store: the plan, the month lookup and the purge delete a due month (live session, approvals, reservation)', async () => {
+  await withBudgetStore(async (harness) => {
+    const month = '2030-10';
+    // 2030-10（UTC）の締めは 2030-11-01。13 か月後の 2031-12-01 に消せる。
+    const deleteAt = Date.parse('2031-12-01T00:00:00Z');
+    harness.sql((db) => {
+      db.prepare(
+        'INSERT INTO budget_months (month, time_zone, month_start, month_start_time_zone, recorded_at) VALUES (?, ?, ?, ?, 1)',
+      ).run(month, 'UTC', Date.UTC(2030, 9, 1), 'UTC');
+      db.prepare(
+        "INSERT INTO devices (device_id, device_name, platform, hub_local, token_hash, registered_at) VALUES ('dev-1', 'd', 'macos', 0, X'0000000000000000000000000000000000000000000000000000000000000000', 1000)",
+      ).run();
+      db.prepare(
+        `INSERT INTO budget_reservations (
+          reservation_id, request_id, profile_id, pool_id, requested_pool_id, origin, budget_month,
+          currency, price_version, reserved_amount, max_liability, status, reservation_revision,
+          approval_id, actual_gross, credit_applied, additional_spend, provider_reconciliation_id, settlement_kind,
+          credit_cycle_id, settled_at, overrun_reviewed, overrun_reviewed_at, created_at, delete_at
+        ) VALUES ('res-1', 'req-1', 'claude.synthetic.v1', 'llm', 'llm', 'owner_request', ?, 'XTS', 'price-1', 0, 20, 'settled', 1,
+          'ap-1', 10, 0, 10, 'anthropic:req-1', 'provider', NULL, 1500, 0, NULL, 1000, ?)`,
+      ).run(month, deleteAt);
+      db.prepare(
+        "INSERT INTO live_sessions (live_session_id, device_id, session_id, purpose, control_state, control_epoch, closure, usage_seconds, reservation_id, started_at, ended_at, end_reason, audio_epoch, session_epoch) VALUES ('ls-1', 'dev-1', NULL, 'conversation', 'ready', 1, 'open', NULL, 'res-1', 1000, NULL, NULL, 0, 0)",
+      ).run();
+      db.prepare(
+        "INSERT INTO budget_overage_approvals (approval_id, request_id, pool_id, budget_month, currency, max_liability, overage_remaining, status, requested_at, expires_at, decided_at, consumed_at, consumed_reservation_id) VALUES ('ap-1', 'req-1', 'llm', ?, 'XTS', 20, 0, 'consumed', 900, 5000, 1000, 1100, 'res-1')",
+      ).run(month);
+      db.prepare(
+        "INSERT INTO budget_overage_approvals (approval_id, request_id, pool_id, budget_month, currency, max_liability, overage_remaining, status, requested_at, expires_at, decided_at, consumed_at, consumed_reservation_id) VALUES ('ap-2', 'req-2', 'llm', ?, 'XTS', 20, 0, 'rejected', 900, 5000, 1000, NULL, NULL)",
+      ).run(month);
+    });
+    const clock = new ManualClock(deleteAt + 1000);
+    const logs: string[] = [];
+    const job = new RetentionSweeper({
+      port: createRetentionSweepPort(harness.store),
+      epoch: 'boot-1',
+      now: clock.now,
+      log: (message) => logs.push(message),
+    });
+    const record = await job.runOnce(true);
+    await job.drain();
+    assert.deepEqual(logs, []);
+    assert.equal(record.status, 'completed');
+    assert.equal(record.failed_actions, 0);
+    const counts = harness.sql((db) => ({
+      reservations: db
+        .prepare('SELECT count(*) FROM budget_reservations')
+        .pluck()
+        .get(),
+      live: db.prepare('SELECT count(*) FROM live_sessions').pluck().get(),
+      approvals: db
+        .prepare('SELECT count(*) FROM budget_overage_approvals')
+        .pluck()
+        .get(),
+      months: db.prepare('SELECT count(*) FROM budget_months').pluck().get(),
+    }));
+    assert.deepEqual(counts, {
+      reservations: 0,
+      live: 0,
+      approvals: 0,
+      months: 1,
+    });
+    assert.equal(job.gate().search, true);
+  });
 });

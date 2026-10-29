@@ -15,6 +15,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   OPERATION_KIND_RULES,
+  SWEEP_INTERVAL_MS,
   canAutoReconcile,
   isOperationKind,
   nextStepDecision,
@@ -68,6 +69,13 @@ export interface OperationRunnerOptions {
   readonly faults: FaultHook;
   readonly contract: ApiContract;
   readonly log: (message: string) => void;
+  // 保存期限の掃除のゲート（ADR 0043・0053）。外部へ送る前に、掃除が済んでクラウド送信が許されていることを確かめる。
+  // 閉じていれば送らず、次の周期（gateRetryMs）に最初から確かめ直す。省略したときは確かめない（試験）。
+  readonly cloudGate?: {
+    readonly ready: () => Promise<void>;
+    readonly open: () => boolean;
+  };
+  readonly gateRetryMs?: number;
 }
 
 export interface OperationRunner {
@@ -213,6 +221,8 @@ export function createOperationRunner(
   // 排他の間に届いた実行の開始（afterApproval なら true）。排他を外した後に始める（要求を捨てない）。
   const pendingStarts = new Map<string, boolean>();
   let closed = false;
+  // ゲートが閉じていて送らなかった操作の再試行（close で止める）。
+  const retryTimers = new Set<NodeJS.Timeout>();
 
   const loadKey = async (): Promise<DataKeyMaterial | null> => {
     try {
@@ -604,9 +614,31 @@ export function createOperationRunner(
       );
   };
 
+  // 外部へ送る前のゲート。掃除の完了を待ち、クラウド送信が許されていなければ送らず、次の周期に再試行する。
+  // 送出意図の前の判定なので、閉じていても結果不明は作らない（状態は approved・preparing のまま残る）。
+  const cloudSendAllowed = async (operationId: string): Promise<boolean> => {
+    const gate = options.cloudGate;
+    if (gate === undefined) return true;
+    await gate.ready();
+    if (closed) return false;
+    if (gate.open()) return true;
+    log(
+      `操作 ${operationId} は保存期限の掃除が済むまで送りません。次の周期に確かめ直します。`,
+    );
+    const timer = setTimeout(() => {
+      retryTimers.delete(timer);
+      launch(operationId, false);
+    }, options.gateRetryMs ?? SWEEP_INTERVAL_MS);
+    timer.unref?.();
+    retryTimers.add(timer);
+    return false;
+  };
+
   const runRemote = async (initial: OperationView): Promise<void> => {
     const writer = options.writer;
     if (writer === null || options.provider === null) return;
+    // 準備権を取る前に確かめる（閉じていれば approved のまま、何も記録しない）。
+    if (!(await cloudSendAllowed(initial.operation_id))) return;
     const raw = await openIntent(initial);
     const intent =
       raw === null ? null : remoteIntent(raw, initial.operation_kind);
@@ -671,6 +703,8 @@ export function createOperationRunner(
       return;
     }
     const step = decision.step_id;
+    // 確かめ直しの間に定期の掃除が始まった・失敗した場合も、送出意図を記録する前に止める。
+    if (!(await cloudSendAllowed(current.operation_id))) return;
     const dispatched = await submit({
       ...base(current, intent.permission_revision),
       kind: 'operation.dispatch_intent',
@@ -930,6 +964,8 @@ export function createOperationRunner(
     },
     close() {
       closed = true;
+      for (const timer of retryTimers) clearTimeout(timer);
+      retryTimers.clear();
     },
   };
 }

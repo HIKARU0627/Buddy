@@ -29,8 +29,8 @@
 3. 90 日の削除の計画があれば `retention.purge_undo_records`（補償の記録を先に片付ける）。
 4. 本文の削除の計画があれば `retention.erase_due_bodies`、90 日の削除の計画があれば `retention.purge_due_operations` を `next` で繰り返す。
 5. 予算の月の計画があれば `budget.purge_month`（月ごとに 1 回）。
-6. 削除が 1 件以上あれば `retention.checkpoint`、間隔を過ぎていれば `retention.vacuum`。
-7. `SweepRecord` を作り、`startupGate` の結果を `CoreHandle.retention.gate()` に置く。
+6. `SweepRecord` を作り、`startupGate` の結果を `CoreHandle.retention.gate()` に置く（ここでゲートが開く）。
+7. 記録の確定の後に、削除が 1 件以上あれば `retention.checkpoint` →（間隔を過ぎていれば）`retention.vacuum` → `retention.checkpoint`（記録の外。下の「PR #164 のレビュー後の修正」）。
 
 ## 原本に書いてあること（ADR から）
 
@@ -78,5 +78,21 @@
 ## 未解決
 
 - U105: 依頼の「補償がない（NULL）記録」は 0001 の NOT NULL のため作れない。この作業は「30 日 + 補償が終わっている（または NULL）」で消す。NULL を作るにはマイグレーションが要る（指示により足していない）。
-- U108: ゲートは発言の Read・RemoteMutation だけにつないだ。検索の経路・実行担当の送出・Live の自動利用は、それぞれの入口で `CoreHandle.retention` を通す作業が残る。
+- U108: ゲートは発言の Read・RemoteMutation と、実行担当の送出（U116）につないだ。検索の経路・Live の自動利用は、それぞれの入口で `CoreHandle.retention` を通す作業が残る。
 - 最終確認時刻・epoch はメモリーだけなので、再起動すると時計の巻き戻りの判定は最初の掃除まで効かない（B06-07）。
+
+## PR #164 のレビュー後の修正
+
+レビュー（Sonnet）の指摘への対応。マイグレーションは足していない（0011 のまま。0012 は別 PR）。
+
+| 指摘          | 対応                                                                                                                                                                                                                                                                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1-1 予算の月 | 月は入力の `budget_month` 行から引く。計画の操作の ID（live_session・承認・予約）を「表:ID」で月へ引き直し、月ごとに 1 回 `budget.purge_month` を呼ぶ。入力にない ID は消さず失敗に数える。実 SQLite と `sweepPlan` を通す試験を足した                                                                                                        |
+| P2-1 実行担当 | 送出意図の前（準備権の前と `dispatch_intent` の直前の 2 か所）で `retention.idle()` の後に `gate().cloud_send` を確かめ、閉じていれば送らず、5 分後に最初から確かめ直す。状態は `approved`・`preparing` のまま残り、結果不明は作らない（U116）                                                                                                |
+| P2-2 停止     | `close()` は新しい掃除を止め、実行中の掃除はバッチ・月・各段の前で中断する（失敗の記録は作らない。記録は `running` のままゲートは閉じている）。`runShutdown` は `store.close()` の前に `retention.drain()`（掃除と後始末の完了）を待つ                                                                                                        |
+| P2-3 VACUUM   | checkpoint・VACUUM は `SweepRecord` の確定（ゲートが開く）の後に行い、`idle()` は後始末を待たない（ターンを VACUUM の分だけ待たせない）。前回の VACUUM の時刻は保存せず、間隔は起動の時刻から数える。起動の直後の VACUUM はしない（U114）。順序は checkpoint → VACUUM → checkpoint                                                            |
+| P2-4 halt     | VACUUM・checkpoint の `SQLITE_FULL` だけ `halt: false` の拒否（`database_full`）にする。I/O の失敗・成否不明は ADR 0018 のとおり halt のまま。判断は U115（要確認）。後始末の失敗は記録（ゲート）に影響させず、ログに出して次の掃除の後にもう一度試す                                                                                         |
+| P2-5 試験     | sweeper の試験を 5 本から 18 本にし、失敗・成否不明・計画が読めない・`use_blocked`・checkpoint なし・VACUUM の間隔・タイマー・`close()`・`sweep_running` を足した。実行担当のゲート、`sweep_rows` の範囲外の時刻、`SQLITE_FULL` の写し方の試験も足した                                                                                        |
+| P3            | 周期のずれ（定期の確認を間隔の 1/5＝既定 1 分にした）、checkpoint の `busy`（VACUUM に進まず次の掃除の後に再試行）、VACUUM の後の checkpoint、`purgeUndoRecords` の失敗（バッチと同じく失敗に数えて続行）、同じ `next` で止まったとき（失敗に数える）、`readSweepRows` の範囲外の時刻（`completed_at: null` → `deadline_unreadable`）を直した |
+
+手を付けていない P3: 恒久的に消せない行がゲートを閉じ続けること・隔離の印を計画が見ないこと（U117 に未決として記録）、`readSweepRows` の全件読みの負荷（B15 で実測）、U96 の既存判断の変更の PR 説明での強調、`interpretTurn` の `mailCandidates()` の位置（本実装のとき）。

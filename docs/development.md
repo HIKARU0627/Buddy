@@ -49,8 +49,13 @@ git worktree add ../Buddy-claude -b review/contract-inventory
 
 ## 試験と CI
 
-GitHub Actions は Ubuntu / Windows / macOS で同じ `pnpm install --frozen-lockfile` と `pnpm run check` を実行する。
-権限は contents: read、外部 API キーや実データは不要。Actions は取得時点の commit SHA で固定している。
+GitHub Actions は Ubuntu / Windows / macOS のそれぞれで `pnpm run check` と同じ検査を行う。所要時間を短くするため、OS ごとに試験を 4 つの shard（job）へ分けて並列に実行する（`.github/workflows/verify-os.yml`）。
+
+- shard 1: doctor・format:check・contracts:check・lint・build・typecheck・security:check・security:setup・security:staged と、割り当てられた試験。shard 2〜4: doctor・build と、割り当てられた試験。
+- 試験ファイルの割り当ては `node scripts/run-tests.mjs --shard <番号>/<総数>`。`scripts/test-shard-weights.json` の重みから決まる（重みは負荷の目安にすぎず、ずれても漏れや重複は起きない）。`--list` は実行せず対象を表示する。重い B04・B07 の統合試験は別々の shard に置く。引数なしの `pnpm test` は全ファイルを実行する。
+- 各ファイルがちょうど 1 回実行されること、`Verify (<os>)` が成立することは `scripts/test-shards.test.mjs` が検査する。試験を追加・削除しても割り当ては自動で更新される。
+- main の ruleset が要求する `Verify (<os>)` は、その OS の全 shard の合否を表す集約 job（`ci.yml`）。上流が失敗・取り消し・スキップのときも失敗する。
+- 権限は contents: read、外部 API キーや実データは不要。Actions は取得時点の commit SHA で固定している。
 
 起動待ちと接続直後の発言の不安定さについては、[Issue #108 の調査と修正](issue-108-windows-ci.md)を参照する。
 

@@ -91,11 +91,11 @@
 | P2-1 実行担当 | 送出意図の前（準備権の前と `dispatch_intent` の直前の 2 か所）で `retention.idle()` の後に `gate().cloud_send` を確かめ、閉じていれば送らず、5 分後に最初から確かめ直す。状態は `approved`・`preparing` のまま残り、結果不明は作らない（U116）                                                                                                |
 | P2-2 停止     | `close()` は新しい掃除を止め、実行中の掃除はバッチ・月・各段の前で中断する（失敗の記録は作らない。記録は `running` のままゲートは閉じている）。`runShutdown` は `store.close()` の前に `retention.drain()`（掃除と後始末の完了）を待つ                                                                                                        |
 | P2-3 VACUUM   | checkpoint・VACUUM は `SweepRecord` の確定（ゲートが開く）の後に行い、`idle()` は後始末を待たない（ターンを VACUUM の分だけ待たせない）。前回の VACUUM の時刻は保存せず、間隔は起動の時刻から数える。起動の直後の VACUUM はしない（U114）。順序は checkpoint → VACUUM → checkpoint                                                            |
-| P2-4 halt     | VACUUM・checkpoint の `SQLITE_FULL` だけ `halt: false` の拒否（`database_full`）にする。I/O の失敗・成否不明は ADR 0018 のとおり halt のまま。判断は U115（要確認）。後始末の失敗は記録（ゲート）に影響させず、ログに出して次の掃除の後にもう一度試す                                                                                         |
+| P2-4 halt     | VACUUM・checkpoint の `SQLITE_FULL` だけ `halt: false` の拒否（`database_full`）にする。I/O の失敗・成否不明は ADR 0018 のとおり halt のまま。判断は U115（決定、2026-10-29）。後始末の失敗は記録（ゲート）に影響させず、ログに出して次の掃除の後にもう一度試す                                                                               |
 | P2-5 試験     | sweeper の試験を 5 本から 18 本にし、失敗・成否不明・計画が読めない・`use_blocked`・checkpoint なし・VACUUM の間隔・タイマー・`close()`・`sweep_running` を足した。実行担当のゲート、`sweep_rows` の範囲外の時刻、`SQLITE_FULL` の写し方の試験も足した                                                                                        |
 | P3            | 周期のずれ（定期の確認を間隔の 1/5＝既定 1 分にした）、checkpoint の `busy`（VACUUM に進まず次の掃除の後に再試行）、VACUUM の後の checkpoint、`purgeUndoRecords` の失敗（バッチと同じく失敗に数えて続行）、同じ `next` で止まったとき（失敗に数える）、`readSweepRows` の範囲外の時刻（`completed_at: null` → `deadline_unreadable`）を直した |
 
-手を付けていない P3: 恒久的に消せない行がゲートを閉じ続けること・隔離の印を計画が見ないこと（U117 に未決として記録）、`readSweepRows` の全件読みの負荷（B15 で実測）、U96 の既存判断の変更の PR 説明での強調、`interpretTurn` の `mailCandidates()` の位置（本実装のとき）。
+手を付けていない P3: 恒久的に消せない行がゲートを閉じ続けること・隔離の印を計画が見ないこと（U117。暫定で閉じたままとし、原因別の扱いは B06-07 で決める）、`readSweepRows` の全件読みの負荷（B15 で実測）、U96 の既存判断の変更の PR 説明での強調、`interpretTurn` の `mailCandidates()` の位置（本実装のとき）。
 
 ## 再レビュー（Codex）後の修正: 送出と掃除の直列化
 

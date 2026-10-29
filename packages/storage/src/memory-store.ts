@@ -32,9 +32,9 @@ import {
   forgetTargetExists,
   isHex64,
   isUuid,
-  memoryHasDerivatives,
-  memoryParents,
-  pruneDeletedMemoryEdges,
+  lineageHasLiveDownstream,
+  lineageSources,
+  pruneDeadLineage,
   readForgetGraph,
   readLedgerChain,
   readLedgerEntries,
@@ -534,8 +534,9 @@ function deleteDueMemory(
       'SELECT source_kind, source_id FROM memory_sources WHERE memory_id = ? ORDER BY source_kind, source_id',
     )
     .all(op.memory_id) as { source_kind: string; source_id: string }[];
-  const parents = memoryParents(db, op.memory_id);
-  if (memoryHasDerivatives(db, op.memory_id)) {
+  const node = { kind: 'memory', id: op.memory_id };
+  const parents = lineageSources(db, node);
+  if (lineageHasLiveDownstream(db, node)) {
     const exists = db.prepare(
       "SELECT 1 FROM derivations WHERE artifact_kind = 'memory' AND artifact_id = ? AND source_kind = ? AND source_id = ?",
     );
@@ -557,9 +558,8 @@ function deleteDueMemory(
     row.text_blob_id,
     row.target_key_blob_id,
   );
-  // 派生物がなければ、この記憶の辺を消し、行のない由来の記憶の辺も要らなくなれば消す。
-  pruneDeletedMemoryEdges(db, op.memory_id);
-  for (const parent of parents) pruneDeletedMemoryEdges(db, parent);
+  // 生きた下流がなければ、この記憶の辺を消し、実体を消した由来（記憶・ほかの派生物）の辺も要らなくなれば消す。
+  pruneDeadLineage(db, [node, ...parents]);
   return { memory_id: op.memory_id, deleted: true };
 }
 

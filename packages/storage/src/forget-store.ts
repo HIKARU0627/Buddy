@@ -388,25 +388,30 @@ export function forgetTargetExists(
   return true;
 }
 
-// --- 期限で消した記憶の系譜の辺（ADR 0054 U110） ---
+// --- 実体を消した派生物の系譜の辺（ADR 0054 U110） ---
 
-// 派生物の行がまだあるか（種類ごとの表。deleteNode と同じ表と ID）。表のない種類（canvas_item・carried_summary）は
-// 確かめられないので、ある側に倒す（生きた下流への道を消さない）。行のない記憶は、その記憶が生きた派生物を持つ間は
-// 道の途中として生きている扱い。
-function artifactAlive(
+// 系譜の節点（derivations の種類と ID。記憶は memory_sources の由来も持つ）。
+export interface LineageNode {
+  readonly kind: string;
+  readonly id: string;
+}
+
+const lineageKey = (node: LineageNode): string =>
+  `${node.kind}\u0000${node.id}`;
+
+// 節点の実体（行）がまだあるか（種類ごとの表。deleteNode と同じ表と ID）。表のない種類（canvas_item・carried_summary）は
+// 確かめられないので、ある側に倒す（生きた下流への道を消さない）。元情報は系譜の根で、辺は派生物の側で消すので、
+// ある側に倒して節点としては回収しない。
+function lineageRowExists(
   db: SqliteDatabase,
   kind: string,
   id: string,
-  visiting: Set<string>,
 ): boolean {
   const exists = (sql: string): boolean =>
     db.prepare(sql).get(id) !== undefined;
   switch (kind) {
     case 'memory':
-      return (
-        exists('SELECT 1 FROM memories WHERE memory_id = ?') ||
-        memoryHasLiveDerivatives(db, id, visiting)
-      );
+      return exists('SELECT 1 FROM memories WHERE memory_id = ?');
     case 'turn':
       return exists('SELECT 1 FROM turns WHERE turn_id = ?');
     case 'operation_content':
@@ -435,108 +440,108 @@ function artifactAlive(
   }
 }
 
-function memoryHasLiveDerivatives(
-  db: SqliteDatabase,
-  memoryId: string,
-  visiting: Set<string>,
-): boolean {
-  if (visiting.has(memoryId)) return false;
-  visiting.add(memoryId);
-  try {
-    // memory_sources の子は、外部キーで行のある記憶だけ。
-    if (
-      db
-        .prepare(
-          "SELECT 1 FROM memory_sources WHERE source_kind = 'memory' AND source_id = ? LIMIT 1",
-        )
-        .get(memoryId) !== undefined
-    )
-      return true;
-    const children = db
+// 節点から作った派生物（derivations の子。記憶は memory_sources の子の記憶も。外部キーで行のある記憶だけ）。
+function lineageChildren(db: SqliteDatabase, node: LineageNode): LineageNode[] {
+  const children = (
+    db
       .prepare(
-        "SELECT artifact_kind, artifact_id FROM derivations WHERE source_kind = 'memory' AND source_id = ? ORDER BY artifact_kind, artifact_id",
+        'SELECT artifact_kind, artifact_id FROM derivations WHERE source_kind = ? AND source_id = ? ORDER BY artifact_kind, artifact_id',
       )
-      .all(memoryId) as { artifact_kind: string; artifact_id: string }[];
-    return children.some((child) =>
-      artifactAlive(db, child.artifact_kind, child.artifact_id, visiting),
-    );
-  } finally {
-    visiting.delete(memoryId);
-  }
-}
-
-// 記憶を由来にする派生物（記憶・ほかの種類）で、行がまだあるもの（行のない記憶は、その下流が生きているもの）があるか。
-export function memoryHasDerivatives(
-  db: SqliteDatabase,
-  memoryId: string,
-): boolean {
-  return memoryHasLiveDerivatives(db, memoryId, new Set());
-}
-
-// 記憶の由来の記憶（memory_sources と、期限で消した記憶に残した derivations の辺）。
-export function memoryParents(db: SqliteDatabase, memoryId: string): string[] {
-  return [
-    ...new Set(
-      db
-        .prepare(
-          "SELECT source_id FROM memory_sources WHERE memory_id = ? AND source_kind = 'memory' UNION SELECT source_id FROM derivations WHERE artifact_kind = 'memory' AND artifact_id = ? AND source_kind = 'memory'",
-        )
-        .pluck()
-        .all(memoryId, memoryId) as string[],
-    ),
-  ];
-}
-
-// 行のない記憶（期限で消した記憶）に残した由来の辺は、生きた派生物がなくなれば消す。辺を消したら由来の記憶も
-// 評価し直す（まだ生きた派生物があって残した記憶も、後で最後の派生物が消えれば消す。合流する系譜でも同じ）。
-// その記憶を由来にする行のない派生物の辺（もう消えた派生物の残り）も一緒に消す。行のある記憶の辺には触れない。
-export function pruneDeletedMemoryEdges(
-  db: SqliteDatabase,
-  memoryId: string,
-): void {
-  const queue = [memoryId];
-  const pruned = new Set<string>();
-  const live = db.prepare('SELECT 1 FROM memories WHERE memory_id = ?');
-  while (queue.length > 0) {
-    const id = queue.shift() as string;
-    // 消した記憶はもう辺を持たない。生きている・生きた派生物を持つ記憶は、今は消さない（後の削除で評価し直す）。
-    if (pruned.has(id)) continue;
-    if (live.get(id) !== undefined || memoryHasDerivatives(db, id)) continue;
-    const parents = memoryParents(db, id);
-    // この記憶を由来にする行のない記憶（生きた派生物を持たない）も、辺を消した後に評価する。
-    const children = db
-      .prepare(
-        "SELECT artifact_id FROM derivations WHERE source_kind = 'memory' AND source_id = ? AND artifact_kind = 'memory'",
-      )
-      .pluck()
-      .all(id) as string[];
-    db.prepare(
-      "DELETE FROM derivations WHERE artifact_kind = 'memory' AND artifact_id = ?",
-    ).run(id);
-    db.prepare(
-      "DELETE FROM derivations WHERE source_kind = 'memory' AND source_id = ?",
-    ).run(id);
-    pruned.add(id);
-    queue.push(...parents, ...children);
-  }
-}
-
-// 派生物（記憶以外）を消したときの系譜の整理。派生物としての辺を消し、由来の行のない記憶の辺も要らなくなれば消す。
-export function removeArtifactEdges(
-  db: SqliteDatabase,
-  kind: string,
-  id: string,
-): void {
-  const memorySources = db
+      .all(node.kind, node.id) as {
+      artifact_kind: string;
+      artifact_id: string;
+    }[]
+  ).map((row) => ({ kind: row.artifact_kind, id: row.artifact_id }));
+  if (node.kind !== 'memory') return children;
+  const memories = db
     .prepare(
-      "SELECT source_id FROM derivations WHERE artifact_kind = ? AND artifact_id = ? AND source_kind = 'memory'",
+      "SELECT memory_id FROM memory_sources WHERE source_kind = 'memory' AND source_id = ? ORDER BY memory_id",
     )
     .pluck()
-    .all(kind, id) as string[];
-  db.prepare(
-    'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
-  ).run(kind, id);
-  for (const source of memorySources) pruneDeletedMemoryEdges(db, source);
+    .all(node.id) as string[];
+  return [...memories.map((id) => ({ kind: 'memory', id })), ...children];
+}
+
+// 節点の由来（derivations の親。記憶は memory_sources の由来も）。
+export function lineageSources(
+  db: SqliteDatabase,
+  node: LineageNode,
+): LineageNode[] {
+  const rows = db
+    .prepare(
+      `SELECT source_kind, source_id FROM derivations WHERE artifact_kind = ? AND artifact_id = ?${
+        node.kind === 'memory'
+          ? ' UNION SELECT source_kind, source_id FROM memory_sources WHERE memory_id = ?'
+          : ''
+      } ORDER BY 1, 2`,
+    )
+    .all(
+      ...(node.kind === 'memory'
+        ? [node.kind, node.id, node.id]
+        : [node.kind, node.id]),
+    ) as { source_kind: string; source_id: string }[];
+  return rows.map((row) => ({ kind: row.source_kind, id: row.source_id }));
+}
+
+// 下流を推移的にたどり、実体（行）のある派生物が 1 つでもあるか。行のない派生物は、その下流に行のある派生物がある間だけ
+// 道の途中として生きている（種類を問わない。記憶・操作の確定内容・気づきなど）。
+function hasLiveDownstream(
+  db: SqliteDatabase,
+  node: LineageNode,
+  visiting: Set<string>,
+): boolean {
+  const key = lineageKey(node);
+  if (visiting.has(key)) return false;
+  visiting.add(key);
+  try {
+    return lineageChildren(db, node).some(
+      (child) =>
+        lineageRowExists(db, child.kind, child.id) ||
+        hasLiveDownstream(db, child, visiting),
+    );
+  } finally {
+    visiting.delete(key);
+  }
+}
+
+// 節点を由来にする派生物で、実体のあるもの（行のない派生物は、その下流に実体のあるもの）があるか。
+export function lineageHasLiveDownstream(
+  db: SqliteDatabase,
+  node: LineageNode,
+): boolean {
+  return hasLiveDownstream(db, node, new Set());
+}
+
+// 実体を消した節点（期限削除・90 日の削除・忘却）に残した系譜の辺を、生きた下流がなくなったら回収する。
+// 実体のある節点と、生きた下流のある節点には触れない（ID だけの辺を生きた下流への道として残す。後で元情報を忘れた
+// ときに、下流の派生物が閉包から漏れないようにする）。回収した節点の由来と子（行がなく生きた下流もない、もう消えた
+// 派生物の残り）も評価し直す。まだ生きた下流があって残した節点も、後で最後の下流が消えれば回収する（合流する系譜でも同じ）。
+export function pruneDeadLineage(
+  db: SqliteDatabase,
+  start: readonly LineageNode[],
+): void {
+  const queue = [...start];
+  const pruned = new Set<string>();
+  while (queue.length > 0) {
+    const node = queue.shift() as LineageNode;
+    const key = lineageKey(node);
+    if (pruned.has(key)) continue;
+    if (
+      lineageRowExists(db, node.kind, node.id) ||
+      lineageHasLiveDownstream(db, node)
+    )
+      continue;
+    const sources = lineageSources(db, node);
+    const children = lineageChildren(db, node);
+    db.prepare(
+      'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
+    ).run(node.kind, node.id);
+    db.prepare(
+      'DELETE FROM derivations WHERE source_kind = ? AND source_id = ?',
+    ).run(node.kind, node.id);
+    pruned.add(key);
+    queue.push(...sources, ...children);
+  }
 }
 
 // --- 適用 ---
@@ -855,19 +860,10 @@ export function applyForget(
   const removeEdges = db.prepare(
     'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
   );
-  const memoryParentIds = new Set<string>();
-  const memorySourcesOf = (kind: string, id: string): string[] =>
-    kind === 'memory'
-      ? memoryParents(db, id)
-      : (db
-          .prepare(
-            "SELECT source_id FROM derivations WHERE artifact_kind = ? AND artifact_id = ? AND source_kind = 'memory'",
-          )
-          .pluck()
-          .all(kind, id) as string[]);
+  // 消した物の由来（種類を問わない）。削除の後に、実体を消した由来に残した辺が要らなくなれば回収する。
+  const lineageParents: LineageNode[] = [];
   for (const node of plan.deletions) {
-    for (const parent of memorySourcesOf(node.kind, node.id))
-      memoryParentIds.add(parent);
+    lineageParents.push(...lineageSources(db, node));
     const count = deleteNode(db, node);
     deleted[node.kind] = (deleted[node.kind] ?? 0) + count;
     removeEdges.run(node.kind, node.id);
@@ -875,14 +871,22 @@ export function applyForget(
   // 確定内容。終端の操作は暗号文を消し、進行中・結果不明は状態を変えずに送出禁止の印だけを付ける。
   const purged: string[] = [];
   for (const operationId of plan.operation_contents.purge) {
-    for (const parent of memorySourcesOf('operation_content', operationId))
-      memoryParentIds.add(parent);
+    const node: LineageNode = { kind: 'operation_content', id: operationId };
+    lineageParents.push(...lineageSources(db, node));
     if (purgeOperationContent(db, operationId, input.now))
       purged.push(operationId);
     removeEdges.run('operation_content', operationId);
   }
-  // 期限で消した記憶に残した由来の辺は、派生物がなくなれば消す（系譜を読んで計画を照合した後なので、計画は変わらない）。
-  for (const parent of memoryParentIds) pruneDeletedMemoryEdges(db, parent);
+  // 実体を消した物に残した系譜の辺は、生きた下流がなくなれば回収する（系譜を読んで計画を照合した後なので、計画は
+  // 変わらない）。残す操作の確定内容は、行があれば触れない（ID だけの由来を残す）。90 日の削除で行が先に消えた操作は、
+  // 閉包の下流が消えたので、ここで辺を回収する。
+  pruneDeadLineage(db, [
+    ...lineageParents,
+    ...plan.operation_contents.retained.map((retained) => ({
+      kind: 'operation_content',
+      id: retained.operation_id,
+    })),
+  ]);
   const blocked: string[] = [];
   const mark = db.prepare(
     'UPDATE operations SET send_blocked_generation = ? WHERE operation_id = ? AND send_blocked_generation IS NULL',

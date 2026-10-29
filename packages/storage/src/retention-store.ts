@@ -14,7 +14,7 @@
 import Database from 'better-sqlite3';
 import { RETENTION_RULES } from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
-import { removeArtifactEdges } from './forget-store.js';
+import { pruneDeadLineage } from './forget-store.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import { isId, isSealedBlob } from './operation-commands.js';
 import type { SealedBlobInput } from './operation-commands.js';
@@ -619,8 +619,9 @@ export function purgeOperation(
   for (const step of OPERATION_PURGE_STEPS)
     for (const statement of step.statements)
       db.prepare(statement).run({ id: operationId });
-  // 操作の確定内容の系譜の辺も消し、期限で消した記憶に残した辺が要らなくなれば消す（ADR 0054 U110）。
-  removeArtifactEdges(db, 'operation_content', operationId);
+  // 操作の確定内容の系譜の辺は、生きた下流（この確定内容から作った派生物で実体のあるもの）があれば ID だけで残し、
+  // なければ消して、実体を消した由来の辺も要らなくなれば消す（ADR 0054 U110）。
+  pruneDeadLineage(db, [{ kind: 'operation_content', id: operationId }]);
   return { operation_id: operationId, purged: true };
 }
 

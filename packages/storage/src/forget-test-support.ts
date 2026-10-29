@@ -120,7 +120,7 @@ export const count = (
     .pluck()
     .get(...args) as number;
 
-function blob(
+export function blob(
   db: SqliteDatabase,
   purpose: string,
   ownerTable: string,
@@ -153,7 +153,7 @@ function insertTurn(
   ).run(turnId, sessionId, text);
 }
 
-function insertMemory(
+export function insertMemory(
   db: SqliteDatabase,
   memoryId: string,
   dedupe: string,
@@ -180,6 +180,20 @@ export function edge(
   db.prepare(
     'INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES (?, ?, ?, ?, 1000)',
   ).run(artifactKind, artifactId, sourceKind, sourceId);
+}
+
+// 成功した操作（完了の時刻 1_000_000。確定内容を消してよい・90 日の削除の対象になる）。
+export function completeOperation(
+  db: SqliteDatabase,
+  operationId: string,
+): void {
+  ok(db, createCommand(operationId));
+  ok(db, approveCommand(operationId, '1'));
+  const attempt = randomUUID();
+  ok(db, prepareCommand(operationId, '2', { attempt_id: attempt }));
+  ok(db, dispatchCommand(operationId, '3', attempt));
+  ok(db, resultCommand(operationId, '4', attempt, 'reconciling'));
+  ok(db, resultCommand(operationId, '5', attempt, 'succeeded'));
 }
 
 // 忘却の世界: 記憶 M（発言 T_SRC から）、M から作った記憶 M2・気づき・3 つの操作の確定内容、会話 S の要約（由来の記録なし。
@@ -223,13 +237,7 @@ export function seedWorld(db: SqliteDatabase): void {
     "INSERT INTO user_directives (directive_id, text_blob_id, scope, session_id, turn_id, active, created_at) VALUES (?, ?, 'from_now_on', NULL, ?, 1, 1000)",
   ).run(DIRECTIVE, directive, T_INST);
   // 操作: 成功した操作（確定内容を消してよい）、承認済み（進行中）、送出中（送出の境界を越えた進行中）。
-  ok(db, createCommand(OP_DONE));
-  ok(db, approveCommand(OP_DONE, '1'));
-  const doneAttempt = randomUUID();
-  ok(db, prepareCommand(OP_DONE, '2', { attempt_id: doneAttempt }));
-  ok(db, dispatchCommand(OP_DONE, '3', doneAttempt));
-  ok(db, resultCommand(OP_DONE, '4', doneAttempt, 'reconciling'));
-  ok(db, resultCommand(OP_DONE, '5', doneAttempt, 'succeeded'));
+  completeOperation(db, OP_DONE);
   ok(db, createCommand(OP_RET));
   ok(db, approveCommand(OP_RET, '1'));
   ok(db, createCommand(OP_DISP));
@@ -240,9 +248,12 @@ export function seedWorld(db: SqliteDatabase): void {
     edge(db, 'operation_content', id, 'memory', M);
 }
 
-function lookup(source: MemorySource): string {
+function lookup(
+  hmacs: readonly SourceHmacValue[],
+  source: MemorySource,
+): string {
   return (
-    HMACS.find(
+    hmacs.find(
       (item) =>
         item.source_kind === source.source_kind &&
         item.source_id === source.source_id,
@@ -255,6 +266,7 @@ export function planFor(
   db: SqliteDatabase,
   target: MemorySource,
   instruction: string | null,
+  hmacs: readonly SourceHmacValue[] = HMACS,
 ): { graph: ForgetGraph; generation: string; plan: unknown } {
   const read = value<ForgetGraphValue>(
     memoryOp(db, { kind: 'forget.graph', target }),
@@ -264,7 +276,7 @@ export function planFor(
     instruction_turn_id: instruction,
     executing_operation_id: null,
     graph: read.graph,
-    sourceHmac: lookup,
+    sourceHmac: (source) => lookup(hmacs, source),
   });
   assert.equal(planned.ok, true, JSON.stringify(planned));
   return {

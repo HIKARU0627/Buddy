@@ -70,6 +70,8 @@ class FakePort implements RetentionSweepPort {
   checkpointBusy = 0;
   // 呼び出しごとの busy（先頭から使い、尽きたら checkpointBusy）。
   checkpointBusyQueue: number[] = [];
+  // 呼び出しごとの例外（先頭から使い、尽きたら投げない）。
+  checkpointErrorQueue: (Error | null)[] = [];
   // 掃除の途中で止める関門（解放されるまで進まない）。
   gateOn: string | null = null;
   release: (() => void) | null = null;
@@ -149,6 +151,8 @@ class FakePort implements RetentionSweepPort {
   async checkpoint(): Promise<CheckpointValue> {
     this.calls.push('checkpoint');
     this.checkpointCalls += 1;
+    const error = this.checkpointErrorQueue.shift();
+    if (error) throw error;
     return {
       busy: this.checkpointBusyQueue.shift() ?? this.checkpointBusy,
       log_frames: 0,
@@ -175,6 +179,18 @@ const sweeper = (
     vacuumIntervalMs: 0,
     ...options,
   });
+
+// 待ちが終わらないときに、永久に止まらず失敗させる（停止の試験用）。
+const timeoutAfter = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`timeout: 待ちが ${ms} ms で終わりませんでした`)),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+};
 
 test('B06-06d1: the gate is closed right after start and opens after the first sweep', async () => {
   const port = new FakePort();
@@ -660,6 +676,29 @@ test('B06-06d1: a busy checkpoint after VACUUM keeps the maintenance pending wit
   assert.equal(port.checkpointCalls, 3);
 });
 
+test('B06-06d1: a rejected checkpoint after VACUUM is retried by the next sweep that deletes nothing', async () => {
+  const port = new FakePort();
+  port.rows = [budgetRow()];
+  // 1 回目の checkpoint は成功、VACUUM の後の checkpoint は SQLITE_FULL の拒否。
+  port.checkpointErrorQueue = [
+    null,
+    new RetentionSweepCallError(['database_full'], 'rejected'),
+  ];
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 2);
+  assert.equal(port.vacuumCalls, 1);
+  assert.equal(logs.length, 1);
+  // 削除のない次の掃除でも、保留した checkpoint を試す。VACUUM は済んでいるので繰り返さない。
+  port.rows = [];
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 3);
+  assert.equal(port.vacuumCalls, 1);
+});
+
 test('B06-06d1: a send lease is refused while the gate is closed or a sweep runs, and a sweep waits for a held lease', async () => {
   const port = new FakePort();
   const job = sweeper(port, () => T0);
@@ -697,4 +736,32 @@ test('B06-06d1: close() while a sweep waits for a send lease ends it without a f
   assert.equal(record.status, 'running');
   assert.equal(port.calls.filter((call) => call === 'read').length, 1);
   assert.deepEqual(logs, []);
+});
+
+test('B06-06d1: close() ends a sweep waiting for a lease that is never released, and drain() finishes', async () => {
+  const port = new FakePort();
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  await job.runOnce(true);
+  const release = job.lease();
+  assert.notEqual(release, null);
+  const sweep = job.runOnce(true);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  // 貸し出しを返さないまま停止しても、掃除は中断し、drain() も終わる。
+  job.close();
+  const [record] = await timeoutAfter(
+    Promise.all([sweep, job.drain()]),
+    10_000,
+  );
+  assert.equal(record.status, 'running');
+  assert.equal(port.calls.filter((call) => call === 'read').length, 1);
+  assert.deepEqual(logs, []);
+  assert.equal(job.gate().cloud_send, false);
+  // 遅れて返しても、例外も状態の崩れもない。
+  release?.();
+  release?.();
+  assert.equal(job.record().status, 'running');
+  assert.equal(job.gate().cloud_send, false);
+  await job.drain();
+  assert.equal(port.calls.filter((call) => call === 'read').length, 1);
 });

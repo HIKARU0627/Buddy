@@ -229,6 +229,11 @@ export class RetentionSweeper {
     this.#closed = true;
     if (this.#timer !== null) clearInterval(this.#timer);
     this.#timer = null;
+    // 貸し出しの返却を待っている掃除も中断する。待ちを解除して、本体に入る前の中断確認で終える
+    // （失敗の記録は作らない。ADR 0053）。返却は close の後でも安全（#sendLeases を戻すだけ）。
+    const wake = this.#leasesDrained;
+    this.#leasesDrained = null;
+    wake?.();
   }
 
   // 今のゲートの判定。startupGate の結果をそのまま返す（検索・クラウド送信・自動利用の入口が読む）。
@@ -285,7 +290,8 @@ export class RetentionSweeper {
   }
 
   #waitForLeases(): Promise<void> {
-    if (this.#sendLeases === 0) return Promise.resolve();
+    // 停止しているときは待たずに本体へ進む（先頭の中断確認で終わる。停止した後の runOnce も止めない）。
+    if (this.#sendLeases === 0 || this.#closed) return Promise.resolve();
     return new Promise<void>((resolve) => {
       this.#leasesDrained = resolve;
     });
@@ -524,8 +530,10 @@ export class RetentionSweeper {
     this.#lastVacuumAt = now;
     this.#vacuumPending = false;
     // VACUUM は DB 全体の写しをログに残す。次の自動 checkpoint まで大きいままにしない。
+    // 呼ぶ前に保留を立て、成功したときだけ解除する（例外・busy のときは次の掃除の後に試す）。
     this.#checkOpen();
-    if (!(await this.#truncatedLog())) this.#checkpointPending = true;
+    this.#checkpointPending = true;
+    if (await this.#truncatedLog()) this.#checkpointPending = false;
   }
 
   // WAL を切り詰める。他の接続が使用中（busy）で切り詰められなかったときは false。

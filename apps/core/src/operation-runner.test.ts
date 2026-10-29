@@ -969,7 +969,36 @@ test(
 );
 
 test(
-  'stopping the Core waits for the running sweep (drain) before it closes the DB, and the stopped sweep leaves no completion record',
+  'stopping the Core ends a sweep waiting on a send lease before it closes the DB, and the stopped sweep leaves no completion record',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const retention = core.handle.retention;
+    // 送出中の区間を模して貸し出しを持つ。そこへ始まった掃除は本体に入れず待つ。
+    const release = retention.lease();
+    assert.notEqual(release, null);
+    const sweep = retention.runOnce(true);
+    let stopped = false;
+    const stopping = core.handle.stop('test').then(() => {
+      stopped = true;
+    });
+    // 返却を待たずに、停止は掃除の中断（drain）を終えて DB を閉じる。
+    await withTimeout(stopping, 10_000, 'stop while a sweep waits for a lease');
+    assert.equal(stopped, true);
+    const record = await sweep;
+    // 停止で中断した掃除は、完了の記録を作らない（ゲートは開かない）。
+    assert.equal(record.status, 'running');
+    assert.equal(retention.gate().cloud_send, false);
+    // 遅れて返しても、例外も状態の崩れもない。
+    release?.();
+    release?.();
+    assert.equal(retention.record().status, 'running');
+  },
+);
+
+test(
+  'stopping the Core ends a sweep that waits for a send lease even when the lease is never released, and a late release is safe',
   { timeout: TIMEOUT },
   async (t) => {
     const rig = await startRig(t);
@@ -984,13 +1013,28 @@ test(
       stopped = true;
     });
     await new Promise((resolve) => setTimeout(resolve, 200));
-    // 停止は掃除（と後始末）の終わりを待ち、DB をまだ閉じない。
-    assert.equal(stopped, false);
-    release?.();
-    await stopping;
+    // 貸し出しを返さないままでも、停止は掃除の中断を待って終わる（返さないと終わらなければ失敗）。
+    await withTimeout(
+      Promise.all([stopping, sweep]),
+      10_000,
+      'stop while a sweep waits for a lease that is not released',
+    );
+    assert.equal(stopped, true);
     const record = await sweep;
     // 停止で中断した掃除は、完了の記録を作らない（ゲートは開かない）。
     assert.equal(record.status, 'running');
+    assert.equal(retention.gate().cloud_send, false);
+    // 返さない貸し出しが残っていても、停止の後の掃除は待たずに中断する。
+    const afterClose = await withTimeout(
+      retention.runOnce(true),
+      10_000,
+      'sweep after the Core stopped',
+    );
+    assert.equal(afterClose.status, 'running');
+    // 遅れて返しても、例外も状態の崩れもない。
+    release?.();
+    release?.();
+    assert.equal(retention.record().status, 'running');
     assert.equal(retention.gate().cloud_send, false);
   },
 );

@@ -1,7 +1,8 @@
-// 実体を消した中間の派生物の系譜（ADR 0054 U110。PR #168 の 3 回目のレビューの P1）。
+// 実体を消した中間の派生物の系譜（ADR 0054 U110。PR #168 の 3 回目・4 回目のレビューの P1）。
 // - 記憶に限らず、どの種類の中間の節点も、実体（行・本文・暗号文）を消した後に生きた下流があれば ID だけの辺を残し、
 //   後で元情報を忘れたときに下流の派生物が閉包に入って消える（元情報 S → 記憶 A → 操作の確定内容 O → 気づき B など）。
 // - 下流がなくなったら、残した辺はすべて回収される。
+// - 発言を由来にする記憶（memory_sources の由来が発言）も下流として辿る（元情報 S → 操作の確定内容 O → 発言 T → 記憶 M）。
 // - 系譜をいくつか合成し、中間の節点を消す順・消す物を変えても、元情報を忘れた後にその系譜の派生物の行・辺・暗号文が
 //   1 つも残らない。
 // 期待値は手で書いた（残る辺の一覧・残る件数 0）。HMAC は試験用に決めた 64 桁の値。
@@ -32,7 +33,7 @@ const DAY = 86_400_000;
 const REVIEW_AT = 9_000_000_000_000;
 const COMPLETED_AT = 1_000_000;
 
-type Kind = 'memory' | 'operation_content' | 'notification_candidate';
+type Kind = 'memory' | 'operation_content' | 'notification_candidate' | 'turn';
 interface Node {
   readonly kind: Kind;
   readonly id: string;
@@ -50,8 +51,18 @@ function insertCandidate(db: SqliteDatabase, candidateId: string): void {
   ).run(candidateId, `nk-${candidateId}`, title);
 }
 
-// 元情報 root から nodes を順に派生させる（先頭が root から、各節点が 1 つ前から）。記憶の元情報・記憶の由来は
-// memory_sources、それ以外は derivations に書く。
+function insertTurn(db: SqliteDatabase, turnId: string): void {
+  db.prepare(
+    "INSERT OR IGNORE INTO sessions (session_id, storage_mode, display_device_id, route_revision, summary_blob_id, created_at, ended_at) VALUES ('s-lineage', 'normal', 'dev-1', 0, NULL, 1000, NULL)",
+  ).run();
+  const text = blob(db, 'turn_text', 'turns', turnId);
+  db.prepare(
+    "INSERT INTO turns (turn_id, session_id, role, input_kind, text_blob_id, created_at, expires_at) VALUES (?, 's-lineage', 'user', 'text', ?, 1000, 9999999999999)",
+  ).run(turnId, text);
+}
+
+// 元情報 root から nodes を順に派生させる（先頭が root から、各節点が 1 つ前から）。記憶の由来が元情報・記憶・発言の
+// ときは memory_sources、それ以外は derivations に書く。
 function seedChain(
   db: SqliteDatabase,
   root: string,
@@ -64,7 +75,9 @@ function seedChain(
   for (const node of nodes) {
     const sourcedByRow =
       node.kind === 'memory' &&
-      (previous.kind === 'source_item' || previous.kind === 'memory');
+      (previous.kind === 'source_item' ||
+        previous.kind === 'memory' ||
+        previous.kind === 'turn');
     if (node.kind === 'memory')
       insertMemory(
         db,
@@ -80,14 +93,25 @@ function seedChain(
           : [],
       );
     else if (node.kind === 'operation_content') completeOperation(db, node.id);
+    else if (node.kind === 'turn') insertTurn(db, node.id);
     else insertCandidate(db, node.id);
     if (!sourcedByRow) edge(db, node.kind, node.id, previous.kind, previous.id);
     previous = node;
   }
 }
 
-// 中間の節点の実体を期限で消す（記憶は見直し待ちの 30 日、操作は完了から 90 日）。
+// 中間の節点の実体を期限で消す（記憶は見直し待ちの 30 日、操作は完了から 90 日）。発言の期限削除はまだ storage の
+// 命令がないので、行と本文の暗号文を消した状態を作る（系譜の辺には触れない。期限削除は忘却ではない）。
 function retire(db: SqliteDatabase, node: Node): void {
+  if (node.kind === 'turn') {
+    const text = db
+      .prepare('SELECT text_blob_id FROM turns WHERE turn_id = ?')
+      .pluck()
+      .get(node.id) as string;
+    db.prepare('DELETE FROM turns WHERE turn_id = ?').run(node.id);
+    db.prepare('DELETE FROM sealed_blobs WHERE blob_id = ?').run(text);
+    return;
+  }
   if (node.kind === 'memory') {
     value(
       memoryOp(db, {
@@ -152,7 +176,7 @@ const edgesOf = (db: SqliteDatabase, kind: string, id: string) =>
     )
     .all(kind, id, kind, id);
 
-// ids のどれかを持ち主にする暗号文・派生物としての辺・由来としての辺の数。
+// ids のどれかを持ち主にする暗号文の数と、ids のどれかに触れる辺（derivations・memory_sources）の数。
 const blobsOwnedBy = (db: SqliteDatabase, ids: readonly string[]): number =>
   count(
     db,
@@ -162,7 +186,9 @@ const blobsOwnedBy = (db: SqliteDatabase, ids: readonly string[]): number =>
 const edgesTouching = (db: SqliteDatabase, ids: readonly string[]): number =>
   count(
     db,
-    `SELECT count(*) FROM derivations WHERE artifact_id IN (${ids.map(() => '?').join(', ')}) OR source_id IN (${ids.map(() => '?').join(', ')})`,
+    `SELECT (SELECT count(*) FROM derivations WHERE artifact_id IN (${ids.map(() => '?').join(', ')}) OR source_id IN (${ids.map(() => '?').join(', ')})) + (SELECT count(*) FROM memory_sources WHERE memory_id IN (${ids.map(() => '?').join(', ')}) OR source_id IN (${ids.map(() => '?').join(', ')}))`,
+    ...ids,
+    ...ids,
     ...ids,
     ...ids,
   );
@@ -337,6 +363,71 @@ test('lineage: an operation content derived from another purged operation conten
   });
 });
 
+test('lineage: a memory saved from a turn that was made from a purged operation content is forgotten with the source', async () => {
+  await withWorld((db) => {
+    // 元情報 S3 → 操作の確定内容 O3 → 発言 T3 → 記憶 M3（M3 は T3 を由来に保存し、明示継続した）。T3 を期限で消し、
+    // O3 を 90 日で消す。M3 が生きているので O3 ← S3・T3 ← O3 は ID だけで残り、M3 ← T3 も残る。
+    const src = 'remote-src-turn-memory';
+    const o3 = 'e0000000-0000-4000-8000-0000000000c3';
+    const t3 = 'c3000000-0000-4000-8000-0000000000c3';
+    const m3 = 'c3000000-0000-4000-8000-00000000003a';
+    seedChain(db, src, [
+      { kind: 'operation_content', id: o3 },
+      { kind: 'turn', id: t3 },
+      { kind: 'memory', id: m3 },
+    ]);
+    value(
+      memoryOp(db, {
+        kind: 'memory.start_review',
+        memory_id: m3,
+        now: REVIEW_AT,
+      }),
+    );
+    value(
+      memoryOp(db, {
+        kind: 'memory.continue',
+        memory_id: m3,
+        now: REVIEW_AT + DAY,
+      }),
+    );
+    retire(db, { kind: 'turn', id: t3 });
+    retire(db, { kind: 'operation_content', id: o3 });
+    assert.deepEqual(edgesOf(db, 'operation_content', o3), [
+      {
+        artifact_kind: 'operation_content',
+        artifact_id: o3,
+        source_kind: 'source_item',
+        source_id: src,
+      },
+      {
+        artifact_kind: 'turn',
+        artifact_id: t3,
+        source_kind: 'operation_content',
+        source_id: o3,
+      },
+    ]);
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT source_kind, source_id FROM memory_sources WHERE memory_id = ?',
+        )
+        .all(m3),
+      [{ source_kind: 'turn', source_id: t3 }],
+    );
+    forgetSource(db, { source_kind: 'source_item', source_id: src }, [
+      ...HMACS,
+      { source_kind: 'source_item', source_id: src, hmac: 'a3'.repeat(32) },
+    ]);
+    // 継続していた M3 の行と本文・対象キーの暗号文が消え、系譜の辺も残らない。
+    assert.equal(
+      count(db, 'SELECT count(*) FROM memories WHERE memory_id = ?', m3),
+      0,
+    );
+    assert.equal(blobsOwnedBy(db, [o3, t3, m3]), 0);
+    assert.equal(edgesTouching(db, [src, o3, t3, m3]), 0);
+  });
+});
+
 // 合成する系譜の中間の節点の並び（手で並べた）。末尾には、いつも気づき（題名の暗号文を持つ）を付ける。
 const CHAIN_SHAPES: readonly (readonly Kind[])[] = [
   ['memory', 'operation_content'],
@@ -345,6 +436,11 @@ const CHAIN_SHAPES: readonly (readonly Kind[])[] = [
   ['operation_content', 'memory'],
   ['memory', 'operation_content', 'memory'],
   ['operation_content', 'memory', 'operation_content'],
+  // 発言を中間に含む系譜（発言から作った記憶は memory_sources の由来が発言。発言は操作・記憶・元情報から作られる）。
+  ['turn', 'memory'],
+  ['turn', 'operation_content'],
+  ['operation_content', 'turn', 'memory'],
+  ['memory', 'turn', 'memory'],
 ];
 
 // 中間の節点の添字の並べ方すべて（消す順）と、1 つだけ消す場合。
@@ -390,8 +486,8 @@ test('lineage: after forgetting a source, no row, edge or sealed blob of its lin
         });
         seedChain(db, root, nodes);
       }
-    // 2 つの並び × (2! + 2) と、4 つの並び × (2! + 2) と、2 つの並び × (3! + 3)。
-    assert.equal(chains.length, 4 * 4 + 2 * 9);
+    // 中間が 2 つの並び 6 通り × (2! + 2) と、3 つの並び 4 通り × (3! + 3)。
+    assert.equal(chains.length, 6 * 4 + 4 * 9);
     for (const chain of chains)
       for (const index of chain.order) retire(db, chain.nodes[index] as Node);
     const hmacs = [...HMACS, ...chains.map((chain) => chain.hmac)];

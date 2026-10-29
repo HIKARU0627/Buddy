@@ -244,57 +244,109 @@ export function readLedgerEntries(db: SqliteDatabase): ForgetEntry[] {
 
 const nodeKey = (node: ForgetNode): string => `${node.kind}\u0000${node.id}`;
 
+// 系譜の辺の読み方（ADR 0054 U110）。忘却の閉包（readForgetGraph）と、実体を消した節点の下流の探索・由来の評価
+// （lineageChildren・lineageSources）は、どちらもこの一覧から辺を読む（種類が増えても両者がずれないようにする）。
+// - derivations の全行。
+// - memory_sources（記憶の由来。由来は発言・元情報・記憶のどれでも）。
+// - user_directives.turn_id（本人の指示を作った発言。U112）。
+const LINEAGE_EDGE_TABLES: readonly {
+  readonly table: string;
+  readonly artifact_kind: string;
+  readonly artifact_id: string;
+  readonly source_kind: string;
+  readonly source_id: string;
+  readonly where: string | null;
+}[] = [
+  {
+    table: 'derivations',
+    artifact_kind: 'artifact_kind',
+    artifact_id: 'artifact_id',
+    source_kind: 'source_kind',
+    source_id: 'source_id',
+    where: null,
+  },
+  {
+    table: 'memory_sources',
+    artifact_kind: "'memory'",
+    artifact_id: 'memory_id',
+    source_kind: 'source_kind',
+    source_id: 'source_id',
+    where: null,
+  },
+  {
+    table: 'user_directives',
+    artifact_kind: "'user_directive'",
+    artifact_id: 'directive_id',
+    source_kind: "'turn'",
+    source_id: 'turn_id',
+    where: 'turn_id IS NOT NULL',
+  },
+];
+
+interface LineageEdgeRow {
+  readonly artifact_kind: string;
+  readonly artifact_id: string;
+  readonly source_kind: string;
+  readonly source_id: string;
+}
+
+// 系譜の辺を読む。match があれば、派生物（artifact）または由来（source）が (kind, id) の辺だけ。並びは表ごとに
+// （派生物の種類・ID、由来の種類・ID）の順。
+function readLineageEdges(
+  db: SqliteDatabase,
+  match?: {
+    readonly side: 'artifact' | 'source';
+    readonly kind: string;
+    readonly id: string;
+  },
+): LineageEdgeRow[] {
+  const rows: LineageEdgeRow[] = [];
+  for (const part of LINEAGE_EDGE_TABLES) {
+    const conditions = part.where === null ? [] : [part.where];
+    const params: string[] = [];
+    if (match !== undefined) {
+      const side =
+        match.side === 'artifact'
+          ? { kind: part.artifact_kind, id: part.artifact_id }
+          : { kind: part.source_kind, id: part.source_id };
+      conditions.push(`${side.kind} = ?`, `${side.id} = ?`);
+      params.push(match.kind, match.id);
+    }
+    rows.push(
+      ...(db
+        .prepare(
+          `SELECT ${part.artifact_kind} AS artifact_kind, ${part.artifact_id} AS artifact_id, ${part.source_kind} AS source_kind, ${part.source_id} AS source_id FROM ${part.table}${
+            conditions.length === 0 ? '' : ` WHERE ${conditions.join(' AND ')}`
+          } ORDER BY 1, 2, 3, 4`,
+        )
+        .all(...params) as LineageEdgeRow[]),
+    );
+  }
+  return rows;
+}
+
 // 忘却の閉包に渡す系譜を DB から作る（ADR 0054）。
-// - 辺: derivations の全行と memory_sources（記憶の由来。0001 の系譜）。
+// - 辺: 系譜の辺の読み方（LINEAGE_EDGE_TABLES。derivations・memory_sources・本人の指示を作った発言）。
 // - 由来を引けない派生物: 系譜の辺を持たない会話の要約（範囲は会話）と、影モードの記録（範囲は入力の発言）。
 //   ほかの種類で辺を持たない行は、作る処理（B08・B09・B10）が辺を必ず書く前提で、ここでは数えない（U110）。
 // - 発言と会話の対応は、範囲に出る会話の発言だけ。記憶は全件（内容の HMAC）。操作は確定内容の辺に出るものだけ。
 export function readForgetGraph(db: SqliteDatabase): ForgetGraph {
-  const edgeRows = db
-    .prepare(
-      'SELECT artifact_kind, artifact_id, source_kind, source_id FROM derivations ORDER BY artifact_kind, artifact_id, source_kind, source_id',
-    )
-    .all() as {
-    artifact_kind: string;
-    artifact_id: string;
-    source_kind: string;
-    source_id: string;
-  }[];
-  const memorySources = db
-    .prepare(
-      'SELECT memory_id, source_kind, source_id FROM memory_sources ORDER BY memory_id, source_kind, source_id',
-    )
-    .all() as { memory_id: string; source_kind: string; source_id: string }[];
   const seen = new Set<string>();
   const edges: { artifact: ForgetNode; source: ForgetNode }[] = [];
-  const push = (artifact: ForgetNode, source: ForgetNode): void => {
+  for (const row of readLineageEdges(db)) {
+    const artifact = {
+      kind: row.artifact_kind as ForgetNode['kind'],
+      id: row.artifact_id,
+    };
+    const source = {
+      kind: row.source_kind as ForgetNode['kind'],
+      id: row.source_id,
+    };
     const key = `${nodeKey(artifact)}\u0001${nodeKey(source)}`;
-    if (seen.has(key)) return;
+    if (seen.has(key)) continue;
     seen.add(key);
     edges.push({ artifact, source });
-  };
-  for (const row of edgeRows)
-    push(
-      { kind: row.artifact_kind as ForgetNode['kind'], id: row.artifact_id },
-      { kind: row.source_kind as ForgetNode['kind'], id: row.source_id },
-    );
-  for (const row of memorySources)
-    push(
-      { kind: 'memory', id: row.memory_id },
-      { kind: row.source_kind as ForgetNode['kind'], id: row.source_id },
-    );
-  // 本人の指示は、作った発言（user_directives.turn_id）を由来にする派生物として閉包に入れる（U112。忘れた発言から作った
-  // 指示の本文を残さない。計画の user_directives で消える指示を本人に見せる）。
-  const directives = db
-    .prepare(
-      'SELECT directive_id, turn_id FROM user_directives WHERE turn_id IS NOT NULL ORDER BY directive_id',
-    )
-    .all() as { directive_id: string; turn_id: string }[];
-  for (const row of directives)
-    push(
-      { kind: 'user_directive', id: row.directive_id },
-      { kind: 'turn', id: row.turn_id },
-    );
+  }
   const attributed = new Set(edges.map((edge) => nodeKey(edge.artifact)));
   const unattributed: { artifact: ForgetNode; scope: ForgetNode }[] = [];
   const summaries = db
@@ -435,52 +487,39 @@ function lineageRowExists(
       return exists(
         'SELECT 1 FROM sessions WHERE session_id = ? AND summary_blob_id IS NOT NULL',
       );
+    case 'user_directive':
+      return exists('SELECT 1 FROM user_directives WHERE directive_id = ?');
     default:
       return true;
   }
 }
 
-// 節点から作った派生物（derivations の子。記憶は memory_sources の子の記憶も。外部キーで行のある記憶だけ）。
-function lineageChildren(db: SqliteDatabase, node: LineageNode): LineageNode[] {
-  const children = (
-    db
-      .prepare(
-        'SELECT artifact_kind, artifact_id FROM derivations WHERE source_kind = ? AND source_id = ? ORDER BY artifact_kind, artifact_id',
-      )
-      .all(node.kind, node.id) as {
-      artifact_kind: string;
-      artifact_id: string;
-    }[]
-  ).map((row) => ({ kind: row.artifact_kind, id: row.artifact_id }));
-  if (node.kind !== 'memory') return children;
-  const memories = db
-    .prepare(
-      "SELECT memory_id FROM memory_sources WHERE source_kind = 'memory' AND source_id = ? ORDER BY memory_id",
-    )
-    .pluck()
-    .all(node.id) as string[];
-  return [...memories.map((id) => ({ kind: 'memory', id })), ...children];
+// 節点から作った派生物と、節点の由来（系譜の辺の読み方 LINEAGE_EDGE_TABLES。忘却の閉包と同じ辺。重複は 1 つにする）。
+function uniqueNodes(nodes: readonly LineageNode[]): LineageNode[] {
+  const out = new Map<string, LineageNode>();
+  for (const node of nodes) out.set(lineageKey(node), node);
+  return [...out.values()];
 }
 
-// 節点の由来（derivations の親。記憶は memory_sources の由来も）。
+function lineageChildren(db: SqliteDatabase, node: LineageNode): LineageNode[] {
+  return uniqueNodes(
+    readLineageEdges(db, { side: 'source', ...node }).map((row) => ({
+      kind: row.artifact_kind,
+      id: row.artifact_id,
+    })),
+  );
+}
+
 export function lineageSources(
   db: SqliteDatabase,
   node: LineageNode,
 ): LineageNode[] {
-  const rows = db
-    .prepare(
-      `SELECT source_kind, source_id FROM derivations WHERE artifact_kind = ? AND artifact_id = ?${
-        node.kind === 'memory'
-          ? ' UNION SELECT source_kind, source_id FROM memory_sources WHERE memory_id = ?'
-          : ''
-      } ORDER BY 1, 2`,
-    )
-    .all(
-      ...(node.kind === 'memory'
-        ? [node.kind, node.id, node.id]
-        : [node.kind, node.id]),
-    ) as { source_kind: string; source_id: string }[];
-  return rows.map((row) => ({ kind: row.source_kind, id: row.source_id }));
+  return uniqueNodes(
+    readLineageEdges(db, { side: 'artifact', ...node }).map((row) => ({
+      kind: row.source_kind,
+      id: row.source_id,
+    })),
+  );
 }
 
 // 下流を推移的にたどり、実体（行）のある派生物が 1 つでもあるか。行のない派生物は、その下流に行のある派生物がある間だけ

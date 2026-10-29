@@ -398,10 +398,19 @@ test('KeyStore から鍵を取得できなければ暗号化・復号をせず�
   if (opened.ok) assert.ok(opened.plaintext.equals(plaintext));
 });
 
-test('用途の一覧は migrations/0001_initial.sql の sealed_blobs.purpose の CHECK と一致する', () => {
+test('用途の一覧は、最後に sealed_blobs を作ったマイグレーション（0011）の purpose の CHECK と一致する', () => {
+  // 0011 で task_content を足して表を作り直した（ADR 0051）。0001 の一覧に task_content だけを足したもの。
   const sql = readFileSync(
+    new URL('../migrations/0011_operation_body_retention.sql', import.meta.url),
+    'utf8',
+  );
+  const original = readFileSync(
     new URL('../migrations/0001_initial.sql', import.meta.url),
     'utf8',
+  );
+  assert.match(
+    original,
+    /'connection_account', 'request_summary', 'proposal'\)\),/u,
   );
   const table = /CREATE TABLE sealed_blobs \(([\s\S]*?)\) STRICT;/u.exec(
     sql,

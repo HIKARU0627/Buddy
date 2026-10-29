@@ -7,6 +7,7 @@ import type { DesktopVoiceView } from '@buddy/contracts';
 import { NO_FAULTS, type MockFaults } from './voice-mock-renderer.js';
 import { voiceHarness, type HarnessOptions } from './voice-test-support.js';
 import type { LocalVoiceConsent } from './voice-consent.js';
+import { notifyVoiceDeviceChanged } from './voice-controller.js';
 
 const GRANTED: LocalVoiceConsent = {
   kind: 'voice_live_audio',
@@ -60,6 +61,43 @@ const statusVoice = (h: Harness) => {
 };
 const granted = (extra: HarnessOptions = {}) =>
   voiceHarness({ consent: GRANTED, ...extra });
+
+// 「続ける」を待っている間にリースを失い、もう一度「続ける」を押した組み立て（Issue #162）。
+// 1 回目の接続の答えは 3 秒後に届き、2 回目のリースは受け付ける。
+async function supersededContinue() {
+  let calls = 0;
+  const h = granted({
+    openMs: 3000,
+    renew: (body) => {
+      calls += 1;
+      return calls === 2
+        ? {
+            request_id: body.request_id,
+            lease_id: body.lease_id,
+            nonce: body.nonce,
+            result: 'rejected',
+            ttl_ms: null,
+          }
+        : {
+            request_id: body.request_id,
+            lease_id: body.lease_id,
+            nonce: body.nonce,
+            result: 'renewed',
+            ttl_ms: body.ttl_ms,
+          };
+    },
+  });
+  await ready(h);
+  const first = h.voice.continueConversation();
+  await h.clock.advance(2100);
+  // 1 回目のリースは拒否され、待っている手順は捨てられた。
+  assert.equal(h.voice.leaseActive, false);
+  const second = h.voice.continueConversation();
+  await h.clock.advance(20);
+  // 2 回目のリースは受け付けられた。
+  assert.equal(h.voice.leaseActive, true);
+  return { h, first, second };
+}
 
 test('the renderer is prepared only after the lock is confirmed open; nothing is shown before', async () => {
   const h = granted();
@@ -727,6 +765,185 @@ test('a lease lost while the live session is pending (rejected or expired) start
   assert.ok(!expired.sentChannels().includes('voice.start'));
   assert.equal(expired.closed.at(-1)?.reason, 'core_lease_lost');
   assert.equal(expired.voice.leaseActive, false);
+});
+
+// Issue #162 の P3-1: 置き換えられた古い手順の応答で、新しい手順のリースを止めない。
+test('a superseded continue does not stop the lease of the newer flow', async () => {
+  const { h, first, second } = await supersededContinue();
+  assert.equal(h.opens.length, 2);
+  await h.clock.advance(1000);
+  // 1 回目の接続の答え（3 秒後）が届いた。古い手順は捨てるが、2 回目のリースは止めない。
+  assert.equal(await first, 'input_stopped');
+  assert.equal(h.voice.leaseActive, true);
+  assert.ok(!h.sentChannels().includes('voice.start'));
+  assert.equal(h.device.state.stopScope, 'none');
+  // 2 回目の接続の答え（さらに 2 秒後）で、新しい手順は会話を始める。
+  await h.clock.advance(2100);
+  assert.equal(await second, 'ok');
+  assert.equal(h.voice.leaseActive, true);
+  assert.deepEqual(
+    h.sentChannels().filter((channel) => channel === 'voice.start'),
+    ['voice.start'],
+  );
+});
+
+// Issue #162 の P3-2: 古い手順が閉じる Live の理由は、端末の停止ではない。
+test('a superseded continue closes its live session with provider_failure, not device_io_stop', async () => {
+  const { h, first } = await supersededContinue();
+  await h.clock.advance(1000);
+  assert.equal(await first, 'input_stopped');
+  assert.deepEqual(
+    h.closed.map((entry) => entry.reason),
+    ['provider_failure'],
+  );
+  assert.equal(h.device.state.stopScope, 'none');
+});
+
+// Issue #162 の P3-3: 音声の制御が例外を投げても、状態の通知の残りの処理を飛ばさない。
+test('a throwing voice controller does not skip the rest of the device state notification', () => {
+  const logs: string[] = [];
+  const order: string[] = [];
+  const state = {
+    lockState: 'locked',
+    stopScope: 'none',
+    ioEpoch: '1',
+  } as const;
+  notifyVoiceDeviceChanged(
+    {
+      deviceChanged: (seen) => {
+        assert.equal(seen.ioEpoch, '1');
+        order.push('voice');
+        throw new Error('voice failed');
+      },
+      failSafeStop: () => order.push('fail_safe'),
+    },
+    state,
+    (code) => logs.push(code),
+  );
+  // 音声の制御の後に続く処理（トレイ・状態の通知・ロックしたときのキャンバスを戻す処理）は飛ばさない。
+  order.push('tray');
+  order.push('state_changed');
+  order.push('canvas_restored');
+  assert.deepEqual(order, [
+    'voice',
+    'fail_safe',
+    'tray',
+    'state_changed',
+    'canvas_restored',
+  ]);
+  assert.deepEqual(logs, ['voice_device_changed_failed']);
+  // 例外がなければ記録せず、フォールバックも呼ばない。
+  notifyVoiceDeviceChanged(
+    {
+      deviceChanged: () => order.push('voice_ok'),
+      failSafeStop: () => order.push('fail_safe_unexpected'),
+    },
+    state,
+    (code) => logs.push(code),
+  );
+  assert.equal(order.at(-1), 'voice_ok');
+  assert.deepEqual(logs, ['voice_device_changed_failed']);
+});
+
+// Issue #162 の P2: 会話中に中枢へ閉じる要求（closeLive）が例外を投げても、停止（suspend_io）を飛ばさない。
+test('a raising closeLive during a conversation still sends suspend_io and stops the external send', async () => {
+  const h = granted({ closeFails: true });
+  await live(h);
+  assert.equal(h.voice.externalSend, true);
+  const t0 = h.clock.mono;
+  h.device.stopFromMain();
+  // 中枢へ閉じる要求は失敗した。記録だけして、この端末の停止を続ける。
+  assert.ok(h.logs.includes('voice_core_close_failed'));
+  assert.deepEqual(h.closed, []);
+  const suspend = lastSent(h);
+  assert.equal(suspend?.at, t0);
+  assert.equal(suspend?.request['channel'], 'voice.suspend_io');
+  assert.equal(suspend?.request['ack_timeout_ms'], 300);
+  assert.deepEqual(suspend?.request['payload'], {
+    reason: 'device_io_stop',
+    scope: 'local',
+    io_epoch: '1',
+    audio_epoch: '1',
+    output_epoch: '1',
+  });
+  assert.equal(h.device.state.stopScope, 'local');
+  assert.equal(h.voice.leaseActive, false);
+  await h.clock.advance(1);
+  // 第 1 層: ACK を待たずに、音声レンダラーが送信・収音を止めた。
+  assert.equal(mock(h).stats.sending, false);
+  assert.equal(mock(h).stats.capturing, false);
+  const frames = mock(h).stats.sentFrames;
+  await h.clock.advance(1);
+  // suspend_io の ACK を受けて、外部へ送っている印を消した。
+  assert.equal(h.voice.externalSend, false);
+  await h.clock.advance(5000);
+  assert.equal(mock(h).stats.sentFrames, frames);
+  // 300 ms の見張りが始まり、ACK が返ったので強制終了はしない。
+  assert.deepEqual(h.kills, []);
+  assert.ok(!h.logs.some((code) => code.startsWith('voice_ack_missing')));
+});
+
+// Issue #162 の P2: 状態の通知で音声の制御が例外を投げたら、フォールバックで音声レンダラーを強制終了し端末を止める。
+test('the notification fallback kills the renderer and stops the device, even if closeLive raises', async () => {
+  const h = granted({ closeFails: true });
+  await live(h);
+  const order: string[] = [];
+  notifyVoiceDeviceChanged(
+    {
+      deviceChanged: () => {
+        order.push('voice');
+        throw new Error('voice failed');
+      },
+      failSafeStop: () => {
+        order.push('fail_safe');
+        h.voice.failSafeStop();
+      },
+    },
+    h.device.state,
+    (code) => h.logs.push(code),
+  );
+  order.push('tray');
+  assert.deepEqual(order, ['voice', 'fail_safe', 'tray']);
+  assert.ok(h.logs.includes('voice_device_changed_failed'));
+  assert.ok(h.logs.includes('voice_core_close_failed'));
+  // 音声レンダラーを強制終了したので、外部への送信は止まる。
+  assert.deepEqual(h.kills, [1]);
+  assert.equal(h.voice.externalSend, false);
+  assert.equal(h.voice.rendererAlive, false);
+  assert.equal(h.device.state.stopScope, 'local');
+  assert.deepEqual(h.voice.view(), {
+    visibility: 'shown',
+    voice_state: 'device_stopped',
+    external_send: false,
+    consent: 'granted',
+    can_continue: false,
+    notice: null,
+    reply_mode: 'voice',
+  });
+});
+
+// Issue #162 の P2: フォールバック自体が例外を投げても、状態の通知は投げ直さない。
+test('a raising fallback is logged and does not escape the device state notification', () => {
+  const logs: string[] = [];
+  const order: string[] = [];
+  notifyVoiceDeviceChanged(
+    {
+      deviceChanged: () => {
+        throw new Error('voice failed');
+      },
+      failSafeStop: () => {
+        throw new Error('stop failed');
+      },
+    },
+    { lockState: 'locked', stopScope: 'none', ioEpoch: '1' },
+    (code) => logs.push(code),
+  );
+  order.push('tray');
+  assert.deepEqual(order, ['tray']);
+  assert.deepEqual(logs, [
+    'voice_device_changed_failed',
+    'voice_fail_safe_stop_failed',
+  ]);
 });
 
 test('a renewal with an unknown result is not treated as success (the lease runs out)', async () => {

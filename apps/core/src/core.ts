@@ -87,7 +87,7 @@ import { BUDGET_CREDIT_FILE, fileCreditSource } from './budget-credit.js';
 import type { CreditObservationSource } from './budget-credit.js';
 import { BudgetGate } from './budget-gate.js';
 import { createVoiceRoutes } from './api-voice.js';
-import { LiveConversation } from './live-conversation.js';
+import { LiveConversation, createLiveScreenSink } from './live-conversation.js';
 import {
   createLiveBudget,
   DEFAULT_LIVE_PROFILE_ID,
@@ -956,12 +956,10 @@ async function startHttps(
     new LiveConversation({
       host: voice.conversationHost(),
       turns: { interpret: turns.interpret, commitLive: turns.commitLive },
-      screen: {
-        show: (result) => {
-          stream.placeLate(result.turn);
-        },
-        heldDropped: (info) => log(`live_held_dropped:${info.reason}`),
-      },
+      screen: createLiveScreenSink({
+        placeLate: (turn) => stream.placeLate(turn),
+        log,
+      }),
       monoNow: voiceOptions.monoNow ?? (() => performance.now()),
       timers: voiceOptions.timers ?? REAL_VOICE_TIMERS,
       log,

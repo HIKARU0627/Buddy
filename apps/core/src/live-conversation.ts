@@ -117,6 +117,23 @@ export interface ScreenResultSink {
   }): void;
 }
 
+// 製品の起動（core.ts）が使う画面への届け方。声で返せなかった結果は、発言の結果と同じ配置者の規則でキャンバスへ置く。
+// 今の配置者が置けるのは予定のカードだけで、聞き返し・全文の確定の案内のような文字の結果と、保留を捨てた知らせを載せる
+// 表示の部品・経路はまだない（ADR 0052、contract-map U120）。置けなかったことは、結果の中身を含めずに理由だけをログに残す。
+export function createLiveScreenSink(options: {
+  readonly placeLate: (turn: TurnResponse) => unknown;
+  readonly log: (message: string) => void;
+}): ScreenResultSink {
+  return {
+    show: (result) => {
+      options.placeLate(result.turn);
+      if (result.turn.result_view?.kind !== 'schedule_cards')
+        options.log(`live_screen_text_not_shown:${result.reason}`);
+    },
+    heldDropped: (info) => options.log(`live_held_dropped:${info.reason}`),
+  };
+}
+
 export interface LiveConversationTurns {
   interpret(text: string): Promise<InterpretedTurn>;
   commitLive(input: LiveCommitInput): Promise<LiveCommitResult>;
@@ -153,6 +170,10 @@ export interface LiveConversationPort {
 
 type Phase = 'waiting_input' | 'interpreting' | 'held' | 'committing' | 'done';
 
+// 失効した依頼の終端状態。保留の破棄（上限・時計の異常・Live の終了）・訂正・取消のどれかで失効した依頼は、遅い非同期処理
+// （解釈・保存の準備）が後から戻っても続けない。復帰のたびと保存の直前（precommit）に検査し、保存・声・画面のどこにも出さない。
+type Terminal = 'dropped' | 'superseded' | 'cancelled';
+
 interface Pending {
   readonly workflow_id: string;
   readonly delegation_id: string;
@@ -174,6 +195,8 @@ interface Pending {
   is_change: boolean | null;
   // 訂正・取消で失効した旧版は結果を読み上げず、画面にも出さない。
   revision_current: boolean;
+  // 失効したら理由を持つ（null は生きている依頼）。一度入れたら戻さない。
+  terminal: Terminal | null;
 }
 
 interface Context {
@@ -298,9 +321,12 @@ export class LiveConversation implements LiveConversationPort {
     if (context.holdTimer !== null)
       this.#options.timers.clear(context.holdTimer);
     context.holdTimer = null;
-    for (const entry of context.pending.values()) {
-      if (entry.phase === 'waiting_input') this.#finish(context, entry);
-      else if (entry.phase === 'held') {
+    // 保留の集合にある依頼は、解釈中・保存の準備中でも失効させる（遅れて戻っても保存しない）。保留されていない依頼は続ける。
+    const heldIds = new Set(context.hold.entries.map((e) => e.workflow_id));
+    for (const entry of [...context.pending.values()]) {
+      if (entry.phase === 'waiting_input' && !heldIds.has(entry.workflow_id))
+        this.#finish(context, entry);
+      else if (entry.phase === 'held' || heldIds.has(entry.workflow_id)) {
         this.#dropHeld(context, entry, 'live_closed');
       }
     }
@@ -357,7 +383,15 @@ export class LiveConversation implements LiveConversationPort {
       this.#options.timers.clear(context.holdTimer);
     context.holdTimer = null;
     if (context.closed || context.hold.entries.length === 0) return;
-    context.holdTimer = this.#options.timers.set(HOLD_MAX_MS + 1, () => {
+    // 期限は最も早い保留の開始から数える（後の発話で保留が増えても、先の保留の期限を延ばさない）。
+    const earliest = Math.min(
+      ...context.hold.entries.map((entry) => entry.held_at_mono_ms),
+    );
+    const wait = Math.max(
+      0,
+      earliest + HOLD_MAX_MS + 1 - this.#options.monoNow(),
+    );
+    context.holdTimer = this.#options.timers.set(wait, () => {
       context.holdTimer = null;
       if (context.closed) return;
       // 関係が分からないものとして解く。上限を過ぎたものだけが expire になり、残りは保留のまま（聞き返しは出さない）。
@@ -469,6 +503,7 @@ export class LiveConversation implements LiveConversationPort {
       decision: null,
       is_change: null,
       revision_current: true,
+      terminal: null,
     };
     context.pending.set(pending.workflow_id, pending);
     // 会話の操作として使われた発話・保留の開始は、見直しの中で扱う。
@@ -555,6 +590,8 @@ export class LiveConversation implements LiveConversationPort {
     } catch {
       interpreted = { kind: 'plan', plan: this.#unclearPlan() };
     }
+    // 解釈を待つ間に失効した依頼は、結果が戻っても続けない（保存も聞き返しもしない）。
+    if (pending.terminal !== null) return;
     pending.interpreted = interpreted;
     pending.is_change =
       interpreted.kind === 'intent'
@@ -588,6 +625,7 @@ export class LiveConversation implements LiveConversationPort {
     pending: Pending,
     sessionId: string,
   ): Promise<void> {
+    if (pending.terminal !== null) return;
     const interpreted = pending.interpreted as InterpretedTurn;
     // 対象のターンは解釈の前に決めた発話のまま（新しい発話が始まっても対象を取り違えない）。発話が解釈の間に変わっていた
     // （同じ発話に断片が追加された）ときは、訂正が到着中なので変更を進めない。
@@ -756,13 +794,13 @@ export class LiveConversation implements LiveConversationPort {
         case 'supersede':
           // 訂正・補足が確定した: 保存前の旧い依頼は作らず（旧結果もない）、この発話が新しい依頼になる。
           if (entry !== undefined) {
-            entry.revision_current = false;
+            this.#revoke(entry, 'superseded');
             this.#finish(context, entry);
           }
           break;
         case 'cancel':
           if (entry !== undefined) {
-            entry.revision_current = false;
+            this.#revoke(entry, 'cancelled');
             this.#finish(context, entry);
           }
           outcome = 'cancelled';
@@ -805,6 +843,7 @@ export class LiveConversation implements LiveConversationPort {
     outcome: 'sealed' | 'partial' | 'blocked',
     override: Commentary | null = null,
   ): Promise<void> {
+    if (pending.terminal !== null) return;
     pending.phase = 'committing';
     const interpreted = pending.interpreted as InterpretedTurn;
     const change = outcome === 'sealed' && (pending.is_change ?? true);
@@ -824,10 +863,14 @@ export class LiveConversation implements LiveConversationPort {
       outcome,
       workflow_id: pending.workflow_id,
       // 保存の直前の再検査: 変更は、新しい発話の保留の間は保存しない。
-      precommit: () => !(change && isHeld(context.hold, pending.workflow_id)),
+      // 失効した依頼は、変更でなくても保存しない。
+      precommit: () =>
+        pending.terminal === null &&
+        !(change && isHeld(context.hold, pending.workflow_id)),
     });
     if (result.kind === 'held') {
-      pending.phase = 'held';
+      // 保存の準備の間に失効した依頼は、保留へ戻さない（すでに終わっている）。
+      if (pending.terminal === null) pending.phase = 'held';
       return;
     }
     if (result.kind === 'failed') {
@@ -970,7 +1013,7 @@ export class LiveConversation implements LiveConversationPort {
   // 保留中の変更を実行せずに捨てる（画面へ知らせる）。
   #dropHeld(context: Context, pending: Pending, reason: string): void {
     const sessionId = context.handle.session_id;
-    pending.revision_current = false;
+    this.#revoke(pending, 'dropped');
     context.hold = {
       entries: context.hold.entries.filter(
         (entry) => entry.workflow_id !== pending.workflow_id,
@@ -983,6 +1026,12 @@ export class LiveConversation implements LiveConversationPort {
         workflow_id: pending.workflow_id,
         reason,
       });
+  }
+
+  // 依頼を失効させる（終端状態。結果を読み上げず、画面にも出さない）。
+  #revoke(pending: Pending, terminal: Terminal): void {
+    pending.terminal ??= terminal;
+    pending.revision_current = false;
   }
 
   #finish(context: Context, pending: Pending): void {

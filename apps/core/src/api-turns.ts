@@ -750,6 +750,17 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (result.kind === 'plan')
       return { plan: result.plan, permissionAtInput: null };
     const { intent, args } = result;
+    // 方式 C（live_policy_observed）の全文の確定の判定は、対応する操作の分岐より前に行う。create_note・create_event のように
+    // まだ作成に対応していない操作でも、既定では承認の対象を作らず全文の確定へ戻す（「未対応」と食い違わせない）。
+    // 参照・文字入力・確定前の入力はここでは見ない。
+    if (
+      evidence === 'live_policy_observed' &&
+      INTENT_POLICIES[intent].route !== 'read'
+    ) {
+      const early = readiness(intent, true, evidence);
+      if (early.full_text)
+        return { plan: blocked(early, intent), permissionAtInput: null };
+    }
     if (!PROVIDER_INTENTS.includes(intent))
       return {
         plan:

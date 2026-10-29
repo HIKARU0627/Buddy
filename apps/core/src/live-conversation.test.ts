@@ -12,7 +12,7 @@ import type { ApiHandlerRequest } from './api-server.js';
 import { createTurnRoutes } from './api-turns.js';
 import type { TurnRoutes } from './api-turns.js';
 import { DATA_KEY_MATERIAL } from './event-test-support.js';
-import { LiveConversation } from './live-conversation.js';
+import { LiveConversation, createLiveScreenSink } from './live-conversation.js';
 import type { ScreenResult } from './live-conversation.js';
 import { PreviewRegistry } from './previews.js';
 import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
@@ -153,7 +153,12 @@ interface Conv {
   readonly hb: Heartbeat;
   next: { index: number; start: number };
   // 保存の命令を送る直前（共通の workflow の最後の確認）に呼ぶ（1 回だけ）。保存の直前の再検査の試験で使う。
-  readonly hooks: { beforeRecord: (() => void) | null };
+  readonly hooks: {
+    beforeRecord: (() => void) | null;
+    // 共通の workflow へ保存を頼む前（保存の準備の間）に待たせる（1 回だけ）。呼ばれたことは entered で分かる。
+    beforeCommit: (() => Promise<void>) | null;
+    entered: number;
+  };
   // 共通の workflow への保存の結果の種類（ok・held・failed）を、返った順に残す。
   readonly commits: string[];
 }
@@ -185,7 +190,11 @@ async function withConversation(
       onSessionControl: ({ device_id, action }) =>
         rig.voice.applySessionControlForDevice(device_id, action),
     });
-    const hooks: Conv['hooks'] = { beforeRecord: null };
+    const hooks: Conv['hooks'] = {
+      beforeRecord: null,
+      beforeCommit: null,
+      entered: 0,
+    };
     const commits: string[] = [];
     const shown: ScreenResult[] = [];
     const dropped: Conv['dropped'] = [];
@@ -195,6 +204,10 @@ async function withConversation(
       turns: {
         interpret: turns.interpret,
         commitLive: async (input) => {
+          hooks.entered += 1;
+          const wait = hooks.beforeCommit;
+          hooks.beforeCommit = null;
+          await wait?.();
           const result = await turns.commitLive({
             ...input,
             precommit: () => {
@@ -472,6 +485,107 @@ test(
             ]),
           ) as TurnPolicy['auto_execution'],
         },
+        prepare: (script) => {
+          for (const [text, intent, args] of cases)
+            script.replies.set(text, intentReply(intent, args));
+        },
+      },
+    );
+  },
+);
+
+// Codex の P2-4: 方式 C の全文の確定の判定は、対応する操作の分岐より前にある。作成にまだ対応していない操作（メモ・予定）も、
+// 用事・ラベル・下書きと同じく、既定では承認の対象を作らず全文の確定へ戻す（「未対応」と食い違わせない）。
+test(
+  'QA41/P2: with the default policy every one of the four live operations (task, note, event, label, draft) makes no operation and goes back to the full text',
+  TIMEOUT,
+  async () => {
+    const intents: [string, Record<string, unknown>][] = [
+      ['create_task', { title: '牛乳を買う' }],
+      ['create_note', { title: 'メモ', body: '牛乳' }],
+      [
+        'create_event',
+        {
+          title: '歯医者',
+          start: '2026-10-06T10:00:00+09:00',
+          end: '2026-10-06T11:00:00+09:00',
+        },
+      ],
+      ['label_mail', { target_candidate_id: uuid(0xc1), add_labels: ['仕事'] }],
+      ['draft_reply', { target_candidate_id: uuid(0xc1), body: 'よろしく' }],
+    ];
+    await withConversation(async (c) => {
+      for (const [index, [intent, args]] of intents.entries()) {
+        const interpreted = intentReply(intent, args);
+        const result = await c.turns.commitLive({
+          session_id: SESSION,
+          command_scope_id: SCOPE_A,
+          request_id: uuid(0x9100 + index),
+          identity: `${c.liveId}/p24-${index}`,
+          text: `p24 ${intent}`,
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+          policy_version: '1',
+          interpreted: {
+            ...interpreted,
+            relation: 'unknown',
+            target_workflow_id: null,
+          } as never,
+          outcome: 'sealed',
+          workflow_id: uuid(0x9200 + index),
+          precommit: () => true,
+        });
+        assert.equal(result.kind, 'ok', intent);
+        if (result.kind !== 'ok') return;
+        assert.equal(result.full_text, true, intent);
+        assert.equal(result.turn.status, 'clarification', intent);
+      }
+      // 承認の対象は 0。
+      assert.deepEqual(operations(c.rig), []);
+    });
+  },
+);
+
+test(
+  'QA41/P2: a spoken note or event with the default policy is answered with the full-text sentence, not with "not supported", and makes no operation',
+  TIMEOUT,
+  async () => {
+    const cases: [string, string, Record<string, unknown>][] = [
+      [
+        'メモに「牛乳」と書いて',
+        'create_note',
+        { title: 'メモ', body: '牛乳' },
+      ],
+      [
+        'あした十時に歯医者の予定を入れて',
+        'create_event',
+        {
+          title: '歯医者',
+          start: '2026-10-06T10:00:00',
+          end: '2026-10-06T11:00:00',
+        },
+      ],
+    ];
+    await withConversation(
+      async (c) => {
+        let answered = 0;
+        for (const [index, [text]] of cases.entries()) {
+          await speak(c, { text });
+          await delegate(c, `d${index}`, c.next.start - 400);
+          await c.rig.clock.advance(500);
+          answered += 1;
+          await waitUntil(
+            c.rig,
+            `the answer ${answered}`,
+            () => c.sb.commentary.length === answered,
+          );
+        }
+        assert.deepEqual(
+          c.sb.commentary,
+          cases.map(() => [FULL_TEXT_SENTENCE]),
+        );
+        assert.deepEqual(operations(c.rig), []);
+      },
+      {
         prepare: (script) => {
           for (const [text, intent, args] of cases)
             script.replies.set(text, intentReply(intent, args));
@@ -1238,6 +1352,222 @@ test(
         );
         assert.deepEqual(operations(c.rig), []);
         assert.equal(c.conversation.pendingCount, 0);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+        },
+      },
+    );
+  },
+);
+
+// Codex の P2-3（部分対応）: 製品の起動が使う画面への届け方。予定のカードはキャンバスへ置き、置けない文字の結果と保留の破棄は
+// 理由だけをログに残す（結果の中身は残さない）。文字の結果を載せる表示の経路は未対応（contract-map U120）。
+test('P2-3: the product screen sink places schedule cards and logs, without any content, what the canvas cannot show', () => {
+  const placed: string[] = [];
+  const logs: string[] = [];
+  const sink = createLiveScreenSink({
+    placeLate: (turn) => placed.push(turn.turn_id),
+    log: (message) => logs.push(message),
+  });
+  const turnOf = (id: string, kind: string | null) =>
+    ({
+      turn_id: id,
+      reply_text: '秘密の本文',
+      result_view: kind === null ? null : { kind },
+    }) as never;
+  sink.show({
+    reason: 'live_closed',
+    session_id: SESSION,
+    turn: turnOf('t1', 'schedule_cards'),
+  });
+  sink.show({
+    reason: 'live_closed',
+    session_id: SESSION,
+    turn: turnOf('t2', null),
+  });
+  sink.heldDropped({
+    session_id: SESSION,
+    workflow_id: uuid(0x8001),
+    reason: 'hold_expired',
+  });
+  // 配置者へは、文字の結果も含めて必ず渡す（置けるかは配置者が決める）。
+  assert.deepEqual(placed, ['t1', 't2']);
+  assert.deepEqual(logs, [
+    'live_screen_text_not_shown:live_closed',
+    'live_held_dropped:hold_expired',
+  ]);
+});
+
+// ---- 破棄した保留依頼が遅い非同期処理から復活しない（Codex の P1・P2-2） ----------------------------------------------
+
+// 解釈を待つ依頼を新しい発話で保留する（解釈はまだ戻らない）。
+async function interpretingRequestHeld(c: Conv): Promise<void> {
+  await speak(c, { text: TASK_TEXT });
+  await delegate(c, 'd1', 800);
+  await c.rig.clock.advance(500);
+  await waitUntil(
+    c.rig,
+    'the first interpretation',
+    () => c.script.calls.length === 1,
+  );
+  c.sb.speechStarted();
+  assert.equal(c.conversation.heldCount(c.liveId), 1);
+}
+
+const nothingMade = (c: Conv): void => {
+  assert.deepEqual(operations(c.rig), []);
+  assert.deepEqual(workflowStates(c.rig), []);
+  assert.deepEqual(turnsOf(c.rig), []);
+  assert.deepEqual(c.sb.commentary, []);
+  assert.deepEqual(c.shown, []);
+};
+
+test(
+  'P1: a held request dropped at the limit while its interpretation is pending is never saved when the interpretation returns late',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await interpretingRequestHeld(c);
+        // 保留の上限（30 秒）を過ぎて破棄した（画面へ知らせた）。
+        await beat(c, 32000);
+        await waitUntil(c.rig, 'the drop', () => c.dropped.length === 1);
+        assert.deepEqual(
+          c.dropped.map((entry) => entry.reason),
+          ['hold_expired'],
+        );
+        // 破棄の通知の後に解釈が返る。
+        first.release();
+        await c.rig.wait();
+        await c.rig.clock.advance(500);
+        await c.rig.wait();
+        assert.deepEqual(c.commits, []);
+        nothingMade(c);
+        assert.equal(c.conversation.pendingCount, 0);
+        assert.equal(c.conversation.heldCount(c.liveId), 0);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'P1: closing the live while a held request is preparing its record drops it, and the record is refused at the last check afterwards',
+  TIMEOUT,
+  async () => {
+    const prepared = gate();
+    await withConversation(
+      async (c) => {
+        c.hooks.beforeCommit = () => prepared.promise;
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the record is being prepared',
+          () => c.hooks.entered === 1,
+        );
+        // 保存の準備の間に新しい発話が始まって保留され、そのまま Live が閉じた。
+        c.sb.speechStarted();
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x74),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        await waitUntil(c.rig, 'the drop', () => c.dropped.length === 1);
+        assert.deepEqual(
+          c.dropped.map((entry) => entry.reason),
+          ['live_closed'],
+        );
+        prepared.release();
+        await waitUntil(
+          c.rig,
+          'the refused record',
+          () => c.commits.length === 1,
+        );
+        await c.rig.wait();
+        // 保存の直前の検査で止まる（保存の命令を送らない）。
+        assert.deepEqual(c.commits, ['held']);
+        nothingMade(c);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
+  'P1: a request that was not held still reaches the screen when its result returns after the live was closed',
+  TIMEOUT,
+  async () => {
+    // X29 と同じ並び。保留の失効が、保留されていない遅着の結果まで捨てないことを固定する。
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x75),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        first.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        assert.deepEqual(c.dropped, []);
+        assert.equal(operations(c.rig).length, 1);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'P2: a later utterance does not extend the 30 second limit of a change that is already held',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await interpretingRequestHeld(c);
+        // 保留の開始から 29 秒後に、次の発話が始まる（保留は増えない）。
+        await beat(c, 29000);
+        assert.equal(c.dropped.length, 0);
+        c.sb.speechStarted();
+        // 開始から 30 秒を過ぎたら捨てる（発話の追加で延ばさない）。
+        await beat(c, 2000);
+        await waitUntil(c.rig, 'the drop', () => c.dropped.length === 1);
+        assert.deepEqual(
+          c.dropped.map((entry) => entry.reason),
+          ['hold_expired'],
+        );
+        first.release();
+        await c.rig.wait();
+        nothingMade(c);
       },
       {
         policy: AUTO_TASK,

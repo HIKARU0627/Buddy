@@ -173,8 +173,13 @@ export class RetentionSweeper {
   #lastCompletedAt: string | null = null;
   // 起動時の VACUUM はしない（間隔は起動の時刻から数える。前回の時刻は保存しない。U114）。
   #lastVacuumAt: number;
-  // 削除を伴った掃除の後の後始末（checkpoint・VACUUM）が済んでいない。
-  #maintenancePending = false;
+  // 削除を伴った掃除の後の後始末が済んでいない。checkpoint（ログの切り詰め）と VACUUM は別々に持つ
+  // （checkpoint が済んでも、間隔で延期した VACUUM は次の掃除へ引き継ぐ）。
+  #checkpointPending = false;
+  #vacuumPending = false;
+  // 外部送出の区間を保持している数（lease）。0 になるまで、新しい掃除は本体に入らない。
+  #sendLeases = 0;
+  #leasesDrained: (() => void) | null = null;
   #maintenance: Promise<void> | null = null;
   #record: SweepRecord;
   // まだ一度も掃除を始めていない（ゲートは sweep_not_started）。
@@ -259,6 +264,33 @@ export class RetentionSweeper {
     }
   }
 
+  // 外部への送出の区間（ゲートの確認から送信の終わりまで）を、掃除の本体と直列にする貸し出し。
+  // 掃除が動いている・待っている・ゲートが閉じているときは null を返し、呼び出し側は送出意図を記録する前に止める。
+  // 貸し出し中に始まった掃除は、返した release が呼ばれる（送信が終わる）までは本体に入らない（ADR 0053）。
+  lease(): (() => void) | null {
+    if (this.#closed || this.#running !== null || !this.gate().cloud_send)
+      return null;
+    this.#sendLeases += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.#sendLeases -= 1;
+      if (this.#sendLeases === 0) {
+        const wake = this.#leasesDrained;
+        this.#leasesDrained = null;
+        wake?.();
+      }
+    };
+  }
+
+  #waitForLeases(): Promise<void> {
+    if (this.#sendLeases === 0) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      this.#leasesDrained = resolve;
+    });
+  }
+
   // 1 回の掃除。force が false のときは、前回から間隔が過ぎていなければ何もしない。
   runOnce(force: boolean): Promise<SweepRecord> {
     if (this.#running !== null) return this.#running;
@@ -275,7 +307,9 @@ export class RetentionSweeper {
       use_blocked: [],
     };
     // 掃除の間は running の記録でゲートが閉じる（済んだことの記録だけを根拠に開く）。
-    this.#running = this.#sweep(now)
+    // 送出中の区間があれば、その終わりを待ってから本体に入る（記録は running なので、新しい送出は始まらない）。
+    this.#running = this.#waitForLeases()
+      .then(() => this.#sweep(this.#now()))
       .then((record) => {
         // 記録を確定した後に後始末を始める（ゲートはもう開いている）。
         this.#startMaintenance();
@@ -292,6 +326,7 @@ export class RetentionSweeper {
     let usedBlocked: SweepRecord['use_blocked'] = [];
     let completedAt: number;
     try {
+      this.#checkOpen();
       const rows = await this.#port.readRows(startedAt);
       const plan = sweepPlan({
         now: iso(startedAt),
@@ -375,8 +410,13 @@ export class RetentionSweeper {
       // 時計の判定は進める（next_last_checked_at は戻らない）。予算の記録は巻き戻り中に消していない。
       this.#lastCheckedAt = plan.clock.next_last_checked_at;
 
+      // 最後の命令を待っている間に停止された掃除は、完了の記録を作らない（ゲートを開けない）。
+      this.#checkOpen();
       // 削除があれば、記録の確定の後に checkpoint・VACUUM をする（記録の外）。
-      if (deleted > 0) this.#maintenancePending = true;
+      if (deleted > 0) {
+        this.#checkpointPending = true;
+        this.#vacuumPending = true;
+      }
 
       completedAt = this.#now();
       this.#lastCompletedAt = iso(completedAt);
@@ -449,14 +489,16 @@ export class RetentionSweeper {
     if (this.#closed) throw new SweepAborted();
   }
 
-  // 後始末（記録の外）。同時に 1 つだけ。済んでいなければ次の掃除の後にもう一度試す。
+  // 後始末（記録の外）。同時に 1 つだけ。済んでいない分は、次の掃除の後にもう一度試す（削除がなくても引き継ぐ）。
   #startMaintenance(): void {
-    if (!this.#maintenancePending || this.#maintenance !== null || this.#closed)
+    if (
+      (!this.#checkpointPending && !this.#vacuumPending) ||
+      this.#maintenance !== null ||
+      this.#closed
+    )
       return;
-    this.#maintenancePending = false;
     this.#maintenance = this.#maintain()
       .catch((error: unknown) => {
-        this.#maintenancePending = true;
         this.#log(
           `保存期限の掃除の後始末（checkpoint・VACUUM）に失敗しました（${reasonOf(error)}）。次の掃除の後にもう一度試します。`,
         );
@@ -466,25 +508,34 @@ export class RetentionSweeper {
       });
   }
 
-  // checkpoint → VACUUM（間隔を過ぎたとき）→ checkpoint。ログが切り詰められなかった（busy）ときは VACUUM に進まず、
-  // 次の掃除の後に試す（VACUUM の時刻も進めない）。
+  // checkpoint → VACUUM（間隔を過ぎたとき）→ checkpoint。ログが切り詰められなかった（busy）ときは、その段の
+  // 保留を残して次の掃除の後に試す。VACUUM の成功時刻は、後の checkpoint の結果と分けて持つ。
   async #maintain(): Promise<void> {
-    const before = await this.#port.checkpoint();
-    if (before.busy !== 0) {
-      this.#maintenancePending = true;
-      this.#log(
-        '保存期限の掃除の後始末で、ログを切り詰められませんでした（他の接続が使用中）。次の掃除の後にもう一度試します。',
-      );
-      return;
+    if (this.#checkpointPending) {
+      this.#checkOpen();
+      if (!(await this.#truncatedLog())) return;
+      this.#checkpointPending = false;
     }
+    if (!this.#vacuumPending) return;
     const now = this.#now();
     if (now - this.#lastVacuumAt < this.#vacuumIntervalMs) return;
     this.#checkOpen();
     await this.#port.vacuum();
     this.#lastVacuumAt = now;
+    this.#vacuumPending = false;
     // VACUUM は DB 全体の写しをログに残す。次の自動 checkpoint まで大きいままにしない。
     this.#checkOpen();
-    await this.#port.checkpoint();
+    if (!(await this.#truncatedLog())) this.#checkpointPending = true;
+  }
+
+  // WAL を切り詰める。他の接続が使用中（busy）で切り詰められなかったときは false。
+  async #truncatedLog(): Promise<boolean> {
+    const result = await this.#port.checkpoint();
+    if (result.busy === 0) return true;
+    this.#log(
+      '保存期限の掃除の後始末で、ログを切り詰められませんでした（他の接続が使用中）。次の掃除の後にもう一度試します。',
+    );
+    return false;
   }
 
   #gateAt(now: number): StartupGateDecision {

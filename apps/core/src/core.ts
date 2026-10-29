@@ -958,6 +958,7 @@ async function startHttps(
               await retention?.idle();
             },
             open: () => (retention as RetentionSweeper).gate().cloud_send,
+            lease: () => (retention as RetentionSweeper).lease(),
           },
         }),
   });

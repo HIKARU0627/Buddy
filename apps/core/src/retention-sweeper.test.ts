@@ -68,6 +68,8 @@ class FakePort implements RetentionSweepPort {
   readError: Error | null = null;
   budgetError: Error | null = null;
   checkpointBusy = 0;
+  // 呼び出しごとの busy（先頭から使い、尽きたら checkpointBusy）。
+  checkpointBusyQueue: number[] = [];
   // 掃除の途中で止める関門（解放されるまで進まない）。
   gateOn: string | null = null;
   release: (() => void) | null = null;
@@ -129,6 +131,7 @@ class FakePort implements RetentionSweepPort {
   ): Promise<BudgetPurgeValue> {
     this.calls.push('budget');
     this.budgetCalls.push({ month, now });
+    await this.stopAt('budget');
     if (this.budgetError !== null) throw this.budgetError;
     return {
       budget_month: month,
@@ -146,7 +149,11 @@ class FakePort implements RetentionSweepPort {
   async checkpoint(): Promise<CheckpointValue> {
     this.calls.push('checkpoint');
     this.checkpointCalls += 1;
-    return { busy: this.checkpointBusy, log_frames: 0, checkpointed_frames: 0 };
+    return {
+      busy: this.checkpointBusyQueue.shift() ?? this.checkpointBusy,
+      log_frames: 0,
+      checkpointed_frames: 0,
+    };
   }
   async vacuum(): Promise<void> {
     this.calls.push('vacuum');
@@ -556,4 +563,138 @@ test('B06-06d1: a real SQLite store: the plan, the month lookup and the purge de
     });
     assert.equal(job.gate().search, true);
   });
+});
+
+test('B06-06d1: a stop while the last body erase is awaited does not record completion or open the gate', async () => {
+  const port = new FakePort();
+  // 完了から 8 日: 本文の削除だけが期限（90 日のレシートはまだ）。
+  port.rows = [
+    operationRow('op-body', { completed_at: '2031-05-24T00:00:00Z' }),
+  ];
+  port.gateOn = 'erase';
+  const reached = new Promise<void>((resolve) => {
+    port.reached = resolve;
+  });
+  const job = sweeper(port, () => T0);
+  const running = job.runOnce(true);
+  await reached;
+  job.close();
+  port.release?.();
+  const record = await running;
+  await job.drain();
+  assert.deepEqual(port.calls, ['read', 'erase']);
+  assert.equal(record.status, 'running');
+  assert.equal(job.gate().cloud_send, false);
+  assert.equal(port.checkpointCalls, 0);
+});
+
+test('B06-06d1: a stop while the last budget month purge is awaited does not record completion or open the gate', async () => {
+  const port = new FakePort();
+  port.rows = [budgetRow()];
+  port.gateOn = 'budget';
+  const reached = new Promise<void>((resolve) => {
+    port.reached = resolve;
+  });
+  const job = sweeper(port, () => T0);
+  const running = job.runOnce(true);
+  await reached;
+  job.close();
+  port.release?.();
+  const record = await running;
+  await job.drain();
+  assert.deepEqual(port.calls, ['read', 'budget']);
+  assert.equal(record.status, 'running');
+  assert.equal(job.gate().search, false);
+  assert.equal(port.checkpointCalls, 0);
+});
+
+test('B06-06d1: a VACUUM deferred by its interval is carried to a later sweep that deletes nothing', async () => {
+  const port = new FakePort();
+  port.rows = [budgetRow()];
+  let now = T0;
+  const job = sweeper(port, () => now, { vacuumIntervalMs: 60_000 });
+  await job.runOnce(true);
+  await job.drain();
+  // 初回の削除: checkpoint は済み、VACUUM は間隔で延期。
+  assert.equal(port.checkpointCalls, 1);
+  assert.equal(port.vacuumCalls, 0);
+  // 以後は削除がない。間隔が過ぎた次の掃除の後で、延期した VACUUM を行う（その後の checkpoint つき）。
+  port.rows = [];
+  now = T0 + 30_000;
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.vacuumCalls, 0);
+  now = T0 + 60_000;
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.vacuumCalls, 1);
+  assert.equal(port.checkpointCalls, 2);
+  // 済んだ後は、削除がなければ何もしない。
+  now = T0 + 5 * 60_000;
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.vacuumCalls, 1);
+  assert.equal(port.checkpointCalls, 2);
+});
+
+test('B06-06d1: a busy checkpoint after VACUUM keeps the maintenance pending without resetting the VACUUM time', async () => {
+  const port = new FakePort();
+  port.rows = [budgetRow()];
+  // 1 回目の checkpoint は成功、VACUUM の後の checkpoint は busy。
+  port.checkpointBusyQueue = [0, 1];
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.vacuumCalls, 1);
+  assert.equal(port.checkpointCalls, 2);
+  assert.equal(logs.length, 1);
+  // 削除がなくても、保留した checkpoint を次の掃除の後に試す。VACUUM は済んでいるので繰り返さない。
+  port.rows = [];
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 3);
+  assert.equal(port.vacuumCalls, 1);
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 3);
+});
+
+test('B06-06d1: a send lease is refused while the gate is closed or a sweep runs, and a sweep waits for a held lease', async () => {
+  const port = new FakePort();
+  const job = sweeper(port, () => T0);
+  // 起動の直後（掃除の記録がない）は貸さない。
+  assert.equal(job.lease(), null);
+  await job.runOnce(true);
+  const release = job.lease();
+  assert.notEqual(release, null);
+  // 貸し出し中に始まった掃除は、本体に入らず（read しない）、記録は running でゲートは閉じる。
+  const sweep = job.runOnce(true);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(port.calls.filter((call) => call === 'read').length, 1);
+  assert.equal(job.record().status, 'running');
+  assert.equal(job.gate().cloud_send, false);
+  // 掃除が待っている間も、新しい貸し出しはしない。
+  assert.equal(job.lease(), null);
+  release?.();
+  release?.();
+  const record = await sweep;
+  assert.equal(record.status, 'completed');
+  assert.equal(port.calls.filter((call) => call === 'read').length, 2);
+  assert.notEqual(job.lease(), null);
+});
+
+test('B06-06d1: close() while a sweep waits for a send lease ends it without a failure record', async () => {
+  const port = new FakePort();
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  await job.runOnce(true);
+  const release = job.lease();
+  const sweep = job.runOnce(true);
+  job.close();
+  release?.();
+  const record = await sweep;
+  assert.equal(record.status, 'running');
+  assert.equal(port.calls.filter((call) => call === 'read').length, 1);
+  assert.deepEqual(logs, []);
 });

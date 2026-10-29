@@ -1428,13 +1428,26 @@ test('0010: all approvals are revoked whether or not the operation is marked', a
 });
 
 // exec だけが指定の SQLite の失敗コードで落ちる接続（VACUUM の失敗の写し方を確かめる）。
-function failingExec(db: SqliteDatabase, code: string): SqliteDatabase {
+function failingExec(
+  db: SqliteDatabase,
+  code: string,
+  method: 'exec' | 'pragma' = 'exec',
+): SqliteDatabase {
+  const fail = () => {
+    throw new Database.SqliteError('simulated', code);
+  };
   return new Proxy(db, {
     get(target, property) {
-      if (property === 'exec')
-        return () => {
-          throw new Database.SqliteError('simulated', code);
-        };
+      if (property === 'exec' && method === 'exec') return fail;
+      // 耐久設定の読み出し（pragma）は通し、ログの切り詰めの pragma だけ落とす。
+      if (property === 'pragma' && method === 'pragma')
+        return (source: string, ...rest: unknown[]) =>
+          source.startsWith('wal_checkpoint')
+            ? fail()
+            : (target.pragma as (...args: unknown[]) => unknown)(
+                source,
+                ...rest,
+              );
       const member = Reflect.get(target, property, target) as unknown;
       return typeof member === 'function' ? member.bind(target) : member;
     },
@@ -1458,12 +1471,26 @@ test('B06-06d1: a full disk during VACUUM is a rejection that keeps the writer r
       retention(db, { kind: 'retention.checkpoint' }).result.ok,
       true,
     );
+    // ログの切り詰め（checkpoint）の SQLITE_FULL も同じ。
+    const fullCheckpoint = retention(failingExec(db, 'SQLITE_FULL', 'pragma'), {
+      kind: 'retention.checkpoint',
+    });
+    assert.deepEqual(fullCheckpoint.result, {
+      ok: false,
+      outcome: 'rejected',
+      reasons: ['database_full'],
+    });
+    assert.equal(fullCheckpoint.halt, false);
     // I/O の失敗は、状態が分からないので今までどおり止める（ADR 0018）。
     const io = retention(failingExec(db, 'SQLITE_IOERR'), {
       kind: 'retention.vacuum',
     });
     assert.equal(io.result.ok, false);
     assert.equal(io.halt, true);
+    const ioCheckpoint = retention(failingExec(db, 'SQLITE_IOERR', 'pragma'), {
+      kind: 'retention.checkpoint',
+    });
+    assert.equal(ioCheckpoint.halt, true);
   });
 });
 

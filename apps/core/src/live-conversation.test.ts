@@ -1582,6 +1582,116 @@ test(
 );
 
 test(
+  'P1: a cancel that targets a request whose record command was sent is not processed as a new request, even when no other change is held',
+  TIMEOUT,
+  async () => {
+    const answer = gate();
+    await withConversation(
+      async (c) => {
+        // A: 保存の命令を送り、応答を待たせる（ほかに保留はない）。
+        c.hooks.afterRecord = () => answer.promise;
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the record command of A',
+          () => operations(c.rig).length === 1,
+        );
+        const aId = workflowIds(c.rig)[0] as string;
+        // B: A を対象とする取消。解釈は intent も返すが、関係（cancel）を優先する。
+        c.script.replies.set(
+          EGG_TEXT,
+          intentReply(
+            'create_task',
+            { title: '卵を買う' },
+            { relation: 'cancel', target_workflow_id: aId },
+          ),
+        );
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 1,
+        );
+        // B は通常の依頼にならず、新しい操作も作らない（A の 1 件だけ）。
+        assert.deepEqual(c.sb.commentary, [[SAY_AGAIN_SENTENCE]]);
+        assert.deepEqual(operations(c.rig), [
+          {
+            kind: 'task.create',
+            effect_route: 'local_command',
+            state: 'awaiting_approval',
+          },
+        ]);
+        assert.equal(c.conversation.heldCount(c.liveId), 0);
+        assert.deepEqual(c.dropped, []);
+        // A の応答を返すと、A の保存結果はそのまま届き、B からは操作が増えない。
+        answer.release();
+        await waitUntil(
+          c.rig,
+          'the result of A',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(
+          c.sb.commentary.map((parts) => parts[0]).toSorted(),
+          [SAY_AGAIN_SENTENCE, SCREEN_SENTENCE].toSorted(),
+        );
+        assert.equal(operations(c.rig).length, 1);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
+  'P1: a cancel that targets a saved request makes no new operation when no change is held',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the result of A',
+          () => c.sb.commentary.length === 1,
+        );
+        const aId = workflowIds(c.rig)[0] as string;
+        c.script.replies.set(
+          EGG_TEXT,
+          intentReply(
+            'create_task',
+            { title: '卵を買う' },
+            { relation: 'cancel', target_workflow_id: aId },
+          ),
+        );
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 2,
+        );
+        // 保存済みの A への取消も、新しい操作を作らずに聞き返しに留める。
+        assert.deepEqual(c.sb.commentary, [
+          [SCREEN_SENTENCE],
+          [SAY_AGAIN_SENTENCE],
+        ]);
+        assert.equal(operations(c.rig).length, 1);
+        assert.equal(c.conversation.heldCount(c.liveId), 0);
+        assert.deepEqual(c.dropped, []);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
   'P1: a request that was not held still reaches the screen when its result returns after the live was closed',
   TIMEOUT,
   async () => {

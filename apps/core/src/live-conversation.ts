@@ -752,7 +752,7 @@ export class LiveConversation implements LiveConversationPort {
   }
 
   // 他の保留の解決。新しい発話が訂正・別件・取消のどれかを、解釈の関係と対象から決める。対象は、この会話の保留中の依頼か、
-  // 保存済みの依頼のうち一意に決まるものだけ。保留がなければ何もしない。
+  // 保存済み・送信済みの依頼のうち一意に決まるものだけ。保留がなくても、送信済み・保存済みの対象への取消・訂正は判定する。
   #resolveHolds(
     context: Context,
     pending: Pending,
@@ -762,7 +762,6 @@ export class LiveConversation implements LiveConversationPort {
     const others = context.hold.entries.filter(
       (entry) => entry.workflow_id !== pending.workflow_id,
     );
-    if (others.length === 0) return 'none';
     const relation =
       interpreted.kind === 'intent' ? interpreted.relation : 'unknown';
     const targetId =
@@ -780,6 +779,9 @@ export class LiveConversation implements LiveConversationPort {
           targets.push({ workflow_id: targetId, phase: 'dispatched' });
       }
     }
+    // 保留集合が空でも、送信済み・保存済みの対象への関係（取消・訂正）は保存後の操作として判定する。
+    // 対象がなければ、従来どおり通常の依頼として扱う。
+    if (others.length === 0 && targets.length === 0) return 'none';
     const own = context.hold.entries.find(
       (entry) => entry.workflow_id === pending.workflow_id,
     );

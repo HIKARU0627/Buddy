@@ -62,6 +62,10 @@ import {
   migrateTaskContents,
 } from './task-content-migration.js';
 import { ForgetLedgerError, syncForgetLedger } from './forget-ledger.js';
+import {
+  RestoreInstallError,
+  recoverRestoreInstall,
+} from './restore-install.js';
 import { createTurnRoutes } from './api-turns.js';
 import { CanvasHub, createStreamRoutes } from './canvas-stream.js';
 import { PreviewRegistry } from './previews.js';
@@ -385,6 +389,23 @@ async function openStore(
   options: StartCoreOptions,
   log: (message: string) => void,
 ): Promise<OpenedStore> {
+  // 途中で止まった復元の差し替えを、DB を開く前に終えるか元へ戻す（ADR 0054 U113）。DB がないまま新しい DB を作らない。
+  try {
+    const restored = await recoverRestoreInstall(dataDir);
+    if (restored !== 'none')
+      log(
+        restored === 'completed'
+          ? '途中で止まった復元の差し替えを終えました。'
+          : '途中で止まった復元の差し替えを取りやめ、元の DB に戻しました。',
+      );
+  } catch (error) {
+    if (error instanceof RestoreInstallError)
+      throw new CoreStartError('store_recovery_failed', [
+        'restore_install',
+        error.reason,
+      ]);
+    throw error;
+  }
   // データ鍵をロックの後に読み直す（作成しない）。起動前の検査で作った鍵が、同時に起動した別の Core に
   // 上書きされていても、この時点の鍵と DB の照合値を比べれば食い違いを検出できる（ADR 0019）。
   const dataKey = await loadDataKeyAfterLock(options.keyStore);

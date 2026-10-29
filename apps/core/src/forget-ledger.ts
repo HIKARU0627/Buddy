@@ -4,8 +4,11 @@
 // 後と、Core の起動時に syncForgetLedger を呼ぶ。COMMIT の後・ファイルを書く前に止まっても、次の起動で DB に合わせて
 // 書き直す。ファイルが DB より進んでいる・食い違う・系譜が違う・壊れているときは書き換えず、起動を止める（DB が古い
 // 状態へ戻された疑いがあり、そのまま動くと忘れた内容を使い得るため）。
+// 0012 より前の台帳の行があり系譜（ledger_id）がない DB は、台帳のファイル（書きかけを含む）がないときだけ新しい系譜を
+// 付けてからそろえる。ファイルがあれば、その系譜を確かめられないので新しい ID を出さずに起動を止める（U119）。
 
-import { syncForgetLedgerFile } from '@buddy/storage';
+import { randomUUID } from 'node:crypto';
+import { ledgerFileTraceExists, syncForgetLedgerFile } from '@buddy/storage';
 import type {
   LedgerFileRefusal,
   LedgerFileSyncResult,
@@ -20,7 +23,13 @@ export interface ForgetLedgerStore {
   ): Promise<MemoryOpOutcome<K>>;
 }
 
-export type ForgetLedgerFailure = LedgerFileRefusal | 'ledger_export_failed';
+export type ForgetLedgerFailure =
+  | LedgerFileRefusal
+  | 'ledger_export_failed'
+  // 0012 より前の台帳の行があり系譜がない DB に、台帳のファイル（書きかけを含む）がある。
+  | 'ledger_lineage_unconfirmed'
+  // 0012 より前の台帳の行に系譜を付けられない（行がファイルの形で書き出せないなど）。
+  | 'ledger_adopt_failed';
 
 export class ForgetLedgerError extends Error {
   readonly reason: ForgetLedgerFailure;
@@ -39,7 +48,18 @@ export async function syncForgetLedger(
   path: string,
   now: Date,
 ): Promise<Extract<LedgerFileSyncResult, { ok: true }>> {
-  const exported = await store.memory({ kind: 'forget.ledger_export' });
+  let exported = await store.memory({ kind: 'forget.ledger_export' });
+  if (!exported.ok && exported.reasons.includes('ledger_id_missing')) {
+    if (await ledgerFileTraceExists(path))
+      throw new ForgetLedgerError('ledger_lineage_unconfirmed');
+    const adopted = await store.memory({
+      kind: 'forget.adopt_ledger_id',
+      ledger_id: randomUUID(),
+    });
+    if (!adopted.ok)
+      throw new ForgetLedgerError('ledger_adopt_failed', adopted.reasons);
+    exported = await store.memory({ kind: 'forget.ledger_export' });
+  }
   if (!exported.ok)
     throw new ForgetLedgerError('ledger_export_failed', exported.reasons);
   const result = await syncForgetLedgerFile(path, exported.value, now);

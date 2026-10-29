@@ -376,6 +376,58 @@ export function forgetTargetExists(
   return true;
 }
 
+// --- 期限で消した記憶の系譜の辺（ADR 0054 U110） ---
+
+// 記憶を由来にする派生物（記憶・ほかの種類）が残っているか。
+export function memoryHasDerivatives(
+  db: SqliteDatabase,
+  memoryId: string,
+): boolean {
+  return (
+    db
+      .prepare(
+        "SELECT 1 FROM memory_sources WHERE source_kind = 'memory' AND source_id = ? UNION ALL SELECT 1 FROM derivations WHERE source_kind = 'memory' AND source_id = ? LIMIT 1",
+      )
+      .get(memoryId, memoryId) !== undefined
+  );
+}
+
+// 記憶の由来の記憶（memory_sources と、期限で消した記憶に残した derivations の辺）。
+export function memoryParents(db: SqliteDatabase, memoryId: string): string[] {
+  return [
+    ...new Set(
+      db
+        .prepare(
+          "SELECT source_id FROM memory_sources WHERE memory_id = ? AND source_kind = 'memory' UNION SELECT source_id FROM derivations WHERE artifact_kind = 'memory' AND artifact_id = ? AND source_kind = 'memory'",
+        )
+        .pluck()
+        .all(memoryId, memoryId) as string[],
+    ),
+  ];
+}
+
+// 行のない記憶（期限で消した記憶）に残した由来の辺は、派生物が 1 つも残っていなければ消す。由来の記憶も同じく辿る
+// （生きた派生物から元情報までの道として要らなくなった辺だけを消す）。行のある記憶の辺には触れない。
+export function pruneDeletedMemoryEdges(
+  db: SqliteDatabase,
+  memoryId: string,
+): void {
+  const queue = [memoryId];
+  const seen = new Set<string>();
+  const live = db.prepare('SELECT 1 FROM memories WHERE memory_id = ?');
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (live.get(id) !== undefined || memoryHasDerivatives(db, id)) continue;
+    const parents = memoryParents(db, id);
+    db.prepare(
+      "DELETE FROM derivations WHERE artifact_kind = 'memory' AND artifact_id = ?",
+    ).run(id);
+    queue.push(...parents);
+  }
+}
+
 // --- 適用 ---
 
 export interface ForgetApplyInput {
@@ -603,6 +655,9 @@ export function applyForget(
   const current = currentForgettingGeneration(db);
   if (String(current) !== input.previous_generation)
     throw new ForgetRejection(['forgetting_generation_changed']);
+  // 0012 より前の台帳の行があるのに系譜がなければ、ここで新しい系譜を出さない（起動時の確認と付け直しを待つ。U119）。
+  if (current > 0 && readLedgerId(db) === null)
+    throw new ForgetRejection(['ledger_id_missing']);
   if (!forgetTargetExists(db, input.target))
     throw new ForgetRejection(['target_not_found']);
   if (
@@ -674,11 +729,17 @@ export function applyForget(
   const removeEdges = db.prepare(
     'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
   );
+  const memoryParentIds = new Set<string>();
   for (const node of plan.deletions) {
+    if (node.kind === 'memory')
+      for (const parent of memoryParents(db, node.id))
+        memoryParentIds.add(parent);
     const count = deleteNode(db, node);
     deleted[node.kind] = (deleted[node.kind] ?? 0) + count;
     removeEdges.run(node.kind, node.id);
   }
+  // 期限で消した記憶に残した由来の辺は、派生物がなくなれば消す（系譜を読んで計画を照合した後なので、計画は変わらない）。
+  for (const parent of memoryParentIds) pruneDeletedMemoryEdges(db, parent);
   // 確定内容。終端の操作は暗号文を消し、進行中・結果不明は状態を変えずに送出禁止の印だけを付ける。
   const purged: string[] = [];
   for (const operationId of plan.operation_contents.purge) {

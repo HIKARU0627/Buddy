@@ -1,12 +1,20 @@
 // Core の起動での忘却台帳のファイルと DB の整合、復元した DB の差し替え（ADR 0054）。
 // - 忘却を COMMIT した後にファイルを書けずに止まっても、次の起動で DB に合わせて書き直す。
 // - ファイルが DB より進んでいる・壊れているときは起動しない（書き換えない）。
+// - 0012 より前の台帳の行がある版 11 の DB は、台帳のファイルがなければ系譜を付けて起動し、あれば起動しない（U119）。
 // - 復元の後の保留を書いた作業用の DB は、Core が止まっているときだけ差し替えられ、次の起動はその DB で始まる
 //   （メモリーの上の接続・リースは作り直される。ADR 0047 の P3-5）。
 // 期待値は手で書いた。鍵は模擬の KeyStore、DB は一時ディレクトリ。HMAC は試験用に決めた 64 桁の値。
 
 import assert from 'node:assert/strict';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -14,8 +22,11 @@ import { planForget } from '@buddy/domain';
 import type { MemorySource } from '@buddy/domain';
 import { createMockKeyStore } from '@buddy/platform';
 import {
+  applyMigrations,
   applyRestoreAftermath,
+  loadMigrations,
   openWriteConnection,
+  parseLedgerFile,
   storagePlatform,
 } from '@buddy/storage';
 import { onCleanup } from './api-test-support.js';
@@ -210,4 +221,87 @@ test('a restored working DB is installed only while Core is stopped, and the nex
   });
   const after = await start(t, dataDir);
   assert.equal(after.storeGeneration, NEW_GENERATION);
+});
+
+// 版 11 の DB（0012 より前）に、台帳の行（hash・項目の数の列がまだない）を書く。
+const LEGACY_ENTRY = '9e9e9e9e-9e9e-4e9e-8e9e-9e9e9e9e9e9e';
+const LEGACY_MEMORY = 'bcbcbcbc-bcbc-4bcb-8bcb-bcbcbcbcbcbc';
+// {entry, previous_hash} を Python の json.dumps（キーの整列・区切りなし）で書き出し、hashlib の SHA-256 で求めた値。
+const LEGACY_HASH =
+  '49f69bcd4587f014995cafa0dd021574b8fcac85d44b89b021e508384a47933c';
+
+async function legacyDataDir(t: test.TestContext): Promise<string> {
+  const dataDir = await tempDataDir(t);
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  const db = openWriteConnection(join(dataDir, DB_FILE), {
+    platform: storagePlatform(),
+  });
+  try {
+    applyMigrations(db, loadMigrations().slice(0, 11));
+    db.prepare(
+      'INSERT INTO forget_ledger (forgetting_generation, entry_id, recorded_at) VALUES (1, ?, 1700000000000)',
+    ).run(LEGACY_ENTRY);
+    db.prepare(
+      "INSERT INTO forget_ledger_items (forgetting_generation, item_kind, item_id) VALUES (1, 'memory', ?)",
+    ).run(LEGACY_MEMORY);
+  } finally {
+    db.close();
+  }
+  return dataDir;
+}
+
+function storedLedgerId(dataDir: string): string | null {
+  const db = openWriteConnection(join(dataDir, DB_FILE), {
+    platform: storagePlatform(),
+  });
+  try {
+    return (
+      (db
+        .prepare("SELECT value FROM schema_meta WHERE key = 'ledger_id'")
+        .pluck()
+        .get() as string | undefined) ?? null
+    );
+  } finally {
+    db.close();
+  }
+}
+
+test('a version-11 DB with ledger rows starts after 0012 by adopting a lineage when no ledger file exists', async (t) => {
+  const dataDir = await legacyDataDir(t);
+  const ledgerPath = join(dataDir, FORGET_LEDGER_FILE);
+  const first = await start(t, dataDir);
+  assert.equal(first.store.schemaVersion, 12);
+  const exported = await first.store.memory({ kind: 'forget.ledger_export' });
+  assert.equal(exported.ok, true, JSON.stringify(exported));
+  const ledgerId = exported.ok ? exported.value.ledger_id : null;
+  assert.match(
+    String(ledgerId),
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+  );
+  await first.stop('test');
+  // ファイルは DB と同じ系譜で、旧い行の hash は書き出しで計算した値。
+  const file = parseLedgerFile(await readFile(ledgerPath, 'utf8'));
+  assert.equal(file?.ledger_id, ledgerId);
+  assert.deepEqual(file?.head, {
+    forgetting_generation: '1',
+    entry_hash: LEGACY_HASH,
+  });
+  // 次の起動は同じ系譜のまま（付け直さない）。
+  const second = await start(t, dataDir);
+  await second.stop('test');
+  assert.equal(storedLedgerId(dataDir), ledgerId);
+});
+
+test('a version-11 DB with ledger rows does not start when a ledger file or a half-written one exists', async (t) => {
+  for (const name of [FORGET_LEDGER_FILE, '.forget-ledger-x.tmp']) {
+    const dataDir = await legacyDataDir(t);
+    // 系譜を確かめられないファイル（中身によらない）。新しい系譜を出さずに起動を止め、ファイルも書き換えない。
+    await writeFile(join(dataDir, name), 'unverified');
+    assert.deepEqual(await refusal(start(t, dataDir)), [
+      'forget_ledger_file',
+      'ledger_lineage_unconfirmed',
+    ]);
+    assert.equal(await readFile(join(dataDir, name), 'utf8'), 'unverified');
+    assert.equal(storedLedgerId(dataDir), null);
+  }
 });

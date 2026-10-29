@@ -15,6 +15,7 @@ import Database from 'better-sqlite3';
 import {
   MEMORY_DELETE_AFTER_REVIEW_DAYS,
   MEMORY_REVIEW_DAYS,
+  RETENTION_RULES,
   ledgerRelationReasons,
 } from '@buddy/domain';
 import type { ForgetGraph, ForgetPlan, MemorySource } from '@buddy/domain';
@@ -31,10 +32,15 @@ import {
   forgetTargetExists,
   isHex64,
   isUuid,
+  memoryHasDerivatives,
+  memoryParents,
+  pruneDeletedMemoryEdges,
   readForgetGraph,
+  readLedgerChain,
   readLedgerEntries,
   readLedgerId,
 } from './forget-store.js';
+import { buildLedgerFile, parseLedgerFile } from './forget-ledger-file.js';
 import type {
   ForgetApplyValue,
   ForgetLedgerExport,
@@ -42,6 +48,8 @@ import type {
 } from './forget-store.js';
 
 const DAY_MS = 86_400_000;
+// 元情報の本文の保存期限（取得から 24 時間。domain の RETENTION_RULES の source_body）。
+const SOURCE_BODY_MS = RETENTION_RULES['source_body']?.ms ?? 0;
 const MEMORY_KINDS = [
   'preference',
   'goal',
@@ -74,6 +82,9 @@ export type MemoryOp =
     }
   // 台帳の全件（連鎖の hash つき）。台帳の別ファイルを書く・遅着の検査に使う。
   | { readonly kind: 'forget.ledger_export' }
+  // 0012 より前の台帳の行があり、系譜（ledger_id）がない DB に系譜を付ける（U119）。台帳のファイルがないことを Core が
+  // 確かめてから呼ぶ。旧い行が台帳のファイルの形で書き出せなければ付けない。
+  | { readonly kind: 'forget.adopt_ledger_id'; readonly ledger_id: string }
   | {
       readonly kind: 'memory.save';
       readonly memory_id: string;
@@ -128,6 +139,10 @@ export interface MemoryOpValues {
   'forget.graph': ForgetGraphValue;
   'forget.apply': ForgetApplyValue;
   'forget.ledger_export': ForgetLedgerExport;
+  'forget.adopt_ledger_id': {
+    readonly ledger_id: string;
+    readonly forgetting_generation: string;
+  };
   'memory.save': MemoryScheduleValue;
   'memory.continue': MemoryScheduleValue;
   'memory.start_review': MemoryScheduleValue;
@@ -159,6 +174,7 @@ export interface MemoryStoreResult {
 
 export const MEMORY_WRITE_OPS: ReadonlySet<MemoryOpKind> = new Set([
   'forget.apply',
+  'forget.adopt_ledger_id',
   'memory.save',
   'memory.continue',
   'memory.start_review',
@@ -170,6 +186,7 @@ const KINDS: ReadonlySet<string> = new Set<MemoryOpKind>([
   'forget.graph',
   'forget.apply',
   'forget.ledger_export',
+  'forget.adopt_ledger_id',
   'memory.save',
   'memory.continue',
   'memory.start_review',
@@ -237,6 +254,9 @@ export function memoryOpShapeReasons(op: MemoryOp): string[] {
       if (!isTime(op.now)) reasons.push('now_invalid');
       break;
     case 'forget.ledger_export':
+      break;
+    case 'forget.adopt_ledger_id':
+      if (!isUuid(op.ledger_id)) reasons.push('ledger_id_invalid');
       break;
     case 'memory.save':
       if (!isUuid(op.memory_id)) reasons.push('memory_id_invalid');
@@ -353,19 +373,42 @@ function saveMemory(
       contentKey: op.origin === 'auto_extraction' ? op.dedupe_key : null,
     }),
   );
-  // 由来がもうない（期限で消えた発言・記憶）なら、期限切れの由来として保存しない（ADR 0040。閉じた側）。
+  // 由来がもうない・期限を過ぎた（掃除がまだでも）なら、期限切れの由来として保存しない（ADR 0040・0054 U118。閉じた側）。
+  // 期限はこの transaction の中の今の値で判定し、ちょうどは期限切れ（掃除の sweepPlan の due と同じ now >= 期限）。
   const sourceMemoryReviewAts: number[] = [];
   for (const source of op.sources) {
     if (source.source_kind === 'turn') {
+      const expiresAt = db
+        .prepare('SELECT expires_at FROM turns WHERE turn_id = ?')
+        .pluck()
+        .get(source.source_id) as number | undefined;
+      if (expiresAt === undefined || op.now >= expiresAt)
+        reasons.push('source_expired');
+    } else if (source.source_kind === 'source_item') {
+      // 元情報は元サービスの ID（remote_id）で引く（忘却と同じ。U110）。本文が保存期限の中にある行が 1 つもなければ拒否。
+      const rows = db
+        .prepare(
+          'SELECT fetched_at, body_blob_id FROM source_items WHERE remote_id = ?',
+        )
+        .all(source.source_id) as {
+        fetched_at: number;
+        body_blob_id: string | null;
+      }[];
       if (
-        db
-          .prepare('SELECT 1 FROM turns WHERE turn_id = ?')
-          .get(source.source_id) === undefined
+        !rows.some(
+          (row) =>
+            row.body_blob_id !== null &&
+            op.now < row.fetched_at + SOURCE_BODY_MS,
+        )
       )
         reasons.push('source_expired');
-    } else if (source.source_kind === 'memory') {
+    } else {
       const row = memoryRow(db, source.source_id);
-      if (row === undefined || row.status === 'deleted')
+      if (
+        row === undefined ||
+        row.status === 'deleted' ||
+        (row.delete_at !== null && op.now >= row.delete_at)
+      )
         reasons.push('source_expired');
       else sourceMemoryReviewAts.push(row.review_at);
     }
@@ -473,8 +516,10 @@ function startReview(
   return schedule({ ...row, status: 'review_pending', delete_at: deleteAt });
 }
 
-// 期限切れの記憶の物理削除（台帳には書かない。再登録を禁じない。ADR 0008・0040）。記憶の由来・系譜の辺（記憶が
-// 派生物である辺）・暗号文を消す。この記憶を由来にする辺は残す（存在しない由来は期限切れとして扱う）。
+// 期限切れの記憶の物理削除（台帳には書かない。再登録を禁じない。ADR 0008・0040）。記憶の行・由来の行・暗号文を消す。
+// この記憶を由来にする辺は残す（存在しない由来は期限切れとして扱う）。派生物が残っていれば、この記憶の由来の辺
+// （ID だけ）を derivations に残す。本文を消しても、生きた派生物から元の発言・元情報へ辿れるようにし、後で元情報を
+// 忘れたときに派生物が閉包から漏れないようにする（ADR 0054 U110。辺は削除の前と同じなので、閉包は削除の前と変わらない）。
 function deleteDueMemory(
   db: SqliteDatabase,
   op: Extract<MemoryOp, { kind: 'memory.delete_due' }>,
@@ -484,18 +529,72 @@ function deleteDueMemory(
   if (row.status !== 'review_pending' || row.delete_at === null)
     throw new ForgetRejection(['not_review_pending']);
   if (op.now < row.delete_at) throw new ForgetRejection(['not_due']);
+  const sources = db
+    .prepare(
+      'SELECT source_kind, source_id FROM memory_sources WHERE memory_id = ? ORDER BY source_kind, source_id',
+    )
+    .all(op.memory_id) as { source_kind: string; source_id: string }[];
+  const parents = memoryParents(db, op.memory_id);
+  if (memoryHasDerivatives(db, op.memory_id)) {
+    const exists = db.prepare(
+      "SELECT 1 FROM derivations WHERE artifact_kind = 'memory' AND artifact_id = ? AND source_kind = ? AND source_id = ?",
+    );
+    const insert = db.prepare(
+      "INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES ('memory', ?, ?, ?, ?)",
+    );
+    for (const source of sources)
+      if (
+        exists.get(op.memory_id, source.source_kind, source.source_id) ===
+        undefined
+      )
+        insert.run(op.memory_id, source.source_kind, source.source_id, op.now);
+  }
   db.prepare('DELETE FROM memory_sources WHERE memory_id = ?').run(
     op.memory_id,
   );
-  db.prepare(
-    "DELETE FROM derivations WHERE artifact_kind = 'memory' AND artifact_id = ?",
-  ).run(op.memory_id);
   db.prepare('DELETE FROM memories WHERE memory_id = ?').run(op.memory_id);
   db.prepare('DELETE FROM sealed_blobs WHERE blob_id IN (?, ?)').run(
     row.text_blob_id,
     row.target_key_blob_id,
   );
+  // 派生物がなければ、この記憶の辺を消し、行のない由来の記憶の辺も要らなくなれば消す。
+  pruneDeletedMemoryEdges(db, op.memory_id);
+  for (const parent of parents) pruneDeletedMemoryEdges(db, parent);
   return { memory_id: op.memory_id, deleted: true };
+}
+
+// 0012 より前の台帳の行（hash・項目の数が NULL）に系譜を付ける（U119）。0012 より前の製品に台帳を書く経路はなかったので、
+// ふつうは起きない。台帳のファイル・端末の複製がないこと（系譜を確かめられないのに新しい ID を出さないこと）は Core が
+// 確かめる。旧い行が台帳のファイルの形（次の起動で読み戻す形）で書き出せなければ付けずに拒否する（手で直す）。
+function adoptLedgerId(
+  db: SqliteDatabase,
+  op: Extract<MemoryOp, { kind: 'forget.adopt_ledger_id' }>,
+): { readonly ledger_id: string; readonly forgetting_generation: string } {
+  if (readLedgerId(db) !== null)
+    throw new ForgetRejection(['ledger_id_present']);
+  const entries = readLedgerChain(db);
+  const last = entries.at(-1);
+  if (last === undefined) throw new ForgetRejection(['ledger_empty']);
+  const file = buildLedgerFile(
+    {
+      ledger_id: op.ledger_id,
+      entries,
+      head: {
+        forgetting_generation: last.entry.forgetting_generation,
+        entry_hash: last.entry_hash,
+      },
+    },
+    new Date(0),
+  );
+  if (parseLedgerFile(JSON.stringify(file)) === null)
+    throw new ForgetRejection(['legacy_ledger_invalid']);
+  db.prepare(
+    "INSERT INTO schema_meta (key, value) VALUES ('ledger_id', ?)",
+  ).run(op.ledger_id);
+  return {
+    ledger_id: op.ledger_id,
+    forgetting_generation: last.entry.forgetting_generation,
+  };
 }
 
 // 本人の指示の取り消し。取り消した指示は使わないので、行と暗号文を消す（03 は設定画面で確認・取り消しできるとだけ
@@ -521,6 +620,8 @@ function applyWrite(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
   switch (op.kind) {
     case 'forget.apply':
       return applyForget(db, op);
+    case 'forget.adopt_ledger_id':
+      return adoptLedgerId(db, op);
     case 'memory.save':
       return saveMemory(db, op);
     case 'memory.continue':

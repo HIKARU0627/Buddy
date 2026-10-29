@@ -10,7 +10,7 @@
 // 止まっても、ファイルは前の版か新しい版のどちらか）。取り残された一時ファイルは次の同期で消す。
 
 import { randomUUID } from 'node:crypto';
-import { open, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { lstat, open, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { ForgetLedgerEntryDraft } from '@buddy/domain';
 import {
@@ -235,6 +235,26 @@ async function removeStaleTemps(path: string): Promise<void> {
       name !== basename(path)
     )
       await rm(join(dir, name), { force: true });
+}
+
+// 台帳のファイル・書きかけの一時ファイルが 1 つでもあるか（確かめられなければ、ある側に倒す）。0012 より前の台帳の行が
+// ある DB に系譜を新しく付けてよいかの判定に使う（U119。ファイルがあれば、その系譜を確かめずに新しい ID を出さない）。
+export async function ledgerFileTraceExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return true;
+  }
+  let names: string[];
+  try {
+    names = await readdir(dirname(path));
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ENOENT';
+  }
+  return names.some(
+    (name) => name.startsWith(TEMP_PREFIX) && name.endsWith(TEMP_SUFFIX),
+  );
 }
 
 async function readExisting(

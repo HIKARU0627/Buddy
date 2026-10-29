@@ -159,6 +159,8 @@ interface Conv {
     beforeCommit: (() => Promise<void>) | null;
     // 保存の命令を送った後（共通の workflow が保存応答を返す前）に待たせる（1 回だけ）。
     afterRecord: (() => Promise<void>) | null;
+    // 次の保存の結果を差し替える（1 回だけ）。failed は保存失敗、reject は結果不明（例外）。
+    commitFailure: 'failed' | 'reject' | null;
     entered: number;
   };
   // 共通の workflow への保存の結果の種類（ok・held・failed）を、返った順に残す。
@@ -196,6 +198,7 @@ async function withConversation(
       beforeRecord: null,
       beforeCommit: null,
       afterRecord: null,
+      commitFailure: null,
       entered: 0,
     };
     const commits: string[] = [];
@@ -211,6 +214,16 @@ async function withConversation(
           const wait = hooks.beforeCommit;
           hooks.beforeCommit = null;
           await wait?.();
+          const failure = hooks.commitFailure;
+          hooks.commitFailure = null;
+          if (failure === 'failed') {
+            commits.push('failed');
+            return { kind: 'failed', status: 503 };
+          }
+          if (failure === 'reject') {
+            commits.push('reject');
+            throw new Error('simulated unknown commit result');
+          }
           const result = await turns.commitLive({
             ...input,
             precommit: () => {
@@ -1685,6 +1698,231 @@ test(
         assert.equal(operations(c.rig).length, 1);
         assert.equal(c.conversation.heldCount(c.liveId), 0);
         assert.deepEqual(c.dropped, []);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
+  'P1: a cancel that targets a request whose save failed is not processed as a new request',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        // A の保存は失敗し、追跡（pending）から外れる。
+        c.hooks.commitFailure = 'failed';
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the failed save of A',
+          () => c.conversation.pendingCount === 0,
+        );
+        assert.deepEqual(operations(c.rig), []);
+        // A（uuid 0x8001）を対象とする取消。
+        c.script.replies.set(
+          EGG_TEXT,
+          intentReply(
+            'create_task',
+            { title: '卵を買う' },
+            { relation: 'cancel', target_workflow_id: uuid(0x8001) },
+          ),
+        );
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 1,
+        );
+        // 対象を解決できなくても、取消からは新しい操作・保存要求を作らない。
+        assert.deepEqual(c.sb.commentary, [[SAY_AGAIN_SENTENCE]]);
+        assert.deepEqual(operations(c.rig), []);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
+  'P1: a cancel that targets a request whose save result is unknown is not processed as a new request',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        // A の保存の結果は不明（例外）。追跡から外れる。
+        c.hooks.commitFailure = 'reject';
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the unknown save result of A',
+          () => c.conversation.pendingCount === 0,
+        );
+        assert.deepEqual(operations(c.rig), []);
+        c.script.replies.set(
+          EGG_TEXT,
+          intentReply(
+            'create_task',
+            { title: '卵を買う' },
+            { relation: 'cancel', target_workflow_id: uuid(0x8001) },
+          ),
+        );
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[SAY_AGAIN_SENTENCE]]);
+        assert.deepEqual(operations(c.rig), []);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
+  'P1: a cancel that targets a request already dropped from the 16 item history is not processed as a new request',
+  { timeout: 60_000 },
+  async () => {
+    await withConversation(
+      async (c) => {
+        let seq = 0;
+        const make = async (text: string): Promise<void> => {
+          seq += 1;
+          await speak(c, { text });
+          await delegate(c, `d${seq}`, c.next.start - 400);
+          await c.rig.clock.advance(500);
+          await waitUntil(
+            c.rig,
+            `operation ${seq}`,
+            () => c.sb.commentary.length === seq,
+          );
+          // 音声リースの期限（6 秒）を切らさない（3 件ごとに更新する）。
+          if (seq % 3 === 0) await beat(c, 2000);
+        };
+        // A（uuid 0x8001）と、その後の 16 件の成功。A は直近 16 件の履歴から外れる。
+        await make(TASK_TEXT);
+        for (let index = 0; index < 16; index += 1) {
+          const text = `「用事${index}」を用事に登録して`;
+          c.script.replies.set(
+            text,
+            intentReply('create_task', { title: `用事${index}` }),
+          );
+          await make(text);
+        }
+        assert.equal(operations(c.rig).length, 17);
+        // 履歴から外れた A への取消。
+        c.script.replies.set(
+          EGG_TEXT,
+          intentReply(
+            'create_task',
+            { title: '卵を買う' },
+            { relation: 'cancel', target_workflow_id: uuid(0x8001) },
+          ),
+        );
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd18', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 18,
+        );
+        assert.deepEqual(c.sb.commentary.at(-1), [SAY_AGAIN_SENTENCE]);
+        assert.equal(operations(c.rig).length, 17);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
+  'P1: a cancel whose target id never existed is not processed as a new request',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        c.script.replies.set(
+          EGG_TEXT,
+          intentReply(
+            'create_task',
+            { title: '卵を買う' },
+            { relation: 'cancel', target_workflow_id: uuid(0x9999) },
+          ),
+        );
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd1', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[SAY_AGAIN_SENTENCE]]);
+        assert.deepEqual(operations(c.rig), []);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
+  'P1: a new request with no target or an unknown target still proceeds',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        c.script.replies.set(
+          EGG_TEXT,
+          intentReply(
+            'create_task',
+            { title: '卵を買う' },
+            { relation: 'new' },
+          ),
+        );
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd1', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the first operation',
+          () => c.sb.commentary.length === 1,
+        );
+        // 不明な対象の ID を添えた通常の new も止めない。
+        const second = '「パンを買う」を用事に登録して';
+        c.script.replies.set(
+          second,
+          intentReply(
+            'create_task',
+            { title: 'パンを買う' },
+            { relation: 'new', target_workflow_id: uuid(0x9999) },
+          ),
+        );
+        await speak(c, { text: second });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the second operation',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          [SCREEN_SENTENCE],
+          [SCREEN_SENTENCE],
+        ]);
+        assert.equal(c.conversation.heldCount(c.liveId), 0);
       },
       { policy: AUTO_TASK },
     );

@@ -780,8 +780,12 @@ export class LiveConversation implements LiveConversationPort {
       }
     }
     // 保留集合が空でも、送信済み・保存済みの対象への関係（取消・訂正）は保存後の操作として判定する。
-    // 対象がなければ、従来どおり通常の依頼として扱う。
-    if (others.length === 0 && targets.length === 0) return 'none';
+    // 明示的な取消は、対象を解決できてもできなくても通常の依頼へ流さない（新しい実行を作らず聞き返す）。
+    // 通常の新しい依頼（new）は、対象の ID の有無にかかわらず従来どおり進める。
+    if (others.length === 0 && targets.length === 0) {
+      if (relation === 'cancel') return 'reconcile_only';
+      return 'none';
+    }
     const own = context.hold.entries.find(
       (entry) => entry.workflow_id === pending.workflow_id,
     );

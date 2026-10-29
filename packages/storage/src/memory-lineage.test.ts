@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import type { MemorySource } from '@buddy/domain';
+import { executeRetentionOp } from './index.js';
 import type {
   ForgetGraphValue,
   ForgetLedgerExport,
@@ -23,6 +24,7 @@ import {
   M,
   M2,
   M_OTHER,
+  OP_DONE,
   S,
   T_OTHER,
   T_SRC,
@@ -447,5 +449,161 @@ test('legacy ledger rows that cannot be written as a ledger file are not adopted
       ),
       ['ledger_empty'],
     );
+  });
+});
+
+const sourcedEdges = (db: SqliteDatabase, memoryId: string): number =>
+  count(
+    db,
+    "SELECT count(*) FROM derivations WHERE source_kind = 'memory' AND source_id = ?",
+    memoryId,
+  );
+
+function expire(db: SqliteDatabase, memoryId: string): void {
+  value(
+    memoryOp(db, {
+      kind: 'memory.start_review',
+      memory_id: memoryId,
+      now: REVIEW_AT,
+    }),
+  );
+  value(
+    memoryOp(db, {
+      kind: 'memory.delete_due',
+      memory_id: memoryId,
+      now: REVIEW_AT + 30 * DAY,
+    }),
+  );
+}
+
+test('lineage: merging lineages of expired memories are all removed when the last live derivative goes', async () => {
+  await withWorld((db) => {
+    // A = M_OTHER（発言 T_OTHER から）、B ← A、Y ← A と B（合流）、Z ← Y。A・B・Y を期限で消すと辺だけが残る。
+    // ID は固定（A = 6666… が B = f1f1… より先に評価される順。子がまだある親を飛ばした後で、親を評価し直すこと）。
+    const b = 'f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1';
+    const y = 'f2f2f2f2-f2f2-4f2f-8f2f-f2f2f2f2f2f2';
+    const z = 'f3f3f3f3-f3f3-4f3f-8f3f-f3f3f3f3f3f3';
+    const at = REVIEW_AT - 10 * DAY;
+    const hmacs: readonly SourceHmacValue[] = [
+      ...HMACS,
+      { source_kind: 'memory', source_id: b, hmac: 'c7'.repeat(32) },
+      { source_kind: 'memory', source_id: y, hmac: 'c8'.repeat(32) },
+    ];
+    value(
+      save(db, {
+        memory_id: b,
+        sources: [{ source_kind: 'memory', source_id: M_OTHER }],
+        source_hmacs: hmacs,
+        now: at,
+      }),
+    );
+    value(
+      save(db, {
+        memory_id: y,
+        sources: [
+          { source_kind: 'memory', source_id: M_OTHER },
+          { source_kind: 'memory', source_id: b },
+        ],
+        source_hmacs: hmacs,
+        now: at,
+      }),
+    );
+    value(
+      save(db, {
+        memory_id: z,
+        sources: [{ source_kind: 'memory', source_id: y }],
+        source_hmacs: hmacs,
+        now: at,
+      }),
+    );
+    for (const id of [M_OTHER, b, y]) expire(db, id);
+    assert.deepEqual(edgesOf(db, M_OTHER), [
+      { source_kind: 'turn', source_id: T_OTHER },
+    ]);
+    assert.deepEqual(edgesOf(db, b), [
+      { source_kind: 'memory', source_id: M_OTHER },
+    ]);
+    assert.deepEqual(edgesOf(db, y), [
+      { source_kind: 'memory', source_id: M_OTHER },
+      { source_kind: 'memory', source_id: b },
+    ]);
+    // 最後の生きた派生物 Z を消すと、合流した系譜の辺がすべて消える。
+    expire(db, z);
+    for (const id of [M_OTHER, b, y, z]) {
+      assert.deepEqual(edgesOf(db, id), [], id);
+      assert.equal(sourcedEdges(db, id), 0, id);
+    }
+  });
+});
+
+test('lineage: the edges of an expired memory go when its operation content is purged after 90 days', async () => {
+  await withWorld((db) => {
+    // 成功した操作 OP_DONE（seedWorld で完了の時刻 1_000_000）の確定内容が M_OTHER から作られている。
+    db.prepare(
+      "INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES ('operation_content', ?, 'memory', ?, 1000)",
+    ).run(OP_DONE, M_OTHER);
+    expire(db, M_OTHER);
+    assert.deepEqual(edgesOf(db, M_OTHER), [
+      { source_kind: 'turn', source_id: T_OTHER },
+    ]);
+    const purged = executeRetentionOp(
+      db,
+      {
+        kind: 'retention.purge_operation',
+        operation_id: OP_DONE,
+        now: 1_000_000 + 90 * DAY,
+      },
+      { platform: 'macos', halted: false },
+    ).result;
+    assert.deepEqual(purged, {
+      ok: true,
+      value: { operation_id: OP_DONE, purged: true },
+    });
+    assert.equal(
+      count(
+        db,
+        "SELECT count(*) FROM derivations WHERE artifact_kind = 'operation_content' AND artifact_id = ?",
+        OP_DONE,
+      ),
+      0,
+    );
+    assert.deepEqual(edgesOf(db, M_OTHER), []);
+    // 生きている記憶 M の辺には触れない。
+    assert.deepEqual(edgesOf(db, M), []);
+    assert.equal(
+      count(db, 'SELECT count(*) FROM memory_sources WHERE memory_id = ?', M),
+      1,
+    );
+  });
+});
+
+test('lineage: a derivative whose row is already gone does not keep the edges of an expired memory', async () => {
+  await withWorld((db) => {
+    // M_OTHER から記憶 X と気づき n-2 を作る。n-2 の行は（辺を消さない経路で）先に消えた。
+    const x = randomUUID();
+    value(
+      save(db, {
+        memory_id: x,
+        sources: [{ source_kind: 'memory', source_id: M_OTHER }],
+        now: REVIEW_AT - 10 * DAY,
+      }),
+    );
+    db.prepare(
+      "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('n-2', NULL, NULL, NULL, 'mail_reply', 'nk-2', NULL, NULL, 'new', NULL, NULL)",
+    ).run();
+    db.prepare(
+      "INSERT INTO derivations (artifact_kind, artifact_id, source_kind, source_id, created_at) VALUES ('notification_candidate', 'n-2', 'memory', ?, 1000)",
+    ).run(M_OTHER);
+    expire(db, M_OTHER);
+    db.prepare(
+      "DELETE FROM notification_candidates WHERE candidate_id = 'n-2'",
+    ).run();
+    assert.deepEqual(edgesOf(db, M_OTHER), [
+      { source_kind: 'turn', source_id: T_OTHER },
+    ]);
+    // 最後の生きた派生物 X を消すと、行のない n-2 の辺は道を残さない。
+    expire(db, x);
+    assert.deepEqual(edgesOf(db, M_OTHER), []);
+    assert.equal(sourcedEdges(db, M_OTHER), 0);
   });
 });

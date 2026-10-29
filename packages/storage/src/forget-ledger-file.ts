@@ -7,7 +7,10 @@
 // - ファイルが DB より進んでいる・同じ世代の hash が違う・系譜が違う・ファイルが壊れている: 書き換えずに拒否する
 //   （DB が古い状態へ戻された疑い。忘れた内容を戻さないよう、復元の手順で台帳を当てるまで Core を起動しない）。
 // 書き込みは同じディレクトリの一時ファイルに書いて fsync し、rename で置き換えてからディレクトリを fsync する（途中で
-// 止まっても、ファイルは前の版か新しい版のどちらか）。取り残された一時ファイルは次の同期で消す。
+// 止まっても、ファイルは前の版か新しい版のどちらか）。取り残された一時ファイルも、消す前に DB と照合する（DB が古い
+// 状態へ戻されると、rename の前に止まった一時ファイルだけが新しい世代を持つことがある）。DB がその中身を含むと
+// 確かめられた一時ファイル（DB と同じか古い世代・書きかけでも DB から作った文の先頭と同じ）だけを消し、新しい世代・
+// 別の系譜・分岐した連鎖・確かめられない中身の一時ファイルは残して拒否する（ADR 0054。PR #168 の 2 回目のレビュー）。
 
 import { randomUUID } from 'node:crypto';
 import { lstat, open, readFile, readdir, rename, rm } from 'node:fs/promises';
@@ -176,13 +179,19 @@ export function buildLedgerFile(
   writtenAt: Date,
 ): ForgetLedgerFileContent {
   if (exported.ledger_id === null) throw new Error('ledger_id がありません。');
+  // 欄の順は文に出る順（written_at を先に置き、書きかけの一時ファイルでも DB から同じ文を作り直して照合できるように
+  // する）。読むときの検査は欄の順に依らない。
   return {
     schema: FORGET_LEDGER_FILE_SCHEMA,
+    written_at: writtenAt.toISOString(),
     ledger_id: exported.ledger_id,
     entries: exported.entries,
     head: exported.head,
-    written_at: writtenAt.toISOString(),
   };
+}
+
+export function ledgerFileText(content: ForgetLedgerFileContent): string {
+  return `${JSON.stringify(content, null, 2)}\n`;
 }
 
 const TEMP_PREFIX = '.forget-ledger-';
@@ -209,32 +218,116 @@ export async function writeLedgerFileAtomic(
   const temp = join(dir, `${TEMP_PREFIX}${randomUUID()}${TEMP_SUFFIX}`);
   const handle = await open(temp, 'wx', 0o600);
   try {
-    await handle.writeFile(`${JSON.stringify(content, null, 2)}\n`, 'utf8');
+    await handle.writeFile(ledgerFileText(content), 'utf8');
     await handle.sync();
-  } finally {
-    await handle.close();
+  } catch (error) {
+    // 書けなかった一時ファイルは消す（消せなければ次の同期が照合する）。
+    await handle.close().catch(() => undefined);
+    await rm(temp, { force: true }).catch(() => undefined);
+    throw error;
   }
+  await handle.close();
   options.beforeRename?.();
   await rename(temp, path);
   await fsyncDirectory(dir);
 }
 
-// 取り残された一時ファイル（rename の前に止まったもの）を消す。
-async function removeStaleTemps(path: string): Promise<void> {
+// 取り残された一時ファイル（rename の前に止まったもの・書きかけのもの）。
+async function staleTemps(path: string): Promise<string[]> {
   const dir = dirname(path);
   let names: string[];
   try {
     names = await readdir(dir);
-  } catch {
-    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
   }
-  for (const name of names)
-    if (
-      name.startsWith(TEMP_PREFIX) &&
-      name.endsWith(TEMP_SUFFIX) &&
-      name !== basename(path)
+  return names
+    .filter(
+      (name) =>
+        name.startsWith(TEMP_PREFIX) &&
+        name.endsWith(TEMP_SUFFIX) &&
+        name !== basename(path),
     )
-      await rm(join(dir, name), { force: true });
+    .sort()
+    .map((name) => join(dir, name));
+}
+
+// 読めたファイル（正規の台帳・一時ファイル）を DB と照合する。null なら DB がその中身を含む（同じか古い世代）。
+function fileRefusal(
+  file: ForgetLedgerFileContent,
+  exported: ForgetLedgerExport,
+): LedgerFileRefusal | null {
+  if (exported.ledger_id === null)
+    // DB に台帳がないのにファイルに項目がある: DB が台帳より前へ戻された疑い。
+    return file.entries.length > 0 ? 'ledger_file_ahead' : null;
+  if (file.ledger_id !== exported.ledger_id) return 'ledger_lineage_mismatch';
+  if (file.entries.length > Number(exported.head.forgetting_generation))
+    return 'ledger_file_ahead';
+  for (const [index, item] of file.entries.entries())
+    if (item.entry_hash !== exported.entries[index]?.entry_hash)
+      return 'ledger_file_diverged';
+  return null;
+}
+
+const WRITTEN_AT =
+  /^\{\n {2}"schema": "[^"\n]*",\n {2}"written_at": "([^"\n]+)"/u;
+
+// 書きかけで読めない一時ファイルを、DB から作った文と比べる。DB の先頭の k 世代（k = 1..head）で作った文のどれかの
+// 先頭と一致すれば、DB がその中身を含む（書いていた時点の DB は今の DB と同じか、その先頭）。written_at まで届いて
+// いない書きかけは、台帳の項目を持たない。
+function partialTempContained(
+  text: string,
+  exported: ForgetLedgerExport,
+): boolean {
+  const opening = `{\n  "schema": "${FORGET_LEDGER_FILE_SCHEMA}",\n  "written_at": "`;
+  // written_at の値の途中までで途切れた書きかけも、台帳の項目を持たない。
+  if (
+    opening.startsWith(text) ||
+    (text.startsWith(opening) && !text.slice(opening.length).includes('"'))
+  )
+    return true;
+  const match = WRITTEN_AT.exec(text);
+  if (match === null || exported.ledger_id === null) return false;
+  const writtenAt = new Date(match[1] ?? '');
+  if (Number.isNaN(writtenAt.getTime()) || writtenAt.toISOString() !== match[1])
+    return false;
+  for (let k = exported.entries.length; k >= 1; k -= 1) {
+    const entries = exported.entries.slice(0, k);
+    const last = entries[k - 1];
+    if (last === undefined) continue;
+    const rendered = ledgerFileText(
+      buildLedgerFile(
+        {
+          ledger_id: exported.ledger_id,
+          entries,
+          head: {
+            forgetting_generation: last.entry.forgetting_generation,
+            entry_hash: last.entry_hash,
+          },
+        },
+        writtenAt,
+      ),
+    );
+    if (rendered.startsWith(text)) return true;
+  }
+  return false;
+}
+
+async function tempRefusal(
+  temp: string,
+  exported: ForgetLedgerExport,
+): Promise<LedgerFileRefusal | null> {
+  let text: string;
+  try {
+    text = await readFile(temp, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    return 'ledger_file_invalid';
+  }
+  const parsed = parseLedgerFile(text);
+  if (parsed !== null) return fileRefusal(parsed, exported);
+  return partialTempContained(text, exported) ? null : 'ledger_file_invalid';
 }
 
 // 台帳のファイル・書きかけの一時ファイルが 1 つでもあるか（確かめられなければ、ある側に倒す）。0012 より前の台帳の行が
@@ -277,27 +370,27 @@ export async function syncForgetLedgerFile(
   now: Date,
   options: { readonly beforeRename?: () => void } = {},
 ): Promise<LedgerFileSyncResult> {
-  await removeStaleTemps(path);
+  // 消す前に、すべての一時ファイルと正規の台帳を DB と照合する（拒否するときは何も消さない・書かない）。
+  const temps = await staleTemps(path);
+  for (const temp of temps) {
+    const refusal = await tempRefusal(temp, exported);
+    if (refusal !== null) return { ok: false, reason: refusal };
+  }
   const existing = await readExisting(path);
   if (existing === 'invalid')
     return { ok: false, reason: 'ledger_file_invalid' };
+  if (existing !== null) {
+    const refusal = fileRefusal(existing, exported);
+    if (refusal !== null) return { ok: false, reason: refusal };
+  }
+  // DB が中身を含むと確かめた一時ファイルだけを消す。
+  for (const temp of temps) await rm(temp, { force: true });
   const dbHead = Number(exported.head.forgetting_generation);
   if (existing === null && exported.ledger_id === null)
     return { ok: true, action: 'none', forgetting_generation: '0' };
   if (existing !== null) {
-    if (exported.ledger_id === null) {
-      // DB に台帳がないのにファイルに項目がある: DB が台帳より前へ戻された疑い。
-      if (existing.entries.length > 0)
-        return { ok: false, reason: 'ledger_file_ahead' };
+    if (exported.ledger_id === null)
       return { ok: true, action: 'in_sync', forgetting_generation: '0' };
-    }
-    if (existing.ledger_id !== exported.ledger_id)
-      return { ok: false, reason: 'ledger_lineage_mismatch' };
-    if (existing.entries.length > dbHead)
-      return { ok: false, reason: 'ledger_file_ahead' };
-    for (const [index, item] of existing.entries.entries())
-      if (item.entry_hash !== exported.entries[index]?.entry_hash)
-        return { ok: false, reason: 'ledger_file_diverged' };
     if (existing.entries.length === dbHead)
       return {
         ok: true,

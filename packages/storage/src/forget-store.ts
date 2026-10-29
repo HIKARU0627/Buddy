@@ -283,6 +283,18 @@ export function readForgetGraph(db: SqliteDatabase): ForgetGraph {
       { kind: 'memory', id: row.memory_id },
       { kind: row.source_kind as ForgetNode['kind'], id: row.source_id },
     );
+  // 本人の指示は、作った発言（user_directives.turn_id）を由来にする派生物として閉包に入れる（U112。忘れた発言から作った
+  // 指示の本文を残さない。計画の user_directives で消える指示を本人に見せる）。
+  const directives = db
+    .prepare(
+      'SELECT directive_id, turn_id FROM user_directives WHERE turn_id IS NOT NULL ORDER BY directive_id',
+    )
+    .all() as { directive_id: string; turn_id: string }[];
+  for (const row of directives)
+    push(
+      { kind: 'user_directive', id: row.directive_id },
+      { kind: 'turn', id: row.turn_id },
+    );
   const attributed = new Set(edges.map((edge) => nodeKey(edge.artifact)));
   const unattributed: { artifact: ForgetNode; scope: ForgetNode }[] = [];
   const summaries = db
@@ -378,18 +390,87 @@ export function forgetTargetExists(
 
 // --- 期限で消した記憶の系譜の辺（ADR 0054 U110） ---
 
-// 記憶を由来にする派生物（記憶・ほかの種類）が残っているか。
+// 派生物の行がまだあるか（種類ごとの表。deleteNode と同じ表と ID）。表のない種類（canvas_item・carried_summary）は
+// 確かめられないので、ある側に倒す（生きた下流への道を消さない）。行のない記憶は、その記憶が生きた派生物を持つ間は
+// 道の途中として生きている扱い。
+function artifactAlive(
+  db: SqliteDatabase,
+  kind: string,
+  id: string,
+  visiting: Set<string>,
+): boolean {
+  const exists = (sql: string): boolean =>
+    db.prepare(sql).get(id) !== undefined;
+  switch (kind) {
+    case 'memory':
+      return (
+        exists('SELECT 1 FROM memories WHERE memory_id = ?') ||
+        memoryHasLiveDerivatives(db, id, visiting)
+      );
+    case 'turn':
+      return exists('SELECT 1 FROM turns WHERE turn_id = ?');
+    case 'operation_content':
+      // 操作の行がある間は残す（送出禁止で残した操作の確定内容の由来。90 日の削除で行が消える）。
+      return exists('SELECT 1 FROM operations WHERE operation_id = ?');
+    case 'intent_shadow':
+      return exists('SELECT 1 FROM intent_shadow WHERE record_id = ?');
+    case 'notification_candidate':
+      return exists(
+        'SELECT 1 FROM notification_candidates WHERE candidate_id = ?',
+      );
+    case 'related_analysis':
+      return exists('SELECT 1 FROM related_analyses WHERE group_id = ?');
+    case 'request_entity':
+      return exists(
+        'SELECT 1 FROM request_entities WHERE request_entity_id = ?',
+      );
+    case 'async_guard':
+      return exists('SELECT 1 FROM async_context_guards WHERE guard_id = ?');
+    case 'session_summary':
+      return exists(
+        'SELECT 1 FROM sessions WHERE session_id = ? AND summary_blob_id IS NOT NULL',
+      );
+    default:
+      return true;
+  }
+}
+
+function memoryHasLiveDerivatives(
+  db: SqliteDatabase,
+  memoryId: string,
+  visiting: Set<string>,
+): boolean {
+  if (visiting.has(memoryId)) return false;
+  visiting.add(memoryId);
+  try {
+    // memory_sources の子は、外部キーで行のある記憶だけ。
+    if (
+      db
+        .prepare(
+          "SELECT 1 FROM memory_sources WHERE source_kind = 'memory' AND source_id = ? LIMIT 1",
+        )
+        .get(memoryId) !== undefined
+    )
+      return true;
+    const children = db
+      .prepare(
+        "SELECT artifact_kind, artifact_id FROM derivations WHERE source_kind = 'memory' AND source_id = ? ORDER BY artifact_kind, artifact_id",
+      )
+      .all(memoryId) as { artifact_kind: string; artifact_id: string }[];
+    return children.some((child) =>
+      artifactAlive(db, child.artifact_kind, child.artifact_id, visiting),
+    );
+  } finally {
+    visiting.delete(memoryId);
+  }
+}
+
+// 記憶を由来にする派生物（記憶・ほかの種類）で、行がまだあるもの（行のない記憶は、その下流が生きているもの）があるか。
 export function memoryHasDerivatives(
   db: SqliteDatabase,
   memoryId: string,
 ): boolean {
-  return (
-    db
-      .prepare(
-        "SELECT 1 FROM memory_sources WHERE source_kind = 'memory' AND source_id = ? UNION ALL SELECT 1 FROM derivations WHERE source_kind = 'memory' AND source_id = ? LIMIT 1",
-      )
-      .get(memoryId, memoryId) !== undefined
-  );
+  return memoryHasLiveDerivatives(db, memoryId, new Set());
 }
 
 // 記憶の由来の記憶（memory_sources と、期限で消した記憶に残した derivations の辺）。
@@ -406,26 +487,56 @@ export function memoryParents(db: SqliteDatabase, memoryId: string): string[] {
   ];
 }
 
-// 行のない記憶（期限で消した記憶）に残した由来の辺は、派生物が 1 つも残っていなければ消す。由来の記憶も同じく辿る
-// （生きた派生物から元情報までの道として要らなくなった辺だけを消す）。行のある記憶の辺には触れない。
+// 行のない記憶（期限で消した記憶）に残した由来の辺は、生きた派生物がなくなれば消す。辺を消したら由来の記憶も
+// 評価し直す（まだ生きた派生物があって残した記憶も、後で最後の派生物が消えれば消す。合流する系譜でも同じ）。
+// その記憶を由来にする行のない派生物の辺（もう消えた派生物の残り）も一緒に消す。行のある記憶の辺には触れない。
 export function pruneDeletedMemoryEdges(
   db: SqliteDatabase,
   memoryId: string,
 ): void {
   const queue = [memoryId];
-  const seen = new Set<string>();
+  const pruned = new Set<string>();
   const live = db.prepare('SELECT 1 FROM memories WHERE memory_id = ?');
   while (queue.length > 0) {
     const id = queue.shift() as string;
-    if (seen.has(id)) continue;
-    seen.add(id);
+    // 消した記憶はもう辺を持たない。生きている・生きた派生物を持つ記憶は、今は消さない（後の削除で評価し直す）。
+    if (pruned.has(id)) continue;
     if (live.get(id) !== undefined || memoryHasDerivatives(db, id)) continue;
     const parents = memoryParents(db, id);
+    // この記憶を由来にする行のない記憶（生きた派生物を持たない）も、辺を消した後に評価する。
+    const children = db
+      .prepare(
+        "SELECT artifact_id FROM derivations WHERE source_kind = 'memory' AND source_id = ? AND artifact_kind = 'memory'",
+      )
+      .pluck()
+      .all(id) as string[];
     db.prepare(
       "DELETE FROM derivations WHERE artifact_kind = 'memory' AND artifact_id = ?",
     ).run(id);
-    queue.push(...parents);
+    db.prepare(
+      "DELETE FROM derivations WHERE source_kind = 'memory' AND source_id = ?",
+    ).run(id);
+    pruned.add(id);
+    queue.push(...parents, ...children);
   }
+}
+
+// 派生物（記憶以外）を消したときの系譜の整理。派生物としての辺を消し、由来の行のない記憶の辺も要らなくなれば消す。
+export function removeArtifactEdges(
+  db: SqliteDatabase,
+  kind: string,
+  id: string,
+): void {
+  const memorySources = db
+    .prepare(
+      "SELECT source_id FROM derivations WHERE artifact_kind = ? AND artifact_id = ? AND source_kind = 'memory'",
+    )
+    .pluck()
+    .all(kind, id) as string[];
+  db.prepare(
+    'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
+  ).run(kind, id);
+  for (const source of memorySources) pruneDeletedMemoryEdges(db, source);
 }
 
 // --- 適用 ---
@@ -553,8 +664,8 @@ function deleteNode(db: SqliteDatabase, node: ForgetNode): number {
         .pluck()
         .get(node.id) as string | null | undefined;
       if (blob === undefined) return 0;
-      // 発言への応答（ID・決まった文だけ）は発言と一緒に消す。入力の版と本人の指示は残し、発言への結び付けだけを外す
-      // （入力の版は操作の記録の監査、指示は本人が確定した設定。U112）。
+      // 発言への応答（ID・決まった文だけ）は発言と一緒に消す。入力の版は残し、発言への結び付けだけを外す（操作の記録の
+      // 監査）。この発言から作った本人の指示は閉包に入って先に消えている（U112）。結び付けを外すのは外部キーの保証。
       db.prepare('DELETE FROM turn_responses WHERE turn_id = ?').run(node.id);
       db.prepare(
         'UPDATE input_snapshots SET turn_id = NULL WHERE turn_id = ?',
@@ -564,6 +675,21 @@ function deleteNode(db: SqliteDatabase, node: ForgetNode): number {
       ).run(node.id);
       const removed = db
         .prepare('DELETE FROM turns WHERE turn_id = ?')
+        .run(node.id).changes;
+      deleteBlob(db, blob);
+      return removed;
+    }
+    case 'user_directive': {
+      // 本人の指示の行と本文の暗号文（directive.revoke と同じ消し方）。
+      const blob = db
+        .prepare(
+          'SELECT text_blob_id FROM user_directives WHERE directive_id = ?',
+        )
+        .pluck()
+        .get(node.id) as string | undefined;
+      if (blob === undefined) return 0;
+      const removed = db
+        .prepare('DELETE FROM user_directives WHERE directive_id = ?')
         .run(node.id).changes;
       deleteBlob(db, blob);
       return removed;
@@ -730,23 +856,33 @@ export function applyForget(
     'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
   );
   const memoryParentIds = new Set<string>();
+  const memorySourcesOf = (kind: string, id: string): string[] =>
+    kind === 'memory'
+      ? memoryParents(db, id)
+      : (db
+          .prepare(
+            "SELECT source_id FROM derivations WHERE artifact_kind = ? AND artifact_id = ? AND source_kind = 'memory'",
+          )
+          .pluck()
+          .all(kind, id) as string[]);
   for (const node of plan.deletions) {
-    if (node.kind === 'memory')
-      for (const parent of memoryParents(db, node.id))
-        memoryParentIds.add(parent);
+    for (const parent of memorySourcesOf(node.kind, node.id))
+      memoryParentIds.add(parent);
     const count = deleteNode(db, node);
     deleted[node.kind] = (deleted[node.kind] ?? 0) + count;
     removeEdges.run(node.kind, node.id);
   }
-  // 期限で消した記憶に残した由来の辺は、派生物がなくなれば消す（系譜を読んで計画を照合した後なので、計画は変わらない）。
-  for (const parent of memoryParentIds) pruneDeletedMemoryEdges(db, parent);
   // 確定内容。終端の操作は暗号文を消し、進行中・結果不明は状態を変えずに送出禁止の印だけを付ける。
   const purged: string[] = [];
   for (const operationId of plan.operation_contents.purge) {
+    for (const parent of memorySourcesOf('operation_content', operationId))
+      memoryParentIds.add(parent);
     if (purgeOperationContent(db, operationId, input.now))
       purged.push(operationId);
     removeEdges.run('operation_content', operationId);
   }
+  // 期限で消した記憶に残した由来の辺は、派生物がなくなれば消す（系譜を読んで計画を照合した後なので、計画は変わらない）。
+  for (const parent of memoryParentIds) pruneDeletedMemoryEdges(db, parent);
   const blocked: string[] = [];
   const mark = db.prepare(
     'UPDATE operations SET send_blocked_generation = ? WHERE operation_id = ? AND send_blocked_generation IS NULL',

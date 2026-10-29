@@ -16,7 +16,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { createMockKeyStore } from '@buddy/platform';
 import {
@@ -66,6 +66,7 @@ const SUCCESS_OPS = [
   'fsyncDirectory DATA',
   `rename WORKING ${DB_FILE}`,
   'fsyncDirectory DATA',
+  'fsyncDirectory WORKDIR',
   'writeDurable .restore-install-ID.tmp',
   `rename .restore-install-ID.tmp ${RESTORE_INSTALL_JOURNAL}`,
   'fsyncDirectory DATA',
@@ -79,7 +80,7 @@ const SUCCESS_OPS = [
 // この番号（1 始まり）の操作が済んでいれば、作業用の DB が今の名前にある（rename WORKING → DB）。
 const SWAPPED_AT = 10;
 // この番号の操作が済んでいれば、installed の記録が永続に書けている（その後の片付けの失敗は成功として返す）。
-const INSTALLED_AT = 14;
+const INSTALLED_AT = 15;
 
 // 旧 DB の組と、差し替えた後の新しい DB だけの組（ロックのファイルは除く）。
 const OLD_FILES = {
@@ -134,12 +135,15 @@ function injectedFs(
   failAt: number | ((log: readonly string[]) => boolean),
 ): RestoreInstallFs {
   let crashed = false;
+  // 区切り文字（Windows の \\）に依らないよう、node:path で作る。
   const label = (path: string): string =>
     path === f.dataDir
       ? 'DATA'
-      : path.startsWith(f.working)
-        ? path.replace(f.working, 'WORKING')
-        : path.replace(`${f.dataDir}/`, '').replace(UUID, 'ID');
+      : path === dirname(f.working)
+        ? 'WORKDIR'
+        : path.startsWith(f.working)
+          ? `WORKING${path.slice(f.working.length)}`
+          : relative(f.dataDir, path).replace(UUID, 'ID');
   const step = (text: string): void => {
     log.push(text);
     const index = log.length;
@@ -171,6 +175,27 @@ function injectedFs(
       await nodeRestoreInstallFs.fsyncDirectory(dir);
     },
   };
+}
+
+// 復旧を、n 回目の試みでは n 番目の操作で止めながら、止まらずに終わるまで繰り返す。拒否（RestoreInstallError）は
+// 試験の失敗。終わった試みの結果と、止まった回数を返す。
+async function recoverRepeatedly(f: Fixture): Promise<string> {
+  for (let attempt = 1; attempt <= 64; attempt += 1) {
+    try {
+      const result = await recoverRestoreInstall(
+        f.dataDir,
+        injectedFs(f, [], 'crash', attempt),
+      );
+      return `${result} after ${attempt - 1} stops`;
+    } catch (error) {
+      assert.equal(
+        (error as { code?: string }).code,
+        'EIO',
+        `recovery attempt ${attempt}: ${String(error)}`,
+      );
+    }
+  }
+  assert.fail('復旧が終わりませんでした');
 }
 
 const install = (f: Fixture, fs?: RestoreInstallFs) =>
@@ -207,8 +232,9 @@ for (const mode of ['once', 'crash'] as const)
       // 復旧も失敗する）は、installed の記録を書いた後の片付けの中だけが成功になる。
       if (mode === 'once') assert.equal(done, swapped, `once ${failAt}`);
       else assert.equal(done, failAt > INSTALLED_AT, `crash ${failAt}`);
-      // 次の起動の前の復旧（本物のファイル操作）。
-      const recovered = await recoverRestoreInstall(f.dataDir);
+      // 次の起動の前の復旧。復旧そのものも n 番目の操作で止め、止まるたびに次の起動でもう一度復旧する（1 回目は
+      // 最初の操作で、2 回目は 2 番目の操作で止まる、…）。どこで何度止まっても拒否されずに収束すること。
+      const recovered = await recoverRepeatedly(f);
       const after = await snapshot(f);
       assert.deepEqual(
         after,

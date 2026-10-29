@@ -23,7 +23,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { acquireLock, defaultIsPidAlive, releaseLock } from './lock.js';
 import { DB_FILE } from './paths.js';
 
@@ -80,6 +80,9 @@ export const nodeRestoreInstallFs: RestoreInstallFs = {
     }
   },
   async fsyncDirectory(dir) {
+    // Windows では Node.js の fs.open でディレクトリを開けず、ディレクトリの fsync ができない（ファイルの rename の
+    // 永続は NTFS のメタデータのジャーナルに任せる。電源断の直前の rename が残るかは保証しない）。初期の中枢は
+    // Mac mini（設計 08）なので、Windows で中枢を動かすときの耐久は実機の試験（B15）で確かめる（ADR 0054）。
     if (process.platform === 'win32') return;
     const handle = await open(dir, 'r');
     try {
@@ -202,7 +205,18 @@ export type RestoreInstallRecovery =
   // 差し替えの前へ戻した（旧 DB・-wal・-shm を元の名前へ。作業用の DB は残す）。
   | 'rolled_back';
 
-// 途中で止まった差し替えを終えるか、元へ戻す。Core のロックを持った状態で、DB を開く前に呼ぶ。
+// 作業用の DB を別のディレクトリから移したときは、移した元のディレクトリも fsync する（移した元に名前が残らないこと）。
+async function fsyncWorkingDirectory(
+  fs: RestoreInstallFs,
+  dataDir: string,
+  workingPath: string,
+): Promise<void> {
+  const workingDir = dirname(workingPath);
+  if (workingDir !== dataDir) await fs.fsyncDirectory(workingDir);
+}
+
+// 途中で止まった差し替えを終えるか、元へ戻す。Core のロックを持った状態で、DB を開く前に呼ぶ。復旧の途中で止まっても、
+// もう一度呼べば続きから進む（記録は退避したファイルを消す前に installed にする。戻すときは 1 つずつ元の名前へ戻す）。
 export async function recoverRestoreInstall(
   dataDir: string,
   fs: RestoreInstallFs = nodeRestoreInstallFs,
@@ -257,6 +271,13 @@ export async function recoverRestoreInstall(
         (await exists(`${live}${suffix}`))
       )
         throw new RestoreInstallError('restore_install_inconsistent');
+    if (swapping) {
+      // 退避したファイルを消す前に、新しい DB の置き場所を永続にして installed を記録する（消している途中で止まっても、
+      // 次の復旧は installed として続きから消せる。退避したファイルが欠けた swapping の記録を残さない）。
+      await fs.fsyncDirectory(dataDir);
+      await fsyncWorkingDirectory(fs, dataDir, journal.working_path);
+      await writeJournal(fs, dataDir, { ...journal, phase: 'installed' });
+    }
     for (const suffix of SUFFIXES) await fs.remove(`${aside}${suffix}`);
     await finish();
     return 'completed';
@@ -328,6 +349,7 @@ export async function installRestoredDatabase(
       await fs.fsyncDirectory(options.dataDir);
       await fs.rename(options.workingPath, live);
       await fs.fsyncDirectory(options.dataDir);
+      await fsyncWorkingDirectory(fs, options.dataDir, options.workingPath);
       await writeJournal(fs, options.dataDir, {
         ...journal,
         phase: 'installed',

@@ -3,7 +3,7 @@
 // 届いた結果の拒否（memory.save の最後の保証）。期待値は手で書いた（連鎖の hash の求め方は forget-test-support.ts）。
 
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import type { MemorySource } from '@buddy/domain';
 import type {
@@ -57,6 +57,17 @@ import {
 
 test('forget: one transaction writes the ledger row and items, deletes the closure, the instruction turn and marks in-flight operations', async () => {
   await withWorld((db) => {
+    // 計画は、指示の発言 T_INST から作った本人の指示 DIRECTIVE を「消える指示」として別に示す（U112）。
+    const preview = planFor(db, { source_kind: 'memory', source_id: M }, T_INST)
+      .plan as { user_directives: string[]; deletions: unknown[] };
+    assert.deepEqual(preview.user_directives, [DIRECTIVE]);
+    assert.ok(
+      preview.deletions.some(
+        (node) =>
+          JSON.stringify(node) ===
+          JSON.stringify({ kind: 'user_directive', id: DIRECTIVE }),
+      ),
+    );
     const result = value<ForgetApplyValue>(forgetM(db));
     assert.deepEqual(result, {
       forgetting_generation: '1',
@@ -68,6 +79,7 @@ test('forget: one transaction writes the ledger row and items, deletes the closu
         notification_candidate: 1,
         session_summary: 1,
         memory: 2,
+        user_directive: 1,
         turn: 1,
       },
       purged_operations: [OP_DONE],
@@ -199,7 +211,7 @@ test('forget: one transaction writes the ledger row and items, deletes the closu
       ),
       0,
     );
-    // 入力の版と本人の指示は残り、発言への結び付けだけが外れる。
+    // 入力の版は残り、発言への結び付けだけが外れる。指示の発言から作った本人の指示は、行も本文の暗号文も残らない（U112）。
     assert.equal(
       db
         .prepare("SELECT turn_id FROM input_snapshots WHERE input_id = 'in-1'")
@@ -207,12 +219,13 @@ test('forget: one transaction writes the ledger row and items, deletes the closu
         .get(),
       null,
     );
+    assert.equal(count(db, 'SELECT count(*) FROM user_directives'), 0);
     assert.equal(
-      db
-        .prepare('SELECT turn_id FROM user_directives WHERE directive_id = ?')
-        .pluck()
-        .get(DIRECTIVE),
-      null,
+      count(
+        db,
+        "SELECT count(*) FROM sealed_blobs WHERE purpose = 'directive_text' OR owner_table = 'user_directives'",
+      ),
+      0,
     );
     // 消した物の系譜の辺は残らない。
     assert.equal(
@@ -678,5 +691,30 @@ test('late results: memory.save re-checks the whole ledger in the transaction (f
       forgetting_generation: '1',
     });
     assert.equal(explicit.ok, true, JSON.stringify(explicit));
+  });
+});
+
+test('forget: a directive made from an unrelated turn stays, with its text and its turn link (U112)', async () => {
+  await withWorld((db) => {
+    const other = 'f0000000-0000-4000-8000-000000000002';
+    const blob = randomUUID();
+    db.prepare(
+      "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'directive_text', 'user_directives', ?, 0, 1, 'k-test', ?, ?, ?, 1000, NULL)",
+    ).run(blob, other, randomBytes(12), randomBytes(24), randomBytes(16));
+    db.prepare(
+      "INSERT INTO user_directives (directive_id, text_blob_id, scope, session_id, turn_id, active, created_at) VALUES (?, ?, 'from_now_on', NULL, ?, 1, 1000)",
+    ).run(other, blob, T_OTHER);
+    const preview = planFor(db, { source_kind: 'memory', source_id: M }, T_INST)
+      .plan as { user_directives: string[] };
+    assert.deepEqual(preview.user_directives, [DIRECTIVE]);
+    value(forgetM(db));
+    assert.deepEqual(
+      db.prepare('SELECT directive_id, turn_id FROM user_directives').all(),
+      [{ directive_id: other, turn_id: T_OTHER }],
+    );
+    assert.equal(
+      count(db, 'SELECT count(*) FROM sealed_blobs WHERE blob_id = ?', blob),
+      1,
+    );
   });
 });

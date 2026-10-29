@@ -10,12 +10,17 @@ import { parseLedgerFile, syncForgetLedgerFile } from './index.js';
 import type { ForgetLedgerExport, SqliteDatabase } from './index.js';
 import {
   ENTRY_1,
+  ENTRY_2,
   HASH_1,
   HASH_2,
+  HMACS,
   LEDGER_ID,
+  M_OTHER,
+  NOW_2,
   forgetM,
   forgetOther,
   memoryOp,
+  planFor,
   seedWorld,
   value,
 } from './forget-test-support.js';
@@ -273,5 +278,157 @@ test('ledger file: a file ahead of the DB, a diverged hash, another lineage and 
       });
       assert.equal(readFileSync(file, 'utf8'), text);
     }
+  });
+});
+
+// 世代 1 のファイルをそろえ、世代 2 の忘却を COMMIT した後・rename の前に止まった状態を作る（一時ファイルが世代 2）。
+// 世代 1 の書き出し（DB が世代 1 へ戻された状態の代わり）・世代 1 のファイルの中身・一時ファイルを返す。
+async function stoppedBeforeRename(
+  db: SqliteDatabase,
+  file: string,
+  dir: string,
+): Promise<{
+  gen1: ForgetLedgerExport;
+  gen1Text: string;
+  temp: string;
+  text: string;
+}> {
+  value(forgetM(db));
+  await syncForgetLedgerFile(file, exportLedger(db), WRITTEN);
+  const gen1 = exportLedger(db);
+  const gen1Text = readFileSync(file, 'utf8');
+  value(forgetOther(db));
+  await assert.rejects(
+    syncForgetLedgerFile(file, exportLedger(db), WRITTEN, {
+      beforeRename: () => {
+        throw new Error('注入した停止（rename の前）');
+      },
+    }),
+    /rename の前/u,
+  );
+  const temps = readdirSync(dir).filter((name) => name.endsWith('.tmp'));
+  assert.equal(temps.length, 1);
+  const temp = join(dir, temps[0] ?? '');
+  return { gen1, gen1Text, temp, text: readFileSync(temp, 'utf8') };
+}
+
+// 同じ系譜で、世代 1 に別の忘却（M_OTHER）を書いた台帳のファイル（連鎖が分岐した台帳）。
+async function divergedLedgerText(): Promise<string> {
+  let text = '';
+  await withDbAndFile(async (db, file) => {
+    const target = { source_kind: 'memory', source_id: M_OTHER } as const;
+    const { plan, generation } = planFor(db, target, null);
+    value(
+      memoryOp(db, {
+        kind: 'forget.apply',
+        target,
+        instruction_turn_id: null,
+        plan: plan as never,
+        source_hmacs: HMACS,
+        entry_id: ENTRY_2,
+        previous_generation: generation,
+        new_ledger_id: LEDGER_ID,
+        now: NOW_2,
+      }),
+    );
+    await syncForgetLedgerFile(file, exportLedger(db), WRITTEN);
+    text = readFileSync(file, 'utf8');
+  });
+  return text;
+}
+
+test('ledger file: a temp file newer than the DB, of another lineage or of a diverged chain is kept and refused', async () => {
+  const diverged = await divergedLedgerText();
+  await withDbAndFile(async (db, file, dir) => {
+    const { gen1, gen1Text, temp, text } = await stoppedBeforeRename(
+      db,
+      file,
+      dir,
+    );
+    // DB が世代 1 へ戻された: 世代 2 の一時ファイルを消して in_sync にしない。
+    assert.deepEqual(await syncForgetLedgerFile(file, gen1, WRITTEN), {
+      ok: false,
+      reason: 'ledger_file_ahead',
+    });
+    assert.equal(readFileSync(temp, 'utf8'), text);
+    assert.equal(readFileSync(file, 'utf8'), gen1Text);
+    // 別の系譜の一時ファイル（世代 2 の中身のまま系譜だけ違う。系譜は hash に入らない）。
+    writeFileSync(
+      temp,
+      text.replace(LEDGER_ID, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
+    );
+    assert.deepEqual(
+      await syncForgetLedgerFile(file, exportLedger(db), WRITTEN),
+      { ok: false, reason: 'ledger_lineage_mismatch' },
+    );
+    // 同じ系譜で世代 1 の hash が違う一時ファイル（連鎖が分岐した）。
+    assert.notEqual(diverged, gen1Text);
+    writeFileSync(temp, diverged);
+    assert.deepEqual(
+      await syncForgetLedgerFile(file, exportLedger(db), WRITTEN),
+      { ok: false, reason: 'ledger_file_diverged' },
+    );
+    // 読めない中身（DB から作れない文）も消さずに拒否する。
+    writeFileSync(temp, 'not a ledger');
+    assert.deepEqual(
+      await syncForgetLedgerFile(file, exportLedger(db), WRITTEN),
+      { ok: false, reason: 'ledger_file_invalid' },
+    );
+    assert.equal(readFileSync(temp, 'utf8'), 'not a ledger');
+    assert.equal(readFileSync(file, 'utf8'), gen1Text);
+    // DB と同じ世代の一時ファイルは DB が中身を含むので消し、書く。
+    writeFileSync(temp, text);
+    assert.deepEqual(
+      await syncForgetLedgerFile(file, exportLedger(db), WRITTEN),
+      { ok: true, action: 'written', forgetting_generation: '2' },
+    );
+    assert.deepEqual(readdirSync(dir), ['forget-ledger.json']);
+    // 古い世代の一時ファイル（世代 1 の正規の台帳と同じ中身）は消す。
+    writeFileSync(temp, gen1Text);
+    assert.deepEqual(
+      await syncForgetLedgerFile(file, exportLedger(db), WRITTEN),
+      { ok: true, action: 'in_sync', forgetting_generation: '2' },
+    );
+    assert.deepEqual(readdirSync(dir), ['forget-ledger.json']);
+  });
+});
+
+test('ledger file: a half-written temp file is removed only when the DB holds its content', async () => {
+  await withDbAndFile(async (db, file, dir) => {
+    const { gen1, gen1Text, temp, text } = await stoppedBeforeRename(
+      db,
+      file,
+      dir,
+    );
+    const gen2 = exportLedger(db);
+    // DB が世代 2（書いていたときと同じ）: どこで途切れた一時ファイルも DB が中身を含むので消す。
+    for (let cut = 0; cut < text.length; cut += 7) {
+      writeFileSync(temp, text.slice(0, cut));
+      const result = await syncForgetLedgerFile(file, gen2, WRITTEN);
+      assert.equal(result.ok, true, `cut ${cut}: ${JSON.stringify(result)}`);
+      assert.deepEqual(readdirSync(dir), ['forget-ledger.json'], `cut ${cut}`);
+    }
+    // 世代 1 の書きかけ（前の書き込みが失敗して残った）も、世代 2 の DB が含むので消す。
+    writeFileSync(temp, gen1Text.slice(0, gen1Text.length - 5));
+    assert.equal((await syncForgetLedgerFile(file, gen2, WRITTEN)).ok, true);
+    assert.deepEqual(readdirSync(dir), ['forget-ledger.json']);
+    // DB が世代 1 へ戻された（正規の台帳も世代 1）: 世代 2 の項目まで届いた書きかけは、DB が含まないので残して拒否する。
+    writeFileSync(file, gen1Text);
+    const partial = text.slice(0, text.length - 3);
+    writeFileSync(temp, partial);
+    assert.deepEqual(await syncForgetLedgerFile(file, gen1, WRITTEN), {
+      ok: false,
+      reason: 'ledger_file_invalid',
+    });
+    assert.equal(readFileSync(temp, 'utf8'), partial);
+    assert.equal(readFileSync(file, 'utf8'), gen1Text);
+    // 項目まで届いていない書きかけ（schema の行まで）は台帳の中身を持たないので消せる。
+    writeFileSync(temp, text.slice(0, 20));
+    assert.deepEqual(await syncForgetLedgerFile(file, gen1, WRITTEN), {
+      ok: true,
+      action: 'in_sync',
+      forgetting_generation: '1',
+    });
+    assert.deepEqual(readdirSync(dir), ['forget-ledger.json']);
   });
 });

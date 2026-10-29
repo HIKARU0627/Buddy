@@ -19,6 +19,7 @@ export type CommentaryTemplateId =
   | 'clarify.fixed'
   | 'input.say_again'
   | 'input.full_text'
+  | 'input.hold_dropped'
   | 'result.screen';
 
 export interface CommentaryFact {
@@ -49,8 +50,12 @@ const fact = (kind: ResultViewKind, count: number | null): CommentaryFact => ({
 });
 
 const SAY_AGAIN = 'うまく聞き取れませんでした。もう一度言ってください。';
+// 画面への表示が未対応（U120）の間でも、実際にできる操作（全文の入力のやり直し）へ案内する。
 const FULL_TEXT =
-  'この操作は、画面で内容を確かめてからにします。画面を見てください。';
+  'この依頼はまだ実行していません。画面から全文を入力し直してください。';
+// 保留を実行せずに捨てた通知。画面への表示が未対応（U120）の間は、声で届く文にする。
+const HOLD_DROPPED =
+  '実行前の依頼は実行していません。必要なら、もう一度お願いします。';
 const SCREEN = '画面で確認してください。';
 
 export interface ResultCommentaryInput {
@@ -121,19 +126,28 @@ export function resultCommentary(input: ResultCommentaryInput): Commentary {
   }
 }
 
-// 入力が確定しなかったとき（言い直し）・4 操作でないとき（画面で全文を確かめる）の定型文。
-export function inputCommentary(kind: 'say_again' | 'full_text'): Commentary {
-  return kind === 'say_again'
-    ? {
-        template_id: 'input.say_again',
-        template_version: COMMENTARY_TEMPLATE_VERSION,
-        facts: [fact('clarification', null)],
-        commentary_parts: [SAY_AGAIN],
-      }
-    : {
-        template_id: 'input.full_text',
-        template_version: COMMENTARY_TEMPLATE_VERSION,
-        facts: [fact('approval_link', null)],
-        commentary_parts: [FULL_TEXT],
-      };
+// 入力が確定しなかったとき（言い直し）・4 操作でないとき（全文の入力のやり直し）・保留を捨てたときの定型文。
+export function inputCommentary(
+  kind: 'say_again' | 'full_text' | 'hold_dropped',
+): Commentary {
+  if (kind === 'say_again')
+    return {
+      template_id: 'input.say_again',
+      template_version: COMMENTARY_TEMPLATE_VERSION,
+      facts: [fact('clarification', null)],
+      commentary_parts: [SAY_AGAIN],
+    };
+  if (kind === 'hold_dropped')
+    return {
+      template_id: 'input.hold_dropped',
+      template_version: COMMENTARY_TEMPLATE_VERSION,
+      facts: [fact('clarification', null)],
+      commentary_parts: [HOLD_DROPPED],
+    };
+  return {
+    template_id: 'input.full_text',
+    template_version: COMMENTARY_TEMPLATE_VERSION,
+    facts: [fact('approval_link', null)],
+    commentary_parts: [FULL_TEXT],
+  };
 }

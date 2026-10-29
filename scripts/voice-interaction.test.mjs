@@ -634,13 +634,24 @@ test('session control table: the production table is the hand-written table, val
 test('commentary: hand-written fixed sentences, nothing says a change was done, every part fits one append', () => {
   for (const entry of spec.commentary_cases)
     assert.deepEqual(resultCommentary(entry.input), entry.expected, entry.id);
-  for (const kind of ['say_again', 'full_text']) {
+  for (const kind of ['say_again', 'full_text', 'hold_dropped']) {
     const commentary = inputCommentary(kind);
     assert.equal(commentary.commentary_parts.length, 1);
     assert.equal(commentary.template_version, '1');
   }
   assert.equal(inputCommentary('say_again').template_id, 'input.say_again');
   assert.equal(inputCommentary('full_text').template_id, 'input.full_text');
+  assert.equal(
+    inputCommentary('hold_dropped').template_id,
+    'input.hold_dropped',
+  );
+  // 画面への表示が未対応（U120）の間でも、実際にできる操作へ案内する。
+  assert.deepEqual(inputCommentary('full_text').commentary_parts, [
+    'この依頼はまだ実行していません。画面から全文を入力し直してください。',
+  ]);
+  assert.deepEqual(inputCommentary('hold_dropped').commentary_parts, [
+    '実行前の依頼は実行していません。必要なら、もう一度お願いします。',
+  ]);
   // 長すぎる聞き返しの文は使わず、言い直しの定型文にする（1 回の追記に収まる長さ）。
   const long = resultCommentary({
     kind: 'clarification',

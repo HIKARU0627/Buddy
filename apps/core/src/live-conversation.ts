@@ -168,7 +168,15 @@ export interface LiveConversationPort {
   ): void;
 }
 
-type Phase = 'waiting_input' | 'interpreting' | 'held' | 'committing' | 'done';
+// committing: 保存の準備中（まだ命令を送っていない。保留・破棄の対象）。
+// dispatched: 保存の命令を DB へ送信済み（応答待ち。保留・破棄の対象にしない）。
+type Phase =
+  | 'waiting_input'
+  | 'interpreting'
+  | 'held'
+  | 'committing'
+  | 'dispatched'
+  | 'done';
 
 // 失効した依頼の終端状態。保留の破棄（上限・時計の異常・Live の終了）・訂正・取消のどれかで失効した依頼は、遅い非同期処理
 // （解釈・保存の準備）が後から戻っても続けない。復帰のたびと保存の直前（precommit）に検査し、保存・声・画面のどこにも出さない。
@@ -324,6 +332,8 @@ export class LiveConversation implements LiveConversationPort {
     // 保留の集合にある依頼は、解釈中・保存の準備中でも失効させる（遅れて戻っても保存しない）。保留されていない依頼は続ける。
     const heldIds = new Set(context.hold.entries.map((e) => e.workflow_id));
     for (const entry of [...context.pending.values()]) {
+      // 保存の命令を送信済みの依頼は、応答を待って保存結果をそのまま扱う（破棄しない）。
+      if (entry.phase === 'dispatched') continue;
       if (entry.phase === 'waiting_input' && !heldIds.has(entry.workflow_id))
         this.#finish(context, entry);
       else if (entry.phase === 'held' || heldIds.has(entry.workflow_id)) {
@@ -353,7 +363,7 @@ export class LiveConversation implements LiveConversationPort {
     // 送出前の変更を一時保留する。解釈の前の依頼は変更かどうか分からないので変更として保留する（参照と分かれば、
     // 保存のときに保留は掛けない）。
     const inFlight = [...context.pending.values()]
-      .filter((entry) => entry.phase !== 'done')
+      .filter((entry) => entry.phase !== 'done' && entry.phase !== 'dispatched')
       .map((entry) => ({
         workflow_id: entry.workflow_id,
         request_revision: '1',
@@ -763,6 +773,12 @@ export class LiveConversation implements LiveConversationPort {
       if (held) targets.push({ workflow_id: targetId, phase: 'pre_dispatch' });
       else if (context.committed.includes(targetId))
         targets.push({ workflow_id: targetId, phase: 'dispatched' });
+      else {
+        // 保存の命令を送信済みで応答待ちの依頼は、保存後の操作として扱う（送出前の取消・訂正にしない）。
+        const inFlight = context.pending.get(targetId);
+        if (inFlight?.phase === 'dispatched')
+          targets.push({ workflow_id: targetId, phase: 'dispatched' });
+      }
     }
     const own = context.hold.entries.find(
       (entry) => entry.workflow_id === pending.workflow_id,
@@ -864,9 +880,14 @@ export class LiveConversation implements LiveConversationPort {
       workflow_id: pending.workflow_id,
       // 保存の直前の再検査: 変更は、新しい発話の保留の間は保存しない。
       // 失効した依頼は、変更でなくても保存しない。
-      precommit: () =>
-        pending.terminal === null &&
-        !(change && isHeld(context.hold, pending.workflow_id)),
+      precommit: () => {
+        if (pending.terminal !== null) return false;
+        if (change && isHeld(context.hold, pending.workflow_id)) return false;
+        // ここから先は保存の命令を DB へ送る（応答待ち）。送信済みの依頼は、新しい発話の保留でも
+        // Live の終了でも破棄せず、保存の結果をそのまま扱う。
+        pending.phase = 'dispatched';
+        return true;
+      },
     });
     if (result.kind === 'held') {
       // 保存の準備の間に失効した依頼は、保留へ戻さない（すでに終わっている）。
@@ -933,6 +954,10 @@ export class LiveConversation implements LiveConversationPort {
 
   // 結果の届け先。声で返せるのは入力のときに声に固定した依頼だけで、世代・接続・端末が今も有効なとき。
   #route(context: Context, pending: Pending) {
+    // 失効した依頼（保留の破棄・訂正・取消）は、Live の情報が既に外れていても画面へ出さない
+    // （世代を読めない分岐より先に確かめる）。
+    if (!pending.revision_current)
+      return { channel: 'discard', reason: 'revision_superseded' } as const;
     const view = this.#options.host.delivery(context.handle.live_session_id);
     if (view.epochs === null)
       return { channel: 'screen', reason: 'no_current_epoch' } as const;
@@ -1012,7 +1037,11 @@ export class LiveConversation implements LiveConversationPort {
 
   // 保留中の変更を実行せずに捨てる（画面へ知らせる）。
   #dropHeld(context: Context, pending: Pending, reason: string): void {
+    // 保存の命令を送信済みの依頼は破棄しない（応答を待ち、保存結果をそのまま扱う）。
+    if (pending.phase === 'dispatched') return;
     const sessionId = context.handle.session_id;
+    // 画面への表示は未対応（U120）なので、声で届けられるなら破棄の事実を声でも伝える。
+    const route = this.#route(context, pending);
     this.#revoke(pending, 'dropped');
     context.hold = {
       entries: context.hold.entries.filter(
@@ -1020,6 +1049,11 @@ export class LiveConversation implements LiveConversationPort {
       ),
     };
     this.#finish(context, pending);
+    if (route.channel === 'voice')
+      this.#options.host.appendCommentary(
+        context.handle.live_session_id,
+        inputCommentary('hold_dropped').commentary_parts,
+      );
     if (sessionId !== null)
       this.#options.screen.heldDropped({
         session_id: sessionId,

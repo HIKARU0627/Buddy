@@ -157,6 +157,8 @@ interface Conv {
     beforeRecord: (() => void) | null;
     // 共通の workflow へ保存を頼む前（保存の準備の間）に待たせる（1 回だけ）。呼ばれたことは entered で分かる。
     beforeCommit: (() => Promise<void>) | null;
+    // 保存の命令を送った後（共通の workflow が保存応答を返す前）に待たせる（1 回だけ）。
+    afterRecord: (() => Promise<void>) | null;
     entered: number;
   };
   // 共通の workflow への保存の結果の種類（ok・held・failed）を、返った順に残す。
@@ -193,6 +195,7 @@ async function withConversation(
     const hooks: Conv['hooks'] = {
       beforeRecord: null,
       beforeCommit: null,
+      afterRecord: null,
       entered: 0,
     };
     const commits: string[] = [];
@@ -217,6 +220,9 @@ async function withConversation(
               return input.precommit();
             },
           });
+          const after = hooks.afterRecord;
+          hooks.afterRecord = null;
+          await after?.();
           commits.push(result.kind);
           return result;
         },
@@ -335,10 +341,12 @@ const liveAudioEpoch = (rig: Rig): number =>
 
 const TASK_TEXT = '「牛乳を買う」を用事に登録して';
 const FULL_TEXT_SENTENCE =
-  'この操作は、画面で内容を確かめてからにします。画面を見てください。';
+  'この依頼はまだ実行していません。画面から全文を入力し直してください。';
 const SAY_AGAIN_SENTENCE =
   'うまく聞き取れませんでした。もう一度言ってください。';
 const SCREEN_SENTENCE = '画面で確認してください。';
+const HOLD_DROPPED_SENTENCE =
+  '実行前の依頼は実行していません。必要なら、もう一度お願いします。';
 
 const controlEvents = (rig: Rig, type: string) =>
   (rig.events.get(DEV_A) ?? []).filter((event) => event['event_type'] === type);
@@ -1425,6 +1433,15 @@ const nothingMade = (c: Conv): void => {
   assert.deepEqual(c.shown, []);
 };
 
+// 何も作らず、破棄の通知だけを声で伝えた（Live が開いているときの保留の破棄）。
+const nothingMadeButDropTold = (c: Conv): void => {
+  assert.deepEqual(operations(c.rig), []);
+  assert.deepEqual(workflowStates(c.rig), []);
+  assert.deepEqual(turnsOf(c.rig), []);
+  assert.deepEqual(c.sb.commentary, [[HOLD_DROPPED_SENTENCE]]);
+  assert.deepEqual(c.shown, []);
+};
+
 test(
   'P1: a held request dropped at the limit while its interpretation is pending is never saved when the interpretation returns late',
   TIMEOUT,
@@ -1446,7 +1463,7 @@ test(
         await c.rig.clock.advance(500);
         await c.rig.wait();
         assert.deepEqual(c.commits, []);
-        nothingMade(c);
+        nothingMadeButDropTold(c);
         assert.equal(c.conversation.pendingCount, 0);
         assert.equal(c.conversation.heldCount(c.liveId), 0);
       },
@@ -1501,6 +1518,62 @@ test(
         // 保存の直前の検査で止まる（保存の命令を送らない）。
         assert.deepEqual(c.commits, ['held']);
         nothingMade(c);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
+  'P1: a request whose record command was already sent is not dropped when a new utterance starts and the live closes before the result returns',
+  TIMEOUT,
+  async () => {
+    const answer = gate();
+    await withConversation(
+      async (c) => {
+        c.hooks.afterRecord = () => answer.promise;
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        // 保存の命令は送信済み（操作は DB に 1 件ある）。保存の応答はまだ返っていない。
+        await waitUntil(
+          c.rig,
+          'the record command',
+          () => operations(c.rig).length === 1,
+        );
+        // 応答を待つ間に、新しい発話が始まって Live が閉じた。
+        c.sb.speechStarted();
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x76),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        await c.rig.wait();
+        // 送信済みの依頼は保留・破棄の対象にしない。
+        assert.deepEqual(c.dropped, []);
+        assert.equal(c.conversation.heldCount(c.liveId), 0);
+        answer.release();
+        // 保存結果は捨てずに画面へ回す（保存されたものとして扱う）。
+        await waitUntil(c.rig, 'the saved result', () => c.shown.length === 1);
+        assert.deepEqual(c.commits, ['ok']);
+        assert.deepEqual(
+          c.shown.map((entry) => [entry.reason, entry.session_id]),
+          [['live_closed', SESSION]],
+        );
+        assert.equal(c.shown[0]?.turn.status, 'answered');
+        assert.deepEqual(operations(c.rig), [
+          {
+            kind: 'task.create',
+            effect_route: 'local_command',
+            state: 'awaiting_approval',
+          },
+        ]);
+        assert.deepEqual(turnsOf(c.rig), [
+          { input_kind: 'voice_live', role: 'user' },
+        ]);
         assert.equal(c.conversation.pendingCount, 0);
       },
       { policy: AUTO_TASK },
@@ -1567,7 +1640,7 @@ test(
         );
         first.release();
         await c.rig.wait();
-        nothingMade(c);
+        nothingMadeButDropTold(c);
       },
       {
         policy: AUTO_TASK,

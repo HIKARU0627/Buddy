@@ -18,46 +18,22 @@
 
 ## Codex / Claude Code
 
-既に利用している各 CLI / アプリで、このリポジトリのルートを作業ディレクトリとして開く。CLI を使う場合:
+共通指示は AGENTS.md の一か所で管理する。Codex は AGENTS.md を、Claude Code は CLAUDE.md（`@AGENTS.md` で AGENTS.md を読み込む）を読む。Windows の symlink 設定に依存しない。
+各製品へのログインとモデル・承認の設定は本人の環境で行い、リポジトリには固定しない。
 
-```sh
-codex
-```
+## 並行して作業する場合
 
-または:
-
-```sh
-claude
-```
-
-共通指示は AGENTS.md の一か所で管理する。CLAUDE.md は `@AGENTS.md` で読み込む。Windows の symlink 設定に依存しない。
-各製品へのログインとモデル選択は本人の環境で行う。共有の API キー、承認を省略する設定、固定モデル指定は追加していない。
-
-Codex のクラウド環境を使う場合も Node.js の版を合わせ、セットアップコマンドを `pnpm install --frozen-lockfile` にする。パッケージ取得には npm registry への通信が必要。検証コマンドは `pnpm run check`。
-ホスト側の環境登録やアカウント連携はリポジトリのファイルとは別の設定である。
-
-## 二つのエージェントで作業する場合
-
-同じディレクトリを同時編集せず、タスクごとにブランチと worktree を作る。main を最新にしてから、例えば次のように分ける。
-
-```sh
-git worktree add ../Buddy-codex -b b00/contract-inventory
-git worktree add ../Buddy-claude -b review/contract-inventory
-```
-
-各 worktree で `pnpm install --frozen-lockfile` と `pnpm run hooks:install` を行う。最初は一方が契約一覧を作成し、もう一方はそのコミットを取り込んで設計との対応をレビューする。二つの独立した契約体系を同時に作らない。レビュー対象のコミット SHA と変更範囲を明記する。
+タスクごとにブランチ / worktree を分け、同じ作業ツリーを複数のエージェントで編集しない。各 worktree で `pnpm install --frozen-lockfile` と `pnpm run hooks:install` を行う。
 
 ## 試験と CI
 
 GitHub Actions は Ubuntu / Windows / macOS で同じ `pnpm install --frozen-lockfile` と `pnpm run check` を実行する。
 権限は contents: read、外部 API キーや実データは不要。Actions は取得時点の commit SHA で固定している。
 
-起動待ちと接続直後の発言の不安定さについては、[Issue #108 の調査と修正](issue-108-windows-ci.md)を参照する。
-
 - `scripts/*.test.mjs`: lint 設定が禁止した直接 import を実際に拒否するかを検証。
 - 製品の TypeScript 試験: 対象 workspace の `src/**/*.test.ts` に追加し、ビルド後の `dist/**/*.test.js` を実行。
 - デスクトップは Electron を import しない main の純粋なモジュール、UI レンダラーの純粋なモジュールとサーバー描画（react-dom/server）、ビルド後の画面の CSP の検査を試験し、Electron 本体は CI で起動・取得しない。実機の確認は B01-05。
-- `tests/integration/**/*.test.mjs`: モックや故障注入の試験を後続で追加。
+- `tests/integration/**/*.test.mjs`: 模擬 provider や故障注入を使う統合試験（B04・B07。実行器と証拠の対応は [tests/integration/README.md](../tests/integration/README.md)）。
 - `pnpm test` の前に TypeScript をビルドする。`pnpm run check` はビルドを含む。workspace 間の import は依存先の `dist` の型定義を読むため、`pnpm run check` はビルド（依存順）を型検査より先に行う。クリーンな状態（`node scripts/clean.mjs` の後）でも通ることを確かめる。
 - 非公開資料を CI へ持ち込まない。`pnpm run design:check` はローカルに非公開 manifest がある場合だけ使う。
 - 情報管理と履歴確認は [公開前確認](public-release.md) を参照する。

@@ -34,5 +34,5 @@ console.log(
 );
 console.log(`Root: ${fileURLToPath(root)}`);
 console.log(
-  '環境検証です。B00 の契約は揃いましたが、製品機能と製品試験は未着手です。',
+  '環境検証だけで、製品の動作確認ではありません。現在の段階は README.md、試験の実施状態は tests/test-map.json を参照してください。',
 );

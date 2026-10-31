@@ -524,6 +524,13 @@ interface OperationRow {
   completed_at: number | null;
 }
 
+// domain の sweepPlan が読める時刻の範囲（UTC の RFC 3339。年は 4 桁: 0000-01-01T00:00:00Z ～ 9999-12-31T23:59:59.999Z）。
+// この外の completed_at は計画が deadline_unreadable で保留する行なので、命令も消さない（計画と命令を食い違わせない）。
+const READABLE_MIN_MS = -62_167_219_200_000;
+const READABLE_MAX_MS = 253_402_300_799_999;
+const isReadableMillis = (millis: number): boolean =>
+  millis >= READABLE_MIN_MS && millis <= READABLE_MAX_MS;
+
 // 本文の削除・90 日の削除に共通の前提。消してよければ操作の行を返し、既に消えていれば null。
 function finishedOperation(
   db: SqliteDatabase,
@@ -542,8 +549,8 @@ function finishedOperation(
     throw new RetentionRejection(['unknown_held']);
   if (!(COMPLETED_OPERATION_STATES as readonly string[]).includes(row.state))
     throw new RetentionRejection(['operation_not_finished']);
-  // 完了の時刻がない（0011 より前の未実行の確定など）ときは、起点が分からないので消さない。
-  if (row.completed_at === null)
+  // 完了の時刻がない（0011 より前の未実行の確定など）・読めない範囲のときは、起点が分からないので消さない。
+  if (row.completed_at === null || !isReadableMillis(row.completed_at))
     throw new RetentionRejection(['completed_at_missing']);
   if (now < row.completed_at + ttlMs) throw new RetentionRejection(['not_due']);
   return row;
@@ -671,6 +678,7 @@ function discardStaged(
 }
 
 // 期限の来た操作（完了の古い順）。本文の削除は本文の残る操作だけ、90 日の削除は行の残る操作だけ。
+// 完了の時刻が読めない範囲の行は選ばない（計画が保留する行。上の isReadableMillis）。
 function dueOperations(
   db: SqliteDatabase,
   kind: 'body' | 'receipt',
@@ -686,12 +694,15 @@ function dueOperations(
   return db
     .prepare(
       `SELECT o.completed_at, o.operation_id FROM operations o
-        WHERE o.state IN ${COMPLETED_SQL} AND o.completed_at IS NOT NULL AND o.completed_at + ? <= ?
+        WHERE o.state IN ${COMPLETED_SQL} AND o.completed_at IS NOT NULL
+          AND o.completed_at BETWEEN ? AND ? AND o.completed_at + ? <= ?
           ${bodyFilter}
           AND (? IS NULL OR (o.completed_at, o.operation_id) > (?, ?))
         ORDER BY o.completed_at, o.operation_id LIMIT ?`,
     )
     .all(
+      READABLE_MIN_MS,
+      READABLE_MAX_MS,
       ttl,
       now,
       after === null ? null : 1,
@@ -840,11 +851,8 @@ export function purgeUndoRecords(
 }
 
 function isoOrNull(millis: number | null): string | null {
-  if (millis === null) return null;
-  const date = new Date(millis);
-  return Number.isNaN(date.getTime())
-    ? null
-    : date.toISOString().replace('.000Z', 'Z');
+  if (millis === null || !isReadableMillis(millis)) return null;
+  return new Date(millis).toISOString().replace('.000Z', 'Z');
 }
 
 function sqliteCode(error: unknown): string | null {

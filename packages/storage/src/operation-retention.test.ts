@@ -1526,6 +1526,109 @@ test('B06-06d1: a completed_at outside the Date range becomes null in the sweep 
   });
 });
 
+// 計画（domain）が deadline_unreadable で保留する行（完了の時刻が UTC の 4 桁の年に収まらない）を、命令も消さない。
+// 正常な期限超過の操作と混ぜて、バッチが保留の行まで選ばないことを確かめる（Codex の再レビューの P2）。
+test('B06-06d1: the batches skip an operation whose completed_at is outside the readable range while deleting the due ones', async () => {
+  await withDb((db) => {
+    // 手書きの値: 年 0000-01-01T00:00:00Z（読める範囲の下限）、-000001 年の末（Date は読めるが domain は読めない）、Date の範囲外。
+    const LOWER_EDGE = -62_167_219_200_000;
+    const BELOW_RANGE = -62_167_219_200_001;
+    const INVALID_DATE = -9_000_000_000_000_000;
+    const completedAt: Record<string, number> = {
+      'op-edge': LOWER_EDGE,
+      'op-below': BELOW_RANGE,
+      'op-invalid': INVALID_DATE,
+      'op-ok': DONE,
+    };
+    for (const id of Object.keys(completedAt)) {
+      ok(db, createCommand(id));
+      ok(db, cancelCommand(id, '1'), DONE);
+    }
+    for (const [id, millis] of Object.entries(completedAt))
+      db.prepare(
+        'UPDATE operations SET completed_at = ? WHERE operation_id = ?',
+      ).run(millis, id);
+    const bodyRows = (): unknown =>
+      db
+        .prepare(
+          'SELECT operation_id FROM operation_versions WHERE intent_blob_id IS NOT NULL ORDER BY operation_id',
+        )
+        .pluck()
+        .all();
+
+    // 読めない時刻の行は、計画の入力で completed_at が null（保留）になる。下限ちょうどは読める。
+    const planned = (
+      value(
+        retention(db, { kind: 'retention.sweep_rows', now: RECEIPT_DUE })
+          .result,
+      ) as {
+        readonly rows: readonly { id: string; completed_at?: string | null }[];
+      }
+    ).rows;
+    const at = (id: string) =>
+      planned.find((row) => row.id === id)?.completed_at;
+    assert.equal(at('op-edge'), '0000-01-01T00:00:00Z');
+    assert.equal(at('op-below'), null);
+    assert.equal(at('op-invalid'), null);
+
+    // 本文の削除: 読める 2 件（下限・正常）だけ。保留の行は選ばず、拒否としても現れない。
+    assert.deepEqual(
+      value(
+        retention(db, {
+          kind: 'retention.erase_due_bodies',
+          now: RECEIPT_DUE + 1,
+          limit: 50,
+          after: null,
+        }).result,
+      ),
+      { processed: ['op-edge', 'op-ok'], skipped: [], next: null },
+    );
+    assert.deepEqual(bodyRows(), ['op-below', 'op-invalid']);
+
+    // 90 日の削除も同じ。保留の行の操作の行は残る。
+    assert.deepEqual(
+      value(
+        retention(db, {
+          kind: 'retention.purge_due_operations',
+          now: RECEIPT_DUE + 1,
+          limit: 50,
+          after: null,
+        }).result,
+      ),
+      { processed: ['op-edge', 'op-ok'], skipped: [], next: null },
+    );
+    assert.deepEqual(
+      db
+        .prepare('SELECT operation_id FROM operations ORDER BY operation_id')
+        .pluck()
+        .all(),
+      ['op-below', 'op-invalid'],
+    );
+
+    // 1 件ずつの命令（最後の保証）も、起点が読めない行は completed_at_missing で拒む。
+    for (const id of ['op-below', 'op-invalid'])
+      for (const kind of [
+        'retention.erase_body',
+        'retention.purge_operation',
+      ] as const)
+        assert.deepEqual(
+          reasons(
+            retention(db, { kind, operation_id: id, now: RECEIPT_DUE + 1 })
+              .result,
+          ),
+          ['completed_at_missing'],
+          `${kind} ${id}`,
+        );
+    assert.equal(
+      count(
+        db,
+        "SELECT count(*) FROM operations WHERE operation_id = 'op-below'",
+      ),
+      1,
+    );
+  });
+});
+
 test('B06-06d1: checkpoint and VACUUM run as retention commands outside a migration', async () => {
   await withDb((db) => {
     seedFullOperation(db);

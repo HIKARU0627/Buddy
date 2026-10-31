@@ -82,6 +82,8 @@ class FakePort implements RetentionSweepPort {
   // 90 日の削除が止まっているか（undo_records の掃除で解ける）。
   receiptBlocked = false;
   receiptProcessed: string[] = [];
+  // 取り消しの記録の掃除が消す件数（レシートの止まりとは別に、30 日を過ぎた記録だけがある状態）。
+  undoPurged = 0;
 
   async stopAt(step: string): Promise<void> {
     if (this.gateOn !== step) return;
@@ -145,8 +147,9 @@ class FakePort implements RetentionSweepPort {
   async purgeUndoRecords(now: number): Promise<UndoPurgeValue> {
     this.calls.push('undo');
     this.undoCalls.push(now);
+    const purged = this.receiptBlocked ? 1 : this.undoPurged;
     this.receiptBlocked = false;
-    return { purged: 1 };
+    return { purged };
   }
   async checkpoint(): Promise<CheckpointValue> {
     this.calls.push('checkpoint');
@@ -380,6 +383,31 @@ test('B06-06d1: the undo_records cleanup runs before the 90-day purge and lets i
   ]);
 });
 
+test('B06-06d1: the undo_records cleanup runs even when no 90-day purge is planned, and a deletion there triggers the follow-up', async () => {
+  const port = new FakePort();
+  // 完了から 1 日の操作だけ（本文・レシートの期限はまだ。90 日の削除の計画はない）。30 日を過ぎた取り消しの記録だけが残る。
+  port.rows = [
+    operationRow('op-new', {
+      completed_at: '2031-05-31T00:00:00Z',
+      body_erased: true,
+    }),
+  ];
+  port.undoPurged = 2;
+  const job = sweeper(port, () => T0);
+  const record = await job.runOnce(true);
+  assert.equal(record.status, 'completed');
+  assert.deepEqual(port.undoCalls, [T0]);
+  // 90 日の削除は呼ばない。取り消しの記録を消したので、checkpoint → VACUUM → checkpoint が続く。
+  await job.drain();
+  assert.deepEqual(port.calls, [
+    'read',
+    'undo',
+    'checkpoint',
+    'vacuum',
+    'checkpoint',
+  ]);
+});
+
 test('B06-06d1: an unexpected rejection counts as a failure and keeps the gate closed with sweep_failed', async () => {
   const port = new FakePort();
   port.rows = [budgetRow()];
@@ -598,7 +626,8 @@ test('B06-06d1: a stop while the last body erase is awaited does not record comp
   port.release?.();
   const record = await running;
   await job.drain();
-  assert.deepEqual(port.calls, ['read', 'erase']);
+  // 取り消しの記録の掃除は毎回、本文の削除より先に呼ばれる。
+  assert.deepEqual(port.calls, ['read', 'undo', 'erase']);
   assert.equal(record.status, 'running');
   assert.equal(job.gate().cloud_send, false);
   assert.equal(port.checkpointCalls, 0);
@@ -618,7 +647,7 @@ test('B06-06d1: a stop while the last budget month purge is awaited does not rec
   port.release?.();
   const record = await running;
   await job.drain();
-  assert.deepEqual(port.calls, ['read', 'budget']);
+  assert.deepEqual(port.calls, ['read', 'undo', 'budget']);
   assert.equal(record.status, 'running');
   assert.equal(job.gate().search, false);
   assert.equal(port.checkpointCalls, 0);

@@ -365,16 +365,15 @@ export class RetentionSweeper {
           action.family === 'operation' && action.action === 'delete_row',
       );
 
-      // 補償のない取り消しの記録を先に消し、90 日の削除が止まらないようにする（ADR 0051 の引き継ぎ）。
-      if (receiptPlanned) {
-        this.#checkOpen();
-        try {
-          const undo = await this.#port.purgeUndoRecords(effectiveNow);
-          deleted += undo.purged;
-        } catch (error) {
-          // 取り消しの記録が消せなくても、本文・予算の削除は続ける（失敗に数え、ゲートは閉じる）。
-          if (!isExpectedHold(error)) failed += 1;
-        }
+      // 取り消しの記録（期限は 30 日。90 日のレシートより早い）を先に消し、90 日の削除が止まらないようにする
+      // （ADR 0051 の引き継ぎ）。レシートの計画の有無に関わらず毎回行う（30 日を過ぎた記録だけが残る DB でも消す）。
+      this.#checkOpen();
+      try {
+        const undo = await this.#port.purgeUndoRecords(effectiveNow);
+        deleted += undo.purged;
+      } catch (error) {
+        // 取り消しの記録が消せなくても、本文・予算の削除は続ける（失敗に数え、ゲートは閉じる）。
+        if (!isExpectedHold(error)) failed += 1;
       }
       if (bodyPlanned) {
         this.#checkOpen();

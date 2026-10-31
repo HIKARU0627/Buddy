@@ -81,6 +81,9 @@ export interface TurnRoutesOptions {
   readonly retention?: {
     readonly ready: () => Promise<void>;
     readonly gate: () => StartupGateDecision;
+    // ゲートの確認から検索・計画の終わりまでを掃除の本体と直列にする貸し出し（RetentionSweeper.lease）。
+    // 掃除が動いている・待っている・ゲートが閉じているときは null。返された関数を呼ぶまで、新しい掃除は本体に入らない。
+    readonly lease: () => (() => void) | null;
   };
 }
 
@@ -156,6 +159,9 @@ export function scheduleOverlaps(
 // 予定の照会で返す予定の上限。予定 1 件の参照は重なりの参照を含めて高々 2 件（1 件は約 70 文字）なので、
 // 上限まで返しても応答は turn_responses の上限（16,384 文字）に十分収まる。
 export const MAX_SCHEDULE_ITEMS = 50;
+
+// 掃除の本体との直列化の貸し出しを取る試行の上限（取れないのは、掃除が済むのを待った直後にも別の掃除が始まったとき）。
+const LEASE_ATTEMPTS = 3;
 
 type TurnPlan =
   | {
@@ -678,19 +684,36 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         permissionAtInput: null,
       };
     // 掃除が済むまで、検索（予定の照会）とクラウドへの送信（下書き・ラベル）を行わない（ADR 0043・0053）。
+    // ゲートの確認と貸し出しの取得は同じ同期の区間で行い、検索・計画が終わるまで貸し出しを持つ。接続の確認や検索を
+    // 待つ間に定期の掃除が始まっても、掃除の本体は貸し出しの返却を待つので、閉じたゲートを越えて検索しない。
+    let release: (() => void) | null = null;
     if (options.retention !== undefined) {
-      await options.retention.ready();
-      const gate = options.retention.gate();
-      if (!gate.search || !gate.cloud_send || !gate.auto_use)
+      for (
+        let attempt = 0;
+        release === null && attempt < LEASE_ATTEMPTS;
+        attempt += 1
+      ) {
+        await options.retention.ready();
+        const gate = options.retention.gate();
+        if (!gate.search || !gate.cloud_send || !gate.auto_use)
+          return { plan: clarify('blocked', intent), permissionAtInput: null };
+        // 取れないのは、ready の後に別の掃除が始まったとき。その掃除が済むのを待って確かめ直す。
+        release = options.retention.lease();
+      }
+      if (release === null)
         return { plan: clarify('blocked', intent), permissionAtInput: null };
     }
-    const plan =
-      intent === 'query_schedule'
-        ? await planRead(intent, args)
-        : intent === 'label_mail'
-          ? await planLabel(args, input)
-          : await planDraft(args, input);
-    return { plan, permissionAtInput: input?.permission_revision ?? null };
+    try {
+      const plan =
+        intent === 'query_schedule'
+          ? await planRead(intent, args)
+          : intent === 'label_mail'
+            ? await planLabel(args, input)
+            : await planDraft(args, input);
+      return { plan, permissionAtInput: input?.permission_revision ?? null };
+    } finally {
+      release?.();
+    }
   };
 
   // 解釈と、意図表・契約での引数の検査。聞き返しなら plan、通れば意図と引数を返す。

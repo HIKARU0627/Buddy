@@ -974,6 +974,7 @@ async function startHttps(
               await retention?.idle();
             },
             gate: () => (retention as RetentionSweeper).gate(),
+            lease: () => (retention as RetentionSweeper).lease(),
           },
         }),
   });

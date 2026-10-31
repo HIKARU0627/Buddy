@@ -969,6 +969,47 @@ test(
 );
 
 test(
+  'a sweep that starts while a schedule read is in flight waits for the read and does not run its body (review P2)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const retention = core.handle.retention;
+    // ゲートを通った後、検索（provider の予定の取得）の途中で止める。
+    const readReached = signal();
+    const finishRead = signal();
+    t.after(() => finishRead.resolve());
+    const listEvents = rig.ports.reader.listEvents;
+    t.mock.method(rig.ports.reader, 'listEvents', async () => {
+      readReached.resolve();
+      await finishRead.promise;
+      return listEvents.call(rig.ports.reader);
+    });
+    assert.equal(retention.gate().search, true);
+    const pending = turn(core, who, SCHEDULE_TEXT);
+    await readReached.promise;
+    // 検索の途中で定期の掃除が始まった。本体に入れず、検索が終わるまで待つ（記録は running のまま）。
+    const sweep = retention.runOnce(true);
+    let swept = false;
+    void sweep.then(() => {
+      swept = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(swept, false);
+    assert.equal(retention.record().status, 'running');
+    assert.equal(retention.gate().search, false);
+    // 検索が終わると貸し出しが返り、掃除が進んで完了する。検索の答えは聞き返しにならない。
+    finishRead.resolve();
+    const answer = await pending;
+    assert.equal(JSON.stringify(answer).includes(BLOCKED_TEXT), false);
+    const record = await sweep;
+    assert.equal(record.status, 'completed');
+    assert.equal(retention.gate().search, true);
+  },
+);
+
+test(
   'stopping the Core ends a sweep waiting on a send lease before it closes the DB, and the stopped sweep leaves no completion record',
   { timeout: TIMEOUT },
   async (t) => {

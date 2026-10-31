@@ -307,6 +307,8 @@ export interface CoreBackupOptions {
   readonly beforeWrite?: () => void;
   // 試験用: 封筒の削除（一時的な失敗の再現）。
   readonly removeFile?: (path: string) => Promise<void>;
+  // 試験用: 掃除の開始時に呼ぶ（掃除が始まる前の失敗の再現）。
+  readonly beforeSweep?: () => void | Promise<void>;
 }
 
 export interface CoreBudgetOptions {
@@ -711,6 +713,9 @@ export async function startCore(
         ...(options.backup?.removeFile === undefined
           ? {}
           : { removeFile: options.backup.removeFile }),
+        ...(options.backup?.beforeSweep === undefined
+          ? {}
+          : { beforeSweep: options.backup.beforeSweep }),
       });
       backupContext = {
         dataDir,

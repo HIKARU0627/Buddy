@@ -10,6 +10,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   utimes,
@@ -86,6 +87,8 @@ async function rig(
     readonly backupDirName?: string;
     // 封筒の削除の差し込み口（一時的な失敗の再現）。
     readonly removeFile?: (path: string) => Promise<void>;
+    // 掃除の開始時の差し込み口（掃除が始まる前の失敗の再現）。
+    readonly beforeSweep?: () => void | Promise<void>;
   } = {},
 ): Promise<Rig> {
   const base = await mkdtemp(join(tmpdir(), 'buddy-backup-'));
@@ -119,6 +122,9 @@ async function rig(
       ...(options.removeFile === undefined
         ? {}
         : { removeFile: options.removeFile }),
+      ...(options.beforeSweep === undefined
+        ? {}
+        : { beforeSweep: options.beforeSweep }),
     },
   });
   onCleanup(t, async () => {
@@ -1231,6 +1237,108 @@ test('定期の確認: 新世代の作成成功の後に旧世代の削除が失
   assert.equal((await r.handle.backup.status()).sweep_incomplete, false);
   assert.equal(await r.handle.backup.dueAction(), null);
   assert.equal(await r.handle.backup.due(), false);
+});
+
+// レビュー（PR #175 の 3 回目の P2）の再現: 新世代の作成に成功した後、掃除が始まる前に失敗しても（保存先の一時的な利用不能・
+// 一覧の読み取りの失敗）、未完了を永続化し、復旧後に（Core の再起動をまたいでも）掃除だけを再試行する。
+for (const scenario of ['exception', 'unavailable'] as const) {
+  test(`定期の確認: 新世代の作成成功の後に掃除の開始前に失敗（${scenario === 'exception' ? '一覧の読み取りの例外' : '保存先の利用不能'}）しても、再起動をまたいで復旧後に掃除だけを再試行する`, async (t) => {
+    let mode: 'none' | 'throw' | 'away' = 'none';
+    let backupDir = '';
+    const r = await rig(t, {
+      beforeSweep: async () => {
+        if (mode === 'throw')
+          throw Object.assign(new Error('io'), { code: 'EIO' });
+        if (mode === 'away') {
+          mode = 'none';
+          await rename(backupDir, `${backupDir}-away`);
+        }
+      },
+    });
+    backupDir = r.backupDir;
+    await ready(r);
+    const first = await r.handle.backup.run();
+    assert.ok(first.ok);
+    r.clock.value = T0 + 1000;
+    await forgetSource(r);
+    r.clock.value = T0 + 2000;
+    // 新世代の作成は成功し、掃除は始まる前に失敗する（旧世代の封筒が残る）。
+    mode = scenario === 'exception' ? 'throw' : 'away';
+    const second = await r.handle.backup.run();
+    assert.ok(second.ok);
+    assert.equal(second.forgetting_generation, '1');
+    assert.equal(second.sweep.ok, false);
+    mode = 'none';
+    if (scenario === 'unavailable')
+      await rename(`${backupDir}-away`, backupDir);
+    // 復旧。作成の予定は済んでいる（世代は今と同じ・24 時間未満）。それでも掃除の未完了が保存されている。
+    assert.deepEqual(
+      await backupFiles(r),
+      sorted(
+        [first.backup_id, second.backup_id].map(
+          (id) => `buddy-${id}.buddybackup`,
+        ),
+      ),
+    );
+    assert.equal((await r.handle.backup.status()).sweep_incomplete, true);
+    assert.equal(await r.handle.backup.dueAction(), 'sweep');
+
+    // Core を再起動しても未完了は残る（状態ファイルに永続化されている）。
+    await r.handle.stop('restart');
+    const again = await startCore({
+      dataDir: r.dataDir,
+      keyStore: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+      shutdownGraceMs: 200,
+      probeTimeoutMs: 300,
+      now: () => new Date(r.clock.value),
+      log: () => undefined,
+      backup: { keyStore: r.keys },
+    });
+    onCleanup(t, async () => {
+      await again.stop('test').catch(() => undefined);
+    });
+    assert.equal((await again.backup.status()).sweep_incomplete, true);
+    assert.equal(await again.backup.dueAction(), 'sweep');
+
+    const timers: (() => void)[] = [];
+    const logs: string[] = [];
+    const scheduler = startBackupScheduler({
+      service: again.backup,
+      log: (message) => logs.push(message),
+      now: () => new Date(r.clock.value),
+      setTimer: (run) => timers.push(run),
+      clearTimer: () => undefined,
+    });
+    const next = timers.shift();
+    assert.ok(next !== undefined);
+    r.clock.value = T0 + 3000;
+    next();
+    for (
+      let i = 0;
+      i < 1200 && !logs.some((line) => line.includes('掃除を終えました'));
+      i += 1
+    )
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    scheduler.stop();
+    // 掃除だけが走り、旧世代が消える。新しい封筒は作られない。
+    assert.deepEqual(await backupFiles(r), [
+      `buddy-${second.backup_id}.buddybackup`,
+    ]);
+    assert.equal(
+      logs.some((line) => line.includes('バックアップを取りました')),
+      false,
+    );
+    assert.equal((await again.backup.status()).sweep_incomplete, false);
+    assert.equal(await again.backup.dueAction(), null);
+  });
+}
+
+test('掃除: 設定がないだけの失敗（config_*）は掃除の未完了に数えない', async (t) => {
+  const r = await rig(t, { config: false });
+  const result = await r.handle.backup.sweep();
+  assert.equal(result.ok, false);
+  assert.equal((await r.handle.backup.status()).sweep_incomplete, false);
+  assert.equal(await r.handle.backup.dueAction(), null);
 });
 
 test('定期の実行: 設定がなければ動かず、1 日 1 回と忘却の置き換えを待つときに動き、失敗の後は 1 時間待つ', async () => {

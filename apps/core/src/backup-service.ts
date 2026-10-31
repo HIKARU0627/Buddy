@@ -76,6 +76,8 @@ export interface BackupServiceOptions {
   readonly beforeWrite?: () => void;
   // 試験用: 封筒の削除（EBUSY・EACCES など一時的な失敗の再現）。既定は rm。
   readonly removeFile?: (path: string) => Promise<void>;
+  // 試験用: 掃除の開始時に呼ぶ（保存先の一時的な利用不能・readdir の EIO など、掃除が始まる前の失敗の再現）。
+  readonly beforeSweep?: () => void | Promise<void>;
 }
 
 export interface SweepDecisionSummary {
@@ -250,7 +252,40 @@ export function createBackupService(
 
   // --- 掃除 ---
 
+  // 掃除の失敗（ok:false も例外も）を、再試行する未完了として状態に保存する（PR #175 の 3 回目の P2）。個別の削除の失敗だけでなく、
+  // 掃除が始まる前の失敗（保存先の一時的な利用不能・一覧の読み取りの失敗など）も、作成が成功した後なら旧世代の封筒が残るので、
+  // 復旧後に掃除だけを再試行できるようにする。設定がないだけの失敗（config_*）は「未完了」ではない。状態ファイルが読めない
+  // ときは書けない（期限を判定できないので、手で直すまで何も消さない）。
+  async function markSweepIncomplete(
+    reasons: readonly string[],
+  ): Promise<void> {
+    if (reasons.every((reason) => reason.startsWith('config_'))) return;
+    try {
+      const state = await readBackupState(dataDir);
+      if (!state.ok || state.value.sweep_incomplete) return;
+      await writeBackupState(dataDir, {
+        ...state.value,
+        sweep_incomplete: true,
+      });
+    } catch (error) {
+      log(`掃除の未完了を保存できませんでした（${(error as Error).name}）。`);
+    }
+  }
+
+  async function sweepTracked(): Promise<SweepResult> {
+    let result: SweepResult;
+    try {
+      result = await sweepNow();
+    } catch (error) {
+      log(`バックアップの掃除に失敗しました（${(error as Error).name}）。`);
+      result = { ok: false, reasons: ['sweep_failed'] };
+    }
+    if (!result.ok) await markSweepIncomplete(result.reasons);
+    return result;
+  }
+
   async function sweepNow(): Promise<SweepResult> {
+    await options.beforeSweep?.();
     const config = await loadConfig();
     if (!config.ok) return { ok: false, reasons: config.reasons };
     const location = await checkBackupLocation(
@@ -568,7 +603,7 @@ export function createBackupService(
 
   return {
     status,
-    sweep: () => exclusive(sweepNow),
+    sweep: () => exclusive(sweepTracked),
     run: () =>
       exclusive(async (): Promise<BackupRunResult> => {
         let created;
@@ -582,13 +617,7 @@ export function createBackupService(
           };
         }
         // 作成の成否によらず掃除する（失敗が続いても期限を延ばさない）。
-        let sweep: SweepResult;
-        try {
-          sweep = await sweepNow();
-        } catch (error) {
-          log(`バックアップの掃除に失敗しました（${(error as Error).name}）。`);
-          sweep = { ok: false, reasons: ['sweep_failed'] };
-        }
+        const sweep = await sweepTracked();
         if (!created.ok) return { ok: false, reasons: created.reasons, sweep };
         return { ...created.result, sweep: sweep };
       }),

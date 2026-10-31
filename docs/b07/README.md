@@ -123,6 +123,17 @@ pnpm exec prettier --write tests/integration/evidence-b07-simulated.json
 
 全反復が成功し、case と seed のすべての組が完了したときだけ出力します（子試験の時間切れ・取り消しは失敗として扱い、時間切れの後に遅れて正常に終わった結果は成功に数えません。指定があるのに完了していなければ試験を失敗させて保存しません。保存は、子試験の後始末がすべて終わった後の親の `t.after()` で行い、親の試験が中断されていれば保存せず、親の期限（後始末の途中を含む）を過ぎていれば試験を失敗させます。B04 の実行器も同じ共通の部品 `tests/integration/evidence-run.mjs` を使い、遅れて終わる場合と親の後始末が期限を過ぎる場合は `evidence-run.test.mjs` が実際の node:test を子プロセスで動かして確かめます）。通常の試験は証拠を書き換えません。失敗した実行で以前の記録を今回の成功証拠と扱わず、終了コードを確認してください。
 
+### macOS の CI で証拠を作る（Windows で作業する場合）
+
+証拠には POSIX のファイル権限の観測（他人が書ける設定の拒否。`posix_only.writable_by_others`）が含まれ、Windows では期待値から外れて作れません。Windows で作業するときは、macOS の CI に証拠を作らせ、artifact から取り込みます（本人の決定 2026-10-31、Issue #170）。
+
+1. ブランチを push したあと、GitHub の Actions で `Simulated evidence (macOS)` を選び、`Run workflow` のブランチにそのブランチを指定して実行します。CLI では `gh workflow run evidence-macos.yml --ref <ブランチ>` です。
+2. workflow は `macos-latest` で `pnpm install --frozen-lockfile` と `pnpm run build` のあと、`BUDDY_B04_EVIDENCE_PATH`・`BUDDY_B07_EVIDENCE_PATH` を指定して B04・B07 の実行器を走らせ、prettier で整えた `evidence-b04-simulated.json` と `evidence-b07-simulated.json` を `simulated-evidence-<sha>` という artifact にまとめます。権限は `contents: read` だけで、秘密は使いません。
+3. 実行の artifact から 2 つの JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD、`source_sha256` が取り込んだソースと一致することを確認します（`scripts/test-map.test.mjs` が一覧と hash の一致を検査します）。
+4. 取り込んだあと、Windows でも `pnpm run build` と `pnpm run check` を実行し、証拠が現在のソースと一致することを確かめます。artifact を CI が commit することはありません。commit・push は作業ブランチで行います。
+
+通常の CI（`ci.yml`・`verify-os.yml`）はこの workflow を呼ばず、証拠を書き換えません。`workflow_dispatch` は既定ブランチに workflow ファイルがある必要があるため、この workflow の PR の上では実行できない場合があります。その場合はこの workflow が main に入ったあと、main を取り込んだブランチで実行してください。
+
 ## 未実施・残る判断
 
 - 実 API（実際の LLM・検索・音声の provider）・実請求・実機（Mac mini の常駐・複数のマシン）はすべて未実施です。**実請求との照合と、不明費用の実費の確定は B15** で別に記録します。provider の usage の取得（再起動の照合に使う口）も、実際のアダプターがないため未実装です。製品では、送出意図のある予約は usage 不明として保持され、本人の手での精算を待ちます。

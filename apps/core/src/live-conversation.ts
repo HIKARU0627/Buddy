@@ -166,6 +166,9 @@ export interface LiveConversationPort {
       readonly offset_ms: number | null;
     },
   ): void;
+  // 読み上げを止めた（Live の発話・文字の発言・画面の操作のどれから来ても、中枢が再生の停止を出したとき）。
+  // 停止より前に受けた依頼の結果を、停止の後に声へ載せない（画面へ回す）。
+  playbackStopped(live: LiveHandle): void;
 }
 
 // committing: 保存の準備中（まだ命令を送っていない。保留・破棄の対象）。
@@ -429,6 +432,12 @@ export class LiveConversation implements LiveConversationPort {
     if (context === undefined || context.closed) return;
     context.transcript = observeEndCandidate(context.transcript);
     this.#armControl(context);
+  }
+
+  playbackStopped(live: LiveHandle): void {
+    const context = this.#contexts.get(live.live_session_id);
+    if (context === undefined || context.closed) return;
+    context.output_gen += 1;
   }
 
   delegation(
@@ -1171,7 +1180,7 @@ export class LiveConversation implements LiveConversationPort {
         this.#revoke(entry, 'cancelled');
         this.#finish(context, entry);
       }
-    if (resolution.action === 'stop_playback') context.output_gen += 1;
+    // 読み上げの停止による出力の世代の更新は、接続の操作（host.applySessionControl → playbackStopped）で行う。
     // 会話の操作は、保留中の変更への訂正ではない（別の発話）。保留を解いて、元の依頼を再検査して続ける。
     // 接続を閉じる操作（終了・記録しない・文字へ切り替え）では、閉じた時点で保留を捨てる（closed）。
     if (context.hold.entries.length > 0)

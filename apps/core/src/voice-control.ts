@@ -1647,6 +1647,9 @@ export class VoiceControl {
         );
       const reason = effect.audio_reason;
       if (effect.audio_action === null || reason === null) return;
+      // 停止の前に受けた依頼の結果を停止の後に読み上げない。発話の照合・文字の発言・画面のどこから来ても同じ処理を通す。
+      if (effect.audio_action === 'stop_playback')
+        this.#conversation?.playbackStopped(this.#handleOf(runtime));
       if (effect.audio_action === 'close_voice_session')
         this.#beginClose(runtime, reason);
       this.#emitAudioControl(deviceId, reason, runtime.record);

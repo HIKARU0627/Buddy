@@ -2245,6 +2245,40 @@ test(
   },
 );
 
+test(
+  'P2: a "stop reading" that comes from a typed message (not from the live) also invalidates the voice delivery of a result received before it, which goes to the screen',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: '今日の予定を見せて' });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        // 解釈を待つ間に、文字の発言から読み上げの停止が届く（再生を止める音声イベントは出る）。
+        c.rig.voice.applySessionControlForDevice(DEV_A, 'stop_playback');
+        await c.rig.wait();
+        assert.equal(controlEvents(c.rig, 'audio_control').length, 1);
+        // 停止の前に受けた依頼の結果は、遅れて戻っても声に載せず、画面へ回す。
+        first.release();
+        await waitUntil(c.rig, 'the screen result', () => c.shown.length === 1);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.equal(c.shown[0]?.turn.result_view?.kind, 'schedule_cards');
+      },
+      {
+        prepare: (script) => {
+          script.gates.set('今日の予定を見せて', first.promise);
+        },
+      },
+    );
+  },
+);
+
 // 重ならない 53 件の予定（上限 50 件を超えるので、ResultView の more_count は 3）。
 const manyEventsProvider: ProviderReader = {
   ...provider,

@@ -61,7 +61,7 @@
 
 ## 既知の限界・未実施
 
-- **B04・B07 の証拠**: Windows で作り直した（`records`・`runs` はこのソースで観測した値で、環境は win32）。ただし POSIX 専用の観測（`posix_only` の 3 か所。B07 の設定ファイルの権限）は main の Mac で取った値を引き継いでおり、このソースで観測したものではない。Windows の B04（70 件）・B07（73 件）の試験は全件合格した。macOS の CI で証拠を作る workflow（PR #176）がマージされたら、それで作り直す。
+- **B04・B07 の証拠**: macOS の CI（workflow `Simulated evidence (macOS)`、run https://github.com/HIKARU0627/Buddy/actions/runs/41201396631、commit `ed46ff1`、環境 darwin）で、このソースから作った。POSIX 専用の観測（`posix_only`）も含めて、このソースで観測した値である（以前の「main の Mac の値を引き継ぐ」は解消した）。Windows の B04（70 件）・B07（73 件）の試験も全件合格した。証拠の対象ソースを変えたら、同じ手順で作り直す（docs/b04・docs/b07 の README）。
 - 本体はメモリに全体を読んで暗号化する。DB が大きくなったら分割の AES-GCM にする（B15 で実測）。
 - 作業用の写しは平文の SQLite だが、DB 自体が暗号文（sealed_blobs）を含む設計で、機微な欄はもともと暗号化されている。写しは本人だけのディレクトリに置き、成否によらず消す。SSD の痕跡までは保証しない。
 - Windows ではディレクトリの fsync を省略している（ADR 0054 の P2-5 と同じ）。初期の中枢は Mac mini。

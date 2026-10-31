@@ -194,7 +194,8 @@ interface Pending {
   readonly audio_epoch: string;
   // 入力のときの出力の世代（読み上げの停止の前に受けた依頼の結果は、停止の後に声にしない）。
   readonly output_gen: number;
-  readonly conditions: Readonly<Partial<Record<InputCondition, boolean>>>;
+  // 受付の条件の照会が戻ったら入れる（それまでは空）。
+  conditions: Readonly<Partial<Record<InputCondition, boolean>>>;
   phase: Phase;
   timer: unknown;
   target_ordinal: number | null;
@@ -474,12 +475,45 @@ export class LiveConversation implements LiveConversationPort {
     },
     sessionId: string,
   ): Promise<void> {
-    // 出力の世代は、最初の await の前（委譲を受けた時点）で固定する。条件の照会（同意の非同期の確認）を待つ間に
-    // 読み上げの停止が来ても、停止の前に受けた依頼として扱い、結果を停止の後の世代の声に載せない。
-    const outputGen = context.output_gen;
-    const conditions = await this.#options.host.conditions(
-      context.handle.live_session_id,
-    );
+    // 依頼は最初の await の前（委譲を受けた時点）に登録する。受付の条件の照会（同意の非同期の確認）を待つ間に本人が次の
+    // 発話を始めても、この依頼を送出前の変更として保留の対象にし（speechStarted）、照会が戻っても訂正・取消の確定を待たずに
+    // 保存しない。出力の世代もこの時点で固定する（照会を待つ間に読み上げの停止が来ても、停止の前に受けた依頼として扱う）。
+    const pending: Pending = {
+      workflow_id: this.#newId(),
+      delegation_id: delegation.delegation_id,
+      offset_ms: delegation.offset_ms,
+      accepted_at: this.#options.monoNow(),
+      output: fixOutputTarget({
+        input_kind: 'voice_live',
+        device_id: context.handle.device_id,
+        session_epoch: context.handle.session_epoch,
+      }),
+      audio_epoch: context.handle.audio_epoch,
+      output_gen: context.output_gen,
+      conditions: {},
+      phase: 'waiting_input',
+      timer: null,
+      target_ordinal: null,
+      target_count: 0,
+      text: null,
+      interpreted: null,
+      decision: null,
+      is_change: null,
+      revision_current: true,
+      terminal: null,
+    };
+    context.pending.set(pending.workflow_id, pending);
+    let conditions: Readonly<Partial<Record<InputCondition, boolean>>>;
+    try {
+      conditions = await this.#options.host.conditions(
+        context.handle.live_session_id,
+      );
+    } catch (error) {
+      this.#finish(context, pending);
+      throw error;
+    }
+    // 照会の間に閉じた・保留の破棄などで終わった依頼は続けない（閉じるときに片づけている）。
+    if (pending.phase !== 'waiting_input' || context.closed) return;
     // 受付の条件（入力の種類 voice_live。返し方が文字・Live が使えない・同意がない・予算がないなど）。満たさなければ
     // 何も処理しない（声で返さず、変更も作らない）。
     const admission = admitLiveInput({
@@ -500,34 +534,10 @@ export class LiveConversation implements LiveConversationPort {
     });
     if (admission.decision === 'reject') {
       this.#log(`live_input_rejected:${admission.reasons.join('+')}`);
+      this.#finish(context, pending);
       return;
     }
-    if (context.closed) return;
-    const pending: Pending = {
-      workflow_id: this.#newId(),
-      delegation_id: delegation.delegation_id,
-      offset_ms: delegation.offset_ms,
-      accepted_at: this.#options.monoNow(),
-      output: fixOutputTarget({
-        input_kind: 'voice_live',
-        device_id: context.handle.device_id,
-        session_epoch: context.handle.session_epoch,
-      }),
-      audio_epoch: context.handle.audio_epoch,
-      output_gen: outputGen,
-      conditions,
-      phase: 'waiting_input',
-      timer: null,
-      target_ordinal: null,
-      target_count: 0,
-      text: null,
-      interpreted: null,
-      decision: null,
-      is_change: null,
-      revision_current: true,
-      terminal: null,
-    };
-    context.pending.set(pending.workflow_id, pending);
+    pending.conditions = conditions;
     // 会話の操作として使われた発話・保留の開始は、見直しの中で扱う。
     this.#await(context, pending, sessionId);
   }

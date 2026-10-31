@@ -2301,7 +2301,8 @@ test(
         await speak(c, { text: '今日の予定を見せて' });
         // 委譲を受けたが、受付の条件（同意の照会）がまだ返らない。
         await delegate(c, 'd1', 800);
-        assert.equal(c.conversation.pendingCount, 0);
+        // 依頼は委譲を受けた時点から追っている（まだ入力の確定を待つ前）。
+        assert.equal(c.conversation.pendingCount, 1);
         // その間に読み上げの停止が来る（Live は閉じない）。
         c.rig.voice.applySessionControlForDevice(DEV_A, 'stop_playback');
         await c.rig.wait();
@@ -2315,6 +2316,53 @@ test(
         assert.equal(c.shown[0]?.turn.result_view?.kind, 'schedule_cards');
       },
       { conditionsGate: conditions.promise },
+    );
+  },
+);
+
+test(
+  'P2: a delegation still waiting for its input conditions is held when the next utterance starts, so the old change is not saved after the conditions return, and the limit counts from that start',
+  TIMEOUT,
+  async () => {
+    const conditions = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: TASK_TEXT });
+        // 委譲を受けたが、受付の条件の照会（同意の確認）がまだ返らない。
+        await delegate(c, 'd1', 800);
+        assert.equal(c.conversation.pendingCount, 1);
+        // その間に、本人が次の発話（訂正・取消かもしれない）を始めた。
+        c.sb.speechStarted();
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        // 新しい発話の断片が届く（開始時刻は元の委譲の offset より後。元の発話だけが対象のまま残る）。
+        await speak(c, { text: EGG_TEXT, speech: false, end: false });
+        // 照会が返り、解釈が戻る。確定した用事の依頼でも、新しい発話の関係が確定するまで保存しない。
+        conditions.release();
+        await c.rig.wait();
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        await c.rig.wait();
+        assert.deepEqual(operations(c.rig), []);
+        assert.deepEqual(turnsOf(c.rig), []);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        // 保留の上限は、その発話の開始から数える（照会の復帰からではない）。
+        await beat(c, 28000);
+        assert.equal(c.dropped.length, 0);
+        await beat(c, 4000);
+        await waitUntil(c.rig, 'the drop', () => c.dropped.length === 1);
+        assert.deepEqual(
+          c.dropped.map((entry) => entry.reason),
+          ['hold_expired'],
+        );
+        assert.deepEqual(operations(c.rig), []);
+        assert.deepEqual(turnsOf(c.rig), []);
+      },
+      { policy: AUTO_TASK, conditionsGate: conditions.promise },
     );
   },
 );

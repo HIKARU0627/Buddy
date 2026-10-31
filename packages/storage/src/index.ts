@@ -33,3 +33,8 @@ export * from './derivation-store.js';
 // B06-06c: 終わった操作の本文の削除・90 日の削除・用事の正本の分離（ADR 0051、マイグレーション 0011）。
 export * from './retention-store.js';
 export * from './task-content.js';
+// B06-06d2: 忘却の transaction・台帳の別ファイル・記憶の命令・復元の後の保留の書き込み（ADR 0054、マイグレーション 0012）。
+export * from './forget-store.js';
+export * from './forget-ledger-file.js';
+export * from './memory-store.js';
+export * from './restore-aftermath-store.js';

@@ -4,10 +4,11 @@ Codex と Claude Code はこのファイルを共通の指示として使う。�
 
 ## 現在地と参照先
 
-- 現在は B00（契約のファイル化）の終了条件を満たし、B01 に着手できる段階（docs/adr/0011-b00-completion-review.md）。製品の実装と試験は未着手。契約 CI の成功を製品試験合格として扱わない。試験の実施状態は tests/test-map.json で追跡する。
-- 初めに README.md、docs/b00/README.md、docs/design/README.md を読む。変更対象に関係する設計本文を確認してから編集する。
+- B00（契約のファイル化）は完了済み（docs/adr/0011-b00-completion-review.md）。B01 以降の実装が進行中で、Core・保存・端末の接続・デスクトップ・音声・予算などが apps/* と packages/* にある。工程ごとの判断は docs/adr、完了判定と実機の手順は docs/b01〜b07（工程により有無が異なる）にある。完了と書かれていない工程を完了扱いにしない。
+- 試験の実施状態は tests/test-map.json と tests/integration/evidence-*.json で追跡する。契約 CI や模擬試験の成功を、実機・実 API・実請求の合格として扱わない。
+- 初めに README.md、docs/design/README.md を読む。変更対象に関係する ADR・docs/b01〜b07・設計本文を確認してから編集する。
 - 原本は非公開 Notion。取得資料は .local/design/notion/ に置く。原本の不足を要約から推測しない。更新履歴内の旧コード例を現行仕様と取り違えない。
-- B00 では契約と根拠・試験を一緒に更新する。設計の意味が変わる未決事項は docs/b00/contract-map.md に記録し、設計判断として解決する。既存の判断を黙って変更しない。
+- 契約を変えるときは根拠・試験（fixture・tests/test-map.json）を一緒に更新する。設計の意味が変わる未決事項は docs/b00/contract-map.md に記録し、設計判断として解決する。既存の判断を黙って変更しない。
 
 ## コマンド
 

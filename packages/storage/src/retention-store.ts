@@ -19,6 +19,7 @@ import type {
   SweepRow,
 } from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
+import { pruneDeadLineage } from './forget-store.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import { isId, isSealedBlob } from './operation-commands.js';
 import type { SealedBlobInput } from './operation-commands.js';
@@ -170,6 +171,22 @@ export type RetentionOp =
       readonly kind: 'task.discard_staged';
       readonly task_id: string;
       readonly blob_id: string;
+    }
+  // 移せない用事（暗号文を持たない用事）を task_id の順に読む。本人への知らせ・決着の画面の材料（本文なし）。
+  | {
+      readonly kind: 'task.unmigrated_list';
+      readonly limit: number;
+      readonly after: string | null;
+    }
+  // 移せない用事を本人が決着する（ADR 0051 の引き継ぎ、ADR 0054）。discard は用事を消す（中身を取り出せないので、
+  // 本人が手放すと決めた）。replace は本人が入れ直した題名・期限・本文を、Core が用事を所有者にして暗号化した値で
+  // 結び付ける。どちらの後も、その用事の操作は J5 の本文の削除・90 日の削除の対象に戻る。
+  | {
+      readonly kind: 'task.resolve_unmigrated';
+      readonly task_id: string;
+      readonly resolution: 'discard' | 'replace';
+      readonly content: SealedBlobInput | null;
+      readonly now: number;
     };
 
 export type RetentionOpKind = RetentionOp['kind'];
@@ -261,6 +278,25 @@ export interface RetentionOpValues {
   'task.stage_content': { readonly task_id: string; readonly blob_id: string };
   'task.link_content': { readonly task_id: string; readonly blob_id: string };
   'task.discard_staged': { readonly task_id: string; readonly blob_id: string };
+  'task.unmigrated_list': UnmigratedTaskList;
+  'task.resolve_unmigrated': {
+    readonly task_id: string;
+    readonly resolution: 'discard' | 'replace';
+    // replace のときに結び付けた暗号文。discard は null。
+    readonly blob_id: string | null;
+  };
+}
+
+export interface UnmigratedTaskList {
+  readonly items: readonly {
+    readonly task_id: string;
+    readonly operation_id: string;
+    readonly list_id: string;
+    readonly status: 'open' | 'done';
+    readonly created_at: number;
+  }[];
+  // 続きの位置（最後の task_id）。最後まで読んだら null。
+  readonly next: string | null;
 }
 
 export type RetentionOpValue = RetentionOpValues[RetentionOpKind];
@@ -290,6 +326,7 @@ export const RETENTION_WRITE_OPS: ReadonlySet<RetentionOpKind> = new Set([
   'task.stage_content',
   'task.link_content',
   'task.discard_staged',
+  'task.resolve_unmigrated',
 ]);
 
 const KINDS: ReadonlySet<string> = new Set<RetentionOpKind>([
@@ -307,6 +344,8 @@ const KINDS: ReadonlySet<string> = new Set<RetentionOpKind>([
   'task.stage_content',
   'task.link_content',
   'task.discard_staged',
+  'task.unmigrated_list',
+  'task.resolve_unmigrated',
 ]);
 
 class RetentionRejection extends Error {
@@ -377,6 +416,19 @@ export function retentionOpShapeReasons(op: RetentionOp): string[] {
     case 'task.discard_staged':
       if (!isId(op.task_id)) reasons.push('task_id_invalid');
       if (!isId(op.blob_id)) reasons.push('blob_id_invalid');
+      break;
+    case 'task.unmigrated_list':
+      if (!isLimit(op.limit)) reasons.push('limit_invalid');
+      if (op.after !== null && !isId(op.after)) reasons.push('cursor_invalid');
+      break;
+    case 'task.resolve_unmigrated':
+      if (!isId(op.task_id)) reasons.push('task_id_invalid');
+      if (op.resolution === 'discard') {
+        if (op.content !== null) reasons.push('content_invalid');
+      } else if (op.resolution === 'replace') {
+        if (!isSealedBlob(op.content)) reasons.push('content_invalid');
+      } else reasons.push('resolution_invalid');
+      if (!isTime(op.now)) reasons.push('now_invalid');
       break;
   }
   return reasons;
@@ -625,6 +677,9 @@ export function purgeOperation(
   for (const step of OPERATION_PURGE_STEPS)
     for (const statement of step.statements)
       db.prepare(statement).run({ id: operationId });
+  // 操作の確定内容の系譜の辺は、生きた下流（この確定内容から作った派生物で実体のあるもの）があれば ID だけで残し、
+  // なければ消して、実体を消した由来の辺も要らなくなれば消す（ADR 0054 U110）。
+  pruneDeadLineage(db, [{ kind: 'operation_content', id: operationId }]);
   return { operation_id: operationId, purged: true };
 }
 
@@ -675,6 +730,62 @@ function discardStaged(
   if (removed.changes !== 1)
     throw new RetentionRejection(['task_content_not_staged']);
   return { task_id: op.task_id, blob_id: op.blob_id };
+}
+
+export function readUnmigratedTasks(
+  db: SqliteDatabase,
+  limit: number,
+  after: string | null,
+): UnmigratedTaskList {
+  const items = db
+    .prepare(
+      'SELECT task_id, operation_id, list_id, status, created_at FROM tasks WHERE content_blob_id IS NULL AND (? IS NULL OR task_id > ?) ORDER BY task_id LIMIT ?',
+    )
+    .all(after, after, limit) as UnmigratedTaskList['items'][number][];
+  return {
+    items,
+    next: items.length < limit ? null : (items.at(-1)?.task_id ?? null),
+  };
+}
+
+// 移せない用事の本人の決着。暗号文を持たない用事だけが対象（移せた用事・ない用事は拒否）。書き込み済みで結び付けて
+// いない暗号文（移行の途中で止まって読み戻しが合わなかったもの）は、どちらの決着でも先に消す。
+function resolveUnmigrated(
+  db: SqliteDatabase,
+  op: Extract<RetentionOp, { kind: 'task.resolve_unmigrated' }>,
+): RetentionOpValues['task.resolve_unmigrated'] {
+  const task = db
+    .prepare('SELECT content_blob_id FROM tasks WHERE task_id = ?')
+    .get(op.task_id) as { content_blob_id: string | null } | undefined;
+  if (task === undefined) throw new RetentionRejection(['task_not_found']);
+  if (task.content_blob_id !== null)
+    throw new RetentionRejection(['task_content_already_linked']);
+  const staged = stagedBlob(db, op.task_id);
+  if (staged !== undefined)
+    db.prepare('DELETE FROM sealed_blobs WHERE blob_id = ?').run(
+      staged.blob_id,
+    );
+  if (op.resolution === 'discard') {
+    db.prepare(
+      'DELETE FROM tasks WHERE task_id = ? AND content_blob_id IS NULL',
+    ).run(op.task_id);
+    return { task_id: op.task_id, resolution: 'discard', blob_id: null };
+  }
+  const content = op.content as SealedBlobInput;
+  insertTaskContent(db, { now: op.now }, op.task_id, content);
+  // 所有者・用途の照合と、一度だけの結び付けは 0011 の trigger も行う。
+  const updated = db
+    .prepare(
+      'UPDATE tasks SET content_blob_id = ? WHERE task_id = ? AND content_blob_id IS NULL',
+    )
+    .run(content.blob_id, op.task_id);
+  if (updated.changes !== 1)
+    throw new RetentionRejection(['task_content_already_linked']);
+  return {
+    task_id: op.task_id,
+    resolution: 'replace',
+    blob_id: content.blob_id,
+  };
 }
 
 // 期限の来た操作（完了の古い順）。本文の削除は本文の残る操作だけ、90 日の削除は行の残る操作だけ。
@@ -964,6 +1075,8 @@ function applyWrite(db: SqliteDatabase, op: RetentionOp): RetentionOpValue {
       return linkContent(db, op);
     case 'task.discard_staged':
       return discardStaged(db, op);
+    case 'task.resolve_unmigrated':
+      return resolveUnmigrated(db, op);
     default:
       throw new RetentionRejection(['kind_invalid']);
   }
@@ -981,6 +1094,8 @@ function readOnly(db: SqliteDatabase, op: RetentionOp): RetentionOpValue {
       return db.transaction(() =>
         readTaskMigrationBatch(db, op.limit, op.after),
       )();
+    case 'task.unmigrated_list':
+      return readUnmigratedTasks(db, op.limit, op.after);
     default:
       throw new RetentionRejection(['kind_invalid']);
   }

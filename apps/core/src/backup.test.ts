@@ -1017,15 +1017,20 @@ test('定期の確認: バックアップの成功の後に忘却すると、24 
   assert.ok(next !== undefined);
   r.clock.value = T0 + 2000;
   next();
-  // 実行の完了を待つ（古い封筒が消えるまで）。
+  // 実行の完了を待つ。完了の合図は、定期の実行が run() の終了の後に書くログ（古い封筒のファイルが消えた時点では、
+  // run() はまだ終わっていない。遅い環境で先へ進んでしまう競合を避ける）。長い期限を置き、来なければ理由つきで落とす。
   const beforeFile = `buddy-${before.backup_id}.buddybackup`;
-  for (
-    let i = 0;
-    i < 200 && (await backupFiles(r)).includes(beforeFile);
-    i += 1
-  )
+  const finished = (): boolean =>
+    logs.some(
+      (line) =>
+        line.includes('バックアップを取りました') ||
+        line.includes('バックアップを取れませんでした') ||
+        line.includes('定期実行に失敗'),
+    );
+  for (let i = 0; i < 1200 && !finished(); i += 1)
     await new Promise((resolve) => setTimeout(resolve, 25));
   scheduler.stop();
+  assert.equal(finished(), true, '定期の実行が 30 秒以内に終わらなかった');
   const files = await backupFiles(r);
   assert.equal(files.length, 1);
   assert.equal(files.includes(beforeFile), false);

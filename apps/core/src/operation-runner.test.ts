@@ -1010,6 +1010,54 @@ test(
 );
 
 test(
+  'a sweep that starts while the target recheck is waiting on the connection does not run its body until the reads finish (review P2)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const operationId = await createOperation(core, who, LABEL);
+    const retention = core.handle.retention;
+    rig.injector.arm('after_approval_save', { mode: 'pause' });
+    await approveOperation(core, who, operationId);
+    await reached(rig.injector, 'after_approval_save');
+    // 承認の保存の後、実行担当の最初の接続の確認（対象の確かめ直し）で止める。
+    const connectionReached = signal();
+    const finishConnection = signal();
+    t.after(() => finishConnection.resolve());
+    const connection = rig.ports.reader.connection;
+    let held = false;
+    t.mock.method(rig.ports.reader, 'connection', async () => {
+      if (!held) {
+        held = true;
+        connectionReached.resolve();
+        await finishConnection.promise;
+      }
+      return connection.call(rig.ports.reader);
+    });
+    rig.injector.release('after_approval_save');
+    await connectionReached.promise;
+    // 接続の確認を待つ間に定期の掃除が始まった。本体に入れず、読み取りが終わるまで待つ（何も送っていない）。
+    const sweep = retention.runOnce(true);
+    let swept = false;
+    void sweep.then(() => {
+      swept = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(swept, false);
+    assert.equal(retention.record().status, 'running');
+    assert.equal(rig.provider.truth.requestCount(), 0);
+    // 読み取りが終わると貸し出しが返り、掃除が進んで完了する。送出は 1 回だけ。
+    finishConnection.resolve();
+    await idle(core);
+    const record = await sweep;
+    assert.equal(record.status, 'completed');
+    assert.equal(rig.provider.truth.requestCount(), 1);
+    assert.equal(retention.gate().cloud_send, true);
+  },
+);
+
+test(
   'stopping the Core ends a sweep waiting on a send lease before it closes the DB, and the stopped sweep leaves no completion record',
   { timeout: TIMEOUT },
   async (t) => {

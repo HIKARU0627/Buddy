@@ -657,6 +657,23 @@ export function createOperationRunner(
     return release;
   };
 
+  // 対象と許可の確かめ直し（provider への読み取り）を、掃除の本体と直列にする。ゲートの確認と貸し出しは同じ同期の
+  // 区間で行い、読み取りが終わるまで持つ。読み取りの途中で始まった掃除は、返却を待つので本体に入らない。
+  // 貸し出しは送出の貸し出し（leaseSend）の前に返す（持ったまま取ると、間に始まった掃除を待って自分で詰まる）。
+  // 取れなければ null（次の周期に最初から確かめ直す。状態は approved・preparing のまま、何も記録しない）。
+  const recheckLeased = async (
+    operationId: string,
+    intent: RemoteIntent,
+  ): Promise<Recheck | null> => {
+    const release = await leaseSend(operationId);
+    if (release === null) return null;
+    try {
+      return await recheck(intent);
+    } finally {
+      release();
+    }
+  };
+
   const runRemote = async (initial: OperationView): Promise<void> => {
     const writer = options.writer;
     if (writer === null || options.provider === null) return;
@@ -691,7 +708,8 @@ export function createOperationRunner(
       attemptId = current.attempt_id;
     else return;
     if (current === null || current.state !== 'preparing' || closed) return;
-    const checked = await recheck(intent);
+    const checked = await recheckLeased(current.operation_id, intent);
+    if (checked === null) return;
     if (checked.kind === 'changed') {
       await revise(current, intent, checked);
       return;

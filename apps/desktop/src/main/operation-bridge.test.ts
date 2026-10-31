@@ -1509,3 +1509,55 @@ test('a turn sent before the generation changed is reported as unknown, never as
     reason: 'not_connected',
   });
 });
+
+test('B05-05: a session control turn gives the screen only the name of the control, and an ordinary turn has no such field', async () => {
+  const h = harness();
+  const turn = (status: string, control: string | null) => ({
+    kind: 'response' as const,
+    status: 200,
+    body: {
+      request_id: id(2),
+      session_id: id(0x44),
+      turn_id: id(0x45),
+      input_id: id(0x46),
+      workflow_id: null,
+      status,
+      reply_text: null,
+      result_view: null,
+      ...(control === null ? {} : { session_control: control }),
+    },
+  });
+  h.replies.push(
+    {
+      kind: 'response',
+      status: 201,
+      body: {
+        request_id: id(1),
+        session_id: id(0x44),
+        storage_mode: 'normal',
+        route_revision: '0',
+      },
+    },
+    turn('session_control', 'reply_in_text'),
+    turn('clarification', null),
+  );
+  const control = await h.bridge.submitTurn('文字で返して');
+  assert(control.ok);
+  assert.deepEqual(control.value, {
+    status: 'session_control',
+    reply_text: null,
+    result: null,
+    session_control: 'reply_in_text',
+  });
+  const ordinary = await h.bridge.submitTurn('それは何');
+  assert(ordinary.ok);
+  assert.deepEqual(ordinary.value, {
+    status: 'clarification',
+    reply_text: null,
+    result: null,
+  });
+  // 会話・発言・依頼の ID を画面へ渡さない。
+  const shown = JSON.stringify([control.value, ordinary.value]);
+  for (const value of [id(0x44), id(0x45), id(0x46)])
+    assert.equal(shown.includes(value), false);
+});

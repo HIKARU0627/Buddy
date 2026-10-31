@@ -569,3 +569,189 @@ test(
     });
   },
 );
+
+// ---- Live の文字起こしから保存する入力（B05-05、ADR 0052） ---------------------------------------------------------
+
+const liveTurn = (
+  sessionId: string,
+  input: NonNullable<Extract<ConversationOp, { kind: 'turn.record' }>['input']>,
+  options: Parameters<typeof turn>[1] = {},
+) => ({ ...turn(sessionId, options), input });
+
+const snapshotOf = (db: SqliteDatabase, inputId: string) =>
+  db
+    .prepare(
+      'SELECT request_revision, origin, state, seal_reason, input_evidence, policy_version, audio_epoch FROM input_snapshots WHERE input_id = ?',
+    )
+    .get(inputId);
+
+test(
+  'a live transcript is saved as voice_live with the live-policy snapshot (live_fragment, live_transcript_policy, live_policy_observed, policy version, audio epoch)',
+  { timeout: 30_000 },
+  async () => {
+    await withStore((db) => {
+      const sessionId = randomUUID();
+      ok(op(db, createSession(sessionId)));
+      const record = liveTurn(
+        sessionId,
+        {
+          kind: 'voice_live',
+          audio_epoch: '7',
+          outcome: { state: 'sealed', policy_version: '1' },
+        },
+        { operation: randomUUID() },
+      );
+      ok(op(db, record));
+      assert.deepEqual(
+        db
+          .prepare('SELECT role, input_kind FROM turns WHERE turn_id = ?')
+          .get(record.turn_id),
+        { role: 'user', input_kind: 'voice_live' },
+      );
+      assert.deepEqual(snapshotOf(db, record.input_id), {
+        request_revision: 1,
+        origin: 'live_fragment',
+        state: 'sealed',
+        seal_reason: 'live_transcript_policy',
+        input_evidence: 'live_policy_observed',
+        policy_version: 1,
+        audio_epoch: 7,
+      });
+      assert.equal(count(db, 'operations'), 1);
+    });
+  },
+);
+
+test(
+  'a live input that was blocked is saved without a workflow or an operation, and a blocked or partial input is refused when it carries one',
+  { timeout: 30_000 },
+  async () => {
+    await withStore((db) => {
+      const sessionId = randomUUID();
+      ok(op(db, createSession(sessionId)));
+      const blocked = liveTurn(
+        sessionId,
+        {
+          kind: 'voice_live',
+          audio_epoch: '7',
+          outcome: { state: 'blocked' },
+        },
+        { workflow: null },
+      );
+      ok(op(db, blocked));
+      assert.deepEqual(snapshotOf(db, blocked.input_id), {
+        request_revision: 1,
+        origin: 'live_fragment',
+        state: 'blocked',
+        seal_reason: null,
+        input_evidence: 'unverified',
+        policy_version: null,
+        audio_epoch: 7,
+      });
+      assert.equal(count(db, 'workflows'), 0);
+      assert.equal(count(db, 'operations'), 0);
+      // 確定できなかった入力から依頼を作らない。
+      assert.deepEqual(
+        rejectedWith(
+          op(
+            db,
+            liveTurn(sessionId, {
+              kind: 'voice_live',
+              audio_epoch: '7',
+              outcome: { state: 'blocked' },
+            }),
+          ),
+        ),
+        ['blocked_input_with_workflow'],
+      );
+      // 確定前の入力（参照だけ）は依頼まで。操作は作らない。
+      assert.deepEqual(
+        rejectedWith(
+          op(
+            db,
+            liveTurn(
+              sessionId,
+              {
+                kind: 'voice_live',
+                audio_epoch: '7',
+                outcome: { state: 'partial' },
+              },
+              { operation: randomUUID() },
+            ),
+          ),
+        ),
+        ['partial_input_with_operation'],
+      );
+      const partial = liveTurn(sessionId, {
+        kind: 'voice_live',
+        audio_epoch: '7',
+        outcome: { state: 'partial' },
+      });
+      ok(op(db, partial));
+      assert.deepEqual(snapshotOf(db, partial.input_id), {
+        request_revision: 1,
+        origin: 'live_fragment',
+        state: 'collecting',
+        seal_reason: null,
+        input_evidence: 'unverified',
+        policy_version: null,
+        audio_epoch: 7,
+      });
+      assert.equal(count(db, 'operations'), 0);
+      assert.equal(count(db, 'turns'), 2);
+    });
+  },
+);
+
+test(
+  'a live input with a malformed record is refused before anything is written',
+  { timeout: 30_000 },
+  async () => {
+    await withStore((db) => {
+      const sessionId = randomUUID();
+      ok(op(db, createSession(sessionId)));
+      const bad = [
+        // 方式 C の暫定入力には方針の版が要る。
+        { kind: 'voice_live', audio_epoch: '7', outcome: { state: 'sealed' } },
+        {
+          kind: 'voice_live',
+          audio_epoch: '7',
+          outcome: { state: 'sealed', policy_version: '01' },
+        },
+        {
+          kind: 'voice_live',
+          audio_epoch: '-1',
+          outcome: { state: 'blocked' },
+        },
+        {
+          kind: 'voice_live',
+          audio_epoch: '07',
+          outcome: { state: 'blocked' },
+        },
+        { kind: 'voice_live', audio_epoch: 7, outcome: { state: 'blocked' } },
+        { kind: 'voice_live', audio_epoch: '7', outcome: { state: 'done' } },
+        { kind: 'voice_live', audio_epoch: '7', outcome: null },
+        // 端末内の音声認識は B06。
+        { kind: 'voice_local' },
+        null,
+      ];
+      for (const input of bad)
+        assert.deepEqual(
+          rejectedWith(
+            op(
+              db,
+              liveTurn(
+                sessionId,
+                input as unknown as Parameters<typeof liveTurn>[1],
+                { workflow: null },
+              ),
+            ),
+          ),
+          ['input_invalid'],
+          JSON.stringify(input),
+        );
+      assert.equal(count(db, 'turns'), 0);
+      assert.equal(count(db, 'input_snapshots'), 0);
+    });
+  },
+);

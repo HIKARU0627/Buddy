@@ -8,6 +8,10 @@ import { DesktopDeviceController } from './device-controller.js';
 import type { DeviceIoRecord } from './device-io-store.js';
 import { VoiceConsentStore, type LocalVoiceConsent } from './voice-consent.js';
 import {
+  VoiceReplyModeStore,
+  type ReplyModeValue,
+} from './voice-reply-mode.js';
+import {
   VoiceController,
   type LiveOpenResult,
   type VoiceRendererPort,
@@ -113,6 +117,8 @@ export interface HarnessOptions {
   readonly consentRemoveFails?: boolean;
   readonly enabled?: boolean;
   readonly initial?: DeviceIoRecord;
+  // 端末の返し方の記録の初期値（B05-05。省略は記録なし＝声）。
+  readonly replyMode?: ReplyModeValue;
 }
 
 interface RendererSlot {
@@ -144,6 +150,10 @@ export function voiceHarness(options: HarnessOptions = {}) {
   const renewals: LeaseRenewalBody[] = [];
   const opens: number[] = [];
   const notifications: DesktopIpcNotification[] = [];
+  // 中枢が発行した Live の ID と、返し方の保存の記録、無音の延長の知らせ（B05-05）。
+  const liveIds: string[] = [];
+  const replySaved: ReplyModeValue[] = [];
+  const silence: number[] = [];
   let consentRecord: LocalVoiceConsent | null = options.consent ?? null;
   let epoch = 0n;
   // 必ず代入する（下の DesktopDeviceController の通知から参照する）。
@@ -274,9 +284,11 @@ export function voiceHarness(options: HarnessOptions = {}) {
         return delayed(options.openMs ?? 50, () => {
           if (options.open) return options.open();
           epoch += 1n;
+          const liveSessionId = clock.newId();
+          liveIds.push(liveSessionId);
           return {
             kind: 'answer',
-            liveSessionId: clock.newId(),
+            liveSessionId,
             sdpAnswer: 'v=0\r\ns=buddy-test\r\n',
             audioEpoch: epoch.toString(),
             sessionEpoch: epoch.toString(),
@@ -306,6 +318,19 @@ export function voiceHarness(options: HarnessOptions = {}) {
       cancelled.push(clock.mono);
     },
     stopDevice: () => device.stopFromMain(),
+    replyMode: new VoiceReplyModeStore({
+      load: () =>
+        options.replyMode === undefined
+          ? undefined
+          : { reply_mode: options.replyMode },
+      save: (mode) => {
+        replySaved.push(mode);
+      },
+      log,
+    }),
+    onSilenceExtension: (ms) => {
+      silence.push(ms);
+    },
     onChange: () => {
       if (voice === null) return;
       device.setVoice({
@@ -339,6 +364,10 @@ export function voiceHarness(options: HarnessOptions = {}) {
     closed,
     renewals,
     opens,
+    liveIds,
+    replySaved,
+    silence,
+    deviceId: context.deviceId,
     logs,
     notifications,
     consentRecord: () => consentRecord,

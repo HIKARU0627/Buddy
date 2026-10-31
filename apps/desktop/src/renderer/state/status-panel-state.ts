@@ -361,6 +361,27 @@ export interface VoiceStripView {
   readonly notice: string | null;
 }
 
+// 音声の会話の操作（B05-05）。返し方（声／文字）の選び・読み上げの停止・会話の終了。押せるかは main の音声の状態から決める
+// （停止・終了は会話中か読み上げ中だけ。返し方はいつでも切り替えられる）。受付の規則は main が持つ。
+export interface VoiceControlsView {
+  readonly replyMode: 'voice' | 'text';
+  readonly canStopPlayback: boolean;
+  readonly canEnd: boolean;
+}
+
+export function voiceControlsView(
+  voice: DesktopVoiceView | null,
+): VoiceControlsView | null {
+  if (voice === null || voice.visibility !== 'shown') return null;
+  const state = voice.voice_state;
+  const talking = state === 'conversation_live' || state === 'reading_aloud';
+  return {
+    replyMode: voice.reply_mode === 'text' ? 'text' : 'voice',
+    canStopPlayback: talking,
+    canEnd: talking || voice.external_send,
+  };
+}
+
 export const VOICE_NOTICE_TEXT: Readonly<
   Record<'input_interrupted' | 'not_started' | 'consent_not_saved', string>
 > = {
@@ -406,9 +427,12 @@ export function voiceStripView(voice: DesktopVoiceView | null): VoiceStripView {
     kind: 'shown',
     line,
     external: voice.external_send ? 'on' : state === null ? 'unknown' : 'off',
+    // 文字で返す設定では、声の会話は始めない（始めている途中の印を出さず、押せないままにする。B05-05）。
     continueState: voice.can_continue
       ? 'ready'
-      : state === 'waiting_wake_word' && !voice.external_send
+      : state === 'waiting_wake_word' &&
+          !voice.external_send &&
+          voice.reply_mode !== 'text'
         ? 'starting'
         : 'unavailable',
     revocable:

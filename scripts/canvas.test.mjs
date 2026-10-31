@@ -323,6 +323,7 @@ const CANVAS_FORBIDDEN = [
   'desktop.get_voice',
   'desktop.voice_continue',
   'desktop.voice_consent_revoke',
+  'desktop.voice_control',
 ];
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
@@ -437,12 +438,13 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 34 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
-  // status_panel、UI-06 の canvas_user_op、UI-07 の canvas_content、B07-05 の予算の確認 3 個、B05-06 の音声 3 個を含む）。
-  // 禁止の一覧 29 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
+  // 手で数えた数（現在の DesktopIpcChannel は 35 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
+  // status_panel、UI-06 の canvas_user_op、UI-07 の canvas_content、B07-05 の予算の確認 3 個、B05-06 の音声 3 個、
+  // B05-05 の音声の会話の操作 1 個を含む）。
+  // 禁止の一覧 30 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
   // キャンバスの canvas_user_op・canvas_content。
-  assert.equal(channels.size, 34);
-  assert.equal(CANVAS_FORBIDDEN.length + 5, 34);
+  assert.equal(channels.size, 35);
+  assert.equal(CANVAS_FORBIDDEN.length + 5, 35);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

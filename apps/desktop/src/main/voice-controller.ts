@@ -12,6 +12,10 @@
 // - 最小の「続ける」: 外部への送信の同意がなければ OS の確認ダイアログで 1 回だけ取り、リースを取り、中枢へ Live の接続を
 //   求め、answer を音声レンダラーへ渡す。途中で止まった・ロックした・同意を取り消したら始めない。
 // - 判別できないとき（音声レンダラーの無応答・クラッシュ・読み込みの失敗・時計の逆行）は止める側へ倒す。
+// - 返し方（声で返す・文字で返す。B05-05、ADR 0052）は端末ごとの設定で main が持つ。声から文字へ切り替えたら、開いている
+//   Live をすぐ閉じる（理由 output_mode_text。同じ会話と文脈は続く）。文字のときは Live を開かず、「続ける」を押せない。
+//   会話の操作（読み上げの停止・会話の終了・返し方の切り替え）は、画面のボタン・照合表に当たった発言（文字の応答の
+//   session_control）・中枢が照合した Live の発話（中枢の音声イベント）のどれからでも、同じ処理を通る。
 import type {
   DesktopIpcChannel,
   DesktopIpcResponse,
@@ -21,30 +25,35 @@ import type {
   VoiceState,
 } from '@buddy/contracts';
 import {
+  SESSION_CONTROL_EFFECTS,
   VOICE_IPC_TIMEOUTS,
   acceptVoiceAck,
   admitDesktopRequest,
   advanceEpoch,
   assessStop,
   classifyEpoch,
+  planReplyModeChange,
   retainPendingVoiceRequests,
   voiceRequestErrors,
   type AudioReason,
   type DesktopIoState,
   type DesktopIpcRejectReason,
   type DesktopIpcSender,
+  type SessionControlAction,
   type VoiceCurrentState,
   type VoiceIpcChannel,
 } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 import { VoiceLeaseKeeper, type LeasePort } from './voice-lease-keeper.js';
 import type { VoiceConsentStore } from './voice-consent.js';
+import type { VoiceReplyModeStore } from './voice-reply-mode.js';
 import type { StatusBarVoice } from './status-bar.js';
 
 export const VOICE_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.get_voice',
   'desktop.voice_continue',
   'desktop.voice_consent_revoke',
+  'desktop.voice_control',
 ];
 
 // 音声レンダラーの窓の操作（Electron のアダプターが BrowserWindow で実装する）。
@@ -103,6 +112,11 @@ export interface VoiceControllerOptions {
   // 音声の状態（画面の表示・状態欄）が変わった。
   readonly onChange: () => void;
   readonly log: (code: string) => void;
+  // この端末の返し方の記録（声で返す・文字で返す）。なければ保存しない「声で返す」。
+  readonly replyMode?: VoiceReplyModeStore;
+  // 本人の「ちょっと待って」（中枢の音声イベント silence_extension・文字の応答の session_control）。次の 1 つの無音の区間だけ
+  // 猶予をこの値（ms）にする。無音の判定は main だけが行う（ADR 0041）。
+  readonly onSilenceExtension?: (ms: number) => void;
 }
 
 interface PendingVoiceRequest {
@@ -204,9 +218,12 @@ export class VoiceController {
   #nextStopReason: AudioReason | null = null;
   #notice: 'input_interrupted' | 'not_started' | null = null;
   #lastSignature = '';
+  // 返し方（記録がなければ声）。文字のとき Live を開かない。
+  #replyMode: 'voice' | 'text';
 
   constructor(options: VoiceControllerOptions) {
     this.#options = options;
+    this.#replyMode = options.replyMode?.mode ?? 'voice';
     this.#lease = new VoiceLeaseKeeper({
       port: options.core,
       clock: options.clock,
@@ -230,6 +247,10 @@ export class VoiceController {
 
   get externalSend(): boolean {
     return this.#external;
+  }
+
+  get replyMode(): 'voice' | 'text' {
+    return this.#replyMode;
   }
 
   get leaseActive(): boolean {
@@ -381,6 +402,12 @@ export class VoiceController {
       case 'desktop.voice_consent_revoke':
         this.revokeConsent();
         return this.#ok(raw.request_id, raw.channel);
+      case 'desktop.voice_control': {
+        const result = this.#controlFromButton(raw.payload);
+        return result === 'ok'
+          ? this.#ok(raw.request_id, raw.channel)
+          : this.#reject(raw.request_id, raw.channel, result);
+      }
       case 'desktop.voice_continue': {
         const result = await this.continueConversation();
         return result === 'ok'
@@ -397,6 +424,8 @@ export class VoiceController {
     if (!this.#options.enabled) return 'voice_unavailable';
     if (this.#device.lockState !== 'unlocked') return 'device_locked';
     if (!permitted(this.#device)) return 'input_stopped';
+    // 文字で返す設定では Live を開かない（外へ音声を送らない。聞き取りは端末の中で文字にする③。10 §6A）。
+    if (this.#replyMode === 'text') return 'voice_unavailable';
     if (
       !this.#alive ||
       !this.#ready ||
@@ -516,22 +545,153 @@ export class VoiceController {
   revokeConsent(): void {
     this.#options.consent.revoke();
     // 同意の確認・接続を待っている「続ける」も捨てる。
-    if (this.#starting) {
-      this.#options.cancelConsent?.();
-      this.#flow += 1;
-      this.#starting = false;
-      this.#lease.stop();
-    }
+    this.#abandonStart();
     if (this.#live !== null || this.#external)
       this.#closeSession('consent_revoked');
     this.#emit();
   }
 
+  // 「続ける」の途中（同意・リース・中枢の応答を待っている）の手順を捨てる。世代を進めるので、遅れて届く中枢の応答では
+  // 音声を始めない（届いた接続は手順の側で閉じる）。待っていなければ何もしない。
+  #abandonStart(): boolean {
+    if (!this.#starting) return false;
+    this.#options.cancelConsent?.();
+    this.#flow += 1;
+    this.#starting = false;
+    this.#lease.stop();
+    return true;
+  }
+
   // 会話を閉じる（無音・会話の終わり・返し方の変更など。理由は close_voice_session の理由）。
+  // 「続ける」で接続を待っている途中なら、その手順も捨てる（開いた接続がまだないので、閉じる対象がなくても無視しない）。
   closeConversation(reason: AudioReason): void {
-    if (this.#live === null && !this.#external) return;
+    const abandoned = this.#abandonStart();
+    if (this.#live === null && !this.#external) {
+      if (abandoned) this.#emit();
+      return;
+    }
     this.#closeSession(reason);
     this.#emit();
+  }
+
+  // 返し方を切り替える（B05-05）。声から文字へは、開いている Live（始めている途中を含む）をすぐ閉じる。文字から声へは、
+  // 設定を戻すだけで、接続は本人の次の「続ける」・呼びかけで新しく作る（閉じた接続は戻さない）。
+  setReplyMode(next: 'voice' | 'text'): void {
+    const change = planReplyModeChange({
+      current: this.#replyMode,
+      next,
+      live_active:
+        this.#live !== null || this.#external || this.#starting === true,
+    });
+    this.#replyMode = change.reply_mode;
+    try {
+      this.#options.replyMode?.set(change.reply_mode);
+    } catch {
+      this.#options.log('voice_reply_mode_save_failed');
+    }
+    if (change.close_live !== null) {
+      // 「続ける」の途中（同意・リース・接続を待っている）は、待っている手順を捨てる。
+      this.#abandonStart();
+      if (this.#live !== null || this.#external)
+        this.#closeSession(change.close_live.reason);
+    }
+    this.#emit();
+  }
+
+  // 会話の操作（照合表の効果。画面のボタン・文字の応答の session_control・Live の発話から同じ処理を通る）。
+  // どの操作も別々の効果で、同じ終了処理に束ねない（X58）。処理の取り消し（cancel_workflow）はここにない別の命令。
+  applyControl(action: SessionControlAction): void {
+    const effect = SESSION_CONTROL_EFFECTS[action];
+    if (effect.extends_silence_ms !== null)
+      this.#options.onSilenceExtension?.(effect.extends_silence_ms);
+    if (effect.sets_output_mode_text) this.setReplyMode('text');
+    else if (effect.audio_action === 'stop_playback')
+      this.stopPlayback('user_stop');
+    else if (effect.audio_reason !== null)
+      this.closeConversation(effect.audio_reason);
+  }
+
+  // 文字の応答の session_control（LLM を呼ばずに照合表で決めた値）を、画面のボタンと同じ処理で行う。
+  applyTurnControl(action: SessionControlAction): void {
+    if (!this.#options.enabled) return;
+    this.applyControl(action);
+  }
+
+  // 中枢の音声イベント（WSS の {type:'voice'}）。形と宛先・世代を確かめてから使う。使えない値は捨てる（止める側の
+  // 命令だけを受け、開く・続けるは受けない）。本文・文字起こしは載っていない。
+  onCoreVoiceEvent(raw: unknown): void {
+    if (!this.#options.enabled) return;
+    if (!this.#options.contract.valid('VoiceEvent', raw)) {
+      this.#options.log('voice_event_invalid');
+      return;
+    }
+    const event = raw as {
+      readonly event_type: string;
+      readonly device_id: string;
+      readonly live_session_id: string | null;
+      readonly audio_epoch: string | null;
+      readonly silence_extension_ms?: number;
+      readonly audio_control: {
+        readonly action: string;
+        readonly reason: AudioReason;
+        readonly audio_epoch: string | null;
+        readonly issued_by: string;
+      } | null;
+    };
+    // 自分の端末宛ての、今の接続（世代が同じ）のイベントだけ。古い世代・別の接続のイベントで止めも延ばしもしない。
+    if (event.device_id !== this.#options.core.context()?.deviceId) {
+      this.#options.log('voice_event_other_device');
+      return;
+    }
+    if (
+      this.#live === null ||
+      event.live_session_id !== this.#live.liveSessionId ||
+      this.#audio === null ||
+      event.audio_epoch === null ||
+      classifyEpoch(event.audio_epoch, this.#audio) !== 'current'
+    ) {
+      this.#options.log('voice_event_stale');
+      return;
+    }
+    if (event.event_type === 'silence_extension') {
+      if (event.silence_extension_ms !== undefined)
+        this.#options.onSilenceExtension?.(event.silence_extension_ms);
+      return;
+    }
+    const control = event.audio_control;
+    if (event.event_type !== 'audio_control' || control === null) return;
+    if (control.issued_by !== 'core') return;
+    if (control.action === 'stop_playback') this.stopPlayback('user_stop');
+    else if (control.action === 'close_voice_session') {
+      // 返し方を文字へ切り替える操作（「文字で返して」）は、この端末の設定も文字にする（次の呼びかけも文字で返す）。
+      if (control.reason === 'output_mode_text') this.setReplyMode('text');
+      else this.closeConversation(control.reason);
+    }
+  }
+
+  // 画面のボタン（desktop.voice_control）。読み上げの停止・会話の終了・返し方の切り替え。
+  #controlFromButton(payload: unknown): 'ok' | DesktopIpcRejectReason {
+    if (!this.#options.enabled) return 'voice_unavailable';
+    const action =
+      typeof payload === 'object' && payload !== null
+        ? (payload as { action?: unknown }).action
+        : undefined;
+    switch (action) {
+      case 'stop_playback':
+        this.applyControl('stop_playback');
+        return 'ok';
+      case 'end_conversation':
+        this.applyControl('end_conversation');
+        return 'ok';
+      case 'reply_in_text':
+        this.applyControl('reply_in_text');
+        return 'ok';
+      case 'reply_in_voice':
+        this.setReplyMode('voice');
+        return 'ok';
+      default:
+        return 'invalid_request';
+    }
   }
 
   // 再生だけを止める（読み上げの停止・割り込み）。収音・Live は保つ。
@@ -584,10 +744,12 @@ export class VoiceController {
         : this.#device.stopScope !== 'none'
           ? 'global_stopped'
           : this.statusVoice();
+    // 文字で返す設定では、声の会話を始める「続ける」を押せない（音声を外へ送らない）。
     if (
       voiceState === 'waiting_wake_word' &&
       !this.#external &&
-      !this.#starting
+      !this.#starting &&
+      this.#replyMode === 'voice'
     )
       return {
         visibility: 'shown',
@@ -596,6 +758,7 @@ export class VoiceController {
         consent,
         can_continue: true,
         notice: this.#currentNotice(),
+        reply_mode: this.#replyMode,
       };
     return {
       visibility: 'shown',
@@ -604,6 +767,7 @@ export class VoiceController {
       consent,
       can_continue: false,
       notice: this.#currentNotice(),
+      reply_mode: this.#replyMode,
     };
   }
 
@@ -888,7 +1052,8 @@ export class VoiceController {
     channel:
       | 'desktop.get_voice'
       | 'desktop.voice_continue'
-      | 'desktop.voice_consent_revoke',
+      | 'desktop.voice_consent_revoke'
+      | 'desktop.voice_control',
   ): DesktopIpcResponse {
     return this.#respond({
       request_id: requestId,

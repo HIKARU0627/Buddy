@@ -17,12 +17,15 @@
 //   したら planBudgetFailure に従い、サイドバンドが使えれば一言伝える指示を送り、モデルの発話の終わりか 10 秒の早い方で閉じる
 //   （使えなければすぐ閉じる）。確認した使用秒数（15 秒との大きい方）で一度だけ精算し、使用量を確認できない終了は予約を保持して、
 //   provider への照会（lookupSession）で後から照合する（reconcileHeld）。時計が逆行したら会話の長さを数えられないので閉じる。
+// - 会話の処理（B05-05、ADR 0052）。サイドバンドの文字起こし・発話の開始と終了候補・委譲は LiveConversation（live-conversation.ts）へ
+//   渡し、そこから呼ばれる口（入力の受付の条件・結果の追記・会話の操作の適用）をここが持つ。文字の依頼は音声の接続へ流さない。
 // provider（OpenAI の Live）と予算の門・同意は注入する境界で、呼び出しには期限を付ける（切れたら結果不明。予約は保持）。
 // 製品の起動ではまだ渡さない（実 API は使わない。渡されなければ Live の接続は 503）。結果不明の外部への送信を自動で送り直さない。
 
 import { randomUUID } from 'node:crypto';
 import {
   AUDIO_CONTROL_RULES,
+  SESSION_CONTROL_EFFECTS,
   LIVE_INITIAL_RESERVE_SECONDS,
   SIDEBAND_CONNECT_DEADLINE_MS,
   BUDGET_CLOSE_GRACE_MS,
@@ -45,10 +48,14 @@ import {
 import type {
   AudioReason,
   ConsentStatus,
+  DeviceEpochs,
+  InputCondition,
   LiveControl,
   LiveControlStateName,
   LiveControlTrigger,
   LiveEpochEvent,
+  LiveFragment,
+  SessionControlAction,
   StoredLease,
 } from '@buddy/domain';
 import type {
@@ -63,6 +70,11 @@ import { apiErrorResponse } from './api-server.js';
 import type { ApiErrorCode } from './api-server.js';
 import type { DeclaredLockState } from './api-environment.js';
 import { validLiveUsageSeconds } from './live-budget.js';
+import type {
+  LiveConversationHost,
+  LiveConversationPort,
+  LiveHandle,
+} from './live-conversation.js';
 import type { JsonObject } from './strict-json.js';
 
 // 確認済みにしてよい使用秒数の上限（live-budget.ts）。参照だけ残し、値は 1 か所で持つ。
@@ -122,6 +134,17 @@ export interface LiveSidebandHandlers {
   onSessionClosed(usageSeconds: number | null): void;
   // WebSocket の終了・エラー。
   onDisconnected(): void;
+  // 本人の発話の文字起こしの断片（session.input_transcript.delta 相当）。連番を持たない provider は index を null にする
+  // （欠落を確かめられないので、変更は進まない。U102）。
+  onTranscriptFragment(fragment: LiveFragment): void;
+  // 新しい本人の発話の開始・発話終了候補（provider の実装が決める抽象のイベント。端末の VAD の報告でもよい。U102）。
+  onSpeechStarted(): void;
+  onEndCandidate(): void;
+  // 委譲（session.delegation.created。依頼の文字を含まない。offset は Live の音声内の時刻で、なければ null）。
+  onDelegation(delegation: {
+    readonly delegation_id: string;
+    readonly offset_ms: number | null;
+  }): void;
   // モデルの発話の終わり。予算の上限を伝える一言の後に閉じる時刻の判定に使う（イベントの名前は provider の実装で決める。U86）。
   onModelUtteranceEnded(): void;
 }
@@ -132,6 +155,8 @@ export interface LiveSideband {
   sendClose(): void;
   // session.instructions.append で、予算の上限に達したので会話を終えることを一言で伝え質問を続けない指示を送る。送れたら true。
   appendInstructions(kind: 'budget_reached'): boolean;
+  // session.commentary.append で、結果の読み上げ文（コードの定型文）を渡す。1 回 400 トークン以内・最大 3 つ。送れたら true。
+  appendCommentary(parts: readonly string[]): boolean;
   terminate(): void;
 }
 
@@ -236,6 +261,8 @@ export interface VoiceControlOptions {
   readonly displayTarget?: () => string | null;
   readonly newId?: () => string;
   readonly log?: (message: string) => void;
+  // Live の会話の処理（B05-05）。後から setConversation で渡してもよい（発言の処理より先に作るため）。
+  readonly conversation?: LiveConversationPort | null;
 }
 
 // このリースで開いた Live の結果。更新で作り直すエントリーの間で同じものを持ち回る。
@@ -274,6 +301,11 @@ interface OwnerRecord {
 interface LiveRuntime {
   // メモリーの今の状態（正本として判定に使う）。DB には persisted まで書けている。
   record: LiveSessionRecord;
+  // Live を開いた端末のリースの接続範囲（Live の委譲から発言を保存するときの受付の範囲。再起動の後は空）。
+  command_scope_id: string;
+  // 会話の処理へ開いた・閉じたを知らせたか。
+  conversation_opened: boolean;
+  conversation_closed: boolean;
   persisted: LiveControlValues;
   persisting: Promise<void> | null;
   retryTimer: unknown;
@@ -394,6 +426,7 @@ export class VoiceControl {
   readonly #displayTarget: () => string | null;
   readonly #newId: () => string;
   readonly #log: (message: string) => void;
+  #conversation: LiveConversationPort | null;
   readonly #leases = new Map<string, Map<'audio' | 'display', LeaseEntry>>();
   readonly #lives = new Map<string, LiveRuntime>();
   readonly #finished = new Map<string, LiveSessionRecord>();
@@ -426,6 +459,12 @@ export class VoiceControl {
     this.#displayTarget = options.displayTarget ?? (() => null);
     this.#newId = options.newId ?? randomUUID;
     this.#log = options.log ?? (() => undefined);
+    this.#conversation = options.conversation ?? null;
+  }
+
+  // Live の会話の処理を渡す（起動の組み立てで、発言の処理の後に）。
+  setConversation(port: LiveConversationPort | null): void {
+    this.#conversation = port;
   }
 
   // ---- 共通 -----------------------------------------------------------------------------------------------
@@ -1405,6 +1444,7 @@ export class VoiceControl {
         };
         lease.opened = live;
         const runtime = this.#newRuntime(opened.value, live, ticket);
+        runtime.command_scope_id = str(body, 'command_scope_id');
         runtime.reserved_at = reservedAt;
         runtime.last_observed = reservedAt;
         this.#lives.set(liveSessionId, runtime);
@@ -1487,6 +1527,167 @@ export class VoiceControl {
     };
   }
 
+  // ---- 会話の処理への口（B05-05、ADR 0052） -------------------------------------------------------------------
+
+  // LiveConversation に渡す口。Live の状態・声への追記・会話の操作の適用だけを渡し、予算・リース・世代の判定は渡さない。
+  conversationHost(): LiveConversationHost {
+    return {
+      conditions: (liveSessionId) => this.#inputConditions(liveSessionId),
+      delivery: (liveSessionId) => this.#deliveryView(liveSessionId),
+      appendCommentary: (liveSessionId, parts) =>
+        this.#appendCommentary(liveSessionId, parts),
+      applySessionControl: (liveSessionId, action) =>
+        this.applySessionControl(liveSessionId, action),
+    };
+  }
+
+  // voice_live の入力の受付の条件（domain の INPUT_KIND_RULES）。分からない条件は満たされていないものとして扱う。
+  async #inputConditions(
+    liveSessionId: string,
+  ): Promise<Partial<Record<InputCondition, boolean>>> {
+    const runtime = this.#lives.get(liveSessionId);
+    if (runtime === undefined) return {};
+    const deviceId = runtime.record.device_id;
+    const known = this.#known.get(deviceId);
+    const lease = this.#leases.get(deviceId)?.get('audio');
+    const consent = await this.#within(VOICE_EXTERNAL_TIMEOUT_MS, () =>
+      this.#consent(deviceId),
+    );
+    const open =
+      runtime.record.closure === 'open' &&
+      runtime.record.control_state === 'ready';
+    return {
+      live_control_ready: open,
+      audio_epoch_current:
+        known !== undefined && known.audio_epoch === runtime.record.audio_epoch,
+      session_epoch_current:
+        known !== undefined &&
+        known.session_epoch === runtime.record.session_epoch,
+      audio_lease_valid:
+        lease !== undefined &&
+        this.#leaseLive(lease) &&
+        lease.opened?.live_session_id === liveSessionId,
+      io_permitted: known !== undefined && !this.#suspended(known),
+      // 記録しない会話は中枢が受け付けない（U71）。Live は記録する会話にだけ開く。
+      not_private_conversation: true,
+      // 返し方が文字へ切り替わった接続（output_mode_text で閉じ始めた）の入力は受けない（X47）。
+      voice_output_mode:
+        open && runtime.record.end_reason !== 'output_mode_text',
+      external_send_consent: consent !== TIMED_OUT && consent === 'granted',
+      budget_reserved: open && runtime.budgetClose === null,
+    };
+  }
+
+  // 結果の届け先の判定に使う Live と端末の今の状態。
+  #deliveryView(liveSessionId: string): {
+    readonly open: boolean;
+    readonly epochs: DeviceEpochs | null;
+  } {
+    const runtime = this.#lives.get(liveSessionId);
+    if (runtime === undefined) return { open: false, epochs: null };
+    const deviceId = runtime.record.device_id;
+    const known = this.#known.get(deviceId);
+    if (known === undefined) return { open: false, epochs: null };
+    const lease = this.#leases.get(deviceId)?.get('audio');
+    return {
+      open:
+        runtime.record.closure === 'open' &&
+        runtime.record.control_state === 'ready' &&
+        runtime.sideband !== null,
+      epochs: {
+        deviceId,
+        ioEpoch: known.io_epoch,
+        audioEpoch: known.audio_epoch,
+        outputEpoch: known.output_epoch,
+        sessionEpoch: known.session_epoch,
+        ioSuspended: this.#suspended(known),
+        audioLeaseValid:
+          lease !== undefined &&
+          this.#leaseLive(lease) &&
+          lease.opened?.live_session_id === liveSessionId,
+      },
+    };
+  }
+
+  // 結果の読み上げ文を Live へ追記する。接続が開いていて、サイドバンドが使えるときだけ。
+  #appendCommentary(liveSessionId: string, parts: readonly string[]): boolean {
+    const runtime = this.#lives.get(liveSessionId);
+    if (
+      runtime === undefined ||
+      runtime.record.closure !== 'open' ||
+      runtime.record.control_state !== 'ready' ||
+      runtime.sideband === null
+    )
+      return false;
+    try {
+      return runtime.sideband.appendCommentary(parts);
+    } catch {
+      this.#log('結果の追記を送れませんでした。');
+      return false;
+    }
+  }
+
+  // 会話の操作（照合表に当たった発話）を、開いている Live へ行う（画面のボタンと同じ処理。LLM は呼ばない）。
+  // 読み上げの停止は再生だけを止め（接続・収音は保つ）、会話の終了・記録しない会話・文字へ切り替えは接続を閉じ、
+  // 無音の延長は端末の main へ知らせる。それぞれ別の効果で、同じ終了処理に束ねない。
+  applySessionControl(
+    liveSessionId: string,
+    action: SessionControlAction,
+  ): void {
+    const runtime = this.#lives.get(liveSessionId);
+    if (runtime === undefined || runtime.record.closure !== 'open') return;
+    const effect = SESSION_CONTROL_EFFECTS[action];
+    const deviceId = runtime.record.device_id;
+    this.#guard(() => {
+      if (effect.extends_silence_ms !== null)
+        this.#emitSilenceExtension(
+          deviceId,
+          runtime.record,
+          effect.extends_silence_ms,
+        );
+      const reason = effect.audio_reason;
+      if (effect.audio_action === null || reason === null) return;
+      // 停止の前に受けた依頼の結果を停止の後に読み上げない。発話の照合・文字の発言・画面のどこから来ても同じ処理を通す。
+      if (effect.audio_action === 'stop_playback')
+        this.#conversation?.playbackStopped(this.#handleOf(runtime));
+      if (effect.audio_action === 'close_voice_session')
+        this.#beginClose(runtime, reason);
+      this.#emitAudioControl(deviceId, reason, runtime.record);
+    });
+  }
+
+  // 文字の画面から出した会話の操作（②③。照合表に当たった発言）を、その端末の開いている Live へも行う。
+  applySessionControlForDevice(
+    deviceId: string,
+    action: SessionControlAction,
+  ): void {
+    for (const runtime of this.#openLives(deviceId))
+      this.applySessionControl(runtime.record.live_session_id, action);
+  }
+
+  // 無音の猶予の延長（本人の「ちょっと待って」）。無音の判定は main だけが行うので、中枢は値を知らせるだけ。
+  #emitSilenceExtension(
+    deviceId: string,
+    live: LiveSessionRecord,
+    ms: number,
+  ): void {
+    const at = new Date(this.#wallNow()).toISOString();
+    this.#emit(deviceId, {
+      schema: 'buddy.voice-event.v1',
+      event_id: this.#newId(),
+      event_type: 'silence_extension',
+      device_id: deviceId,
+      session_id: live.session_id,
+      live_session_id: live.live_session_id,
+      audio_epoch: live.audio_epoch,
+      control_epoch: live.control_epoch,
+      candidate_ids: [],
+      audio_control: null,
+      silence_extension_ms: ms,
+      occurred_at: at,
+    });
+  }
+
   // ---- 制御接続（サイドバンド） ---------------------------------------------------------------------------------
 
   // 予算の門の呼び出しを、Live ごとに 1 つずつ・期限つきで行う（応答を待たない）。
@@ -1548,8 +1749,29 @@ export class VoiceControl {
       runtime.lost = true;
     if (closed && runtime.opened.outcome === 'open')
       runtime.opened.outcome = runtime.lost ? 'lost' : 'normal';
+    // ready を外れた（lost・閉じ始め・閉じた）ら、会話の処理へ一度だけ知らせる（声で返す結果は画面へ回る）。
+    if (
+      runtime.conversation_opened &&
+      !runtime.conversation_closed &&
+      runtime.record.control_state !== 'ready'
+    ) {
+      runtime.conversation_closed = true;
+      this.#guard(() => this.#conversation?.closed(this.#handleOf(runtime)));
+    }
     void this.#persist(runtime);
     return true;
+  }
+
+  // Live を指す値（会話の処理へ渡す）。
+  #handleOf(runtime: LiveRuntime): LiveHandle {
+    return {
+      live_session_id: runtime.record.live_session_id,
+      device_id: runtime.record.device_id,
+      session_id: runtime.record.session_id,
+      audio_epoch: runtime.record.audio_epoch,
+      session_epoch: runtime.record.session_epoch,
+      command_scope_id: runtime.command_scope_id,
+    };
   }
 
   // メモリーの状態を DB へ compare-and-set で書く（途中の状態は飛ばして今の値を書く。trigger が戻す更新を拒否する）。
@@ -1665,6 +1887,32 @@ export class VoiceControl {
           if (handleRef.handle !== runtime.sideband) return;
           this.#onUtteranceEnded(runtime);
         }),
+      onTranscriptFragment: (fragment) =>
+        this.#guard(() => {
+          if (handleRef.handle !== runtime.sideband) return;
+          this.#conversation?.fragment(this.#handleOf(runtime), fragment);
+        }),
+      onSpeechStarted: () =>
+        this.#guard(() => {
+          if (handleRef.handle !== runtime.sideband) return;
+          this.#conversation?.speechStarted(this.#handleOf(runtime));
+        }),
+      onEndCandidate: () =>
+        this.#guard(() => {
+          if (handleRef.handle !== runtime.sideband) return;
+          this.#conversation?.endCandidate(this.#handleOf(runtime));
+        }),
+      onDelegation: (delegation) =>
+        this.#guard(() => {
+          if (handleRef.handle !== runtime.sideband) return;
+          // 開いている（ready）接続の委譲だけを受ける。閉じ始めた・失った接続の委譲は扱わない。
+          if (
+            runtime.record.control_state !== 'ready' ||
+            runtime.record.closure !== 'open'
+          )
+            return;
+          this.#conversation?.delegation(this.#handleOf(runtime), delegation);
+        }),
       onSessionClosed: (usage) =>
         this.#guard(() => this.#onSessionClosed(runtime, usage)),
       onDisconnected: () =>
@@ -1713,6 +1961,9 @@ export class VoiceControl {
         ref.handle = handle;
         runtime.sideband = handle;
         if (!this.#step(runtime, 'sideband_connected')) return;
+        // 会話の処理へ、ready になった Live を知らせる（文字起こし・委譲はここから受ける）。
+        runtime.conversation_opened = true;
+        this.#guard(() => this.#conversation?.opened(this.#handleOf(runtime)));
         this.#armDeadline(runtime);
         runtime.pingTimer = this.#schedule(SIDEBAND_PING_INTERVAL_MS, () =>
           this.#ping(runtime),
@@ -2299,6 +2550,9 @@ export class VoiceControl {
       persisted: valuesOf(record),
       persisting: null,
       retryTimer: null,
+      command_scope_id: '',
+      conversation_opened: false,
+      conversation_closed: false,
       opened,
       ticket,
       reserved_at: now,

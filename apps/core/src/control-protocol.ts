@@ -26,6 +26,11 @@ export const CONTROL_OPS = [
   // 予算月の状態と、本人による確かめ直し（B07-04、ADR 0037）。
   'budget_calendar_status',
   'budget_calendar_confirm',
+  // バックアップの状態・実行と、復旧キーの設定の Core 側（ADR 0055）。復旧キーは通さない。
+  'backup_status',
+  'backup_run',
+  'backup_setup_inspect',
+  'backup_setup_record',
 ] as const;
 export type ControlOp = (typeof CONTROL_OPS)[number];
 
@@ -44,6 +49,16 @@ export type ControlRequest =
       readonly device_id: string;
     }
   | { readonly op: 'budget_calendar_status'; readonly request_id: string }
+  | {
+      readonly op: 'backup_status' | 'backup_run' | 'backup_setup_inspect';
+      readonly request_id: string;
+    }
+  // CLI が書いた包み（backup-keys.json）の台帳の鍵の ID。Core は包みと KeyStore を確かめてから DB に記録する。
+  | {
+      readonly op: 'backup_setup_record';
+      readonly request_id: string;
+      readonly ledger_hmac_key_id: string;
+    }
   // 本人が見た理由・月・始まり（RFC 3339 の UTC）と、そのときの状態の版・時計（status の confirmation_revision・
   // checked_at）。今の状態と一致するときだけ Core が記録する。
   | {
@@ -73,7 +88,8 @@ export type ControlRejectReason =
   | 'invalid_month'
   | 'invalid_month_start'
   | 'invalid_revision'
-  | 'invalid_observed_at';
+  | 'invalid_observed_at'
+  | 'invalid_key_id';
 
 export type ControlParseResult =
   | { readonly ok: true; readonly request: ControlRequest }
@@ -149,6 +165,12 @@ export type ControlResponse =
       readonly request_id: string;
       readonly devices: readonly ControlDevice[];
     }
+  // バックアップの状態・実行・設定の応答（ID・件数・理由コードだけ。鍵・パス・本文は載せない）。
+  | {
+      readonly ok: true;
+      readonly request_id: string;
+      readonly backup: Readonly<Record<string, unknown>>;
+    }
   | {
       readonly ok: true;
       readonly request_id: string;
@@ -180,6 +202,13 @@ const CONFIRM_FIELDS: readonly string[] = [
   'month_start',
   'revision',
   'observed_at',
+];
+// 鍵の ID（契約の BackupKeyWrap.key_id と同じ文字種）。
+const KEY_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
+const RECORD_FIELDS: readonly string[] = [
+  'op',
+  'request_id',
+  'ledger_hmac_key_id',
 ];
 const REVISION = /^(0|[1-9][0-9]{0,14})$/u;
 const YEAR_MONTH = /^[0-9]{4}-(0[1-9]|1[0-2])$/u;
@@ -219,7 +248,9 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
         ? REVOKE_FIELDS
         : value['op'] === 'budget_calendar_confirm'
           ? CONFIRM_FIELDS
-          : ALLOWED_FIELDS;
+          : value['op'] === 'backup_setup_record'
+            ? RECORD_FIELDS
+            : ALLOWED_FIELDS;
   for (const key of Object.keys(value))
     if (!allowed.includes(key)) return { ok: false, reason: 'unknown_field' };
   const op = value['op'];
@@ -254,6 +285,16 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
     return {
       ok: true,
       request: { op, request_id: requestId, device_id: deviceId },
+    };
+  }
+  if (op === 'backup_setup_record') {
+    const keyId = value['ledger_hmac_key_id'];
+    if (keyId === undefined) return { ok: false, reason: 'missing_field' };
+    if (typeof keyId !== 'string') return { ok: false, reason: 'invalid_type' };
+    if (!KEY_ID.test(keyId)) return { ok: false, reason: 'invalid_key_id' };
+    return {
+      ok: true,
+      request: { op, request_id: requestId, ledger_hmac_key_id: keyId },
     };
   }
   if (op === 'budget_calendar_confirm') {
@@ -305,7 +346,10 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
     request:
       op === 'pairing_first_start' ||
       op === 'device_list' ||
-      op === 'budget_calendar_status'
+      op === 'budget_calendar_status' ||
+      op === 'backup_status' ||
+      op === 'backup_run' ||
+      op === 'backup_setup_inspect'
         ? { op, request_id: requestId }
         : { op: op as 'status' | 'stop', request_id: requestId },
   };

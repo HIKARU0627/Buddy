@@ -41,6 +41,8 @@ import {
   readLedgerId,
 } from './forget-store.js';
 import { buildLedgerFile, parseLedgerFile } from './forget-ledger-file.js';
+import { readBackupFacts } from './backup-facts.js';
+import type { BackupFacts } from './backup-facts.js';
 import type {
   ForgetApplyValue,
   ForgetLedgerExport,
@@ -85,6 +87,15 @@ export type MemoryOp =
   // 0012 より前の台帳の行があり、系譜（ledger_id）がない DB に系譜を付ける（U119）。台帳のファイルがないことを Core が
   // 確かめてから呼ぶ。旧い行が台帳のファイルの形で書き出せなければ付けない。
   | { readonly kind: 'forget.adopt_ledger_id'; readonly ledger_id: string }
+  // バックアップの封筒に書く DB の事実（台帳の系譜・head・鍵の ID・暗号文の鍵の ID。ADR 0055）。
+  | { readonly kind: 'backup.facts' }
+  // バックアップの設定の記録（ADR 0055）。台帳の系譜がまだなく台帳が空なら系譜を付け、台帳の HMAC の鍵の ID を記録する
+  // （同じ系譜の中では鍵の ID を変えない）。
+  | {
+      readonly kind: 'backup.record_setup';
+      readonly ledger_id: string;
+      readonly ledger_hmac_key_id: string;
+    }
   | {
       readonly kind: 'memory.save';
       readonly memory_id: string;
@@ -143,6 +154,12 @@ export interface MemoryOpValues {
     readonly ledger_id: string;
     readonly forgetting_generation: string;
   };
+  'backup.facts': BackupFacts;
+  'backup.record_setup': {
+    readonly ledger_id: string;
+    readonly ledger_hmac_key_id: string;
+    readonly forgetting_generation: string;
+  };
   'memory.save': MemoryScheduleValue;
   'memory.continue': MemoryScheduleValue;
   'memory.start_review': MemoryScheduleValue;
@@ -175,6 +192,7 @@ export interface MemoryStoreResult {
 export const MEMORY_WRITE_OPS: ReadonlySet<MemoryOpKind> = new Set([
   'forget.apply',
   'forget.adopt_ledger_id',
+  'backup.record_setup',
   'memory.save',
   'memory.continue',
   'memory.start_review',
@@ -187,6 +205,8 @@ const KINDS: ReadonlySet<string> = new Set<MemoryOpKind>([
   'forget.apply',
   'forget.ledger_export',
   'forget.adopt_ledger_id',
+  'backup.facts',
+  'backup.record_setup',
   'memory.save',
   'memory.continue',
   'memory.start_review',
@@ -227,6 +247,8 @@ function isHmacList(value: unknown): value is readonly SourceHmacValue[] {
 }
 
 const GENERATION = /^(0|[1-9][0-9]{0,15})$/u;
+// 契約の BackupKeyWrap.key_id と同じ文字種（schema_meta の CHECK も同じ）。
+const KEY_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
 
 // 命令の形の検査。理由が空なら形は正しい。
 export function memoryOpShapeReasons(op: MemoryOp): string[] {
@@ -257,6 +279,16 @@ export function memoryOpShapeReasons(op: MemoryOp): string[] {
       break;
     case 'forget.adopt_ledger_id':
       if (!isUuid(op.ledger_id)) reasons.push('ledger_id_invalid');
+      break;
+    case 'backup.facts':
+      break;
+    case 'backup.record_setup':
+      if (!isUuid(op.ledger_id)) reasons.push('ledger_id_invalid');
+      if (
+        typeof op.ledger_hmac_key_id !== 'string' ||
+        !KEY_ID.test(op.ledger_hmac_key_id)
+      )
+        reasons.push('ledger_key_id_invalid');
       break;
     case 'memory.save':
       if (!isUuid(op.memory_id)) reasons.push('memory_id_invalid');
@@ -597,6 +629,43 @@ function adoptLedgerId(
   };
 }
 
+// バックアップの設定の記録（ADR 0055）。台帳の系譜は、まだ付いておらず台帳が空のときだけここで付ける（忘却を 1 件でもした
+// DB に系譜がなければ、起動の確認（U119）を通らない状態なので付けない）。台帳の HMAC の鍵の ID は、同じ系譜の中では変えない
+// （変えると、台帳と記憶の HMAC を照合できず、忘れた元情報の再取り込みを止められなくなる）。
+function recordBackupSetup(
+  db: SqliteDatabase,
+  op: Extract<MemoryOp, { kind: 'backup.record_setup' }>,
+): {
+  readonly ledger_id: string;
+  readonly ledger_hmac_key_id: string;
+  readonly forgetting_generation: string;
+} {
+  const generation = currentForgettingGeneration(db);
+  let ledgerId = readLedgerId(db);
+  if (ledgerId === null) {
+    if (generation > 0) throw new ForgetRejection(['ledger_lineage_missing']);
+    db.prepare(
+      "INSERT INTO schema_meta (key, value) VALUES ('ledger_id', ?)",
+    ).run(op.ledger_id);
+    ledgerId = op.ledger_id;
+  }
+  const recorded = db
+    .prepare("SELECT value FROM schema_meta WHERE key = 'ledger_hmac_key_id'")
+    .pluck()
+    .get() as string | undefined;
+  if (recorded === undefined)
+    db.prepare(
+      "INSERT INTO schema_meta (key, value) VALUES ('ledger_hmac_key_id', ?)",
+    ).run(op.ledger_hmac_key_id);
+  else if (recorded !== op.ledger_hmac_key_id)
+    throw new ForgetRejection(['ledger_key_id_conflict']);
+  return {
+    ledger_id: ledgerId,
+    ledger_hmac_key_id: op.ledger_hmac_key_id,
+    forgetting_generation: String(generation),
+  };
+}
+
 // 本人の指示の取り消し。取り消した指示は使わないので、行と暗号文を消す（03 は設定画面で確認・取り消しできるとだけ
 // 定める。取り消した指示を残す理由がないので、残さない側にした。U112）。
 function revokeDirective(
@@ -622,6 +691,8 @@ function applyWrite(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
       return applyForget(db, op);
     case 'forget.adopt_ledger_id':
       return adoptLedgerId(db, op);
+    case 'backup.record_setup':
+      return recordBackupSetup(db, op);
     case 'memory.save':
       return saveMemory(db, op);
     case 'memory.continue':
@@ -648,6 +719,8 @@ function readOnly(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
       }))();
     case 'forget.ledger_export':
       return db.transaction(() => exportForgetLedger(db))();
+    case 'backup.facts':
+      return readBackupFacts(db);
     default:
       throw new ForgetRejection(['kind_invalid']);
   }

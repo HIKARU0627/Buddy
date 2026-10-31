@@ -20,6 +20,8 @@ import {
   backupHkdfInputProblems,
   backupKeyCoverageProblems,
   backupManifestProblems,
+  backupPayloadAad,
+  backupPayloadHkdfInput,
   backupRetentionPlan,
   backupSetupKeyPlan,
   backupTablePlan,
@@ -495,6 +497,72 @@ test('HKDF input check rejects malformed parameters', () => {
     keyWrapHkdfInput({
       ...cases.base_manifest.key_wraps[0],
       kdf: { algorithm: 'hkdf-sha256', salt: 'AAECAwQFBgc=' },
+    }),
+  );
+});
+
+// 本体の暗号化の導き方（ADR 0055 の U121）。期待値は手で書いた ASCII と UUID のバイト列で、実装の出力から作っていない。
+test('payload key derivation: salt is the backup_id bytes, info and AAD carry the envelope fields', () => {
+  const input = backupPayloadHkdfInput(
+    'backup-file-v1',
+    '00112233-4455-4677-8899-aabbccddeeff',
+  );
+  assert.equal(input.hash, 'sha256');
+  assert.equal(input.length, 32);
+  assert.equal(
+    Buffer.from(input.salt).toString('hex'),
+    '00112233445546778899aabbccddeeff',
+  );
+  assert.equal(
+    Buffer.from(input.info).toString('latin1'),
+    'buddy/backup/payload/v1\0backup-file-v1',
+  );
+  assert.deepEqual(backupHkdfInputProblems(input), []);
+  const aad = backupPayloadAad({
+    backup_id: '00112233-4455-4677-8899-aabbccddeeff',
+    created_at: '2031-03-01T00:00:00.000Z',
+    store_generation: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    db_schema_version: 12,
+    forgetting_generation: '3',
+    ledger_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    ledger_head_hash: 'ab'.repeat(32),
+    excluded_tables: ['command_receipts', 'source_items'],
+    backup_file_key_id: 'backup-file-v1',
+  });
+  assert.equal(
+    Buffer.from(aad).toString('latin1'),
+    [
+      'buddy/backup/payload/v1',
+      '00112233-4455-4677-8899-aabbccddeeff',
+      '2031-03-01T00:00:00.000Z',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '12',
+      '3',
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'ab'.repeat(32),
+      'command_receipts,source_items',
+      'backup-file-v1',
+    ].join('\0'),
+  );
+  // backup_id が UUID でなければ導かない。値が ASCII の印字可能な文字でなければ AAD を作らない。
+  assert.throws(() => backupPayloadHkdfInput('backup-file-v1', 'not-a-uuid'));
+  assert.throws(() =>
+    backupPayloadHkdfInput(
+      'backup-file-v1',
+      '00112233-4455-4677-8899-AABBCCDDEEFF',
+    ),
+  );
+  assert.throws(() =>
+    backupPayloadAad({
+      backup_id: 'x',
+      created_at: 'x\n',
+      store_generation: 'x',
+      db_schema_version: 1,
+      forgetting_generation: '0',
+      ledger_id: 'x',
+      ledger_head_hash: 'x',
+      excluded_tables: [],
+      backup_file_key_id: 'x',
     }),
   );
 });

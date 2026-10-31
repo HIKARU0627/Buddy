@@ -474,6 +474,9 @@ export class LiveConversation implements LiveConversationPort {
     },
     sessionId: string,
   ): Promise<void> {
+    // 出力の世代は、最初の await の前（委譲を受けた時点）で固定する。条件の照会（同意の非同期の確認）を待つ間に
+    // 読み上げの停止が来ても、停止の前に受けた依頼として扱い、結果を停止の後の世代の声に載せない。
+    const outputGen = context.output_gen;
     const conditions = await this.#options.host.conditions(
       context.handle.live_session_id,
     );
@@ -511,7 +514,7 @@ export class LiveConversation implements LiveConversationPort {
         session_epoch: context.handle.session_epoch,
       }),
       audio_epoch: context.handle.audio_epoch,
-      output_gen: context.output_gen,
+      output_gen: outputGen,
       conditions,
       phase: 'waiting_input',
       timer: null,

@@ -174,6 +174,8 @@ async function withConversation(
     readonly prepare?: (script: Script) => void;
     readonly overrides?: Partial<VoiceControlOptions>;
     readonly provider?: ProviderReader;
+    // 委譲の受付の条件の照会（同意など。非同期）を、この Promise が解けるまで止める。
+    readonly conditionsGate?: Promise<void>;
   } = {},
 ): Promise<void> {
   await withRig(async (rig) => {
@@ -206,8 +208,18 @@ async function withConversation(
     const shown: ScreenResult[] = [];
     const dropped: Conv['dropped'] = [];
     let counter = 0;
+    const baseHost = rig.voice.conversationHost();
     const conversation = new LiveConversation({
-      host: rig.voice.conversationHost(),
+      host:
+        options.conditionsGate === undefined
+          ? baseHost
+          : {
+              ...baseHost,
+              conditions: async (liveSessionId) => {
+                await options.conditionsGate;
+                return baseHost.conditions(liveSessionId);
+              },
+            },
       turns: {
         interpret: turns.interpret,
         commitLive: async (input) => {
@@ -2275,6 +2287,34 @@ test(
           script.gates.set('今日の予定を見せて', first.promise);
         },
       },
+    );
+  },
+);
+
+test(
+  'P2: a "stop reading" that arrives while the delegation is still waiting for its input conditions counts the request as received before the stop, so its result goes to the screen',
+  TIMEOUT,
+  async () => {
+    const conditions = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: '今日の予定を見せて' });
+        // 委譲を受けたが、受付の条件（同意の照会）がまだ返らない。
+        await delegate(c, 'd1', 800);
+        assert.equal(c.conversation.pendingCount, 0);
+        // その間に読み上げの停止が来る（Live は閉じない）。
+        c.rig.voice.applySessionControlForDevice(DEV_A, 'stop_playback');
+        await c.rig.wait();
+        assert.equal(controlEvents(c.rig, 'audio_control').length, 1);
+        // 条件が返ってから処理が進む。停止の前に受けた依頼なので、結果は声に載せず画面へ回す。
+        conditions.release();
+        await c.rig.wait();
+        await c.rig.clock.advance(500);
+        await waitUntil(c.rig, 'the screen result', () => c.shown.length === 1);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.equal(c.shown[0]?.turn.result_view?.kind, 'schedule_cards');
+      },
+      { conditionsGate: conditions.promise },
     );
   },
 );

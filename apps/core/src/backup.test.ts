@@ -892,6 +892,153 @@ test('制御チャネル: 状態・実行は置き場所のパスを返さず、
   );
 });
 
+// レビュー（PR #175 の P1）の再現: 古い正常な A と新しい本体破損の B があり、次の作成が失敗しても、A を消さない。
+for (const [name, corrupt] of [
+  ['切り詰め', (bytes: Buffer): Buffer => bytes.subarray(0, bytes.length - 5)],
+  [
+    '同じ長さで 1 バイト書き換え',
+    (bytes: Buffer): Buffer => {
+      const copy = Buffer.from(bytes);
+      copy.writeUInt8(
+        (copy.readUInt8(copy.length - 1) ^ 1) & 0xff,
+        copy.length - 1,
+      );
+      return copy;
+    },
+  ],
+  [
+    '末尾に余分なバイト',
+    (bytes: Buffer): Buffer => Buffer.concat([bytes, Buffer.from('x')]),
+  ],
+] as const) {
+  test(`掃除: 最新の封筒の本体が壊れて（${name}）いても、正常な最後の世代を消さず、壊れた封筒は復元できる世代に数えない`, async (t) => {
+    const r = await rig(t, { keep: 1 });
+    await ready(r);
+    const good = await r.handle.backup.run();
+    assert.ok(good.ok);
+    r.clock.value = T0 + 1000;
+    const newer = await r.handle.backup.run();
+    assert.ok(newer.ok);
+    // 1 世代なので、新しい方を取った時点で古い方は消える。もう一度古い方を作るため、いったん別の置き場所に正常な封筒を戻す。
+    assert.deepEqual(await backupFiles(r), [
+      `buddy-${newer.backup_id}.buddybackup`,
+    ]);
+    // 正常な封筒を 2 つにするため、keep を増やして取り直し、その後 keep を 1 に戻す。
+    await writeFile(
+      join(r.dataDir, BACKUP_CONFIG_FILE),
+      JSON.stringify({
+        schema: 'buddy.backup-config.v1',
+        directory: r.backupDir,
+        keep_generations: 3,
+      }),
+      { mode: 0o600 },
+    );
+    r.clock.value = T0 + 2000;
+    const second = await r.handle.backup.run();
+    assert.ok(second.ok);
+    // newer（A 相当）と second（B 相当、より新しい）の 2 つ。B の本体を壊す。
+    const brokenPath = join(
+      r.backupDir,
+      `buddy-${second.backup_id}.buddybackup`,
+    );
+    await writeFile(brokenPath, corrupt(await readFile(brokenPath)));
+    // 試験の時計（2031 年）に合わせる（実際の更新時刻は今日で、試験の時計より前になってしまう）。
+    await utimes(brokenPath, new Date(T0 + 2000), new Date(T0 + 2000));
+    await writeFile(
+      join(r.dataDir, BACKUP_CONFIG_FILE),
+      JSON.stringify({
+        schema: 'buddy.backup-config.v1',
+        directory: r.backupDir,
+        keep_generations: 1,
+      }),
+      { mode: 0o600 },
+    );
+    // 次の作成が鍵の欠落で失敗する。
+    const file = await readBackupKeyFile(r.dataDir, contract);
+    assert.ok(file.ok);
+    const fileKey = file.value.key_wraps.find(
+      (wrap) => wrap.purpose === 'backup_file',
+    );
+    assert.ok(fileKey !== undefined);
+    r.keys.remove('backup_file', fileKey.key_id);
+    r.clock.value = T0 + 3000;
+    const failed = await r.handle.backup.run();
+    assert.equal(failed.ok, false);
+    const sweep = failed.sweep;
+    assert.ok(sweep?.ok);
+    // 正常な A は消えない。壊れた B は復元できる世代に数えず（manifest_unreadable）、期限内なので消さない。
+    assert.deepEqual(sweep.deleted, []);
+    assert.equal(sweep.restorable_count, 1);
+    assert.deepEqual(
+      sweep.decisions.find((entry) => entry.backup_id === second.backup_id)
+        ?.reasons,
+      ['manifest_unreadable'],
+    );
+    assert.deepEqual(
+      sweep.decisions.find((entry) => entry.backup_id === newer.backup_id)
+        ?.action,
+      'keep',
+    );
+    assert.deepEqual(
+      await backupFiles(r),
+      sorted(
+        [newer.backup_id, second.backup_id].map(
+          (id) => `buddy-${id}.buddybackup`,
+        ),
+      ),
+    );
+  });
+}
+
+// レビュー（PR #175 の P2）の再現: 成功したバックアップの後に忘れても、手動の sweep を挟まず、定期の確認だけで 24 時間を
+// 待たずに取り直し、忘れた内容を持つ古い封筒が消える。
+test('定期の確認: バックアップの成功の後に忘却すると、24 時間を待たずに取り直され、古い世代の封筒が消える', async (t) => {
+  const r = await rig(t);
+  const code = await ready(r);
+  const before = await r.handle.backup.run();
+  assert.ok(before.ok);
+  // 忘却がなければ、24 時間たつまで予定にならない。
+  r.clock.value = T0 + 1000;
+  assert.equal(await r.handle.backup.due(), false);
+  await forgetSource(r);
+  // 掃除（sweep）を一度も呼んでいない。needs_new_backup は立っていないが、忘却の世代が最後の成功より進んでいる。
+  assert.equal((await r.handle.backup.status()).needs_new_backup, false);
+  assert.equal(await r.handle.backup.due(), true);
+  const timers: (() => void)[] = [];
+  const logs: string[] = [];
+  const scheduler = startBackupScheduler({
+    service: r.handle.backup,
+    log: (message) => logs.push(message),
+    now: () => new Date(r.clock.value),
+    setTimer: (run) => timers.push(run),
+    clearTimer: () => undefined,
+  });
+  const next = timers.shift();
+  assert.ok(next !== undefined);
+  r.clock.value = T0 + 2000;
+  next();
+  // 実行の完了を待つ（古い封筒が消えるまで）。
+  const beforeFile = `buddy-${before.backup_id}.buddybackup`;
+  for (
+    let i = 0;
+    i < 200 && (await backupFiles(r)).includes(beforeFile);
+    i += 1
+  )
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  scheduler.stop();
+  const files = await backupFiles(r);
+  assert.equal(files.length, 1);
+  assert.equal(files.includes(beforeFile), false);
+  const opened = await openBackup(join(r.backupDir, files[0] as string), code);
+  assert.equal(opened.manifest['forgetting_generation'], '1');
+  assert.equal(
+    logs.some((line) => line.includes('バックアップを取りました')),
+    true,
+  );
+  // 取り直した後は、24 時間たつまで予定にならない。
+  assert.equal(await r.handle.backup.due(), false);
+});
+
 // --- 定期の実行 ---
 
 test('定期の実行: 設定がなければ動かず、1 日 1 回と忘却の置き換えを待つときに動き、失敗の後は 1 時間待つ', async () => {

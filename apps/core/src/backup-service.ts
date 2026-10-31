@@ -26,6 +26,7 @@ import {
   readBackupFileHeader,
   sha256Hex,
   takeBackupSnapshot,
+  verifyBackupPayload,
   writeBackupFileAtomic,
 } from '@buddy/storage';
 import type {
@@ -236,13 +237,28 @@ export function createBackupService(
         header.manifest !== null
           ? (header.manifest as Record<string, unknown>)
           : null;
-      const valid =
+      const headerValid =
         manifest !== null &&
         contract.valid('BackupManifest', manifest) &&
         backupManifestProblems(
           manifest as unknown as Parameters<typeof backupManifestProblems>[0],
         ).length === 0 &&
         manifest['backup_id'] === file.backup_id;
+      // 古い世代を消す根拠になる封筒は、本体まで確かめる（ファイルの大きさと本体の SHA-256 が封筒と一致）。切り詰められた・
+      // 壊れた最新の封筒を「復元できる世代」に数えて、正常な最後の世代を消さない。確かめられない封筒は manifest_unreadable
+      // と同じく数えず、期限だけを当てる。
+      const payload = headerValid
+        ? (manifest['payload'] as { bytes: number; sha256: string })
+        : null;
+      const valid =
+        header.ok &&
+        payload !== null &&
+        (await verifyBackupPayload(
+          file.path,
+          header.payload_offset,
+          payload.bytes,
+          payload.sha256,
+        ));
       const text = (key: string): string =>
         manifest !== null && typeof manifest[key] === 'string'
           ? (manifest[key] as string)
@@ -479,6 +495,16 @@ export function createBackupService(
       if (!state.ok) return false;
       const last = state.value.last_success;
       if (last === null || state.value.needs_new_backup) return true;
+      // 最後の成功の後に忘れた（今の忘却の世代が、最後の成功の世代より進んだ）なら、24 時間を待たずに取り直す。
+      // 忘れた内容を持つ古い封筒を次の日次の実行まで残さない（needs_new_backup は掃除でしか立たないので、定期の確認が
+      // 今の世代を直接見る）。世代を読めない・形が違うときは、取り直す側（閉じた側）に倒す。
+      const facts = await readFacts();
+      if (
+        facts === null ||
+        !/^(0|[1-9][0-9]{0,15})$/u.test(facts.forgetting_generation) ||
+        BigInt(facts.forgetting_generation) > BigInt(last.forgetting_generation)
+      )
+        return true;
       return (
         options.now().getTime() - Date.parse(last.created_at) >=
         BACKUP_INTERVAL_MS

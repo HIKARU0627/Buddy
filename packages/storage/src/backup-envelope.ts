@@ -7,7 +7,7 @@
 // 復元の段階 2 は、本体の長さと SHA-256 を封筒と照合してから開く。封筒の欄は本体の AES-GCM の追加認証データにも入る
 // ので、封筒だけを書き換えても本体は開けない（backup-crypto.ts）。書き込みは一時ファイル → fsync → rename。
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { open, readdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -129,6 +129,53 @@ export async function readBackupPayload(
     return null;
   } finally {
     await handle.close();
+  }
+}
+
+// 本体の長さと SHA-256 が封筒（payload.bytes・payload.sha256）と一致するか。ファイルの大きさが「本体の位置 + 長さ」
+// とちょうど同じで、本体の SHA-256 が一致するときだけ true（切り詰め・余分な末尾・書き換えは false）。本体は流して
+// 読むのでメモリに全体を載せない。復元に使える世代かの判定（掃除が古い世代を消す根拠）と、復元の段階 2 の最初の検査。
+export async function verifyBackupPayload(
+  path: string,
+  offset: number,
+  bytes: number,
+  sha256: string,
+): Promise<boolean> {
+  if (
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(bytes) ||
+    offset < 0 ||
+    bytes < 0 ||
+    !/^[0-9a-f]{64}$/u.test(sha256)
+  )
+    return false;
+  try {
+    const info = await stat(path);
+    if (!info.isFile() || info.size !== offset + bytes) return false;
+    const hash = createHash('sha256');
+    const handle = await open(path, 'r');
+    try {
+      const chunk = Buffer.alloc(1024 * 1024);
+      let position = offset;
+      let remaining = bytes;
+      while (remaining > 0) {
+        const read = await handle.read(
+          chunk,
+          0,
+          Math.min(chunk.length, remaining),
+          position,
+        );
+        if (read.bytesRead === 0) return false;
+        hash.update(chunk.subarray(0, read.bytesRead));
+        position += read.bytesRead;
+        remaining -= read.bytesRead;
+      }
+    } finally {
+      await handle.close();
+    }
+    return hash.digest('hex') === sha256;
+  } catch {
+    return false;
   }
 }
 

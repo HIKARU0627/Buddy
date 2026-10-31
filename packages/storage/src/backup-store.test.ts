@@ -23,6 +23,7 @@ import {
   sha256Hex,
   takeBackupSnapshot,
   unwrapBackupKey,
+  verifyBackupPayload,
   wrapBackupKey,
   writeBackupFileAtomic,
 } from './index.js';
@@ -294,6 +295,86 @@ test('封筒ファイルの先頭が壊れていれば理由を返し、読み�
       ok: false,
       reason: 'file_unreadable',
     });
+  });
+});
+
+test('本体の検証: 長さと SHA-256 が封筒と一致するときだけ true（切り詰め・余分な末尾・書き換え・形の違う引数は false）', async () => {
+  await withTempDir(async (dir) => {
+    const payload = randomBytes(3 * 1024 * 1024 + 17);
+    const sha = sha256Hex(payload);
+    const bytes = encodeBackupFile({ a: 1 }, payload);
+    const path = join(dir, 'file.buddybackup');
+    await writeFile(path, bytes);
+    const header = await readBackupFileHeader(path);
+    assert.ok(header.ok);
+    const offset = header.payload_offset;
+    assert.equal(
+      await verifyBackupPayload(path, offset, payload.length, sha),
+      true,
+    );
+    // 封筒の値が違う。
+    assert.equal(
+      await verifyBackupPayload(path, offset, payload.length - 1, sha),
+      false,
+    );
+    assert.equal(
+      await verifyBackupPayload(path, offset, payload.length, 'ab'.repeat(32)),
+      false,
+    );
+    assert.equal(
+      await verifyBackupPayload(path, offset + 1, payload.length, sha),
+      false,
+    );
+    assert.equal(
+      await verifyBackupPayload(path, offset, payload.length, 'ABC'),
+      false,
+    );
+    assert.equal(
+      await verifyBackupPayload(path, -1, payload.length, sha),
+      false,
+    );
+    assert.equal(await verifyBackupPayload(path, offset, 1.5, sha), false);
+    assert.equal(
+      await verifyBackupPayload(
+        join(dir, 'absent'),
+        offset,
+        payload.length,
+        sha,
+      ),
+      false,
+    );
+    // ファイルの側が壊れている。
+    await writeFile(path, bytes.subarray(0, bytes.length - 1));
+    assert.equal(
+      await verifyBackupPayload(path, offset, payload.length, sha),
+      false,
+    );
+    await writeFile(path, Buffer.concat([bytes, Buffer.from('x')]));
+    assert.equal(
+      await verifyBackupPayload(path, offset, payload.length, sha),
+      false,
+    );
+    const flipped = Buffer.from(bytes);
+    flipBit(flipped, bytes.length - 100);
+    await writeFile(path, flipped);
+    assert.equal(
+      await verifyBackupPayload(path, offset, payload.length, sha),
+      false,
+    );
+    // 本体が空でも、空の SHA-256 と一致すれば true。
+    const empty = join(dir, 'empty.buddybackup');
+    await writeFile(empty, encodeBackupFile({ a: 1 }, Buffer.alloc(0)));
+    const emptyHeader = await readBackupFileHeader(empty);
+    assert.ok(emptyHeader.ok);
+    assert.equal(
+      await verifyBackupPayload(
+        empty,
+        emptyHeader.payload_offset,
+        0,
+        sha256Hex(Buffer.alloc(0)),
+      ),
+      true,
+    );
   });
 });
 

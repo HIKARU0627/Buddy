@@ -20,10 +20,13 @@ import {
 import type { BackupRetentionPlan, StoredBackupEntry } from '@buddy/domain';
 import type { BackupKeyStore } from '@buddy/platform';
 import {
+  decryptBackupPayload,
   encodeBackupFile,
   encryptBackupPayload,
   listBackupFiles,
+  manifestPayloadKey,
   readBackupFileHeader,
+  readBackupPayload,
   sha256Hex,
   takeBackupSnapshot,
   verifyBackupPayload,
@@ -155,6 +158,49 @@ export function createBackupService(
     return facts.ok ? facts.value : null;
   }
 
+  type EnvelopeState = 'valid' | 'corrupt' | 'unverifiable';
+
+  // 封筒と本体の組を確かめる。corrupt = 壊れていると分かった（本体の長さ・SHA-256 の不一致、鍵があるのに認証に失敗）、
+  // unverifiable = 確かめる鍵が KeyStore にない（壊れているとも正しいとも言えない）。本体を読む間だけメモリに載せる。
+  async function classifyEnvelope(
+    path: string,
+    header: Extract<
+      Awaited<ReturnType<typeof readBackupFileHeader>>,
+      { ok: true }
+    >,
+    manifest: Record<string, unknown> | null,
+  ): Promise<EnvelopeState> {
+    const payload = manifest?.['payload'] as
+      { bytes: number; sha256: string } | undefined;
+    if (manifest === null || payload === undefined) return 'corrupt';
+    if (
+      !(await verifyBackupPayload(
+        path,
+        header.payload_offset,
+        payload.bytes,
+        payload.sha256,
+      ))
+    )
+      return 'corrupt';
+    const keyInfo = manifestPayloadKey(manifest);
+    if (keyInfo === null) return 'corrupt';
+    const key = await backupKeys.read('backup_file', keyInfo.keyId);
+    if (!key.ok) return 'unverifiable';
+    const bytes = await readBackupPayload(
+      path,
+      header.payload_offset,
+      payload.bytes,
+    );
+    if (bytes === null) return 'corrupt';
+    const plain = decryptBackupPayload(
+      { key: key.key.key, keyId: keyInfo.keyId, fields: keyInfo.fields },
+      bytes,
+    );
+    if (plain === null) return 'corrupt';
+    plain.fill(0);
+    return 'valid';
+  }
+
   async function loadConfig() {
     return loadBackupConfig({ path: configPath, contract, platform });
   }
@@ -226,6 +272,7 @@ export function createBackupService(
     }
     const firstSeen: Record<string, string> = {};
     const entries: StoredBackupEntry[] = [];
+    const unverifiable = new Set<string>();
     for (const file of listing.files) {
       const seen = state.first_seen[file.backup_id] ?? nowIso;
       firstSeen[file.backup_id] = seen;
@@ -244,21 +291,16 @@ export function createBackupService(
           manifest as unknown as Parameters<typeof backupManifestProblems>[0],
         ).length === 0 &&
         manifest['backup_id'] === file.backup_id;
-      // 古い世代を消す根拠になる封筒は、本体まで確かめる（ファイルの大きさと本体の SHA-256 が封筒と一致）。切り詰められた・
-      // 壊れた最新の封筒を「復元できる世代」に数えて、正常な最後の世代を消さない。確かめられない封筒は manifest_unreadable
-      // と同じく数えず、期限だけを当てる。
-      const payload = headerValid
-        ? (manifest['payload'] as { bytes: number; sha256: string })
-        : null;
-      const valid =
-        header.ok &&
-        payload !== null &&
-        (await verifyBackupPayload(
-          file.path,
-          header.payload_offset,
-          payload.bytes,
-          payload.sha256,
-        ));
+      // 古い世代を消す根拠になる封筒は、本体まで確かめる: ファイルの大きさと本体の SHA-256 が封筒と一致し、さらに KeyStore の
+      // backup_file の鍵で封筒と本体の組を AES-GCM で認証できること（平文の封筒の欄だけが壊れた封筒は、Schema・長さ・SHA-256 を
+      // 通っても認証に失敗する。PR #175 の P1）。壊れていると分かった封筒は manifest_unreadable と同じく復元できる世代に数えず、
+      // 期限だけを当てる。鍵が KeyStore になく認証できない封筒（検証不能）は、数えず、他の世代を消す根拠にもせず、期限でも消さない。
+      const state_ =
+        header.ok && headerValid
+          ? await classifyEnvelope(file.path, header, manifest)
+          : ('corrupt' as const);
+      if (state_ === 'unverifiable') unverifiable.add(file.backup_id);
+      const valid = state_ === 'valid';
       const text = (key: string): string =>
         manifest !== null && typeof manifest[key] === 'string'
           ? (manifest[key] as string)
@@ -289,9 +331,26 @@ export function createBackupService(
       backups: entries,
     });
     if (!plan.ok) return { ok: false, reasons: [plan.reason] };
+    // 検証不能な封筒は消さない（期限を過ぎていても。鍵が KeyStore にないだけで、復旧キーがあれば開けるかもしれない）。
+    const decisions = plan.decisions.map((decision) =>
+      unverifiable.has(decision.backup_id)
+        ? {
+            backup_id: decision.backup_id,
+            action: 'keep' as const,
+            reasons: [
+              ...decision.reasons.filter((reason) => reason !== 'expired'),
+              'unverifiable',
+            ] as readonly string[],
+          }
+        : {
+            backup_id: decision.backup_id,
+            action: decision.action,
+            reasons: decision.reasons as readonly string[],
+          },
+    );
     const deleted: string[] = [];
     const deleteFailed: string[] = [];
-    for (const [index, decision] of plan.decisions.entries()) {
+    for (const [index, decision] of decisions.entries()) {
       if (decision.action !== 'delete') continue;
       const file = listing.files[index];
       if (file === undefined) continue;
@@ -313,17 +372,19 @@ export function createBackupService(
     return {
       ok: true,
       clock_state: plan.clock_state,
-      decisions: plan.decisions.map((decision) => ({
-        backup_id: decision.backup_id,
-        action: decision.action,
-        reasons: decision.reasons,
-      })),
+      decisions,
       deleted: deleted.sort(),
       delete_failed: deleteFailed.sort(),
       needs_new_backup: plan.needs_new_backup,
       restorable_count: plan.restorable_count,
       forgetting_checked: plan.forgetting_checked,
-      notices: plan.notices.map((notice) => ({ ...notice })).sort(sortKeys),
+      notices: [
+        ...plan.notices.map((notice) => ({ ...notice })),
+        ...[...unverifiable].map((id) => ({
+          backup_id: id,
+          reason: 'unverifiable',
+        })),
+      ].sort(sortKeys),
       removed_temp_files: removedTemps,
     };
   }
@@ -393,7 +454,10 @@ export function createBackupService(
       const plaintext = await readFile(snapshot.path);
       const backupId = randomUUID();
       const createdAt = options.now().toISOString();
-      const fields = {
+      // 封筒の平文の欄（payload を除く）を先に決め、その全体の SHA-256 を本体の AAD に入れて暗号化する。本体の長さと
+      // SHA-256 は、暗号化した後に payload として足す。
+      const envelope = {
+        schema: 'buddy.backup-manifest.v1' as const,
         backup_id: backupId,
         created_at: createdAt,
         store_generation: facts.store_generation,
@@ -401,20 +465,21 @@ export function createBackupService(
         forgetting_generation: facts.forgetting_generation,
         ledger_id: facts.ledger_id,
         ledger_head_hash: facts.ledger_head_hash,
-        excluded_tables: snapshot.excluded_tables,
-      };
-      const payload = encryptBackupPayload(
-        { key: key.key.key, keyId: wrap.key_id, fields },
-        plaintext,
-      );
-      const manifest = {
-        schema: 'buddy.backup-manifest.v1' as const,
-        ...fields,
         included_storage_modes: ['normal', 'extended'] as const,
         excluded_data: [...BACKUP_EXCLUDED_DATA],
         excluded_tables: [...snapshot.excluded_tables],
-        payload: { bytes: payload.length, sha256: sha256Hex(payload) },
         key_wraps: keyFile.value.key_wraps,
+      };
+      const keyInfo = manifestPayloadKey(envelope);
+      if (keyInfo === null)
+        return { ok: false, reasons: ['backup_keys_invalid'] };
+      const payload = encryptBackupPayload(
+        { key: key.key.key, keyId: keyInfo.keyId, fields: keyInfo.fields },
+        plaintext,
+      );
+      const manifest = {
+        ...envelope,
+        payload: { bytes: payload.length, sha256: sha256Hex(payload) },
       };
       // 書く前に、封筒を契約と domain の意味検査に通す（通らない封筒を置き場所へ出さない）。
       const problems = backupManifestProblems(manifest);

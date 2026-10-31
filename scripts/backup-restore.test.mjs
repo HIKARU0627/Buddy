@@ -528,6 +528,7 @@ test('payload key derivation: salt is the backup_id bytes, info and AAD carry th
     ledger_head_hash: 'ab'.repeat(32),
     excluded_tables: ['command_receipts', 'source_items'],
     backup_file_key_id: 'backup-file-v1',
+    envelope_sha256: 'cd'.repeat(32),
   });
   assert.equal(
     Buffer.from(aad).toString('latin1'),
@@ -542,8 +543,23 @@ test('payload key derivation: salt is the backup_id bytes, info and AAD carry th
       'ab'.repeat(32),
       'command_receipts,source_items',
       'backup-file-v1',
+      'cd'.repeat(32),
     ].join('\0'),
   );
+  // 封筒の全体の SHA-256 が小文字の 16 進 64 桁でなければ AAD を作らない。
+  const base = {
+    backup_id: '00112233-4455-4677-8899-aabbccddeeff',
+    created_at: '2031-03-01T00:00:00.000Z',
+    store_generation: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    db_schema_version: 12,
+    forgetting_generation: '3',
+    ledger_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    ledger_head_hash: 'ab'.repeat(32),
+    excluded_tables: [],
+    backup_file_key_id: 'backup-file-v1',
+  };
+  for (const bad of ['', 'CD'.repeat(32), 'cd'.repeat(31), 'zz'.repeat(32)])
+    assert.throws(() => backupPayloadAad({ ...base, envelope_sha256: bad }));
   // backup_id が UUID でなければ導かない。値が ASCII の印字可能な文字でなければ AAD を作らない。
   assert.throws(() => backupPayloadHkdfInput('backup-file-v1', 'not-a-uuid'));
   assert.throws(() =>
@@ -563,6 +579,7 @@ test('payload key derivation: salt is the backup_id bytes, info and AAD carry th
       ledger_head_hash: 'x',
       excluded_tables: [],
       backup_file_key_id: 'x',
+      envelope_sha256: 'cd'.repeat(32),
     }),
   );
 });

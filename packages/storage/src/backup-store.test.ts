@@ -15,6 +15,8 @@ import {
   decryptBackupPayload,
   encodeBackupFile,
   encryptBackupPayload,
+  envelopeSha256,
+  manifestPayloadKey,
   listBackupFiles,
   readBackupFileHeader,
   readBackupPayload,
@@ -149,6 +151,7 @@ const AAD_FIELDS = {
   ledger_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   ledger_head_hash: 'ab'.repeat(32),
   excluded_tables: ['command_receipts', 'source_items'],
+  envelope_sha256: 'ef'.repeat(32),
 };
 
 test('本体は封筒の欄・鍵・backup_id のどれかが違うと開けず、同じ平文でも毎回別の暗号文になる', () => {
@@ -193,6 +196,10 @@ test('本体は封筒の欄・鍵・backup_id のどれかが違うと開けず�
       ...input,
       fields: { ...AAD_FIELDS, excluded_tables: ['command_receipts'] },
     },
+    {
+      ...input,
+      fields: { ...AAD_FIELDS, envelope_sha256: '01'.repeat(32) },
+    },
   ];
   for (const variant of variants)
     assert.equal(decryptBackupPayload(variant, blob), null);
@@ -200,6 +207,114 @@ test('本体は封筒の欄・鍵・backup_id のどれかが違うと開けず�
   flipBit(tampered, 20);
   assert.equal(decryptBackupPayload(input, tampered), null);
   assert.equal(decryptBackupPayload(input, blob.subarray(0, 27)), null);
+});
+
+// 封筒の平文の欄の全体の SHA-256（PR #175 の P1）。payload 以外のどの欄を書き換えても変わり、payload は含めない。
+test('封筒の全体の SHA-256: payload を除くどの欄を変えても変わり、欄の順序に依らず、AAD の欄を封筒から作る', () => {
+  const wrap = (purpose: string, id: string) => ({
+    purpose,
+    key_id: id,
+    recovery_key_id: RECOVERY_KEY_ID,
+    kdf: { algorithm: 'hkdf-sha256', salt: 'AAECAwQFBgcICQoLDA0ODw==' },
+    cipher: 'aes-256-gcm',
+    nonce: 'AAAAAAAAAAAAAAAA',
+    wrapped_material: 'A'.repeat(43) + '=',
+    tag: 'AAAAAAAAAAAAAAAAAAAAAA==',
+  });
+  const manifest = {
+    schema: 'buddy.backup-manifest.v1',
+    backup_id: BACKUP_ID,
+    created_at: '2031-03-01T00:00:00.000Z',
+    store_generation: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    db_schema_version: 12,
+    forgetting_generation: '3',
+    ledger_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    ledger_head_hash: 'ab'.repeat(32),
+    included_storage_modes: ['normal', 'extended'],
+    excluded_data: [
+      'raw_audio',
+      'private_conversation',
+      'oauth_tokens',
+      'api_keys',
+    ],
+    excluded_tables: ['command_receipts', 'source_items'],
+    payload: { bytes: 100, sha256: '11'.repeat(32) },
+    key_wraps: [
+      wrap('backup_file', 'backup-file-v1'),
+      wrap('data_key', 'data-key-v1'),
+      wrap('ledger_hmac_key', 'ledger-hmac-v1'),
+    ],
+  };
+  const base = envelopeSha256(manifest);
+  assert.match(base, /^[0-9a-f]{64}$/u);
+  // 欄の順序・payload の値に依らない。
+  const reordered = Object.fromEntries(Object.entries(manifest).reverse());
+  assert.equal(envelopeSha256(reordered), base);
+  assert.equal(
+    envelopeSha256({
+      ...manifest,
+      payload: { bytes: 1, sha256: '22'.repeat(32) },
+    }),
+    base,
+  );
+  const changed: Record<string, unknown>[] = [
+    { ...manifest, store_generation: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab' },
+    { ...manifest, created_at: '2031-03-01T00:00:00.001Z' },
+    { ...manifest, included_storage_modes: ['extended', 'normal'] },
+    {
+      ...manifest,
+      excluded_data: [
+        'raw_audio',
+        'private_conversation',
+        'api_keys',
+        'oauth_tokens',
+      ],
+    },
+    {
+      ...manifest,
+      key_wraps: [
+        { ...wrap('backup_file', 'backup-file-v1'), nonce: 'AAAAAAAAAAAAAAAB' },
+        ...manifest.key_wraps.slice(1),
+      ],
+    },
+    { ...manifest, schema: 'buddy.backup-manifest.v2' },
+  ];
+  for (const variant of changed) assert.notEqual(envelopeSha256(variant), base);
+  // AAD の欄は封筒から作る。鍵の ID は backup_file の包みの key_id。
+  const key = manifestPayloadKey(manifest);
+  assert.ok(key !== null);
+  assert.equal(key.keyId, 'backup-file-v1');
+  assert.deepEqual(key.fields, {
+    backup_id: BACKUP_ID,
+    created_at: '2031-03-01T00:00:00.000Z',
+    store_generation: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    db_schema_version: 12,
+    forgetting_generation: '3',
+    ledger_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    ledger_head_hash: 'ab'.repeat(32),
+    excluded_tables: ['command_receipts', 'source_items'],
+    envelope_sha256: base,
+  });
+  // 欄が足りない・型が違う・backup_file の包みがない（または 2 つ）封筒は、推測で補わずに null。
+  const broken: unknown[] = [
+    null,
+    [],
+    'x',
+    { ...manifest, backup_id: 1 },
+    { ...manifest, db_schema_version: '12' },
+    { ...manifest, excluded_tables: [1] },
+    { ...manifest, key_wraps: manifest.key_wraps.slice(1) },
+    {
+      ...manifest,
+      key_wraps: [
+        manifest.key_wraps[0],
+        manifest.key_wraps[0],
+        ...manifest.key_wraps.slice(1),
+      ],
+    },
+    { ...manifest, key_wraps: 'x' },
+  ];
+  for (const value of broken) assert.equal(manifestPayloadKey(value), null);
 });
 
 test('封筒ファイル: 先頭の封筒だけ読め、本体の位置と長さを照合でき、同じ ID を上書きしない', async () => {

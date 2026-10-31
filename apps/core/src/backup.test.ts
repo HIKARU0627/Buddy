@@ -24,6 +24,7 @@ import { createMockBackupKeyStore, createMockKeyStore } from '@buddy/platform';
 import type { MockBackupKeyStore } from '@buddy/platform';
 import {
   decryptBackupPayload,
+  manifestPayloadKey,
   openWriteConnection,
   readBackupFileHeader,
   readBackupPayload,
@@ -45,7 +46,7 @@ import {
   BACKUP_WORK_DIR,
   startBackupScheduler,
 } from './backup-service.js';
-import type { BackupService } from './backup-service.js';
+import type { BackupService, SweepDecisionSummary } from './backup-service.js';
 import {
   inspectBackupSetup,
   recordBackupSetup,
@@ -190,21 +191,11 @@ async function openBackup(path: string, code: string): Promise<Opened> {
   );
   assert.ok(payload !== null);
   assert.equal(sha256Hex(payload), manifest.payload.sha256);
+  const keyInfo = manifestPayloadKey(manifest);
+  assert.ok(keyInfo !== null);
+  assert.equal(keyInfo.keyId, wrap.key_id);
   const database = decryptBackupPayload(
-    {
-      key,
-      keyId: wrap.key_id,
-      fields: {
-        backup_id: manifest['backup_id'] as string,
-        created_at: manifest['created_at'] as string,
-        store_generation: manifest['store_generation'] as string,
-        db_schema_version: manifest['db_schema_version'] as number,
-        forgetting_generation: manifest['forgetting_generation'] as string,
-        ledger_id: manifest['ledger_id'] as string,
-        ledger_head_hash: manifest['ledger_head_hash'] as string,
-        excluded_tables: manifest['excluded_tables'] as string[],
-      },
-    },
+    { key, keyId: keyInfo.keyId, fields: keyInfo.fields },
     payload,
   );
   assert.ok(database !== null);
@@ -637,19 +628,13 @@ test('掃除: 取るのに失敗が続いても期限は延びず、成功した
   })();
   const secondRun = await second;
   assert.ok(first.ok && secondRun.ok);
-  // 10 日後。バックアップの鍵が KeyStore からなくなり、取れない。
-  const file = await readBackupKeyFile(r.dataDir, contract);
-  assert.ok(file.ok);
-  const fileKey = file.value.key_wraps.find(
-    (wrap) => wrap.purpose === 'backup_file',
-  );
-  assert.ok(fileKey !== undefined);
-  r.keys.remove('backup_file', fileKey.key_id);
+  // 10 日後。作成が失敗し続ける（データ鍵が DB の暗号文を覆わない）。鍵は KeyStore にあるので封筒は認証できる。
+  failNextBackups(r);
   r.clock.value = T0 + 10 * DAY;
   const failed = await r.handle.backup.run();
   assert.equal(failed.ok, false);
   assert.deepEqual(failed.ok ? [] : failed.reasons, [
-    'backup_key_backup_key_missing',
+    'data_key_not_covering_db',
   ]);
   const sweep = failed.sweep;
   assert.ok(sweep?.ok);
@@ -665,6 +650,23 @@ test('掃除: 取るのに失敗が続いても期限は延びず、成功した
   assert.equal((await r.handle.backup.status()).needs_new_backup, true);
   assert.equal(await r.handle.backup.due(), true);
 });
+
+// 次の作成だけを失敗させる（DB に、包みのデータ鍵と別の鍵 ID の暗号文を足す。data_key_not_covering_db）。バックアップの鍵を
+// KeyStore から消すと、掃除が封筒を認証できなくなる（検証不能）ので、そうはしない。
+function failNextBackups(r: Rig): void {
+  const sql = openWriteConnection(join(r.dataDir, 'buddy.sqlite'), {
+    platform: 'macos',
+  });
+  try {
+    sql
+      .prepare(
+        "INSERT OR IGNORE INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-other-key', 'turn_text', 'turns', 'o', 0, 1, 'data-key-v2', randomblob(12), randomblob(8), randomblob(16), 1000, NULL)",
+      )
+      .run();
+  } finally {
+    sql.close();
+  }
+}
 
 async function forgetSource(r: Rig): Promise<void> {
   const read = await r.handle.store.memory({
@@ -892,6 +894,21 @@ test('制御チャネル: 状態・実行は置き場所のパスを返さず、
   );
 });
 
+// 封筒（JSON）の中の 1 文字を、同じ長さの別の有効な文字に変える（封筒の長さ・形・Schema は変わらない）。
+function flipInManifest(bytes: Buffer, pattern: RegExp): Buffer {
+  const text = bytes.toString('latin1');
+  const match = pattern.exec(text);
+  assert.ok(match !== null && match[1] !== undefined);
+  const at = match.index + match[0].length - 2;
+  const current = text.charAt(at);
+  assert.equal(current, match[1]);
+  const replacement = current === 'a' ? 'b' : 'a';
+  return Buffer.from(
+    text.slice(0, at) + replacement + text.slice(at + 1),
+    'latin1',
+  );
+}
+
 // レビュー（PR #175 の P1）の再現: 古い正常な A と新しい本体破損の B があり、次の作成が失敗しても、A を消さない。
 for (const [name, corrupt] of [
   ['切り詰め', (bytes: Buffer): Buffer => bytes.subarray(0, bytes.length - 5)],
@@ -909,6 +926,30 @@ for (const [name, corrupt] of [
   [
     '末尾に余分なバイト',
     (bytes: Buffer): Buffer => Buffer.concat([bytes, Buffer.from('x')]),
+  ],
+  // 平文の封筒の欄だけが壊れる（Schema・意味検査・本体の長さ・SHA-256 はすべて通り、本体の AES-GCM の認証だけが落ちる。
+  // PR #175 の 2 回目の P1）。
+  [
+    '封筒の store_generation の 16 進 1 文字',
+    (bytes: Buffer): Buffer =>
+      flipInManifest(bytes, /"store_generation":"[0-9a-f-]{35}([0-9a-f])"/u),
+  ],
+  [
+    '封筒の鍵の包みの nonce の 1 文字',
+    (bytes: Buffer): Buffer =>
+      flipInManifest(bytes, /"nonce":"[A-Za-z0-9+/]{15}([A-Za-z0-9+/])"/u),
+  ],
+  [
+    '封筒の included_storage_modes の順序',
+    (bytes: Buffer): Buffer => {
+      const text = bytes.toString('latin1');
+      const from = '"included_storage_modes":["normal","extended"]';
+      assert.equal(text.includes(from), true);
+      return Buffer.from(
+        text.replace(from, '"included_storage_modes":["extended","normal"]'),
+        'latin1',
+      );
+    },
   ],
 ] as const) {
   test(`掃除: 最新の封筒の本体が壊れて（${name}）いても、正常な最後の世代を消さず、壊れた封筒は復元できる世代に数えない`, async (t) => {
@@ -953,14 +994,8 @@ for (const [name, corrupt] of [
       }),
       { mode: 0o600 },
     );
-    // 次の作成が鍵の欠落で失敗する。
-    const file = await readBackupKeyFile(r.dataDir, contract);
-    assert.ok(file.ok);
-    const fileKey = file.value.key_wraps.find(
-      (wrap) => wrap.purpose === 'backup_file',
-    );
-    assert.ok(fileKey !== undefined);
-    r.keys.remove('backup_file', fileKey.key_id);
+    // 次の作成が失敗する（鍵は KeyStore にあるので、掃除は封筒を認証できる）。
+    failNextBackups(r);
     r.clock.value = T0 + 3000;
     const failed = await r.handle.backup.run();
     assert.equal(failed.ok, false);
@@ -989,6 +1024,62 @@ for (const [name, corrupt] of [
     );
   });
 }
+
+// 鍵が KeyStore になく認証できない封筒は、壊れているとも言えないので、数えず、他の世代を消す根拠にもせず、期限でも消さない。
+test('掃除: バックアップの鍵が KeyStore にないと封筒を認証できず（検証不能）、期限を過ぎても消さず、復元できる世代には数えない', async (t) => {
+  const r = await rig(t, { keep: 3 });
+  await ready(r);
+  const first = await r.handle.backup.run();
+  r.clock.value = T0 + DAY;
+  const second = await r.handle.backup.run();
+  assert.ok(first.ok && second.ok);
+  const file = await readBackupKeyFile(r.dataDir, contract);
+  assert.ok(file.ok);
+  const fileKey = file.value.key_wraps.find(
+    (wrap) => wrap.purpose === 'backup_file',
+  );
+  assert.ok(fileKey !== undefined);
+  const original = await r.keys.read('backup_file', fileKey.key_id);
+  assert.ok(original.ok);
+  r.keys.remove('backup_file', fileKey.key_id);
+  // 30 日後（どちらも期限を過ぎている）。
+  r.clock.value = T0 + 30 * DAY;
+  const sweep = await r.handle.backup.sweep();
+  assert.ok(sweep.ok);
+  assert.deepEqual(sweep.deleted, []);
+  assert.equal(sweep.restorable_count, 0);
+  for (const id of [first.backup_id, second.backup_id]) {
+    const decision: SweepDecisionSummary | undefined = sweep.decisions.find(
+      (entry) => entry.backup_id === id,
+    );
+    assert.equal(decision?.action, 'keep');
+    assert.equal(decision?.reasons.includes('unverifiable'), true);
+    assert.equal(decision?.reasons.includes('expired'), false);
+  }
+  assert.deepEqual(
+    sweep.notices.map((notice) => notice.reason),
+    ['unverifiable', 'unverifiable'],
+  );
+  assert.deepEqual(
+    await backupFiles(r),
+    sorted(
+      [first.backup_id, second.backup_id].map(
+        (id) => `buddy-${id}.buddybackup`,
+      ),
+    ),
+  );
+  // 鍵が戻れば認証でき、通常どおり期限を当てる（古い方が消え、最新の 1 つが残る）。
+  assert.ok(
+    (await r.keys.put('backup_file', fileKey.key_id, original.key.key)).ok,
+  );
+  const restored = await r.handle.backup.sweep();
+  assert.ok(restored.ok);
+  assert.deepEqual(restored.deleted, [first.backup_id]);
+  assert.equal(restored.restorable_count, 1);
+  assert.deepEqual(await backupFiles(r), [
+    `buddy-${second.backup_id}.buddybackup`,
+  ]);
+});
 
 // レビュー（PR #175 の P2）の再現: 成功したバックアップの後に忘れても、手動の sweep を挟まず、定期の確認だけで 24 時間を
 // 待たずに取り直し、忘れた内容を持つ古い封筒が消える。

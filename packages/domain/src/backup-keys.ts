@@ -155,12 +155,23 @@ export interface BackupPayloadAadFields {
   readonly excluded_tables: readonly string[];
   // backup_file の鍵の ID（封筒の key_wraps の backup_file の key_id）。
   readonly backup_file_key_id: string;
+  // 封筒の平文の欄のうち payload（本体の長さと SHA-256。別に照合する）を除いた全体の SHA-256（小文字の 16 進 64 桁）。
+  // storage が正規の JSON から求める。key_wraps・included_storage_modes・excluded_data・schema など上の欄にない欄も、
+  // 書き換えると本体の認証に失敗する（PR #175 の P1）。
+  readonly envelope_sha256: string;
 }
 
+const HEX64 = /^[0-9a-f]{64}$/u;
+
 // 本体の AES-256-GCM の追加認証データ: ラベル ‖ 0x00 ‖ 封筒の平文の欄（backup_id・created_at・store_generation・
-// db_schema_version・forgetting_generation・ledger_id・ledger_head_hash・除外した表（コンマ区切り）・鍵の ID）を 0x00 で区切る。
+// db_schema_version・forgetting_generation・ledger_id・ledger_head_hash・除外した表（コンマ区切り）・鍵の ID・封筒の平文の欄の
+// 全体の SHA-256）を 0x00 で区切る。
 // 封筒（平文）を別の本体と組み替える・書き換えると認証タグが合わず開けない（ADR 0047 の P3-7 の引き継ぎ）。
 export function backupPayloadAad(fields: BackupPayloadAadFields): Uint8Array {
+  if (!HEX64.test(fields.envelope_sha256))
+    throw new TypeError(
+      'envelope_sha256 は小文字の 16 進 64 桁にしてください。',
+    );
   return joinWithZero([
     PAYLOAD_LABEL,
     fields.backup_id,
@@ -172,6 +183,7 @@ export function backupPayloadAad(fields: BackupPayloadAadFields): Uint8Array {
     fields.ledger_head_hash,
     fields.excluded_tables.join(','),
     fields.backup_file_key_id,
+    fields.envelope_sha256,
   ]);
 }
 

@@ -5,6 +5,7 @@
 //   本体の並びは nonce（12 バイト）‖ 暗号文 ‖ 認証タグ（16 バイト）。nonce は毎回乱数。
 // 失敗は理由だけを返し、鍵・平文・nonce の値を結果・例外に入れない。平文へのフォールバックはない。
 
+import canonicalize from 'canonicalize';
 import {
   createHash,
   hkdfSync,
@@ -16,6 +17,7 @@ import {
   backupPayloadAad,
   backupPayloadHkdfInput,
   keyWrapAad,
+  keyWrapFor,
   keyWrapHkdfInput,
   recoveryCheckHkdfInput,
 } from '@buddy/domain';
@@ -216,6 +218,85 @@ export function decryptBackupPayload(
     tag,
     payloadAad(input),
   );
+}
+
+// 封筒（BackupManifest）の平文の欄のうち payload（本体の長さと SHA-256。別に照合する）を除いた全体の SHA-256。正規の JSON
+// （RFC 8785）から求めるので、欄の順序や空白に依らない。どの欄を書き換えても値が変わり、本体の AES-GCM の追加認証データ
+// （backupPayloadAad の envelope_sha256）に入っているので、本体の認証に失敗する（PR #175 の P1）。
+export function envelopeSha256(manifest: Record<string, unknown>): string {
+  const rest = { ...manifest };
+  delete rest['payload'];
+  const canonical = canonicalize(rest);
+  if (canonical === undefined) throw new BackupCryptoError('manifest_not_json');
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+export interface ManifestPayloadKey {
+  // backup_file の鍵の ID（封筒の key_wraps の backup_file の key_id）。
+  readonly keyId: string;
+  readonly fields: BackupPayloadKeyInput['fields'];
+}
+
+// 封筒から本体の鍵の ID と追加認証データの欄を取り出す。欄が足りない・型が違う・backup_file の包みがちょうど 1 つでない
+// ときは null（推測で補わない）。封筒を書くとき（作成）も、開くとき（掃除の認証・復元）も、この関数で同じ欄にする。
+export function manifestPayloadKey(
+  manifest: unknown,
+): ManifestPayloadKey | null {
+  if (
+    manifest === null ||
+    typeof manifest !== 'object' ||
+    Array.isArray(manifest)
+  )
+    return null;
+  const m = manifest as Record<string, unknown>;
+  const text = (key: string): string | null =>
+    typeof m[key] === 'string' ? (m[key] as string) : null;
+  const backupId = text('backup_id');
+  const createdAt = text('created_at');
+  const storeGeneration = text('store_generation');
+  const forgettingGeneration = text('forgetting_generation');
+  const ledgerId = text('ledger_id');
+  const ledgerHeadHash = text('ledger_head_hash');
+  const version = m['db_schema_version'];
+  const tables = m['excluded_tables'];
+  const wraps = m['key_wraps'];
+  if (
+    backupId === null ||
+    createdAt === null ||
+    storeGeneration === null ||
+    forgettingGeneration === null ||
+    ledgerId === null ||
+    ledgerHeadHash === null ||
+    typeof version !== 'number' ||
+    !Number.isSafeInteger(version) ||
+    !Array.isArray(tables) ||
+    !tables.every((table) => typeof table === 'string') ||
+    !Array.isArray(wraps)
+  )
+    return null;
+  const wrap = keyWrapFor(
+    wraps as Parameters<typeof keyWrapFor>[0],
+    'backup_file',
+  );
+  if (wrap === null) return null;
+  try {
+    return {
+      keyId: wrap.key_id,
+      fields: {
+        backup_id: backupId,
+        created_at: createdAt,
+        store_generation: storeGeneration,
+        db_schema_version: version,
+        forgetting_generation: forgettingGeneration,
+        ledger_id: ledgerId,
+        ledger_head_hash: ledgerHeadHash,
+        excluded_tables: tables as string[],
+        envelope_sha256: envelopeSha256(m),
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function sha256Hex(bytes: Uint8Array): string {

@@ -11,7 +11,7 @@ export const schemaUrl = new URL(
   root,
 );
 
-// B00の検証用。生のJSONを検査してから値にする。製品のHTTP接続は未実装。
+// 契約の検査・試験用。生のJSONを検査してから値にする。Core は同じ考え方の apps/core/src/strict-json.ts を使う。
 export function parseStrictJson(text) {
   if (typeof text !== 'string' || text.length > 1_000_000)
     throw new Error('Invalid JSON size');

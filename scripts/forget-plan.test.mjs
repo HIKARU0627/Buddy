@@ -104,6 +104,7 @@ function summarize(plan) {
   return {
     targets: plan.targets.map(nodeText),
     deletions: plan.deletions.map(nodeText),
+    user_directives: [...plan.user_directives],
     purge_operation_contents: [...plan.operation_contents.purge],
     retained_operations: plan.operation_contents.retained.map((item) => [
       item.operation_id,
@@ -274,6 +275,7 @@ test('the closure leaves no live derivative of a forgotten item', () => {
       'notice',
       'operation_contents',
       'targets',
+      'user_directives',
     ]);
     assert.deepEqual(Object.keys(result.plan.operation_contents).sort(), [
       'purge',

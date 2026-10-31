@@ -1,0 +1,65 @@
+# 1 つの OS の全検査。ci.yml が OS ごとに呼び出し、試験を shard に分けて並列に実行する。
+# `pnpm run check` の検査はすべて、この OS のどれかの shard で行う（shard 1 が静的検査、全 shard がビルドと試験の一部）。
+name: Verify OS
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  shard:
+    name: Shard ${{ matrix.shard }}/${{ strategy.job-total }} (${{ inputs.os }})
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check environment
+        run: pnpm run doctor
+      # ここから shard 1 だけ: OS ごとに 1 回行う静的検査（format・契約・lint）。
+      - name: Check formatting
+        if: matrix.shard == 1
+        run: pnpm run format:check
+      - name: Check contracts
+        if: matrix.shard == 1
+        run: pnpm run contracts:check
+      - name: Lint
+        if: matrix.shard == 1
+        run: pnpm run lint
+      - name: Build
+        run: pnpm run build
+      - name: Typecheck
+        if: matrix.shard == 1
+        run: pnpm run typecheck
+      - name: Check public content
+        if: matrix.shard == 1
+        run: pnpm run security:check
+      - name: Verify local secret-scanning tool
+        if: matrix.shard == 1
+        run: pnpm run security:setup
+      - name: Check staged snapshot
+        if: matrix.shard == 1
+        run: pnpm run security:staged
+      - name: Test (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+        run: node scripts/run-tests.mjs --shard ${{ matrix.shard }}/${{ strategy.job-total }}

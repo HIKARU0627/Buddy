@@ -240,7 +240,8 @@
         "packages/contracts/fixtures/forget-plan-cases.json#x15-forget-memory-closure",
         "packages/contracts/fixtures/forget-plan-cases.json#x15-forget-turn-removes-memories-made-from-it",
         "packages/contracts/fixtures/forget-plan-cases.json#x15-in-flight-operations-are-never-touched",
-        "tests/fixtures/backup-restore-cases.json#x15-b0605-retention-forgetting-superseded"
+        "tests/fixtures/backup-restore-cases.json#x15-b0605-retention-forgetting-superseded",
+        "tests/fixtures/storage-cases.json#0012-forget-send-blocked-mark-and-ledger-lineage"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -300,7 +301,8 @@
         "tests/fixtures/backup-restore-cases.json#x16-b0605-quarantine-all-states",
         "tests/fixtures/backup-restore-cases.json#x16-b0605-sequence-revise-then-late-marker-then-owner",
         "tests/fixtures/backup-restore-cases.json#x16-b0605-result-ledger-lost-settings-only",
-        "packages/contracts/fixtures/storage-contract-cases.json#x16-restored-operation-local-command-approval-remains"
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-restored-operation-local-command-approval-remains",
+        "tests/fixtures/storage-cases.json#forget-ledger-is-contiguous-and-append-only"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

@@ -545,20 +545,31 @@ export class VoiceController {
   revokeConsent(): void {
     this.#options.consent.revoke();
     // 同意の確認・接続を待っている「続ける」も捨てる。
-    if (this.#starting) {
-      this.#options.cancelConsent?.();
-      this.#flow += 1;
-      this.#starting = false;
-      this.#lease.stop();
-    }
+    this.#abandonStart();
     if (this.#live !== null || this.#external)
       this.#closeSession('consent_revoked');
     this.#emit();
   }
 
+  // 「続ける」の途中（同意・リース・中枢の応答を待っている）の手順を捨てる。世代を進めるので、遅れて届く中枢の応答では
+  // 音声を始めない（届いた接続は手順の側で閉じる）。待っていなければ何もしない。
+  #abandonStart(): boolean {
+    if (!this.#starting) return false;
+    this.#options.cancelConsent?.();
+    this.#flow += 1;
+    this.#starting = false;
+    this.#lease.stop();
+    return true;
+  }
+
   // 会話を閉じる（無音・会話の終わり・返し方の変更など。理由は close_voice_session の理由）。
+  // 「続ける」で接続を待っている途中なら、その手順も捨てる（開いた接続がまだないので、閉じる対象がなくても無視しない）。
   closeConversation(reason: AudioReason): void {
-    if (this.#live === null && !this.#external) return;
+    const abandoned = this.#abandonStart();
+    if (this.#live === null && !this.#external) {
+      if (abandoned) this.#emit();
+      return;
+    }
     this.#closeSession(reason);
     this.#emit();
   }
@@ -580,12 +591,7 @@ export class VoiceController {
     }
     if (change.close_live !== null) {
       // 「続ける」の途中（同意・リース・接続を待っている）は、待っている手順を捨てる。
-      if (this.#starting) {
-        this.#options.cancelConsent?.();
-        this.#flow += 1;
-        this.#starting = false;
-        this.#lease.stop();
-      }
+      this.#abandonStart();
       if (this.#live !== null || this.#external)
         this.#closeSession(change.close_live.reason);
     }

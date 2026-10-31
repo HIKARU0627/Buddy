@@ -146,6 +146,32 @@ test('X47: switching to text while "続ける" is still waiting for the consent 
   assert.deepEqual(h.sentChannels(), []);
 });
 
+test('P2: a text "end the conversation" / "do not record" while "続ける" waits for the core answer drops the start, so the late answer never starts audio', async () => {
+  for (const action of [
+    'end_conversation',
+    'start_private_conversation',
+  ] as const) {
+    const h = granted({ openMs: 3000 });
+    await ready(h);
+    const result = h.voice.continueConversation();
+    await h.clock.advance(100);
+    // 中枢の応答を待っている（まだ接続も音声もない）。
+    assert.equal(h.opens.length, 1, action);
+    assert.equal(h.voice.externalSend, false, action);
+    h.voice.applyControl(action);
+    // 待っている手順を捨てた（同意の確認はない。リースも止める）。
+    await h.clock.advance(4000);
+    assert.notEqual(await result, 'ok', action);
+    // 遅れて届いた応答で音声を始めない。届いた接続は中枢へ閉じる要求を出す。
+    assert.equal(h.sentChannels().includes('voice.start'), false, action);
+    assert.equal(h.voice.externalSend, false, action);
+    assert.equal(h.closed.length, 1, action);
+    const view = shown(h.voice.view());
+    assert.equal(view.voice_state, 'waiting_wake_word', action);
+    assert.equal(view.can_continue, true, action);
+  }
+});
+
 test('text to voice only restores the setting: no live is opened or resumed, and the next start is a new live with newer epochs', async () => {
   const h = granted({ replyMode: 'text' });
   await ready(h);

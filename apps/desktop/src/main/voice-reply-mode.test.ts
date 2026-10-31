@@ -42,7 +42,7 @@ test('no record means voice, an unreadable or malformed record means text, a sav
       save: () => undefined,
       log: (code) => logs.push(code),
     });
-  assert.equal(store(() => null).mode, 'voice');
+  assert.equal(store(() => undefined).mode, 'voice');
   assert.deepEqual(logs, []);
   assert.equal(store(() => ({ reply_mode: 'text' })).mode, 'text');
   assert.equal(store(() => ({ reply_mode: 'voice' })).mode, 'voice');
@@ -54,8 +54,11 @@ test('no record means voice, an unreadable or malformed record means text, a sav
   );
   assert.equal(store(() => ({ reply_mode: 'both' })).mode, 'text');
   assert.equal(store(() => 'voice').mode, 'text');
+  // JSON の null は「記録がない」ではなく「記録があって形が違う」（外へ音声を送らない側）。
+  assert.equal(store(() => null).mode, 'text');
   assert.deepEqual(logs, [
     'voice_reply_mode_unreadable',
+    'voice_reply_mode_invalid',
     'voice_reply_mode_invalid',
     'voice_reply_mode_invalid',
   ]);
@@ -66,7 +69,7 @@ test('a chosen mode is kept even when saving fails, and the failure is logged', 
   const logs: string[] = [];
   let fail = false;
   const store = new VoiceReplyModeStore({
-    load: () => null,
+    load: () => undefined,
     save: (mode) => {
       if (fail) throw new Error('disk full');
       saved.push(mode);
@@ -88,7 +91,7 @@ test('the file round trip: missing is null, a saved mode is read back, and a dam
   const dir = mkdtempSync(join(tmpdir(), 'buddy-reply-mode-'));
   try {
     const path = join(dir, VOICE_REPLY_MODE_FILE);
-    assert.equal(loadVoiceReplyModeFile(path), null);
+    assert.equal(loadVoiceReplyModeFile(path), undefined);
     saveVoiceReplyModeFile(path, 'text');
     assert.equal(readFileSync(path, 'utf8'), '{"reply_mode":"text"}\n');
     assert.deepEqual(loadVoiceReplyModeFile(path), { reply_mode: 'text' });
@@ -99,6 +102,16 @@ test('the file round trip: missing is null, a saved mode is read back, and a dam
     });
     assert.equal(reopened.mode, 'voice');
     reopened.set('text');
+    assert.equal(
+      new VoiceReplyModeStore({
+        load: () => loadVoiceReplyModeFile(path),
+        save: () => undefined,
+      }).mode,
+      'text',
+    );
+    // ファイルがあって中身が JSON の null: 記録なしと区別して文字（声へ倒さない）。
+    writeFileSync(path, 'null\n', 'utf8');
+    assert.equal(loadVoiceReplyModeFile(path), null);
     assert.equal(
       new VoiceReplyModeStore({
         load: () => loadVoiceReplyModeFile(path),

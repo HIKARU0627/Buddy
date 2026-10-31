@@ -321,7 +321,7 @@ export function voiceHarness(options: HarnessOptions = {}) {
     replyMode: new VoiceReplyModeStore({
       load: () =>
         options.replyMode === undefined
-          ? null
+          ? undefined
           : { reply_mode: options.replyMode },
       save: (mode) => {
         replySaved.push(mode);

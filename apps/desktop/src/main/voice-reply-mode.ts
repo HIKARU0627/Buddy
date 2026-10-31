@@ -33,7 +33,8 @@ export function replyModeRecordFrom(raw: unknown): ReplyModeValue | null {
 }
 
 export interface VoiceReplyModeStoreOptions {
-  // 保存した記録を読む（なければ null。読めなければ例外）。
+  // 保存した記録を読む（記録がなければ undefined。読めなければ例外）。
+  // JSON の null は「記録があって形が違う」扱い（文字）で、記録なし（声）とは区別する。
   readonly load: () => unknown;
   readonly save: (mode: ReplyModeValue) => void;
   readonly log?: (code: string) => void;
@@ -45,7 +46,7 @@ export class VoiceReplyModeStore {
 
   constructor(options: VoiceReplyModeStoreOptions) {
     this.#options = options;
-    let raw: unknown = null;
+    let raw: unknown = undefined;
     let unreadable = false;
     try {
       raw = options.load();
@@ -54,7 +55,7 @@ export class VoiceReplyModeStore {
       options.log?.('voice_reply_mode_unreadable');
     }
     if (unreadable) this.#mode = 'text';
-    else if (raw === null) this.#mode = 'voice';
+    else if (raw === undefined) this.#mode = 'voice';
     else {
       const parsed = replyModeRecordFrom(raw);
       if (parsed === null) options.log?.('voice_reply_mode_invalid');
@@ -91,7 +92,7 @@ export function loadVoiceReplyModeFile(path: string): unknown {
   try {
     text = readFileSync(path, 'utf8');
   } catch (error) {
-    if ((error as { code?: unknown }).code === 'ENOENT') return null;
+    if ((error as { code?: unknown }).code === 'ENOENT') return undefined;
     throw error;
   }
   return JSON.parse(text) as unknown;

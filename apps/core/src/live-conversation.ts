@@ -1144,13 +1144,15 @@ export class LiveConversation implements LiveConversationPort {
     );
     if (resolution === null) return;
     context.controlled.add(ordinal);
-    // この発話の委譲は依頼にしない。
+    // この発話の委譲は依頼にしない。解釈中のものは、解釈が遅れて戻っても保存・返答しないよう失効させてから片づける。
     for (const entry of [...context.pending.values()])
       if (
         entry.target_ordinal === ordinal &&
         (entry.phase === 'waiting_input' || entry.phase === 'interpreting')
-      )
+      ) {
+        this.#revoke(entry, 'cancelled');
         this.#finish(context, entry);
+      }
     if (resolution.action === 'stop_playback') context.output_gen += 1;
     // 会話の操作は、保留中の変更への訂正ではない（別の発話）。保留を解いて、元の依頼を再検査して続ける。
     // 接続を閉じる操作（終了・記録しない・文字へ切り替え）では、閉じた時点で保留を捨てる（closed）。

@@ -2097,6 +2097,59 @@ test(
 );
 
 test(
+  'P2: a conversation operation that takes over a request already being interpreted revokes it, so the late interpretation saves and answers nothing',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        // 断片の連番がない（欠落を確かめられない）発話への委譲は、待っても改善しないので、安定待ちの 300 ms より前に解釈へ回る。
+        await speak(c, { text: 'ちょっと待って', indexes: [null] });
+        await delegate(c, 'd1', 800);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        // 解釈が保留されたまま、300 ms 変化がない発話が会話の操作として照合される。
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the silence extension',
+          () => controlEvents(c.rig, 'silence_extension').length === 1,
+        );
+        assert.equal(c.conversation.pendingCount, 0);
+        // 遅れて解釈が返る（保存すれば用事になる応答）。
+        first.release();
+        await c.rig.wait();
+        await c.rig.clock.advance(600);
+        await c.rig.wait();
+        assert.equal(controlEvents(c.rig, 'silence_extension').length, 1);
+        // 保存の準備にも入らない（保存の結果が非同期で遅れても見逃さないよう、呼ばれた回数で確かめる）。
+        assert.equal(c.hooks.entered, 0);
+        assert.deepEqual(c.commits, []);
+        assert.deepEqual(operations(c.rig), []);
+        assert.deepEqual(workflowStates(c.rig), []);
+        assert.deepEqual(turnsOf(c.rig), []);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.shown, []);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set('ちょっと待って', first.promise);
+          script.replies.set(
+            'ちょっと待って',
+            intentReply('create_task', { title: '牛乳を買う' }),
+          );
+        },
+      },
+    );
+  },
+);
+
+test(
   'QA35: a read is never held, so an unrelated request that starts while it is in flight is not asked back about',
   TIMEOUT,
   async () => {

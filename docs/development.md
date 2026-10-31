@@ -27,8 +27,15 @@
 
 ## 試験と CI
 
-GitHub Actions は Ubuntu / Windows / macOS で同じ `pnpm install --frozen-lockfile` と `pnpm run check` を実行する。
-権限は contents: read、外部 API キーや実データは不要。Actions は取得時点の commit SHA で固定している。
+GitHub Actions は Ubuntu / Windows / macOS のそれぞれで `pnpm run check` と同じ検査を行う。所要時間を短くするため、OS ごとに試験を 4 つの shard（job）へ分けて並列に実行する（`.github/workflows/verify-os.yml`）。
+
+- shard 1: doctor・format:check・contracts:check・lint・build・typecheck・security:check・security:setup・security:staged と、割り当てられた試験。shard 2〜4: doctor・build と、割り当てられた試験。
+- 試験ファイルの割り当ては `node scripts/run-tests.mjs --shard <番号>/<総数>`。`scripts/test-shard-weights.json` の重みから決まる（重みは負荷の目安にすぎず、ずれても漏れや重複は起きない）。`--list` は実行せず対象を表示する。重い B04・B07 の統合試験は別々の shard に置く。引数なしの `pnpm test` は全ファイルを実行する。
+- 各ファイルがちょうど 1 回実行されること、`Verify (<os>)` が成立することは `scripts/test-shards.test.mjs` が検査する。試験を追加・削除しても割り当ては自動で更新される。
+- main の ruleset が要求する `Verify (<os>)` は、その OS の全 shard の合否を表す集約 job（`ci.yml`）。上流の結果が成功以外（失敗・取り消し・スキップ）なら失敗する。reusable workflow の構文エラーなどで集約 job 自体が作られない場合は、必須チェックが成立しないためマージできない。
+- `scripts/test-shards.test.mjs` が検査するのは workflow の構造と条件式の文字列まで。GitHub 上での部分的な matrix の失敗・取り消しは再現しないので、集約の仕組みを変えるときは失敗する run を実際に起こして証拠を残す。
+- 1 PR あたり macOS の job が 4 つ（shard）になる。標準の runner では macOS の同時実行は 5 job までなので、複数の PR が同時に動くと待ちが出る。待ちが目立つ場合は macOS だけ shard を減らすことを検討する。
+- 権限は contents: read、外部 API キーや実データは不要。Actions は取得時点の commit SHA で固定している。
 
 - `scripts/*.test.mjs`: lint 設定が禁止した直接 import を実際に拒否するかを検証。
 - 製品の TypeScript 試験: 対象 workspace の `src/**/*.test.ts` に追加し、ビルド後の `dist/**/*.test.js` を実行。

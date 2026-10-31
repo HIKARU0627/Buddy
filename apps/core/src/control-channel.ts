@@ -107,6 +107,8 @@ function serveConnection(
     // 1 接続 1 要求。改行より後ろのデータは読まずに閉じる。
     done = true;
     socket.removeAllListeners('data');
+    // 要求は読み終えた。応答に時間のかかる命令（バックアップの実行）を待つ間に、居座る接続として切らない。
+    socket.setTimeout(0);
     let handled: ControlHandled | Promise<ControlHandled>;
     try {
       handled = handle(parsed.request);

@@ -8,12 +8,14 @@
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
+  createBackupKeyStore,
+  createMockBackupKeyStore,
   createMockTlsKeyStore,
   createNodeCommandRunner,
   createTailscaleStatusSource,
   createTlsKeyStore,
 } from '@buddy/platform';
-import type { TlsKeyStore } from '@buddy/platform';
+import type { BackupKeyStore, TlsKeyStore } from '@buddy/platform';
 import { DEFAULT_HTTPS_PORT } from './api-server.js';
 import { runAutostart } from './autostart.js';
 import { fingerprintLines } from './tls-certificate.js';
@@ -22,6 +24,8 @@ import { join, resolve } from 'node:path';
 import { readFile, realpath } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
+import { createApiContract } from './api-contract.js';
+import { runBackupSetup } from './backup-setup.js';
 import { callControl } from './control-channel.js';
 import { CoreStartError, startCore } from './core.js';
 import type { CoreHandle, CoreHttpsOptions } from './core.js';
@@ -48,6 +52,8 @@ const EXIT = {
   device_refused: 8,
   // budget: Core が拒否した（本人が見た値が今の状態と違う・確かめ直すものがないなど）。
   budget_refused: 9,
+  // backup: Core が拒否した（置き場所・鍵・設定の不備など）。
+  backup_refused: 10,
 } as const;
 
 // 鍵保護・データ鍵の照合による拒否（終了コード 5）。それ以外の起動の拒否は 4。
@@ -82,6 +88,14 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
   device revoke --device-id <id>
          端末を失効する（接続範囲を無効にし、開いている接続を閉じる）。有効な端末が 0 台になれば
          first-device からやり直せる。承認はできない
+  backup setup
+         バックアップの復旧キーを作り、3 つの鍵（本体・DB の暗号文・台帳の HMAC）を包む。復旧キーは画面に 1 度だけ表示する
+         （Core には渡さない）。動いている Core が要る。設定をやり直すと復旧キーは新しくなる（古いバックアップは古い復旧キー）
+  backup run
+         今すぐバックアップを取り、古いバックアップを掃除する（期限・世代の数・忘却の置き換え）。置き場所は
+         backup-config.json（データディレクトリ）に書く
+  backup status
+         設定・置き場所の検査・鍵・最後の成功を表示する（置き場所のパス・鍵は表示しない）
   budget calendar status
          予算月の状態（今の月・始まり・記録の始まりと tz データで求め直した始まり・時計の戻りの下限・受付を
          止めている理由）を表示する。金額は表示しない
@@ -149,11 +163,16 @@ async function main(argv: readonly string[]): Promise<number> {
     positionals.length === 3 &&
     action === 'calendar' &&
     ['status', 'confirm'].includes(positionals[2] ?? '');
+  const backupCommand =
+    command === 'backup' &&
+    positionals.length === 2 &&
+    ['setup', 'run', 'status'].includes(action ?? '');
   if (
     !autostartCommand &&
     !firstDeviceCommand &&
     !deviceCommand &&
     !budgetCommand &&
+    !backupCommand &&
     (positionals.length !== 1 ||
       !['start', 'status', 'stop'].includes(command ?? ''))
   ) {
@@ -244,6 +263,8 @@ async function main(argv: readonly string[]): Promise<number> {
         : { host: values['https-host'], port: httpsPort };
     return start(dataDir, mode, https);
   }
+  if (backupCommand)
+    return backup(dataDir, action as 'setup' | 'run' | 'status');
   if (autostartCommand) return autostart(action as AutostartAction, dataDir);
   if (firstDeviceCommand)
     return firstDevice(dataDir, values['pairing-id'] ?? null);
@@ -317,6 +338,11 @@ async function start(
       );
     // 起動前の検査とロックの後の読み直しに同じ KeyStore を使う（ADR 0019）。
     const keyStore = createCoreKeyStore(mode);
+    // バックアップの鍵。模擬の起動の鍵はメモリ上だけで、別のプロセスの backup setup とは共有しない。
+    const backupKeys: BackupKeyStore =
+      mode === 'os'
+        ? createBackupKeyStore(process.platform)
+        : createMockBackupKeyStore();
     const httpsOptions: CoreHttpsOptions | undefined =
       https === null
         ? undefined
@@ -339,6 +365,7 @@ async function start(
         preflight: [keyProtectionCheck(mode, { keyStore })],
         keyStore,
         log,
+        backup: { keyStore: backupKeys, scheduler: {} },
         ...(httpsOptions === undefined ? {} : { https: httpsOptions }),
       });
     } catch (error) {
@@ -519,6 +546,150 @@ async function budgetCalendar(
   if (result.body['error'] === 'unavailable') return EXIT.not_running;
   if (result.body['error'] === 'invalid_request') return EXIT.usage;
   return EXIT.budget_refused;
+}
+
+// バックアップの設定・実行・状態（ADR 0055）。実行と状態は動いている Core の制御チャネルへ頼む（DB を直接開かない）。
+// 設定は復旧キーを CLI のプロセスで作る（Core には渡さず、画面に 1 度だけ出す）。
+async function backup(
+  dataDir: string,
+  action: 'setup' | 'run' | 'status',
+): Promise<number> {
+  const endpoint = await endpointFor(dataDir);
+  if (endpoint === null) {
+    out({ ok: false, state: 'not_running' });
+    return EXIT.not_running;
+  }
+  if (action === 'setup') return backupSetup(dataDir, endpoint);
+  // 実行はスナップショットと暗号化に時間がかかるので長く待つ。
+  const result = await callControl(
+    endpoint,
+    action === 'run' ? 'backup_run' : 'backup_status',
+    action === 'run' ? 30 * 60_000 : 10_000,
+  );
+  if (result.kind !== 'response') {
+    out({ ok: false, state: 'not_running' });
+    return EXIT.not_running;
+  }
+  out(result.body);
+  if (result.body['ok'] !== true) {
+    if (result.body['error'] === 'unavailable') return EXIT.not_running;
+    if (result.body['error'] === 'invalid_request') return EXIT.usage;
+    return EXIT.backup_refused;
+  }
+  const detail = result.body['backup'] as
+    { readonly ok?: boolean; readonly reasons?: readonly string[] } | undefined;
+  if (action === 'run') {
+    if (detail?.ok === true) {
+      log('バックアップを取りました。');
+      return EXIT.ok;
+    }
+    log(
+      `バックアップを取れませんでした（${(detail?.reasons ?? []).join(', ')}）。`,
+    );
+    return EXIT.backup_refused;
+  }
+  return EXIT.ok;
+}
+
+type ControlBackupDetail = Readonly<Record<string, unknown>> | undefined;
+
+// 制御チャネルの応答から backup の本体を取り出す。拒否・応答なしは理由コードだけにする。
+function controlBackup(result: Awaited<ReturnType<typeof callControl>>):
+  | {
+      readonly ok: true;
+      readonly detail: Exclude<ControlBackupDetail, undefined>;
+    }
+  | { readonly ok: false; readonly reasons: readonly string[] } {
+  if (result.kind !== 'response')
+    return { ok: false, reasons: ['not_running'] };
+  const detail = result.body['backup'] as ControlBackupDetail;
+  if (result.body['ok'] === true && detail !== undefined)
+    return { ok: true, detail };
+  return {
+    ok: false,
+    reasons: [
+      String(result.body['reason'] ?? result.body['error'] ?? 'refused'),
+    ],
+  };
+}
+
+async function backupSetup(dataDir: string, endpoint: string): Promise<number> {
+  const outcome = await runBackupSetup({
+    dataDir,
+    contract: createApiContract(),
+    dataKeys: createCoreKeyStore('os'),
+    backupKeys: createBackupKeyStore(process.platform),
+    now: () => new Date(),
+    async inspect() {
+      const got = controlBackup(
+        await callControl(endpoint, 'backup_setup_inspect', 10_000),
+      );
+      if (!got.ok) return got;
+      return {
+        ok: true,
+        recorded_ledger_key_id: got.detail['recorded_ledger_key_id'] as
+          string | null,
+        forgetting_generation: got.detail['forgetting_generation'] as string,
+        db_blob_key_ids: got.detail['db_blob_key_ids'] as readonly string[],
+      };
+    },
+    async record(ledgerHmacKeyId) {
+      const got = controlBackup(
+        await callControl(endpoint, 'backup_setup_record', 10_000, {
+          ledger_hmac_key_id: ledgerHmacKeyId,
+        }),
+      );
+      if (!got.ok) return got;
+      return {
+        ok: true,
+        ledger_id: got.detail['ledger_id'] as string,
+        ledger_hmac_key_id: got.detail['ledger_hmac_key_id'] as string,
+        forgetting_generation: got.detail['forgetting_generation'] as string,
+      };
+    },
+    // 復旧キーは端末の画面（標準エラー）にだけ出す。標準出力の機械向けの JSON・ログ・Core には出さない。
+    display(display) {
+      process.stderr.write(
+        [
+          '',
+          '復旧キー（この画面に 1 度だけ表示します。紙などに書き写し、バックアップの置き場所とは別の安全な場所に保管してください）:',
+          `  ${display.recovery_code}`,
+          'このキーがないと、この機器を失ったときにバックアップを開けません。再表示はできません。',
+          '',
+        ].join('\n'),
+      );
+    },
+  });
+  if (!outcome.ok) {
+    out({ ok: false, stage: outcome.stage, reasons: outcome.reasons });
+    log(
+      `バックアップの設定を止めました（${outcome.stage}: ${outcome.reasons.join(', ')}）。`,
+    );
+    return outcome.stage === 'inspect' &&
+      outcome.reasons.includes('not_running')
+      ? EXIT.not_running
+      : EXIT.backup_refused;
+  }
+  // 復旧キーそのものは出力しない。
+  out({
+    ok: true,
+    event: 'backup_setup',
+    recovery_key_id: outcome.recovery_key_id,
+    ledger_id: outcome.ledger_id,
+    actions: outcome.actions,
+    forgetting_generation: outcome.forgetting_generation,
+    shown: outcome.shown,
+  });
+  if (!outcome.shown) {
+    log(
+      '復旧キーを記録できませんでした。もう一度 backup setup を実行してください。',
+    );
+    return EXIT.backup_refused;
+  }
+  log(
+    'バックアップの設定を終えました。backup-config.json に置き場所を書き、backup run で確かめてください。',
+  );
+  return EXIT.ok;
 }
 
 async function stop(dataDir: string): Promise<number> {

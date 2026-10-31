@@ -745,7 +745,11 @@ async function withVersion10(
 
 test('0011 moves a version 10 DB: rows survive, old tasks have no content yet, and only their operations stay', async () => {
   await withVersion10((db) => {
-    assert.deepEqual(applyMigrations(db), { from: 10, to: 11, applied: [11] });
+    assert.deepEqual(applyMigrations(db), {
+      from: 10,
+      to: 12,
+      applied: [11, 12],
+    });
     assert.deepEqual(
       db
         .prepare(
@@ -916,7 +920,7 @@ test('0011: the task content migration is staged, linked once, and resumes after
     db.close();
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 11);
+      assert.equal(readSchemaVersion(reopened), 12);
       const again = value(
         retention(reopened, {
           kind: 'task.migration_next',
@@ -1044,7 +1048,11 @@ test('0011: a re-created parent row that is missing is caught, and the migration
     assert.equal(count(db, 'SELECT count(*) FROM sealed_blobs'), 2);
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     // 正しい 0011 はその後に適用できる。
-    assert.deepEqual(applyMigrations(db), { from: 10, to: 11, applied: [11] });
+    assert.deepEqual(applyMigrations(db), {
+      from: 10,
+      to: 12,
+      applied: [11, 12],
+    });
   });
 });
 
@@ -1068,8 +1076,8 @@ test('0011 fills completed_at of finished operations from before 0011 (the body 
       const before = Date.now() - 1000;
       assert.deepEqual(applyMigrations(db), {
         from: 10,
-        to: 11,
-        applied: [11],
+        to: 12,
+        applied: [11, 12],
       });
       const after = Date.now() + 1000;
       const rows = db
@@ -1173,8 +1181,8 @@ test('0011 applies to a version 10 DB with 6000 operations within 10 seconds (ch
       const started = Date.now();
       assert.deepEqual(applyMigrations(db), {
         from: 10,
-        to: 11,
-        applied: [11],
+        to: 12,
+        applied: [11, 12],
       });
       const elapsed = Date.now() - started;
       // 索引のない 0011 は同じ規模で 22.9 秒かかった。CI の遅い実行機でも通る上限（ADR 0051）。

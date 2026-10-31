@@ -40,7 +40,10 @@ export const FORGET_ARTIFACT_KINDS = [
 export type ForgetArtifactKind = (typeof FORGET_ARTIFACT_KINDS)[number];
 
 // 範囲（session）は、由来を引けない派生物が属する会話を表すときだけ使う。
-export type ForgetNodeKind = ForgetRootKind | ForgetArtifactKind | 'session';
+// user_directive は本人の指示（「今後は」など。user_directives）。作った発言（turn_id）が辺の由来になる。派生物の
+// 系譜（derivations）の種類ではなく、指示の行の結び付けから読む（ADR 0054 U112）。
+export type ForgetNodeKind =
+  ForgetRootKind | ForgetArtifactKind | 'user_directive' | 'session';
 
 export interface ForgetNode {
   readonly kind: ForgetNodeKind;
@@ -61,6 +64,8 @@ export const FORGET_DELETE_ORDER: readonly ForgetNodeKind[] = [
   'carried_summary',
   'session_summary',
   'memory',
+  // 本人の指示は作った発言（turn_id）を参照するので、発言より先に消す。
+  'user_directive',
   'turn',
   'source_item',
 ];
@@ -214,8 +219,12 @@ export interface PlannedLedger {
 export interface ForgetPlan {
   // 本人が選んだ対象と、忘却の指示の発言。
   readonly targets: readonly ForgetNode[];
-  // 物理削除する行（記憶・派生物・対象の発言・対象の元情報の本文）。FORGET_DELETE_ORDER の順。操作の記録は入らない。
+  // 物理削除する行（記憶・派生物・本人の指示・対象の発言・対象の元情報の本文）。FORGET_DELETE_ORDER の順。操作の記録は
+  // 入らない。
   readonly deletions: readonly ForgetNode[];
+  // 消える本人の指示（deletions の user_directive と同じ ID。ID の順）。本人が確定した設定なので、忘れる前に「消える
+  // 指示」として別に見せる（ADR 0054 U112）。
+  readonly user_directives: readonly string[];
   readonly operation_contents: OperationContentPlan;
   readonly ledger: PlannedLedger;
   // 知らせ（RetentionNotice の forgotten と derived_from_forgotten）。本文・検索語を持たない。
@@ -259,6 +268,7 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
   const artifactOk = (node: ForgetNode): boolean =>
     node.kind === 'memory' ||
     node.kind === 'turn' ||
+    node.kind === 'user_directive' ||
     ARTIFACT_KINDS.includes(node.kind);
   const sourceOk = (node: ForgetNode): boolean =>
     ROOT_KINDS.includes(node.kind) || ARTIFACT_KINDS.includes(node.kind);
@@ -520,6 +530,9 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
     plan: {
       targets,
       deletions,
+      user_directives: deletions
+        .filter((node) => node.kind === 'user_directive')
+        .map((node) => node.id),
       operation_contents: { purge, retained },
       ledger: {
         forgotten: forgotten.sort(compareLedgerSource),

@@ -45,6 +45,8 @@ export const STATE_FILE = 'core-state.json';
 // 中枢の DB（SQLite。-wal・-shm が並ぶ）。ADR 0016・0019。
 export const DB_FILE = 'buddy.sqlite';
 export const SOCKET_FILE = 'control.sock';
+// 忘却台帳の別ファイル（本文なし。DB の台帳から作り直せる写し。ADR 0040・0054）。
+export const FORGET_LEDGER_FILE = 'forget-ledger.json';
 // sockaddr_un の sun_path は macOS で 104 バイト・Linux で 108 バイト（終端を含む）。
 // 小さい方に合わせて 103 バイトまでを許す。
 export const MAX_UNIX_SOCKET_PATH_BYTES = 103;

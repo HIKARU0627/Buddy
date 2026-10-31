@@ -123,7 +123,7 @@ test(
           "DELETE FROM event_outbox WHERE target_id IN ('op-cancel', 'op-wait')",
         ).run();
         db.prepare(
-          "INSERT INTO forget_ledger VALUES (1, 'entry-1', 2000000)",
+          "INSERT INTO forget_ledger VALUES (1, 'entry-1', 2000000, '1111111111111111111111111111111111111111111111111111111111111111', 1)",
         ).run();
         const later = readSnapshot(db, STORE_GENERATION);
         assert.deepEqual(

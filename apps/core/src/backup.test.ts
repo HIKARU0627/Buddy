@@ -84,6 +84,8 @@ async function rig(
     readonly config?: boolean;
     readonly keep?: number;
     readonly backupDirName?: string;
+    // 封筒の削除の差し込み口（一時的な失敗の再現）。
+    readonly removeFile?: (path: string) => Promise<void>;
   } = {},
 ): Promise<Rig> {
   const base = await mkdtemp(join(tmpdir(), 'buddy-backup-'));
@@ -112,7 +114,12 @@ async function rig(
     probeTimeoutMs: 300,
     now: () => new Date(clock.value),
     log: (message) => logs.push(message),
-    backup: { keyStore: keys },
+    backup: {
+      keyStore: keys,
+      ...(options.removeFile === undefined
+        ? {}
+        : { removeFile: options.removeFile }),
+    },
   });
   onCleanup(t, async () => {
     await handle.stop('test').catch(() => undefined);
@@ -1137,13 +1144,102 @@ test('定期の確認: バックアップの成功の後に忘却すると、24 
 
 // --- 定期の実行 ---
 
+// レビュー（PR #175 の 2 回目の P2）の再現: 新世代の作成に成功しても旧世代の封筒の削除が一時的に失敗したときは、作成の
+// 予定とは別に掃除の未完了を保ち、障害が解消した後、日次を待たずに掃除だけを再試行する（新しい封筒は作らない）。
+test('定期の確認: 新世代の作成成功の後に旧世代の削除が失敗しても、障害の解消後に日次を待たず掃除だけを再試行する', async (t) => {
+  let failing = true;
+  const attempts: string[] = [];
+  const r = await rig(t, {
+    removeFile: async (path) => {
+      attempts.push(path);
+      if (failing) throw Object.assign(new Error('busy'), { code: 'EBUSY' });
+      await rm(path, { force: true });
+    },
+  });
+  await ready(r);
+  const before = await r.handle.backup.run();
+  assert.ok(before.ok);
+  r.clock.value = T0 + 1000;
+  await forgetSource(r);
+  r.clock.value = T0 + 2000;
+  // 新世代の作成は成功し、旧世代の削除は失敗する。run は成功のまま、掃除の未完了が保たれる。
+  const after = await r.handle.backup.run();
+  assert.ok(after.ok);
+  assert.equal(after.forgetting_generation, '1');
+  assert.ok(after.sweep.ok);
+  assert.deepEqual(after.sweep.deleted, []);
+  assert.deepEqual(after.sweep.delete_failed, [before.backup_id]);
+  const bothFiles = sorted(
+    [before.backup_id, after.backup_id].map((id) => `buddy-${id}.buddybackup`),
+  );
+  assert.deepEqual(await backupFiles(r), bothFiles);
+  assert.equal((await r.handle.backup.status()).sweep_incomplete, true);
+  // 最後の成功の世代は今と同じ・24 時間未満・取り直しの印もない。それでも掃除の未完了は「予定あり」で、取り直しではない。
+  assert.equal((await r.handle.backup.status()).needs_new_backup, false);
+  assert.equal(await r.handle.backup.dueAction(), 'sweep');
+  assert.equal(await r.handle.backup.due(), true);
+
+  const timers: (() => void)[] = [];
+  const logs: string[] = [];
+  const scheduler = startBackupScheduler({
+    service: r.handle.backup,
+    log: (message) => logs.push(message),
+    now: () => new Date(r.clock.value),
+    setTimer: (run) => timers.push(run),
+    clearTimer: () => undefined,
+  });
+  const tick = async (): Promise<void> => {
+    const next = timers.shift();
+    assert.ok(next !== undefined);
+    next();
+    // 実行が終わると次の予約が入る。
+    for (let i = 0; i < 1200 && timers.length === 0; i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(timers.length > 0, true, 'スケジューラが終わらなかった');
+  };
+  // 障害の間: 掃除だけを試し（新しい封筒は作らない）、失敗する。
+  r.clock.value = T0 + 3000;
+  const attemptsBefore = attempts.length;
+  await tick();
+  assert.equal(attempts.length, attemptsBefore + 1);
+  assert.deepEqual(await backupFiles(r), bothFiles);
+  assert.equal(
+    logs.some((line) => line.includes('古いバックアップの削除に失敗')),
+    true,
+  );
+  // 1 時間は再試行しない。
+  r.clock.value = T0 + 3000 + 30 * 60_000;
+  await tick();
+  assert.equal(attempts.length, attemptsBefore + 1);
+  // 障害が解消し、1 時間たった。日次（24 時間）は待たない。掃除だけが走り、旧世代が消える。
+  failing = false;
+  r.clock.value = T0 + 3000 + 61 * 60_000;
+  await tick();
+  scheduler.stop();
+  assert.deepEqual(await backupFiles(r), [
+    `buddy-${after.backup_id}.buddybackup`,
+  ]);
+  assert.equal(
+    logs.some((line) => line.includes('バックアップの掃除を終えました')),
+    true,
+  );
+  // 新しい封筒は作っていない（取り直しではなく掃除だけ）。
+  assert.equal(
+    logs.some((line) => line.includes('バックアップを取りました')),
+    false,
+  );
+  assert.equal((await r.handle.backup.status()).sweep_incomplete, false);
+  assert.equal(await r.handle.backup.dueAction(), null);
+  assert.equal(await r.handle.backup.due(), false);
+});
+
 test('定期の実行: 設定がなければ動かず、1 日 1 回と忘却の置き換えを待つときに動き、失敗の後は 1 時間待つ', async () => {
   let clock = T0;
   let dueNow = false;
   let runs = 0;
   let succeed = true;
   const service = {
-    due: () => Promise.resolve(dueNow),
+    dueAction: () => Promise.resolve(dueNow ? 'backup' : null),
     run: () => {
       runs += 1;
       return Promise.resolve(
@@ -1151,7 +1247,7 @@ test('定期の実行: 設定がなければ動かず、1 日 1 回と忘却の�
           ? ({
               ok: true,
               backup_id: 'b',
-              sweep: { ok: true },
+              sweep: { ok: true, delete_failed: [] },
             } as unknown as Awaited<ReturnType<BackupService['run']>>)
           : ({
               ok: false,

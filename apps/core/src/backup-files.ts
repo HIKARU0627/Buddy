@@ -141,6 +141,9 @@ export interface BackupStateValue {
   } | null;
   // 今の忘却の世代のバックアップがない、または期限を過ぎた最新の 1 つだけが残る（次の予定を待たずに取る）。
   readonly needs_new_backup: boolean;
+  // 前の掃除で、消すと決めた封筒の削除に失敗したものが残っている（一時的な EBUSY・EACCES など）。次の日次を待たずに、
+  // 新しい封筒は作らず掃除だけを再試行する（忘れた内容を持つ古い封筒を残さない。PR #175 の P2）。
+  readonly sweep_incomplete: boolean;
 }
 
 export const EMPTY_BACKUP_STATE: BackupStateValue = {
@@ -149,6 +152,7 @@ export const EMPTY_BACKUP_STATE: BackupStateValue = {
   first_seen: {},
   last_success: null,
   needs_new_backup: false,
+  sweep_incomplete: false,
 };
 
 const GENERATION = /^(0|[1-9][0-9]{0,15})$/u;
@@ -165,9 +169,10 @@ export function parseBackupState(text: string): BackupStateValue | null {
   const record = value as Record<string, unknown>;
   if (
     Object.keys(record).sort().join(',') !==
-      'first_seen,last_checked_at,last_success,needs_new_backup,schema' ||
+      'first_seen,last_checked_at,last_success,needs_new_backup,schema,sweep_incomplete' ||
     record['schema'] !== 'buddy.backup-state.v1' ||
-    typeof record['needs_new_backup'] !== 'boolean'
+    typeof record['needs_new_backup'] !== 'boolean' ||
+    typeof record['sweep_incomplete'] !== 'boolean'
   )
     return null;
   const checked = record['last_checked_at'];
@@ -207,6 +212,7 @@ export function parseBackupState(text: string): BackupStateValue | null {
     first_seen: firstSeen,
     last_success: lastSuccess,
     needs_new_backup: record['needs_new_backup'],
+    sweep_incomplete: record['sweep_incomplete'],
   };
 }
 

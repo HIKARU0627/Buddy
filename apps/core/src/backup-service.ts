@@ -74,6 +74,8 @@ export interface BackupServiceOptions {
   readonly platform?: NodeJS.Platform;
   // 試験用: 封筒を書く直前に呼ぶ（書く前の停止の再現）。
   readonly beforeWrite?: () => void;
+  // 試験用: 封筒の削除（EBUSY・EACCES など一時的な失敗の再現）。既定は rm。
+  readonly removeFile?: (path: string) => Promise<void>;
 }
 
 export interface SweepDecisionSummary {
@@ -124,6 +126,8 @@ export interface BackupStatus {
   readonly last_success: BackupStateValue['last_success'];
   readonly last_checked_at: string | null;
   readonly needs_new_backup: boolean;
+  // 前の掃除で削除に失敗した封筒が残っている（掃除だけを再試行する）。
+  readonly sweep_incomplete: boolean;
   readonly state_valid: boolean;
 }
 
@@ -136,6 +140,9 @@ export interface BackupService {
   sweep(): Promise<SweepResult>;
   // 次のバックアップの予定（1 日 1 回、または忘却の置き換えを待つとき）を過ぎているか。設定がなければ false。
   due(): Promise<boolean>;
+  // 次にすること。'backup' = 新しい封筒を取る（その中で掃除もする）、'sweep' = 前の掃除の削除の失敗が残っているので掃除だけを
+  // 再試行する（新しい封筒は作らない）、null = 予定なし。設定がなければ null。
+  dueAction(): Promise<'backup' | 'sweep' | null>;
 }
 
 export function createBackupService(
@@ -236,6 +243,7 @@ export function createBackupService(
       last_success: value?.last_success ?? null,
       last_checked_at: value?.last_checked_at ?? null,
       needs_new_backup: value?.needs_new_backup ?? false,
+      sweep_incomplete: value?.sweep_incomplete ?? false,
       state_valid: state.ok,
     };
   }
@@ -355,7 +363,10 @@ export function createBackupService(
       const file = listing.files[index];
       if (file === undefined) continue;
       try {
-        await rm(file.path);
+        // すでにない封筒（別の手段で消えた）は削除できたものとして扱う（force は ENOENT だけを無視する）。
+        await (options.removeFile ?? ((path) => rm(path, { force: true })))(
+          file.path,
+        );
         deleted.push(decision.backup_id);
         delete firstSeen[decision.backup_id];
       } catch {
@@ -368,6 +379,8 @@ export function createBackupService(
       last_checked_at: plan.effective_now,
       first_seen: firstSeen,
       needs_new_backup: plan.needs_new_backup,
+      // 削除に失敗した封筒がある間は、作成の予定とは別に掃除の未完了を保つ。完了した掃除で下ろす。
+      sweep_incomplete: deleteFailed.length > 0,
     });
     return {
       ok: true,
@@ -527,6 +540,32 @@ export function createBackupService(
     }
   }
 
+  async function dueAction(): Promise<'backup' | 'sweep' | null> {
+    const config = await loadConfig();
+    if (!config.ok) return null;
+    const state = await readBackupState(dataDir);
+    if (!state.ok) return null;
+    const last = state.value.last_success;
+    if (last === null || state.value.needs_new_backup) return 'backup';
+    // 最後の成功の後に忘れた（今の忘却の世代が、最後の成功の世代より進んだ）なら、24 時間を待たずに取り直す。
+    // 忘れた内容を持つ古い封筒を次の日次の実行まで残さない（needs_new_backup は掃除でしか立たないので、定期の確認が
+    // 今の世代を直接見る）。世代を読めない・形が違うときは、取り直す側（閉じた側）に倒す。
+    const facts = await readFacts();
+    if (
+      facts === null ||
+      !/^(0|[1-9][0-9]{0,15})$/u.test(facts.forgetting_generation) ||
+      BigInt(facts.forgetting_generation) > BigInt(last.forgetting_generation)
+    )
+      return 'backup';
+    if (
+      options.now().getTime() - Date.parse(last.created_at) >=
+      BACKUP_INTERVAL_MS
+    )
+      return 'backup';
+    // 作成が済んでいても、前の掃除で削除に失敗した封筒が残っていれば、掃除だけを再試行する（PR #175 の P2）。
+    return state.value.sweep_incomplete ? 'sweep' : null;
+  }
+
   return {
     status,
     sweep: () => exclusive(sweepNow),
@@ -553,27 +592,9 @@ export function createBackupService(
         if (!created.ok) return { ok: false, reasons: created.reasons, sweep };
         return { ...created.result, sweep: sweep };
       }),
+    dueAction,
     async due() {
-      const config = await loadConfig();
-      if (!config.ok) return false;
-      const state = await readBackupState(dataDir);
-      if (!state.ok) return false;
-      const last = state.value.last_success;
-      if (last === null || state.value.needs_new_backup) return true;
-      // 最後の成功の後に忘れた（今の忘却の世代が、最後の成功の世代より進んだ）なら、24 時間を待たずに取り直す。
-      // 忘れた内容を持つ古い封筒を次の日次の実行まで残さない（needs_new_backup は掃除でしか立たないので、定期の確認が
-      // 今の世代を直接見る）。世代を読めない・形が違うときは、取り直す側（閉じた側）に倒す。
-      const facts = await readFacts();
-      if (
-        facts === null ||
-        !/^(0|[1-9][0-9]{0,15})$/u.test(facts.forgetting_generation) ||
-        BigInt(facts.forgetting_generation) > BigInt(last.forgetting_generation)
-      )
-        return true;
-      return (
-        options.now().getTime() - Date.parse(last.created_at) >=
-        BACKUP_INTERVAL_MS
-      );
+      return (await dueAction()) !== null;
     },
   };
 }
@@ -605,11 +626,37 @@ export function startBackupScheduler(
     try {
       if (failedAt !== null && options.now().getTime() - failedAt < retryMs)
         return;
-      if (!(await options.service.due())) return;
+      const action = await options.service.dueAction();
+      if (action === null) return;
+      if (action === 'sweep') {
+        // 前の掃除の削除の失敗を再試行する。新しい封筒は作らない。
+        const sweep = await options.service.sweep();
+        if (sweep.ok && sweep.delete_failed.length === 0) {
+          failedAt = null;
+          options.log('バックアップの掃除を終えました。');
+        } else {
+          failedAt = options.now().getTime();
+          options.log(
+            sweep.ok
+              ? `古いバックアップの削除に失敗しました（${sweep.delete_failed.length} 件）。`
+              : `バックアップの掃除に失敗しました（${sweep.reasons.join(', ')}）。`,
+          );
+        }
+        return;
+      }
       const result = await options.service.run();
       if (result.ok) {
-        failedAt = null;
         options.log(`バックアップを取りました（${result.backup_id}）。`);
+        // 作成の成功と掃除の成功を区別する。削除に失敗した封筒が残っていれば、掃除だけを 1 時間後から再試行する。
+        const incomplete =
+          !result.sweep.ok || result.sweep.delete_failed.length > 0;
+        failedAt = incomplete ? options.now().getTime() : null;
+        if (incomplete)
+          options.log(
+            result.sweep.ok
+              ? `古いバックアップの削除に失敗しました（${result.sweep.delete_failed.length} 件）。`
+              : `バックアップの掃除に失敗しました（${result.sweep.reasons.join(', ')}）。`,
+          );
       } else {
         failedAt = options.now().getTime();
         options.log(

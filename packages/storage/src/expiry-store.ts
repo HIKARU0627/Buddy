@@ -10,7 +10,7 @@
 // - 記憶は memory-store の memory.start_review・memory.delete_due を使う（ここでは読み出しだけ）。
 // 結果には ID と件数だけを入れ、本文・SQL・パスを入れない。
 
-import { sweepPlan } from '@buddy/domain';
+import { RETENTION_RULES, sweepPlan } from '@buddy/domain';
 import type { DerivedRow, MemoryRow, SweepRow, TimedRow } from '@buddy/domain';
 import type { SqliteDatabase } from './connection.js';
 import {
@@ -21,6 +21,8 @@ import {
 import type { LineageNode } from './forget-store.js';
 
 const DAY_MS = 86_400_000;
+// 完了した操作の本文の保存期間（RETENTION_RULES の operation_body。7 日）。
+const BODY_TTL_MS = RETENTION_RULES['operation_body']?.ms ?? 7 * DAY_MS;
 const HOUR_MS = 3_600_000;
 const READABLE_MIN_MS = -62_167_219_200_000;
 const READABLE_MAX_MS = 253_402_300_799_999;
@@ -237,8 +239,16 @@ function originExpiry(
         )
         .get(id) as { state: string; completed_at: number | null } | undefined;
       if (row === undefined) return null;
+      // 操作の確定内容（本文）の期限。完了から 7 日で本文だけ消える（J5。90 日は本文のないレシートの期限）。
+      // 本文がもう消えていれば期限切れ（存在しない由来は期限切れ。ADR 0040）。完了していない操作は期限がない。
+      const body = db
+        .prepare(
+          'SELECT 1 FROM operation_versions WHERE operation_id = ? AND intent_blob_id IS NOT NULL LIMIT 1',
+        )
+        .get(id);
+      if (body === undefined) return null;
       if (row.completed_at === null) return FAR_FUTURE;
-      return isoOrNull(row.completed_at + 90 * DAY_MS);
+      return isoOrNull(row.completed_at + BODY_TTL_MS);
     }
     default: {
       // ほかの派生物が由来のとき（要約の要約など）は、その派生物の期限。行がなければ期限切れ。
@@ -255,6 +265,10 @@ function originExpiry(
           if (origin.expires_at === null) return null;
           times.push(Date.parse(origin.expires_at));
         }
+        // その派生物自身の保存した期限（再要約・影モードなどで決めた値）との小さい方。由来として渡す期限にも反映し、
+        // 二段以上の系譜でも、上流が消える日に下流も期限になる（AO レビュー P2）。
+        const stored = storedDerivedDeadline(db, kind, id);
+        if (stored !== null) times.push(Date.parse(stored));
         return isoOrNull(Math.min(...times));
       } finally {
         visiting.delete(key);

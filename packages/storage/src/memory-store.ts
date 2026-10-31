@@ -486,9 +486,8 @@ function continueMemory(
   if (row === undefined) throw new ForgetRejection(['memory_not_found']);
   if (row.status !== 'review_pending')
     throw new ForgetRejection(['not_review_pending']);
-  // 見直し待ちのまま期限を過ぎた記憶は、継続で生き返らせない（削除の掃除を待つ）。
-  if (row.delete_at !== null && op.now >= row.delete_at)
-    throw new ForgetRejection(['delete_due']);
+  // 見直し待ちのまま期限を過ぎた記憶は、継続で生き返らせない（削除の掃除を待つ）。期限は削除と同じ補正を通す。
+  if (op.now >= cappedDeleteAt(row)) throw new ForgetRejection(['delete_due']);
   const reviewAt = op.now + MEMORY_REVIEW_DAYS * DAY_MS;
   db.prepare(
     "UPDATE memories SET status = 'active', review_at = ?, delete_at = NULL WHERE memory_id = ? AND status = 'review_pending'",
@@ -516,6 +515,13 @@ function startReview(
   return schedule({ ...row, status: 'review_pending', delete_at: deleteAt });
 }
 
+// 見直し待ちの削除日。保存した値と見直し日＋30 日の小さい方（保存した値が 30 日を超えて延ばされていても戻す。domain の
+// sweepPlan と同じ補正で、計画と命令の結果を食い違わせない）。NULL は見直し日＋30 日。
+function cappedDeleteAt(row: MemoryRow): number {
+  const cap = row.review_at + MEMORY_DELETE_AFTER_REVIEW_DAYS * DAY_MS;
+  return row.delete_at === null ? cap : Math.min(row.delete_at, cap);
+}
+
 // 期限切れの記憶の物理削除（台帳には書かない。再登録を禁じない。ADR 0008・0040）。記憶の行・由来の行・暗号文を消す。
 // この記憶を由来にする辺は残す（存在しない由来は期限切れとして扱う）。派生物が残っていれば、この記憶の由来の辺
 // （ID だけ）を derivations に残す。本文を消しても、生きた派生物から元の発言・元情報へ辿れるようにし、後で元情報を
@@ -527,10 +533,12 @@ function deleteDueMemory(
   const row = memoryRow(db, op.memory_id);
   if (row === undefined) return { memory_id: op.memory_id, deleted: false };
   // 状態が deleted の行（掃除の計画の status_deleted）は期限を待たずに消す。ほかは見直し待ちで、期限を過ぎたものだけ。
+  // 期限は domain の sweepPlan（ADR 0043）と同じ補正を通す: 保存した削除日と見直し日＋30 日の小さい方（0001 の CHECK で
+  // 見直し待ちの削除日が NULL の行は作れないが、NULL なら見直し日＋30 日）。
   if (row.status !== 'deleted') {
-    if (row.status !== 'review_pending' || row.delete_at === null)
+    if (row.status !== 'review_pending')
       throw new ForgetRejection(['not_review_pending']);
-    if (op.now < row.delete_at) throw new ForgetRejection(['not_due']);
+    if (op.now < cappedDeleteAt(row)) throw new ForgetRejection(['not_due']);
   }
   const sources = db
     .prepare(

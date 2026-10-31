@@ -6,8 +6,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { executeRetentionOp } from './index.js';
 import type { RetentionOp, RetentionOpValue, SqliteDatabase } from './index.js';
-import { blob, count, edge, insertMemory } from './forget-test-support.js';
 import {
+  OP_DONE,
+  OP_RET,
+  blob,
+  completeOperation,
+  count,
+  edge,
+  insertMemory,
+  ok,
+} from './forget-test-support.js';
+import {
+  createCommand,
   databasePath,
   openSeededDatabase,
   withTempDir,
@@ -431,5 +441,143 @@ test('delete_expired rejects malformed commands before touching rows', async () 
       assert.deepEqual(result.reasons, item.reasons);
     }
     assert.equal(count(db, 'SELECT count(*) FROM turns'), 1);
+  });
+});
+
+test('a derived row from a finished operation body expires with the 7-day body, not the 90-day receipt, and goes in the same sweep as the body', async () => {
+  await withDb((db) => {
+    completeOperation(db, OP_DONE);
+    const completedAt = db
+      .prepare('SELECT completed_at FROM operations WHERE operation_id = ?')
+      .pluck()
+      .get(OP_DONE) as number;
+    // 手で書いた期待値: 完了の時刻は completeOperation が使う 1_000_000。
+    assert.equal(completedAt, 1_000_000);
+    insertCandidate(db, 'n-op');
+    edge(db, 'notification_candidate', 'n-op', 'operation_content', OP_DONE);
+    const id = 'notification_candidate:n-op';
+    // 本文の期限（完了から 7 日）の 1 ms 前は、本文も派生物も残る。
+    const before = completedAt + 7 * DAY - 1;
+    assert.deepEqual(deleteExpired(db, 'derived', [id], before).deleted, []);
+    // 7 日ちょうど: 派生物の期限が来ている（レシートの 90 日ではない）。
+    const rows = run(db, {
+      kind: 'retention.sweep_rows',
+      now: completedAt + 7 * DAY,
+    }).value as unknown as {
+      rows: {
+        family: string;
+        id: string;
+        origins?: { expires_at: string | null }[];
+      }[];
+    };
+    const derived = rows.rows.find((row) => row.family === 'derived');
+    assert.equal(derived?.origins?.[0]?.expires_at, '1970-01-08T00:16:40Z');
+    // 本文を消す掃除（retention.erase_due_bodies）の後に派生物を消しても、由来が無いので期限切れとして消える。
+    const bodies = run(db, {
+      kind: 'retention.erase_due_bodies',
+      now: completedAt + 7 * DAY,
+      limit: 50,
+      after: null,
+    });
+    assert.equal(bodies.ok, true, JSON.stringify(bodies));
+    assert.equal(
+      count(
+        db,
+        'SELECT count(*) FROM operation_versions WHERE operation_id = ? AND intent_blob_id IS NOT NULL',
+        OP_DONE,
+      ),
+      0,
+    );
+    // 操作の行（レシート）は 90 日まで残るが、派生物はこの掃除で消える。
+    assert.equal(
+      count(
+        db,
+        'SELECT count(*) FROM operations WHERE operation_id = ?',
+        OP_DONE,
+      ),
+      1,
+    );
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [id], completedAt + 7 * DAY).deleted,
+      [id],
+    );
+    assert.equal(count(db, 'SELECT count(*) FROM notification_candidates'), 0);
+  });
+});
+
+test('a derived row from an operation body that was already erased is gone at once, even before the 7 days of another operation would pass', async () => {
+  await withDb((db) => {
+    completeOperation(db, OP_DONE);
+    run(db, {
+      kind: 'retention.erase_body',
+      operation_id: OP_DONE,
+      now: 1_000_000 + 7 * DAY,
+    });
+    insertCandidate(db, 'n-op');
+    edge(db, 'notification_candidate', 'n-op', 'operation_content', OP_DONE);
+    assert.deepEqual(
+      deleteExpired(db, 'derived', ['notification_candidate:n-op'], 2_000_000)
+        .deleted,
+      ['notification_candidate:n-op'],
+    );
+  });
+});
+
+test('a derived row from the body of an unfinished operation has no deadline of its own', async () => {
+  await withDb((db) => {
+    ok(db, createCommand(OP_RET));
+    insertCandidate(db, 'n-run');
+    edge(db, 'notification_candidate', 'n-run', 'operation_content', OP_RET);
+    assert.deepEqual(
+      deleteExpired(
+        db,
+        'derived',
+        ['notification_candidate:n-run'],
+        B + 400 * DAY,
+      ).deleted,
+      [],
+    );
+  });
+});
+
+test('a derived row from a derived row with its own stored deadline expires when the upstream one does, in the same sweep', async () => {
+  await withDb((db) => {
+    // 発言（7 日）→ 影モードの記録 r-1（自身の期限は 1 日後）→ 気づき n-2。下流の期限は上流の保存した期限で 1 日になる。
+    insertTurn(db, T_N, B, B + 7 * DAY);
+    db.prepare(
+      "INSERT INTO intent_shadow (record_id, campaign_id, input_id, request_revision, judgments, recorded_at, expires_at) VALUES ('r-1', 'camp', 'in-1', 1, '{}', ?, ?)",
+    ).run(B, B + DAY);
+    edge(db, 'intent_shadow', 'r-1', 'turn', T_N);
+    insertCandidate(db, 'n-2');
+    edge(db, 'notification_candidate', 'n-2', 'intent_shadow', 'r-1');
+    const shadow = 'intent_shadow:r-1';
+    const downstream = 'notification_candidate:n-2';
+    const rows = run(db, { kind: 'retention.sweep_rows', now: B })
+      .value as unknown as {
+      rows: {
+        family: string;
+        id: string;
+        origins?: { expires_at: string | null }[];
+      }[];
+    };
+    assert.equal(
+      rows.rows.find((row) => row.id === downstream)?.origins?.[0]?.expires_at,
+      '2031-01-02T00:00:00Z',
+    );
+    // 1 日の 1 ms 前はどちらも残る。
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [shadow, downstream], B + DAY - 1).deleted,
+      [],
+    );
+    // 1 日ちょうど: 上流が消える同じ掃除で、下流も消える（下流が先でも、上流が先でも）。
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [downstream, shadow], B + DAY).deleted,
+      [downstream, shadow],
+    );
+    assert.equal(count(db, 'SELECT count(*) FROM intent_shadow'), 0);
+    assert.equal(count(db, 'SELECT count(*) FROM notification_candidates'), 0);
+    // 発言（7 日）は残る。
+    assert.equal(count(db, 'SELECT count(*) FROM turns'), 1);
+    assert.equal(count(db, 'SELECT count(*) FROM derivations'), 0);
   });
 });

@@ -13,6 +13,11 @@
 
 import Database from 'better-sqlite3';
 import { RETENTION_RULES } from '@buddy/domain';
+import type {
+  BudgetReservationRow,
+  OperationRow as SweepOperationRow,
+  SweepRow,
+} from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
 import { pruneDeadLineage } from './forget-store.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
@@ -27,6 +32,7 @@ import type { SealedEnvelope } from './sealed-blob.js';
 
 const BODY_TTL_MS = RETENTION_RULES['operation_body']?.ms ?? 0;
 const RECEIPT_TTL_MS = RETENTION_RULES['operation_receipt']?.ms ?? 0;
+const UNDO_TTL_MS = RETENTION_RULES['undo_window']?.ms ?? 0;
 
 /** 1 回の命令で扱う件数の上限（11 §9 P06 の小分けと同じ 50）。 */
 export const RETENTION_BATCH_LIMIT = 50;
@@ -128,6 +134,16 @@ export type RetentionOp =
       readonly limit: number;
       readonly after: OperationCursor | null;
     }
+  // 掃除の計画（domain の sweepPlan）へ渡す行を読む（B06-06d1）。操作と予算の月の組だけを返す。
+  // 発言・元情報・記憶・派生物は、削除の命令を作る作業（B06-06d2）で足す。
+  | { readonly kind: 'retention.sweep_rows'; readonly now: number }
+  // 取り消しの期限（30 日、undo_window）を過ぎた undo_records を消す。補償の操作がまだ終わっていない
+  // 記録は残す（ADR 0040・0051）。これで補償のない記録が 90 日の削除を止め続けない。
+  | { readonly kind: 'retention.purge_undo_records'; readonly now: number }
+  // 削除を伴う掃除の後の WAL の切り詰め（ADR 0040・0048）。マイグレーションの外でだけ実行する。
+  | { readonly kind: 'retention.checkpoint' }
+  // マイグレーションの外の定期の VACUUM（ADR 0016・0040・0048）。間隔は呼び出し側（Core の job）が決める。
+  | { readonly kind: 'retention.vacuum' }
   // 用事の内容（暗号文）を読む。
   | { readonly kind: 'task.read'; readonly task_id: string }
   // 暗号文を移していない用事を task_id の順に limit 件まで読む（after より後）。確定 intent の暗号文と、
@@ -201,6 +217,26 @@ export interface RetentionBatchValue {
   readonly next: OperationCursor | null;
 }
 
+export interface SweepRowsValue {
+  readonly rows: readonly SweepRow[];
+}
+
+export interface UndoPurgeValue {
+  // 今回消した undo_records の数。
+  readonly purged: number;
+}
+
+export interface CheckpointValue {
+  // PRAGMA wal_checkpoint(TRUNCATE) の読み戻し。busy が 1 なら他が読んでいて切り詰められていない。
+  readonly busy: number;
+  readonly log_frames: number;
+  readonly checkpointed_frames: number;
+}
+
+export interface VacuumValue {
+  readonly vacuumed: true;
+}
+
 export interface TaskContentRecord {
   readonly task_id: string;
   readonly operation_id: string;
@@ -233,6 +269,10 @@ export interface RetentionOpValues {
   'retention.purge_operation': PurgeOperationValue;
   'retention.erase_due_bodies': RetentionBatchValue;
   'retention.purge_due_operations': RetentionBatchValue;
+  'retention.sweep_rows': SweepRowsValue;
+  'retention.purge_undo_records': UndoPurgeValue;
+  'retention.checkpoint': CheckpointValue;
+  'retention.vacuum': VacuumValue;
   'task.read': TaskContentRecord | null;
   'task.migration_next': TaskMigrationBatch;
   'task.stage_content': { readonly task_id: string; readonly blob_id: string };
@@ -280,6 +320,9 @@ export const RETENTION_WRITE_OPS: ReadonlySet<RetentionOpKind> = new Set([
   'retention.purge_operation',
   'retention.erase_due_bodies',
   'retention.purge_due_operations',
+  'retention.purge_undo_records',
+  'retention.checkpoint',
+  'retention.vacuum',
   'task.stage_content',
   'task.link_content',
   'task.discard_staged',
@@ -292,6 +335,10 @@ const KINDS: ReadonlySet<string> = new Set<RetentionOpKind>([
   'retention.purge_operation',
   'retention.erase_due_bodies',
   'retention.purge_due_operations',
+  'retention.sweep_rows',
+  'retention.purge_undo_records',
+  'retention.checkpoint',
+  'retention.vacuum',
   'task.read',
   'task.migration_next',
   'task.stage_content',
@@ -348,6 +395,10 @@ export function retentionOpShapeReasons(op: RetentionOp): string[] {
       if (!isTime(op.now)) reasons.push('now_invalid');
       if (!isLimit(op.limit)) reasons.push('limit_invalid');
       if (!isCursor(op.after)) reasons.push('cursor_invalid');
+      break;
+    case 'retention.purge_undo_records':
+    case 'retention.sweep_rows':
+      if (!isTime(op.now)) reasons.push('now_invalid');
       break;
     case 'task.read':
       if (!isId(op.task_id)) reasons.push('task_id_invalid');
@@ -525,6 +576,13 @@ interface OperationRow {
   completed_at: number | null;
 }
 
+// domain の sweepPlan が読める時刻の範囲（UTC の RFC 3339。年は 4 桁: 0000-01-01T00:00:00Z ～ 9999-12-31T23:59:59.999Z）。
+// この外の completed_at は計画が deadline_unreadable で保留する行なので、命令も消さない（計画と命令を食い違わせない）。
+const READABLE_MIN_MS = -62_167_219_200_000;
+const READABLE_MAX_MS = 253_402_300_799_999;
+const isReadableMillis = (millis: number): boolean =>
+  millis >= READABLE_MIN_MS && millis <= READABLE_MAX_MS;
+
 // 本文の削除・90 日の削除に共通の前提。消してよければ操作の行を返し、既に消えていれば null。
 function finishedOperation(
   db: SqliteDatabase,
@@ -543,8 +601,8 @@ function finishedOperation(
     throw new RetentionRejection(['unknown_held']);
   if (!(COMPLETED_OPERATION_STATES as readonly string[]).includes(row.state))
     throw new RetentionRejection(['operation_not_finished']);
-  // 完了の時刻がない（0011 より前の未実行の確定など）ときは、起点が分からないので消さない。
-  if (row.completed_at === null)
+  // 完了の時刻がない（0011 より前の未実行の確定など）・読めない範囲のときは、起点が分からないので消さない。
+  if (row.completed_at === null || !isReadableMillis(row.completed_at))
     throw new RetentionRejection(['completed_at_missing']);
   if (now < row.completed_at + ttlMs) throw new RetentionRejection(['not_due']);
   return row;
@@ -731,6 +789,7 @@ function resolveUnmigrated(
 }
 
 // 期限の来た操作（完了の古い順）。本文の削除は本文の残る操作だけ、90 日の削除は行の残る操作だけ。
+// 完了の時刻が読めない範囲の行は選ばない（計画が保留する行。上の isReadableMillis）。
 function dueOperations(
   db: SqliteDatabase,
   kind: 'body' | 'receipt',
@@ -746,12 +805,15 @@ function dueOperations(
   return db
     .prepare(
       `SELECT o.completed_at, o.operation_id FROM operations o
-        WHERE o.state IN ${COMPLETED_SQL} AND o.completed_at IS NOT NULL AND o.completed_at + ? <= ?
+        WHERE o.state IN ${COMPLETED_SQL} AND o.completed_at IS NOT NULL
+          AND o.completed_at BETWEEN ? AND ? AND o.completed_at + ? <= ?
           ${bodyFilter}
           AND (? IS NULL OR (o.completed_at, o.operation_id) > (?, ?))
         ORDER BY o.completed_at, o.operation_id LIMIT ?`,
     )
     .all(
+      READABLE_MIN_MS,
+      READABLE_MAX_MS,
       ttl,
       now,
       after === null ? null : 1,
@@ -759,6 +821,149 @@ function dueOperations(
       after?.operation_id ?? null,
       limit,
     ) as OperationCursor[];
+}
+
+// --- 掃除の計画の入力（B06-06d1） ---
+
+interface OperationSweepSqlRow {
+  operation_id: string;
+  state: string;
+  completed_at: number | null;
+  body_erased: number;
+  compensation_open: number;
+}
+
+interface BudgetReservationSqlRow {
+  reservation_id: string;
+  status: 'reserved' | 'usage_unknown' | 'settled' | 'released';
+  actual_gross: bigint | null;
+  max_liability: bigint;
+  overrun_reviewed: bigint;
+}
+
+interface BudgetApprovalSqlRow {
+  approval_id: string;
+  consumed_reservation_id: string | null;
+  status: string;
+  expires_at: bigint;
+}
+
+// domain の sweepPlan へ渡す行。操作は J5 の 7 日・90 日、予算は月ごとの削除の対象になる。
+// 時刻は domain の読み取り（UTC の RFC 3339）に合わせて ISO にする。
+export function readSweepRows(
+  db: SqliteDatabase,
+  now: number,
+): readonly SweepRow[] {
+  const operations = db
+    .prepare(
+      `SELECT o.operation_id, o.state, o.completed_at,
+              (NOT EXISTS (
+                SELECT 1 FROM operation_versions v
+                 WHERE v.operation_id = o.operation_id AND v.intent_blob_id IS NOT NULL)) AS body_erased,
+              (EXISTS (
+                SELECT 1 FROM undo_records u
+                  LEFT JOIN operations c ON c.operation_id = u.compensation_operation_id
+                 WHERE u.operation_id = o.operation_id
+                   AND (c.operation_id IS NULL OR c.state NOT IN ${COMPLETED_SQL}))) AS compensation_open
+         FROM operations o
+        ORDER BY o.operation_id`,
+    )
+    .all() as OperationSweepSqlRow[];
+  const rows: SweepRow[] = operations.map((row): SweepOperationRow => ({
+    family: 'operation',
+    id: row.operation_id,
+    operation_state: row.state as SweepOperationRow['operation_state'],
+    // 読めない（範囲外の）時刻は null にして、計画に hold（deadline_unreadable）させる。1 行の異常で掃除全体を止めない。
+    completed_at: isoOrNull(row.completed_at),
+    body_erased: row.body_erased === 1,
+    compensation_open: row.compensation_open === 1,
+    // 0011 の後は、生きている用事が操作の暗号文・行を参照しない（ADR 0051）。
+    task_depends: false,
+    body_delete_at: null,
+    row_delete_at: null,
+  }));
+
+  const months = db
+    .prepare('SELECT month, time_zone FROM budget_months ORDER BY month')
+    .all() as { month: string; time_zone: string }[];
+  const reservationsOf = db.prepare(
+    'SELECT reservation_id, status, actual_gross, max_liability, overrun_reviewed FROM budget_reservations WHERE budget_month = ? ORDER BY reservation_id',
+  );
+  const approvalsOf = db.prepare(
+    'SELECT approval_id, consumed_reservation_id, status, expires_at FROM budget_overage_approvals WHERE budget_month = ? ORDER BY approval_id',
+  );
+  const liveSessionsOf = db.prepare(
+    'SELECT live_session_id FROM live_sessions WHERE reservation_id = ? ORDER BY live_session_id',
+  );
+  for (const month of months) {
+    const reservations = reservationsOf
+      .safeIntegers(true)
+      .all(month.month) as BudgetReservationSqlRow[];
+    const approvals = approvalsOf
+      .safeIntegers(true)
+      .all(month.month) as BudgetApprovalSqlRow[];
+    rows.push({
+      family: 'budget_month',
+      budget_month: month.month,
+      time_zone: month.time_zone,
+      reservations: reservations.map((reservation): BudgetReservationRow => ({
+        reservation_id: reservation.reservation_id,
+        status: reservation.status,
+        actual_gross:
+          reservation.actual_gross === null
+            ? null
+            : reservation.actual_gross.toString(),
+        max_liability: reservation.max_liability.toString(),
+        overrun_reviewed: reservation.overrun_reviewed === 1n,
+        live_session_ids: (
+          liveSessionsOf.pluck().all(reservation.reservation_id) as string[]
+        ).slice(),
+        approval_ids: approvals
+          .filter(
+            (approval) =>
+              approval.consumed_reservation_id === reservation.reservation_id,
+          )
+          .map((approval) => approval.approval_id),
+      })),
+      unused_approval_ids: approvals
+        .filter(
+          (approval) =>
+            approval.consumed_reservation_id === null &&
+            (approval.status === 'pending' ||
+              approval.status === 'rejected' ||
+              approval.status === 'expired') &&
+            approval.expires_at <= BigInt(now),
+        )
+        .map((approval) => approval.approval_id),
+    });
+  }
+  return rows;
+}
+
+// 取り消しの期限（30 日、undo_window）を過ぎた記録を消す。補償の操作がまだ終わっていない記録は残す
+// （補償のために undo_records の参照が要る。ADR 0040）。0001 の表は compensation_operation_id が NOT NULL なので、
+// 「補償のない（NULL の）記録」はこの版では作れない（ADR 0053 に記録）。NULL の条件は将来の表でも同じ意味になるよう残す。
+export function purgeUndoRecords(
+  db: SqliteDatabase,
+  now: number,
+): UndoPurgeValue {
+  const removed = db
+    .prepare(
+      `DELETE FROM undo_records
+        WHERE requested_at + ? <= ?
+          AND (compensation_operation_id IS NULL
+            OR EXISTS (
+              SELECT 1 FROM operations c
+               WHERE c.operation_id = undo_records.compensation_operation_id
+                 AND c.state IN ${COMPLETED_SQL}))`,
+    )
+    .run(UNDO_TTL_MS, now);
+  return { purged: removed.changes };
+}
+
+function isoOrNull(millis: number | null): string | null {
+  if (millis === null || !isReadableMillis(millis)) return null;
+  return new Date(millis).toISOString().replace('.000Z', 'Z');
 }
 
 function sqliteCode(error: unknown): string | null {
@@ -862,6 +1067,8 @@ function applyWrite(db: SqliteDatabase, op: RetentionOp): RetentionOpValue {
       return eraseOperationBody(db, op.operation_id, op.now);
     case 'retention.purge_operation':
       return purgeOperation(db, op.operation_id, op.now);
+    case 'retention.purge_undo_records':
+      return purgeUndoRecords(db, op.now);
     case 'task.stage_content':
       return stageContent(db, op);
     case 'task.link_content':
@@ -879,6 +1086,8 @@ function readOnly(db: SqliteDatabase, op: RetentionOp): RetentionOpValue {
   switch (op.kind) {
     case 'retention.gate':
       return { tasks_pending: tasksPending(db) };
+    case 'retention.sweep_rows':
+      return { rows: readSweepRows(db, op.now) };
     case 'task.read':
       return readTaskContent(db, op.task_id);
     case 'task.migration_next':
@@ -929,6 +1138,40 @@ export function executeRetentionOp(
     context.beforeCommit === undefined
       ? undefined
       : () => context.beforeCommit?.(op);
+  // checkpoint と VACUUM は transaction の外で実行する（VACUUM は transaction の中で実行できない。ADR 0016）。
+  // 削除の後の後始末なので、書込みを止めた worker では実行しない。
+  if (op.kind === 'retention.checkpoint' || op.kind === 'retention.vacuum') {
+    try {
+      if (op.kind === 'retention.vacuum') {
+        db.exec('VACUUM');
+        return { result: { ok: true, value: { vacuumed: true } }, halt: false };
+      }
+      const rows = db.pragma('wal_checkpoint(TRUNCATE)') as {
+        busy: number;
+        log: number;
+        checkpointed: number;
+      }[];
+      const row = rows[0];
+      return {
+        result: {
+          ok: true,
+          value: {
+            busy: row?.busy ?? 0,
+            log_frames: row?.log ?? 0,
+            checkpointed_frames: row?.checkpointed ?? 0,
+          },
+        },
+        halt: false,
+      };
+    } catch (error) {
+      // ディスクの空きが足りない（SQLITE_FULL）のは、一時領域を要する VACUUM とログの切り詰めで起こりうる。どちらも
+      // 1 つの transaction の外にあり、VACUUM は失敗しても元の DB が残るので、書込みを止める（halt）理由にしない
+      // （ADR 0053。承認・保存・予算の書込みまで止めない）。成否不明（CommitUncertain）・I/O の失敗は failure() のまま止める。
+      if (sqliteCode(error) === 'SQLITE_FULL')
+        return { result: rejected(['database_full']), halt: false };
+      return failure(error);
+    }
+  }
   if (
     op.kind === 'retention.erase_due_bodies' ||
     op.kind === 'retention.purge_due_operations'

@@ -27,6 +27,10 @@ import {
   idle,
   reached,
   LABEL,
+  CLOCK_START,
+  SCHEDULE_TEXT,
+  TASK_TEXT,
+  turn,
   stepsOf,
   assertProvider,
   TIMEOUT,
@@ -730,5 +734,396 @@ test(
     views.shift()?.(null);
     await idle({ handle: { runner } } as unknown as EventCore);
     assert.equal(viewCalls, 2);
+  },
+);
+
+test(
+  'a remote mutation is not prepared or sent while the retention gate is closed, and is tried again after the retry interval',
+  { timeout: TIMEOUT },
+  async () => {
+    const operationId = randomUUID();
+    let queries = 0;
+    let conversations = 0;
+    const store = {
+      storeGeneration: 'g',
+      query: () => {
+        queries += 1;
+        return Promise.resolve({
+          operation_id: operationId,
+          state: 'approved',
+          operation_kind: 'mail.labels.change',
+          effect_route: 'remote_mutation',
+          attempt_id: null,
+        });
+      },
+      // 準備権・送出意図は submit。閉じている間は一度も呼ばない。
+      submit: () => assert.fail('ゲートが閉じている間は submit を呼ばない'),
+      // 確定 intent を読もうとした = ゲートを通った。ここで止める（読めない）。
+      conversation: () => {
+        conversations += 1;
+        return Promise.resolve({ ok: false });
+      },
+      consumeDispatchPermit: () => false,
+    };
+    let open = false;
+    let readyCalls = 0;
+    const logs: string[] = [];
+    const runner = createOperationRunner({
+      store: store as unknown as RunnerStore,
+      keyStore: {
+        loadDataKey: () => Promise.reject(new Error('unused')),
+      } as unknown as DataKeyProvider,
+      provider: {} as never,
+      writer: {} as never,
+      faults: new FaultInjector(),
+      contract: createApiContract(),
+      log: (message) => logs.push(message),
+      cloudGate: {
+        ready: () => {
+          readyCalls += 1;
+          return Promise.resolve();
+        },
+        open: () => open,
+        lease: () => (open ? () => undefined : null),
+      },
+      gateRetryMs: 20,
+    });
+    runner.start(operationId);
+    await runner.idle();
+    assert.equal(conversations, 0);
+    assert.equal(readyCalls, 1);
+    assert.equal(logs.length, 1);
+    // ゲートが開いた後の再試行で、最初から確かめ直して進む。
+    open = true;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await runner.idle();
+    assert.equal(conversations, 1);
+    assert.equal(queries, 2);
+    runner.close();
+  },
+);
+
+test(
+  'closing the runner cancels the retry of an operation held by the retention gate',
+  { timeout: TIMEOUT },
+  async () => {
+    const operationId = randomUUID();
+    let queries = 0;
+    const store = {
+      storeGeneration: 'g',
+      query: () => {
+        queries += 1;
+        return Promise.resolve({
+          operation_id: operationId,
+          state: 'approved',
+          operation_kind: 'mail.labels.change',
+          effect_route: 'remote_mutation',
+          attempt_id: null,
+        });
+      },
+      submit: () => assert.fail('submit は呼ばない'),
+      conversation: () => assert.fail('conversation は呼ばない'),
+      consumeDispatchPermit: () => false,
+    };
+    const runner = createOperationRunner({
+      store: store as unknown as RunnerStore,
+      keyStore: {
+        loadDataKey: () => Promise.reject(new Error('unused')),
+      } as unknown as DataKeyProvider,
+      provider: {} as never,
+      writer: {} as never,
+      faults: new FaultInjector(),
+      contract: createApiContract(),
+      log: () => undefined,
+      cloudGate: {
+        ready: () => Promise.resolve(),
+        open: () => false,
+        lease: () => null,
+      },
+      gateRetryMs: 20,
+    });
+    runner.start(operationId);
+    await runner.idle();
+    runner.close();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(queries, 1);
+  },
+);
+
+test(
+  'a sweep that starts while the send is in flight waits for the send and does not run its body (review P1)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const operationId = await createOperation(core, who, LABEL);
+    const retention = core.handle.retention;
+    rig.injector.arm('after_dispatch_intent_before_send', { mode: 'pause' });
+    await approveOperation(core, who, operationId);
+    // 送出意図を保存した後・送る前（貸し出しを持っている区間）で止める。
+    await reached(rig.injector, 'after_dispatch_intent_before_send');
+    const sweep = retention.runOnce(true);
+    let swept = false;
+    void sweep.then(() => {
+      swept = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    // 掃除は本体に入れず、記録は running のまま。まだ何も送っていない。
+    assert.equal(swept, false);
+    assert.equal(retention.record().status, 'running');
+    assert.equal(retention.gate().cloud_send, false);
+    assert.equal(rig.provider.truth.requestCount(), 0);
+    // 送信が終わると貸し出しが返り、掃除が進んで完了する。送出は 1 回だけ。
+    rig.injector.release('after_dispatch_intent_before_send');
+    await idle(core);
+    const record = await sweep;
+    assert.equal(record.status, 'completed');
+    assert.equal(rig.provider.truth.requestCount(), 1);
+    assert.equal(retention.gate().cloud_send, true);
+  },
+);
+
+test(
+  'a send whose gate closes after the recheck is held before the dispatch intent and resumes when the gate opens',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const clock = { ms: CLOCK_START };
+    const core = await startCore(t, rig, { clock });
+    const who = await session(core);
+    const operationId = await createOperation(core, who, LABEL);
+    rig.injector.arm('after_target_recheck', { mode: 'pause' });
+    await approveOperation(core, who, operationId);
+    await reached(rig.injector, 'after_target_recheck');
+    // 確かめ直しの間に、掃除の記録が古くなった（20 分。sweep_stale）。
+    clock.ms += 20 * 60_000;
+    assert.equal(core.handle.retention.gate().cloud_send, false);
+    rig.injector.release('after_target_recheck');
+    await idle(core);
+    // 送出意図の前で止まっている: 何も送らず、工程の記録もない（結果不明を作らない）。
+    assert.equal(rig.provider.truth.requestCount(), 0);
+    assert.deepEqual(await stepsOf(core, operationId), []);
+    const held = await operationOf(core, who, operationId);
+    assert.equal(held['state'], 'preparing');
+    // 時計が戻ってゲートが開けば、最初から確かめ直して 1 回だけ送る。
+    clock.ms = CLOCK_START;
+    core.handle.runner?.start(operationId);
+    await idle(core);
+    assert.equal(rig.provider.truth.requestCount(), 1);
+    assert.deepEqual(await stepsOf(core, operationId), [
+      {
+        step_id: '1-apply_labels',
+        intent: true,
+        result_status: 'confirmed_success',
+      },
+    ]);
+  },
+);
+
+const BLOCKED_TEXT = '今は進められません';
+
+test(
+  'the retention gate: a closed gate blocks a schedule read, a local command passes, and an open gate waits for a running sweep',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const clock = { ms: CLOCK_START };
+    const core = await startCore(t, rig, { clock });
+    const who = await session(core);
+    const retention = core.handle.retention;
+
+    // 掃除の記録が古い（20 分）: 検索（予定の照会）は聞き返し、外部へは何も問い合わせない。
+    clock.ms += 20 * 60_000;
+    assert.equal(retention.gate().search, false);
+    const readsBefore = rig.ports.counts.read;
+    const blocked = await turn(core, who, SCHEDULE_TEXT);
+    assert.ok(JSON.stringify(blocked).includes(BLOCKED_TEXT), 'blocked');
+    assert.equal(rig.ports.counts.read, readsBefore);
+    // ローカルの命令（用事の登録）は外部へ送らないので、ゲートに関係なく進む。
+    const task = await turn(core, who, TASK_TEXT);
+    assert.equal(
+      (task['result_view'] as { item_refs: { kind: string }[] }).item_refs[0]
+        ?.kind,
+      'operation',
+    );
+
+    // ゲートが開いていても、掃除の本体を待っている間は答えを返さず、済んでから進む。
+    clock.ms = CLOCK_START;
+    assert.equal(retention.gate().search, true);
+    const release = retention.lease();
+    assert.notEqual(release, null);
+    const sweep = retention.runOnce(true);
+    let answered = false;
+    const pending = turn(core, who, SCHEDULE_TEXT).then((value) => {
+      answered = true;
+      return value;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(answered, false);
+    release?.();
+    await sweep;
+    const read = await pending;
+    assert.equal(JSON.stringify(read).includes(BLOCKED_TEXT), false);
+  },
+);
+
+test(
+  'a sweep that starts while a schedule read is in flight waits for the read and does not run its body (review P2)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const retention = core.handle.retention;
+    // ゲートを通った後、検索（provider の予定の取得）の途中で止める。
+    const readReached = signal();
+    const finishRead = signal();
+    t.after(() => finishRead.resolve());
+    const listEvents = rig.ports.reader.listEvents;
+    t.mock.method(rig.ports.reader, 'listEvents', async () => {
+      readReached.resolve();
+      await finishRead.promise;
+      return listEvents.call(rig.ports.reader);
+    });
+    assert.equal(retention.gate().search, true);
+    const pending = turn(core, who, SCHEDULE_TEXT);
+    await readReached.promise;
+    // 検索の途中で定期の掃除が始まった。本体に入れず、検索が終わるまで待つ（記録は running のまま）。
+    const sweep = retention.runOnce(true);
+    let swept = false;
+    void sweep.then(() => {
+      swept = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(swept, false);
+    assert.equal(retention.record().status, 'running');
+    assert.equal(retention.gate().search, false);
+    // 検索が終わると貸し出しが返り、掃除が進んで完了する。検索の答えは聞き返しにならない。
+    finishRead.resolve();
+    const answer = await pending;
+    assert.equal(JSON.stringify(answer).includes(BLOCKED_TEXT), false);
+    const record = await sweep;
+    assert.equal(record.status, 'completed');
+    assert.equal(retention.gate().search, true);
+  },
+);
+
+test(
+  'a sweep that starts while the target recheck is waiting on the connection does not run its body until the reads finish (review P2)',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const who = await session(core);
+    const operationId = await createOperation(core, who, LABEL);
+    const retention = core.handle.retention;
+    rig.injector.arm('after_approval_save', { mode: 'pause' });
+    await approveOperation(core, who, operationId);
+    await reached(rig.injector, 'after_approval_save');
+    // 承認の保存の後、実行担当の最初の接続の確認（対象の確かめ直し）で止める。
+    const connectionReached = signal();
+    const finishConnection = signal();
+    t.after(() => finishConnection.resolve());
+    const connection = rig.ports.reader.connection;
+    let held = false;
+    t.mock.method(rig.ports.reader, 'connection', async () => {
+      if (!held) {
+        held = true;
+        connectionReached.resolve();
+        await finishConnection.promise;
+      }
+      return connection.call(rig.ports.reader);
+    });
+    rig.injector.release('after_approval_save');
+    await connectionReached.promise;
+    // 接続の確認を待つ間に定期の掃除が始まった。本体に入れず、読み取りが終わるまで待つ（何も送っていない）。
+    const sweep = retention.runOnce(true);
+    let swept = false;
+    void sweep.then(() => {
+      swept = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(swept, false);
+    assert.equal(retention.record().status, 'running');
+    assert.equal(rig.provider.truth.requestCount(), 0);
+    // 読み取りが終わると貸し出しが返り、掃除が進んで完了する。送出は 1 回だけ。
+    finishConnection.resolve();
+    await idle(core);
+    const record = await sweep;
+    assert.equal(record.status, 'completed');
+    assert.equal(rig.provider.truth.requestCount(), 1);
+    assert.equal(retention.gate().cloud_send, true);
+  },
+);
+
+test(
+  'stopping the Core ends a sweep waiting on a send lease before it closes the DB, and the stopped sweep leaves no completion record',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const retention = core.handle.retention;
+    // 送出中の区間を模して貸し出しを持つ。そこへ始まった掃除は本体に入れず待つ。
+    const release = retention.lease();
+    assert.notEqual(release, null);
+    const sweep = retention.runOnce(true);
+    let stopped = false;
+    const stopping = core.handle.stop('test').then(() => {
+      stopped = true;
+    });
+    // 返却を待たずに、停止は掃除の中断（drain）を終えて DB を閉じる。
+    await withTimeout(stopping, 10_000, 'stop while a sweep waits for a lease');
+    assert.equal(stopped, true);
+    const record = await sweep;
+    // 停止で中断した掃除は、完了の記録を作らない（ゲートは開かない）。
+    assert.equal(record.status, 'running');
+    assert.equal(retention.gate().cloud_send, false);
+    // 遅れて返しても、例外も状態の崩れもない。
+    release?.();
+    release?.();
+    assert.equal(retention.record().status, 'running');
+  },
+);
+
+test(
+  'stopping the Core ends a sweep that waits for a send lease even when the lease is never released, and a late release is safe',
+  { timeout: TIMEOUT },
+  async (t) => {
+    const rig = await startRig(t);
+    const core = await startCore(t, rig);
+    const retention = core.handle.retention;
+    // 送出中の区間を模して貸し出しを持つ。そこへ始まった掃除は本体に入れず待つ。
+    const release = retention.lease();
+    assert.notEqual(release, null);
+    const sweep = retention.runOnce(true);
+    let stopped = false;
+    const stopping = core.handle.stop('test').then(() => {
+      stopped = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    // 貸し出しを返さないままでも、停止は掃除の中断を待って終わる（返さないと終わらなければ失敗）。
+    await withTimeout(
+      Promise.all([stopping, sweep]),
+      10_000,
+      'stop while a sweep waits for a lease that is not released',
+    );
+    assert.equal(stopped, true);
+    const record = await sweep;
+    // 停止で中断した掃除は、完了の記録を作らない（ゲートは開かない）。
+    assert.equal(record.status, 'running');
+    assert.equal(retention.gate().cloud_send, false);
+    // 返さない貸し出しが残っていても、停止の後の掃除は待たずに中断する。
+    const afterClose = await withTimeout(
+      retention.runOnce(true),
+      10_000,
+      'sweep after the Core stopped',
+    );
+    assert.equal(afterClose.status, 'running');
+    // 遅れて返しても、例外も状態の崩れもない。
+    release?.();
+    release?.();
+    assert.equal(retention.record().status, 'running');
+    assert.equal(retention.gate().cloud_send, false);
   },
 );

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import test from 'node:test';
+import Database from 'better-sqlite3';
 import {
   OPERATION_PURGE_STEPS,
   applyMigrations,
@@ -1260,5 +1261,399 @@ test('0011: released budget rows from before 0010 get delete_at once, and nothin
       ).result,
       { ok: false, outcome: 'rejected', reasons: ['calendar_invalid'] },
     );
+  });
+});
+
+test('B06-06d1: sweep rows carry the operation state and the open compensation without bodies', async () => {
+  await withDb((db) => {
+    seedFullOperation(db);
+    const rows = (
+      value(
+        retention(db, { kind: 'retention.sweep_rows', now: RECEIPT_DUE })
+          .result,
+      ) as {
+        readonly rows: readonly {
+          family: string;
+          id: string;
+          operation_state?: string;
+          completed_at?: string | null;
+          body_erased?: boolean;
+          compensation_open?: boolean;
+        }[];
+      }
+    ).rows as readonly {
+      family: string;
+      id: string;
+      operation_state?: string;
+      completed_at?: string | null;
+      body_erased?: boolean;
+      compensation_open?: boolean;
+    }[];
+    const x = rows.find(
+      (row) => row.family === 'operation' && row.id === 'op-x',
+    );
+    assert.deepEqual(x, {
+      family: 'operation',
+      id: 'op-x',
+      operation_state: 'succeeded',
+      // DONE = 2_000_000。UTC の RFC 3339 に直した手書きの期待値。
+      completed_at: '1970-01-01T00:33:20Z',
+      body_erased: false,
+      compensation_open: true,
+      task_depends: false,
+      body_delete_at: null,
+      row_delete_at: null,
+    });
+    // 用事・依頼・予算の月は、この作業の掃除の入力にしない（発言・記憶・派生物は B06-06d2）。
+    assert.equal(
+      rows.some((row) => row.family === 'owner_content'),
+      false,
+    );
+  });
+});
+
+test('B06-06d1: undo records older than 30 days are removed once compensation is finished, and the receipt can then be purged', async () => {
+  await withDb((db) => {
+    seedFullOperation(db);
+    const purgeUndo = (now: number) =>
+      value(
+        retention(db, { kind: 'retention.purge_undo_records', now }).result,
+      );
+    // 30 日の 1 ms 前は残す（undo_records の requested_at は DONE + 1）。
+    assert.deepEqual(purgeUndo(DONE + 1 + 30 * DAY - 1), { purged: 0 });
+    // 補償の操作（op-y）がまだ終わっていない間は、30 日を過ぎても残す。
+    assert.deepEqual(purgeUndo(DONE + 1 + 31 * DAY), { purged: 0 });
+    ok(db, cancelCommand('op-y', '1'), DONE);
+    assert.deepEqual(purgeUndo(DONE + 1 + 31 * DAY), { purged: 1 });
+    assert.equal(count(db, 'SELECT count(*) FROM undo_records'), 0);
+    // 取り消しの記録が消えた後、X の 90 日の削除が進む。
+    assert.deepEqual(
+      value(
+        retention(db, {
+          kind: 'retention.purge_operation',
+          operation_id: 'op-x',
+          now: RECEIPT_DUE,
+        }).result,
+      ),
+      { operation_id: 'op-x', purged: true },
+    );
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  });
+});
+
+// 0010 の隔離の印（ADR 0048 の引き継ぎ。B06-06d1 の試験だけ。印を外す命令はまだない）。
+test('0010: the restore isolation mark survives a content-version update', async () => {
+  await withDb((db) => {
+    ok(db, createCommand('op-u'));
+    db.prepare(
+      "UPDATE operations SET restore_unverified_at = 5000 WHERE operation_id = 'op-u'",
+    ).run();
+    const blob = 'b-op-u-2';
+    db.prepare(
+      "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'operation_intent', 'operation_versions', 'op-u', 2, 1, 'k-test', randomblob(12), X'00', randomblob(16), 1000, NULL)",
+    ).run(blob);
+    db.prepare(
+      "INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at) VALUES ('op-u', 2, ?, ?, 1000)",
+    ).run('b'.repeat(64), blob);
+    assert.equal(
+      db
+        .prepare(
+          "UPDATE operations SET current_content_version = 2 WHERE operation_id = 'op-u'",
+        )
+        .run().changes,
+      1,
+    );
+    // 内容版を上げても印は操作の列なので残る。
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT restore_unverified_at FROM operations WHERE operation_id = 'op-u'",
+        )
+        .get(),
+      { restore_unverified_at: 5000 },
+    );
+  });
+});
+
+test('0010: the isolation mark is cleared and the result is finalized in the same UPDATE', async () => {
+  await withDb((db) => {
+    ok(db, createCommand('op-v'));
+    db.prepare(
+      "UPDATE operations SET restore_unverified_at = 5000 WHERE operation_id = 'op-v'",
+    ).run();
+    const finalized = db
+      .prepare(
+        "UPDATE operations SET state = 'succeeded', completed_at = ?, restore_unverified_at = NULL WHERE operation_id = 'op-v' AND restore_unverified_at IS NOT NULL",
+      )
+      .run(DONE);
+    assert.equal(finalized.changes, 1);
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT state, completed_at, restore_unverified_at FROM operations WHERE operation_id = 'op-v'",
+        )
+        .get(),
+      { state: 'succeeded', completed_at: DONE, restore_unverified_at: null },
+    );
+  });
+});
+
+test('0010: all approvals are revoked whether or not the operation is marked', async () => {
+  await withDb((db) => {
+    ok(db, createCommand('op-marked'));
+    ok(db, createCommand('op-clear'));
+    ok(db, approveCommand('op-marked', '1'));
+    ok(db, approveCommand('op-clear', '1'));
+    db.prepare(
+      "UPDATE operations SET restore_unverified_at = 5000 WHERE operation_id = 'op-marked'",
+    ).run();
+    const revoked = db
+      .prepare(
+        "UPDATE approvals SET status = 'revoked' WHERE status IN ('valid', 'consumed')",
+      )
+      .run();
+    assert.equal(revoked.changes, 2);
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT operation_id, status FROM approvals ORDER BY operation_id',
+        )
+        .all(),
+      [
+        { operation_id: 'op-clear', status: 'revoked' },
+        { operation_id: 'op-marked', status: 'revoked' },
+      ],
+    );
+    // 印は失効の更新で消えない（外すのは結果の確定と同じ UPDATE）。
+    assert.equal(
+      count(
+        db,
+        "SELECT restore_unverified_at FROM operations WHERE operation_id = 'op-marked'",
+      ),
+      5000,
+    );
+  });
+});
+
+// exec だけが指定の SQLite の失敗コードで落ちる接続（VACUUM の失敗の写し方を確かめる）。
+function failingExec(
+  db: SqliteDatabase,
+  code: string,
+  method: 'exec' | 'pragma' = 'exec',
+): SqliteDatabase {
+  const fail = () => {
+    throw new Database.SqliteError('simulated', code);
+  };
+  return new Proxy(db, {
+    get(target, property) {
+      if (property === 'exec' && method === 'exec') return fail;
+      // 耐久設定の読み出し（pragma）は通し、ログの切り詰めの pragma だけ落とす。
+      if (property === 'pragma' && method === 'pragma')
+        return (source: string, ...rest: unknown[]) =>
+          source.startsWith('wal_checkpoint')
+            ? fail()
+            : (target.pragma as (...args: unknown[]) => unknown)(
+                source,
+                ...rest,
+              );
+      const member = Reflect.get(target, property, target) as unknown;
+      return typeof member === 'function' ? member.bind(target) : member;
+    },
+  });
+}
+
+test('B06-06d1: a full disk during VACUUM is a rejection that keeps the writer running, while an I/O failure still halts it', async () => {
+  await withDb((db) => {
+    seedFullOperation(db);
+    const full = retention(failingExec(db, 'SQLITE_FULL'), {
+      kind: 'retention.vacuum',
+    });
+    assert.deepEqual(full.result, {
+      ok: false,
+      outcome: 'rejected',
+      reasons: ['database_full'],
+    });
+    assert.equal(full.halt, false);
+    // 書込みを止めていないので、続けて保存の命令を受けられる。
+    assert.equal(
+      retention(db, { kind: 'retention.checkpoint' }).result.ok,
+      true,
+    );
+    // ログの切り詰め（checkpoint）の SQLITE_FULL も同じ。
+    const fullCheckpoint = retention(failingExec(db, 'SQLITE_FULL', 'pragma'), {
+      kind: 'retention.checkpoint',
+    });
+    assert.deepEqual(fullCheckpoint.result, {
+      ok: false,
+      outcome: 'rejected',
+      reasons: ['database_full'],
+    });
+    assert.equal(fullCheckpoint.halt, false);
+    // I/O の失敗は、状態が分からないので今までどおり止める（ADR 0018）。
+    const io = retention(failingExec(db, 'SQLITE_IOERR'), {
+      kind: 'retention.vacuum',
+    });
+    assert.equal(io.result.ok, false);
+    assert.equal(io.halt, true);
+    const ioCheckpoint = retention(failingExec(db, 'SQLITE_IOERR', 'pragma'), {
+      kind: 'retention.checkpoint',
+    });
+    assert.equal(ioCheckpoint.halt, true);
+  });
+});
+
+test('B06-06d1: a completed_at outside the Date range becomes null in the sweep rows without failing the whole read', async () => {
+  await withDb((db) => {
+    seedFullOperation(db);
+    // 範囲外の整数（Date の上限 8.64e15 を超える）。1 行の異常で sweep_rows 全体を止めない。
+    db.pragma('foreign_keys = OFF');
+    db.prepare(
+      "UPDATE operations SET completed_at = ? WHERE operation_id = 'op-x'",
+    ).run(9_000_000_000_000_000);
+    const result = retention(db, {
+      kind: 'retention.sweep_rows',
+      now: RECEIPT_DUE,
+    }).result;
+    const rows = (
+      value(result) as {
+        readonly rows: readonly {
+          family: string;
+          id: string;
+          completed_at?: string | null;
+        }[];
+      }
+    ).rows;
+    const x = rows.find(
+      (row) => row.family === 'operation' && row.id === 'op-x',
+    );
+    assert.equal(x?.completed_at, null);
+    // もう 1 行（補償の操作）は読めたまま。
+    assert.ok(
+      rows.some((row) => row.family === 'operation' && row.id !== 'op-x'),
+    );
+  });
+});
+
+// 計画（domain）が deadline_unreadable で保留する行（完了の時刻が UTC の 4 桁の年に収まらない）を、命令も消さない。
+// 正常な期限超過の操作と混ぜて、バッチが保留の行まで選ばないことを確かめる（Codex の再レビューの P2）。
+test('B06-06d1: the batches skip an operation whose completed_at is outside the readable range while deleting the due ones', async () => {
+  await withDb((db) => {
+    // 手書きの値: 年 0000-01-01T00:00:00Z（読める範囲の下限）、-000001 年の末（Date は読めるが domain は読めない）、Date の範囲外。
+    const LOWER_EDGE = -62_167_219_200_000;
+    const BELOW_RANGE = -62_167_219_200_001;
+    const INVALID_DATE = -9_000_000_000_000_000;
+    const completedAt: Record<string, number> = {
+      'op-edge': LOWER_EDGE,
+      'op-below': BELOW_RANGE,
+      'op-invalid': INVALID_DATE,
+      'op-ok': DONE,
+    };
+    for (const id of Object.keys(completedAt)) {
+      ok(db, createCommand(id));
+      ok(db, cancelCommand(id, '1'), DONE);
+    }
+    for (const [id, millis] of Object.entries(completedAt))
+      db.prepare(
+        'UPDATE operations SET completed_at = ? WHERE operation_id = ?',
+      ).run(millis, id);
+    const bodyRows = (): unknown =>
+      db
+        .prepare(
+          'SELECT operation_id FROM operation_versions WHERE intent_blob_id IS NOT NULL ORDER BY operation_id',
+        )
+        .pluck()
+        .all();
+
+    // 読めない時刻の行は、計画の入力で completed_at が null（保留）になる。下限ちょうどは読める。
+    const planned = (
+      value(
+        retention(db, { kind: 'retention.sweep_rows', now: RECEIPT_DUE })
+          .result,
+      ) as {
+        readonly rows: readonly { id: string; completed_at?: string | null }[];
+      }
+    ).rows;
+    const at = (id: string) =>
+      planned.find((row) => row.id === id)?.completed_at;
+    assert.equal(at('op-edge'), '0000-01-01T00:00:00Z');
+    assert.equal(at('op-below'), null);
+    assert.equal(at('op-invalid'), null);
+
+    // 本文の削除: 読める 2 件（下限・正常）だけ。保留の行は選ばず、拒否としても現れない。
+    assert.deepEqual(
+      value(
+        retention(db, {
+          kind: 'retention.erase_due_bodies',
+          now: RECEIPT_DUE + 1,
+          limit: 50,
+          after: null,
+        }).result,
+      ),
+      { processed: ['op-edge', 'op-ok'], skipped: [], next: null },
+    );
+    assert.deepEqual(bodyRows(), ['op-below', 'op-invalid']);
+
+    // 90 日の削除も同じ。保留の行の操作の行は残る。
+    assert.deepEqual(
+      value(
+        retention(db, {
+          kind: 'retention.purge_due_operations',
+          now: RECEIPT_DUE + 1,
+          limit: 50,
+          after: null,
+        }).result,
+      ),
+      { processed: ['op-edge', 'op-ok'], skipped: [], next: null },
+    );
+    assert.deepEqual(
+      db
+        .prepare('SELECT operation_id FROM operations ORDER BY operation_id')
+        .pluck()
+        .all(),
+      ['op-below', 'op-invalid'],
+    );
+
+    // 1 件ずつの命令（最後の保証）も、起点が読めない行は completed_at_missing で拒む。
+    for (const id of ['op-below', 'op-invalid'])
+      for (const kind of [
+        'retention.erase_body',
+        'retention.purge_operation',
+      ] as const)
+        assert.deepEqual(
+          reasons(
+            retention(db, { kind, operation_id: id, now: RECEIPT_DUE + 1 })
+              .result,
+          ),
+          ['completed_at_missing'],
+          `${kind} ${id}`,
+        );
+    assert.equal(
+      count(
+        db,
+        "SELECT count(*) FROM operations WHERE operation_id = 'op-below'",
+      ),
+      1,
+    );
+  });
+});
+
+test('B06-06d1: checkpoint and VACUUM run as retention commands outside a migration', async () => {
+  await withDb((db) => {
+    seedFullOperation(db);
+    const checkpoint = value(
+      retention(db, { kind: 'retention.checkpoint' }).result,
+    ) as { busy: number; log_frames: number; checkpointed_frames: number };
+    assert.equal(checkpoint.busy, 0);
+    assert.ok(checkpoint.log_frames >= 0);
+    assert.deepEqual(
+      value(retention(db, { kind: 'retention.vacuum' }).result),
+      {
+        vacuumed: true,
+      },
+    );
+    // VACUUM の後も行と外部キーはそのまま。
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    // seedFullOperation は X と、X の取り消しの補償の操作 Y を作る。
+    assert.equal(count(db, 'SELECT count(*) FROM operations'), 2);
   });
 });

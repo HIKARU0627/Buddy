@@ -15,6 +15,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   OPERATION_KIND_RULES,
+  SWEEP_INTERVAL_MS,
   canAutoReconcile,
   isOperationKind,
   nextStepDecision,
@@ -68,6 +69,16 @@ export interface OperationRunnerOptions {
   readonly faults: FaultHook;
   readonly contract: ApiContract;
   readonly log: (message: string) => void;
+  // 保存期限の掃除のゲート（ADR 0043・0053）。外部へ送る前に、掃除が済んでクラウド送信が許されていることを確かめる。
+  // 閉じていれば送らず、次の周期（gateRetryMs）に最初から確かめ直す。省略したときは確かめない（試験）。
+  readonly cloudGate?: {
+    readonly ready: () => Promise<void>;
+    readonly open: () => boolean;
+    // 送出の区間（ゲートの確認から送信の終わりまで）を掃除の本体と直列にする貸し出し。ゲートが閉じている・
+    // 掃除が動いている・待っているときは null。返した関数を送信の後に呼ぶ。
+    readonly lease: () => (() => void) | null;
+  };
+  readonly gateRetryMs?: number;
 }
 
 export interface OperationRunner {
@@ -213,6 +224,8 @@ export function createOperationRunner(
   // 排他の間に届いた実行の開始（afterApproval なら true）。排他を外した後に始める（要求を捨てない）。
   const pendingStarts = new Map<string, boolean>();
   let closed = false;
+  // ゲートが閉じていて送らなかった操作の再試行（close で止める）。
+  const retryTimers = new Set<NodeJS.Timeout>();
 
   const loadKey = async (): Promise<DataKeyMaterial | null> => {
     try {
@@ -604,9 +617,68 @@ export function createOperationRunner(
       );
   };
 
+  // ゲートが閉じていて送らなかった操作を、次の周期に最初から確かめ直す。
+  const holdForGate = (operationId: string): void => {
+    log(
+      `操作 ${operationId} は保存期限の掃除が済むまで送りません。次の周期に確かめ直します。`,
+    );
+    const timer = setTimeout(() => {
+      retryTimers.delete(timer);
+      launch(operationId, false);
+    }, options.gateRetryMs ?? SWEEP_INTERVAL_MS);
+    timer.unref?.();
+    retryTimers.add(timer);
+  };
+
+  // 準備権の前のゲート。掃除の完了を待ち、クラウド送信が許されていなければ送らず、次の周期に再試行する。
+  // 送出意図の前の判定なので、閉じていても結果不明は作らない（状態は approved・preparing のまま残る）。
+  const cloudSendAllowed = async (operationId: string): Promise<boolean> => {
+    const gate = options.cloudGate;
+    if (gate === undefined) return true;
+    await gate.ready();
+    if (closed) return false;
+    if (gate.open()) return true;
+    holdForGate(operationId);
+    return false;
+  };
+
+  // 送出意図の記録から送信の終わりまでの貸し出しを受ける。ゲートの確認と貸し出しは同じ同期の区間で行うので、
+  // 確認の後に掃除が本体に入ることはない（掃除は貸し出しが返るまで待つ）。取れなければ送出意図の前で止める
+  // （保存後に止めると、送っていない操作に結果不明を作る）。
+  const leaseSend = async (
+    operationId: string,
+  ): Promise<(() => void) | null> => {
+    const gate = options.cloudGate;
+    if (gate === undefined) return () => undefined;
+    await gate.ready();
+    if (closed) return null;
+    const release = gate.lease();
+    if (release === null) holdForGate(operationId);
+    return release;
+  };
+
+  // 対象と許可の確かめ直し（provider への読み取り）を、掃除の本体と直列にする。ゲートの確認と貸し出しは同じ同期の
+  // 区間で行い、読み取りが終わるまで持つ。読み取りの途中で始まった掃除は、返却を待つので本体に入らない。
+  // 貸し出しは送出の貸し出し（leaseSend）の前に返す（持ったまま取ると、間に始まった掃除を待って自分で詰まる）。
+  // 取れなければ null（次の周期に最初から確かめ直す。状態は approved・preparing のまま、何も記録しない）。
+  const recheckLeased = async (
+    operationId: string,
+    intent: RemoteIntent,
+  ): Promise<Recheck | null> => {
+    const release = await leaseSend(operationId);
+    if (release === null) return null;
+    try {
+      return await recheck(intent);
+    } finally {
+      release();
+    }
+  };
+
   const runRemote = async (initial: OperationView): Promise<void> => {
     const writer = options.writer;
     if (writer === null || options.provider === null) return;
+    // 準備権を取る前に確かめる（閉じていれば approved のまま、何も記録しない）。
+    if (!(await cloudSendAllowed(initial.operation_id))) return;
     const raw = await openIntent(initial);
     const intent =
       raw === null ? null : remoteIntent(raw, initial.operation_kind);
@@ -636,7 +708,8 @@ export function createOperationRunner(
       attemptId = current.attempt_id;
     else return;
     if (current === null || current.state !== 'preparing' || closed) return;
-    const checked = await recheck(intent);
+    const checked = await recheckLeased(current.operation_id, intent);
+    if (checked === null) return;
     if (checked.kind === 'changed') {
       await revise(current, intent, checked);
       return;
@@ -671,33 +744,45 @@ export function createOperationRunner(
       return;
     }
     const step = decision.step_id;
-    const dispatched = await submit({
-      ...base(current, intent.permission_revision),
-      kind: 'operation.dispatch_intent',
-      attempt_id: attemptId,
-      reservation_id: null,
-      observed_connection: {
-        status: checked.status,
-        access: checked.access,
-        permission_revision: checked.permission_revision,
-      },
-      step: { step_id: step, step_kind: decision.step_kind },
-    });
-    if (dispatched.outcome !== 'durable' || dispatched.dispatch_permit === null)
-      return;
+    // 確かめ直しの間に定期の掃除が始まった・失敗した場合も、送出意図を記録する前に止める。貸し出しは
+    // 送信が終わるまで持つ（その間は掃除の本体が始まらない）。結果の保存は外部へ送らないので貸し出しの外。
+    const release = await leaseSend(current.operation_id);
+    if (release === null) return;
     const operationId = current.operation_id;
-    await faults.hit('after_dispatch_intent_before_send', {
-      operation_id: operationId,
-      step_id: step,
-    });
-    // 停止の後・許可を使えないときは送らない（起動時の回復で unknown_held になり、自動では送らない）。
-    if (closed || !store.consumeDispatchPermit(dispatched.dispatch_permit))
-      return;
-    const observation = await send(writer, intent, {
-      operation_id: operationId,
-      attempt_id: attemptId,
-      step_id: step,
-    });
+    let observation: Awaited<ReturnType<typeof send>>;
+    try {
+      const dispatched = await submit({
+        ...base(current, intent.permission_revision),
+        kind: 'operation.dispatch_intent',
+        attempt_id: attemptId,
+        reservation_id: null,
+        observed_connection: {
+          status: checked.status,
+          access: checked.access,
+          permission_revision: checked.permission_revision,
+        },
+        step: { step_id: step, step_kind: decision.step_kind },
+      });
+      if (
+        dispatched.outcome !== 'durable' ||
+        dispatched.dispatch_permit === null
+      )
+        return;
+      await faults.hit('after_dispatch_intent_before_send', {
+        operation_id: operationId,
+        step_id: step,
+      });
+      // 停止の後・許可を使えないときは送らない（起動時の回復で unknown_held になり、自動では送らない）。
+      if (closed || !store.consumeDispatchPermit(dispatched.dispatch_permit))
+        return;
+      observation = await send(writer, intent, {
+        operation_id: operationId,
+        attempt_id: attemptId,
+        step_id: step,
+      });
+    } finally {
+      release();
+    }
     await faults.hit('before_result_save', {
       operation_id: operationId,
       step_id: step,
@@ -930,6 +1015,8 @@ export function createOperationRunner(
     },
     close() {
       closed = true;
+      for (const timer of retryTimers) clearTimeout(timer);
+      retryTimers.clear();
     },
   };
 }

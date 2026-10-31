@@ -26,6 +26,9 @@ export const CONTROL_OPS = [
   // 予算月の状態と、本人による確かめ直し（B07-04、ADR 0037）。
   'budget_calendar_status',
   'budget_calendar_confirm',
+  // 時計の最終確認時刻の状態と、本人による採り直し（B06-07a-1、ADR 0058 の U136）。
+  'clock_status',
+  'clock_recheck',
 ] as const;
 export type ControlOp = (typeof CONTROL_OPS)[number];
 
@@ -54,6 +57,15 @@ export type ControlRequest =
       readonly month_start: string;
       readonly revision: string;
       readonly observed_at: string;
+    }
+  | { readonly op: 'clock_status'; readonly request_id: string }
+  // 本人が status で見た版（revision）・最終確認時刻・今の時計。今の状態と一致するときだけ Core が採り直す。
+  | {
+      readonly op: 'clock_recheck';
+      readonly request_id: string;
+      readonly revision: string;
+      readonly observed_last_checked_at: string | null;
+      readonly observed_now: string;
     };
 
 export type ControlRejectReason =
@@ -73,7 +85,9 @@ export type ControlRejectReason =
   | 'invalid_month'
   | 'invalid_month_start'
   | 'invalid_revision'
-  | 'invalid_observed_at';
+  | 'invalid_observed_at'
+  | 'invalid_observed_last_checked_at'
+  | 'invalid_observed_now';
 
 export type ControlParseResult =
   | { readonly ok: true; readonly request: ControlRequest }
@@ -137,8 +151,33 @@ export interface ControlBudgetCalendar {
   readonly checked_at: string;
 }
 
+// 時計の最終確認時刻の状態（B06-07a-1、ADR 0058）。本人が採り直す前に CLI に出す値。
+export interface ControlClockStatus {
+  readonly state: 'verified' | 'missing' | 'invalid';
+  readonly last_checked_at: string | null;
+  // 採り直しの要求に渡す版。
+  readonly revision: string;
+  readonly epoch: string;
+  readonly now: string;
+  readonly regressed: boolean;
+  readonly regressed_by_ms: number;
+  readonly needs_recheck: boolean;
+  // 過去の採り直し（新しいものが後ろ。最大 20 件）。
+  readonly rechecks: readonly {
+    readonly at: string;
+    readonly request_id: string;
+    readonly from_last_checked_at: string | null;
+    readonly to_last_checked_at: string;
+  }[];
+}
+
 export type ControlResponse =
   | ({ readonly ok: true; readonly request_id: string } & ControlStatus)
+  | {
+      readonly ok: true;
+      readonly request_id: string;
+      readonly clock: ControlClockStatus;
+    }
   | {
       readonly ok: true;
       readonly request_id: string;
@@ -182,6 +221,26 @@ const CONFIRM_FIELDS: readonly string[] = [
   'observed_at',
 ];
 const REVISION = /^(0|[1-9][0-9]{0,14})$/u;
+// 時計の状態ファイルの版（ファイルがなければ missing、読めなければ invalid）。
+const CLOCK_REVISION = /^(missing|invalid|0|[1-9][0-9]{0,14})$/u;
+// 最終確認時刻は、ミリ秒が 0 のとき秒までで書かれる（ISO 8601 の UTC）。
+const UTC_SECONDS_OR_MILLIS =
+  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(.[0-9]{1,3})?Z$/u;
+const isUtcTime = (value: string): boolean => {
+  if (!UTC_SECONDS_OR_MILLIS.test(value)) return false;
+  const parsed = Date.parse(value);
+  return (
+    !Number.isNaN(parsed) &&
+    new Date(parsed).toISOString().slice(0, 19) === value.slice(0, 19)
+  );
+};
+const RECHECK_FIELDS: readonly string[] = [
+  'op',
+  'request_id',
+  'revision',
+  'observed_last_checked_at',
+  'observed_now',
+];
 const YEAR_MONTH = /^[0-9]{4}-(0[1-9]|1[0-2])$/u;
 const UTC_MILLIS =
   /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/u;
@@ -219,7 +278,9 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
         ? REVOKE_FIELDS
         : value['op'] === 'budget_calendar_confirm'
           ? CONFIRM_FIELDS
-          : ALLOWED_FIELDS;
+          : value['op'] === 'clock_recheck'
+            ? RECHECK_FIELDS
+            : ALLOWED_FIELDS;
   for (const key of Object.keys(value))
     if (!allowed.includes(key)) return { ok: false, reason: 'unknown_field' };
   const op = value['op'];
@@ -254,6 +315,39 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
     return {
       ok: true,
       request: { op, request_id: requestId, device_id: deviceId },
+    };
+  }
+  if (op === 'clock_recheck') {
+    const revision = value['revision'];
+    const lastChecked = value['observed_last_checked_at'];
+    const observedNow = value['observed_now'];
+    if (
+      revision === undefined ||
+      lastChecked === undefined ||
+      observedNow === undefined
+    )
+      return { ok: false, reason: 'missing_field' };
+    if (
+      typeof revision !== 'string' ||
+      typeof observedNow !== 'string' ||
+      !(lastChecked === null || typeof lastChecked === 'string')
+    )
+      return { ok: false, reason: 'invalid_type' };
+    if (!CLOCK_REVISION.test(revision))
+      return { ok: false, reason: 'invalid_revision' };
+    if (lastChecked !== null && !isUtcTime(lastChecked))
+      return { ok: false, reason: 'invalid_observed_last_checked_at' };
+    if (!isUtcTime(observedNow))
+      return { ok: false, reason: 'invalid_observed_now' };
+    return {
+      ok: true,
+      request: {
+        op,
+        request_id: requestId,
+        revision,
+        observed_last_checked_at: lastChecked,
+        observed_now: observedNow,
+      },
     };
   }
   if (op === 'budget_calendar_confirm') {
@@ -305,7 +399,8 @@ export function parseControlRequest(line: Uint8Array): ControlParseResult {
     request:
       op === 'pairing_first_start' ||
       op === 'device_list' ||
-      op === 'budget_calendar_status'
+      op === 'budget_calendar_status' ||
+      op === 'clock_status'
         ? { op, request_id: requestId }
         : { op: op as 'status' | 'stop', request_id: requestId },
   };

@@ -607,3 +607,69 @@ test('lineage: a derivative whose row is already gone does not keep the edges of
     assert.equal(sourcedEdges(db, M_OTHER), 0);
   });
 });
+
+test('memory.delete_due uses the same corrected deadline as the sweep plan: a stored deletion date later than review + 30 days is pulled back, and a review_pending row cannot have a NULL date', async () => {
+  await withWorld((db) => {
+    // 見直し待ちの削除日が、見直し日 + 30 日より遅く保存されている（延ばされた値）。
+    db.prepare(
+      "UPDATE memories SET status = 'review_pending', delete_at = ? WHERE memory_id = ?",
+    ).run(REVIEW_AT + 90 * DAY, M);
+    assert.deepEqual(
+      reasons(
+        memoryOp(db, {
+          kind: 'memory.delete_due',
+          memory_id: M,
+          now: REVIEW_AT + 30 * DAY - 1,
+        }),
+      ),
+      ['not_due'],
+    );
+    // 30 日ちょうど: 保存した値（90 日）ではなく補正した期限（30 日）で消える。
+    assert.deepEqual(
+      value(
+        memoryOp(db, {
+          kind: 'memory.delete_due',
+          memory_id: M,
+          now: REVIEW_AT + 30 * DAY,
+        }),
+      ),
+      { memory_id: M, deleted: true },
+    );
+    assert.equal(
+      count(db, 'SELECT count(*) FROM memories WHERE memory_id = ?', M),
+      0,
+    );
+  });
+});
+
+test('memory.continue does not revive a review_pending memory past the corrected deadline', async () => {
+  await withWorld((db) => {
+    db.prepare(
+      "UPDATE memories SET status = 'review_pending', delete_at = ? WHERE memory_id = ?",
+    ).run(REVIEW_AT + 90 * DAY, M2);
+    assert.deepEqual(
+      reasons(
+        memoryOp(db, {
+          kind: 'memory.continue',
+          memory_id: M2,
+          now: REVIEW_AT + 30 * DAY,
+        }),
+      ),
+      ['delete_due'],
+    );
+  });
+});
+
+test('a review_pending memory with a NULL deletion date cannot exist (0001 CHECK), so the NULL case never reaches the plan', async () => {
+  await withWorld((db) => {
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE memories SET status = 'review_pending', delete_at = NULL WHERE memory_id = ?",
+          )
+          .run(M),
+      /CHECK constraint failed/u,
+    );
+  });
+});

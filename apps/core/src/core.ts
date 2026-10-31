@@ -62,6 +62,8 @@ import {
   migrateTaskContents,
 } from './task-content-migration.js';
 import { ForgetLedgerError, syncForgetLedger } from './forget-ledger.js';
+import { createClockStateFile } from './clock-state.js';
+import type { NoticeSink } from './notice-sink.js';
 import {
   RestoreInstallError,
   recoverRestoreInstall,
@@ -281,6 +283,18 @@ export interface StartCoreOptions {
   // 予算の門（ADR 0037）。省略したものは、設定ファイルはデータディレクトリの budget-runtime.json、OS のタイムゾーンは
   // Intl の既定、provider の照合の口はなし（送出意図のある予約は usage 不明として保持）、月の確認は 1 分ごと。
   readonly budget?: CoreBudgetOptions;
+  // 保存期限の掃除（ADR 0058）。省略したものは、時計の状態ファイルはデータディレクトリの clock-state.json、
+  // 知らせの受け取りはなし（運搬は UI-05）。
+  readonly retention?: CoreRetentionOptions;
+}
+
+export interface CoreRetentionOptions {
+  // 期限切れの知らせの受け取り口（U40。運搬は UI-05）。
+  readonly notices?: NoticeSink;
+  // 復帰の検知に使う単調時計（試験で差し替える）。
+  readonly monotonic?: () => number;
+  // 掃除の間隔（試験用。既定は 5 分）。
+  readonly sweepIntervalMs?: number;
 }
 
 export interface CoreBudgetOptions {
@@ -645,11 +659,22 @@ export async function startCore(
     opened = await openStore(dataDir, options, log);
     // 保存期限の掃除（ADR 0053）。起動の直後はゲートを閉じたまま、最初の掃除を始める。検索・クラウドへの
     // 送信・自動利用の入口は、済むまで retention.gate() が閉じていることを確かめる。
+    // 順序（ADR 0058）: 台帳のファイルの同期（openStore）→ 掃除 → ゲートが開く。時計の最終確認時刻と epoch は
+    // データディレクトリのファイルに置く（初めての起動＝DB を新しく作ったときだけファイルを作る）。
     retention = new RetentionSweeper({
       port: createRetentionSweepPort(opened.store),
       epoch: coreInstanceId,
       now: () => now().getTime(),
       log,
+      clock: createClockStateFile(dataDir),
+      freshClockState: opened.binding.storeGenerationSource === 'created',
+      monotonic: options.retention?.monotonic ?? (() => performance.now()),
+      ...(options.retention?.notices === undefined
+        ? {}
+        : { notices: options.retention.notices }),
+      ...(options.retention?.sweepIntervalMs === undefined
+        ? {}
+        : { sweepIntervalMs: options.retention.sweepIntervalMs }),
     });
     retention.start();
     const startedBudget = await startBudgetGate(
@@ -720,6 +745,8 @@ export async function startCore(
         request.op === 'budget_calendar_confirm'
       )
         return budgetControl(request, lifecycle.state, budget);
+      if (request.op === 'clock_status' || request.op === 'clock_recheck')
+        return clockControl(request, lifecycle.state, retention);
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
         return { response: { ok: false, error: 'unavailable' } as const };
@@ -890,6 +917,17 @@ async function startHttps(
     ...(voiceOptions.consent === undefined
       ? {}
       : { consent: voiceOptions.consent }),
+    // Live の開始は外部への送信。起動・復帰の掃除が済むまで開かない（ADR 0058 の U108）。
+    ...(retention === null
+      ? {}
+      : {
+          retention: {
+            ready: async () => {
+              await retention?.idle();
+            },
+            lease: () => (retention as RetentionSweeper).lease(),
+          },
+        }),
     ...(voiceOptions.displayTarget === undefined
       ? {}
       : { displayTarget: voiceOptions.displayTarget }),
@@ -1304,6 +1342,51 @@ async function budgetControl(
       ok: true,
       request_id: request.request_id,
       budget_calendar: calendar,
+    },
+  };
+}
+
+// 制御チャネルの時計の最終確認時刻の状態と、本人による採り直し（ADR 0058 の U136）。中枢のローカルの CLI（OS の本人の
+// 利用者だけが使える制御チャネル）から、本人が見た値を明示して行う承認の操作。running のときだけ。
+async function clockControl(
+  request: Extract<ControlRequest, { op: 'clock_status' | 'clock_recheck' }>,
+  state: LifecycleState,
+  retention: RetentionSweeper | null,
+): Promise<{ readonly response: ControlResponse }> {
+  if (state !== 'running' || retention === null)
+    return { response: { ok: false, error: 'unavailable' } };
+  if (request.op === 'clock_recheck') {
+    const rechecked = await retention.recheckClock({
+      request_id: request.request_id,
+      revision: request.revision,
+      observed_last_checked_at: request.observed_last_checked_at,
+      observed_now: request.observed_now,
+    });
+    if (!rechecked.ok)
+      return {
+        response: {
+          ok: false,
+          error: 'refused',
+          reason: rechecked.reasons.join(','),
+        },
+      };
+  }
+  const view = await retention.clockStatus();
+  return {
+    response: {
+      ok: true,
+      request_id: request.request_id,
+      clock: {
+        state: view.state,
+        last_checked_at: view.last_checked_at,
+        revision: view.revision,
+        epoch: view.epoch,
+        now: view.now,
+        regressed: view.regressed,
+        regressed_by_ms: view.regressed_by_ms,
+        needs_recheck: view.needs_recheck,
+        rechecks: view.rechecks,
+      },
     },
   };
 }

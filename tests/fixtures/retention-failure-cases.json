@@ -1,0 +1,208 @@
+{
+  "description": "試験 ID: X15・X16・X44・T06。消せなかった理由の分け方（ADR 0058 の U137。本人が 2026-10-31 に決定）の手書きの期待値。domain の出力から作らない。class: expected_hold は失敗に数えない・transient は失敗に数えてゲートを閉じる・permanent はその行だけを使えない行として隔離しゲートは開く。",
+  "table": {
+    "expected_hold": [
+      "calendar_invalid",
+      "compensation_open",
+      "completed_at_missing",
+      "memory_not_found",
+      "month_has_open_rows",
+      "not_active",
+      "not_due",
+      "not_review_pending",
+      "operation_not_finished",
+      "operation_not_found",
+      "row_not_found",
+      "task_content_not_migrated",
+      "unknown_held"
+    ],
+    "transient": [
+      "commit_failed",
+      "database_busy",
+      "database_full",
+      "durability_mismatch",
+      "transaction_failed",
+      "worker_closed",
+      "worker_halted",
+      "worker_timeout",
+      "worker_unavailable"
+    ],
+    "permanent": ["constraint_violation", "row_unreadable"]
+  },
+  "classify_cases": [
+    {
+      "id": "single-expected-hold",
+      "outcome": "rejected",
+      "reasons": ["not_due"],
+      "expected": "expected_hold"
+    },
+    {
+      "id": "several-expected-holds",
+      "outcome": "rejected",
+      "reasons": ["compensation_open", "operation_not_finished"],
+      "expected": "expected_hold"
+    },
+    {
+      "id": "constraint-violation-is-permanent",
+      "outcome": "rejected",
+      "reasons": ["constraint_violation"],
+      "expected": "permanent"
+    },
+    {
+      "id": "unreadable-row-is-permanent",
+      "outcome": "rejected",
+      "reasons": ["row_unreadable"],
+      "expected": "permanent"
+    },
+    {
+      "id": "permanent-with-expected-hold-stays-permanent",
+      "outcome": "rejected",
+      "reasons": ["not_due", "constraint_violation"],
+      "expected": "permanent"
+    },
+    {
+      "id": "busy-is-transient",
+      "outcome": "rejected",
+      "reasons": ["database_busy"],
+      "expected": "transient"
+    },
+    {
+      "id": "disk-full-is-transient",
+      "outcome": "rejected",
+      "reasons": ["database_full"],
+      "expected": "transient"
+    },
+    {
+      "id": "transient-wins-over-permanent",
+      "outcome": "rejected",
+      "reasons": ["constraint_violation", "database_busy"],
+      "expected": "transient"
+    },
+    {
+      "id": "transient-wins-over-expected-hold",
+      "outcome": "rejected",
+      "reasons": ["not_due", "transaction_failed"],
+      "expected": "transient"
+    },
+    {
+      "id": "unknown-outcome-is-always-transient",
+      "outcome": "unknown",
+      "reasons": ["constraint_violation"],
+      "expected": "transient"
+    },
+    {
+      "id": "unknown-outcome-with-expected-hold-is-transient",
+      "outcome": "unknown",
+      "reasons": ["not_due"],
+      "expected": "transient"
+    },
+    {
+      "id": "no-reason-is-transient",
+      "outcome": "rejected",
+      "reasons": [],
+      "expected": "transient"
+    },
+    {
+      "id": "unlisted-reason-is-transient-so-an-unknown-cause-never-opens-the-gate",
+      "outcome": "rejected",
+      "reasons": ["some_new_trigger_code"],
+      "expected": "transient"
+    },
+    {
+      "id": "unlisted-reason-mixed-with-permanent-is-transient",
+      "outcome": "rejected",
+      "reasons": ["constraint_violation", "some_new_trigger_code"],
+      "expected": "transient"
+    },
+    {
+      "id": "inherited-property-name-is-an-unlisted-reason",
+      "outcome": "rejected",
+      "reasons": ["constructor"],
+      "expected": "transient"
+    },
+    {
+      "id": "proto-name-is-an-unlisted-reason",
+      "outcome": "rejected",
+      "reasons": ["__proto__"],
+      "expected": "transient"
+    }
+  ],
+  "gate_cases": [
+    {
+      "id": "clock-state-missing-closes-the-gate-even-after-a-completed-sweep",
+      "now": "2031-06-01T00:10:00Z",
+      "last_checked_at": "2031-06-01T00:05:00Z",
+      "clock_state": "missing",
+      "sweep": {
+        "epoch": "e1",
+        "status": "completed",
+        "completed_at": "2031-06-01T00:09:00Z",
+        "failed_actions": 0,
+        "use_blocked": []
+      },
+      "expected_reasons": ["clock_state_missing"]
+    },
+    {
+      "id": "clock-state-invalid-closes-the-gate",
+      "now": "2031-06-01T00:10:00Z",
+      "last_checked_at": null,
+      "clock_state": "invalid",
+      "sweep": {
+        "epoch": "e1",
+        "status": "completed",
+        "completed_at": "2031-06-01T00:09:00Z",
+        "failed_actions": 0,
+        "use_blocked": []
+      },
+      "expected_reasons": ["clock_state_invalid"]
+    },
+    {
+      "id": "clock-state-verified-opens-the-gate",
+      "now": "2031-06-01T00:10:00Z",
+      "last_checked_at": "2031-06-01T00:05:00Z",
+      "clock_state": "verified",
+      "sweep": {
+        "epoch": "e1",
+        "status": "completed",
+        "completed_at": "2031-06-01T00:09:00Z",
+        "failed_actions": 0,
+        "use_blocked": []
+      },
+      "expected_reasons": []
+    },
+    {
+      "id": "clock-state-omitted-is-verified",
+      "now": "2031-06-01T00:10:00Z",
+      "last_checked_at": "2031-06-01T00:05:00Z",
+      "sweep": {
+        "epoch": "e1",
+        "status": "completed",
+        "completed_at": "2031-06-01T00:09:00Z",
+        "failed_actions": 0,
+        "use_blocked": []
+      },
+      "expected_reasons": []
+    },
+    {
+      "id": "undeletable-rows-do-not-close-the-gate-but-block-only-those-rows",
+      "now": "2031-06-01T00:10:00Z",
+      "last_checked_at": "2031-06-01T00:05:00Z",
+      "clock_state": "verified",
+      "sweep": {
+        "epoch": "e1",
+        "status": "completed",
+        "completed_at": "2031-06-01T00:09:00Z",
+        "failed_actions": 0,
+        "use_blocked": [
+          { "family": "operation", "id": "op-stuck", "reason": "undeletable" }
+        ]
+      },
+      "expected_reasons": [],
+      "usable": [
+        { "family": "operation", "id": "op-stuck", "usable": false },
+        { "family": "operation", "id": "op-other", "usable": true },
+        { "family": "memory", "id": "op-stuck", "usable": true }
+      ]
+    }
+  ]
+}

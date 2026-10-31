@@ -142,7 +142,7 @@ export function callControl(
   op: ControlOp,
   timeoutMs: number,
   // 命令ごとの追加の項目（pairing_first_approve の pairing_id・device_revoke の device_id）。
-  fields: Readonly<Record<string, string>> = {},
+  fields: Readonly<Record<string, string | null>> = {},
 ): Promise<ControlCallResult> {
   return new Promise((resolve) => {
     let settled = false;

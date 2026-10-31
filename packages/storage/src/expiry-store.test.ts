@@ -581,3 +581,64 @@ test('a derived row from a derived row with its own stored deadline expires when
     assert.equal(count(db, 'SELECT count(*) FROM derivations'), 0);
   });
 });
+
+test('a derived row follows the corrected deadline of its origin: a turn stored with 40 days is pulled back to 7 days, and the turn and the derived row go in the same sweep', async () => {
+  await withDb((db) => {
+    insertTurn(db, T_LONG, B, B + 40 * DAY);
+    insertCandidate(db, 'n-turn');
+    edge(db, 'notification_candidate', 'n-turn', 'turn', T_LONG);
+    const derived = 'notification_candidate:n-turn';
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [derived], B + 7 * DAY - 1).deleted,
+      [],
+    );
+    assert.deepEqual(
+      deleteExpired(db, 'turn', [T_LONG], B + 7 * DAY - 1).deleted,
+      [],
+    );
+    // 7 日ちょうど: 発言がまだ残っている状態で、気づきがもう期限になっている（発言と同じ日）。先に気づきを消し、
+    // そのあと発言を消す（発言を先に消すと由来が無くなって消えるだけで、由来の期限の補正を確かめられない）。
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [derived], B + 7 * DAY).deleted,
+      [derived],
+    );
+    assert.equal(count(db, 'SELECT count(*) FROM turns'), 1);
+    assert.deepEqual(deleteExpired(db, 'turn', [T_LONG], B + 7 * DAY).deleted, [
+      T_LONG,
+    ]);
+    assert.equal(count(db, 'SELECT count(*) FROM derivations'), 0);
+  });
+});
+
+test('a derived row follows the corrected deadline of its origin memory: review + 90 days stored is pulled back to review + 30 days, and the memory and the derived row go in the same sweep', async () => {
+  await withDb((db) => {
+    const REVIEW = B + 10 * DAY;
+    insertMemory(db, M_LIVE, 'e2'.repeat(32), []);
+    // 見直し待ちで、見直し日 + 90 日に延ばされた削除日を保存している（補正前の値）。
+    db.prepare(
+      "UPDATE memories SET status = 'review_pending', review_at = ?, delete_at = ?, created_at = ? WHERE memory_id = ?",
+    ).run(REVIEW, REVIEW + 90 * DAY, B, M_LIVE);
+    insertCandidate(db, 'n-mem');
+    edge(db, 'notification_candidate', 'n-mem', 'memory', M_LIVE);
+    const derived = 'notification_candidate:n-mem';
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [derived], REVIEW + 30 * DAY - 1).deleted,
+      [],
+    );
+    // 30 日ちょうど: 記憶の削除（memory.delete_due）と同じ日に、気づきも期限になる。
+    const rows = run(db, {
+      kind: 'retention.sweep_rows',
+      now: REVIEW + 30 * DAY,
+    }).value as unknown as {
+      rows: { id: string; origins?: { expires_at: string | null }[] }[];
+    };
+    assert.equal(
+      rows.rows.find((row) => row.id === derived)?.origins?.[0]?.expires_at,
+      new Date(REVIEW + 30 * DAY).toISOString().replace('.000Z', 'Z'),
+    );
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [derived], REVIEW + 30 * DAY).deleted,
+      [derived],
+    );
+  });
+});

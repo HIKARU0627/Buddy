@@ -201,9 +201,15 @@ function originExpiry(
   switch (kind) {
     case 'turn': {
       const row = db
-        .prepare('SELECT expires_at FROM turns WHERE turn_id = ?')
-        .get(id) as { expires_at: number } | undefined;
-      return row === undefined ? null : isoOrNull(row.expires_at);
+        .prepare(
+          'SELECT turn_id, created_at, expires_at FROM turns WHERE turn_id = ?',
+        )
+        .get(id) as TurnSqlRow | undefined;
+      if (row === undefined) return null;
+      // 発言自身の削除と同じ補正（規則の期限と保存した期限の小さい方）。保存した期限が 7 日より長い normal の行は
+      // 7 日に戻る（AO レビュー P2）。
+      const ttl = RETENTION_RULES[turnRule(row)]?.ms ?? 7 * DAY_MS;
+      return isoOrNull(Math.min(row.expires_at, row.created_at + ttl));
     }
     case 'source_item': {
       // 本文のある行の保存期限（24 時間）の遅い方。本文のある行がなければ期限切れ（ADR 0054 U118 と同じ読み方）。
@@ -225,11 +231,13 @@ function originExpiry(
         | { status: string; review_at: number; delete_at: number | null }
         | undefined;
       if (row === undefined || row.status === 'deleted') return null;
-      // 見直し待ちは削除日、有効な記憶は見直し日から 30 日（見直し待ちを経て消える最も遅い日）。
+      // 記憶自身の削除と同じ補正: 見直し待ちは保存した削除日と見直し日＋30 日の小さい方、有効な記憶は見直し日から
+      // 30 日（見直し待ちを経て消える最も遅い日）。review_at＋90 日を保存した記憶も 30 日に戻す（AO レビュー P2）。
+      const cap = row.review_at + 30 * DAY_MS;
       const deadline =
         row.status === 'review_pending' && row.delete_at !== null
-          ? row.delete_at
-          : row.review_at + 30 * DAY_MS;
+          ? Math.min(row.delete_at, cap)
+          : cap;
       return isoOrNull(deadline);
     }
     case 'operation_content': {

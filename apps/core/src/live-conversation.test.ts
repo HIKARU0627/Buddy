@@ -173,6 +173,7 @@ async function withConversation(
     readonly policy?: TurnPolicy;
     readonly prepare?: (script: Script) => void;
     readonly overrides?: Partial<VoiceControlOptions>;
+    readonly provider?: ProviderReader;
   } = {},
 ): Promise<void> {
   await withRig(async (rig) => {
@@ -185,7 +186,7 @@ async function withConversation(
           Promise.resolve({ ok: true as const, dataKey: DATA_KEY_MATERIAL }),
       },
       interpreter: script,
-      provider,
+      provider: options.provider ?? provider,
       candidates: { mailCandidates: () => Promise.resolve([]) },
       policy: options.policy ?? TEST_TURN_POLICY,
       previews: new PreviewRegistry(),
@@ -1115,6 +1116,101 @@ test(
               { relation: 'correction', target_workflow_id: uuid(0x8001) },
             ),
           );
+        },
+      },
+    );
+  },
+);
+
+const correctionOfFirst = intentReply(
+  'create_task',
+  { title: '卵を買う' },
+  { relation: 'correction', target_workflow_id: uuid(0x8001) },
+);
+
+test(
+  'P2: a correction from an utterance whose input is not confirmed (a missing fragment) leaves the held change as it is and asks to say it again',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        // 連番が飛んだ（欠落した）断片の発話。解釈は先の依頼への訂正を返すが、入力は確定しない。
+        await speak(c, { text: EGG_TEXT, speech: false, indexes: [5] });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the say-again answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[SAY_AGAIN_SENTENCE]]);
+        // 先の依頼は失効させず、保留のまま（保存も操作もしない）。
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        assert.deepEqual(operations(c.rig), []);
+        assert.equal(c.dropped.length, 0);
+        // 確定した発話が来なければ、上限（30 秒）で実行せずに捨てて知らせる（失効済みなら知らせはない）。
+        await beat(c, 32000);
+        await waitUntil(c.rig, 'the drop', () => c.dropped.length === 1);
+        assert.deepEqual(
+          c.dropped.map((entry) => entry.reason),
+          ['hold_expired'],
+        );
+        assert.deepEqual(operations(c.rig), []);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.replies.set(EGG_TEXT, correctionOfFirst);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'P2: a correction whose utterance changes while it is being interpreted leaves the held change as it is and asks to say it again',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    const second = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        const endMs = await speak(c, { text: EGG_TEXT, speech: false });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the second interpretation',
+          () => c.script.calls.length === 2,
+        );
+        // 解釈の間に、同じ発話へ断片が追加された（訂正が到着中）。
+        c.sb.fragment({
+          index: c.next.index,
+          start_ms: endMs,
+          end_ms: endMs + 300,
+          text: 'ね',
+        });
+        second.release();
+        await waitUntil(
+          c.rig,
+          'the say-again answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[SAY_AGAIN_SENTENCE]]);
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        assert.deepEqual(operations(c.rig), []);
+        assert.deepEqual(c.dropped, []);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.gates.set(EGG_TEXT, second.promise);
+          script.replies.set(EGG_TEXT, correctionOfFirst);
         },
       },
     );
@@ -2145,6 +2241,50 @@ test(
           );
         },
       },
+    );
+  },
+);
+
+// 重ならない 53 件の予定（上限 50 件を超えるので、ResultView の more_count は 3）。
+const manyEventsProvider: ProviderReader = {
+  ...provider,
+  listEvents: () =>
+    Promise.resolve(
+      Array.from({ length: 53 }, (_, index) => {
+        const minutes = index * 15;
+        const at = (total: number) =>
+          `2026-10-05T${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}:00+09:00`;
+        return {
+          event_id: `ev-${index + 1}`,
+          title: `合成の予定${index + 1}`,
+          start: at(minutes),
+          end: at(minutes + 15),
+        };
+      }),
+    ),
+};
+
+test(
+  'P2: a voiced schedule answer with more events than fit never says they were put on the screen, because nothing was placed there',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: '今日の予定を見せて' });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the commentary',
+          () => c.sb.commentary.length === 1,
+        );
+        // 声だけで返した（画面へは何も置いていない）ので、画面に出したとは言わず、件数だけ伝える。
+        assert.deepEqual(c.shown, []);
+        assert.deepEqual(c.sb.commentary, [
+          ['予定は50件です。', 'ほかに3件あります。'],
+        ]);
+      },
+      { provider: manyEventsProvider },
     );
   },
 );

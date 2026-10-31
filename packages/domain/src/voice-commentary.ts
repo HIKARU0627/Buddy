@@ -86,7 +86,8 @@ export function resultCommentary(input: ResultCommentaryInput): Commentary {
         };
       const parts = [`予定は${events}件です。`];
       if (input.overlap) parts.push('時間が重なっている予定があります。');
-      if (more > 0) parts.push(`ほかに${more}件あります。画面に出しました。`);
+      // 声で返すときは、画面へ置いていない（画面への配信は U120）。置いていないものを「画面に出した」と言わず、件数だけ伝える。
+      if (more > 0) parts.push(`ほかに${more}件あります。`);
       return {
         template_id: 'schedule.count',
         template_version: COMMENTARY_TEMPLATE_VERSION,

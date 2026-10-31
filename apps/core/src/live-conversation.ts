@@ -649,8 +649,20 @@ export class LiveConversation implements LiveConversationPort {
     const now = this.#options.monoNow();
     const textNow = target.turn === null ? '' : turnText(target.turn);
     const changed = textNow !== (pending.text ?? '');
-    // 他の保留を、この新しい発話の関係で解決する。
-    const resolution = this.#resolveHolds(context, pending, interpreted);
+    const facts = liveTranscriptFacts(target, now);
+    // この発話の入力が確定しているか（観測の条件がそろい、解釈の間に文字が変わっていない）。
+    const confirmed =
+      facts.end_candidate_observed &&
+      facts.stable_ms >= METHOD_C_STABLE_MS &&
+      facts.target_range_mapped &&
+      !facts.known_fragment_gap &&
+      facts.target_turn_unique &&
+      !changed;
+    // 他の保留を、この新しい発話の関係で解決する。入力が確定していない発話の関係は信用できない（欠落した断片の解釈が
+    // 訂正・取消を返しても、先の依頼を失効させない）。保留はそのまま維持し、取消・訂正は言い直しを頼む。
+    const resolution = confirmed
+      ? this.#resolveHolds(context, pending, interpreted)
+      : this.#unconfirmedRelation(interpreted);
     if (resolution === 'ask_back') {
       await this.#answerWithout(
         context,
@@ -685,7 +697,6 @@ export class LiveConversation implements LiveConversationPort {
       interpreted.plan.kind === 'clarify' &&
       interpreted.plan.intent !== null &&
       interpreted.plan.reason.startsWith('missing_');
-    const facts = liveTranscriptFacts(target, now);
     const decision = admitLiveInput({
       intent,
       transcript: facts,
@@ -728,14 +739,7 @@ export class LiveConversation implements LiveConversationPort {
       return;
     }
     // read・proceed。参照は保留を掛けず、確定前でも進める（確定していなければ partial として記録する）。
-    const sealed =
-      decision.decision === 'proceed' ||
-      (facts.end_candidate_observed &&
-        facts.stable_ms >= METHOD_C_STABLE_MS &&
-        facts.target_range_mapped &&
-        !facts.known_fragment_gap &&
-        facts.target_turn_unique &&
-        !changed);
+    const sealed = decision.decision === 'proceed' || confirmed;
     if (
       decision.decision === 'proceed' &&
       isHeld(context.hold, pending.workflow_id)
@@ -749,6 +753,20 @@ export class LiveConversation implements LiveConversationPort {
       sessionId,
       sealed ? 'sealed' : 'partial',
     );
+  }
+
+  // 入力が確定していない発話の関係。保留も保存済みの依頼も変えない。取消・訂正（対象の有無にかかわらず）は新しい実行へ
+  // 流さず言い直しを頼み、別件・分からないはそのまま通常の入力として確かめる（確定するまで変更は進まない）。
+  #unconfirmedRelation(
+    interpreted: InterpretedTurn,
+  ): 'none' | 'reconcile_only' {
+    const relation =
+      interpreted.kind === 'intent' ? interpreted.relation : 'unknown';
+    return relation === 'cancel' ||
+      relation === 'correction' ||
+      relation === 'clarification'
+      ? 'reconcile_only'
+      : 'none';
   }
 
   // 他の保留の解決。新しい発話が訂正・別件・取消のどれかを、解釈の関係と対象から決める。対象は、この会話の保留中の依頼か、

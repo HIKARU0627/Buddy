@@ -73,3 +73,5 @@ export function socketPathTooLong(
     Buffer.byteLength(endpoint, 'utf8') > MAX_UNIX_SOCKET_PATH_BYTES
   );
 }
+// 時計の最終確認時刻と epoch の小さなファイル（ADR 0058 の U136。台帳のファイルと同じ書き方）。
+export const CLOCK_STATE_FILE = 'clock-state.json';

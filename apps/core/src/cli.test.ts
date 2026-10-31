@@ -151,8 +151,11 @@ test(
       ok: true,
       core_instance_id: instance,
     });
-    // ソケット・ロックは消え、DB だけが残る。
-    assert.deepEqual(await readdir(dataDir), ['buddy.sqlite']);
+    // ソケット・ロックは消え、DB と時計の状態ファイル（ADR 0058）だけが残る。
+    assert.deepEqual((await readdir(dataDir)).sort(), [
+      'buddy.sqlite',
+      'clock-state.json',
+    ]);
 
     const notRunning = await run(['status', '--data-dir', dataDir]);
     assert.equal(notRunning.code, 3);
@@ -181,7 +184,10 @@ test(
     const exited = await core.exited;
     assert.equal(exited.code, 0);
     assert.match(exited.stderr, /SIGTERM/u);
-    assert.deepEqual(await readdir(dataDir), ['buddy.sqlite']);
+    assert.deepEqual((await readdir(dataDir)).sort(), [
+      'buddy.sqlite',
+      'clock-state.json',
+    ]);
   },
 );
 

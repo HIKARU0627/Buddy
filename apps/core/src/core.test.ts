@@ -25,8 +25,8 @@ const POSIX = process.platform !== 'win32';
 // 合成の鍵（32 バイト、値に意味はない）。再起動の試験で同じ鍵になるよう固定する。
 const keyStore = () =>
   createMockKeyStore({ stored: Buffer.alloc(32, 0x5c).toString('base64') });
-// 停止の後に残るのは DB（buddy.sqlite。閉じると -wal・-shm は消える）だけ。
-const afterStop = ['buddy.sqlite'];
+// 停止の後に残るのは DB（buddy.sqlite。閉じると -wal・-shm は消える）と、時計の状態ファイル（ADR 0058）だけ。
+const afterStop = ['buddy.sqlite', 'clock-state.json'];
 
 async function tempDataDir(t: test.TestContext): Promise<string> {
   const base = await mkdtemp(join(tmpdir(), 'buddy-core-'));
@@ -264,6 +264,7 @@ test('an unreadable lock or state file refuses startup instead of regenerating',
   );
   assert.deepEqual((await readdir(first.dataDir)).sort(), [
     'buddy.sqlite',
+    'clock-state.json',
     'core-state.json',
   ]);
 });

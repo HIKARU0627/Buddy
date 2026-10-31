@@ -526,9 +526,12 @@ function deleteDueMemory(
 ): { readonly memory_id: string; readonly deleted: boolean } {
   const row = memoryRow(db, op.memory_id);
   if (row === undefined) return { memory_id: op.memory_id, deleted: false };
-  if (row.status !== 'review_pending' || row.delete_at === null)
-    throw new ForgetRejection(['not_review_pending']);
-  if (op.now < row.delete_at) throw new ForgetRejection(['not_due']);
+  // 状態が deleted の行（掃除の計画の status_deleted）は期限を待たずに消す。ほかは見直し待ちで、期限を過ぎたものだけ。
+  if (row.status !== 'deleted') {
+    if (row.status !== 'review_pending' || row.delete_at === null)
+      throw new ForgetRejection(['not_review_pending']);
+    if (op.now < row.delete_at) throw new ForgetRejection(['not_due']);
+  }
   const sources = db
     .prepare(
       'SELECT source_kind, source_id FROM memory_sources WHERE memory_id = ? ORDER BY source_kind, source_id',

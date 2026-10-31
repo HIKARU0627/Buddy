@@ -262,6 +262,9 @@ export interface TimedRow {
   readonly delete_at: string | null;
   // 自動実行の取り消しの行（undo_window）で、補償の操作がまだ終わっていないとき。終わるまで残す。
   readonly compensation_open?: boolean;
+  // 知らせ（RetentionNotice）に出す ID。行の ID と違うときだけ渡す（元情報の行は「提供元・口座・元サービスの ID」で
+  // 一意にするが、知らせと忘却は元サービスの ID を使う。ADR 0058）。
+  readonly notice_item_id?: string;
 }
 
 export interface MemoryRow {
@@ -287,6 +290,8 @@ export interface DerivedRow {
   // 派生物自身の保存した期限（作る・要約し直すときに決めた値）。今の由来の最も早い期限との小さい方で判定する。
   // 再要約で前の要約の期限を上限にした値が、由来だけからの計算し直しで失われないようにする。まだ決めていなければ null。
   readonly delete_at: string | null;
+  // 知らせに出す ID（行の ID が「種類:ID」の形のときの、派生物自身の ID。ADR 0058）。省略は行の ID。
+  readonly notice_item_id?: string;
 }
 
 const COMPLETED_STATES: readonly OperationState[] = [
@@ -395,7 +400,8 @@ export interface SweepHold {
 export interface SweepUseBlock {
   readonly family: SweepRow['family'];
   readonly id: string;
-  readonly reason: 'deadline_unreadable' | 'unknown_unit';
+  // undeletable: 期限を過ぎているのに、恒久的な原因で消せなかった行（ADR 0058 の U137。掃除の実行の側が足す）。
+  readonly reason: 'deadline_unreadable' | 'unknown_unit' | 'undeletable';
 }
 
 export type NoticeReason =
@@ -516,7 +522,11 @@ export function sweepPlan(input: SweepInput): SweepPlanResult {
           delete_at: null,
           clamped: false,
         });
-        notice('retention_due', TIMED_NOTICE_KIND.get(row.rule), row.id);
+        notice(
+          'retention_due',
+          TIMED_NOTICE_KIND.get(row.rule),
+          row.notice_item_id ?? row.id,
+        );
         continue;
       }
       if (!due(deadline.delete_at)) continue;
@@ -538,7 +548,11 @@ export function sweepPlan(input: SweepInput): SweepPlanResult {
         delete_at: deadline.delete_at,
         clamped: deadline.clamped,
       });
-      notice('retention_due', TIMED_NOTICE_KIND.get(row.rule), row.id);
+      notice(
+        'retention_due',
+        TIMED_NOTICE_KIND.get(row.rule),
+        row.notice_item_id ?? row.id,
+      );
     } else if (row.family === 'memory') {
       planMemory(row, effective, actions, holds, notice);
     } else if (row.family === 'derived') {
@@ -721,7 +735,11 @@ function planDerived(
   actions.push({ ...base, reason, delete_at: deleteAt, clamped });
   // 要約全体を捨てる（一部の由来だけを残さない）。知らせの対象は要約をつないだ区間。
   if (row.artifact_kind === 'carried_summary')
-    notice('summary_origin_expired', 'carried_summary', row.id);
+    notice(
+      'summary_origin_expired',
+      'carried_summary',
+      row.notice_item_id ?? row.id,
+    );
 }
 
 function planOperation(
@@ -915,7 +933,12 @@ export interface StartupGateInput {
   readonly now: string;
   readonly last_checked_at: string | null;
   readonly sweep: SweepRecord | null;
+  // 時計の最終確認時刻と epoch を置くファイルの状態（ADR 0058 の U136）。省略は verified。missing（ファイルがない）・
+  // invalid（読めない・形が違う）は、巻き戻りを判定できないので自動利用を止める。本人の採り直しで verified に戻る。
+  readonly clock_state?: ClockStateStatus;
 }
+
+export type ClockStateStatus = 'verified' | 'missing' | 'invalid';
 
 export interface StartupGateDecision {
   readonly search: boolean;
@@ -959,6 +982,8 @@ export function startupGate(input: StartupGateInput): StartupGateDecision {
   if (!clock.ok) reasons.push(`clock_${clock.reason}`);
   else if (clock.state === 'regressed' || completedInFuture)
     reasons.push('clock_regression');
+  if (input.clock_state === 'missing') reasons.push('clock_state_missing');
+  else if (input.clock_state === 'invalid') reasons.push('clock_state_invalid');
   if (sweep === null) reasons.push('sweep_not_started');
   else if (sweep.epoch !== input.epoch) reasons.push('sweep_for_other_epoch');
   else if (sweep.status === 'running') reasons.push('sweep_running');
@@ -993,4 +1018,59 @@ export function sweepDue(lastCompletedAt: string | null, now: string): boolean {
   const last = lastCompletedAt === null ? null : parseUtc(lastCompletedAt);
   if (last === null) return true;
   return current < last || current - last >= SWEEP_INTERVAL_MS;
+}
+
+// --- 消せなかった理由の分け方（ADR 0058 の U137。本人が 2026-10-31 に決定） ---
+
+// expected_hold: 計画の側でも保留にしている理由、または行がもうない。失敗に数えない。
+// transient: 待てば直る・結果が分からない。失敗に数え、ゲートを閉じる（次の周期にもう一度試す）。
+// permanent: その行を消そうとするたびに起きる。行を使えない行として隔離し続け（isRowUsable が偽）、ゲート全体は開く。
+// この表にない理由は transient（原因が分からないものでゲートを開けない）。表は手書きの試験で固定する。
+export type RetentionFailureClass = 'expected_hold' | 'transient' | 'permanent';
+
+export const RETENTION_FAILURE_CLASSES: Readonly<
+  Record<string, RetentionFailureClass>
+> = {
+  not_due: 'expected_hold',
+  compensation_open: 'expected_hold',
+  month_has_open_rows: 'expected_hold',
+  calendar_invalid: 'expected_hold',
+  task_content_not_migrated: 'expected_hold',
+  unknown_held: 'expected_hold',
+  operation_not_finished: 'expected_hold',
+  completed_at_missing: 'expected_hold',
+  operation_not_found: 'expected_hold',
+  row_not_found: 'expected_hold',
+  memory_not_found: 'expected_hold',
+  not_active: 'expected_hold',
+  not_review_pending: 'expected_hold',
+  database_busy: 'transient',
+  database_full: 'transient',
+  worker_halted: 'transient',
+  worker_closed: 'transient',
+  worker_unavailable: 'transient',
+  worker_timeout: 'transient',
+  durability_mismatch: 'transient',
+  commit_failed: 'transient',
+  transaction_failed: 'transient',
+  constraint_violation: 'permanent',
+  row_unreadable: 'permanent',
+};
+
+// 命令の拒否・失敗を分類する。成否不明（unknown）・理由がない・表にない理由を含むものは transient。
+// transient が 1 つでもあれば transient。すべて expected_hold なら expected_hold。それ以外（permanent を含む）は permanent。
+export function classifyRetentionFailure(
+  outcome: 'rejected' | 'unknown',
+  reasons: readonly string[],
+): RetentionFailureClass {
+  if (outcome === 'unknown' || reasons.length === 0) return 'transient';
+  let permanent = false;
+  for (const reason of reasons) {
+    const found = Object.hasOwn(RETENTION_FAILURE_CLASSES, reason)
+      ? RETENTION_FAILURE_CLASSES[reason]
+      : undefined;
+    if (found === undefined || found === 'transient') return 'transient';
+    if (found === 'permanent') permanent = true;
+  }
+  return permanent ? 'permanent' : 'expected_hold';
 }

@@ -148,6 +148,10 @@ import { runPreflight } from './preflight.js';
 import type { PreflightCheck } from './preflight.js';
 import { RecoveryError, recoverInterruptedOperations } from './recovery.js';
 import type { RecoveryReport } from './recovery.js';
+import {
+  RetentionSweeper,
+  createRetentionSweepPort,
+} from './retention-sweeper.js';
 import { TlsIdentityError, loadOrCreateTlsIdentity } from './tls-identity.js';
 import type { TlsIdentityCreation } from './tls-identity.js';
 
@@ -323,6 +327,8 @@ export interface CoreHandle {
   readonly pairing: PairingService | null;
   // 自宅判定（ADR 0022）。HTTPS を設定しなければ null。onDenied で WSS を閉じる（配信は B03-04）。
   readonly homeNetwork: HomeNetworkGate | null;
+  // 保存期限の掃除の job（ADR 0053）。gate() が開くまで検索・クラウドへの送信・自動利用を許さない。
+  readonly retention: RetentionSweeper;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -565,6 +571,7 @@ export async function startCore(
   let pairing: PairingService | null = null;
   let budget: BudgetGate | null = null;
   let budgetTimer: NodeJS.Timeout | null = null;
+  let retention: RetentionSweeper | null = null;
   let voice: VoiceControl | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
@@ -602,8 +609,9 @@ export async function startCore(
     };
     // 実行担当を止める（以後は外部へ送らない。送出意図の後に止まった試行は次の起動で unknown_held になる）。
     runner?.close();
-    // 予算月の定期の確認を止める。
+    // 予算月の定期の確認と、保存期限の掃除の定期実行を止める。
     if (budgetTimer !== null) clearInterval(budgetTimer);
+    retention?.close();
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
       await streams?.closeAll();
@@ -613,6 +621,8 @@ export async function startCore(
     await step(() => control.close(options.shutdownGraceMs ?? 2000));
     // 音声の制御のタイマーとサイドバンドを止める（閉じ終えていない Live は次の起動の照合が扱う）。
     await step(async () => voice?.close());
+    // 実行中の掃除と後始末を終えてから DB を閉じる（閉じた後の命令で失敗を出さない）。掃除は次の区切りで中断する。
+    await step(async () => retention?.drain());
     // 処理中の命令を終えてから DB を閉じる。ロックはその後に返す。
     await step(async () => opened?.store.close());
     await step(removeSocketFile);
@@ -633,6 +643,15 @@ export async function startCore(
 
   try {
     opened = await openStore(dataDir, options, log);
+    // 保存期限の掃除（ADR 0053）。起動の直後はゲートを閉じたまま、最初の掃除を始める。検索・クラウドへの
+    // 送信・自動利用の入口は、済むまで retention.gate() が閉じていることを確かめる。
+    retention = new RetentionSweeper({
+      port: createRetentionSweepPort(opened.store),
+      epoch: coreInstanceId,
+      now: () => now().getTime(),
+      log,
+    });
+    retention.start();
     const startedBudget = await startBudgetGate(
       dataDir,
       options,
@@ -660,6 +679,7 @@ export async function startCore(
         log,
         options.keyStore,
         budget,
+        retention,
       );
       api = started.api;
       streams = started.streams;
@@ -722,6 +742,7 @@ export async function startCore(
     );
   } catch (error) {
     if (budgetTimer !== null) clearInterval(budgetTimer);
+    retention?.close();
     feed?.close();
     await api?.close(0).catch(() => undefined);
     await opened?.store.close().catch(() => undefined);
@@ -757,6 +778,7 @@ export async function startCore(
     events,
     deviceConnections,
     budget: budgetGate,
+    retention: retention as RetentionSweeper,
     pairing,
     get state() {
       return lifecycle.state;
@@ -780,6 +802,7 @@ async function startHttps(
   log: (message: string) => void,
   keyStore: DataKeyProvider,
   budget: BudgetGate,
+  retention: RetentionSweeper | null,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -942,6 +965,18 @@ async function startHttps(
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
+    // 検索・クラウドへの送信の前に、掃除のゲートを通す（ADR 0053）。今ある入口（予定の照会・下書き・ラベル）だけ。
+    ...(retention === null
+      ? {}
+      : {
+          retention: {
+            ready: async () => {
+              await retention?.idle();
+            },
+            gate: () => (retention as RetentionSweeper).gate(),
+            lease: () => (retention as RetentionSweeper).lease(),
+          },
+        }),
   });
   // 連携の口座と許可の版を一度確かめておく（発言の入力の時点の版を外部へ問い合わせずに持つ。B04-07）。
   await turns.prime().catch(() => undefined);
@@ -963,6 +998,18 @@ async function startHttps(
     faults,
     contract: createApiContract(),
     log,
+    // 外部へ送る前に、掃除が済んでクラウド送信が許されていることを確かめる（ADR 0053 の U108）。
+    ...(retention === null
+      ? {}
+      : {
+          cloudGate: {
+            ready: async () => {
+              await retention?.idle();
+            },
+            open: () => (retention as RetentionSweeper).gate().cloud_send,
+            lease: () => (retention as RetentionSweeper).lease(),
+          },
+        }),
   });
   routes = createOperationRoutes({
     store: watched,

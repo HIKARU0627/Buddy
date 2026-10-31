@@ -173,7 +173,7 @@
     },
     {
       "path": "packages/domain/src/retention-sweep.ts",
-      "sha256": "6d0e29bd7097cde11b172b477e64bbbcf3b51b6494bcca63988175d740348e66"
+      "sha256": "75f3719e13e5791054a1afaf13427ee527170d998a022acc255a5d5a94f6746b"
     },
     {
       "path": "packages/domain/src/retention.ts",
@@ -373,7 +373,7 @@
     },
     {
       "path": "packages/storage/src/retention-store.ts",
-      "sha256": "47755831c9e2c35eaa6b67a9f975ad303dff70fb94e94f58fb3f70267ad68ece"
+      "sha256": "5c0d6da35ccede5881dc70e8592cbec05bdf90dc6fddb447636b5d1be47170de"
     },
     {
       "path": "packages/storage/src/sealed-blob.ts",
@@ -432,11 +432,11 @@
     {
       "case_id": "X18-boundary-concurrency",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -446,7 +446,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -454,11 +454,11 @@
     {
       "case_id": "X18-overage-concurrency",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -468,7 +468,7 @@
       "provider_state_changes": 4,
       "approvals": 3,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -476,11 +476,11 @@
     {
       "case_id": "X18-pools-concurrency",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -490,7 +490,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:2,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -498,11 +498,11 @@
     {
       "case_id": "X18-topup-concurrency",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -512,7 +512,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:2,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -520,11 +520,11 @@
     {
       "case_id": "QA42-admission-by-m",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -534,7 +534,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:1,released:0,reserved:1",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -542,11 +542,11 @@
     {
       "case_id": "QA42-usage-duplicate-missing",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -556,7 +556,7 @@
       "provider_state_changes": 2,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:1,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -564,11 +564,11 @@
     {
       "case_id": "QA42-timeout-discard",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -578,7 +578,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -586,11 +586,11 @@
     {
       "case_id": "QA42-month-rollover",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -600,7 +600,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -608,11 +608,11 @@
     {
       "case_id": "QA42-overrun-hold",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -622,7 +622,7 @@
       "provider_state_changes": 2,
       "approvals": 1,
       "final_state": "settled:2,usage_unknown:0,released:1,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -630,11 +630,11 @@
     {
       "case_id": "QA42-overage-approval",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -644,7 +644,7 @@
       "provider_state_changes": 4,
       "approvals": 3,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -652,11 +652,11 @@
     {
       "case_id": "QA42-voice-isolation",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -666,7 +666,7 @@
       "provider_state_changes": 8,
       "approvals": 1,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:5,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -674,11 +674,11 @@
     {
       "case_id": "QA20-price-boundary",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -688,7 +688,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "settled:0,usage_unknown:0,released:0,reserved:3 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -696,11 +696,11 @@
     {
       "case_id": "QA20-limit-unknown",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -710,7 +710,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -718,11 +718,11 @@
     {
       "case_id": "X53-autonomous-own-slot",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -732,7 +732,7 @@
       "provider_state_changes": 3,
       "approvals": 1,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -740,11 +740,11 @@
     {
       "case_id": "B07-runtime-config",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -754,7 +754,7 @@
       "provider_state_changes": 3,
       "approvals": 0,
       "final_state": "settled:2,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -762,11 +762,11 @@
     {
       "case_id": "B07-failure-paths",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -776,7 +776,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:1,released:2,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -784,11 +784,11 @@
     {
       "case_id": "B07-settlement-once",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -798,7 +798,7 @@
       "provider_state_changes": 4,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -806,11 +806,11 @@
     {
       "case_id": "B07-restart-reconcile",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -820,7 +820,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:1,released:1,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -828,11 +828,11 @@
     {
       "case_id": "MA03-credit-split-once",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -842,7 +842,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:3,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -850,11 +850,11 @@
     {
       "case_id": "MA04-cycle-and-month-are-separate",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -864,7 +864,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:6,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -872,11 +872,11 @@
     {
       "case_id": "MA05-hold-until-balance-is-known",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -886,7 +886,7 @@
       "provider_state_changes": 12,
       "approvals": 0,
       "final_state": "settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:2,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -894,11 +894,11 @@
     {
       "case_id": "MA05-credit-rechecked-before-sending-and-top-up",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -908,7 +908,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:1,reserved:0 | settled:0,usage_unknown:0,released:0,reserved:1 | settled:0,usage_unknown:0,released:0,reserved:2 | settled:0,usage_unknown:0,released:0,reserved:1",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -916,11 +916,11 @@
     {
       "case_id": "MA05-observations-are-adopted-once",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -930,7 +930,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "settled:0,usage_unknown:0,released:0,reserved:1 | settled:1,usage_unknown:0,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -938,11 +938,11 @@
     {
       "case_id": "MA06-credit-only-for-claude",
       "kind": "simulated",
-      "commit": "1f619b82c94bcfb033b7c47f3ceca0950589c483",
+      "commit": "c5691856257ad73a2133be3a288ebea5a142a238",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "darwin 27.0.0 / v24.19.0",
+        "os": "win32 10.0.26300 / v24.19.0",
         "hub": "同一プロセスの予算の門・一時ディレクトリの DB と DB worker・同一プロセスの模擬の有料 provider（HTTP の経路は通さない）",
         "devices": []
       },
@@ -952,7 +952,7 @@
       "provider_state_changes": 6,
       "approvals": 0,
       "final_state": "settled:4,usage_unknown:0,released:0,reserved:0 | settled:1,usage_unknown:1,released:0,reserved:0",
-      "observed_at": "2026-10-29T12:16:18.278Z",
+      "observed_at": "2026-10-31T10:24:08.579Z",
       "deviation": "模擬の有料 provider と合成の通貨 XTS による試験。実 API・実請求・実機は未実施で、実請求との照合は B15。HTTP の経路・画面は通さない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"

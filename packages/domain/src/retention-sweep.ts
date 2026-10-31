@@ -739,6 +739,14 @@ function planOperation(
     return;
   }
   if (!COMPLETED_STATES.includes(row.operation_state)) return;
+  // 起点（completed_at）が読めない完了済みの操作は消さない（U96）。DB worker の最後の保証
+  // （completed_at_missing）と同じ側にそろえ、計画と命令の結果を食い違わせない。0011 は適用の時刻で
+  // 起点を埋めるので、通常の経路ではこの分岐に入らない（復元などの異常な行だけ）。
+  if (row.completed_at === null || parseUtc(row.completed_at) === null) {
+    if (!row.body_erased) hold('operation_body', 'deadline_unreadable');
+    hold('operation_receipt', 'deadline_unreadable');
+    return;
+  }
   const body = clampedDeadline(
     'operation_body',
     row.completed_at,
@@ -751,18 +759,8 @@ function planOperation(
   );
   if (!row.body_erased) {
     if (body === null) {
-      // 完了時刻が読めない完了済みの操作の本文は、消す側へ倒す。
-      if (row.task_depends) hold('operation_body', 'task_depends');
-      else
-        actions.push({
-          action: 'erase_body',
-          family: row.family,
-          rule: 'operation_body',
-          id: row.id,
-          reason: 'deadline_unreadable',
-          delete_at: null,
-          clamped: false,
-        });
+      // 起点は読めるが、保存した期限と規則のどちらも読めない。残して使わない（消す側へ倒さない）。
+      hold('operation_body', 'deadline_unreadable');
     } else if (due(body.delete_at)) {
       if (row.task_depends) hold('operation_body', 'task_depends');
       else

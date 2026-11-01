@@ -93,7 +93,7 @@ idle → bootstrapping → snapshotting → subscribing → live
 
 - トークン・端末 ID・発行時刻と、中枢の宛先・証明書・指紋を一つの記録にし、safeStorage で暗号化して userData の `device-credential.bin`（0600、一時ファイル → fsync → rename）に置く。暗号化の結果に平文のトークンが残っていれば保存しない。
 - 保存の前に、書く記録を読み戻せる（`parseCredential(serialize())` が通る）ことを確かめ、読み戻せなければ保存しない（`not_readable`）。宛先は domain の正規化（`normalizeHubHost`）を通した値だけを受け付ける（レビューの指摘 L2: 末尾のドット付きの名前でペアリングすると、契約では通るのに保存した記録を読み戻せず、毎回「再登録が必要」になっていた）。
-- 保護の判定: macOS・Windows は `isEncryptionAvailable()`。Linux は加えて backend が `gnome_libsecret`・`kwallet`・`kwallet5`・`kwallet6` のときだけ。`basic_text`・不明・他の OS は保存せず、ペアリングも始めない（`secure_storage_unavailable`）。
+- 保護の判定: macOS・Windows は後継の `isAsyncEncryptionAvailable()`。Linux は加えて backend が `gnome_libsecret`・`kwallet`・`kwallet5`・`kwallet6` のときだけ。`basic_text`・不明・他の OS は保存せず、ペアリングも始めない（`secure_storage_unavailable`）。
 - 復号できない・形が違う記録は「再登録が必要」。401・証明書の不一致の後も記録は消さない（再登録で上書きする）。
 - トークンは `SecretText`（文字列化・JSON・inspect で `[redacted]`）に包み、Authorization ヘッダーにだけ入れる。画面・IPC・ログ（理由のコードだけ）に出さない。
 
@@ -228,6 +228,20 @@ API の major の違いは、実際の中枢の版が一つのため `connection
 - **再スナップショットの数を数え直す時点**（レビューの指摘 L7）: 指摘は「live になったら 0 に戻す」だったが、購読の ping・イベントを受け取った時点にした。live になった時点で戻すと、購読を開いた直後に中枢が再スナップショットを求め続ける場合に、間隔なしで bootstrap → スナップショット → 購読を繰り返すため。購読が動いていると確かめられた後の再スナップショットは、従来どおり 1 回目としてすぐに行う。
 - **受取りの最中の「やめる」**（レビューの指摘 M2）: 画面ではボタンを押せなくし、すり抜けた要求も受け付けたうえで結果を待つ（拒否の応答にはしない）。受取りの要求の間だけ `cancelable` が false になるため、受取りのたびにボタンが短い間だけ無効になる。
 - **試験の `*.ts.net` の名前**: 公開の検査（`scripts/public-content.mjs` の tailnet のホスト名の拒否）に掛からないよう、試験の合成の名前は実行時に組み立てる（実在の Tailnet の名前ではない。検査の設定は変えていない）。
+
+## safeStorage の後継 API への移行（2026-11-01、Electron 45）
+
+Electron 45（PR #165 の依存の更新で 44 から上がった）は同期の `safeStorage`（`isEncryptionAvailable`・`encryptString`・`decryptString`）を非推奨にし、Electron 46 で削除する。2026-11-01 の Windows での起動では、`isEncryptionAvailable`（起動時）・`encryptString`（ペアリング時）・`decryptString`（再起動時）の 3 種類の非推奨の警告が出ていた（動作は正常）。デスクトップの main は後継の非同期 API だけを使う。
+
+| 項目           | 決定                                                                                                                                                                                                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 使う API       | `safeStorage.isAsyncEncryptionAvailable()`・`encryptStringAsync()`・`decryptStringAsync()`。Linux の `getSelectedStorageBackend()` は同期のままで非推奨でもない（保護の判定に使い続ける）                                                                                                                                                  |
+| 暗号文の互換   | Electron の文書は「`encryptString` で暗号化したデータは `decryptStringAsync` で復号できる」と保証している。`device-credential.bin` の記録の形（`v: 1`）も変えない。旧い版で保存した資格情報は、そのまま後継の版で読める（実機の Windows で確認。下記）                                                                                     |
+| 鍵の入れ替え   | `decryptStringAsync` の `shouldReEncrypt` が真なら、読めた記録を同じ一時ファイル → fsync → rename の手順で書き直す。書き直せなくても読めた記録で接続を続け、平文は書かない（旧い記録がそのまま残る）                                                                                                                                       |
+| 呼び出しの順序 | 起動は `link.start` を待ってから窓とトレイを作る（復号が終わってから画面を出す順は変えない）。ペアリングの始めの保護の確認と、トークンの保存は非同期になり、保存が終わってから登録済みにする（失敗は今までどおり `storage_failed`）。`handleIpc` は保護の確認を待つため非同期になる                                                        |
+| 保護の拒否     | 判定の意味は変えない。macOS・Windows は非同期の可用性、Linux は加えて backend の許可表。`basic_text`・不明・未対応の OS は保存せずペアリングも始めない。`--mock-key-protection` は中枢（Core）の鍵の模擬で、端末の safeStorage の判定とは別（この変更で扱いを変えない）                                                                    |
+| 実機の確認     | 2026-11-01 の Windows で、模擬の中枢（`--mock-key-protection`・127.0.0.1・一時 data-dir）と一時の user-data-dir で、ペアリング → 「接続中」→ 再起動して自動再接続を確認し、3 種類の警告が消えたことを確認した。置き換え前の版（main）で保存した資格情報を置き換え後の版で同じ user-data-dir から読めることも確認した。macOS の実機は未実施 |
+| 試験           | `credential-store.test.ts` に、旧い（同期の時代の）暗号文を後継の API で読み、`shouldReEncrypt` で新しい鍵に書き直す試験と、書き直しが失敗しても旧い記録と資格情報を失わず平文を残さない試験を足した（模擬の safeStorage。実機のキーチェーン・DPAPI は使わない）                                                                           |
 
 ## 残ること
 

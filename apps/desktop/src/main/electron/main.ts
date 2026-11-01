@@ -642,7 +642,9 @@ function registerIpc(): void {
         focused: isWindowFocused(ui),
       });
       if (CONNECTION_CHANNELS.includes(channel))
-        return link.handleIpc(channel, raw, sender, controller.state).response;
+        return link
+          .handleIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
       // 音声の状態・最小の「続ける」・同意の取り消し（B05-06）。同意の確認は main の OS の確認ダイアログで 1 回だけ。
       if (VOICE_CHANNELS.includes(channel) && voice)
         return voice.handleIpc(channel, raw, sender);
@@ -760,16 +762,23 @@ function registerAppProtocol(): void {
 }
 
 // safeStorage の呼び出しはここだけ（credential-store は注入された SecretProtector を使う）。
+// Electron 45 で同期の safeStorage は非推奨（46 で削除）なので、後継の非同期 API だけを使う（ADR 0025 の追記）。
 function secretProtector(): SecretProtector {
   return {
     platform: process.platform,
-    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+    isEncryptionAvailableAsync: () => safeStorage.isAsyncEncryptionAvailable(),
     selectedBackend: () =>
       process.platform === 'linux'
         ? safeStorage.getSelectedStorageBackend()
         : null,
-    encryptString: (plain) => safeStorage.encryptString(plain),
-    decryptString: (cipher) => safeStorage.decryptString(cipher),
+    encryptStringAsync: (plain) => safeStorage.encryptStringAsync(plain),
+    decryptStringAsync: async (cipher) => {
+      const decrypted = await safeStorage.decryptStringAsync(cipher);
+      return {
+        text: decrypted.result,
+        shouldReEncrypt: decrypted.shouldReEncrypt,
+      };
+    },
   };
 }
 
@@ -1108,7 +1117,7 @@ function createVoice(
   });
 }
 
-function start(): void {
+async function start(): Promise<void> {
   const contract = createDesktopContract(loadContractSchema());
   contractRef = contract;
   const storePath = join(app.getPath('userData'), DEVICE_IO_STATE_FILE);
@@ -1177,7 +1186,8 @@ function start(): void {
   registerPowerMonitor();
   // 起動直後のロック状態は unknown。OS へ問い合わせて確かめる。
   queryLockState();
-  link.start(controller.state.lockState);
+  // 保存した認証情報の復号は非同期（後継の safeStorage）。読み終えてから窓とトレイを作る順は変えない。
+  await link.start(controller.state.lockState);
   // 全体のショートカット（global-shortcuts.ts）。全体の停止（トレイの停止と同じ処理）はどの組み立てでも、状態の層の
   // パネル・キャンバスを呼ぶは 3 つの窓の組み立てのときだけ。ほかのアプリが使っていれば登録できず、ショートカットなしで
   // 続ける（トレイ・つまみ・パネル・入力バーから同じ操作ができる）。停止を登録できなければ、トレイと画面に印を出すので、

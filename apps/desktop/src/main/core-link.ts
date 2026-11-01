@@ -429,14 +429,18 @@ export class DesktopCoreLink {
     return this.#connection?.state ?? null;
   }
 
-  start(lockState: ClientLockState): void {
+  // 保存した認証情報を読んで接続を始める。後継の safeStorage は非同期なので、読み終わるまで待つ
+  // （Electron の層は app の用意ができてからこれを待つ。ADR 0025 の追記）。
+  async start(lockState: ClientLockState): Promise<void> {
     if (this.#started) return;
     this.#started = true;
     this.#lockState = lockState;
-    const loaded = loadCredential(
+    const loaded = await loadCredential(
       this.#options.credentialPath,
       this.#options.protector,
     );
+    // 読んでいる間に止められた（終了）なら、つながない。
+    if (!this.#started) return;
     switch (loaded.kind) {
       case 'unprotected':
         this.#log(`credential_unprotected:${loaded.reason}`);
@@ -573,12 +577,13 @@ export class DesktopCoreLink {
   }
 
   // 接続・ペアリングのチャネルの要求。ioState は端末の状態（ロック・停止）。
-  handleIpc(
+  // 保護の確認（後継の safeStorage は非同期）を待つため非同期。
+  async handleIpc(
     ipcChannel: string,
     raw: unknown,
     sender: DesktopIpcSender,
     ioState: DesktopIoState,
-  ): ConnectionIpcOutcome {
+  ): Promise<ConnectionIpcOutcome> {
     const contract = this.#options.contract;
     if (
       !contract.isRequest(raw) ||
@@ -602,7 +607,7 @@ export class DesktopCoreLink {
             'secure_storage_unavailable',
           );
         // 保護が使えなくなっていないかを始める前に確かめる（受け取っても保存できないトークンを作らない）。
-        if (!protectionCheck(this.#options.protector).ok) {
+        if (!(await protectionCheck(this.#options.protector)).ok) {
           this.#registration = 'secure_storage_unavailable';
           this.#options.onChange();
           return this.#reject(

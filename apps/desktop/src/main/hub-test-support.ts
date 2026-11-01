@@ -110,24 +110,31 @@ export function freePort(): Promise<number> {
 }
 
 // 模擬の safeStorage。試験ごとの乱数の鍵の AES-256-GCM で、平文を残さない。
+// 後継の非同期 API（Electron 45）と同じ形（復号は shouldReEncrypt を返す）で模擬する。
 export interface MockProtector extends SecretProtector {
   // 試験だけが保存したトークンを読むための復号（製品の経路では使わない）。
   readonly reveal: (cipher: Buffer) => string;
 }
 
+export interface MockProtectorOptions {
+  readonly platform?: NodeJS.Platform;
+  readonly available?: boolean;
+  readonly backend?: string | null;
+  // 旧い鍵で復号できたときに shouldReEncrypt を返し、新しい鍵で書き直させる（鍵の入れ替えの模擬）。
+  readonly reencryptFrom?: MockProtector;
+  // 暗号化を失敗させる（移行の書き直しの失敗の模擬）。
+  readonly failEncrypt?: boolean;
+}
+
 export function mockProtector(
-  options: {
-    readonly platform?: NodeJS.Platform;
-    readonly available?: boolean;
-    readonly backend?: string | null;
-  } = {},
+  options: MockProtectorOptions = {},
 ): MockProtector {
   const key = randomBytes(32);
-  const decrypt = (cipher: Buffer) => {
+  const decryptWith = (decryptionKey: Buffer, cipher: Buffer) => {
     if (cipher.length < 28) throw new Error('mock_cipher_short');
     const decipher = createDecipheriv(
       'aes-256-gcm',
-      key,
+      decryptionKey,
       cipher.subarray(0, 12),
     );
     decipher.setAuthTag(cipher.subarray(12, 28));
@@ -136,11 +143,13 @@ export function mockProtector(
       decipher.final(),
     ]).toString('utf8');
   };
+  const reveal = (cipher: Buffer) => decryptWith(key, cipher);
   return {
     platform: options.platform ?? 'darwin',
-    isEncryptionAvailable: () => options.available ?? true,
+    isEncryptionAvailableAsync: async () => options.available ?? true,
     selectedBackend: () => options.backend ?? null,
-    encryptString(plain) {
+    async encryptStringAsync(plain) {
+      if (options.failEncrypt === true) throw new Error('mock_encrypt_failed');
       const nonce = randomBytes(12);
       const cipher = createCipheriv('aes-256-gcm', key, nonce);
       const body = Buffer.concat([
@@ -149,8 +158,16 @@ export function mockProtector(
       ]);
       return Buffer.concat([nonce, cipher.getAuthTag(), body]);
     },
-    decryptString: decrypt,
-    reveal: decrypt,
+    async decryptStringAsync(cipher) {
+      try {
+        return { text: reveal(cipher), shouldReEncrypt: false };
+      } catch {
+        const previous = options.reencryptFrom;
+        if (previous === undefined) throw new Error('mock_decrypt_failed');
+        return { text: previous.reveal(cipher), shouldReEncrypt: true };
+      }
+    },
+    reveal,
   };
 }
 

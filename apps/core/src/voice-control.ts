@@ -236,6 +236,13 @@ export interface VoiceControlOptions {
   readonly displayTarget?: () => string | null;
   readonly newId?: () => string;
   readonly log?: (message: string) => void;
+  // 保存期限の掃除の門（ADR 0053・0058 の U108）。Live の開始は外部への送信なので、起動・復帰の掃除が済むまで開かない。
+  // ready は掃除が済むまで待ち、lease は門の確認と貸し出しの取得を同じ同期の区間で行う（取れなければ null）。
+  // 貸し出しは Live の接続を作り終える（成否が決まる）まで持つ。省略すると門を通さない（試験）。
+  readonly retention?: {
+    readonly ready: () => Promise<void>;
+    readonly lease: () => (() => void) | null;
+  };
 }
 
 // このリースで開いた Live の結果。更新で作り直すエントリーの間で同じものを持ち回る。
@@ -387,6 +394,7 @@ export class VoiceControl {
   readonly #wallNow: () => number;
   readonly #timers: VoiceTimers;
   readonly #provider: LiveProvider | null;
+  readonly #retention: VoiceControlOptions['retention'];
   readonly #budget: LiveBudgetPort | null;
   readonly #consent: (
     deviceId: string,
@@ -421,6 +429,7 @@ export class VoiceControl {
     this.#wallNow = options.wallNow;
     this.#timers = options.timers ?? REAL_VOICE_TIMERS;
     this.#provider = options.provider ?? null;
+    this.#retention = options.retention;
     this.#budget = options.budget ?? null;
     this.#consent = options.consent ?? (() => 'missing');
     this.#displayTarget = options.displayTarget ?? (() => null);
@@ -1222,6 +1231,28 @@ export class VoiceControl {
     body: JsonObject,
   ): Promise<Status> {
     const requestId = str(body, 'request_id');
+    // 起動・復帰の掃除が済んで、送信が許されているときだけ受け付ける。掃除の本体とは直列にする（貸し出し）。
+    let release: (() => void) | null = null;
+    if (this.#retention !== undefined) {
+      for (let attempt = 0; attempt < 3 && release === null; attempt += 1) {
+        await this.#retention.ready();
+        release = this.#retention.lease();
+      }
+      if (release === null)
+        return error(503, 'dependency_unavailable', requestId);
+    }
+    try {
+      return await this.#createLiveSessionLeased(device, body, requestId);
+    } finally {
+      release?.();
+    }
+  }
+
+  async #createLiveSessionLeased(
+    device: DeviceRecord,
+    body: JsonObject,
+    requestId: string,
+  ): Promise<Status> {
     const provider = this.#provider;
     const budget = this.#budget;
     // 同意は外部の値なので、受付の列の外で期限を付けて読む（読めなければ missing）。

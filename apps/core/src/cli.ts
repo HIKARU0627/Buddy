@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // buddy-core start | status | stop（ADR 0012）、first-device（ADR 0021）、device list | revoke（ADR 0021 の追記）、
-// budget calendar status | confirm（予算月の確かめ直し、ADR 0037）。
+// budget calendar status | confirm（予算月の確かめ直し、ADR 0037）、clock status | recheck（時計の最終確認時刻の
+// 採り直し、ADR 0058）。
 // start はフォアグラウンドで動き、SIGINT / SIGTERM（Windows では SIGINT・SIGBREAK と制御チャネルの stop）
 // で「新しい要求の受付停止 → 終了処理 → ソケット・ロックの解放 → 終了」を行う。
 // 標準出力には機械向けの JSON を 1 行ずつ、標準エラーには人向けの記録を書く。
@@ -48,6 +49,8 @@ const EXIT = {
   device_refused: 8,
   // budget: Core が拒否した（本人が見た値が今の状態と違う・確かめ直すものがないなど）。
   budget_refused: 9,
+  // clock: Core が拒否した（本人が見た値が今の状態と違う・採り直すものがないなど）。
+  clock_refused: 10,
 } as const;
 
 // 鍵保護・データ鍵の照合による拒否（終了コード 5）。それ以外の起動の拒否は 4。
@@ -90,7 +93,15 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
          status で見た値を確かめ、予算月の保留を解く（本人の承認）。calendar_mismatch は記録の始まりと tz データの
          食い違いで、--month-start に求め直した始まりを渡す。clock_regressed は時計の戻りで、--month-start に今の
          月の始まりを渡す（予算月は戻さず、status で見た時計を下限にして今の月のまま受け付ける）。--revision と
-         --observed-at は status の confirmation_revision と checked_at。値が今の状態と違えば・古ければ拒否`;
+         --observed-at は status の confirmation_revision と checked_at。値が今の状態と違えば・古ければ拒否
+  clock status
+         時計の最終確認時刻の状態（ファイルの有無・最終確認時刻・時計が戻っているか・版・過去の採り直し）を表示する。
+         ファイルが無い・読めない・時計が最終確認時刻より前のとき、検索・クラウド送信・自動利用は止まる
+  clock recheck --clock-revision <revision> --observed-last-checked-at <UTC|none> --observed-now <UTC>
+         status で見た値を確かめ、最終確認時刻を今の時計に置き直す（中枢の機器の前での本人の承認。記録が残る）。
+         --clock-revision・--observed-last-checked-at・--observed-now は status の revision・last_checked_at
+         （ファイルが無いときは none）・now。値が今の状態と違えば・now が古ければ拒否。時計を進めすぎた後に
+         正しい時刻へ戻した場合と、ファイルが無い・読めない場合に使う`;
 
 const out = (value: object) =>
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -117,6 +128,9 @@ async function main(argv: readonly string[]): Promise<number> {
         'month-start': { type: 'string' },
         revision: { type: 'string' },
         'observed-at': { type: 'string' },
+        'clock-revision': { type: 'string' },
+        'observed-last-checked-at': { type: 'string' },
+        'observed-now': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -149,11 +163,16 @@ async function main(argv: readonly string[]): Promise<number> {
     positionals.length === 3 &&
     action === 'calendar' &&
     ['status', 'confirm'].includes(positionals[2] ?? '');
+  const clockCommand =
+    command === 'clock' &&
+    positionals.length === 2 &&
+    ['status', 'recheck'].includes(action ?? '');
   if (
     !autostartCommand &&
     !firstDeviceCommand &&
     !deviceCommand &&
     !budgetCommand &&
+    !clockCommand &&
     (positionals.length !== 1 ||
       !['start', 'status', 'stop'].includes(command ?? ''))
   ) {
@@ -208,6 +227,22 @@ async function main(argv: readonly string[]): Promise<number> {
     );
     return EXIT.usage;
   }
+  const recheckCommand = clockCommand && action === 'recheck';
+  const recheckValues = [
+    values['clock-revision'],
+    values['observed-last-checked-at'],
+    values['observed-now'],
+  ];
+  if (
+    recheckCommand
+      ? recheckValues.some((item) => item === undefined)
+      : recheckValues.some((item) => item !== undefined)
+  ) {
+    log(
+      '--clock-revision・--observed-last-checked-at・--observed-now は clock recheck で必ず指定し、他では使えません。',
+    );
+    return EXIT.usage;
+  }
   let httpsPort = DEFAULT_HTTPS_PORT;
   if (values['https-port'] !== undefined) {
     if (values['https-host'] === undefined) {
@@ -248,6 +283,20 @@ async function main(argv: readonly string[]): Promise<number> {
   if (firstDeviceCommand)
     return firstDevice(dataDir, values['pairing-id'] ?? null);
   if (deviceCommand) return device(dataDir, values['device-id'] ?? null);
+  if (clockCommand)
+    return clockState(
+      dataDir,
+      recheckCommand
+        ? {
+            revision: values['clock-revision'] as string,
+            observed_last_checked_at:
+              values['observed-last-checked-at'] === 'none'
+                ? null
+                : (values['observed-last-checked-at'] as string),
+            observed_now: values['observed-now'] as string,
+          }
+        : null,
+    );
   if (budgetCommand)
     return budgetCalendar(
       dataDir,
@@ -519,6 +568,42 @@ async function budgetCalendar(
   if (result.body['error'] === 'unavailable') return EXIT.not_running;
   if (result.body['error'] === 'invalid_request') return EXIT.usage;
   return EXIT.budget_refused;
+}
+
+// 時計の最終確認時刻の状態と、本人による採り直し（ADR 0058 の U136）。動いている Core の制御チャネルへ頼む
+// （ファイルを直接書かない）。採り直しは status で見た値を本人が明示して渡す承認の操作で、値が今の状態と違えば Core が拒否する。
+async function clockState(
+  dataDir: string,
+  recheck: {
+    readonly revision: string;
+    readonly observed_last_checked_at: string | null;
+    readonly observed_now: string;
+  } | null,
+): Promise<number> {
+  const endpoint = await endpointFor(dataDir);
+  const result = endpoint
+    ? recheck === null
+      ? await callControl(endpoint, 'clock_status', 5000)
+      : await callControl(endpoint, 'clock_recheck', 5000, recheck)
+    : { kind: 'absent' as const };
+  if (result.kind !== 'response') {
+    out({ ok: false, state: 'not_running' });
+    return EXIT.not_running;
+  }
+  out(result.body);
+  if (result.body['ok'] === true) {
+    const clock = result.body['clock'] as
+      { readonly needs_recheck?: boolean } | undefined;
+    log(
+      clock?.needs_recheck === true
+        ? '時計の最終確認時刻を判定できないか、時計が最終確認時刻より前です。検索・クラウドへの送信・自動利用を止めています。値を確かめてから clock recheck を実行してください。'
+        : '時計の最終確認時刻は判定できています。',
+    );
+    return EXIT.ok;
+  }
+  if (result.body['error'] === 'unavailable') return EXIT.not_running;
+  if (result.body['error'] === 'invalid_request') return EXIT.usage;
+  return EXIT.clock_refused;
 }
 
 async function stop(dataDir: string): Promise<number> {

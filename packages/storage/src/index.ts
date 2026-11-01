@@ -38,3 +38,5 @@ export * from './forget-store.js';
 export * from './forget-ledger-file.js';
 export * from './memory-store.js';
 export * from './restore-aftermath-store.js';
+// B06-07a-1: 発言・元情報・派生物の期限削除（ADR 0058）。
+export * from './expiry-store.js';

@@ -956,3 +956,11 @@ export function isUuid(value: unknown): value is string {
 export function isHex64(value: unknown): value is string {
   return typeof value === 'string' && HEX64.test(value);
 }
+
+// 期限削除（expiry-store.ts）が使う、種類ごとの物理削除（忘却の deleteNode と同じ表と順序）。
+export function deleteForgetNode(
+  db: SqliteDatabase,
+  node: LineageNode,
+): number {
+  return deleteNode(db, node as ForgetNode);
+}

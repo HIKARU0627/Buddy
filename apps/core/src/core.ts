@@ -28,8 +28,15 @@ import type {
   StoreBindingResult,
   StoreGenerationSource,
 } from '@buddy/storage';
-import { UNAVAILABLE_TAILSCALE_STATUS } from '@buddy/platform';
-import type { TailscaleStatusSource, TlsKeyStore } from '@buddy/platform';
+import {
+  UNAVAILABLE_TAILSCALE_STATUS,
+  createUnsupportedBackupKeyStore,
+} from '@buddy/platform';
+import type {
+  BackupKeyStore,
+  TailscaleStatusSource,
+  TlsKeyStore,
+} from '@buddy/platform';
 import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
 import type { HomeNetworkGate } from './api-home-network.js';
 import { ApiListenError, createApiServer } from './api-server.js';
@@ -85,6 +92,10 @@ import type {
   TurnPolicy,
 } from './turn-ports.js';
 import { createApiContract } from './api-contract.js';
+import { backupControl, isBackupControlRequest } from './backup-control.js';
+import type { BackupControlContext } from './backup-control.js';
+import { createBackupService, startBackupScheduler } from './backup-service.js';
+import type { BackupScheduler, BackupService } from './backup-service.js';
 import {
   BUDGET_REVISION_CHECKED_ROUTES,
   createBudgetRoutes,
@@ -284,9 +295,30 @@ export interface StartCoreOptions {
   // 予算の門（ADR 0037）。省略したものは、設定ファイルはデータディレクトリの budget-runtime.json、OS のタイムゾーンは
   // Intl の既定、provider の照合の口はなし（送出意図のある予約は usage 不明として保持）、月の確認は 1 分ごと。
   readonly budget?: CoreBudgetOptions;
+  // バックアップ（ADR 0055）。鍵の KeyStore を渡さなければ、対応しない OS と同じく鍵を扱えない（設定があっても取らない）。
+  readonly backup?: CoreBackupOptions;
   // 保存期限の掃除（ADR 0058）。省略したものは、時計の状態ファイルはデータディレクトリの clock-state.json、
   // 知らせの受け取りはなし（運搬は UI-05）。
   readonly retention?: CoreRetentionOptions;
+}
+
+export interface CoreBackupOptions {
+  readonly keyStore?: BackupKeyStore;
+  // 定期の実行（1 日 1 回、または忘却の置き換えを待つとき）。省略すれば動かさない（CLI の start が有効にする）。
+  readonly scheduler?: {
+    readonly checkIntervalMs?: number;
+    readonly retryAfterFailureMs?: number;
+  };
+  // 試験用: 封筒を書く直前に呼ぶ。
+  readonly beforeWrite?: () => void | Promise<void>;
+  // 試験用: 停止が実行中のバックアップの終わりを待つ上限（ミリ秒。既定は 5 分）。
+  readonly drainMs?: number;
+  // 試験用: 封筒の削除（一時的な失敗の再現）。
+  readonly removeFile?: (path: string) => Promise<void>;
+  // 試験用: 掃除の開始時に呼ぶ（掃除が始まる前の失敗の再現）。
+  readonly beforeSweep?: () => void | Promise<void>;
+  // 試験用: 状態ファイルを書く直前に呼ぶ（状態の保存の途中で止まる再現）。
+  readonly beforeStateWrite?: () => void | Promise<void>;
 }
 
 export interface CoreRetentionOptions {
@@ -338,6 +370,8 @@ export interface CoreHandle {
   readonly deviceConnections: DeviceConnections;
   // 予算の門（ADR 0037）。有料の provider へ送るアダプターはここを通す。設定がなければ有料の処理を受け付けない。
   readonly budget: BudgetGate;
+  // バックアップの作成と掃除（ADR 0055）。設定（backup-config.json）と鍵の包みがなければ取らない。
+  readonly backup: BackupService;
   // ペアリング（最初の端末の CLI の承認を含む。ADR 0021）。HTTPS を設定しなければ null。
   readonly pairing: PairingService | null;
   // 自宅判定（ADR 0022）。HTTPS を設定しなければ null。onDenied で WSS を閉じる（配信は B03-04）。
@@ -586,6 +620,9 @@ export async function startCore(
   let pairing: PairingService | null = null;
   let budget: BudgetGate | null = null;
   let budgetTimer: NodeJS.Timeout | null = null;
+  let backup: BackupService | undefined;
+  let backupContext: BackupControlContext | null = null;
+  let backupScheduler: BackupScheduler | null = null;
   let retention: RetentionSweeper | null = null;
   let voice: VoiceControl | null = null;
   let control: ControlServer;
@@ -626,6 +663,12 @@ export async function startCore(
     runner?.close();
     // 予算月の定期の確認と、保存期限の掃除の定期実行を止める。
     if (budgetTimer !== null) clearInterval(budgetTimer);
+    backupScheduler?.stop();
+    // 実行中のバックアップ・掃除の終わりを待つ（新しい実行は断る）。DB を閉じて排他ロックを解放する前に待ち、旧い Core が
+    // 再起動した Core と封筒・状態ファイルを取り合わないようにする（上限を過ぎたら待たずに進む）。
+    await step(async () => {
+      await backup?.close();
+    });
     retention?.close();
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
@@ -687,6 +730,57 @@ export async function startCore(
     );
     budget = startedBudget.gate;
     budgetTimer = startedBudget.timer;
+    {
+      const backupKeys =
+        options.backup?.keyStore ??
+        createUnsupportedBackupKeyStore(process.platform);
+      const contract = createApiContract();
+      backup = createBackupService({
+        dataDir,
+        contract,
+        store: opened.store,
+        backupKeys,
+        now,
+        log,
+        ...(options.backup?.beforeWrite === undefined
+          ? {}
+          : { beforeWrite: options.backup.beforeWrite }),
+        ...(options.backup?.removeFile === undefined
+          ? {}
+          : { removeFile: options.backup.removeFile }),
+        ...(options.backup?.drainMs === undefined
+          ? {}
+          : { drainMs: options.backup.drainMs }),
+        ...(options.backup?.beforeSweep === undefined
+          ? {}
+          : { beforeSweep: options.backup.beforeSweep }),
+        ...(options.backup?.beforeStateWrite === undefined
+          ? {}
+          : { beforeStateWrite: options.backup.beforeStateWrite }),
+      });
+      backupContext = {
+        dataDir,
+        contract,
+        service: backup,
+        store: opened.store,
+        backupKeys,
+      };
+      // 排他ロックを取った後（動いている写しはない）に、前の異常終了で残った作業用の写しを消す。
+      await backup.recover();
+      if (options.backup?.scheduler !== undefined)
+        backupScheduler = startBackupScheduler({
+          service: backup,
+          log,
+          now,
+          setTimer: (run, ms) => {
+            const timer = setTimeout(run, ms);
+            timer.unref();
+            return timer;
+          },
+          clearTimer: (timer) => clearTimeout(timer as NodeJS.Timeout),
+          ...options.backup.scheduler,
+        });
+    }
     feed = new EventFeed({
       store: opened.store,
       now: () => now().getTime(),
@@ -746,6 +840,8 @@ export async function startCore(
         request.op === 'budget_calendar_confirm'
       )
         return budgetControl(request, lifecycle.state, budget);
+      if (isBackupControlRequest(request))
+        return backupControl(request, lifecycle.state, backupContext);
       if (request.op === 'clock_status' || request.op === 'clock_recheck')
         return clockControl(request, lifecycle.state, retention);
       const disposition = controlOpDisposition(lifecycle.state, request.op);
@@ -770,6 +866,7 @@ export async function startCore(
     );
   } catch (error) {
     if (budgetTimer !== null) clearInterval(budgetTimer);
+    backupScheduler?.stop();
     retention?.close();
     feed?.close();
     await api?.close(0).catch(() => undefined);
@@ -788,6 +885,7 @@ export async function startCore(
   const { store, binding, recovery } = opened;
   const events = feed;
   const budgetGate = budget as BudgetGate;
+  const backupService = backup as BackupService;
 
   return {
     dataDir,
@@ -806,6 +904,7 @@ export async function startCore(
     events,
     deviceConnections,
     budget: budgetGate,
+    backup: backupService,
     retention: retention as RetentionSweeper,
     pairing,
     get state() {

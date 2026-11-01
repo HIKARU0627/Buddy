@@ -55,6 +55,9 @@ export async function writeFileAtomic(
   dir: string,
   name: string,
   content: string,
+  // 任意: rename の直前に呼ぶ。投げたら一時ファイルを消して投げ直し、置き換えない（停止の上限を過ぎた旧い処理の
+  // 書き込みを止めるフェンス。PR #175 の 7 回目の P2）。
+  beforeRename?: () => void,
 ): Promise<void> {
   const temp = join(dir, `.${name}.${randomUUID()}.tmp`);
   const handle = await open(temp, 'wx', 0o600);
@@ -65,6 +68,7 @@ export async function writeFileAtomic(
     await handle.close();
   }
   try {
+    beforeRename?.();
     await rename(temp, join(dir, name));
   } catch (error) {
     await rm(temp, { force: true });

@@ -38,5 +38,10 @@ export * from './forget-store.js';
 export * from './forget-ledger-file.js';
 export * from './memory-store.js';
 export * from './restore-aftermath-store.js';
+// B06-08: バックアップの暗号・事実・スナップショット・封筒ファイル（ADR 0055）。
+export * from './backup-crypto.js';
+export * from './backup-facts.js';
+export * from './backup-snapshot.js';
+export * from './backup-envelope.js';
 // B06-07a-1: 発言・元情報・派生物の期限削除（ADR 0058）。
 export * from './expiry-store.js';

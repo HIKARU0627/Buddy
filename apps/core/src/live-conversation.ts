@@ -118,19 +118,32 @@ export interface ScreenResultSink {
 }
 
 // 製品の起動（core.ts）が使う画面への届け方。声で返せなかった結果は、発言の結果と同じ配置者の規則でキャンバスへ置く。
-// 今の配置者が置けるのは予定のカードだけで、聞き返し・全文の確定の案内のような文字の結果と、保留を捨てた知らせを載せる
-// 表示の部品・経路はまだない（ADR 0052、contract-map U120）。置けなかったことは、結果の中身を含めずに理由だけをログに残す。
+// 予定のカードにできない結果は text の物にする（本文は content の経路でだけ返し、記述・イベント・ログに載せない）。
+// 保留を捨てた知らせは、固定の定型文（inputCommentary('hold_dropped')）の text の物にする（U120、ADR 0066）。
+// どちらも実行を告げず、実行の権限は生まれない。
 export function createLiveScreenSink(options: {
   readonly placeLate: (turn: TurnResponse) => unknown;
+  readonly placeNotice: (notice: {
+    readonly session_id: string;
+    readonly workflow_id: string;
+    readonly reason: string;
+    readonly text: string;
+  }) => unknown;
   readonly log: (message: string) => void;
 }): ScreenResultSink {
   return {
     show: (result) => {
-      options.placeLate(result.turn);
-      if (result.turn.result_view?.kind !== 'schedule_cards')
+      const placed = options.placeLate(result.turn);
+      // 置けなかったことは理由だけを残す（結果の中身は残さない）。
+      if (placed === null || placed === false)
         options.log(`live_screen_text_not_shown:${result.reason}`);
     },
-    heldDropped: (info) => options.log(`live_held_dropped:${info.reason}`),
+    heldDropped: (info) => {
+      const text = inputCommentary('hold_dropped').commentary_parts[0] ?? '';
+      const placed = options.placeNotice({ ...info, text });
+      if (placed === null || placed === false)
+        options.log(`live_held_dropped:${info.reason}`);
+    },
   };
 }
 

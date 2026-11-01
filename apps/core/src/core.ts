@@ -1091,6 +1091,7 @@ async function startHttps(
       turns: { interpret: turns.interpret, commitLive: turns.commitLive },
       screen: createLiveScreenSink({
         placeLate: (turn) => stream.placeLate(turn),
+        placeNotice: (notice) => stream.placeNotice(notice),
         log,
       }),
       monoNow: voiceOptions.monoNow ?? (() => performance.now()),

@@ -1184,11 +1184,14 @@ export class LiveConversation implements LiveConversationPort {
     );
     if (resolution === null) return;
     context.controlled.add(ordinal);
-    // この発話の委譲は依頼にしない。解釈中のものは、解釈が遅れて戻っても保存・返答しないよう失効させてから片づける。
+    // この発話の委譲は依頼にしない。解釈中・保存の準備中・保留中のものは、遅れて戻っても保存・返答しないよう失効させてから
+    // 片づける（連番がなく待たずに解釈へ進んだ委譲は、保存の準備の間にこの照合が来ることがある）。保存の命令を送信済み
+    // （dispatched）の依頼だけは、応答を待って保存結果をそのまま扱う。
     for (const entry of [...context.pending.values()])
       if (
         entry.target_ordinal === ordinal &&
-        (entry.phase === 'waiting_input' || entry.phase === 'interpreting')
+        entry.phase !== 'dispatched' &&
+        entry.phase !== 'done'
       ) {
         this.#revoke(entry, 'cancelled');
         this.#finish(context, entry);

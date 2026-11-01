@@ -2258,6 +2258,45 @@ test(
 );
 
 test(
+  'P2: a conversation operation that takes over a request whose record is still being prepared (not yet sent) revokes it, so nothing is saved or answered',
+  TIMEOUT,
+  async () => {
+    const prepared = gate();
+    await withConversation(
+      async (c) => {
+        // 保存の準備（共通の workflow へ頼む前の待ち）を止める。
+        c.hooks.beforeCommit = () => prepared.promise;
+        // 断片の連番がない発話への委譲は、待たずに解釈へ進み、解釈がすぐ返って保存の準備に入る。
+        await speak(c, { text: 'ちょっと待って', indexes: [null] });
+        await delegate(c, 'd1', 800);
+        await waitUntil(c.rig, 'the preparation', () => c.hooks.entered === 1);
+        // 保存の命令はまだ送っていない。その間に、同じ発話が会話の操作として照合される。
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the silence extension',
+          () => controlEvents(c.rig, 'silence_extension').length === 1,
+        );
+        assert.equal(c.conversation.pendingCount, 0);
+        // 保存の準備が済んでも、失効した依頼は保存せず、聞き返しも出さない。
+        prepared.release();
+        await c.rig.wait();
+        await c.rig.clock.advance(600);
+        await c.rig.wait();
+        assert.equal(controlEvents(c.rig, 'silence_extension').length, 1);
+        assert.deepEqual(operations(c.rig), []);
+        assert.deepEqual(workflowStates(c.rig), []);
+        assert.deepEqual(turnsOf(c.rig), []);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.shown, []);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      { policy: AUTO_TASK },
+    );
+  },
+);
+
+test(
   'P2: a "stop reading" that comes from a typed message (not from the live) also invalidates the voice delivery of a result received before it, which goes to the screen',
   TIMEOUT,
   async () => {

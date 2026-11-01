@@ -114,17 +114,19 @@ async function setup(
       : { confirmAdmin: options.confirmAdmin }),
   });
   onCleanup(t, () => link.stop());
-  const invoke = (
+  const invoke = async (
     channel: string,
     payload: unknown,
     state: DesktopIoState = UNLOCKED,
     sender = SCREEN,
   ) => {
-    const response = link.handleIpc(
-      channel,
-      { channel, request_id: randomUUID(), payload },
-      sender,
-      state,
+    const response = (
+      await link.handleIpc(
+        channel,
+        { channel, request_id: randomUUID(), payload },
+        sender,
+        state,
+      )
     ).response;
     shown.push(response);
     return response as Record<string, unknown>;
@@ -162,9 +164,9 @@ test(
   { timeout: 30_000 },
   async (t) => {
     const { link, invoke, view, requests, fetches } = await setup(t);
-    link.start('unlocked');
+    await link.start('unlocked');
     const begin = { host: '127.0.0.1', port: 47443 };
-    const locked = invoke('desktop.pairing_begin', begin, {
+    const locked = await invoke('desktop.pairing_begin', begin, {
       ...UNLOCKED,
       lockState: 'locked',
     });
@@ -172,25 +174,25 @@ test(
       [locked['outcome'], locked['reason']],
       ['rejected', 'device_locked'],
     );
-    const hidden = invoke('desktop.pairing_begin', begin, UNLOCKED, {
+    const hidden = await invoke('desktop.pairing_begin', begin, UNLOCKED, {
       trustedSender: true,
       windowFocused: false,
     });
     assert.equal(hidden['reason'], 'screen_operation_required');
-    const untrusted = invoke('desktop.pairing_begin', begin, UNLOCKED, {
+    const untrusted = await invoke('desktop.pairing_begin', begin, UNLOCKED, {
       trustedSender: false,
       windowFocused: true,
     });
     assert.equal(untrusted['reason'], 'untrusted_sender');
     // 未知の項目（検証を無効にする指定など）は形式で拒否する。
-    const extra = invoke('desktop.pairing_begin', {
+    const extra = await invoke('desktop.pairing_begin', {
       ...begin,
       reject_unauthorized: false,
     });
     assert.equal(extra['reason'], 'invalid_request');
     assert.equal(fetches(), 0);
     // ロック中でも状態は取得できるが、内容は隠す。
-    const lockedView = invoke('desktop.get_connection', null, {
+    const lockedView = await invoke('desktop.get_connection', null, {
       ...UNLOCKED,
       lockState: 'unknown',
     });
@@ -200,13 +202,18 @@ test(
     });
 
     assert.equal(
-      invoke('desktop.pairing_confirm', {
-        fingerprint: FP,
-        fingerprint_tail: 'cdcd',
-      })['reason'],
+      (
+        await invoke('desktop.pairing_confirm', {
+          fingerprint: FP,
+          fingerprint_tail: 'cdcd',
+        })
+      )['reason'],
       'pairing_step_mismatch',
     );
-    assert.equal(invoke('desktop.pairing_begin', begin)['outcome'], 'ok');
+    assert.equal(
+      (await invoke('desktop.pairing_begin', begin))['outcome'],
+      'ok',
+    );
     await waitUntil(
       () => view().pairing?.['step'] === 'fingerprint_check',
       'fingerprint',
@@ -214,75 +221,163 @@ test(
     assert.equal(view().pairing?.['fingerprint'], FP);
     // 進行中に始め直せない。指紋の確認の前に申請できない。
     assert.equal(
-      invoke('desktop.pairing_begin', begin)['reason'],
+      (await invoke('desktop.pairing_begin', begin))['reason'],
       'pairing_step_mismatch',
     );
     assert.equal(
-      invoke('desktop.pairing_submit', {
-        pairing_code: '12345678',
-        device_name: '合成の端末',
-      })['reason'],
+      (
+        await invoke('desktop.pairing_submit', {
+          pairing_code: '12345678',
+          device_name: '合成の端末',
+        })
+      )['reason'],
       'pairing_step_mismatch',
     );
     assert.equal(
-      invoke('desktop.pairing_confirm', {
-        fingerprint: 'ce'.repeat(32),
-        fingerprint_tail: 'cece',
-      })['reason'],
+      (
+        await invoke('desktop.pairing_confirm', {
+          fingerprint: 'ce'.repeat(32),
+          fingerprint_tail: 'cece',
+        })
+      )['reason'],
       'pairing_step_mismatch',
     );
     // 本人が入力した最後の 4 桁が受け取った証明書の指紋と合わなければ、進めず申請も送らない（ADR 0025）。
     for (const tail of ['dcdc', '0000', 'cdce'])
       assert.equal(
-        invoke('desktop.pairing_confirm', {
-          fingerprint: FP,
-          fingerprint_tail: tail,
-        })['reason'],
+        (
+          await invoke('desktop.pairing_confirm', {
+            fingerprint: FP,
+            fingerprint_tail: tail,
+          })
+        )['reason'],
         'fingerprint_tail_mismatch',
       );
     assert.equal(view().pairing?.['step'], 'fingerprint_check');
     // 4 桁でない入力は形式で拒否する（main の契約の検査）。
     for (const tail of ['cdc', 'cdcdc', 'cdcg', ''])
       assert.equal(
-        invoke('desktop.pairing_confirm', {
-          fingerprint: FP,
-          fingerprint_tail: tail,
-        })['reason'],
+        (
+          await invoke('desktop.pairing_confirm', {
+            fingerprint: FP,
+            fingerprint_tail: tail,
+          })
+        )['reason'],
         'invalid_request',
       );
     assert.equal(
-      invoke('desktop.pairing_confirm', { fingerprint: FP })['reason'],
+      (await invoke('desktop.pairing_confirm', { fingerprint: FP }))['reason'],
       'invalid_request',
     );
     assert.equal(requests.length, 0);
     assert.equal(
-      invoke('desktop.pairing_submit', {
-        pairing_code: '12345678',
-        device_name: '合成の端末',
-      })['reason'],
+      (
+        await invoke('desktop.pairing_submit', {
+          pairing_code: '12345678',
+          device_name: '合成の端末',
+        })
+      )['reason'],
       'pairing_step_mismatch',
     );
     // 大文字で入力しても同じ 4 桁として受け付け、コードの入力へ進む。
     assert.equal(
-      invoke('desktop.pairing_confirm', {
-        fingerprint: FP,
-        fingerprint_tail: 'CDCD',
-      })['outcome'],
+      (
+        await invoke('desktop.pairing_confirm', {
+          fingerprint: FP,
+          fingerprint_tail: 'CDCD',
+        })
+      )['outcome'],
       'ok',
     );
     assert.equal(view().pairing?.['step'], 'code_entry');
     assert.equal(requests.length, 0);
     // やめるはロック中でも受け付ける。
     assert.equal(
-      invoke(
-        'desktop.pairing_cancel',
-        null,
-        { ...UNLOCKED, lockState: 'locked' },
-        { trustedSender: true, windowFocused: false },
+      (
+        await invoke(
+          'desktop.pairing_cancel',
+          null,
+          { ...UNLOCKED, lockState: 'locked' },
+          { trustedSender: true, windowFocused: false },
+        )
       )['outcome'],
       'ok',
     );
     assert.equal(view().pairing, null);
+  },
+);
+
+test(
+  'a pairing start waiting for the async protection check is refused when the device locks meanwhile',
+  { timeout: 30_000 },
+  async (t) => {
+    const base = mockProtector();
+    let armed = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const protector: MockProtector = {
+      ...base,
+      async isEncryptionAvailableAsync() {
+        if (armed) await gate;
+        return true;
+      },
+    };
+    const { link, invoke, fetches } = await setup(t, { protector });
+    await link.start('unlocked');
+    armed = true;
+    const pending = invoke('desktop.pairing_begin', {
+      host: '127.0.0.1',
+      port: 47443,
+    });
+    // 保護の確認を待っている間にロックする。
+    link.setLockState('locked');
+    release();
+    const response = await pending;
+    assert.equal(response['outcome'], 'rejected');
+    assert.equal(response['reason'], 'device_locked');
+    // 証明書の取得（要求）を始めず、応答も今の状態（隠す）で扱う。
+    assert.equal(fetches(), 0);
+    assert.equal(link.view('locked').visibility, 'hidden');
+  },
+);
+
+test(
+  'a pairing start waiting for the async protection check is not started after a cancel',
+  { timeout: 30_000 },
+  async (t) => {
+    const base = mockProtector();
+    let armed = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const protector: MockProtector = {
+      ...base,
+      async isEncryptionAvailableAsync() {
+        if (armed) await gate;
+        return true;
+      },
+    };
+    const { link, invoke, fetches } = await setup(t, { protector });
+    await link.start('unlocked');
+    armed = true;
+    const pending = invoke('desktop.pairing_begin', {
+      host: '127.0.0.1',
+      port: 47443,
+    });
+    // 保護の確認を待っている間に「やめる」が届く。
+    await invoke('desktop.pairing_cancel', null);
+    release();
+    const response = await pending;
+    assert.equal(response['outcome'], 'rejected');
+    assert.equal(response['reason'], 'pairing_step_mismatch');
+    assert.equal(fetches(), 0);
+    assert.equal(
+      (link.view('unlocked') as Record<string, unknown>)['pairing'],
+      null,
+    );
   },
 );
 
@@ -300,17 +395,17 @@ test(
           }),
         ],
       });
-      link.start('unlocked');
-      invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
+      await link.start('unlocked');
+      await invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
       await waitUntil(
         () => view().pairing?.['step'] === 'fingerprint_check',
         'fingerprint',
       );
-      invoke('desktop.pairing_confirm', {
+      await invoke('desktop.pairing_confirm', {
         fingerprint: FP,
         fingerprint_tail: 'cdcd',
       });
-      invoke('desktop.pairing_submit', {
+      await invoke('desktop.pairing_submit', {
         pairing_code: '00000000',
         device_name: '合成の端末',
       });
@@ -337,17 +432,17 @@ test(
           ],
         },
       );
-      link.start('unlocked');
-      invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
+      await link.start('unlocked');
+      await invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
       await waitUntil(
         () => view().pairing?.['step'] === 'fingerprint_check',
         'fingerprint',
       );
-      invoke('desktop.pairing_confirm', {
+      await invoke('desktop.pairing_confirm', {
         fingerprint: FP,
         fingerprint_tail: 'cdcd',
       });
-      invoke('desktop.pairing_submit', {
+      await invoke('desktop.pairing_submit', {
         pairing_code: '00000000',
         device_name: '合成の端末',
       });
@@ -389,17 +484,17 @@ test(
         }),
       ],
     });
-    link.start('unlocked');
-    invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
+    await link.start('unlocked');
+    await invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
     await waitUntil(
       () => view().pairing?.['step'] === 'fingerprint_check',
       'fingerprint',
     );
-    invoke('desktop.pairing_confirm', {
+    await invoke('desktop.pairing_confirm', {
       fingerprint: FP,
       fingerprint_tail: 'cdcd',
     });
-    invoke('desktop.pairing_submit', {
+    await invoke('desktop.pairing_submit', {
       pairing_code: '00000000',
       device_name: '合成の端末',
     });
@@ -408,9 +503,12 @@ test(
     assert.equal(view()['registration'], 'registered');
     // 登録済みの間はペアリングを始めない。
     assert.equal(
-      invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 })[
-        'reason'
-      ],
+      (
+        await invoke('desktop.pairing_begin', {
+          host: '127.0.0.1',
+          port: 47443,
+        })
+      )['reason'],
       'pairing_step_mismatch',
     );
     assert.equal(JSON.stringify(shown).includes(TOKEN), false);
@@ -426,10 +524,36 @@ test(
     const { link, invoke, view, fetches, dir } = await setup(t, {
       protector: mockProtector({ platform: 'linux', backend: 'basic_text' }),
     });
-    link.start('unlocked');
+    await link.start('unlocked');
     assert.equal(view()['registration'], 'secure_storage_unavailable');
     assert.equal(view()['link'], 'not_connected');
-    const response = invoke('desktop.pairing_begin', {
+    const response = await invoke('desktop.pairing_begin', {
+      host: '127.0.0.1',
+      port: 47443,
+    });
+    assert.equal(response['reason'], 'secure_storage_unavailable');
+    assert.equal(fetches(), 0);
+    assert.equal(existsSync(join(dir, CREDENTIAL_FILE)), false);
+  },
+);
+
+// Linux の同期 backend が強い名前でも、非同期の暗号化が固定鍵の Posix fallback（v10）に落ちていれば
+// 保存もペアリングも始めない（AO レビューの P1）。
+test(
+  'a strong Linux backend with the fixed-key async fallback is not paired and nothing is stored',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, invoke, view, fetches, dir } = await setup(t, {
+      protector: mockProtector({
+        platform: 'linux',
+        backend: 'gnome_libsecret',
+        asyncTag: 'v10',
+      }),
+    });
+    await link.start('unlocked');
+    assert.equal(view()['registration'], 'secure_storage_unavailable');
+    assert.equal(view()['link'], 'not_connected');
+    const response = await invoke('desktop.pairing_begin', {
       host: '127.0.0.1',
       port: 47443,
     });
@@ -450,8 +574,8 @@ test(
       protector,
       responders: [claimAccepted, () => issued],
     });
-    link.start('unlocked');
-    invoke('desktop.pairing_begin', {
+    await link.start('unlocked');
+    await invoke('desktop.pairing_begin', {
       host: `Hub.Example-Tailnet.${TS_NET.toUpperCase()}.`,
       port: 47443,
     });
@@ -460,11 +584,11 @@ test(
       'fingerprint',
     );
     assert.equal(view().pairing?.['host'], `hub.example-tailnet.${TS_NET}`);
-    invoke('desktop.pairing_confirm', {
+    await invoke('desktop.pairing_confirm', {
       fingerprint: FP,
       fingerprint_tail: 'cdcd',
     });
-    invoke('desktop.pairing_submit', {
+    await invoke('desktop.pairing_submit', {
       pairing_code: '00000000',
       device_name: '合成の端末',
     });
@@ -473,7 +597,7 @@ test(
     assert(stored.includes(`"host":"hub.example-tailnet.${TS_NET}"`));
     // 起動し直しても、保存した記録を読み戻して登録済みのまま。
     link.stop();
-    link.start('unlocked');
+    await link.start('unlocked');
     assert.equal(link.registration, 'registered');
   },
 );
@@ -484,7 +608,7 @@ test(
   { timeout: 30_000 },
   async (t) => {
     const { link, invoke, view, fetches } = await setup(t);
-    link.start('unlocked');
+    await link.start('unlocked');
     for (const host of [
       '192.168.1.10',
       '100.63.255.255',
@@ -497,7 +621,10 @@ test(
       '::ffff:100.64.0.1',
       'fd7a:115c:a1e1::1',
     ]) {
-      const refused = invoke('desktop.pairing_begin', { host, port: 47443 });
+      const refused = await invoke('desktop.pairing_begin', {
+        host,
+        port: 47443,
+      });
       assert.deepEqual(
         [refused['outcome'], refused['reason']],
         ['rejected', 'pairing_host_not_allowed'],
@@ -518,12 +645,14 @@ test(
       ],
     ] as const) {
       assert.equal(
-        invoke('desktop.pairing_begin', { host, port: 47443 })['outcome'],
+        (await invoke('desktop.pairing_begin', { host, port: 47443 }))[
+          'outcome'
+        ],
         'ok',
         host,
       );
       assert.equal(view().pairing?.['host'], shown, host);
-      invoke('desktop.pairing_cancel', null);
+      await invoke('desktop.pairing_cancel', null);
     }
     assert.equal(fetches(), 6);
   },
@@ -558,20 +687,23 @@ const notYet: ClientApiOutcome = {
 };
 
 async function untilWaitingApproval(
-  invoke: (channel: string, payload: unknown) => Record<string, unknown>,
+  invoke: (
+    channel: string,
+    payload: unknown,
+  ) => Promise<Record<string, unknown>>,
   view: () => { pairing: Record<string, unknown> | null },
 ) {
-  invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
+  await invoke('desktop.pairing_begin', { host: '127.0.0.1', port: 47443 });
   await waitUntil(
     () => view().pairing?.['step'] === 'fingerprint_check',
     'fingerprint',
   );
   assert.equal(view().pairing?.['cancelable'], true);
-  invoke('desktop.pairing_confirm', {
+  await invoke('desktop.pairing_confirm', {
     fingerprint: FP,
     fingerprint_tail: 'cdcd',
   });
-  invoke('desktop.pairing_submit', {
+  await invoke('desktop.pairing_submit', {
     pairing_code: '00000000',
     device_name: '合成の端末',
   });
@@ -588,14 +720,14 @@ test(
       protector,
       responders: [claimAccepted, pickup.responder],
     });
-    link.start('unlocked');
+    await link.start('unlocked');
     await untilWaitingApproval(invoke, view);
     await waitUntil(() => requests.length === 2, 'pickup in flight');
     // 受取りの間は「やめる」を押せない（画面は cancelable を見てボタンを無効にする）。
     assert.equal(view().pairing?.['step'], 'waiting_approval');
     assert.equal(view().pairing?.['cancelable'], false);
     // 画面の無効化をすり抜けた「やめる」も、受取りの結果を捨てない。
-    const cancelled = invoke('desktop.pairing_cancel', null);
+    const cancelled = await invoke('desktop.pairing_cancel', null);
     assert.equal(cancelled['outcome'], 'ok');
     assert.equal(view().pairing?.['step'], 'waiting_approval');
     assert.equal(view().pairing?.['cancelable'], false);
@@ -608,6 +740,50 @@ test(
   },
 );
 
+// 保存は後継の safeStorage で非同期になる。保存の間に「やめる」が押されても、受取りと同じく結果を捨てない
+// （保存が終わってから登録済みにする。ADR 0025 の追記）。
+test(
+  'cancel while the async credential store is in flight does not discard the token',
+  { timeout: 30_000 },
+  async (t) => {
+    const base = mockProtector();
+    let storeStarted!: () => void;
+    let releaseStore!: () => void;
+    const started = new Promise<void>((resolve) => {
+      storeStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseStore = resolve;
+    });
+    const protector: MockProtector = {
+      ...base,
+      async encryptStringAsync(plain) {
+        storeStarted();
+        await gate;
+        return base.encryptStringAsync(plain);
+      },
+    };
+    const { link, invoke, view, dir } = await setup(t, {
+      protector,
+      responders: [claimAccepted, () => issued],
+    });
+    await link.start('unlocked');
+    await untilWaitingApproval(invoke, view);
+    await started;
+    // 保存の間も「やめる」は結果を待つ（画面は cancelable を見てボタンを無効にする）。
+    assert.equal(view().pairing?.['step'], 'waiting_approval');
+    assert.equal(view().pairing?.['cancelable'], false);
+    const cancelled = await invoke('desktop.pairing_cancel', null);
+    assert.equal(cancelled['outcome'], 'ok');
+    assert.equal(view().pairing?.['step'], 'waiting_approval');
+    releaseStore();
+    await waitUntil(() => link.registration === 'registered', 'registered');
+    assert.equal(view().pairing, null);
+    const stored = base.reveal(readFileSync(join(dir, CREDENTIAL_FILE)));
+    assert(stored.includes(TOKEN));
+  },
+);
+
 test(
   'a cancel during an in-flight pickup takes effect when the pickup ends without a token; between polls it is immediate',
   { timeout: 30_000 },
@@ -617,10 +793,10 @@ test(
       const { link, invoke, view, requests, dir } = await setup(t, {
         responders: [claimAccepted, pickup.responder],
       });
-      link.start('unlocked');
+      await link.start('unlocked');
       await untilWaitingApproval(invoke, view);
       await waitUntil(() => requests.length === 2, 'pickup in flight');
-      invoke('desktop.pairing_cancel', null);
+      await invoke('desktop.pairing_cancel', null);
       pickup.resolve(notYet);
       await waitUntil(() => view().pairing === null, 'cancelled');
       // 承認前（409）の後は、やめた手順として次の受取りを送らない。
@@ -635,7 +811,7 @@ test(
         pollIntervalMs: 60_000,
         responders: [claimAccepted, () => notYet],
       });
-      link.start('unlocked');
+      await link.start('unlocked');
       await untilWaitingApproval(invoke, view);
       await waitUntil(() => requests.length === 2, 'first pickup');
       await waitUntil(
@@ -643,7 +819,7 @@ test(
         'cancelable between polls',
       );
       assert.equal(view().pairing?.['step'], 'waiting_approval');
-      invoke('desktop.pairing_cancel', null);
+      await invoke('desktop.pairing_cancel', null);
       assert.equal(view().pairing, null);
       assert.equal(requests.length, 2);
     }
@@ -696,7 +872,7 @@ test(
       transport,
       homeReportIntervalMs: 20,
     });
-    saveCredential(join(dir, CREDENTIAL_FILE), protector, {
+    await saveCredential(join(dir, CREDENTIAL_FILE), protector, {
       deviceId: '00000000-0000-4000-8000-000000000401',
       token: new SecretText(TOKEN),
       issuedAt: '2030-10-01T00:00:00Z',
@@ -707,7 +883,7 @@ test(
         fingerprint: FP,
       },
     });
-    link.start('unlocked');
+    await link.start('unlocked');
     await waitUntil(
       () => link.linkState?.phase === 'upgrade_required',
       'upgrade_required',
@@ -794,7 +970,7 @@ test(
       transport,
       homeReportIntervalMs: 600_000,
     });
-    saveCredential(join(dir, CREDENTIAL_FILE), protector, {
+    await saveCredential(join(dir, CREDENTIAL_FILE), protector, {
       deviceId: '00000000-0000-4000-8000-000000000401',
       token: new SecretText(TOKEN),
       issuedAt: '2030-10-01T00:00:00Z',
@@ -805,7 +981,7 @@ test(
         fingerprint: FP,
       },
     });
-    link.start('unlocked');
+    await link.start('unlocked');
     await waitUntil(() => link.linkState?.phase === 'live', 'live');
     await link.homeReportIdle();
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -829,7 +1005,7 @@ test(
   { timeout: 30_000 },
   async (t) => {
     const { link } = await setup(t);
-    link.start('unlocked');
+    await link.start('unlocked');
     const admin = async (
       channel: string,
       payload: unknown,
@@ -982,7 +1158,7 @@ async function liveHub(
     homeReportIntervalMs: 600_000,
     ...extra,
   });
-  saveCredential(join(context.dir, CREDENTIAL_FILE), protector, {
+  await saveCredential(join(context.dir, CREDENTIAL_FILE), protector, {
     deviceId: '00000000-0000-4000-8000-000000000401',
     token: new SecretText(TOKEN),
     issuedAt: '2030-10-01T00:00:00Z',
@@ -993,7 +1169,7 @@ async function liveHub(
       fingerprint: FP,
     },
   });
-  context.link.start('unlocked');
+  await context.link.start('unlocked');
   await waitUntil(() => context.link.linkState?.phase === 'live', 'live');
   const admin = async (channel: string, payload: unknown) =>
     (

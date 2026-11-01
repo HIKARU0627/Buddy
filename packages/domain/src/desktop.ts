@@ -48,6 +48,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.get_voice',
   'desktop.voice_continue',
   'desktop.voice_consent_revoke',
+  // B05-05: 音声の会話の操作（読み上げの停止・会話の終了・返し方の切り替え）。状態の層からだけ。
+  'desktop.voice_control',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -174,6 +176,8 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.budget_manual_settle',
   // 最小の「続ける」も本人の画面操作（B05-06。外部への送信の同意の確認ダイアログを出す入口になる）。
   'desktop.voice_continue',
+  // 音声の会話の操作（読み上げの停止・会話の終了・返し方の切り替え）も本人の画面操作（B05-05）。
+  'desktop.voice_control',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -279,6 +283,7 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.get_voice',
     'desktop.voice_continue',
     'desktop.voice_consent_revoke',
+    'desktop.voice_control',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

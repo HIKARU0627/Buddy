@@ -42,6 +42,7 @@ import {
   type DesktopIoState,
   type DesktopIpcRejectReason,
   type DesktopIpcSender,
+  type SessionControlAction,
 } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 import {
@@ -181,6 +182,9 @@ export interface DesktopCoreLinkOptions {
   readonly hubScreenProbeRetryMs?: number;
   // 承認・拒否・失効の前の本人の確認。省略すると確認できないので送らない。
   readonly confirmAdmin?: AdminConfirm;
+  // 発言の結果が会話の操作（照合表に当たった発言。session_control）のとき、その操作を音声の制御へ渡す（B05-05）。
+  // 画面のボタンと同じ処理を通す。省略すると何もしない（音声を使わない組み立て）。
+  readonly onSessionControl?: (action: SessionControlAction) => void;
   // 予算の利用状況・予算保留を、接続・ロック解除・一定の間隔で自動で読むか（既定は読む。B07-05）。false なら、
   // refreshBudget() を呼んだときだけ読む（中枢への要求の数を数える試験で、背景の読み取りを混ぜないため）。
   readonly budgetAuto?: boolean;
@@ -943,6 +947,8 @@ export class DesktopCoreLink {
           this.#options.canvasMode === true
             ? await this.#canvas.submitTurn(raw.payload.text)
             : await this.#operations.submitTurn(raw.payload.text);
+        if (result.ok && result.value.session_control != null)
+          this.#options.onSessionControl?.(result.value.session_control);
         outcome = this.#operationOutcome(
           requestId,
           raw.channel,

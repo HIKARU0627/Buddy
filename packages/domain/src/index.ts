@@ -63,3 +63,8 @@ export * from './voice-input.js';
 export * from './voice-start.js';
 // B05-03: 音声所有権の調停・中枢が返すリースの期限・リースの取り直し・停止の到達の状態（ADR 0046）。
 export * from './voice-ownership.js';
+// B05-05: 出力先の固定・結果の届け先・呼びかけでの ① か ③ の選び方・返し方の切り替え・発話開始の一時保留・会話の操作の照合表（ADR 0052）。
+export * from './voice-interaction.js';
+// B05-05: Live の文字起こしのターンへの整理・委譲の対象の決定・入力の受付と方式 C の限定・声で返す定型文（ADR 0052）。
+export * from './voice-live-input.js';
+export * from './voice-commentary.js';

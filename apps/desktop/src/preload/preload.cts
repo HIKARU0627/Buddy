@@ -40,6 +40,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.get_voice',
   'desktop.voice_continue',
   'desktop.voice_consent_revoke',
+  'desktop.voice_control',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',
@@ -68,7 +69,8 @@ const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
       // 音声の状態・「続ける」・同意の取り消し（B05-06）は状態の層だけ。
       channel !== 'desktop.get_voice' &&
       channel !== 'desktop.voice_continue' &&
-      channel !== 'desktop.voice_consent_revoke',
+      channel !== 'desktop.voice_consent_revoke' &&
+      channel !== 'desktop.voice_control',
   ),
   // キャンバスは状態の取得と、物のユーザーの操作・物の中身の読み取りだけ（UI-06・UI-07。承認・停止を使えない）。
   canvas: [

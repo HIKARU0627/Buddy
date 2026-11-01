@@ -17,12 +17,22 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   INTENT_NAMES,
+  INTENT_POLICIES,
   RETENTION_RULES,
+  SESSION_CONTROL_TABLE,
   assessReadiness,
   checkIntentArgs,
   isRealLocalDateTime,
+  resolveSessionControl,
 } from '@buddy/domain';
-import type { ArgValues, IntentName, StartupGateDecision } from '@buddy/domain';
+import type {
+  ArgValues,
+  HoldRelation,
+  InputEvidence,
+  IntentName,
+  SessionControlAction,
+  StartupGateDecision,
+} from '@buddy/domain';
 import {
   openOperationIntent,
   sealBlob,
@@ -30,14 +40,17 @@ import {
 } from '@buddy/storage';
 import type {
   ConversationOpResult,
+  ConversationRequestRef,
   DataKeyMaterial,
   DataKeyProvider,
   DbCommand,
   DbSubmission,
   DbWorkerClient,
+  TurnInputRecord,
   TurnOperationInput,
   WorkflowState,
 } from '@buddy/storage';
+import type { TurnResponse } from '@buddy/contracts';
 import type { ApiContract } from './api-contract.js';
 import { createApiContract } from './api-contract.js';
 import { deviceCommandId, requestHash } from './api-operations.js';
@@ -76,6 +89,13 @@ export interface TurnRoutesOptions {
   readonly contract?: ApiContract;
   // 発言から操作を作った後に呼ぶ（イベントの配信を起こす。event-feed の notify）。
   readonly onOperationCreated?: () => void;
+  // 会話の操作（照合表に当たった発言。LLM を呼ばない）を保存した後に呼ぶ（B05-05）。再送では呼ばない。
+  // 音声の接続が開いていれば、同じ操作を接続へ行う（画面のボタンと同じ処理）。
+  readonly onSessionControl?: (event: {
+    readonly device_id: string;
+    readonly session_id: string;
+    readonly action: SessionControlAction;
+  }) => void;
   // 保存期限の掃除のゲート（ADR 0053）。Read・RemoteMutation の前に掃除が済むのを待ち、閉じていれば聞き返す。
   // 検索（予定の照会）とクラウドへの送信（下書き・ラベル）の入口は、今あるものだけをここにつなぐ。
   readonly retention?: {
@@ -126,6 +146,9 @@ const CLARIFY = {
   no_change: 'すでにその状態です。変更はありません。',
   blocked: '今は進められません。少し待ってからもう一度お願いします。',
   unsupported: 'その依頼にはまだ対応していません。',
+  // 声（方式 C）の入力は 4 操作だけを進める。それ以外は画面で全文を確かめてから（B05-05）。
+  full_text:
+    'この操作は、画面で内容を確かめてからにします。画面から送ってください。',
 } as const;
 
 type ClarifyReason = keyof typeof CLARIFY;
@@ -163,7 +186,11 @@ export const MAX_SCHEDULE_ITEMS = 50;
 // 掃除の本体との直列化の貸し出しを取る試行の上限（取れないのは、掃除が済むのを待った直後にも別の掃除が始まったとき）。
 const LEASE_ATTEMPTS = 3;
 
-type TurnPlan =
+export type TurnPlan =
+  | {
+      readonly kind: 'session_control';
+      readonly action: SessionControlAction;
+    }
   | {
       readonly kind: 'clarify';
       readonly reason: ClarifyReason;
@@ -199,11 +226,60 @@ const clarify = (
   intent: IntentName | null,
 ): TurnPlan => ({ kind: 'clarify', reason, intent });
 
+// 解釈の結果（意図表・契約で検査済み）。Live の委譲は、解釈の後・保存の前に入力の受付（方式 C の限定）を挟むので、
+// 解釈と保存を分けて呼ぶ（解釈を 2 回しない）。
+export type InterpretedTurn =
+  | { readonly kind: 'plan'; readonly plan: TurnPlan }
+  | {
+      readonly kind: 'intent';
+      readonly intent: IntentName;
+      readonly args: ArgValues;
+      // 直前の依頼との関係（5A-4）。モデルの値は信用せず、分からなければ unknown（保留中の変更を再開しない側）。
+      readonly relation: HoldRelation;
+      readonly target_workflow_id: string | null;
+    };
+
+// Live の委譲から保存する発言（B05-05）。共通の workflow（意図表・意味検証・readiness・承認待ちの操作）を通す。
+export interface LiveCommitInput {
+  readonly session_id: string;
+  // 接続範囲（Live を開いた端末のリースの接続範囲）と、委譲ごとに決まる request_id（同じ委譲の再送は同じ値）。
+  readonly command_scope_id: string;
+  readonly request_id: string;
+  // 要求の照合値に入れる値（live_session_id と委譲の ID）。同じ request_id で違う委譲なら 409。
+  readonly identity: string;
+  readonly text: string;
+  readonly audio_epoch: string;
+  readonly policy_version: string;
+  readonly interpreted: InterpretedTurn;
+  // sealed: 方式 C の暫定入力として進める。partial: 確定前の入力から参照だけ答える（変更は作らない）。
+  // blocked: 確定できなかった入力として記録し、依頼・操作を作らない。
+  readonly outcome: 'sealed' | 'partial' | 'blocked';
+  // 依頼の ID（保留の間も同じ値で追う）。
+  readonly workflow_id: string;
+  // 保存の直前の確認。false なら保存せず held を返す（新しい発話の開始による保留。送出の直前の再検査）。
+  readonly precommit: () => boolean;
+}
+
+export type LiveCommitResult =
+  | {
+      readonly kind: 'ok';
+      readonly turn: TurnResponse;
+      readonly replayed: boolean;
+      // 4 操作でも画面承認・全文の確定が要るため進めなかった（readiness の requires_full_text）。
+      readonly full_text: boolean;
+    }
+  | { readonly kind: 'held' }
+  | { readonly kind: 'failed'; readonly status: number };
+
 export interface TurnRoutes {
   readonly handlers: Readonly<Record<string, ApiRouteHandler>>;
   readonly previewValid: PreviewCheck;
   readonly previewCurrent: (previewId: string) => boolean;
   readonly prime: () => Promise<void>;
+  // 発言の解釈（外部へは送らない。副作用なし）。
+  readonly interpret: (text: string) => Promise<InterpretedTurn>;
+  // Live の委譲から発言・依頼・操作（承認待ち）を保存する。
+  readonly commitLive: (input: LiveCommitInput) => Promise<LiveCommitResult>;
 }
 
 export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
@@ -418,9 +494,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   const readiness = (
     intent: IntentName,
     permissionCurrent: boolean,
-  ): 'blocked' | 'ok' => {
+    evidence: InputEvidence,
+  ): { readonly state: 'blocked' | 'ok'; readonly full_text: boolean } => {
     const result = assessReadiness(
-      { state: 'sealed', inputEvidence: 'submitted_text' },
+      { state: 'sealed', inputEvidence: evidence },
       intent,
       {
         utteranceHold: false,
@@ -434,8 +511,18 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       },
     );
     // auto_eligible は方針表がすべて off なので起きない。起きても自動承認せず承認待ちで作る（B04-04）。
-    return result.state === 'blocked' ? 'blocked' : 'ok';
+    // 方式 C（live_policy_observed）は、画面承認が要る・方針が自動実行を許さない操作を requires_full_text でここで止める
+    // （承認待ちへ昇格させない。全文を画面で確かめてから。10 §5A）。
+    return {
+      state: result.state === 'blocked' ? 'blocked' : 'ok',
+      full_text: result.reasonCodes.includes('requires_full_text'),
+    };
   };
+
+  const blocked = (
+    result: { readonly full_text: boolean },
+    intent: IntentName,
+  ): TurnPlan => clarify(result.full_text ? 'full_text' : 'blocked', intent);
 
   // 入力の時点に控えた口座と許可の版から、今の接続の口座の入力の時点の版を取る（口座が違えば null）。
   const permissionOf = (
@@ -449,6 +536,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   const planLabel = async (
     args: ArgValues,
     input: InputPermission,
+    evidence: InputEvidence,
   ): Promise<TurnPlan> => {
     const intent: IntentName = 'label_mail';
     const add = (args.add_labels as readonly string[] | null) ?? [];
@@ -493,13 +581,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (permission === null) return clarify('connection', intent);
     // 入力の時点の許可の版と、確定の直前に読み直した許可の版が同じであること（10 §5A、ADR 0029）。
     // 入力の時点の版が分からない（起動の後にまだ確かめていない）ときも進めない。
-    if (
-      readiness(
-        intent,
-        permission === permissionOf(input, connection.account_id),
-      ) === 'blocked'
-    )
-      return clarify('blocked', intent);
+    const ready = readiness(
+      intent,
+      permission === permissionOf(input, connection.account_id),
+      evidence,
+    );
+    if (ready.state === 'blocked') return blocked(ready, intent);
     const operationId = randomUUID();
     return {
       kind: 'operation',
@@ -535,6 +622,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   const planDraft = async (
     args: ArgValues,
     input: InputPermission,
+    evidence: InputEvidence,
   ): Promise<TurnPlan> => {
     const intent: IntentName = 'draft_reply';
     const body = typeof args.body === 'string' ? args.body.trim() : '';
@@ -572,13 +660,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (reply === null) return clarify('invalid', intent);
     const permission = await readPermission(connection.account_id);
     if (permission === null) return clarify('connection', intent);
-    if (
-      readiness(
-        intent,
-        permission === permissionOf(input, connection.account_id),
-      ) === 'blocked'
-    )
-      return clarify('blocked', intent);
+    const ready = readiness(
+      intent,
+      permission === permissionOf(input, connection.account_id),
+      evidence,
+    );
+    if (ready.state === 'blocked') return blocked(ready, intent);
     const operationId = randomUUID();
     return {
       kind: 'operation',
@@ -613,7 +700,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
   };
 
-  const planTask = (args: ArgValues): TurnPlan => {
+  const planTask = (args: ArgValues, evidence: InputEvidence): TurnPlan => {
     const intent: IntentName = 'create_task';
     if (args.target_candidate_id !== null)
       return clarify('unsupported', intent);
@@ -624,8 +711,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       !isRealLocalDateTime(args.due)
     )
       return clarify('invalid', intent);
-    if (readiness(intent, true) === 'blocked')
-      return clarify('blocked', intent);
+    const ready = readiness(intent, true, evidence);
+    if (ready.state === 'blocked') return blocked(ready, intent);
     const operationId = randomUUID();
     return {
       kind: 'operation',
@@ -663,23 +750,35 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   ];
 
   // input: 発言を受けた時点（解釈の前）に控えた口座と許可の版。解釈の間に許可の版が変わっても、確定の直前の
-  // 読み直しとの比較で気づける。
-  const planTurn = async (
-    text: string,
+  // 読み直しとの比較で気づける。evidence は入力の確かさ（文字入力は submitted_text、Live の方式 C は
+  // live_policy_observed）。方式 C の入力は 4 操作でも readiness が全文の確定へ戻す。
+  const planFrom = async (
+    result: InterpretedTurn,
     input: InputPermission,
+    evidence: InputEvidence,
   ): Promise<{
     readonly plan: TurnPlan;
     readonly permissionAtInput: string | null;
   }> => {
-    const result = await interpretTurn(text);
     if (result.kind === 'plan')
       return { plan: result.plan, permissionAtInput: null };
     const { intent, args } = result;
+    // 方式 C（live_policy_observed）の全文の確定の判定は、対応する操作の分岐より前に行う。create_note・create_event のように
+    // まだ作成に対応していない操作でも、既定では承認の対象を作らず全文の確定へ戻す（「未対応」と食い違わせない）。
+    // 参照・文字入力・確定前の入力はここでは見ない。
+    if (
+      evidence === 'live_policy_observed' &&
+      INTENT_POLICIES[intent].route !== 'read'
+    ) {
+      const early = readiness(intent, true, evidence);
+      if (early.full_text)
+        return { plan: blocked(early, intent), permissionAtInput: null };
+    }
     if (!PROVIDER_INTENTS.includes(intent))
       return {
         plan:
           intent === 'create_task'
-            ? planTask(args)
+            ? planTask(args, evidence)
             : clarify('unsupported', intent),
         permissionAtInput: null,
       };
@@ -708,8 +807,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         intent === 'query_schedule'
           ? await planRead(intent, args)
           : intent === 'label_mail'
-            ? await planLabel(args, input)
-            : await planDraft(args, input);
+            ? await planLabel(args, input, evidence)
+            : await planDraft(args, input, evidence);
       return { plan, permissionAtInput: input?.permission_revision ?? null };
     } finally {
       release?.();
@@ -717,16 +816,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   };
 
   // 解釈と、意図表・契約での引数の検査。聞き返しなら plan、通れば意図と引数を返す。
-  const interpretTurn = async (
-    text: string,
-  ): Promise<
-    | { readonly kind: 'plan'; readonly plan: TurnPlan }
-    | {
-        readonly kind: 'intent';
-        readonly intent: IntentName;
-        readonly args: ArgValues;
-      }
-  > => {
+  const interpretTurn = async (text: string): Promise<InterpretedTurn> => {
     const done = (plan: TurnPlan) => ({ kind: 'plan' as const, plan });
     let candidates;
     try {
@@ -769,10 +859,28 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         ),
       );
     if (checked.unexpected.length > 0) return done(clarify('invalid', intent));
-    return { kind: 'intent', intent, args };
+    // 直前の依頼との関係は信用しない。知っている値で、対象の ID が文字のときだけ使う（なければ unknown）。
+    const relation: HoldRelation =
+      (['new', 'clarification', 'correction', 'cancel'] as const).find(
+        (value) => value === reply.relation,
+      ) ?? 'unknown';
+    const target =
+      typeof reply.target_workflow_id === 'string' &&
+      reply.target_workflow_id.length > 0
+        ? reply.target_workflow_id
+        : null;
+    return {
+      kind: 'intent',
+      intent,
+      args,
+      relation,
+      target_workflow_id: target,
+    };
   };
 
   const workflowState = (plan: TurnPlan): WorkflowState | null => {
+    // 会話の操作は依頼ではない（workflow を作らない）。
+    if (plan.kind === 'session_control') return null;
     if (plan.kind === 'read') return 'done';
     if (plan.kind === 'operation') return 'ready';
     return plan.intent === null ? null : 'clarifying';
@@ -808,39 +916,49 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     }
   };
 
-  const postTurn: ApiRouteHandler = async (request) => {
-    // 入力の時点の口座と許可の版は、最初の await より前に Core のメモリーから控える（外部へ問い合わせない）。
-    // DB の照会を待つ間に別の要求が値を更新しても、発言を受けた時点の値で比べる（PR #107 の再々レビュー）。
-    const input = observedPermission;
-    const device = request.device;
-    const body = request.body as JsonObject;
-    const requestId = stringOf(body, 'request_id');
-    if (device === null) return apiErrorResponse(401, 'unauthenticated');
-    // 端末内の音声認識（local_asr）の入力は音声の区間と世代の照合が要る（B06）。B04-03 は文字入力だけ。
-    if (stringOf(body, 'input_kind') !== 'text')
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
-    const sessionId = request.params['session_id'] ?? '';
-    const session = await store.conversation({
-      kind: 'session.get',
-      session_id: sessionId,
-    });
-    if (!session.ok) return conversationError(session, requestId);
-    if (session.value === null || session.value.ended_at !== null)
-      return apiErrorResponse(409, 'conflict', requestId);
-    // 再送の判定は解釈より先（保存済みの応答をそのまま返し、解釈・意味検証をやり直さない）。
-    const ref = requestRef(request, sessionId);
-    const found = await store.conversation({ kind: 'turn.find', request: ref });
-    if (!found.ok) return conversationError(found, requestId);
-    if (found.value !== null)
-      return storedResponse(found.value.response_json, requestId);
-    const text = stringOf(body, 'text');
-    // 記録する入力の時点の許可の版は provider を使う意図だけで、連携の接続がない・使わないなら 0 として記録する。
-    const planned = await planTurn(text, input);
-    let plan = planned.plan;
-    const permissionAtInput = planned.permissionAtInput;
+  // 発言を保存して応答を作る（文字入力と Live の委譲の共通部）。計画（plan）はすでに作ってある。
+  // 発言・依頼・入力スナップショット・受付・応答は DB worker の turn.record で一つの transaction に書く。
+  // precommit が false を返したら保存せず held を返す（送出の直前の再検査。新しい発話の開始による保留）。
+  const recordTurn = async (args: {
+    readonly requestId: string;
+    readonly sessionId: string;
+    readonly storageMode: 'normal' | 'extended';
+    readonly ref: ConversationRequestRef;
+    readonly text: string;
+    readonly plan: TurnPlan;
+    readonly permissionAtInput: string | null;
+    readonly input?: TurnInputRecord;
+    readonly workflowId?: string;
+    readonly precommit?: () => boolean;
+  }): Promise<
+    | {
+        readonly kind: 'done';
+        readonly status: number;
+        readonly body: object;
+        readonly replayed: boolean;
+        readonly plan: TurnPlan;
+      }
+    | { readonly kind: 'held' }
+  > => {
+    const { requestId, sessionId, ref, text } = args;
+    let plan = args.plan;
+    const fail = (status: number, body: object) =>
+      ({
+        kind: 'done',
+        status,
+        body,
+        replayed: false,
+        plan,
+      }) as const;
     const key = await loadKey();
-    if (key === null)
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    if (key === null) {
+      const response = apiErrorResponse(
+        503,
+        'dependency_unavailable',
+        requestId,
+      );
+      return fail(response.status, response.body);
+    }
     let operation: TurnOperationInput | null = null;
     if (plan.kind === 'operation') {
       operation = sealOperation(plan, key);
@@ -851,9 +969,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const createdAt = now();
     const rule =
       RETENTION_RULES[
-        session.value.storage_mode === 'extended'
-          ? 'turn_extended'
-          : 'turn_normal'
+        args.storageMode === 'extended' ? 'turn_extended' : 'turn_normal'
       ];
     const sealed = sealBlob(key, Buffer.from(text, 'utf8'), {
       ownerTable: 'turns',
@@ -861,10 +977,17 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       ownerVersion: 0,
       purpose: 'turn_text',
     });
-    if (!sealed.ok || rule === undefined)
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    if (!sealed.ok || rule === undefined) {
+      const response = apiErrorResponse(
+        503,
+        'dependency_unavailable',
+        requestId,
+      );
+      return fail(response.status, response.body);
+    }
     const state = workflowState(plan);
-    const workflowId = state === null ? null : randomUUID();
+    const workflowId =
+      state === null ? null : (args.workflowId ?? randomUUID());
     const view = (
       intent: IntentName,
       kind: string,
@@ -886,9 +1009,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             template_version: null,
           };
     const responseOf = (
-      status: 'answered' | 'clarification',
+      status: 'answered' | 'clarification' | 'session_control',
       resultView: object | null,
       replyText: string | null,
+      sessionControl: SessionControlAction | null = null,
     ) => ({
       request_id: requestId,
       session_id: sessionId,
@@ -898,35 +1022,43 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       status,
       result_view: resultView,
       reply_text: replyText,
+      // 会話の操作のときだけ（それ以外は項目を持たない）。
+      ...(sessionControl === null ? {} : { session_control: sessionControl }),
     });
     const responseBody =
-      plan.kind === 'clarify'
-        ? responseOf(
-            'clarification',
-            plan.intent === null
-              ? null
-              : view(plan.intent, 'clarification', 'confirming_input', []),
-            CLARIFY[plan.reason],
-          )
-        : plan.kind === 'read'
+      plan.kind === 'session_control'
+        ? responseOf('session_control', null, null, plan.action)
+        : plan.kind === 'clarify'
           ? responseOf(
-              'answered',
-              view(
-                plan.intent,
-                'schedule_cards',
-                plan.overlaps ? 'needs_review' : 'ready',
-                plan.items,
-                plan.more,
-              ),
-              null,
+              'clarification',
+              plan.intent === null
+                ? null
+                : view(plan.intent, 'clarification', 'confirming_input', []),
+              CLARIFY[plan.reason],
             )
-          : responseOf(
-              'answered',
-              view(plan.intent, 'approval_link', 'needs_review', [
-                { kind: 'operation', id: plan.operation_id },
-              ]),
-              null,
-            );
+          : plan.kind === 'read'
+            ? responseOf(
+                'answered',
+                view(
+                  plan.intent,
+                  'schedule_cards',
+                  plan.overlaps ? 'needs_review' : 'ready',
+                  plan.items,
+                  plan.more,
+                ),
+                null,
+              )
+            : responseOf(
+                'answered',
+                view(plan.intent, 'approval_link', 'needs_review', [
+                  { kind: 'operation', id: plan.operation_id },
+                ]),
+                null,
+              );
+    // 送出の直前の再検査（新しい発話の開始による保留）。保存の直前に同期で確かめる（この後に await があるのは DB への
+    // 送信だけで、保留は保存の命令を送る前に決める）。
+    if (args.precommit !== undefined && !args.precommit())
+      return { kind: 'held' };
     const recorded = await store.conversation({
       kind: 'turn.record',
       session_id: sessionId,
@@ -946,17 +1078,194 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         state === null || workflowId === null
           ? null
           : { workflow_id: workflowId, state },
-      permission_revision: permissionAtInput ?? '0',
+      permission_revision: args.permissionAtInput ?? '0',
       request: ref,
+      ...(args.input === undefined ? {} : { input: args.input }),
       operation,
       response_json: JSON.stringify(responseBody),
     });
-    if (!recorded.ok) return conversationError(recorded, requestId);
+    if (!recorded.ok) {
+      const response = conversationError(recorded, requestId);
+      return fail(response.status, response.body);
+    }
     // 同時の再送で先に保存された発言があった: その応答を返す（この要求の計画は捨てる。操作は作っていない）。
-    if (recorded.value.replayed)
-      return storedResponse(recorded.value.response_json, requestId);
+    if (recorded.value.replayed) {
+      const response = storedResponse(recorded.value.response_json, requestId);
+      return {
+        kind: 'done',
+        status: response.status,
+        body: response.body,
+        replayed: true,
+        plan,
+      };
+    }
     if (operation !== null) options.onOperationCreated?.();
-    return { status: 200, body: responseBody };
+    return {
+      kind: 'done',
+      status: 200,
+      body: responseBody,
+      replayed: false,
+      plan,
+    };
+  };
+
+  const postTurn: ApiRouteHandler = async (request) => {
+    // 入力の時点の口座と許可の版は、最初の await より前に Core のメモリーから控える（外部へ問い合わせない）。
+    // DB の照会を待つ間に別の要求が値を更新しても、発言を受けた時点の値で比べる（PR #107 の再々レビュー）。
+    const input = observedPermission;
+    const device = request.device;
+    const body = request.body as JsonObject;
+    const requestId = stringOf(body, 'request_id');
+    if (device === null) return apiErrorResponse(401, 'unauthenticated');
+    // 端末内の音声認識（local_asr）の入力は音声の区間と世代の照合が要る（B06）。B04-03 は文字入力だけ。
+    // Live の文字起こし（voice_live）は端末のこの経路では受け付けない（中枢がサイドバンドで受ける。X49）。
+    if (stringOf(body, 'input_kind') !== 'text')
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    const sessionId = request.params['session_id'] ?? '';
+    const session = await store.conversation({
+      kind: 'session.get',
+      session_id: sessionId,
+    });
+    if (!session.ok) return conversationError(session, requestId);
+    if (session.value === null || session.value.ended_at !== null)
+      return apiErrorResponse(409, 'conflict', requestId);
+    // 再送の判定は解釈より先（保存済みの応答をそのまま返し、解釈・意味検証をやり直さない）。
+    const ref = requestRef(request, sessionId);
+    const found = await store.conversation({ kind: 'turn.find', request: ref });
+    if (!found.ok) return conversationError(found, requestId);
+    if (found.value !== null)
+      return storedResponse(found.value.response_json, requestId);
+    const text = stringOf(body, 'text');
+    // 会話の操作（照合表に全体が一致した短い発話）は、LLM を呼ばず、依頼も作らない（10 §5、X58）。
+    const control = resolveSessionControl(text, SESSION_CONTROL_TABLE, 'text');
+    // 記録する入力の時点の許可の版は provider を使う意図だけで、連携の接続がない・使わないなら 0 として記録する。
+    const planned: {
+      readonly plan: TurnPlan;
+      readonly permissionAtInput: string | null;
+    } =
+      control !== null
+        ? {
+            plan: { kind: 'session_control', action: control.action },
+            permissionAtInput: null,
+          }
+        : await planFrom(await interpretTurn(text), input, 'submitted_text');
+    const done = await recordTurn({
+      requestId,
+      sessionId,
+      storageMode: session.value.storage_mode,
+      ref,
+      text,
+      plan: planned.plan,
+      permissionAtInput: planned.permissionAtInput,
+    });
+    if (done.kind === 'held')
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    if (
+      control !== null &&
+      done.status === 200 &&
+      !done.replayed &&
+      done.plan.kind === 'session_control'
+    )
+      options.onSessionControl?.({
+        device_id: device.device_id,
+        session_id: sessionId,
+        action: done.plan.action,
+      });
+    return { status: done.status, body: done.body };
+  };
+
+  // Live の委譲（声）から、共通の workflow へ保存する（B05-05、ADR 0052）。入力の受付と方式 C の限定は呼び出し側
+  // （LiveConversation）が先に済ませている。ここでも readiness が方式 C（live_policy_observed）を再検査し、4 操作でも
+  // 画面承認・方針が自動実行を許さない操作は進めない（requires_full_text）。
+  const commitLive = async (
+    live: LiveCommitInput,
+  ): Promise<LiveCommitResult> => {
+    // 入力の時点の許可の版は、最初の await より前に控える（postTurn と同じ）。
+    const permission = observedPermission;
+    const session = await store.conversation({
+      kind: 'session.get',
+      session_id: live.session_id,
+    });
+    if (!session.ok) return { kind: 'failed', status: 503 };
+    if (session.value === null || session.value.ended_at !== null)
+      return { kind: 'failed', status: 409 };
+    const ref: ConversationRequestRef = {
+      command_scope_id: live.command_scope_id,
+      request_id: live.request_id,
+      request_hash: requestHash('liveDelegation', live.session_id, {
+        identity: live.identity,
+      }),
+      command_id: deviceCommandId(live.command_scope_id, live.request_id),
+    };
+    const found = await store.conversation({ kind: 'turn.find', request: ref });
+    if (!found.ok)
+      return {
+        kind: 'failed',
+        status: found.reasons.includes('request_conflict') ? 409 : 503,
+      };
+    if (found.value !== null) {
+      const stored = storedResponse(found.value.response_json, live.request_id);
+      return stored.status === 200
+        ? {
+            kind: 'ok',
+            turn: stored.body as TurnResponse,
+            replayed: true,
+            full_text: false,
+          }
+        : { kind: 'failed', status: stored.status };
+    }
+    let planned: {
+      readonly plan: TurnPlan;
+      readonly permissionAtInput: string | null;
+    };
+    const interpreted = live.interpreted;
+    if (live.outcome === 'blocked')
+      planned = { plan: clarify('blocked', null), permissionAtInput: null };
+    else if (
+      live.outcome === 'partial' &&
+      interpreted.kind === 'intent' &&
+      INTENT_POLICIES[interpreted.intent].route !== 'read'
+    )
+      // 確定前の入力から変更は進めない（外部へも問い合わせない）。
+      planned = {
+        plan: clarify('blocked', interpreted.intent),
+        permissionAtInput: null,
+      };
+    else
+      planned = await planFrom(
+        interpreted,
+        permission,
+        live.outcome === 'sealed' ? 'live_policy_observed' : 'unverified',
+      );
+    const outcome: TurnInputRecord = {
+      kind: 'voice_live',
+      audio_epoch: live.audio_epoch,
+      outcome:
+        live.outcome === 'sealed'
+          ? { state: 'sealed', policy_version: live.policy_version }
+          : { state: live.outcome },
+    };
+    const done = await recordTurn({
+      requestId: live.request_id,
+      sessionId: live.session_id,
+      storageMode: session.value.storage_mode,
+      ref,
+      text: live.text,
+      plan: planned.plan,
+      permissionAtInput: planned.permissionAtInput,
+      input: outcome,
+      workflowId: live.workflow_id,
+      precommit: live.precommit,
+    });
+    if (done.kind === 'held') return { kind: 'held' };
+    if (done.status !== 200) return { kind: 'failed', status: done.status };
+    return {
+      kind: 'ok',
+      turn: done.body as TurnResponse,
+      replayed: done.replayed,
+      full_text:
+        done.plan.kind === 'clarify' && done.plan.reason === 'full_text',
+    };
   };
 
   // 操作の確定 intent を読んで開く（preview と display の共通部）。ない・内容が合わない・開けないときは応答を返す。
@@ -1184,6 +1493,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
 
   return {
     handlers: { createSession, postTurn, previewOperation, displayOperation },
+    interpret: interpretTurn,
+    commitLive,
     previewValid,
     previewCurrent: (previewId) => previews.get(previewId) !== null,
     // 起動の後に一度、連携の口座と許可の版を確かめておく（入力の時点の版を外部へ問い合わせずに持つため）。

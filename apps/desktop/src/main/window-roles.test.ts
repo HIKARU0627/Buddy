@@ -63,6 +63,7 @@ const VOICE = [
   'desktop.get_voice',
   'desktop.voice_continue',
   'desktop.voice_consent_revoke',
+  'desktop.voice_control',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,

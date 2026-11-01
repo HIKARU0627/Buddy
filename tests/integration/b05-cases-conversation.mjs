@@ -36,6 +36,7 @@ async function x58Phrases() {
       '解釈の応答',
       () => conv.sb().commentary.length === 1,
       100,
+      5000,
     );
     steps.polite_form = {
       model_calls: conv.script.calls,
@@ -128,6 +129,7 @@ async function x58RequestAfterControl() {
         '応答',
         () => conv.sb().commentary.length === 1,
         100,
+        5000,
       );
       out = summary(w, {
         checks: {

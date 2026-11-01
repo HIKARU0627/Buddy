@@ -1,18 +1,22 @@
-// 流れ（stream）への発言とキャンバスの記述の経路（UI-03、ADR 0032）。最小の縦断で、区切り（segment）は 1 つ。
+// 流れ（stream）への発言とキャンバスの記述の経路（UI-03・UI-05、ADR 0032・0068）。
 //
+// - 区切り（segment）は Core だけが選ぶ。流れの最初の発言で作り（stream_started）、以後は前の発言から 30 分
+//   やりとりがないか（idle_timeout）、本人の時間帯で日付が変わった（date_changed）ときに新しい区切りを始める。
+//   記録しない会話・保存モードの変更・区切りの指示は UI-05 の後続の段階（記録しない会話は B06-07a-2 の後）。
+//   新しい区切りには、期限内の材料だけで作った前の区切りの要約の由来と期限だけをつなぐ（本文は持たない）。
+//   保存期限は発言ごとに生成から計算し、区切りの継続で延ばさない（設計 03）。
 // - キャンバスの正本は Core（CanvasHub）。変更の束は Schema（CanvasOpBatch）と domain の意味の検査
 //   （applyCanvasBatch: 読む順・参照の件数・版の連続・対象の有無など）を通ったものだけを当てる。どれかに反すれば
 //   何も当てず、前の版が残る。端末へは版（canvas_revision）だけを接続中の購読に知らせ、本文を入れない。
-//   端末は読み取り（getCanvas）で記述を取る。UI-03 の記述は Core の RAM にだけ持つ（保存は UI-05）。
+//   端末は読み取り（getCanvas）で記述を取る。UI-03 の記述は Core の RAM にだけ持つ（保存は未決。U169）。
 // - 発言（postStreamTurn）は、既存の発言の処理（postTurn。模擬の解釈・意味検証・承認待ちの操作の作成）をそのまま
-//   呼ぶ。会話は Core が 1 つだけ持つ（今の区切り。流れの最初の発言で作る。自動の区切りの規則は UI-05）。応答の
-//   文字の結果（result_view）から、模擬の配置者（コードの規則。placeCanvasForTurn）が変更の束を作る。
+//   呼ぶ。応答の文字の結果（result_view）から、模擬の配置者（コードの規則。placeCanvasForTurn）が変更の束を作る。
 //   LLM・端末は配置を決めない。承認・停止・取消はキャンバスに置かない。
 // - 端末の expected_canvas_revision は、束の元の版に使わない（Core の今の版から作る。AI が優先）。発言は版が古くても
 //   受け付け、添えた版は配置者の入力（本人が見ていた版）として渡す（UI-06）。
 // - ユーザーの操作（UI-06、ADR 0032）: 動かす・大きさを変える・閉じる・棚へ片付ける・棚から出すを postCanvasUserOp で
 //   記録し、記述に当てる（applyCanvasUserOp）。古い版への操作は、その物の置き場所・存在が後から変わっていなければ当て、
-//   変わっていれば 409 で捨てる。記録（RAM に 64 件まで）は次の配置者の入力にする。保存は UI-05。
+//   変わっていれば 409 で捨てる。記録（RAM に 64 件まで）は次の配置者の入力にする。保存は未決（U169）。
 
 import { randomUUID } from 'node:crypto';
 import type {
@@ -32,10 +36,15 @@ import type {
 import {
   applyCanvasBatch,
   applyCanvasUserOp,
+  automaticSegmentBoundary,
   canvasBatchPlacementTargets,
   canvasContentErrors,
+  nextCarriedSummary,
   streamSegmentErrors,
+  turnRetentionRule,
+  deleteAt,
 } from '@buddy/domain';
+import type { AutomaticSegmentBoundaryReason } from '@buddy/domain';
 import type { ApiContract } from './api-contract.js';
 import { createApiContract } from './api-contract.js';
 import { API_ROUTES } from './api-routes.js';
@@ -279,6 +288,8 @@ export interface StreamRoutesOptions {
   readonly postTurn: ApiRouteHandler;
   readonly contract?: ApiContract;
   readonly now?: () => number;
+  // 本人の時間帯（自動の区切りの日付の判定。設計 07 §5 の設定と同じ値。既定は +09:00）。
+  readonly utcOffset?: string;
   // 模擬の配置者の差し替え（試験用。検査に反する束を当てようとしても前の版が残ることを確かめる）。
   readonly place?: typeof placeCanvasForTurn;
 }
@@ -307,6 +318,10 @@ const MAX_REPLAYS = 256;
 interface Stream {
   readonly sessionId: string;
   readonly segment: StreamSegment;
+  // 最後に受け付けた発言の時刻（自動の区切りの経過をここから測る。まだ無ければ区切りの始まり）。
+  readonly lastTurnAt: string;
+  // この区切りの発言ごとの保存期限（設計 03。生成から一度だけ計算した値を足していく）。要約をつなぐときに使う。
+  readonly turnExpiresAt: readonly string[];
 }
 
 type EnsureResult =
@@ -316,13 +331,18 @@ type EnsureResult =
 export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   const contract = options.contract ?? createApiContract();
   const now = options.now ?? (() => Date.now());
+  const utcOffset = options.utcOffset ?? '+09:00';
   const createSessionRoute = routeOf('createSession');
   const postTurnRoute = routeOf('postTurn');
   let current: Stream | null = null;
   let creating: Promise<EnsureResult> | null = null;
+  // 自動の区切りで区切りを始める処理（同時の発言で二重に区切らないよう直列にする）。
+  let rotating: Promise<EnsureResult> | null = null;
   // 前に当てた束（応答のキャッシュ。上限つき）と、配置を済ませた発言の ID（上限なし。1 人の流れの RAM だけ）。
   const replays = new Map<string, CanvasOpBatch | null>();
   const placed = new Set<string>();
+  // 期限を数えた発言の ID（再送で同じ発言を二度数えない。区切りを始めたら捨てる）。
+  let counted = new Set<string>();
 
   // 今の区切り。流れの最初の発言で作り（理由: stream_started）、以後は同じ区切りを使う。同時の最初の発言でも 1 つだけ。
   const ensureStream = (request: ApiHandlerRequest): Promise<EnsureResult> => {
@@ -364,12 +384,136 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
           ok: false,
           response: apiErrorResponse(503, 'dependency_unavailable', requestId),
         };
-      current = { sessionId: body.session_id, segment };
+      current = {
+        sessionId: body.session_id,
+        segment,
+        lastTurnAt: segment.opened_at,
+        turnExpiresAt: [],
+      };
       return { ok: true, stream: current };
     })().finally(() => {
       creating = null;
     });
     return creating;
+  };
+
+  // 自動の区切りの理由（30 分・日付の変更）。無ければ null。
+  const boundaryOf = (
+    stream: Stream,
+    at: number,
+  ): AutomaticSegmentBoundaryReason | null =>
+    automaticSegmentBoundary({
+      opened_at: stream.segment.opened_at,
+      last_turn_at: stream.lastTurnAt,
+      now: new Date(at).toISOString(),
+      utc_offset: utcOffset,
+    });
+
+  // 自動の区切りで新しい区切りを始める（UI-05、ADR 0068）。前の区切りを閉じるときは、期限内の材料だけで作った
+  // 要約の由来と期限だけをつなぐ（本文は持たない。D:nextCarriedSummary）。同時の発言で二重に区切らないよう直列にし、
+  // 直列にした後にもう一度見る（先に別の発言が区切っていれば、その区切りを使う）。区切りを作れなければ発言を
+  // 古い区切りで答えず 503 にする（区切りの理由を落とさない）。
+  const rotateSegment = (
+    request: ApiHandlerRequest,
+    from: Stream,
+    requestId: string,
+  ): Promise<EnsureResult> => {
+    rotating ??= (async (): Promise<EnsureResult> => {
+      const stream = current;
+      if (stream === null) return { ok: true, stream: from };
+      // 先に別の発言が区切った（または最初の区切りを作り直した）なら、今の区切りを使う。
+      if (stream.sessionId !== from.sessionId) return { ok: true, stream };
+      const at = now();
+      const reason = boundaryOf(stream, at);
+      if (reason === null) return { ok: true, stream };
+      const openedAt = new Date(at).toISOString();
+      const summary = nextCarriedSummary({
+        previous: stream.segment.carried_summary,
+        closing: {
+          segment_id: stream.segment.segment_id,
+          storage_mode: stream.segment.storage_mode,
+          turn_expires_at: stream.turnExpiresAt,
+        },
+        open_reason: reason,
+        now: openedAt,
+      });
+      // 契約の型は 1 件以上の配列（[string, ...string[]]）。domain は同じ形を読み取り専用の配列で返す。
+      const carried: StreamSegment['carried_summary'] =
+        summary === null
+          ? null
+          : {
+              source_segment_ids: [...summary.source_segment_ids] as [
+                string,
+                ...string[],
+              ],
+              expires_at: summary.expires_at,
+            };
+      const created = await options.createSession({
+        ...request,
+        route: createSessionRoute,
+        params: {},
+        body: {
+          request_id: randomUUID(),
+          command_scope_id: stringOf(request.body, 'command_scope_id'),
+          storage_mode: stream.segment.storage_mode,
+        },
+      });
+      const body = created.body as { session_id?: unknown };
+      if (created.status !== 201 || typeof body.session_id !== 'string')
+        return {
+          ok: false,
+          response:
+            created.status >= 400 && created.status < 600
+              ? created
+              : apiErrorResponse(503, 'dependency_unavailable', requestId),
+        };
+      const segment: StreamSegment = {
+        segment_id: body.session_id,
+        storage_mode: stream.segment.storage_mode,
+        opened_at: openedAt,
+        open_reason: reason,
+        carried_summary: carried,
+      };
+      if (
+        !contract.valid('StreamSegment', segment) ||
+        streamSegmentErrors(segment).length > 0
+      )
+        return {
+          ok: false,
+          response: apiErrorResponse(503, 'dependency_unavailable', requestId),
+        };
+      current = {
+        sessionId: body.session_id,
+        segment,
+        // 新しい区切りの経過は、区切りを始めた時刻から測る。
+        lastTurnAt: openedAt,
+        turnExpiresAt: [],
+      };
+      // 区切りが変わったので、期限を数えた発言の ID は捨てる（同じ区切りの中の再送だけを弾く）。
+      counted = new Set<string>();
+      return { ok: true, stream: current };
+    })().finally(() => {
+      rotating = null;
+    });
+    return rotating;
+  };
+
+  // 受け付けた発言を区切りの経過と保存期限に足す（再送で同じ発言を二度数えない）。期限は生成から一度だけ計算し、
+  // 区切りの継続で延ばさない（設計 03）。
+  const recordTurn = (turn: TurnResponse, stream: Stream, at: number): void => {
+    if (current === null || current.sessionId !== stream.sessionId) return;
+    if (counted.has(turn.turn_id)) return;
+    counted.add(turn.turn_id);
+    const atIso = new Date(at).toISOString();
+    const rule = turnRetentionRule(stream.segment.storage_mode);
+    current = {
+      ...current,
+      lastTurnAt: atIso,
+      turnExpiresAt:
+        rule === null
+          ? current.turnExpiresAt
+          : [...current.turnExpiresAt, deleteAt(rule, atIso)],
+    };
   };
 
   // 発言の結果をキャンバスへ置く（発言の応答と、画面へ回した遅着の結果で共通）。同じ発言は重ねて置かない（再送・遅着の重複）。
@@ -403,7 +547,13 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       return apiErrorResponse(401, 'unauthenticated');
     const ensured = await ensureStream(request);
     if (!ensured.ok) return ensured.response;
-    const { stream } = ensured;
+    let stream = ensured.stream;
+    // 自動の区切り（前の発言から 30 分・日付の変更）。区切りを始められなければ、古い区切りで答えず 503 にする。
+    if (boundaryOf(stream, now()) !== null) {
+      const rotated = await rotateSegment(request, stream, requestId);
+      if (!rotated.ok) return rotated.response;
+      stream = rotated.stream;
+    }
     // 既存の発言の処理（解釈→意味検証→承認待ちの操作の作成・読み取り）。再送の判定・照合値の違いの 409 もここ。
     const inner = await options.postTurn({
       ...request,
@@ -420,6 +570,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     if (!contract.valid('TurnResponse', inner.body))
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     const turn = inner.body as TurnResponse;
+    // 受け付けた発言を、区切りの経過と保存期限に足す（自動の区切りと要約の期限の材料）。
+    recordTurn(turn, stream, now());
     // 同じ要求の再送は、もう一度配置しない。配置済みかは発言の ID（turn_id。再送は保存済みの同じ発言を返す）で、
     // 応答の束のキャッシュの件数とは切り離して覚える（キャッシュから消えた後の再送でも再配置しない。そのときの束は
     // 再現できないので canvas は null）。UI-05 で発言の記録に結び付けて保存する。

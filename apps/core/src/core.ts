@@ -1029,6 +1029,8 @@ async function startHttps(
     createSession: turns.handlers['createSession'] as ApiRouteHandler,
     postTurn: turns.handlers['postTurn'] as ApiRouteHandler,
     now: () => now().getTime(),
+    // 自動の区切りの日付は、発言の解釈と同じ本人の時間帯で判定する（UI-05、ADR 0068）。
+    utcOffset: turnOptions.utcOffset ?? '+09:00',
   });
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
   const faults = turnOptions.faults ?? NO_FAULTS;

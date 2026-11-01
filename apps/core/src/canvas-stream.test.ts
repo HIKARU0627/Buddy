@@ -15,6 +15,7 @@ import type {
 import { createApiContract } from './api-contract.js';
 import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import { API_ROUTES } from './api-routes.js';
+import type { DeviceRecord } from '@buddy/storage';
 import {
   CanvasHub,
   EMPTY_CANVAS,
@@ -119,10 +120,11 @@ function mockProvider(
 async function startCanvasCore(
   t: test.TestContext,
   events?: readonly ProviderEvent[],
+  clock?: () => Date,
 ): Promise<EventCore> {
   return startEventCore(t, {
     previewValid: false,
-    now: () => CLOCK,
+    now: clock ?? (() => CLOCK),
     turns: {
       provider: mockProvider(events),
       candidates: {
@@ -621,6 +623,203 @@ test(
     );
   },
 );
+
+test(
+  'UI-05: 30 minutes without a turn opens a new segment and carries only the previous summary origin and expiry',
+  { timeout: 60_000 },
+  async (t) => {
+    let at = new Date('2026-10-05T09:00:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const first = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(first.status, 200, first.text);
+    const a = (first.json as unknown as StreamTurnResponse).segment;
+    assert.equal(a.open_reason, 'stream_started');
+    assert.equal(a.carried_summary, null);
+    // 29 分 59 秒 999 ミリ秒では区切らない（同じ区切りで答える）。
+    at = new Date('2026-10-05T09:29:59.999+09:00');
+    const near = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(near.status, 200, near.text);
+    assert.equal(
+      (near.json as unknown as StreamTurnResponse).segment.segment_id,
+      a.segment_id,
+    );
+    // 経過は最後のやりとりから測る（直前の発言からちょうど 30 分で切る）。
+    at = new Date('2026-10-05T09:59:59.999+09:00');
+    const next = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(next.status, 200, next.text);
+    const b = (next.json as unknown as StreamTurnResponse).segment;
+    assert.notEqual(b.segment_id, a.segment_id);
+    assert.equal(b.open_reason, 'idle_timeout');
+    assert.equal(b.storage_mode, 'normal');
+    assert.equal(b.opened_at, '2026-10-05T00:59:59.999Z');
+    // 1 回目の発言は 00:00:00Z。normal の期限は 7 日後（手で数えた値）。
+    assert.deepEqual(b.carried_summary, {
+      source_segment_ids: [a.segment_id],
+      expires_at: '2026-10-12T00:00:00Z',
+    });
+    // 区切りをまたいでも、応答は同じ流れ（会話は Core の中だけ）。
+    assert(contract.valid('StreamTurnResponse', next.json));
+  },
+);
+
+test(
+  'UI-05: a local date change opens a new segment before the 30 minutes are over',
+  { timeout: 60_000 },
+  async (t) => {
+    let at = new Date('2026-10-05T23:50:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const first = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(first.status, 200, first.text);
+    const a = (first.json as unknown as StreamTurnResponse).segment;
+    // 23:59:59.999 は同じ日なので切らない。
+    at = new Date('2026-10-05T23:59:59.999+09:00');
+    const before = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(
+      (before.json as unknown as StreamTurnResponse).segment.segment_id,
+      a.segment_id,
+    );
+    // 0 時ちょうど（+09:00 では 15:00Z）で日付が変わる。
+    at = new Date('2026-10-06T00:00:00+09:00');
+    const next = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(next.status, 200, next.text);
+    const b = (next.json as unknown as StreamTurnResponse).segment;
+    assert.equal(b.open_reason, 'date_changed');
+    assert.notEqual(b.segment_id, a.segment_id);
+    // 1 回目の発言は 14:50Z。normal の期限は 7 日後。
+    assert.deepEqual(b.carried_summary, {
+      source_segment_ids: [a.segment_id],
+      expires_at: '2026-10-12T14:50:00Z',
+    });
+  },
+);
+
+test(
+  'UI-05: carried summaries keep the earliest origin across segments and are dropped once every source expired',
+  { timeout: 60_000 },
+  async (t) => {
+    let at = new Date('2026-10-05T09:00:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const first = await postStream(core, device, scope, '今日の用事を見せて');
+    const a = (first.json as unknown as StreamTurnResponse).segment;
+    // 2 つ目の区切り（09:31）。由来は A だけ。
+    at = new Date('2026-10-05T09:31:00+09:00');
+    const second = await postStream(core, device, scope, '今日の用事を見せて');
+    const b = (second.json as unknown as StreamTurnResponse).segment;
+    assert.equal(b.open_reason, 'idle_timeout');
+    assert.deepEqual(b.carried_summary, {
+      source_segment_ids: [a.segment_id],
+      expires_at: '2026-10-12T00:00:00Z',
+    });
+    // 3 つ目の区切り（10:02）。A の由来と期限を引き継ぎ、B を足す。期限は A の早い方のまま。
+    at = new Date('2026-10-05T10:02:00+09:00');
+    const third = await postStream(core, device, scope, '今日の用事を見せて');
+    const c = (third.json as unknown as StreamTurnResponse).segment;
+    assert.equal(c.open_reason, 'idle_timeout');
+    assert.deepEqual(c.carried_summary, {
+      source_segment_ids: [a.segment_id, b.segment_id],
+      expires_at: '2026-10-12T00:00:00Z',
+    });
+    // A の発言の期限（2026-10-12T00:00:00Z）ちょうどでは、期限の切れた前の要約を材料にしない。
+    // C の期限内の発言だけから作り直す（期限は C の発言の 7 日後）。接続範囲の期限（1 日）をまたぐので取り直す。
+    at = new Date('2026-10-12T09:00:00+09:00');
+    const scopeLater = await bootstrap(core, device);
+    const fourth = await postStream(
+      core,
+      device,
+      scopeLater,
+      '今日の用事を見せて',
+    );
+    assert.equal(fourth.status, 200, fourth.text);
+    const d = (fourth.json as unknown as StreamTurnResponse).segment;
+    assert.equal(d.open_reason, 'idle_timeout');
+    assert.deepEqual(d.carried_summary, {
+      source_segment_ids: [c.segment_id],
+      expires_at: '2026-10-12T01:02:00Z',
+    });
+  },
+);
+
+test('UI-05: when the new segment cannot be opened, the turn is not answered in the old segment', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T09:00:00+09:00');
+  let sessions = 0;
+  let turns = 0;
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const routes = createStreamRoutes({
+    canvas,
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve(
+        sessions === 1
+          ? { status: 201, body: { session_id: id(1) } }
+          : {
+              status: 503,
+              body: { code: 'dependency_unavailable', retryable: true },
+            },
+      );
+    },
+    postTurn: (request) => {
+      turns += 1;
+      const body = request.body as Record<string, string>;
+      return Promise.resolve({
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: request.params['session_id'],
+          turn_id: id(100 + turns),
+          input_id: id(200 + turns),
+          workflow_id: null,
+          status: 'answered',
+          result_view: null,
+          reply_text: null,
+        },
+      });
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (text: string): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = await handler(request('こんにちは'));
+  assert.equal(first.status, 200);
+  // 30 分後: 区切りを始めるが、会話を作れない（503）。古い区切りで答えず、発言の処理もしない。
+  at += 30 * 60_000;
+  const second = await handler(request('こんにちは'));
+  assert.equal(second.status, 503);
+  assert.equal(
+    (second.body as { code?: string }).code,
+    'dependency_unavailable',
+  );
+  assert.equal(sessions, 2);
+  assert.equal(turns, 1);
+});
 
 test(
   'UI-03: clarifications and approval links place nothing on the canvas (approval is never put on it)',

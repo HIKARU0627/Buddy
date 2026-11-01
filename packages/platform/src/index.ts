@@ -12,3 +12,5 @@ export * from './startup.js';
 // B03-03: 自宅の指紋の収集（端末側）と Tailscale の状態の取得（中枢側）（ADR 0022）。
 export * from './home-fingerprint.js';
 export * from './tailscale-status.js';
+// B06-08: バックアップの鍵（backup_file・ledger_hmac_key）の KeyStore（ADR 0055）。
+export * from './backup-key-store.js';

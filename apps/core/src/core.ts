@@ -946,6 +946,7 @@ async function startHttps(
       : { consent: voiceOptions.consent }),
     // 記録しない会話の間は Live を開かない・入力を受けない（保存境界の保持者の値。ADR 0059）。
     privateConversation: () => storage.privateConversation(),
+    storageBoundary: () => storage.origin().segment_generation,
     // Live の開始は外部への送信。起動・復帰の掃除が済むまで開かない（ADR 0058 の U108）。
     ...(retention === null
       ? {}

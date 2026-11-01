@@ -171,6 +171,86 @@ test(
 );
 
 test(
+  'private: a private conversation entered and left while the budget is being reserved does not let the old request through (conflict, reservation released, provider untouched)',
+  TIMEOUT,
+  async () => {
+    // 記録しない会話に入って出た（真偽値は false に戻る）が、区切りの世代は進んでいる場合。世代の読み出しは、受付の開始・
+    // 1 段目・予約の後・2 段目・登録の後の順。予約の後（3 回目）から世代が変わる。
+    let reads = 0;
+    const storageBoundary = () => {
+      reads += 1;
+      return reads >= 3 ? '3' : '1';
+    };
+    await withRig(
+      async (rig) => {
+        await lease(rig);
+        const refused = await rig.voice.createLiveSession(A, liveBody());
+        await rig.wait();
+        assert.deepEqual(
+          [refused.status, bodyOf(refused)['code']],
+          [409, 'conflict'],
+        );
+        // 送出意図の前に断ったので、予約は解放できる。provider には何も送らない。
+        assert.equal(rig.provider.created.length, 0);
+        assert.deepEqual(rig.budget.calls, ['reserve:195', 'release']);
+        assert.deepEqual(reservationStatus(rig), ['released']);
+        assert.deepEqual(
+          rig.harness.sql((db) =>
+            db.prepare('SELECT count(*) FROM live_sessions').pluck().get(),
+          ),
+          0,
+        );
+      },
+      { privateConversation: () => false, storageBoundary },
+    );
+  },
+);
+
+test(
+  'private: a private conversation entered and left while the Live record is being saved never reaches the provider (hold, conflict)',
+  TIMEOUT,
+  async () => {
+    // 世代の読み出し: 受付の開始・1 段目・予約の後・2 段目・登録の後。登録の後（5 回目）から世代が変わる。
+    let reads = 0;
+    const storageBoundary = () => {
+      reads += 1;
+      return reads >= 5 ? '3' : '1';
+    };
+    await withRig(
+      async (rig) => {
+        await lease(rig);
+        const refused = await rig.voice.createLiveSession(A, liveBody());
+        await rig.wait();
+        assert.deepEqual(
+          [refused.status, bodyOf(refused)['code']],
+          [409, 'conflict'],
+        );
+        assert.equal(rig.provider.created.length, 0);
+        assert.deepEqual(rig.budget.calls, ['reserve:195', 'dispatch', 'hold']);
+        assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+      },
+      { privateConversation: () => false, storageBoundary },
+    );
+  },
+);
+
+test(
+  'private: an unchanged storage boundary lets the Live start (the generation check does not block the normal path)',
+  TIMEOUT,
+  async () => {
+    await withRig(
+      async (rig) => {
+        await lease(rig);
+        const created = await rig.voice.createLiveSession(A, liveBody());
+        assert.equal(created.status, 201, JSON.stringify(created.body));
+        assert.equal(rig.provider.created.length, 1);
+      },
+      { privateConversation: () => false, storageBoundary: () => '7' },
+    );
+  },
+);
+
+test(
   'private: entering while the provider is creating the session still closes it once the answer arrives (the request was already sent)',
   TIMEOUT,
   async () => {

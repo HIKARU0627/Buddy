@@ -273,6 +273,9 @@ export interface VoiceControlOptions {
   // 記録しない会話の間か（保存境界の保持者が正本。ADR 0045・0059）。Live の受付・入出力の状態・Live の入力の判定が毎回呼ぶ。
   // 省略すると常に偽（記録する会話。試験）。
   readonly privateConversation?: () => boolean;
+  // 保存の区切りの世代（保存境界の保持者の値。入る・出るのたびに変わる）。Live の受付は始めた時点の値を控え、後の判定で変わっていたら
+  // 開かない（記録しない会話に入って出ても、入る前に始めた受付を通さない）。省略すると常に同じ値（試験）。
+  readonly storageBoundary?: () => string;
 }
 
 // このリースで開いた Live の結果。更新で作り直すエントリーの間で同じものを持ち回る。
@@ -431,6 +434,7 @@ export class VoiceControl {
   readonly #provider: LiveProvider | null;
   readonly #retention: VoiceControlOptions['retention'];
   readonly #privateConversation: () => boolean;
+  readonly #boundary: () => string;
   readonly #budget: LiveBudgetPort | null;
   readonly #consent: (
     deviceId: string,
@@ -468,6 +472,7 @@ export class VoiceControl {
     this.#provider = options.provider ?? null;
     this.#retention = options.retention;
     this.#privateConversation = options.privateConversation ?? (() => false);
+    this.#boundary = options.storageBoundary ?? (() => '0');
     this.#budget = options.budget ?? null;
     this.#consent = options.consent ?? (() => 'missing');
     this.#displayTarget = options.displayTarget ?? (() => null);
@@ -1233,6 +1238,7 @@ export class VoiceControl {
     body: JsonObject,
     consent: ConsentStatus,
     requestId: string,
+    boundary: string,
   ): Status | LeaseEntry {
     const lease = this.#leases.get(device.device_id)?.get('audio');
     const owner = this.audioOwner(device);
@@ -1259,6 +1265,8 @@ export class VoiceControl {
     });
     if (!admission.ok)
       return error(admission.status, admission.code as ApiErrorCode, requestId);
+    // 受付を始めた後に保存の区切りが変わった（記録しない会話に入って出た場合を含む）。入る前に始めた受付は通さない。
+    if (this.#boundary() !== boundary) return error(409, 'conflict', requestId);
     // 中枢で同時に開いてよい Live は 1 つ（端末の交代でも、前の Live の閉じる要求の後）。受付の途中の端末も数える。
     if (
       [...this.#lives.values()].some(
@@ -1275,6 +1283,8 @@ export class VoiceControl {
     body: JsonObject,
   ): Promise<Status> {
     const requestId = str(body, 'request_id');
+    // 受付を始めた時点の保存の区切り（後の判定で変わっていたら開かない）。掃除を待つ前に控える。
+    const boundary = this.#boundary();
     // 起動・復帰の掃除が済んで、送信が許されているときだけ受け付ける。掃除の本体とは直列にする（貸し出し）。
     let release: (() => void) | null = null;
     if (this.#retention !== undefined) {
@@ -1286,7 +1296,12 @@ export class VoiceControl {
         return error(503, 'dependency_unavailable', requestId);
     }
     try {
-      return await this.#createLiveSessionLeased(device, body, requestId);
+      return await this.#createLiveSessionLeased(
+        device,
+        body,
+        requestId,
+        boundary,
+      );
     } finally {
       release?.();
     }
@@ -1296,6 +1311,7 @@ export class VoiceControl {
     device: DeviceRecord,
     body: JsonObject,
     requestId: string,
+    boundary: string,
   ): Promise<Status> {
     const provider = this.#provider;
     const budget = this.#budget;
@@ -1320,6 +1336,7 @@ export class VoiceControl {
         body,
         consentStatus,
         requestId,
+        boundary,
       );
       if ('status' in admitted) return admitted;
       if (provider === null || budget === null)
@@ -1336,6 +1353,7 @@ export class VoiceControl {
         provider as LiveProvider,
         budget as LiveBudgetPort,
         consentStatus,
+        boundary,
       );
     } finally {
       this.#opening.delete(device.device_id);
@@ -1349,6 +1367,7 @@ export class VoiceControl {
     provider: LiveProvider,
     budget: LiveBudgetPort,
     consent: ConsentStatus,
+    boundary: string,
   ): Promise<Status> {
     const sessionId = str(body, 'session_id');
     const session = await this.#store
@@ -1397,6 +1416,7 @@ export class VoiceControl {
         body,
         consent,
         requestId,
+        boundary,
       );
       if ('status' in admitted) return admitted;
       this.#opening.add(device.device_id);
@@ -1433,6 +1453,7 @@ export class VoiceControl {
           body,
           consent,
           requestId,
+          boundary,
         );
         if ('status' in admitted) return admitted;
         const lease = admitted;
@@ -1499,10 +1520,13 @@ export class VoiceControl {
     // 場合と同じく予約を保持する（本人の手での精算。provider への照会は見つからないので保持のまま）。
     // この確認から provider への作成の呼び出しまでは同じ同期の区間（待ちを挟まない）なので、ここより後に入った場合は
     // 通常の作成の途中の扱い（作成の応答の後に閉じる）になる。
-    if (this.#privateConversation()) {
+    // 入ったまま（記録しない会話）なら 409 private_conversation、入って出た後（区切りの世代が変わった）なら 409 conflict。
+    if (this.#privateConversation() || this.#boundary() !== boundary) {
       this.#step(runtime, 'close_requested', null, 'private_conversation');
       this.#markUnconfirmed(runtime);
-      return error(409, 'private_conversation', requestId);
+      return this.#privateConversation()
+        ? error(409, 'private_conversation', requestId)
+        : error(409, 'conflict', requestId);
     }
     // 会話の長さの数え始め（追加予約は予約を取ってから 60 秒ごと）。provider が作る前から課金され得るので、作成の応答を待たない。
     this.#armTopUp(runtime);

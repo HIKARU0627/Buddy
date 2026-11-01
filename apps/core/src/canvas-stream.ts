@@ -388,9 +388,13 @@ export function placeReplyForTurn(
   canvas: CanvasDocument,
   turn: Pick<TurnResponse, 'turn_id' | 'status' | 'reply_text'>,
   context?: PlacerContext,
+  chosenText: string | null = null,
 ): ScreenTextPlacement | null {
   if (turn.status === 'session_control') return null;
-  const reply = turn.reply_text;
+  const reply =
+    chosenText !== null && chosenText.trim().length > 0
+      ? chosenText
+      : turn.reply_text;
   const text =
     typeof reply === 'string' && reply.trim().length > 0
       ? boundedText(reply)
@@ -451,8 +455,12 @@ export interface StreamRoutes {
   readonly handlers: Readonly<Record<string, ApiRouteHandler>>;
   // 声で返せなかった結果（接続が閉じた・文字へ切り替えた・世代が違う）を画面へ回す（B05-05、ADR 0052）。発言の結果と同じ
   // 配置者の規則・意味の検査を通して、キャンバスへ置く。配置済みの発言は重ねて置かない。置いた束を返す（置かなければ null）。
-  // 予定のカードにできない結果は、text の物にして本文を content の経路で返す（U120、ADR 0066）。
-  readonly placeLate: (turn: TurnResponse) => CanvasOpBatch | null;
+  // 予定のカードにできない結果は、text の物にして本文を content の経路で返す（U120、ADR 0066）。text には、
+  // Core が選んだ案内の定型文を渡す（なければ turn.reply_text）。
+  readonly placeLate: (
+    turn: TurnResponse,
+    text?: string | null,
+  ) => CanvasOpBatch | null;
   // 保留を実行せずに捨てた知らせを画面へ置く（U120、ADR 0066）。本文は固定の定型文で、捨てた依頼の本文は含めない。
   readonly placeNotice: (notice: {
     readonly session_id: string;
@@ -550,6 +558,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     turn: TurnResponse,
     seenRevision: string,
     late = false,
+    text: string | null = null,
   ): CanvasOpBatch | null => {
     if (placed.has(turn.turn_id)) return replays.get(turn.turn_id) ?? null;
     const context = {
@@ -563,7 +572,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     );
     const reply =
       batch === null && late
-        ? placeReplyForTurn(options.canvas.document, turn, context)
+        ? placeReplyForTurn(options.canvas.document, turn, context, text)
         : null;
     if (reply !== null) batch = reply.batch;
     // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。
@@ -763,8 +772,13 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       postCanvasContent,
     },
     // 画面へ回した遅着の結果は、端末が見ていた版を持たない（Core の今の版から置く）。
-    placeLate: (turn) =>
-      placeTurn(turn, options.canvas.document.canvas_revision, true),
+    placeLate: (turn, text) =>
+      placeTurn(
+        turn,
+        options.canvas.document.canvas_revision,
+        true,
+        text ?? null,
+      ),
     placeNotice,
   };
 }

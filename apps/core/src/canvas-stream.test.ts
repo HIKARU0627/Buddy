@@ -719,6 +719,14 @@ test('U120: a late result becomes one reusable text card and a held-dropped noti
     held.text,
     '実行前の依頼は実行していません。必要なら、もう一度お願いします。',
   );
+  // 声で返すはずだった案内（Core が選んだ定型文）があれば、turn.reply_text より優先する。
+  const chosen = placeReplyForTurn(
+    EMPTY_CANVAS,
+    turnOf(id(34), 'どこに保存しますか。'),
+    undefined,
+    '画面から全文を入力し直してください。',
+  );
+  assert.equal(chosen?.text, '画面から全文を入力し直してください。');
 });
 
 test('U120: the product screen sink reaches the canvas and the content route; the text stays out of the description', async () => {
@@ -743,7 +751,7 @@ test('U120: the product screen sink reaches the canvas and the content route; th
   });
   const logs: string[] = [];
   const sink = createLiveScreenSink({
-    placeLate: (turn) => stream.placeLate(turn),
+    placeLate: (turn, text) => stream.placeLate(turn, text),
     placeNotice: (notice) => stream.placeNotice(notice),
     log: (message) => logs.push(message),
   });
@@ -767,7 +775,12 @@ test('U120: the product screen sink reaches the canvas and the content route; th
     },
     reply_text: 'どちらですか。',
   };
-  sink.show({ reason: 'live_closed', session_id: id(20), turn: turn as never });
+  sink.show({
+    reason: 'live_closed',
+    session_id: id(20),
+    turn: turn as never,
+    text: 'Core が選んだ案内。',
+  });
   sink.heldDropped({
     session_id: id(20),
     workflow_id: id(33),
@@ -781,6 +794,7 @@ test('U120: the product screen sink reaches the canvas and the content route; th
     [REPLY_ITEM_ID, HELD_DROPPED_ITEM_ID],
   );
   // 本文は記述に載らない。
+  assert(!JSON.stringify(document).includes('Core が選んだ案内。'));
   assert(!JSON.stringify(document).includes('どちらですか。'));
   assert(!JSON.stringify(document).includes('実行前の依頼は実行していません'));
   const request = (
@@ -807,7 +821,7 @@ test('U120: the product screen sink reaches the canvas and the content route; th
   assert.equal(reply?.status, 200);
   assert.deepEqual((reply?.body as { content: unknown }).content, {
     component: 'text',
-    text: 'どちらですか。',
+    text: 'Core が選んだ案内。',
   });
   const held = await stream.handlers['postCanvasContent']?.(
     request(id(42), HELD_DROPPED_ITEM_ID, '2'),

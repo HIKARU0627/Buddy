@@ -9,6 +9,7 @@
 契約の選択肢（`docs/b00/contract-map.md` の U120 の (a)）のうち、**「結果の文字を載せる物の種類（text の中身を実データにする）」**を採った。本文なしの通知イベントは足さない。理由は、既にキャンバスの `text` 部品と `POST /v1/canvas/content` の経路があり、画面（キャンバスの窓）と HeroUI の描画も UI-07 でできているため。新しいイベントと通知の経路を足すより、本文を実データに切り替えるほうが変更が小さく、ADR 0032 の「物は参照だけ・本文は描くときに許可範囲内で取る」という境界もそのまま保てる。
 
 - **遅着した文字の結果**: `placeLate` は、予定のカードにできない結果（聞き返し・全文の確定の案内など）を、キャンバスの `text` の物（物の名前 `reply`、見出し「答え」）にする。本文は `turn.reply_text`（Core の定型文）。結果の文字がないときは「画面で確認してください。」にする。結果の本文を物の項目（`description`・`body` など）に足さない。
+- **Live が選んだ案内を引き継ぐ**: `TurnResponse.reply_text` は `commitLive` が返す汎用の文（`blocked` など）なので、Live が選んだ案内（`inputCommentary('full_text')` の「画面から全文を入力し直してください」など）を画面の本文に使うため、`ScreenResult` に `text`（Core が選んだ定型文）を足し、`placeLate` の本文に優先して渡す。これがないと、Live を閉じた後に全文の確定の案内が「今は進められません。少し待ってからもう一度お願いします。」に置き換わる（AO レビューの P2。ADR 0066 の初版の誤り）。
 - **保留を捨てた知らせ**: `heldDropped` は、物の名前 `held-dropped`・見出し「実行前の依頼」の `text` の物にする。本文は `inputCommentary('hold_dropped')` の固定の定型文「実行前の依頼は実行していません。必要なら、もう一度お願いします。」だけで、捨てた依頼の本文を含めない。
 - **本文の置き場所**: 本文は Core の RAM（`CanvasHub` の物ごとの本文）にだけ置く。キャンバスの記述・WSS の版の知らせ・イベントの記録・ログには載せない。端末は `POST /v1/canvas/content` で、画面が描いている版の物についてだけ取る（既存の UI-07 の規則のまま。ロック・停止・切断・世代の変化・版の食い違いでは渡さない）。
 - **同じ物を使い回す**: 遅着の結果は `reply`、保留の破棄は `held-dropped` の 1 つずつを更新する（物を増やさない。見える物の上限 24 を消費し続けない）。物のデータの参照 `screen_result` の ID を結果ごとに進め、画面が本文を取り直す。棚へ片付けられていれば棚のままにする（ユーザーの置き場所を AI が戻さない）。
@@ -32,7 +33,7 @@ JSON Schema・OpenAPI の形は変えない。`CanvasContent` の `text`（`Canv
 
 - `apps/core/src/canvas-stream.test.ts`: 遅着の結果が `reply` の `text` の物（float・見出し「答え」・参照 `screen_result`）になり、2 回目は同じ物の更新になること。保留の破棄が `held-dropped` の別の物になり、固定の定型文だけを持つこと。**製品の組み立て**（`createLiveScreenSink` → `createStreamRoutes` の `placeLate` / `placeNotice` → `CanvasHub`）で、記述に本文が載らず、`postCanvasContent` が版 2 の物について本文を返すこと。置けなかったときだけ理由のログになること（本文はログに残らない）。
 - `apps/core/src/canvas-content.test.ts`: `mockCanvasContent` が渡された `text` の本文を返し、ほかの部品には使わないこと。
-- `apps/core/src/live-conversation.test.ts`: 画面 sink が予定のカード・文字の結果・保留の破棄をすべて配置へ渡し、中身をログに残さないこと。
+- `apps/core/src/live-conversation.test.ts`: 画面 sink が予定のカード・文字の結果・保留の破棄をすべて配置へ渡し、中身をログに残さないこと。**実際の `commitLive` と画面 sink を通した全文確定のケース**で、`ScreenResult.text` が「この依頼はまだ実行していません。画面から全文を入力し直してください。」になり、汎用の `turn.reply_text` に置き換わらないこと（AO レビューの P2 の回帰）。
 - UI-03 の既存の試験（聞き返し・承認待ちの操作はキャンバスに置かない）は変更せずに通る。
 - 変異試験・実際の音声・実 API・実機での確認は**未実施**。契約 CI の成功を製品の試験の合格として扱わない。
 

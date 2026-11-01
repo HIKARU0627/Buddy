@@ -105,6 +105,9 @@ export interface ScreenResult {
   readonly reason: string;
   readonly session_id: string;
   readonly turn: TurnResponse;
+  // Core が選んだ案内の定型文（声で返すはずだった文）。画面の text の本文に使う。turn.reply_text は
+  // commitLive の返す汎用の文（blocked など）なので、選択済みの案内を失わないためにここで渡す（U120、ADR 0066）。
+  readonly text: string;
 }
 
 export interface ScreenResultSink {
@@ -122,7 +125,7 @@ export interface ScreenResultSink {
 // 保留を捨てた知らせは、固定の定型文（inputCommentary('hold_dropped')）の text の物にする（U120、ADR 0066）。
 // どちらも実行を告げず、実行の権限は生まれない。
 export function createLiveScreenSink(options: {
-  readonly placeLate: (turn: TurnResponse) => unknown;
+  readonly placeLate: (turn: TurnResponse, text: string | null) => unknown;
   readonly placeNotice: (notice: {
     readonly session_id: string;
     readonly workflow_id: string;
@@ -133,7 +136,7 @@ export function createLiveScreenSink(options: {
 }): ScreenResultSink {
   return {
     show: (result) => {
-      const placed = options.placeLate(result.turn);
+      const placed = options.placeLate(result.turn, result.text);
       // 置けなかったことは理由だけを残す（結果の中身は残さない）。
       if (placed === null || placed === false)
         options.log(`live_screen_text_not_shown:${result.reason}`);
@@ -1043,6 +1046,8 @@ export class LiveConversation implements LiveConversationPort {
     commentary: Commentary,
   ): Promise<void> {
     const handle = context.handle;
+    // 声で返すはずだった案内を、画面の text の本文にも使う（turn.reply_text の汎用の文に置き換えない）。
+    const text = commentary.commentary_parts.join('\n');
     const route = this.#route(context, pending);
     this.#finish(context, pending);
     if (route.channel === 'discard') return;
@@ -1073,6 +1078,7 @@ export class LiveConversation implements LiveConversationPort {
         reason: 'sideband_unavailable',
         session_id: sessionId,
         turn,
+        text,
       });
       return;
     }
@@ -1080,6 +1086,7 @@ export class LiveConversation implements LiveConversationPort {
       reason: route.reason ?? 'screen',
       session_id: sessionId,
       turn,
+      text,
     });
   }
 

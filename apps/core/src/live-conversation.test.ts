@@ -629,6 +629,35 @@ test(
   },
 );
 
+// U120（ADR 0066）: 画面へ回しても、Live が選んだ案内の定型文を失わない。commitLive は blocked を汎用の文で
+// 返すので、turn.reply_text だけを使うと「全文で入力し直す」案内が消える（AO レビューの P2）。
+test(
+  'U120/P2: a full-text screen result keeps the chosen guidance, not the generic blocked text',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        c.sb.canComment = false;
+        await speak(c, { text: 'メモに「牛乳」と書いて' });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(c.rig, 'the screen result', () => c.shown.length === 1);
+        assert.equal(c.shown[0]?.text, FULL_TEXT_SENTENCE);
+        assert.notEqual(c.shown[0]?.turn.reply_text, FULL_TEXT_SENTENCE);
+        assert.deepEqual(operations(c.rig), []);
+      },
+      {
+        prepare: (script) => {
+          script.replies.set(
+            'メモに「牛乳」と書いて',
+            intentReply('create_note', { title: 'メモ', body: '牛乳' }),
+          );
+        },
+      },
+    );
+  },
+);
+
 // ---- 欠落・時刻の対応が不明なら変更が 0（X51・QA05） ----------------------------------------------------------
 
 test(
@@ -1495,12 +1524,12 @@ test(
 // U120（ADR 0066）: 製品の起動が使う画面への届け方。声で返せなかった結果は、予定のカードも文字の結果もキャンバスへ置く。
 // 保留を捨てた知らせは、捨てた依頼の本文を含めない固定の定型文で置く。置けなかったときだけ理由をログに残す（中身は残さない）。
 test('U120: the product screen sink places late results and a held-dropped notice without logging their content', () => {
-  const placed: string[] = [];
+  const placed: { readonly id: string; readonly text: string | null }[] = [];
   const notices: string[] = [];
   const logs: string[] = [];
   const sink = createLiveScreenSink({
-    placeLate: (turn) => {
-      placed.push(turn.turn_id);
+    placeLate: (turn, text) => {
+      placed.push({ id: turn.turn_id, text });
       return true;
     },
     placeNotice: (notice) => {
@@ -1519,18 +1548,23 @@ test('U120: the product screen sink places late results and a held-dropped notic
     reason: 'live_closed',
     session_id: SESSION,
     turn: turnOf('t1', 'schedule_cards'),
+    text: '予定は2件です。',
   });
   sink.show({
     reason: 'live_closed',
     session_id: SESSION,
     turn: turnOf('t2', null),
+    text: '秘密の本文',
   });
   sink.heldDropped({
     session_id: SESSION,
     workflow_id: uuid(0x8001),
     reason: 'hold_expired',
   });
-  assert.deepEqual(placed, ['t1', 't2']);
+  assert.deepEqual(placed, [
+    { id: 't1', text: '予定は2件です。' },
+    { id: 't2', text: '秘密の本文' },
+  ]);
   assert.deepEqual(notices, [
     '実行前の依頼は実行していません。必要なら、もう一度お願いします。',
   ]);
@@ -1545,6 +1579,7 @@ test('U120: the product screen sink places late results and a held-dropped notic
     reason: 'live_closed',
     session_id: SESSION,
     turn: turnOf('t3', 'clarification'),
+    text: '秘密の本文',
   });
   failing.heldDropped({
     session_id: SESSION,

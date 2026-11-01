@@ -653,6 +653,191 @@
           "voice_state": "device_stopped"
         }
       }
+    },
+    {
+      "id": "X58-session-control-phrases-reach-the-device",
+      "title": "X58: 会話の操作の言い回し（短い発話の全体が照合表に一致）は LLM を呼ばず依頼も作らず、操作ごとに別の効果で端末へ届く（ちょっと待って＝次の無音を 60 秒に延ばすだけ／読み上げを止めて＝再生だけ停止／もう終わり＝会話を終える）。丁寧な形は操作ではなく通常の意図の経路へ回る",
+      "faults": [],
+      "expected": {
+        "wait": {
+          "silence_extensions": [60000],
+          "event_is_valid_voice_event": true,
+          "event_has_text": false,
+          "renderer_commands": [],
+          "playing": true,
+          "live_closure": "open",
+          "model_calls_added": 0,
+          "turns_added": 0
+        },
+        "stop_reading": {
+          "renderer_commands": [
+            {
+              "channel": "voice.stop_playback",
+              "reason": "user_stop"
+            }
+          ],
+          "renderer": {
+            "live": true,
+            "sending": true,
+            "capturing": true,
+            "playing": false,
+            "ring_empty": false,
+            "last_local_stop": "voice.stop_playback",
+            "io_epoch": "0",
+            "audio_epoch": "1",
+            "output_epoch": "1",
+            "session_epoch": "1"
+          },
+          "live_closure": "open",
+          "model_calls_added": 0,
+          "turns_added": 0
+        },
+        "polite_form": {
+          "model_calls": ["ちょっと待ってください"],
+          "new_silence_extensions": 0,
+          "renderer_commands": [],
+          "audio_controls_added": 0,
+          "live_closure": "open"
+        },
+        "end": {
+          "renderer_commands": [
+            {
+              "channel": "voice.close_voice_session",
+              "reason": "conversation_ended"
+            }
+          ],
+          "renderer": {
+            "live": false,
+            "sending": false,
+            "capturing": true,
+            "playing": false,
+            "ring_empty": false,
+            "last_local_stop": "voice.close_voice_session",
+            "io_epoch": "0",
+            "audio_epoch": "1",
+            "output_epoch": "2",
+            "session_epoch": "1"
+          },
+          "model_calls_added": 0,
+          "live_end_reason": "conversation_ended",
+          "live_closure": "close_confirmed",
+          "reply_mode": "voice"
+        }
+      }
+    },
+    {
+      "id": "X58-request-right-after-a-control-phrase",
+      "title": "X58（既知の制約）: 会話の操作に使った発話は委譲の対象の候補から外れないため、直後（委譲の窓 2 秒以内）の依頼は対象が複数と判定されて聞き返しになる（依頼は実行されず、安全側）。窓の外なら通常どおり解釈する",
+      "faults": ["control_turn_stays_a_delegation_candidate"],
+      "expected": {
+        "right_after": {
+          "model_calls": 0,
+          "asked_to_say_again": true,
+          "operations": 0,
+          "live_closure": "open"
+        },
+        "after_the_window": {
+          "model_calls": 1,
+          "asked_to_say_again": false,
+          "operations": 0,
+          "live_closure": "open"
+        }
+      }
+    },
+    {
+      "id": "X58-reply-in-text-switches-the-device",
+      "title": "X58: 「文字で返して」で Live を閉じ（理由は output_mode_text）、端末の返し方も文字になる。文字のうちは声の会話を始められず、声へ戻すだけでは接続を作らない（次の「続ける」で新しい接続と新しい世代）",
+      "faults": [],
+      "expected": {
+        "switched": {
+          "renderer_commands": [
+            {
+              "channel": "voice.close_voice_session",
+              "reason": "output_mode_text"
+            }
+          ],
+          "reply_mode": "text",
+          "view_reply_mode": "text",
+          "can_continue": false,
+          "live_end_reason": "output_mode_text",
+          "renderer_live": false,
+          "model_calls": 0,
+          "turns": 0
+        },
+        "continue_while_text": "voice_unavailable",
+        "back_to_voice": {
+          "reply_mode": "voice",
+          "can_continue": true,
+          "live_rows": 1,
+          "renderer_live": false
+        },
+        "continue_after_voice": {
+          "outcome": "ok",
+          "live_rows": [
+            {
+              "closure": "close_confirmed",
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            {
+              "closure": "open",
+              "audio_epoch": 2,
+              "session_epoch": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "X49-text-request-stays-text",
+      "title": "X49: 文字で依頼した結果は、音声の接続が開いていても文字で返す（声の接続には何も送らず、再生も触らない）。HTTP の経路で voice_live を名乗る入力は 503 で受け付けない。文字の「文字で返して」も Live を閉じて端末の返し方を文字にする",
+      "faults": [],
+      "expected": {
+        "answered_in_text": {
+          "status": 200,
+          "body_status": "answered",
+          "view": "schedule_cards",
+          "voice_commentary": 0,
+          "voice_instructions": 0,
+          "renderer_commands": [],
+          "playing": true,
+          "live_closure": "open",
+          "turns": [
+            {
+              "input_kind": "text",
+              "role": "user"
+            }
+          ],
+          "screen_results": 0
+        },
+        "voice_live_over_http": {
+          "status": 503,
+          "turns": 1,
+          "voice_commentary": 0
+        },
+        "reply_in_text": {
+          "status": 200,
+          "body_status": "session_control",
+          "session_control": "reply_in_text",
+          "workflow_id": null,
+          "result_view": null,
+          "renderer_commands": [
+            {
+              "channel": "voice.close_voice_session",
+              "reason": "output_mode_text"
+            }
+          ],
+          "reply_mode": "text",
+          "live_end_reason": "output_mode_text",
+          "model_calls": 1
+        },
+        "after_close": {
+          "status": 200,
+          "body_status": "answered",
+          "view": "schedule_cards",
+          "voice_commentary": 0
+        }
+      }
     }
   ]
 }

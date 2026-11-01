@@ -5,112 +5,24 @@
 // 待ち合わせは手で進める時計だけで行い、固定の sleep を使わない。HTTP・WSS・Electron・マイク・実 API は通さない。
 import assert from 'node:assert/strict';
 import { A, NO_FAULTS, withWorld } from './b05-world.mjs';
+import { CONVERSATION_CASES } from './b05-cases-conversation.mjs';
 import {
-  CLEAN,
+  acksSince,
+  closesSince,
+  commandsSince,
+  device,
+  lifeOf,
+  renderer,
+  reservationOf,
+  settle,
+  summary,
+} from './b05-observe.mjs';
+import {
   deviceEpochRows,
-  findings,
   liveRows,
   specification,
   voiceReservationRows,
 } from './b05-support.mjs';
-
-const VOICE_LIMIT = '2000';
-
-// 命令・ACK を、基準の時刻からの相対の ms にそろえて取り出す（時刻の乱数はない。手で進める時計）。
-const commandsSince = (w, t0) =>
-  w.sent
-    .filter((entry) => entry.at >= t0)
-    .map((entry) => ({
-      dt: entry.at - t0,
-      channel: entry.channel,
-      reason: entry.reason,
-    }));
-const acksSince = (w, t0) =>
-  w.acks
-    .filter((entry) => entry.at >= t0)
-    .map((entry) => ({
-      dt: entry.at - t0,
-      channel: entry.ack.channel,
-      outcome: entry.ack.outcome,
-    }));
-const closesSince = (w, t0) =>
-  w.closedToCore
-    .filter((entry) => entry.at >= t0)
-    .map((entry) => ({ dt: entry.at - t0, reason: entry.reason }));
-
-// 音声レンダラーの状態（模擬のレンダラーが持つ観測の値）。
-function renderer(w) {
-  const stats = w.stats();
-  return {
-    live: stats.live,
-    sending: stats.sending,
-    capturing: stats.capturing,
-    playing: stats.playing,
-    ring_empty: stats.ringFrames === 0,
-    last_local_stop: stats.lastLocalStop,
-    io_epoch: stats.epochs.io,
-    audio_epoch: stats.epochs.audio,
-    output_epoch: stats.epochs.output,
-    session_epoch: stats.epochs.session,
-  };
-}
-
-const device = (w) => ({
-  lock_state: w.device.state.lockState,
-  stop_scope: w.device.state.stopScope,
-  io_epoch: w.device.state.ioEpoch,
-});
-
-const lifeOf = (row) => ({
-  closure: row.closure,
-  control_state: row.control_state,
-  usage_seconds: row.usage_seconds,
-  audio_epoch: row.audio_epoch,
-  session_epoch: row.session_epoch,
-});
-
-const reservationOf = (row) => ({
-  status: row.status,
-  actual_gross: row.actual_gross,
-});
-
-// 終わりの突き合わせ。端末の命令・Core の行・provider の真の使用時間の不一致がないことを毎回すべての世界で確かめる。
-function settle(w) {
-  const lives = liveRows(w);
-  const reservations = voiceReservationRows(w);
-  const found = findings({
-    sent: w.sent,
-    lives,
-    reservations,
-    truth: w.providerTruth,
-    voiceLimit: VOICE_LIMIT,
-  });
-  assert.deepEqual(
-    found,
-    CLEAN,
-    '端末の命令・Core の行・provider の記録の不一致',
-  );
-  return { lives, reservations };
-}
-
-function summary(w, extra) {
-  const { lives, reservations } = settle(w);
-  return {
-    db_version: String(w.rig.harness.store.schemaVersion),
-    provider_requests: w.rig.provider.created.length,
-    provider_state_changes: w.providerTruth.filter(
-      (entry) => entry.close_requested_at !== null,
-    ).length,
-    approvals: 0,
-    final_state: [
-      `live:${lives.map((row) => row.closure).join('+') || 'none'}`,
-      `reservation:${reservations.map((row) => row.status).join('+') || 'none'}`,
-      `renderer:${w.stats()?.live ? 'live' : 'closed'}`,
-    ].join('|'),
-    voice_stop_ms: extra.voice_stop_ms ?? null,
-    checks: extra.checks,
-  };
-}
 
 // 中枢へも端末の停止を伝える（端末の停止の報告の経路は未実装。U70。ここでは試験が両方へ送って世代をそろえる）。
 async function coreStopLocal(w) {
@@ -696,6 +608,7 @@ const CASES = {
   'X30-ack-deadline-boundary': x30AckDeadline,
   'X30-hung-renderer-is-killed': x30HungRenderer,
   'X30-stop-playback-without-ack-escalates': x30StopPlaybackWithoutAck,
+  ...CONVERSATION_CASES,
 };
 
 // 1 つのケースを実行し、手書きの期待値と突き合わせる。観測を返す（証拠の元）。

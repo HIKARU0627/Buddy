@@ -269,7 +269,11 @@ export function planFor(
   hmacs: readonly SourceHmacValue[] = HMACS,
 ): { graph: ForgetGraph; generation: string; plan: unknown } {
   const read = value<ForgetGraphValue>(
-    memoryOp(db, { kind: 'forget.graph', target }),
+    memoryOp(db, {
+      kind: 'forget.graph',
+      target,
+      instruction_turn_id: instruction,
+    }),
   );
   const planned = planForget({
     target,

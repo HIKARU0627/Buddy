@@ -2,10 +2,14 @@
 //
 // - トークンと中枢の証明書・指紋を一つの記録にし、Electron の safeStorage（macOS はキーチェーン、Windows は DPAPI）で
 //   暗号化して userData の device-credential.bin に置く。平文をディスクに置かない。
-// - 保護の弱い方式しか使えない（Linux の basic_text・判定できない backend・暗号化が使えない）ときは保存しない。
-//   その場合はペアリングもしない（受け取っても保存できないトークンを作らない）。
+// - 保護の弱い方式しか使えない（Linux の basic_text・判定できない backend・非同期の暗号化が固定鍵の
+//   fallback（v10）・暗号化が使えない）ときは保存しない。その場合はペアリングもしない（受け取っても
+//   保存できないトークンを作らない）。
 // - safeStorage の呼び出しは Electron の層（electron/main.ts）にだけ置き、ここは SecretProtector を受け取る
-//   （試験は模擬を注入し、実機のキーチェーン・safeStorage を使わない）。
+//   （試験は模擬を注入し、実機のキーチェーン・safeStorage を使わない）。Electron 45 で同期の safeStorage が
+//   非推奨（46 で削除）になったため、後継の非同期 API だけを使う（ADR 0025 の追記）。
+// - 後継 API の復号は「鍵を入れ替えた方がよい」（shouldReEncrypt）を返す。読めた記録は捨てずに書き直し、
+//   書き直せなくても旧い記録のまま続ける（平文は書かない）。
 // - トークンは SecretText に包み、文字列化・JSON・inspect で値を出さない。
 // Electron に依存しない。
 
@@ -27,14 +31,25 @@ import { isNormalizedHubHost } from '@buddy/domain';
 export const CREDENTIAL_FILE = 'device-credential.bin';
 const MAX_FILE_BYTES = 64 * 1024;
 
-// safeStorage の必要な部分（Electron の層が実装を渡す）。
+// safeStorage の必要な部分（Electron の層が実装を渡す）。Electron 45 で同期の手段が非推奨になったので、
+// 名前どおりに全て非同期の後継 API だけを使う（Linux の backend の問い合わせだけは同期のまま）。
 export interface SecretProtector {
   readonly platform: NodeJS.Platform;
-  isEncryptionAvailable(): boolean;
+  isEncryptionAvailableAsync(): Promise<boolean>;
   // Linux だけ: safeStorage.getSelectedStorageBackend() の値。他の OS は null。
   selectedBackend(): string | null;
-  encryptString(plain: string): Buffer;
-  decryptString(cipher: Buffer): string;
+  // Linux だけ: 非同期の暗号化で実際に選ばれた鍵の種類（暗号文の先頭の tag）。他の OS は null。
+  // v11（Secret Service・KWallet）と v12（XDG portal）は OS の鍵束から導いた鍵、v10 は固定鍵の
+  // Posix fallback（第三者が復号できる）なので、protectionCheck は v10 を弱いとして拒否する。
+  asyncKeyTag(): Promise<string | null>;
+  encryptStringAsync(plain: string): Promise<Buffer>;
+  decryptStringAsync(cipher: Buffer): Promise<DecryptedSecret>;
+}
+
+export interface DecryptedSecret {
+  readonly text: string;
+  // 鍵が入れ替わった・より強い鍵が使えるようになった（safeStorage.decryptStringAsync の shouldReEncrypt）。
+  readonly shouldReEncrypt: boolean;
 }
 
 export type ProtectionCheck =
@@ -53,10 +68,16 @@ const STRONG_LINUX_BACKENDS: readonly string[] = [
   'kwallet6',
 ];
 
-export function protectionCheck(protector: SecretProtector): ProtectionCheck {
+// Linux の非同期の暗号化で OS の鍵束から導いた鍵の tag。v10 は固定鍵の Posix fallback（弱い）。
+// 同期の backend が gnome_libsecret・kwallet でも、鍵束に接続できないと非同期側は v10 に落ちる。
+const STRONG_LINUX_ASYNC_TAGS: readonly string[] = ['v11', 'v12'];
+
+export async function protectionCheck(
+  protector: SecretProtector,
+): Promise<ProtectionCheck> {
   let available: boolean;
   try {
-    available = protector.isEncryptionAvailable();
+    available = await protector.isEncryptionAvailableAsync();
   } catch {
     available = false;
   }
@@ -72,7 +93,17 @@ export function protectionCheck(protector: SecretProtector): ProtectionCheck {
     } catch {
       backend = null;
     }
-    return backend !== null && STRONG_LINUX_BACKENDS.includes(backend)
+    if (backend === null || !STRONG_LINUX_BACKENDS.includes(backend))
+      return { ok: false, reason: 'weak_backend' };
+    // 同期の backend の名前だけでなく、非同期の暗号化が実際に使う鍵の種類を確かめる。
+    // 鍵束に接続できないと Electron は固定鍵の Posix fallback（v10）に落ちる。
+    let keyTag: string | null;
+    try {
+      keyTag = await protector.asyncKeyTag();
+    } catch {
+      keyTag = null;
+    }
+    return keyTag !== null && STRONG_LINUX_ASYNC_TAGS.includes(keyTag)
       ? { ok: true }
       : { ok: false, reason: 'weak_backend' };
   }
@@ -211,11 +242,11 @@ function serialize(credential: StoredCredential): string {
 const isMissing = (error: unknown): boolean =>
   (error as { code?: unknown } | null)?.code === 'ENOENT';
 
-export function loadCredential(
+export async function loadCredential(
   path: string,
   protector: SecretProtector,
-): CredentialLoad {
-  const check = protectionCheck(protector);
+): Promise<CredentialLoad> {
+  const check = await protectionCheck(protector);
   if (!check.ok) return { kind: 'unprotected', reason: check.reason };
   let bytes: Buffer;
   try {
@@ -225,25 +256,39 @@ export function loadCredential(
   }
   if (bytes.length === 0 || bytes.length > MAX_FILE_BYTES)
     return { kind: 'unreadable' };
-  let text: string;
+  let decrypted: DecryptedSecret;
   try {
-    text = protector.decryptString(bytes);
+    decrypted = await protector.decryptStringAsync(bytes);
   } catch {
     return { kind: 'unreadable' };
   }
-  const credential = parseCredential(text);
-  return credential === null
-    ? { kind: 'unreadable' }
-    : { kind: 'loaded', credential };
+  const credential = parseCredential(decrypted.text);
+  if (credential === null) return { kind: 'unreadable' };
+  // 鍵の入れ替えの合図（shouldReEncrypt）。旧い形式の暗号文は後継 API でもそのまま読めるが、強い鍵が
+  // 使えるようになった記録は書き直す。書き直せなくても今読めた記録で続ける（平文は書かない）。
+  if (decrypted.shouldReEncrypt) await reencrypt(path, protector, credential);
+  return { kind: 'loaded', credential };
 }
 
-// 保護が十分なときだけ暗号化して保存する。一時ファイル → fsync → rename（→ ディレクトリの fsync）。
-export function saveCredential(
+async function reencrypt(
   path: string,
   protector: SecretProtector,
   credential: StoredCredential,
-): void {
-  const check = protectionCheck(protector);
+): Promise<void> {
+  try {
+    await saveCredential(path, protector, credential);
+  } catch {
+    // 旧い記録のまま続ける（saveCredential は一時ファイルを rename する前なら元の記録を残す）。
+  }
+}
+
+// 保護が十分なときだけ暗号化して保存する。一時ファイル → fsync → rename（→ ディレクトリの fsync）。
+export async function saveCredential(
+  path: string,
+  protector: SecretProtector,
+  credential: StoredCredential,
+): Promise<void> {
+  const check = await protectionCheck(protector);
   if (!check.ok) throw new CredentialStoreError(check.reason);
   const text = serialize(credential);
   // 保存する前に、読み戻せる形であることを確かめる（読み戻せない記録を置くと、毎回「再登録が必要」になる）。
@@ -251,7 +296,7 @@ export function saveCredential(
     throw new CredentialStoreError('not_readable');
   let cipher: Buffer;
   try {
-    cipher = protector.encryptString(text);
+    cipher = await protector.encryptStringAsync(text);
   } catch {
     throw new CredentialStoreError('encrypt_failed');
   }

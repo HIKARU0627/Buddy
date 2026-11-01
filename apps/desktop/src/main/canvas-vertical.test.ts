@@ -260,7 +260,7 @@ async function startClient(
     fingerprint,
   };
   const credentialPath = join(dir, 'device-credential.bin');
-  saveCredential(credentialPath, protector, {
+  await saveCredential(credentialPath, protector, {
     deviceId,
     token: new SecretText(token),
     issuedAt: '2026-10-05T00:00:00Z',
@@ -346,7 +346,7 @@ async function startClient(
       return (await link.handleAdminIpc(channel, raw, sender, UNLOCKED))
         .response;
     if (CONNECTION_CHANNELS.includes(channel as never))
-      return link.handleIpc(channel, raw, sender, UNLOCKED).response;
+      return (await link.handleIpc(channel, raw, sender, UNLOCKED)).response;
     // キャンバスの物のユーザーの操作（UI-06）は、端末の今の入出力の状態で受け付ける。
     if (CANVAS_CHANNELS.includes(channel as never))
       return (
@@ -433,7 +433,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => client.link.linkState?.phase === 'live', 'live');
     // 接続したら、中枢のキャンバスの今の記述（版 0 の空）を取って渡す。
     await waitUntil(() => client.canvasNotices.length === 1, 'first notice');
@@ -544,7 +544,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -589,7 +589,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     await client.submit('今日の用事を見せて');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -658,7 +658,7 @@ test(
         });
       },
     });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
 
     // 発言を送った後、応答が届く前にロックする: 内容を画面へ返さず、結果不明にする（未送信と答えない）。
@@ -725,7 +725,7 @@ test(
             }
           : outcome,
     });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     await client.submit('今日の用事を見せて');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -820,7 +820,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     const requestsBefore = client.requests.length;
 
@@ -954,7 +954,7 @@ test(
     const hub = await startCanvasHub(t);
     const io = { state: { ...UNLOCKED } as DesktopIoState };
     const client = await startClient(t, hub, { io });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     await client.submit('今日の用事を見せて');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1015,7 +1015,7 @@ test(
           ? new Promise<void>((resolve) => gates.push(resolve))
           : undefined,
     });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     // 取得の応答を保っている間に停止する。
     hold = true;
@@ -1060,7 +1060,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     await client.submit('今日の用事を見せて');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1110,7 +1110,7 @@ test(
       ),
     );
     const client = await startClient(t, hub, { confirm: () => true });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     const operationsOf = () => {
       const view = client.link.view('unlocked');
@@ -1206,7 +1206,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1294,7 +1294,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1357,7 +1357,7 @@ test(
           ? new Promise<void>((resolve) => gates.push(resolve))
           : undefined,
     });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1432,7 +1432,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1531,7 +1531,7 @@ test(
     const hub = await startCanvasHub(t);
     const front = { value: false };
     const client = await startClient(t, hub, { front });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1625,7 +1625,7 @@ test(
         return new Promise<void>((resolve) => gates.push(resolve));
       },
     });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1700,7 +1700,7 @@ test(
         return new Promise<void>((resolve) => gates.push(resolve));
       },
     });
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');
@@ -1756,7 +1756,7 @@ test(
   async (t) => {
     const hub = await startCanvasHub(t);
     const client = await startClient(t, hub);
-    client.link.start('unlocked');
+    await client.link.start('unlocked');
     await waitUntil(() => latest(client)?.canvas_revision === '0', 'empty');
     assert.equal((await client.submit('今日の用事を見せて')).outcome, 'ok');
     await waitUntil(() => latest(client)?.canvas_revision === '1', 'rev 1');

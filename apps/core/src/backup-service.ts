@@ -186,8 +186,15 @@ export function createBackupService(
   const assertLive = (): void => {
     if (fenced) throw new BackupFenced();
   };
-  const exclusive = <T>(body: () => Promise<T>): Promise<T> => {
-    const next = chain.then(body, body);
+  // 列から実行を開始するときに、フェンスが立っていれば本体を始めずに whenFenced の結果を返す（停止の待ちが上限を過ぎた後、
+  // 列で待っていた実行が、新しい Core の作業用ファイルを消したり写しを作ったりしない。PR #175 の 7 回目の P2）。
+  const exclusive = <T>(
+    body: () => Promise<T>,
+    whenFenced: () => T,
+  ): Promise<T> => {
+    const guarded = (): Promise<T> =>
+      fenced ? Promise.resolve(whenFenced()) : body();
+    const next = chain.then(guarded, guarded);
     chain = next.catch(() => undefined);
     return next;
   };
@@ -512,8 +519,11 @@ export function createBackupService(
     if (!key.ok) return { ok: false, reasons: [`backup_key_${key.reason}`] };
     const stateRead = await readBackupState(dataDir);
     if (!stateRead.ok) return { ok: false, reasons: ['state_invalid'] };
-    // 前の実行が異常終了して残した写しを消す（この実行は排他の中で、動いている写しはない）。
+    // 前の実行が異常終了して残した写しを消す（この実行は排他の中で、動いている写しはない）。フェンスが立った後（Core が
+    // ロックを解放した後）は、新しい Core が作っている写しを消さないよう、始めない。
+    assertLive();
     await recoverWorkDir();
+    assertLive();
     const snapshot = await takeBackupSnapshot({
       sourcePath: join(dataDir, DB_FILE),
       workDir,
@@ -633,6 +643,7 @@ export function createBackupService(
     let removed = 0;
     for (const name of names) {
       if (!WORK_FILE.test(name)) continue;
+      assertLive();
       await rm(join(workDir, name), { force: true });
       removed += 1;
     }
@@ -671,7 +682,10 @@ export function createBackupService(
     sweep: () =>
       closing
         ? Promise.resolve<SweepResult>({ ok: false, reasons: ['closing'] })
-        : exclusive(sweepTracked),
+        : exclusive(sweepTracked, (): SweepResult => ({
+            ok: false,
+            reasons: ['fenced'],
+          })),
     run: () =>
       closing
         ? Promise.resolve<BackupRunResult>({
@@ -679,38 +693,49 @@ export function createBackupService(
             reasons: ['closing'],
             sweep: null,
           })
-        : exclusive(async (): Promise<BackupRunResult> => {
-            let created;
-            try {
-              created = await createBackup();
-            } catch (error) {
-              if (error instanceof BackupFenced)
-                return { ok: false, reasons: ['fenced'], sweep: null };
-              log(`バックアップに失敗しました（${(error as Error).name}）。`);
-              created = {
-                ok: false as const,
-                reasons: ['backup_failed'] as readonly string[],
-              };
-            }
-            // 作成の成否によらず掃除する（失敗が続いても期限を延ばさない）。
-            const sweep = await sweepTracked();
-            if (!created.ok)
-              return { ok: false, reasons: created.reasons, sweep };
-            return { ...created.result, sweep: sweep };
-          }),
+        : exclusive(
+            async (): Promise<BackupRunResult> => {
+              let created;
+              try {
+                created = await createBackup();
+              } catch (error) {
+                if (error instanceof BackupFenced)
+                  return { ok: false, reasons: ['fenced'], sweep: null };
+                log(`バックアップに失敗しました（${(error as Error).name}）。`);
+                created = {
+                  ok: false as const,
+                  reasons: ['backup_failed'] as readonly string[],
+                };
+              }
+              // 作成の成否によらず掃除する（失敗が続いても期限を延ばさない）。
+              const sweep = await sweepTracked();
+              if (!created.ok)
+                return { ok: false, reasons: created.reasons, sweep };
+              return { ...created.result, sweep: sweep };
+            },
+            (): BackupRunResult => ({
+              ok: false,
+              reasons: ['fenced'],
+              sweep: null,
+            }),
+          ),
     dueAction,
     recover: () =>
-      exclusive(async () => {
-        try {
-          const removed = await recoverWorkDir();
-          if (removed > 0)
-            log(`異常終了で残った作業用の写しを ${removed} 件消しました。`);
-          return removed;
-        } catch (error) {
-          log(`作業用の写しを消せませんでした（${(error as Error).name}）。`);
-          return 0;
-        }
-      }),
+      exclusive(
+        async () => {
+          try {
+            const removed = await recoverWorkDir();
+            if (removed > 0)
+              log(`異常終了で残った作業用の写しを ${removed} 件消しました。`);
+            return removed;
+          } catch (error) {
+            if (error instanceof BackupFenced) return 0;
+            log(`作業用の写しを消せませんでした（${(error as Error).name}）。`);
+            return 0;
+          }
+        },
+        () => 0,
+      ),
     async close() {
       closing = true;
       let timer: NodeJS.Timeout | undefined;

@@ -1572,6 +1572,62 @@ test('停止: 上限を過ぎて先へ進んだ後に、止めていた旧い実
   assert.equal(status.last_success?.created_at, mine.created_at);
 });
 
+// レビュー（PR #175 の 7 回目の P2）の再現: 停止より前に受け付けて列で待っていた 2 本目の実行は、停止の待ちが上限を過ぎて
+// フェンスが立った後に列から始まっても、作業用の写しの回収も写しの作成もしない（新しい Core の作業用ファイルを消さない）。
+test('停止: 列で待っていた実行も、上限を過ぎた後は始めず、新しい Core の作業用ファイルを消さない', async (t) => {
+  let entered = 0;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const r = await rig(t, {
+    beforeWrite: async () => {
+      entered += 1;
+      await gate;
+    },
+    drainMs: 100,
+  });
+  await ready(r);
+  const first = r.handle.backup.run();
+  for (let i = 0; i < 400 && entered === 0; i += 1)
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(entered, 1);
+  // 停止の前に受け付けた 2 本目は、1 本目の後ろで待つ。
+  const second = r.handle.backup.run();
+  await r.handle.stop('test');
+  const again = await startCore({
+    dataDir: r.dataDir,
+    keyStore: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    shutdownGraceMs: 200,
+    probeTimeoutMs: 300,
+    now: () => new Date(r.clock.value),
+    log: () => undefined,
+    backup: { keyStore: r.keys },
+  });
+  onCleanup(t, async () => {
+    await again.stop('test').catch(() => undefined);
+  });
+  // 新しい Core が作っている最中の写し（作業用ファイル）を想定して置く。旧い実行が消してはならない。
+  const work = join(r.dataDir, BACKUP_WORK_DIR);
+  await mkdir(work, { recursive: true });
+  const live = join(work, ORPHAN_FILES[0] ?? 'missing');
+  await writeFile(live, 'new-core-snapshot');
+  release();
+  const [a, b] = [await first, await second];
+  for (const old of [a, b]) {
+    assert.equal(old.ok, false);
+    assert.deepEqual(old.ok ? [] : old.reasons, ['fenced']);
+    assert.equal(old.ok ? null : old.sweep, null);
+  }
+  assert.equal(entered, 1, '列で待っていた実行が始まった');
+  assert.equal(await readFile(live, 'utf8'), 'new-core-snapshot');
+  assert.deepEqual(await backupFiles(r), []);
+  assert.deepEqual(
+    (await readdir(r.backupDir)).filter((name) => name.endsWith('.tmp')),
+    [],
+  );
+});
+
 // レビュー（PR #175 の 6 回目の P2）の再現: 異常終了（強制終了・電源断）で作業用のディレクトリに残った平文の写しは、
 // 再起動した Core が（排他ロックを取った後に）回収する。実行の始めにも回収する。ほかのファイルには触れない。
 const ORPHAN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

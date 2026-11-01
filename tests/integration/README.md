@@ -21,3 +21,11 @@ B00 では期待遷移と故障点（`fault-points.json`）、証拠の形式（
 `b07-cases.mjs` が各ケースを実行し、`b07-support.mjs` が予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせます。期待値は `b07-expectations.json` の手書きの値だけで、合成の通貨 XTS と縮めた上限だけを使います（個人の金額・単価・為替は入れない）。実行器は失敗や未登録のケースを無視しません。
 
 `evidence-b07-simulated.json` は `kind: simulated` の観測結果で、`source_sha256` の対象は実行器が読み込むファイルだけです（`scripts/b07-evidence-sources.mjs`。B04 と共通の集め方は `scripts/evidence-sources.mjs`）。記録方法・完了条件・制限は [B07 の完了判定](../../docs/b07/README.md) を参照してください。実 API・実請求・実機・HTTP の経路・画面は未実施で、実請求の照合は B15 です。
+
+## B05-07 の実行器（段階 1: 実行器と X13・QA43）
+
+`pnpm run build` の後、`node --test tests/integration/b05.test.mjs` で、端末側（デスクトップの `VoiceController`・`DesktopDeviceController`・模擬の音声レンダラーと合成の PCM）と中枢側（`VoiceControl`・DB worker・予算の門・模擬の Live の provider）を、1 本の手で進める時計でつないだ統合を確認できます。`pnpm test` / `pnpm run check` にも含みます。3 ケース × 固定 seed 3 個を、関門と異なる順序で実行します。
+
+`b05-world.mjs` が世界（端末と中枢のつなぎ。HTTP・WSS・Electron・マイク・WebRTC・実 API は通さず、中枢の入口を直接呼ぶ）、`b05-cases.mjs` がケース、`b05-support.mjs` が突き合わせの規則（端末が送った命令の世代の後退・存在しない Live の開始・provider 自身の真の使用時間と精算の食い違い・送出意図のある予約の解放・音声の枠の上限）です。期待値は `b05-expectations.json` の手書きの値だけで、実装の処理から作りません。残りのケース（X25・X30・X49・X51・X58・X27・QA41）・証拠（`evidence-b05-simulated.json`）・完了判定（`docs/b05/README.md`）は後続の段階で足します。実機・実 API・実請求は未実施です。
+
+端末が進めた `io_epoch` を中枢へ報告する経路は未実装（契約台帳 U70・U91）なので、端末だけが止まって再開すると中枢はリースを `unknown_io_epoch` で拒否し、会話は始まりません（`X13-io-epoch-sync-before-restart` が現状の挙動として記録します。試験が中枢へも停止・再開を送って世代をそろえた場合は新しい Live で再開できます）。

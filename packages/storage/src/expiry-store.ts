@@ -15,6 +15,7 @@ import type { DerivedRow, MemoryRow, SweepRow, TimedRow } from '@buddy/domain';
 import type { SqliteDatabase } from './connection.js';
 import {
   deleteForgetNode,
+  lineageHasLiveDownstream,
   lineageSources,
   pruneDeadLineage,
 } from './forget-store.js';
@@ -505,7 +506,11 @@ function deleteOne(
   const node: LineageNode = { kind: key.kind, id: key.artifactId };
   const parents = lineageSources(db, node);
   if (key.kind === 'carried_summary') {
-    // 表のない派生物（つないだ要約）は辺だけを消す。
+    // 表のない派生物（つないだ要約）は辺だけを消す。ただし、この要約を由来にする派生物が生きている間は、由来の辺を
+    // 残す（消すと元情報から下流への経路が切れ、後で元情報を忘れても下流が閉包から漏れる。ADR 0054 U110・AO レビュー
+    // P2）。下流がなくなったら、次の掃除で辺を消す。
+    if (lineageHasLiveDownstream(db, node))
+      throw new ExpiryRejection(['lineage_kept']);
     db.prepare(
       'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
     ).run(node.kind, node.id);

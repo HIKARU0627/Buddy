@@ -642,3 +642,53 @@ test('a derived row follows the corrected deadline of its origin memory: review 
     );
   });
 });
+
+test('an expired carried summary keeps its lineage edges while a live downstream exists, so forgetting the source later still reaches the operation', async () => {
+  await withDb((db) => {
+    // 元情報 msg-1 → つないだ要約 cs-1 → 承認待ちの操作の確定内容 OP_RET。
+    insertSourceItem(db, 'acct-a', 'msg-1', B);
+    ok(db, createCommand(OP_RET));
+    edge(db, 'carried_summary', 'cs-1', 'source_item', 'msg-1');
+    edge(db, 'operation_content', OP_RET, 'carried_summary', 'cs-1');
+    const id = 'carried_summary:cs-1';
+    // 元情報の 24 時間ちょうどで要約は期限だが、下流（操作の行）が生きている間は辺を残す。消さずに保留で返す。
+    const kept = deleteExpired(db, 'derived', [id], B + 24 * HOUR);
+    assert.deepEqual(kept, {
+      deleted: [],
+      skipped: [{ id, reasons: ['lineage_kept'] }],
+    });
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT artifact_kind, artifact_id, source_kind, source_id FROM derivations ORDER BY artifact_kind',
+        )
+        .all(),
+      [
+        {
+          artifact_kind: 'carried_summary',
+          artifact_id: 'cs-1',
+          source_kind: 'source_item',
+          source_id: 'msg-1',
+        },
+        {
+          artifact_kind: 'operation_content',
+          artifact_id: OP_RET,
+          source_kind: 'carried_summary',
+          source_id: 'cs-1',
+        },
+      ],
+    );
+    // 元情報を消しても（期限で）、操作までの経路は残る。後で元情報を忘れたとき、操作が閉包に入る。
+    deleteExpired(db, 'source_item', ['google/acct-a/msg-1'], B + 24 * HOUR);
+    assert.equal(count(db, 'SELECT count(*) FROM derivations'), 2);
+    // 下流がなくなれば（操作の行を消す）、次の掃除で要約の辺も消える。
+    db.prepare(
+      "DELETE FROM derivations WHERE artifact_kind = 'operation_content'",
+    ).run();
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [id], B + 24 * HOUR).deleted,
+      [id],
+    );
+    assert.equal(count(db, 'SELECT count(*) FROM derivations'), 0);
+  });
+});

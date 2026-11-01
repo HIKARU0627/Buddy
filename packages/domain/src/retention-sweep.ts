@@ -1039,6 +1039,8 @@ export const RETENTION_FAILURE_CLASSES: Readonly<
   unknown_held: 'expected_hold',
   operation_not_finished: 'expected_hold',
   completed_at_missing: 'expected_hold',
+  // 要約の辺を、生きた下流がある間は残している（下流がなくなれば次の掃除で消える）。
+  lineage_kept: 'expected_hold',
   operation_not_found: 'expected_hold',
   row_not_found: 'expected_hold',
   memory_not_found: 'expected_hold',

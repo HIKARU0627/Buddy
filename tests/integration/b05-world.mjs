@@ -25,7 +25,7 @@ import {
   NO_FAULTS,
 } from '../../apps/desktop/dist/main/voice-mock-renderer.js';
 
-export { A, CORE, DEV_A, SCOPE_A, SESSION, waitUntil };
+export { A, CORE, DEV_A, NO_FAULTS, SCOPE_A, SESSION, waitUntil };
 
 // 合成の PCM の 1 つの区間（フレームを 20 ms として数え、PCM_BATCH 個を 1 つの timer でまとめて進める）。
 const PCM_FRAME_MS = 20;
@@ -67,6 +67,7 @@ export async function withWorld(options, body) {
       const kills = [];
       const closedToCore = [];
       const renewals = [];
+      const renewalBodies = [];
       const renewResponses = [];
       const coreEvents = [];
       const logs = [];
@@ -156,6 +157,7 @@ export async function withWorld(options, body) {
         }),
         renew: async (request) => {
           renewals.push({ at: clock.mono(), io_epoch: request.io_epoch });
+          renewalBodies.push(structuredClone(request));
           const result = await rig.voice.renewLease(A, request, lockHeader());
           renewResponses.push({
             at: clock.mono(),
@@ -279,7 +281,10 @@ export async function withWorld(options, body) {
           const ping = sideband.ping.bind(sideband);
           sideband.ping = () => {
             ping();
-            if (world.sidebandHealthy) sideband.pong();
+            if (world.sidebandHealthy) {
+              world.lastPongAt = clock.mono();
+              sideband.pong();
+            }
           };
           const sendClose = sideband.sendClose.bind(sideband);
           const liveId = providerSessionId.slice('prov-'.length);
@@ -306,6 +311,8 @@ export async function withWorld(options, body) {
 
       const world = {
         sidebandHealthy: true,
+        lastPongAt: null,
+        renewalBodies,
         providerCloses: 'auto',
         providerTruth,
         rig,
@@ -327,6 +334,13 @@ export async function withWorld(options, body) {
         wall,
         current: () => slots.at(-1) ?? null,
         stats: () => slots.at(-1)?.mock.stats ?? null,
+        // 相手（モデル）の音声が届く（模擬のレンダラーの受信トラック）。epoch は音声を作った時点の出力の世代（省略は今の世代）。
+        remoteAudio: (epoch) =>
+          slots
+            .at(-1)
+            ?.mock.remoteAudioArrived(
+              epoch ?? slots.at(-1).mock.stats.epochs.output ?? '0',
+            ),
         // 時計を進める（端末と中枢の timer を時刻の順に動かし、動かすたびに両側の処理を消化する）。
         advance: (ms) => clock.advance(ms),
         // 条件が満たされるまで、時計を進めずに両側の処理を消化する（実時間の上限つき）。

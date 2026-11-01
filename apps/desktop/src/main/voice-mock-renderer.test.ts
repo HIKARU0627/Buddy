@@ -279,3 +279,32 @@ test('a hang stops all command handling but an open send track keeps sending unt
   assert.equal(renderer.stats.sentFrames, 7);
   assert.equal(renderer.stats.lastLocalStop, 'voice.stop_playback');
 });
+
+test('remote audio plays only while the Live is open and its output epoch is not older; stops end playback and old audio is discarded', () => {
+  const { renderer } = setup();
+  // Live が開く前に届いた音声は再生しない。
+  renderer.remoteAudioArrived('0');
+  assert.equal(renderer.stats.playing, false);
+  renderer.receive(start({ io: '0', audio: '1', output: '0', session: '1' }));
+  renderer.remoteAudioArrived('0');
+  assert.equal(renderer.stats.playing, true);
+  renderer.tick();
+  renderer.tick();
+  assert.equal(renderer.stats.playedFrames, 2);
+  // 再生の停止: 止まり、止めた後は再生したフレームが増えない。
+  renderer.receive(stopPlayback('0', '1'));
+  assert.equal(renderer.stats.playing, false);
+  renderer.tick();
+  assert.equal(renderer.stats.playedFrames, 2);
+  // 古い出力の世代の音声は捨てる。新しい世代の音声は再生できる。
+  renderer.remoteAudioArrived('0');
+  assert.equal(renderer.stats.playing, false);
+  assert.equal(renderer.stats.discardedAudio, 1);
+  renderer.remoteAudioArrived('1');
+  assert.equal(renderer.stats.playing, true);
+  // 全停止で再生も止まり、その後に届いた音声は再生しない（Live が閉じている）。
+  renderer.receive(suspend('1', '2'));
+  assert.equal(renderer.stats.playing, false);
+  renderer.remoteAudioArrived('2');
+  assert.equal(renderer.stats.playing, false);
+});

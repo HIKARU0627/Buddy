@@ -1,0 +1,5627 @@
+{
+  "status": "recorded",
+  "description": "B05-07 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。端末の音声の制御・模擬の音声レンダラー・中枢の音声の制御・DB worker・予算の門・模擬の Live の provider・会話の処理をつないだ統合で、端末が音声レンダラーへ送った命令・音声レンダラーの状態・Core の Live と予約の行・provider 自身の真の使用時間を突き合わせた。実機・実 API・実請求は未実施（#132・#133）。U120（文字の結果・破棄の知らせの画面配信）は UI-08 の別 PR で未了。",
+  "command": "node --test tests/integration/b05.test.mjs",
+  "source_sha256": [
+    {
+      "path": "apps/core/src/api-auth.ts",
+      "sha256": "b1a025ca398e6e1eaa82c66fa47437d31aff32f439dfe9cc89185c79f7325d1f"
+    },
+    {
+      "path": "apps/core/src/api-budget.ts",
+      "sha256": "445fcc075da776d52dd091526cd318620464aa310faadbc82caf4fb907a69876"
+    },
+    {
+      "path": "apps/core/src/api-contract.ts",
+      "sha256": "046688206cad9267c905a0c2f292be5ff92ebab1fea94ad13caea20af4992c16"
+    },
+    {
+      "path": "apps/core/src/api-environment.ts",
+      "sha256": "87d3834173609b51efbd6d0e4d1a9a10de99e040c2fd006d41d501938924bc0f"
+    },
+    {
+      "path": "apps/core/src/api-home-network.ts",
+      "sha256": "daf27374655e62baf6aa77dddd26c9be5cd88afe2eb3dbec48c5375faf464e7f"
+    },
+    {
+      "path": "apps/core/src/api-operations.ts",
+      "sha256": "563fb6b950581777116d8f2e59ab725e91ee287587ac1583e10f5b8ac1702e9a"
+    },
+    {
+      "path": "apps/core/src/api-pairing.ts",
+      "sha256": "a108e0df965c2a3f67a7de32bbc258272a783349387632cd8524a666e36d4e05"
+    },
+    {
+      "path": "apps/core/src/api-routes.ts",
+      "sha256": "9233abf05d341396017c4abcbdb60c3f7831b925655bafc0cbb833e8d3fa8825"
+    },
+    {
+      "path": "apps/core/src/api-server.ts",
+      "sha256": "61772c332e522e80b0eb136ba83afb33540870a89a44914225517e8cb25e8be9"
+    },
+    {
+      "path": "apps/core/src/api-test-support.ts",
+      "sha256": "425dc2e92b9816e6fbda3d55660e7e6d66387246d20f8984f2f39130f1c3b35d"
+    },
+    {
+      "path": "apps/core/src/api-turns.ts",
+      "sha256": "1c102782ef0e8aab249253c6ee6deeb501ffd49dbe5f3e9d4b69b017f1086e6d"
+    },
+    {
+      "path": "apps/core/src/api-voice.ts",
+      "sha256": "ec7dea2a99bc843aff410d7be2fd1fe9e13a8c7bd279ce78d40d600372d08d53"
+    },
+    {
+      "path": "apps/core/src/budget-config.ts",
+      "sha256": "fdf56cfb61666697e11f7c92e8461ce9ac51e67de6aa2ab2509914617e8a211c"
+    },
+    {
+      "path": "apps/core/src/budget-credit.ts",
+      "sha256": "503dcd9b069b8e224d842cf6401ccceb656c7447f6f642c6f62cc66e85046e25"
+    },
+    {
+      "path": "apps/core/src/budget-gate.ts",
+      "sha256": "6642a69e47b94ac4ae826e67a652a3245465b5140bec86706fde675610fe62b4"
+    },
+    {
+      "path": "apps/core/src/budget-test-support.ts",
+      "sha256": "6ec0689cded68ba108b1a1d3f1579d9aa7bc6a29d8f1b23751ca8367b6ec6671"
+    },
+    {
+      "path": "apps/core/src/canvas-content.ts",
+      "sha256": "69e7e68230f52d58fbfd504dfea612e4f71977af0fbfea6dc2f1ea1463c1cc43"
+    },
+    {
+      "path": "apps/core/src/canvas-stream.ts",
+      "sha256": "3721e21d895b2831a0c27d36e693dfd9ed1833c88d5d8c5f6fc67d9b88989e08"
+    },
+    {
+      "path": "apps/core/src/clock-state.ts",
+      "sha256": "a95967ae32d2b2337e98cc9740d0db2f9affb68df1cacb2e6e1bd3b2cceb31ff"
+    },
+    {
+      "path": "apps/core/src/control-channel.ts",
+      "sha256": "26a2bb3bf93ed76f2763f55bb93599bd8aff321ae73085be0103134b3b1eb164"
+    },
+    {
+      "path": "apps/core/src/control-protocol.ts",
+      "sha256": "00b448eb2fa9404abb93ee78e714c3b78d5ab2c6799ca229e68e55287a9f05d6"
+    },
+    {
+      "path": "apps/core/src/core.ts",
+      "sha256": "656293999df5be2d06a1a9a9c844963512cd3c80b0aa0fa47ff363b428c638f9"
+    },
+    {
+      "path": "apps/core/src/data-dir.ts",
+      "sha256": "aabacc20892b1c62046cd919b3899086d0bfca8cd9354b98e33e2032d9ddabff"
+    },
+    {
+      "path": "apps/core/src/der.ts",
+      "sha256": "43d74199f7bed8a1226ba421bd4c0f5a806af2d0bf05fc387baefe726df389c6"
+    },
+    {
+      "path": "apps/core/src/device-connections.ts",
+      "sha256": "4b5f8fc7fce7ff5dc8574f8437fb6af73666751496a5f12a7fdcc6a14b2da6e2"
+    },
+    {
+      "path": "apps/core/src/event-cursor.ts",
+      "sha256": "8ba5c2e6963dca8ea3c7b5d173f5f245f8ecb04ceec1d48b2281903e8fabe4fc"
+    },
+    {
+      "path": "apps/core/src/event-feed.ts",
+      "sha256": "ebff8d8591e8252946eea73edbe28b21e780644232fde095b7bacd353c3b1c93"
+    },
+    {
+      "path": "apps/core/src/event-stream.ts",
+      "sha256": "8d12ba33644944a3f144bee47c77ef87980cf67d865cf1fc0db77322ea5fd8d1"
+    },
+    {
+      "path": "apps/core/src/event-test-support.ts",
+      "sha256": "1d0fd319365aad315088b739ec0f0054d91044bea0f66ef767f10bea5b486894"
+    },
+    {
+      "path": "apps/core/src/forget-ledger.ts",
+      "sha256": "2a8bb62c41b1940eca126b80cb92d15a0fbcc1bea9e052ddc8c7585d532c333d"
+    },
+    {
+      "path": "apps/core/src/lifecycle.ts",
+      "sha256": "2f91ab3dc3d35859f93c66de0011c16c482b0405d0344e8a26f082ecd61ac3f6"
+    },
+    {
+      "path": "apps/core/src/live-budget.ts",
+      "sha256": "46a9e364cd1cc3b755be3151a75d4962b360483a559ecee843c9d77d1aa269fb"
+    },
+    {
+      "path": "apps/core/src/live-conversation.ts",
+      "sha256": "8670a5f01926b06f3ef510a440cc56823e088bc7de4748be97000ab7dba2ba2b"
+    },
+    {
+      "path": "apps/core/src/live-reconcile.ts",
+      "sha256": "0c1dca6d4fc85d0ce4f6e41e938939d35ff7fea415ef1b2814834e1a1e2ace6b"
+    },
+    {
+      "path": "apps/core/src/lock.ts",
+      "sha256": "897e47eeea4fb93ae7d12dffb95bd93d259733a27d58b5c1f44f42b0ebc0696f"
+    },
+    {
+      "path": "apps/core/src/notice-sink.ts",
+      "sha256": "0f66f1ec5856d42fa96b8107817e81063d8f783823b0dd3bc92ec41782665858"
+    },
+    {
+      "path": "apps/core/src/operation-runner.ts",
+      "sha256": "1ef680641ac0763aaf01fb04d944b7878856fc3fb37f755c3db10ac6fc452f0c"
+    },
+    {
+      "path": "apps/core/src/paths.ts",
+      "sha256": "39dc5c3db0ff15761cc4a9480d2ee2deaca6fa7fc74f674e9c9d4beb04080c04"
+    },
+    {
+      "path": "apps/core/src/preflight.ts",
+      "sha256": "9b1578ed2b120a97b8ae6f1a14c45b3941b4c0e9108965af03b6a22a155fa8aa"
+    },
+    {
+      "path": "apps/core/src/previews.ts",
+      "sha256": "c426f2d232d7fb72d217b5d599fa0c4369136c66dccf343ea78d81184d1c026b"
+    },
+    {
+      "path": "apps/core/src/recovery.ts",
+      "sha256": "b670c324ca04f699c404b34ae4fd0a6bc1872e6eabebc0ce40e6c960160fb78d"
+    },
+    {
+      "path": "apps/core/src/restore-install.ts",
+      "sha256": "06f3ea85f1835f55341cf58ff9d724966dc7fddc1100e4e5ebc1e8bb9a0c2bb4"
+    },
+    {
+      "path": "apps/core/src/retention-sweeper.ts",
+      "sha256": "673e5da744a2456ff2fc9cea5e54203dab3aae4b8c63d004b11fc1353cb7a71a"
+    },
+    {
+      "path": "apps/core/src/strict-json.ts",
+      "sha256": "ab2c3e93d58bb1cfc2bdeed018da16406f87f8046757679b864dfcb399de9514"
+    },
+    {
+      "path": "apps/core/src/task-content-migration.ts",
+      "sha256": "0d33737253361df0f9665ea7daa1defbf5868e6b063c1e72fae1b23acb46c8b3"
+    },
+    {
+      "path": "apps/core/src/tls-certificate.ts",
+      "sha256": "467c8416cfd85a73f848a981828672961937c0be924f189707483848a55848fc"
+    },
+    {
+      "path": "apps/core/src/tls-identity.ts",
+      "sha256": "8b665a6f6b7fc2ac14b333c436bb4e299c1992e32aeb9cb429e72fbb8c4f90a1"
+    },
+    {
+      "path": "apps/core/src/turn-ports.ts",
+      "sha256": "36593c89a7c7beeb6c6b5c03a4775e87df895525ad9f4262f702722a4b69714c"
+    },
+    {
+      "path": "apps/core/src/voice-control.ts",
+      "sha256": "4f718f123b3a74cf8518ca977fac626c47f27f24332f0b4eafd0d11771d8b951"
+    },
+    {
+      "path": "apps/core/src/voice-rig-test-support.ts",
+      "sha256": "9a6aa38c604993e4e118d926ee35211417685df866c2fbf32d209117f52ebc58"
+    },
+    {
+      "path": "apps/core/src/voice-test-support.ts",
+      "sha256": "baee67a04ca97c9c2da5a79db7e78ae351cad1700083caa267e0e6b47144367a"
+    },
+    {
+      "path": "apps/desktop/src/main/contract.ts",
+      "sha256": "30e5d62d7e2deace79aabc00bc6f5c37410cdc33c65e09dcb34c2875224788c4"
+    },
+    {
+      "path": "apps/desktop/src/main/device-controller.ts",
+      "sha256": "a49e96ec829329beb90c47414d6efab38597f666032c0eec293f2e6654573162"
+    },
+    {
+      "path": "apps/desktop/src/main/status-bar.ts",
+      "sha256": "660860a2827313f2e9238bdac1907b3e1994f3d1d2f481d7d1f5192b4ead6139"
+    },
+    {
+      "path": "apps/desktop/src/main/voice-consent.ts",
+      "sha256": "0bec853050ae2cd68bbbf41704d3f5908642cd741a0894c818e4035b0b8ee66f"
+    },
+    {
+      "path": "apps/desktop/src/main/voice-controller.ts",
+      "sha256": "d3bcc08fb29b8dfb4afb0cf6654989e3fe8d9a09d9efde2aaf6fa537de74573a"
+    },
+    {
+      "path": "apps/desktop/src/main/voice-lease-keeper.ts",
+      "sha256": "0780c1469d1c6e6ce89ffa1cd027eed3eae61fd27f0e1f32dff642aeda3363ee"
+    },
+    {
+      "path": "apps/desktop/src/main/voice-mock-renderer.ts",
+      "sha256": "fb65db5f540ba5140d98a41306521bc983cbebcb3c7ba3894d58ad5e0ab1d28d"
+    },
+    {
+      "path": "apps/desktop/src/main/voice-reply-mode.ts",
+      "sha256": "47b504142ea86543b3386a69bfa44224aec8ad37ac3013992edaebe68e3ac616"
+    },
+    {
+      "path": "packages/contracts/fixtures/h01.json",
+      "sha256": "d8cacb2a496a13d5f908ac0f375829d2ff918a3b947a2c8b0c37249aa0a48824"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "6cd27a9ea0611df4311f9b8ad4cda55b5506260e06fcef0849f57829e004ad0f"
+    },
+    {
+      "path": "packages/contracts/schemas/buddy.schema.json",
+      "sha256": "39ad482e53525af49c7b21e0d0dcd73d69a2393fb50353b03cc8c43929eeba41"
+    },
+    {
+      "path": "packages/domain/package.json",
+      "sha256": "f7fbd22f2e3805de1a05abd8e85a748a1443ae55fea009442660aac5418dc135"
+    },
+    {
+      "path": "packages/domain/src/analysis.ts",
+      "sha256": "2a784a9338efe01b3053fc8fc69996def2e79e876bf4076caa335dd706071bd2"
+    },
+    {
+      "path": "packages/domain/src/api.ts",
+      "sha256": "c4dadb05747aecfd147ba3504771568e14095a934dce05c635d504b1d81173b0"
+    },
+    {
+      "path": "packages/domain/src/approval.ts",
+      "sha256": "60269ee1d19bce596a5a37d578f9cdb795d83b5f026e776135347c2f95af9291"
+    },
+    {
+      "path": "packages/domain/src/audio.ts",
+      "sha256": "a801ed9ae08f25dd013524afe407758e82c9b6a552615f91f55afd1245be0292"
+    },
+    {
+      "path": "packages/domain/src/backup-keys.ts",
+      "sha256": "1eeda7fa6bea1c3c98086d4370cccca2ad1bfacf397154f70c5be4596ffe21ed"
+    },
+    {
+      "path": "packages/domain/src/backup-plan.ts",
+      "sha256": "a2542d99d80bfff2ce4134946691e7227c771e3de4985357164bbdecd229096e"
+    },
+    {
+      "path": "packages/domain/src/budget-credit.ts",
+      "sha256": "a0b695683125b668f6fd353c9a8861523861b36d195ebfdea4158b531f7376a0"
+    },
+    {
+      "path": "packages/domain/src/budget-gate.ts",
+      "sha256": "fcc724aa3eb3e4e803887af99a127ca6ff885e1d468d609367c95de80f38f863"
+    },
+    {
+      "path": "packages/domain/src/budget-money.ts",
+      "sha256": "905b9100ee097e43f237b6625d8bbfa3b6b055a101931c58198be5b2c4717106"
+    },
+    {
+      "path": "packages/domain/src/budget-rules.ts",
+      "sha256": "caed1d4969c8c88a655091f34d1f972755cccd514ac1c76e5fd89ac699197e5e"
+    },
+    {
+      "path": "packages/domain/src/budget.ts",
+      "sha256": "65d5b7def7c5a8479f724c39311d448ee34f8bea2fd261d8fe1a21e5aa9263c7"
+    },
+    {
+      "path": "packages/domain/src/canvas-content.ts",
+      "sha256": "6c4e0cea651e841fe04b8867f2974abd23d2b3e1ad62898b636271f534ea27ef"
+    },
+    {
+      "path": "packages/domain/src/canvas-layout.ts",
+      "sha256": "c69c03e691fb0a858b3a74f71e6ae116429836bec6ac8ac5fb5a801f8c7e1344"
+    },
+    {
+      "path": "packages/domain/src/canvas.ts",
+      "sha256": "4ddfda2c9c56a6be6e5479b66486b3732c646f06099193971f76378128644b0d"
+    },
+    {
+      "path": "packages/domain/src/connectors.ts",
+      "sha256": "0e4a8a52888f24490a30a917cf6e74e70ed8935684ae5f0bdc5b37dc28203d9e"
+    },
+    {
+      "path": "packages/domain/src/conversation.ts",
+      "sha256": "9f4b45e0f35f325ef8fdcd9fe09d998c8459dd6e8324887bc63f80ec88e94444"
+    },
+    {
+      "path": "packages/domain/src/desktop.ts",
+      "sha256": "9fc5e8a785732389a852f388af456c158e2224ce3cbf57418ff68abbaa2b4eac"
+    },
+    {
+      "path": "packages/domain/src/evaluation.ts",
+      "sha256": "acaf00285dfe320483a122950009531df69a52395f16d4e373719c8ef4be1077"
+    },
+    {
+      "path": "packages/domain/src/extraction.ts",
+      "sha256": "ab7d8dd153c04c3ca3eccd92553c1f924e897e22a779d4f1831256b4edc57121"
+    },
+    {
+      "path": "packages/domain/src/forget-plan.ts",
+      "sha256": "482cb780d310d6989a65ccd5f5e95fe21582d5b6f901a6215d8da6c176416963"
+    },
+    {
+      "path": "packages/domain/src/home-network.ts",
+      "sha256": "9e430879d139690a007c721207f3f07e1bfdb029ab66ce21e399d2baeb3633c7"
+    },
+    {
+      "path": "packages/domain/src/hub-host.ts",
+      "sha256": "5aa40a1ccdaf90e7d90dc914be62076cea36a1b2c1e4f7bd21f826e7c5dbec61"
+    },
+    {
+      "path": "packages/domain/src/index.ts",
+      "sha256": "12a6b5941134302f4a9e6e08e6a9932c389e85a49ba5ae4afcbb842eb94779aa"
+    },
+    {
+      "path": "packages/domain/src/intents.ts",
+      "sha256": "c863aff91af74c0caf76a348e583b7df8eb298a1fa0654909d97056ddafc65a2"
+    },
+    {
+      "path": "packages/domain/src/late-result.ts",
+      "sha256": "2b5033b3a1b17c380f729de6a30b9afbfe2bf55acd9ba183b64a6d7374585f11"
+    },
+    {
+      "path": "packages/domain/src/listen-address.ts",
+      "sha256": "b952327462a660a2afba81b4fa2e45e75eb45ea85267a9657ed7d2c434515ebe"
+    },
+    {
+      "path": "packages/domain/src/local-time.ts",
+      "sha256": "99d729c3374a6a94470f1a6822f2fc4037f49195f95fba895884917dc13a4285"
+    },
+    {
+      "path": "packages/domain/src/memory.ts",
+      "sha256": "e4d33cf3efbb7ea1a58b18b8dac1b18d6ae6496267d5749dd1a6779fefc51a90"
+    },
+    {
+      "path": "packages/domain/src/notification.ts",
+      "sha256": "4ac8e2f9803a860c417aa3c605631b32ad77f0487cc2cb6bc734fbe9106b39c0"
+    },
+    {
+      "path": "packages/domain/src/operation-steps.ts",
+      "sha256": "48492f5666047ad736fc2dc2f5cd86b6799eb267401a4d73da9e8c11bf6953e0"
+    },
+    {
+      "path": "packages/domain/src/operations.ts",
+      "sha256": "21f93fb3098cceb239c4fd4732908a4fbc5f4480b8b4e6646e3234fa3a48e659"
+    },
+    {
+      "path": "packages/domain/src/readiness.ts",
+      "sha256": "f61ff1b9737ab29db8197efebd047cbdecce1bde88794d523a0071f0285e844c"
+    },
+    {
+      "path": "packages/domain/src/restore-aftermath.ts",
+      "sha256": "8e9b14c97b469b8940dce6e50158a3e2d2af8df9f17788ec7835437c15e139e1"
+    },
+    {
+      "path": "packages/domain/src/restore-plan.ts",
+      "sha256": "6fb6c2ad7c7c634baca7b09a1c9495614fd3a65660dcf2436cce27c9e8e0e759"
+    },
+    {
+      "path": "packages/domain/src/retention-sweep.ts",
+      "sha256": "70f52cba3896e0208fd7be9d68da344f9d6611a96818abedc014ba4ff5d75b3e"
+    },
+    {
+      "path": "packages/domain/src/retention.ts",
+      "sha256": "c51e08a6d92f0ab39a6332a26f099ada175c333b8e105b760273c7da35e1d74f"
+    },
+    {
+      "path": "packages/domain/src/storage-mode.ts",
+      "sha256": "d6c69b1d8a48e3c449f3f9384462489d17cec4ff1733563e42c772a13966499e"
+    },
+    {
+      "path": "packages/domain/src/sync.ts",
+      "sha256": "2891b339d9b2493d4ec12e677b54f41abb279b71a4d2a54b7c04317a9afdae3f"
+    },
+    {
+      "path": "packages/domain/src/voice-commentary.ts",
+      "sha256": "aa96aa2b04ceda9cd57b4493b306a6b1447bf717e8185016dbef41e03f2b2811"
+    },
+    {
+      "path": "packages/domain/src/voice-input.ts",
+      "sha256": "15450031b90a693b707f018056dd4ebdcba2294d4dff34b661256016fe92e8e2"
+    },
+    {
+      "path": "packages/domain/src/voice-interaction.ts",
+      "sha256": "145320761ccaef2d8efaba29285ec633c57d04d3de0238c3f6eddbed3512145b"
+    },
+    {
+      "path": "packages/domain/src/voice-lease.ts",
+      "sha256": "4e883fa59a69bf12547d9eae0782e4f45f9e973f0066e4fb967bd3db7c4ea96e"
+    },
+    {
+      "path": "packages/domain/src/voice-live-input.ts",
+      "sha256": "5fb683117b61f7ab38aa4e6e9cd324692bd951fba286adae75409ad19227adb9"
+    },
+    {
+      "path": "packages/domain/src/voice-notification.ts",
+      "sha256": "48b49a55d6713763b208ce04338b79eae17d77c3ef7146cb549644a0bfc79b69"
+    },
+    {
+      "path": "packages/domain/src/voice-ownership.ts",
+      "sha256": "50280cf059c4903e231d4678b777c74fe32e18fc7d46847d6d377e5254a54165"
+    },
+    {
+      "path": "packages/domain/src/voice-reservation.ts",
+      "sha256": "26a1a5a018cbcc9edb8c94e97e0b9dac53de6c232d621fed0df341b5596db778"
+    },
+    {
+      "path": "packages/domain/src/voice-silence.ts",
+      "sha256": "93f7a9b431cfa5697ef1a06ce8d2c74e6744f8e06955d6db4be840d53113c10f"
+    },
+    {
+      "path": "packages/domain/src/voice-start.ts",
+      "sha256": "5ac223bbf27e61576b559f938fa15e86d161876468e33f31d0d1ab76302ed699"
+    },
+    {
+      "path": "packages/domain/src/voice-stop.ts",
+      "sha256": "59b86938c4e204938391404ec04c797d53d8e1d083d11b0df834ce083b7af7b3"
+    },
+    {
+      "path": "packages/domain/src/voice.ts",
+      "sha256": "6a28c15f32854dccde8a325fcabf1731106d673c108db8c2ffce8545095859d1"
+    },
+    {
+      "path": "packages/platform/package.json",
+      "sha256": "77b287eb4a67d4b1d06cb9e650c5abd2bdbf925ea74fa26da82ad7ad28e567ae"
+    },
+    {
+      "path": "packages/platform/src/home-fingerprint.ts",
+      "sha256": "17cbcaf730471f830a687e8466901cee98897b3139b8b41a6db6b222b58e8a87"
+    },
+    {
+      "path": "packages/platform/src/index.ts",
+      "sha256": "98e4aea83d1f9bfc63da29041464c57ce53cf3a4792a05abfb4482244c530f02"
+    },
+    {
+      "path": "packages/platform/src/key-protection.ts",
+      "sha256": "18a6abe9fe83a85c9e9acd8bec940f592f42c2b55c1119b2cd6b61753a3c8b81"
+    },
+    {
+      "path": "packages/platform/src/key-store.ts",
+      "sha256": "45901824a52c9f14ca75f2e547959c38efc0c7a7cb85ccc620b8d2bbae27b067"
+    },
+    {
+      "path": "packages/platform/src/macos-diagnostics.ts",
+      "sha256": "8e512ae6786f6c54cae8ce0580f4886f812d06d6382a6fd525c96f0ef87a0018"
+    },
+    {
+      "path": "packages/platform/src/macos-launch-agent.ts",
+      "sha256": "befe69f4c09a30dc685eefb6795473eeb4dba08a4dbdf6020872a1e6e28f8734"
+    },
+    {
+      "path": "packages/platform/src/runner.ts",
+      "sha256": "8b4d03b373310a4d7f0ff6db21f0d1353cd2f859831d41209193c0dffc249f7a"
+    },
+    {
+      "path": "packages/platform/src/startup.ts",
+      "sha256": "50a31b95809d78e08765a91e19ad3f9a449d1002ab729f02c688e7e758e51d14"
+    },
+    {
+      "path": "packages/platform/src/supervisor.ts",
+      "sha256": "f49b530c5d50ac95f04d3bcaa3c383f05ab579649c7d38a577fcf2dbfc305b9a"
+    },
+    {
+      "path": "packages/platform/src/tailscale-status.ts",
+      "sha256": "5d19929f8a2d7dc79388bc4ccadaecf12f51d37eebbf863a0340484f9a76ab18"
+    },
+    {
+      "path": "packages/platform/src/tls-key-store.ts",
+      "sha256": "700dd8157306b56f63a9a111dc3063d22abc48ca145bcb32b1d7d865914bb3a2"
+    },
+    {
+      "path": "packages/storage/migrations/0001_initial.sql",
+      "sha256": "377e182bc1f449d1b8a4a3e027ffce7f56e534d74c8e590a7fdcd68a6f1b38e9"
+    },
+    {
+      "path": "packages/storage/migrations/0002_data_key_check.sql",
+      "sha256": "5a202b968cf07127b1990daefdf2fe6a70a8697705d61d3da212d9c6dcbbaeaf"
+    },
+    {
+      "path": "packages/storage/migrations/0003_home_network.sql",
+      "sha256": "e4eba2e6add83f2239b4322691a25d2733efe2fbacb6d4da122c84007d7d5878"
+    },
+    {
+      "path": "packages/storage/migrations/0004_turn_responses.sql",
+      "sha256": "1e15f26b0e151c45d1bf7be9131a600fac9385677adca293a4012bed45173bc1"
+    },
+    {
+      "path": "packages/storage/migrations/0005_runner.sql",
+      "sha256": "870de21e43ba91dd701c8cc28d3b87fa4478b9c2932afab70c4a73f514576ad2"
+    },
+    {
+      "path": "packages/storage/migrations/0006_budget.sql",
+      "sha256": "03eb667164b2a6e9cf76c9e6fee21e71dfc6ad46efa63ecc0942865cfa0ac18e"
+    },
+    {
+      "path": "packages/storage/migrations/0007_budget_gate.sql",
+      "sha256": "6a418ceb86f3c894ee7040eab11c71acbac6f4a28cb2c4314eabc829ca908f6b"
+    },
+    {
+      "path": "packages/storage/migrations/0008_budget_credit.sql",
+      "sha256": "0208fdf1f7e330b7dd07e72e76118f6464347bf94112d999c462eaea0f8df37a"
+    },
+    {
+      "path": "packages/storage/migrations/0009_voice_epochs.sql",
+      "sha256": "9a8d8ce9c10e0f78942d6b2eb7c8818d2f29c882244ef36965d822a1c84adafe"
+    },
+    {
+      "path": "packages/storage/migrations/0010_retention.sql",
+      "sha256": "e3e3ca289c93bfeb3949909949ec0e2e7dbb55330aeee213b8889586ec7570e1"
+    },
+    {
+      "path": "packages/storage/migrations/0011_operation_body_retention.sql",
+      "sha256": "4160a8d05a8a7d433af11fba7569960c9d83b1f9d561d5132db7d277730ad87e"
+    },
+    {
+      "path": "packages/storage/migrations/0012_forget_and_restore.sql",
+      "sha256": "e9d14a997c0c5f6989e66ae399af375d3e0bd24237d55871a5dfd36887e997fe"
+    },
+    {
+      "path": "packages/storage/migrations/connection.sql",
+      "sha256": "43dab403fa9aac2dbc4aa82fd13aef3522fae16438cf9b5edf11d95997e930a7"
+    },
+    {
+      "path": "packages/storage/package.json",
+      "sha256": "2c29304321a6a48ac0c474b82c852e1f800bbdef60ec44d79bb815754b8e6b1c"
+    },
+    {
+      "path": "packages/storage/src/aes-gcm.ts",
+      "sha256": "33f22b0984334e25d8fedcc400db20c7a3b196ce11c3a3ba18781cde2bf39b1f"
+    },
+    {
+      "path": "packages/storage/src/budget-store.ts",
+      "sha256": "bfe1b6ba5232806dd1d8102d7f25e8503652d45481bc2495a909bb87c246f500"
+    },
+    {
+      "path": "packages/storage/src/connection.ts",
+      "sha256": "fcda1584ea03a8f43210a427a17b1827d16008751b1e1a158c88df49d3a79e6f"
+    },
+    {
+      "path": "packages/storage/src/content-hash.ts",
+      "sha256": "97a2972d0f7b8d32782e5e088ca9098e84ce406d5a61fb0b8fb40a1c1177e021"
+    },
+    {
+      "path": "packages/storage/src/conversation-store.ts",
+      "sha256": "75796235fe16a9fb656afc14084e7279d97a3d54925f3155f6e45653f8639e74"
+    },
+    {
+      "path": "packages/storage/src/db-client.ts",
+      "sha256": "97d3af91bd707b67ba8894e284d27af03bea09b52f4e771bca3c5339ecc4bc62"
+    },
+    {
+      "path": "packages/storage/src/db-protocol.ts",
+      "sha256": "18a43bc1ad6eda02b8bc43aedfa8943e49a7a28fce6ac1ba8e1914af607eaf55"
+    },
+    {
+      "path": "packages/storage/src/db-worker.ts",
+      "sha256": "333964d4ca1daa3e4806463a16f9066e5cc972230201a72022354beb68a376e2"
+    },
+    {
+      "path": "packages/storage/src/derivation-store.ts",
+      "sha256": "0d10693bea81cfcfc977948eba442a308362a6a8e6c3aad80587c5bb65550475"
+    },
+    {
+      "path": "packages/storage/src/device-store.ts",
+      "sha256": "50944f534f04b9523a5c8eab4ffce4d67ae70b4611216c3519374a304343563a"
+    },
+    {
+      "path": "packages/storage/src/errors.ts",
+      "sha256": "91845cc4966033e16d3cfda70fa0d056758b43b3df4d8ca9b911d01c1ccad2fd"
+    },
+    {
+      "path": "packages/storage/src/event-store.ts",
+      "sha256": "c8aaec5f52bb4c5c3b8517bb2385e4d34207a539e69d9f1d79182ef3a79fdeb5"
+    },
+    {
+      "path": "packages/storage/src/expiry-store.ts",
+      "sha256": "56fc3e87a09d0165d64463dfbf2a32585a5f27ccc54dc162d538935dcca93c74"
+    },
+    {
+      "path": "packages/storage/src/forget-ledger-file.ts",
+      "sha256": "4f842cd6e0bbe8a92261b37a6b7d9b43275b8a8bec1bb890b58826ffce3a1d21"
+    },
+    {
+      "path": "packages/storage/src/forget-store.ts",
+      "sha256": "7336a7a53a5cae8d5b3bd1de3e9cf83c08c24efbb1559e2dfe555cfbddba1b79"
+    },
+    {
+      "path": "packages/storage/src/home-network-store.ts",
+      "sha256": "7a382e90e5ef3951af0335e15572f3fd693fa3eacdc87c120950e2d0aa217134"
+    },
+    {
+      "path": "packages/storage/src/index.ts",
+      "sha256": "293c4262cb423b2e2116351e388e18e255162dcac30a38dd7e6ef18c9c59965d"
+    },
+    {
+      "path": "packages/storage/src/memory-store.ts",
+      "sha256": "95153742c45ed19861e24663e1319a5d8d99025fa9f23b814b0d70efaecba04e"
+    },
+    {
+      "path": "packages/storage/src/migrations.ts",
+      "sha256": "c3aa4e9a6fe3ffc53224c0fcb2f12ed2dbe07c57ca1e777627eb44600c7d1106"
+    },
+    {
+      "path": "packages/storage/src/operation-commands.ts",
+      "sha256": "811cf6015a4bceca731823b12c504f083107fcd0e8392b77ac38364c7cba6c06"
+    },
+    {
+      "path": "packages/storage/src/operation-store.ts",
+      "sha256": "f78acf073862bc3d014ee298ba2be29e75b21ce85a010fdebe5af7b3efd49829"
+    },
+    {
+      "path": "packages/storage/src/pairing-store.ts",
+      "sha256": "7aa36dc5f84be01cdbf73f800a27caed40662553251908a2bccdd5ebb8b7748e"
+    },
+    {
+      "path": "packages/storage/src/policy.ts",
+      "sha256": "b4d5fb0a7f6890807a5d5227c5461e3b9258a5c27d6cad9351e4d5a67ac642f9"
+    },
+    {
+      "path": "packages/storage/src/restore-aftermath-store.ts",
+      "sha256": "a48a1b3a8ca005c246c0c9686f3405de464215e0957b17093ca5103cf15eb52a"
+    },
+    {
+      "path": "packages/storage/src/retention-store.ts",
+      "sha256": "7d5630915562454de6b9c232d06579d4ffd477c60eabea39f92ec998edc5841a"
+    },
+    {
+      "path": "packages/storage/src/sealed-blob.ts",
+      "sha256": "deb16a12a4b4efff6732b6476259c1b35f17856e4a66fa7b006b66ecfd1523c4"
+    },
+    {
+      "path": "packages/storage/src/snapshot-store.ts",
+      "sha256": "634b39170c4db1da10daae8e89136f7d982e2b321aca17abcdee8052b87184b8"
+    },
+    {
+      "path": "packages/storage/src/store-binding.ts",
+      "sha256": "d3b442c704a90cafa5a598a080b9caa8671df38c78dde09f1133b5f3944779e9"
+    },
+    {
+      "path": "packages/storage/src/task-content.ts",
+      "sha256": "70fb2b8b61116eb250729d63faf441bc123fac4a4cfe50548a1abf109c3d5f59"
+    },
+    {
+      "path": "packages/storage/src/voice-store.ts",
+      "sha256": "9f1c858b54818dadf76f2e483bec155630aa63d02cdc2169b21a4fd83acbd0e4"
+    },
+    {
+      "path": "scripts/b05-evidence-sources.mjs",
+      "sha256": "d51ad6ff9a16fd10f74e4410a355fd3d3d37a9f8ad472cc900320950f62c907e"
+    },
+    {
+      "path": "scripts/evidence-sources.mjs",
+      "sha256": "62251f8fd72e084b8e00104e4488ecec893ce5cb249de6200e17ac22f3f188fc"
+    },
+    {
+      "path": "tests/integration/b05-cases-conversation.mjs",
+      "sha256": "dbdba2c6eb65da7161c5d4e00a50281a8e2853787fa8df9d866a7b6c5ca7a6e2"
+    },
+    {
+      "path": "tests/integration/b05-cases-input.mjs",
+      "sha256": "6cf85288771cf79f9857a45a6036114c5304daa2efefcd4f1863c8d674460fd3"
+    },
+    {
+      "path": "tests/integration/b05-cases.mjs",
+      "sha256": "e0605a3de3aa654120507363e959ba53ac774e0b65d17718adf0662cdf2b7a5c"
+    },
+    {
+      "path": "tests/integration/b05-conversation.mjs",
+      "sha256": "c283a9dc3daadb25a0f6bd514ed18af0860efeff4ee8de514dda911894082c23"
+    },
+    {
+      "path": "tests/integration/b05-expectations.json",
+      "sha256": "bce0667156928854ac48170e1f8531a2f08668708f64aff5d48833958aa08896"
+    },
+    {
+      "path": "tests/integration/b05-observe.mjs",
+      "sha256": "89a94609eaef9da1e062e6aa488d6daec6c81b2a493a5bd2c6a8083966ab7bb5"
+    },
+    {
+      "path": "tests/integration/b05-support.mjs",
+      "sha256": "6fd5c015bdf2856884703fee4425ef971522e5bc810a13b42389a9fb5551eeb8"
+    },
+    {
+      "path": "tests/integration/b05-support.test.mjs",
+      "sha256": "fabb760feef24a6cb61717c44289cf1dd9eaff71679ff4e65c67ea2a9cb32716"
+    },
+    {
+      "path": "tests/integration/b05-world.mjs",
+      "sha256": "30b02e18e8922056845b523c9cdc3d444d0765dee2d1f77645c7281d52425d5a"
+    },
+    {
+      "path": "tests/integration/b05.test.mjs",
+      "sha256": "b410e5cbcd775a4e29ce7d96643038f64a90e3842ab7862f117d8cea925c7f31"
+    },
+    {
+      "path": "tests/integration/evidence-run.mjs",
+      "sha256": "28fcffa2ab7401bc3fc043f87b3050d551adae241be939064b9497b33c6f2ede"
+    }
+  ],
+  "records": [
+    {
+      "case_id": "X13-os-lock-stops-everything",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": null,
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": 1,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X13-io-epoch-sync-before-restart",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": "core_io_epoch_not_reported",
+      "provider_requests": 2,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の未了の記録: 端末が進めた io_epoch を中枢へ報告する経路は未実装（契約台帳 U70・U91）のため、端末だけが止まって再開すると中枢はリースを unknown_io_epoch で拒否し、会話は始まらない（拒否は安全側）。再開できることの確認は、試験が中枢へも停止・再開を送って世代をそろえた場合だけ。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA43-three-stops-are-distinct",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": null,
+      "provider_requests": 2,
+      "provider_state_changes": 2,
+      "approvals": 0,
+      "final_state": "live:close_confirmed+close_confirmed|reservation:settled+settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X14-global-stop-reaches-the-other-device",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": "push_event_not_acted_on",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の未了の記録: 中枢から届く停止のイベント（suspend_io）を端末が止めに使う経路は未実装（ADR 0050 の「残ること」）。端末は次のハートビートでリースの更新が拒否されて止まる（理由は core_lease_lost）。",
+      "voice_stop_ms": 1500,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X25-sideband-lost-closes-and-settles",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": "sideband_pong_stops",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA24-close-unconfirmed-holds-reservation",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": "sideband_pong_stops,session_closed_withheld",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X30-ack-deadline-boundary",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": "ack_delay_298ms,ack_delay_299ms",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": 1,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X30-hung-renderer-is-killed",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": "renderer_hangs_on_suspend_io",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:live",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": 301,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X30-stop-playback-without-ack-escalates",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": "stop_playback_ack_dropped",
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": 1,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X58-session-control-phrases-reach-the-device",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": null,
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X58-request-right-after-a-control-phrase",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": "control_turn_stays_a_delegation_candidate",
+      "provider_requests": 1,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "live:open|reservation:reserved|renderer:live",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の制約の記録: 会話の操作に使った発話の直後（委譲の窓 2 秒以内）の依頼は、対象が複数と判定されて聞き返しになる（依頼は実行されない。契約台帳 U151、本人の判断待ち）。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X58-reply-in-text-switches-the-device",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": null,
+      "provider_requests": 2,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X49-text-request-stays-text",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": null,
+      "provider_requests": 1,
+      "provider_state_changes": 1,
+      "approvals": 0,
+      "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA41-live-input-four-operations-need-full-text",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": null,
+      "provider_requests": 1,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "live:open|reservation:reserved|renderer:live",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X51-input-is-confirmed-before-it-is-interpreted",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": null,
+      "provider_requests": 1,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "live:open|reservation:reserved|renderer:live",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X27-held-change-is-superseded-or-cancelled",
+      "kind": "simulated",
+      "commit": "6111773205da3ad806c4bce63472830315280a0c",
+      "contract_version": "1.0.0",
+      "db_version": "12",
+      "environment": {
+        "os": "win32 10.0.26300 / v24.19.0",
+        "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
+        "devices": []
+      },
+      "seed": "7,1007,20261023",
+      "fault_point": null,
+      "provider_requests": 1,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "live:open|reservation:reserved|renderer:live",
+      "observed_at": "2026-11-01T11:26:27.642Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    }
+  ],
+  "runs": [
+    {
+      "case_id": "X51-input-is-confirmed-before-it-is-interpreted",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "waits": {
+            "before_end_candidate": {
+              "model_calls": 0,
+              "pending": 1
+            },
+            "after_end_candidate": {
+              "model_calls": ["「牛乳を買う」を用事に登録して"],
+              "operations": 1
+            }
+          },
+          "late_fragment_restarts_300ms": {
+            "model_calls_at_299ms": 0,
+            "model_calls": ["「牛乳を買う」を用事に登録して"],
+            "operations": 1
+          },
+          "unconfirmed_input": {
+            "skipped_fragment_number": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "fragment_without_number": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "two_utterances_before_one_delegation": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "unknown_offset": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X27-held-change-is-superseded-or-cancelled",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "correction": {
+            "while_held": {
+              "operations": 0,
+              "turns": 0,
+              "commentary": 0
+            },
+            "commentary": [["画面で確認してください。"]],
+            "operations": [
+              {
+                "kind": "task.create",
+                "effect_route": "local_command",
+                "state": "awaiting_approval"
+              }
+            ],
+            "workflows": ["ready"],
+            "turns": [
+              {
+                "input_kind": "voice_live",
+                "role": "user"
+              }
+            ],
+            "screen_results": 0,
+            "held_after": 0
+          },
+          "cancel": {
+            "while_held": {
+              "operations": 0,
+              "turns": 0,
+              "commentary": 0
+            },
+            "commentary": [["実行前の依頼を取り消しました。"]],
+            "operations": [],
+            "workflows": [],
+            "screen_results": 0,
+            "held_after": 0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X13-io-epoch-sync-before-restart",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": ["core_io_epoch_not_reported"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "epoch_gap": {
+            "continue_outcome": "voice_unavailable",
+            "lease_responses": [
+              {
+                "result": "rejected",
+                "reasons": ["unknown_io_epoch"]
+              }
+            ],
+            "lease_active": false,
+            "renderer_sending": false,
+            "clips_played": ["refused"],
+            "device_io_epoch": "1",
+            "core_io_epoch": "0",
+            "live_rows": 1,
+            "commands_since": ["voice.play"]
+          },
+          "synchronised": {
+            "core_after_stop": "1",
+            "stale_resume_status": 409,
+            "resume_status": 200,
+            "core_after_resume": "1",
+            "local_stop": 0
+          },
+          "restarted": {
+            "continue_outcome": "ok",
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "2",
+              "output_epoch": "1",
+              "session_epoch": "2"
+            },
+            "live_rows": [
+              {
+                "closure": "close_confirmed",
+                "control_state": "closed",
+                "usage_seconds": 2,
+                "audio_epoch": 1,
+                "session_epoch": 1
+              },
+              {
+                "closure": "open",
+                "control_state": "ready",
+                "usage_seconds": null,
+                "audio_epoch": 2,
+                "session_epoch": 2
+              }
+            ],
+            "first_live_is_closed": true,
+            "reservations": [
+              {
+                "status": "settled",
+                "actual_gross": "15"
+              },
+              {
+                "status": "reserved",
+                "actual_gross": null
+              }
+            ],
+            "commands": ["voice.start"]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X30-hung-renderer-is-killed",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": ["renderer_hangs_on_suspend_io"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:live",
+        "voice_stop_ms": 301,
+        "checks": {
+          "stop_ms": 301,
+          "commands": [
+            {
+              "dt": 0,
+              "channel": "voice.suspend_io",
+              "reason": "os_lock"
+            }
+          ],
+          "acks": [],
+          "kills": [
+            {
+              "dt": 301
+            }
+          ],
+          "renderer_alive": false,
+          "sent_frames_grew_before_kill": true,
+          "sent_frames_after_kill": 0,
+          "device": {
+            "lock_state": "locked",
+            "stop_scope": "local",
+            "io_epoch": "1"
+          },
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "os_lock"
+            }
+          ],
+          "ack_missing_logged": true
+        }
+      }
+    },
+    {
+      "case_id": "QA24-close-unconfirmed-holds-reservation",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": ["sideband_pong_stops", "session_closed_withheld"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "lost_after_last_pong_ms": 6000,
+          "waiting_for_close": {
+            "closure": "close_requested",
+            "reservation": {
+              "status": "reserved",
+              "actual_gross": null
+            }
+          },
+          "unconfirmed": {
+            "closure": "close_unconfirmed",
+            "reservation": {
+              "status": "usage_unknown",
+              "actual_gross": null
+            },
+            "dispatched": true
+          },
+          "still_held_after_30s": {
+            "status": "usage_unknown",
+            "actual_gross": null
+          },
+          "reconciled": {
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 26,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "26"
+            },
+            "settled_rows": 1
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X58-session-control-phrases-reach-the-device",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "polite_form": {
+            "model_calls": ["ちょっと待ってください"],
+            "new_silence_extensions": 0,
+            "renderer_commands": [],
+            "audio_controls_added": 0,
+            "live_closure": "open"
+          },
+          "wait": {
+            "silence_extensions": [60000],
+            "event_is_valid_voice_event": true,
+            "event_has_text": false,
+            "renderer_commands": [],
+            "model_calls_added": 0,
+            "turns_added": 0,
+            "playing": true,
+            "live_closure": "open"
+          },
+          "stop_reading": {
+            "renderer_commands": [
+              {
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.stop_playback",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "model_calls_added": 0,
+            "turns_added": 0,
+            "live_closure": "open"
+          },
+          "end": {
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "conversation_ended"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "model_calls_added": 0,
+            "live_end_reason": "conversation_ended",
+            "live_closure": "close_confirmed",
+            "reply_mode": "voice"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X14-global-stop-reaches-the-other-device",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": ["push_event_not_acted_on"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1500,
+        "checks": {
+          "core_stop": {
+            "status": 202,
+            "scope": "global",
+            "devices": {
+              "other_device": "awaiting_ack",
+              "requester": "confirmed"
+            },
+            "all_confirmed": false
+          },
+          "event_delivered": [
+            {
+              "dt": 0,
+              "type": "audio_control",
+              "action": "suspend_io",
+              "reason": "global_stop",
+              "scope": "global"
+            }
+          ],
+          "not_acted_on_directly": {
+            "renderer_commands": 0,
+            "sending": true
+          },
+          "stopped_within_one_heartbeat": true,
+          "stopped_within_lease_ttl": true,
+          "lease_rejection": {
+            "count": 1,
+            "includes_io_suspended": true
+          },
+          "renderer": {
+            "live": false,
+            "sending": false,
+            "capturing": false,
+            "playing": false,
+            "ring_empty": true,
+            "last_local_stop": "voice.suspend_io",
+            "io_epoch": "1",
+            "audio_epoch": "1",
+            "output_epoch": "1",
+            "session_epoch": "1"
+          },
+          "device_commands": [
+            {
+              "channel": "voice.suspend_io",
+              "reason": "core_lease_lost"
+            }
+          ],
+          "core_close_requests": ["core_lease_lost"],
+          "live_closure": "close_confirmed"
+        }
+      }
+    },
+    {
+      "case_id": "QA41-live-input-four-operations-need-full-text",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "complete_observation": {
+            "commentary": [["画面で確認してください。"]],
+            "operations": [
+              {
+                "kind": "task.create",
+                "effect_route": "local_command",
+                "state": "awaiting_approval"
+              }
+            ],
+            "workflows": ["ready"],
+            "model_calls": 1,
+            "renderer_commands": [],
+            "live_closure": "open"
+          },
+          "default_policy": {
+            "commentary": [
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ]
+            ],
+            "operations": [],
+            "workflows": ["clarifying"],
+            "model_calls": 1,
+            "renderer_commands": [],
+            "live_closure": "open"
+          },
+          "never_without_full_text": {
+            "commentary": [
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ]
+            ],
+            "operations": [],
+            "workflows": [],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              }
+            ],
+            "memories_saved": 0,
+            "renderer_commands": []
+          }
+        }
+      }
+    },
+    {
+      "case_id": "QA43-three-stops-are-distinct",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 2,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+close_confirmed|reservation:settled+settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "base": {
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": true,
+              "ring_empty": false,
+              "last_local_stop": null,
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "0",
+              "session_epoch": "1"
+            },
+            "lease_active": true
+          },
+          "stop_playback": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.stop_playback",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.stop_playback",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "external_send": true,
+            "lease_active": true,
+            "core_close_requests": [],
+            "live_closure": "open",
+            "renewals_kept": true,
+            "played_frames_after_stop": 0,
+            "late_old_audio": {
+              "playing": false,
+              "discarded": 1
+            },
+            "new_audio_plays": true
+          },
+          "close_voice_session": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.close_voice_session",
+                "reason": "conversation_ended"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.close_voice_session",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "external_send": false,
+            "lease_active": false,
+            "renewals_after": 0,
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "conversation_ended"
+              }
+            ],
+            "live_closure": "close_confirmed",
+            "voice_state": "waiting_wake_word"
+          },
+          "suspend_io": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "device_io_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "2",
+              "output_epoch": "3",
+              "session_epoch": "2"
+            },
+            "external_send": false,
+            "lease_active": false,
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "device_io_stop"
+              }
+            ],
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "voice_state": "device_stopped"
+          },
+          "live_closures": ["close_confirmed", "close_confirmed"]
+        }
+      }
+    },
+    {
+      "case_id": "X13-os-lock-stops-everything",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "before": {
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": true,
+              "ring_empty": false,
+              "last_local_stop": null,
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "0",
+              "session_epoch": "1"
+            },
+            "sent_frames_positive": true,
+            "played_frames_positive": true,
+            "lease_active": true,
+            "voice_state": "conversation_live",
+            "external_send": true
+          },
+          "stop": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "sent_frames_after_stop": 0,
+            "played_frames_after_stop": 0,
+            "late_audio_played": false,
+            "renewals_after_stop": 0,
+            "lease_active": false,
+            "view": "hidden",
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ]
+          },
+          "core": {
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 3,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "15"
+            },
+            "provider_close_requests": 1,
+            "provider_truth_seconds": 3
+          },
+          "after_unlock": {
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "voice_state": "device_stopped",
+            "can_continue": false,
+            "continue_outcome": "input_stopped",
+            "renderer_capturing": false,
+            "renderer_sending": false
+          },
+          "resume": {
+            "unfocused": {
+              "outcome": "rejected",
+              "reason": "screen_operation_required"
+            },
+            "stale_epoch": {
+              "outcome": "rejected",
+              "reason": "io_epoch_mismatch"
+            },
+            "still_stopped": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "accepted": {
+              "outcome": "ok"
+            },
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "none",
+              "io_epoch": "1"
+            },
+            "voice_state": "waiting_wake_word",
+            "can_continue": true,
+            "renderer_sending": false
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X25-sideband-lost-closes-and-settles",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": ["sideband_pong_stops"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "loss": {
+            "lost_after_last_pong_ms": 6000,
+            "ready_at_5999": true,
+            "lease_active_at_5999": true,
+            "ready_after_6000": false,
+            "control_epoch": "1"
+          },
+          "device": {
+            "audio_controls": [
+              {
+                "dt": 0,
+                "action": "close_voice_session",
+                "reason": "sideband_lost"
+              }
+            ],
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.close_voice_session",
+                "reason": "sideband_lost"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.close_voice_session",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "lease_active": false,
+            "external_send": false,
+            "voice_state": "waiting_wake_word",
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "sideband_lost"
+              }
+            ]
+          },
+          "lease_probe": {
+            "status": 200,
+            "result": "rejected",
+            "reasons": ["sideband_lost"]
+          },
+          "core": {
+            "reconnects": 2,
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 26,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "26"
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X30-ack-deadline-boundary",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": ["ack_delay_298ms", "ack_delay_299ms"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "ack_at_300ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 299,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": [],
+            "renderer_alive": true,
+            "stop_ms": 1,
+            "ack_missing_logged": false,
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ],
+            "renderers_created": 1,
+            "stopped_sending": true
+          },
+          "ack_at_301ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 300,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": [
+              {
+                "dt": 301
+              }
+            ],
+            "renderer_alive": false,
+            "stop_ms": 1,
+            "ack_missing_logged": true,
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ],
+            "renderers_created": 1,
+            "stopped_sending": true,
+            "late_ack": {
+              "ack_logged_as_old": true,
+              "commands_added": 0,
+              "device": {
+                "lock_state": "locked",
+                "stop_scope": "local",
+                "io_epoch": "1"
+              },
+              "renderers_created": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X58-reply-in-text-switches-the-device",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "switched": {
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "output_mode_text"
+              }
+            ],
+            "reply_mode": "text",
+            "view_reply_mode": "text",
+            "can_continue": false,
+            "live_end_reason": "output_mode_text",
+            "renderer_live": false,
+            "model_calls": 0,
+            "turns": 0
+          },
+          "continue_while_text": "voice_unavailable",
+          "back_to_voice": {
+            "reply_mode": "voice",
+            "can_continue": true,
+            "live_rows": 1,
+            "renderer_live": false
+          },
+          "continue_after_voice": {
+            "outcome": "ok",
+            "live_rows": [
+              {
+                "closure": "close_confirmed",
+                "audio_epoch": 1,
+                "session_epoch": 1
+              },
+              {
+                "closure": "open",
+                "audio_epoch": 2,
+                "session_epoch": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X30-stop-playback-without-ack-escalates",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": ["stop_playback_ack_dropped"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "playing_before": true,
+          "playback_stop_ms": 1,
+          "at_300ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "none",
+              "io_epoch": "0"
+            },
+            "notice": null,
+            "playing": false,
+            "live": true
+          },
+          "after_deadline": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              },
+              {
+                "dt": 301,
+                "channel": "voice.suspend_io",
+                "reason": "device_io_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 302,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": 0,
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "notice": "input_interrupted",
+            "core_close_requests": [
+              {
+                "dt": 301,
+                "reason": "device_io_stop"
+              }
+            ],
+            "voice_state": "device_stopped"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X49-text-request-stays-text",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "answered_in_text": {
+            "status": 200,
+            "body_status": "answered",
+            "view": "schedule_cards",
+            "voice_commentary": 0,
+            "voice_instructions": 0,
+            "renderer_commands": [],
+            "playing": true,
+            "live_closure": "open",
+            "turns": [
+              {
+                "input_kind": "text",
+                "role": "user"
+              }
+            ],
+            "screen_results": 0
+          },
+          "voice_live_over_http": {
+            "status": 503,
+            "turns": 1,
+            "voice_commentary": 0
+          },
+          "reply_in_text": {
+            "status": 200,
+            "body_status": "session_control",
+            "session_control": "reply_in_text",
+            "workflow_id": null,
+            "result_view": null,
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "output_mode_text"
+              }
+            ],
+            "reply_mode": "text",
+            "live_end_reason": "output_mode_text",
+            "model_calls": 1
+          },
+          "after_close": {
+            "status": 200,
+            "body_status": "answered",
+            "view": "schedule_cards",
+            "voice_commentary": 0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X58-request-right-after-a-control-phrase",
+      "seed": "7",
+      "order": [
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X13-io-epoch-sync-before-restart",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-session-control-phrases-reach-the-device",
+        "X14-global-stop-reaches-the-other-device",
+        "QA41-live-input-four-operations-need-full-text",
+        "QA43-three-stops-are-distinct",
+        "X13-os-lock-stops-everything",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X58-reply-in-text-switches-the-device",
+        "X30-stop-playback-without-ack-escalates",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase"
+      ],
+      "faults": ["control_turn_stays_a_delegation_candidate"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "right_after": {
+            "model_calls": 0,
+            "asked_to_say_again": true,
+            "operations": 0,
+            "live_closure": "open"
+          },
+          "after_the_window": {
+            "model_calls": 1,
+            "asked_to_say_again": false,
+            "operations": 0,
+            "live_closure": "open"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X13-io-epoch-sync-before-restart",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["core_io_epoch_not_reported"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "epoch_gap": {
+            "continue_outcome": "voice_unavailable",
+            "lease_responses": [
+              {
+                "result": "rejected",
+                "reasons": ["unknown_io_epoch"]
+              }
+            ],
+            "lease_active": false,
+            "renderer_sending": false,
+            "clips_played": ["refused"],
+            "device_io_epoch": "1",
+            "core_io_epoch": "0",
+            "live_rows": 1,
+            "commands_since": ["voice.play"]
+          },
+          "synchronised": {
+            "core_after_stop": "1",
+            "stale_resume_status": 409,
+            "resume_status": 200,
+            "core_after_resume": "1",
+            "local_stop": 0
+          },
+          "restarted": {
+            "continue_outcome": "ok",
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "2",
+              "output_epoch": "1",
+              "session_epoch": "2"
+            },
+            "live_rows": [
+              {
+                "closure": "close_confirmed",
+                "control_state": "closed",
+                "usage_seconds": 2,
+                "audio_epoch": 1,
+                "session_epoch": 1
+              },
+              {
+                "closure": "open",
+                "control_state": "ready",
+                "usage_seconds": null,
+                "audio_epoch": 2,
+                "session_epoch": 2
+              }
+            ],
+            "first_live_is_closed": true,
+            "reservations": [
+              {
+                "status": "settled",
+                "actual_gross": "15"
+              },
+              {
+                "status": "reserved",
+                "actual_gross": null
+              }
+            ],
+            "commands": ["voice.start"]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "QA41-live-input-four-operations-need-full-text",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "complete_observation": {
+            "commentary": [["画面で確認してください。"]],
+            "operations": [
+              {
+                "kind": "task.create",
+                "effect_route": "local_command",
+                "state": "awaiting_approval"
+              }
+            ],
+            "workflows": ["ready"],
+            "model_calls": 1,
+            "renderer_commands": [],
+            "live_closure": "open"
+          },
+          "default_policy": {
+            "commentary": [
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ]
+            ],
+            "operations": [],
+            "workflows": ["clarifying"],
+            "model_calls": 1,
+            "renderer_commands": [],
+            "live_closure": "open"
+          },
+          "never_without_full_text": {
+            "commentary": [
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ]
+            ],
+            "operations": [],
+            "workflows": [],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              }
+            ],
+            "memories_saved": 0,
+            "renderer_commands": []
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X58-session-control-phrases-reach-the-device",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "polite_form": {
+            "model_calls": ["ちょっと待ってください"],
+            "new_silence_extensions": 0,
+            "renderer_commands": [],
+            "audio_controls_added": 0,
+            "live_closure": "open"
+          },
+          "wait": {
+            "silence_extensions": [60000],
+            "event_is_valid_voice_event": true,
+            "event_has_text": false,
+            "renderer_commands": [],
+            "model_calls_added": 0,
+            "turns_added": 0,
+            "playing": true,
+            "live_closure": "open"
+          },
+          "stop_reading": {
+            "renderer_commands": [
+              {
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.stop_playback",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "model_calls_added": 0,
+            "turns_added": 0,
+            "live_closure": "open"
+          },
+          "end": {
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "conversation_ended"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "model_calls_added": 0,
+            "live_end_reason": "conversation_ended",
+            "live_closure": "close_confirmed",
+            "reply_mode": "voice"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X58-reply-in-text-switches-the-device",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "switched": {
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "output_mode_text"
+              }
+            ],
+            "reply_mode": "text",
+            "view_reply_mode": "text",
+            "can_continue": false,
+            "live_end_reason": "output_mode_text",
+            "renderer_live": false,
+            "model_calls": 0,
+            "turns": 0
+          },
+          "continue_while_text": "voice_unavailable",
+          "back_to_voice": {
+            "reply_mode": "voice",
+            "can_continue": true,
+            "live_rows": 1,
+            "renderer_live": false
+          },
+          "continue_after_voice": {
+            "outcome": "ok",
+            "live_rows": [
+              {
+                "closure": "close_confirmed",
+                "audio_epoch": 1,
+                "session_epoch": 1
+              },
+              {
+                "closure": "open",
+                "audio_epoch": 2,
+                "session_epoch": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "QA24-close-unconfirmed-holds-reservation",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["sideband_pong_stops", "session_closed_withheld"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "lost_after_last_pong_ms": 6000,
+          "waiting_for_close": {
+            "closure": "close_requested",
+            "reservation": {
+              "status": "reserved",
+              "actual_gross": null
+            }
+          },
+          "unconfirmed": {
+            "closure": "close_unconfirmed",
+            "reservation": {
+              "status": "usage_unknown",
+              "actual_gross": null
+            },
+            "dispatched": true
+          },
+          "still_held_after_30s": {
+            "status": "usage_unknown",
+            "actual_gross": null
+          },
+          "reconciled": {
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 26,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "26"
+            },
+            "settled_rows": 1
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X13-os-lock-stops-everything",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "before": {
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": true,
+              "ring_empty": false,
+              "last_local_stop": null,
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "0",
+              "session_epoch": "1"
+            },
+            "sent_frames_positive": true,
+            "played_frames_positive": true,
+            "lease_active": true,
+            "voice_state": "conversation_live",
+            "external_send": true
+          },
+          "stop": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "sent_frames_after_stop": 0,
+            "played_frames_after_stop": 0,
+            "late_audio_played": false,
+            "renewals_after_stop": 0,
+            "lease_active": false,
+            "view": "hidden",
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ]
+          },
+          "core": {
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 3,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "15"
+            },
+            "provider_close_requests": 1,
+            "provider_truth_seconds": 3
+          },
+          "after_unlock": {
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "voice_state": "device_stopped",
+            "can_continue": false,
+            "continue_outcome": "input_stopped",
+            "renderer_capturing": false,
+            "renderer_sending": false
+          },
+          "resume": {
+            "unfocused": {
+              "outcome": "rejected",
+              "reason": "screen_operation_required"
+            },
+            "stale_epoch": {
+              "outcome": "rejected",
+              "reason": "io_epoch_mismatch"
+            },
+            "still_stopped": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "accepted": {
+              "outcome": "ok"
+            },
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "none",
+              "io_epoch": "1"
+            },
+            "voice_state": "waiting_wake_word",
+            "can_continue": true,
+            "renderer_sending": false
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X30-stop-playback-without-ack-escalates",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["stop_playback_ack_dropped"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "playing_before": true,
+          "playback_stop_ms": 1,
+          "at_300ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "none",
+              "io_epoch": "0"
+            },
+            "notice": null,
+            "playing": false,
+            "live": true
+          },
+          "after_deadline": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              },
+              {
+                "dt": 301,
+                "channel": "voice.suspend_io",
+                "reason": "device_io_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 302,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": 0,
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "notice": "input_interrupted",
+            "core_close_requests": [
+              {
+                "dt": 301,
+                "reason": "device_io_stop"
+              }
+            ],
+            "voice_state": "device_stopped"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X27-held-change-is-superseded-or-cancelled",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "correction": {
+            "while_held": {
+              "operations": 0,
+              "turns": 0,
+              "commentary": 0
+            },
+            "commentary": [["画面で確認してください。"]],
+            "operations": [
+              {
+                "kind": "task.create",
+                "effect_route": "local_command",
+                "state": "awaiting_approval"
+              }
+            ],
+            "workflows": ["ready"],
+            "turns": [
+              {
+                "input_kind": "voice_live",
+                "role": "user"
+              }
+            ],
+            "screen_results": 0,
+            "held_after": 0
+          },
+          "cancel": {
+            "while_held": {
+              "operations": 0,
+              "turns": 0,
+              "commentary": 0
+            },
+            "commentary": [["実行前の依頼を取り消しました。"]],
+            "operations": [],
+            "workflows": [],
+            "screen_results": 0,
+            "held_after": 0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X14-global-stop-reaches-the-other-device",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["push_event_not_acted_on"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1500,
+        "checks": {
+          "core_stop": {
+            "status": 202,
+            "scope": "global",
+            "devices": {
+              "other_device": "awaiting_ack",
+              "requester": "confirmed"
+            },
+            "all_confirmed": false
+          },
+          "event_delivered": [
+            {
+              "dt": 0,
+              "type": "audio_control",
+              "action": "suspend_io",
+              "reason": "global_stop",
+              "scope": "global"
+            }
+          ],
+          "not_acted_on_directly": {
+            "renderer_commands": 0,
+            "sending": true
+          },
+          "stopped_within_one_heartbeat": true,
+          "stopped_within_lease_ttl": true,
+          "lease_rejection": {
+            "count": 1,
+            "includes_io_suspended": true
+          },
+          "renderer": {
+            "live": false,
+            "sending": false,
+            "capturing": false,
+            "playing": false,
+            "ring_empty": true,
+            "last_local_stop": "voice.suspend_io",
+            "io_epoch": "1",
+            "audio_epoch": "1",
+            "output_epoch": "1",
+            "session_epoch": "1"
+          },
+          "device_commands": [
+            {
+              "channel": "voice.suspend_io",
+              "reason": "core_lease_lost"
+            }
+          ],
+          "core_close_requests": ["core_lease_lost"],
+          "live_closure": "close_confirmed"
+        }
+      }
+    },
+    {
+      "case_id": "X25-sideband-lost-closes-and-settles",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["sideband_pong_stops"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "loss": {
+            "lost_after_last_pong_ms": 6000,
+            "ready_at_5999": true,
+            "lease_active_at_5999": true,
+            "ready_after_6000": false,
+            "control_epoch": "1"
+          },
+          "device": {
+            "audio_controls": [
+              {
+                "dt": 0,
+                "action": "close_voice_session",
+                "reason": "sideband_lost"
+              }
+            ],
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.close_voice_session",
+                "reason": "sideband_lost"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.close_voice_session",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "lease_active": false,
+            "external_send": false,
+            "voice_state": "waiting_wake_word",
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "sideband_lost"
+              }
+            ]
+          },
+          "lease_probe": {
+            "status": 200,
+            "result": "rejected",
+            "reasons": ["sideband_lost"]
+          },
+          "core": {
+            "reconnects": 2,
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 26,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "26"
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X49-text-request-stays-text",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "answered_in_text": {
+            "status": 200,
+            "body_status": "answered",
+            "view": "schedule_cards",
+            "voice_commentary": 0,
+            "voice_instructions": 0,
+            "renderer_commands": [],
+            "playing": true,
+            "live_closure": "open",
+            "turns": [
+              {
+                "input_kind": "text",
+                "role": "user"
+              }
+            ],
+            "screen_results": 0
+          },
+          "voice_live_over_http": {
+            "status": 503,
+            "turns": 1,
+            "voice_commentary": 0
+          },
+          "reply_in_text": {
+            "status": 200,
+            "body_status": "session_control",
+            "session_control": "reply_in_text",
+            "workflow_id": null,
+            "result_view": null,
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "output_mode_text"
+              }
+            ],
+            "reply_mode": "text",
+            "live_end_reason": "output_mode_text",
+            "model_calls": 1
+          },
+          "after_close": {
+            "status": 200,
+            "body_status": "answered",
+            "view": "schedule_cards",
+            "voice_commentary": 0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X58-request-right-after-a-control-phrase",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["control_turn_stays_a_delegation_candidate"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "right_after": {
+            "model_calls": 0,
+            "asked_to_say_again": true,
+            "operations": 0,
+            "live_closure": "open"
+          },
+          "after_the_window": {
+            "model_calls": 1,
+            "asked_to_say_again": false,
+            "operations": 0,
+            "live_closure": "open"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X30-hung-renderer-is-killed",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["renderer_hangs_on_suspend_io"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:live",
+        "voice_stop_ms": 301,
+        "checks": {
+          "stop_ms": 301,
+          "commands": [
+            {
+              "dt": 0,
+              "channel": "voice.suspend_io",
+              "reason": "os_lock"
+            }
+          ],
+          "acks": [],
+          "kills": [
+            {
+              "dt": 301
+            }
+          ],
+          "renderer_alive": false,
+          "sent_frames_grew_before_kill": true,
+          "sent_frames_after_kill": 0,
+          "device": {
+            "lock_state": "locked",
+            "stop_scope": "local",
+            "io_epoch": "1"
+          },
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "os_lock"
+            }
+          ],
+          "ack_missing_logged": true
+        }
+      }
+    },
+    {
+      "case_id": "X51-input-is-confirmed-before-it-is-interpreted",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "waits": {
+            "before_end_candidate": {
+              "model_calls": 0,
+              "pending": 1
+            },
+            "after_end_candidate": {
+              "model_calls": ["「牛乳を買う」を用事に登録して"],
+              "operations": 1
+            }
+          },
+          "late_fragment_restarts_300ms": {
+            "model_calls_at_299ms": 0,
+            "model_calls": ["「牛乳を買う」を用事に登録して"],
+            "operations": 1
+          },
+          "unconfirmed_input": {
+            "skipped_fragment_number": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "fragment_without_number": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "two_utterances_before_one_delegation": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "unknown_offset": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X30-ack-deadline-boundary",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["ack_delay_298ms", "ack_delay_299ms"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "ack_at_300ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 299,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": [],
+            "renderer_alive": true,
+            "stop_ms": 1,
+            "ack_missing_logged": false,
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ],
+            "renderers_created": 1,
+            "stopped_sending": true
+          },
+          "ack_at_301ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 300,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": [
+              {
+                "dt": 301
+              }
+            ],
+            "renderer_alive": false,
+            "stop_ms": 1,
+            "ack_missing_logged": true,
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ],
+            "renderers_created": 1,
+            "stopped_sending": true,
+            "late_ack": {
+              "ack_logged_as_old": true,
+              "commands_added": 0,
+              "device": {
+                "lock_state": "locked",
+                "stop_scope": "local",
+                "io_epoch": "1"
+              },
+              "renderers_created": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "QA43-three-stops-are-distinct",
+      "seed": "1007",
+      "order": [
+        "X13-io-epoch-sync-before-restart",
+        "QA41-live-input-four-operations-need-full-text",
+        "X58-session-control-phrases-reach-the-device",
+        "X58-reply-in-text-switches-the-device",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X13-os-lock-stops-everything",
+        "X30-stop-playback-without-ack-escalates",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X49-text-request-stays-text",
+        "X58-request-right-after-a-control-phrase",
+        "X30-hung-renderer-is-killed",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "X30-ack-deadline-boundary",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 2,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+close_confirmed|reservation:settled+settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "base": {
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": true,
+              "ring_empty": false,
+              "last_local_stop": null,
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "0",
+              "session_epoch": "1"
+            },
+            "lease_active": true
+          },
+          "stop_playback": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.stop_playback",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.stop_playback",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "external_send": true,
+            "lease_active": true,
+            "core_close_requests": [],
+            "live_closure": "open",
+            "renewals_kept": true,
+            "played_frames_after_stop": 0,
+            "late_old_audio": {
+              "playing": false,
+              "discarded": 1
+            },
+            "new_audio_plays": true
+          },
+          "close_voice_session": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.close_voice_session",
+                "reason": "conversation_ended"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.close_voice_session",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "external_send": false,
+            "lease_active": false,
+            "renewals_after": 0,
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "conversation_ended"
+              }
+            ],
+            "live_closure": "close_confirmed",
+            "voice_state": "waiting_wake_word"
+          },
+          "suspend_io": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "device_io_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "2",
+              "output_epoch": "3",
+              "session_epoch": "2"
+            },
+            "external_send": false,
+            "lease_active": false,
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "device_io_stop"
+              }
+            ],
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "voice_state": "device_stopped"
+          },
+          "live_closures": ["close_confirmed", "close_confirmed"]
+        }
+      }
+    },
+    {
+      "case_id": "X30-stop-playback-without-ack-escalates",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["stop_playback_ack_dropped"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "playing_before": true,
+          "playback_stop_ms": 1,
+          "at_300ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "none",
+              "io_epoch": "0"
+            },
+            "notice": null,
+            "playing": false,
+            "live": true
+          },
+          "after_deadline": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              },
+              {
+                "dt": 301,
+                "channel": "voice.suspend_io",
+                "reason": "device_io_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 302,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": 0,
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "notice": "input_interrupted",
+            "core_close_requests": [
+              {
+                "dt": 301,
+                "reason": "device_io_stop"
+              }
+            ],
+            "voice_state": "device_stopped"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X13-os-lock-stops-everything",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "before": {
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": true,
+              "ring_empty": false,
+              "last_local_stop": null,
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "0",
+              "session_epoch": "1"
+            },
+            "sent_frames_positive": true,
+            "played_frames_positive": true,
+            "lease_active": true,
+            "voice_state": "conversation_live",
+            "external_send": true
+          },
+          "stop": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "sent_frames_after_stop": 0,
+            "played_frames_after_stop": 0,
+            "late_audio_played": false,
+            "renewals_after_stop": 0,
+            "lease_active": false,
+            "view": "hidden",
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ]
+          },
+          "core": {
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 3,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "15"
+            },
+            "provider_close_requests": 1,
+            "provider_truth_seconds": 3
+          },
+          "after_unlock": {
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "voice_state": "device_stopped",
+            "can_continue": false,
+            "continue_outcome": "input_stopped",
+            "renderer_capturing": false,
+            "renderer_sending": false
+          },
+          "resume": {
+            "unfocused": {
+              "outcome": "rejected",
+              "reason": "screen_operation_required"
+            },
+            "stale_epoch": {
+              "outcome": "rejected",
+              "reason": "io_epoch_mismatch"
+            },
+            "still_stopped": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "accepted": {
+              "outcome": "ok"
+            },
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "none",
+              "io_epoch": "1"
+            },
+            "voice_state": "waiting_wake_word",
+            "can_continue": true,
+            "renderer_sending": false
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X51-input-is-confirmed-before-it-is-interpreted",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "waits": {
+            "before_end_candidate": {
+              "model_calls": 0,
+              "pending": 1
+            },
+            "after_end_candidate": {
+              "model_calls": ["「牛乳を買う」を用事に登録して"],
+              "operations": 1
+            }
+          },
+          "late_fragment_restarts_300ms": {
+            "model_calls_at_299ms": 0,
+            "model_calls": ["「牛乳を買う」を用事に登録して"],
+            "operations": 1
+          },
+          "unconfirmed_input": {
+            "skipped_fragment_number": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "fragment_without_number": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "two_utterances_before_one_delegation": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            },
+            "unknown_offset": {
+              "commentary": [
+                ["うまく聞き取れませんでした。もう一度言ってください。"]
+              ],
+              "operations": [],
+              "workflows": [],
+              "renderer_commands": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "QA41-live-input-four-operations-need-full-text",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "complete_observation": {
+            "commentary": [["画面で確認してください。"]],
+            "operations": [
+              {
+                "kind": "task.create",
+                "effect_route": "local_command",
+                "state": "awaiting_approval"
+              }
+            ],
+            "workflows": ["ready"],
+            "model_calls": 1,
+            "renderer_commands": [],
+            "live_closure": "open"
+          },
+          "default_policy": {
+            "commentary": [
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ]
+            ],
+            "operations": [],
+            "workflows": ["clarifying"],
+            "model_calls": 1,
+            "renderer_commands": [],
+            "live_closure": "open"
+          },
+          "never_without_full_text": {
+            "commentary": [
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ],
+              [
+                "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+              ]
+            ],
+            "operations": [],
+            "workflows": [],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              },
+              {
+                "origin": "live_fragment",
+                "state": "blocked",
+                "seal_reason": null,
+                "input_evidence": "unverified",
+                "policy_version": null
+              }
+            ],
+            "memories_saved": 0,
+            "renderer_commands": []
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X49-text-request-stays-text",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "answered_in_text": {
+            "status": 200,
+            "body_status": "answered",
+            "view": "schedule_cards",
+            "voice_commentary": 0,
+            "voice_instructions": 0,
+            "renderer_commands": [],
+            "playing": true,
+            "live_closure": "open",
+            "turns": [
+              {
+                "input_kind": "text",
+                "role": "user"
+              }
+            ],
+            "screen_results": 0
+          },
+          "voice_live_over_http": {
+            "status": 503,
+            "turns": 1,
+            "voice_commentary": 0
+          },
+          "reply_in_text": {
+            "status": 200,
+            "body_status": "session_control",
+            "session_control": "reply_in_text",
+            "workflow_id": null,
+            "result_view": null,
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "output_mode_text"
+              }
+            ],
+            "reply_mode": "text",
+            "live_end_reason": "output_mode_text",
+            "model_calls": 1
+          },
+          "after_close": {
+            "status": 200,
+            "body_status": "answered",
+            "view": "schedule_cards",
+            "voice_commentary": 0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X30-hung-renderer-is-killed",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["renderer_hangs_on_suspend_io"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:live",
+        "voice_stop_ms": 301,
+        "checks": {
+          "stop_ms": 301,
+          "commands": [
+            {
+              "dt": 0,
+              "channel": "voice.suspend_io",
+              "reason": "os_lock"
+            }
+          ],
+          "acks": [],
+          "kills": [
+            {
+              "dt": 301
+            }
+          ],
+          "renderer_alive": false,
+          "sent_frames_grew_before_kill": true,
+          "sent_frames_after_kill": 0,
+          "device": {
+            "lock_state": "locked",
+            "stop_scope": "local",
+            "io_epoch": "1"
+          },
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "os_lock"
+            }
+          ],
+          "ack_missing_logged": true
+        }
+      }
+    },
+    {
+      "case_id": "QA24-close-unconfirmed-holds-reservation",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["sideband_pong_stops", "session_closed_withheld"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "lost_after_last_pong_ms": 6000,
+          "waiting_for_close": {
+            "closure": "close_requested",
+            "reservation": {
+              "status": "reserved",
+              "actual_gross": null
+            }
+          },
+          "unconfirmed": {
+            "closure": "close_unconfirmed",
+            "reservation": {
+              "status": "usage_unknown",
+              "actual_gross": null
+            },
+            "dispatched": true
+          },
+          "still_held_after_30s": {
+            "status": "usage_unknown",
+            "actual_gross": null
+          },
+          "reconciled": {
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 26,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "26"
+            },
+            "settled_rows": 1
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X58-reply-in-text-switches-the-device",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "switched": {
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "output_mode_text"
+              }
+            ],
+            "reply_mode": "text",
+            "view_reply_mode": "text",
+            "can_continue": false,
+            "live_end_reason": "output_mode_text",
+            "renderer_live": false,
+            "model_calls": 0,
+            "turns": 0
+          },
+          "continue_while_text": "voice_unavailable",
+          "back_to_voice": {
+            "reply_mode": "voice",
+            "can_continue": true,
+            "live_rows": 1,
+            "renderer_live": false
+          },
+          "continue_after_voice": {
+            "outcome": "ok",
+            "live_rows": [
+              {
+                "closure": "close_confirmed",
+                "audio_epoch": 1,
+                "session_epoch": 1
+              },
+              {
+                "closure": "open",
+                "audio_epoch": 2,
+                "session_epoch": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X58-session-control-phrases-reach-the-device",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "polite_form": {
+            "model_calls": ["ちょっと待ってください"],
+            "new_silence_extensions": 0,
+            "renderer_commands": [],
+            "audio_controls_added": 0,
+            "live_closure": "open"
+          },
+          "wait": {
+            "silence_extensions": [60000],
+            "event_is_valid_voice_event": true,
+            "event_has_text": false,
+            "renderer_commands": [],
+            "model_calls_added": 0,
+            "turns_added": 0,
+            "playing": true,
+            "live_closure": "open"
+          },
+          "stop_reading": {
+            "renderer_commands": [
+              {
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.stop_playback",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "model_calls_added": 0,
+            "turns_added": 0,
+            "live_closure": "open"
+          },
+          "end": {
+            "renderer_commands": [
+              {
+                "channel": "voice.close_voice_session",
+                "reason": "conversation_ended"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "model_calls_added": 0,
+            "live_end_reason": "conversation_ended",
+            "live_closure": "close_confirmed",
+            "reply_mode": "voice"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X25-sideband-lost-closes-and-settles",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["sideband_pong_stops"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "loss": {
+            "lost_after_last_pong_ms": 6000,
+            "ready_at_5999": true,
+            "lease_active_at_5999": true,
+            "ready_after_6000": false,
+            "control_epoch": "1"
+          },
+          "device": {
+            "audio_controls": [
+              {
+                "dt": 0,
+                "action": "close_voice_session",
+                "reason": "sideband_lost"
+              }
+            ],
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.close_voice_session",
+                "reason": "sideband_lost"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.close_voice_session",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "lease_active": false,
+            "external_send": false,
+            "voice_state": "waiting_wake_word",
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "sideband_lost"
+              }
+            ]
+          },
+          "lease_probe": {
+            "status": 200,
+            "result": "rejected",
+            "reasons": ["sideband_lost"]
+          },
+          "core": {
+            "reconnects": 2,
+            "live": {
+              "closure": "close_confirmed",
+              "control_state": "closed",
+              "usage_seconds": 26,
+              "audio_epoch": 1,
+              "session_epoch": 1
+            },
+            "reservation": {
+              "status": "settled",
+              "actual_gross": "26"
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X30-ack-deadline-boundary",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["ack_delay_298ms", "ack_delay_299ms"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1,
+        "checks": {
+          "ack_at_300ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 299,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": [],
+            "renderer_alive": true,
+            "stop_ms": 1,
+            "ack_missing_logged": false,
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ],
+            "renderers_created": 1,
+            "stopped_sending": true
+          },
+          "ack_at_301ms": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "os_lock"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 300,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "kills": [
+              {
+                "dt": 301
+              }
+            ],
+            "renderer_alive": false,
+            "stop_ms": 1,
+            "ack_missing_logged": true,
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "os_lock"
+              }
+            ],
+            "renderers_created": 1,
+            "stopped_sending": true,
+            "late_ack": {
+              "ack_logged_as_old": true,
+              "commands_added": 0,
+              "device": {
+                "lock_state": "locked",
+                "stop_scope": "local",
+                "io_epoch": "1"
+              },
+              "renderers_created": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X27-held-change-is-superseded-or-cancelled",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "correction": {
+            "while_held": {
+              "operations": 0,
+              "turns": 0,
+              "commentary": 0
+            },
+            "commentary": [["画面で確認してください。"]],
+            "operations": [
+              {
+                "kind": "task.create",
+                "effect_route": "local_command",
+                "state": "awaiting_approval"
+              }
+            ],
+            "workflows": ["ready"],
+            "turns": [
+              {
+                "input_kind": "voice_live",
+                "role": "user"
+              }
+            ],
+            "screen_results": 0,
+            "held_after": 0
+          },
+          "cancel": {
+            "while_held": {
+              "operations": 0,
+              "turns": 0,
+              "commentary": 0
+            },
+            "commentary": [["実行前の依頼を取り消しました。"]],
+            "operations": [],
+            "workflows": [],
+            "screen_results": 0,
+            "held_after": 0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X14-global-stop-reaches-the-other-device",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["push_event_not_acted_on"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
+        "voice_stop_ms": 1500,
+        "checks": {
+          "core_stop": {
+            "status": 202,
+            "scope": "global",
+            "devices": {
+              "other_device": "awaiting_ack",
+              "requester": "confirmed"
+            },
+            "all_confirmed": false
+          },
+          "event_delivered": [
+            {
+              "dt": 0,
+              "type": "audio_control",
+              "action": "suspend_io",
+              "reason": "global_stop",
+              "scope": "global"
+            }
+          ],
+          "not_acted_on_directly": {
+            "renderer_commands": 0,
+            "sending": true
+          },
+          "stopped_within_one_heartbeat": true,
+          "stopped_within_lease_ttl": true,
+          "lease_rejection": {
+            "count": 1,
+            "includes_io_suspended": true
+          },
+          "renderer": {
+            "live": false,
+            "sending": false,
+            "capturing": false,
+            "playing": false,
+            "ring_empty": true,
+            "last_local_stop": "voice.suspend_io",
+            "io_epoch": "1",
+            "audio_epoch": "1",
+            "output_epoch": "1",
+            "session_epoch": "1"
+          },
+          "device_commands": [
+            {
+              "channel": "voice.suspend_io",
+              "reason": "core_lease_lost"
+            }
+          ],
+          "core_close_requests": ["core_lease_lost"],
+          "live_closure": "close_confirmed"
+        }
+      }
+    },
+    {
+      "case_id": "X58-request-right-after-a-control-phrase",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["control_turn_stays_a_delegation_candidate"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 1,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "live:open|reservation:reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "right_after": {
+            "model_calls": 0,
+            "asked_to_say_again": true,
+            "operations": 0,
+            "live_closure": "open"
+          },
+          "after_the_window": {
+            "model_calls": 1,
+            "asked_to_say_again": false,
+            "operations": 0,
+            "live_closure": "open"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "X13-io-epoch-sync-before-restart",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": ["core_io_epoch_not_reported"],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 1,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
+        "voice_stop_ms": null,
+        "checks": {
+          "epoch_gap": {
+            "continue_outcome": "voice_unavailable",
+            "lease_responses": [
+              {
+                "result": "rejected",
+                "reasons": ["unknown_io_epoch"]
+              }
+            ],
+            "lease_active": false,
+            "renderer_sending": false,
+            "clips_played": ["refused"],
+            "device_io_epoch": "1",
+            "core_io_epoch": "0",
+            "live_rows": 1,
+            "commands_since": ["voice.play"]
+          },
+          "synchronised": {
+            "core_after_stop": "1",
+            "stale_resume_status": 409,
+            "resume_status": 200,
+            "core_after_resume": "1",
+            "local_stop": 0
+          },
+          "restarted": {
+            "continue_outcome": "ok",
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "2",
+              "output_epoch": "1",
+              "session_epoch": "2"
+            },
+            "live_rows": [
+              {
+                "closure": "close_confirmed",
+                "control_state": "closed",
+                "usage_seconds": 2,
+                "audio_epoch": 1,
+                "session_epoch": 1
+              },
+              {
+                "closure": "open",
+                "control_state": "ready",
+                "usage_seconds": null,
+                "audio_epoch": 2,
+                "session_epoch": 2
+              }
+            ],
+            "first_live_is_closed": true,
+            "reservations": [
+              {
+                "status": "settled",
+                "actual_gross": "15"
+              },
+              {
+                "status": "reserved",
+                "actual_gross": null
+              }
+            ],
+            "commands": ["voice.start"]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "QA43-three-stops-are-distinct",
+      "seed": "20261023",
+      "order": [
+        "X30-stop-playback-without-ack-escalates",
+        "X13-os-lock-stops-everything",
+        "X51-input-is-confirmed-before-it-is-interpreted",
+        "QA41-live-input-four-operations-need-full-text",
+        "X49-text-request-stays-text",
+        "X30-hung-renderer-is-killed",
+        "QA24-close-unconfirmed-holds-reservation",
+        "X58-reply-in-text-switches-the-device",
+        "X58-session-control-phrases-reach-the-device",
+        "X25-sideband-lost-closes-and-settles",
+        "X30-ack-deadline-boundary",
+        "X27-held-change-is-superseded-or-cancelled",
+        "X14-global-stop-reaches-the-other-device",
+        "X58-request-right-after-a-control-phrase",
+        "X13-io-epoch-sync-before-restart",
+        "QA43-three-stops-are-distinct"
+      ],
+      "faults": [],
+      "observed": {
+        "db_version": "12",
+        "provider_requests": 2,
+        "provider_state_changes": 2,
+        "approvals": 0,
+        "final_state": "live:close_confirmed+close_confirmed|reservation:settled+settled|renderer:closed",
+        "voice_stop_ms": null,
+        "checks": {
+          "base": {
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": true,
+              "ring_empty": false,
+              "last_local_stop": null,
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "0",
+              "session_epoch": "1"
+            },
+            "lease_active": true
+          },
+          "stop_playback": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.stop_playback",
+                "reason": "user_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.stop_playback",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": true,
+              "sending": true,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.stop_playback",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "1",
+              "session_epoch": "1"
+            },
+            "external_send": true,
+            "lease_active": true,
+            "core_close_requests": [],
+            "live_closure": "open",
+            "renewals_kept": true,
+            "played_frames_after_stop": 0,
+            "late_old_audio": {
+              "playing": false,
+              "discarded": 1
+            },
+            "new_audio_plays": true
+          },
+          "close_voice_session": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.close_voice_session",
+                "reason": "conversation_ended"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.close_voice_session",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": true,
+              "playing": false,
+              "ring_empty": false,
+              "last_local_stop": "voice.close_voice_session",
+              "io_epoch": "0",
+              "audio_epoch": "1",
+              "output_epoch": "2",
+              "session_epoch": "1"
+            },
+            "external_send": false,
+            "lease_active": false,
+            "renewals_after": 0,
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "conversation_ended"
+              }
+            ],
+            "live_closure": "close_confirmed",
+            "voice_state": "waiting_wake_word"
+          },
+          "suspend_io": {
+            "commands": [
+              {
+                "dt": 0,
+                "channel": "voice.suspend_io",
+                "reason": "device_io_stop"
+              }
+            ],
+            "acks": [
+              {
+                "dt": 1,
+                "channel": "voice.suspend_io",
+                "outcome": "applied"
+              }
+            ],
+            "renderer": {
+              "live": false,
+              "sending": false,
+              "capturing": false,
+              "playing": false,
+              "ring_empty": true,
+              "last_local_stop": "voice.suspend_io",
+              "io_epoch": "1",
+              "audio_epoch": "2",
+              "output_epoch": "3",
+              "session_epoch": "2"
+            },
+            "external_send": false,
+            "lease_active": false,
+            "core_close_requests": [
+              {
+                "dt": 0,
+                "reason": "device_io_stop"
+              }
+            ],
+            "device": {
+              "lock_state": "unlocked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "voice_state": "device_stopped"
+          },
+          "live_closures": ["close_confirmed", "close_confirmed"]
+        }
+      }
+    }
+  ]
+}

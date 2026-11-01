@@ -631,7 +631,10 @@ export async function startCore(
     // 予算月の定期の確認と、保存期限の掃除の定期実行を止める。
     if (budgetTimer !== null) clearInterval(budgetTimer);
     retention?.close();
-    storageGate?.close();
+    // 入る・出るを受けなくし、合わせ直せていない世代の書き込みが残っていれば最後に試す。
+    await step(async () => {
+      await storageGate?.close();
+    });
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
       await streams?.closeAll();

@@ -27,7 +27,10 @@ import type {
   StorageOrigin,
   StorageOriginRejection,
 } from '@buddy/domain';
-import type { ClockStateFilePort } from './clock-state.js';
+import type {
+  ClockStateFilePort,
+  StorageBoundaryRecord,
+} from './clock-state.js';
 import type { NoticeSink } from './notice-sink.js';
 
 // 命令の実行先。Live を閉じる・一時のキャンバスを始める／終える・RAM を捨てる・区切りを開く、を呼び出し側が結び付ける
@@ -69,6 +72,9 @@ export class StorageModeGate {
   #state: StorageBoundaryState;
   #serial: Promise<unknown> = Promise.resolve();
   #closed = false;
+  // 書き込みの結果が不確かな失敗（置き換えの後の fsync の失敗など）の後に、ファイルを RAM の状態に合わせ直すための記録。
+  // 合わせ直せるまで次の入る・出る・停止のたびに試す。
+  #pendingRestore: StorageBoundaryRecord | null = null;
 
   private constructor(
     options: StorageModeGateOptions,
@@ -192,6 +198,7 @@ export class StorageModeGate {
   enterPrivate(): Promise<StorageGateResult> {
     return this.#exclusive(async () => {
       if (this.#closed) return { ok: false, reason: 'closed' } as const;
+      await this.#settle();
       // 閉じる要求の取りこぼしを避けるため、Live は開いているものとして遷移を当てる（閉じる命令は重ねて呼んでも
       // 閉じ済みの接続には何もしない）。Core はここで Live の段階を持たず、Live の制御が正本。
       const before: StorageBoundaryState = { ...this.#state, live: 'open' };
@@ -202,7 +209,15 @@ export class StorageModeGate {
       if (result.rejected !== null)
         return { ok: false, reason: result.rejected } as const;
       const failure = await this.#persist(result.state, true);
-      if (failure !== null) return failure;
+      if (failure !== null) {
+        // 書き込みの結果が不確かなら（置き換えの後の失敗）、入っていない状態（通常の区切り）にファイルを合わせ直す。
+        if (failure.reason === 'persist_failed')
+          await this.#restore({
+            segment_generation: this.#state.segment_generation,
+            private_open: false,
+          });
+        return failure;
+      }
       this.#state = { ...result.state, live: 'closed' };
       await this.#run(result.commands);
       return { ok: true, origin: this.origin() } as const;
@@ -213,6 +228,7 @@ export class StorageModeGate {
   exitPrivate(mode: 'normal' | 'extended'): Promise<StorageGateResult> {
     return this.#exclusive(async () => {
       if (this.#closed) return { ok: false, reason: 'closed' } as const;
+      await this.#settle();
       const result = applyStorageBoundaryEvent(this.#state, {
         type: 'exit_private',
         segment_id: this.#newId(),
@@ -221,15 +237,50 @@ export class StorageModeGate {
       if (result.rejected !== null)
         return { ok: false, reason: result.rejected } as const;
       const failure = await this.#persist(result.state, false);
-      if (failure !== null) return failure;
+      if (failure !== null) {
+        // 書き込みの結果が不確かなら（置き換えは済み、その後の fsync が失敗した場合など）、ファイルは「出た」と読める。RAM は
+        // 記録しない区切りに留まるので、再起動の後の終了の知らせを失わないよう、ファイルを記録しない区切りが開いている状態に
+        // 合わせ直す（Q7）。
+        if (failure.reason === 'persist_failed')
+          await this.#restore({
+            segment_generation: this.#state.segment_generation,
+            private_open: true,
+          });
+        return failure;
+      }
       this.#state = result.state;
       await this.#run(result.commands);
       return { ok: true, origin: this.origin() } as const;
     });
   }
 
-  close(): void {
+  // 閉じた後は入る・出るを受けない。合わせ直せていない書き込みが残っていれば、最後にもう一度試す。
+  async close(): Promise<void> {
     this.#closed = true;
+    await this.#exclusive(() => this.#settle());
+  }
+
+  // 結果が不確かだった書き込みの後始末が残っていれば、もう一度試す。
+  async #settle(): Promise<void> {
+    if (this.#pendingRestore !== null)
+      await this.#restore(this.#pendingRestore);
+  }
+
+  // ファイルを RAM の状態に合わせ直す（3 回まで）。合わせ直せなければ記録を残し、次の機会に試す。
+  async #restore(record: StorageBoundaryRecord): Promise<void> {
+    this.#pendingRestore = record;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        if ((await this.#clock.saveBoundary(record)) !== 'saved') break;
+        this.#pendingRestore = null;
+        return;
+      } catch {
+        // もう一度試す。
+      }
+    }
+    this.#log(
+      '記録しない区切りの世代をファイルに合わせ直せませんでした（次の機会に試します）。',
+    );
   }
 
   // 世代をファイルへ書く。書けなければ失敗を返す（呼び出し側は状態を進めない）。
@@ -242,9 +293,10 @@ export class StorageModeGate {
         segment_generation: next.segment_generation,
         private_open: privateOpen,
       });
-      return saved === 'saved'
-        ? null
-        : { ok: false, reason: 'persist_unavailable' };
+      if (saved !== 'saved')
+        return { ok: false, reason: 'persist_unavailable' };
+      this.#pendingRestore = null;
+      return null;
     } catch {
       return { ok: false, reason: 'persist_failed' };
     }

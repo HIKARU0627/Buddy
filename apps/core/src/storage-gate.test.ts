@@ -409,12 +409,160 @@ test('a failing command does not undo the move into the private segment, and lat
 test('after close(), enter and exit are refused', async () => {
   const clock = new FakeBoundaryClock({ status: 'absent' });
   const gate = await open(clock);
-  gate.close();
+  await gate.close();
   assert.deepEqual(await gate.enterPrivate(), { ok: false, reason: 'closed' });
   assert.deepEqual(await gate.exitPrivate('normal'), {
     ok: false,
     reason: 'closed',
   });
+});
+
+// ---- 書き込みの結果が不確かな失敗（置き換えは済み、その後の fsync が失敗した場合など） ----------------------------
+
+// ディスクの中身を持つ模擬。計画の各項目が 1 回の書き込みの結果: ok（書いて成功）・throw（書かずに失敗）・
+// apply_then_throw（書いた後で失敗＝置き換えの後の fsync の失敗）。計画が尽きたら ok。
+class DiskModelClock {
+  disk: StorageBoundaryRecord | null;
+  writes = 0;
+  constructor(
+    disk: StorageBoundaryRecord | null,
+    public plan: ('ok' | 'throw' | 'apply_then_throw')[] = [],
+  ) {
+    this.disk = disk;
+  }
+  loadBoundary(): Promise<StorageBoundaryLoad> {
+    return Promise.resolve(
+      this.disk === null
+        ? { status: 'absent' }
+        : { status: 'ok', record: this.disk },
+    );
+  }
+  saveBoundary(
+    record: StorageBoundaryRecord,
+  ): Promise<'saved' | 'unavailable'> {
+    this.writes += 1;
+    const step = this.plan.shift() ?? 'ok';
+    if (step === 'throw') return Promise.reject(new Error('disk'));
+    this.disk = record;
+    if (step === 'apply_then_throw') return Promise.reject(new Error('fsync'));
+    return Promise.resolve('saved');
+  }
+}
+
+test('exit: rename succeeded but the directory fsync failed — the file is put back to "private open" so a restart still announces the end (AO review P2)', async () => {
+  const clock = new DiskModelClock(null);
+  const gate = await StorageModeGate.open({
+    clock,
+    now: () => NOW,
+    newId: ids(SEG_A, SEG_B, SEG_C, SEG_D, SEG_E),
+  });
+  assert.equal((await gate.enterPrivate()).ok, true);
+  assert.deepEqual(clock.disk, { segment_generation: '2', private_open: true });
+  // 出る側の書き込み: 置き換えは済み（ファイルは「出た」と読める）、その後の fsync が失敗。
+  clock.plan = ['apply_then_throw'];
+  assert.deepEqual(await gate.exitPrivate('normal'), {
+    ok: false,
+    reason: 'persist_failed',
+  });
+  // 失敗の応答を受けて記録しない会話を続ける（RAM は記録しない区切りのまま）。ファイルは合わせ直されている。
+  assert.equal(gate.privateConversation(), true);
+  assert.deepEqual(clock.disk, { segment_generation: '2', private_open: true });
+  // そのまま再起動すると、記録しない会話が終わったことを知らせる。
+  const sink = new RecordingNoticeSink();
+  const restarted = await StorageModeGate.open({
+    clock,
+    notices: sink,
+    now: () => NOW,
+    newId: ids(SEG_D, NOTICE_ID),
+  });
+  assert.equal(restarted.privateConversation(), false);
+  assert.equal(sink.boundaryNotices.length, 1);
+  assert.equal(sink.boundaryNotices[0]?.ended_generation, '2');
+});
+
+test('exit: the put-back is retried — one failed attempt does not lose the notice, and a stuck put-back is retried at the next chance and at close()', async () => {
+  const clock = new DiskModelClock(null);
+  const messages: string[] = [];
+  const gate = await StorageModeGate.open({
+    clock,
+    now: () => NOW,
+    newId: ids(SEG_A, SEG_B, SEG_C, SEG_D, SEG_E),
+    log: (message) => messages.push(message),
+  });
+  assert.equal((await gate.enterPrivate()).ok, true);
+  // 出る側の書き込みが「書いて失敗」、合わせ直しの 1 回目が失敗、2 回目が成功。
+  clock.plan = ['apply_then_throw', 'throw', 'ok'];
+  assert.equal((await gate.exitPrivate('normal')).ok, false);
+  assert.deepEqual(clock.disk, { segment_generation: '2', private_open: true });
+  assert.deepEqual(messages, []);
+  // 合わせ直しがすべて失敗した場合: 書いて失敗の後、3 回とも失敗 → ファイルは「出た」のまま、記録が残る。
+  clock.plan = ['apply_then_throw', 'throw', 'throw', 'throw'];
+  assert.equal((await gate.exitPrivate('normal')).ok, false);
+  assert.deepEqual(clock.disk, {
+    segment_generation: '3',
+    private_open: false,
+  });
+  assert.equal(messages.length, 1);
+  assert.equal(gate.privateConversation(), true);
+  // 停止（close）が最後にもう一度試し、ファイルを記録しない区切りが開いている状態へ合わせ直す。
+  await gate.close();
+  assert.deepEqual(clock.disk, { segment_generation: '2', private_open: true });
+});
+
+test('exit: a stuck put-back is retried at the next exit, and a successful exit then wins (no stale put-back afterwards)', async () => {
+  const clock = new DiskModelClock(null);
+  const gate = await StorageModeGate.open({
+    clock,
+    now: () => NOW,
+    newId: ids(SEG_A, SEG_B, SEG_C, SEG_D, SEG_E),
+  });
+  assert.equal((await gate.enterPrivate()).ok, true);
+  clock.plan = ['apply_then_throw', 'throw', 'throw', 'throw'];
+  assert.equal((await gate.exitPrivate('normal')).ok, false);
+  assert.deepEqual(clock.disk, {
+    segment_generation: '3',
+    private_open: false,
+  });
+  // 次の出る: 先に合わせ直しを試し（成功）、そのあと出る側の書き込みが成功する。
+  assert.equal((await gate.exitPrivate('normal')).ok, true);
+  assert.deepEqual(clock.disk, {
+    segment_generation: '3',
+    private_open: false,
+  });
+  assert.equal(gate.privateConversation(), false);
+  // 出た後の停止は、古い合わせ直しを書き戻さない。
+  await gate.close();
+  assert.deepEqual(clock.disk, {
+    segment_generation: '3',
+    private_open: false,
+  });
+});
+
+test('enter: rename succeeded but the fsync failed — the file is put back to "normal", so a restart does not announce an end that never began', async () => {
+  const clock = new DiskModelClock(null, ['apply_then_throw']);
+  const gate = await StorageModeGate.open({
+    clock,
+    now: () => NOW,
+    newId: ids(SEG_A, SEG_B, SEG_C, SEG_D, SEG_E),
+  });
+  assert.deepEqual(await gate.enterPrivate(), {
+    ok: false,
+    reason: 'persist_failed',
+  });
+  assert.equal(gate.privateConversation(), false);
+  // 入っていない状態（通常の区切り）にファイルを合わせ直す。
+  assert.deepEqual(clock.disk, {
+    segment_generation: '1',
+    private_open: false,
+  });
+  const sink = new RecordingNoticeSink();
+  await StorageModeGate.open({
+    clock,
+    notices: sink,
+    now: () => NOW,
+    newId: ids(SEG_D, NOTICE_ID),
+  });
+  assert.deepEqual(sink.boundaryNotices, []);
 });
 
 // ---- 実ファイル ---------------------------------------------------------------------------------------------

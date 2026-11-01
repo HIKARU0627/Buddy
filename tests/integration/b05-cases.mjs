@@ -242,7 +242,8 @@ async function qa43ThreeStops() {
     stopPlayback.renewals_kept = w.renewals.length > renewals1;
     stopPlayback.played_frames_after_stop =
       w.stats().playedFrames - playedAtStop;
-    // 止める前の出力の世代の音声が遅れて届いても再生しない。新しい世代の音声は、会話が続いているので再生できる。
+    // 止める前の出力の世代の音声が遅れて届いても再生しない。既定では本人の再開操作で新しい Live 接続を開くまで
+    // 出力の mute を保つので、会話が続いていても、今の世代と一致する音声の到着だけでは再生を再開しない（ADR 0038）。
     w.remoteAudio('0');
     stopPlayback.late_old_audio = {
       playing: w.stats().playing,

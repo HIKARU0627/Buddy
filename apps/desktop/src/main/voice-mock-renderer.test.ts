@@ -280,12 +280,13 @@ test('a hang stops all command handling but an open send track keeps sending unt
   assert.equal(renderer.stats.lastLocalStop, 'voice.stop_playback');
 });
 
-test('remote audio plays only while the Live is open and its output epoch is not older; stops end playback and old audio is discarded', () => {
+test('remote audio plays only while the Live is open and its output epoch matches; stale or future audio is discarded', () => {
   const { renderer } = setup();
   // Live が開く前に届いた音声は再生しない。
   renderer.remoteAudioArrived('0');
   assert.equal(renderer.stats.playing, false);
   renderer.receive(start({ io: '0', audio: '1', output: '0', session: '1' }));
+  // 今の出力の世代と一致する音声だけ再生する。
   renderer.remoteAudioArrived('0');
   assert.equal(renderer.stats.playing, true);
   renderer.tick();
@@ -296,12 +297,18 @@ test('remote audio plays only while the Live is open and its output epoch is not
   assert.equal(renderer.stats.playing, false);
   renderer.tick();
   assert.equal(renderer.stats.playedFrames, 2);
-  // 古い出力の世代の音声は捨てる。新しい世代の音声は再生できる。
+  // 古い出力の世代の遅着は捨てる。
   renderer.remoteAudioArrived('0');
   assert.equal(renderer.stats.playing, false);
   assert.equal(renderer.stats.discardedAudio, 1);
+  // 一致する世代の音声は再生できる。
   renderer.remoteAudioArrived('1');
   assert.equal(renderer.stats.playing, true);
+  // 今より新しい世代は、発行元を確かめられないので再生しない（ADR 0005「遅着と出力先」）。
+  renderer.receive(stopPlayback('0', '2'));
+  renderer.remoteAudioArrived('3');
+  assert.equal(renderer.stats.playing, false);
+  assert.equal(renderer.stats.discardedAudio, 2);
   // 全停止で再生も止まり、その後に届いた音声は再生しない（Live が閉じている）。
   renderer.receive(suspend('1', '2'));
   assert.equal(renderer.stats.playing, false);

@@ -187,17 +187,11 @@ export class MockVoiceRenderer {
   }
 
   // 相手（モデル）の音声が届いた（WebRTC の受信トラックの模型）。outputEpoch はその音声を作った時点の出力の世代。
-  // Live が開いていて、世代が今の出力の世代より古くないときだけ再生を始める。古い世代の音声は再生せずに捨てる（10 §1A）。
+  // Live が開いていて、世代が今の出力の世代とちょうど一致するときだけ再生を始める。古い世代の遅着も、発行元を
+  // 確かめられない未来の世代も、再生せずに捨てる（10 §1A、ADR 0005「遅着と出力先」）。
   remoteAudioArrived(outputEpoch: string): void {
     if (!this.#live) return;
-    if (
-      rendererEpochDecision(
-        { output_epoch: outputEpoch },
-        this.#epochs.output === null
-          ? {}
-          : { output_epoch: this.#epochs.output },
-      ) === 'ignore_stale'
-    ) {
+    if (this.#epochs.output === null || outputEpoch !== this.#epochs.output) {
       this.#discardedAudio += 1;
       return;
     }

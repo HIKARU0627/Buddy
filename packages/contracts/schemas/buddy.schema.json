@@ -398,6 +398,9 @@
       "$ref": "#/$defs/RetentionNotice"
     },
     {
+      "$ref": "#/$defs/StorageBoundaryNotice"
+    },
+    {
       "$ref": "#/$defs/StorageModeState"
     },
     {
@@ -14817,6 +14820,52 @@
         }
       ],
       "description": "期限切れ・忘却の知らせ（キャンバス向け。UI-05、ADR 0040）。ID と理由だけで、本文・要約・検索語を入れない。受け取った側は該当の物を表示から消す。期限切れは forgetting_generation が null、忘却は台帳の世代を持つ。"
+    },
+    "SegmentGeneration": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。"
+    },
+    "StorageBoundaryNotice": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.storage-boundary-notice.v1"
+        },
+        "notice_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "kind": {
+          "const": "private_ended"
+        },
+        "reason": {
+          "const": "core_restarted"
+        },
+        "ended_generation": {
+          "$ref": "#/$defs/SegmentGeneration"
+        },
+        "segment_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "segment_generation": {
+          "$ref": "#/$defs/SegmentGeneration"
+        }
+      },
+      "required": [
+        "schema",
+        "notice_id",
+        "occurred_at",
+        "kind",
+        "reason",
+        "ended_generation",
+        "segment_id",
+        "segment_generation"
+      ],
+      "additionalProperties": false,
+      "description": "記録しない会話が終わったことの知らせ（キャンバス向け。UI-05、ADR 0059）。Core が再起動して記録しない区切りの RAM を失ったので、通常の区切りへ戻した。ended_generation は終わった記録しない区切りの世代、segment_id と segment_generation は戻った先の通常の区切り。区切りの本文・発言・要約を入れない。端末は ended_generation 以前の由来の入力・結果を送らない（送っても Core が拒否する）。"
     },
     "StorageModeState": {
       "oneOf": [

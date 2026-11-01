@@ -270,6 +270,9 @@ export interface VoiceControlOptions {
     readonly ready: () => Promise<void>;
     readonly lease: () => (() => void) | null;
   };
+  // 記録しない会話の間か（保存境界の保持者が正本。ADR 0045・0059）。Live の受付・入出力の状態・Live の入力の判定が毎回呼ぶ。
+  // 省略すると常に偽（記録する会話。試験）。
+  readonly privateConversation?: () => boolean;
 }
 
 // このリースで開いた Live の結果。更新で作り直すエントリーの間で同じものを持ち回る。
@@ -427,6 +430,7 @@ export class VoiceControl {
   readonly #timers: VoiceTimers;
   readonly #provider: LiveProvider | null;
   readonly #retention: VoiceControlOptions['retention'];
+  readonly #privateConversation: () => boolean;
   readonly #budget: LiveBudgetPort | null;
   readonly #consent: (
     deviceId: string,
@@ -463,6 +467,7 @@ export class VoiceControl {
     this.#timers = options.timers ?? REAL_VOICE_TIMERS;
     this.#provider = options.provider ?? null;
     this.#retention = options.retention;
+    this.#privateConversation = options.privateConversation ?? (() => false);
     this.#budget = options.budget ?? null;
     this.#consent = options.consent ?? (() => 'missing');
     this.#displayTarget = options.displayTarget ?? (() => null);
@@ -769,9 +774,9 @@ export class VoiceControl {
             : live
               ? 'conversation_live'
               : 'waiting_wake_word',
-      // 返し方・記録しない会話の正本は中枢にまだない（U71）。表示の既定は文字・記録する会話。
+      // 返し方の正本は中枢にまだない（U71）。表示の既定は文字。記録しない会話は保存境界の保持者の値（ADR 0059）。
       output_mode: 'text',
-      private_conversation: false,
+      private_conversation: this.#privateConversation(),
       audio_lease_valid: this.#leaseLive(
         this.#leases.get(device.device_id)?.get('audio'),
       ),
@@ -1246,8 +1251,8 @@ export class VoiceControl {
       audioLeaseValid: leaseValid,
       // 返し方の正本は中枢にまだない（U71）。文字で返す端末はこの経路を呼ばない（07 §2）。
       outputMode: 'voice',
-      // 記録しない会話は B04-03 で受け付けていない（会話がないので記録しない会話中にならない。U71）。
-      privateConversation: false,
+      // 記録しない会話の間は開かない（保存境界の保持者の値。判定は 3 回とも今の値で行う＝受付の途中で入っても開かない）。
+      privateConversation: this.#privateConversation(),
       consent,
       // 予約の可否はこの後の予算の門で決める（できなければ 422）。
       budgetReservable: true,
@@ -1479,6 +1484,10 @@ export class VoiceControl {
         runtime.reserved_at = reservedAt;
         runtime.last_observed = reservedAt;
         this.#lives.set(liveSessionId, runtime);
+        // 受付の判定の後、この記録を待っている間に記録しない会話へ入ったなら、閉じる要求を受け取り損ねている
+        // （closeForPrivateConversation は登録済みの接続だけを閉じる）。登録した直後に閉じ始める（作成の途中の接続の扱い）。
+        if (this.#privateConversation())
+          this.#beginClose(runtime, 'private_conversation');
         return runtime;
       },
     );
@@ -1527,6 +1536,19 @@ export class VoiceControl {
         session_epoch: runtime.record.session_epoch,
       },
     };
+  }
+
+  // 記録しない会話へ入ったときに、開いている・開きかけの Live をすべて閉じ始める（保存境界の保持者が呼ぶ。ADR 0045・0059）。
+  // 閉じる要求のメモリーへの記録とサイドバンドへの session.close の送信まで（終了の確認は待たない）。確認できなければ
+  // 他の閉じ方と同じく close_unconfirmed で予約を保持する。閉じ済みの接続には何もしない。閉じ始めた数を返す。
+  closeForPrivateConversation(): number {
+    let closing = 0;
+    for (const runtime of this.#lives.values()) {
+      if (runtime.record.closure !== 'open') continue;
+      this.#beginClose(runtime, 'private_conversation');
+      closing += 1;
+    }
+    return closing;
   }
 
   // 端末からの終了の通知（いつでも受け付ける）。使用秒数が確認できるまで予約を精算済みにしない。
@@ -1599,8 +1621,8 @@ export class VoiceControl {
         this.#leaseLive(lease) &&
         lease.opened?.live_session_id === liveSessionId,
       io_permitted: known !== undefined && !this.#suspended(known),
-      // 記録しない会話は中枢が受け付けない（U71）。Live は記録する会話にだけ開く。
-      not_private_conversation: true,
+      // Live は記録する会話にだけ開く。記録しない会話に入った後に届いた入力は受けない（接続は閉じ始めている）。
+      not_private_conversation: !this.#privateConversation(),
       // 返し方が文字へ切り替わった接続（output_mode_text で閉じ始めた）の入力は受けない（X47）。
       voice_output_mode:
         open && runtime.record.end_reason !== 'output_mode_text',

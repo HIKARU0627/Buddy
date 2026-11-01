@@ -552,6 +552,10 @@ export function createBackupService(
           forgetting_generation: facts.forgetting_generation,
         },
         needs_new_backup: false,
+        // 作成の成功を保存するのと同時に、掃除の未完了も立てる。このあと掃除が終わる前にプロセスが終了・電源断になっても、
+        // 再起動後に掃除だけが再試行される（旧世代の封筒を次の日次まで残さない）。下ろすのは、掃除が全部済んだときだけ（sweepNow）。
+        // PR #175 の 4 回目の P2。
+        sweep_incomplete: true,
       });
       return {
         ok: true,

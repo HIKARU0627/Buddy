@@ -1333,6 +1333,89 @@ for (const scenario of ['exception', 'unavailable'] as const) {
   });
 }
 
+// レビュー（PR #175 の 4 回目の P2）の再現: 作成の成功を保存した直後、掃除が終わる前にプロセスが終了・電源断になっても、
+// 再起動後に日次を待たず掃除だけが走る（作成の成功を保存するのと同時に掃除の未完了を立て、掃除が済んだときだけ下ろす）。
+test('定期の確認: 作成の成功の保存の後、掃除が終わる前にプロセスが終了しても、再起動後に日次を待たず掃除だけが走る', async (t) => {
+  let hang = false;
+  const r = await rig(t, {
+    // 掃除の開始で止まったままにする（プロセスが落ちた状態の再現）。
+    beforeSweep: () => (hang ? new Promise<void>(() => undefined) : undefined),
+  });
+  await ready(r);
+  const first = await r.handle.backup.run();
+  assert.ok(first.ok);
+  r.clock.value = T0 + 1000;
+  await forgetSource(r);
+  r.clock.value = T0 + 2000;
+  hang = true;
+  // 終わらない実行（掃除の開始で止まる）。作成の成功は、止まる前に保存されている。
+  void r.handle.backup.run();
+  for (
+    let i = 0;
+    i < 1200 &&
+    (await r.handle.backup.status()).last_success?.forgetting_generation !==
+      '1';
+    i += 1
+  )
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  const status = await r.handle.backup.status();
+  assert.equal(status.last_success?.forgetting_generation, '1');
+  // 作成の成功と同時に、掃除の未完了が保存されている。旧世代の封筒はまだ残っている。
+  assert.equal(status.sweep_incomplete, true);
+  assert.equal(status.needs_new_backup, false);
+  assert.equal((await backupFiles(r)).length, 2);
+  assert.equal(
+    (await backupFiles(r)).includes(`buddy-${first.backup_id}.buddybackup`),
+    true,
+  );
+
+  // プロセスの終了（実行を待たずに止める）→ 再起動。
+  await r.handle.stop('crash');
+  const again = await startCore({
+    dataDir: r.dataDir,
+    keyStore: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    shutdownGraceMs: 200,
+    probeTimeoutMs: 300,
+    now: () => new Date(r.clock.value),
+    log: () => undefined,
+    backup: { keyStore: r.keys },
+  });
+  onCleanup(t, async () => {
+    await again.stop('test').catch(() => undefined);
+  });
+  // 作成の予定は済んでいる（世代は今と同じ・24 時間未満）。それでも掃除だけが予定になる。
+  assert.equal(await again.backup.dueAction(), 'sweep');
+  const timers: (() => void)[] = [];
+  const logs: string[] = [];
+  const scheduler = startBackupScheduler({
+    service: again.backup,
+    log: (message) => logs.push(message),
+    now: () => new Date(r.clock.value),
+    setTimer: (run) => timers.push(run),
+    clearTimer: () => undefined,
+  });
+  const next = timers.shift();
+  assert.ok(next !== undefined);
+  r.clock.value = T0 + 3000;
+  next();
+  for (
+    let i = 0;
+    i < 1200 && !logs.some((line) => line.includes('掃除を終えました'));
+    i += 1
+  )
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  scheduler.stop();
+  const files = await backupFiles(r);
+  assert.equal(files.length, 1);
+  assert.equal(files.includes(`buddy-${first.backup_id}.buddybackup`), false);
+  assert.equal(
+    logs.some((line) => line.includes('バックアップを取りました')),
+    false,
+  );
+  assert.equal((await again.backup.status()).sweep_incomplete, false);
+  assert.equal(await again.backup.dueAction(), null);
+});
+
 test('掃除: 設定がないだけの失敗（config_*）は掃除の未完了に数えない', async (t) => {
   const r = await rig(t, { config: false });
   const result = await r.handle.backup.sweep();

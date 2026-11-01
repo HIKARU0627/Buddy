@@ -71,10 +71,6 @@ interface LedgerItemRow {
 
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-// SQLite の既定の照合（BINARY = UTF-8 のバイト列の比較）と同じ順。ORDER BY の並びを JS で再現する。
-const byteCompare = (a: string, b: string): number =>
-  Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
-
 function ledgerSourceKey(item: LedgerSource): string {
   return item.source_kind === 'source_item'
     ? item.source_id_hmac
@@ -294,8 +290,6 @@ const LINEAGE_EDGE_TABLES: readonly {
 ];
 
 interface LineageEdgeRow {
-  // LINEAGE_EDGE_TABLES の何番目の表の行か（全件読みの辺の並びは、表の順・表の中は 4 つの欄の順。U157）。
-  readonly part: number;
   readonly artifact_kind: string;
   readonly artifact_id: string;
   readonly source_kind: string;
@@ -316,19 +310,16 @@ function readLineageEdges(
   },
 ): LineageEdgeRow[] {
   const rows: LineageEdgeRow[] = [];
-  const select = (
-    part: (typeof LINEAGE_EDGE_TABLES)[number],
-    index: number,
-  ): string =>
-    `SELECT ${index} AS part, ${part.artifact_kind} AS artifact_kind, ${part.artifact_id} AS artifact_id, ${part.source_kind} AS source_kind, ${part.source_id} AS source_id FROM ${part.table}`;
+  const select = (part: (typeof LINEAGE_EDGE_TABLES)[number]): string =>
+    `SELECT ${part.artifact_kind} AS artifact_kind, ${part.artifact_id} AS artifact_id, ${part.source_kind} AS source_kind, ${part.source_id} AS source_id FROM ${part.table}`;
   const collect = (sql: string, params: readonly string[]): void => {
     const found = db.prepare(sql).all(...params) as LineageEdgeRow[];
     for (const row of found) rows.push(row);
   };
   if (match === undefined) {
-    for (const [index, part] of LINEAGE_EDGE_TABLES.entries())
+    for (const part of LINEAGE_EDGE_TABLES)
       collect(
-        `${select(part, index)}${part.where === null ? '' : ` WHERE ${part.where}`} ORDER BY 2, 3, 4, 5`,
+        `${select(part)}${part.where === null ? '' : ` WHERE ${part.where}`} ORDER BY 1, 2, 3, 4`,
         [],
       );
     return rows;
@@ -339,7 +330,7 @@ function readLineageEdges(
     if (ids === undefined) idsByKind.set(node.kind, [node.id]);
     else ids.push(node.id);
   }
-  for (const [index, part] of LINEAGE_EDGE_TABLES.entries()) {
+  for (const part of LINEAGE_EDGE_TABLES) {
     const side =
       match.side === 'artifact'
         ? { kind: part.artifact_kind, id: part.artifact_id }
@@ -353,7 +344,7 @@ function readLineageEdges(
           `${side.id} IN (${chunk.map(() => '?').join(', ')})`,
         ];
         collect(
-          `${select(part, index)} WHERE ${conditions.join(' AND ')} ORDER BY 2, 3, 4, 5`,
+          `${select(part)} WHERE ${conditions.join(' AND ')} ORDER BY 1, 2, 3, 4`,
           [kind, ...chunk],
         );
       }
@@ -485,10 +476,7 @@ export function readForgetSubgraph(
   if (input.instruction_turn_id !== null)
     targets.push({ kind: 'turn', id: input.instruction_turn_id });
 
-  const edges = new Map<
-    string,
-    { artifact: ForgetNode; source: ForgetNode; part: number }
-  >();
+  const edges = new Map<string, { artifact: ForgetNode; source: ForgetNode }>();
   const unattributed = new Map<
     string,
     { artifact: ForgetNode; scope: ForgetNode }
@@ -518,10 +506,9 @@ export function readForgetSubgraph(
         id: row.source_id,
       };
       const key = `${nodeKey(artifact)}\u0001${nodeKey(source)}`;
-      const known = edges.get(key);
-      // 同じ辺が 2 つの表にあれば、全件読みと同じく先の表の位置に置く。
-      if (known !== undefined && known.part <= row.part) continue;
-      edges.set(key, { artifact, source, part: row.part });
+      // 同じ辺が 2 つの表にあれば 1 本にする（全件読みと同じ辺）。
+      if (edges.has(key)) continue;
+      edges.set(key, { artifact, source });
       grew = true;
     }
   };
@@ -628,35 +615,16 @@ export function readForgetSubgraph(
     return out;
   };
 
-  // 閉包の入力は全件読み（readForgetGraph）と同じ並びにそろえる。閉包の規則 D は、範囲の要約が先に「除外する由来に
-  // 触れる」側で消えると、後から範囲の発言が core になっても「範囲全体を除外する」側に入らない（U157）。結果が辺・
-  // 未帰属の並びに依るので、読んだ部分は全件読みの並び（表の順・表の中は 4 つの欄の順、未帰属は要約 → 影モードの
-  // ID の順）の部分列にする。部分列なら、読んでいない辺は閉包の途中で一度も働かないので、全件読みと同じ手順をたどる。
+  // 閉包の入力は、読んだ辺・未帰属・会話の発言をそのまま渡す。閉包は辺・未帰属の並びに依らない（U157。本人が
+  // 2026-11-01 に決定）ので、全件読みの並びにそろえる必要はない。読んでいない辺は閉包の途中で一度も働かず、
+  // 固定点まで読むので漏れない。
   const snapshot = (): Pick<
     ForgetGraph,
     'edges' | 'unattributed' | 'turn_sessions'
   > => ({
-    edges: [...edges.values()]
-      .sort(
-        (a, b) =>
-          a.part - b.part ||
-          byteCompare(a.artifact.kind, b.artifact.kind) ||
-          byteCompare(a.artifact.id, b.artifact.id) ||
-          byteCompare(a.source.kind, b.source.kind) ||
-          byteCompare(a.source.id, b.source.id),
-      )
-      .map(({ artifact, source }) => ({ artifact, source })),
-    unattributed: [...unattributed.values()].sort(
-      (a, b) =>
-        (a.artifact.kind === 'session_summary' ? 0 : 1) -
-          (b.artifact.kind === 'session_summary' ? 0 : 1) ||
-        byteCompare(a.artifact.id, b.artifact.id),
-    ),
-    turn_sessions: [...turnSessions.values()].sort(
-      (a, b) =>
-        byteCompare(a.session_id, b.session_id) ||
-        byteCompare(a.turn_id, b.turn_id),
-    ),
+    edges: [...edges.values()],
+    unattributed: [...unattributed.values()],
+    turn_sessions: [...turnSessions.values()],
   });
 
   let closure: ForgetClosure;

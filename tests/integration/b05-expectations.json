@@ -347,6 +347,62 @@
       }
     },
     {
+      "id": "X14-global-stop-reaches-the-other-device",
+      "title": "X14: 別の端末からの全体停止で、中枢は要求した端末だけを確認済み・他を応答待ちにし、停止のイベントを送ってリースを取り消す。端末は中枢のイベントで直接は止まらず（未実装）、次のハートビートで更新が拒否されて 1 ハートビート（2 秒）以内・リースの期限（6 秒）以内に止まる",
+      "faults": ["push_event_not_acted_on"],
+      "deviation_note": "既知の未了の記録: 中枢から届く停止のイベント（suspend_io）を端末が止めに使う経路は未実装（ADR 0050 の「残ること」）。端末は次のハートビートでリースの更新が拒否されて止まる（理由は core_lease_lost）。",
+      "expected": {
+        "core_stop": {
+          "status": 202,
+          "scope": "global",
+          "devices": {
+            "requester": "confirmed",
+            "other_device": "awaiting_ack"
+          },
+          "all_confirmed": false
+        },
+        "event_delivered": [
+          {
+            "dt": 0,
+            "type": "audio_control",
+            "action": "suspend_io",
+            "reason": "global_stop",
+            "scope": "global"
+          }
+        ],
+        "not_acted_on_directly": {
+          "renderer_commands": 0,
+          "sending": true
+        },
+        "stopped_within_one_heartbeat": true,
+        "stopped_within_lease_ttl": true,
+        "lease_rejection": {
+          "count": 1,
+          "includes_io_suspended": true
+        },
+        "renderer": {
+          "live": false,
+          "sending": false,
+          "capturing": false,
+          "playing": false,
+          "ring_empty": true,
+          "last_local_stop": "voice.suspend_io",
+          "io_epoch": "1",
+          "audio_epoch": "1",
+          "output_epoch": "1",
+          "session_epoch": "1"
+        },
+        "device_commands": [
+          {
+            "channel": "voice.suspend_io",
+            "reason": "core_lease_lost"
+          }
+        ],
+        "core_close_requests": ["core_lease_lost"],
+        "live_closure": "close_confirmed"
+      }
+    },
+    {
       "id": "X25-sideband-lost-closes-and-settles",
       "title": "X25: 最後の pong から 6 秒（5999 ms では ready）で制御接続を喪失し、ハートビートが正常でも音声リースを更新せず、端末へ close_voice_session（sideband_lost）を送る。閉じるためだけの再接続で session.close を送り、provider の使用秒数（26 秒）で精算する",
       "faults": ["sideband_pong_stops"],

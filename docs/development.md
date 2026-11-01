@@ -48,6 +48,12 @@ GitHub Actions は Ubuntu / Windows / macOS のそれぞれで `pnpm run check` 
 - 直接 import の静的検査は依存境界を守る補助であり、サードパーティーの推移的依存や実行時隔離を証明しない。
 - 実機の音声停止、OS 鍵管理、実請求は該当工程で別に検証する。
 
+## 性能の実測（任意）
+
+- 系譜の全件読みの性能（ADR 0054 の U110・U143）は `scripts/forget-lineage-benchmark.mjs` で測る。`pnpm test` には入れていない（数十秒から数分かかり、値が実行する機械に依存するため）。
+- 実行: `pnpm run build` の後に `node scripts/forget-lineage-benchmark.mjs`。`--only one-year` / `--only ten-times` で片方だけ、`--json` で結果の JSON も出す。
+- 合成の DB は OS の一時ディレクトリに作り、終了時に消す。実データ・実機は使わない。結果の記録は ADR 0054 の「U110 の実測」に置く。
+
 ## 公式資料
 
 - [Codex の AGENTS.md](https://developers.openai.com/codex/guides/agents-md)

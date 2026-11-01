@@ -308,6 +308,80 @@ test(
 );
 
 test(
+  'a pairing start waiting for the async protection check is refused when the device locks meanwhile',
+  { timeout: 30_000 },
+  async (t) => {
+    const base = mockProtector();
+    let armed = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const protector: MockProtector = {
+      ...base,
+      async isEncryptionAvailableAsync() {
+        if (armed) await gate;
+        return true;
+      },
+    };
+    const { link, invoke, fetches } = await setup(t, { protector });
+    await link.start('unlocked');
+    armed = true;
+    const pending = invoke('desktop.pairing_begin', {
+      host: '127.0.0.1',
+      port: 47443,
+    });
+    // 保護の確認を待っている間にロックする。
+    link.setLockState('locked');
+    release();
+    const response = await pending;
+    assert.equal(response['outcome'], 'rejected');
+    assert.equal(response['reason'], 'device_locked');
+    // 証明書の取得（要求）を始めず、応答も今の状態（隠す）で扱う。
+    assert.equal(fetches(), 0);
+    assert.equal(link.view('locked').visibility, 'hidden');
+  },
+);
+
+test(
+  'a pairing start waiting for the async protection check is not started after a cancel',
+  { timeout: 30_000 },
+  async (t) => {
+    const base = mockProtector();
+    let armed = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const protector: MockProtector = {
+      ...base,
+      async isEncryptionAvailableAsync() {
+        if (armed) await gate;
+        return true;
+      },
+    };
+    const { link, invoke, fetches } = await setup(t, { protector });
+    await link.start('unlocked');
+    armed = true;
+    const pending = invoke('desktop.pairing_begin', {
+      host: '127.0.0.1',
+      port: 47443,
+    });
+    // 保護の確認を待っている間に「やめる」が届く。
+    await invoke('desktop.pairing_cancel', null);
+    release();
+    const response = await pending;
+    assert.equal(response['outcome'], 'rejected');
+    assert.equal(response['reason'], 'pairing_step_mismatch');
+    assert.equal(fetches(), 0);
+    assert.equal(
+      (link.view('unlocked') as Record<string, unknown>)['pairing'],
+      null,
+    );
+  },
+);
+
+test(
   'a wrong code fails the pairing; an unknown pickup result is not retried; nothing secret reaches the screen',
   { timeout: 30_000 },
   async (t) => {

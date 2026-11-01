@@ -50,9 +50,9 @@ GitHub Actions は Ubuntu / Windows / macOS のそれぞれで `pnpm run check` 
 
 ## 性能の実測（任意）
 
-- 系譜の全件読みの性能（ADR 0054 の U110・U143）は `scripts/forget-lineage-benchmark.mjs` で測る。`pnpm test` には入れていない（数十秒から数分かかり、値が実行する機械に依存するため）。
-- 実行: `pnpm run build` の後に `node scripts/forget-lineage-benchmark.mjs`。`--only one-year` / `--only ten-times` で片方だけ、`--json` で結果の JSON も出す。
-- 合成の DB は OS の一時ディレクトリに作り、終了時に消す。実データ・実機は使わない。結果の記録は ADR 0054 の「U110 の実測」に置く。
+- 系譜の読み方の性能（ADR 0054 の U110・U143、ADR 0061 の U156）は `scripts/forget-lineage-benchmark.mjs` で測る。`pnpm test` には入れていない（数十秒から数分かかり、値が実行する機械に依存するため）。
+- 実行: `pnpm run build` の後に `node scripts/forget-lineage-benchmark.mjs`。`--only one-year` / `--only ten-times` で片方だけ、`--with-reference` で参考の規模（元情報を 100 記憶で共有。閉包が大きい）も、`--json` で結果の JSON も出す。判定には、部分読みの計画が系譜の全件読みの計画と一致することも含む。
+- 合成の DB は OS の一時ディレクトリに作り、終了時に消す。実データ・実機は使わない。結果の記録は ADR 0054 の「U110 の実測」（全件読み）と ADR 0061 の「実測」（部分読み）に置く。
 
 ## 公式資料
 

@@ -8,7 +8,7 @@
 // 結果・ログには ID・件数・理由コードだけを入れ、鍵・パス・本文を入れない。
 
 import { randomUUID } from 'node:crypto';
-import { rm, stat } from 'node:fs/promises';
+import { readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   BACKUP_EXCLUDED_DATA,
@@ -53,6 +53,19 @@ import {
 } from './backup-files.js';
 import type { BackupStateValue } from './backup-files.js';
 import { DB_FILE } from './paths.js';
+
+// 停止の待ちが上限を過ぎ、Core が DB とロックを解放した後の旧い実行は、封筒・状態ファイルの書き込みも削除もしない
+// （再起動した Core の状態を古い状態で上書きしない・新しい Core が書いている一時ファイルを消さない。PR #175 の 6 回目の P2）。
+class BackupFenced extends Error {
+  constructor() {
+    super('backup_fenced');
+    this.name = 'BackupFenced';
+  }
+}
+
+// 作業用の写し（backup-work の snapshot-<UUID>.sqlite とその付随ファイル）の名前。
+const WORK_FILE =
+  /^snapshot-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.sqlite(?:-wal|-shm|-journal)?$/u;
 
 export const BACKUP_WORK_DIR = 'backup-work';
 // 1 日 1 回（03）。
@@ -152,6 +165,9 @@ export interface BackupService {
   // Core は DB を閉じてロックを解放する前にこれを待つ（旧い Core が再起動した Core と封筒・状態ファイルを取り合わない。
   // PR #175 の 5 回目の P2）。
   close(): Promise<void>;
+  // 異常終了（強制終了・電源断）で作業用のディレクトリに残った平文の写し（snapshot-*.sqlite とその付随ファイル）を消す。
+  // Core の排他ロックを取った後（動いている写しがないとき）に呼ぶ。消した数を返す。
+  recover(): Promise<number>;
 }
 
 export function createBackupService(
@@ -165,6 +181,11 @@ export function createBackupService(
   let chain: Promise<unknown> = Promise.resolve();
   // 停止の準備に入った（新しい実行・掃除を受け付けない）。
   let closing = false;
+  // 停止の待ちが上限を過ぎて Core が先へ進んだ。以後、旧い実行は副作用（書き込み・削除）を始めない。
+  let fenced = false;
+  const assertLive = (): void => {
+    if (fenced) throw new BackupFenced();
+  };
   const exclusive = <T>(body: () => Promise<T>): Promise<T> => {
     const next = chain.then(body, body);
     chain = next.catch(() => undefined);
@@ -268,6 +289,7 @@ export function createBackupService(
   async function markSweepIncomplete(
     reasons: readonly string[],
   ): Promise<void> {
+    if (fenced) return;
     if (reasons.every((reason) => reason.startsWith('config_'))) return;
     try {
       const state = await readBackupState(dataDir);
@@ -286,6 +308,8 @@ export function createBackupService(
     try {
       result = await sweepNow();
     } catch (error) {
+      if (error instanceof BackupFenced)
+        return { ok: false, reasons: ['fenced'] };
       log(`バックアップの掃除に失敗しました（${(error as Error).name}）。`);
       result = { ok: false, reasons: ['sweep_failed'] };
     }
@@ -315,6 +339,7 @@ export function createBackupService(
     // 取り残された一時ファイル（書きかけの封筒）は封筒ではない。run と sweep は同時に動かないので、いま書いている最中のものはない。
     let removedTemps = 0;
     for (const temp of listing.temps) {
+      assertLive();
       await rm(temp, { force: true }).then(
         () => {
           removedTemps += 1;
@@ -406,6 +431,7 @@ export function createBackupService(
       if (decision.action !== 'delete') continue;
       const file = listing.files[index];
       if (file === undefined) continue;
+      assertLive();
       try {
         // すでにない封筒（別の手段で消えた）は削除できたものとして扱う（force は ENOENT だけを無視する）。
         await (options.removeFile ?? ((path) => rm(path, { force: true })))(
@@ -418,6 +444,7 @@ export function createBackupService(
       }
     }
     // 次の判定の最終確認時刻は、時計が戻っていても進める側（effective_now）にする。
+    assertLive();
     await writeBackupState(dataDir, {
       ...state,
       last_checked_at: plan.effective_now,
@@ -485,6 +512,8 @@ export function createBackupService(
     if (!key.ok) return { ok: false, reasons: [`backup_key_${key.reason}`] };
     const stateRead = await readBackupState(dataDir);
     if (!stateRead.ok) return { ok: false, reasons: ['state_invalid'] };
+    // 前の実行が異常終了して残した写しを消す（この実行は排他の中で、動いている写しはない）。
+    await recoverWorkDir();
     const snapshot = await takeBackupSnapshot({
       sourcePath: join(dataDir, DB_FILE),
       workDir,
@@ -546,12 +575,15 @@ export function createBackupService(
           reasons: problems.length > 0 ? problems : ['manifest_schema_invalid'],
         };
       await options.beforeWrite?.();
+      assertLive();
       await writeBackupFileAtomic(
         config.config.directory,
         backupId,
         encodeBackupFile(manifest, payload),
+        { beforeRename: assertLive },
       );
       const state = stateRead.value;
+      assertLive();
       await writeBackupState(dataDir, {
         ...state,
         first_seen: { ...state.first_seen, [backupId]: createdAt },
@@ -580,12 +612,31 @@ export function createBackupService(
         },
       };
     } catch (error) {
+      if (error instanceof BackupFenced) throw error;
       log(`バックアップを書けませんでした（${(error as Error).name}）。`);
       return { ok: false, reasons: ['backup_write_failed'] };
     } finally {
       // 平文の写しは作業用のディレクトリに残さない。
       await rm(snapshot.path, { force: true }).catch(() => undefined);
     }
+  }
+
+  // 作業用のディレクトリに残った平文の写しを消す（名前が snapshot-<UUID>.sqlite とその付随ファイルのものだけ）。
+  async function recoverWorkDir(): Promise<number> {
+    let names: string[];
+    try {
+      names = await readdir(workDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+      throw error;
+    }
+    let removed = 0;
+    for (const name of names) {
+      if (!WORK_FILE.test(name)) continue;
+      await rm(join(workDir, name), { force: true });
+      removed += 1;
+    }
+    return removed;
   }
 
   async function dueAction(): Promise<'backup' | 'sweep' | null> {
@@ -633,6 +684,8 @@ export function createBackupService(
             try {
               created = await createBackup();
             } catch (error) {
+              if (error instanceof BackupFenced)
+                return { ok: false, reasons: ['fenced'], sweep: null };
               log(`バックアップに失敗しました（${(error as Error).name}）。`);
               created = {
                 ok: false as const,
@@ -646,6 +699,18 @@ export function createBackupService(
             return { ...created.result, sweep: sweep };
           }),
     dueAction,
+    recover: () =>
+      exclusive(async () => {
+        try {
+          const removed = await recoverWorkDir();
+          if (removed > 0)
+            log(`異常終了で残った作業用の写しを ${removed} 件消しました。`);
+          return removed;
+        } catch (error) {
+          log(`作業用の写しを消せませんでした（${(error as Error).name}）。`);
+          return 0;
+        }
+      }),
     async close() {
       closing = true;
       let timer: NodeJS.Timeout | undefined;
@@ -658,10 +723,13 @@ export function createBackupService(
         limit,
       ]);
       if (timer !== undefined) clearTimeout(timer);
-      if (!drained)
+      if (!drained) {
+        // 待たずに先へ進む。以後、旧い実行は書き込み・削除をしない（Core が DB とロックを解放した後に状態を壊さない）。
+        fenced = true;
         log(
           '実行中のバックアップが上限の時間内に終わりませんでした。待たずに停止を進めます。',
         );
+      }
     },
     async due() {
       return (await dueAction()) !== null;

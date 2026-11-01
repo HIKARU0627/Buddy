@@ -1515,6 +1515,118 @@ test('停止: 終わらない実行は上限の時間だけ待ち、その後は
   );
 });
 
+// レビュー（PR #175 の 6 回目の P2）の再現: 停止の待ちが上限を過ぎて Core がロックを解放した後、止めていた旧い実行を
+// 解放しても、新しい Core の封筒・状態ファイルを壊さない。
+test('停止: 上限を過ぎて先へ進んだ後に、止めていた旧い実行を解放しても、書き込みも削除もせず、新しい Core の状態を壊さない', async (t) => {
+  let entered = false;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const r = await rig(t, {
+    beforeWrite: async () => {
+      entered = true;
+      await gate;
+    },
+    drainMs: 100,
+  });
+  await ready(r);
+  const running = r.handle.backup.run();
+  for (let i = 0; i < 400 && !entered; i += 1)
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(entered, true);
+  // 上限（100ms）を過ぎて、Core は待たずに DB とロックを解放する。
+  await r.handle.stop('test');
+  // 再起動した新しい Core が、自分のバックアップを取る。
+  r.clock.value = T0 + 1000;
+  const again = await startCore({
+    dataDir: r.dataDir,
+    keyStore: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    shutdownGraceMs: 200,
+    probeTimeoutMs: 300,
+    now: () => new Date(r.clock.value),
+    log: () => undefined,
+    backup: { keyStore: r.keys },
+  });
+  onCleanup(t, async () => {
+    await again.stop('test').catch(() => undefined);
+  });
+  const mine = await again.backup.run();
+  assert.ok(mine.ok);
+  const mineFile = `buddy-${mine.backup_id}.buddybackup`;
+  assert.deepEqual(await backupFiles(r), [mineFile]);
+  // 止めていた旧い実行を解放する。封筒を書かず（一時ファイルも作らない）、状態ファイルも上書きしない。
+  r.clock.value = T0 + 2000;
+  release();
+  const old = await running;
+  assert.equal(old.ok, false);
+  assert.deepEqual(old.ok ? [] : old.reasons, ['fenced']);
+  assert.equal(old.ok ? null : old.sweep, null);
+  assert.deepEqual(await backupFiles(r), [mineFile]);
+  assert.deepEqual(
+    (await readdir(r.backupDir)).filter((name) => name.endsWith('.tmp')),
+    [],
+  );
+  const status = await again.backup.status();
+  assert.equal(status.last_success?.backup_id, mine.backup_id);
+  assert.equal(status.last_success?.created_at, mine.created_at);
+});
+
+// レビュー（PR #175 の 6 回目の P2）の再現: 異常終了（強制終了・電源断）で作業用のディレクトリに残った平文の写しは、
+// 再起動した Core が（排他ロックを取った後に）回収する。実行の始めにも回収する。ほかのファイルには触れない。
+const ORPHAN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const ORPHAN_FILES = [
+  `snapshot-${ORPHAN_ID}.sqlite`,
+  `snapshot-${ORPHAN_ID}.sqlite-wal`,
+  `snapshot-${ORPHAN_ID}.sqlite-shm`,
+  `snapshot-${ORPHAN_ID}.sqlite-journal`,
+];
+const KEPT_FILES = ['keep.txt', 'snapshot-not-a-uuid.sqlite'];
+
+async function plantOrphans(dataDir: string): Promise<string> {
+  const work = join(dataDir, BACKUP_WORK_DIR);
+  await mkdir(work, { recursive: true });
+  for (const name of [...ORPHAN_FILES, ...KEPT_FILES])
+    await writeFile(join(work, name), 'residue');
+  return work;
+}
+
+test('起動: 異常終了で残った作業用の写しと付随ファイルを、排他ロックを取った後に消し、ほかのファイルには触れない', async (t) => {
+  const r = await rig(t);
+  await ready(r);
+  await r.handle.stop('crash');
+  const work = await plantOrphans(r.dataDir);
+  assert.equal((await readdir(work)).length, 6);
+  const logs: string[] = [];
+  const again = await startCore({
+    dataDir: r.dataDir,
+    keyStore: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    shutdownGraceMs: 200,
+    probeTimeoutMs: 300,
+    now: () => new Date(r.clock.value),
+    log: (message) => logs.push(message),
+    backup: { keyStore: r.keys },
+  });
+  onCleanup(t, async () => {
+    await again.stop('test').catch(() => undefined);
+  });
+  // 起動が終わった時点で、取り残しは消えている。
+  assert.deepEqual(sorted(await readdir(work)), sorted(KEPT_FILES));
+  assert.equal(
+    logs.some((line) => line.includes('作業用の写しを 4 件消しました')),
+    true,
+  );
+});
+
+test('実行: 始めに、前の実行が残した作業用の写しを消す', async (t) => {
+  const r = await rig(t);
+  await ready(r);
+  const work = await plantOrphans(r.dataDir);
+  const run = await r.handle.backup.run();
+  assert.ok(run.ok);
+  assert.deepEqual(sorted(await readdir(work)), sorted(KEPT_FILES));
+});
+
 test('掃除: 設定がないだけの失敗（config_*）は掃除の未完了に数えない', async (t) => {
   const r = await rig(t, { config: false });
   const result = await r.handle.backup.sweep();

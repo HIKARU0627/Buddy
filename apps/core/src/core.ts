@@ -734,6 +734,8 @@ export async function startCore(
         store: opened.store,
         backupKeys,
       };
+      // 排他ロックを取った後（動いている写しはない）に、前の異常終了で残った作業用の写しを消す。
+      await backup.recover();
       if (options.backup?.scheduler !== undefined)
         backupScheduler = startBackupScheduler({
           service: backup,

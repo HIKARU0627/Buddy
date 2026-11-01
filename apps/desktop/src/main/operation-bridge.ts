@@ -339,23 +339,40 @@ export class OperationBridge {
 
   // 流れへの発言の結果（StreamTurnResponse）も、会話への発言と同じ表示用の値にする（UI-03、ADR 0032）。
   streamTurnResult(
-    turn: Pick<TurnResponse, 'status' | 'reply_text' | 'result_view'>,
+    turn: Pick<
+      TurnResponse,
+      'status' | 'reply_text' | 'result_view' | 'session_control'
+    >,
   ): DesktopTurnResult {
     return this.#turnResult(turn);
   }
 
   #turnResult(
-    turn: Pick<TurnResponse, 'status' | 'reply_text' | 'result_view'>,
+    turn: Pick<
+      TurnResponse,
+      'status' | 'reply_text' | 'result_view' | 'session_control'
+    >,
   ): DesktopTurnResult {
     const view = turn.result_view;
+    // 会話の操作（照合表に当たった発言。B05-05）は、操作の名前だけを画面・main の音声の制御へ渡す。
+    const control =
+      turn.session_control == null
+        ? {}
+        : { session_control: turn.session_control };
     if (view === null)
-      return { status: turn.status, reply_text: turn.reply_text, result: null };
+      return {
+        status: turn.status,
+        reply_text: turn.reply_text,
+        result: null,
+        ...control,
+      };
     const count = (kind: string) =>
       view.item_refs.filter((item) => item.kind === kind).length;
     const operation = view.item_refs.find((item) => item.kind === 'operation');
     return {
       status: turn.status,
       reply_text: turn.reply_text,
+      ...control,
       result: {
         kind: view.kind,
         status: view.status,

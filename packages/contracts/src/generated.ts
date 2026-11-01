@@ -676,6 +676,15 @@ export type StorageMode = 'normal' | 'extended' | 'private';
  */
 export type RouteRevision = string;
 /**
+ * 会話そのものの操作（設計 10 §5 v0.6、質問 126）。照合表（SessionControlPhrases）と画面のボタンが同じ操作を指す。「処理を取り消す」（cancel_workflow）はここに含めない別の命令。
+ */
+export type SessionControlAction =
+  | 'extend_silence'
+  | 'stop_playback'
+  | 'end_conversation'
+  | 'start_private_conversation'
+  | 'reply_in_text';
+/**
  * 自動実行の安全停止の状態の版（設計 03 取り消しと安全停止、07 §2）。
  */
 export type SafetyRevision = string;
@@ -973,6 +982,17 @@ export type DesktopIpcRequest =
       channel: 'desktop.voice_consent_revoke';
       request_id: Id;
       payload: null;
+    }
+  | {
+      channel: 'desktop.voice_control';
+      request_id: Id;
+      payload: {
+        action:
+          | 'stop_playback'
+          | 'end_conversation'
+          | 'reply_in_voice'
+          | 'reply_in_text';
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1126,7 +1146,8 @@ export type DesktopIpcResponse =
       channel:
         | 'desktop.get_voice'
         | 'desktop.voice_continue'
-        | 'desktop.voice_consent_revoke';
+        | 'desktop.voice_consent_revoke'
+        | 'desktop.voice_control';
       outcome: 'ok';
       voice: DesktopVoiceView;
     }
@@ -1336,7 +1357,7 @@ export type CanvasChartValue = number;
  */
 export type CanvasContentUrl = string;
 /**
- * 状態の層に出す音声の状態（設計 10 §1〜§3、01 いつも見える状態、B05-06、ADR 0050）。main が音声レンダラーと端末状態から作り、画面は表示するだけ。voice_state は状態欄と同じ値（null は音声レンダラーがまだ使えない）。external_send は音声を外部（Live の接続）へ送っている、または送っているかもしれない間（開始の命令を出してから、閉じる・停止の ACK を受けるか音声レンダラーを強制終了するまで）の true で、印を早く消さない側へ倒す。consent は端末が最後に記録した外部への送信の同意で、表示と確認ダイアログを出すかの判断にだけ使い、送ってよいかの正本ではない（正本は中枢。ADR 0038）。notice は入力の中断（再生停止の ACK が返らず全停止した）・始められなかった（接続できない・待っている間にリースを失った）・同意の取り消しを保存できなかった（次の起動で同意が戻るおそれがある。取り消しをやり直させる）の知らせ。理由のコード・送り先の名前は含めない。
+ * 状態の層に出す音声の状態（設計 10 §1〜§3、01 いつも見える状態、B05-06、ADR 0050）。main が音声レンダラーと端末状態から作り、画面は表示するだけ。voice_state は状態欄と同じ値（null は音声レンダラーがまだ使えない）。external_send は音声を外部（Live の接続）へ送っている、または送っているかもしれない間（開始の命令を出してから、閉じる・停止の ACK を受けるか音声レンダラーを強制終了するまで）の true で、印を早く消さない側へ倒す。consent は端末が最後に記録した外部への送信の同意で、表示と確認ダイアログを出すかの判断にだけ使い、送ってよいかの正本ではない（正本は中枢。ADR 0038）。notice は入力の中断（再生停止の ACK が返らず全停止した）・始められなかった（接続できない・待っている間にリースを失った）・同意の取り消しを保存できなかった（次の起動で同意が戻るおそれがある。取り消しをやり直させる）の知らせ。理由のコード・送り先の名前は含めない。 reply_mode は返し方（声／文字）。文字のときは音声の接続を開かず、③（聞き取って文字で返す）にする（B05-05、ADR 0052）。
  */
 export type DesktopVoiceView =
   | {
@@ -1350,6 +1371,10 @@ export type DesktopVoiceView =
       can_continue: true;
       notice:
         ('input_interrupted' | 'not_started' | 'consent_not_saved') | null;
+      /**
+       * この端末の返し方（声で返す・文字で返す。質問 107）。端末ごとの設定で、main が持つ。呼びかけ語は共通。
+       */
+      reply_mode: 'voice' | 'text';
     }
   | {
       visibility: 'shown';
@@ -1359,6 +1384,10 @@ export type DesktopVoiceView =
       can_continue: false;
       notice:
         ('input_interrupted' | 'not_started' | 'consent_not_saved') | null;
+      /**
+       * この端末の返し方（声で返す・文字で返す。質問 107）。端末ごとの設定で、main が持つ。呼びかけ語は共通。
+       */
+      reply_mode: 'voice' | 'text';
     };
 /**
  * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。
@@ -1397,7 +1426,8 @@ export type DesktopIpcChannel =
   | 'desktop.budget_manual_settle'
   | 'desktop.get_voice'
   | 'desktop.voice_continue'
-  | 'desktop.voice_consent_revoke';
+  | 'desktop.voice_consent_revoke'
+  | 'desktop.voice_control';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -3064,7 +3094,7 @@ export interface DeviceIOState {
   audio_lease_valid: boolean;
 }
 /**
- * 音声の制御イベント（設計 10 §2・§3・§7）。本文・文字起こし・認証情報を含めない。読み上げ要求は候補 ID だけを最大 5 件。
+ * 音声の制御イベント（設計 10 §2・§3・§7）。本文・文字起こし・認証情報を含めない。読み上げ要求は候補 ID だけを最大 5 件。 silence_extension は本人の「ちょっと待って」を中枢が照合したときの、無音の猶予の延長（本文・文字起こしは載せない）。
  */
 export interface VoiceEvent {
   schema: 'buddy.voice-event.v1';
@@ -3074,7 +3104,8 @@ export interface VoiceEvent {
     | 'delegation_processing'
     | 'delegation_backgrounded'
     | 'read_aloud_requested'
-    | 'audio_control';
+    | 'audio_control'
+    | 'silence_extension';
   device_id: Id;
   session_id: Id | null;
   live_session_id: Id | null;
@@ -3092,6 +3123,10 @@ export interface VoiceEvent {
     | [Id, Id, Id, Id, Id];
   audio_control: AudioControl | null;
   occurred_at: UtcTime;
+  /**
+   * event_type が silence_extension のときだけ（それ以外は省略）。「ちょっと待って」で、次の 1 つの無音の区間だけ猶予をこの値（ms）にする（設計 10 §3、ADR 0041・0052）。無音の判定は main だけが行う。
+   */
+  silence_extension_ms?: number;
 }
 /**
  * 会話そのものの操作の照合表（設計 10 §5 v0.6、質問 126）。意図判定（LLM）に入れず、画面のボタンと同じ処理をする。版を管理する。
@@ -4051,6 +4086,10 @@ export interface TurnResponse {
   status: 'answered' | 'clarification' | 'background' | 'session_control';
   result_view: ResultView | null;
   reply_text: string | null;
+  /**
+   * status が session_control のときの操作（それ以外は省略か null）。LLM を呼ばずに照合表で決めた値で、画面・端末は同じ操作をボタンと同じ処理で行う。
+   */
+  session_control?: SessionControlAction | null;
 }
 /**
  * 表示の移動（設計 07 §2・§5、01 流れ C）。呼び出した端末の画面操作だけ。音声の移動は次の呼びかけで別に行う。承認は取り直さない。
@@ -4526,6 +4565,10 @@ export interface DesktopTurnResult {
     more_count: number;
     operation_ref: Id | null;
   } | null;
+  /**
+   * status が session_control のときの操作（それ以外は省略か null）。LLM を呼ばずに照合表で決めた値で、画面・端末は同じ操作をボタンと同じ処理で行う。
+   */
+  session_control?: SessionControlAction | null;
 }
 /**
  * 承認画面に出す確定した変更の内容（設計 01 承認画面の必須内容。B04-05、ADR 0031）。main が中枢の OperationPreview から作る表示用の値で、preview_id・content_hash・state_revision・アカウント ID・操作 ID を含めない（main が preview_ref の裏に持つ）。service は変更先（buddy は Buddy 内の用事）、target は対象（メールの ID・用事の一覧）。
@@ -5315,6 +5358,10 @@ export interface StreamTurnResponse {
   result_view: ResultView | null;
   reply_text: string | null;
   canvas: CanvasOpBatch | null;
+  /**
+   * status が session_control のときの操作（それ以外は省略か null）。LLM を呼ばずに照合表で決めた値で、画面・端末は同じ操作をボタンと同じ処理で行う。
+   */
+  session_control?: SessionControlAction | null;
 }
 /**
  * 流れ（stream）の中の今の区切り（ADR 0032）。画面には区切りとして見せず、保存モードの表示と表示の権限の判定に使う。carried_summary は前の区切りからつないだ要約の由来と期限。記録しない区切り・記録しない会話から出た区切り・流れの最初・忘却の指示で始めた区切りはつながない。期限が区切りの始まり以前の要約・自分を由来に含む要約は持たない（意味の検査）。

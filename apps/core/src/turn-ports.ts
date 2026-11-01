@@ -31,6 +31,10 @@ export type InterpreterReply =
       readonly kind: 'intent';
       readonly intent: string;
       readonly args: Readonly<Record<string, unknown>>;
+      // 直前の依頼との関係（new・clarification・correction・cancel）と、その対象の依頼の ID（B05-05、10 §5A-4）。
+      // 省略・知らない値は「分からない」として扱い、保留中の変更を勝手に再開しない。コードが対象の存在・一意性を検証する。
+      readonly relation?: string;
+      readonly target_workflow_id?: string;
     }
   | { readonly kind: 'unclear' };
 

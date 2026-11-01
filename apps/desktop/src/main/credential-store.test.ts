@@ -42,6 +42,24 @@ test('only OS-backed protection is accepted; weak or unknown backends are refuse
     [{ platform: 'win32', available: false }, 'encryption_unavailable'],
     [{ platform: 'linux', backend: 'gnome_libsecret' }, 'ok'],
     [{ platform: 'linux', backend: 'kwallet6' }, 'ok'],
+    // Linux の非同期の暗号化が実際に使う鍵の種類。v11（Secret Service・KWallet）と v12（portal）だけを強とする。
+    [{ platform: 'linux', backend: 'gnome_libsecret', asyncTag: 'v12' }, 'ok'],
+    [
+      { platform: 'linux', backend: 'gnome_libsecret', asyncTag: 'v10' },
+      'weak_backend',
+    ],
+    [
+      { platform: 'linux', backend: 'kwallet6', asyncTag: 'v10' },
+      'weak_backend',
+    ],
+    [
+      { platform: 'linux', backend: 'gnome_libsecret', asyncTag: null },
+      'weak_backend',
+    ],
+    [
+      { platform: 'linux', backend: 'gnome_libsecret', asyncTag: 'unknown' },
+      'weak_backend',
+    ],
     [{ platform: 'linux', backend: 'basic_text' }, 'weak_backend'],
     [{ platform: 'linux', backend: 'unknown' }, 'weak_backend'],
     [{ platform: 'linux', backend: null }, 'weak_backend'],
@@ -190,6 +208,22 @@ test('nothing is stored or read with weak protection, and a protector that retur
   );
   assert.equal(existsSync(path), false);
   assert.deepEqual(await loadCredential(path, weak), {
+    kind: 'unprotected',
+    reason: 'weak_backend',
+  });
+  // 同期 backend の名前が強くても、非同期側が固定鍵の fallback（v10）なら保存しない（AO レビューの P1）。
+  const fallback = mockProtector({
+    platform: 'linux',
+    backend: 'gnome_libsecret',
+    asyncTag: 'v10',
+  });
+  await assert.rejects(
+    saveCredential(path, fallback, credential()),
+    (error: unknown) =>
+      error instanceof CredentialStoreError && error.reason === 'weak_backend',
+  );
+  assert.equal(existsSync(path), false);
+  assert.deepEqual(await loadCredential(path, fallback), {
     kind: 'unprotected',
     reason: 'weak_backend',
   });

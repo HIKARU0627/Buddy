@@ -2,8 +2,9 @@
 //
 // - トークンと中枢の証明書・指紋を一つの記録にし、Electron の safeStorage（macOS はキーチェーン、Windows は DPAPI）で
 //   暗号化して userData の device-credential.bin に置く。平文をディスクに置かない。
-// - 保護の弱い方式しか使えない（Linux の basic_text・判定できない backend・暗号化が使えない）ときは保存しない。
-//   その場合はペアリングもしない（受け取っても保存できないトークンを作らない）。
+// - 保護の弱い方式しか使えない（Linux の basic_text・判定できない backend・非同期の暗号化が固定鍵の
+//   fallback（v10）・暗号化が使えない）ときは保存しない。その場合はペアリングもしない（受け取っても
+//   保存できないトークンを作らない）。
 // - safeStorage の呼び出しは Electron の層（electron/main.ts）にだけ置き、ここは SecretProtector を受け取る
 //   （試験は模擬を注入し、実機のキーチェーン・safeStorage を使わない）。Electron 45 で同期の safeStorage が
 //   非推奨（46 で削除）になったため、後継の非同期 API だけを使う（ADR 0025 の追記）。
@@ -37,6 +38,10 @@ export interface SecretProtector {
   isEncryptionAvailableAsync(): Promise<boolean>;
   // Linux だけ: safeStorage.getSelectedStorageBackend() の値。他の OS は null。
   selectedBackend(): string | null;
+  // Linux だけ: 非同期の暗号化で実際に選ばれた鍵の種類（暗号文の先頭の tag）。他の OS は null。
+  // v11（Secret Service・KWallet）と v12（XDG portal）は OS の鍵束から導いた鍵、v10 は固定鍵の
+  // Posix fallback（第三者が復号できる）なので、protectionCheck は v10 を弱いとして拒否する。
+  asyncKeyTag(): Promise<string | null>;
   encryptStringAsync(plain: string): Promise<Buffer>;
   decryptStringAsync(cipher: Buffer): Promise<DecryptedSecret>;
 }
@@ -63,6 +68,10 @@ const STRONG_LINUX_BACKENDS: readonly string[] = [
   'kwallet6',
 ];
 
+// Linux の非同期の暗号化で OS の鍵束から導いた鍵の tag。v10 は固定鍵の Posix fallback（弱い）。
+// 同期の backend が gnome_libsecret・kwallet でも、鍵束に接続できないと非同期側は v10 に落ちる。
+const STRONG_LINUX_ASYNC_TAGS: readonly string[] = ['v11', 'v12'];
+
 export async function protectionCheck(
   protector: SecretProtector,
 ): Promise<ProtectionCheck> {
@@ -84,7 +93,17 @@ export async function protectionCheck(
     } catch {
       backend = null;
     }
-    return backend !== null && STRONG_LINUX_BACKENDS.includes(backend)
+    if (backend === null || !STRONG_LINUX_BACKENDS.includes(backend))
+      return { ok: false, reason: 'weak_backend' };
+    // 同期の backend の名前だけでなく、非同期の暗号化が実際に使う鍵の種類を確かめる。
+    // 鍵束に接続できないと Electron は固定鍵の Posix fallback（v10）に落ちる。
+    let keyTag: string | null;
+    try {
+      keyTag = await protector.asyncKeyTag();
+    } catch {
+      keyTag = null;
+    }
+    return keyTag !== null && STRONG_LINUX_ASYNC_TAGS.includes(keyTag)
       ? { ok: true }
       : { ok: false, reason: 'weak_backend' };
   }

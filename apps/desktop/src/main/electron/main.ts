@@ -771,6 +771,15 @@ function secretProtector(): SecretProtector {
       process.platform === 'linux'
         ? safeStorage.getSelectedStorageBackend()
         : null,
+    asyncKeyTag: async () => {
+      if (process.platform !== 'linux') return null;
+      // 秘密ではない固定の文字列で、実際に選ばれた鍵の種類（暗号文の先頭の tag）を確かめる。
+      // v10 は固定鍵の Posix fallback なので protectionCheck が拒否する。
+      const probe = await safeStorage.encryptStringAsync(
+        'buddy-safe-storage-probe-v1',
+      );
+      return probe.subarray(0, 3).toString('ascii');
+    },
     encryptStringAsync: (plain) => safeStorage.encryptStringAsync(plain),
     decryptStringAsync: async (cipher) => {
       const decrypted = await safeStorage.decryptStringAsync(cipher);

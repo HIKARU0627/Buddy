@@ -120,6 +120,8 @@ export interface MockProtectorOptions {
   readonly platform?: NodeJS.Platform;
   readonly available?: boolean;
   readonly backend?: string | null;
+  // Linux の非同期の暗号化で実際に使う鍵の tag（既定は鍵束由来の v11）。
+  readonly asyncTag?: string | null;
   // 旧い鍵で復号できたときに shouldReEncrypt を返し、新しい鍵で書き直させる（鍵の入れ替えの模擬）。
   readonly reencryptFrom?: MockProtector;
   // 暗号化を失敗させる（移行の書き直しの失敗の模擬）。
@@ -148,6 +150,10 @@ export function mockProtector(
     platform: options.platform ?? 'darwin',
     isEncryptionAvailableAsync: async () => options.available ?? true,
     selectedBackend: () => options.backend ?? null,
+    asyncKeyTag: async () => {
+      if ((options.platform ?? 'darwin') !== 'linux') return null;
+      return options.asyncTag === undefined ? 'v11' : options.asyncTag;
+    },
     async encryptStringAsync(plain) {
       if (options.failEncrypt === true) throw new Error('mock_encrypt_failed');
       const nonce = randomBytes(12);

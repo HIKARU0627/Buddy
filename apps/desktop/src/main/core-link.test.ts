@@ -537,6 +537,32 @@ test(
   },
 );
 
+// Linux の同期 backend が強い名前でも、非同期の暗号化が固定鍵の Posix fallback（v10）に落ちていれば
+// 保存もペアリングも始めない（AO レビューの P1）。
+test(
+  'a strong Linux backend with the fixed-key async fallback is not paired and nothing is stored',
+  { timeout: 30_000 },
+  async (t) => {
+    const { link, invoke, view, fetches, dir } = await setup(t, {
+      protector: mockProtector({
+        platform: 'linux',
+        backend: 'gnome_libsecret',
+        asyncTag: 'v10',
+      }),
+    });
+    await link.start('unlocked');
+    assert.equal(view()['registration'], 'secure_storage_unavailable');
+    assert.equal(view()['link'], 'not_connected');
+    const response = await invoke('desktop.pairing_begin', {
+      host: '127.0.0.1',
+      port: 47443,
+    });
+    assert.equal(response['reason'], 'secure_storage_unavailable');
+    assert.equal(fetches(), 0);
+    assert.equal(existsSync(join(dir, CREDENTIAL_FILE)), false);
+  },
+);
+
 // レビューの指摘 L2: 末尾のドット・大文字の名前でペアリングしても、保存した記録を読み戻せる
 // （直す前は、毎回「再登録が必要」になっていた）。
 test(

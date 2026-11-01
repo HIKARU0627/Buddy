@@ -498,7 +498,8 @@
             }
           ],
           "renderers_created": 1,
-          "stopped_sending": true
+          "stopped_sending": true,
+          "stop_ms": 1
         },
         "ack_at_301ms": {
           "commands": [
@@ -544,7 +545,8 @@
               "io_epoch": "1"
             },
             "renderers_created": 1
-          }
+          },
+          "stop_ms": 1
         }
       }
     },
@@ -580,7 +582,8 @@
             "reason": "os_lock"
           }
         ],
-        "ack_missing_logged": true
+        "ack_missing_logged": true,
+        "stop_ms": 301
       }
     },
     {
@@ -651,7 +654,9 @@
             }
           ],
           "voice_state": "device_stopped"
-        }
+        },
+        "playing_before": true,
+        "playback_stop_ms": 1
       }
     },
     {

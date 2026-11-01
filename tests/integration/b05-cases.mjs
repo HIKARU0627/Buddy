@@ -406,7 +406,6 @@ async function qa24CloseUnconfirmed() {
       reservation: reservationOf(voiceReservationRows(w)[0]),
     };
     await w.advance(1);
-    await w.advance(10);
     const held = {
       closure: liveRows(w)[0].closure,
       reservation: reservationOf(voiceReservationRows(w)[0]),
@@ -452,14 +451,19 @@ async function lockWithFault(faults, afterLockMs, extra = () => undefined) {
     const t0 = w.clock.mono();
     w.device.applyLockQuery('lock_screen');
     const atDeadline = [];
-    for (const dt of [1, 300, 301]) {
-      await w.advance(t0 + dt - w.clock.mono());
-      atDeadline.push({
-        dt,
-        alive: w.slots.at(-1).alive,
-        kills: w.kills.length,
-        sent_frames: w.stats().sentFrames,
-      });
+    // 1 ms ずつ進め、外部への送信が止まった（音声レンダラーが止めた、または強制終了した）最初の時刻を測る。
+    let stopMs = null;
+    for (let dt = 1; dt <= 301; dt += 1) {
+      await w.advance(1);
+      const entry = w.slots.at(-1);
+      if (stopMs === null && (!entry.alive || !w.stats().sending)) stopMs = dt;
+      if (dt === 1 || dt === 300 || dt === 301)
+        atDeadline.push({
+          dt,
+          alive: entry.alive,
+          kills: w.kills.length,
+          sent_frames: w.stats().sentFrames,
+        });
     }
     await w.advance(afterLockMs);
     out = {
@@ -467,6 +471,7 @@ async function lockWithFault(faults, afterLockMs, extra = () => undefined) {
       acks: acksSince(w, t0),
       kills: w.kills.map((entry) => ({ dt: entry.at - t0 })),
       renderer_alive: w.slots.at(-1).alive,
+      stop_ms: stopMs,
       frames_at: atDeadline,
       frames_at_end: w.stats().sentFrames,
       logs: [...w.logs],
@@ -505,6 +510,7 @@ async function x30AckDeadline() {
     acks: run.acks,
     kills: run.kills,
     renderer_alive: run.renderer_alive,
+    stop_ms: run.stop_ms,
     ack_missing_logged: run.logs.includes('voice_ack_missing:voice.suspend_io'),
     device: run.device,
     core_close_requests: run.core_close_requests,
@@ -513,7 +519,7 @@ async function x30AckDeadline() {
   });
   return {
     ...summary_of(late),
-    voice_stop_ms: 1,
+    voice_stop_ms: ok.stop_ms,
     checks: {
       ack_at_300ms: pick(ok),
       ack_at_301ms: { ...pick(late), late_ack: late.extra },
@@ -530,8 +536,9 @@ async function x30HungRenderer() {
   );
   return {
     ...summary_of(hung),
-    voice_stop_ms: null,
+    voice_stop_ms: hung.stop_ms,
     checks: {
+      stop_ms: hung.stop_ms,
       commands: hung.commands,
       acks: hung.acks,
       kills: hung.kills,
@@ -557,9 +564,17 @@ async function x30StopPlaybackWithoutAck() {
     async (w) => {
       await w.begin();
       await w.advance(2000);
+      // 相手の音声を再生中にしてから停止する。
+      w.remoteAudio();
+      await w.advance(100);
+      const playingBefore = w.stats().playing;
       const t0 = w.clock.mono();
       w.ctl.applyControl('stop_playback');
-      await w.advance(300);
+      let playbackStopMs = null;
+      for (let dt = 1; dt <= 300; dt += 1) {
+        await w.advance(1);
+        if (playbackStopMs === null && !w.stats().playing) playbackStopMs = dt;
+      }
       const atDeadline = {
         commands: commandsSince(w, t0),
         device: device(w),
@@ -570,8 +585,10 @@ async function x30StopPlaybackWithoutAck() {
       await w.advance(1);
       await w.advance(2000);
       result = summary(w, {
-        voice_stop_ms: 1,
+        voice_stop_ms: playbackStopMs,
         checks: {
+          playing_before: playingBefore,
+          playback_stop_ms: playbackStopMs,
           at_300ms: atDeadline,
           after_deadline: {
             commands: commandsSince(w, t0),

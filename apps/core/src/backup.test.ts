@@ -57,7 +57,7 @@ import { callControl } from './control-channel.js';
 import { startCore } from './core.js';
 import type { CoreHandle } from './core.js';
 import { applyForgetAndSyncLedger } from './forget-ledger.js';
-import { FORGET_LEDGER_FILE } from './paths.js';
+import { FORGET_LEDGER_FILE, LOCK_FILE } from './paths.js';
 
 const DATA_KEY = Buffer.alloc(32, 0x41);
 const contract = createApiContract();
@@ -89,6 +89,10 @@ async function rig(
     readonly removeFile?: (path: string) => Promise<void>;
     // 掃除の開始時の差し込み口（掃除が始まる前の失敗の再現）。
     readonly beforeSweep?: () => void | Promise<void>;
+    // 封筒を書く直前の差し込み口（実行の途中で止める）。
+    readonly beforeWrite?: () => void | Promise<void>;
+    // 停止が実行中のバックアップを待つ上限（ミリ秒）。
+    readonly drainMs?: number;
   } = {},
 ): Promise<Rig> {
   const base = await mkdtemp(join(tmpdir(), 'buddy-backup-'));
@@ -125,6 +129,10 @@ async function rig(
       ...(options.beforeSweep === undefined
         ? {}
         : { beforeSweep: options.beforeSweep }),
+      ...(options.beforeWrite === undefined
+        ? {}
+        : { beforeWrite: options.beforeWrite }),
+      ...(options.drainMs === undefined ? {} : { drainMs: options.drainMs }),
     },
   });
   onCleanup(t, async () => {
@@ -1340,6 +1348,8 @@ test('定期の確認: 作成の成功の保存の後、掃除が終わる前に
   const r = await rig(t, {
     // 掃除の開始で止まったままにする（プロセスが落ちた状態の再現）。
     beforeSweep: () => (hang ? new Promise<void>(() => undefined) : undefined),
+    // 終わらない処理（落ちたプロセスの再現）を、停止が長く待たない。
+    drainMs: 100,
   });
   await ready(r);
   const first = await r.handle.backup.run();
@@ -1414,6 +1424,95 @@ test('定期の確認: 作成の成功の保存の後、掃除が終わる前に
   );
   assert.equal((await again.backup.status()).sweep_incomplete, false);
   assert.equal(await again.backup.dueAction(), null);
+});
+
+// レビュー（PR #175 の 5 回目の P2）の再現: Core の停止は、実行中のバックアップが終わるまで待ち、その間は DB とロックを
+// 解放しない。停止の準備に入った後の新しい実行は断る。
+test('停止: 実行中のバックアップが終わるまで排他ロックを残し、停止の後の新しい実行は断り、終わった後に解放する', async (t) => {
+  let entered = false;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const r = await rig(t, {
+    beforeWrite: async () => {
+      entered = true;
+      await gate;
+    },
+  });
+  await ready(r);
+  const lock = join(r.dataDir, LOCK_FILE);
+  assert.equal((await stat(lock)).isFile(), true);
+  // 封筒を書く直前で止まる実行（実行の途中）。
+  const running = r.handle.backup.run();
+  for (let i = 0; i < 400 && !entered; i += 1)
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(entered, true);
+  let stopped = false;
+  const stopping = r.handle.stop('test').then(() => {
+    stopped = true;
+  });
+  // 停止を要求しても、実行が終わるまで停止は終わらず、ロックは残る。
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.equal(stopped, false);
+  assert.equal((await stat(lock)).isFile(), true);
+  // 停止の準備に入った後の新しい実行・掃除は断る（取り合いを増やさない）。
+  const refusedRun = await r.handle.backup.run();
+  assert.equal(refusedRun.ok, false);
+  assert.deepEqual(refusedRun.ok ? [] : refusedRun.reasons, ['closing']);
+  assert.deepEqual(await r.handle.backup.sweep(), {
+    ok: false,
+    reasons: ['closing'],
+  });
+  assert.equal(await r.handle.backup.dueAction(), null);
+  // 実行が終わると、実行の結果は成功で、その後に停止が終わり、ロックが解放される。
+  release();
+  const result = await running;
+  assert.ok(result.ok, JSON.stringify(result));
+  await stopping;
+  assert.equal(stopped, true);
+  await assert.rejects(stat(lock), { code: 'ENOENT' });
+  assert.equal((await backupFiles(r)).length, 1);
+  // 再起動した Core は、旧い Core が書き切った状態から始まる（取り合いはない）。
+  const again = await startCore({
+    dataDir: r.dataDir,
+    keyStore: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    shutdownGraceMs: 200,
+    probeTimeoutMs: 300,
+    now: () => new Date(r.clock.value),
+    log: () => undefined,
+    backup: { keyStore: r.keys },
+  });
+  onCleanup(t, async () => {
+    await again.stop('test').catch(() => undefined);
+  });
+  const status = await again.backup.status();
+  assert.equal(status.last_success?.backup_id, result.backup_id);
+  assert.equal(status.sweep_incomplete, false);
+});
+
+test('停止: 終わらない実行は上限の時間だけ待ち、その後は待たずに DB を閉じてロックを解放する', async (t) => {
+  let entered = false;
+  const r = await rig(t, {
+    beforeWrite: () => {
+      entered = true;
+      return new Promise<void>(() => undefined);
+    },
+    drainMs: 150,
+  });
+  await ready(r);
+  void r.handle.backup.run();
+  for (let i = 0; i < 400 && !entered; i += 1)
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(entered, true);
+  const started = Date.now();
+  await r.handle.stop('test');
+  assert.equal(Date.now() - started >= 100, true, '上限まで待たなかった');
+  await assert.rejects(stat(join(r.dataDir, LOCK_FILE)), { code: 'ENOENT' });
+  assert.equal(
+    r.logs.some((line) => line.includes('上限の時間内に終わりませんでした')),
+    true,
+  );
 });
 
 test('掃除: 設定がないだけの失敗（config_*）は掃除の未完了に数えない', async (t) => {

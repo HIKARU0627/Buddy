@@ -304,7 +304,9 @@ export interface CoreBackupOptions {
     readonly retryAfterFailureMs?: number;
   };
   // 試験用: 封筒を書く直前に呼ぶ。
-  readonly beforeWrite?: () => void;
+  readonly beforeWrite?: () => void | Promise<void>;
+  // 試験用: 停止が実行中のバックアップの終わりを待つ上限（ミリ秒。既定は 5 分）。
+  readonly drainMs?: number;
   // 試験用: 封筒の削除（一時的な失敗の再現）。
   readonly removeFile?: (path: string) => Promise<void>;
   // 試験用: 掃除の開始時に呼ぶ（掃除が始まる前の失敗の再現）。
@@ -645,6 +647,11 @@ export async function startCore(
     // 予算月の定期の確認と、保存期限の掃除の定期実行を止める。
     if (budgetTimer !== null) clearInterval(budgetTimer);
     backupScheduler?.stop();
+    // 実行中のバックアップ・掃除の終わりを待つ（新しい実行は断る）。DB を閉じて排他ロックを解放する前に待ち、旧い Core が
+    // 再起動した Core と封筒・状態ファイルを取り合わないようにする（上限を過ぎたら待たずに進む）。
+    await step(async () => {
+      await backup?.close();
+    });
     retention?.close();
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
@@ -713,6 +720,9 @@ export async function startCore(
         ...(options.backup?.removeFile === undefined
           ? {}
           : { removeFile: options.backup.removeFile }),
+        ...(options.backup?.drainMs === undefined
+          ? {}
+          : { drainMs: options.backup.drainMs }),
         ...(options.backup?.beforeSweep === undefined
           ? {}
           : { beforeSweep: options.backup.beforeSweep }),

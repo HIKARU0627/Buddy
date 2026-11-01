@@ -72,8 +72,11 @@ export interface BackupServiceOptions {
   readonly now: () => Date;
   readonly log: (message: string) => void;
   readonly platform?: NodeJS.Platform;
-  // 試験用: 封筒を書く直前に呼ぶ（書く前の停止の再現）。
-  readonly beforeWrite?: () => void;
+  // 試験用: 封筒を書く直前に呼ぶ（書く前の停止の再現。実行の途中で止める）。
+  readonly beforeWrite?: () => void | Promise<void>;
+  // 停止（close）が、実行中のバックアップ・掃除の終わりを待つ上限（ミリ秒）。上限を過ぎたら待たずに進む（終わらない処理が
+  // Core の停止を止め続けない）。既定は 5 分。
+  readonly drainMs?: number;
   // 試験用: 封筒の削除（EBUSY・EACCES など一時的な失敗の再現）。既定は rm。
   readonly removeFile?: (path: string) => Promise<void>;
   // 試験用: 掃除の開始時に呼ぶ（保存先の一時的な利用不能・readdir の EIO など、掃除が始まる前の失敗の再現）。
@@ -145,6 +148,10 @@ export interface BackupService {
   // 次にすること。'backup' = 新しい封筒を取る（その中で掃除もする）、'sweep' = 前の掃除の削除の失敗が残っているので掃除だけを
   // 再試行する（新しい封筒は作らない）、null = 予定なし。設定がなければ null。
   dueAction(): Promise<'backup' | 'sweep' | null>;
+  // 停止の準備。新しい実行・掃除を受け付けなくし（以後は closing で断る）、実行中のものが終わるまで待つ（上限は drainMs）。
+  // Core は DB を閉じてロックを解放する前にこれを待つ（旧い Core が再起動した Core と封筒・状態ファイルを取り合わない。
+  // PR #175 の 5 回目の P2）。
+  close(): Promise<void>;
 }
 
 export function createBackupService(
@@ -156,6 +163,8 @@ export function createBackupService(
   const workDir = join(dataDir, BACKUP_WORK_DIR);
   // 1 度に 1 つだけ実行する（バックアップと掃除は互いに重ならない）。
   let chain: Promise<unknown> = Promise.resolve();
+  // 停止の準備に入った（新しい実行・掃除を受け付けない）。
+  let closing = false;
   const exclusive = <T>(body: () => Promise<T>): Promise<T> => {
     const next = chain.then(body, body);
     chain = next.catch(() => undefined);
@@ -536,7 +545,7 @@ export function createBackupService(
           ok: false,
           reasons: problems.length > 0 ? problems : ['manifest_schema_invalid'],
         };
-      options.beforeWrite?.();
+      await options.beforeWrite?.();
       await writeBackupFileAtomic(
         config.config.directory,
         backupId,
@@ -580,6 +589,7 @@ export function createBackupService(
   }
 
   async function dueAction(): Promise<'backup' | 'sweep' | null> {
+    if (closing) return null;
     const config = await loadConfig();
     if (!config.ok) return null;
     const state = await readBackupState(dataDir);
@@ -607,25 +617,52 @@ export function createBackupService(
 
   return {
     status,
-    sweep: () => exclusive(sweepTracked),
+    sweep: () =>
+      closing
+        ? Promise.resolve<SweepResult>({ ok: false, reasons: ['closing'] })
+        : exclusive(sweepTracked),
     run: () =>
-      exclusive(async (): Promise<BackupRunResult> => {
-        let created;
-        try {
-          created = await createBackup();
-        } catch (error) {
-          log(`バックアップに失敗しました（${(error as Error).name}）。`);
-          created = {
-            ok: false as const,
-            reasons: ['backup_failed'] as readonly string[],
-          };
-        }
-        // 作成の成否によらず掃除する（失敗が続いても期限を延ばさない）。
-        const sweep = await sweepTracked();
-        if (!created.ok) return { ok: false, reasons: created.reasons, sweep };
-        return { ...created.result, sweep: sweep };
-      }),
+      closing
+        ? Promise.resolve<BackupRunResult>({
+            ok: false,
+            reasons: ['closing'],
+            sweep: null,
+          })
+        : exclusive(async (): Promise<BackupRunResult> => {
+            let created;
+            try {
+              created = await createBackup();
+            } catch (error) {
+              log(`バックアップに失敗しました（${(error as Error).name}）。`);
+              created = {
+                ok: false as const,
+                reasons: ['backup_failed'] as readonly string[],
+              };
+            }
+            // 作成の成否によらず掃除する（失敗が続いても期限を延ばさない）。
+            const sweep = await sweepTracked();
+            if (!created.ok)
+              return { ok: false, reasons: created.reasons, sweep };
+            return { ...created.result, sweep: sweep };
+          }),
     dueAction,
+    async close() {
+      closing = true;
+      let timer: NodeJS.Timeout | undefined;
+      const limit = new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), options.drainMs ?? 300_000);
+        timer.unref();
+      });
+      const drained = await Promise.race([
+        chain.then(() => true as const),
+        limit,
+      ]);
+      if (timer !== undefined) clearTimeout(timer);
+      if (!drained)
+        log(
+          '実行中のバックアップが上限の時間内に終わりませんでした。待たずに停止を進めます。',
+        );
+    },
     async due() {
       return (await dueAction()) !== null;
     },

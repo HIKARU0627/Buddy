@@ -19,6 +19,12 @@ import type {
   SweepRow,
 } from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
+import {
+  ExpiryRejection,
+  deleteExpiredRow,
+  readExpiryRows,
+} from './expiry-store.js';
+import type { ExpiryDeleteValue, ExpiryFamily } from './expiry-store.js';
 import { pruneDeadLineage } from './forget-store.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import { isId, isSealedBlob } from './operation-commands.js';
@@ -134,12 +140,21 @@ export type RetentionOp =
       readonly limit: number;
       readonly after: OperationCursor | null;
     }
-  // 掃除の計画（domain の sweepPlan）へ渡す行を読む（B06-06d1）。操作と予算の月の組だけを返す。
-  // 発言・元情報・記憶・派生物は、削除の命令を作る作業（B06-06d2）で足す。
+  // 掃除の計画（domain の sweepPlan）へ渡す行を読む（B06-06d1）。操作と予算の月の組に、発言・元情報・記憶・派生物
+  // の行を足して返す（B06-07a-1。ADR 0058）。
   | { readonly kind: 'retention.sweep_rows'; readonly now: number }
   // 取り消しの期限（30 日、undo_window）を過ぎた undo_records を消す。補償の操作がまだ終わっていない
   // 記録は残す（ADR 0040・0051）。これで補償のない記録が 90 日の削除を止め続けない。
   | { readonly kind: 'retention.purge_undo_records'; readonly now: number }
+  // 期限の来た発言・元情報・派生物を、ID を指して 1 件ずつ別の transaction で消す（B06-07a-1、ADR 0058）。DB は行を
+  // 読み直し、domain の sweepPlan が now で「消す」と判定する行だけを消す（not_due・row_not_found は消さずに返す）。
+  // 記憶は memory.start_review・memory.delete_due を使う。
+  | {
+      readonly kind: 'retention.delete_expired';
+      readonly family: ExpiryFamily;
+      readonly ids: readonly string[];
+      readonly now: number;
+    }
   // 削除を伴う掃除の後の WAL の切り詰め（ADR 0040・0048）。マイグレーションの外でだけ実行する。
   | { readonly kind: 'retention.checkpoint' }
   // マイグレーションの外の定期の VACUUM（ADR 0016・0040・0048）。間隔は呼び出し側（Core の job）が決める。
@@ -271,6 +286,7 @@ export interface RetentionOpValues {
   'retention.purge_due_operations': RetentionBatchValue;
   'retention.sweep_rows': SweepRowsValue;
   'retention.purge_undo_records': UndoPurgeValue;
+  'retention.delete_expired': ExpiryDeleteValue;
   'retention.checkpoint': CheckpointValue;
   'retention.vacuum': VacuumValue;
   'task.read': TaskContentRecord | null;
@@ -321,6 +337,7 @@ export const RETENTION_WRITE_OPS: ReadonlySet<RetentionOpKind> = new Set([
   'retention.erase_due_bodies',
   'retention.purge_due_operations',
   'retention.purge_undo_records',
+  'retention.delete_expired',
   'retention.checkpoint',
   'retention.vacuum',
   'task.stage_content',
@@ -337,6 +354,7 @@ const KINDS: ReadonlySet<string> = new Set<RetentionOpKind>([
   'retention.purge_due_operations',
   'retention.sweep_rows',
   'retention.purge_undo_records',
+  'retention.delete_expired',
   'retention.checkpoint',
   'retention.vacuum',
   'task.read',
@@ -399,6 +417,24 @@ export function retentionOpShapeReasons(op: RetentionOp): string[] {
     case 'retention.purge_undo_records':
     case 'retention.sweep_rows':
       if (!isTime(op.now)) reasons.push('now_invalid');
+      break;
+    case 'retention.delete_expired':
+      if (!isTime(op.now)) reasons.push('now_invalid');
+      if (
+        op.family !== 'turn' &&
+        op.family !== 'source_item' &&
+        op.family !== 'derived'
+      )
+        reasons.push('family_invalid');
+      if (
+        !Array.isArray(op.ids) ||
+        op.ids.length < 1 ||
+        op.ids.length > RETENTION_BATCH_LIMIT ||
+        !op.ids.every(
+          (id) => typeof id === 'string' && id.length >= 1 && id.length <= 1024,
+        )
+      )
+        reasons.push('ids_invalid');
       break;
     case 'task.read':
       if (!isId(op.task_id)) reasons.push('task_id_invalid');
@@ -937,7 +973,37 @@ export function readSweepRows(
         .map((approval) => approval.approval_id),
     });
   }
+  // 発言・元情報・記憶・派生物（B06-07a-1）。
+  rows.push(...readExpiryRows(db));
   return rows;
+}
+
+// 期限の来た行を 1 件ずつ別の transaction で消す。拒否（not_due・row_not_found）は飛ばして続ける。成否不明・想定外の
+// 失敗・busy では止める（ここまでに消した行は戻らない。呼び出し側は結果の deleted だけを数える）。
+function runDeleteExpired(
+  db: SqliteDatabase,
+  op: Extract<RetentionOp, { kind: 'retention.delete_expired' }>,
+  beforeCommit: (() => void) | undefined,
+): ExpiryDeleteValue {
+  const deleted: string[] = [];
+  const skipped: { id: string; reasons: readonly string[] }[] = [];
+  for (const id of op.ids) {
+    try {
+      runImmediate(
+        db,
+        () => deleteExpiredRow(db, op.family, id, op.now),
+        beforeCommit,
+      );
+      deleted.push(id);
+    } catch (error) {
+      const result = failure(error);
+      if (result.halt || result.result.ok) throw new BatchStop(result);
+      const reasons = result.result.reasons;
+      if (reasons.includes('database_busy')) throw new BatchStop(result);
+      skipped.push({ id, reasons });
+    }
+  }
+  return { deleted, skipped };
 }
 
 // 取り消しの期限（30 日、undo_window）を過ぎた記録を消す。補償の操作がまだ終わっていない記録は残す
@@ -987,7 +1053,7 @@ class BatchStop extends Error {
 
 // 1 つの transaction の失敗を、命令の結果へ写す（ほかの store と同じ分け方）。
 function failure(error: unknown): RetentionStoreResult {
-  if (error instanceof RetentionRejection)
+  if (error instanceof RetentionRejection || error instanceof ExpiryRejection)
     return { result: rejected(error.reasons), halt: false };
   if (error instanceof Error && error.name === 'CommitUncertain')
     return {
@@ -1179,6 +1245,17 @@ export function executeRetentionOp(
     try {
       return {
         result: { ok: true, value: runBatch(db, op, beforeCommit) },
+        halt: false,
+      };
+    } catch (error) {
+      if (error instanceof BatchStop) return error.result;
+      return failure(error);
+    }
+  }
+  if (op.kind === 'retention.delete_expired') {
+    try {
+      return {
+        result: { ok: true, value: runDeleteExpired(db, op, beforeCommit) },
         halt: false,
       };
     } catch (error) {

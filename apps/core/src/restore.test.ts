@@ -421,7 +421,10 @@ test('a different data key, a missing key after the lock, and a key replaced bef
       reasons: ['data_key_unavailable:data_key_missing'],
     },
   );
-  assert.deepEqual((await readdir(dataDir)).sort(), ['buddy.sqlite']);
+  assert.deepEqual((await readdir(dataDir)).sort(), [
+    'buddy.sqlite',
+    'clock-state.json',
+  ]);
   const again = await start(t, dataDir);
   assert.equal(again.storeGeneration, generation);
   assert.equal(again.dataKeyCheck, 'matched');

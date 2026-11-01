@@ -15,7 +15,7 @@
             "live": true,
             "sending": true,
             "capturing": true,
-            "playing": false,
+            "playing": true,
             "ring_empty": false,
             "last_local_stop": null,
             "io_epoch": "0",
@@ -26,14 +26,23 @@
           "sent_frames_positive": true,
           "lease_active": true,
           "voice_state": "conversation_live",
-          "external_send": true
+          "external_send": true,
+          "played_frames_positive": true
         },
         "stop": {
           "commands": [
-            { "dt": 0, "channel": "voice.suspend_io", "reason": "os_lock" }
+            {
+              "dt": 0,
+              "channel": "voice.suspend_io",
+              "reason": "os_lock"
+            }
           ],
           "acks": [
-            { "dt": 1, "channel": "voice.suspend_io", "outcome": "applied" }
+            {
+              "dt": 1,
+              "channel": "voice.suspend_io",
+              "outcome": "applied"
+            }
           ],
           "renderer": {
             "live": false,
@@ -56,7 +65,14 @@
             "stop_scope": "local",
             "io_epoch": "1"
           },
-          "core_close_requests": [{ "dt": 0, "reason": "os_lock" }]
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "os_lock"
+            }
+          ],
+          "played_frames_after_stop": 0,
+          "late_audio_played": false
         },
         "core": {
           "live": {
@@ -66,7 +82,10 @@
             "audio_epoch": 1,
             "session_epoch": 1
           },
-          "reservation": { "status": "settled", "actual_gross": "15" },
+          "reservation": {
+            "status": "settled",
+            "actual_gross": "15"
+          },
           "provider_close_requests": 1,
           "provider_truth_seconds": 3
         },
@@ -96,7 +115,9 @@
             "stop_scope": "local",
             "io_epoch": "1"
           },
-          "accepted": { "outcome": "ok" },
+          "accepted": {
+            "outcome": "ok"
+          },
           "device": {
             "lock_state": "unlocked",
             "stop_scope": "none",
@@ -116,7 +137,10 @@
         "epoch_gap": {
           "continue_outcome": "voice_unavailable",
           "lease_responses": [
-            { "result": "rejected", "reasons": ["unknown_io_epoch"] }
+            {
+              "result": "rejected",
+              "reasons": ["unknown_io_epoch"]
+            }
           ],
           "lease_active": false,
           "renderer_sending": false,
@@ -165,8 +189,14 @@
           ],
           "first_live_is_closed": true,
           "reservations": [
-            { "status": "settled", "actual_gross": "15" },
-            { "status": "reserved", "actual_gross": null }
+            {
+              "status": "settled",
+              "actual_gross": "15"
+            },
+            {
+              "status": "reserved",
+              "actual_gross": null
+            }
           ],
           "commands": ["voice.start"]
         }
@@ -182,7 +212,7 @@
             "live": true,
             "sending": true,
             "capturing": true,
-            "playing": false,
+            "playing": true,
             "ring_empty": false,
             "last_local_stop": null,
             "io_epoch": "0",
@@ -194,10 +224,18 @@
         },
         "stop_playback": {
           "commands": [
-            { "dt": 0, "channel": "voice.stop_playback", "reason": "user_stop" }
+            {
+              "dt": 0,
+              "channel": "voice.stop_playback",
+              "reason": "user_stop"
+            }
           ],
           "acks": [
-            { "dt": 1, "channel": "voice.stop_playback", "outcome": "applied" }
+            {
+              "dt": 1,
+              "channel": "voice.stop_playback",
+              "outcome": "applied"
+            }
           ],
           "renderer": {
             "live": true,
@@ -215,7 +253,13 @@
           "lease_active": true,
           "core_close_requests": [],
           "live_closure": "open",
-          "renewals_kept": true
+          "renewals_kept": true,
+          "played_frames_after_stop": 0,
+          "late_old_audio": {
+            "playing": false,
+            "discarded": 1
+          },
+          "new_audio_plays": true
         },
         "close_voice_session": {
           "commands": [
@@ -247,7 +291,12 @@
           "external_send": false,
           "lease_active": false,
           "renewals_after": 0,
-          "core_close_requests": [{ "dt": 0, "reason": "conversation_ended" }],
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "conversation_ended"
+            }
+          ],
           "live_closure": "close_confirmed",
           "voice_state": "waiting_wake_word"
         },
@@ -260,7 +309,11 @@
             }
           ],
           "acks": [
-            { "dt": 1, "channel": "voice.suspend_io", "outcome": "applied" }
+            {
+              "dt": 1,
+              "channel": "voice.suspend_io",
+              "outcome": "applied"
+            }
           ],
           "renderer": {
             "live": false,
@@ -276,7 +329,12 @@
           },
           "external_send": false,
           "lease_active": false,
-          "core_close_requests": [{ "dt": 0, "reason": "device_io_stop" }],
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "device_io_stop"
+            }
+          ],
           "device": {
             "lock_state": "unlocked",
             "stop_scope": "local",

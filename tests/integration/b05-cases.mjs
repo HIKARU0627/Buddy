@@ -138,9 +138,13 @@ async function x13OsLock() {
   await withWorld({}, async (w) => {
     await w.begin();
     await w.advance(3000);
+    // 相手の音声を再生中にする（再生中から停止することを確かめるため）。
+    w.remoteAudio();
+    await w.advance(200);
     const before = {
       renderer: renderer(w),
       sent_frames_positive: w.stats().sentFrames > 0,
+      played_frames_positive: w.stats().playedFrames > 0,
       lease_active: w.ctl.leaseActive,
       voice_state: w.ctl.view().voice_state,
       external_send: w.ctl.view().external_send,
@@ -153,12 +157,17 @@ async function x13OsLock() {
       (entry) => entry.channel === 'voice.suspend_io',
     );
     const framesAtStop = w.stats().sentFrames;
+    const playedAtStop = w.stats().playedFrames;
     await w.advance(5000);
+    // 止めた後に届いた古い世代の音声は再生しない。
+    w.remoteAudio('0');
     const stop = {
       commands: commandsSince(w, t0),
       acks: acksSince(w, t0),
       renderer: renderer(w),
       sent_frames_after_stop: w.stats().sentFrames - framesAtStop,
+      played_frames_after_stop: w.stats().playedFrames - playedAtStop,
+      late_audio_played: w.stats().playing,
       renewals_after_stop: w.renewals.length - renewalsBefore,
       lease_active: w.ctl.leaseActive,
       view: w.ctl.view().visibility,
@@ -294,6 +303,8 @@ async function qa43ThreeStops() {
   await withWorld({}, async (w) => {
     await w.begin();
     await w.advance(1000);
+    w.remoteAudio();
+    await w.advance(100);
     const base = {
       renderer: renderer(w),
       lease_active: w.ctl.leaseActive,
@@ -304,6 +315,7 @@ async function qa43ThreeStops() {
     const renewals1 = w.renewals.length;
     w.ctl.applyControl('stop_playback');
     await w.advance(10);
+    const playedAtStop = w.stats().playedFrames;
     const stopPlayback = {
       commands: commandsSince(w, t1),
       acks: acksSince(w, t1),
@@ -315,6 +327,16 @@ async function qa43ThreeStops() {
     };
     await w.advance(3000);
     stopPlayback.renewals_kept = w.renewals.length > renewals1;
+    stopPlayback.played_frames_after_stop =
+      w.stats().playedFrames - playedAtStop;
+    // 止める前の出力の世代の音声が遅れて届いても再生しない。新しい世代の音声は、会話が続いているので再生できる。
+    w.remoteAudio('0');
+    stopPlayback.late_old_audio = {
+      playing: w.stats().playing,
+      discarded: w.stats().discardedAudio,
+    };
+    w.remoteAudio();
+    stopPlayback.new_audio_plays = w.stats().playing;
 
     // 2. 会話の終了: Live だけ閉じる。収音は保ち（端末内の KWS・③）、リースは止める。
     const t2 = w.clock.mono();
@@ -336,6 +358,8 @@ async function qa43ThreeStops() {
     // 3. 端末の入出力の停止: 収音・認識・再生・Live のすべてを止める。
     await w.begin();
     await w.advance(1000);
+    w.remoteAudio();
+    await w.advance(100);
     const t3 = w.clock.mono();
     w.device.stopFromMain();
     await w.advance(3000);

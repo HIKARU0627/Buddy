@@ -327,6 +327,13 @@ export async function withWorld(options, body) {
         wall,
         current: () => slots.at(-1) ?? null,
         stats: () => slots.at(-1)?.mock.stats ?? null,
+        // 相手（モデル）の音声が届く（模擬のレンダラーの受信トラック）。epoch は音声を作った時点の出力の世代（省略は今の世代）。
+        remoteAudio: (epoch) =>
+          slots
+            .at(-1)
+            ?.mock.remoteAudioArrived(
+              epoch ?? slots.at(-1).mock.stats.epochs.output ?? '0',
+            ),
         // 時計を進める（端末と中枢の timer を時刻の順に動かし、動かすたびに両側の処理を消化する）。
         advance: (ms) => clock.advance(ms),
         // 条件が満たされるまで、時計を進めずに両側の処理を消化する（実時間の上限つき）。

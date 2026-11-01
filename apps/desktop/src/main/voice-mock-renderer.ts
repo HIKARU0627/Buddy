@@ -116,6 +116,9 @@ export interface MockRendererStats {
   readonly ringFrames: number;
   // 外部へ送ったフレームの数（模擬。実際には送らない）。
   readonly sentFrames: number;
+  // 再生したフレームの数と、世代が古くて捨てた相手の音声の数（模擬。実際には鳴らさない）。
+  readonly playedFrames: number;
+  readonly discardedAudio: number;
   readonly clipsPlayed: readonly string[];
   readonly silenceTimeoutMs: number | null;
   readonly epochs: Readonly<Epochs>;
@@ -154,6 +157,8 @@ export class MockVoiceRenderer {
   #ring: Int16Array[] = [];
   #frameIndex = 0;
   #sentFrames = 0;
+  #playedFrames = 0;
+  #discardedAudio = 0;
   #clips: string[] = [];
   #silenceTimeoutMs: number | null = null;
   #lastLocalStop: VoiceIpcChannel | null = null;
@@ -172,6 +177,8 @@ export class MockVoiceRenderer {
       playing: this.#playing,
       ringFrames: this.#ring.length,
       sentFrames: this.#sentFrames,
+      playedFrames: this.#playedFrames,
+      discardedAudio: this.#discardedAudio,
       clipsPlayed: [...this.#clips],
       silenceTimeoutMs: this.#silenceTimeoutMs,
       epochs: { ...this.#epochs },
@@ -179,8 +186,27 @@ export class MockVoiceRenderer {
     };
   }
 
+  // 相手（モデル）の音声が届いた（WebRTC の受信トラックの模型）。outputEpoch はその音声を作った時点の出力の世代。
+  // Live が開いていて、世代が今の出力の世代より古くないときだけ再生を始める。古い世代の音声は再生せずに捨てる（10 §1A）。
+  remoteAudioArrived(outputEpoch: string): void {
+    if (!this.#live) return;
+    if (
+      rendererEpochDecision(
+        { output_epoch: outputEpoch },
+        this.#epochs.output === null
+          ? {}
+          : { output_epoch: this.#epochs.output },
+      ) === 'ignore_stale'
+    ) {
+      this.#discardedAudio += 1;
+      return;
+    }
+    this.#playing = true;
+  }
+
   // 20 ms ごとに呼ぶ。固まっていても、開いた送信トラックは止まらない（実機の WebRTC の模型）。
   tick(): void {
+    if (this.#playing) this.#playedFrames += 1;
     if (this.#hung) {
       if (this.#live && this.#sending) this.#sentFrames += 1;
       return;

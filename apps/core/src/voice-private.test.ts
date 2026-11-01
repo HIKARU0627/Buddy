@@ -235,6 +235,40 @@ test(
 );
 
 test(
+  'private: a private conversation entered in the gap just before the provider call (after the pre-check) still sends nothing to the provider',
+  TIMEOUT,
+  async () => {
+    // 判定は 3 回（1 段目・予約の後・2 段目）、登録の後の確認が 4 回目、provider の呼び出しの直前の確認が 5 回目。
+    // 4 回目までは記録する会話で、5 回目（呼び出しの直前）から記録しない会話。
+    let calls = 0;
+    const flip = () => {
+      calls += 1;
+      return calls >= 5;
+    };
+    await withRig(
+      async (rig) => {
+        await lease(rig);
+        const created = await rig.voice.createLiveSession(A, liveBody());
+        await rig.wait();
+        assert.deepEqual(
+          [created.status, bodyOf(created)['code']],
+          [409, 'private_conversation'],
+        );
+        assert.equal(calls >= 5, true);
+        assert.equal(rig.provider.created.length, 0);
+        assert.equal(rig.provider.sidebands.length, 0);
+        assert.deepEqual(rig.budget.calls, ['reserve:195', 'dispatch', 'hold']);
+        assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+        // 追加予約の数え始めも止まっている（保持した接続は予約を増やさない）。
+        await rig.clock.advance(120_000);
+        assert.deepEqual(rig.budget.calls, ['reserve:195', 'dispatch', 'hold']);
+      },
+      { privateConversation: flip },
+    );
+  },
+);
+
+test(
   'private: an unchanged storage boundary lets the Live start (the generation check does not block the normal path)',
   TIMEOUT,
   async () => {

@@ -1514,35 +1514,33 @@ export class VoiceControl {
       return second;
     }
     const runtime = second;
-    // 受付の判定の後、この記録（DB）を待っている間に記録しない会話へ入った。closeForPrivateConversation は登録済みの接続しか
-    // 閉じないので取り損ねている。provider にはまだ何も送っていないので、作成せずに閉じる（ADR 0045 の X17・X36: Live の接続 0 回）。
-    // 送出意図は記録済みで予約は解放できない（ADR 0037）ので、送っていない使用量を 15 秒の最低額で精算せず、終了を確認できない
-    // 場合と同じく予約を保持する（本人の手での精算。provider への照会は見つからないので保持のまま）。
-    // この確認から provider への作成の呼び出しまでは同じ同期の区間（待ちを挟まない）なので、ここより後に入った場合は
-    // 通常の作成の途中の扱い（作成の応答の後に閉じる）になる。
-    // 入ったまま（記録しない会話）なら 409 private_conversation、入って出た後（区切りの世代が変わった）なら 409 conflict。
-    if (this.#privateConversation() || this.#boundary() !== boundary) {
-      this.#step(runtime, 'close_requested', null, 'private_conversation');
-      this.#markUnconfirmed(runtime);
-      return this.#privateConversation()
-        ? error(409, 'private_conversation', requestId)
-        : error(409, 'conflict', requestId);
-    }
+    // 受付の判定の後、この記録（DB）を待っている間に記録しない会話へ入った（入って出た場合を含む）。closeForPrivateConversation は
+    // 登録済みの接続しか閉じないので取り損ねている。provider にはまだ何も送っていないので、作成せずに閉じる
+    // （ADR 0045 の X17・X36: Live の接続 0 回）。実際の作成の呼び出しの直前にもう一度確かめる（#within は呼び出しを次の
+    // microtask へ遅らせるので、確認と呼び出しの間に入る余地がある）。
+    const early = this.#refuseIfBoundaryMoved(runtime, requestId, boundary);
+    if (early !== null) return early;
     // 会話の長さの数え始め（追加予約は予約を取ってから 60 秒ごと）。provider が作る前から課金され得るので、作成の応答を待たない。
     this.#armTopUp(runtime);
+    let refused: Status | null = null;
     const created = await this.#within(
       LIVE_CREATE_TIMEOUT_MS,
-      () =>
-        provider.createSession({
+      () => {
+        refused = this.#refuseIfBoundaryMoved(runtime, requestId, boundary);
+        if (refused !== null) return Promise.resolve({ ok: false } as const);
+        return provider.createSession({
           live_session_id: runtime.record.live_session_id,
           purpose: runtime.record.purpose,
           sdp_offer: str(body, 'sdp_offer'),
-        }),
+        });
+      },
       // 期限の後に遅れて作られた provider のセッション（孤児）。送り直さず、そのセッションを閉じて使用量を照合する。
       (late) => {
         if (late.ok) this.#adoptLateSession(runtime, late.provider_session_id);
       },
     );
+    // 呼び出しの直前に断った（provider には何も送っていない）。
+    if (refused !== null) return refused;
     if (created === TIMED_OUT || !created.ok) {
       // 送った可能性がある。送り直さず、終了未確認として予約を保持する。
       this.#step(runtime, 'close_requested', null, 'provider_failure');
@@ -1567,6 +1565,25 @@ export class VoiceControl {
         session_epoch: runtime.record.session_epoch,
       },
     };
+  }
+
+  // 受付を始めてから保存の区切りが動いたか（記録しない会話の間、または入って出た後）。動いていたら、作成せずに終了を確認できない
+  // 状態で閉じて拒否を返す（動いていなければ null）。送出意図は記録済みで予約は解放できない（ADR 0037）ので、送っていない使用量を
+  // 15 秒の最低額で精算せず、終了を確認できない場合と同じく予約を保持する（本人の手での精算。provider への照会は見つからない
+  // ので保持のまま）。入ったまま（記録しない会話）なら 409 private_conversation、入って出た後（区切りの世代が変わった）なら
+  // 409 conflict。
+  #refuseIfBoundaryMoved(
+    runtime: LiveRuntime,
+    requestId: string,
+    boundary: string,
+  ): Status | null {
+    const inPrivate = this.#privateConversation();
+    if (!inPrivate && this.#boundary() === boundary) return null;
+    this.#step(runtime, 'close_requested', null, 'private_conversation');
+    this.#markUnconfirmed(runtime);
+    return inPrivate
+      ? error(409, 'private_conversation', requestId)
+      : error(409, 'conflict', requestId);
   }
 
   // 記録しない会話へ入ったときに、開いている・開きかけの Live をすべて閉じ始める（保存境界の保持者が呼ぶ。ADR 0045・0059）。

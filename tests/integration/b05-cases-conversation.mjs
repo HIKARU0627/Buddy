@@ -236,6 +236,7 @@ async function x49TextStaysText() {
       turns: conv.turnsOf().length,
       voice_commentary: conv.sb().commentary.length,
     };
+    const tc = w.clock.mono();
     const control = await conv.typed('文字で返して', 'text');
     await w.advance(100);
     await w.advanceUntil('文字への切り替え', () => w.ctl.replyMode === 'text');
@@ -247,7 +248,8 @@ async function x49TextStaysText() {
       session_control: sc.session_control,
       workflow_id: sc.workflow_id,
       result_view: sc.result_view,
-      renderer_commands: sentSince(w, t).slice(-1),
+      // この操作の間に端末が送った命令をすべて照合する（最後の 1 件だけを見て余計な命令を見落とさない）。
+      renderer_commands: sentSince(w, tc),
       reply_mode: w.ctl.replyMode,
       live_end_reason: liveRows(w)[0].end_reason,
       model_calls: conv.script.calls.length,

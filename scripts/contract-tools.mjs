@@ -1012,6 +1012,32 @@ export function semanticErrors(name, value) {
       errors.push('delegation_result_not_voice');
     errors.push(...semanticErrors('OutputTarget', value.output));
   }
+  // 無音の延長の値は、その種類のイベントだけが持つ（B05-05、ADR 0052）。
+  if (name === 'VoiceEvent') {
+    if (
+      (value.event_type === 'silence_extension') !==
+      (value.silence_extension_ms !== undefined)
+    )
+      errors.push('silence_extension_mismatch');
+  }
+  // 会話の操作は、操作を示す値と状態が対で、依頼（workflow）・結果の表示を持たない（照合表に当たった発言は依頼ではない）。
+  if (
+    name === 'TurnResponse' ||
+    name === 'StreamTurnResponse' ||
+    name === 'DesktopTurnResult'
+  ) {
+    const control = value.session_control != null;
+    if ((value.status === 'session_control') !== control)
+      errors.push('session_control_mismatch');
+    const result =
+      name === 'DesktopTurnResult' ? value.result : value.result_view;
+    if (
+      control &&
+      (result !== null ||
+        (name !== 'DesktopTurnResult' && value.workflow_id !== null))
+    )
+      errors.push('session_control_with_workflow');
+  }
   if (name === 'LiveControlState') {
     if (value.closure === 'close_confirmed' && value.usage_seconds === null)
       errors.push('confirmed_without_usage');

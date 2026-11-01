@@ -285,6 +285,9 @@ export interface StreamRoutesOptions {
 
 export interface StreamRoutes {
   readonly handlers: Readonly<Record<string, ApiRouteHandler>>;
+  // 声で返せなかった結果（接続が閉じた・文字へ切り替えた・世代が違う）を画面へ回す（B05-05、ADR 0052）。発言の結果と同じ
+  // 配置者の規則・意味の検査を通して、キャンバスへ置く。配置済みの発言は重ねて置かない。置いた束を返す（置かなければ null）。
+  readonly placeLate: (turn: TurnResponse) => CanvasOpBatch | null;
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -369,6 +372,30 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     return creating;
   };
 
+  // 発言の結果をキャンバスへ置く（発言の応答と、画面へ回した遅着の結果で共通）。同じ発言は重ねて置かない（再送・遅着の重複）。
+  const placeTurn = (
+    turn: TurnResponse,
+    seenRevision: string,
+  ): CanvasOpBatch | null => {
+    if (placed.has(turn.turn_id)) return replays.get(turn.turn_id) ?? null;
+    const batch = (options.place ?? placeCanvasForTurn)(
+      options.canvas.document,
+      turn.result_view,
+      { record: options.canvas.record, seen_revision: seenRevision },
+    );
+    // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。
+    const canvas =
+      batch !== null && options.canvas.apply(batch).ok ? batch : null;
+    // 配置を試みた発言だけ覚える（聞き返しなど、配置しない発言は入れない。同じ結果なら再送でも配置しないので）。
+    if (batch !== null) placed.add(turn.turn_id);
+    replays.set(turn.turn_id, canvas);
+    for (const old of replays.keys()) {
+      if (replays.size <= MAX_REPLAYS) break;
+      replays.delete(old);
+    }
+    return canvas;
+  };
+
   const postStreamTurn: ApiRouteHandler = async (request) => {
     const body = request.body as JsonObject;
     const requestId = stringOf(body, 'request_id');
@@ -396,27 +423,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     // 同じ要求の再送は、もう一度配置しない。配置済みかは発言の ID（turn_id。再送は保存済みの同じ発言を返す）で、
     // 応答の束のキャッシュの件数とは切り離して覚える（キャッシュから消えた後の再送でも再配置しない。そのときの束は
     // 再現できないので canvas は null）。UI-05 で発言の記録に結び付けて保存する。
-    let canvas: CanvasOpBatch | null;
-    if (placed.has(turn.turn_id)) canvas = replays.get(turn.turn_id) ?? null;
-    else {
-      const batch = (options.place ?? placeCanvasForTurn)(
-        options.canvas.document,
-        turn.result_view,
-        {
-          record: options.canvas.record,
-          seen_revision: stringOf(body, 'expected_canvas_revision'),
-        },
-      );
-      // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。
-      canvas = batch !== null && options.canvas.apply(batch).ok ? batch : null;
-      // 配置を試みた発言だけ覚える（聞き返しなど、配置しない発言は入れない。同じ結果なら再送でも配置しないので）。
-      if (batch !== null) placed.add(turn.turn_id);
-      replays.set(turn.turn_id, canvas);
-      for (const old of replays.keys()) {
-        if (replays.size <= MAX_REPLAYS) break;
-        replays.delete(old);
-      }
-    }
+    const canvas = placeTurn(turn, stringOf(body, 'expected_canvas_revision'));
     const response: StreamTurnResponse = {
       request_id: turn.request_id,
       segment: stream.segment,
@@ -426,6 +433,10 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       status: turn.status,
       result_view: turn.result_view,
       reply_text: turn.reply_text,
+      // 会話の操作のときだけ（端末は画面のボタンと同じ処理を行う。B05-05）。
+      ...(turn.session_control == null
+        ? {}
+        : { session_control: turn.session_control }),
       canvas,
     };
     if (!contract.valid('StreamTurnResponse', response))
@@ -541,5 +552,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       postCanvasUserOp,
       postCanvasContent,
     },
+    // 画面へ回した遅着の結果は、端末が見ていた版を持たない（Core の今の版から置く）。
+    placeLate: (turn) =>
+      placeTurn(turn, options.canvas.document.canvas_revision),
   };
 }

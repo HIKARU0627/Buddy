@@ -142,6 +142,12 @@ import {
   voiceConsentText,
 } from '../voice-consent.js';
 import {
+  VOICE_REPLY_MODE_FILE,
+  VoiceReplyModeStore,
+  loadVoiceReplyModeFile,
+  saveVoiceReplyModeFile,
+} from '../voice-reply-mode.js';
+import {
   mockVoiceCorePort,
   unavailableVoiceCorePort,
 } from '../voice-core-port.js';
@@ -807,6 +813,8 @@ function createLink(
     // キャンバスのモード（開発用のフラグ）では、入力バーの発言を流れへ送り、キャンバスの記述をキャンバスの窓だけへ渡す
     // （役割の表 DESKTOP_ROLE_NOTIFICATIONS。状態の層・入力バーへは送らない）。
     canvasMode: uiMode === 'canvas',
+    // 文字の発言の結果が会話の操作（照合表に当たった発言）のとき、画面のボタンと同じ処理を音声の制御で行う（B05-05）。
+    onSessionControl: (action) => voice?.applyTurnControl(action),
     // キャンバスが前に出ているか（ユーザーの操作は前に出ている間だけ。UI-06）。
     canvasFront: () => presence.layer === 'front',
     onCanvas: (notification) =>
@@ -1041,6 +1049,7 @@ function createVoice(
 ): VoiceController {
   const clock = systemClock();
   const consentPath = join(app.getPath('userData'), VOICE_CONSENT_FILE);
+  const replyModePath = join(app.getPath('userData'), VOICE_REPLY_MODE_FILE);
   return new VoiceController({
     enabled: voiceEnabled,
     contract,
@@ -1065,6 +1074,12 @@ function createVoice(
       save: (record) => saveVoiceConsentFile(consentPath, record),
       remove: () => removeVoiceConsentFile(consentPath),
       now: () => new Date().toISOString(),
+      log,
+    }),
+    // 端末ごとの返し方（声で返す・文字で返す。B05-05）。
+    replyMode: new VoiceReplyModeStore({
+      load: () => loadVoiceReplyModeFile(replyModePath),
+      save: (mode) => saveVoiceReplyModeFile(replyModePath, mode),
       log,
     }),
     confirmConsent: confirmVoiceConsent,

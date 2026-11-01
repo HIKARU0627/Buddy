@@ -6,7 +6,9 @@
 // 結果を返し、照合値が違えば request_conflict（Core が 409 にする）。
 // - 発言の本文は Core が暗号化した sealed_blobs の行（purpose: turn_text）として受け取り、平文を受け取らない。
 // - 記録しない会話（private）は保存しない（0001 の CHECK）。Core が受け付けない。
-// - 入力は文字入力（typed・submitted_text・sealed）だけ。端末内の音声認識（local_asr）は B06。
+// - 入力は文字入力（typed・submitted_text・sealed）が既定。Live の文字起こし（B05-05、ADR 0052）は input で明示し、
+//   方式 C の暫定入力（live_fragment・live_transcript_policy・live_policy_observed）か、確定できなかった入力
+//   （blocked・unverified。変更を作らない）として書く。端末内の音声認識（local_asr）は B06。
 // - 発言から作る操作（承認待ち）は、発言・依頼と同じ transaction で作る（同じ要求の同時の再送で二つ作らない）。
 // - 応答（turn_responses、0004）も同じ transaction で書き、再送には解釈し直さずにその応答を返す。
 // 結果の理由にはコードだけを入れ、SQL・本文・hash の値を入れない。
@@ -41,6 +43,21 @@ export interface SessionRecord {
   readonly created_at: number;
   readonly ended_at: number | null;
 }
+
+// 発言の入力の記録（InputSnapshot の入力側）。省略は文字入力。voice_live は Live の文字起こしで、
+// sealed は方式 C の暫定入力（policy_version が必須）、partial は確定前の入力から答えた参照だけ（操作を作らない）、
+// blocked は欠落などで確定できなかった入力（依頼・操作を作らない）。
+export type TurnInputRecord =
+  | { readonly kind: 'text' }
+  | {
+      readonly kind: 'voice_live';
+      readonly audio_epoch: string;
+      readonly outcome:
+        | { readonly state: 'sealed'; readonly policy_version: string }
+        // 確定していない入力から答えた参照（変更・操作は作らない）。
+        | { readonly state: 'partial' }
+        | { readonly state: 'blocked' };
+    };
 
 export interface TurnRecordValue {
   readonly turn_id: string;
@@ -96,6 +113,8 @@ export type ConversationOp =
       // 入力の時点の許可の版（意味検証で provider から読んだ値）。
       readonly permission_revision: string;
       readonly request: ConversationRequestRef;
+      // 入力の種類と確定の記録。省略は文字入力。
+      readonly input?: TurnInputRecord;
       // 発言から作る操作。依頼（ready）があるときだけ。
       readonly operation: TurnOperationInput | null;
       // 応答（契約の TurnResponse の JSON）。
@@ -207,6 +226,30 @@ export function conversationOpShapeReasons(op: ConversationOp): string[] {
       if (!isRevision(op.permission_revision))
         reasons.push('permission_revision_invalid');
       if (!isSealed(op.text)) reasons.push('text_invalid');
+      const input = op.input;
+      if (input !== undefined) {
+        if (typeof input !== 'object' || input === null)
+          reasons.push('input_invalid');
+        else if (input.kind === 'voice_live') {
+          const outcome = input.outcome;
+          if (
+            !isRevision(input.audio_epoch) ||
+            typeof outcome !== 'object' ||
+            outcome === null ||
+            !['sealed', 'partial', 'blocked'].includes(outcome.state) ||
+            (outcome.state === 'sealed' && !isRevision(outcome.policy_version))
+          )
+            reasons.push('input_invalid');
+          // 確定できなかった入力（blocked）から依頼・操作を作らない。確定前の入力（partial）からは操作を作らない。
+          else if (
+            outcome.state === 'blocked' &&
+            (op.workflow !== null || op.operation !== null)
+          )
+            reasons.push('blocked_input_with_workflow');
+          else if (outcome.state === 'partial' && op.operation !== null)
+            reasons.push('partial_input_with_operation');
+        } else if (input.kind !== 'text') reasons.push('input_invalid');
+      }
       const workflow = op.workflow;
       if (
         workflow !== null &&
@@ -443,9 +486,17 @@ function applyWrite(
     op.created_at,
     op.expires_at,
   );
+  const input = op.input ?? { kind: 'text' as const };
   db.prepare(
-    "INSERT INTO turns (turn_id, session_id, role, input_kind, text_blob_id, created_at, expires_at) VALUES (?, ?, 'user', 'text', ?, ?, ?)",
-  ).run(op.turn_id, op.session_id, text.blob_id, op.created_at, op.expires_at);
+    "INSERT INTO turns (turn_id, session_id, role, input_kind, text_blob_id, created_at, expires_at) VALUES (?, ?, 'user', ?, ?, ?, ?)",
+  ).run(
+    op.turn_id,
+    op.session_id,
+    input.kind === 'voice_live' ? 'voice_live' : 'text',
+    text.blob_id,
+    op.created_at,
+    op.expires_at,
+  );
   if (op.workflow !== null)
     db.prepare(
       'INSERT INTO workflows (workflow_id, session_id, current_request_revision, state, updated_at) VALUES (?, ?, 1, ?, ?)',
@@ -464,15 +515,40 @@ function applyWrite(
       op.created_at,
     );
   const forgetting = forgettingGeneration(db);
-  db.prepare(
-    "INSERT INTO input_snapshots (input_id, request_revision, workflow_id, turn_id, origin, state, seal_reason, input_evidence, policy_version, permission_revision, forgetting_generation, audio_epoch) VALUES (?, 1, ?, ?, 'typed', 'sealed', 'submitted_text', 'submitted_text', NULL, ?, ?, NULL)",
-  ).run(
-    op.input_id,
-    op.workflow?.workflow_id ?? null,
-    op.turn_id,
-    Number(op.permission_revision),
-    forgetting,
-  );
+  if (input.kind === 'voice_live') {
+    const sealed = input.outcome.state === 'sealed';
+    // 確定前（partial）は collecting、確定できなかった入力は blocked。どちらも証拠は unverified で、seal の理由を持たない。
+    const state = sealed
+      ? 'sealed'
+      : input.outcome.state === 'partial'
+        ? 'collecting'
+        : 'blocked';
+    db.prepare(
+      "INSERT INTO input_snapshots (input_id, request_revision, workflow_id, turn_id, origin, state, seal_reason, input_evidence, policy_version, permission_revision, forgetting_generation, audio_epoch) VALUES (?, 1, ?, ?, 'live_fragment', ?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      op.input_id,
+      op.workflow?.workflow_id ?? null,
+      op.turn_id,
+      state,
+      sealed ? 'live_transcript_policy' : null,
+      sealed ? 'live_policy_observed' : 'unverified',
+      input.outcome.state === 'sealed'
+        ? Number(input.outcome.policy_version)
+        : null,
+      Number(op.permission_revision),
+      forgetting,
+      Number(input.audio_epoch),
+    );
+  } else
+    db.prepare(
+      "INSERT INTO input_snapshots (input_id, request_revision, workflow_id, turn_id, origin, state, seal_reason, input_evidence, policy_version, permission_revision, forgetting_generation, audio_epoch) VALUES (?, 1, ?, ?, 'typed', 'sealed', 'submitted_text', 'submitted_text', NULL, ?, ?, NULL)",
+    ).run(
+      op.input_id,
+      op.workflow?.workflow_id ?? null,
+      op.turn_id,
+      Number(op.permission_revision),
+      forgetting,
+    );
   db.prepare(
     'INSERT INTO turn_responses (turn_id, response_json, created_at, delete_at) VALUES (?, ?, ?, ?)',
   ).run(op.turn_id, op.response_json, op.created_at, op.expires_at);

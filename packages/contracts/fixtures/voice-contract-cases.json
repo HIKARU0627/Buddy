@@ -126,7 +126,10 @@
         "channel": "voice.set_silence_timeout",
         "request_id": "00000000-0000-4000-8000-0000000000a7",
         "ack_timeout_ms": 500,
-        "payload": { "timeout_ms": 60000, "audio_epoch": "7" }
+        "payload": {
+          "timeout_ms": 60000,
+          "audio_epoch": "7"
+        }
       }
     },
     {
@@ -207,7 +210,9 @@
         "channel": "voice.fetch",
         "request_id": "00000000-0000-4000-8000-0000000000b2",
         "ack_timeout_ms": 300,
-        "payload": { "url": "https://example.invalid/" }
+        "payload": {
+          "url": "https://example.invalid/"
+        }
       }
     },
     {
@@ -329,7 +334,10 @@
         "channel": "voice.set_silence_timeout",
         "request_id": "00000000-0000-4000-8000-0000000000b9",
         "ack_timeout_ms": 500,
-        "payload": { "timeout_ms": 500, "audio_epoch": "7" }
+        "payload": {
+          "timeout_ms": 500,
+          "audio_epoch": "7"
+        }
       }
     },
     {
@@ -886,6 +894,209 @@
         },
         "occurred_at": "2030-10-05T00:00:07Z"
       }
+    },
+    {
+      "id": "voice-event-silence-extension",
+      "schema": "VoiceEvent",
+      "valid": true,
+      "value": {
+        "schema": "buddy.voice-event.v1",
+        "event_id": "00000000-0000-4000-8000-000000000a01",
+        "event_type": "silence_extension",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "live_session_id": "00000000-0000-4000-8000-000000000012",
+        "audio_epoch": "7",
+        "control_epoch": "0",
+        "candidate_ids": [],
+        "audio_control": null,
+        "silence_extension_ms": 60000,
+        "occurred_at": "2030-01-01T00:00:20Z"
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "voice-event-silence-extension-below-minimum",
+      "schema": "VoiceEvent",
+      "valid": false,
+      "value": {
+        "schema": "buddy.voice-event.v1",
+        "event_id": "00000000-0000-4000-8000-000000000a01",
+        "event_type": "silence_extension",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "live_session_id": "00000000-0000-4000-8000-000000000012",
+        "audio_epoch": "7",
+        "control_epoch": "0",
+        "candidate_ids": [],
+        "audio_control": null,
+        "silence_extension_ms": 500,
+        "occurred_at": "2030-01-01T00:00:20Z"
+      }
+    },
+    {
+      "id": "voice-event-silence-extension-above-maximum",
+      "schema": "VoiceEvent",
+      "valid": false,
+      "value": {
+        "schema": "buddy.voice-event.v1",
+        "event_id": "00000000-0000-4000-8000-000000000a01",
+        "event_type": "silence_extension",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "live_session_id": "00000000-0000-4000-8000-000000000012",
+        "audio_epoch": "7",
+        "control_epoch": "0",
+        "candidate_ids": [],
+        "audio_control": null,
+        "silence_extension_ms": 60001,
+        "occurred_at": "2030-01-01T00:00:20Z"
+      }
+    },
+    {
+      "id": "voice-event-silence-extension-without-milliseconds",
+      "schema": "VoiceEvent",
+      "valid": true,
+      "value": {
+        "schema": "buddy.voice-event.v1",
+        "event_id": "00000000-0000-4000-8000-000000000a01",
+        "event_type": "silence_extension",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "live_session_id": "00000000-0000-4000-8000-000000000012",
+        "audio_epoch": "7",
+        "control_epoch": "0",
+        "candidate_ids": [],
+        "audio_control": null,
+        "occurred_at": "2030-01-01T00:00:20Z"
+      },
+      "semantic_errors": ["silence_extension_mismatch"]
+    },
+    {
+      "id": "voice-event-milliseconds-on-another-event",
+      "schema": "VoiceEvent",
+      "valid": true,
+      "value": {
+        "schema": "buddy.voice-event.v1",
+        "event_id": "00000000-0000-4000-8000-000000000a01",
+        "event_type": "sideband_connected",
+        "device_id": "00000000-0000-4000-8000-000000000050",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "live_session_id": "00000000-0000-4000-8000-000000000012",
+        "audio_epoch": "7",
+        "control_epoch": "0",
+        "candidate_ids": [],
+        "audio_control": null,
+        "silence_extension_ms": 60000,
+        "occurred_at": "2030-01-01T00:00:20Z"
+      },
+      "semantic_errors": ["silence_extension_mismatch"]
+    },
+    {
+      "id": "turn-response-session-control",
+      "schema": "TurnResponse",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000c01",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "turn_id": "00000000-0000-4000-8000-000000000c02",
+        "input_id": "00000000-0000-4000-8000-000000000c03",
+        "workflow_id": null,
+        "status": "session_control",
+        "result_view": null,
+        "reply_text": null,
+        "session_control": "reply_in_text"
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "turn-response-session-control-without-action",
+      "schema": "TurnResponse",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000c01",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "turn_id": "00000000-0000-4000-8000-000000000c02",
+        "input_id": "00000000-0000-4000-8000-000000000c03",
+        "workflow_id": null,
+        "status": "session_control",
+        "result_view": null,
+        "reply_text": null
+      },
+      "semantic_errors": ["session_control_mismatch"]
+    },
+    {
+      "id": "turn-response-action-on-an-answered-turn",
+      "schema": "TurnResponse",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000c01",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "turn_id": "00000000-0000-4000-8000-000000000c02",
+        "input_id": "00000000-0000-4000-8000-000000000c03",
+        "workflow_id": null,
+        "status": "answered",
+        "result_view": null,
+        "reply_text": null,
+        "session_control": "reply_in_text"
+      },
+      "semantic_errors": ["session_control_mismatch"]
+    },
+    {
+      "id": "turn-response-session-control-with-a-workflow",
+      "schema": "TurnResponse",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000c01",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "turn_id": "00000000-0000-4000-8000-000000000c02",
+        "input_id": "00000000-0000-4000-8000-000000000c03",
+        "workflow_id": "00000000-0000-4000-8000-000000000c04",
+        "status": "session_control",
+        "result_view": null,
+        "reply_text": null,
+        "session_control": "reply_in_text"
+      },
+      "semantic_errors": ["session_control_with_workflow"]
+    },
+    {
+      "id": "turn-response-unknown-session-control",
+      "schema": "TurnResponse",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000c01",
+        "session_id": "00000000-0000-4000-8000-000000000011",
+        "turn_id": "00000000-0000-4000-8000-000000000c02",
+        "input_id": "00000000-0000-4000-8000-000000000c03",
+        "workflow_id": null,
+        "status": "session_control",
+        "result_view": null,
+        "reply_text": null,
+        "session_control": "cancel_workflow"
+      }
+    },
+    {
+      "id": "desktop-turn-result-session-control",
+      "schema": "DesktopTurnResult",
+      "valid": true,
+      "value": {
+        "status": "session_control",
+        "reply_text": null,
+        "result": null,
+        "session_control": "stop_playback"
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "desktop-turn-result-session-control-without-action",
+      "schema": "DesktopTurnResult",
+      "valid": true,
+      "value": {
+        "status": "session_control",
+        "reply_text": null,
+        "result": null
+      },
+      "semantic_errors": ["session_control_mismatch"]
     }
   ]
 }

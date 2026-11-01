@@ -16,6 +16,7 @@ import {
   statusItems,
   stopShortcutKeys,
   stopShortcutMark,
+  voiceControlsView,
   voiceStripView,
 } from '../../state/status-panel-state.js';
 import { useNow } from '../../state/use-desktop-state.js';
@@ -84,6 +85,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
     resume,
     continueVoice,
     revokeVoiceConsent,
+    controlVoice,
   } = useRoleWindowState(api, 'status');
   const now = useNow();
   const width = useWindowWidth();
@@ -153,9 +155,16 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
           message={messageFor(state, [
             'desktop.voice_continue',
             'desktop.voice_consent_revoke',
+            'desktop.voice_control',
           ])}
           onContinue={continueVoice}
           onRevoke={revokeVoiceConsent}
+          controls={voiceControlsView(state.voice)}
+          onReplyMode={(mode) =>
+            controlVoice(mode === 'voice' ? 'reply_in_voice' : 'reply_in_text')
+          }
+          onStopPlayback={() => controlVoice('stop_playback')}
+          onEndConversation={() => controlVoice('end_conversation')}
         />
       }
       operations={

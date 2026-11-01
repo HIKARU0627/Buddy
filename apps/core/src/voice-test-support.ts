@@ -84,6 +84,9 @@ export class MockSideband implements LiveSideband {
   // appendInstructions で送った指示（予算の上限）の数と、送れない状態にするか。
   instructions: string[] = [];
   canInstruct = true;
+  // appendCommentary で送った結果の読み上げ文（B05-05）と、送れない状態にするか。
+  commentary: (readonly string[])[] = [];
+  canComment = true;
   terminated = false;
   readonly #handlers: LiveSidebandHandlers;
   constructor(handlers: LiveSidebandHandlers) {
@@ -100,6 +103,11 @@ export class MockSideband implements LiveSideband {
     this.instructions.push(kind);
     return true;
   }
+  appendCommentary(parts: readonly string[]): boolean {
+    if (!this.canComment) return false;
+    this.commentary.push([...parts]);
+    return true;
+  }
   terminate(): void {
     this.terminated = true;
   }
@@ -109,6 +117,27 @@ export class MockSideband implements LiveSideband {
   // モデルの発話の終わり（provider のイベント）。
   utteranceEnded(): void {
     this.#handlers.onModelUtteranceEnded();
+  }
+  // 本人の発話の文字起こしの断片・発話の開始・終了候補・委譲（B05-05。合成の出来事）。
+  fragment(fragment: {
+    index: number | null;
+    start_ms: number | null;
+    end_ms: number | null;
+    text: string;
+  }): void {
+    this.#handlers.onTranscriptFragment(fragment);
+  }
+  speechStarted(): void {
+    this.#handlers.onSpeechStarted();
+  }
+  endCandidate(): void {
+    this.#handlers.onEndCandidate();
+  }
+  delegation(delegationId: string, offsetMs: number | null): void {
+    this.#handlers.onDelegation({
+      delegation_id: delegationId,
+      offset_ms: offsetMs,
+    });
   }
   closed(usageSeconds: number | null): void {
     this.#handlers.onSessionClosed(usageSeconds);

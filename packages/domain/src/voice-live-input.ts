@@ -188,16 +188,21 @@ export interface DelegationTarget {
 // 候補は 0（時刻の対応を確かめられない）。ちょうど 1 つのときだけ turn を返す。claimed は、先の委譲がすでに対象にした
 // ターン（会話の操作に使ったターンは含めない）の連番で、候補から外す（先の依頼の処理中に始まった訂正の発話が、先の
 // 発話と並んで「対象が複数」にならない。どの委譲にも使われていない発話が窓の中に複数あれば、対象が複数のまま）。
+// controlled は、会話の操作として使った発話の連番で、同じく候補から外す（「読み上げを止めて」の直後の依頼が、操作の
+// 発話と並んで「対象が複数」にならない。操作の発話は依頼の対象ではなく、外しても承認・実行権限は生まれない。U151）。
 export function resolveDelegationTarget(
   transcript: LiveTranscript,
   offset_ms: number | null,
   claimed: ReadonlySet<number> | readonly number[] = [],
+  controlled: ReadonlySet<number> | readonly number[] = [],
 ): DelegationTarget {
   if (!validTime(offset_ms)) return { count: 0, turn: null };
   const taken = new Set(claimed);
+  const controlledTurns = new Set(controlled);
   const from = offset_ms - LIVE_DELEGATION_WINDOW_MS;
   const candidates = transcript.turns.filter((turn) => {
-    if (taken.has(turn.ordinal)) return false;
+    if (taken.has(turn.ordinal) || controlledTurns.has(turn.ordinal))
+      return false;
     const starts = turn.fragments
       .map((fragment) => fragment.start_ms)
       .filter(validTime);

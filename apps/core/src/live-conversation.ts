@@ -549,22 +549,17 @@ export class LiveConversation implements LiveConversationPort {
     pending.timer = null;
     if (pending.phase !== 'waiting_input' || context.closed) return;
     const now = this.#options.monoNow();
+    // 会話の操作に使った発話は、委譲の対象の候補から外す（「読み上げを止めて」の直後の依頼が、操作の発話と
+    // 並んで「対象が複数」にならない。U151、ADR 0064）。
     const target = resolveDelegationTarget(
       context.transcript,
       pending.offset_ms,
       context.claimed,
+      context.controlled,
     );
     const facts = liveTranscriptFacts(target, now);
     pending.target_ordinal = target.turn?.ordinal ?? null;
     pending.target_count = target.count;
-    if (
-      pending.target_ordinal !== null &&
-      context.controlled.has(pending.target_ordinal)
-    ) {
-      // 会話の操作として使った発話は依頼にしない。
-      this.#finish(context, pending);
-      return;
-    }
     const turn = target.turn;
     const ready =
       turn !== null &&

@@ -1735,6 +1735,54 @@
           "target_turn_unique": false
         }
       }
+    },
+    {
+      "id": "a-turn-used-by-a-control-phrase-is-not-a-target",
+      "refs": ["10 §5・§6", "X58", "U151", "ADR 0064"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "読み上げを止めて",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        },
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 1200,
+          "end_ms": 2000,
+          "text": "ちょっと待ってください",
+          "at": 2000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "controlled": [1],
+      "offset_ms": 2000,
+      "now": 2400,
+      "expected": {
+        "count": 1,
+        "text": "ちょっと待ってください",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 400,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
     }
   ],
   "live_input_conditions": [

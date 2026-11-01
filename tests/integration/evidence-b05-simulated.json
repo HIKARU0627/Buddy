@@ -133,7 +133,7 @@
     },
     {
       "path": "apps/core/src/live-conversation.ts",
-      "sha256": "8670a5f01926b06f3ef510a440cc56823e088bc7de4748be97000ab7dba2ba2b"
+      "sha256": "7626909dc2b7a28f4e873d6a7270d6f55cd64517988bfbcf896c1d5f635ecf4a"
     },
     {
       "path": "apps/core/src/live-reconcile.ts",
@@ -425,7 +425,7 @@
     },
     {
       "path": "packages/domain/src/voice-live-input.ts",
-      "sha256": "5fb683117b61f7ab38aa4e6e9cd324692bd951fba286adae75409ad19227adb9"
+      "sha256": "36e86bc89836d030d83a71cd30bcfe18998e78ffcd984de3d655b38d9692fc4c"
     },
     {
       "path": "packages/domain/src/voice-notification.ts",
@@ -689,7 +689,7 @@
     },
     {
       "path": "tests/integration/b05-cases-conversation.mjs",
-      "sha256": "dbdba2c6eb65da7161c5d4e00a50281a8e2853787fa8df9d866a7b6c5ca7a6e2"
+      "sha256": "5e2d6d623e6d3d321ef7c52057e1c31d034a3387394b857cb25b814745321d42"
     },
     {
       "path": "tests/integration/b05-cases-input.mjs",
@@ -705,7 +705,7 @@
     },
     {
       "path": "tests/integration/b05-expectations.json",
-      "sha256": "2c2ffba9a381a4bddb0daf77bd0339e770ba3a7b0bb0a934eb2d452e25744c0a"
+      "sha256": "0dde626fb6852aa0f31059ff5d8fea0af2b15f9c828eba2bafa2cab7b8b2ebe1"
     },
     {
       "path": "tests/integration/b05-observe.mjs",
@@ -736,7 +736,7 @@
     {
       "case_id": "X13-os-lock-stops-everything",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -750,7 +750,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -758,7 +758,7 @@
     {
       "case_id": "X13-io-epoch-sync-before-restart",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -772,7 +772,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の未了の記録: 端末が進めた io_epoch を中枢へ報告する経路は未実装（契約台帳 U70・U91）のため、端末だけが止まって再開すると中枢はリースを unknown_io_epoch で拒否し、会話は始まらない（拒否は安全側）。再開できることの確認は、試験が中枢へも停止・再開を送って世代をそろえた場合だけ。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -780,7 +780,7 @@
     {
       "case_id": "QA43-three-stops-are-distinct",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -794,7 +794,7 @@
       "provider_state_changes": 2,
       "approvals": 0,
       "final_state": "live:close_confirmed+close_confirmed|reservation:settled+settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -802,7 +802,7 @@
     {
       "case_id": "X14-global-stop-reaches-the-other-device",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -816,7 +816,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の未了の記録: 中枢から届く停止のイベント（suspend_io）を端末が止めに使う経路は未実装（ADR 0050 の「残ること」）。端末は次のハートビートでリースの更新が拒否されて止まる（理由は core_lease_lost）。",
       "voice_stop_ms": 1500,
       "outcome": "matched_expectation"
@@ -824,7 +824,7 @@
     {
       "case_id": "X25-sideband-lost-closes-and-settles",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -838,7 +838,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -846,7 +846,7 @@
     {
       "case_id": "QA24-close-unconfirmed-holds-reservation",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -860,7 +860,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -868,7 +868,7 @@
     {
       "case_id": "X30-ack-deadline-boundary",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -882,7 +882,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -890,7 +890,7 @@
     {
       "case_id": "X30-hung-renderer-is-killed",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -904,7 +904,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 301,
       "outcome": "matched_expectation"
@@ -912,7 +912,7 @@
     {
       "case_id": "X30-stop-playback-without-ack-escalates",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -926,7 +926,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -934,7 +934,7 @@
     {
       "case_id": "X58-session-control-phrases-reach-the-device",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -948,7 +948,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -956,7 +956,7 @@
     {
       "case_id": "X58-request-right-after-a-control-phrase",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -965,20 +965,20 @@
         "devices": []
       },
       "seed": "7,1007,20261023",
-      "fault_point": "control_turn_stays_a_delegation_candidate",
+      "fault_point": null,
       "provider_requests": 1,
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
-      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の制約の記録: 会話の操作に使った発話の直後（委譲の窓 2 秒以内）の依頼は、対象が複数と判定されて聞き返しになる（依頼は実行されない。契約台帳 U151、本人の判断待ち）。",
+      "observed_at": "2026-11-01T12:13:06.975Z",
+      "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 U151（本人の判断 2026-11-01、(b)）: 会話の操作に使った発話を委譲の対象の候補から外した。依頼の内容（丁寧な形なので操作ではない）は通常どおり解釈し、操作は作らない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
     },
     {
       "case_id": "X58-reply-in-text-switches-the-device",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -992,7 +992,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1000,7 +1000,7 @@
     {
       "case_id": "X49-text-request-stays-text",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -1014,7 +1014,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1022,7 +1022,7 @@
     {
       "case_id": "QA41-live-input-four-operations-need-full-text",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -1036,7 +1036,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1044,7 +1044,7 @@
     {
       "case_id": "X51-input-is-confirmed-before-it-is-interpreted",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -1058,7 +1058,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1066,7 +1066,7 @@
     {
       "case_id": "X27-held-change-is-superseded-or-cancelled",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "8d5a1fd74119e4543e346ed2862679790e1f9d3a",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -1080,7 +1080,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-01T12:13:06.975Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -2575,7 +2575,7 @@
         "X49-text-request-stays-text",
         "X58-request-right-after-a-control-phrase"
       ],
-      "faults": ["control_turn_stays_a_delegation_candidate"],
+      "faults": [],
       "observed": {
         "db_version": "12",
         "provider_requests": 1,
@@ -2585,8 +2585,8 @@
         "voice_stop_ms": null,
         "checks": {
           "right_after": {
-            "model_calls": 0,
-            "asked_to_say_again": true,
+            "model_calls": 1,
+            "asked_to_say_again": false,
             "operations": 0,
             "live_closure": "open"
           },
@@ -3661,7 +3661,7 @@
         "X30-ack-deadline-boundary",
         "QA43-three-stops-are-distinct"
       ],
-      "faults": ["control_turn_stays_a_delegation_candidate"],
+      "faults": [],
       "observed": {
         "db_version": "12",
         "provider_requests": 1,
@@ -3671,8 +3671,8 @@
         "voice_stop_ms": null,
         "checks": {
           "right_after": {
-            "model_calls": 0,
-            "asked_to_say_again": true,
+            "model_calls": 1,
+            "asked_to_say_again": false,
             "operations": 0,
             "live_closure": "open"
           },
@@ -5331,7 +5331,7 @@
         "X13-io-epoch-sync-before-restart",
         "QA43-three-stops-are-distinct"
       ],
-      "faults": ["control_turn_stays_a_delegation_candidate"],
+      "faults": [],
       "observed": {
         "db_version": "12",
         "provider_requests": 1,
@@ -5341,8 +5341,8 @@
         "voice_stop_ms": null,
         "checks": {
           "right_after": {
-            "model_calls": 0,
-            "asked_to_say_again": true,
+            "model_calls": 1,
+            "asked_to_say_again": false,
             "operations": 0,
             "live_closure": "open"
           },

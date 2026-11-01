@@ -789,12 +789,12 @@
     },
     {
       "id": "X58-request-right-after-a-control-phrase",
-      "title": "X58（既知の制約）: 会話の操作に使った発話は委譲の対象の候補から外れないため、直後（委譲の窓 2 秒以内）の依頼は対象が複数と判定されて聞き返しになる（依頼は実行されず、安全側）。窓の外なら通常どおり解釈する",
-      "faults": ["control_turn_stays_a_delegation_candidate"],
+      "title": "X58: 会話の操作に使った発話は委譲の対象の候補から外れるため、直後（委譲の窓 2 秒以内）の依頼も、操作の発話と並んで対象が複数にならずに通常どおり解釈する（U151、ADR 0064）。窓の外と同じ",
+      "faults": [],
       "expected": {
         "right_after": {
-          "model_calls": 0,
-          "asked_to_say_again": true,
+          "model_calls": 1,
+          "asked_to_say_again": false,
           "operations": 0,
           "live_closure": "open"
         },
@@ -805,7 +805,7 @@
           "live_closure": "open"
         }
       },
-      "deviation_note": "既知の制約の記録: 会話の操作に使った発話の直後（委譲の窓 2 秒以内）の依頼は、対象が複数と判定されて聞き返しになる（依頼は実行されない。契約台帳 U151、本人の判断待ち）。"
+      "deviation_note": "U151（本人の判断 2026-11-01、(b)）: 会話の操作に使った発話を委譲の対象の候補から外した。依頼の内容（丁寧な形なので操作ではない）は通常どおり解釈し、操作は作らない。"
     },
     {
       "id": "X58-reply-in-text-switches-the-device",

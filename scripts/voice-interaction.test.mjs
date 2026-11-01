@@ -399,6 +399,7 @@ test('transcript: hand-written scenarios for fragments, gaps, time mapping and t
       transcript,
       entry.offset_ms,
       entry.claimed ?? [],
+      entry.controlled ?? [],
     );
     assert.equal(target.count, entry.expected.count, entry.id);
     assert.equal(

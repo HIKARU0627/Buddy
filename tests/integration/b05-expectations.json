@@ -204,7 +204,7 @@
     },
     {
       "id": "QA43-three-stops-are-distinct",
-      "title": "QA43: stop_playback は再生だけ（会話・収音・リースを保つ）、close_voice_session は Live だけ閉じて収音を保ちリースを止め、suspend_io は収音・認識・再生・Live のすべてを止める。世代の進み方も別",
+      "title": "QA43: stop_playback は再生だけ（会話・収音・リースを保ち、新しい Live 接続まで出力の mute を保つ）、close_voice_session は Live だけ閉じて収音を保ちリースを止め、suspend_io は収音・認識・再生・Live のすべてを止める。世代の進み方も別",
       "faults": [],
       "expected": {
         "base": {
@@ -259,7 +259,7 @@
             "playing": false,
             "discarded": 1
           },
-          "new_audio_plays": true
+          "new_audio_plays": false
         },
         "close_voice_session": {
           "commands": [

@@ -229,7 +229,7 @@ test(
     const first = await start(t, dataDir);
     assert.equal(first.storeGenerationSource, 'created');
     assert.equal(first.dataKeyCheck, 'stored');
-    assert.equal(first.schemaVersion, 11);
+    assert.equal(first.schemaVersion, 12);
     assert.deepEqual(first.recovery, { held: [], resumable: [] });
 
     const plans: Record<string, DbCommand[]> = {
@@ -421,7 +421,10 @@ test('a different data key, a missing key after the lock, and a key replaced bef
       reasons: ['data_key_unavailable:data_key_missing'],
     },
   );
-  assert.deepEqual((await readdir(dataDir)).sort(), ['buddy.sqlite']);
+  assert.deepEqual((await readdir(dataDir)).sort(), [
+    'buddy.sqlite',
+    'clock-state.json',
+  ]);
   const again = await start(t, dataDir);
   assert.equal(again.storeGeneration, generation);
   assert.equal(again.dataKeyCheck, 'matched');
@@ -700,7 +703,7 @@ test(
     const crashed = await startCli(t, dataDir);
     assert.deepEqual(crashed.events['store_opened'], {
       event: 'store_opened',
-      schema_version: 11,
+      schema_version: 12,
       store_generation: generation,
       store_generation_source: 'database',
       data_key_check: 'matched',

@@ -101,6 +101,17 @@ pnpm exec prettier --write tests/integration/evidence-b04-simulated.json
 
 全反復が成功したときだけ出力します。通常の試験は証拠を書き換えません。失敗した実行で以前の記録を今回の成功証拠と扱わず、終了コードを確認してください。
 
+### macOS の CI で証拠を作る（Windows で作業する場合）
+
+証拠には POSIX のファイル権限の観測（他人が書ける設定の拒否など）が含まれ、Windows では作れません。Windows で作業するときは、macOS の CI に証拠を作らせ、artifact から取り込みます（本人の決定 2026-10-31、Issue #170）。
+
+1. ブランチを push したあと、GitHub の Actions で `Simulated evidence (macOS)` を選び、`Run workflow` のブランチにそのブランチを指定して実行します。CLI では `gh workflow run evidence-macos.yml --ref <ブランチ>` です。
+2. workflow は `macos-latest` で `pnpm install --frozen-lockfile` と `pnpm run build` のあと、`BUDDY_B04_EVIDENCE_PATH`・`BUDDY_B07_EVIDENCE_PATH` を指定して B04・B07 の実行器を走らせ、prettier で整えた `evidence-b04-simulated.json` と `evidence-b07-simulated.json` を `simulated-evidence-<sha>` という artifact にまとめます。権限は `contents: read` だけで、秘密は使いません。
+3. 実行の artifact から 2 つの JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD、`source_sha256` が取り込んだソースと一致することを確認します（`scripts/test-map.test.mjs` が一覧と hash の一致を検査します）。
+4. 取り込んだあと、Windows でも `pnpm run build` と `pnpm run check` を実行し、証拠が現在のソースと一致することを確かめます。artifact を CI が commit することはありません。commit・push は作業ブランチで行います。
+
+通常の CI（`ci.yml`・`verify-os.yml`）はこの workflow を呼ばず、証拠を書き換えません。`workflow_dispatch` は既定ブランチに workflow ファイルがある必要があるため、この workflow の PR の上では実行できない場合があります。その場合はこの workflow が main に入ったあと、main を取り込んだブランチで実行してください。
+
 ## 未実施・残る判断
 
 - 実機（Mac mini・別マシンの macOS / Windows・Tailscale・本物の OS 確認ダイアログ）はすべて未実施。[device-check.md](device-check.md) に前提と手順を記載しています。CI の別 OS の結果も今回のローカル検証からは主張しません。

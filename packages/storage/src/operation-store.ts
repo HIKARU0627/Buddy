@@ -211,6 +211,8 @@ interface OperationRow {
   state_revision: number;
   created_at: number;
   completed_at: number | null;
+  // 忘却の送出禁止の印（0012。ADR 0044 の U61・ADR 0054）。印のある操作は承認・準備・送出・適用へ進めない。
+  send_blocked_generation: number | null;
 }
 
 interface AttemptRow {
@@ -851,6 +853,8 @@ function approveOperation(
   }
   if (bodyErased(db, operation.operation_id, contentVersion))
     throw new CommandRejection(['operation_body_erased']);
+  if (operation.send_blocked_generation !== null)
+    throw new CommandRejection(['operation_send_blocked']);
   guard(
     db,
     command,
@@ -898,6 +902,9 @@ function prepareOperation(
   // 本文の消えた内容版は送れない（未実行の確定の後、7 日を過ぎてからの本人の再試行）。
   if (bodyErased(db, operation.operation_id, contentVersion))
     throw new CommandRejection(['operation_body_erased']);
+  // 忘れた内容を含み得る確定内容は送らない（忘却の送出禁止の印。ADR 0054）。
+  if (operation.send_blocked_generation !== null)
+    throw new CommandRejection(['operation_send_blocked']);
   const hash = versionHash(db, operation.operation_id, contentVersion);
   const approval = effectiveApproval(
     db,
@@ -948,6 +955,8 @@ function recordDispatchIntent(
     reasons.push('content_version_changed');
   if (bodyErased(db, operation.operation_id, attempt.content_version))
     reasons.push('operation_body_erased');
+  if (operation.send_blocked_generation !== null)
+    reasons.push('operation_send_blocked');
   const hash = versionHash(db, operation.operation_id, attempt.content_version);
   const approval = db
     .prepare('SELECT * FROM approvals WHERE approval_id = ?')
@@ -1234,6 +1243,8 @@ function applyLocal(
   const contentVersion = operation.current_content_version;
   if (bodyErased(db, operation.operation_id, contentVersion))
     throw new CommandRejection(['operation_body_erased']);
+  if (operation.send_blocked_generation !== null)
+    throw new CommandRejection(['operation_send_blocked']);
   const hash = versionHash(db, operation.operation_id, contentVersion);
   const approval = effectiveApproval(
     db,

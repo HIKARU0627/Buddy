@@ -1,0 +1,2371 @@
+{
+  "status": "specification_only",
+  "description": "入出力のモード・文字応答への切り替え・結果の届け先・発話開始の一時保留・Live の文字起こしからの委譲の入力の期待値（設計 10 §1A・§5・§5A・§6・§6A、07 §5、09 X27・X36・X47・X49・X51・X58、QA05・QA35・QA41、ADR 0052）。手で書いたもので、domain の実装から生成していない。数値の時間はすべて合成の値（ms）。実際の音声・実 API・実機は使っていない。",
+  "device_id": "00000000-0000-4000-8000-000000000050",
+  "output_cases": [
+    {
+      "id": "text-request-with-an-open-voice-session",
+      "refs": ["D14", "10 §6", "X49"],
+      "input": {
+        "input_kind": "text",
+        "session_epoch": "3"
+      },
+      "expected": {
+        "mode": "text",
+        "session_epoch": null
+      }
+    },
+    {
+      "id": "text-request-without-a-voice-session",
+      "refs": ["10 §6"],
+      "input": {
+        "input_kind": "text",
+        "session_epoch": null
+      },
+      "expected": {
+        "mode": "text",
+        "session_epoch": null
+      }
+    },
+    {
+      "id": "local-recognition-always-answers-in-text",
+      "refs": ["10 §6A", "X46"],
+      "input": {
+        "input_kind": "voice_local",
+        "session_epoch": "3"
+      },
+      "expected": {
+        "mode": "text",
+        "session_epoch": null
+      }
+    },
+    {
+      "id": "live-transcript-answers-by-voice",
+      "refs": ["10 §5"],
+      "input": {
+        "input_kind": "voice_live",
+        "session_epoch": "3"
+      },
+      "expected": {
+        "mode": "voice",
+        "session_epoch": "3"
+      }
+    },
+    {
+      "id": "live-transcript-without-a-session-epoch-is-not-voice",
+      "refs": ["07 §5 D15"],
+      "input": {
+        "input_kind": "voice_live",
+        "session_epoch": null
+      },
+      "expected": {
+        "mode": "text",
+        "session_epoch": null
+      }
+    }
+  ],
+  "delivery_current": {
+    "deviceId": "00000000-0000-4000-8000-000000000050",
+    "ioEpoch": "4",
+    "audioEpoch": "7",
+    "outputEpoch": "2",
+    "sessionEpoch": "3",
+    "ioSuspended": false,
+    "audioLeaseValid": true
+  },
+  "delivery_base": {
+    "output": {
+      "mode": "voice",
+      "device_id": "00000000-0000-4000-8000-000000000050",
+      "session_epoch": "3"
+    },
+    "audio_epoch": "7",
+    "output_epoch": "2",
+    "revision_current": true,
+    "live_open": true,
+    "reply_text_requested": false,
+    "backgrounded": false
+  },
+  "delivery_cases": [
+    {
+      "id": "voice-result-with-everything-current",
+      "override": {},
+      "expected": {
+        "channel": "voice",
+        "reason": null
+      }
+    },
+    {
+      "id": "text-request-result-never-goes-to-voice",
+      "refs": ["D14", "X49"],
+      "override": {
+        "output": {
+          "mode": "text",
+          "device_id": "00000000-0000-4000-8000-000000000050",
+          "session_epoch": null
+        }
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "text_request"
+      }
+    },
+    {
+      "id": "text-request-with-stale-epochs-still-goes-to-the-screen",
+      "refs": ["X49"],
+      "override": {
+        "output": {
+          "mode": "text",
+          "device_id": "00000000-0000-4000-8000-000000000050",
+          "session_epoch": null
+        },
+        "audio_epoch": "1",
+        "live_open": false
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "text_request"
+      }
+    },
+    {
+      "id": "result-after-switching-to-text-goes-to-the-screen",
+      "refs": ["10 §6A", "X47"],
+      "override": {
+        "reply_text_requested": true
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "reply_mode_text"
+      }
+    },
+    {
+      "id": "result-after-the-live-closed-goes-to-the-screen",
+      "refs": ["10 §5 遅着", "X29"],
+      "override": {
+        "live_open": false
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "live_closed"
+      }
+    },
+    {
+      "id": "result-after-moving-to-the-background-goes-to-the-screen",
+      "refs": ["10 §5 即時ジョブの上限"],
+      "override": {
+        "backgrounded": true
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "backgrounded"
+      }
+    },
+    {
+      "id": "result-requested-before-the-playback-was-stopped",
+      "refs": ["10 §1A", "QA43"],
+      "override": {
+        "output_epoch": "1"
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "stale_epoch"
+      }
+    },
+    {
+      "id": "result-for-an-older-audio-connection",
+      "refs": ["10 §1A"],
+      "override": {
+        "audio_epoch": "6"
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "stale_epoch"
+      }
+    },
+    {
+      "id": "result-for-an-older-session-epoch",
+      "refs": ["07 §5 D15"],
+      "override": {
+        "output": {
+          "mode": "voice",
+          "device_id": "00000000-0000-4000-8000-000000000050",
+          "session_epoch": "2"
+        }
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "stale_epoch"
+      }
+    },
+    {
+      "id": "result-for-another-device",
+      "refs": ["QA34"],
+      "override": {
+        "output": {
+          "mode": "voice",
+          "device_id": "00000000-0000-4000-8000-000000000051",
+          "session_epoch": "3"
+        }
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "other_device"
+      }
+    },
+    {
+      "id": "result-without-an-audio-epoch",
+      "override": {
+        "audio_epoch": null
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "no_current_epoch"
+      }
+    },
+    {
+      "id": "result-without-an-output-epoch",
+      "override": {
+        "output_epoch": null
+      },
+      "expected": {
+        "channel": "screen",
+        "reason": "no_current_epoch"
+      }
+    },
+    {
+      "id": "superseded-revision-is-neither-voiced-nor-shown",
+      "refs": ["10 §5A-7", "X27"],
+      "override": {
+        "revision_current": false
+      },
+      "expected": {
+        "channel": "discard",
+        "reason": "revision_superseded"
+      }
+    },
+    {
+      "id": "superseded-text-revision-is-discarded-too",
+      "refs": ["10 §5A-7"],
+      "override": {
+        "revision_current": false,
+        "output": {
+          "mode": "text",
+          "device_id": "00000000-0000-4000-8000-000000000050",
+          "session_epoch": null
+        }
+      },
+      "expected": {
+        "channel": "discard",
+        "reason": "revision_superseded"
+      }
+    }
+  ],
+  "delivery_suspended_cases": [
+    {
+      "id": "voice-result-while-io-is-suspended",
+      "refs": ["10 §1A", "X13"],
+      "current": {
+        "ioSuspended": true
+      },
+      "override": {},
+      "expected": {
+        "channel": "screen",
+        "reason": "voice_unavailable"
+      }
+    },
+    {
+      "id": "voice-result-with-an-invalid-lease",
+      "refs": ["10 §2A"],
+      "current": {
+        "audioLeaseValid": false
+      },
+      "override": {},
+      "expected": {
+        "channel": "screen",
+        "reason": "voice_unavailable"
+      }
+    }
+  ],
+  "wake_base": {
+    "io_permitted": true,
+    "reply_mode": "voice",
+    "private_conversation": false,
+    "consent": "granted",
+    "budget_seconds_left": 120,
+    "recent_live_failure": false,
+    "core_refused": false
+  },
+  "wake_cases": [
+    {
+      "id": "everything-allows-live",
+      "refs": ["10 §2 t0"],
+      "override": {},
+      "expected": {
+        "mode": "live"
+      }
+    },
+    {
+      "id": "io-stopped-does-nothing",
+      "refs": ["10 §2 t0", "QA43"],
+      "override": {
+        "io_permitted": false
+      },
+      "expected": {
+        "mode": "refuse",
+        "reason": "io_not_permitted"
+      }
+    },
+    {
+      "id": "io-stopped-wins-over-the-text-setting",
+      "override": {
+        "io_permitted": false,
+        "reply_mode": "text"
+      },
+      "expected": {
+        "mode": "refuse",
+        "reason": "io_not_permitted"
+      }
+    },
+    {
+      "id": "reply-mode-text-never-opens-live",
+      "refs": ["10 §6A 組み合わせの決め方", "X47"],
+      "override": {
+        "reply_mode": "text"
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "reply_mode_text"
+      }
+    },
+    {
+      "id": "private-conversation-uses-local-recognition",
+      "refs": ["10 §6A", "質問 110"],
+      "override": {
+        "private_conversation": true
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "private_conversation"
+      }
+    },
+    {
+      "id": "private-wins-over-the-reply-mode",
+      "override": {
+        "private_conversation": true,
+        "reply_mode": "text"
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "private_conversation"
+      }
+    },
+    {
+      "id": "no-consent-does-not-send-audio",
+      "refs": ["#15 本人の判断"],
+      "override": {
+        "consent": "missing"
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "consent_missing"
+      }
+    },
+    {
+      "id": "revoked-consent-does-not-send-audio",
+      "override": {
+        "consent": "revoked"
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "consent_missing"
+      }
+    },
+    {
+      "id": "outdated-consent-does-not-send-audio",
+      "override": {
+        "consent": "policy_outdated"
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "consent_missing"
+      }
+    },
+    {
+      "id": "fifteen-seconds-left-opens-live",
+      "refs": ["10 §2 15 秒の最低課金"],
+      "override": {
+        "budget_seconds_left": 15
+      },
+      "expected": {
+        "mode": "live"
+      }
+    },
+    {
+      "id": "fourteen-seconds-left-switches-to-text",
+      "refs": ["質問 109", "X26"],
+      "override": {
+        "budget_seconds_left": 14
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "budget_short"
+      }
+    },
+    {
+      "id": "unknown-budget-switches-to-text",
+      "override": {
+        "budget_seconds_left": null
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "budget_short"
+      }
+    },
+    {
+      "id": "recent-live-failure-switches-to-text",
+      "refs": ["10 §6A 組み合わせの決め方"],
+      "override": {
+        "recent_live_failure": true
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "recent_live_failure"
+      }
+    },
+    {
+      "id": "core-refusal-switches-to-text",
+      "refs": ["10 §6A 組み合わせの決め方"],
+      "override": {
+        "core_refused": true
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "core_refused"
+      }
+    },
+    {
+      "id": "budget-wins-over-a-recent-failure",
+      "override": {
+        "budget_seconds_left": 0,
+        "recent_live_failure": true
+      },
+      "expected": {
+        "mode": "local_text",
+        "reason": "budget_short"
+      }
+    }
+  ],
+  "reply_mode_cases": [
+    {
+      "id": "voice-to-text-with-a-live-closes-it-now",
+      "refs": ["10 §6A 切り替え", "質問 107"],
+      "input": {
+        "current": "voice",
+        "next": "text",
+        "live_active": true
+      },
+      "expected": {
+        "reply_mode": "text",
+        "close_live": {
+          "reason": "output_mode_text"
+        },
+        "keeps_session": true,
+        "opens_live_now": false
+      }
+    },
+    {
+      "id": "voice-to-text-without-a-live-only-stores-the-setting",
+      "input": {
+        "current": "voice",
+        "next": "text",
+        "live_active": false
+      },
+      "expected": {
+        "reply_mode": "text",
+        "close_live": null,
+        "keeps_session": true,
+        "opens_live_now": false
+      }
+    },
+    {
+      "id": "text-to-voice-never-opens-or-resumes-a-live",
+      "refs": ["10 §1A"],
+      "input": {
+        "current": "text",
+        "next": "voice",
+        "live_active": false
+      },
+      "expected": {
+        "reply_mode": "voice",
+        "close_live": null,
+        "keeps_session": true,
+        "opens_live_now": false
+      }
+    },
+    {
+      "id": "text-to-voice-leaves-a-stray-live-alone",
+      "input": {
+        "current": "text",
+        "next": "voice",
+        "live_active": true
+      },
+      "expected": {
+        "reply_mode": "voice",
+        "close_live": null,
+        "keeps_session": true,
+        "opens_live_now": false
+      }
+    },
+    {
+      "id": "text-to-text-does-not-close-a-live-by-itself",
+      "input": {
+        "current": "text",
+        "next": "text",
+        "live_active": true
+      },
+      "expected": {
+        "reply_mode": "text",
+        "close_live": null,
+        "keeps_session": true,
+        "opens_live_now": false
+      }
+    },
+    {
+      "id": "voice-to-voice-keeps-the-live",
+      "input": {
+        "current": "voice",
+        "next": "voice",
+        "live_active": true
+      },
+      "expected": {
+        "reply_mode": "voice",
+        "close_live": null,
+        "keeps_session": true,
+        "opens_live_now": false
+      }
+    }
+  ],
+  "hold_scenarios": [
+    {
+      "id": "utterance-start-holds-only-the-changes-before-dispatch",
+      "refs": ["10 §5A-3", "QA35"],
+      "now": 1000,
+      "in_flight": [
+        {
+          "workflow_id": "w-change",
+          "request_revision": "1",
+          "phase": "pre_dispatch",
+          "is_change": true
+        },
+        {
+          "workflow_id": "w-read",
+          "request_revision": "1",
+          "phase": "pre_dispatch",
+          "is_change": false
+        },
+        {
+          "workflow_id": "w-sent",
+          "request_revision": "1",
+          "phase": "dispatched",
+          "is_change": true
+        }
+      ],
+      "expected_held": ["w-change"]
+    },
+    {
+      "id": "new-relation-resumes-every-held-change",
+      "refs": ["10 §5A-3 D15", "QA35"],
+      "held": ["a", "b"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "new",
+        "targets": []
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "resume"
+          },
+          {
+            "workflow_id": "b",
+            "action": "resume"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "correction-of-one-held-change-supersedes-it",
+      "refs": ["10 §5A-3・§5A-4", "X27"],
+      "held": ["a", "b"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "correction",
+        "targets": [
+          {
+            "workflow_id": "a",
+            "phase": "pre_dispatch"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "supersede"
+          },
+          {
+            "workflow_id": "b",
+            "action": "resume"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "clarification-of-one-held-change-supersedes-it",
+      "refs": ["10 §5A-4"],
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "clarification",
+        "targets": [
+          {
+            "workflow_id": "a",
+            "phase": "pre_dispatch"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "supersede"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "cancel-of-one-held-change-cancels-only-it",
+      "refs": ["10 §5A-3"],
+      "held": ["a", "b"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "cancel",
+        "targets": [
+          {
+            "workflow_id": "b",
+            "phase": "pre_dispatch"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "resume"
+          },
+          {
+            "workflow_id": "b",
+            "action": "cancel"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "correction-of-an-already-dispatched-workflow-becomes-a-new-proposal",
+      "refs": ["10 §5A-6"],
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "correction",
+        "targets": [
+          {
+            "workflow_id": "sent",
+            "phase": "dispatched"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "resume"
+          },
+          {
+            "workflow_id": "sent",
+            "action": "propose_after_reconcile"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "cancel-of-an-already-dispatched-workflow-only-keeps-reconciling",
+      "refs": ["10 §5A-6"],
+      "held": [],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "cancel",
+        "targets": [
+          {
+            "workflow_id": "sent",
+            "phase": "dispatched"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "sent",
+            "action": "reconcile_only"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "two-targets-ask-back-and-keep-everything-held",
+      "refs": ["10 §5A-3", "X27"],
+      "held": ["a", "b"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "correction",
+        "targets": [
+          {
+            "workflow_id": "a",
+            "phase": "pre_dispatch"
+          },
+          {
+            "workflow_id": "b",
+            "phase": "pre_dispatch"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "keep_held"
+          },
+          {
+            "workflow_id": "b",
+            "action": "keep_held"
+          }
+        ],
+        "ask_back": true,
+        "held_after": ["a", "b"]
+      }
+    },
+    {
+      "id": "no-target-asks-back",
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "correction",
+        "targets": []
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "keep_held"
+          }
+        ],
+        "ask_back": true,
+        "held_after": ["a"]
+      }
+    },
+    {
+      "id": "unknown-relation-never-resumes",
+      "refs": ["10 §5A-3"],
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "unknown",
+        "targets": []
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "keep_held"
+          }
+        ],
+        "ask_back": true,
+        "held_after": ["a"]
+      }
+    },
+    {
+      "id": "unknown-relation-with-a-target-still-never-resumes",
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "unknown",
+        "targets": [
+          {
+            "workflow_id": "a",
+            "phase": "pre_dispatch"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "keep_held"
+          }
+        ],
+        "ask_back": true,
+        "held_after": ["a"]
+      }
+    },
+    {
+      "id": "target-that-is-not-held-and-not-dispatched-asks-back",
+      "refs": ["10 §5A-4"],
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 5000,
+      "resolution": {
+        "relation": "correction",
+        "targets": [
+          {
+            "workflow_id": "gone",
+            "phase": "pre_dispatch"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "keep_held"
+          }
+        ],
+        "ask_back": true,
+        "held_after": ["a"]
+      }
+    },
+    {
+      "id": "hold-for-exactly-the-maximum-is-still-held",
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 31000,
+      "resolution": {
+        "relation": "new",
+        "targets": []
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "resume"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "hold-one-millisecond-over-the-maximum-expires",
+      "refs": ["U103"],
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 31001,
+      "resolution": {
+        "relation": "new",
+        "targets": []
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "expire"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "clock-before-the-hold-expires-it",
+      "refs": ["ADR 0041 時計を信用できないときは止める側"],
+      "held": ["a"],
+      "held_at": 1000,
+      "now": 999,
+      "resolution": {
+        "relation": "new",
+        "targets": []
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "expire"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    },
+    {
+      "id": "expired-hold-does-not-resume-even-for-a-correction-target",
+      "held": ["a", "b"],
+      "held_at_each": {
+        "a": 1000,
+        "b": 20000
+      },
+      "now": 32000,
+      "resolution": {
+        "relation": "correction",
+        "targets": [
+          {
+            "workflow_id": "b",
+            "phase": "pre_dispatch"
+          }
+        ]
+      },
+      "expected": {
+        "decisions": [
+          {
+            "workflow_id": "a",
+            "action": "expire"
+          },
+          {
+            "workflow_id": "b",
+            "action": "supersede"
+          }
+        ],
+        "ask_back": false,
+        "held_after": []
+      }
+    }
+  ],
+  "transcript_scenarios": [
+    {
+      "id": "one-utterance-with-contiguous-fragments",
+      "refs": ["10 §5A-2", "X51"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 100,
+          "end_ms": 700,
+          "text": "明日の",
+          "at": 1000
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 700,
+          "end_ms": 1500,
+          "text": "予定を教えて",
+          "at": 1800
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 1500,
+      "now": 2100,
+      "expected": {
+        "count": 1,
+        "text": "明日の予定を教えて",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 300,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "stable-for-299-ms-is-not-stable-enough",
+      "refs": ["X51", "ADR 0041 300 ms の安定"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 900,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 900,
+      "now": 1299,
+      "expected": {
+        "count": 1,
+        "text": "牛乳を買う",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 299,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "without-an-end-candidate-nothing-is-stable",
+      "refs": ["10 §5A-2 発話継続"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 900,
+          "text": "牛乳を",
+          "at": 1000
+        }
+      ],
+      "offset_ms": 900,
+      "now": 5000,
+      "expected": {
+        "count": 1,
+        "text": "牛乳を",
+        "facts": {
+          "end_candidate_observed": false,
+          "target_range_mapped": true,
+          "stable_ms": 0,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "skipped-fragment-number-is-a-known-gap",
+      "refs": ["QA05", "X51"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "明日の",
+          "at": 1000
+        },
+        {
+          "op": "fragment",
+          "index": 2,
+          "start_ms": 900,
+          "end_ms": 1500,
+          "text": "入れて",
+          "at": 1500
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 1500,
+      "now": 2000,
+      "expected": {
+        "count": 1,
+        "text": "明日の入れて",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 500,
+          "known_fragment_gap": true,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "first-fragment-number-must-be-zero",
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "予定を",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 500,
+      "now": 1400,
+      "expected": {
+        "count": 1,
+        "text": "予定を",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 400,
+          "known_fragment_gap": true,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "same-fragment-resent-is-ignored",
+      "refs": ["QA05"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "予定を",
+          "at": 1000
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "予定を",
+          "at": 1100
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 500,
+      "now": 1500,
+      "expected": {
+        "count": 1,
+        "text": "予定を",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 500,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "same-number-with-other-text-is-a-conflict",
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "予定を",
+          "at": 1000
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "予定は",
+          "at": 1100
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 500,
+      "now": 1500,
+      "expected": {
+        "count": 1,
+        "text": "予定を予定は",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": false,
+          "stable_ms": 400,
+          "known_fragment_gap": true,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "fragment-without-a-number-cannot-be-mapped",
+      "refs": ["10 §5A-2 時刻対応が不明", "X51"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": null,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "予定を",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 500,
+      "now": 1400,
+      "expected": {
+        "count": 1,
+        "text": "予定を",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": false,
+          "stable_ms": 400,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "fragment-without-times-cannot-be-mapped",
+      "refs": ["X51"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": null,
+          "end_ms": null,
+          "text": "予定を",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 500,
+      "now": 1400,
+      "expected": {
+        "count": 1,
+        "text": "予定を",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": false,
+          "stable_ms": 400,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "times-going-backwards-cannot-be-mapped",
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 600,
+          "end_ms": 1000,
+          "text": "予定を",
+          "at": 1000
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 200,
+          "end_ms": 500,
+          "text": "教えて",
+          "at": 1100
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 1000,
+      "now": 1500,
+      "expected": {
+        "count": 1,
+        "text": "予定を教えて",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": false,
+          "stable_ms": 400,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "fragments-before-any-speech-start-have-no-boundary",
+      "refs": ["10 §5A-2"],
+      "steps": [
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "予定を",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 500,
+      "now": 1400,
+      "expected": {
+        "count": 1,
+        "text": "予定を",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": false,
+          "stable_ms": 400,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "two-short-utterances-before-one-delegation-are-two-targets",
+      "refs": ["10 §5A 対象ターンが複数", "X51"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        },
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 1200,
+          "end_ms": 2000,
+          "text": "卵も買う",
+          "at": 2000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 2000,
+      "now": 2400,
+      "expected": {
+        "count": 2,
+        "text": null,
+        "facts": {
+          "end_candidate_observed": false,
+          "target_range_mapped": false,
+          "stable_ms": 0,
+          "known_fragment_gap": false,
+          "target_turn_unique": false
+        }
+      }
+    },
+    {
+      "id": "an-older-utterance-outside-the-window-is-not-a-target",
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        },
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 5000,
+          "end_ms": 5800,
+          "text": "卵も買う",
+          "at": 6000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 5800,
+      "now": 6400,
+      "expected": {
+        "count": 1,
+        "text": "卵も買う",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 400,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "unknown-offset-has-no-target",
+      "refs": ["X51"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": null,
+      "now": 1500,
+      "expected": {
+        "count": 0,
+        "text": null,
+        "facts": {
+          "end_candidate_observed": false,
+          "target_range_mapped": false,
+          "stable_ms": 0,
+          "known_fragment_gap": false,
+          "target_turn_unique": false
+        }
+      }
+    },
+    {
+      "id": "speech-continuing-after-an-end-candidate-is-a-new-turn",
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        },
+        {
+          "op": "speech_start"
+        }
+      ],
+      "offset_ms": 900,
+      "now": 1500,
+      "expected": {
+        "count": 2,
+        "text": null,
+        "facts": {
+          "end_candidate_observed": false,
+          "target_range_mapped": false,
+          "stable_ms": 0,
+          "known_fragment_gap": false,
+          "target_turn_unique": false
+        }
+      }
+    },
+    {
+      "id": "speech-restarting-before-an-end-candidate-continues-the-same-turn",
+      "refs": ["10 §5A-2 発話継続"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を",
+          "at": 1000
+        },
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 800,
+          "end_ms": 1500,
+          "text": "買う",
+          "at": 1600
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 1500,
+      "now": 2000,
+      "expected": {
+        "count": 1,
+        "text": "牛乳を買う",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 400,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "clock-before-the-last-fragment-counts-no-stability",
+      "refs": ["ADR 0041 時計が戻ったときは数え直す"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 800,
+      "now": 900,
+      "expected": {
+        "count": 1,
+        "text": "牛乳を買う",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 0,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "fragment-from-the-previous-utterance-arriving-late-is-not-mapped",
+      "refs": ["10 §5A-2"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        },
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 700,
+          "end_ms": 1100,
+          "text": "って",
+          "at": 1500
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "offset_ms": 1100,
+      "now": 2000,
+      "expected": {
+        "count": 2,
+        "text": null,
+        "facts": {
+          "end_candidate_observed": false,
+          "target_range_mapped": false,
+          "stable_ms": 0,
+          "known_fragment_gap": false,
+          "target_turn_unique": false
+        }
+      }
+    },
+    {
+      "id": "turn-already-used-by-an-earlier-delegation-is-not-a-target",
+      "refs": ["10 §5A-3 訂正の発話", "X27"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        },
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 1200,
+          "end_ms": 2000,
+          "text": "卵にして",
+          "at": 2000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "claimed": [1],
+      "offset_ms": 2000,
+      "now": 2400,
+      "expected": {
+        "count": 1,
+        "text": "卵にして",
+        "facts": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 400,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      }
+    },
+    {
+      "id": "two-unclaimed-turns-stay-two-targets",
+      "refs": ["10 §5A 対象ターンが複数", "X51"],
+      "steps": [
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 0,
+          "start_ms": 0,
+          "end_ms": 800,
+          "text": "牛乳を買う",
+          "at": 1000
+        },
+        {
+          "op": "end_candidate"
+        },
+        {
+          "op": "speech_start"
+        },
+        {
+          "op": "fragment",
+          "index": 1,
+          "start_ms": 1200,
+          "end_ms": 2000,
+          "text": "卵も買う",
+          "at": 2000
+        },
+        {
+          "op": "end_candidate"
+        }
+      ],
+      "claimed": [5],
+      "offset_ms": 2000,
+      "now": 2400,
+      "expected": {
+        "count": 2,
+        "text": null,
+        "facts": {
+          "end_candidate_observed": false,
+          "target_range_mapped": false,
+          "stable_ms": 0,
+          "known_fragment_gap": false,
+          "target_turn_unique": false
+        }
+      }
+    }
+  ],
+  "live_input_conditions": [
+    "live_control_ready",
+    "audio_epoch_current",
+    "session_epoch_current",
+    "audio_lease_valid",
+    "io_permitted",
+    "not_private_conversation",
+    "voice_output_mode",
+    "external_send_consent",
+    "budget_reserved"
+  ],
+  "live_input_base": {
+    "intent": "create_task",
+    "transcript": {
+      "end_candidate_observed": true,
+      "target_range_mapped": true,
+      "stable_ms": 300,
+      "known_fragment_gap": false,
+      "target_turn_unique": true
+    },
+    "unresolved_correction": false,
+    "missing_args": false,
+    "utterance_hold": false,
+    "policy_version": "1",
+    "own_event_only": false
+  },
+  "live_input_cases": [
+    {
+      "id": "create-task-from-a-complete-observation-proceeds",
+      "refs": ["QA41", "10 §5A 方式 C"],
+      "override": {},
+      "expected": {
+        "decision": "proceed",
+        "operation": "register_task_or_note",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "create-note-proceeds-as-the-same-operation",
+      "override": {
+        "intent": "create_note"
+      },
+      "expected": {
+        "decision": "proceed",
+        "operation": "register_task_or_note",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "label-mail-proceeds",
+      "override": {
+        "intent": "label_mail"
+      },
+      "expected": {
+        "decision": "proceed",
+        "operation": "change_label",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "draft-reply-proceeds",
+      "override": {
+        "intent": "draft_reply"
+      },
+      "expected": {
+        "decision": "proceed",
+        "operation": "save_reply_draft",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "own-event-proceeds",
+      "override": {
+        "intent": "create_event",
+        "own_event_only": true
+      },
+      "expected": {
+        "decision": "proceed",
+        "operation": "create_own_event",
+        "input_evidence": "live_policy_observed",
+        "seal_reason": "live_transcript_policy"
+      }
+    },
+    {
+      "id": "event-with-other-people-needs-the-full-text",
+      "refs": ["QA41", "J11"],
+      "override": {
+        "intent": "create_event",
+        "own_event_only": false
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["event_not_own_only"]
+      }
+    },
+    {
+      "id": "memory-save-needs-the-full-text",
+      "refs": ["QA41", "X59", "D04"],
+      "override": {
+        "intent": "memory_save"
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "send-mail-needs-the-full-text",
+      "refs": ["QA41", "D05"],
+      "override": {
+        "intent": "send_mail"
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "trash-mail-needs-the-full-text",
+      "override": {
+        "intent": "trash_mail"
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "update-event-needs-the-full-text",
+      "override": {
+        "intent": "update_event"
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "update-task-needs-the-full-text",
+      "override": {
+        "intent": "update_task"
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "memory-forget-needs-the-full-text",
+      "override": {
+        "intent": "memory_forget"
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "memory-correct-needs-the-full-text",
+      "override": {
+        "intent": "memory_correct"
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "handoff-screen-is-not-one-of-the-four-operations",
+      "refs": ["U37"],
+      "override": {
+        "intent": "handoff_screen"
+      },
+      "expected": {
+        "decision": "full_text_required",
+        "reasons": ["outside_four_operations"]
+      }
+    },
+    {
+      "id": "schedule-query-is-a-read-and-needs-no-observation",
+      "refs": ["10 §5A-3"],
+      "override": {
+        "intent": "query_schedule",
+        "transcript": {
+          "end_candidate_observed": false,
+          "target_range_mapped": false,
+          "stable_ms": 0,
+          "known_fragment_gap": true,
+          "target_turn_unique": false
+        }
+      },
+      "expected": {
+        "decision": "read"
+      }
+    },
+    {
+      "id": "undo-opens-only-a-list-so-it-is-a-read",
+      "override": {
+        "intent": "undo_action"
+      },
+      "expected": {
+        "decision": "read"
+      }
+    },
+    {
+      "id": "stable-for-299-ms-waits",
+      "refs": ["X51"],
+      "override": {
+        "transcript": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 299,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["not_stable"],
+        "wait": true
+      }
+    },
+    {
+      "id": "no-end-candidate-waits",
+      "override": {
+        "transcript": {
+          "end_candidate_observed": false,
+          "target_range_mapped": true,
+          "stable_ms": 0,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["end_candidate_missing", "not_stable"],
+        "wait": true
+      }
+    },
+    {
+      "id": "known-gap-never-waits",
+      "refs": ["QA05", "X51"],
+      "override": {
+        "transcript": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 900,
+          "known_fragment_gap": true,
+          "target_turn_unique": true
+        }
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["known_fragment_gap"],
+        "wait": false
+      }
+    },
+    {
+      "id": "unmapped-time-never-waits",
+      "refs": ["X51"],
+      "override": {
+        "transcript": {
+          "end_candidate_observed": true,
+          "target_range_mapped": false,
+          "stable_ms": 900,
+          "known_fragment_gap": false,
+          "target_turn_unique": true
+        }
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["time_mapping_unconfirmed"],
+        "wait": false
+      }
+    },
+    {
+      "id": "two-target-turns-never-wait",
+      "refs": ["X51"],
+      "override": {
+        "transcript": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 900,
+          "known_fragment_gap": false,
+          "target_turn_unique": false
+        }
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["target_turn_not_unique"],
+        "wait": false
+      }
+    },
+    {
+      "id": "correction-arriving-blocks",
+      "override": {
+        "unresolved_correction": true
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["unresolved_correction"],
+        "wait": false
+      }
+    },
+    {
+      "id": "missing-arguments-ask-again",
+      "override": {
+        "missing_args": true
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["missing_args"],
+        "wait": false
+      }
+    },
+    {
+      "id": "utterance-hold-waits",
+      "refs": ["QA35"],
+      "override": {
+        "utterance_hold": true
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["utterance_hold"],
+        "wait": true
+      }
+    },
+    {
+      "id": "missing-policy-version-blocks",
+      "override": {
+        "policy_version": null
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["policy_version_missing"],
+        "wait": false
+      }
+    },
+    {
+      "id": "gap-and-a-waitable-condition-do-not-wait",
+      "override": {
+        "transcript": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 100,
+          "known_fragment_gap": true,
+          "target_turn_unique": true
+        }
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["not_stable", "known_fragment_gap"],
+        "wait": false
+      }
+    },
+    {
+      "id": "memory-save-with-a-gap-is-blocked-before-the-four-operation-check",
+      "refs": ["X59"],
+      "override": {
+        "intent": "memory_save",
+        "transcript": {
+          "end_candidate_observed": true,
+          "target_range_mapped": true,
+          "stable_ms": 900,
+          "known_fragment_gap": true,
+          "target_turn_unique": true
+        }
+      },
+      "expected": {
+        "decision": "ask_again",
+        "reasons": ["known_fragment_gap"],
+        "wait": false
+      }
+    }
+  ],
+  "live_input_rejections": [
+    {
+      "id": "reply-mode-text-rejects-a-live-transcript",
+      "refs": ["X47"],
+      "missing_conditions": ["voice_output_mode"],
+      "expected_reasons": ["voice_output_mode"]
+    },
+    {
+      "id": "closed-connection-rejects",
+      "missing_conditions": ["live_control_ready"],
+      "expected_reasons": ["live_control_ready"]
+    },
+    {
+      "id": "old-audio-epoch-rejects",
+      "missing_conditions": ["audio_epoch_current"],
+      "expected_reasons": ["audio_epoch_current"]
+    },
+    {
+      "id": "old-session-epoch-rejects",
+      "missing_conditions": ["session_epoch_current"],
+      "expected_reasons": ["session_epoch_current"]
+    },
+    {
+      "id": "invalid-lease-rejects",
+      "missing_conditions": ["audio_lease_valid"],
+      "expected_reasons": ["audio_lease_valid"]
+    },
+    {
+      "id": "stopped-io-rejects",
+      "missing_conditions": ["io_permitted"],
+      "expected_reasons": ["io_permitted"]
+    },
+    {
+      "id": "private-conversation-rejects",
+      "missing_conditions": ["not_private_conversation"],
+      "expected_reasons": ["not_private_conversation"]
+    },
+    {
+      "id": "missing-consent-rejects",
+      "missing_conditions": ["external_send_consent"],
+      "expected_reasons": ["external_send_consent"]
+    },
+    {
+      "id": "no-budget-rejects",
+      "missing_conditions": ["budget_reserved"],
+      "expected_reasons": ["budget_reserved"]
+    },
+    {
+      "id": "several-missing-conditions-are-all-reported-in-table-order",
+      "missing_conditions": [
+        "budget_reserved",
+        "live_control_ready",
+        "io_permitted"
+      ],
+      "expected_reasons": [
+        "live_control_ready",
+        "io_permitted",
+        "budget_reserved"
+      ]
+    }
+  ],
+  "commentary_cases": [
+    {
+      "id": "schedule-with-two-events",
+      "input": {
+        "kind": "schedule_cards",
+        "event_count": 2,
+        "overlap": false,
+        "more_count": 0,
+        "clarification_text": null
+      },
+      "expected": {
+        "template_id": "schedule.count",
+        "template_version": "1",
+        "facts": [
+          {
+            "kind": "schedule_cards",
+            "ref_id": null,
+            "title": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "count": 2
+          }
+        ],
+        "commentary_parts": ["予定は2件です。"]
+      }
+    },
+    {
+      "id": "schedule-with-an-overlap-and-more",
+      "input": {
+        "kind": "schedule_cards",
+        "event_count": 3,
+        "overlap": true,
+        "more_count": 4,
+        "clarification_text": null
+      },
+      "expected": {
+        "template_id": "schedule.count",
+        "template_version": "1",
+        "facts": [
+          {
+            "kind": "schedule_cards",
+            "ref_id": null,
+            "title": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "count": 3
+          }
+        ],
+        "commentary_parts": [
+          "予定は3件です。",
+          "時間が重なっている予定があります。",
+          "ほかに4件あります。"
+        ]
+      }
+    },
+    {
+      "id": "schedule-without-events",
+      "input": {
+        "kind": "schedule_cards",
+        "event_count": 0,
+        "overlap": false,
+        "more_count": 0,
+        "clarification_text": null
+      },
+      "expected": {
+        "template_id": "schedule.none",
+        "template_version": "1",
+        "facts": [
+          {
+            "kind": "schedule_cards",
+            "ref_id": null,
+            "title": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "count": 0
+          }
+        ],
+        "commentary_parts": ["予定はありません。"]
+      }
+    },
+    {
+      "id": "approval-link-never-says-done",
+      "refs": ["D05", "10 §4 (4)"],
+      "input": {
+        "kind": "approval_link",
+        "event_count": 0,
+        "overlap": false,
+        "more_count": 0,
+        "clarification_text": null
+      },
+      "expected": {
+        "template_id": "review.screen",
+        "template_version": "1",
+        "facts": [
+          {
+            "kind": "approval_link",
+            "ref_id": null,
+            "title": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "count": null
+          }
+        ],
+        "commentary_parts": ["画面で確認してください。"]
+      }
+    },
+    {
+      "id": "clarification-passes-only-the-core-fixed-sentence",
+      "input": {
+        "kind": "clarification",
+        "event_count": 0,
+        "overlap": false,
+        "more_count": 0,
+        "clarification_text": "どのメールのことか教えてください。"
+      },
+      "expected": {
+        "template_id": "clarify.fixed",
+        "template_version": "1",
+        "facts": [
+          {
+            "kind": "clarification",
+            "ref_id": null,
+            "title": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "count": null
+          }
+        ],
+        "commentary_parts": ["どのメールのことか教えてください。"]
+      }
+    },
+    {
+      "id": "clarification-without-a-sentence-asks-to-say-it-again",
+      "input": {
+        "kind": "clarification",
+        "event_count": 0,
+        "overlap": false,
+        "more_count": 0,
+        "clarification_text": null
+      },
+      "expected": {
+        "template_id": "input.say_again",
+        "template_version": "1",
+        "facts": [
+          {
+            "kind": "clarification",
+            "ref_id": null,
+            "title": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "count": null
+          }
+        ],
+        "commentary_parts": [
+          "うまく聞き取れませんでした。もう一度言ってください。"
+        ]
+      }
+    },
+    {
+      "id": "other-kinds-point-to-the-screen",
+      "input": {
+        "kind": "task_rows",
+        "event_count": 0,
+        "overlap": false,
+        "more_count": 0,
+        "clarification_text": null
+      },
+      "expected": {
+        "template_id": "result.screen",
+        "template_version": "1",
+        "facts": [
+          {
+            "kind": "task_rows",
+            "ref_id": null,
+            "title": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "count": null
+          }
+        ],
+        "commentary_parts": ["画面で確認してください。"]
+      }
+    }
+  ]
+}

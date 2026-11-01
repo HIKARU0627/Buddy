@@ -2,9 +2,13 @@
 
 生活・学習・開発を支える、デバイスに依存しない個人 AI アシスタント。
 
-現在は **B00（契約のファイル化）の終了条件を満たした段階** です（[ADR 0011](docs/adr/0011-b00-completion-review.md)）。JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を検査できます。B01 では、Core の起動・状態確認・停止とローカル制御チャネル（[ADR 0012](docs/adr/0012-b01-core-lifecycle-and-local-control.md)）、OS 別の起動・鍵保護のアダプター（ADR 0013）、トレイ常駐と端末状態の記録を持つ最小のデスクトップ（ADR 0014・0015）を実装しました。B02 では SQLite の保存・鍵保護（キーチェーン）・暗号化・DB worker を作り、Core に組み込んで再起動の後の復元と内容 hash の照合を行いました（ADR 0016〜0019、完了判定の下書きは [docs/b02/README.md](docs/b02/README.md)）。B02 の試験は模擬のみで、macOS 実機の確認・電源断と、製品の統合・実 API・実請求の試験は未実施です。B03 では中枢の自己署名証明書（秘密鍵はキーチェーン）・HTTPS の受付・経路検査・接続範囲、ペアリングと失効、自宅の判定、スナップショットと WSS の配信、端末側の接続（`packages/client`）とデスクトップの中枢への接続（ピン留め・safeStorage）、中枢の画面の端末での申請の承認と端末の失効を作りました（ADR 0020〜0023・0025・0026、完了判定の下書きは [docs/b03/README.md](docs/b03/README.md)）。B03 の試験は同じマシンの模擬のみで、Mac mini・Tailscale・別のマシンの実機の確認は未実施です（[docs/b03/device-check.md](docs/b03/device-check.md)）。デスクトップの画面は本人の指示で HeroUI に作り直し、以後の画面も HeroUI で作ります（[ADR 0024](docs/adr/0024-ui-heroui-desktop-renderer.md)）。
+現在は **B01 以降の実装が進行中の段階** です。B00（契約のファイル化。[ADR 0011](docs/adr/0011-b00-completion-review.md)）で JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を揃え、その上に次を実装しています。工程ごとの判断は [docs/adr](docs/adr/)、完了判定と実機の手順は docs/b01〜b07 にあります（工程により有無が異なります）。
 
-B04-06 では文字入力から模擬 provider の変更までの統合実行器を追加し、X01〜X09・X11 と QA28 を固定 seed で確認しました。X10 は工程の仕組みだけ（合格は B14）です。B04-07 で外部の下書きの保存（RemoteMutation）を実装し、QA27 の 3 経路（予定・用事・下書き）と全経路の権限・期限を模擬で確認しました（[ADR 0033](docs/adr/0033-b04-draft-save-and-qa27-paths.md)）。[B04 の完了判定](docs/b04/README.md)と[実機手順（未実施）](docs/b04/device-check.md)を参照してください。表示の移動は B05 です。
+- B01〜B03: Core の起動・停止とローカル制御、OS 別の起動・鍵保護のアダプター、最小のデスクトップ、SQLite の保存・暗号化・DB worker、中枢の HTTPS・ペアリング・端末の失効・スナップショットと WSS の配信、端末側の接続（`packages/client`）
+- B04: 文字入力から模擬 provider の変更までの統合実行器、外部の下書きの保存（RemoteMutation）
+- B05〜B07: 音声の制御、保存の期限・忘却・バックアップ、予算の予約・精算
+
+試験の大半は合成データと模擬 provider による模擬で、実機・実 API・実請求の確認は工程ごとの記録（docs/b01〜b07、`tests/integration/evidence-*.json`）にある範囲だけです。実施状態は `tests/test-map.json` で追跡し、契約 CI や模擬試験の成功を実機・実 API・実請求の合格として扱いません。デスクトップの画面は本人の指示で HeroUI に作り直し、以後の画面も HeroUI で作ります（[ADR 0024](docs/adr/0024-ui-heroui-desktop-renderer.md)）。
 
 ## セットアップ
 
@@ -22,6 +26,8 @@ pnpm run check
 npm は pnpm の初回導入だけに使います。hook の準備時に公式 Gitleaks を検証付きで取得し、その後の検証は外部サービスへ接続しません。ローカルでも CI と同じ `pnpm run check` を使います。Core の起動方法は [apps/core/README.md](apps/core/README.md)、デスクトップの開発起動は [apps/desktop/README.md](apps/desktop/README.md) を参照してください。
 
 ## 最初に読むもの
+
+以下は主なものです。ADR の全件は [docs/adr](docs/adr/)、工程ごとの完了判定と実機の手順は docs/b01〜b07 を参照してください。
 
 - [B00 の作業順・終了条件](docs/b00/README.md)
 - [契約と設計・試験の対応表](docs/b00/contract-map.md)
@@ -68,8 +74,8 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 
 | 場所                  | 責務・現在の状態                                                                                           |
 | --------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `packages/contracts`  | 初回の JSON Schema / OpenAPI / 生成型 / 合成例。全体は B00 で継続                                          |
-| `packages/domain`     | 認可・承認・状態遷移などの純粋な規則。境界仕様は B00 で作成                                                |
+| `packages/contracts`  | JSON Schema / OpenAPI / 生成型 / 合成例（ワイヤ契約の正本）                                                |
+| `packages/domain`     | 認可・承認・状態遷移・予算・保存期限などの純粋な規則。Electron・DOM・Node 専用 API に依存しない            |
 | `packages/client`     | 端末側の接続の状態機械（bootstrap・スナップショット・購読・再接続）。Node・DOM・Electron なし（B03）       |
 | `packages/storage`    | Core の保存アダプター。SQLite・暗号化・DB worker・内容 hash（B02）                                         |
 | `packages/connectors` | 模擬 provider（合成メール・予定）・故障注入・Core 側のアダプター（B04-02。実 provider は B08・B09）        |

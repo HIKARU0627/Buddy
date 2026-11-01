@@ -342,7 +342,9 @@ test('stale revisions and changed versions are rejected without writing anything
       });
     }
     // 忘却台帳が進んだ後は、古い世代を付けた命令を拒否する。
-    db.exec("INSERT INTO forget_ledger VALUES (1, 'fl-1', 1000)");
+    db.exec(
+      "INSERT INTO forget_ledger VALUES (1, 'fl-1', 1000, '1111111111111111111111111111111111111111111111111111111111111111', 1)",
+    );
     assert.deepEqual(
       reasons(run(db, dispatchCommand('op-1', '3', attemptId))),
       ['forgetting_generation_changed'],
@@ -663,7 +665,9 @@ test('a transaction body must be synchronous', async () => {
     assert.throws(
       () =>
         runImmediate(db, () => {
-          db.exec("INSERT INTO forget_ledger VALUES (1, 'fl-1', 1000)");
+          db.exec(
+            "INSERT INTO forget_ledger VALUES (1, 'fl-1', 1000, '1111111111111111111111111111111111111111111111111111111111111111', 1)",
+          );
           return Promise.resolve();
         }),
       /Promise/u,

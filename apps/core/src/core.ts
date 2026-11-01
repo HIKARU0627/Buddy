@@ -61,6 +61,13 @@ import {
   TaskMigrationError,
   migrateTaskContents,
 } from './task-content-migration.js';
+import { ForgetLedgerError, syncForgetLedger } from './forget-ledger.js';
+import { createClockStateFile } from './clock-state.js';
+import type { NoticeSink } from './notice-sink.js';
+import {
+  RestoreInstallError,
+  recoverRestoreInstall,
+} from './restore-install.js';
 import { createTurnRoutes } from './api-turns.js';
 import { CanvasHub, createStreamRoutes } from './canvas-stream.js';
 import { PreviewRegistry } from './previews.js';
@@ -87,6 +94,7 @@ import { BUDGET_CREDIT_FILE, fileCreditSource } from './budget-credit.js';
 import type { CreditObservationSource } from './budget-credit.js';
 import { BudgetGate } from './budget-gate.js';
 import { createVoiceRoutes } from './api-voice.js';
+import { LiveConversation, createLiveScreenSink } from './live-conversation.js';
 import {
   createLiveBudget,
   DEFAULT_LIVE_PROFILE_ID,
@@ -96,7 +104,7 @@ import {
   combineReconcilers,
   createLiveUsageReconciler,
 } from './live-reconcile.js';
-import { VoiceControl } from './voice-control.js';
+import { REAL_VOICE_TIMERS, VoiceControl } from './voice-control.js';
 import type {
   LiveBudgetPort,
   LiveProvider,
@@ -133,11 +141,20 @@ import {
   releaseLock,
 } from './lock.js';
 import type { LockRefusal } from './lock.js';
-import { DB_FILE, controlEndpoint, socketPathTooLong } from './paths.js';
+import {
+  DB_FILE,
+  FORGET_LEDGER_FILE,
+  controlEndpoint,
+  socketPathTooLong,
+} from './paths.js';
 import { runPreflight } from './preflight.js';
 import type { PreflightCheck } from './preflight.js';
 import { RecoveryError, recoverInterruptedOperations } from './recovery.js';
 import type { RecoveryReport } from './recovery.js';
+import {
+  RetentionSweeper,
+  createRetentionSweepPort,
+} from './retention-sweeper.js';
 import { TlsIdentityError, loadOrCreateTlsIdentity } from './tls-identity.js';
 import type { TlsIdentityCreation } from './tls-identity.js';
 
@@ -267,6 +284,18 @@ export interface StartCoreOptions {
   // 予算の門（ADR 0037）。省略したものは、設定ファイルはデータディレクトリの budget-runtime.json、OS のタイムゾーンは
   // Intl の既定、provider の照合の口はなし（送出意図のある予約は usage 不明として保持）、月の確認は 1 分ごと。
   readonly budget?: CoreBudgetOptions;
+  // 保存期限の掃除（ADR 0058）。省略したものは、時計の状態ファイルはデータディレクトリの clock-state.json、
+  // 知らせの受け取りはなし（運搬は UI-05）。
+  readonly retention?: CoreRetentionOptions;
+}
+
+export interface CoreRetentionOptions {
+  // 期限切れの知らせの受け取り口（U40。運搬は UI-05）。
+  readonly notices?: NoticeSink;
+  // 復帰の検知に使う単調時計（試験で差し替える）。
+  readonly monotonic?: () => number;
+  // 掃除の間隔（試験用。既定は 5 分）。
+  readonly sweepIntervalMs?: number;
 }
 
 export interface CoreBudgetOptions {
@@ -313,6 +342,8 @@ export interface CoreHandle {
   readonly pairing: PairingService | null;
   // 自宅判定（ADR 0022）。HTTPS を設定しなければ null。onDenied で WSS を閉じる（配信は B03-04）。
   readonly homeNetwork: HomeNetworkGate | null;
+  // 保存期限の掃除の job（ADR 0053）。gate() が開くまで検索・クラウドへの送信・自動利用を許さない。
+  readonly retention: RetentionSweeper;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -379,6 +410,23 @@ async function openStore(
   options: StartCoreOptions,
   log: (message: string) => void,
 ): Promise<OpenedStore> {
+  // 途中で止まった復元の差し替えを、DB を開く前に終えるか元へ戻す（ADR 0054 U113）。DB がないまま新しい DB を作らない。
+  try {
+    const restored = await recoverRestoreInstall(dataDir);
+    if (restored !== 'none')
+      log(
+        restored === 'completed'
+          ? '途中で止まった復元の差し替えを終えました。'
+          : '途中で止まった復元の差し替えを取りやめ、元の DB に戻しました。',
+      );
+  } catch (error) {
+    if (error instanceof RestoreInstallError)
+      throw new CoreStartError('store_recovery_failed', [
+        'restore_install',
+        error.reason,
+      ]);
+    throw error;
+  }
   // データ鍵をロックの後に読み直す（作成しない）。起動前の検査で作った鍵が、同時に起動した別の Core に
   // 上書きされていても、この時点の鍵と DB の照合値を比べれば食い違いを検出できる（ADR 0019）。
   const dataKey = await loadDataKeyAfterLock(options.keyStore);
@@ -439,6 +487,27 @@ async function openStore(
         throw new CoreStartError('store_recovery_failed', [
           'task_content_migration_failed',
           error.reason,
+        ]);
+      throw error;
+    }
+    // 忘却台帳の別ファイルを DB にそろえる（ADR 0054）。COMMIT の後・書く前に止まった忘却はここで書き直す。ファイルが
+    // DB より進んでいる・食い違う・壊れているときは起動しない（DB が古い状態へ戻された疑い）。
+    try {
+      const ledger = await syncForgetLedger(
+        store,
+        join(dataDir, FORGET_LEDGER_FILE),
+        new Date(),
+      );
+      if (ledger.action === 'written')
+        log(
+          `忘却台帳のファイルを DB に合わせて書きました（世代 ${ledger.forgetting_generation}）。`,
+        );
+    } catch (error) {
+      if (error instanceof ForgetLedgerError)
+        throw new CoreStartError('store_recovery_failed', [
+          'forget_ledger_file',
+          error.reason,
+          ...error.reasons,
         ]);
       throw error;
     }
@@ -517,6 +586,7 @@ export async function startCore(
   let pairing: PairingService | null = null;
   let budget: BudgetGate | null = null;
   let budgetTimer: NodeJS.Timeout | null = null;
+  let retention: RetentionSweeper | null = null;
   let voice: VoiceControl | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
@@ -554,8 +624,9 @@ export async function startCore(
     };
     // 実行担当を止める（以後は外部へ送らない。送出意図の後に止まった試行は次の起動で unknown_held になる）。
     runner?.close();
-    // 予算月の定期の確認を止める。
+    // 予算月の定期の確認と、保存期限の掃除の定期実行を止める。
     if (budgetTimer !== null) clearInterval(budgetTimer);
+    retention?.close();
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
       await streams?.closeAll();
@@ -565,6 +636,8 @@ export async function startCore(
     await step(() => control.close(options.shutdownGraceMs ?? 2000));
     // 音声の制御のタイマーとサイドバンドを止める（閉じ終えていない Live は次の起動の照合が扱う）。
     await step(async () => voice?.close());
+    // 実行中の掃除と後始末を終えてから DB を閉じる（閉じた後の命令で失敗を出さない）。掃除は次の区切りで中断する。
+    await step(async () => retention?.drain());
     // 処理中の命令を終えてから DB を閉じる。ロックはその後に返す。
     await step(async () => opened?.store.close());
     await step(removeSocketFile);
@@ -585,6 +658,26 @@ export async function startCore(
 
   try {
     opened = await openStore(dataDir, options, log);
+    // 保存期限の掃除（ADR 0053）。起動の直後はゲートを閉じたまま、最初の掃除を始める。検索・クラウドへの
+    // 送信・自動利用の入口は、済むまで retention.gate() が閉じていることを確かめる。
+    // 順序（ADR 0058）: 台帳のファイルの同期（openStore）→ 掃除 → ゲートが開く。時計の最終確認時刻と epoch は
+    // データディレクトリのファイルに置く（初めての起動＝DB を新しく作ったときだけファイルを作る）。
+    retention = new RetentionSweeper({
+      port: createRetentionSweepPort(opened.store),
+      epoch: coreInstanceId,
+      now: () => now().getTime(),
+      log,
+      clock: createClockStateFile(dataDir),
+      freshClockState: opened.binding.storeGenerationSource === 'created',
+      monotonic: options.retention?.monotonic ?? (() => performance.now()),
+      ...(options.retention?.notices === undefined
+        ? {}
+        : { notices: options.retention.notices }),
+      ...(options.retention?.sweepIntervalMs === undefined
+        ? {}
+        : { sweepIntervalMs: options.retention.sweepIntervalMs }),
+    });
+    retention.start();
     const startedBudget = await startBudgetGate(
       dataDir,
       options,
@@ -612,6 +705,7 @@ export async function startCore(
         log,
         options.keyStore,
         budget,
+        retention,
       );
       api = started.api;
       streams = started.streams;
@@ -652,6 +746,8 @@ export async function startCore(
         request.op === 'budget_calendar_confirm'
       )
         return budgetControl(request, lifecycle.state, budget);
+      if (request.op === 'clock_status' || request.op === 'clock_recheck')
+        return clockControl(request, lifecycle.state, retention);
       const disposition = controlOpDisposition(lifecycle.state, request.op);
       if (disposition === 'unavailable')
         return { response: { ok: false, error: 'unavailable' } as const };
@@ -674,6 +770,7 @@ export async function startCore(
     );
   } catch (error) {
     if (budgetTimer !== null) clearInterval(budgetTimer);
+    retention?.close();
     feed?.close();
     await api?.close(0).catch(() => undefined);
     await opened?.store.close().catch(() => undefined);
@@ -709,6 +806,7 @@ export async function startCore(
     events,
     deviceConnections,
     budget: budgetGate,
+    retention: retention as RetentionSweeper,
     pairing,
     get state() {
       return lifecycle.state;
@@ -732,6 +830,7 @@ async function startHttps(
   log: (message: string) => void,
   keyStore: DataKeyProvider,
   budget: BudgetGate,
+  retention: RetentionSweeper | null,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -819,6 +918,17 @@ async function startHttps(
     ...(voiceOptions.consent === undefined
       ? {}
       : { consent: voiceOptions.consent }),
+    // Live の開始は外部への送信。起動・復帰の掃除が済むまで開かない（ADR 0058 の U108）。
+    ...(retention === null
+      ? {}
+      : {
+          retention: {
+            ready: async () => {
+              await retention?.idle();
+            },
+            lease: () => (retention as RetentionSweeper).lease(),
+          },
+        }),
     ...(voiceOptions.displayTarget === undefined
       ? {}
       : { displayTarget: voiceOptions.displayTarget }),
@@ -894,6 +1004,21 @@ async function startHttps(
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
+    // 会話の操作（照合表に当たった文字の発言）は、その端末の開いている Live へも行う（画面のボタンと同じ処理。B05-05）。
+    onSessionControl: ({ device_id, action }) =>
+      voice.applySessionControlForDevice(device_id, action),
+    // 検索・クラウドへの送信の前に、掃除のゲートを通す（ADR 0053）。今ある入口（予定の照会・下書き・ラベル）だけ。
+    ...(retention === null
+      ? {}
+      : {
+          retention: {
+            ready: async () => {
+              await retention?.idle();
+            },
+            gate: () => (retention as RetentionSweeper).gate(),
+            lease: () => (retention as RetentionSweeper).lease(),
+          },
+        }),
   });
   // 連携の口座と許可の版を一度確かめておく（発言の入力の時点の版を外部へ問い合わせずに持つ。B04-07）。
   await turns.prime().catch(() => undefined);
@@ -915,6 +1040,18 @@ async function startHttps(
     faults,
     contract: createApiContract(),
     log,
+    // 外部へ送る前に、掃除が済んでクラウド送信が許されていることを確かめる（ADR 0053 の U108）。
+    ...(retention === null
+      ? {}
+      : {
+          cloudGate: {
+            ready: async () => {
+              await retention?.idle();
+            },
+            open: () => (retention as RetentionSweeper).gate().cloud_send,
+            lease: () => (retention as RetentionSweeper).lease(),
+          },
+        }),
   });
   routes = createOperationRoutes({
     store: watched,
@@ -946,6 +1083,21 @@ async function startHttps(
     faults,
     ...https.eventStream,
   });
+  // Live（声）の会話の処理（B05-05、ADR 0052）。委譲・文字起こしは共通の workflow（発言の処理）へ進め、声で返せない結果は
+  // 画面（キャンバス）へ回す。provider が渡されない起動（製品の既定）では何も受けない。
+  voice.setConversation(
+    new LiveConversation({
+      host: voice.conversationHost(),
+      turns: { interpret: turns.interpret, commitLive: turns.commitLive },
+      screen: createLiveScreenSink({
+        placeLate: (turn) => stream.placeLate(turn),
+        log,
+      }),
+      monoNow: voiceOptions.monoNow ?? (() => performance.now()),
+      timers: voiceOptions.timers ?? REAL_VOICE_TIMERS,
+      log,
+    }),
+  );
   const voiceRoutes = createVoiceRoutes(voice);
   // 経路の処理の表は重ならない（同じ operationId を二つの処理が持たない）。重なれば起動しない。
   const handlerKeys = [
@@ -1209,6 +1361,51 @@ async function budgetControl(
       ok: true,
       request_id: request.request_id,
       budget_calendar: calendar,
+    },
+  };
+}
+
+// 制御チャネルの時計の最終確認時刻の状態と、本人による採り直し（ADR 0058 の U136）。中枢のローカルの CLI（OS の本人の
+// 利用者だけが使える制御チャネル）から、本人が見た値を明示して行う承認の操作。running のときだけ。
+async function clockControl(
+  request: Extract<ControlRequest, { op: 'clock_status' | 'clock_recheck' }>,
+  state: LifecycleState,
+  retention: RetentionSweeper | null,
+): Promise<{ readonly response: ControlResponse }> {
+  if (state !== 'running' || retention === null)
+    return { response: { ok: false, error: 'unavailable' } };
+  if (request.op === 'clock_recheck') {
+    const rechecked = await retention.recheckClock({
+      request_id: request.request_id,
+      revision: request.revision,
+      observed_last_checked_at: request.observed_last_checked_at,
+      observed_now: request.observed_now,
+    });
+    if (!rechecked.ok)
+      return {
+        response: {
+          ok: false,
+          error: 'refused',
+          reason: rechecked.reasons.join(','),
+        },
+      };
+  }
+  const view = await retention.clockStatus();
+  return {
+    response: {
+      ok: true,
+      request_id: request.request_id,
+      clock: {
+        state: view.state,
+        last_checked_at: view.last_checked_at,
+        revision: view.revision,
+        epoch: view.epoch,
+        now: view.now,
+        regressed: view.regressed,
+        regressed_by_ms: view.regressed_by_ms,
+        needs_recheck: view.needs_recheck,
+        rechecks: view.rechecks,
+      },
     },
   };
 }

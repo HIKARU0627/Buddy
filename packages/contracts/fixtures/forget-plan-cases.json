@@ -11,7 +11,8 @@
     "turn:u-1": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
     "turn:u-2": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "turn:u-3": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
-    "turn:t2": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"
+    "turn:t2": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+    "turn:t-dsrc": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
   },
   "resolve": {
     "known": [
@@ -384,6 +385,23 @@
         ]
       ],
       "operations": []
+    },
+    "directive": {
+      "note": "本人の指示 dir-1 は発言 t-dsrc から、dir-2 は関係のない発言 t-dother から作った（user_directives.turn_id）。記憶 mem-d も発言 t-dsrc から作った。",
+      "edges": [
+        ["memory:mem-d", "turn:t-dsrc"],
+        ["user_directive:dir-1", "turn:t-dsrc"],
+        ["user_directive:dir-2", "turn:t-dother"]
+      ],
+      "unattributed": [],
+      "turn_sessions": [],
+      "memories": [
+        [
+          "mem-d",
+          "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2"
+        ]
+      ],
+      "operations": []
     }
   },
   "plans": [
@@ -417,6 +435,7 @@
           "turn:t-instr",
           "turn:t-reply"
         ],
+        "user_directives": [],
         "purge_operation_contents": ["op-forget", "op-save"],
         "retained_operations": [
           ["op-disp", "dispatching", "in_flight"],
@@ -554,6 +573,7 @@
           "memory:mem-tea",
           "memory:mem-tea-summary"
         ],
+        "user_directives": [],
         "purge_operation_contents": ["op-save"],
         "retained_operations": [
           ["op-disp", "dispatching", "in_flight"],
@@ -691,6 +711,7 @@
           "turn:t-instr",
           "turn:t-reply"
         ],
+        "user_directives": [],
         "purge_operation_contents": ["op-forget", "op-save"],
         "retained_operations": [
           ["op-disp", "dispatching", "in_flight"],
@@ -775,6 +796,7 @@
           "turn:t-reply",
           "source_item:mail-a"
         ],
+        "user_directives": [],
         "purge_operation_contents": ["op-forget", "op-save"],
         "retained_operations": [
           ["op-disp", "dispatching", "in_flight"],
@@ -842,6 +864,7 @@
         "ok": true,
         "targets": ["memory:mem-u"],
         "deletions": ["session_summary:sum-s9", "memory:mem-u"],
+        "user_directives": [],
         "purge_operation_contents": [],
         "retained_operations": [],
         "ledger": {
@@ -876,6 +899,7 @@
         "ok": true,
         "targets": ["turn:u-1"],
         "deletions": ["session_summary:sum-s9", "memory:mem-u", "turn:u-1"],
+        "user_directives": [],
         "purge_operation_contents": [],
         "retained_operations": [],
         "ledger": {
@@ -915,6 +939,7 @@
         "ok": true,
         "targets": ["source_item:mail-z"],
         "deletions": ["notification_candidate:notif-x", "source_item:mail-z"],
+        "user_directives": [],
         "purge_operation_contents": [],
         "retained_operations": [],
         "ledger": {
@@ -945,6 +970,7 @@
         "ok": true,
         "targets": ["memory:mem-s"],
         "deletions": ["memory:mem-s"],
+        "user_directives": [],
         "purge_operation_contents": [
           "op-cancelled",
           "op-succeeded",
@@ -1046,6 +1072,7 @@
           "session_summary:sum-s2",
           "memory:mem-other"
         ],
+        "user_directives": [],
         "purge_operation_contents": ["op-keep"],
         "retained_operations": [],
         "ledger": {
@@ -1104,6 +1131,7 @@
           "memory:mem-m",
           "memory:mem-sib"
         ],
+        "user_directives": [],
         "purge_operation_contents": ["op-o"],
         "retained_operations": [["op-p", "awaiting_approval", "in_flight"]],
         "retained_provenance": {
@@ -1151,6 +1179,7 @@
         "ok": true,
         "targets": ["memory:mem-w"],
         "deletions": ["memory:mem-w"],
+        "user_directives": [],
         "purge_operation_contents": [],
         "retained_operations": [["op-w", "unknown", "state_unknown"]],
         "retained_provenance": {
@@ -1195,6 +1224,7 @@
           "memory:mem-m",
           "memory:mem-sib"
         ],
+        "user_directives": [],
         "purge_operation_contents": [],
         "retained_operations": [["op-u", "awaiting_approval", "in_flight"]],
         "retained_provenance": {
@@ -1259,6 +1289,7 @@
         "ok": true,
         "targets": ["memory:mem-i"],
         "deletions": ["session_summary:sum-i", "memory:mem-i"],
+        "user_directives": [],
         "purge_operation_contents": [],
         "retained_operations": [["op-i", "awaiting_approval", "in_flight"]],
         "retained_provenance": {
@@ -1313,6 +1344,7 @@
           "memory:other",
           "turn:ti"
         ],
+        "user_directives": [],
         "purge_operation_contents": [],
         "retained_operations": [],
         "ledger": {
@@ -1341,6 +1373,80 @@
         },
         "notice_forgotten": ["memory:m", "turn:ti"],
         "notice_derived": ["memory:other"]
+      }
+    },
+    {
+      "id": "x15-forget-turn-removes-directive-made-from-it",
+      "title": "発言 t-dsrc を忘れると、そこから作った記憶 mem-d と本人の指示 dir-1 も消える。消える指示は計画の user_directives に別に出る。関係のない発言から作った dir-2 は残る（U112）",
+      "refs": ["X15", "03 忘却と再取り込み", "ADR 0054 U112"],
+      "world": "directive",
+      "input": {
+        "target": "turn:t-dsrc",
+        "instruction_turn_id": null,
+        "executing_operation_id": null
+      },
+      "expected": {
+        "ok": true,
+        "targets": ["turn:t-dsrc"],
+        "deletions": ["memory:mem-d", "user_directive:dir-1", "turn:t-dsrc"],
+        "user_directives": ["dir-1"],
+        "purge_operation_contents": [],
+        "retained_operations": [],
+        "ledger": {
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-d"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "t-dsrc"
+            }
+          ],
+          "blocked_source_hmacs": [],
+          "blocked_content_keys": [
+            "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2"
+          ]
+        },
+        "notice_forgotten": ["turn:t-dsrc"],
+        "notice_derived": ["memory:mem-d"],
+        "survivors": ["user_directive:dir-2", "turn:t-dother"]
+      }
+    },
+    {
+      "id": "x15-forget-memory-removes-directive-sharing-its-origin",
+      "title": "記憶 mem-d を忘れると、元の発言 t-dsrc は再登録を禁じる由来になり（消さない）、同じ発言から作った本人の指示 dir-1 は忘れた内容を含まないと証明できないので消える（規則 C。計画の user_directives に出る）",
+      "refs": ["X15", "03 忘却と再取り込み", "ADR 0054 U112"],
+      "world": "directive",
+      "input": {
+        "target": "memory:mem-d",
+        "instruction_turn_id": null,
+        "executing_operation_id": null
+      },
+      "expected": {
+        "ok": true,
+        "targets": ["memory:mem-d"],
+        "deletions": ["memory:mem-d", "user_directive:dir-1"],
+        "user_directives": ["dir-1"],
+        "purge_operation_contents": [],
+        "retained_operations": [],
+        "ledger": {
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "mem-d"
+            }
+          ],
+          "blocked_source_hmacs": [
+            "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+          ],
+          "blocked_content_keys": [
+            "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2"
+          ]
+        },
+        "notice_forgotten": ["memory:mem-d"],
+        "notice_derived": [],
+        "survivors": ["turn:t-dsrc", "user_directive:dir-2", "turn:t-dother"]
       }
     }
   ],

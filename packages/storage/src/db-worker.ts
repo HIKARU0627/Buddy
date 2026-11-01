@@ -37,6 +37,7 @@ import { executeConversationOp } from './conversation-store.js';
 import { executeBudgetOp } from './budget-store.js';
 import { executeVoiceOp } from './voice-store.js';
 import { executeRetentionOp } from './retention-store.js';
+import { executeMemoryOp } from './memory-store.js';
 import { bindStore } from './store-binding.js';
 import type { StoreBindingResult } from './store-binding.js';
 
@@ -372,6 +373,35 @@ function main(): void {
     post({ type: 'retention_result', id: message.id, result, halted });
   };
 
+  // 記憶と忘却の命令と照会（ADR 0054）。故障注入は予算の命令と同じ。
+  const handleMemory = (
+    message: Extract<MainToWorker, { type: 'memory' }>,
+  ): void => {
+    const op = message.op;
+    if (takeFault('ignore', op)) return;
+    if (takeFault('weakenDurability', op))
+      connection.pragma('synchronous = NORMAL');
+    let result;
+    try {
+      const run = executeMemoryOp(connection, op, {
+        platform: data.platform,
+        halted,
+        beforeCommit,
+      });
+      if (run.halt) halted = true;
+      result = run.result;
+    } catch {
+      // 照会の想定外の失敗。書込みは executeMemoryOp の中で巻き戻している。
+      result = {
+        ok: false as const,
+        outcome: 'rejected' as const,
+        reasons: ['memory_op_failed'],
+      };
+    }
+    if (result.ok && takeFault('exitAfterCommit', op)) process.exit(71);
+    post({ type: 'memory_result', id: message.id, result, halted });
+  };
+
   port.on('message', (message: MainToWorker) => {
     if (message.type === 'command') handleCommand(message);
     else if (message.type === 'query') handleQuery(message);
@@ -382,6 +412,7 @@ function main(): void {
     else if (message.type === 'budget') handleBudget(message);
     else if (message.type === 'voice') handleVoice(message);
     else if (message.type === 'retention') handleRetention(message);
+    else if (message.type === 'memory') handleMemory(message);
     else if (message.type === 'close') {
       halted = true;
       connection.close();

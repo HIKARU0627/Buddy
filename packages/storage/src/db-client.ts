@@ -68,6 +68,13 @@ import type {
 import { BUDGET_WRITE_OPS } from './budget-store.js';
 import { VOICE_WRITE_OPS } from './voice-store.js';
 import { RETENTION_WRITE_OPS } from './retention-store.js';
+import { MEMORY_WRITE_OPS } from './memory-store.js';
+import type {
+  MemoryOp,
+  MemoryOpKind,
+  MemoryOpResult,
+  MemoryOpValues,
+} from './memory-store.js';
 import type {
   RetentionOp,
   RetentionOpKind,
@@ -248,6 +255,17 @@ interface PendingRetention {
   readonly resolve: (result: RetentionOpResult) => void;
 }
 
+interface PendingMemory {
+  readonly kind: 'memory';
+  readonly op: MemoryOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: MemoryOpResult) => void;
+}
+
+export type MemoryOpOutcome<K extends MemoryOpKind> =
+  | { readonly ok: true; readonly value: MemoryOpValues[K] }
+  | Extract<MemoryOpResult, { ok: false }>;
+
 export type RetentionOpOutcome<K extends RetentionOpKind> =
   | { readonly ok: true; readonly value: RetentionOpValues[K] }
   | Extract<RetentionOpResult, { ok: false }>;
@@ -298,6 +316,7 @@ export class DbWorkerClient {
     | PendingBudget
     | PendingVoice
     | PendingRetention
+    | PendingMemory
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -729,6 +748,32 @@ export class DbWorkerClient {
     }) as Promise<RetentionOpOutcome<K>>;
   }
 
+  // 記憶と忘却の命令と照会（ADR 0054）。扱いは retention と同じ。
+  memory<K extends MemoryOpKind>(
+    op: Extract<MemoryOp, { kind: K }>,
+  ): Promise<MemoryOpOutcome<K>> {
+    return new Promise<MemoryOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'memory', op, timer, resolve });
+      const message: MainToWorker = { type: 'memory', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<MemoryOpOutcome<K>>;
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -836,6 +881,16 @@ export class DbWorkerClient {
         pending.resolve({
           ok: false,
           outcome: RETENTION_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'memory') {
+        pending.resolve({
+          ok: false,
+          outcome: MEMORY_WRITE_OPS.has(pending.op.kind)
             ? 'unknown'
             : 'rejected',
           reasons: [reason],
@@ -952,6 +1007,18 @@ export class DbWorkerClient {
     if (message.type === 'conversation_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'conversation') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'memory_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'memory') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

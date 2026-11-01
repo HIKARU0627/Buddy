@@ -1,12 +1,12 @@
 {
   "status": "specification_only",
-  "description": "保存案 0001〜0011 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022・0030・0036・0051）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
+  "description": "保存案 0001〜0012 の一意制約・CHECK・外部キー・trigger の期待値（設計 03・08 §5・11 §1A・§4・§5A、X02・X04・X12・X42・X15・X16・X44・X65・QA41・QA44、ADR 0010・0022・0030・0036・0051・0054）。手で書いたもので、SQLite の実行結果から生成していない。各シナリオは seed の後に新しいメモリ上の DB で順に実行する。時刻は合成の Unix ミリ秒。",
   "seed": [
     "INSERT INTO devices VALUES ('dev-1', '合成の端末', 'windows', 0, X'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1000, NULL, NULL)",
     "INSERT INTO devices VALUES ('dev-hub', '合成の中枢', 'macos', 1, X'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000, NULL, NULL)",
     "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-intent-1', 'operation_intent', 'operation_versions', 'op-1', 1, 1, 'k1', X'000000000000000000000001', X'00', X'00000000000000000000000000000000', 1000, NULL)",
     "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES ('b-intent-2', 'operation_intent', 'operation_versions', 'op-1', 2, 1, 'k1', X'000000000000000000000002', X'00', X'00000000000000000000000000000000', 1000, NULL)",
-    "INSERT INTO operations VALUES ('op-1', NULL, 'mail.labels.change', 'remote_mutation', 1, 'awaiting_approval', 0, 1000, NULL, 'normal', NULL)",
+    "INSERT INTO operations VALUES ('op-1', NULL, 'mail.labels.change', 'remote_mutation', 1, 'awaiting_approval', 0, 1000, NULL, 'normal', NULL, NULL)",
     "INSERT INTO operation_versions VALUES ('op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'b-intent-1', 1000, NULL)",
     "INSERT INTO operation_versions VALUES ('op-1', 2, '2222222222222222222222222222222222222222222222222222222222222222', 'b-intent-2', 1100, NULL)",
     "INSERT INTO sessions VALUES ('s-1', 'normal', 'dev-1', 1, NULL, 1000, NULL)",
@@ -428,18 +428,51 @@
     },
     {
       "id": "forget-ledger-is-contiguous-and-append-only",
-      "refs": ["03 忘却と再取り込み", "ADR 0008"],
+      "refs": ["03 忘却と再取り込み", "ADR 0008", "ADR 0054"],
       "steps": [
-        ["INSERT INTO forget_ledger VALUES (1, 'fl-1', 1000)", "ok"],
         [
-          "INSERT INTO forget_ledger VALUES (3, 'fl-3', 1100)",
+          "INSERT INTO forget_ledger (forgetting_generation, entry_id, recorded_at) VALUES (1, 'fl-0', 1000)",
+          "trigger:forget_ledger_hash_required"
+        ],
+        [
+          "INSERT INTO forget_ledger VALUES (1, 'fl-1', 1000, '1111111111111111111111111111111111111111111111111111111111111111', 1)",
+          "ok"
+        ],
+        [
+          "INSERT INTO forget_ledger VALUES (3, 'fl-3', 1100, '1111111111111111111111111111111111111111111111111111111111111111', 1)",
           "trigger:forget_ledger_gap"
         ],
-        ["INSERT INTO forget_ledger VALUES (2, 'fl-2', 1200)", "ok"],
-        ["INSERT INTO forget_ledger_items VALUES (2, 'turn', 't-9')", "ok"],
         [
-          "INSERT INTO forget_ledger_items VALUES (4, 'turn', 't-9')",
-          "foreign_key"
+          "INSERT INTO forget_ledger VALUES (2, 'fl-2', 1200, '1111111111111111111111111111111111111111111111111111111111111111', 1)",
+          "ok"
+        ],
+        [
+          "INSERT OR REPLACE INTO forget_ledger VALUES (3, 'fl-2', 1300, '1111111111111111111111111111111111111111111111111111111111111111', 1)",
+          "trigger:forget_ledger_append_only"
+        ],
+        [
+          "INSERT INTO forget_ledger_items VALUES (2, 'turn', 'Forget.')",
+          "trigger:forget_ledger_item_shape"
+        ],
+        [
+          "INSERT INTO forget_ledger_items VALUES (2, 'turn', '99999999-9999-4999-8999-999999999999')",
+          "ok"
+        ],
+        [
+          "INSERT INTO forget_ledger_items VALUES (2, 'blocked_content', 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee')",
+          "trigger:forget_ledger_items_sealed"
+        ],
+        [
+          "INSERT INTO forget_ledger_items VALUES (4, 'turn', '99999999-9999-4999-8999-999999999999')",
+          "trigger:forget_ledger_items_sealed"
+        ],
+        [
+          "UPDATE forget_ledger_items SET item_kind = 'memory' WHERE forgetting_generation = 2",
+          "trigger:forget_ledger_append_only"
+        ],
+        [
+          "DELETE FROM forget_ledger_items WHERE forgetting_generation = 2",
+          "trigger:forget_ledger_append_only"
         ],
         [
           "UPDATE forget_ledger SET recorded_at = 0 WHERE forgetting_generation = 1",
@@ -448,6 +481,61 @@
         [
           "DELETE FROM forget_ledger WHERE forgetting_generation = 2",
           "trigger:forget_ledger_append_only"
+        ]
+      ]
+    },
+    {
+      "id": "0012-forget-send-blocked-mark-and-ledger-lineage",
+      "refs": ["08 §6", "ADR 0044 U61", "ADR 0054"],
+      "steps": [
+        [
+          "UPDATE operations SET send_blocked_generation = 1 WHERE operation_id = 'op-1'",
+          "trigger:operation_send_blocked_fixed"
+        ],
+        [
+          "INSERT INTO forget_ledger VALUES (1, 'fl-1', 1000, '1111111111111111111111111111111111111111111111111111111111111111', 1)",
+          "ok"
+        ],
+        [
+          "UPDATE operations SET send_blocked_generation = 1 WHERE operation_id = 'op-1'",
+          "ok"
+        ],
+        [
+          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "trigger:operation_send_blocked"
+        ],
+        [
+          "UPDATE operations SET state = 'approved' WHERE operation_id = 'op-1'",
+          "trigger:operation_send_blocked"
+        ],
+        [
+          "UPDATE operations SET send_blocked_generation = NULL WHERE operation_id = 'op-1'",
+          "trigger:operation_send_blocked_fixed"
+        ],
+        [
+          "UPDATE operations SET state = 'cancelled', completed_at = 1300 WHERE operation_id = 'op-1'",
+          "ok"
+        ],
+        [
+          "INSERT INTO operations VALUES ('op-2', NULL, 'mail.labels.change', 'remote_mutation', 1, 'awaiting_approval', 0, 1000, NULL, 'normal', NULL, 1)",
+          "trigger:operation_send_blocked_fixed"
+        ],
+        ["INSERT INTO schema_meta VALUES ('ledger_id', 'not-a-uuid')", "check"],
+        [
+          "INSERT INTO schema_meta VALUES ('ledger_id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')",
+          "ok"
+        ],
+        [
+          "UPDATE schema_meta SET value = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' WHERE key = 'ledger_id'",
+          "trigger:ledger_id_fixed"
+        ],
+        [
+          "INSERT INTO schema_meta VALUES ('restore_restored_at', '2031-03-01')",
+          "check"
+        ],
+        [
+          "INSERT INTO schema_meta VALUES ('restore_restored_at', '1925000000000')",
+          "ok"
         ]
       ]
     },
@@ -482,15 +570,15 @@
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-task', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL, 'normal', NULL)",
+          "INSERT INTO operations VALUES ('op-task', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL, 'normal', NULL, NULL)",
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-task-2', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL, 'normal', NULL)",
+          "INSERT INTO operations VALUES ('op-task-2', NULL, 'create_task', 'local_command', 1, 'approved', 0, 1000, NULL, 'normal', NULL, NULL)",
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-event', NULL, 'create_event', 'remote_mutation', 1, 'approved', 0, 1000, NULL, 'normal', NULL)",
+          "INSERT INTO operations VALUES ('op-event', NULL, 'create_event', 'remote_mutation', 1, 'approved', 0, 1000, NULL, 'normal', NULL, NULL)",
           "ok"
         ],
         [
@@ -602,15 +690,15 @@
       "refs": ["X24", "J12"],
       "steps": [
         [
-          "INSERT INTO operations VALUES ('op-auto', NULL, 'label_mail', 'remote_mutation', 1, 'succeeded', 3, 1000, 2000, 'normal', NULL)",
+          "INSERT INTO operations VALUES ('op-auto', NULL, 'label_mail', 'remote_mutation', 1, 'succeeded', 3, 1000, 2000, 'normal', NULL, NULL)",
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-comp-1', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL, 'normal', NULL)",
+          "INSERT INTO operations VALUES ('op-comp-1', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL, 'normal', NULL, NULL)",
           "ok"
         ],
         [
-          "INSERT INTO operations VALUES ('op-comp-2', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL, 'normal', NULL)",
+          "INSERT INTO operations VALUES ('op-comp-2', NULL, 'label_mail', 'remote_mutation', 1, 'approved', 0, 3000, NULL, 'normal', NULL, NULL)",
           "ok"
         ],
         [

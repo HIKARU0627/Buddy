@@ -1,10 +1,12 @@
-// 系譜の全件読みの実測（ADR 0054 U110、B06-07 の 07b-0。本人が 2026-11-01 に合格の基準を決定）。
+// 系譜の読み方の実測（ADR 0054 U110・ADR 0061 U156、B06-07 の 07b-0・07b-1。本人が 2026-11-01 に合格の基準を決定）。
 //
 // 合成の DB を 2 つの規模（1 年相当＝記憶 2,000・系譜の辺 5 万、その 10 倍）で作り、
-// - 系譜の閉包の読み取り（`forget.graph`。`readLineageEdges` で derivations・memory_sources・user_directives を全件読む）
+// - 系譜の閉包の読み取り（`forget.graph`。忘却の起点から閉包に触れる辺・範囲だけを読む部分読み。ADR 0061）
 // - domain の `planForget`（Core のメインスレッドで動く純粋な計画）
-// - 忘却の適用の transaction（`forget.apply`。BEGIN IMMEDIATE の中でもう一度全件読み + 計画 + 削除 + 台帳）
+// - 忘却の適用の transaction（`forget.apply`。BEGIN IMMEDIATE の中でもう一度部分読み + 計画の照合 + 削除 + 台帳）
+// - 部分読みの計画が、系譜の全件読み（readForgetGraph）の計画と一致すること
 // の所要時間と、DB worker を通す経路で同時に測ったメインのイベントループ遅延 p99 を記録する。
+// 参考の規模（元情報を 100 記憶で共有。閉包が大きい）は --only one-year-shared か --with-reference で実行する。
 //
 // これは `pnpm test` には入れない（`*.test.mjs` ではないので scripts/run-tests.mjs が拾わない）。
 // 実データ・実機は使わない。数値は実行する機械に依存する。
@@ -13,6 +15,7 @@
 //   pnpm run build
 //   node scripts/forget-lineage-benchmark.mjs            # 2 つの規模を続けて実行
 //   node scripts/forget-lineage-benchmark.mjs --only one-year
+//   node scripts/forget-lineage-benchmark.mjs --with-reference   # 参考の規模も実行
 //   node scripts/forget-lineage-benchmark.mjs --json     # 最後に JSON も出す
 //
 // 出力は標準出力だけ。DB は OS の一時ディレクトリに作り、終了時に消す（残さない）。
@@ -29,6 +32,7 @@ import {
   executeMemoryOp,
   initStoreGeneration,
   openWriteConnection,
+  readForgetGraph,
   storagePlatform,
 } from '../packages/storage/dist/index.js';
 import { planForget } from '../packages/domain/dist/index.js';
@@ -43,6 +47,7 @@ const SCALES = [
     lineageEdges: 50_000,
     readSamples: 5,
     applySamples: 5,
+    group: 1,
   },
   {
     id: 'ten-times',
@@ -51,12 +56,38 @@ const SCALES = [
     lineageEdges: 500_000,
     readSamples: 3,
     applySamples: 3,
+    group: 1,
+  },
+  // 参考（本人の基準の対象ではない）: 100 件の記憶が 1 つの元情報を共有する。1 つの記憶を忘れると、元情報を共有する
+  // 99 件の記憶とその派生物も閉包に入る（規則 C）。閉包が大きいときの時間を見る。--only か --with-reference で実行する。
+  {
+    id: 'one-year-shared',
+    label: '1 年相当・元情報を 100 記憶で共有（参考）',
+    memories: 2_000,
+    lineageEdges: 50_000,
+    readSamples: 3,
+    applySamples: 3,
+    group: 100,
+    reference: true,
+  },
+  {
+    id: 'ten-times-shared',
+    label: '10 倍・元情報を 100 記憶で共有（参考）',
+    memories: 20_000,
+    lineageEdges: 500_000,
+    readSamples: 3,
+    applySamples: 3,
+    group: 100,
+    reference: true,
   },
 ];
 // 合格の基準（本人の決定 2026-11-01）。
 const LIMITS = {
   'one-year': { apply_ms: 1_000, event_loop_p99_ms: 50 },
   'ten-times': { apply_ms: 5_000, event_loop_p99_ms: 50 },
+  // 参考の規模は 1 年相当と同じ値で見る（合否の対象ではなく、閉包の大きさとの関係を読むため）。
+  'one-year-shared': { apply_ms: 1_000, event_loop_p99_ms: 50 },
+  'ten-times-shared': { apply_ms: 5_000, event_loop_p99_ms: 50 },
 };
 
 // 固定の時刻（時計は結果に使わない。期限の判定もしない）。
@@ -272,7 +303,11 @@ function seedDatabase(path, scale) {
         );
         // 由来: 発言と元情報（1 記憶あたり 2 辺）。
         insertMemorySource.run(memoryId(i), 'turn', turnId(i));
-        insertMemorySource.run(memoryId(i), 'source_item', sourceItemId(i));
+        insertMemorySource.run(
+          memoryId(i),
+          'source_item',
+          sourceItemId(Math.floor(i / scale.group)),
+        );
         for (const edge of DERIVATIONS_PER_MEMORY) {
           const [artifactKind, artifact, sourceKind, source] = edge(i);
           insertDerivation.run(
@@ -340,7 +375,8 @@ function forgetPlanFor(value, target) {
 }
 
 // 対象の記憶の由来（発言・元情報）の HMAC。applyForget は origins の HMAC を要求する。
-function hmacsFor(index) {
+function hmacsFor(index, group) {
+  const sourceId = sourceItemId(Math.floor(index / group));
   return [
     {
       source_kind: 'turn',
@@ -349,11 +385,8 @@ function hmacsFor(index) {
     },
     {
       source_kind: 'source_item',
-      source_id: sourceItemId(index),
-      hmac: benchmarkHmac({
-        source_kind: 'source_item',
-        source_id: sourceItemId(index),
-      }),
+      source_id: sourceId,
+      hmac: benchmarkHmac({ source_kind: 'source_item', source_id: sourceId }),
     },
   ];
 }
@@ -368,22 +401,28 @@ const memoryTarget = (index) => ({
 function measureInProcess(path, scale) {
   const db = openWriteConnection(path, { platform: storagePlatform() });
   const context = { platform: storagePlatform(), halted: false };
+  // 標本 k が忘れる記憶の番号（元情報を共有する規模では、共有の組ごとに 1 件）。
+  const at = (k) => k * scale.group;
   let nextIndex = 0;
   let phase = 'read';
   const reads = [];
   const plans = [];
   const applies = [];
   const deletedNodes = [];
+  // 部分読みの計画が、系譜の全件読みの計画と一致するか（読み取りの標本ごと。適用の前に確かめる）。
+  const equivalent = [];
+  const closureSizes = [];
+  const graphEdges = [];
   try {
     // 温め（JIT・ページキャッシュ）。
     const warm = executeMemoryOp(
       db,
-      { kind: 'forget.graph', target: memoryTarget(nextIndex) },
+      { kind: 'forget.graph', target: memoryTarget(at(nextIndex)) },
       context,
     );
     if (!warm.result.ok) throw new Error('forget.graph が拒否されました');
     for (let n = 0; n < scale.readSamples; n += 1) {
-      const target = memoryTarget(nextIndex + n);
+      const target = memoryTarget(at(nextIndex + n));
       const started = nowMs();
       const result = executeMemoryOp(
         db,
@@ -396,14 +435,21 @@ function measureInProcess(path, scale) {
           `forget.graph が拒否されました: ${result.result.reasons.join(', ')}`,
         );
       const planned = nowMs();
-      forgetPlanFor(result.result.value, target);
+      const plan = forgetPlanFor(result.result.value, target);
       plans.push(nowMs() - planned);
+      const wholeGraph = readForgetGraph(db);
+      const wholePlan = forgetPlanFor({ graph: wholeGraph }, target);
+      equivalent.push(JSON.stringify(plan) === JSON.stringify(wholePlan));
+      closureSizes.push(
+        plan.deletions.length + plan.operation_contents.purge.length,
+      );
+      graphEdges.push(result.result.value.graph.edges.length);
     }
     nextIndex += scale.readSamples;
     // 適用（1 回ごとに別の記憶を忘れる）。
     phase = 'apply';
     for (let n = 0; n < scale.applySamples; n += 1) {
-      const index = nextIndex + n;
+      const index = at(nextIndex + n);
       const target = memoryTarget(index);
       const before = executeMemoryOp(
         db,
@@ -420,7 +466,7 @@ function measureInProcess(path, scale) {
           target,
           instruction_turn_id: null,
           plan,
-          source_hmacs: hmacsFor(index),
+          source_hmacs: hmacsFor(index, scale.group),
           entry_id: randomUUID(),
           previous_generation: before.result.value.forgetting_generation,
           new_ledger_id: randomUUID(),
@@ -446,7 +492,16 @@ function measureInProcess(path, scale) {
   } finally {
     db.close();
   }
-  return { reads, plans, applies, deletedNodes, nextIndex };
+  return {
+    reads,
+    plans,
+    applies,
+    deletedNodes,
+    nextIndex,
+    equivalent,
+    closureSizes,
+    graphEdges,
+  };
 }
 
 // --- 第 2 段: DB worker を通す経路で、メインのイベントループ遅延を同時に測る ---
@@ -470,6 +525,7 @@ async function measureThroughWorker(path, scale, firstIndex) {
   const flows = [];
   const deletedNodes = [];
   const stages = {};
+  const at = (k) => k * scale.group;
   let nextIndex = firstIndex;
   const readStage = async (name, run) => {
     histogram.reset();
@@ -493,13 +549,13 @@ async function measureThroughWorker(path, scale, firstIndex) {
     );
     // 温め。
     {
-      const target = memoryTarget(nextIndex);
+      const target = memoryTarget(at(nextIndex));
       const warm = await client.memory({ kind: 'forget.graph', target });
       if (!warm.ok) throw new Error('forget.graph が拒否されました（worker）');
     }
     await readStage('read', async () => {
       for (let n = 0; n < scale.readSamples; n += 1) {
-        const target = memoryTarget(nextIndex + n);
+        const target = memoryTarget(at(nextIndex + n));
         const started = nowMs();
         const result = await client.memory({ kind: 'forget.graph', target });
         reads.push(nowMs() - started);
@@ -512,7 +568,7 @@ async function measureThroughWorker(path, scale, firstIndex) {
     });
     // 計画だけを、取った系譜に対してメインスレッドで測る（await を挟まない）。
     {
-      const target = memoryTarget(nextIndex);
+      const target = memoryTarget(at(nextIndex));
       const fetched = await client.memory({ kind: 'forget.graph', target });
       if (!fetched.ok) throw new Error('forget.graph が拒否されました');
       await readStage('plan', async () => {
@@ -528,7 +584,7 @@ async function measureThroughWorker(path, scale, firstIndex) {
     // 忘却 1 回の流れ（系譜の読み → 計画 → 適用）。判定の対象はこの区間の遅延。
     await readStage('forget', async () => {
       for (let n = 0; n < scale.applySamples; n += 1) {
-        const index = nextIndex + n;
+        const index = at(nextIndex + n);
         const target = memoryTarget(index);
         const flowStarted = nowMs();
         const graph = await client.memory({ kind: 'forget.graph', target });
@@ -547,7 +603,7 @@ async function measureThroughWorker(path, scale, firstIndex) {
           target,
           instruction_turn_id: null,
           plan,
-          source_hmacs: hmacsFor(index),
+          source_hmacs: hmacsFor(index, scale.group),
           entry_id: randomUUID(),
           previous_generation: graph.value.forgetting_generation,
           new_ledger_id: randomUUID(),
@@ -618,6 +674,14 @@ function summarize(measurement) {
     apply_median_ms: round(median(measurement.applies)),
     apply_samples_ms: measurement.applies.map(round),
     deleted_nodes: measurement.deletedNodes,
+    // 同じプロセスの計測だけが持つ（worker 経由の計測にはない）。
+    ...(measurement.equivalent === undefined
+      ? {}
+      : {
+          plan_equivalent: measurement.equivalent,
+          closure_nodes: measurement.closureSizes,
+          graph_edges_read: measurement.graphEdges,
+        }),
   };
 }
 
@@ -664,6 +728,11 @@ function judge(scale, inProcess, worker) {
   const eventLoopP99 = flow?.p99_ms ?? null;
   const eventLoopMax = flow?.max_ms ?? null;
   const applyOk = applyMs !== null && applyMs <= limit.apply_ms;
+  // 部分読みの計画が全件読みの計画と一致していること（一致しない速さは合格にしない）。
+  const equivalentOk =
+    inProcess?.plan_equivalent !== undefined &&
+    inProcess.plan_equivalent.length > 0 &&
+    inProcess.plan_equivalent.every(Boolean);
   const p99Ok =
     eventLoopP99 !== null && eventLoopP99 <= limit.event_loop_p99_ms;
   const maxOk =
@@ -682,10 +751,11 @@ function judge(scale, inProcess, worker) {
     apply_only_max_ms: applyOnly.length
       ? round(Math.max(...applyOnly.map((window) => window.max_ms)))
       : null,
-    // 合格は本人の基準のとおり（適用の中央値と p99）。最大は理由の説明に使う。
-    pass: applyOk && p99Ok,
+    plan_equivalent_ok: equivalentOk,
+    // 合格は本人の基準のとおり（適用の中央値と p99）に、部分読みの計画が全件読みと一致することを加える。最大は理由の説明に使う。
+    pass: applyOk && p99Ok && equivalentOk,
     // 1 回の忘却でも 50 ms を超えて止まっていれば、基準の趣旨は満たさない。
-    spirit_ok: applyOk && p99Ok && maxOk,
+    spirit_ok: applyOk && p99Ok && equivalentOk && maxOk,
   };
 }
 
@@ -735,6 +805,18 @@ async function runScale(scale, directory) {
       line(
         '  同じプロセス: 1 回の忘却で消した行の数',
         inProcessSummary.deleted_nodes.join(', '),
+      ),
+    );
+    console.log(
+      line(
+        '  同じプロセス: 部分読みで読んだ辺の数 / 閉包の節点の数（削除する物 + 暗号文を消す操作）',
+        `${inProcessSummary.graph_edges_read.join(', ')} / ${inProcessSummary.closure_nodes.join(', ')}`,
+      ),
+    );
+    console.log(
+      line(
+        '  同じプロセス: 部分読みの計画が系譜の全件読みの計画と一致',
+        inProcessSummary.plan_equivalent.every(Boolean) ? '一致' : '不一致',
       ),
     );
   }
@@ -849,8 +931,12 @@ async function main() {
   const onlyIndex = args.indexOf('--only');
   const only = onlyIndex === -1 ? null : args[onlyIndex + 1];
   const printJson = args.includes('--json');
+  // 参考の規模（reference）は、--only で指定するか --with-reference を付けたときだけ実行する。
+  const withReference = args.includes('--with-reference');
   const selected =
-    only === null ? SCALES : SCALES.filter((scale) => scale.id === only);
+    only === null
+      ? SCALES.filter((scale) => withReference || scale.reference !== true)
+      : SCALES.filter((scale) => scale.id === only);
   if (selected.length === 0)
     throw new Error(
       `不明な規模です: ${only}（${SCALES.map((s) => s.id).join(', ')}）`,

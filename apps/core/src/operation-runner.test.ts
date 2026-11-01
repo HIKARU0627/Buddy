@@ -1064,6 +1064,8 @@ test(
     const rig = await startRig(t);
     const core = await startCore(t, rig);
     const retention = core.handle.retention;
+    // 最初の掃除（時計の状態ファイルの読み書きを含む）が済んでから貸し出しを取る（済む前は取れない）。
+    await retention.idle();
     // 送出中の区間を模して貸し出しを持つ。そこへ始まった掃除は本体に入れず待つ。
     const release = retention.lease();
     assert.notEqual(release, null);
@@ -1093,6 +1095,8 @@ test(
     const rig = await startRig(t);
     const core = await startCore(t, rig);
     const retention = core.handle.retention;
+    // 最初の掃除（時計の状態ファイルの読み書きを含む）が済んでから貸し出しを取る（済む前は取れない）。
+    await retention.idle();
     // 送出中の区間を模して貸し出しを持つ。そこへ始まった掃除は本体に入れず待つ。
     const release = retention.lease();
     assert.notEqual(release, null);

@@ -1484,10 +1484,6 @@ export class VoiceControl {
         runtime.reserved_at = reservedAt;
         runtime.last_observed = reservedAt;
         this.#lives.set(liveSessionId, runtime);
-        // 受付の判定の後、この記録を待っている間に記録しない会話へ入ったなら、閉じる要求を受け取り損ねている
-        // （closeForPrivateConversation は登録済みの接続だけを閉じる）。登録した直後に閉じ始める（作成の途中の接続の扱い）。
-        if (this.#privateConversation())
-          this.#beginClose(runtime, 'private_conversation');
         return runtime;
       },
     );
@@ -1497,6 +1493,17 @@ export class VoiceControl {
       return second;
     }
     const runtime = second;
+    // 受付の判定の後、この記録（DB）を待っている間に記録しない会話へ入った。closeForPrivateConversation は登録済みの接続しか
+    // 閉じないので取り損ねている。provider にはまだ何も送っていないので、作成せずに閉じる（ADR 0045 の X17・X36: Live の接続 0 回）。
+    // 送出意図は記録済みで予約は解放できない（ADR 0037）ので、送っていない使用量を 15 秒の最低額で精算せず、終了を確認できない
+    // 場合と同じく予約を保持する（本人の手での精算。provider への照会は見つからないので保持のまま）。
+    // この確認から provider への作成の呼び出しまでは同じ同期の区間（待ちを挟まない）なので、ここより後に入った場合は
+    // 通常の作成の途中の扱い（作成の応答の後に閉じる）になる。
+    if (this.#privateConversation()) {
+      this.#step(runtime, 'close_requested', null, 'private_conversation');
+      this.#markUnconfirmed(runtime);
+      return error(409, 'private_conversation', requestId);
+    }
     // 会話の長さの数え始め（追加予約は予約を取ってから 60 秒ごと）。provider が作る前から課金され得るので、作成の応答を待たない。
     this.#armTopUp(runtime);
     const created = await this.#within(

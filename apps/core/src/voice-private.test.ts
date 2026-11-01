@@ -8,10 +8,13 @@ import { uuid } from './budget-test-support.js';
 import {
   A,
   TIMEOUT,
+  actualGross,
   bodyOf,
   liveBody,
   openLive,
   renew,
+  reservationStatus,
+  waitUntil,
   withRig,
 } from './voice-rig-test-support.js';
 
@@ -118,10 +121,10 @@ test(
 );
 
 test(
-  'private: a private conversation entered while the Live is still being created closes it as soon as it is registered',
+  'private: a private conversation entered while the Live record is being saved never reaches the provider, and the dispatched reservation is held (not billed)',
   TIMEOUT,
   async () => {
-    // 受付の判定の時点では記録する会話で、記録（DB）を待っている間に記録しない会話へ入った場合。
+    // 受付の判定の時点では記録する会話で、Live の記録（DB）を待っている間に記録しない会話へ入った場合。
     // 判定は 3 回（1 段目・予約の後・2 段目）。2 段目の判定の後に入ったことを、呼び出しの回数で作る。
     let calls = 0;
     const flip = () => {
@@ -133,14 +136,65 @@ test(
         await lease(rig);
         const created = await rig.voice.createLiveSession(A, liveBody());
         await rig.wait();
-        // 4 回目の呼び出し（登録の直後の確認）で記録しない会話。作成の応答の後に閉じるための接続を張る。
-        assert.equal(created.status, 409, JSON.stringify(created.body));
-        assert.equal(rig.provider.created.length, 1);
-        const sideband = rig.provider.sidebands[0];
-        assert.ok(sideband);
-        assert.equal(sideband.closes, 1);
+        assert.deepEqual(
+          [created.status, bodyOf(created)['code']],
+          [409, 'private_conversation'],
+        );
+        // provider へは何も送らない（Live の接続 0 回。X17・X36）。サイドバンドも張らない。
+        assert.equal(rig.provider.created.length, 0);
+        assert.equal(rig.provider.sidebands.length, 0);
+        // 送出意図は記録済みなので予約は解放せず、使用量不明として保持する（15 秒の最低額で精算しない）。
+        assert.deepEqual(rig.budget.calls, ['reserve:195', 'dispatch', 'hold']);
+        assert.deepEqual(reservationStatus(rig), ['usage_unknown']);
+        assert.deepEqual(actualGross(rig), [null]);
+        // 保存した Live の記録は、終了を確認できない状態で閉じ、理由は記録しない会話。
+        const stored = rig.harness.sql(
+          (db) =>
+            db
+              .prepare(
+                'SELECT control_state, closure, end_reason, usage_seconds FROM live_sessions',
+              )
+              .all() as Record<string, unknown>[],
+        );
+        assert.deepEqual(stored, [
+          {
+            control_state: 'closed',
+            closure: 'close_unconfirmed',
+            end_reason: 'private_conversation',
+            usage_seconds: null,
+          },
+        ]);
       },
       { privateConversation: flip },
+    );
+  },
+);
+
+test(
+  'private: entering while the provider is creating the session still closes it once the answer arrives (the request was already sent)',
+  TIMEOUT,
+  async () => {
+    // 作成の呼び出しの後（応答を待つ間）に入った場合は、すでに送っている。応答の後に閉じる（作成の途中の接続の扱い）。
+    const state = { private: false };
+    await withRig(
+      async (rig) => {
+        await lease(rig);
+        rig.provider.holdCreate = true;
+        const pending = rig.voice.createLiveSession(A, liveBody());
+        await waitUntil(
+          rig,
+          'provider への作成の呼び出し',
+          () => rig.provider.created.length === 1,
+        );
+        state.private = true;
+        assert.equal(rig.voice.closeForPrivateConversation(), 1);
+        rig.provider.releaseCreate();
+        const created = await pending;
+        await rig.wait();
+        assert.equal(created.status, 409, JSON.stringify(created.body));
+        assert.equal(rig.provider.created.length, 1);
+      },
+      { privateConversation: () => state.private },
     );
   },
 );

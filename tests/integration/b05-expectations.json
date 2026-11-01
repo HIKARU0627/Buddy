@@ -200,7 +200,8 @@
           ],
           "commands": ["voice.start"]
         }
-      }
+      },
+      "deviation_note": "既知の未了の記録: 端末が進めた io_epoch を中枢へ報告する経路は未実装（契約台帳 U70・U91）のため、端末だけが止まって再開すると中枢はリースを unknown_io_epoch で拒否し、会話は始まらない（拒否は安全側）。再開できることの確認は、試験が中枢へも停止・再開を送って世代をそろえた場合だけ。"
     },
     {
       "id": "QA43-three-stops-are-distinct",
@@ -747,7 +748,8 @@
           "operations": 0,
           "live_closure": "open"
         }
-      }
+      },
+      "deviation_note": "既知の制約の記録: 会話の操作に使った発話の直後（委譲の窓 2 秒以内）の依頼は、対象が複数と判定されて聞き返しになる（依頼は実行されない。契約台帳 U151、本人の判断待ち）。"
     },
     {
       "id": "X58-reply-in-text-switches-the-device",

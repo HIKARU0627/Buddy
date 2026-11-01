@@ -4,7 +4,7 @@
 // 期待値は b05-expectations.json の手書きの値（設計 10 §1・§1A・§2・§2A・§8、07 §2・§5、09 の X13 ほか、ADR 0005 の表）。
 // 待ち合わせは手で進める時計だけで行い、固定の sleep を使わない。HTTP・WSS・Electron・マイク・実 API は通さない。
 import assert from 'node:assert/strict';
-import { A, withWorld } from './b05-world.mjs';
+import { A, NO_FAULTS, withWorld } from './b05-world.mjs';
 import {
   CLEAN,
   deviceEpochRows,
@@ -388,10 +388,332 @@ async function qa43ThreeStops() {
   return result;
 }
 
+// ---- 段階 2: サイドバンドの喪失（X25・QA24）と停止の ACK の期限（X30） ------------------------------------------------
+
+const liveState = (w, liveId) => w.rig.voice.liveRecord(liveId);
+
+// サイドバンドが喪失する場面を作る: 20 秒の健全な会話の後、pong を返さなくなる。最後の pong から 6 秒で喪失（5999 ms では ready）。
+async function sidebandLossScenario(w) {
+  await w.begin();
+  await w.advance(20_000);
+  const liveId = liveRows(w)[0].live_session_id;
+  w.sidebandHealthy = false;
+  const lastPong = w.lastPongAt;
+  await w.advance(lastPong + 5999 - w.clock.mono());
+  const readyAt5999 = liveState(w, liveId).control_state === 'ready';
+  const leaseAt5999 = w.ctl.leaseActive;
+  await w.advance(1);
+  const tLost = w.clock.mono();
+  const lostRecord = liveState(w, liveId);
+  return {
+    liveId,
+    tLost,
+    lostAfterMs: tLost - lastPong,
+    readyAt5999,
+    leaseAt5999,
+    readyAfter: lostRecord.control_state === 'ready',
+    controlEpoch: String(lostRecord.control_epoch),
+  };
+}
+
+// X25: サイドバンドを喪失すると、ハートビートが正常でも音声リースを更新せず、端末へ close_voice_session（sideband_lost）を送る。
+// 閉じるためだけの再接続で session.close を送り、使用秒数が確認できたら精算する。
+async function x25SidebandLost() {
+  let result;
+  await withWorld({}, async (w) => {
+    const loss = await sidebandLossScenario(w);
+    await w.advance(100);
+    const audioControls = w.coreEvents
+      .filter(
+        (entry) =>
+          entry.at >= loss.tLost && entry.event.event_type === 'audio_control',
+      )
+      .map((entry) => ({
+        dt: entry.at - loss.tLost,
+        action: entry.event.audio_control.action,
+        reason: entry.event.audio_control.reason,
+      }));
+    const last = w.renewalBodies.at(-1);
+    const probe = await w.rig.voice.renewLease(
+      A,
+      {
+        ...last,
+        request_id: w.newId(),
+        nonce: 'probe-after-loss',
+        previous_nonce: last.nonce,
+        requested_at_mono_ms: w.clock.mono(),
+      },
+      'unlocked',
+    );
+    await w.advance(3000);
+    const { lives, reservations } = settle(w);
+    result = summary(w, {
+      checks: {
+        loss: {
+          lost_after_last_pong_ms: loss.lostAfterMs,
+          ready_at_5999: loss.readyAt5999,
+          lease_active_at_5999: loss.leaseAt5999,
+          ready_after_6000: loss.readyAfter,
+          control_epoch: loss.controlEpoch,
+        },
+        device: {
+          audio_controls: audioControls,
+          commands: commandsSince(w, loss.tLost),
+          acks: acksSince(w, loss.tLost),
+          renderer: renderer(w),
+          lease_active: w.ctl.leaseActive,
+          external_send: w.ctl.view().external_send,
+          voice_state: w.ctl.view().voice_state,
+          core_close_requests: closesSince(w, loss.tLost),
+        },
+        lease_probe: {
+          status: probe.status,
+          result: probe.body.result,
+          reasons: probe.body.reasons,
+        },
+        core: {
+          reconnects: w.rig.provider.connectCalls.length,
+          live: lifeOf(lives[0]),
+          reservation: reservationOf(reservations[0]),
+        },
+      },
+    });
+  });
+  return result;
+}
+
+// QA24: 閉じる確認（session.closed）が 2 秒来ないときは終了未確認で、予約を精算も解放もせず保持する。後から届いた使用秒数で
+// 一度だけ精算する（15 秒の最低課金を含む）。
+async function qa24CloseUnconfirmed() {
+  let result;
+  await withWorld({}, async (w) => {
+    w.providerCloses = 'never';
+    const loss = await sidebandLossScenario(w);
+    await w.advance(1999);
+    const waiting = {
+      closure: liveRows(w)[0].closure,
+      reservation: reservationOf(voiceReservationRows(w)[0]),
+    };
+    await w.advance(1);
+    const held = {
+      closure: liveRows(w)[0].closure,
+      reservation: reservationOf(voiceReservationRows(w)[0]),
+      dispatched: voiceReservationRows(w)[0].dispatched,
+    };
+    await w.advance(30_000);
+    const stillHeld = reservationOf(voiceReservationRows(w)[0]);
+    // 遅れて届いた使用秒数（provider 自身の記録: 作成から閉じる要求までの秒数）。2 回届いても精算は一度だけ。
+    const truth = w.providerTruth[0];
+    const seconds = Math.floor(
+      (truth.close_requested_at - truth.created_at) / 1000,
+    );
+    w.rig.provider.last.closed(seconds);
+    await w.advance(100);
+    w.rig.provider.last.closed(seconds);
+    await w.advance(100);
+    const { lives, reservations } = settle(w);
+    result = summary(w, {
+      checks: {
+        lost_after_last_pong_ms: loss.lostAfterMs,
+        waiting_for_close: waiting,
+        unconfirmed: held,
+        still_held_after_30s: stillHeld,
+        reconciled: {
+          live: lifeOf(lives[0]),
+          reservation: reservationOf(reservations[0]),
+          settled_rows: reservations.filter((row) => row.status === 'settled')
+            .length,
+        },
+      },
+    });
+  });
+  return result;
+}
+
+// 停止（OS のロック）の命令の ACK を観測する。ACK の遅れ・固まる・ACK が来ない故障は faults で与える。
+// afterLockMs: ロックから観測までに進める ms。戻り値は観測（世界は閉じた後なので、値だけを返す）。
+async function lockWithFault(faults, afterLockMs, extra = () => undefined) {
+  let out;
+  await withWorld({ faults: [faults] }, async (w) => {
+    await w.begin();
+    await w.advance(3000);
+    const t0 = w.clock.mono();
+    w.device.applyLockQuery('lock_screen');
+    const atDeadline = [];
+    // 1 ms ずつ進め、外部への送信が止まった（音声レンダラーが止めた、または強制終了した）最初の時刻を測る。
+    let stopMs = null;
+    for (let dt = 1; dt <= 301; dt += 1) {
+      await w.advance(1);
+      const entry = w.slots.at(-1);
+      if (stopMs === null && (!entry.alive || !w.stats().sending)) stopMs = dt;
+      if (dt === 1 || dt === 300 || dt === 301)
+        atDeadline.push({
+          dt,
+          alive: entry.alive,
+          kills: w.kills.length,
+          sent_frames: w.stats().sentFrames,
+        });
+    }
+    await w.advance(afterLockMs);
+    out = {
+      commands: commandsSince(w, t0),
+      acks: acksSince(w, t0),
+      kills: w.kills.map((entry) => ({ dt: entry.at - t0 })),
+      renderer_alive: w.slots.at(-1).alive,
+      stop_ms: stopMs,
+      frames_at: atDeadline,
+      frames_at_end: w.stats().sentFrames,
+      logs: [...w.logs],
+      device: device(w),
+      core_close_requests: closesSince(w, t0),
+      renderers_created: w.slots.length,
+      extra: await extra(w, t0),
+      summary: summary(w, { checks: {} }),
+    };
+  });
+  return out;
+}
+
+// X30（ACK の期限）: ACK は 300 ms ちょうどなら間に合い、1 ms 遅れると音声レンダラーを強制終了して全停止する。強制終了した
+// 音声レンダラーの遅れた ACK は使わず、再開もしない。
+async function x30AckDeadline() {
+  const ok = await lockWithFault({ ...NO_FAULTS, delayMs: 298 }, 2000);
+  const late = await lockWithFault(
+    { ...NO_FAULTS, delayMs: 299 },
+    2000,
+    (w) => {
+      // 強制終了した音声レンダラーの遅れた ACK を、main へ届ける（実機では届かない。届いても使わないことを確かめる）。
+      const stale = w.acks.at(-1).ack;
+      const commandsBefore = w.sent.length;
+      w.ctl.receiveAck(1, stale);
+      return {
+        ack_logged_as_old: w.logs.includes('voice_ack_from_old_renderer'),
+        commands_added: w.sent.length - commandsBefore,
+        device: device(w),
+        renderers_created: w.slots.length,
+      };
+    },
+  );
+  const pick = (run) => ({
+    commands: run.commands,
+    acks: run.acks,
+    kills: run.kills,
+    renderer_alive: run.renderer_alive,
+    stop_ms: run.stop_ms,
+    ack_missing_logged: run.logs.includes('voice_ack_missing:voice.suspend_io'),
+    device: run.device,
+    core_close_requests: run.core_close_requests,
+    renderers_created: run.renderers_created,
+    stopped_sending: run.frames_at_end === run.frames_at[0].sent_frames,
+  });
+  return {
+    ...summary_of(late),
+    voice_stop_ms: ok.stop_ms,
+    checks: {
+      ack_at_300ms: pick(ok),
+      ack_at_301ms: { ...pick(late), late_ack: late.extra },
+    },
+  };
+}
+
+// X30（固まった音声レンダラー）: suspend_io で固まっても、送信は main の強制終了までは止まらない（実機の WebRTC の模型）。
+// 301 ms で強制終了して送信を止め、中枢の閉じる要求（第 3 層）は音声レンダラーの応答に依存せず精算まで進む。
+async function x30HungRenderer() {
+  const hung = await lockWithFault(
+    { ...NO_FAULTS, hangOn: 'voice.suspend_io' },
+    5000,
+  );
+  return {
+    ...summary_of(hung),
+    voice_stop_ms: hung.stop_ms,
+    checks: {
+      stop_ms: hung.stop_ms,
+      commands: hung.commands,
+      acks: hung.acks,
+      kills: hung.kills,
+      renderer_alive: hung.renderer_alive,
+      sent_frames_grew_before_kill:
+        hung.frames_at[2].sent_frames > hung.frames_at[0].sent_frames,
+      sent_frames_after_kill:
+        hung.frames_at_end - hung.frames_at[2].sent_frames,
+      device: hung.device,
+      core_close_requests: hung.core_close_requests,
+      ack_missing_logged: hung.logs.includes(
+        'voice_ack_missing:voice.suspend_io',
+      ),
+    },
+  };
+}
+
+// X30（読み上げの停止の ACK がない）: 再生の停止は適用されても ACK が来なければ、安全側に全停止して入力の中断を知らせる。
+async function x30StopPlaybackWithoutAck() {
+  let result;
+  await withWorld(
+    { faults: [{ ...NO_FAULTS, dropAck: ['voice.stop_playback'] }] },
+    async (w) => {
+      await w.begin();
+      await w.advance(2000);
+      // 相手の音声を再生中にしてから停止する。
+      w.remoteAudio();
+      await w.advance(100);
+      const playingBefore = w.stats().playing;
+      const t0 = w.clock.mono();
+      w.ctl.applyControl('stop_playback');
+      let playbackStopMs = null;
+      for (let dt = 1; dt <= 300; dt += 1) {
+        await w.advance(1);
+        if (playbackStopMs === null && !w.stats().playing) playbackStopMs = dt;
+      }
+      const atDeadline = {
+        commands: commandsSince(w, t0),
+        device: device(w),
+        notice: w.ctl.view().notice,
+        playing: w.stats().playing,
+        live: w.stats().live,
+      };
+      await w.advance(1);
+      await w.advance(2000);
+      result = summary(w, {
+        voice_stop_ms: playbackStopMs,
+        checks: {
+          playing_before: playingBefore,
+          playback_stop_ms: playbackStopMs,
+          at_300ms: atDeadline,
+          after_deadline: {
+            commands: commandsSince(w, t0),
+            acks: acksSince(w, t0),
+            kills: w.kills.length,
+            renderer: renderer(w),
+            device: device(w),
+            notice: w.ctl.view().notice,
+            core_close_requests: closesSince(w, t0),
+            voice_state: w.ctl.view().voice_state,
+          },
+        },
+      });
+    },
+  );
+  return result;
+}
+
+// lockWithFault の戻り値から、証拠に書く共通の項目（DB の版・件数・最終状態）を取り出す。
+const summary_of = (run) => ({
+  db_version: run.summary.db_version,
+  provider_requests: run.summary.provider_requests,
+  provider_state_changes: run.summary.provider_state_changes,
+  approvals: 0,
+  final_state: run.summary.final_state,
+});
+
 const CASES = {
   'X13-os-lock-stops-everything': x13OsLock,
   'X13-io-epoch-sync-before-restart': x13EpochSync,
   'QA43-three-stops-are-distinct': qa43ThreeStops,
+  'X25-sideband-lost-closes-and-settles': x25SidebandLost,
+  'QA24-close-unconfirmed-holds-reservation': qa24CloseUnconfirmed,
+  'X30-ack-deadline-boundary': x30AckDeadline,
+  'X30-hung-renderer-is-killed': x30HungRenderer,
+  'X30-stop-playback-without-ack-escalates': x30StopPlaybackWithoutAck,
 };
 
 // 1 つのケースを実行し、手書きの期待値と突き合わせる。観測を返す（証拠の元）。

@@ -25,7 +25,7 @@ import {
   NO_FAULTS,
 } from '../../apps/desktop/dist/main/voice-mock-renderer.js';
 
-export { A, CORE, DEV_A, SCOPE_A, SESSION, waitUntil };
+export { A, CORE, DEV_A, NO_FAULTS, SCOPE_A, SESSION, waitUntil };
 
 // 合成の PCM の 1 つの区間（フレームを 20 ms として数え、PCM_BATCH 個を 1 つの timer でまとめて進める）。
 const PCM_FRAME_MS = 20;
@@ -67,6 +67,7 @@ export async function withWorld(options, body) {
       const kills = [];
       const closedToCore = [];
       const renewals = [];
+      const renewalBodies = [];
       const renewResponses = [];
       const coreEvents = [];
       const logs = [];
@@ -156,6 +157,7 @@ export async function withWorld(options, body) {
         }),
         renew: async (request) => {
           renewals.push({ at: clock.mono(), io_epoch: request.io_epoch });
+          renewalBodies.push(structuredClone(request));
           const result = await rig.voice.renewLease(A, request, lockHeader());
           renewResponses.push({
             at: clock.mono(),
@@ -279,7 +281,10 @@ export async function withWorld(options, body) {
           const ping = sideband.ping.bind(sideband);
           sideband.ping = () => {
             ping();
-            if (world.sidebandHealthy) sideband.pong();
+            if (world.sidebandHealthy) {
+              world.lastPongAt = clock.mono();
+              sideband.pong();
+            }
           };
           const sendClose = sideband.sendClose.bind(sideband);
           const liveId = providerSessionId.slice('prov-'.length);
@@ -306,6 +311,8 @@ export async function withWorld(options, body) {
 
       const world = {
         sidebandHealthy: true,
+        lastPongAt: null,
+        renewalBodies,
         providerCloses: 'auto',
         providerTruth,
         rig,

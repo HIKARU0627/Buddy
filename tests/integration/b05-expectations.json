@@ -344,6 +344,320 @@
         },
         "live_closures": ["close_confirmed", "close_confirmed"]
       }
+    },
+    {
+      "id": "X25-sideband-lost-closes-and-settles",
+      "title": "X25: 最後の pong から 6 秒（5999 ms では ready）で制御接続を喪失し、ハートビートが正常でも音声リースを更新せず、端末へ close_voice_session（sideband_lost）を送る。閉じるためだけの再接続で session.close を送り、provider の使用秒数（26 秒）で精算する",
+      "faults": ["sideband_pong_stops"],
+      "expected": {
+        "loss": {
+          "lost_after_last_pong_ms": 6000,
+          "ready_at_5999": true,
+          "lease_active_at_5999": true,
+          "ready_after_6000": false,
+          "control_epoch": "1"
+        },
+        "device": {
+          "audio_controls": [
+            {
+              "dt": 0,
+              "action": "close_voice_session",
+              "reason": "sideband_lost"
+            }
+          ],
+          "commands": [
+            {
+              "dt": 0,
+              "channel": "voice.close_voice_session",
+              "reason": "sideband_lost"
+            }
+          ],
+          "acks": [
+            {
+              "dt": 1,
+              "channel": "voice.close_voice_session",
+              "outcome": "applied"
+            }
+          ],
+          "renderer": {
+            "live": false,
+            "sending": false,
+            "capturing": true,
+            "playing": false,
+            "ring_empty": false,
+            "last_local_stop": "voice.close_voice_session",
+            "io_epoch": "0",
+            "audio_epoch": "1",
+            "output_epoch": "1",
+            "session_epoch": "1"
+          },
+          "lease_active": false,
+          "external_send": false,
+          "voice_state": "waiting_wake_word",
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "sideband_lost"
+            }
+          ]
+        },
+        "lease_probe": {
+          "status": 200,
+          "result": "rejected",
+          "reasons": ["sideband_lost"]
+        },
+        "core": {
+          "reconnects": 2,
+          "live": {
+            "closure": "close_confirmed",
+            "control_state": "closed",
+            "usage_seconds": 26,
+            "audio_epoch": 1,
+            "session_epoch": 1
+          },
+          "reservation": {
+            "status": "settled",
+            "actual_gross": "26"
+          }
+        }
+      }
+    },
+    {
+      "id": "QA24-close-unconfirmed-holds-reservation",
+      "title": "QA24: 喪失の後の閉じる要求に session.closed が 2 秒来なければ終了未確認で、予約を精算も解放もせず保持する。後から届いた使用秒数（26 秒）で一度だけ精算し、重複して届いても二重に精算しない",
+      "faults": ["sideband_pong_stops", "session_closed_withheld"],
+      "expected": {
+        "lost_after_last_pong_ms": 6000,
+        "waiting_for_close": {
+          "closure": "close_requested",
+          "reservation": {
+            "status": "reserved",
+            "actual_gross": null
+          }
+        },
+        "unconfirmed": {
+          "closure": "close_unconfirmed",
+          "reservation": {
+            "status": "usage_unknown",
+            "actual_gross": null
+          },
+          "dispatched": true
+        },
+        "still_held_after_30s": {
+          "status": "usage_unknown",
+          "actual_gross": null
+        },
+        "reconciled": {
+          "live": {
+            "closure": "close_confirmed",
+            "control_state": "closed",
+            "usage_seconds": 26,
+            "audio_epoch": 1,
+            "session_epoch": 1
+          },
+          "reservation": {
+            "status": "settled",
+            "actual_gross": "26"
+          },
+          "settled_rows": 1
+        }
+      }
+    },
+    {
+      "id": "X30-ack-deadline-boundary",
+      "title": "X30: 停止の ACK は 300 ms ちょうどなら間に合い、1 ms 遅れると音声レンダラーを強制終了して全停止する。強制終了した音声レンダラーの遅れた ACK は使わず、再開もしない。どちらも第 1 層のローカル停止は ACK を待たない",
+      "faults": ["ack_delay_298ms", "ack_delay_299ms"],
+      "expected": {
+        "ack_at_300ms": {
+          "commands": [
+            {
+              "dt": 0,
+              "channel": "voice.suspend_io",
+              "reason": "os_lock"
+            }
+          ],
+          "acks": [
+            {
+              "dt": 299,
+              "channel": "voice.suspend_io",
+              "outcome": "applied"
+            }
+          ],
+          "kills": [],
+          "renderer_alive": true,
+          "ack_missing_logged": false,
+          "device": {
+            "lock_state": "locked",
+            "stop_scope": "local",
+            "io_epoch": "1"
+          },
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "os_lock"
+            }
+          ],
+          "renderers_created": 1,
+          "stopped_sending": true,
+          "stop_ms": 1
+        },
+        "ack_at_301ms": {
+          "commands": [
+            {
+              "dt": 0,
+              "channel": "voice.suspend_io",
+              "reason": "os_lock"
+            }
+          ],
+          "acks": [
+            {
+              "dt": 300,
+              "channel": "voice.suspend_io",
+              "outcome": "applied"
+            }
+          ],
+          "kills": [
+            {
+              "dt": 301
+            }
+          ],
+          "renderer_alive": false,
+          "ack_missing_logged": true,
+          "device": {
+            "lock_state": "locked",
+            "stop_scope": "local",
+            "io_epoch": "1"
+          },
+          "core_close_requests": [
+            {
+              "dt": 0,
+              "reason": "os_lock"
+            }
+          ],
+          "renderers_created": 1,
+          "stopped_sending": true,
+          "late_ack": {
+            "ack_logged_as_old": true,
+            "commands_added": 0,
+            "device": {
+              "lock_state": "locked",
+              "stop_scope": "local",
+              "io_epoch": "1"
+            },
+            "renderers_created": 1
+          },
+          "stop_ms": 1
+        }
+      }
+    },
+    {
+      "id": "X30-hung-renderer-is-killed",
+      "title": "X30: suspend_io で音声レンダラーが固まると、送信は強制終了まで止まらないが、301 ms で強制終了して止める。中枢の閉じる要求（第 3 層）は音声レンダラーの応答に依存せず送られる",
+      "faults": ["renderer_hangs_on_suspend_io"],
+      "expected": {
+        "commands": [
+          {
+            "dt": 0,
+            "channel": "voice.suspend_io",
+            "reason": "os_lock"
+          }
+        ],
+        "acks": [],
+        "kills": [
+          {
+            "dt": 301
+          }
+        ],
+        "renderer_alive": false,
+        "sent_frames_grew_before_kill": true,
+        "sent_frames_after_kill": 0,
+        "device": {
+          "lock_state": "locked",
+          "stop_scope": "local",
+          "io_epoch": "1"
+        },
+        "core_close_requests": [
+          {
+            "dt": 0,
+            "reason": "os_lock"
+          }
+        ],
+        "ack_missing_logged": true,
+        "stop_ms": 301
+      }
+    },
+    {
+      "id": "X30-stop-playback-without-ack-escalates",
+      "title": "X30: 読み上げの停止の ACK が来なければ、301 ms で安全側に全停止（device_io_stop）して入力の中断を知らせる。それまでは入出力の許可を保つ",
+      "faults": ["stop_playback_ack_dropped"],
+      "expected": {
+        "at_300ms": {
+          "commands": [
+            {
+              "dt": 0,
+              "channel": "voice.stop_playback",
+              "reason": "user_stop"
+            }
+          ],
+          "device": {
+            "lock_state": "unlocked",
+            "stop_scope": "none",
+            "io_epoch": "0"
+          },
+          "notice": null,
+          "playing": false,
+          "live": true
+        },
+        "after_deadline": {
+          "commands": [
+            {
+              "dt": 0,
+              "channel": "voice.stop_playback",
+              "reason": "user_stop"
+            },
+            {
+              "dt": 301,
+              "channel": "voice.suspend_io",
+              "reason": "device_io_stop"
+            }
+          ],
+          "acks": [
+            {
+              "dt": 302,
+              "channel": "voice.suspend_io",
+              "outcome": "applied"
+            }
+          ],
+          "kills": 0,
+          "renderer": {
+            "live": false,
+            "sending": false,
+            "capturing": false,
+            "playing": false,
+            "ring_empty": true,
+            "last_local_stop": "voice.suspend_io",
+            "io_epoch": "1",
+            "audio_epoch": "1",
+            "output_epoch": "2",
+            "session_epoch": "1"
+          },
+          "device": {
+            "lock_state": "unlocked",
+            "stop_scope": "local",
+            "io_epoch": "1"
+          },
+          "notice": "input_interrupted",
+          "core_close_requests": [
+            {
+              "dt": 301,
+              "reason": "device_io_stop"
+            }
+          ],
+          "voice_state": "device_stopped"
+        },
+        "playing_before": true,
+        "playback_stop_ms": 1
+      }
     }
   ]
 }

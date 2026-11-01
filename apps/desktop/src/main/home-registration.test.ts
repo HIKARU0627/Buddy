@@ -331,7 +331,7 @@ async function liveLink(
     }),
   });
   onCleanup(t, () => link.stop());
-  saveCredential(join(dir, CREDENTIAL_FILE), protector, {
+  await saveCredential(join(dir, CREDENTIAL_FILE), protector, {
     deviceId: DEVICE,
     token: new SecretText('P'.repeat(43)),
     issuedAt: '2030-10-01T00:00:00Z',
@@ -363,7 +363,7 @@ async function liveLink(
       reason?: string;
     };
   };
-  link.start('unlocked');
+  await link.start('unlocked');
   await waitUntil(() => link.linkState?.phase === 'live', 'live');
   await link.homeReportIdle();
   const puts = () =>

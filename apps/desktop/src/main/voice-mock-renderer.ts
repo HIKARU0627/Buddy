@@ -116,6 +116,9 @@ export interface MockRendererStats {
   readonly ringFrames: number;
   // 外部へ送ったフレームの数（模擬。実際には送らない）。
   readonly sentFrames: number;
+  // 再生したフレームの数と、世代が古くて捨てた相手の音声の数（模擬。実際には鳴らさない）。
+  readonly playedFrames: number;
+  readonly discardedAudio: number;
   readonly clipsPlayed: readonly string[];
   readonly silenceTimeoutMs: number | null;
   readonly epochs: Readonly<Epochs>;
@@ -151,9 +154,14 @@ export class MockVoiceRenderer {
   #sending = false;
   #capturing = false;
   #playing = false;
+  // stop_playback の後も再生を止めたままにする（ADR 0038: 既定は本人の再開操作で新しい Live 接続を開くまで
+  // 出力を mute に保つ。同じ接続での復帰は設定を有効にし、旧ストリームの排除を確かめたときだけ）。
+  #muted = false;
   #ring: Int16Array[] = [];
   #frameIndex = 0;
   #sentFrames = 0;
+  #playedFrames = 0;
+  #discardedAudio = 0;
   #clips: string[] = [];
   #silenceTimeoutMs: number | null = null;
   #lastLocalStop: VoiceIpcChannel | null = null;
@@ -172,6 +180,8 @@ export class MockVoiceRenderer {
       playing: this.#playing,
       ringFrames: this.#ring.length,
       sentFrames: this.#sentFrames,
+      playedFrames: this.#playedFrames,
+      discardedAudio: this.#discardedAudio,
       clipsPlayed: [...this.#clips],
       silenceTimeoutMs: this.#silenceTimeoutMs,
       epochs: { ...this.#epochs },
@@ -179,8 +189,26 @@ export class MockVoiceRenderer {
     };
   }
 
+  // 相手（モデル）の音声が届いた（WebRTC の受信トラックの模型）。outputEpoch はその音声を作った時点の出力の世代。
+  // Live が開いていて、出力を止めていない（mute を保持していない）ときに限り、世代が今の出力の世代とちょうど
+  // 一致する音声だけ再生を始める。古い世代の遅着も、発行元を確かめられない未来の世代も、再生せずに捨てる
+  // （10 §1A、ADR 0005「遅着と出力先」）。
+  remoteAudioArrived(outputEpoch: string): void {
+    if (!this.#live) return;
+    if (
+      this.#muted ||
+      this.#epochs.output === null ||
+      outputEpoch !== this.#epochs.output
+    ) {
+      this.#discardedAudio += 1;
+      return;
+    }
+    this.#playing = true;
+  }
+
   // 20 ms ごとに呼ぶ。固まっていても、開いた送信トラックは止まらない（実機の WebRTC の模型）。
   tick(): void {
+    if (this.#playing) this.#playedFrames += 1;
     if (this.#hung) {
       if (this.#live && this.#sending) this.#sentFrames += 1;
       return;
@@ -265,13 +293,17 @@ export class MockVoiceRenderer {
       case 'voice.start':
         // 模擬では、answer の適用と同時に送信トラックを有効にする（session.started とサイドバンド接続済みの両方を待つ門は、
         // サイドバンド接続済みを音声レンダラーへ伝える経路が決まっていない。ADR 0041 の U28、ADR 0050）。
+        // 新しい Live 接続なので、前の stop_playback で保っていた出力の mute を解く（ADR 0038）。
         this.#live = true;
         this.#capturing = true;
         this.#sending = true;
+        this.#muted = false;
         return;
       case 'voice.stop_playback':
-        // 再生だけを止め、待機中の音声を捨てる。収音・Live の入力は保つ（10 §1A）。
+        // 再生だけを止め、待機中の音声を捨てる。収音・Live の入力は保つ（10 §1A）。出力の mute は、本人の再開操作で
+        // 新しい Live 接続を開くまで保つ（ADR 0038。同じ接続での復帰は既定で無効）。
         this.#playing = false;
+        this.#muted = true;
         this.#lastLocalStop = channel;
         return;
       case 'voice.close_voice_session':

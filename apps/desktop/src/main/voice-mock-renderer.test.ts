@@ -279,3 +279,46 @@ test('a hang stops all command handling but an open send track keeps sending unt
   assert.equal(renderer.stats.sentFrames, 7);
   assert.equal(renderer.stats.lastLocalStop, 'voice.stop_playback');
 });
+
+test('remote audio plays only while the Live is open and unmuted, at the current output epoch; stale, future, or muted audio is discarded', () => {
+  const { renderer } = setup();
+  // Live が開く前に届いた音声は再生しない。
+  renderer.remoteAudioArrived('0');
+  assert.equal(renderer.stats.playing, false);
+  renderer.receive(start({ io: '0', audio: '1', output: '0', session: '1' }));
+  // 今の出力の世代と一致する音声だけ再生する。
+  renderer.remoteAudioArrived('0');
+  assert.equal(renderer.stats.playing, true);
+  renderer.tick();
+  renderer.tick();
+  assert.equal(renderer.stats.playedFrames, 2);
+  // 再生の停止: 止まり、止めた後は再生したフレームが増えない。
+  renderer.receive(stopPlayback('0', '1'));
+  assert.equal(renderer.stats.playing, false);
+  renderer.tick();
+  assert.equal(renderer.stats.playedFrames, 2);
+  // 古い出力の世代の遅着は捨てる。
+  renderer.remoteAudioArrived('0');
+  assert.equal(renderer.stats.playing, false);
+  assert.equal(renderer.stats.discardedAudio, 1);
+  // 停止の後は、今の世代と一致する音声が届いても再生しない（mute を保つ。ADR 0038）。
+  renderer.remoteAudioArrived('1');
+  assert.equal(renderer.stats.playing, false);
+  assert.equal(renderer.stats.discardedAudio, 2);
+  renderer.tick();
+  assert.equal(renderer.stats.playedFrames, 2);
+  // 新しい Live 接続で mute が解け、その世代と一致する音声は再生できる。
+  renderer.receive(start({ io: '0', audio: '1', output: '2', session: '1' }));
+  renderer.remoteAudioArrived('2');
+  assert.equal(renderer.stats.playing, true);
+  // 今より新しい世代は、発行元を確かめられないので再生しない（ADR 0005「遅着と出力先」）。
+  renderer.receive(stopPlayback('0', '3'));
+  renderer.remoteAudioArrived('4');
+  assert.equal(renderer.stats.playing, false);
+  assert.equal(renderer.stats.discardedAudio, 3);
+  // 全停止で再生も止まり、その後に届いた音声は再生しない（Live が閉じている）。
+  renderer.receive(suspend('1', '3'));
+  assert.equal(renderer.stats.playing, false);
+  renderer.remoteAudioArrived('3');
+  assert.equal(renderer.stats.playing, false);
+});

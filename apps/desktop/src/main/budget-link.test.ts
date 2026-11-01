@@ -227,7 +227,7 @@ async function start(
       .toLowerCase(),
   };
   const credentialPath = join(dir, 'device-credential.bin');
-  saveCredential(credentialPath, protector, {
+  await saveCredential(credentialPath, protector, {
     deviceId,
     token: new SecretText(token),
     issuedAt: '2030-10-05T00:00:00Z',
@@ -287,7 +287,7 @@ async function start(
     },
   });
   onCleanup(t, () => link.stop());
-  link.start('unlocked');
+  await link.start('unlocked');
   await waitUntil(() => link.linkState?.phase === 'live', 'live');
   return {
     hub,

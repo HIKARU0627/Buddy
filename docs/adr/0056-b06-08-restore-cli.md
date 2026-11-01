@@ -32,7 +32,7 @@
 3. **鍵を取り出す**: `backup-keys.json` の確認値で復旧キーの打ち間違いを先に見つけ（記録がなければ確認しない）、封筒の 3 つの包み（`backup_file`・`data_key`・`ledger_hmac_key`）を `unwrapBackupKey` で開く。`keyInstallPlan` で、KeyStore の既存の鍵と衝突しないこと（同じ ID で素材が違う・台帳の鍵が別の ID である・同じ ID が別の用途にある）を確かめる。
 4. **本体を確かめて復号する**: 本体の長さと SHA-256 を封筒と照合し（`verifyBackupPayload`）、`backup_file` の鍵で復号する（`decryptBackupPayload`）。復号した DB は U132 の場所にだけ書く。
 5. **段階 1（台帳の確認）**: 中枢の DB（正本）の台帳と、`forget-ledger.json`（別ファイル）から候補を作り、`restoreLedgerCheck` に渡す。DB が読めない・台帳の連鎖が壊れているときは候補にしない。別ファイルが DB より進んでいれば、その世代も「知っている最新」に含める。最新の台帳を確認できないときは記憶と会話を戻さない（`settings_only_eligible` を報告するだけ）。
-6. **段階 2（期限切れの削除の前提）**: U135 の掃除を作業用の DB に当て、`restoreOpenCheck` で、開けたこと・復旧キーの確認値・鍵の導入の計画・本体の一致・時計（最終確認時刻・復元の開始・バックアップの作成より前でない）・削除を当てた時刻を確かめる。
+6. **段階 2（期限切れの削除の前提）**: U135 の掃除を作業用の DB に当て、`restoreOpenCheck` で、開けたこと・復旧キーの確認値・鍵の導入の計画・本体の一致・時計（保存期限の掃除の時計の記録（`clock-state.json`）とバックアップの掃除の記録のうち新しい方の最終確認時刻・復元の開始・バックアップの作成より前でない。時計の記録が読めないときは期限を判定できない）・削除を当てた時刻を確かめる。
 7. 作業用の DB を消し、ロックを返す。出力は U133。
 
 ## 止まったときに何を戻さないか
@@ -51,7 +51,9 @@
 `apps/core/src/restore-check.test.ts`。バックアップはテストの中で本物の Core の設定（`runBackupSetup`）と作成（`backup.run`）で作り、復旧キーは画面に出した値から `decodeRecoveryCode` で独立に戻す。期待値は手で書いた。
 
 - ready: 段階 1・2 が通り、選んだ台帳が中枢（`hub`）で、作業用の DB が残らない。封筒の `excluded_data` が 4 つ・`included_storage_modes` が `normal`・`extended` だけで、復号した DB の含めない表の行と `sealed_blobs` が 0 件。
-- 拒否: 復旧キーが違う（`backup_unreadable`）、本体を 1 バイト書き換えた（`backup_unreadable`）、封筒が `private` を含む（`manifest_invalid`）、封筒の系譜が中枢と違う（`ledger_lineage_mismatch`）、中枢の DB と台帳のファイルをどちらも失った（`latest_ledger_unconfirmed`・`settings_only_eligible: true`）、Core が動いている（`core_running`・封筒を読まない）。
+- 拒否: 復旧キーが違う（`backup_unreadable`）、本体を 1 バイト書き換えた（`backup_unreadable`）、封筒が `private` を含む（`manifest_invalid`）、封筒の系譜が中枢と違う（`ledger_lineage_mismatch`）、書きかけの台帳の一時ファイルがある（`latest_ledger_unconfirmed`・`settings_only_eligible: true`）、中枢の DB と台帳のファイルをどちらも失った（`latest_ledger_unconfirmed`・`settings_only_eligible: true`）、Core が動いている（`core_running`・封筒を読まない）。
+- 期限の時計: 保存期限の掃除の時計の記録（`clock-state.json`）の最終確認時刻が復元の「今」より先（`clock_regression`）・記録が読めない（`clock_regression`）。
+- 平文を残さない: 作業用の DB の書き込みが途中で失敗しても、`restore-work/restore-<restore_id>/` に平文が残らない。
 - 復旧キーの入力: TTY でない（`not_a_tty`）、空（`input_empty`）、形が違う（`invalid_code`）、Ctrl-C（`interrupted`）。区切りと小文字を受け付け、値が案内の文に出ない。
 
 **模擬の期待値だけ**。`tests/test-map.json` の X15〜X17 の `product_test` は `not_run` のまま（復元の段階 3〜6 がそろうまで変えない）。実機のキーチェーン・実際のバックアップからの復元・Mac mini は B15 で未実施。

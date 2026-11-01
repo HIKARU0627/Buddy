@@ -3,6 +3,7 @@
 // 設定と作成の流れで作り、復旧キーだけを画面に出した値から独立に戻す（実装と同じ処理で期待値を作らない）。
 
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import {
   mkdir,
   mkdtemp,
@@ -35,6 +36,7 @@ import type { BackupKeyWrapValue } from '@buddy/storage';
 import { createApiContract } from './api-contract.js';
 import { onCleanup } from './api-test-support.js';
 import { BACKUP_CONFIG_FILE } from './backup-config.js';
+import { CLOCK_STATE_FILE } from './paths.js';
 import {
   inspectBackupSetup,
   recordBackupSetup,
@@ -137,6 +139,10 @@ async function check(
   overrides: {
     readonly recoveryKey?: Uint8Array;
     readonly backupPath?: string;
+    readonly writeWorkingDatabase?: (
+      workDir: string,
+      bytes: Uint8Array,
+    ) => Promise<string>;
   } = {},
 ) {
   const recoveryKey =
@@ -152,6 +158,9 @@ async function check(
     now: () => new Date(T0 + 1000),
     lock: true,
     log: () => undefined,
+    ...(overrides.writeWorkingDatabase === undefined
+      ? {}
+      : { writeWorkingDatabase: overrides.writeWorkingDatabase }),
   });
 }
 
@@ -254,6 +263,64 @@ test('復元の確認: 封筒・鍵・本体・台帳を確かめ、作業用の
   await rm(copy, { force: true });
 });
 
+test('復元の確認: 作業用の DB の書き込みが途中で失敗しても平文を残さない', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  const report = await check(r, {
+    writeWorkingDatabase: async (workDir) => {
+      await mkdir(workDir, { recursive: true });
+      await writeFile(join(workDir, 'buddy.sqlite'), 'plaintext-partial');
+      throw new Error('injected_write_failure');
+    },
+  });
+  assert.equal(report.outcome, 'rejected');
+  assert.equal(report.raw_payload_decrypted, false);
+  assert.deepEqual(await workDirEntries(r.dataDir), []);
+});
+
+test('復元の確認: 保存期限の時計の記録が読めない・巻き戻っているときは段階2で止める', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  const clockPath = join(r.dataDir, CLOCK_STATE_FILE);
+  let clock: Record<string, unknown>;
+  try {
+    clock = JSON.parse(await readFile(clockPath, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    const at = '2031-02-01T00:00:00.000Z';
+    clock = {
+      schema: 'buddy.clock-state.v1',
+      revision: 0,
+      last_checked_at: at,
+      epoch: randomUUID(),
+      epoch_started_at: at,
+      written_at: at,
+      rechecks: [],
+      storage_boundary: null,
+    };
+  }
+  // 保存期限の時計の最終確認時刻を、復元の「今」（T0 + 1 秒）より先にする（巻き戻り）。
+  await writeFile(
+    clockPath,
+    JSON.stringify({
+      ...clock,
+      last_checked_at: '2032-01-01T00:00:00.000Z',
+    }),
+  );
+  const regressed = await check(r);
+  assert.equal(regressed.outcome, 'rejected');
+  assert.equal(regressed.stages[0]?.status, 'passed');
+  assert.ok(regressed.stages[1]?.reasons.includes('clock_regression'));
+
+  // 時計の記録が読めないときも、期限を判定できない。
+  await writeFile(clockPath, '{not json');
+  const invalid = await check(r);
+  assert.equal(invalid.outcome, 'rejected');
+  assert.ok(invalid.stages[1]?.reasons.includes('clock_regression'));
+});
+
 test('復元の確認: 復旧キーが違う・本体が壊れている・封筒が private を含むときは止まる', async (t) => {
   const r = await rig(t);
   await r.handle.stop('test');
@@ -343,6 +410,15 @@ test('復元の確認: 台帳の系譜が違えば止め、台帳をすべて失
   assert.ok(mismatch.stages[0]?.reasons.includes('ledger_lineage_mismatch'));
   assert.equal(mismatch.settings_only_eligible, false);
 
+  // 書きかけの台帳の一時ファイルがあると、確定していないより新しい世代を持ち得るので合格にしない。
+  const tempPath = join(r.dataDir, '.forget-ledger-test.tmp');
+  await writeFile(tempPath, '{}');
+  const temp = await check(r);
+  assert.equal(temp.outcome, 'rejected');
+  assert.ok(temp.stages[0]?.reasons.includes('latest_ledger_unconfirmed'));
+  assert.equal(temp.settings_only_eligible, true);
+  await rm(tempPath, { force: true });
+
   // 中枢の DB と台帳の別ファイルをどちらも失う（中枢を失って複製もない）。
   const dbPath = join(r.dataDir, DB_FILE);
   for (const suffix of ['', '-wal', '-shm'])
@@ -363,7 +439,7 @@ test('復元の確認: Core が動いているときは台帳も封筒も読ま�
     report.stages.map((stage) => [stage.stage, 'core_running']),
     [['ledger_check', 'core_running']],
   );
-  assert.equal(report.prepared_working_database, false);
+  assert.equal(report.raw_payload_decrypted, false);
 });
 
 // --- 復旧キーの入力（U128） ---

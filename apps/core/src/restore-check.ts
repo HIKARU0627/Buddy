@@ -15,7 +15,7 @@
 // 中枢の DB を直接開くので、CLI は Core の排他ロックを取ってから呼ぶ（Core が動いていれば拒否する）。
 
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, open, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   BACKUP_KEY_PURPOSES,
@@ -89,8 +89,8 @@ export interface RestoreCheckReport {
     readonly holder: string;
     readonly head_generation: string;
   } | null;
-  // 復号した作業用の DB を置いたか（終わったら消す。パスは返さない）。
-  readonly prepared_working_database: boolean;
+  // 封筒の本体を復号して作業用の DB に置けたか（確認の後に消す。パスは返さない）。
+  readonly raw_payload_decrypted: boolean;
 }
 
 export interface RestoreCheckOptions {
@@ -113,6 +113,11 @@ export interface RestoreCheckOptions {
     workingPath: string,
     workDir: string,
   ) => Promise<{ readonly ok: boolean; readonly reasons: readonly string[] }>;
+  // 試験で差し替える作業用の DB の書き込み（途中で失敗したときの後始末を確かめる）。
+  readonly writeWorkingDatabase?: (
+    workDir: string,
+    bytes: Uint8Array,
+  ) => Promise<string>;
 }
 
 const iso = (date: Date): string => date.toISOString().replace('.000Z', 'Z');
@@ -205,7 +210,7 @@ function hashAtBackupGeneration(
 
 interface HubLedgerRead {
   readonly candidates: readonly RestoreLedgerCandidate[];
-  // 中枢と台帳のファイルが知っている最新の世代（読めなければ null）。
+  // 中枢と台帳のファイルが知っている最新の世代（読めなければ・一時ファイルがあれば null）。
   readonly known_generation: string | null;
   // 中枢の DB に記録した台帳の鍵の ID。
   readonly recorded_key_id: string | null;
@@ -213,10 +218,13 @@ interface HubLedgerRead {
 
 // 中枢の DB（正本）と台帳の別ファイルから、段階 1 の候補を作る。ファイルが DB より進んでいれば、その世代も
 // 「知っている最新」に含める（復元した後に Core がその台帳を当てられるように）。
+// 書きかけの一時ファイル（.forget-ledger-*.tmp）があるときは、まだ確定していないより新しい世代を持ち得るので、
+// 「知っている最新」を確認できないものとして扱う（Core の起動時の同期と同じ側に倒す。ADR 0054 の U109・U119）。
 async function readHubLedger(
   dataDir: string,
   ledgerFile: ForgetLedgerFileContent | null,
   manifest: BackupManifestLike,
+  hasLedgerTemp: boolean,
   log: (message: string) => void,
 ): Promise<HubLedgerRead> {
   const candidates: RestoreLedgerCandidate[] = [];
@@ -279,7 +287,11 @@ async function readHubLedger(
     )
       known = ledgerFile.head.forgetting_generation;
   }
-  return { candidates, known_generation: known, recorded_key_id: recorded };
+  return {
+    candidates,
+    known_generation: hasLedgerTemp ? null : known,
+    recorded_key_id: recorded,
+  };
 }
 
 export async function runRestoreCheck(
@@ -294,6 +306,7 @@ export async function runRestoreCheck(
     `restore-${restoreId}`,
   );
   let workingPath: string | null = null;
+  let rawPayloadDecrypted = false;
   let locked = false;
   const lockId = randomUUID();
   const stages: RestoreCheckStageView[] = [];
@@ -301,6 +314,8 @@ export async function runRestoreCheck(
   let ledger: { holder: string; head_generation: string } | null = null;
   let backupId = '';
   let backupCreatedAt: string | null = null;
+  // 封筒から開いた鍵。確認が終わったらメモリー上の値を消す（保存しない）。
+  const unwrapped: Partial<Record<BackupKeyPurpose, Buffer>> = {};
 
   const report = (outcome: 'ready' | 'rejected'): RestoreCheckReport => ({
     schema: RESTORE_CHECK_SCHEMA,
@@ -313,7 +328,7 @@ export async function runRestoreCheck(
     stages,
     settings_only_eligible: settingsOnlyEligible,
     ledger,
-    prepared_working_database: workingPath !== null,
+    raw_payload_decrypted: rawPayloadDecrypted,
   });
 
   try {
@@ -398,7 +413,6 @@ export async function runRestoreCheck(
     if (recoveryCheck === 'mismatch')
       log('復旧キーがこの中枢の記録と違います。');
 
-    const unwrapped: Partial<Record<BackupKeyPurpose, Buffer>> = {};
     const unwrap = {} as Record<BackupKeyPurpose, 'ok' | 'failed'>;
     for (const purpose of BACKUP_KEY_PURPOSES) {
       const wrap = keyWrapFor(wraps, purpose);
@@ -470,6 +484,9 @@ export async function runRestoreCheck(
       payload.sha256,
     );
     if (!payloadMatches) log('バックアップの本体が封筒と一致しません。');
+    // 本体を復号して作業用の DB に置けたか。復号・書き込みの失敗は backup_unreadable として扱う（鍵は開けても、
+    // 封筒の欄の書き換えなどで本体を開けないことがある）。
+    let payloadUsable = payloadMatches;
 
     // 封筒を開け、鍵を導入できるときだけ、作業用の DB に復号する（復旧キーの確認値は打ち間違いの検出だけ）。
     const openable =
@@ -496,9 +513,19 @@ export async function runRestoreCheck(
             );
       if (plaintext === null) {
         log('バックアップの本体を復号できませんでした。');
+        payloadUsable = false;
       } else {
-        workingPath = await writeWorkingDatabase(workDir, plaintext);
-        plaintext.fill(0);
+        try {
+          workingPath = await (
+            options.writeWorkingDatabase ?? writeWorkingDatabase
+          )(workDir, plaintext);
+          rawPayloadDecrypted = true;
+        } catch (error) {
+          log(`作業用の DB を書けませんでした（${(error as Error).name}）。`);
+          payloadUsable = false;
+        } finally {
+          plaintext.fill(0);
+        }
       }
     }
 
@@ -518,8 +545,37 @@ export async function runRestoreCheck(
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
         log(`台帳の別ファイルを読めませんでした（${(error as Error).name}）。`);
     }
-    const hub = await readHubLedger(options.dataDir, ledgerFile, manifest, log);
+    // 書きかけの台帳の一時ファイルが残っていると、確定していないより新しい世代を持つことがある。
+    let hasLedgerTemp = false;
+    try {
+      hasLedgerTemp = (await readdir(options.dataDir)).some(
+        (name) => name.startsWith('.forget-ledger-') && name.endsWith('.tmp'),
+      );
+    } catch {
+      hasLedgerTemp = true;
+    }
+    const hub = await readHubLedger(
+      options.dataDir,
+      ledgerFile,
+      manifest,
+      hasLedgerTemp,
+      log,
+    );
+    // 期限の判定に使う「最終確認時刻」は、保存期限の掃除の時計の記録（ADR 0058 の U136）と、バックアップの
+    // 掃除の記録のうち、より新しい方（どちらも無ければ null）。時計の記録が読めないときは期限を判定できない。
     const state = await readBackupState(options.dataDir);
+    const clockState = await createClockStateFile(options.dataDir).load();
+    let lastCheckedAt: string | null = null;
+    if (clockState.status === 'verified')
+      lastCheckedAt = clockState.content.last_checked_at;
+    if (
+      state.ok &&
+      state.value.last_checked_at !== null &&
+      (lastCheckedAt === null ||
+        Date.parse(state.value.last_checked_at) > Date.parse(lastCheckedAt))
+    )
+      lastCheckedAt = state.value.last_checked_at;
+    const clockUnreadable = clockState.status === 'invalid';
     const ledgerKeyId = keyFile.ok
       ? (keyWrapFor(keyFile.value.key_wraps, 'ledger_hmac_key')?.key_id ?? null)
       : null;
@@ -564,27 +620,37 @@ export async function runRestoreCheck(
       manifest_created_at: manifest.created_at,
       started_at: iso(started),
       now: iso(options.now()),
-      last_checked_at: state.ok ? state.value.last_checked_at : null,
+      last_checked_at: lastCheckedAt,
       recovery_check: recoveryCheck,
       unwrap,
       key_install_ok: keyInstallOk,
-      payload_matches: payloadMatches,
+      payload_matches: payloadUsable,
       purge_applied_at: purgeAppliedAt,
     });
+    // 保存期限の時計の記録が読めないときは、期限を判定できない（ADR 0047 の clock_regression）。
+    const expiryDecision = clockUnreadable
+      ? {
+          stage: 'expiry_purge' as const,
+          status: 'failed' as const,
+          reasons: ['clock_regression' as const],
+        }
+      : openCheck.decision;
     stages.push({
       stage: 'expiry_purge',
-      status: openCheck.decision.status === 'failed' ? 'failed' : 'passed',
-      reasons: openCheck.decision.reasons,
+      status: expiryDecision.status === 'failed' ? 'failed' : 'passed',
+      reasons: expiryDecision.reasons,
     });
-    if (openCheck.decision.status === 'failed') {
+    if (expiryDecision.status === 'failed') {
       log(
-        `期限切れの削除の前提を満たさないため、復元を続けません（${openCheck.decision.reasons.join(', ')}）。`,
+        `期限切れの削除の前提を満たさないため、復元を続けません（${expiryDecision.reasons.join(', ')}）。`,
       );
       return report('rejected');
     }
     return report('ready');
   } finally {
-    if (workingPath !== null) await removeWorkDir(workDir);
+    for (const material of Object.values(unwrapped)) material.fill(0);
+    // 書く途中で例外になったときも、平文を残さない（workingPath が決まる前に失敗し得る）。
+    await removeWorkDir(workDir);
     if (locked)
       await releaseLock(options.dataDir, lockId).catch(() => undefined);
   }

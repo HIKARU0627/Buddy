@@ -35,7 +35,7 @@ import {
   lineageHasLiveDownstream,
   lineageSources,
   pruneDeadLineage,
-  readForgetGraph,
+  readForgetSubgraph,
   readLedgerChain,
   readLedgerEntries,
   readLedgerId,
@@ -69,6 +69,8 @@ export type MemoryOp =
   | {
       readonly kind: 'forget.graph';
       readonly target: MemorySource;
+      // 「〇〇を忘れて」の発言（計画に渡すものと同じ値。閉包の起点に入るので、省くと計画が古いと判定される）。
+      readonly instruction_turn_id?: string | null;
     }
   // 忘却の適用（台帳・削除・送出禁止の印を 1 つの transaction で）。
   | {
@@ -258,6 +260,12 @@ export function memoryOpShapeReasons(op: MemoryOp): string[] {
   switch (op.kind) {
     case 'forget.graph':
       if (!isSource(op.target)) reasons.push('target_invalid');
+      if (
+        op.instruction_turn_id !== undefined &&
+        op.instruction_turn_id !== null &&
+        !isUuid(op.instruction_turn_id)
+      )
+        reasons.push('instruction_turn_id_invalid');
       break;
     case 'forget.apply':
       if (!isSource(op.target)) reasons.push('target_invalid');
@@ -723,7 +731,10 @@ function readOnly(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
   switch (op.kind) {
     case 'forget.graph':
       return db.transaction(() => ({
-        graph: readForgetGraph(db),
+        graph: readForgetSubgraph(db, {
+          target: op.target,
+          instruction_turn_id: op.instruction_turn_id ?? null,
+        }),
         forgetting_generation: String(currentForgettingGeneration(db)),
         target_exists: forgetTargetExists(db, op.target),
         ledger_id: readLedgerId(db),

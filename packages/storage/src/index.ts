@@ -43,3 +43,5 @@ export * from './backup-crypto.js';
 export * from './backup-facts.js';
 export * from './backup-snapshot.js';
 export * from './backup-envelope.js';
+// B06-07a-1: 発言・元情報・派生物の期限削除（ADR 0058）。
+export * from './expiry-store.js';

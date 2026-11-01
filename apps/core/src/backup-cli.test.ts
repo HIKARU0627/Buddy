@@ -79,7 +79,7 @@ test('backup の使い方の誤りは終了コード 2、Core が動いていな
   }
 });
 
-test('動いている Core に対して、設定がなければ status は未設定を返し、run は理由つきで終了コード 10', async (t) => {
+test('動いている Core に対して、設定がなければ status は未設定を返し、run は理由つきで終了コード 11', async (t) => {
   const dataDir = await tempDataDir(t);
   const core = await startCli(t, [
     '--data-dir',
@@ -97,7 +97,7 @@ test('動いている Core に対して、設定がなければ status は未設
   assert.equal(detail['recovery_key_state'], 'not_set_up');
   assert.equal(detail['keys_ready'], false);
   const attempt = await run(['backup', 'run', '--data-dir', dataDir]);
-  assert.equal(attempt.code, 10);
+  assert.equal(attempt.code, 11);
   const ran = lastJson(attempt.stdout)['backup'] as Record<string, unknown>;
   assert.equal(ran['kind'], 'run');
   assert.equal(ran['ok'], false);

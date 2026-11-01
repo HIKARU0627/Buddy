@@ -6,6 +6,7 @@
 export type BuddyContract =
   | InputSnapshot
   | WireResponse
+  | ModelOutcome
   | Interpretation
   | WorkflowRequest
   | WorkContext
@@ -31,6 +32,7 @@ export type BuddyContract =
   | DelegationResult
   | PendingClarification
   | ResultView
+  | ResponsePlan
   | AudioControl
   | Lease
   | LiveSessionRequest
@@ -316,6 +318,41 @@ export type LocalDate = string;
  */
 export type LocalDateTime = string;
 /**
+ * モデル呼出しの結果（ADR 0070）。成功と失敗を分け、失敗の原因を保つ。失敗は自動では再試行しない。
+ */
+export type ModelOutcome =
+  | {
+      kind: 'ok';
+      value: WireResponse;
+      profile_id: ProfileId;
+      usage: ModelUsage;
+      retryable: false;
+    }
+  | {
+      kind:
+        | 'refused'
+        | 'truncated'
+        | 'invalid_schema'
+        | 'invalid_semantics'
+        | 'timeout'
+        | 'unavailable'
+        | 'budget_denied'
+        | 'cancelled'
+        | 'stale';
+      /**
+       * 利用者が手で再試行したときに成功し得るか。true でも自動の再送・JSON 修復・上位モデルでの再試行をしない（ADR 0070）。
+       */
+      retryable: boolean;
+      /**
+       * 出力の一部を受け取ったときの usage。観測できないときは null にし、推測で埋めない。
+       */
+      usage: ModelUsage | null;
+    };
+/**
+ * モデル・endpoint 別の profile の ID（ModelProfile.profile_id、設計 05 P02）。予約・受付で同じ型を使う（ADR 0034）。
+ */
+export type ProfileId = string;
+/**
  * 元サービスが返す対象の版（etag、履歴 ID など）。不透明な文字列で、大小比較しない（設計 07 §1、11 §3）。
  */
 export type SourceRevision = string;
@@ -386,10 +423,6 @@ export type EventCursor = string;
  * 予約行の版。追加予約（top-up）ごとに上がる（ADR 0006）。
  */
 export type ReservationRevision = string;
-/**
- * モデル・endpoint 別の profile の ID（ModelProfile.profile_id、設計 05 P02）。予約・受付で同じ型を使う（ADR 0034）。
- */
-export type ProfileId = string;
 /**
  * 単価の版の ID（設計 05 費用の計算 D15）。設定で決める不透明な ID で、順序比較しない（ADR 0006・0034）。
  */
@@ -1963,6 +1996,19 @@ export interface IntentArgs {
   device_name: string | null;
 }
 /**
+ * モデル呼出しの usage（ADR 0070）。費用の計算と予約の精算は B07 の規則を使い、この契約は金額を持たない。
+ */
+export interface ModelUsage {
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number | null;
+  /**
+   * usage をすべて観測できたか。false のとき、予約を実費として精算しない（ADR 0070）。
+   */
+  usage_complete: boolean;
+}
+/**
  * Core が対象解決と意味検証を終えた後だけ作る。schema に合格しただけでは検証済みにならない。
  */
 export interface Interpretation {
@@ -3007,6 +3053,32 @@ export interface ResultView {
   more_count: number;
   template_id: string | null;
   template_version: TemplateVersion | null;
+}
+/**
+ * Core が決めた表示と読み上げの計画（ADR 0070）。モデルの生出力（WireResponse）でも、検証済みの解釈（Interpretation）でも、実行可否（ActionReadiness）でもない。応答文の本文・宛先・承認・実行経路の欄を持たない。
+ */
+export interface ResponsePlan {
+  schema: 'buddy.response-plan.v1';
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  intent: IntentName;
+  view: ResultView;
+  facts: ResultFact[];
+  speech: ResponseSpeech | null;
+}
+/**
+ * 読み上げの定型文（ADR 0005・0070）。文はコードの定型文だけから作り、モデルの自由文を入れない。
+ */
+export interface ResponseSpeech {
+  template_id: string;
+  template_version: TemplateVersion;
+  /**
+   * 読み上げる文。1 回 400 トークン以内・最大 3 回の上限に合わせ、1 部は 200 文字まで（ADR 0005）。
+   *
+   * @minItems 1
+   * @maxItems 3
+   */
+  parts: [string] | [string, string] | [string, string, string];
 }
 /**
  * 音声・機密表示のリース（設計 07 §5、10 §2A）。端末は要求送信時の単調時計から期限を計算し、遅れた応答の受信時刻から足し直さない。heartbeat 2 秒・期限 6 秒は設計初期値。

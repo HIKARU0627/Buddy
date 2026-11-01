@@ -1,0 +1,661 @@
+{
+  "schema_version": 1,
+  "description": "B10-01 の表示・読み上げの計画とモデル呼出しの結果（ADR 0070）。QA01 は形式の拒否、QA02 は出力上限・拒否・途中の JSON・timeout の区別、QA03 は意味検証の失敗（invalid_semantics）と段の食い違いを扱う。intent_views は 24 意図すべての手書きの対応表で、実装の表から生成しない。模擬だけ。",
+  "intent_views": [
+    { "intent": "query_schedule", "view_kind": "schedule_cards" },
+    { "intent": "query_mail", "view_kind": "mail_rows" },
+    { "intent": "query_tasks", "view_kind": "task_rows" },
+    { "intent": "query_memory", "view_kind": "memory_rows" },
+    { "intent": "create_task", "view_kind": "completion_line" },
+    { "intent": "create_note", "view_kind": "completion_line" },
+    { "intent": "label_mail", "view_kind": "completion_line" },
+    { "intent": "draft_reply", "view_kind": "completion_line" },
+    { "intent": "create_event", "view_kind": "completion_line" },
+    { "intent": "update_event", "view_kind": "approval_link" },
+    { "intent": "send_mail", "view_kind": "approval_link" },
+    { "intent": "trash_mail", "view_kind": "approval_link" },
+    { "intent": "undo_action", "view_kind": "undo_list_link" },
+    { "intent": "update_task", "view_kind": "approval_link" },
+    { "intent": "research", "view_kind": "accepted_line" },
+    { "intent": "memory_save", "view_kind": "completion_line" },
+    { "intent": "memory_forget", "view_kind": "completion_line" },
+    { "intent": "memory_correct", "view_kind": "completion_line" },
+    { "intent": "dev_status", "view_kind": "speech_bubble" },
+    { "intent": "handoff_screen", "view_kind": "status_line" },
+    { "intent": "smalltalk", "view_kind": "speech_bubble" },
+    { "intent": "general_question", "view_kind": "speech_bubble" },
+    { "intent": "consult", "view_kind": "speech_bubble" },
+    { "intent": "unclear", "view_kind": "clarification" }
+  ],
+  "plans": [
+    {
+      "id": "plan-query-schedule",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000101",
+        "request_revision": "1",
+        "intent": "query_schedule",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000101",
+          "request_revision": "1",
+          "intent": "query_schedule",
+          "kind": "schedule_cards",
+          "status": "ready",
+          "item_refs": [
+            {
+              "kind": "event",
+              "id": "00000000-0000-4000-8000-000000000201"
+            }
+          ],
+          "more_count": 0,
+          "template_id": "schedule.count",
+          "template_version": "1"
+        },
+        "facts": [
+          {
+            "kind": "schedule_cards",
+            "ref_id": "00000000-0000-4000-8000-000000000201",
+            "title": "合成の打合せ",
+            "start": "2030-10-01T09:00",
+            "end": "2030-10-01T10:00",
+            "due": null,
+            "count": 1
+          }
+        ],
+        "speech": {
+          "template_id": "schedule.count",
+          "template_version": "1",
+          "parts": ["予定は1件です。"]
+        }
+      }
+    },
+    {
+      "id": "plan-query-mail",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000102",
+        "request_revision": "2",
+        "intent": "query_mail",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000102",
+          "request_revision": "2",
+          "intent": "query_mail",
+          "kind": "mail_rows",
+          "status": "needs_review",
+          "item_refs": [
+            {
+              "kind": "candidate",
+              "id": "00000000-0000-4000-8000-000000000202"
+            }
+          ],
+          "more_count": 3,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null
+      }
+    },
+    {
+      "id": "plan-send-mail",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000103",
+        "request_revision": "1",
+        "intent": "send_mail",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000103",
+          "request_revision": "1",
+          "intent": "send_mail",
+          "kind": "approval_link",
+          "status": "ready",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": "review.screen",
+          "template_version": "1"
+        },
+        "facts": [],
+        "speech": {
+          "template_id": "review.screen",
+          "template_version": "1",
+          "parts": ["画面で確認してください。"]
+        }
+      }
+    },
+    {
+      "id": "plan-unclear",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000104",
+        "request_revision": "1",
+        "intent": "unclear",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000104",
+          "request_revision": "1",
+          "intent": "unclear",
+          "kind": "clarification",
+          "status": "confirming_input",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": "clarify.fixed",
+          "template_version": "1"
+        },
+        "facts": [],
+        "speech": {
+          "template_id": "clarify.fixed",
+          "template_version": "1",
+          "parts": ["どの予定ですか？"]
+        }
+      }
+    },
+    {
+      "id": "plan-smalltalk",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000105",
+        "request_revision": "1",
+        "intent": "smalltalk",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000105",
+          "request_revision": "1",
+          "intent": "smalltalk",
+          "kind": "speech_bubble",
+          "status": "ready",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null
+      }
+    },
+    {
+      "id": "plan-research",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000106",
+        "request_revision": "1",
+        "intent": "research",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000106",
+          "request_revision": "1",
+          "intent": "research",
+          "kind": "accepted_line",
+          "status": "preparing",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "id": "qa02-outcome-ok",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": {
+        "kind": "ok",
+        "value": {
+          "intent": "smalltalk",
+          "args": {
+            "target_candidate_id": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "title": null,
+            "body": null,
+            "subject": null,
+            "add_labels": null,
+            "remove_labels": null,
+            "task_change": null,
+            "memory_kind": null,
+            "query": null,
+            "device_name": null
+          },
+          "relation": "new",
+          "target_workflow_id": null,
+          "reply_text": "こんにちは",
+          "clarify_question": null,
+          "confidence": 0.8
+        },
+        "profile_id": "intent-primary",
+        "usage": {
+          "input_tokens": 4096,
+          "cached_input_tokens": 0,
+          "output_tokens": 120,
+          "reasoning_tokens": 32,
+          "usage_complete": true
+        },
+        "retryable": false
+      }
+    },
+    {
+      "id": "qa02-outcome-truncated",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": {
+        "kind": "truncated",
+        "retryable": false,
+        "usage": {
+          "input_tokens": 4096,
+          "cached_input_tokens": 0,
+          "output_tokens": 500,
+          "reasoning_tokens": null,
+          "usage_complete": true
+        }
+      }
+    },
+    {
+      "id": "qa02-outcome-refused",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": { "kind": "refused", "retryable": false, "usage": null }
+    },
+    {
+      "id": "qa02-outcome-invalid-schema",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": {
+        "kind": "invalid_schema",
+        "retryable": false,
+        "usage": {
+          "input_tokens": 4096,
+          "cached_input_tokens": 0,
+          "output_tokens": 80,
+          "reasoning_tokens": null,
+          "usage_complete": false
+        }
+      }
+    },
+    {
+      "id": "qa02-outcome-timeout",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": { "kind": "timeout", "retryable": true, "usage": null }
+    },
+    {
+      "id": "qa02-outcome-unavailable",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": { "kind": "unavailable", "retryable": true, "usage": null }
+    },
+    {
+      "id": "qa02-outcome-budget-denied",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": { "kind": "budget_denied", "retryable": false, "usage": null }
+    },
+    {
+      "id": "qa02-outcome-cancelled",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": { "kind": "cancelled", "retryable": false, "usage": null }
+    },
+    {
+      "id": "qa02-outcome-stale",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": { "kind": "stale", "retryable": false, "usage": null }
+    },
+    {
+      "id": "qa03-outcome-invalid-semantics",
+      "schema": "ModelOutcome",
+      "valid": true,
+      "value": {
+        "kind": "invalid_semantics",
+        "retryable": false,
+        "usage": null
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "id": "qa01-wire-missing-field",
+      "schema": "WireResponse",
+      "valid": false,
+      "value": {
+        "intent": "smalltalk",
+        "args": {
+          "target_candidate_id": null,
+          "start": null,
+          "end": null,
+          "due": null,
+          "title": null,
+          "body": null,
+          "subject": null,
+          "add_labels": null,
+          "remove_labels": null,
+          "task_change": null,
+          "memory_kind": null,
+          "query": null,
+          "device_name": null
+        },
+        "relation": "new",
+        "target_workflow_id": null,
+        "reply_text": null,
+        "clarify_question": null
+      }
+    },
+    {
+      "id": "qa01-wire-null-intent",
+      "schema": "WireResponse",
+      "valid": false,
+      "value": {
+        "intent": null,
+        "args": {
+          "target_candidate_id": null,
+          "start": null,
+          "end": null,
+          "due": null,
+          "title": null,
+          "body": null,
+          "subject": null,
+          "add_labels": null,
+          "remove_labels": null,
+          "task_change": null,
+          "memory_kind": null,
+          "query": null,
+          "device_name": null
+        },
+        "relation": "new",
+        "target_workflow_id": null,
+        "reply_text": null,
+        "clarify_question": null,
+        "confidence": 0.8
+      }
+    },
+    {
+      "id": "qa01-wire-unknown-intent",
+      "schema": "WireResponse",
+      "valid": false,
+      "value": {
+        "intent": "translate",
+        "args": {
+          "target_candidate_id": null,
+          "start": null,
+          "end": null,
+          "due": null,
+          "title": null,
+          "body": null,
+          "subject": null,
+          "add_labels": null,
+          "remove_labels": null,
+          "task_change": null,
+          "memory_kind": null,
+          "query": null,
+          "device_name": null
+        },
+        "relation": "new",
+        "target_workflow_id": null,
+        "reply_text": null,
+        "clarify_question": null,
+        "confidence": 0.8
+      }
+    },
+    {
+      "id": "qa01-wire-wrong-type",
+      "schema": "WireResponse",
+      "valid": false,
+      "value": {
+        "intent": "smalltalk",
+        "args": {
+          "target_candidate_id": null,
+          "start": null,
+          "end": null,
+          "due": null,
+          "title": null,
+          "body": null,
+          "subject": null,
+          "add_labels": null,
+          "remove_labels": null,
+          "task_change": null,
+          "memory_kind": null,
+          "query": null,
+          "device_name": null
+        },
+        "relation": "new",
+        "target_workflow_id": null,
+        "reply_text": null,
+        "clarify_question": null,
+        "confidence": "high"
+      }
+    },
+    {
+      "id": "qa01-plan-reply-text",
+      "schema": "ResponsePlan",
+      "valid": false,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000107",
+        "request_revision": "1",
+        "intent": "smalltalk",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000107",
+          "request_revision": "1",
+          "intent": "smalltalk",
+          "kind": "speech_bubble",
+          "status": "ready",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null,
+        "reply_text": "モデルが作った本文"
+      }
+    },
+    {
+      "id": "qa01-plan-body",
+      "schema": "ResponsePlan",
+      "valid": false,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000108",
+        "request_revision": "1",
+        "intent": "query_mail",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000108",
+          "request_revision": "1",
+          "intent": "query_mail",
+          "kind": "mail_rows",
+          "status": "ready",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null,
+        "body": "メールの本文"
+      }
+    },
+    {
+      "id": "qa01-plan-approved-route",
+      "schema": "ResponsePlan",
+      "valid": false,
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000109",
+        "request_revision": "1",
+        "intent": "send_mail",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000109",
+          "request_revision": "1",
+          "intent": "send_mail",
+          "kind": "approval_link",
+          "status": "ready",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null,
+        "approved": true,
+        "route": "remote_mutation"
+      }
+    },
+    {
+      "id": "qa01-outcome-ok-retryable",
+      "schema": "ModelOutcome",
+      "valid": false,
+      "value": {
+        "kind": "ok",
+        "value": {
+          "intent": "smalltalk",
+          "args": {
+            "target_candidate_id": null,
+            "start": null,
+            "end": null,
+            "due": null,
+            "title": null,
+            "body": null,
+            "subject": null,
+            "add_labels": null,
+            "remove_labels": null,
+            "task_change": null,
+            "memory_kind": null,
+            "query": null,
+            "device_name": null
+          },
+          "relation": "new",
+          "target_workflow_id": null,
+          "reply_text": null,
+          "clarify_question": null,
+          "confidence": 0.8
+        },
+        "profile_id": "intent-primary",
+        "usage": {
+          "input_tokens": 1,
+          "cached_input_tokens": 0,
+          "output_tokens": 1,
+          "reasoning_tokens": null,
+          "usage_complete": true
+        },
+        "retryable": true
+      }
+    },
+    {
+      "id": "qa01-outcome-unknown-kind",
+      "schema": "ModelOutcome",
+      "valid": false,
+      "value": { "kind": "partial", "retryable": false, "usage": null }
+    },
+    {
+      "id": "qa02-outcome-failure-with-value",
+      "schema": "ModelOutcome",
+      "valid": false,
+      "value": {
+        "kind": "timeout",
+        "retryable": true,
+        "usage": null,
+        "value": {
+          "intent": "smalltalk"
+        }
+      }
+    }
+  ],
+  "semantic_cases": [
+    {
+      "id": "qa03-plan-view-workflow-mismatch",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "semantic_errors": ["view_workflow_mismatch"],
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000110",
+        "request_revision": "1",
+        "intent": "query_schedule",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000111",
+          "request_revision": "1",
+          "intent": "query_schedule",
+          "kind": "schedule_cards",
+          "status": "ready",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null
+      }
+    },
+    {
+      "id": "qa03-plan-view-revision-mismatch",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "semantic_errors": ["view_revision_mismatch"],
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000112",
+        "request_revision": "1",
+        "intent": "query_schedule",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000112",
+          "request_revision": "2",
+          "intent": "query_schedule",
+          "kind": "schedule_cards",
+          "status": "ready",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null
+      }
+    },
+    {
+      "id": "qa03-plan-view-intent-mismatch",
+      "schema": "ResponsePlan",
+      "valid": true,
+      "semantic_errors": ["view_intent_mismatch"],
+      "value": {
+        "schema": "buddy.response-plan.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000113",
+        "request_revision": "1",
+        "intent": "query_schedule",
+        "view": {
+          "workflow_id": "00000000-0000-4000-8000-000000000113",
+          "request_revision": "1",
+          "intent": "query_mail",
+          "kind": "schedule_cards",
+          "status": "ready",
+          "item_refs": [],
+          "more_count": 0,
+          "template_id": null,
+          "template_version": null
+        },
+        "facts": [],
+        "speech": null
+      }
+    }
+  ],
+  "domain_cases": [
+    {
+      "id": "qa03-plan-view-kind-mismatch",
+      "intent": "query_mail",
+      "view_kind": "schedule_cards",
+      "expected_errors": ["view_kind_mismatch"]
+    }
+  ]
+}

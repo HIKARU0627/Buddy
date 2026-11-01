@@ -94,6 +94,8 @@ export interface BackupServiceOptions {
   readonly removeFile?: (path: string) => Promise<void>;
   // 試験用: 掃除の開始時に呼ぶ（保存先の一時的な利用不能・readdir の EIO など、掃除が始まる前の失敗の再現）。
   readonly beforeSweep?: () => void | Promise<void>;
+  // 試験用: 状態ファイルを書く直前に呼ぶ（状態の保存の途中で止まる再現。フェンスの確認の後に止まる）。
+  readonly beforeStateWrite?: () => void | Promise<void>;
 }
 
 export interface SweepDecisionSummary {
@@ -301,11 +303,14 @@ export function createBackupService(
     try {
       const state = await readBackupState(dataDir);
       if (!state.ok || state.value.sweep_incomplete) return;
-      await writeBackupState(dataDir, {
-        ...state.value,
-        sweep_incomplete: true,
-      });
+      await options.beforeStateWrite?.();
+      await writeBackupState(
+        dataDir,
+        { ...state.value, sweep_incomplete: true },
+        assertLive,
+      );
     } catch (error) {
+      if (error instanceof BackupFenced) return;
       log(`掃除の未完了を保存できませんでした（${(error as Error).name}）。`);
     }
   }
@@ -452,14 +457,19 @@ export function createBackupService(
     }
     // 次の判定の最終確認時刻は、時計が戻っていても進める側（effective_now）にする。
     assertLive();
-    await writeBackupState(dataDir, {
-      ...state,
-      last_checked_at: plan.effective_now,
-      first_seen: firstSeen,
-      needs_new_backup: plan.needs_new_backup,
-      // 削除に失敗した封筒がある間は、作成の予定とは別に掃除の未完了を保つ。完了した掃除で下ろす。
-      sweep_incomplete: deleteFailed.length > 0,
-    });
+    await options.beforeStateWrite?.();
+    await writeBackupState(
+      dataDir,
+      {
+        ...state,
+        last_checked_at: plan.effective_now,
+        first_seen: firstSeen,
+        needs_new_backup: plan.needs_new_backup,
+        // 削除に失敗した封筒がある間は、作成の予定とは別に掃除の未完了を保つ。完了した掃除で下ろす。
+        sweep_incomplete: deleteFailed.length > 0,
+      },
+      assertLive,
+    );
     return {
       ok: true,
       clock_state: plan.clock_state,
@@ -594,20 +604,26 @@ export function createBackupService(
       );
       const state = stateRead.value;
       assertLive();
-      await writeBackupState(dataDir, {
-        ...state,
-        first_seen: { ...state.first_seen, [backupId]: createdAt },
-        last_success: {
-          backup_id: backupId,
-          created_at: createdAt,
-          forgetting_generation: facts.forgetting_generation,
+      await options.beforeStateWrite?.();
+      // 状態ファイルの一時ファイルを書いている間にフェンスが立っても、rename の直前に確認して置き換えない（7 回目の P2）。
+      await writeBackupState(
+        dataDir,
+        {
+          ...state,
+          first_seen: { ...state.first_seen, [backupId]: createdAt },
+          last_success: {
+            backup_id: backupId,
+            created_at: createdAt,
+            forgetting_generation: facts.forgetting_generation,
+          },
+          needs_new_backup: false,
+          // 作成の成功を保存するのと同時に、掃除の未完了も立てる。このあと掃除が終わる前にプロセスが終了・電源断になっても、
+          // 再起動後に掃除だけが再試行される（旧世代の封筒を次の日次まで残さない）。下ろすのは、掃除が全部済んだときだけ（sweepNow）。
+          // PR #175 の 4 回目の P2。
+          sweep_incomplete: true,
         },
-        needs_new_backup: false,
-        // 作成の成功を保存するのと同時に、掃除の未完了も立てる。このあと掃除が終わる前にプロセスが終了・電源断になっても、
-        // 再起動後に掃除だけが再試行される（旧世代の封筒を次の日次まで残さない）。下ろすのは、掃除が全部済んだときだけ（sweepNow）。
-        // PR #175 の 4 回目の P2。
-        sweep_incomplete: true,
-      });
+        assertLive,
+      );
       return {
         ok: true,
         result: {

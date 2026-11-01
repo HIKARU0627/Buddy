@@ -316,6 +316,8 @@ export interface CoreBackupOptions {
   readonly removeFile?: (path: string) => Promise<void>;
   // 試験用: 掃除の開始時に呼ぶ（掃除が始まる前の失敗の再現）。
   readonly beforeSweep?: () => void | Promise<void>;
+  // 試験用: 状態ファイルを書く直前に呼ぶ（状態の保存の途中で止まる再現）。
+  readonly beforeStateWrite?: () => void | Promise<void>;
 }
 
 export interface CoreRetentionOptions {
@@ -751,6 +753,9 @@ export async function startCore(
         ...(options.backup?.beforeSweep === undefined
           ? {}
           : { beforeSweep: options.backup.beforeSweep }),
+        ...(options.backup?.beforeStateWrite === undefined
+          ? {}
+          : { beforeStateWrite: options.backup.beforeStateWrite }),
       });
       backupContext = {
         dataDir,

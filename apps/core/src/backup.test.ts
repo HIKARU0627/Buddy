@@ -91,6 +91,8 @@ async function rig(
     readonly beforeSweep?: () => void | Promise<void>;
     // 封筒を書く直前の差し込み口（実行の途中で止める）。
     readonly beforeWrite?: () => void | Promise<void>;
+    // 状態ファイルを書く直前の差し込み口（状態の保存の途中で止める）。
+    readonly beforeStateWrite?: () => void | Promise<void>;
     // 停止が実行中のバックアップを待つ上限（ミリ秒）。
     readonly drainMs?: number;
   } = {},
@@ -132,6 +134,9 @@ async function rig(
       ...(options.beforeWrite === undefined
         ? {}
         : { beforeWrite: options.beforeWrite }),
+      ...(options.beforeStateWrite === undefined
+        ? {}
+        : { beforeStateWrite: options.beforeStateWrite }),
       ...(options.drainMs === undefined ? {} : { drainMs: options.drainMs }),
     },
   });
@@ -1570,6 +1575,64 @@ test('停止: 上限を過ぎて先へ進んだ後に、止めていた旧い実
   const status = await again.backup.status();
   assert.equal(status.last_success?.backup_id, mine.backup_id);
   assert.equal(status.last_success?.created_at, mine.created_at);
+});
+
+// レビュー（PR #175 の 7 回目の P2・状態ファイルの保存）の再現: 状態ファイルの保存の途中（フェンスの確認の後）で止まった旧い
+// 実行が、上限を過ぎて新しい Core が状態を書いた後に再開しても、rename の直前のフェンスで置き換えず、一時ファイルも残さない。
+test('停止: 状態ファイルの保存の途中で止まった旧い実行は、再開しても新しい Core の状態を上書きせず、一時ファイルを残さない', async (t) => {
+  let entered = 0;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const r = await rig(t, {
+    beforeStateWrite: async () => {
+      entered += 1;
+      await gate;
+    },
+    drainMs: 100,
+  });
+  await ready(r);
+  const running = r.handle.backup.run();
+  for (let i = 0; i < 400 && entered === 0; i += 1)
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(entered, 1);
+  await r.handle.stop('test');
+  r.clock.value = T0 + 1000;
+  const again = await startCore({
+    dataDir: r.dataDir,
+    keyStore: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    shutdownGraceMs: 200,
+    probeTimeoutMs: 300,
+    now: () => new Date(r.clock.value),
+    log: () => undefined,
+    backup: { keyStore: r.keys },
+  });
+  onCleanup(t, async () => {
+    await again.stop('test').catch(() => undefined);
+  });
+  const mine = await again.backup.run();
+  assert.ok(mine.ok);
+  const before = await readFile(join(r.dataDir, BACKUP_STATE_FILE), 'utf8');
+  assert.equal(
+    (JSON.parse(before) as { last_success: { backup_id: string } }).last_success
+      .backup_id,
+    mine.backup_id,
+  );
+  r.clock.value = T0 + 2000;
+  release();
+  const old = await running;
+  assert.equal(old.ok, false);
+  assert.deepEqual(old.ok ? [] : old.reasons, ['fenced']);
+  assert.equal(
+    await readFile(join(r.dataDir, BACKUP_STATE_FILE), 'utf8'),
+    before,
+    '旧い実行が新しい Core の状態を上書きした',
+  );
+  assert.deepEqual(
+    (await readdir(r.dataDir)).filter((name) => name.endsWith('.tmp')),
+    [],
+  );
 });
 
 // レビュー（PR #175 の 7 回目の P2）の再現: 停止より前に受け付けて列で待っていた 2 本目の実行は、停止の待ちが上限を過ぎて

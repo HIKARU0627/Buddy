@@ -237,10 +237,13 @@ export async function readBackupState(dataDir: string): Promise<StateRead> {
 export async function writeBackupState(
   dataDir: string,
   value: BackupStateValue,
+  // 任意: rename の直前に呼ぶ（投げたら置き換えない。停止の上限を過ぎた旧い処理のフェンス）。
+  beforeRename?: () => void,
 ): Promise<void> {
   await writeFileAtomic(
     dataDir,
     BACKUP_STATE_FILE,
     `${JSON.stringify(value, null, 2)}\n`,
+    beforeRename,
   );
 }

@@ -19,9 +19,14 @@ import {
   CanvasHub,
   EMPTY_CANVAS,
   ERRANDS_ITEM_ID,
+  HELD_DROPPED_ITEM_ID,
+  REPLY_ITEM_ID,
   createStreamRoutes,
   placeCanvasForTurn,
+  placeHeldDropped,
+  placeReplyForTurn,
 } from './canvas-stream.js';
+import { createLiveScreenSink } from './live-conversation.js';
 import {
   bootstrap,
   eventsOf,
@@ -621,6 +626,212 @@ test(
     );
   },
 );
+
+// U120（ADR 0066）: 声で返せなかった文字の結果と保留の破棄を、キャンバスの text の物にする。本文は記述に載せず、
+// content の経路でだけ返す。予定のカードと同じく、配置・意味の検査を通った束だけを当てる。
+test('U120: a late result becomes one reusable text card and a held-dropped notice carries only the fixed phrase', () => {
+  const turnOf = (turnId: string, text: string) => ({
+    turn_id: turnId,
+    status: 'clarification' as const,
+    reply_text: text,
+  });
+  const first = placeReplyForTurn(
+    EMPTY_CANVAS,
+    turnOf(id(31), 'どちらですか。'),
+  );
+  assert(first !== null);
+  assert.deepEqual(first.batch, {
+    base_canvas_revision: '0',
+    canvas_revision: '1',
+    ops: [
+      {
+        op: 'add',
+        item: {
+          item_id: REPLY_ITEM_ID,
+          kind: 'float',
+          component: 'text',
+          heading: '答え',
+          emphasis: 'normal',
+          group: null,
+          relations: [],
+          grid: { column: 9, span: 4, rows: 2 },
+          placement: 'canvas',
+          data: {
+            item_refs: [{ kind: 'screen_result', id: id(31) }],
+            more_count: 0,
+          },
+        },
+      },
+    ],
+    reading_order: [REPLY_ITEM_ID],
+  });
+  assert.equal(first.text, 'どちらですか。');
+  // 2 回目は同じ物の中身だけを更新する（物を増やさない。本文をとり直すための参照は進む）。
+  const hub = new CanvasHub(contract);
+  assert(hub.apply(first.batch).ok);
+  hub.setText(first.item_id, first.text);
+  const second = placeReplyForTurn(
+    hub.document,
+    turnOf(id(32), 'もう一度お願いします。'),
+  );
+  assert(second !== null);
+  assert.deepEqual(second.batch.ops, [
+    {
+      op: 'update',
+      item_id: REPLY_ITEM_ID,
+      changes: {
+        heading: '答え',
+        emphasis: 'normal',
+        data: {
+          item_refs: [{ kind: 'screen_result', id: id(32) }],
+          more_count: 0,
+        },
+      },
+    },
+  ]);
+  assert.deepEqual(second.batch.reading_order, [REPLY_ITEM_ID]);
+  // 保留を捨てた知らせは別の物。本文は固定の定型文で、捨てた依頼の本文を含めない。
+  const held = placeHeldDropped(hub.document, {
+    workflow_id: id(33),
+    text: '実行前の依頼は実行していません。必要なら、もう一度お願いします。',
+  });
+  assert.deepEqual(held.batch.ops, [
+    {
+      op: 'add',
+      item: {
+        item_id: HELD_DROPPED_ITEM_ID,
+        kind: 'float',
+        component: 'text',
+        heading: '実行前の依頼',
+        emphasis: 'normal',
+        group: null,
+        relations: [],
+        grid: { column: 5, span: 8, rows: 2 },
+        placement: 'canvas',
+        data: {
+          item_refs: [{ kind: 'screen_result', id: id(33) }],
+          more_count: 0,
+        },
+      },
+    },
+  ]);
+  assert.equal(
+    held.text,
+    '実行前の依頼は実行していません。必要なら、もう一度お願いします。',
+  );
+  // 声で返すはずだった案内（Core が選んだ定型文）があれば、turn.reply_text より優先する。
+  const chosen = placeReplyForTurn(
+    EMPTY_CANVAS,
+    turnOf(id(34), 'どこに保存しますか。'),
+    undefined,
+    '画面から全文を入力し直してください。',
+  );
+  assert.equal(chosen?.text, '画面から全文を入力し直してください。');
+});
+
+test('U120: the product screen sink reaches the canvas and the content route; the text stays out of the description', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: id(9) } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const createSession: ApiRouteHandler = () =>
+    Promise.resolve({ status: 201, body: { session_id: id(20) } });
+  const postTurn: ApiRouteHandler = () =>
+    Promise.resolve({ status: 500, body: {} });
+  const stream = createStreamRoutes({
+    canvas: hub,
+    createSession,
+    postTurn,
+    contract,
+  });
+  const logs: string[] = [];
+  const sink = createLiveScreenSink({
+    placeLate: (turn, text) => stream.placeLate(turn, text),
+    placeNotice: (notice) => stream.placeNotice(notice),
+    log: (message) => logs.push(message),
+  });
+  const turn = {
+    request_id: id(40),
+    session_id: id(20),
+    turn_id: id(21),
+    input_id: id(22),
+    workflow_id: id(23),
+    status: 'clarification',
+    result_view: {
+      workflow_id: id(23),
+      request_revision: '1',
+      intent: 'query_schedule',
+      kind: 'clarification',
+      status: 'confirming_input',
+      item_refs: [],
+      more_count: 0,
+      template_id: null,
+      template_version: null,
+    },
+    reply_text: 'どちらですか。',
+  };
+  sink.show({
+    reason: 'live_closed',
+    session_id: id(20),
+    turn: turn as never,
+    text: 'Core が選んだ案内。',
+  });
+  sink.heldDropped({
+    session_id: id(20),
+    workflow_id: id(33),
+    reason: 'hold_expired',
+  });
+  assert.deepEqual(logs, []);
+  const document = hub.document;
+  assert.equal(document.canvas_revision, '2');
+  assert.deepEqual(
+    document.items.map((item) => item.item_id),
+    [REPLY_ITEM_ID, HELD_DROPPED_ITEM_ID],
+  );
+  // 本文は記述に載らない。
+  assert(!JSON.stringify(document).includes('Core が選んだ案内。'));
+  assert(!JSON.stringify(document).includes('どちらですか。'));
+  assert(!JSON.stringify(document).includes('実行前の依頼は実行していません'));
+  const request = (
+    requestId: string,
+    itemId: string,
+    revision: string,
+  ): ApiHandlerRequest => ({
+    route: route('postCanvasContent'),
+    device,
+    body: {
+      request_id: requestId,
+      expected_canvas_revision: revision,
+      item_id: itemId,
+      open_index: null,
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const reply = await stream.handlers['postCanvasContent']?.(
+    request(id(41), REPLY_ITEM_ID, '2'),
+  );
+  assert.equal(reply?.status, 200);
+  assert.deepEqual((reply?.body as { content: unknown }).content, {
+    component: 'text',
+    text: 'Core が選んだ案内。',
+  });
+  const held = await stream.handlers['postCanvasContent']?.(
+    request(id(42), HELD_DROPPED_ITEM_ID, '2'),
+  );
+  assert.equal(held?.status, 200);
+  assert.deepEqual((held?.body as { content: unknown }).content, {
+    component: 'text',
+    text: '実行前の依頼は実行していません。必要なら、もう一度お願いします。',
+  });
+});
 
 test(
   'UI-03: clarifications and approval links place nothing on the canvas (approval is never put on it)',

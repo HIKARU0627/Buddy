@@ -77,8 +77,8 @@ export interface PairingFlowOptions {
   ) => Promise<ClientApiOutcome>;
   readonly valid: (name: string, value: unknown) => boolean;
   readonly collectHome: () => Promise<HomeFingerprint>;
-  // 受け取ったトークンを保存する。失敗は例外。
-  readonly store: (credential: StoredCredential) => void;
+  // 受け取ったトークンを保存する。失敗は例外（非同期。後継の safeStorage は非同期。ADR 0025）。
+  readonly store: (credential: StoredCredential) => Promise<void>;
   readonly onRegistered: (credential: StoredCredential) => void;
   readonly onChange: () => void;
   readonly now: () => number;
@@ -410,14 +410,20 @@ export class PairingFlow {
           fingerprint: attempt.fingerprint ?? '',
         },
       };
+      // 保存も受取りの結果の処理の一部。保存の間に「やめる」が押されても、受取りと同じく結果を待ってから
+      // 決める（保存は非同期。ADR 0025 の追記）。
+      attempt.pickupInFlight = true;
+      this.#changed();
       try {
-        this.#options.store(credential);
+        await this.#options.store(credential);
       } catch {
+        attempt.pickupInFlight = false;
         // 保存できなかったトークンは捨てる（中枢の端末の一覧から失効してやり直す）。
         this.#options.log?.('pairing_credential_store_failed');
         this.#fail(attempt, 'storage_failed');
         return;
       }
+      attempt.pickupInFlight = false;
       attempt.secret = null;
       this.#attempt = null;
       this.#options.log?.('pairing_registered');

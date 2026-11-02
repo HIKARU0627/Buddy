@@ -118,6 +118,75 @@ export function keyWrapAad(wrap: BackupKeyWrapLike): Uint8Array {
   ]);
 }
 
+const PAYLOAD_LABEL = 'buddy/backup/payload/v1';
+const UUID_TEXT =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+// 封筒の本体（SQLite の写し）を暗号化する鍵の導き方（ADR 0055 の U121）:
+// HKDF-SHA256(ikm = backup_file の鍵, salt = backup_id（UUID の 16 バイト）,
+// info = "buddy/backup/payload/v1" ‖ 0x00 ‖ backup_file の鍵の ID, L = 32)。
+// 毎回の封筒の鍵が backup_id ごとに変わるので、1 つの鍵で nonce の再利用を気にせず何度でも取れる（nonce も毎回乱数）。
+export function backupPayloadHkdfInput(
+  ikmKeyId: string,
+  backupId: string,
+): BackupHkdfInput {
+  if (!UUID_TEXT.test(backupId))
+    throw new TypeError('backup_id は小文字の UUID にしてください。');
+  const salt = new Uint8Array(16);
+  const hex = backupId.replace(/-/gu, '');
+  for (let index = 0; index < 16; index += 1)
+    salt[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  return {
+    hash: 'sha256',
+    salt,
+    info: joinWithZero([PAYLOAD_LABEL, ikmKeyId]),
+    length: 32,
+  };
+}
+
+export interface BackupPayloadAadFields {
+  readonly backup_id: string;
+  readonly created_at: string;
+  readonly store_generation: string;
+  readonly db_schema_version: number;
+  readonly forgetting_generation: string;
+  readonly ledger_id: string;
+  readonly ledger_head_hash: string;
+  readonly excluded_tables: readonly string[];
+  // backup_file の鍵の ID（封筒の key_wraps の backup_file の key_id）。
+  readonly backup_file_key_id: string;
+  // 封筒の平文の欄のうち payload（本体の長さと SHA-256。別に照合する）を除いた全体の SHA-256（小文字の 16 進 64 桁）。
+  // storage が正規の JSON から求める。key_wraps・included_storage_modes・excluded_data・schema など上の欄にない欄も、
+  // 書き換えると本体の認証に失敗する（PR #175 の P1）。
+  readonly envelope_sha256: string;
+}
+
+const HEX64 = /^[0-9a-f]{64}$/u;
+
+// 本体の AES-256-GCM の追加認証データ: ラベル ‖ 0x00 ‖ 封筒の平文の欄（backup_id・created_at・store_generation・
+// db_schema_version・forgetting_generation・ledger_id・ledger_head_hash・除外した表（コンマ区切り）・鍵の ID・封筒の平文の欄の
+// 全体の SHA-256）を 0x00 で区切る。
+// 封筒（平文）を別の本体と組み替える・書き換えると認証タグが合わず開けない（ADR 0047 の P3-7 の引き継ぎ）。
+export function backupPayloadAad(fields: BackupPayloadAadFields): Uint8Array {
+  if (!HEX64.test(fields.envelope_sha256))
+    throw new TypeError(
+      'envelope_sha256 は小文字の 16 進 64 桁にしてください。',
+    );
+  return joinWithZero([
+    PAYLOAD_LABEL,
+    fields.backup_id,
+    fields.created_at,
+    fields.store_generation,
+    String(fields.db_schema_version),
+    fields.forgetting_generation,
+    fields.ledger_id,
+    fields.ledger_head_hash,
+    fields.excluded_tables.join(','),
+    fields.backup_file_key_id,
+    fields.envelope_sha256,
+  ]);
+}
+
 // 台帳の HMAC の鍵（ledger_hmac_key）から用途別の鍵を導く: HKDF-SHA256(ikm = ledger_hmac_key, salt = 空, info = 用途の名前, L = 32)。
 export function ledgerSubkeyHkdfInput(use: LedgerSubkeyUse): BackupHkdfInput {
   if (!Object.hasOwn(LEDGER_SUBKEY_INFO, use))

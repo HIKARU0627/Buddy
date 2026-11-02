@@ -323,6 +323,24 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
   );
   assert.match(disabled, /<input[^>]*\bdisabled/u);
   assert.match(disabled, /<button[^>]*\bdisabled/u);
+  // 入力するときは窓が広がり、入力欄が複数行になる（UI-08）。
+  const expanded = render(
+    <InputBar
+      line={{ tone: 'success', mark: 'dot', text: '受付中' }}
+      enabled
+      value=""
+      onChange={noop}
+      onSubmit={noop}
+      sending={false}
+      attention={false}
+      canSummon
+      onSummon={noop}
+      expanded
+    />,
+  );
+  assert.equal((expanded.match(/<textarea\b/gu) ?? []).length, 1);
+  assert.match(expanded, /rows="5"/u);
+  assert.doesNotMatch(expanded, /<input\b/u);
 });
 
 // PR #104 のレビュー（P2）: 打てるかと内容を出せるかを分け、ロック中・不明では打った文字を描かない。

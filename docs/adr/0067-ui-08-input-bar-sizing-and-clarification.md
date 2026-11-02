@@ -16,18 +16,18 @@
 
 ## 実装
 
-| 場所                                                       | 内容                                                                                                           |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `apps/desktop/src/main/window-roles.ts`                    | `INPUT_BAR_EXPANDED_SIZE`・`inputBarBounds(area, expanded)`。下端固定・中央・作業領域内に収める                |
-| `apps/desktop/src/main/electron/main.ts`                   | `inputBarExpanded` の正本、`setInputBarExpanded`、`input` 窓の `focus`／`blur`／`hide`、画面の変更時の置き直し |
-| `apps/desktop/src/renderer/state/use-role-window-state.ts` | `useInputBarExpanded`（窓の高さ 120 以上で広がっていると判断）                                                 |
-| `apps/desktop/src/renderer/screens/canvas/InputBar.tsx`    | 広がっているときは HeroUI の `TextArea`（5 行・高さ 128）、小さめのときは `Input`。下端に寄せる                |
+| 場所                                                       | 内容                                                                                                                                              |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/desktop/src/main/window-roles.ts`                    | `INPUT_BAR_EXPANDED_SIZE`・`inputBarBounds(area, expanded)`。下端固定・中央・作業領域内に収める                                                   |
+| `apps/desktop/src/main/electron/main.ts`                   | `inputBarExpanded` の正本、`setInputBarExpanded`、`input` 窓の `focus`／`blur`／`hide`、画面の変更時の置き直し                                    |
+| `apps/desktop/src/renderer/state/use-role-window-state.ts` | `useInputBarExpanded`（窓の高さ 120 以上で広がっていると判断）                                                                                    |
+| `apps/desktop/src/renderer/screens/canvas/InputBar.tsx`    | 広がっているときは HeroUI の `TextArea`（5 行・高さ 128）、小さめのときは `Input`。下端に寄せる。広がった後に置き換わった入力欄へフォーカスを移す |
 
 ## 試験（模擬のみ）
 
 - `apps/desktop/src/main/window-roles.test.ts`: 小さめと入力中の位置・大きさ（下端が同じ）、作業領域に収まらないときの切り詰め。既存の「入力バーは小さな枠なし・常に最前面」の試験はそのまま通る。
 - `apps/desktop/src/renderer/screens/canvas/RoleWindow.test.tsx`: 広がっているときは `textarea`（5 行）で、小さめのときは `input`。既存の入力バーの試験はそのまま通る。
-- `apps/desktop/src/renderer/screens/canvas/InputBar.dom.test.tsx`: 広げた `TextArea` でも通常の Enter で 1 回だけ送り、IME の変換の確定（`isComposing`）と Shift+Enter では送らない。小さめの `Input` の Enter も 1 回だけ送る。
+- `apps/desktop/src/renderer/screens/canvas/InputBar.dom.test.tsx`: 広げた `TextArea` でも通常の Enter で 1 回だけ送り、IME の変換の確定（`isComposing`）と Shift+Enter では送らない。小さめの `Input` の Enter も 1 回だけ送る。小さめの入力欄にフォーカスしたまま広げると、置き換わった `TextArea` にフォーカスが移る（`document.activeElement` で確認）。
 - 実機の macOS・Windows での窓の伸縮・フォーカスの往復・IME は**未実施**。撮影用の起動での確認もこの段階では行っていない。
 
 ## 残ること

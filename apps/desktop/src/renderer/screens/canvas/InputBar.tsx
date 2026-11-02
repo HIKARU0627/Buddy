@@ -3,6 +3,7 @@
 // 打てるか（enabled）と内容を出せるか（value は呼び出し側が inputDraftAfter で決める）は別。ロック中・不明は値を描かない。
 // Enter（IME の変換の確定は除く）で発言を送る（desktop.turn_submit。UI-03）。送っている間は記号を回転にし、聞き返し・拒否・
 // 失敗は入力欄の枠（無効の枠）で知らせて文字を残す（説明文は置かない）。入力中は窓が上へ広がり、入力欄を複数行にする（UI-08）。
+import { useEffect, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Button, Input, Spinner, TextArea, TextField } from '@heroui/react';
 import { CanvasIcon } from '../../components/CanvasIcon.js';
@@ -41,8 +42,16 @@ export function InputBar({
     event.preventDefault();
     onSubmit();
   };
+  // 窓が広がると Input が TextArea に置き換わる。置き換えでフォーカスを失わないよう、広がった後に入力欄へ移す。
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!expanded || !enabled) return;
+    const field = formRef.current?.querySelector('textarea');
+    if (field != null && document.activeElement !== field) field.focus();
+  }, [expanded, enabled]);
   return (
     <form
+      ref={formRef}
       className="flex h-screen w-screen items-end gap-3 border border-separator bg-surface px-4 pb-2 text-foreground"
       onSubmit={(event) => {
         event.preventDefault();

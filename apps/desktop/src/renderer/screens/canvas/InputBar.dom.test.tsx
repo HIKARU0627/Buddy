@@ -69,6 +69,39 @@ test('Enter sends once from the expanded textarea, while IME composition and Shi
   container.remove();
 });
 
+test('focus moves to the expanded field when the compact field is replaced', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const bar = (expanded: boolean) => (
+    <AppProviders>
+      <InputBar
+        line={{ tone: 'success', mark: 'dot', text: '受付中' }}
+        enabled
+        value=""
+        onChange={() => undefined}
+        onSubmit={() => undefined}
+        sending={false}
+        attention={false}
+        canSummon
+        onSummon={() => undefined}
+        expanded={expanded}
+      />
+    </AppProviders>
+  );
+  await act(async () => root.render(bar(false)));
+  const compact = container.querySelector('input');
+  assert(compact !== null);
+  compact.focus();
+  assert.equal(document.activeElement, compact);
+  await act(async () => root.render(bar(true)));
+  const expanded = container.querySelector('textarea');
+  assert(expanded !== null);
+  assert.equal(document.activeElement, expanded);
+  await act(async () => root.unmount());
+  container.remove();
+});
+
 test('Enter also sends from the compact single-line input', async () => {
   const container = document.createElement('div');
   document.body.append(container);

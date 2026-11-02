@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   BACKUP_KEY_PURPOSES,
   BACKUP_ZERO_HASH,
@@ -118,6 +119,8 @@ export interface RestoreCheckOptions {
     workDir: string,
     bytes: Uint8Array,
   ) => Promise<string>;
+  // 試験で差し替える作業用の DB の削除（失敗したときの扱いを確かめる）。失敗は例外で知らせる。
+  readonly removeWorkDir?: (workDir: string) => Promise<void>;
 }
 
 const iso = (date: Date): string => date.toISOString().replace('.000Z', 'Z');
@@ -132,8 +135,17 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-async function removeWorkDir(workDir: string): Promise<void> {
-  await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+// 作業用のディレクトリを消す。EBUSY・EACCES などは数回まで試す。消せたかを返す（消せなければ呼び出し側が成功を返さない）。
+async function deleteWorkDir(workDir: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await rm(workDir, { recursive: true, force: true });
+      return true;
+    } catch {
+      if (attempt < 2) await delay(50 * (attempt + 1));
+    }
+  }
+  return false;
 }
 
 async function writeWorkingDatabase(
@@ -208,28 +220,48 @@ function hashAtBackupGeneration(
   return entry === undefined ? null : entry.entry_hash;
 }
 
+// 2 つの台帳の履歴が、共通する世代のどこかで食い違うか（同じ系譜の DB と別ファイルの分岐）。
+// 短い方の末尾までは同じで、長い方だけが先へ進んでいるのは正常（ファイルが DB より進んでいる場合など）。
+export function ledgerHistoriesDiverge(
+  a: readonly Pick<LedgerChainEntry, 'entry_hash'>[],
+  b: readonly Pick<LedgerChainEntry, 'entry_hash'>[],
+): boolean {
+  const common = Math.min(a.length, b.length);
+  for (let index = 0; index < common; index += 1)
+    if (a[index]?.entry_hash !== b[index]?.entry_hash) return true;
+  return false;
+}
+
 interface HubLedgerRead {
   readonly candidates: readonly RestoreLedgerCandidate[];
-  // 中枢と台帳のファイルが知っている最新の世代（読めなければ・一時ファイルがあれば null）。
+  // 中枢と台帳のファイルが知っている最新の世代（読めない・一時ファイルがある・破損があるときは null）。
   readonly known_generation: string | null;
   // 中枢の DB に記録した台帳の鍵の ID。
   readonly recorded_key_id: string | null;
+  // 同じ系譜の DB と別ファイルの共通の世代で、entry_hash が食い違った（分岐）。
+  readonly diverged: boolean;
 }
 
 // 中枢の DB（正本）と台帳の別ファイルから、段階 1 の候補を作る。ファイルが DB より進んでいれば、その世代も
 // 「知っている最新」に含める（復元した後に Core がその台帳を当てられるように）。
-// 書きかけの一時ファイル（.forget-ledger-*.tmp）があるときは、まだ確定していないより新しい世代を持ち得るので、
-// 「知っている最新」を確認できないものとして扱う（Core の起動時の同期と同じ側に倒す。ADR 0054 の U109・U119）。
+// 書きかけの一時ファイル（.forget-ledger-*.tmp）・読めないファイル・壊れたファイルがあるときは、確定していない
+// より新しい世代を持ち得るので、「知っている最新」を確認できないものとして扱う（Core の起動時の同期と同じ側に倒す。
+// ADR 0054 の U109・U119）。
+// 同じ系譜の DB と別ファイルは、共通の世代の entry_hash が一致しなければならない（片方だけが進んでいるのはよいが、
+// 分岐は別の歴史。共通部分を確かめ、食い違えば段階 1 で止める）。
 async function readHubLedger(
   dataDir: string,
   ledgerFile: ForgetLedgerFileContent | null,
   manifest: BackupManifestLike,
-  hasLedgerTemp: boolean,
+  ledgerUnconfirmed: boolean,
   log: (message: string) => void,
 ): Promise<HubLedgerRead> {
   const candidates: RestoreLedgerCandidate[] = [];
   let known: string | null = null;
   let recorded: string | null = null;
+  let dbEntries: readonly LedgerChainEntry[] | null = null;
+  let dbLedgerId: string | null = null;
+  let diverged = false;
   const dbPath = join(dataDir, DB_FILE);
   if (await exists(dbPath)) {
     try {
@@ -241,6 +273,8 @@ async function readHubLedger(
         const exported = exportForgetLedger(db);
         recorded = facts.recorded_ledger_key_id;
         known = facts.forgetting_generation;
+        dbEntries = exported.entries;
+        dbLedgerId = exported.ledger_id;
         if (exported.ledger_id !== null) {
           candidates.push({
             holder: 'hub',
@@ -286,11 +320,24 @@ async function readHubLedger(
         BigInt(ledgerFile.head.forgetting_generation) > BigInt(known))
     )
       known = ledgerFile.head.forgetting_generation;
+    // 同じ系譜なら、共通の世代の entry_hash が一致すること（分岐は別の歴史。片方だけが進んでいるのはよい）。
+    if (dbEntries !== null && dbLedgerId === ledgerFile.ledger_id) {
+      const common = Math.min(dbEntries.length, ledgerFile.entries.length);
+      for (let index = 0; index < common; index += 1) {
+        if (
+          dbEntries[index]?.entry_hash !== ledgerFile.entries[index]?.entry_hash
+        ) {
+          diverged = true;
+          break;
+        }
+      }
+    }
   }
   return {
     candidates,
-    known_generation: hasLedgerTemp ? null : known,
+    known_generation: ledgerUnconfirmed ? null : known,
     recorded_key_id: recorded,
+    diverged,
   };
 }
 
@@ -430,28 +477,45 @@ export async function runRestoreCheck(
     }
 
     // 鍵の導入の計画（足すだけで上書きしない）。データ鍵は KeyStore にないときだけ data-key-v1 に置く（U130）。
+    // backup-keys.json がなくても、封筒の鍵の ID は KeyStore から直接読む（同じ ID で素材が違う・別用途の衝突を見逃さない）。
     const keyStoreEntries: {
       purpose: BackupKeyPurpose;
       key_id: string;
       material_matches_restored: boolean | null;
     }[] = [];
-    if (keyFile.ok) {
+    const referenced = new Map<
+      string,
+      { purpose: 'backup_file' | 'ledger_hmac_key'; key_id: string }
+    >();
+    for (const source of [
+      ...(keyFile.ok ? [keyFile.value.key_wraps] : []),
+      wraps,
+    ]) {
       for (const purpose of ['backup_file', 'ledger_hmac_key'] as const) {
-        const wrap = keyWrapFor(keyFile.value.key_wraps, purpose);
+        const wrap = keyWrapFor(source, purpose);
         if (wrap === null) continue;
-        const current = await options.backupKeys.read(purpose, wrap.key_id);
-        if (!current.ok) continue;
-        const restored = unwrapped[purpose];
-        keyStoreEntries.push({
+        referenced.set(`${purpose}:${wrap.key_id}`, {
           purpose,
           key_id: wrap.key_id,
-          material_matches_restored:
-            restored === undefined
-              ? null
-              : current.key.key.length === restored.length &&
-                current.key.key.equals(restored),
         });
       }
+    }
+    for (const entry of referenced.values()) {
+      const current = await options.backupKeys.read(
+        entry.purpose,
+        entry.key_id,
+      );
+      if (!current.ok) continue;
+      const restored = unwrapped[entry.purpose];
+      keyStoreEntries.push({
+        purpose: entry.purpose,
+        key_id: entry.key_id,
+        material_matches_restored:
+          restored === undefined
+            ? null
+            : current.key.key.length === restored.length &&
+              current.key.key.equals(restored),
+      });
     }
     const currentDataKey = await options.dataKeys.loadDataKey();
     if (currentDataKey.ok) {
@@ -531,19 +595,26 @@ export async function runRestoreCheck(
 
     // --- 段階 1: 台帳の確認 ---
     let ledgerFile: ForgetLedgerFileContent | null = null;
+    // ファイルがない（正本は DB）のと、あるのに読めない・壊れているのは違う。後者は最新の忘却を確認できないので止める。
+    let ledgerFileProblem: 'none' | 'missing' | 'unreadable' | 'corrupt' =
+      'none';
     try {
       const text = await readFile(
         join(options.dataDir, FORGET_LEDGER_FILE),
         'utf8',
       );
       ledgerFile = parseLedgerFile(text);
-      if (ledgerFile === null)
-        log(
-          '台帳の別ファイルが意味検査に通りません（DB を正本として続けます。手での復旧は別の PR）。',
-        );
+      if (ledgerFile === null) {
+        ledgerFileProblem = 'corrupt';
+        log('台帳の別ファイルが意味検査に通りません。');
+      }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        ledgerFileProblem = 'missing';
+      } else {
+        ledgerFileProblem = 'unreadable';
         log(`台帳の別ファイルを読めませんでした（${(error as Error).name}）。`);
+      }
     }
     // 書きかけの台帳の一時ファイルが残っていると、確定していないより新しい世代を持つことがある。
     let hasLedgerTemp = false;
@@ -554,11 +625,14 @@ export async function runRestoreCheck(
     } catch {
       hasLedgerTemp = true;
     }
+    const ledgerUnconfirmed =
+      hasLedgerTemp ||
+      (ledgerFileProblem !== 'none' && ledgerFileProblem !== 'missing');
     const hub = await readHubLedger(
       options.dataDir,
       ledgerFile,
       manifest,
-      hasLedgerTemp,
+      ledgerUnconfirmed,
       log,
     );
     // 期限の判定に使う「最終確認時刻」は、保存期限の掃除の時計の記録（ADR 0058 の U136）と、バックアップの
@@ -576,9 +650,18 @@ export async function runRestoreCheck(
     )
       lastCheckedAt = state.value.last_checked_at;
     const clockUnreadable = clockState.status === 'invalid';
-    const ledgerKeyId = keyFile.ok
+    // 台帳の鍵の KeyStore の ID。backup-keys.json がなくても、封筒の台帳の鍵が KeyStore にあればそれを渡す。
+    let ledgerKeyId = keyFile.ok
       ? (keyWrapFor(keyFile.value.key_wraps, 'ledger_hmac_key')?.key_id ?? null)
       : null;
+    const envelopeLedgerWrap = keyWrapFor(wraps, 'ledger_hmac_key');
+    if (envelopeLedgerWrap !== null) {
+      const current = await options.backupKeys.read(
+        'ledger_hmac_key',
+        envelopeLedgerWrap.key_id,
+      );
+      if (current.ok) ledgerKeyId = envelopeLedgerWrap.key_id;
+    }
     const ledgerCheck = restoreLedgerCheck({
       manifest,
       ledgers: hub.candidates,
@@ -588,16 +671,32 @@ export async function runRestoreCheck(
         keystore_key_id: ledgerKeyId,
       },
     });
+    // 同じ系譜の DB と別ファイルの履歴が食い違う（分岐）ときは、どちらが正しいかを決められない。最新の忘却を
+    // 落とし得るので段階 1 で止める（設定も戻さない）。
+    const diverged = hub.diverged || ledgerFileProblem === 'corrupt';
+    if (diverged)
+      log(
+        '中枢の DB と台帳の別ファイルの履歴が食い違うか、ファイルが壊れています。',
+      );
+    const ledgerDecision = diverged
+      ? {
+          stage: 'ledger_check' as const,
+          status: 'failed' as const,
+          reasons: ['ledger_chain_invalid' as const],
+        }
+      : ledgerCheck.decision;
     stages.push({
       stage: 'ledger_check',
-      status: ledgerCheck.decision.status === 'failed' ? 'failed' : 'passed',
-      reasons: ledgerCheck.decision.reasons,
+      status: ledgerDecision.status === 'failed' ? 'failed' : 'passed',
+      reasons: ledgerDecision.reasons,
     });
-    settingsOnlyEligible = ledgerCheck.settings_only_eligible;
-    ledger = ledgerCheck.ledger;
-    if (ledgerCheck.decision.status === 'failed') {
+    settingsOnlyEligible = diverged
+      ? false
+      : ledgerCheck.settings_only_eligible;
+    ledger = diverged ? null : ledgerCheck.ledger;
+    if (ledgerDecision.status === 'failed') {
       log(
-        `最新の台帳を確認できないため、記憶と会話は戻しません（${ledgerCheck.decision.reasons.join(', ')}）。`,
+        `最新の台帳を確認できないため、記憶と会話は戻しません（${ledgerDecision.reasons.join(', ')}）。`,
       );
       return report('rejected');
     }
@@ -646,11 +745,34 @@ export async function runRestoreCheck(
       );
       return report('rejected');
     }
+    // 平文の DB を消せないまま成功（終了コード 0）を返さない。消せなければ段階 2 の失敗として報告する。
+    let removed = true;
+    try {
+      await (
+        options.removeWorkDir ??
+        (async (dir: string) => {
+          if (!(await deleteWorkDir(dir))) throw new Error('delete_failed');
+        })
+      )(workDir);
+    } catch {
+      removed = false;
+    }
+    if (!removed) {
+      log('作業用の平文の DB を消せませんでした。復元は成功として扱いません。');
+      const last = stages.at(-1);
+      if (last?.stage === 'expiry_purge')
+        stages[stages.length - 1] = {
+          stage: 'expiry_purge',
+          status: 'failed',
+          reasons: ['plaintext_delete_failed'],
+        };
+      return report('rejected');
+    }
     return report('ready');
   } finally {
     for (const material of Object.values(unwrapped)) material.fill(0);
-    // 書く途中で例外になったときも、平文を残さない（workingPath が決まる前に失敗し得る）。
-    await removeWorkDir(workDir);
+    // 書く途中で例外になった・上の削除に失敗したときも、もう一度だけ消す（成功を返すかは上の判定が決める）。
+    await deleteWorkDir(workDir);
     if (locked)
       await releaseLock(options.dataDir, lockId).catch(() => undefined);
   }

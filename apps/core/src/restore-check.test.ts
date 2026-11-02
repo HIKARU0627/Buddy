@@ -36,6 +36,7 @@ import type { BackupKeyWrapValue } from '@buddy/storage';
 import { createApiContract } from './api-contract.js';
 import { onCleanup } from './api-test-support.js';
 import { BACKUP_CONFIG_FILE } from './backup-config.js';
+import { BACKUP_KEY_FILE } from './backup-files.js';
 import { CLOCK_STATE_FILE } from './paths.js';
 import {
   inspectBackupSetup,
@@ -45,7 +46,11 @@ import {
 import { startCore } from './core.js';
 import type { CoreHandle } from './core.js';
 import { DB_FILE, FORGET_LEDGER_FILE } from './paths.js';
-import { RESTORE_WORK_DIR, runRestoreCheck } from './restore-check.js';
+import {
+  RESTORE_WORK_DIR,
+  ledgerHistoriesDiverge,
+  runRestoreCheck,
+} from './restore-check.js';
 import { readRecoveryKeyFromTty } from './restore-tty.js';
 import type { TtyInput } from './restore-tty.js';
 
@@ -143,6 +148,7 @@ async function check(
       workDir: string,
       bytes: Uint8Array,
     ) => Promise<string>;
+    readonly removeWorkDir?: (workDir: string) => Promise<void>;
   } = {},
 ) {
   const recoveryKey =
@@ -161,6 +167,9 @@ async function check(
     ...(overrides.writeWorkingDatabase === undefined
       ? {}
       : { writeWorkingDatabase: overrides.writeWorkingDatabase }),
+    ...(overrides.removeWorkDir === undefined
+      ? {}
+      : { removeWorkDir: overrides.removeWorkDir }),
   });
 }
 
@@ -276,6 +285,56 @@ test('復元の確認: 作業用の DB の書き込みが途中で失敗して�
   assert.equal(report.outcome, 'rejected');
   assert.equal(report.raw_payload_decrypted, false);
   assert.deepEqual(await workDirEntries(r.dataDir), []);
+});
+
+test('復元の確認: backup-keys.json を失っても、KeyStore に同じ ID で違う素材の鍵があれば止まる', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  const header = await readBackupFileHeader(r.backupPath);
+  assert.ok(header.ok);
+  const manifest = header.manifest as Record<string, unknown>;
+  const wrap = (manifest['key_wraps'] as BackupKeyWrapValue[]).find(
+    (entry) => entry.purpose === 'backup_file',
+  );
+  assert.ok(wrap !== undefined);
+  await rm(join(r.dataDir, BACKUP_KEY_FILE), { force: true });
+  // 同じ ID で違う素材の鍵を KeyStore に置く（取り違え）。
+  r.keys.overwrite(
+    'backup_file',
+    wrap.key_id,
+    Buffer.alloc(32, 0x7f).toString('base64'),
+  );
+  const report = await check(r);
+  assert.equal(report.outcome, 'rejected');
+  assert.ok(report.stages[1]?.reasons.includes('backup_unreadable'));
+});
+
+test('復元の確認: 作業用の平文の DB を消せないときは成功を返さず、明示的に失敗を報告する', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  const report = await check(r, {
+    removeWorkDir: async () => {
+      throw new Error('injected_delete_failure');
+    },
+  });
+  assert.equal(report.outcome, 'rejected');
+  assert.equal(report.stages[0]?.status, 'passed');
+  assert.ok(report.stages.at(-1)?.reasons.includes('plaintext_delete_failed'));
+});
+
+test('台帳の履歴が共通の世代で食い違う（分岐）ことを検出する', () => {
+  const entry = (hash: string) => ({ entry_hash: hash });
+  assert.equal(ledgerHistoriesDiverge([], []), false);
+  assert.equal(ledgerHistoriesDiverge([entry('a')], [entry('a')]), false);
+  // 片方だけが進んでいるのは分岐ではない。
+  assert.equal(
+    ledgerHistoriesDiverge([entry('a')], [entry('a'), entry('b')]),
+    false,
+  );
+  assert.equal(
+    ledgerHistoriesDiverge([entry('a'), entry('b')], [entry('a'), entry('c')]),
+    true,
+  );
 });
 
 test('復元の確認: 保存期限の時計の記録が読めない・巻き戻っているときは段階2で止める', async (t) => {
@@ -418,6 +477,14 @@ test('復元の確認: 台帳の系譜が違えば止め、台帳をすべて失
   assert.ok(temp.stages[0]?.reasons.includes('latest_ledger_unconfirmed'));
   assert.equal(temp.settings_only_eligible, true);
   await rm(tempPath, { force: true });
+
+  // 台帳の別ファイルが壊れているときは、DB だけを最新として合格にしない（より新しい世代を落とし得る）。
+  await writeFile(join(r.dataDir, FORGET_LEDGER_FILE), '{broken');
+  const corrupt = await check(r);
+  assert.equal(corrupt.outcome, 'rejected');
+  assert.equal(corrupt.stages[0]?.status, 'failed');
+  assert.ok(corrupt.stages[0]?.reasons.includes('ledger_chain_invalid'));
+  assert.equal(corrupt.settings_only_eligible, false);
 
   // 中枢の DB と台帳の別ファイルをどちらも失う（中枢を失って複製もない）。
   const dbPath = join(r.dataDir, DB_FILE);

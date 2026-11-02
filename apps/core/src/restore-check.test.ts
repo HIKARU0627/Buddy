@@ -20,7 +20,11 @@ import {
   decodeRecoveryCode,
   encodeRecoveryCode,
 } from '@buddy/domain';
-import { createMockBackupKeyStore, createMockKeyStore } from '@buddy/platform';
+import {
+  DATA_KEY_ID,
+  createMockBackupKeyStore,
+  createMockKeyStore,
+} from '@buddy/platform';
 import type { MockBackupKeyStore } from '@buddy/platform';
 import {
   decryptBackupPayload,
@@ -374,6 +378,23 @@ test('復元の確認: 封筒の鍵 ID が別の用途の KeyStore 項目にあ�
     'ledger_hmac_key',
     wrap.key_id,
     Buffer.alloc(32, 0x6a),
+  );
+  assert.equal(placed.ok, true, JSON.stringify(placed));
+  const report = await check(r);
+  assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+  assert.equal(report.stages[0]?.status, 'passed');
+  assert.ok(report.stages[1]?.reasons.includes('backup_unreadable'));
+});
+
+test('復元の確認: データ鍵の ID が別の用途の KeyStore 項目にある衝突も見つける', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  // 鍵の記録ファイルを失い、データ鍵の ID を backup_file の項目にも置く（別用途の衝突）。
+  await rm(join(r.dataDir, BACKUP_KEY_FILE), { force: true });
+  const placed = await r.keys.put(
+    'backup_file',
+    DATA_KEY_ID,
+    Buffer.alloc(32, 0x6b),
   );
   assert.equal(placed.ok, true, JSON.stringify(placed));
   const report = await check(r);

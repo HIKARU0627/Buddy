@@ -514,7 +514,7 @@ export async function runRestoreCheck(
       ...(keyFile.ok ? [keyFile.value.key_wraps] : []),
       wraps,
     ]) {
-      for (const purpose of ['backup_file', 'ledger_hmac_key'] as const) {
+      for (const purpose of BACKUP_KEY_PURPOSES) {
         const wrap = keyWrapFor(source, purpose);
         if (wrap === null) continue;
         keyIds.add(wrap.key_id);

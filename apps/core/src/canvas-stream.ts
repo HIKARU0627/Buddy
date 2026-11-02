@@ -62,6 +62,18 @@ export type CanvasUserApplyOutcome =
       readonly reason: 'stale' | 'not_applicable' | 'schema';
     };
 
+// 画面へ回した文字の結果・保留を捨てた知らせの物の名前（U120、ADR 0066）。同じ物を更新して使い回す。
+export const REPLY_ITEM_ID = 'reply';
+export const HELD_DROPPED_ITEM_ID = 'held-dropped';
+const REPLY_HEADING = '答え';
+const HELD_DROPPED_HEADING = '実行前の依頼';
+// 物のデータの参照の種類。本文は物に載せず、content の経路で取る（ADR 0032）。
+const SCREEN_REF_KIND = 'screen_result';
+// 結果の文字がないときの案内（実行を告げない）。
+const SCREEN_FALLBACK_TEXT = '画面で確認してください。';
+// 本文の上限（CanvasContentBody と同じ）。Core の定型文はこれより短い。
+const TEXT_MAX_LENGTH = 2000;
+
 // ユーザーの操作の記録（UI-06）。次の配置者の入力にする。本文・見出しを持たない（物の名前とマスだけ）。
 export interface CanvasUserRecordEntry {
   readonly kind: CanvasUserOp['kind'];
@@ -82,6 +94,8 @@ export class CanvasHub {
   // 物ごとの、置き場所・存在が最後に変わった版（UI-06。古い版へのユーザーの操作を当ててよいかに使う）。
   #placedAt = new Map<string, string>();
   #record: CanvasUserRecordEntry[] = [];
+  // 物の本文（U120）。記述・イベント・ログには載せず、content の経路でだけ返す（ADR 0032・0066）。
+  #texts = new Map<string, string>();
 
   constructor(contract: ApiContract = createApiContract()) {
     this.#contract = contract;
@@ -114,8 +128,19 @@ export class CanvasHub {
     const targets = canvasBatchPlacementTargets(batch);
     for (const id of targets ?? next.items.map((item) => item.item_id))
       this.#placedAt.set(id, next.canvas_revision);
+    this.#pruneTexts(next);
     this.#commit(next);
     return { ok: true, revision: next.canvas_revision };
+  }
+
+  // 画面へ回した文字の結果の本文（U120）。物の名前ごとに 1 つだけ持つ（同じ物を更新して使い回す）。
+  setText(itemId: string, text: string): void {
+    this.#texts.set(itemId, text);
+  }
+
+  // 物の本文（content の経路だけが読む）。なければ null（模擬の中身に戻す）。
+  textFor(itemId: string): string | null {
+    return this.#texts.get(itemId) ?? null;
   }
 
   // ユーザーの操作を当てる（UI-06）。添えた版の照合と当て方は domain の applyCanvasUserOp。当てた後の記述も Schema で
@@ -134,8 +159,10 @@ export class CanvasHub {
     const next = result.canvas as CanvasDocument;
     if (!this.#contract.valid('CanvasDocument', next))
       return { ok: false, reason: 'schema' };
-    if (op.kind === 'close') this.#placedAt.delete(op.item_id);
-    else this.#placedAt.set(op.item_id, next.canvas_revision);
+    if (op.kind === 'close') {
+      this.#placedAt.delete(op.item_id);
+      this.#texts.delete(op.item_id);
+    } else this.#placedAt.set(op.item_id, next.canvas_revision);
     this.#record = [
       ...this.#record,
       {
@@ -145,8 +172,17 @@ export class CanvasHub {
         canvas_revision: next.canvas_revision,
       },
     ].slice(-CANVAS_USER_RECORD_LIMIT);
+    this.#pruneTexts(next);
     this.#commit(next);
     return { ok: true, revision: next.canvas_revision };
+  }
+
+  // 記述から消えた物の本文を捨てる（閉じた物の本文を残さない）。
+  #pruneTexts(next: CanvasDocument): void {
+    if (this.#texts.size === 0) return;
+    const alive = new Set(next.items.map((item) => item.item_id));
+    for (const itemId of this.#texts.keys())
+      if (!alive.has(itemId)) this.#texts.delete(itemId);
   }
 
   #commit(next: CanvasDocument): void {
@@ -270,6 +306,138 @@ export function placeCanvasForTurn(
   };
 }
 
+// --- 画面へ回した文字の結果（U120、ADR 0066） ---
+
+// 画面へ置く文字の物と、content の経路で返す本文。
+export interface ScreenTextPlacement {
+  readonly item_id: string;
+  readonly text: string;
+  readonly batch: CanvasOpBatch;
+}
+
+// 本文を契約の上限に収める（Core の定型文はもともと短い。念のため）。
+const boundedText = (text: string): string =>
+  text.length <= TEXT_MAX_LENGTH ? text : text.slice(0, TEXT_MAX_LENGTH);
+
+// 同じ物があれば中身だけを更新し、なければ格子のヒントつきで足す。棚へ片付けられていれば棚のまま
+// （ユーザーの置き場所を AI が勝手に戻さない。ADR 0032）。
+function textCardBatch(
+  canvas: CanvasDocument,
+  input: {
+    readonly item_id: string;
+    readonly heading: string;
+    readonly ref_id: string;
+    readonly grid: CanvasItem['grid'];
+  },
+  context?: PlacerContext,
+): CanvasOpBatch {
+  const data = {
+    item_refs: [{ kind: SCREEN_REF_KIND, id: input.ref_id }],
+    more_count: 0,
+  };
+  const base = canvas.canvas_revision;
+  const next = (BigInt(base) + 1n).toString();
+  const existing = canvas.items.find((item) => item.item_id === input.item_id);
+  if (existing !== undefined)
+    return {
+      base_canvas_revision: base,
+      canvas_revision: next,
+      ops: [
+        {
+          op: 'update',
+          item_id: input.item_id,
+          changes: { heading: input.heading, emphasis: 'normal', data },
+        },
+      ],
+      reading_order: [...canvas.reading_order],
+    };
+  const last = [...(context?.record ?? [])]
+    .reverse()
+    .find((entry) => entry.item_id === input.item_id && entry.cell !== null);
+  const grid =
+    last?.cell === null || last?.cell === undefined
+      ? input.grid
+      : {
+          column: last.cell.column,
+          span: last.cell.span,
+          rows: last.cell.rows,
+        };
+  const item: CanvasItem = {
+    item_id: input.item_id,
+    kind: 'float',
+    component: 'text',
+    heading: input.heading,
+    emphasis: 'normal',
+    group: null,
+    relations: [],
+    grid,
+    placement: 'canvas',
+    data,
+  };
+  return {
+    base_canvas_revision: base,
+    canvas_revision: next,
+    ops: [{ op: 'add', item }],
+    reading_order: [...canvas.reading_order, input.item_id],
+  };
+}
+
+// 声で返せなかった発言の結果を、キャンバスの text の物にする。結果の文字（Core の定型文）を本文にし、
+// 実行を告げる文を足さない。会話の操作（結果の表示を持たない）は置かない。
+export function placeReplyForTurn(
+  canvas: CanvasDocument,
+  turn: Pick<TurnResponse, 'turn_id' | 'status' | 'reply_text'>,
+  context?: PlacerContext,
+  chosenText: string | null = null,
+): ScreenTextPlacement | null {
+  if (turn.status === 'session_control') return null;
+  const reply =
+    chosenText !== null && chosenText.trim().length > 0
+      ? chosenText
+      : turn.reply_text;
+  const text =
+    typeof reply === 'string' && reply.trim().length > 0
+      ? boundedText(reply)
+      : SCREEN_FALLBACK_TEXT;
+  return {
+    item_id: REPLY_ITEM_ID,
+    text,
+    batch: textCardBatch(
+      canvas,
+      {
+        item_id: REPLY_ITEM_ID,
+        heading: REPLY_HEADING,
+        ref_id: turn.turn_id,
+        grid: { column: 9, span: 4, rows: 2 },
+      },
+      context,
+    ),
+  };
+}
+
+// 保留を実行せずに捨てた知らせ。本文は固定の定型文（inputCommentary('hold_dropped')）で、捨てた依頼の本文は含めない。
+export function placeHeldDropped(
+  canvas: CanvasDocument,
+  notice: { readonly workflow_id: string; readonly text: string },
+  context?: PlacerContext,
+): ScreenTextPlacement {
+  const text = boundedText(notice.text);
+  return {
+    item_id: HELD_DROPPED_ITEM_ID,
+    text,
+    batch: textCardBatch(
+      canvas,
+      {
+        item_id: HELD_DROPPED_ITEM_ID,
+        heading: HELD_DROPPED_HEADING,
+        ref_id: notice.workflow_id,
+        grid: { column: 5, span: 8, rows: 2 },
+      },
+      context,
+    ),
+  };
+}
+
 // --- 経路 ---
 
 export interface StreamRoutesOptions {
@@ -287,7 +455,19 @@ export interface StreamRoutes {
   readonly handlers: Readonly<Record<string, ApiRouteHandler>>;
   // 声で返せなかった結果（接続が閉じた・文字へ切り替えた・世代が違う）を画面へ回す（B05-05、ADR 0052）。発言の結果と同じ
   // 配置者の規則・意味の検査を通して、キャンバスへ置く。配置済みの発言は重ねて置かない。置いた束を返す（置かなければ null）。
-  readonly placeLate: (turn: TurnResponse) => CanvasOpBatch | null;
+  // 予定のカードにできない結果は、text の物にして本文を content の経路で返す（U120、ADR 0066）。text には、
+  // Core が選んだ案内の定型文を渡す（なければ turn.reply_text）。
+  readonly placeLate: (
+    turn: TurnResponse,
+    text?: string | null,
+  ) => CanvasOpBatch | null;
+  // 保留を実行せずに捨てた知らせを画面へ置く（U120、ADR 0066）。本文は固定の定型文で、捨てた依頼の本文は含めない。
+  readonly placeNotice: (notice: {
+    readonly session_id: string;
+    readonly workflow_id: string;
+    readonly reason: string;
+    readonly text: string;
+  }) => CanvasOpBatch | null;
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -373,19 +553,34 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   };
 
   // 発言の結果をキャンバスへ置く（発言の応答と、画面へ回した遅着の結果で共通）。同じ発言は重ねて置かない（再送・遅着の重複）。
+  // late は声で返せなかった結果（U120）。予定のカードにできない結果は text の物にして、本文を content の経路へ預ける。
   const placeTurn = (
     turn: TurnResponse,
     seenRevision: string,
+    late = false,
+    text: string | null = null,
   ): CanvasOpBatch | null => {
     if (placed.has(turn.turn_id)) return replays.get(turn.turn_id) ?? null;
-    const batch = (options.place ?? placeCanvasForTurn)(
+    const context = {
+      record: options.canvas.record,
+      seen_revision: seenRevision,
+    };
+    let batch = (options.place ?? placeCanvasForTurn)(
       options.canvas.document,
       turn.result_view,
-      { record: options.canvas.record, seen_revision: seenRevision },
+      context,
     );
+    const reply =
+      batch === null && late
+        ? placeReplyForTurn(options.canvas.document, turn, context, text)
+        : null;
+    if (reply !== null) batch = reply.batch;
     // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。
     const canvas =
       batch !== null && options.canvas.apply(batch).ok ? batch : null;
+    // 本文は、当てた束の物にだけ預ける（当てられなかった本文を残さない）。
+    if (canvas !== null && reply !== null)
+      options.canvas.setText(reply.item_id, reply.text);
     // 配置を試みた発言だけ覚える（聞き返しなど、配置しない発言は入れない。同じ結果なら再送でも配置しないので）。
     if (batch !== null) placed.add(turn.turn_id);
     replays.set(turn.turn_id, canvas);
@@ -393,6 +588,25 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       if (replays.size <= MAX_REPLAYS) break;
       replays.delete(old);
     }
+    return canvas;
+  };
+
+  // 保留を捨てた知らせ（U120）。ターンではないので、同じ依頼の遅着と混ぜずに text の物を置く。
+  const placeNotice = (notice: {
+    readonly session_id: string;
+    readonly workflow_id: string;
+    readonly reason: string;
+    readonly text: string;
+  }): CanvasOpBatch | null => {
+    const placement = placeHeldDropped(options.canvas.document, notice, {
+      record: options.canvas.record,
+      seen_revision: options.canvas.document.canvas_revision,
+    });
+    const canvas = options.canvas.apply(placement.batch).ok
+      ? placement.batch
+      : null;
+    if (canvas !== null)
+      options.canvas.setText(placement.item_id, placement.text);
     return canvas;
   };
 
@@ -522,7 +736,12 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         body.open_index >= item.data.item_refs.length)
     )
       return conflict();
-    const content = mockCanvasContent(item, body.open_index);
+    // 画面へ回した結果の text は、中枢が持つ本文を返す（U120）。ほかの部品・本文のない text は模擬の中身。
+    const content = mockCanvasContent(
+      item,
+      body.open_index,
+      options.canvas.textFor(item.item_id),
+    );
     const response: CanvasContentResponse = {
       request_id: body.request_id,
       canvas_revision: document.canvas_revision,
@@ -553,7 +772,13 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       postCanvasContent,
     },
     // 画面へ回した遅着の結果は、端末が見ていた版を持たない（Core の今の版から置く）。
-    placeLate: (turn) =>
-      placeTurn(turn, options.canvas.document.canvas_revision),
+    placeLate: (turn, text) =>
+      placeTurn(
+        turn,
+        options.canvas.document.canvas_revision,
+        true,
+        text ?? null,
+      ),
+    placeNotice,
   };
 }

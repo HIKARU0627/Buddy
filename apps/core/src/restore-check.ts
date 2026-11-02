@@ -57,6 +57,7 @@ import type {
 import type { ApiContract } from './api-contract.js';
 import { readBackupKeyFile, readBackupState } from './backup-files.js';
 import { createClockStateFile } from './clock-state.js';
+import { prepareDataDir } from './data-dir.js';
 import { acquireLock, defaultIsPidAlive, releaseLock } from './lock.js';
 import { DB_FILE, FORGET_LEDGER_FILE, controlEndpoint } from './paths.js';
 import {
@@ -398,441 +399,515 @@ export async function runRestoreCheck(
     raw_payload_decrypted: rawPayloadDecrypted,
   });
 
-  try {
-    if (options.lock !== false) {
+  const execute = async (): Promise<RestoreCheckReport> => {
+    try {
+      // 新しい機器への復元では、データディレクトリがないことがある。ロックの作成（open 'wx'）より先に用意する。
+      // 用意できない（パスがファイル・権限がない）ときは、ロックの拒否（core_running）と区別して報告する。
       try {
-        await acquireLock({
-          dataDir: options.dataDir,
-          endpoint: controlEndpoint(options.dataDir, process.platform),
-          record: {
-            pid: process.pid,
-            core_instance_id: lockId,
-            started_at: iso(started),
-          },
-          isPidAlive: options.isPidAlive ?? defaultIsPidAlive,
-          probeTimeoutMs: options.probeTimeoutMs ?? 1000,
-          removeStaleEndpoint: async () => {
-            if (process.platform !== 'win32')
-              await rm(controlEndpoint(options.dataDir, process.platform), {
-                force: true,
-              });
-          },
-        });
-        locked = true;
+        await prepareDataDir(options.dataDir);
       } catch (error) {
         log(
-          `Core が動いているため復元の確認を始めません（${(error as Error).message}）。`,
+          `データディレクトリを用意できませんでした（${(error as Error).message}）。`,
         );
         stages.push({
           stage: 'ledger_check',
           status: 'failed',
-          reasons: ['core_running'],
+          reasons: ['data_dir_unavailable'],
         });
         return report('rejected');
       }
-    }
-
-    const header = await readBackupFileHeader(options.backupPath);
-    if (!header.ok) {
-      log(`バックアップの封筒を読めません（${header.reason}）。`);
-      stages.push({
-        stage: 'ledger_check',
-        status: 'failed',
-        reasons: ['manifest_invalid'],
-      });
-      return report('rejected');
-    }
-    const manifestRaw = header.manifest;
-    const manifest = manifestRaw as BackupManifestLike;
-    if (
-      manifestRaw === null ||
-      typeof manifestRaw !== 'object' ||
-      Array.isArray(manifestRaw) ||
-      !options.contract.valid('BackupManifest', manifestRaw) ||
-      backupManifestProblems(manifest).length > 0
-    ) {
-      log('バックアップの封筒が契約・意味検査に通りません。');
-      stages.push({
-        stage: 'ledger_check',
-        status: 'failed',
-        reasons: ['manifest_invalid'],
-      });
-      return report('rejected');
-    }
-    backupId = manifest.backup_id;
-    backupCreatedAt = manifest.created_at;
-    const wraps = manifest.key_wraps as readonly BackupKeyWrapValue[];
-
-    // 復旧キーの確認値（記録がなければ unavailable）と、3 つの包みを開く。
-    const keyFile = await readBackupKeyFile(options.dataDir, options.contract);
-    const wrapRecoveryIds = new Set(wraps.map((wrap) => wrap.recovery_key_id));
-    const recoveryCheck =
-      keyFile.ok &&
-      wrapRecoveryIds.size === 1 &&
-      wrapRecoveryIds.has(keyFile.value.recovery_key.recovery_key_id)
-        ? recoveryCheckMatches(
-            options.recoveryKey,
-            keyFile.value.recovery_key.check_value,
-          )
-          ? ('match' as const)
-          : ('mismatch' as const)
-        : ('unavailable' as const);
-    if (recoveryCheck === 'mismatch')
-      log('復旧キーがこの中枢の記録と違います。');
-
-    const unwrap = {} as Record<BackupKeyPurpose, 'ok' | 'failed'>;
-    for (const purpose of BACKUP_KEY_PURPOSES) {
-      const wrap = keyWrapFor(wraps, purpose);
-      const material =
-        wrap === null
-          ? null
-          : unwrapBackupKey(options.recoveryKey, wrap as BackupKeyWrapValue);
-      if (material === null) {
-        unwrap[purpose] = 'failed';
-        log(`${purpose} の鍵を開けませんでした。`);
-      } else {
-        unwrap[purpose] = 'ok';
-        unwrapped[purpose] = material;
+      if (options.lock !== false) {
+        try {
+          await acquireLock({
+            dataDir: options.dataDir,
+            endpoint: controlEndpoint(options.dataDir, process.platform),
+            record: {
+              pid: process.pid,
+              core_instance_id: lockId,
+              started_at: iso(started),
+            },
+            isPidAlive: options.isPidAlive ?? defaultIsPidAlive,
+            probeTimeoutMs: options.probeTimeoutMs ?? 1000,
+            removeStaleEndpoint: async () => {
+              if (process.platform !== 'win32')
+                await rm(controlEndpoint(options.dataDir, process.platform), {
+                  force: true,
+                });
+            },
+          });
+          locked = true;
+        } catch (error) {
+          log(
+            `Core が動いているため復元の確認を始めません（${(error as Error).message}）。`,
+          );
+          stages.push({
+            stage: 'ledger_check',
+            status: 'failed',
+            reasons: ['core_running'],
+          });
+          return report('rejected');
+        }
       }
-    }
 
-    // 鍵の導入の計画（足すだけで上書きしない）。データ鍵は KeyStore にないときだけ data-key-v1 に置く（U130）。
-    // backup-keys.json がなくても、封筒の鍵の ID は KeyStore から直接読む（同じ ID で素材が違う・別用途の衝突を見逃さない）。
-    const keyStoreEntries: {
-      purpose: BackupKeyPurpose;
-      key_id: string;
-      material_matches_restored: boolean | null;
-    }[] = [];
-    // KeyStore の読み取り障害・不正な保存値を「鍵がない」と取り違えない（欠落だけを欠落として扱う）。
-    let keyStoreReadFailed = false;
-    const referenced = new Map<
-      string,
-      { purpose: 'backup_file' | 'ledger_hmac_key'; key_id: string }
-    >();
-    const keyIds = new Set<string>();
-    for (const source of [
-      ...(keyFile.ok ? [keyFile.value.key_wraps] : []),
-      wraps,
-    ]) {
+      const header = await readBackupFileHeader(options.backupPath);
+      if (!header.ok) {
+        log(`バックアップの封筒を読めません（${header.reason}）。`);
+        stages.push({
+          stage: 'ledger_check',
+          status: 'failed',
+          reasons: ['manifest_invalid'],
+        });
+        return report('rejected');
+      }
+      const manifestRaw = header.manifest;
+      const manifest = manifestRaw as BackupManifestLike;
+      if (
+        manifestRaw === null ||
+        typeof manifestRaw !== 'object' ||
+        Array.isArray(manifestRaw) ||
+        !options.contract.valid('BackupManifest', manifestRaw) ||
+        backupManifestProblems(manifest).length > 0
+      ) {
+        log('バックアップの封筒が契約・意味検査に通りません。');
+        stages.push({
+          stage: 'ledger_check',
+          status: 'failed',
+          reasons: ['manifest_invalid'],
+        });
+        return report('rejected');
+      }
+      backupId = manifest.backup_id;
+      backupCreatedAt = manifest.created_at;
+      const wraps = manifest.key_wraps as readonly BackupKeyWrapValue[];
+
+      // 復旧キーの確認値（記録がなければ unavailable）と、3 つの包みを開く。
+      const keyFile = await readBackupKeyFile(
+        options.dataDir,
+        options.contract,
+      );
+      const wrapRecoveryIds = new Set(
+        wraps.map((wrap) => wrap.recovery_key_id),
+      );
+      const recoveryCheck =
+        keyFile.ok &&
+        wrapRecoveryIds.size === 1 &&
+        wrapRecoveryIds.has(keyFile.value.recovery_key.recovery_key_id)
+          ? recoveryCheckMatches(
+              options.recoveryKey,
+              keyFile.value.recovery_key.check_value,
+            )
+            ? ('match' as const)
+            : ('mismatch' as const)
+          : ('unavailable' as const);
+      if (recoveryCheck === 'mismatch')
+        log('復旧キーがこの中枢の記録と違います。');
+
+      const unwrap = {} as Record<BackupKeyPurpose, 'ok' | 'failed'>;
       for (const purpose of BACKUP_KEY_PURPOSES) {
-        const wrap = keyWrapFor(source, purpose);
-        if (wrap === null) continue;
-        keyIds.add(wrap.key_id);
-      }
-    }
-    // 封筒の鍵 ID は、宣言された用途だけでなく両方の用途の KeyStore の項目で読む。KeyStore は用途ごとに別の
-    // アカウントなので、同じ ID が別の用途にある衝突は、その用途で読まないと見つからない（ADR 0047 の
-    // key_material_conflict）。データ鍵の ID も含める。
-    for (const keyId of keyIds)
-      for (const purpose of ['backup_file', 'ledger_hmac_key'] as const)
-        referenced.set(`${purpose}:${keyId}`, { purpose, key_id: keyId });
-    for (const entry of referenced.values()) {
-      const current = await options.backupKeys.read(
-        entry.purpose,
-        entry.key_id,
-      );
-      if (!current.ok) {
-        // backup_key_missing だけが「その ID の鍵がない」。読み取り障害・壊れた保存値は、既存鍵との衝突を
-        // 確かめられないので復元を続けない。
-        if (current.reason !== 'backup_key_missing') keyStoreReadFailed = true;
-        continue;
-      }
-      // この用途の復元する鍵が同じ ID のときだけ、素材を比べる（別の用途の項目は用途の衝突として扱う）。
-      const restored =
-        keyWrapFor(wraps, entry.purpose)?.key_id === entry.key_id
-          ? unwrapped[entry.purpose]
-          : undefined;
-      keyStoreEntries.push({
-        purpose: entry.purpose,
-        key_id: entry.key_id,
-        material_matches_restored:
-          restored === undefined
+        const wrap = keyWrapFor(wraps, purpose);
+        const material =
+          wrap === null
             ? null
-            : current.key.key.length === restored.length &&
-              current.key.key.equals(restored),
-      });
-    }
-    const currentDataKey = await options.dataKeys.loadDataKey();
-    if (currentDataKey.ok) {
-      const restored = unwrapped.data_key;
-      keyStoreEntries.push({
-        purpose: 'data_key',
-        key_id: DATA_KEY_ID,
-        material_matches_restored:
-          restored === undefined
-            ? null
-            : currentDataKey.dataKey.key.length === restored.length &&
-              currentDataKey.dataKey.key.equals(restored),
-      });
-    } else if (currentDataKey.reason !== 'data_key_missing') {
-      // データ鍵の読み取り障害・不正な保存値。ないと決めつけて data-key-v1 を上書きし得るので続けない。
-      keyStoreReadFailed = true;
-    }
-    const dataKeyWrap = keyWrapFor(wraps, 'data_key');
-    const dataKeyIdOk = dataKeyWrap?.key_id === DATA_KEY_ID;
-    const keyInstall = keyInstallPlan({
-      key_wraps: wraps,
-      keystore: keyStoreEntries,
-    });
-    const keyInstallOk = dataKeyIdOk && keyInstall.ok && !keyStoreReadFailed;
-    if (!keyInstallOk) log('鍵を安全に導入できないため復元を続けません。');
+            : unwrapBackupKey(options.recoveryKey, wrap as BackupKeyWrapValue);
+        if (material === null) {
+          unwrap[purpose] = 'failed';
+          log(`${purpose} の鍵を開けませんでした。`);
+        } else {
+          unwrap[purpose] = 'ok';
+          unwrapped[purpose] = material;
+        }
+      }
 
-    // 本体の長さと SHA-256 を封筒と照合する。
-    const payload = manifest.payload;
-    const payloadMatches = await verifyBackupPayload(
-      options.backupPath,
-      header.payload_offset,
-      payload.bytes,
-      payload.sha256,
-    );
-    if (!payloadMatches) log('バックアップの本体が封筒と一致しません。');
-    // 本体を復号して作業用の DB に置けたか。復号・書き込みの失敗は backup_unreadable として扱う（鍵は開けても、
-    // 封筒の欄の書き換えなどで本体を開けないことがある）。
-    let payloadUsable = payloadMatches;
+      // 鍵の導入の計画（足すだけで上書きしない）。データ鍵は KeyStore にないときだけ data-key-v1 に置く（U130）。
+      // backup-keys.json がなくても、封筒の鍵の ID は KeyStore から直接読む（同じ ID で素材が違う・別用途の衝突を見逃さない）。
+      const keyStoreEntries: {
+        purpose: BackupKeyPurpose;
+        key_id: string;
+        material_matches_restored: boolean | null;
+      }[] = [];
+      // KeyStore の読み取り障害・不正な保存値を「鍵がない」と取り違えない（欠落だけを欠落として扱う）。
+      let keyStoreReadFailed = false;
+      const referenced = new Map<
+        string,
+        { purpose: 'backup_file' | 'ledger_hmac_key'; key_id: string }
+      >();
+      const keyIds = new Set<string>();
+      for (const source of [
+        ...(keyFile.ok ? [keyFile.value.key_wraps] : []),
+        wraps,
+      ]) {
+        for (const purpose of BACKUP_KEY_PURPOSES) {
+          const wrap = keyWrapFor(source, purpose);
+          if (wrap === null) continue;
+          keyIds.add(wrap.key_id);
+        }
+      }
+      // 封筒の鍵 ID は、宣言された用途だけでなく両方の用途の KeyStore の項目で読む。KeyStore は用途ごとに別の
+      // アカウントなので、同じ ID が別の用途にある衝突は、その用途で読まないと見つからない（ADR 0047 の
+      // key_material_conflict）。データ鍵の ID も含める。
+      for (const keyId of keyIds)
+        for (const purpose of ['backup_file', 'ledger_hmac_key'] as const)
+          referenced.set(`${purpose}:${keyId}`, { purpose, key_id: keyId });
+      for (const entry of referenced.values()) {
+        const current = await options.backupKeys.read(
+          entry.purpose,
+          entry.key_id,
+        );
+        if (!current.ok) {
+          // backup_key_missing だけが「その ID の鍵がない」。読み取り障害・壊れた保存値は、既存鍵との衝突を
+          // 確かめられないので復元を続けない。
+          if (current.reason !== 'backup_key_missing')
+            keyStoreReadFailed = true;
+          continue;
+        }
+        // この用途の復元する鍵が同じ ID のときだけ、素材を比べる（別の用途の項目は用途の衝突として扱う）。
+        const restored =
+          keyWrapFor(wraps, entry.purpose)?.key_id === entry.key_id
+            ? unwrapped[entry.purpose]
+            : undefined;
+        keyStoreEntries.push({
+          purpose: entry.purpose,
+          key_id: entry.key_id,
+          material_matches_restored:
+            restored === undefined
+              ? null
+              : current.key.key.length === restored.length &&
+                current.key.key.equals(restored),
+        });
+      }
+      const currentDataKey = await options.dataKeys.loadDataKey();
+      if (currentDataKey.ok) {
+        const restored = unwrapped.data_key;
+        keyStoreEntries.push({
+          purpose: 'data_key',
+          key_id: DATA_KEY_ID,
+          material_matches_restored:
+            restored === undefined
+              ? null
+              : currentDataKey.dataKey.key.length === restored.length &&
+                currentDataKey.dataKey.key.equals(restored),
+        });
+      } else if (currentDataKey.reason !== 'data_key_missing') {
+        // データ鍵の読み取り障害・不正な保存値。ないと決めつけて data-key-v1 を上書きし得るので続けない。
+        keyStoreReadFailed = true;
+      }
+      const dataKeyWrap = keyWrapFor(wraps, 'data_key');
+      const dataKeyIdOk = dataKeyWrap?.key_id === DATA_KEY_ID;
+      const keyInstall = keyInstallPlan({
+        key_wraps: wraps,
+        keystore: keyStoreEntries,
+      });
+      const keyInstallOk = dataKeyIdOk && keyInstall.ok && !keyStoreReadFailed;
+      if (!keyInstallOk) log('鍵を安全に導入できないため復元を続けません。');
 
-    // 封筒を開け、鍵を導入できるときだけ、作業用の DB に復号する（復旧キーの確認値は打ち間違いの検出だけ）。
-    const openable =
-      recoveryCheck !== 'mismatch' &&
-      BACKUP_KEY_PURPOSES.every((purpose) => unwrap[purpose] === 'ok') &&
-      keyInstallOk &&
-      payloadMatches;
-    if (openable) {
-      const backupKey = unwrapped.backup_file as Buffer;
-      const keyInfo = manifestPayloadKey(
-        manifest as unknown as Record<string, unknown>,
-      );
-      const encrypted = await readBackupPayload(
+      // 本体の長さと SHA-256 を封筒と照合する。
+      const payload = manifest.payload;
+      const payloadMatches = await verifyBackupPayload(
         options.backupPath,
         header.payload_offset,
         payload.bytes,
+        payload.sha256,
       );
-      const plaintext =
-        encrypted === null || keyInfo === null
-          ? null
-          : decryptBackupPayload(
-              { key: backupKey, keyId: keyInfo.keyId, fields: keyInfo.fields },
-              encrypted,
-            );
-      if (plaintext === null) {
-        log('バックアップの本体を復号できませんでした。');
-        payloadUsable = false;
-      } else {
-        try {
-          workingPath = await (
-            options.writeWorkingDatabase ?? writeWorkingDatabase
-          )(workDir, plaintext);
-          rawPayloadDecrypted = true;
-        } catch (error) {
-          log(`作業用の DB を書けませんでした（${(error as Error).name}）。`);
+      if (!payloadMatches) log('バックアップの本体が封筒と一致しません。');
+      // 本体を復号して作業用の DB に置けたか。復号・書き込みの失敗は backup_unreadable として扱う（鍵は開けても、
+      // 封筒の欄の書き換えなどで本体を開けないことがある）。
+      let payloadUsable = payloadMatches;
+
+      // 封筒を開け、鍵を導入できるときだけ、作業用の DB に復号する（復旧キーの確認値は打ち間違いの検出だけ）。
+      const openable =
+        recoveryCheck !== 'mismatch' &&
+        BACKUP_KEY_PURPOSES.every((purpose) => unwrap[purpose] === 'ok') &&
+        keyInstallOk &&
+        payloadMatches;
+      if (openable) {
+        const backupKey = unwrapped.backup_file as Buffer;
+        const keyInfo = manifestPayloadKey(
+          manifest as unknown as Record<string, unknown>,
+        );
+        const encrypted = await readBackupPayload(
+          options.backupPath,
+          header.payload_offset,
+          payload.bytes,
+        );
+        const plaintext =
+          encrypted === null || keyInfo === null
+            ? null
+            : decryptBackupPayload(
+                {
+                  key: backupKey,
+                  keyId: keyInfo.keyId,
+                  fields: keyInfo.fields,
+                },
+                encrypted,
+              );
+        if (plaintext === null) {
+          log('バックアップの本体を復号できませんでした。');
           payloadUsable = false;
-        } finally {
-          plaintext.fill(0);
-        }
-      }
-    }
-
-    // --- 段階 1: 台帳の確認 ---
-    let ledgerFile: ForgetLedgerFileContent | null = null;
-    // ファイルがない（正本は DB）のと、あるのに読めない・壊れているのは違う。後者は最新の忘却を確認できないので止める。
-    let ledgerFileProblem: 'none' | 'missing' | 'unreadable' | 'corrupt' =
-      'none';
-    try {
-      const text = await readFile(
-        join(options.dataDir, FORGET_LEDGER_FILE),
-        'utf8',
-      );
-      ledgerFile = parseLedgerFile(text);
-      if (ledgerFile === null) {
-        ledgerFileProblem = 'corrupt';
-        log('台帳の別ファイルが意味検査に通りません。');
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        ledgerFileProblem = 'missing';
-      } else {
-        ledgerFileProblem = 'unreadable';
-        log(`台帳の別ファイルを読めませんでした（${(error as Error).name}）。`);
-      }
-    }
-    // 書きかけの台帳の一時ファイルが残っていると、確定していないより新しい世代を持つことがある。
-    let hasLedgerTemp = false;
-    try {
-      hasLedgerTemp = (await readdir(options.dataDir)).some(
-        (name) => name.startsWith('.forget-ledger-') && name.endsWith('.tmp'),
-      );
-    } catch {
-      hasLedgerTemp = true;
-    }
-    const ledgerUnconfirmed =
-      hasLedgerTemp ||
-      (ledgerFileProblem !== 'none' && ledgerFileProblem !== 'missing');
-    const hub = await readHubLedger(
-      options.dataDir,
-      ledgerFile,
-      manifest,
-      ledgerUnconfirmed,
-      log,
-    );
-    // 期限の判定に使う「最終確認時刻」は、保存期限の掃除の時計の記録（ADR 0058 の U136）と、バックアップの
-    // 掃除の記録のうち、より新しい方（どちらも無ければ null）。時計の記録が読めないときは期限を判定できない。
-    const state = await readBackupState(options.dataDir);
-    const clockState = await createClockStateFile(options.dataDir).load();
-    let lastCheckedAt: string | null = null;
-    if (clockState.status === 'verified')
-      lastCheckedAt = clockState.content.last_checked_at;
-    if (
-      state.ok &&
-      state.value.last_checked_at !== null &&
-      (lastCheckedAt === null ||
-        Date.parse(state.value.last_checked_at) > Date.parse(lastCheckedAt))
-    )
-      lastCheckedAt = state.value.last_checked_at;
-    // 時計の記録が読めないときは期限を判定できない。既存の中枢 DB があるのに保存期限の時計の記録がない場合も、
-    // 以前に確認した時刻を失っているので、新しい機器への復元と違って判定できない側に倒す（ADR 0058 の U136）。
-    // バックアップの状態（backup-state.json）が壊れている場合も、より新しい最終確認時刻を失っているかもしれない。
-    const hubDbExists = await exists(join(options.dataDir, DB_FILE));
-    const clockUnreadable =
-      clockState.status === 'invalid' ||
-      (clockState.status === 'missing' && hubDbExists) ||
-      !state.ok;
-    // 台帳の鍵の KeyStore の ID。backup-keys.json がなくても、封筒の台帳の鍵が KeyStore にあればそれを渡す。
-    let ledgerKeyId = keyFile.ok
-      ? (keyWrapFor(keyFile.value.key_wraps, 'ledger_hmac_key')?.key_id ?? null)
-      : null;
-    const envelopeLedgerWrap = keyWrapFor(wraps, 'ledger_hmac_key');
-    if (envelopeLedgerWrap !== null) {
-      const current = await options.backupKeys.read(
-        'ledger_hmac_key',
-        envelopeLedgerWrap.key_id,
-      );
-      if (current.ok) ledgerKeyId = envelopeLedgerWrap.key_id;
-    }
-    const ledgerCheck = restoreLedgerCheck({
-      manifest,
-      ledgers: hub.candidates,
-      latest_known_generation: hub.known_generation,
-      hub_ledger_key: {
-        recorded_key_id: hub.recorded_key_id,
-        keystore_key_id: ledgerKeyId,
-      },
-    });
-    // 同じ系譜の DB と別ファイルの履歴が食い違う（分岐）ときは、どちらが正しいかを決められない。最新の忘却を
-    // 落とし得るので段階 1 で止める（設定も戻さない）。
-    const diverged =
-      hub.diverged || hub.db_chain_invalid || ledgerFileProblem === 'corrupt';
-    if (diverged)
-      log(
-        '中枢の DB の台帳の連鎖が壊れているか、台帳の別ファイルの履歴と食い違うか、ファイルが壊れています。',
-      );
-    const ledgerDecision = diverged
-      ? {
-          stage: 'ledger_check' as const,
-          status: 'failed' as const,
-          reasons: ['ledger_chain_invalid' as const],
-        }
-      : ledgerCheck.decision;
-    stages.push({
-      stage: 'ledger_check',
-      status: ledgerDecision.status === 'failed' ? 'failed' : 'passed',
-      reasons: ledgerDecision.reasons,
-    });
-    settingsOnlyEligible = diverged
-      ? false
-      : ledgerCheck.settings_only_eligible;
-    ledger = diverged ? null : ledgerCheck.ledger;
-    if (ledgerDecision.status === 'failed') {
-      log(
-        `最新の台帳を確認できないため、記憶と会話は戻しません（${ledgerDecision.reasons.join(', ')}）。`,
-      );
-      return report('rejected');
-    }
-
-    // --- 段階 2: 期限切れの削除の前提 ---
-    let purgeAppliedAt: string | null = null;
-    // 作業用の DB を開けない（壊れた・このコードが知らない形）ときも、例外で CLI 全体を抜けずに拒否レポートを返す。
-    let workingDbUnreadable = false;
-    if (workingPath !== null) {
-      try {
-        const purged = await (
-          options.purge ??
-          ((path: string, dir: string) =>
-            purgeWorkingDatabase(path, dir, options.now))
-        )(workingPath, workDir);
-        if (purged.ok) purgeAppliedAt = iso(options.now());
-        else
-          log(
-            `期限切れの削除を当てられませんでした（${purged.reasons.join(', ')}）。`,
-          );
-      } catch (error) {
-        workingDbUnreadable = true;
-        log(`作業用の DB を開けませんでした（${(error as Error).name}）。`);
-      }
-    }
-    const openCheck = restoreOpenCheck({
-      manifest_created_at: manifest.created_at,
-      started_at: iso(started),
-      now: iso(options.now()),
-      last_checked_at: lastCheckedAt,
-      recovery_check: recoveryCheck,
-      unwrap,
-      key_install_ok: keyInstallOk,
-      payload_matches: payloadUsable,
-      purge_applied_at: purgeAppliedAt,
-    });
-    // 保存期限の時計の記録が読めないときは、期限を判定できない（ADR 0047 の clock_regression）。
-    // 作業用の DB を開けないときは、取り出した本体を使えないので backup_unreadable。
-    const expiryFailures = [
-      ...(workingDbUnreadable ? (['backup_unreadable'] as const) : []),
-      ...(clockUnreadable ? (['clock_regression'] as const) : []),
-    ];
-    const expiryDecision =
-      expiryFailures.length > 0
-        ? {
-            stage: 'expiry_purge' as const,
-            status: 'failed' as const,
-            reasons: expiryFailures,
+        } else {
+          try {
+            workingPath = await (
+              options.writeWorkingDatabase ?? writeWorkingDatabase
+            )(workDir, plaintext);
+            rawPayloadDecrypted = true;
+          } catch (error) {
+            log(`作業用の DB を書けませんでした（${(error as Error).name}）。`);
+            payloadUsable = false;
+          } finally {
+            plaintext.fill(0);
           }
-        : openCheck.decision;
-    stages.push({
-      stage: 'expiry_purge',
-      status: expiryDecision.status === 'failed' ? 'failed' : 'passed',
-      reasons: expiryDecision.reasons,
-    });
-    if (expiryDecision.status === 'failed') {
-      log(
-        `期限切れの削除の前提を満たさないため、復元を続けません（${expiryDecision.reasons.join(', ')}）。`,
+        }
+      }
+
+      // --- 段階 1: 台帳の確認 ---
+      let ledgerFile: ForgetLedgerFileContent | null = null;
+      // ファイルがない（正本は DB）のと、あるのに読めない・壊れているのは違う。後者は最新の忘却を確認できないので止める。
+      let ledgerFileProblem: 'none' | 'missing' | 'unreadable' | 'corrupt' =
+        'none';
+      try {
+        const text = await readFile(
+          join(options.dataDir, FORGET_LEDGER_FILE),
+          'utf8',
+        );
+        ledgerFile = parseLedgerFile(text);
+        if (ledgerFile === null) {
+          ledgerFileProblem = 'corrupt';
+          log('台帳の別ファイルが意味検査に通りません。');
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          ledgerFileProblem = 'missing';
+        } else {
+          ledgerFileProblem = 'unreadable';
+          log(
+            `台帳の別ファイルを読めませんでした（${(error as Error).name}）。`,
+          );
+        }
+      }
+      // 書きかけの台帳の一時ファイルが残っていると、確定していないより新しい世代を持つことがある。
+      let hasLedgerTemp = false;
+      try {
+        hasLedgerTemp = (await readdir(options.dataDir)).some(
+          (name) => name.startsWith('.forget-ledger-') && name.endsWith('.tmp'),
+        );
+      } catch {
+        hasLedgerTemp = true;
+      }
+      const ledgerUnconfirmed =
+        hasLedgerTemp ||
+        (ledgerFileProblem !== 'none' && ledgerFileProblem !== 'missing');
+      const hub = await readHubLedger(
+        options.dataDir,
+        ledgerFile,
+        manifest,
+        ledgerUnconfirmed,
+        log,
       );
-      return report('rejected');
+      // 期限の判定に使う「最終確認時刻」は、保存期限の掃除の時計の記録（ADR 0058 の U136）と、バックアップの
+      // 掃除の記録のうち、より新しい方（どちらも無ければ null）。時計の記録が読めないときは期限を判定できない。
+      const state = await readBackupState(options.dataDir);
+      const clockState = await createClockStateFile(options.dataDir).load();
+      let lastCheckedAt: string | null = null;
+      if (clockState.status === 'verified')
+        lastCheckedAt = clockState.content.last_checked_at;
+      if (
+        state.ok &&
+        state.value.last_checked_at !== null &&
+        (lastCheckedAt === null ||
+          Date.parse(state.value.last_checked_at) > Date.parse(lastCheckedAt))
+      )
+        lastCheckedAt = state.value.last_checked_at;
+      // 時計の記録が読めないときは期限を判定できない。既存の中枢 DB があるのに保存期限の時計の記録がない場合も、
+      // 以前に確認した時刻を失っているので、新しい機器への復元と違って判定できない側に倒す（ADR 0058 の U136）。
+      // バックアップの状態（backup-state.json）が壊れている場合も、より新しい最終確認時刻を失っているかもしれない。
+      const hubDbExists = await exists(join(options.dataDir, DB_FILE));
+      const clockUnreadable =
+        clockState.status === 'invalid' ||
+        (clockState.status === 'missing' && hubDbExists) ||
+        !state.ok;
+      // 台帳の鍵の KeyStore の ID。backup-keys.json がなくても、封筒の台帳の鍵が KeyStore にあればそれを渡す。
+      let ledgerKeyId = keyFile.ok
+        ? (keyWrapFor(keyFile.value.key_wraps, 'ledger_hmac_key')?.key_id ??
+          null)
+        : null;
+      const envelopeLedgerWrap = keyWrapFor(wraps, 'ledger_hmac_key');
+      if (envelopeLedgerWrap !== null) {
+        const current = await options.backupKeys.read(
+          'ledger_hmac_key',
+          envelopeLedgerWrap.key_id,
+        );
+        if (current.ok) ledgerKeyId = envelopeLedgerWrap.key_id;
+      }
+      const ledgerCheck = restoreLedgerCheck({
+        manifest,
+        ledgers: hub.candidates,
+        latest_known_generation: hub.known_generation,
+        hub_ledger_key: {
+          recorded_key_id: hub.recorded_key_id,
+          keystore_key_id: ledgerKeyId,
+        },
+      });
+      // 同じ系譜の DB と別ファイルの履歴が食い違う（分岐）ときは、どちらが正しいかを決められない。最新の忘却を
+      // 落とし得るので段階 1 で止める（設定も戻さない）。
+      const diverged =
+        hub.diverged || hub.db_chain_invalid || ledgerFileProblem === 'corrupt';
+      if (diverged)
+        log(
+          '中枢の DB の台帳の連鎖が壊れているか、台帳の別ファイルの履歴と食い違うか、ファイルが壊れています。',
+        );
+      const ledgerDecision = diverged
+        ? {
+            stage: 'ledger_check' as const,
+            status: 'failed' as const,
+            reasons: ['ledger_chain_invalid' as const],
+          }
+        : ledgerCheck.decision;
+      stages.push({
+        stage: 'ledger_check',
+        status: ledgerDecision.status === 'failed' ? 'failed' : 'passed',
+        reasons: ledgerDecision.reasons,
+      });
+      settingsOnlyEligible = diverged
+        ? false
+        : ledgerCheck.settings_only_eligible;
+      ledger = diverged ? null : ledgerCheck.ledger;
+      if (ledgerDecision.status === 'failed') {
+        log(
+          `最新の台帳を確認できないため、記憶と会話は戻しません（${ledgerDecision.reasons.join(', ')}）。`,
+        );
+        return report('rejected');
+      }
+
+      // --- 段階 2: 期限切れの削除の前提 ---
+      let purgeAppliedAt: string | null = null;
+      // 作業用の DB を開けない（壊れた・このコードが知らない形）ときも、例外で CLI 全体を抜けずに拒否レポートを返す。
+      let workingDbUnreadable = false;
+      if (workingPath !== null) {
+        try {
+          const purged = await (
+            options.purge ??
+            ((path: string, dir: string) =>
+              purgeWorkingDatabase(path, dir, options.now))
+          )(workingPath, workDir);
+          if (purged.ok) purgeAppliedAt = iso(options.now());
+          else
+            log(
+              `期限切れの削除を当てられませんでした（${purged.reasons.join(', ')}）。`,
+            );
+        } catch (error) {
+          workingDbUnreadable = true;
+          log(`作業用の DB を開けませんでした（${(error as Error).name}）。`);
+        }
+      }
+      const openCheck = restoreOpenCheck({
+        manifest_created_at: manifest.created_at,
+        started_at: iso(started),
+        now: iso(options.now()),
+        last_checked_at: lastCheckedAt,
+        recovery_check: recoveryCheck,
+        unwrap,
+        key_install_ok: keyInstallOk,
+        payload_matches: payloadUsable,
+        purge_applied_at: purgeAppliedAt,
+      });
+      // 保存期限の時計の記録が読めないときは、期限を判定できない（ADR 0047 の clock_regression）。
+      // 作業用の DB を開けないときは、取り出した本体を使えないので backup_unreadable。
+      const expiryFailures = [
+        ...(workingDbUnreadable ? (['backup_unreadable'] as const) : []),
+        ...(clockUnreadable ? (['clock_regression'] as const) : []),
+      ];
+      const expiryDecision =
+        expiryFailures.length > 0
+          ? {
+              stage: 'expiry_purge' as const,
+              status: 'failed' as const,
+              reasons: expiryFailures,
+            }
+          : openCheck.decision;
+      stages.push({
+        stage: 'expiry_purge',
+        status: expiryDecision.status === 'failed' ? 'failed' : 'passed',
+        reasons: expiryDecision.reasons,
+      });
+      if (expiryDecision.status === 'failed') {
+        log(
+          `期限切れの削除の前提を満たさないため、復元を続けません（${expiryDecision.reasons.join(', ')}）。`,
+        );
+        return report('rejected');
+      }
+      // 平文の DB を消せないまま成功（終了コード 0）を返さない。消せなければ段階 2 の失敗として報告する。
+      let removed = true;
+      try {
+        await (
+          options.removeWorkDir ??
+          (async (dir: string) => {
+            if (!(await deleteWorkDir(dir))) throw new Error('delete_failed');
+          })
+        )(workDir);
+      } catch {
+        removed = false;
+      }
+      if (!removed) {
+        log(
+          '作業用の平文の DB を消せませんでした。復元は成功として扱いません。',
+        );
+        const last = stages.at(-1);
+        if (last?.stage === 'expiry_purge')
+          stages[stages.length - 1] = {
+            stage: 'expiry_purge',
+            status: 'failed',
+            reasons: ['plaintext_delete_failed'],
+          };
+        return report('rejected');
+      }
+      return report('ready');
+    } finally {
+      for (const material of Object.values(unwrapped)) material.fill(0);
+      if (locked)
+        await releaseLock(options.dataDir, lockId).catch(() => undefined);
     }
-    // 平文の DB を消せないまま成功（終了コード 0）を返さない。消せなければ段階 2 の失敗として報告する。
-    let removed = true;
-    try {
-      await (
-        options.removeWorkDir ??
-        (async (dir: string) => {
-          if (!(await deleteWorkDir(dir))) throw new Error('delete_failed');
-        })
-      )(workDir);
-    } catch {
-      removed = false;
-    }
-    if (!removed) {
-      log('作業用の平文の DB を消せませんでした。復元は成功として扱いません。');
-      const last = stages.at(-1);
-      if (last?.stage === 'expiry_purge')
-        stages[stages.length - 1] = {
-          stage: 'expiry_purge',
-          status: 'failed',
-          reasons: ['plaintext_delete_failed'],
-        };
-      return report('rejected');
-    }
-    return report('ready');
-  } finally {
-    for (const material of Object.values(unwrapped)) material.fill(0);
-    // 書く途中で例外になった・上の削除に失敗したときも、もう一度だけ消す（成功を返すかは上の判定が決める）。
+  };
+
+  // 平文の後始末は、成功・失敗・例外のどの経路でもここで確かめる。消せないまま拒否レポートだけを返さない。
+  let result: RestoreCheckReport;
+  try {
+    result = await execute();
+  } catch (error) {
     await deleteWorkDir(workDir);
-    if (locked)
-      await releaseLock(options.dataDir, lockId).catch(() => undefined);
+    throw error;
   }
+  let removed = true;
+  try {
+    if (options.removeWorkDir !== undefined) {
+      await options.removeWorkDir(workDir);
+    } else {
+      removed = await deleteWorkDir(workDir);
+    }
+  } catch {
+    removed = false;
+  }
+  if (removed) return result;
+  log('作業用の平文の DB を消せませんでした。復元は成功として扱いません。');
+  const cleaned: RestoreCheckStageView[] = result.stages.map((stage, index) =>
+    index === result.stages.length - 1
+      ? {
+          stage: stage.stage,
+          status: 'failed',
+          reasons: [...new Set([...stage.reasons, 'plaintext_delete_failed'])],
+        }
+      : stage,
+  );
+  return {
+    ...result,
+    outcome: 'rejected',
+    stages:
+      cleaned.length === 0
+        ? [
+            {
+              stage: 'ledger_check',
+              status: 'failed',
+              reasons: ['plaintext_delete_failed'],
+            },
+          ]
+        : cleaned,
+  };
 }

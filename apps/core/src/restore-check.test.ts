@@ -482,6 +482,80 @@ test('復元の確認: 作業用の DB を開けないときも、拒否レポ�
   assert.deepEqual(await workDirEntries(r.dataDir), []);
 });
 
+test('復元の確認: 新しいデータディレクトリを用意してからロックを取り、用意できないときは区別して止める', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  const recoveryKey = Buffer.from(
+    decodeRecoveryCode(r.recoveryCode) as Uint8Array,
+  );
+  // まだないデータディレクトリ。ロックの作成より先に用意され、台帳の確認まで進む（core_running にしない）。
+  const fresh = join(r.dataDir, '..', 'fresh-data');
+  const freshReport = await runRestoreCheck({
+    dataDir: fresh,
+    contract,
+    backupPath: r.backupPath,
+    recoveryKey,
+    dataKeys: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    backupKeys: r.keys,
+    now: () => new Date(T0 + 1000),
+    lock: true,
+    log: () => undefined,
+  });
+  assert.equal(freshReport.outcome, 'rejected');
+  assert.equal(freshReport.stages[0]?.status, 'failed');
+  assert.equal(
+    freshReport.stages[0]?.reasons.includes('core_running'),
+    false,
+    JSON.stringify(freshReport.stages),
+  );
+  assert.ok(
+    freshReport.stages[0]?.reasons.includes('latest_ledger_unconfirmed'),
+  );
+  assert.notEqual(await readdir(fresh).catch(() => null), null);
+
+  // データディレクトリの場所がファイルなら、ロックの拒否と区別して data_dir_unavailable で止める。
+  const filePath = join(r.dataDir, '..', 'not-a-directory');
+  await writeFile(filePath, 'x');
+  const badReport = await runRestoreCheck({
+    dataDir: filePath,
+    contract,
+    backupPath: r.backupPath,
+    recoveryKey,
+    dataKeys: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    backupKeys: r.keys,
+    now: () => new Date(T0 + 1000),
+    lock: true,
+    log: () => undefined,
+  });
+  assert.equal(badReport.outcome, 'rejected');
+  assert.deepEqual(badReport.stages, [
+    {
+      stage: 'ledger_check',
+      status: 'failed',
+      reasons: ['data_dir_unavailable'],
+    },
+  ]);
+});
+
+test('復元の確認: 拒否した経路でも、平文を消せないときは plaintext_delete_failed を返す', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  // 台帳の別ファイルを壊して段階 1 で拒否させる（平文は書けている）。
+  await writeFile(join(r.dataDir, FORGET_LEDGER_FILE), '{broken');
+  const report = await check(r, {
+    removeWorkDir: async () => {
+      throw new Error('injected_delete_failure');
+    },
+  });
+  assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+  assert.equal(report.stages[0]?.status, 'failed');
+  assert.ok(report.stages[0]?.reasons.includes('ledger_chain_invalid'));
+  assert.ok(
+    report.stages.at(-1)?.reasons.includes('plaintext_delete_failed'),
+    JSON.stringify(report.stages),
+  );
+});
+
 test('復元の確認: 作業用の平文の DB を消せないときは成功を返さず、明示的に失敗を報告する', async (t) => {
   const r = await rig(t);
   await r.handle.stop('test');

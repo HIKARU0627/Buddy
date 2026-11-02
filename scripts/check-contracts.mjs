@@ -168,13 +168,21 @@ for (const entry of responsePlanEntries) {
 // fixture に手で書いた値で、実装の表から作らない。
 const planUuid = (index) =>
   `00000000-0000-4000-8000-${String(300 + index).padStart(12, '0')}`;
-for (const [index, row] of responsePlanCases.intent_views.entries()) {
+const planRows = [
+  ...responsePlanCases.intent_views.map((row) => ({
+    ...row,
+    outcome: 'done',
+  })),
+  ...responsePlanCases.outcome_cases,
+];
+for (const [index, row] of planRows.entries()) {
   const workflowId = planUuid(index);
   const value = {
     schema: 'buddy.response-plan.v1',
     workflow_id: workflowId,
     request_revision: '1',
     intent: row.intent,
+    outcome: row.outcome,
     view: {
       workflow_id: workflowId,
       request_revision: '1',
@@ -193,7 +201,11 @@ for (const [index, row] of responsePlanCases.intent_views.entries()) {
     validators['ResponsePlan'](value),
     `${row.intent}: ${JSON.stringify(validators['ResponsePlan'].errors)}`,
   );
-  assert.deepEqual(semanticErrors('ResponsePlan', value), [], row.intent);
+  assert.deepEqual(
+    semanticErrors('ResponsePlan', value),
+    [],
+    row.id ?? row.intent,
+  );
 }
 assert.equal(
   new Set(responsePlanCases.intent_views.map((row) => row.intent)).size,

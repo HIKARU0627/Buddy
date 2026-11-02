@@ -11,6 +11,7 @@
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 契約の粒度                    | `ResponsePlan` は **1 つの schema** にまとめ、意図は `intent` の列挙で表す。24 意図ぶんの schema を複製しない。意図ごとの違いは既存の `RESULT_VIEW_BY_INTENT`（`packages/domain/src/conversation.ts`）が持ち、24 意図すべての手書きの対応表を fixture に置いて、契約と domain の対応が変わっていないことを試験で固定する                  |
 | `ResponsePlan` の位置づけ     | Core が決めた**表示と読み上げの計画**。モデルの生出力（`WireResponse`）、検証済みの解釈（`Interpretation`）、実行可否（`ActionReadiness`）とは別の層で、ADR 0005 の分割を変えない。旧名の「1 つの JSON に全項目を持つ ResponsePlan」は廃止のまま（下の「名前の扱い」）                                                                    |
+| `ResponsePlan` の結果の状態   | `outcome`（`done`・`needs_approval`・`needs_clarification`）を持つ。聞き返しと承認は通常完了の結果の種類より優先する（ADR 0005）。`view.kind` は `resultViewKind(intent, outcome)` と一致しなければならない                                                                                                                               |
 | `ResponsePlan` が持たないもの | 応答文の本文、宛先、件名、承認、実行経路、effect_kind。`additionalProperties: false` で拒否し、fixture の拒否例で固定する。本文は開いたときだけ許可範囲内で取得する既存の規則を変えない                                                                                                                                                   |
 | 読み上げ                      | `ResponseSpeech` は `template_id`・`template_version`・`parts`（最大 3 部・1 部 200 文字）だけ。文はコードの定型文から作り、モデルの自由文を入れない（ADR 0005）。文面と版は仮置きで、B15 までに本人が調整する（D3）                                                                                                                      |
 | 構造化した事実                | `facts` は既存の `ResultFact` の配列。`view` は既存の `ResultView` を使い、結果の種類の対応を増やさない                                                                                                                                                                                                                                   |
@@ -32,7 +33,7 @@
 - `packages/contracts/fixtures/response-plan-cases.json` の `intent_views` に 24 意図すべての `intent` と `view_kind` を手で書く。
 - `scripts/response-plan.test.mjs` が、fixture の対応表と `RESULT_VIEW_BY_INTENT` が一致すること、`resultViewKind` の `needs_clarification` / `needs_approval` の優先が変わっていないことを確かめる。
 
-`view.kind` が意図の表と食い違う計画は、`packages/domain/src/response-plan.ts` の `responsePlanErrors` が `view_kind_mismatch` として拒否する。段（plan と view）の `workflow_id`・`request_revision`・`intent` の食い違いも同じ関数で拒否し、`scripts/response-plan.test.mjs` が手書きの計画を実際に通して確かめる。`scripts/contract-tools.mjs` の意味検査は、ビルド前でも動く段の一致だけを持つ。
+`view.kind` が意図・結果の状態と食い違う計画は、`packages/domain/src/response-plan.ts` の `responsePlanErrors` が `view_kind_mismatch` として拒否する。`outcome` が `done` のときは `RESULT_VIEW_BY_INTENT`、`needs_clarification` のときは `clarification`、`needs_approval` のときは `approval_link` を `resultViewKind` から求め、計画の `view.kind` と照合する。承認を求めない意図に承認の計画を作る場合は `approval_not_possible` とする。段（plan と view）の `workflow_id`・`request_revision`・`intent` の食い違いも同じ関数で拒否し、`scripts/response-plan.test.mjs` が手書きの計画を実際に通して確かめる。`scripts/contract-tools.mjs` の意味検査は、ビルド前でも動く段の一致だけを持つ。
 
 ## 試験（模擬だけ）
 

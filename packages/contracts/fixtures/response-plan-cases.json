@@ -2,30 +2,102 @@
   "schema_version": 1,
   "description": "B10-01 の表示・読み上げの計画とモデル呼出しの結果（ADR 0070）。QA01 は形式の拒否、QA02 は出力上限・拒否・途中の JSON・timeout の区別、QA03 は意味検証の失敗（invalid_semantics）と段の食い違いを扱う。intent_views は 24 意図すべての手書きの対応表で、実装の表から生成しない。模擬だけ。",
   "intent_views": [
-    { "intent": "query_schedule", "view_kind": "schedule_cards" },
-    { "intent": "query_mail", "view_kind": "mail_rows" },
-    { "intent": "query_tasks", "view_kind": "task_rows" },
-    { "intent": "query_memory", "view_kind": "memory_rows" },
-    { "intent": "create_task", "view_kind": "completion_line" },
-    { "intent": "create_note", "view_kind": "completion_line" },
-    { "intent": "label_mail", "view_kind": "completion_line" },
-    { "intent": "draft_reply", "view_kind": "completion_line" },
-    { "intent": "create_event", "view_kind": "completion_line" },
-    { "intent": "update_event", "view_kind": "approval_link" },
-    { "intent": "send_mail", "view_kind": "approval_link" },
-    { "intent": "trash_mail", "view_kind": "approval_link" },
-    { "intent": "undo_action", "view_kind": "undo_list_link" },
-    { "intent": "update_task", "view_kind": "approval_link" },
-    { "intent": "research", "view_kind": "accepted_line" },
-    { "intent": "memory_save", "view_kind": "completion_line" },
-    { "intent": "memory_forget", "view_kind": "completion_line" },
-    { "intent": "memory_correct", "view_kind": "completion_line" },
-    { "intent": "dev_status", "view_kind": "speech_bubble" },
-    { "intent": "handoff_screen", "view_kind": "status_line" },
-    { "intent": "smalltalk", "view_kind": "speech_bubble" },
-    { "intent": "general_question", "view_kind": "speech_bubble" },
-    { "intent": "consult", "view_kind": "speech_bubble" },
-    { "intent": "unclear", "view_kind": "clarification" }
+    {
+      "intent": "query_schedule",
+      "view_kind": "schedule_cards"
+    },
+    {
+      "intent": "query_mail",
+      "view_kind": "mail_rows"
+    },
+    {
+      "intent": "query_tasks",
+      "view_kind": "task_rows"
+    },
+    {
+      "intent": "query_memory",
+      "view_kind": "memory_rows"
+    },
+    {
+      "intent": "create_task",
+      "view_kind": "completion_line"
+    },
+    {
+      "intent": "create_note",
+      "view_kind": "completion_line"
+    },
+    {
+      "intent": "label_mail",
+      "view_kind": "completion_line"
+    },
+    {
+      "intent": "draft_reply",
+      "view_kind": "completion_line"
+    },
+    {
+      "intent": "create_event",
+      "view_kind": "completion_line"
+    },
+    {
+      "intent": "update_event",
+      "view_kind": "approval_link"
+    },
+    {
+      "intent": "send_mail",
+      "view_kind": "approval_link"
+    },
+    {
+      "intent": "trash_mail",
+      "view_kind": "approval_link"
+    },
+    {
+      "intent": "undo_action",
+      "view_kind": "undo_list_link"
+    },
+    {
+      "intent": "update_task",
+      "view_kind": "approval_link"
+    },
+    {
+      "intent": "research",
+      "view_kind": "accepted_line"
+    },
+    {
+      "intent": "memory_save",
+      "view_kind": "completion_line"
+    },
+    {
+      "intent": "memory_forget",
+      "view_kind": "completion_line"
+    },
+    {
+      "intent": "memory_correct",
+      "view_kind": "completion_line"
+    },
+    {
+      "intent": "dev_status",
+      "view_kind": "speech_bubble"
+    },
+    {
+      "intent": "handoff_screen",
+      "view_kind": "status_line"
+    },
+    {
+      "intent": "smalltalk",
+      "view_kind": "speech_bubble"
+    },
+    {
+      "intent": "general_question",
+      "view_kind": "speech_bubble"
+    },
+    {
+      "intent": "consult",
+      "view_kind": "speech_bubble"
+    },
+    {
+      "intent": "unclear",
+      "view_kind": "clarification"
+    }
   ],
   "plans": [
     {
@@ -68,7 +140,8 @@
           "template_id": "schedule.count",
           "template_version": "1",
           "parts": ["予定は1件です。"]
-        }
+        },
+        "outcome": "done"
       }
     },
     {
@@ -97,7 +170,8 @@
           "template_version": null
         },
         "facts": [],
-        "speech": null
+        "speech": null,
+        "outcome": "done"
       }
     },
     {
@@ -125,7 +199,8 @@
           "template_id": "review.screen",
           "template_version": "1",
           "parts": ["画面で確認してください。"]
-        }
+        },
+        "outcome": "needs_approval"
       }
     },
     {
@@ -153,7 +228,8 @@
           "template_id": "clarify.fixed",
           "template_version": "1",
           "parts": ["どの予定ですか？"]
-        }
+        },
+        "outcome": "needs_clarification"
       }
     },
     {
@@ -177,7 +253,8 @@
           "template_version": null
         },
         "facts": [],
-        "speech": null
+        "speech": null,
+        "outcome": "done"
       }
     },
     {
@@ -201,7 +278,8 @@
           "template_version": null
         },
         "facts": [],
-        "speech": null
+        "speech": null,
+        "outcome": "done"
       }
     }
   ],
@@ -266,7 +344,11 @@
       "id": "qa02-outcome-refused",
       "schema": "ModelOutcome",
       "valid": true,
-      "value": { "kind": "refused", "retryable": false, "usage": null }
+      "value": {
+        "kind": "refused",
+        "retryable": false,
+        "usage": null
+      }
     },
     {
       "id": "qa02-outcome-invalid-schema",
@@ -288,31 +370,51 @@
       "id": "qa02-outcome-timeout",
       "schema": "ModelOutcome",
       "valid": true,
-      "value": { "kind": "timeout", "retryable": true, "usage": null }
+      "value": {
+        "kind": "timeout",
+        "retryable": true,
+        "usage": null
+      }
     },
     {
       "id": "qa02-outcome-unavailable",
       "schema": "ModelOutcome",
       "valid": true,
-      "value": { "kind": "unavailable", "retryable": true, "usage": null }
+      "value": {
+        "kind": "unavailable",
+        "retryable": true,
+        "usage": null
+      }
     },
     {
       "id": "qa02-outcome-budget-denied",
       "schema": "ModelOutcome",
       "valid": true,
-      "value": { "kind": "budget_denied", "retryable": false, "usage": null }
+      "value": {
+        "kind": "budget_denied",
+        "retryable": false,
+        "usage": null
+      }
     },
     {
       "id": "qa02-outcome-cancelled",
       "schema": "ModelOutcome",
       "valid": true,
-      "value": { "kind": "cancelled", "retryable": false, "usage": null }
+      "value": {
+        "kind": "cancelled",
+        "retryable": false,
+        "usage": null
+      }
     },
     {
       "id": "qa02-outcome-stale",
       "schema": "ModelOutcome",
       "valid": true,
-      "value": { "kind": "stale", "retryable": false, "usage": null }
+      "value": {
+        "kind": "stale",
+        "retryable": false,
+        "usage": null
+      }
     },
     {
       "id": "qa03-outcome-invalid-semantics",
@@ -459,7 +561,8 @@
         },
         "facts": [],
         "speech": null,
-        "reply_text": "モデルが作った本文"
+        "reply_text": "モデルが作った本文",
+        "outcome": "done"
       }
     },
     {
@@ -484,7 +587,8 @@
         },
         "facts": [],
         "speech": null,
-        "body": "メールの本文"
+        "body": "メールの本文",
+        "outcome": "done"
       }
     },
     {
@@ -510,7 +614,8 @@
         "facts": [],
         "speech": null,
         "approved": true,
-        "route": "remote_mutation"
+        "route": "remote_mutation",
+        "outcome": "needs_approval"
       }
     },
     {
@@ -557,7 +662,11 @@
       "id": "qa01-outcome-unknown-kind",
       "schema": "ModelOutcome",
       "valid": false,
-      "value": { "kind": "partial", "retryable": false, "usage": null }
+      "value": {
+        "kind": "partial",
+        "retryable": false,
+        "usage": null
+      }
     },
     {
       "id": "qa02-outcome-failure-with-value",
@@ -596,7 +705,8 @@
           "template_version": null
         },
         "facts": [],
-        "speech": null
+        "speech": null,
+        "outcome": "done"
       }
     },
     {
@@ -621,7 +731,8 @@
           "template_version": null
         },
         "facts": [],
-        "speech": null
+        "speech": null,
+        "outcome": "done"
       }
     },
     {
@@ -646,7 +757,8 @@
           "template_version": null
         },
         "facts": [],
-        "speech": null
+        "speech": null,
+        "outcome": "done"
       }
     }
   ],
@@ -656,6 +768,36 @@
       "intent": "query_mail",
       "view_kind": "schedule_cards",
       "expected_errors": ["view_kind_mismatch"]
+    }
+  ],
+  "outcome_cases": [
+    {
+      "id": "outcome-done",
+      "intent": "query_schedule",
+      "outcome": "done",
+      "view_kind": "schedule_cards",
+      "expected_errors": []
+    },
+    {
+      "id": "outcome-needs-clarification",
+      "intent": "label_mail",
+      "outcome": "needs_clarification",
+      "view_kind": "clarification",
+      "expected_errors": []
+    },
+    {
+      "id": "outcome-needs-approval",
+      "intent": "create_event",
+      "outcome": "needs_approval",
+      "view_kind": "approval_link",
+      "expected_errors": []
+    },
+    {
+      "id": "outcome-approval-not-possible",
+      "intent": "query_schedule",
+      "outcome": "needs_approval",
+      "view_kind": "approval_link",
+      "expected_errors": ["approval_not_possible"]
     }
   ]
 }

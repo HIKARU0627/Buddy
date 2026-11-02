@@ -2065,6 +2065,11 @@
         "intent": {
           "$ref": "#/$defs/IntentName"
         },
+        "outcome": {
+          "type": "string",
+          "enum": ["done", "needs_approval", "needs_clarification"],
+          "description": "この計画の結果の状態。聞き返しと承認は、通常完了の結果の種類より優先する（ADR 0005・0070）。"
+        },
         "view": {
           "$ref": "#/$defs/ResultView"
         },
@@ -2090,6 +2095,7 @@
         "workflow_id",
         "request_revision",
         "intent",
+        "outcome",
         "view",
         "facts",
         "speech"

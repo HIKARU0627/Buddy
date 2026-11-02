@@ -3062,6 +3062,10 @@ export interface ResponsePlan {
   workflow_id: Id;
   request_revision: RequestRevision;
   intent: IntentName;
+  /**
+   * この計画の結果の状態。聞き返しと承認は、通常完了の結果の種類より優先する（ADR 0005・0070）。
+   */
+  outcome: 'done' | 'needs_approval' | 'needs_clarification';
   view: ResultView;
   facts: ResultFact[];
   speech: ResponseSpeech | null;

@@ -27,13 +27,14 @@ const cases = parseStrictJson(
 
 // 手書きの intent_views から最小の計画を組み立てる。期待値（結果の種類）は fixture に手で書いた値で、
 // 実装の表から作らない。組み立てた計画そのものを domain の意味検査へ通す。
-const planFor = (intent, viewKind) => {
+const planFor = (intent, viewKind, outcome = 'done') => {
   const workflowId = '00000000-0000-4000-8000-000000000301';
   return {
     schema: 'buddy.response-plan.v1',
     workflow_id: workflowId,
     request_revision: '1',
     intent,
+    outcome,
     view: {
       workflow_id: workflowId,
       request_revision: '1',
@@ -88,6 +89,18 @@ test('a plan view whose kind differs from the intent table is rejected', () => {
   const wrong = planFor('query_mail', 'schedule_cards');
   assert(validators['ResponsePlan'](wrong));
   assert.deepEqual(responsePlanErrors(wrong), ['view_kind_mismatch']);
+});
+
+test('clarification and approval take priority over the normal result kind', () => {
+  // 期待する種類は resultViewKind の出力そのもの。既存の優先規則と計画の検査がずれていないか、
+  // 両方を同じ計画で確かめる（ADR 0005・0070）。
+  for (const entry of cases.outcome_cases) {
+    const expectedKind = resultViewKind(entry.intent, entry.outcome);
+    assert.equal(expectedKind, entry.view_kind, entry.id);
+    const plan = planFor(entry.intent, expectedKind, entry.outcome);
+    assert(validators['ResponsePlan'](plan), entry.id);
+    assert.deepEqual(responsePlanErrors(plan), entry.expected_errors, entry.id);
+  }
 });
 
 test('model outcomes keep the failure causes and never mark a success retryable', () => {

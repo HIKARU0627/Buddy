@@ -289,6 +289,10 @@ export class DesktopCoreLink {
   #home: HomeReportResult | null = null;
   #lockState: ClientLockState = 'unknown';
   #started = false;
+  // ロック状態が変わった回数。非同期の待機をまたいでロックされたかを判定する。
+  #lockGeneration = 0;
+  // ペアリングの取消の世代。保護の確認（非同期）を待つ間の「やめる」で、始めようとした手順を進めない。
+  #pairingGeneration = 0;
   // 登録した中枢の宛先（再登録の宛先の初期値。秘密ではない）。
   #hubTarget: { readonly host: string; readonly port: number } | null = null;
   // 中枢の画面の端末として中枢が認めたか（承認待ちの申請の一覧が 200）。null は未確認（B03-06）。
@@ -429,14 +433,18 @@ export class DesktopCoreLink {
     return this.#connection?.state ?? null;
   }
 
-  start(lockState: ClientLockState): void {
+  // 保存した認証情報を読んで接続を始める。後継の safeStorage は非同期なので、読み終わるまで待つ
+  // （Electron の層は app の用意ができてからこれを待つ。ADR 0025 の追記）。
+  async start(lockState: ClientLockState): Promise<void> {
     if (this.#started) return;
     this.#started = true;
     this.#lockState = lockState;
-    const loaded = loadCredential(
+    const loaded = await loadCredential(
       this.#options.credentialPath,
       this.#options.protector,
     );
+    // 読んでいる間に止められた（終了）なら、つながない。
+    if (!this.#started) return;
     switch (loaded.kind) {
       case 'unprotected':
         this.#log(`credential_unprotected:${loaded.reason}`);
@@ -466,6 +474,7 @@ export class DesktopCoreLink {
   setLockState(lockState: ClientLockState): void {
     if (lockState === this.#lockState) return;
     this.#lockState = lockState;
+    this.#lockGeneration += 1;
     if (lockState !== 'unlocked') this.#bumpGeneration();
     this.#connection?.setLockState(lockState);
     if (lockState === 'unlocked') {
@@ -573,12 +582,13 @@ export class DesktopCoreLink {
   }
 
   // 接続・ペアリングのチャネルの要求。ioState は端末の状態（ロック・停止）。
-  handleIpc(
+  // 保護の確認（後継の safeStorage は非同期）を待つため非同期。
+  async handleIpc(
     ipcChannel: string,
     raw: unknown,
     sender: DesktopIpcSender,
     ioState: DesktopIoState,
-  ): ConnectionIpcOutcome {
+  ): Promise<ConnectionIpcOutcome> {
     const contract = this.#options.contract;
     if (
       !contract.isRequest(raw) ||
@@ -593,8 +603,11 @@ export class DesktopCoreLink {
     const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
     if (!admission.ok)
       return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const lockGeneration = this.#lockGeneration;
+    let responseLockState = ioState.lockState;
     switch (raw.channel) {
       case 'desktop.pairing_begin': {
+        const pairingGeneration = this.#pairingGeneration;
         if (this.#registration === 'secure_storage_unavailable')
           return this.#reject(
             raw.request_id,
@@ -602,7 +615,7 @@ export class DesktopCoreLink {
             'secure_storage_unavailable',
           );
         // 保護が使えなくなっていないかを始める前に確かめる（受け取っても保存できないトークンを作らない）。
-        if (!protectionCheck(this.#options.protector).ok) {
+        if (!(await protectionCheck(this.#options.protector)).ok) {
           this.#registration = 'secure_storage_unavailable';
           this.#options.onChange();
           return this.#reject(
@@ -611,6 +624,23 @@ export class DesktopCoreLink {
             'secure_storage_unavailable',
           );
         }
+        // 確認を待つ間にロック・停止した、または取り消された開始は進めない（証明書の取得も始めない）。
+        const current = this.#currentIoState(ioState, lockGeneration);
+        responseLockState = current.lockState;
+        const stillAllowed = admitDesktopRequest(
+          raw.channel,
+          null,
+          current,
+          sender,
+        );
+        if (!stillAllowed.ok)
+          return this.#reject(raw.request_id, raw.channel, stillAllowed.reason);
+        if (pairingGeneration !== this.#pairingGeneration)
+          return this.#reject(
+            raw.request_id,
+            raw.channel,
+            'pairing_step_mismatch',
+          );
         if (this.#registration === 'registered')
           return this.#reject(
             raw.request_id,
@@ -659,6 +689,8 @@ export class DesktopCoreLink {
           );
         break;
       case 'desktop.pairing_cancel':
+        // 保護の確認を待っている開始要求も、この取消で進めない。
+        this.#pairingGeneration += 1;
         this.#pairing.cancel();
         break;
       default:
@@ -671,8 +703,30 @@ export class DesktopCoreLink {
         { connection: unknown }
       >['channel'],
       outcome: 'ok',
-      connection: this.view(ioState.lockState),
+      connection: this.view(responseLockState),
     });
+  }
+
+  // 非同期の待機をまたいだ後の入出力の状態。ロックは待機の間に変わったときだけ、このクラスが受け取った最新値を
+  // 使う（試験は要求ごとに状態を渡すので、変わっていなければ渡された値のまま）。停止・io_epoch は Electron の
+  // 層の今の値を優先する。
+  #currentIoState(
+    fallback: DesktopIoState,
+    lockGeneration: number,
+  ): DesktopIoState {
+    let supplied: DesktopIoState;
+    try {
+      supplied = this.#options.ioState?.() ?? fallback;
+    } catch {
+      supplied = fallback;
+    }
+    return {
+      ...supplied,
+      lockState:
+        this.#lockGeneration === lockGeneration
+          ? fallback.lockState
+          : this.#lockState,
+    };
   }
 
   // --- 内部 ---

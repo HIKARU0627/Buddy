@@ -54,7 +54,8 @@
 - 拒否: 復旧キーが違う（`backup_unreadable`）、本体を 1 バイト書き換えた（`backup_unreadable`）、封筒が `private` を含む（`manifest_invalid`）、封筒の系譜が中枢と違う（`ledger_lineage_mismatch`）、書きかけの台帳の一時ファイルがある（`latest_ledger_unconfirmed`・`settings_only_eligible: true`）、台帳の別ファイルが壊れている（`ledger_chain_invalid`）、中枢の DB があるのに読めない（`latest_ledger_unconfirmed`・`settings_only_eligible: true`。別ファイルだけで最新を確定しない）、中枢の DB と台帳のファイルをどちらも失った（`latest_ledger_unconfirmed`・`settings_only_eligible: true`）、Core が動いている（`core_running`・封筒を読まない）。
 - 鍵: `backup-keys.json` を失っても、KeyStore に封筒と同じ ID で違う素材の鍵があれば、`keyInstallPlan` の衝突として止める（`backup_unreadable`）。KeyStore の読み取り障害・不正な保存値は「鍵がない」と区別し、`backup_key_missing`・`data_key_missing` 以外は `backup_unreadable` で止める（衝突を確かめられないため）。
 - 台帳の分岐: 同じ系譜の DB と別ファイルの共通の世代で `entry_hash` が食い違うときは `ledger_chain_invalid`（`ledgerHistoriesDiverge` の単体試験と、破損したファイルの試験）。
-- 期限の時計: 保存期限の掃除の時計の記録（`clock-state.json`）の最終確認時刻が復元の「今」より先（`clock_regression`）・記録が読めない（`clock_regression`）。バックアップの状態（`backup-state.json`）が壊れているときも、より新しい最終確認時刻を失っているかもしれないので同じく `clock_regression`（正常な `clock-state.json` だけを信じない）。
+- 期限の時計: 保存期限の掃除の時計の記録（`clock-state.json`）の最終確認時刻が復元の「今」より先（`clock_regression`）・記録が読めない（`clock_regression`）。既存の中枢 DB があるのに記録がない場合も、新規の機器への復元と違って以前の最終確認時刻を失っているので `clock_regression`。バックアップの状態（`backup-state.json`）が壊れているときも、より新しい最終確認時刻を失っているかもしれないので同じく `clock_regression`（正常な `clock-state.json` だけを信じない）。
+- 作業用の DB を開けない: 復号した本体が SQLite として開けない（壊れた・未対応の形）ときは、例外で CLI 全体を抜けず、`buddy.restore-check.v1` の拒否レポートを返して `backup_unreadable` で止める。平文は残さない。
 - 平文を残さない: 作業用の DB の書き込みが途中で失敗しても、`restore-work/restore-<restore_id>/` に平文が残らない。削除（`rm`）が失敗したときは成功（終了コード 0）を返さず、`plaintext_delete_failed` で止める。
 - 復旧キーの入力: TTY でない（`not_a_tty`）、空（`input_empty`）、形が違う（`invalid_code`）、Ctrl-C（`interrupted`）。区切りと小文字を受け付け、値が案内の文に出ない。
 

@@ -666,9 +666,14 @@ export async function runRestoreCheck(
         Date.parse(state.value.last_checked_at) > Date.parse(lastCheckedAt))
     )
       lastCheckedAt = state.value.last_checked_at;
-    // 時計の記録が読めないときは期限を判定できない。バックアップの状態（backup-state.json）が壊れている場合も、
-    // より新しい最終確認時刻を失っているかもしれないので、同じく確認できない側に倒す。
-    const clockUnreadable = clockState.status === 'invalid' || !state.ok;
+    // 時計の記録が読めないときは期限を判定できない。既存の中枢 DB があるのに保存期限の時計の記録がない場合も、
+    // 以前に確認した時刻を失っているので、新しい機器への復元と違って判定できない側に倒す（ADR 0058 の U136）。
+    // バックアップの状態（backup-state.json）が壊れている場合も、より新しい最終確認時刻を失っているかもしれない。
+    const hubDbExists = await exists(join(options.dataDir, DB_FILE));
+    const clockUnreadable =
+      clockState.status === 'invalid' ||
+      (clockState.status === 'missing' && hubDbExists) ||
+      !state.ok;
     // 台帳の鍵の KeyStore の ID。backup-keys.json がなくても、封筒の台帳の鍵が KeyStore にあればそれを渡す。
     let ledgerKeyId = keyFile.ok
       ? (keyWrapFor(keyFile.value.key_wraps, 'ledger_hmac_key')?.key_id ?? null)
@@ -722,17 +727,24 @@ export async function runRestoreCheck(
 
     // --- 段階 2: 期限切れの削除の前提 ---
     let purgeAppliedAt: string | null = null;
+    // 作業用の DB を開けない（壊れた・このコードが知らない形）ときも、例外で CLI 全体を抜けずに拒否レポートを返す。
+    let workingDbUnreadable = false;
     if (workingPath !== null) {
-      const purged = await (
-        options.purge ??
-        ((path: string, dir: string) =>
-          purgeWorkingDatabase(path, dir, options.now))
-      )(workingPath, workDir);
-      if (purged.ok) purgeAppliedAt = iso(options.now());
-      else
-        log(
-          `期限切れの削除を当てられませんでした（${purged.reasons.join(', ')}）。`,
-        );
+      try {
+        const purged = await (
+          options.purge ??
+          ((path: string, dir: string) =>
+            purgeWorkingDatabase(path, dir, options.now))
+        )(workingPath, workDir);
+        if (purged.ok) purgeAppliedAt = iso(options.now());
+        else
+          log(
+            `期限切れの削除を当てられませんでした（${purged.reasons.join(', ')}）。`,
+          );
+      } catch (error) {
+        workingDbUnreadable = true;
+        log(`作業用の DB を開けませんでした（${(error as Error).name}）。`);
+      }
     }
     const openCheck = restoreOpenCheck({
       manifest_created_at: manifest.created_at,
@@ -746,13 +758,19 @@ export async function runRestoreCheck(
       purge_applied_at: purgeAppliedAt,
     });
     // 保存期限の時計の記録が読めないときは、期限を判定できない（ADR 0047 の clock_regression）。
-    const expiryDecision = clockUnreadable
-      ? {
-          stage: 'expiry_purge' as const,
-          status: 'failed' as const,
-          reasons: ['clock_regression' as const],
-        }
-      : openCheck.decision;
+    // 作業用の DB を開けないときは、取り出した本体を使えないので backup_unreadable。
+    const expiryFailures = [
+      ...(workingDbUnreadable ? (['backup_unreadable'] as const) : []),
+      ...(clockUnreadable ? (['clock_regression'] as const) : []),
+    ];
+    const expiryDecision =
+      expiryFailures.length > 0
+        ? {
+            stage: 'expiry_purge' as const,
+            status: 'failed' as const,
+            reasons: expiryFailures,
+          }
+        : openCheck.decision;
     stages.push({
       stage: 'expiry_purge',
       status: expiryDecision.status === 'failed' ? 'failed' : 'passed',

@@ -380,6 +380,36 @@ test('復元の確認: バックアップの状態ファイルが壊れている
   assert.ok(report.stages[1]?.reasons.includes('clock_regression'));
 });
 
+test('復元の確認: 既存の中枢 DB があるのに時計の記録がないときは、期限を判定せず止める', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  await rm(join(r.dataDir, CLOCK_STATE_FILE), { force: true });
+  const report = await check(r);
+  assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+  assert.equal(report.stages[0]?.status, 'passed');
+  assert.ok(report.stages[1]?.reasons.includes('clock_regression'));
+});
+
+test('復元の確認: 作業用の DB を開けないときも、拒否レポートを返して平文を残さない', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  const report = await check(r, {
+    writeWorkingDatabase: async (workDir) => {
+      await mkdir(workDir, { recursive: true });
+      const path = join(workDir, DB_FILE);
+      await writeFile(path, 'this is not a sqlite database');
+      return path;
+    },
+  });
+  assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+  assert.equal(report.stages[0]?.status, 'passed');
+  assert.ok(
+    report.stages[1]?.reasons.includes('backup_unreadable'),
+    JSON.stringify(report.stages),
+  );
+  assert.deepEqual(await workDirEntries(r.dataDir), []);
+});
+
 test('復元の確認: 作業用の平文の DB を消せないときは成功を返さず、明示的に失敗を報告する', async (t) => {
   const r = await rig(t);
   await r.handle.stop('test');

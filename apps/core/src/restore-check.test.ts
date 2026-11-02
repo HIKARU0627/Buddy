@@ -331,6 +331,57 @@ test('復元の確認: 中枢の DB が読めないときは、別ファイル�
   assert.equal(report.settings_only_eligible, true);
 });
 
+test('復元の確認: 中枢の DB の台帳の連鎖が壊れているときは設定だけの候補にもしない', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  const db = openWriteConnection(join(r.dataDir, DB_FILE), {
+    platform: storagePlatform(process.platform),
+  });
+  try {
+    // 正しい形で 1 件入れるが、保存する hash を計算値と違う値にする（読むときに食い違う）。
+    db.prepare(
+      'INSERT INTO forget_ledger (forgetting_generation, entry_id, recorded_at, entry_hash, item_count) VALUES (1, ?, ?, ?, 1)',
+    ).run(randomUUID(), T0, '1'.repeat(64));
+    db.prepare(
+      "INSERT INTO forget_ledger_items (forgetting_generation, item_kind, item_id) VALUES (1, 'turn', ?)",
+    ).run(randomUUID());
+  } finally {
+    db.close();
+  }
+  const report = await check(r);
+  assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+  assert.equal(report.stages[0]?.status, 'failed');
+  assert.ok(
+    report.stages[0]?.reasons.includes('ledger_chain_invalid'),
+    JSON.stringify(report.stages),
+  );
+  assert.equal(report.settings_only_eligible, false);
+});
+
+test('復元の確認: 封筒の鍵 ID が別の用途の KeyStore 項目にある衝突も見つける', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  const header = await readBackupFileHeader(r.backupPath);
+  assert.ok(header.ok);
+  const manifest = header.manifest as Record<string, unknown>;
+  const wrap = (manifest['key_wraps'] as BackupKeyWrapValue[]).find(
+    (entry) => entry.purpose === 'backup_file',
+  );
+  assert.ok(wrap !== undefined);
+  // 鍵の記録ファイルを失い、封筒の backup_file の ID を ledger_hmac_key の項目にも置く（別用途の衝突）。
+  await rm(join(r.dataDir, BACKUP_KEY_FILE), { force: true });
+  const placed = await r.keys.put(
+    'ledger_hmac_key',
+    wrap.key_id,
+    Buffer.alloc(32, 0x6a),
+  );
+  assert.equal(placed.ok, true, JSON.stringify(placed));
+  const report = await check(r);
+  assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+  assert.equal(report.stages[0]?.status, 'passed');
+  assert.ok(report.stages[1]?.reasons.includes('backup_unreadable'));
+});
+
 test('復元の確認: KeyStore の読み取り障害・不正な保存値を鍵の欠落として扱わない', async (t) => {
   const r = await rig(t);
   await r.handle.stop('test');

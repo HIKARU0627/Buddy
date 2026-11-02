@@ -35,6 +35,7 @@ import { DATA_KEY_ID } from '@buddy/platform';
 import type { BackupKeyStore, KeyStore } from '@buddy/platform';
 import {
   DbWorkerClient,
+  ForgetRejection,
   decryptBackupPayload,
   exportForgetLedger,
   manifestPayloadKey,
@@ -242,6 +243,9 @@ interface HubLedgerRead {
   readonly diverged: boolean;
   // 中枢の DB はあるのに、開けない・台帳を取り出せない。正本を読めないので、別ファイルだけで最新を確定しない。
   readonly db_unreadable: boolean;
+  // 中枢の DB の台帳の連鎖が壊れている（hash・項目の数・世代の連続性）。読み取り障害とは区別して
+  // ledger_chain_invalid にし、設定だけの復元もしない。
+  readonly db_chain_invalid: boolean;
 }
 
 // 中枢の DB（正本）と台帳の別ファイルから、段階 1 の候補を作る。ファイルが DB より進んでいれば、その世代も
@@ -265,6 +269,7 @@ async function readHubLedger(
   let dbLedgerId: string | null = null;
   let diverged = false;
   let dbUnreadable = false;
+  let dbChainInvalid = false;
   const dbPath = join(dataDir, DB_FILE);
   if (await exists(dbPath)) {
     try {
@@ -303,8 +308,15 @@ async function readHubLedger(
       // DB がない・開けない・台帳の連鎖が壊れている。候補にしない（段階 1 で止まる）。
       // あるのに読めないときは、別ファイルだけで「知っている最新」を確定しない（古い別ファイルと古いバックアップの
       // 組み合わせで、読めない正本より新しい忘却を落とし得る）。DB がない場合はここへ来ない。
-      dbUnreadable = true;
-      log(`中枢の DB を読めませんでした（${(error as Error).name}）。`);
+      if (error instanceof ForgetRejection) {
+        // 台帳の連鎖の破損（hash・項目の数・世代の連続性・系譜なし）は、読み取り障害と違って「壊れた台帳」。
+        // ADR 0047 の段階 1 と U75 に従い、設定だけの復元の候補にもしない。
+        dbChainInvalid = true;
+        log('中枢の DB の台帳の連鎖が壊れています。');
+      } else {
+        dbUnreadable = true;
+        log(`中枢の DB を読めませんでした（${(error as Error).name}）。`);
+      }
     }
   }
   if (ledgerFile !== null) {
@@ -345,6 +357,7 @@ async function readHubLedger(
     recorded_key_id: recorded,
     diverged,
     db_unreadable: dbUnreadable,
+    db_chain_invalid: dbChainInvalid,
   };
 }
 
@@ -496,6 +509,7 @@ export async function runRestoreCheck(
       string,
       { purpose: 'backup_file' | 'ledger_hmac_key'; key_id: string }
     >();
+    const keyIds = new Set<string>();
     for (const source of [
       ...(keyFile.ok ? [keyFile.value.key_wraps] : []),
       wraps,
@@ -503,12 +517,15 @@ export async function runRestoreCheck(
       for (const purpose of ['backup_file', 'ledger_hmac_key'] as const) {
         const wrap = keyWrapFor(source, purpose);
         if (wrap === null) continue;
-        referenced.set(`${purpose}:${wrap.key_id}`, {
-          purpose,
-          key_id: wrap.key_id,
-        });
+        keyIds.add(wrap.key_id);
       }
     }
+    // 封筒の鍵 ID は、宣言された用途だけでなく両方の用途の KeyStore の項目で読む。KeyStore は用途ごとに別の
+    // アカウントなので、同じ ID が別の用途にある衝突は、その用途で読まないと見つからない（ADR 0047 の
+    // key_material_conflict）。データ鍵の ID も含める。
+    for (const keyId of keyIds)
+      for (const purpose of ['backup_file', 'ledger_hmac_key'] as const)
+        referenced.set(`${purpose}:${keyId}`, { purpose, key_id: keyId });
     for (const entry of referenced.values()) {
       const current = await options.backupKeys.read(
         entry.purpose,
@@ -520,7 +537,11 @@ export async function runRestoreCheck(
         if (current.reason !== 'backup_key_missing') keyStoreReadFailed = true;
         continue;
       }
-      const restored = unwrapped[entry.purpose];
+      // この用途の復元する鍵が同じ ID のときだけ、素材を比べる（別の用途の項目は用途の衝突として扱う）。
+      const restored =
+        keyWrapFor(wraps, entry.purpose)?.key_id === entry.key_id
+          ? unwrapped[entry.purpose]
+          : undefined;
       keyStoreEntries.push({
         purpose: entry.purpose,
         key_id: entry.key_id,
@@ -697,10 +718,11 @@ export async function runRestoreCheck(
     });
     // 同じ系譜の DB と別ファイルの履歴が食い違う（分岐）ときは、どちらが正しいかを決められない。最新の忘却を
     // 落とし得るので段階 1 で止める（設定も戻さない）。
-    const diverged = hub.diverged || ledgerFileProblem === 'corrupt';
+    const diverged =
+      hub.diverged || hub.db_chain_invalid || ledgerFileProblem === 'corrupt';
     if (diverged)
       log(
-        '中枢の DB と台帳の別ファイルの履歴が食い違うか、ファイルが壊れています。',
+        '中枢の DB の台帳の連鎖が壊れているか、台帳の別ファイルの履歴と食い違うか、ファイルが壊れています。',
       );
     const ledgerDecision = diverged
       ? {

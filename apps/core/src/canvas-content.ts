@@ -100,18 +100,21 @@ const pick = <T>(pool: readonly T[], index: number): T =>
   pool[index % pool.length] as T;
 
 // 物の部品と参照の件数から、模擬の中身を作る。openIndex は本文を開く行（mail_card だけ。範囲外は呼び出し側が拒否する）。
+// text は、中枢が持つ本文（画面へ回した結果。U120、ADR 0066）があればそれを返す。
 export function mockCanvasContent(
   item: Pick<CanvasItem, 'component' | 'data'>,
   openIndex: number | null,
+  text: string | null = null,
 ): CanvasContent {
   // 生成型は上限つきの配列を長さごとの組の和にするので、動的に作った配列は型を合わせるために断定する。形は、返す前に Schema と
   // domain の検査（postCanvasContent）が確かめる。
-  return build(item, openIndex) as unknown as CanvasContent;
+  return build(item, openIndex, text) as unknown as CanvasContent;
 }
 
 function build(
   item: Pick<CanvasItem, 'component' | 'data'>,
   openIndex: number | null,
+  text: string | null,
 ): Record<string, unknown> {
   const count = item.data.item_refs.length;
   const indexes = Array.from({ length: count }, (_, index) => index);
@@ -199,6 +202,9 @@ function build(
         }),
       };
     case 'text':
-      return { component: 'text', text: TEXT_BODY };
+      return {
+        component: 'text',
+        text: text !== null && text.trim().length > 0 ? text : TEXT_BODY,
+      };
   }
 }

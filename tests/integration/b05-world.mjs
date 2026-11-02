@@ -68,6 +68,7 @@ export async function withWorld(options, body) {
       const closedToCore = [];
       const renewals = [];
       const renewalBodies = [];
+      const silence = [];
       const renewResponses = [];
       const coreEvents = [];
       const logs = [];
@@ -241,7 +242,7 @@ export async function withWorld(options, body) {
           save: () => undefined,
           log: (code) => logs.push(code),
         }),
-        onSilenceExtension: () => undefined,
+        onSilenceExtension: (ms) => silence.push({ at: clock.mono(), ms }),
         onChange: () => {
           if (voice === null) return;
           device.setVoice({
@@ -313,6 +314,7 @@ export async function withWorld(options, body) {
         sidebandHealthy: true,
         lastPongAt: null,
         renewalBodies,
+        silence,
         providerCloses: 'auto',
         providerTruth,
         rig,

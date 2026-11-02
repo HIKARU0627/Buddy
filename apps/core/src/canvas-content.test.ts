@@ -225,6 +225,16 @@ test('the mock content has the hand-written shape of each component, keeps no Co
   assert(text.component === 'text');
   assert(text.text.includes('\n'));
 
+  // 画面へ回した結果の本文（U120、ADR 0066）は、渡された本文をそのまま返す。ほかの部品には使わない。
+  assert.deepEqual(mockCanvasContent(itemOf('text', 0), null, '届いた本文'), {
+    component: 'text',
+    text: '届いた本文',
+  });
+  assert.equal(
+    mockCanvasContent(itemOf('list', 1), null, '届いた本文').component,
+    'list',
+  );
+
   // 参照が 0・1・7・50 件のどれでも、形式と意味の検査を通る。中身は中枢の識別子（参照の id）を含まない。
   for (const component of COMPONENTS)
     for (const refs of [0, 1, 7, 50]) {

@@ -36,7 +36,7 @@ import type { BackupKeyWrapValue } from '@buddy/storage';
 import { createApiContract } from './api-contract.js';
 import { onCleanup } from './api-test-support.js';
 import { BACKUP_CONFIG_FILE } from './backup-config.js';
-import { BACKUP_KEY_FILE } from './backup-files.js';
+import { BACKUP_KEY_FILE, BACKUP_STATE_FILE } from './backup-files.js';
 import { CLOCK_STATE_FILE } from './paths.js';
 import {
   inspectBackupSetup,
@@ -144,6 +144,8 @@ async function check(
   overrides: {
     readonly recoveryKey?: Uint8Array;
     readonly backupPath?: string;
+    readonly dataKeys?: ReturnType<typeof createMockKeyStore>;
+    readonly backupKeys?: MockBackupKeyStore;
     readonly writeWorkingDatabase?: (
       workDir: string,
       bytes: Uint8Array,
@@ -159,8 +161,10 @@ async function check(
     contract,
     backupPath: overrides.backupPath ?? r.backupPath,
     recoveryKey,
-    dataKeys: createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
-    backupKeys: r.keys,
+    dataKeys:
+      overrides.dataKeys ??
+      createMockKeyStore({ stored: DATA_KEY.toString('base64') }),
+    backupKeys: overrides.backupKeys ?? r.keys,
     now: () => new Date(T0 + 1000),
     lock: true,
     log: () => undefined,
@@ -307,6 +311,73 @@ test('復元の確認: backup-keys.json を失っても、KeyStore に同じ ID 
   const report = await check(r);
   assert.equal(report.outcome, 'rejected');
   assert.ok(report.stages[1]?.reasons.includes('backup_unreadable'));
+});
+
+test('復元の確認: 中枢の DB が読めないときは、別ファイルだけで最新の台帳を確定しない', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  // DB はあるが、台帳の表を持たない（読めない）。別ファイルには古い世代の連鎖が残っている。
+  const dbPath = join(r.dataDir, DB_FILE);
+  for (const suffix of ['-wal', '-shm'])
+    await rm(`${dbPath}${suffix}`, { force: true });
+  await writeFile(dbPath, Buffer.alloc(0));
+  const report = await check(r);
+  assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+  assert.equal(report.stages[0]?.status, 'failed');
+  assert.ok(
+    report.stages[0]?.reasons.includes('latest_ledger_unconfirmed'),
+    JSON.stringify(report.stages),
+  );
+  assert.equal(report.settings_only_eligible, true);
+});
+
+test('復元の確認: KeyStore の読み取り障害・不正な保存値を鍵の欠落として扱わない', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+
+  await t.test('バックアップの鍵が読めない', async () => {
+    const report = await check(r, {
+      backupKeys: createMockBackupKeyStore({ available: false }),
+    });
+    assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+    assert.equal(report.stages[0]?.status, 'passed');
+    assert.ok(report.stages[1]?.reasons.includes('backup_unreadable'));
+  });
+
+  await t.test('データ鍵が読めない', async () => {
+    const report = await check(r, {
+      dataKeys: createMockKeyStore({ available: false }),
+    });
+    assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+    assert.equal(report.stages[0]?.status, 'passed');
+    assert.ok(report.stages[1]?.reasons.includes('backup_unreadable'));
+  });
+});
+
+test('復元の確認: バックアップの状態ファイルが壊れているときは、正常な時計の記録だけを信じない', async (t) => {
+  const r = await rig(t);
+  await r.handle.stop('test');
+  // 保存期限の時計の記録は正常（復元の「今」より前）。
+  const at = '2031-02-01T00:00:00.000Z';
+  await writeFile(
+    join(r.dataDir, CLOCK_STATE_FILE),
+    JSON.stringify({
+      schema: 'buddy.clock-state.v1',
+      revision: 0,
+      last_checked_at: at,
+      epoch: randomUUID(),
+      epoch_started_at: at,
+      written_at: at,
+      rechecks: [],
+      storage_boundary: null,
+    }),
+  );
+  // より新しい最終確認時刻を持ち得るバックアップの状態ファイルを壊す。
+  await writeFile(join(r.dataDir, BACKUP_STATE_FILE), '{broken');
+  const report = await check(r);
+  assert.equal(report.outcome, 'rejected', JSON.stringify(report));
+  assert.equal(report.stages[0]?.status, 'passed');
+  assert.ok(report.stages[1]?.reasons.includes('clock_regression'));
 });
 
 test('復元の確認: 作業用の平文の DB を消せないときは成功を返さず、明示的に失敗を報告する', async (t) => {

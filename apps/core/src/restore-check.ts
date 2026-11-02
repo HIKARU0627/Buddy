@@ -240,6 +240,8 @@ interface HubLedgerRead {
   readonly recorded_key_id: string | null;
   // 同じ系譜の DB と別ファイルの共通の世代で、entry_hash が食い違った（分岐）。
   readonly diverged: boolean;
+  // 中枢の DB はあるのに、開けない・台帳を取り出せない。正本を読めないので、別ファイルだけで最新を確定しない。
+  readonly db_unreadable: boolean;
 }
 
 // 中枢の DB（正本）と台帳の別ファイルから、段階 1 の候補を作る。ファイルが DB より進んでいれば、その世代も
@@ -262,6 +264,7 @@ async function readHubLedger(
   let dbEntries: readonly LedgerChainEntry[] | null = null;
   let dbLedgerId: string | null = null;
   let diverged = false;
+  let dbUnreadable = false;
   const dbPath = join(dataDir, DB_FILE);
   if (await exists(dbPath)) {
     try {
@@ -298,6 +301,9 @@ async function readHubLedger(
       }
     } catch (error) {
       // DB がない・開けない・台帳の連鎖が壊れている。候補にしない（段階 1 で止まる）。
+      // あるのに読めないときは、別ファイルだけで「知っている最新」を確定しない（古い別ファイルと古いバックアップの
+      // 組み合わせで、読めない正本より新しい忘却を落とし得る）。DB がない場合はここへ来ない。
+      dbUnreadable = true;
       log(`中枢の DB を読めませんでした（${(error as Error).name}）。`);
     }
   }
@@ -335,9 +341,10 @@ async function readHubLedger(
   }
   return {
     candidates,
-    known_generation: ledgerUnconfirmed ? null : known,
+    known_generation: ledgerUnconfirmed || dbUnreadable ? null : known,
     recorded_key_id: recorded,
     diverged,
+    db_unreadable: dbUnreadable,
   };
 }
 
@@ -483,6 +490,8 @@ export async function runRestoreCheck(
       key_id: string;
       material_matches_restored: boolean | null;
     }[] = [];
+    // KeyStore の読み取り障害・不正な保存値を「鍵がない」と取り違えない（欠落だけを欠落として扱う）。
+    let keyStoreReadFailed = false;
     const referenced = new Map<
       string,
       { purpose: 'backup_file' | 'ledger_hmac_key'; key_id: string }
@@ -505,7 +514,12 @@ export async function runRestoreCheck(
         entry.purpose,
         entry.key_id,
       );
-      if (!current.ok) continue;
+      if (!current.ok) {
+        // backup_key_missing だけが「その ID の鍵がない」。読み取り障害・壊れた保存値は、既存鍵との衝突を
+        // 確かめられないので復元を続けない。
+        if (current.reason !== 'backup_key_missing') keyStoreReadFailed = true;
+        continue;
+      }
       const restored = unwrapped[entry.purpose];
       keyStoreEntries.push({
         purpose: entry.purpose,
@@ -529,6 +543,9 @@ export async function runRestoreCheck(
             : currentDataKey.dataKey.key.length === restored.length &&
               currentDataKey.dataKey.key.equals(restored),
       });
+    } else if (currentDataKey.reason !== 'data_key_missing') {
+      // データ鍵の読み取り障害・不正な保存値。ないと決めつけて data-key-v1 を上書きし得るので続けない。
+      keyStoreReadFailed = true;
     }
     const dataKeyWrap = keyWrapFor(wraps, 'data_key');
     const dataKeyIdOk = dataKeyWrap?.key_id === DATA_KEY_ID;
@@ -536,7 +553,7 @@ export async function runRestoreCheck(
       key_wraps: wraps,
       keystore: keyStoreEntries,
     });
-    const keyInstallOk = dataKeyIdOk && keyInstall.ok;
+    const keyInstallOk = dataKeyIdOk && keyInstall.ok && !keyStoreReadFailed;
     if (!keyInstallOk) log('鍵を安全に導入できないため復元を続けません。');
 
     // 本体の長さと SHA-256 を封筒と照合する。
@@ -649,7 +666,9 @@ export async function runRestoreCheck(
         Date.parse(state.value.last_checked_at) > Date.parse(lastCheckedAt))
     )
       lastCheckedAt = state.value.last_checked_at;
-    const clockUnreadable = clockState.status === 'invalid';
+    // 時計の記録が読めないときは期限を判定できない。バックアップの状態（backup-state.json）が壊れている場合も、
+    // より新しい最終確認時刻を失っているかもしれないので、同じく確認できない側に倒す。
+    const clockUnreadable = clockState.status === 'invalid' || !state.ok;
     // 台帳の鍵の KeyStore の ID。backup-keys.json がなくても、封筒の台帳の鍵が KeyStore にあればそれを渡す。
     let ledgerKeyId = keyFile.ok
       ? (keyWrapFor(keyFile.value.key_wraps, 'ledger_hmac_key')?.key_id ?? null)

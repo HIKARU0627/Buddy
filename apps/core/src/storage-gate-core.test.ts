@@ -18,7 +18,7 @@ import { CLOCK_STATE_FILE } from './paths.js';
 const KEY = Buffer.alloc(32, 0x41);
 
 async function tempDataDir(t: test.TestContext): Promise<string> {
-  const base = await mkdtemp(join(tmpdir(), 'buddy-storage-gate-core-'));
+  const base = await mkdtemp(join(tmpdir(), 'buddy-sgc-'));
   onCleanup(t, () =>
     rm(base, {
       recursive: true,

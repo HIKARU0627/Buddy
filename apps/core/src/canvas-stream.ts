@@ -41,8 +41,6 @@ import {
   canvasContentErrors,
   nextCarriedSummary,
   streamSegmentErrors,
-  turnRetentionRule,
-  deleteAt,
 } from '@buddy/domain';
 import type { AutomaticSegmentBoundaryReason } from '@buddy/domain';
 import type { ApiContract } from './api-contract.js';
@@ -479,6 +477,14 @@ export interface StreamRoutes {
     readonly reason: string;
     readonly text: string;
   }) => CanvasOpBatch | null;
+  // 保存した発言の生成の時刻と期限を区切りへ足す（UI-05。api-turns の onTurnRecorded から呼ぶ）。再送では呼ばない。
+  // 期限は保存した時点で確定した値をそのまま使い、この時点の時計から作り直さない（ADR 0068）。
+  readonly recordTurn: (event: {
+    readonly session_id: string;
+    readonly turn_id: string;
+    readonly created_at: string;
+    readonly expires_at: string;
+  }) => void;
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -521,8 +527,9 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   // 前に当てた束（応答のキャッシュ。上限つき）と、配置を済ませた発言の ID（上限なし。1 人の流れの RAM だけ）。
   const replays = new Map<string, CanvasOpBatch | null>();
   const placed = new Set<string>();
-  // 期限を数えた発言の ID（再送で同じ発言を二度数えない。区切りを始めたら捨てる）。
-  let counted = new Set<string>();
+  // 受け付けた発言の要求（request_id）が属する区切り（会話）。同じ要求の再送は、区切りを切り替える前に
+  // 元の区切りで解決する（新しい区切りで送ると request_hash が変わり 409 になる。PR #191 のレビュー P1）。
+  const accepted = new Map<string, string>();
 
   // 今の区切り。流れの最初の発言で作り（理由: stream_started）、以後は同じ区切りを使う。同時の最初の発言でも 1 つだけ。
   const ensureStream = (request: ApiHandlerRequest): Promise<EnsureResult> => {
@@ -669,8 +676,6 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         lastTurnAt: openedAt,
         turnExpiresAt: [],
       };
-      // 区切りが変わったので、期限を数えた発言の ID は捨てる（同じ区切りの中の再送だけを弾く）。
-      counted = new Set<string>();
       return { ok: true, stream: current };
     })().finally(() => {
       rotating = null;
@@ -678,21 +683,20 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     return rotating;
   };
 
-  // 受け付けた発言を区切りの経過と保存期限に足す（再送で同じ発言を二度数えない）。期限は生成から一度だけ計算し、
-  // 区切りの継続で延ばさない（設計 03）。
-  const recordTurn = (turn: TurnResponse, stream: Stream, at: number): void => {
-    if (current === null || current.sessionId !== stream.sessionId) return;
-    if (counted.has(turn.turn_id)) return;
-    counted.add(turn.turn_id);
-    const atIso = new Date(at).toISOString();
-    const rule = turnRetentionRule(stream.segment.storage_mode);
+  // 保存した発言の生成の時刻と期限を、その発言の区切りへ足す（api-turns の onTurnRecorded から呼ぶ）。期限は保存した
+  // 時点で確定した値をそのまま使い、この時点の時計から作り直さない（保存から応答までの待ちで期限を延ばさない。
+  // PR #191 のレビュー P2）。再送では呼ばれない。区切りが変わっていれば何もしない。
+  const recordTurn = (event: {
+    readonly session_id: string;
+    readonly turn_id: string;
+    readonly created_at: string;
+    readonly expires_at: string;
+  }): void => {
+    if (current === null || current.sessionId !== event.session_id) return;
     current = {
       ...current,
-      lastTurnAt: atIso,
-      turnExpiresAt:
-        rule === null
-          ? current.turnExpiresAt
-          : [...current.turnExpiresAt, deleteAt(rule, atIso)],
+      lastTurnAt: event.created_at,
+      turnExpiresAt: [...current.turnExpiresAt, event.expires_at],
     };
   };
 
@@ -762,8 +766,14 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     const ensured = await ensureStream(request);
     if (!ensured.ok) return ensured.response;
     let stream = ensured.stream;
-    // 自動の区切り（前の発言から 30 分・日付の変更）。区切りを始められなければ、古い区切りで答えず 503 にする。
-    if (boundaryOf(stream, now()) !== null) {
+    // 同じ要求の再送は、区切りを選ぶ前に元の区切り（会話）で解決する。新しい区切りで送ると request_hash が変わり
+    // 409 になるため（PR #191 のレビュー P1）。再送は区切りも切り替えない（経過も延ばさない）。
+    const acceptedIn = accepted.get(requestId);
+    const replay = acceptedIn !== undefined;
+    if (replay) stream = { ...stream, sessionId: acceptedIn };
+    // 自動の区切り（前の発言から 30 分・日付の変更）。初めての発言だけが区切りを始める。区切りを始められなければ、
+    // 古い区切りで答えず 503 にする。
+    else if (boundaryOf(stream, now()) !== null) {
       const rotated = await rotateSegment(request, stream, requestId);
       if (!rotated.ok) return rotated.response;
       stream = rotated.stream;
@@ -784,8 +794,14 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     if (!contract.valid('TurnResponse', inner.body))
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     const turn = inner.body as TurnResponse;
-    // 受け付けた発言を、区切りの経過と保存期限に足す（自動の区切りと要約の期限の材料）。
-    recordTurn(turn, stream, now());
+    // 初めて受け付けた発言を、その区切りに結び付ける（再送はこの区切りで解決する）。上限は応答のキャッシュと同じ。
+    if (!replay) {
+      accepted.set(requestId, stream.sessionId);
+      for (const old of accepted.keys()) {
+        if (accepted.size <= MAX_REPLAYS) break;
+        accepted.delete(old);
+      }
+    }
     // 同じ要求の再送は、もう一度配置しない。配置済みかは発言の ID（turn_id。再送は保存済みの同じ発言を返す）で、
     // 応答の束のキャッシュの件数とは切り離して覚える（キャッシュから消えた後の再送でも再配置しない。そのときの束は
     // 再現できないので canvas は null）。UI-05 で発言の記録に結び付けて保存する。
@@ -932,5 +948,6 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         text ?? null,
       ),
     placeNotice,
+    recordTurn,
   };
 }

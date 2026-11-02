@@ -1033,6 +1033,125 @@ test('UI-05: when the new segment cannot be opened, the turn is not answered in 
 });
 
 test(
+  'UI-05: a resent request is answered in its original segment before any boundary is applied',
+  { timeout: 60_000 },
+  async (t) => {
+    let at = new Date('2026-10-05T09:00:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const requestId = randomUUID();
+    const first = await postStream(core, device, scope, '今日の用事を見せて', {
+      requestId,
+    });
+    assert.equal(first.status, 200, first.text);
+    const a = first.json as unknown as StreamTurnResponse;
+    // 30 分ちょうどで、同じ要求を再送する。元の区切りで保存済みの応答を返し、区切りは切り替えない。
+    at = new Date('2026-10-05T09:30:00+09:00');
+    const replay = await postStream(core, device, scope, '今日の用事を見せて', {
+      requestId,
+    });
+    assert.equal(replay.status, 200, replay.text);
+    const replayed = replay.json as unknown as StreamTurnResponse;
+    assert.equal(replayed.turn_id, a.turn_id);
+    assert.equal(replayed.segment.segment_id, a.segment.segment_id);
+    // 再送はやりとりに数えない。その後の新しい発言で、前の発言から 30 分の区切りが始まる。
+    const fresh = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(fresh.status, 200, fresh.text);
+    const b = (fresh.json as unknown as StreamTurnResponse).segment;
+    assert.notEqual(b.segment_id, a.segment.segment_id);
+    assert.equal(b.open_reason, 'idle_timeout');
+    // 前の区切りを再送したときも同じ（元の応答を返し、今の区切りを返す）。
+    at = new Date('2026-10-05T09:31:00+09:00');
+    const again = await postStream(core, device, scope, '今日の用事を見せて', {
+      requestId,
+    });
+    assert.equal(again.status, 200, again.text);
+    const againBody = again.json as unknown as StreamTurnResponse;
+    assert.equal(againBody.turn_id, a.turn_id);
+    assert.equal(againBody.segment.segment_id, b.segment_id);
+  },
+);
+
+test('UI-05: the expiry kept for a turn is the one saved with it, not the clock when the answer is built', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T09:00:00+09:00');
+  let sessions = 0;
+  let turns = 0;
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const routes = createStreamRoutes({
+    canvas,
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: (request) => {
+      turns += 1;
+      const body = request.body as Record<string, string>;
+      return Promise.resolve({
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: request.params['session_id'],
+          turn_id: id(100 + turns),
+          input_id: id(200 + turns),
+          workflow_id: null,
+          status: 'answered',
+          result_view: null,
+          reply_text: null,
+        },
+      });
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text: 'こんにちは',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = await handler(request());
+  assert.equal(first.status, 200);
+  // 保存の時点で確定した期限（7 日後ではなく、保存の側が決めた値）。応答の後で時計が進んでも作り直さない。
+  routes.recordTurn({
+    session_id: id(1),
+    turn_id: id(101),
+    created_at: '2026-10-05T00:00:00Z',
+    expires_at: '2026-10-06T00:00:00Z',
+  });
+  at += 31 * 60_000;
+  const second = await handler(request());
+  assert.equal(second.status, 200);
+  const b = (second.body as unknown as StreamTurnResponse).segment;
+  assert.equal(b.open_reason, 'idle_timeout');
+  assert.deepEqual(b.carried_summary, {
+    source_segment_ids: [id(1)],
+    expires_at: '2026-10-06T00:00:00Z',
+  });
+});
+
+test(
   'UI-03: clarifications and approval links place nothing on the canvas (approval is never put on it)',
   { timeout: 60_000 },
   async (t) => {

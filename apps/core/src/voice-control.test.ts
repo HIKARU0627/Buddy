@@ -166,12 +166,15 @@ test(
 
 test(
   'リース: 同じリースの更新は 1800 回で取り直しを求める（nonce の履歴の上限。U69）',
-  TIMEOUT,
-  async () => {
+  // 1800 回の逐次の DB worker 往復は、CPU が飽和すると 1 回 10 ms を超えて 20 秒の上限に届く（単独では約 1 秒）。
+  // 上限だけを 60 秒にし、回数と期待値は変えない。中断されたら次の回へ進まずに終わる。
+  { timeout: 60_000 },
+  async (t) => {
     await withRig(async (rig) => {
       const lease = uuid(0x1c);
       let previous: string | null = null;
       for (let i = 0; i < 1800; i += 1) {
+        t.signal.throwIfAborted();
         const result = bodyOf(
           await renew(rig, A, {
             lease_id: lease,
@@ -1135,13 +1138,16 @@ test(
 
 test(
   'P1: 1800 回の後に取り直したリースでも、サイドバンドの喪失で更新を拒否する（sideband_lost）',
-  TIMEOUT,
-  async () => {
+  // 1800 回の逐次の DB worker 往復は、CPU が飽和すると 1 回 10 ms を超えて 20 秒の上限に届く（単独では約 1 秒）。
+  // 上限だけを 60 秒にし、回数と期待値は変えない。中断されたら次の回へ進まずに終わる。
+  { timeout: 60_000 },
+  async (t) => {
     await withRig(async (rig) => {
       const first = uuid(0x1a);
       await openLive(rig, first);
       let previous = 'n1';
       for (let i = 2; i <= 1800; i += 1) {
+        t.signal.throwIfAborted();
         const result = bodyOf(
           await renew(rig, A, {
             lease_id: first,

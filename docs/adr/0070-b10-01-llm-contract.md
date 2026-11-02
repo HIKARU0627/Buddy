@@ -32,7 +32,7 @@
 - `packages/contracts/fixtures/response-plan-cases.json` の `intent_views` に 24 意図すべての `intent` と `view_kind` を手で書く。
 - `scripts/response-plan.test.mjs` が、fixture の対応表と `RESULT_VIEW_BY_INTENT` が一致すること、`resultViewKind` の `needs_clarification` / `needs_approval` の優先が変わっていないことを確かめる。
 
-`view.kind` が意図の表と食い違う計画は、`scripts/response-plan.test.mjs` の `qa03-plan-view-kind-mismatch` で拒否する。段（plan と view）の `workflow_id`・`request_revision`・`intent` の食い違いは `scripts/contract-tools.mjs` の意味検査で拒否する。
+`view.kind` が意図の表と食い違う計画は、`packages/domain/src/response-plan.ts` の `responsePlanErrors` が `view_kind_mismatch` として拒否する。段（plan と view）の `workflow_id`・`request_revision`・`intent` の食い違いも同じ関数で拒否し、`scripts/response-plan.test.mjs` が手書きの計画を実際に通して確かめる。`scripts/contract-tools.mjs` の意味検査は、ビルド前でも動く段の一致だけを持つ。
 
 ## 試験（模擬だけ）
 

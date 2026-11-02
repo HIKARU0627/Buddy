@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   INTENT_NAMES,
   RESULT_VIEW_BY_INTENT,
+  responsePlanErrors,
   resultViewKind,
 } from '../packages/domain/dist/index.js';
 import {
@@ -24,6 +25,31 @@ const cases = parseStrictJson(
   ),
 );
 
+// 手書きの intent_views から最小の計画を組み立てる。期待値（結果の種類）は fixture に手で書いた値で、
+// 実装の表から作らない。組み立てた計画そのものを domain の意味検査へ通す。
+const planFor = (intent, viewKind) => {
+  const workflowId = '00000000-0000-4000-8000-000000000301';
+  return {
+    schema: 'buddy.response-plan.v1',
+    workflow_id: workflowId,
+    request_revision: '1',
+    intent,
+    view: {
+      workflow_id: workflowId,
+      request_revision: '1',
+      intent,
+      kind: viewKind,
+      status: 'ready',
+      item_refs: [],
+      more_count: 0,
+      template_id: null,
+      template_version: null,
+    },
+    facts: [],
+    speech: null,
+  };
+};
+
 test('all 24 intents have a hand-written response plan view and keep the existing mapping', () => {
   assert.deepEqual(
     cases.intent_views.map((row) => row.intent),
@@ -35,6 +61,9 @@ test('all 24 intents have a hand-written response plan view and keep the existin
       RESULT_VIEW_BY_INTENT[row.intent],
       `${row.intent} must keep its result view kind`,
     );
+    const plan = planFor(row.intent, row.view_kind);
+    assert(validators['ResponsePlan'](plan), row.intent);
+    assert.deepEqual(responsePlanErrors(plan), [], row.intent);
     assert.equal(resultViewKind(row.intent, 'done'), row.view_kind, row.intent);
     assert.equal(
       resultViewKind(row.intent, 'needs_clarification'),
@@ -51,12 +80,14 @@ test('all 24 intents have a hand-written response plan view and keep the existin
 
 test('a plan view whose kind differs from the intent table is rejected', () => {
   for (const entry of cases.domain_cases) {
-    const actual =
-      entry.view_kind === RESULT_VIEW_BY_INTENT[entry.intent]
-        ? []
-        : ['view_kind_mismatch'];
-    assert.deepEqual(actual, entry.expected_errors, entry.id);
+    const plan = planFor(entry.intent, entry.view_kind);
+    assert(validators['ResponsePlan'](plan), entry.id);
+    assert.deepEqual(responsePlanErrors(plan), entry.expected_errors, entry.id);
   }
+  // 正しい計画と同じ形で、view.kind だけを変えた計画は拒否する。
+  const wrong = planFor('query_mail', 'schedule_cards');
+  assert(validators['ResponsePlan'](wrong));
+  assert.deepEqual(responsePlanErrors(wrong), ['view_kind_mismatch']);
 });
 
 test('model outcomes keep the failure causes and never mark a success retryable', () => {

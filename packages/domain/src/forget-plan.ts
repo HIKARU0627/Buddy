@@ -260,63 +260,44 @@ function knownOperationState(state: string): state is OperationState {
   return Object.hasOwn(OPERATION_TRANSITIONS, state);
 }
 
-export function planForget(input: ForgetPlanInput): ForgetPlanResult {
-  const { graph } = input;
-  const reasons: string[] = [];
-  // 知らない種類の派生物は、見落とすより計画を作らない（閉じた側）。
-  // 派生した発言（忘却の指示への Buddy の返答など）は turn のまま派生物になれる。
-  const artifactOk = (node: ForgetNode): boolean =>
-    node.kind === 'memory' ||
-    node.kind === 'turn' ||
-    node.kind === 'user_directive' ||
-    ARTIFACT_KINDS.includes(node.kind);
-  const sourceOk = (node: ForgetNode): boolean =>
-    ROOT_KINDS.includes(node.kind) || ARTIFACT_KINDS.includes(node.kind);
-  for (const edge of graph.edges) {
-    if (!artifactOk(edge.artifact)) reasons.push('unknown_artifact_kind');
-    if (!sourceOk(edge.source)) reasons.push('unknown_source_kind');
-  }
-  for (const item of graph.unattributed)
-    if (
-      !artifactOk(item.artifact) ||
-      item.artifact.kind === 'memory' ||
-      !(item.scope.kind === 'session' || ROOT_KINDS.includes(item.scope.kind))
-    )
-      reasons.push('unattributed_invalid');
-  const memoryKeys = new Map(
-    graph.memories.map((memory) => [memory.memory_id, memory.dedupe_key]),
-  );
-  if (
-    input.target.source_kind === 'memory' &&
-    !memoryKeys.has(input.target.source_id)
-  )
-    reasons.push('target_memory_unknown');
-  for (const memory of graph.memories)
-    if (!SHA256_HEX.test(memory.dedupe_key))
-      reasons.push('dedupe_key_malformed');
-  if (reasons.length > 0) return { ok: false, reasons: [...new Set(reasons)] };
-
-  // doomed: 消す物すべて。core: 忘れる対象から確かに作られた物（対象・指示の発言・下流）。
-  // 残りの doomed は広げた物（除外する由来を共有するだけで、忘れる内容を含むかを証明できない派生物）。
-  const doomed = new Map<string, ForgetNode>();
-  const core = new Set<string>();
-  const origins = new Map<string, ForgetNode>();
-  const targets: ForgetNode[] = [
-    { kind: input.target.source_kind, id: input.target.source_id },
-  ];
-  if (input.instruction_turn_id !== null)
-    targets.push({ kind: 'turn', id: input.instruction_turn_id });
-  for (const node of targets) {
-    doomed.set(nodeKey(node), node);
-    core.add(nodeKey(node));
-  }
-
+// 範囲（会話・発言）の構成要素。会話は turn_sessions に出る発言、それ以外は範囲そのもの。
+function scopeMembersOf(
+  graph: Pick<ForgetGraph, 'turn_sessions'>,
+): (scope: ForgetNode) => ForgetNode[] {
   const sessionTurns = (sessionId: string): ForgetNode[] =>
     graph.turn_sessions
       .filter((row) => row.session_id === sessionId)
       .map((row) => ({ kind: 'turn' as const, id: row.turn_id }));
-  const scopeMembers = (scope: ForgetNode): ForgetNode[] =>
+  return (scope) =>
     scope.kind === 'session' ? sessionTurns(scope.id) : [scope];
+}
+
+// 派生の閉包の結果。キーは `${kind}\u0000${id}`。
+export interface ForgetClosure {
+  // 消す物すべて。
+  readonly doomed: ReadonlyMap<string, ForgetNode>;
+  // 忘れる対象から確かに作られた物（対象・指示の発言・下流）。残りの doomed は広げた物（除外する由来を共有するだけで、
+  // 忘れる内容を含むかを証明できない派生物）。
+  readonly core: ReadonlySet<string>;
+  // 再登録を禁じる由来（消さない。doomed に入ったものは除く）。
+  readonly origins: ReadonlyMap<string, ForgetNode>;
+}
+
+// 派生の閉包（規則 A〜D）。計画の本体（planForget）と、storage の部分読み（どの辺・範囲を追加で読めばよいかを、
+// 閉包そのものから決める）が同じ関数を使う。入力の検査（知らない種類・HMAC・対象の存在）はしない（planForget が先に行う）。
+// 入力の辺・未帰属の一覧が全件でも、閉包に触れる部分だけでも、同じ閉包を返す（触れない辺は結果に影響しない）。
+export function computeForgetClosure(
+  graph: Pick<ForgetGraph, 'edges' | 'unattributed' | 'turn_sessions'>,
+  targets: readonly ForgetNode[],
+): ForgetClosure {
+  const doomed = new Map<string, ForgetNode>();
+  const core = new Set<string>();
+  const origins = new Map<string, ForgetNode>();
+  for (const node of targets) {
+    doomed.set(nodeKey(node), node);
+    core.add(nodeKey(node));
+  }
+  const scopeMembers = scopeMembersOf(graph);
 
   // 閉包は固定点まで繰り返す（派生物の派生物、広げた由来からの派生、範囲の展開が互いに影響する）。
   let changed = true;
@@ -392,6 +373,52 @@ export function planForget(input: ForgetPlanInput): ForgetPlanResult {
 
   // 後から忘れる物に加わった由来は、台帳の forgotten が覆うので、除外の一覧から外す。
   for (const key of origins.keys()) if (doomed.has(key)) origins.delete(key);
+  return { doomed, core, origins };
+}
+
+export function planForget(input: ForgetPlanInput): ForgetPlanResult {
+  const { graph } = input;
+  const reasons: string[] = [];
+  // 知らない種類の派生物は、見落とすより計画を作らない（閉じた側）。
+  // 派生した発言（忘却の指示への Buddy の返答など）は turn のまま派生物になれる。
+  const artifactOk = (node: ForgetNode): boolean =>
+    node.kind === 'memory' ||
+    node.kind === 'turn' ||
+    node.kind === 'user_directive' ||
+    ARTIFACT_KINDS.includes(node.kind);
+  const sourceOk = (node: ForgetNode): boolean =>
+    ROOT_KINDS.includes(node.kind) || ARTIFACT_KINDS.includes(node.kind);
+  for (const edge of graph.edges) {
+    if (!artifactOk(edge.artifact)) reasons.push('unknown_artifact_kind');
+    if (!sourceOk(edge.source)) reasons.push('unknown_source_kind');
+  }
+  for (const item of graph.unattributed)
+    if (
+      !artifactOk(item.artifact) ||
+      item.artifact.kind === 'memory' ||
+      !(item.scope.kind === 'session' || ROOT_KINDS.includes(item.scope.kind))
+    )
+      reasons.push('unattributed_invalid');
+  const memoryKeys = new Map(
+    graph.memories.map((memory) => [memory.memory_id, memory.dedupe_key]),
+  );
+  if (
+    input.target.source_kind === 'memory' &&
+    !memoryKeys.has(input.target.source_id)
+  )
+    reasons.push('target_memory_unknown');
+  for (const memory of graph.memories)
+    if (!SHA256_HEX.test(memory.dedupe_key))
+      reasons.push('dedupe_key_malformed');
+  if (reasons.length > 0) return { ok: false, reasons: [...new Set(reasons)] };
+
+  const targets: ForgetNode[] = [
+    { kind: input.target.source_kind, id: input.target.source_id },
+  ];
+  if (input.instruction_turn_id !== null)
+    targets.push({ kind: 'turn', id: input.instruction_turn_id });
+  const { doomed, origins } = computeForgetClosure(graph, targets);
+  const scopeMembers = scopeMembersOf(graph);
 
   // 台帳。元情報は HMAC だけ。HMAC が 64 桁の 16 進でなければ（生の ID を返す関数など）台帳に書かない。
   const hmac = (node: ForgetNode): string =>

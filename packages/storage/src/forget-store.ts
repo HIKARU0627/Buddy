@@ -1,8 +1,9 @@
 // 忘却の transaction（設計 03 忘却と再取り込み・バックアップ、08 §6、ADR 0040・0044・0054、マイグレーション 0012）。
 //
 // DB worker の中で実行する同期関数。1 つの忘却を 1 つの BEGIN IMMEDIATE の transaction で行う。
-// - 系譜（derivations と memory_sources）・会話・記憶・操作の状態を transaction の中で読み直し、domain の planForget で
-//   計画を作り直して、Core が渡した計画と同じであることを確かめる（読んでから適用するまでに派生物が増えていれば
+// - 系譜（derivations と memory_sources）・会話・記憶・操作の状態のうち、忘却の起点から閉包に触れる部分を
+//   transaction の中で読み直し（部分読み。ADR 0061）、domain の planForget で計画を作り直して、Core が渡した計画と
+//   同じであることを確かめる（読んでから適用するまでに派生物が増えていれば
 //   forget_plan_stale で拒否し、Core が計画を作り直す。閉包の漏れを作らない）。
 // - 元情報・発言の HMAC は Core が鍵で求めて渡す（worker は鍵を持たない）。計画に要る HMAC が渡されていなければ
 //   source_hmac_missing で拒否する。
@@ -11,8 +12,13 @@
 // - 台帳の別ファイルは DB の COMMIT の後に Core が書く（forget-ledger-file.ts。DB が正本で、ファイルは DB から作り直せる）。
 // 結果には ID・件数・hash だけを入れ、本文・検索語・SQL・パスを入れない。
 
-import { buildLedgerEntry, planForget } from '@buddy/domain';
+import {
+  buildLedgerEntry,
+  computeForgetClosure,
+  planForget,
+} from '@buddy/domain';
 import type {
+  ForgetClosure,
   ForgetEntry,
   ForgetGraph,
   ForgetLedgerEntryDraft,
@@ -64,6 +70,10 @@ interface LedgerItemRow {
 }
 
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+// SQLite の既定の照合（BINARY = UTF-8 のバイト列の比較）と同じ順。ORDER BY の並びを JS で再現する。
+const byteCompare = (a: string, b: string): number =>
+  Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
 
 function ledgerSourceKey(item: LedgerSource): string {
   return item.source_kind === 'source_item'
@@ -284,48 +294,75 @@ const LINEAGE_EDGE_TABLES: readonly {
 ];
 
 interface LineageEdgeRow {
+  // LINEAGE_EDGE_TABLES の何番目の表の行か（全件読みの辺の並びは、表の順・表の中は 4 つの欄の順。U157）。
+  readonly part: number;
   readonly artifact_kind: string;
   readonly artifact_id: string;
   readonly source_kind: string;
   readonly source_id: string;
 }
 
-// 系譜の辺を読む。match があれば、派生物（artifact）または由来（source）が (kind, id) の辺だけ。並びは表ごとに
-// （派生物の種類・ID、由来の種類・ID）の順。
+// 1 回の問い合わせに渡す ID の数（SQLite の変数の数の上限より十分小さくする）。
+const LINEAGE_ID_BATCH = 400;
+
+// 系譜の辺を読む。match があれば、派生物（artifact）または由来（source）が nodes のどれかの辺だけ（種類ごとにまとめ、
+// ID を LINEAGE_ID_BATCH 件ずつ IN で引く）。並びは表・問い合わせごとに（派生物の種類・ID、由来の種類・ID）の順。
+// 行は 1 件ずつ足す（`rows.push(...全件)` は件数が多いと引数の数で RangeError になる。U143）。
 function readLineageEdges(
   db: SqliteDatabase,
   match?: {
     readonly side: 'artifact' | 'source';
-    readonly kind: string;
-    readonly id: string;
+    readonly nodes: readonly LineageNode[];
   },
 ): LineageEdgeRow[] {
   const rows: LineageEdgeRow[] = [];
-  for (const part of LINEAGE_EDGE_TABLES) {
-    const conditions = part.where === null ? [] : [part.where];
-    const params: string[] = [];
-    if (match !== undefined) {
-      const side =
-        match.side === 'artifact'
-          ? { kind: part.artifact_kind, id: part.artifact_id }
-          : { kind: part.source_kind, id: part.source_id };
-      conditions.push(`${side.kind} = ?`, `${side.id} = ?`);
-      params.push(match.kind, match.id);
-    }
-    rows.push(
-      ...(db
-        .prepare(
-          `SELECT ${part.artifact_kind} AS artifact_kind, ${part.artifact_id} AS artifact_id, ${part.source_kind} AS source_kind, ${part.source_id} AS source_id FROM ${part.table}${
-            conditions.length === 0 ? '' : ` WHERE ${conditions.join(' AND ')}`
-          } ORDER BY 1, 2, 3, 4`,
-        )
-        .all(...params) as LineageEdgeRow[]),
-    );
+  const select = (
+    part: (typeof LINEAGE_EDGE_TABLES)[number],
+    index: number,
+  ): string =>
+    `SELECT ${index} AS part, ${part.artifact_kind} AS artifact_kind, ${part.artifact_id} AS artifact_id, ${part.source_kind} AS source_kind, ${part.source_id} AS source_id FROM ${part.table}`;
+  const collect = (sql: string, params: readonly string[]): void => {
+    const found = db.prepare(sql).all(...params) as LineageEdgeRow[];
+    for (const row of found) rows.push(row);
+  };
+  if (match === undefined) {
+    for (const [index, part] of LINEAGE_EDGE_TABLES.entries())
+      collect(
+        `${select(part, index)}${part.where === null ? '' : ` WHERE ${part.where}`} ORDER BY 2, 3, 4, 5`,
+        [],
+      );
+    return rows;
+  }
+  const idsByKind = new Map<string, string[]>();
+  for (const node of match.nodes) {
+    const ids = idsByKind.get(node.kind);
+    if (ids === undefined) idsByKind.set(node.kind, [node.id]);
+    else ids.push(node.id);
+  }
+  for (const [index, part] of LINEAGE_EDGE_TABLES.entries()) {
+    const side =
+      match.side === 'artifact'
+        ? { kind: part.artifact_kind, id: part.artifact_id }
+        : { kind: part.source_kind, id: part.source_id };
+    for (const [kind, ids] of idsByKind)
+      for (let from = 0; from < ids.length; from += LINEAGE_ID_BATCH) {
+        const chunk = ids.slice(from, from + LINEAGE_ID_BATCH);
+        const conditions = [
+          ...(part.where === null ? [] : [part.where]),
+          `${side.kind} = ?`,
+          `${side.id} IN (${chunk.map(() => '?').join(', ')})`,
+        ];
+        collect(
+          `${select(part, index)} WHERE ${conditions.join(' AND ')} ORDER BY 2, 3, 4, 5`,
+          [kind, ...chunk],
+        );
+      }
   }
   return rows;
 }
 
-// 忘却の閉包に渡す系譜を DB から作る（ADR 0054）。
+// 忘却の閉包に渡す系譜を DB から全件読んで作る（ADR 0054）。製品の経路は部分読み（readForgetSubgraph。ADR 0061）で、
+// この全件読みは部分読みの計画と照合する試験・実測の基準として残している（件数に比例して遅い）。
 // - 辺: 系譜の辺の読み方（LINEAGE_EDGE_TABLES。derivations・memory_sources・本人の指示を作った発言）。
 // - 由来を引けない派生物: 系譜の辺を持たない会話の要約（範囲は会話）と、影モードの記録（範囲は入力の発言）。
 //   ほかの種類で辺を持たない行は、作る処理（B08・B09・B10）が辺を必ず書く前提で、ここでは数えない（U110）。
@@ -419,6 +456,286 @@ export function readForgetGraph(db: SqliteDatabase): ForgetGraph {
   };
 }
 
+// --- 部分読み（ADR 0061。U156） ---
+
+export interface ForgetSubgraphInput {
+  readonly target: MemorySource;
+  readonly instruction_turn_id: string | null;
+}
+
+// 忘却の起点（対象・指示の発言）から、閉包に触れる辺・範囲・記憶・操作だけを読む。`planForget` に渡すと、
+// 全件読み（readForgetGraph。試験の基準）を渡したときと同じ計画になる（閉包の意味は変えない。性質試験で確かめる）。
+// 対象と指示の発言は計画に渡すものと同じ値にする（違うと閉包の起点が違い、適用は forget_plan_stale で拒否する）。
+//
+// 読み方: 今読んだ分で domain の `computeForgetClosure`（計画と同じ関数）を求め、閉包に入った節点について
+//   - A・C: 消す物と除外する由来を由来にする辺（派生物としての子）
+//   - B: 忘れる記憶（core）の由来の辺
+//   - D: 閉包の発言が属する会話の要約・発言を入力にした影モードのうち、由来の辺を持たないもの（未帰属）と、その会話の発言
+//   - 残す操作の由来の探索: 消える操作の確定内容の上流（由来の辺と未帰属の範囲）
+//   を足して読む。何も足せなくなったら（固定点）終わる。足した辺は DB の辺そのもので、辺の読み方
+//   （LINEAGE_EDGE_TABLES）は全件読みと同じ。辺の件数ではなく閉包の大きさに比例する。
+// 全件読みとの違い（閉包の意味ではなく入力の検査）: 閉包に触れない行の検査（記憶の内容の HMAC の形など）をしない。
+export function readForgetSubgraph(
+  db: SqliteDatabase,
+  input: ForgetSubgraphInput,
+): ForgetGraph {
+  const targets: ForgetNode[] = [
+    { kind: input.target.source_kind, id: input.target.source_id },
+  ];
+  if (input.instruction_turn_id !== null)
+    targets.push({ kind: 'turn', id: input.instruction_turn_id });
+
+  const edges = new Map<
+    string,
+    { artifact: ForgetNode; source: ForgetNode; part: number }
+  >();
+  const unattributed = new Map<
+    string,
+    { artifact: ForgetNode; scope: ForgetNode }
+  >();
+  const turnSessions = new Map<
+    string,
+    { turn_id: string; session_id: string }
+  >();
+  // 読み終えた印（同じ問い合わせを繰り返さない）。
+  const childrenLoaded = new Set<string>();
+  const sourcesLoaded = new Set<string>();
+  const turnScopeLoaded = new Set<string>();
+  const sessionLoaded = new Set<string>();
+  const unattributedChecked = new Set<string>();
+  const upSeen = new Set<string>();
+  // 閉包の入力（edges・unattributed・turnSessions）が増えたか（反復の頭で false に戻す）。
+  let grew: boolean;
+
+  const addEdges = (rows: readonly LineageEdgeRow[]): void => {
+    for (const row of rows) {
+      const artifact = {
+        kind: row.artifact_kind as ForgetNode['kind'],
+        id: row.artifact_id,
+      };
+      const source = {
+        kind: row.source_kind as ForgetNode['kind'],
+        id: row.source_id,
+      };
+      const key = `${nodeKey(artifact)}\u0001${nodeKey(source)}`;
+      const known = edges.get(key);
+      // 同じ辺が 2 つの表にあれば、全件読みと同じく先の表の位置に置く。
+      if (known !== undefined && known.part <= row.part) continue;
+      edges.set(key, { artifact, source, part: row.part });
+      grew = true;
+    }
+  };
+  const loadChildren = (nodes: readonly ForgetNode[]): void => {
+    const fresh = nodes.filter((node) => !childrenLoaded.has(nodeKey(node)));
+    if (fresh.length === 0) return;
+    for (const node of fresh) childrenLoaded.add(nodeKey(node));
+    addEdges(readLineageEdges(db, { side: 'source', nodes: fresh }));
+  };
+  const loadSources = (nodes: readonly ForgetNode[]): void => {
+    const fresh = nodes.filter((node) => !sourcesLoaded.has(nodeKey(node)));
+    if (fresh.length === 0) return;
+    for (const node of fresh) sourcesLoaded.add(nodeKey(node));
+    addEdges(readLineageEdges(db, { side: 'artifact', nodes: fresh }));
+  };
+  const hasArtifactEdge = (node: ForgetNode): boolean =>
+    readLineageEdges(db, { side: 'artifact', nodes: [node] }).length > 0;
+
+  // 会話の発言をすべて読む（範囲の構成要素。全件読みは未帰属の要約のある会話だけ読む）。
+  const loadSessionTurns = (sessionId: string): void => {
+    if (sessionLoaded.has(sessionId)) return;
+    sessionLoaded.add(sessionId);
+    const rows = db
+      .prepare('SELECT turn_id FROM turns WHERE session_id = ?')
+      .pluck()
+      .all(sessionId) as string[];
+    for (const turnId of rows)
+      turnSessions.set(turnId, { turn_id: turnId, session_id: sessionId });
+    grew = true;
+  };
+  // 会話の要約が未帰属（要約があり、派生物としての辺がない）なら、その会話を範囲にして足す。
+  const addUnattributedSummary = (sessionId: string): void => {
+    const artifact: ForgetNode = { kind: 'session_summary', id: sessionId };
+    const key = nodeKey(artifact);
+    if (unattributedChecked.has(key)) return;
+    unattributedChecked.add(key);
+    const hasSummary =
+      db
+        .prepare(
+          'SELECT 1 FROM sessions WHERE session_id = ? AND summary_blob_id IS NOT NULL',
+        )
+        .get(sessionId) !== undefined;
+    if (!hasSummary || hasArtifactEdge(artifact)) return;
+    unattributed.set(key, {
+      artifact,
+      scope: { kind: 'session', id: sessionId },
+    });
+    grew = true;
+    loadSessionTurns(sessionId);
+  };
+  // 影モードの記録が未帰属なら、入力の発言を範囲にして足す。
+  const addUnattributedShadow = (recordId: string, turnId: string): void => {
+    const artifact: ForgetNode = { kind: 'intent_shadow', id: recordId };
+    const key = nodeKey(artifact);
+    if (unattributedChecked.has(key)) return;
+    unattributedChecked.add(key);
+    if (hasArtifactEdge(artifact)) return;
+    unattributed.set(key, { artifact, scope: { kind: 'turn', id: turnId } });
+    grew = true;
+  };
+  // 発言を範囲に含む未帰属の派生物（その発言が属する会話の要約、その発言を入力にした影モード）。
+  const loadTurnScopes = (turnId: string): void => {
+    if (turnScopeLoaded.has(turnId)) return;
+    turnScopeLoaded.add(turnId);
+    const sessionId = db
+      .prepare('SELECT session_id FROM turns WHERE turn_id = ?')
+      .pluck()
+      .get(turnId) as string | undefined;
+    if (sessionId !== undefined) addUnattributedSummary(sessionId);
+    const shadows = db
+      .prepare(
+        `SELECT s.record_id FROM intent_shadow s
+           JOIN input_snapshots i ON i.input_id = s.input_id AND i.request_revision = s.request_revision
+          WHERE i.turn_id = ?`,
+      )
+      .pluck()
+      .all(turnId) as string[];
+    for (const recordId of shadows) addUnattributedShadow(recordId, turnId);
+  };
+  // 派生物の側から: この節点が未帰属の派生物なら足す（残す操作の由来の探索が通る節点）。
+  const loadNodeUnattributed = (node: ForgetNode): void => {
+    if (node.kind === 'session_summary') addUnattributedSummary(node.id);
+    else if (node.kind === 'intent_shadow') {
+      const turnId = db
+        .prepare(
+          `SELECT i.turn_id FROM intent_shadow s
+             JOIN input_snapshots i ON i.input_id = s.input_id AND i.request_revision = s.request_revision
+            WHERE s.record_id = ? AND i.turn_id IS NOT NULL`,
+        )
+        .pluck()
+        .get(node.id) as string | undefined;
+      if (turnId !== undefined) addUnattributedShadow(node.id, turnId);
+    }
+  };
+
+  const edgesByArtifact = (): Map<string, ForgetNode[]> => {
+    const out = new Map<string, ForgetNode[]>();
+    for (const edge of edges.values()) {
+      const key = nodeKey(edge.artifact);
+      const list = out.get(key);
+      if (list === undefined) out.set(key, [edge.source]);
+      else list.push(edge.source);
+    }
+    return out;
+  };
+
+  // 閉包の入力は全件読み（readForgetGraph）と同じ並びにそろえる。閉包の規則 D は、範囲の要約が先に「除外する由来に
+  // 触れる」側で消えると、後から範囲の発言が core になっても「範囲全体を除外する」側に入らない（U157）。結果が辺・
+  // 未帰属の並びに依るので、読んだ部分は全件読みの並び（表の順・表の中は 4 つの欄の順、未帰属は要約 → 影モードの
+  // ID の順）の部分列にする。部分列なら、読んでいない辺は閉包の途中で一度も働かないので、全件読みと同じ手順をたどる。
+  const snapshot = (): Pick<
+    ForgetGraph,
+    'edges' | 'unattributed' | 'turn_sessions'
+  > => ({
+    edges: [...edges.values()]
+      .sort(
+        (a, b) =>
+          a.part - b.part ||
+          byteCompare(a.artifact.kind, b.artifact.kind) ||
+          byteCompare(a.artifact.id, b.artifact.id) ||
+          byteCompare(a.source.kind, b.source.kind) ||
+          byteCompare(a.source.id, b.source.id),
+      )
+      .map(({ artifact, source }) => ({ artifact, source })),
+    unattributed: [...unattributed.values()].sort(
+      (a, b) =>
+        (a.artifact.kind === 'session_summary' ? 0 : 1) -
+          (b.artifact.kind === 'session_summary' ? 0 : 1) ||
+        byteCompare(a.artifact.id, b.artifact.id),
+    ),
+    turn_sessions: [...turnSessions.values()].sort(
+      (a, b) =>
+        byteCompare(a.session_id, b.session_id) ||
+        byteCompare(a.turn_id, b.turn_id),
+    ),
+  });
+
+  let closure: ForgetClosure;
+  let graph: Pick<ForgetGraph, 'edges' | 'unattributed' | 'turn_sessions'>;
+  for (;;) {
+    grew = false;
+    graph = snapshot();
+    closure = computeForgetClosure(graph, targets);
+    const doomed = [...closure.doomed.values()];
+    const origins = [...closure.origins.values()];
+    // A・C
+    loadChildren([...doomed, ...origins]);
+    // B
+    loadSources(
+      doomed.filter(
+        (node) => closure.core.has(nodeKey(node)) && node.kind === 'memory',
+      ),
+    );
+    // D
+    for (const node of [...doomed, ...origins])
+      if (node.kind === 'turn') loadTurnScopes(node.id);
+    // 残す操作の由来の探索（確定内容の上流）。
+    let level = doomed.filter(
+      (node) => node.kind === 'operation_content' && !upSeen.has(nodeKey(node)),
+    );
+    while (level.length > 0) {
+      for (const node of level) upSeen.add(nodeKey(node));
+      loadSources(level);
+      for (const node of level) loadNodeUnattributed(node);
+      const byArtifact = edgesByArtifact();
+      const next = new Map<string, ForgetNode>();
+      for (const node of level) {
+        const key = nodeKey(node);
+        for (const source of byArtifact.get(key) ?? [])
+          next.set(nodeKey(source), source);
+        const item = unattributed.get(key);
+        if (item !== undefined)
+          for (const member of item.scope.kind === 'session'
+            ? [...turnSessions.values()]
+                .filter((row) => row.session_id === item.scope.id)
+                .map((row) => ({ kind: 'turn' as const, id: row.turn_id }))
+            : [item.scope])
+            next.set(nodeKey(member), member);
+      }
+      level = [...next.values()].filter((node) => !upSeen.has(nodeKey(node)));
+    }
+    if (!grew) break;
+  }
+
+  // 計画が読む記憶（対象と、消える記憶）と、辺に出る操作の状態。
+  const memoryIds = new Set<string>();
+  if (input.target.source_kind === 'memory')
+    memoryIds.add(input.target.source_id);
+  for (const node of closure.doomed.values())
+    if (node.kind === 'memory') memoryIds.add(node.id);
+  const memories: { memory_id: string; dedupe_key: string }[] = [];
+  const memoryOf = db.prepare(
+    'SELECT memory_id, dedupe_key FROM memories WHERE memory_id = ?',
+  );
+  for (const id of [...memoryIds].sort(compare)) {
+    const row = memoryOf.get(id) as
+      { memory_id: string; dedupe_key: string } | undefined;
+    if (row !== undefined) memories.push(row);
+  }
+  const operationIds = new Set<string>();
+  for (const edge of edges.values())
+    for (const node of [edge.artifact, edge.source])
+      if (node.kind === 'operation_content') operationIds.add(node.id);
+  const stateOf = db.prepare(
+    'SELECT state FROM operations WHERE operation_id = ?',
+  );
+  const operations: { operation_id: string; state: string }[] = [];
+  for (const id of [...operationIds].sort(compare)) {
+    const state = stateOf.pluck().get(id) as string | undefined;
+    if (state !== undefined) operations.push({ operation_id: id, state });
+  }
+  return { ...graph, memories, operations };
+}
+
 // 対象が今あるか（resolveForgetTarget の known）。発言・記憶は行があること。元情報は、行がなくても台帳に書いて再取り込みを
 // 止められるので、いつもあるものとして扱う。
 export function forgetTargetExists(
@@ -503,7 +820,7 @@ function uniqueNodes(nodes: readonly LineageNode[]): LineageNode[] {
 
 function lineageChildren(db: SqliteDatabase, node: LineageNode): LineageNode[] {
   return uniqueNodes(
-    readLineageEdges(db, { side: 'source', ...node }).map((row) => ({
+    readLineageEdges(db, { side: 'source', nodes: [node] }).map((row) => ({
       kind: row.artifact_kind,
       id: row.artifact_id,
     })),
@@ -515,7 +832,7 @@ export function lineageSources(
   node: LineageNode,
 ): LineageNode[] {
   return uniqueNodes(
-    readLineageEdges(db, { side: 'artifact', ...node }).map((row) => ({
+    readLineageEdges(db, { side: 'artifact', nodes: [node] }).map((row) => ({
       kind: row.source_kind,
       id: row.source_id,
     })),
@@ -837,8 +1154,11 @@ export function applyForget(
       .get(input.instruction_turn_id) === undefined
   )
     throw new ForgetRejection(['instruction_turn_not_found']);
-  // 計画を DB の今の系譜で作り直し、Core の計画と同じかを確かめる。
-  const graph = readForgetGraph(db);
+  // 計画を DB の今の系譜で作り直し、Core の計画と同じかを確かめる（閉包に触れる部分だけを読む。U156）。
+  const graph = readForgetSubgraph(db, {
+    target: input.target,
+    instruction_turn_id: input.instruction_turn_id,
+  });
   const replanned = planForget({
     target: input.target,
     instruction_turn_id: input.instruction_turn_id,

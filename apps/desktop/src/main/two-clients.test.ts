@@ -86,7 +86,7 @@ interface Client {
   // 登録した端末として中枢へ送った要求（方法とパス。本文・ヘッダーは記録しない）。
   readonly requests: string[];
   view(): Extract<DesktopConnectionView, { visibility: 'shown' }>;
-  invoke(channel: string, payload: unknown): DesktopIpcResponse;
+  invoke(channel: string, payload: unknown): Promise<DesktopIpcResponse>;
   // 発言・承認表示の準備・承認・取消・照合の IPC（B04-05）。
   work(channel: string, payload: unknown): Promise<DesktopIpcResponse>;
   // 中枢の画面の端末の申請の承認・端末の管理の IPC（B03-06）。
@@ -205,12 +205,14 @@ async function createClient(
       assert.equal(view.visibility, 'shown');
       return view as Extract<DesktopConnectionView, { visibility: 'shown' }>;
     },
-    invoke(channel, payload) {
-      const response = created.handleIpc(
-        channel,
-        { channel, request_id: randomUUID(), payload },
-        SCREEN,
-        UNLOCKED,
+    async invoke(channel, payload) {
+      const response = (
+        await created.handleIpc(
+          channel,
+          { channel, request_id: randomUUID(), payload },
+          SCREEN,
+          UNLOCKED,
+        )
       ).response;
       ipc.push(response);
       return response;
@@ -295,7 +297,7 @@ async function pair(
   code: string,
   approve: () => Promise<void>,
 ): Promise<void> {
-  const begin = client.invoke('desktop.pairing_begin', {
+  const begin = await client.invoke('desktop.pairing_begin', {
     host: '127.0.0.1',
     port: hub.port,
   });
@@ -306,7 +308,7 @@ async function pair(
   );
   // 指紋は中枢の証明書のもの（別の実装で求めた値）。確かめる前の申請は送らない。
   assert.equal(client.view().pairing?.fingerprint, fingerprintOf(hub));
-  const early = client.invoke('desktop.pairing_submit', {
+  const early = await client.invoke('desktop.pairing_submit', {
     pairing_code: code,
     device_name: `合成の端末 ${client.name}`,
   });
@@ -314,14 +316,14 @@ async function pair(
   assert.equal((early as { reason: string }).reason, 'pairing_step_mismatch');
   assert.equal(client.claims.length, 0);
   const hubFingerprint = fingerprintOf(hub);
-  const wrong = client.invoke('desktop.pairing_confirm', {
+  const wrong = await client.invoke('desktop.pairing_confirm', {
     fingerprint: '0'.repeat(64),
     fingerprint_tail: '0000',
   });
   assert.equal((wrong as { reason?: string }).reason, 'pairing_step_mismatch');
   // 中枢の画面の指紋と違う 4 桁では申請へ進まない（main が受け取った証明書の指紋と比べる）。
   const otherTail = hubFingerprint.endsWith('0000') ? '1111' : '0000';
-  const wrongTail = client.invoke('desktop.pairing_confirm', {
+  const wrongTail = await client.invoke('desktop.pairing_confirm', {
     fingerprint: hubFingerprint,
     fingerprint_tail: otherTail,
   });
@@ -331,12 +333,12 @@ async function pair(
   );
   assert.equal(client.claims.length, 0);
   // 本人が中枢の画面（別の実装で求めた指紋）から読んだ最後の 4 桁を入力する。
-  const confirm = client.invoke('desktop.pairing_confirm', {
+  const confirm = await client.invoke('desktop.pairing_confirm', {
     fingerprint: hubFingerprint,
     fingerprint_tail: hubFingerprint.slice(-4),
   });
   assert.equal(confirm.outcome, 'ok');
-  const submit = client.invoke('desktop.pairing_submit', {
+  const submit = await client.invoke('desktop.pairing_submit', {
     pairing_code: code,
     device_name: `合成の端末 ${client.name}`,
   });
@@ -362,8 +364,8 @@ async function pairTwoClients(
 ): Promise<{ readonly a: Client; readonly b: Client }> {
   const a = await createClient(t, 'A');
   const b = await createClient(t, 'B');
-  a.link.start('unlocked');
-  b.link.start('unlocked');
+  await a.link.start('unlocked');
+  await b.link.start('unlocked');
   assert.equal(a.view().registration, 'unregistered');
   assert.equal(a.view().link, 'not_connected');
   // A: 最初の端末（登録済みの端末が 0 台）を中枢の CLI の承認（制御の入口）で登録する。
@@ -467,7 +469,7 @@ test(
     ) as Record<string, unknown>;
     writeFileSync(
       join(strangerDir, CREDENTIAL_FILE),
-      strangerProtector.encryptString(
+      await strangerProtector.encryptStringAsync(
         JSON.stringify({
           ...credential,
           device_id: randomUUID(),
@@ -479,7 +481,7 @@ test(
       dir: strangerDir,
       protector: strangerProtector,
     });
-    stranger.link.start('unlocked');
+    await stranger.link.start('unlocked');
     await waitUntil(
       () => stranger.view().link === 'reregistration_required',
       'stranger 401',
@@ -531,7 +533,7 @@ test(
       dir: join(a.credentialPath, '..'),
       protector: a.protector,
     });
-    again.link.start('unlocked');
+    await again.link.start('unlocked');
     await waitUntil(
       () => again.view().link === 'reregistration_required',
       'A token 401',
@@ -727,8 +729,8 @@ test(
       openGate = resolve;
     });
     const b = await createClient(t, 'B', { beforePickup: () => gate });
-    a.link.start('unlocked');
-    b.link.start('unlocked');
+    await a.link.start('unlocked');
+    await b.link.start('unlocked');
     const pairing = hub.handle.pairing;
     assert(pairing !== null);
     const first = await pairing.startFirstDevice();
@@ -957,7 +959,7 @@ async function claimRefused(
   hub: TestHub,
   code: string,
 ): Promise<string | null> {
-  const begin = client.invoke('desktop.pairing_begin', {
+  const begin = await client.invoke('desktop.pairing_begin', {
     host: '127.0.0.1',
     port: hub.port,
   });
@@ -967,12 +969,12 @@ async function claimRefused(
     `${client.name} fingerprint`,
   );
   const fingerprint = fingerprintOf(hub);
-  const confirmed = client.invoke('desktop.pairing_confirm', {
+  const confirmed = await client.invoke('desktop.pairing_confirm', {
     fingerprint,
     fingerprint_tail: fingerprint.slice(-4),
   });
   assert.equal(confirmed.outcome, 'ok');
-  const submitted = client.invoke('desktop.pairing_submit', {
+  const submitted = await client.invoke('desktop.pairing_submit', {
     pairing_code: code,
     device_name: `合成の端末 ${client.name}`,
   });
@@ -1014,8 +1016,8 @@ test(
       home: () => bNetwork,
       beforePickup: () => gate,
     });
-    a.link.start('unlocked');
-    b.link.start('unlocked');
+    await a.link.start('unlocked');
+    await b.link.start('unlocked');
     const pairing = hub.handle.pairing;
     assert(pairing !== null);
     const first = await pairing.startFirstDevice();
@@ -1430,8 +1432,8 @@ test(
         method === 'POST' && path.endsWith('/approve') && drop.on,
     });
     // pairTwoClients と同じ手順で A・B を登録する（B にだけ試験用の差し込みを渡すため）。
-    a.link.start('unlocked');
-    b.link.start('unlocked');
+    await a.link.start('unlocked');
+    await b.link.start('unlocked');
     const pairing = hub.handle.pairing;
     assert(pairing !== null);
     const first = await pairing.startFirstDevice();
@@ -1642,7 +1644,7 @@ test(
         }
       },
     });
-    a.link.start('unlocked');
+    await a.link.start('unlocked');
     const pairing = hub.handle.pairing;
     assert(pairing !== null);
     const first = await pairing.startFirstDevice();

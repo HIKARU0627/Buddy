@@ -644,16 +644,23 @@ export class LiveConversation implements LiveConversationPort {
     }
     let interpreted: InterpretedTurn;
     try {
-      // 訂正・取消・補足の対象にできる直前の依頼は、保留中の変更だけ（この委譲自身は除く）。モデルはここから選ぶだけで、
-      // 存在と一意性はコードが検証する（5A-4、QA04）。
+      // 訂正・取消・補足の対象にできる直前の依頼は、保留中の変更と、保存済み（保存の命令を送信済みを含む）の直近の依頼
+      // （この委譲自身は除く）。モデルはここから選ぶだけで、存在と一意性はコードが検証する（5A-4、QA04）。保存済みの依頼を
+      // 候補から外すと、保存後の訂正が対象なしの新規作成になってしまう。
+      const offered = [
+        ...context.committed,
+        ...context.hold.entries.map((entry) => entry.workflow_id),
+      ].filter(
+        (id, index, all) =>
+          id !== pending.workflow_id && all.indexOf(id) === index,
+      );
       interpreted = await this.#options.turns.interpret(text, {
-        open_workflows: context.hold.entries
-          .filter((entry) => entry.workflow_id !== pending.workflow_id)
-          .map((entry) => ({
-            workflow_id: entry.workflow_id,
-            intent: null,
-            state: 'in_flight' as const,
-          })),
+        // 候補の上限は直近の分だけ（上限を超える入力は判定器が拒否するため、先に絞る）。
+        open_workflows: offered.slice(-5).map((workflow_id) => ({
+          workflow_id,
+          intent: null,
+          state: 'in_flight' as const,
+        })),
       });
     } catch {
       interpreted = { kind: 'plan', plan: this.#unclearPlan() };
@@ -857,6 +864,9 @@ export class LiveConversation implements LiveConversationPort {
     // 通常の新しい依頼（new）は、対象の ID の有無にかかわらず従来どおり進める。
     if (others.length === 0 && targets.length === 0) {
       if (relation === 'cancel') return 'reconcile_only';
+      // 対象を解決できない訂正・補足を、新しい依頼として流さない（保存済みの依頼への訂正が二重の作成になる）。聞き返す。
+      if (relation === 'correction' || relation === 'clarification')
+        return 'ask_back';
       return 'none';
     }
     const own = context.hold.entries.find(

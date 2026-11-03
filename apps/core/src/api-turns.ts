@@ -360,6 +360,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // 記録しない会話（private）は保存しない会話の扱い（B05）が要るため、B04-03 では受け付けない。
     if (mode !== 'normal' && mode !== 'extended')
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    // 応答を返すまでに世代が進んでも、この会話の受付の時点の世代を返す（古ければ最初の発言が 409 になり、
+    // 端末は作り直す。進んだ世代を返して古い会話の発言を通さない）。
+    const generation = options.storage.origin().segment_generation;
     const result = await store.conversation({
       kind: 'session.create',
       session_id: randomUUID(),
@@ -378,7 +381,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         request_id: requestId,
         session_id: session.session_id,
         storage_mode: session.storage_mode,
-        segment_generation: options.storage.origin().segment_generation,
+        segment_generation: generation,
         route_revision: session.route_revision,
       },
     };

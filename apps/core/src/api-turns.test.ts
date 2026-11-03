@@ -693,31 +693,51 @@ test(
     const device = await insertDevice(core.handle.store);
     const scope = await bootstrap(core, device);
     const session = await createSession(core, device, scope);
-    const body = (origin: unknown) => ({
-      request_id: randomUUID(),
-      command_scope_id: scope,
-      text: '明日の予定は？',
-      input_kind: 'text',
-      ...(origin === undefined ? {} : { origin }),
-    });
     const path = `/v1/sessions/${session}/turns`;
+    const send = (
+      requestId: string,
+      origin: unknown,
+      text = '明日の予定は？',
+    ) =>
+      postJson(core, device, path, {
+        request_id: requestId,
+        command_scope_id: scope,
+        text,
+        input_kind: 'text',
+        ...(origin === undefined ? {} : { origin }),
+      });
+    // 何も保存されていないことを、操作の一覧と、同じ request_id のやり直しで確かめる。
+    assert.deepEqual(await snapshotOperations(core, device), []);
     // 形が違う由来は Schema で 422（発言を保存しない）。
     for (const origin of [
       undefined,
       { segment_id: session },
       { segment_id: session, segment_generation: '1', extra: true },
     ]) {
-      const response = await postJson(core, device, path, body(origin));
+      const response = await send(randomUUID(), origin);
       assert.equal(response.status, 422, response.text);
     }
     // 古い世代・別の会話の由来は 409（発言を保存しない）。
-    for (const origin of [
-      { segment_id: session, segment_generation: '2' },
-      { segment_id: randomUUID(), segment_generation: '1' },
-    ]) {
-      const response = await postJson(core, device, path, body(origin));
-      assert.equal(response.status, 409, response.text);
-    }
+    const rejectedId = randomUUID();
+    const stale = await send(rejectedId, {
+      segment_id: session,
+      segment_generation: '2',
+    });
+    assert.equal(stale.status, 409, stale.text);
+    const otherSession = await send(randomUUID(), {
+      segment_id: randomUUID(),
+      segment_generation: '1',
+    });
+    assert.equal(otherSession.status, 409, otherSession.text);
+    // 拒否した要求と同じ request_id を、今の由来と違う文で送り直す。保存されていれば内容違いの 409、
+    // 保存されていなければ新しい処理として 200 になる（拒否の後に発言・依頼・操作が 1 件も残っていない）。
+    const fresh = await send(
+      rejectedId,
+      { segment_id: session, segment_generation: '1' },
+      '別の用事',
+    );
+    assert.equal(fresh.status, 200, fresh.text);
+    assert.deepEqual(await snapshotOperations(core, device), []);
     // 今の由来なら通る。
     const ok = await postTurn(core, device, session, scope, '明日の予定は？');
     assert.equal(ok.status, 200, ok.text);

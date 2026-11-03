@@ -42,6 +42,8 @@ const desktopMainForbiddenPaths = [
   },
 ];
 const desktopMainForbidden = [
+  '@buddy/ai',
+  '@buddy/ai/*',
   '@buddy/core',
   '@buddy/core/*',
   '@buddy/platform/*',
@@ -53,6 +55,8 @@ const desktopMainForbidden = [
 ];
 // UI レンダラーは画面だけ。中枢・OS アダプター・接続の状態機械（@buddy/client）・ws を読み込まない。
 const desktopRendererForbidden = [
+  '@buddy/ai',
+  '@buddy/ai/*',
   '@buddy/core',
   '@buddy/core/*',
   '@buddy/platform',
@@ -111,6 +115,8 @@ export default tseslint.config(
         [
           ['node:*', 'electron', 'electron/*', '@electron/*'],
           [
+            '@buddy/ai',
+            '@buddy/ai/*',
             '@buddy/core',
             '@buddy/core/*',
             '@buddy/storage',
@@ -173,6 +179,8 @@ export default tseslint.config(
         [
           ['node:*', 'electron', 'electron/*', '@electron/*'],
           [
+            '@buddy/ai',
+            '@buddy/ai/*',
             '@buddy/core',
             '@buddy/core/*',
             '@buddy/storage',
@@ -254,6 +262,8 @@ export default tseslint.config(
           'electron',
           'electron/*',
           '@electron/*',
+          '@buddy/ai',
+          '@buddy/ai/*',
           '@buddy/desktop',
           '@buddy/desktop/*',
           '@buddy/core',
@@ -278,6 +288,8 @@ export default tseslint.config(
           'electron',
           'electron/*',
           '@electron/*',
+          '@buddy/ai',
+          '@buddy/ai/*',
           '@buddy/desktop',
           '@buddy/desktop/*',
           '@buddy/core',
@@ -386,6 +398,9 @@ export default tseslint.config(
           '@buddy/connectors/testing',
           '@buddy/connectors/dist/*',
           '../**/connectors/**',
+          // LLM アダプターの試験用の出口（偽の応答）を製品の配線へ入れない（B10-02、ADR 0080）。
+          '@buddy/ai/testing',
+          '@buddy/ai/dist/*',
           // 試験の道具を経由して試験用の出口を読む抜け道を塞ぐ。
           '**/*test-support',
           '**/*test-support.js',
@@ -399,9 +414,9 @@ export default tseslint.config(
         'error',
         {
           selector:
-            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop|@buddy\\/connectors\\/(testing|dist))(\\/|$)/]',
+            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop|@buddy\\/connectors\\/(testing|dist)|@buddy\\/ai\\/(testing|dist))(\\/|$)/]',
           message:
-            'Core / storage は Electron クライアントと、模擬 provider の試験用の出口（@buddy/connectors/testing）へ依存しません。',
+            'Core / storage は Electron クライアントと、模擬 provider・LLM アダプターの試験用の出口へ依存しません。',
         },
         // 試験の道具・試験ファイル・子プロセスの道具を、文字列の動的 import で読む経路も塞ぐ。
         {
@@ -433,18 +448,19 @@ export default tseslint.config(
           '@buddy/desktop',
           '@buddy/desktop/*',
           '../**/desktop/**',
-          // 例外は公開の出口 @buddy/connectors/testing だけ。connectors の内部の src・dist は読めない。
+          // 例外は公開の出口 @buddy/connectors/testing・@buddy/ai/testing だけ。内部の src・dist は読めない。
           '@buddy/connectors/dist/*',
           '../**/connectors/**',
+          '@buddy/ai/dist/*',
         ],
       ]),
       'no-restricted-syntax': [
         'error',
         {
           selector:
-            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop|@buddy\\/connectors\\/dist)(\\/|$)/]',
+            'ImportExpression[source.value=/^(electron|@electron|@buddy\\/desktop|@buddy\\/connectors\\/dist|@buddy\\/ai\\/dist)(\\/|$)/]',
           message:
-            'Core / storage は Electron クライアントと connectors の内部へ依存しません。',
+            'Core / storage は Electron クライアントと connectors・LLM アダプターの内部へ依存しません。',
         },
       ],
     },
@@ -648,6 +664,8 @@ export default tseslint.config(
           'electron',
           'electron/*',
           '@electron/*',
+          '@buddy/ai',
+          '@buddy/ai/*',
           '@buddy/desktop',
           '@buddy/desktop/*',
           '@buddy/core',

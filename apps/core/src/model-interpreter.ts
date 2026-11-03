@@ -98,7 +98,16 @@ function replyOf(result: IntentJudgmentResult): InterpreterReply {
       failure: judgment.failure,
       retryable: judgment.retryable,
     };
-  if (judgment.kind === 'unclear') return { kind: 'unclear' };
+  if (judgment.kind === 'unclear')
+    return judgment.relation === 'new'
+      ? { kind: 'unclear' }
+      : {
+          kind: 'unclear',
+          relation: judgment.relation,
+          ...(judgment.target_workflow_id === null
+            ? {}
+            : { target_workflow_id: judgment.target_workflow_id }),
+        };
   return {
     kind: 'intent',
     intent: judgment.intent,

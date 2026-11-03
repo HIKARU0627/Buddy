@@ -44,6 +44,7 @@ import type {
   Commentary,
   DeviceEpochs,
   HoldEntry,
+  HoldRelation,
   HoldState,
   HoldTarget,
   InputCondition,
@@ -149,6 +150,11 @@ export function createLiveScreenSink(options: {
         options.log(`live_held_dropped:${info.reason}`);
     },
   };
+}
+
+// 解釈された発話の直前の依頼との関係。意図がなくても、取消・訂正と答えた発話は関係を持つ（それ以外は unknown）。
+function relationOf(interpreted: InterpretedTurn): HoldRelation {
+  return interpreted.relation ?? 'unknown';
 }
 
 export interface LiveConversationTurns {
@@ -812,8 +818,7 @@ export class LiveConversation implements LiveConversationPort {
   #unconfirmedRelation(
     interpreted: InterpretedTurn,
   ): 'none' | 'reconcile_only' {
-    const relation =
-      interpreted.kind === 'intent' ? interpreted.relation : 'unknown';
+    const relation = relationOf(interpreted);
     return relation === 'cancel' ||
       relation === 'correction' ||
       relation === 'clarification'
@@ -832,10 +837,8 @@ export class LiveConversation implements LiveConversationPort {
     const others = context.hold.entries.filter(
       (entry) => entry.workflow_id !== pending.workflow_id,
     );
-    const relation =
-      interpreted.kind === 'intent' ? interpreted.relation : 'unknown';
-    const targetId =
-      interpreted.kind === 'intent' ? interpreted.target_workflow_id : null;
+    const relation = relationOf(interpreted);
+    const targetId = interpreted.target_workflow_id ?? null;
     const targets: HoldTarget[] = [];
     if (targetId !== null) {
       const held = others.some((entry) => entry.workflow_id === targetId);

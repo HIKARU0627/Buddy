@@ -1296,6 +1296,40 @@ test(
 );
 
 test(
+  'QA04: a cancel the model could not give an intent to (unclear) still keeps its relation and stops the held change',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        await secondUtterance(c);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [['実行前の依頼を取り消しました。']]);
+        assert.deepEqual(operations(c.rig), []);
+        assert.deepEqual(workflowStates(c.rig), []);
+        assert.equal(c.conversation.heldCount(c.liveId), 0);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.replies.set(EGG_TEXT, {
+            kind: 'unclear',
+            relation: 'cancel',
+            target_workflow_id: uuid(0x8001),
+          });
+        },
+      },
+    );
+  },
+);
+
+test(
   'QA35/X27: when the relation or the target is not settled the held change is never resumed on its own, the user is asked back, and after the limit it is dropped without being made',
   TIMEOUT,
   async () => {

@@ -235,7 +235,14 @@ const clarify = (
 // 解釈の結果（意図表・契約で検査済み）。Live の委譲は、解釈の後・保存の前に入力の受付（方式 C の限定）を挟むので、
 // 解釈と保存を分けて呼ぶ（解釈を 2 回しない）。
 export type InterpretedTurn =
-  | { readonly kind: 'plan'; readonly plan: TurnPlan }
+  | {
+      readonly kind: 'plan';
+      readonly plan: TurnPlan;
+      // 意図は分からないが、直前の依頼への取消・訂正・補足だと分かった発話の関係（B05-05、5A-4）。実行はせず、
+      // 保留中の依頼の解決（取消・訂正の確定、対象不明なら聞き返し）にだけ使う。
+      readonly relation?: HoldRelation;
+      readonly target_workflow_id?: string | null;
+    }
   | {
       readonly kind: 'intent';
       readonly intent: IntentName;
@@ -867,6 +874,25 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           null,
         ),
       );
+    // 意図は分からないが、直前の依頼の取消・訂正・補足だと答えた: 意図は作らず、関係だけを保つ（実行へは進まない）。
+    if (
+      reply !== null &&
+      typeof reply === 'object' &&
+      reply.kind === 'unclear' &&
+      (['clarification', 'correction', 'cancel'] as const).some(
+        (value) => value === reply.relation,
+      )
+    )
+      return {
+        kind: 'plan',
+        plan: clarify('unclear', null),
+        relation: reply.relation as HoldRelation,
+        target_workflow_id:
+          typeof reply.target_workflow_id === 'string' &&
+          reply.target_workflow_id.length > 0
+            ? reply.target_workflow_id
+            : null,
+      };
     // 解釈の結果を信用しない: 意図表にない意図・契約に合わない引数は知らない文と同じ扱い。
     if (
       reply === null ||

@@ -23,6 +23,11 @@ import type {
   HomeNetworkOp,
   HomeNetworkOpResult,
 } from './home-network-store.js';
+// B08-02: 連携の接続の取得対象（ADR 0088）。
+import type {
+  ConnectionTargetsOp,
+  ConnectionTargetsOpResult,
+} from './connection-targets-store.js';
 // B04-03: 会話・発言・依頼・入力スナップショット（ADR 0029）。
 import type {
   ConversationOp,
@@ -114,6 +119,12 @@ export type MainToWorker =
   | { readonly type: 'pairing'; readonly id: number; readonly op: PairingOp }
   // 自宅の登録・報告と、自宅判定の不成立による接続範囲の失効（ADR 0022）。
   | { readonly type: 'home'; readonly id: number; readonly op: HomeNetworkOp }
+  // 連携の接続の取得対象の読み取りと変更（B08-02、ADR 0088）。
+  | {
+      readonly type: 'connection_targets';
+      readonly id: number;
+      readonly op: ConnectionTargetsOp;
+    }
   // 会話・発言・依頼・入力スナップショットの命令と照会（ADR 0029）。
   | {
       readonly type: 'conversation';
@@ -188,6 +199,12 @@ export type WorkerToMain =
       readonly type: 'home_result';
       readonly id: number;
       readonly result: HomeNetworkOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'connection_targets_result';
+      readonly id: number;
+      readonly result: ConnectionTargetsOpResult;
       readonly halted: boolean;
     }
   | {

@@ -32,6 +32,7 @@ import {
 import { executeDeviceOp } from './device-store.js';
 import { executePairingOp } from './pairing-store.js';
 import { executeEventQuery, isEventQuery } from './event-store.js';
+import { executeConnectionTargetsOp } from './connection-targets-store.js';
 import { executeHomeNetworkOp } from './home-network-store.js';
 import { executeConversationOp } from './conversation-store.js';
 import { executeBudgetOp } from './budget-store.js';
@@ -263,6 +264,33 @@ function main(): void {
     post({ type: 'home_result', id: message.id, result, halted });
   };
 
+  const handleConnectionTargets = (
+    message: Extract<MainToWorker, { type: 'connection_targets' }>,
+  ): void => {
+    let result;
+    try {
+      const run = executeConnectionTargetsOp(connection, message.op, {
+        platform: data.platform,
+        halted,
+      });
+      if (run.halt) halted = true;
+      result = run.result;
+    } catch {
+      // 照会の想定外の失敗。書込みは executeConnectionTargetsOp の中で巻き戻している。
+      result = {
+        ok: false as const,
+        outcome: 'rejected' as const,
+        reasons: ['connection_targets_op_failed'],
+      };
+    }
+    post({
+      type: 'connection_targets_result',
+      id: message.id,
+      result,
+      halted,
+    });
+  };
+
   const handleConversation = (
     message: Extract<MainToWorker, { type: 'conversation' }>,
   ): void => {
@@ -408,6 +436,8 @@ function main(): void {
     else if (message.type === 'device') handleDevice(message);
     else if (message.type === 'pairing') handlePairing(message);
     else if (message.type === 'home') handleHome(message);
+    else if (message.type === 'connection_targets')
+      handleConnectionTargets(message);
     else if (message.type === 'conversation') handleConversation(message);
     else if (message.type === 'budget') handleBudget(message);
     else if (message.type === 'voice') handleVoice(message);

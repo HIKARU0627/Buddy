@@ -305,6 +305,72 @@ export default tseslint.config(
       ],
     },
   },
+  // LLM アダプター（B10-02、ADR 0080）。Electron・端末・Core・保存へ依存しない。HTTP は注入し、
+  // 製品のコードは node:* と試験用の出口（@buddy/ai/testing）を読まない。contracts / domain の公開出口だけを使う。
+  {
+    files: ['packages/ai/**/*.ts'],
+    rules: {
+      'no-restricted-imports': restricted([
+        [
+          'electron',
+          'electron/*',
+          '@electron/*',
+          '@buddy/desktop',
+          '@buddy/desktop/*',
+          '@buddy/core',
+          '@buddy/core/*',
+          '@buddy/storage',
+          '@buddy/storage/*',
+          '../**/apps/**',
+          '../**/storage/**',
+          '../**/desktop/**',
+          '../**/core/**',
+        ],
+      ]),
+    },
+  },
+  {
+    files: ['packages/ai/src/**/*.ts'],
+    ignores: ['packages/ai/src/**/*.test.ts', 'packages/ai/src/testing.ts'],
+    rules: {
+      'no-restricted-imports': restricted(
+        [
+          [
+            'electron',
+            'electron/*',
+            '@electron/*',
+            '@buddy/desktop',
+            '@buddy/desktop/*',
+            '@buddy/core',
+            '@buddy/core/*',
+            '@buddy/storage',
+            '@buddy/storage/*',
+            '../**/apps/**',
+            '../**/storage/**',
+            '../**/desktop/**',
+            '../**/core/**',
+          ],
+          ['node:*', '**/testing', '**/testing.js', '@buddy/ai/testing'],
+        ],
+        nodeImports,
+      ),
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression',
+          message: 'アダプターの依存は静的 import で明示してください。',
+        },
+        {
+          selector: 'TSImportType',
+          message: 'アダプターの型依存は import type で明示してください。',
+        },
+      ],
+    },
+  },
+  {
+    files: ['packages/ai/src/**/*.test.ts'],
+    languageOptions: { globals: globals.node },
+  },
   {
     files: ['apps/core/**/*.ts', 'packages/storage/**/*.ts'],
     languageOptions: { globals: globals.node },

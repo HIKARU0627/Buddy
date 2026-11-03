@@ -4,7 +4,7 @@ import test from 'node:test';
 import { parse } from 'yaml';
 
 // 模擬証拠の freshness は、読み取りだけの専用シグナル（ADR 0085）。
-// 必須チェック・書き込み・PR の自動作成を持たないことを、workflow の構造で確かめる。
+// 生成・必須チェック・書き込み・PR の自動作成を持たないことを、workflow の構造で確かめる。
 const workflow = parse(
   await readFile(
     new URL('../.github/workflows/evidence-freshness.yml', import.meta.url),
@@ -30,70 +30,40 @@ test('freshness は main の push・週 1 回の schedule・手動で動き、�
   }
 });
 
-test('main の push は生成せず、コミット済みの証拠を照合して summary に出す', () => {
+test('1 つの job がコミット済みの証拠を照合し、macOS の生成 job を追加しない', () => {
+  assert.deepEqual(Object.keys(workflow.jobs), ['identity']);
   const job = workflow.jobs.identity;
-  assert.equal(job.if, "github.event_name == 'push'");
+  assert.equal(job.name, 'Identity (committed evidence)');
   assert.equal(job['runs-on'], 'ubuntu-latest');
+  assert.equal(job.env, undefined);
   const check = byName(job, 'Check committed evidence');
   assert.equal(check.run, 'pnpm run evidence:check');
   assert.equal(check['continue-on-error'], true);
+  // 生成・artifact・macOS runner を持たない。
+  const text = JSON.stringify(workflow);
+  for (const forbidden of [
+    /macos-latest/u,
+    /upload-artifact/u,
+    /BUDDY_B04_EVIDENCE_PATH/u,
+    /BUDDY_B07_EVIDENCE_PATH/u,
+    /b04\.test\.mjs/u,
+    /b07\.test\.mjs/u,
+  ])
+    assert(!forbidden.test(text), String(forbidden));
+});
+
+test('不一致は summary に手順を出し、job を失敗にする（必須チェックではない）', () => {
+  const job = workflow.jobs.identity;
   const summary = byName(job, 'Write freshness summary');
   assert.equal(summary.if, 'always()');
+  assert.equal(summary.env.CHECK_OUTCOME, '${{ steps.check.outcome }}');
   assert.match(summary.run, /GITHUB_STEP_SUMMARY/u);
+  assert.match(summary.run, /stale/u);
+  assert.match(summary.run, /simulated-evidence-b04-<sha>/u);
+  assert.match(summary.run, /Simulated evidence \(macOS\)/u);
+  assert.match(summary.run, /PR を作る/u);
   const fail = byName(job, 'Fail when stale');
   assert.equal(fail.if, "steps.check.outcome == 'failure'");
-});
-
-test('schedule / workflow_dispatch は macOS の既存実行器で生成し、artifact に残す', () => {
-  const job = workflow.jobs.generate;
-  assert.equal(job.if, "github.event_name != 'push'");
-  assert.equal(job['runs-on'], 'macos-latest');
-  const generate = byName(job, 'Generate B04 and B07 evidence');
-  assert.equal(
-    generate.env.BUDDY_B04_EVIDENCE_PATH,
-    'tests/integration/evidence-b04-simulated.json',
-  );
-  assert.equal(
-    generate.env.BUDDY_B07_EVIDENCE_PATH,
-    'tests/integration/evidence-b07-simulated.json',
-  );
-  assert.match(generate.run, /b04\.test\.mjs/u);
-  assert.match(generate.run, /b07\.test\.mjs/u);
-  const upload = byName(job, 'Upload generated evidence');
-  assert.equal(
-    upload.uses,
-    'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
-  );
-  assert.equal(upload.if, "steps.generate.outcome == 'success'");
-  assert.equal(upload.with['if-no-files-found'], 'error');
-  const check = byName(job, 'Compare generated evidence with the source');
-  assert.equal(check.run, 'pnpm run evidence:check');
-  assert.equal(check['continue-on-error'], true);
-  const summary = byName(job, 'Write freshness summary');
-  assert.equal(summary.if, 'always()');
-  assert.match(summary.run, /GITHUB_STEP_SUMMARY/u);
-  assert.match(summary.run, /simulated-evidence-freshness/u);
-});
-
-test('schedule / workflow_dispatch は上書き前にコミット済み証拠の古さを比べ、stale を報告する', () => {
-  const job = workflow.jobs.generate;
-  const names = steps(job).map((step) => step.name);
-  const before = names.indexOf('Check committed evidence before regeneration');
-  const generate = names.indexOf('Generate B04 and B07 evidence');
-  assert.ok(before >= 0, names.join(','));
-  assert.ok(
-    before < generate,
-    '生成の前にコミット済み証拠を照合する（上書き後の照合では古さを検出できない）',
-  );
-  const original = byName(job, 'Check committed evidence before regeneration');
-  assert.equal(original.run, 'pnpm run evidence:check');
-  assert.equal(original['continue-on-error'], true);
-  const summary = byName(job, 'Write freshness summary');
-  assert.equal(summary.env.ORIGINAL_OUTCOME, '${{ steps.original.outcome }}');
-  assert.match(summary.run, /ORIGINAL_OUTCOME/u);
-  assert.match(summary.run, /stale/u);
-  const fail = byName(job, 'Fail when generation or comparison failed');
-  assert.match(fail.if, /steps\.original\.outcome == 'failure'/u);
 });
 
 test('freshness は commit・push・PR の作成をしない', () => {

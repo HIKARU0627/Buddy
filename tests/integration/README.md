@@ -24,7 +24,7 @@ B00 では期待遷移と故障点（`fault-points.json`）、証拠の形式（
 
 main への push・週 1 回の schedule・手動の `evidence-freshness.yml` が、読み取りだけで `pnpm run evidence:check` を実行し、不一致を job summary に出します。更新は次の順で行います。
 
-1. その push の CI の macOS shard 2/3 の artifact（`simulated-evidence-b04-<sha>`・`simulated-evidence-b07-<sha>`）を取得します。schedule・手動のときは、`evidence-freshness.yml` の `simulated-evidence-freshness-<sha>` を使います。
+1. その commit の CI の macOS shard 2/3 の artifact（`simulated-evidence-b04-<sha>`・`simulated-evidence-b07-<sha>`）を取得します。schedule・手動のときは、直近の main の CI の artifact を使うか、`Simulated evidence (macOS)` を実行して作り直します。
 2. ワーカーが `tests/integration/` へ取り込み、`pnpm run evidence:check` を通す PR を作ります。
 3. 手動で作り直すときは `Simulated evidence (macOS)` を実行します。
 

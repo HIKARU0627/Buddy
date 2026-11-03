@@ -3142,3 +3142,197 @@ test('U170: a replay is bound to its connection scope, and a mode switch keeps t
     (first.body as StreamTurnResponse).turn_id,
   );
 });
+
+test('U170: a private segment never rotates automatically, and turns stay refused', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  let clock = CLOCK.getTime();
+  let createCalls = 0;
+  const createSession: ApiRouteHandler = () => {
+    createCalls += 1;
+    return Promise.resolve({ status: 201, body: { session_id: randomUUID() } });
+  };
+  // 実際の api-turns は記録しない区切りの間 503 を返す。偽物もそれに合わせる。
+  const postTurn: ApiRouteHandler = () =>
+    Promise.resolve({
+      status: 503,
+      body: { code: 'dependency_unavailable' },
+    });
+  const routes = createStreamRoutes({
+    canvas: hub,
+    createSession,
+    postTurn,
+    storage,
+    contract,
+    now: () => clock,
+  });
+  const streamTurn = routes.handlers['postStreamTurn'] as ApiRouteHandler;
+  const storageMode = routes.handlers[
+    'postStreamStorageMode'
+  ] as ApiRouteHandler;
+  const request = (body: Record<string, unknown>): ApiHandlerRequest => ({
+    route: route('postStreamTurn'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      command_scope_id: 'scope-a',
+      input_kind: 'text',
+      text: '見せて',
+      expected_canvas_revision: '0',
+      ...body,
+    },
+  });
+  const mode = (value: string): ApiHandlerRequest => ({
+    route: route('postStreamStorageMode'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: 'scope-a',
+      storage_mode: value,
+    },
+  });
+
+  const entered = await storageMode(mode('private'));
+  assert.equal(entered.status, 200);
+  const privateSegment = (entered.body as StorageModeChangeResponse).segment;
+  assert.equal(privateSegment.storage_mode, 'private');
+
+  // 前の発言から 30 分以上たっても、記録しない区切りでは自動の区切りを起こさない（会話を作らない）。
+  clock += 31 * 60 * 1000;
+  const turn = await streamTurn(request({ request_id: randomUUID() }));
+  assert.equal(turn.status, 503);
+  assert.equal(createCalls, 0);
+
+  // 切り替えで出れば会話ができ、その後の発言は通る。
+  const exited = await storageMode(mode('normal'));
+  assert.equal(exited.status, 200);
+  assert.equal(createCalls, 1);
+  assert.equal(
+    (exited.body as StorageModeChangeResponse).segment.open_reason,
+    'private_ended',
+  );
+});
+
+test('U170: a mode-change retry after a restart makes its own conversation, so turns still save', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  // DB の受付レシート（接続範囲と request_id → 会話）。Core の再起動をまたいでも残る。
+  const receipts = new Map<string, string>();
+  let creates = 0;
+  const createSession: ApiRouteHandler = (request) => {
+    const body = request.body as Record<string, unknown>;
+    const key = `${String(body['command_scope_id'])}\u0000${String(body['request_id'])}`;
+    const existing = receipts.get(key);
+    if (existing !== undefined)
+      return Promise.resolve({ status: 201, body: { session_id: existing } });
+    creates += 1;
+    const sessionId = randomUUID();
+    receipts.set(key, sessionId);
+    return Promise.resolve({ status: 201, body: { session_id: sessionId } });
+  };
+  const origins: unknown[] = [];
+  const postTurn: ApiRouteHandler = (request) => {
+    origins.push(request.body?.['origin']);
+    return Promise.resolve({
+      status: 200,
+      body: {
+        request_id: String(request.body?.['request_id']),
+        session_id: randomUUID(),
+        turn_id: randomUUID(),
+        input_id: randomUUID(),
+        workflow_id: null,
+        status: 'clarification',
+        result_view: null,
+        reply_text: 'どちらですか。',
+      },
+    });
+  };
+  const build = () =>
+    createStreamRoutes({
+      canvas: hub,
+      createSession,
+      postTurn,
+      storage,
+      contract,
+      now: () => CLOCK.getTime(),
+    });
+  const mode = (requestId: string): ApiHandlerRequest => ({
+    route: route('postStreamStorageMode'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: 'scope-a',
+      storage_mode: 'extended',
+    },
+  });
+  const turn = (requestId: string): ApiHandlerRequest => ({
+    route: route('postStreamTurn'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: 'scope-a',
+      text: '今日の用事を見せて',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+  });
+
+  const first = await (
+    build().handlers['postStreamStorageMode'] as ApiRouteHandler
+  )(mode('switch-x'));
+  assert.equal(first.status, 200);
+  const firstSegment = (first.body as StorageModeChangeResponse).segment;
+  assert.equal(creates, 1);
+
+  // Core が再起動する（切り替えの控えと会話ごとの由来の控えは消える。DB の受付レシートは残る）。
+  const restarted = build();
+  const retried = await (
+    restarted.handlers['postStreamStorageMode'] as ApiRouteHandler
+  )(mode('switch-x'));
+  assert.equal(retried.status, 200);
+  const retriedSegment = (retried.body as StorageModeChangeResponse).segment;
+  // 受付レシートの前の会話をそのまま区切りにしない（由来の控えが無いままだと、以後の発言がすべて 409 になる）。
+  assert.notEqual(retriedSegment.segment_id, firstSegment.segment_id);
+  assert.equal(creates, 2);
+
+  // 再起動の後の発言は、新しい区切りの会話の由来で通る（保存できる）。
+  const saved = await (restarted.handlers['postStreamTurn'] as ApiRouteHandler)(
+    turn(randomUUID()),
+  );
+  assert.equal(saved.status, 200);
+  assert.deepEqual(origins.at(-1), {
+    segment_id: retriedSegment.segment_id,
+    segment_generation: '1',
+  });
+});

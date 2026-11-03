@@ -143,7 +143,10 @@ async function deleteWorkDir(workDir: string): Promise<boolean> {
     try {
       await rm(workDir, { recursive: true, force: true });
       return true;
-    } catch {
+    } catch (error) {
+      // データディレクトリの場所がファイルなどで、その下に作業用のディレクトリを作れていない。
+      // 平文は存在しないので「消せなかった」ではない（Windows は同じ形でも成功することがある）。
+      if ((error as NodeJS.ErrnoException).code === 'ENOTDIR') return true;
       if (attempt < 2) await delay(50 * (attempt + 1));
     }
   }

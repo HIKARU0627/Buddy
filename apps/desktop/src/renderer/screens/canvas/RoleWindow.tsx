@@ -22,6 +22,7 @@ import {
 import { useNow } from '../../state/use-desktop-state.js';
 import {
   useCanvasViewport,
+  useInputBarExpanded,
   useRoleWindowState,
   useWindowFocused,
   useWindowWidth,
@@ -193,6 +194,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
 
 function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const { state, summonCanvas } = useRoleWindowState(api, 'input');
+  const expanded = useInputBarExpanded();
   const [draft, setDraft] = useState('');
   // 送っている間（重ねて送らない）と、入力欄の枠で知らせる要注意（聞き返し・拒否・失敗。文字は残す）。
   const [sending, setSending] = useState(false);
@@ -237,6 +239,7 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
       attention={attention}
       canSummon={canSummonCanvas(state.status)}
       onSummon={summonCanvas}
+      expanded={expanded}
     />
   );
 }

@@ -27,6 +27,9 @@ const VERSION_FIELDS = {
   policy_version: 'PolicyVersion',
   permission_revision: 'PermissionRevision',
   forgetting_generation: 'ForgettingGeneration',
+  // 保存の区切りの世代（記録しない区切りの入る・出るで進む。ADR 0045・0059）。
+  segment_generation: 'SegmentGeneration',
+  ended_generation: 'SegmentGeneration',
   scope_revision: 'ScopeRevision',
   analysis_revision: 'AnalysisRevision',
   published_generation: 'PublishedGeneration',
@@ -98,6 +101,7 @@ const DECIMAL_KINDS = [
   'PolicyVersion',
   'PermissionRevision',
   'ForgettingGeneration',
+  'SegmentGeneration',
   'ScopeRevision',
   'AnalysisRevision',
   'PublishedGeneration',

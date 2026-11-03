@@ -14,13 +14,21 @@ B00 では期待遷移と故障点（`fault-points.json`）、証拠の形式（
 
 `evidence-b04-simulated.json` は `kind: simulated` の観測結果です。実機のファイルと区別し、`source_sha256` で基点コミットに加えた検査対象の差分も特定します。対象は実行器（`b04*.mjs`）が実際に読み込むファイル・解決に使った package.json・期待値と fixture だけで、import を機械的に辿って集めます（`scripts/b04-evidence-sources.mjs`）。記録方法・完了条件・制限は [B04 の完了判定](../../docs/b04/README.md)、実機は [device-check.md](../../docs/b04/device-check.md) を参照してください。X10 全体は B14、表示の移動は B05 です。QA27 の下書きの保存は B04-07 で模擬で実施しました（実機・本物の OS 確認ダイアログ・Electron の画面の操作は未実施）。
 
+## 証拠の現在性（ADR 0085）
+
+`kind: simulated` は **記録した commit で観測した** という意味です。現在の main や PR のソースで再現したこと、実機・実 API・実請求の合格を意味しません。`source_sha256` は、その観測の対象になったファイルの内容を記録したものです。
+
+- PR の CI は、実行器を回して手書きの期待値と一致すること（G2/G5）と、`tests/test-map.json` の構造・参照・期待値の整合を検査します。コミット済み証拠の hash が現在の木と一致すること（G1/G4）は必須にしません。
+- `pnpm run evidence:check` が、コミット済み証拠の `source_sha256` と現行ソースの対象一覧・hash の完全一致を検査します。これは工程の完了時と main の freshness の確認で実行し、PR の必須チェック（`Verify (<os>)`・`Public content / secrets`）とは分けます。
+- 現在は、証拠が必要なときに `Simulated evidence (macOS)` を手動で実行し、artifact から取り込みます。PR-3 で macOS の既存 shard 2（B07）・shard 3（B04）が証拠を生成して artifact に残す予定です（追加の macOS job は作りません）。main の記録の更新は、artifact を人が取り込む PR または定期の作業で行います（[開発手順](../../docs/development.md)）。
+
 ## B07-06 の実行器
 
 `pnpm run build` の後、`node --test tests/integration/b07.test.mjs` で、予算の門（`apps/core` の `BudgetGate`）・DB worker・一時ディレクトリの DB・模擬の有料 provider をつないだ 18 ケース（X18 の同時の予約・超過枠・追加予約、QA42 の受付の上限・usage の重複と欠落・timeout・月替わり・M 超過の保留・承認のない超過枠・音声の予算から融通しない、QA20 の単価の境界と上限が不明、X53 の自発の枠、設定ファイルの実行時の読み込み、失敗・精算の重複・再起動の照合）を確認できます。`pnpm test` / `pnpm run check` にも含みます。18 ケース × 固定 seed 3 個 = 54 回を、関門と異なる順序で実行します。
 
 `b07-cases.mjs` が各ケースを実行し、`b07-support.mjs` が予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせます。期待値は `b07-expectations.json` の手書きの値だけで、合成の通貨 XTS と縮めた上限だけを使います（個人の金額・単価・為替は入れない）。実行器は失敗や未登録のケースを無視しません。
 
-`evidence-b07-simulated.json` は `kind: simulated` の観測結果で、`source_sha256` の対象は実行器が読み込むファイルだけです（`scripts/b07-evidence-sources.mjs`。B04 と共通の集め方は `scripts/evidence-sources.mjs`）。記録方法・完了条件・制限は [B07 の完了判定](../../docs/b07/README.md) を参照してください。実 API・実請求・実機・HTTP の経路・画面は未実施で、実請求の照合は B15 です。
+`evidence-b07-simulated.json` は `kind: simulated` の観測結果で、`source_sha256` の対象は実行器が読み込むファイルだけです（`scripts/b07-evidence-sources.mjs`。B04 と共通の集め方は `scripts/evidence-sources.mjs`）。`simulated` は記録した commit での観測を意味し、現在のソースを保証しません（上の「証拠の現在性」と ADR 0085）。記録方法・完了条件・制限は [B07 の完了判定](../../docs/b07/README.md) を参照してください。実 API・実請求・実機・HTTP の経路・画面は未実施で、実請求の照合は B15 です。
 
 ## B05-07 の実行器（段階 1: 実行器と X13・QA43）
 

@@ -47,6 +47,7 @@ import {
   readPreRestoreState,
   readRestoreFacts,
   readRestoreOperationsForPlan,
+  readStoreGeneration,
   storagePlatform,
   unwrapBackupKey,
   writeLedgerFileAtomic,
@@ -116,6 +117,22 @@ async function exists(path: string): Promise<boolean> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
+  }
+}
+
+// 差し替えの失敗の後、今の DB が復元した DB（新しい store_generation）かを読む。
+async function liveStoreGeneration(dataDir: string): Promise<string | null> {
+  try {
+    const db = openWriteConnection(join(dataDir, DB_FILE), {
+      platform: storagePlatform(process.platform),
+    });
+    try {
+      return readStoreGeneration(db);
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
   }
 }
 
@@ -539,13 +556,6 @@ export async function runRestoreRun(
     // --- 段階 6: 外部の照合（OAuth トークンは封筒にないので、再認証まで pending） ---
     decisions.push(restoreReconcileCheck({ reauth_complete: false }));
 
-    // 段階 2 で確かめた時刻より前へ時計が戻っていないことを、差し替えの直前にもう一度確かめる
-    // （段階 3〜6 の間に戻った場合、期限切れの削除を当てた時刻より前の時計で差し替えない）。
-    if (options.now().getTime() < Date.parse(check.finished_at)) {
-      log('復元の途中で時計が戻ったため、差し替えません。');
-      return await refuse('clock_regression');
-    }
-
     // --- 鍵の導入（足す → 確かめる） ---
     const keys = await installKeys({
       wraps,
@@ -603,6 +613,11 @@ export async function runRestoreRun(
     }
     result = built.result;
     closeWorking();
+    // 段階 2 で確かめた時刻より前へ時計が戻っていないことを、鍵の導入などの非同期の後・差し替えの直前にも確かめる。
+    if (options.now().getTime() < Date.parse(check.finished_at)) {
+      log('復元の途中で時計が戻ったため、差し替えません。');
+      return await refuse('clock_regression');
+    }
 
     // 差し替え。ロックは check の前からこの後まで連続して持っている（Core が途中で起動して忘却を進めない）。
     if (workingPath === null) return await refuse('internal_error');
@@ -628,10 +643,14 @@ export async function runRestoreRun(
         join(options.dataDir, RESTORE_INSTALL_JOURNAL),
       );
       if (journal) {
+        const swapped =
+          (await liveStoreGeneration(options.dataDir)) === newGeneration;
         log(
-          '差し替えの記録が残っているため、作業用の DB を復旧のために残します。',
+          swapped
+            ? '差し替えの記録が残っていますが、今の DB は復元した DB です。'
+            : '差し替えの記録が残っているため、作業用の DB を復旧のために残します。',
         );
-        return refused('install_failed', null, false, false);
+        return refused('install_failed', null, swapped, false);
       }
       return await refuse('install_failed', null, false);
     }

@@ -312,6 +312,47 @@ test('復元の実行: 段階 1〜6 を通り、承認をすべて失効させ�
   );
 });
 
+test('復元の実行: 差し替え後に失敗しても、今の DB が復元した DB なら installed: true を返す', async (t) => {
+  const r = await rig(t);
+  const report = await runRestoreRun({
+    dataDir: r.dataDir,
+    contract,
+    backupPath: r.backupPath,
+    recoveryKey: Buffer.from(decodeRecoveryCode(r.recoveryCode) as Uint8Array),
+    dataKeys: r.dataKeys,
+    backupKeys: r.keys,
+    now: () => new Date(T0 + 2000),
+    lock: true,
+    log: () => undefined,
+    install: async (options) => {
+      // rename の後、記録の更新で失敗した状態: 今の DB は復元した DB、記録は残る。
+      const working = openWriteConnection(options.workingPath, {
+        platform: storagePlatform(process.platform),
+      });
+      const generation = readStoreGeneration(working);
+      working.close();
+      const live = openWriteConnection(join(options.dataDir, DB_FILE), {
+        platform: storagePlatform(process.platform),
+      });
+      live
+        .prepare(
+          "INSERT INTO schema_meta (key, value) VALUES ('store_generation', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )
+        .run(generation);
+      live.close();
+      await writeFile(
+        join(options.dataDir, RESTORE_INSTALL_JOURNAL),
+        '{"schema":"buddy.restore-install.v1"}\n',
+      );
+      throw new Error('injected_after_rename');
+    },
+  });
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  if (report.outcome !== 'refused') return;
+  assert.equal(report.installed, true);
+  assert.equal(report.plaintext_deleted, false);
+});
+
 test('復元の実行: データ鍵がない KeyStore でも封筒の data-key-v1 を導⼊して復元できる', async (t) => {
   const r = await rig(t);
   const empty = createMockKeyStore();

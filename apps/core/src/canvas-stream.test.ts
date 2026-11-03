@@ -39,7 +39,11 @@ import {
 } from './event-test-support.js';
 import type { EventCore } from './event-test-support.js';
 import type { TestDevice } from './api-test-support.js';
-import type { ProviderEvent, ProviderReader } from './turn-ports.js';
+import type {
+  Interpreter,
+  ProviderEvent,
+  ProviderReader,
+} from './turn-ports.js';
 
 const contract = createApiContract();
 
@@ -126,12 +130,14 @@ async function startCanvasCore(
   t: test.TestContext,
   events?: readonly ProviderEvent[],
   clock?: () => Date,
+  interpreter?: Interpreter,
 ): Promise<EventCore> {
   return startEventCore(t, {
     previewValid: false,
     now: clock ?? (() => CLOCK),
     turns: {
       provider: mockProvider(events),
+      ...(interpreter === undefined ? {} : { interpreter }),
       candidates: {
         mailCandidates: () =>
           Promise.resolve([
@@ -1500,6 +1506,133 @@ test('UI-05: a new request that waits with a resend still opens its own segment'
     expires_at: '2026-10-12T14:59:59Z',
   });
   assert.equal(sessions, 2);
+});
+
+// 忘却の指示（memory_forget）からの区切り（UI-05 段階 2-i、ADR 0068・0032）。いまの Core の文字の発言は忘却を
+// まだ受け付けない（B06-07b）ので、発言の処理の結果を差し替えて、流れの側の規則だけを確かめる。
+const forgetUnitRig = (mode: 'answered' | 'clarified') => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T09:00:00+09:00');
+  let sessions = 0;
+  let turns = 0;
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const routes = createStreamRoutes({
+    canvas,
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: (request) => {
+      turns += 1;
+      const body = request.body as Record<string, string>;
+      const forget = body['text'] === '忘れて';
+      return Promise.resolve({
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: request.params['session_id'],
+          turn_id: id(100 + turns),
+          input_id: id(200 + turns),
+          workflow_id: id(500),
+          status: forget && mode === 'clarified' ? 'clarification' : 'answered',
+          result_view: forget
+            ? {
+                workflow_id: id(500),
+                request_revision: '1',
+                intent: 'memory_forget',
+                kind:
+                  mode === 'clarified' ? 'clarification' : 'completion_line',
+                status: mode === 'clarified' ? 'confirming_input' : 'ready',
+                item_refs: [],
+                more_count: 0,
+                template_id: null,
+                template_version: null,
+              }
+            : null,
+          reply_text: null,
+        },
+      });
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (text: string): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  return {
+    handler,
+    request,
+    sessions: () => sessions,
+    advance: (ms: number) => {
+      at += ms;
+    },
+  };
+};
+
+test('UI-05: an answered forget opens a new segment without carrying the summary', async () => {
+  const rig = forgetUnitRig('answered');
+  const first = await rig.handler(rig.request('こんにちは'));
+  assert.equal(first.status, 200);
+  const a = (first.body as unknown as StreamTurnResponse).segment;
+  // 忘却の指示は、まだ同じ区切りで答える（新しい区切りは次の発言から）。
+  const forget = await rig.handler(rig.request('忘れて'));
+  assert.equal(forget.status, 200);
+  const forgotten = forget.body as unknown as StreamTurnResponse;
+  assert.equal(forgotten.result_view?.intent, 'memory_forget');
+  assert.equal(forgotten.segment.segment_id, a.segment_id);
+  // 次の発言は同じ時刻でも新しい区切り（理由は forget_requested、要約はつながない）。
+  const next = await rig.handler(rig.request('こんにちは'));
+  const b = (next.body as unknown as StreamTurnResponse).segment;
+  assert.notEqual(b.segment_id, a.segment_id);
+  assert.equal(b.open_reason, 'forget_requested');
+  assert.equal(b.carried_summary, null);
+  // その次は同じ区切り（忘却の指示を二度消費しない）。
+  const third = await rig.handler(rig.request('こんにちは'));
+  assert.equal(
+    (third.body as unknown as StreamTurnResponse).segment.segment_id,
+    b.segment_id,
+  );
+  assert.equal(rig.sessions(), 2);
+});
+
+test('UI-05: a forget that is only clarified does not open a new segment', async () => {
+  const rig = forgetUnitRig('clarified');
+  const first = await rig.handler(rig.request('こんにちは'));
+  const a = (first.body as unknown as StreamTurnResponse).segment;
+  const clarified = await rig.handler(rig.request('忘れて'));
+  assert.equal(
+    (clarified.body as unknown as StreamTurnResponse).status,
+    'clarification',
+  );
+  const next = await rig.handler(rig.request('こんにちは'));
+  assert.equal(
+    (next.body as unknown as StreamTurnResponse).segment.segment_id,
+    a.segment_id,
+  );
+  assert.equal(rig.sessions(), 1);
 });
 
 test(

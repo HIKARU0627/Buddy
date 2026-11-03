@@ -304,6 +304,7 @@ test('a slow comparison never extends the record past the conversation text; an 
       settingsFor(slow as unknown as ReturnType<typeof createFakeAdapter>),
     store: memory.store,
     slotAvailable: () => true,
+    spent: () => Promise.resolve('0'),
     guard: fakeGuard().guard,
     contract,
     output_schema: outputSchema,
@@ -339,6 +340,7 @@ test('a slow comparison never extends the record past the conversation text; an 
       } as unknown as ReturnType<typeof createFakeAdapter>),
     store: lateMemory.store,
     slotAvailable: () => true,
+    spent: () => Promise.resolve('0'),
     guard: fakeGuard().guard,
     contract,
     output_schema: outputSchema,
@@ -597,6 +599,7 @@ test('every target is judged on the same input and kept in one record; a target 
     settings: () => settings,
     store: memory.store,
     slotAvailable: () => true,
+    spent: () => Promise.resolve('0'),
     // lite-c だけ予算の口が拒否する。
     guard: {
       admit: (call) =>
@@ -671,6 +674,7 @@ test('a budget guard that throws for one target does not lose the other target',
       }),
     store: memory.store,
     slotAvailable: () => true,
+    spent: () => Promise.resolve('0'),
     guard: {
       admit: (call) =>
         call.profile.profile_id === 'broken-b'
@@ -707,6 +711,42 @@ test('a budget guard that throws for one target does not lose the other target',
   assert.equal(broken.commands.length, 0);
   assert.deepEqual(settled, ['ok-a']);
   assert.deepEqual(events, [{ kind: 'recorded', result: 'saved' }]);
+});
+
+test('without a way to read the spend the comparison never starts, so the spend limit cannot be bypassed', async () => {
+  for (const [name, spent] of [
+    ['missing', undefined],
+    ['rejects', () => Promise.reject(new Error('ledger down'))],
+    ['not a number', () => Promise.resolve('12.5')],
+  ] as const) {
+    const adapter = createFakeAdapter([response(wireJson())]);
+    const memory = memoryStore();
+    const events: ShadowEvent[] = [];
+    const { guard, log } = fakeGuard();
+    const shadow = createShadowRecorder({
+      settings: () => settingsFor(adapter),
+      store: memory.store,
+      slotAvailable: () => true,
+      spent: spent as never,
+      guard,
+      contract,
+      output_schema: outputSchema,
+      schema: schemaValidator,
+      now: () => NOW,
+      newId: () => randomUUID(),
+      onEvent: (event) => events.push(event),
+    });
+    shadow.observe(observation());
+    await shadow.idle();
+    assert.equal(adapter.commands.length, 0, name);
+    assert.equal(log.admitted, 0, name);
+    assert.equal(memory.records.length, 0, name);
+    assert.deepEqual(
+      events,
+      [{ kind: 'skipped', reasons: ['spent_unavailable'] }],
+      name,
+    );
+  }
 });
 
 test('a configured limit above 300 is clamped to 300', async () => {

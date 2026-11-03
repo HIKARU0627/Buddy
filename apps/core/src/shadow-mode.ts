@@ -98,8 +98,9 @@ export interface ShadowRecorderOptions {
   readonly slotAvailable: () => boolean;
   // 比較の費用は会話専用枠ではなく、自発的な解析と同じ側（origin: shadow_mode）の予算の口で受け付ける。
   readonly guard: ModelCallGuard;
-  // 比較の実費の合計（金額は設定の通貨の整数文字列）。省略は '0'。
-  readonly spent?: (campaign_id: string) => Promise<string>;
+  // 比較の実費の合計（金額は設定の通貨の整数文字列）。**必須**: 実費を取得できなければ上限（max_spend）で止められない
+  // ので、取得できない（口がない・失敗・不正な値）ときは比較を始めない。
+  readonly spent: (campaign_id: string) => Promise<string>;
   readonly contract: ApiContract;
   readonly output_schema: unknown;
   readonly schema: SchemaValidator;
@@ -237,7 +238,18 @@ export function createShadowRecorder(
     const limit = Math.min(settings.max_inputs, SHADOW_MAX_INPUTS);
     // 開始前の確認: 件数・実費・日数の最初の到達で止める（保存側の上限とは別に、無駄な呼出しをしない）。
     const confirmed = await options.store.count(settings.campaign_id);
-    const spent = (await options.spent?.(settings.campaign_id)) ?? '0';
+    let spent: string | null = null;
+    try {
+      const value: unknown = await options.spent(settings.campaign_id);
+      if (typeof value === 'string' && /^(0|[1-9][0-9]*)$/u.test(value))
+        spent = value;
+    } catch {
+      // 取得できない（下で skip）。
+    }
+    if (spent === null) {
+      emit({ kind: 'skipped', reasons: ['spent_unavailable'] });
+      return;
+    }
     const campaign: ShadowCampaign = updateShadowCampaign(
       {
         started_at: settings.started_at,

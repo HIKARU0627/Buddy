@@ -29,6 +29,7 @@ const FILES = [
   'packages/contracts/fixtures/storage-contract-cases.json',
   'packages/contracts/fixtures/response-plan-cases.json',
   'packages/contracts/fixtures/connector-capability-cases.json',
+  'packages/contracts/fixtures/graph-account-cases.json',
   'packages/contracts/openapi.yaml',
   'packages/contracts/model-evaluation.json',
   'packages/contracts/src/generated.ts',

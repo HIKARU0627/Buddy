@@ -251,7 +251,7 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
       canSummon={canSummonCanvas(state.status)}
       onSummon={summonCanvas}
       expanded={expanded}
-      clarification={clarification}
+      clarification={contentShown(state.status) ? clarification : null}
     />
   );
 }

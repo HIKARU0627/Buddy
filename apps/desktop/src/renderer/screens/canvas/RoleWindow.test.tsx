@@ -393,6 +393,23 @@ test('typed text disappears when the device locks or the lock state becomes unkn
     assert.doesNotMatch(html, /明日の予定を確認/u);
     assert.match(html, /<input[^>]*\bdisabled/u);
   }
+  // ロック中・不明では、広がった入力バーの聞き返し本文も描かない。
+  const hiddenClarification = render(
+    <InputBar
+      line={statusTabView(locked, null).line}
+      enabled={false}
+      value=""
+      onChange={noop}
+      onSubmit={noop}
+      sending={false}
+      attention={false}
+      canSummon={false}
+      onSummon={noop}
+      expanded
+      clarification="どちらの予定ですか。"
+    />,
+  );
+  assert.doesNotMatch(hiddenClarification, /どちらの予定ですか。/u);
 });
 
 test('the canvas is an empty ground; in front it shows an accent frame; locked it draws nothing inside', () => {

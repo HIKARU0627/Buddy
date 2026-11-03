@@ -62,20 +62,25 @@ export function InputBar({
   return (
     <form
       ref={formRef}
-      className="flex h-screen w-screen flex-col gap-2 border border-separator bg-surface px-4 pt-2 pb-2 text-foreground"
+      className="flex h-screen w-screen flex-col gap-2 border border-separator bg-surface p-2 text-foreground"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
       }}
     >
-      {expanded && clarification !== null ? (
-        <Alert status="accent" role="status" aria-live="polite">
+      {expanded && enabled && clarification !== null ? (
+        <Alert
+          status="accent"
+          role="status"
+          aria-live="polite"
+          className="max-h-[72px] shrink-0 overflow-y-auto"
+        >
           <Alert.Content>
             <Alert.Title>{clarification}</Alert.Title>
           </Alert.Content>
         </Alert>
       ) : null}
-      <div className="flex flex-1 items-end gap-3">
+      <div className="flex min-h-0 flex-1 items-end gap-3">
         <span className="flex size-5 shrink-0 items-center justify-center">
           {sending ? (
             <Spinner size="sm" color="current" aria-hidden="true" />
@@ -85,7 +90,7 @@ export function InputBar({
         </span>
         <TextField
           aria-label="Buddy への入力"
-          className="flex-1"
+          className="h-full min-h-0 flex-1"
           value={value}
           onChange={onChange}
           isDisabled={!enabled}
@@ -95,7 +100,7 @@ export function InputBar({
           {expanded ? (
             <TextArea
               variant="secondary"
-              className="h-[128px] w-full"
+              className="h-full min-h-0 w-full [&_textarea]:h-full [&_textarea]:min-h-0"
               rows={5}
               onKeyDown={sendOnEnter}
             />

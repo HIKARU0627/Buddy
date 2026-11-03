@@ -171,7 +171,7 @@ const UTC_TIME =
 
 // UTC の時刻（契約の UtcTime）だけを受け付ける。タイムゾーン付きや日付だけの値は拒否する。
 // 存在しない日付・時刻（2 月 31 日、24 時、13 月）は Date が補正してしまうので、成分を往復で確かめて拒否する。
-// 小数部はミリ秒までで切り捨てる。
+// 比較はミリ秒で行うので、ミリ秒より細かい端数（0 以外）は表せない精度として拒否する（端数の 0 だけの桁は許す）。
 function parseUtc(value: unknown): number | null {
   if (typeof value !== 'string') return null;
   const match = UTC_TIME.exec(value);
@@ -179,7 +179,9 @@ function parseUtc(value: unknown): number | null {
   const [year, month, day, hour, minute, second] = match
     .slice(1, 7)
     .map(Number) as [number, number, number, number, number, number];
-  const millis = Number((match[7] ?? '').padEnd(3, '0').slice(0, 3));
+  const fraction = match[7] ?? '';
+  if (/[1-9]/.test(fraction.slice(3))) return null;
+  const millis = Number(fraction.padEnd(3, '0').slice(0, 3));
   const ms = Date.UTC(year, month - 1, day, hour, minute, second, millis);
   const back = new Date(ms);
   if (

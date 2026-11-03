@@ -467,6 +467,53 @@ test('an unchanged selection does not raise revisions when only the key order di
   ]);
 });
 
+test('precision finer than a millisecond is rejected, never truncated across a window edge', () => {
+  // 切り捨てると、now の 0.0001 秒後（未来）が now と同じ時刻になって取得されてしまう。
+  const mail = (receivedAt, now = NOW) =>
+    checkMailMessage(scope(), { containerIds: ['INBOX'], receivedAt }, now);
+  assert.deepEqual(mail('2026-11-03T00:00:00.0001Z'), {
+    ok: false,
+    reason: 'time_invalid',
+  });
+  assert.deepEqual(mail('2026-11-03T00:00:00.0000001Z'), {
+    ok: false,
+    reason: 'time_invalid',
+  });
+  // 窓の始めから 0.0001 秒だけ重なる予定も、切り捨てずに拒否する。
+  const event = (endsAt) =>
+    checkCalendarEvent(
+      scope(),
+      {
+        calendarId: 'cal-work',
+        startsAt: '2026-10-01T00:00:00Z',
+        endsAt,
+      },
+      NOW,
+    );
+  assert.deepEqual(event('2026-10-04T00:00:00.0001Z'), {
+    ok: false,
+    reason: 'time_invalid',
+  });
+  // ミリ秒で表せる値は端の判定どおり（ちょうど端は重ならず、1 ミリ秒後は重なる）。
+  assert.deepEqual(event('2026-10-04T00:00:00.000Z'), {
+    ok: false,
+    reason: 'before_window',
+  });
+  assert.deepEqual(event('2026-10-04T00:00:00.001Z'), { ok: true });
+  // 端数が 0 だけなら同じ時刻として扱う（Graph の 7 桁の小数部など）。
+  assert.deepEqual(mail('2026-11-03T00:00:00.0000000Z'), { ok: true });
+  assert.deepEqual(mail('2026-11-03T00:00:00.0010000Z'), {
+    ok: false,
+    reason: 'after_window',
+  });
+  // 現在時刻の側も同じ。
+  assert.equal(mailWindow(scope(), '2026-11-03T00:00:00.0001Z'), null);
+  assert.deepEqual(mailWindow(scope(), '2026-11-03T00:00:00.0000000Z'), {
+    start: MAIL_START,
+    end: NOW,
+  });
+});
+
 test('dates that do not exist are rejected, not corrected', () => {
   // Date.parse は 2 月 31 日を 3 月 4 日に、24 時を翌日 0 時に補正する。補正した時刻で取得を許さない。
   const mail = (receivedAt) =>
@@ -483,9 +530,9 @@ test('dates that do not exist are rejected, not corrected', () => {
     '2026-04-31T12:00:00Z',
   ])
     assert.deepEqual(mail(bad), { ok: false, reason: 'time_invalid' }, bad);
-  // 存在する日付は通る（うるう日、小数部は桁数の制限なし）。
+  // 存在する日付は通る（うるう日、端数が 0 だけの長い小数部）。
   assert.deepEqual(mail('2026-10-31T23:59:59Z'), { ok: true });
-  assert.deepEqual(mail('2026-10-31T23:59:59.123456Z'), { ok: true });
+  assert.deepEqual(mail('2026-10-31T23:59:59.1230000Z'), { ok: true });
   assert.deepEqual(
     checkMailMessage(
       scope(),

@@ -16,6 +16,7 @@ import type {
   ShadowRecordStore,
   ShadowSettings,
 } from './shadow-mode.js';
+import { createModelInterpreter } from './model-interpreter.js';
 import type { ModelCallGuard } from './model-interpreter.js';
 import { TEST_TURN_POLICY } from './turn-ports.js';
 import type { InterpreterReply, ProviderReader } from './turn-ports.js';
@@ -436,6 +437,54 @@ test('X48: the comparison stops at 300 records, even with concurrent comparisons
   assert.equal(memory.records.length, 1);
 });
 
+test('a context over the input limits is trimmed the same way for the comparison as for the primary', async () => {
+  const candidates = Array.from({ length: 21 }, (_, index) => ({
+    candidate_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '1')}`,
+    remote_id: `mail-${index}`,
+  }));
+  const workflows = Array.from({ length: 6 }, (_, index) => ({
+    workflow_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '2')}`,
+    intent: null,
+    state: 'in_flight' as const,
+  }));
+  const over = observation({
+    context: {
+      text: '一番目のメールを確認して',
+      today: '2026-10-05',
+      mail_candidates: candidates,
+      open_workflows: workflows,
+    },
+  });
+  // 本線: 同じ context を共通の入力生成で絞った送信内容。
+  const primary = createFakeAdapter([response(wireJson())]);
+  const interpreter = createModelInterpreter({
+    adapter: primary,
+    profile,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    guard: fakeGuard().guard,
+  });
+  await interpreter.interpret(over.context);
+  const adapter = createFakeAdapter([response(wireJson())]);
+  const memory = memoryStore();
+  const { shadow } = recorder({
+    settings: settingsFor(adapter),
+    store: memory.store,
+  });
+  shadow.observe(over);
+  await shadow.idle();
+  // 比較もモデルを呼び、入力の生成の差で invalid_output にならない。
+  assert.equal(adapter.commands.length, 1);
+  assert.deepEqual(
+    adapter.commands[0]?.messages,
+    primary.commands[0]?.messages,
+  );
+  const sent = adapter.commands[0]?.messages[1]?.content ?? '';
+  assert.equal(sent.split('candidate_id=').length - 1, 20);
+  assert.equal(sent.split('workflow_id=').length - 1, 5);
+  assert.equal(memory.records[0]?.shadows[0]?.outcome, 'ok');
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);
@@ -496,7 +545,6 @@ async function startWith(
     settings: shadowSteps === null ? null : settingsFor(adapter),
     store: memory.store,
   });
-  const { createModelInterpreter } = await import('./model-interpreter.js');
   const { guard } = fakeGuard();
   const primary = primaryAdapter();
   const core = await startEventCore(t, {

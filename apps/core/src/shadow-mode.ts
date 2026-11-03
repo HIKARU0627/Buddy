@@ -25,6 +25,7 @@ import {
 } from '@buddy/domain';
 import type { ShadowCampaign } from '@buddy/domain';
 import type { ApiContract } from './api-contract.js';
+import { judgmentInputOf } from './model-interpreter.js';
 import type { ModelCallGuard } from './model-interpreter.js';
 import type {
   InterpretationContext,
@@ -224,18 +225,8 @@ export function createShadowRecorder(
       const result = await judgeIntent(target.adapter, {
         request_id: requestId,
         profile: target.profile,
-        input: {
-          utterance: observation.context.text,
-          today: observation.context.today,
-          // 比較は本線と同じ入力にする（条件をそろえる）。
-          candidates: observation.context.mail_candidates.map(
-            (item, index) => ({
-              candidate_id: item.candidate_id,
-              label: `メール${index + 1}`,
-            }),
-          ),
-          open_workflows: observation.context.open_workflows ?? [],
-        },
+        // 比較は本線と同じ入力にする（同じ上限で絞る。条件の差を評価結果にしない）。
+        input: judgmentInputOf(observation.context),
         output_schema: options.output_schema,
         schema: options.schema,
       });

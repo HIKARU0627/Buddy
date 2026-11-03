@@ -17,6 +17,7 @@ import {
   MAX_OPEN_WORKFLOWS,
 } from '@buddy/ai';
 import type {
+  IntentJudgmentInput,
   IntentJudgmentResult,
   JudgmentCandidate,
   JudgmentWorkflow,
@@ -90,6 +91,18 @@ function judgmentWorkflows(
   return (context.open_workflows ?? []).slice(0, MAX_OPEN_WORKFLOWS);
 }
 
+// 本線と影モードの比較が使う共通の入力（候補と依頼を同じ上限で絞る）。条件をそろえるため、両方がこの関数を使う。
+export function judgmentInputOf(
+  context: InterpretationContext,
+): IntentJudgmentInput {
+  return {
+    utterance: context.text,
+    today: context.today,
+    candidates: judgmentCandidates(context),
+    open_workflows: judgmentWorkflows(context),
+  };
+}
+
 function replyOf(result: IntentJudgmentResult): InterpreterReply {
   const judgment = result.judgment;
   if (judgment.kind === 'failed')
@@ -152,12 +165,7 @@ export function createModelInterpreter(
           // 診断の失敗で解釈を止めない。
         }
       };
-      const input = {
-        utterance: context.text,
-        today: context.today,
-        candidates: judgmentCandidates(context),
-        open_workflows: judgmentWorkflows(context),
-      };
+      const input = judgmentInputOf(context);
       // 入力の検査に通らない発話は、予約も送信もしない（切って送ると意図が変わる）。
       if (intentInputErrors(input).length > 0) {
         diagnose(null, 'invalid_semantics', null);

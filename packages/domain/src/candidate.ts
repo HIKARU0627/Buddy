@@ -17,6 +17,8 @@ export const CANDIDATE_EVENTS = [
   'dismiss',
   'snooze',
   'resolve',
+  'snooze_elapsed',
+  'deadline_passed',
 ] as const;
 export type CandidateEvent = (typeof CANDIDATE_EVENTS)[number];
 
@@ -37,20 +39,24 @@ const TRANSITIONS: Readonly<
     dismiss: 'dismissed',
     snooze: 'snoozed',
     resolve: 'resolved',
+    deadline_passed: 'resolved',
   },
   seen: {
     act: 'acted',
     dismiss: 'dismissed',
     snooze: 'snoozed',
     resolve: 'resolved',
+    deadline_passed: 'resolved',
   },
-  // acted は期限まで一覧に残す。解決すると一覧から外れる。
-  acted: { resolve: 'resolved' },
+  // acted は期限まで一覧に残す。解決するか期限が過ぎると一覧から外れる。
+  acted: { resolve: 'resolved', deadline_passed: 'resolved' },
   snoozed: {
     open: 'seen',
     act: 'acted',
     dismiss: 'dismissed',
     resolve: 'resolved',
+    snooze_elapsed: 'new',
+    deadline_passed: 'resolved',
   },
   dismissed: {},
   resolved: {},

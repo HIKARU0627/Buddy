@@ -26,7 +26,15 @@ test('candidate states match the snapshot enum', () => {
   );
   assert.deepEqual(
     [...CANDIDATE_EVENTS],
-    ['open', 'act', 'dismiss', 'snooze', 'resolve'],
+    [
+      'open',
+      'act',
+      'dismiss',
+      'snooze',
+      'resolve',
+      'snooze_elapsed',
+      'deadline_passed',
+    ],
   );
 });
 

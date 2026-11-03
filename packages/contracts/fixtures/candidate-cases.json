@@ -218,6 +218,36 @@
       "from": "resolved",
       "event": "act",
       "to": null
+    },
+    {
+      "id": "snoozed-snooze-elapsed",
+      "from": "snoozed",
+      "event": "snooze_elapsed",
+      "to": "new"
+    },
+    {
+      "id": "new-deadline-passed",
+      "from": "new",
+      "event": "deadline_passed",
+      "to": "resolved"
+    },
+    {
+      "id": "seen-deadline-passed",
+      "from": "seen",
+      "event": "deadline_passed",
+      "to": "resolved"
+    },
+    {
+      "id": "acted-deadline-passed",
+      "from": "acted",
+      "event": "deadline_passed",
+      "to": "resolved"
+    },
+    {
+      "id": "snoozed-deadline-passed",
+      "from": "snoozed",
+      "event": "deadline_passed",
+      "to": "resolved"
     }
   ],
   "retention": [

@@ -1060,6 +1060,70 @@ test('a voice connection that opens while a reservation is pending sends nothing
   ]);
 });
 
+test('a turn that expires before the comparison is sent is never sent: not before the reservation, and not while it is pending', async () => {
+  // (a) すでに期限切れの発言: 受付も送信も作らない。
+  {
+    const adapter = createFakeAdapter([response(wireJson())]);
+    const memory = memoryStore();
+    const { shadow, events, log } = recorder({
+      settings: settingsFor(adapter),
+      store: memory.store,
+    });
+    shadow.observe(observation({ turn_expires_at: NOW }));
+    await shadow.idle();
+    assert.equal(adapter.commands.length, 0);
+    assert.equal(log.admitted, 0);
+    assert.equal(memory.records.length, 0);
+    assert.deepEqual(events, [{ kind: 'skipped', reasons: ['turn_expired'] }]);
+  }
+  // (b) 予算の受付を待つ間に期限へ達する: 再開後に送らず、予約を 1 回解放し、保存しない。
+  {
+    const adapter = createFakeAdapter([response(wireJson())]);
+    const memory = memoryStore();
+    const clock = { value: NOW };
+    const released: string[] = [];
+    let finishAdmit = (): void => undefined;
+    const pending = new Promise<void>((resolve) => {
+      finishAdmit = resolve;
+    });
+    const events: ShadowEvent[] = [];
+    const shadow = createShadowRecorder({
+      settings: () => settingsFor(adapter),
+      store: memory.store,
+      slotAvailable: () => true,
+      spent: () => Promise.resolve('0'),
+      guard: {
+        admit: async () => {
+          await pending;
+          return {
+            ok: true,
+            settle: () => Promise.resolve(),
+            release: () => {
+              released.push('released');
+              return Promise.resolve();
+            },
+          };
+        },
+      },
+      contract,
+      output_schema: outputSchema,
+      schema: schemaValidator,
+      now: () => clock.value,
+      newId: () => randomUUID(),
+      onEvent: (event) => events.push(event),
+    });
+    shadow.observe(observation({ turn_expires_at: NOW + 1 * DAY }));
+    await new Promise((resolve) => setImmediate(resolve));
+    clock.value = NOW + 1 * DAY;
+    finishAdmit();
+    await shadow.idle();
+    assert.equal(adapter.commands.length, 0);
+    assert.deepEqual(released, ['released']);
+    assert.equal(memory.records.length, 0);
+    assert.deepEqual(events, [{ kind: 'skipped', reasons: ['turn_expired'] }]);
+  }
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);

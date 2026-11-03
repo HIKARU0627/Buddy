@@ -17,7 +17,7 @@
     },
     {
       "path": "apps/core/src/shadow-mode.ts",
-      "sha256": "535db8a0fef1163c0f20a2836eed631dd5d8895ceaadc46c0e41c3901d4718cf"
+      "sha256": "866543a540f491ff1c0fcac152e44ee0c3f75139ede713301465a8eb0f17a866"
     },
     {
       "path": "packages/ai/src/intent-judgment.test.ts",
@@ -37,14 +37,14 @@
     },
     {
       "path": "apps/core/src/shadow-mode.test.ts",
-      "sha256": "159b21d39431b677002884e97e94d0338849438c94f971ba2215e12636aa04b9"
+      "sha256": "785a4930a9bb3576021cfba067b8e81f77c7acedddf9b3bcd8796f41797247ab"
     }
   ],
   "records": [
     {
       "case_id": "X48-b10-03",
       "kind": "simulated",
-      "commit": "1a55a45f1576e93d7df7c5b23ab31d4ba1a025a1",
+      "commit": "90a1565107326cb84f5ff4d40a1bee131972d59f",
       "contract_version": "1.0.0",
       "db_version": "none",
       "environment": {
@@ -58,7 +58,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "private_zero_records,stops_at_300,default_off,conversation_unaffected",
-      "observed_at": "2026-11-03T09:45:51.181Z",
+      "observed_at": "2026-11-03T09:50:41.823Z",
       "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -66,7 +66,7 @@
     {
       "case_id": "X57-b10-03",
       "kind": "simulated",
-      "commit": "1a55a45f1576e93d7df7c5b23ab31d4ba1a025a1",
+      "commit": "90a1565107326cb84f5ff4d40a1bee131972d59f",
       "contract_version": "1.0.0",
       "db_version": "none",
       "environment": {
@@ -80,7 +80,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "same_instruction_same_base_date,results_kept_per_candidate",
-      "observed_at": "2026-11-03T09:45:51.182Z",
+      "observed_at": "2026-11-03T09:50:41.824Z",
       "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -88,7 +88,7 @@
     {
       "case_id": "X58-b10-03",
       "kind": "simulated",
-      "commit": "1a55a45f1576e93d7df7c5b23ab31d4ba1a025a1",
+      "commit": "90a1565107326cb84f5ff4d40a1bee131972d59f",
       "contract_version": "1.0.0",
       "db_version": "none",
       "environment": {
@@ -102,7 +102,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "control_phrase_no_model_call,request_containing_phrase_reaches_model",
-      "observed_at": "2026-11-03T09:45:51.182Z",
+      "observed_at": "2026-11-03T09:50:41.824Z",
       "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -110,7 +110,7 @@
     {
       "case_id": "QA01-b10-03",
       "kind": "simulated",
-      "commit": "1a55a45f1576e93d7df7c5b23ab31d4ba1a025a1",
+      "commit": "90a1565107326cb84f5ff4d40a1bee131972d59f",
       "contract_version": "1.0.0",
       "db_version": "none",
       "environment": {
@@ -124,7 +124,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "invalid_schema_stops_before_execution,clarification_only",
-      "observed_at": "2026-11-03T09:45:51.182Z",
+      "observed_at": "2026-11-03T09:50:41.824Z",
       "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -132,7 +132,7 @@
     {
       "case_id": "QA03-b10-03",
       "kind": "simulated",
-      "commit": "1a55a45f1576e93d7df7c5b23ab31d4ba1a025a1",
+      "commit": "90a1565107326cb84f5ff4d40a1bee131972d59f",
       "contract_version": "1.0.0",
       "db_version": "none",
       "environment": {
@@ -146,7 +146,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "invalid_semantics_not_unclear,no_operation_created",
-      "observed_at": "2026-11-03T09:45:51.182Z",
+      "observed_at": "2026-11-03T09:50:41.824Z",
       "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -154,7 +154,7 @@
     {
       "case_id": "QA04-b10-03",
       "kind": "simulated",
-      "commit": "1a55a45f1576e93d7df7c5b23ab31d4ba1a025a1",
+      "commit": "90a1565107326cb84f5ff4d40a1bee131972d59f",
       "contract_version": "1.0.0",
       "db_version": "none",
       "environment": {
@@ -168,7 +168,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "unoffered_workflow_rejected,unclear_cancel_keeps_relation",
-      "observed_at": "2026-11-03T09:45:51.182Z",
+      "observed_at": "2026-11-03T09:50:41.824Z",
       "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"

@@ -224,8 +224,9 @@ export function createShadowRecorder(
     settings: ShadowSettings,
     target: ShadowTarget,
     input: IntentJudgmentInput,
+    turnExpiresAt: number,
   ): Promise<
-    ShadowJudgment | null | 'disabled' | 'live' | 'busy' | 'stopped'
+    ShadowJudgment | null | 'disabled' | 'expired' | 'live' | 'busy' | 'stopped'
   > => {
     const requestId = newId();
     // 待ちの間に OFF・campaign の入れ替え・対象の取り外しがあったら送らない（受付・送信のどちらの直前にも確かめる）。
@@ -253,8 +254,10 @@ export function createShadowRecorder(
         return 'busy';
       }
     };
-    const blocked = (): 'disabled' | 'live' | 'busy' | null => {
+    const blocked = (): 'disabled' | 'expired' | 'live' | 'busy' | null => {
       if (!enabled()) return 'disabled';
+      // 保持期限を過ぎた発言の本文は、新しい比較に使わない（送ってから記録を捨てるのでは遅い）。
+      if (turnExpiresAt <= now()) return 'expired';
       const state = quiet();
       return state === 'ok' ? null : state;
     };
@@ -351,20 +354,24 @@ export function createShadowRecorder(
       return;
     }
     const judged = await Promise.all(
-      settings.targets.map((target) => judgeTarget(settings, target, input)),
+      settings.targets.map((target) =>
+        judgeTarget(settings, target, input, observation.turn_expires_at),
+      ),
     );
     if (judged.every((item) => item === null || typeof item === 'string')) {
       emit({
         kind: 'skipped',
         reasons: judged.includes('disabled')
           ? ['shadow_disabled']
-          : judged.includes('live')
-            ? ['live_session_open']
-            : judged.includes('stopped')
-              ? ['campaign_stopped']
-              : judged.includes('busy')
-                ? ['no_capacity']
-                : ['shadow_budget'],
+          : judged.includes('expired')
+            ? ['turn_expired']
+            : judged.includes('live')
+              ? ['live_session_open']
+              : judged.includes('stopped')
+                ? ['campaign_stopped']
+                : judged.includes('busy')
+                  ? ['no_capacity']
+                  : ['shadow_budget'],
       });
       return;
     }

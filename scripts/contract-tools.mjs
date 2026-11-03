@@ -1012,6 +1012,15 @@ export function semanticErrors(name, value) {
       errors.push('delegation_result_not_voice');
     errors.push(...semanticErrors('OutputTarget', value.output));
   }
+  // 表示と読み上げの計画（ADR 0070）。計画の段ごとの識別子と意図が食い違う計画を作らない。
+  // 意図と結果の種類の対応（RESULT_VIEW_BY_INTENT）は、ビルド後の domain を使う scripts/response-plan.test.mjs が確かめる。
+  if (name === 'ResponsePlan') {
+    if (value.view.workflow_id !== value.workflow_id)
+      errors.push('view_workflow_mismatch');
+    if (value.view.request_revision !== value.request_revision)
+      errors.push('view_revision_mismatch');
+    if (value.view.intent !== value.intent) errors.push('view_intent_mismatch');
+  }
   // 無音の延長の値は、その種類のイベントだけが持つ（B05-05、ADR 0052）。
   if (name === 'VoiceEvent') {
     if (

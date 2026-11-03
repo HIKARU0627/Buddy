@@ -6,8 +6,11 @@ import { DESKTOP_IPC_CHANNELS, admitDesktopRequest } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopDeviceController } from './device-controller.js';
 import {
+  INPUT_BAR_EXPANDED_SIZE,
+  INPUT_BAR_SIZE,
   UiWindowRegistry,
   channelAllowedForWindow,
+  inputBarBounds,
   notificationAllowedForWindow,
   rolesForMode,
   senderFactsOf,
@@ -671,6 +674,25 @@ test('the status tab and the input bar are small, frameless, always-on-top windo
     assert.equal(status.focusOnShow, false);
     assert.equal(input.focusOnShow, true);
   }
+});
+
+// UI-08: 入力バーは入力するときだけ上へ広がり、下の端と横の位置は変えない。作業領域からはみ出さない。
+test('the input bar grows upward from a fixed bottom edge and stays inside the work area', () => {
+  const compact = inputBarBounds(DISPLAY.workArea, false);
+  const expanded = inputBarBounds(DISPLAY.workArea, true);
+  assert.deepEqual(compact, {
+    x: Math.round((1512 - INPUT_BAR_SIZE.width) / 2),
+    y: 33 + 875 - INPUT_BAR_SIZE.height - 16,
+    ...INPUT_BAR_SIZE,
+  });
+  assert.deepEqual(expanded, {
+    x: Math.round((1512 - INPUT_BAR_EXPANDED_SIZE.width) / 2),
+    y: 33 + 875 - INPUT_BAR_EXPANDED_SIZE.height - 16,
+    ...INPUT_BAR_EXPANDED_SIZE,
+  });
+  assert.equal(compact.y + compact.height, expanded.y + expanded.height);
+  const tiny = inputBarBounds({ x: 10, y: 20, width: 320, height: 100 }, true);
+  assert.deepEqual(tiny, { x: 10, y: 20, width: 320, height: 84 });
 });
 
 // PR #104 のレビュー（P3）: 実際の senderFactsOf を通して、送信元のフレームの検査を確かめる。期待値は手で書く。

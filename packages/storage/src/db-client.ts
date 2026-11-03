@@ -51,6 +51,13 @@ import type {
   PairingOpValues,
 } from './pairing-store.js';
 import { HOME_NETWORK_WRITE_OPS } from './home-network-store.js';
+import { CONNECTION_TARGETS_WRITE_OPS } from './connection-targets-store.js';
+import type {
+  ConnectionRecord,
+  ConnectionTargetsOp,
+  ConnectionTargetsOpResult,
+  ConnectionTargetsUpdated,
+} from './connection-targets-store.js';
 import type {
   HomeNetworkOp,
   HomeNetworkOpResult,
@@ -225,6 +232,14 @@ interface PendingHome {
   readonly resolve: (result: HomeNetworkOpResult) => void;
 }
 
+// 連携の接続の取得対象の命令と照会（B08-02、ADR 0088）。
+interface PendingConnectionTargets {
+  readonly kind: 'connection_targets';
+  readonly op: ConnectionTargetsOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: ConnectionTargetsOpResult) => void;
+}
+
 // 会話の命令と照会（ADR 0029）。
 interface PendingConversation {
   readonly kind: 'conversation';
@@ -282,6 +297,10 @@ export type ConversationOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | Extract<ConversationOpResult, { ok: false }>;
 
+export type ConnectionTargetsOpOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | Extract<ConnectionTargetsOpResult, { ok: false }>;
+
 export type HomeNetworkOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | Extract<HomeNetworkOpResult, { ok: false }>;
@@ -312,6 +331,7 @@ export class DbWorkerClient {
     | PendingDevice
     | PendingPairing
     | PendingHome
+    | PendingConnectionTargets
     | PendingConversation
     | PendingBudget
     | PendingVoice
@@ -632,6 +652,47 @@ export class DbWorkerClient {
     });
   }
 
+  // 連携の接続の取得対象の命令と照会（B08-02、ADR 0088）。扱いは home と同じ（使えなければ送らずに rejected、
+  // 書込みの応答を失えば成否不明で broken）。
+  connectionTargets(
+    op: Extract<ConnectionTargetsOp, { kind: 'connections.list' }>,
+  ): Promise<ConnectionTargetsOpOutcome<readonly ConnectionRecord[]>>;
+  connectionTargets(
+    op: Extract<ConnectionTargetsOp, { kind: 'connections.get' }>,
+  ): Promise<ConnectionTargetsOpOutcome<ConnectionRecord | null>>;
+  connectionTargets(
+    op: Extract<ConnectionTargetsOp, { kind: 'connections.update_targets' }>,
+  ): Promise<ConnectionTargetsOpOutcome<ConnectionTargetsUpdated>>;
+  connectionTargets(
+    op: ConnectionTargetsOp,
+  ): Promise<ConnectionTargetsOpResult> {
+    return new Promise<ConnectionTargetsOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, {
+        kind: 'connection_targets',
+        op,
+        timer,
+        resolve,
+      });
+      const message: MainToWorker = { type: 'connection_targets', id, op };
+      this.#worker.postMessage(message);
+    });
+  }
+
   // 会話・発言・依頼・入力スナップショットの命令と照会（ADR 0029）。扱いは home と同じ。
   conversation(
     op: Extract<ConversationOp, { kind: 'session.create' | 'session.get' }>,
@@ -867,6 +928,16 @@ export class DbWorkerClient {
         });
         continue;
       }
+      if (pending.kind === 'connection_targets') {
+        pending.resolve({
+          ok: false,
+          outcome: CONNECTION_TARGETS_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
       if (pending.kind === 'budget') {
         pending.resolve({
           ok: false,
@@ -995,6 +1066,18 @@ export class DbWorkerClient {
     if (message.type === 'home_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'home') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'connection_targets_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'connection_targets') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

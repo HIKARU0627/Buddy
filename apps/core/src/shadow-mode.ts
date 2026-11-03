@@ -99,6 +99,10 @@ export interface ShadowRecorderOptions {
   // 音声の接続（Live）が今開いているか。観測時の値（live_session_open）に加えて、受付の後の送る直前にも読み直す。
   // 省略すると観測時の値だけで判断するので、本番の配線では必ず渡す。
   readonly liveSessionOpen?: () => boolean;
+  // Core 全体の記録しない会話か（StorageModeGate.privateConversation()）。観測時のセッションの保存モードに加えて、
+  // 受付の前後・保存の直前にも今の値を読み直す。読めない（例外）ときは記録しない会話として扱う。省略すると観測時の
+  // 保存モードだけになるので、本番の配線では必ず渡す。
+  readonly privateConversation?: () => boolean;
   // 比較の費用は会話専用枠ではなく、自発的な解析と同じ側（origin: shadow_mode）の予算の口で受け付ける。
   readonly guard: ModelCallGuard;
   // 比較の実費の合計（金額は設定の通貨の整数文字列）。**必須**: 実費を取得できなければ上限（max_spend）で止められない
@@ -220,13 +224,29 @@ export function createShadowRecorder(
   };
 
   // 1 つの比較モデルを判定する。予算の口が拒否したら null（呼ばない）。失敗・例外は outcome にして返す。
+  // 今が記録しない会話か。読めなければ記録しない側（送らない・残さない）。
+  const privateNow = (): boolean => {
+    try {
+      return options.privateConversation?.() === true;
+    } catch {
+      return true;
+    }
+  };
+
   const judgeTarget = async (
     settings: ShadowSettings,
     target: ShadowTarget,
     input: IntentJudgmentInput,
     turnExpiresAt: number,
   ): Promise<
-    ShadowJudgment | null | 'disabled' | 'expired' | 'live' | 'busy' | 'stopped'
+    | ShadowJudgment
+    | null
+    | 'private'
+    | 'disabled'
+    | 'expired'
+    | 'live'
+    | 'busy'
+    | 'stopped'
   > => {
     const requestId = newId();
     // 待ちの間に OFF・campaign の入れ替え・対象の取り外しがあったら送らない（受付・送信のどちらの直前にも確かめる）。
@@ -254,7 +274,10 @@ export function createShadowRecorder(
         return 'busy';
       }
     };
-    const blocked = (): 'disabled' | 'expired' | 'live' | 'busy' | null => {
+    const blocked = ():
+      'private' | 'disabled' | 'expired' | 'live' | 'busy' | null => {
+      // 記録しない会話へ入ったら、発話の本文を比較モデルへ送らない。
+      if (privateNow()) return 'private';
       if (!enabled()) return 'disabled';
       // 保持期限を過ぎた発言の本文は、新しい比較に使わない（送ってから記録を捨てるのでは遅い）。
       if (turnExpiresAt <= now()) return 'expired';
@@ -336,7 +359,7 @@ export function createShadowRecorder(
       return;
     }
     const admission = shadowAdmission({
-      privateConversation: false,
+      privateConversation: privateNow(),
       liveSessionOpen: observation.live_session_open,
       slotAvailable: options.slotAvailable(),
       campaign,
@@ -361,17 +384,19 @@ export function createShadowRecorder(
     if (judged.every((item) => item === null || typeof item === 'string')) {
       emit({
         kind: 'skipped',
-        reasons: judged.includes('disabled')
-          ? ['shadow_disabled']
-          : judged.includes('expired')
-            ? ['turn_expired']
-            : judged.includes('live')
-              ? ['live_session_open']
-              : judged.includes('stopped')
-                ? ['campaign_stopped']
-                : judged.includes('busy')
-                  ? ['no_capacity']
-                  : ['shadow_budget'],
+        reasons: judged.includes('private')
+          ? ['private_conversation']
+          : judged.includes('disabled')
+            ? ['shadow_disabled']
+            : judged.includes('expired')
+              ? ['turn_expired']
+              : judged.includes('live')
+                ? ['live_session_open']
+                : judged.includes('stopped')
+                  ? ['campaign_stopped']
+                  : judged.includes('busy')
+                    ? ['no_capacity']
+                    : ['shadow_budget'],
       });
       return;
     }
@@ -385,6 +410,11 @@ export function createShadowRecorder(
         : item,
     );
     const recordedAt = now();
+    // 比較の間に記録しない会話へ入ったなら、記録を残さない。
+    if (privateNow()) {
+      emit({ kind: 'skipped', reasons: ['private_conversation'] });
+      return;
+    }
     // 比較が遅れて発言がすでに失効したなら、抽出した引数を残さない（会話全文より長く残さない）。
     if (observation.turn_expires_at <= recordedAt) {
       emit({ kind: 'skipped', reasons: ['turn_expired'] });

@@ -1124,6 +1124,85 @@ test('a turn that expires before the comparison is sent is never sent: not befor
   }
 });
 
+test('entering a private conversation while a reservation is pending sends nothing, releases it, and leaves 0 records (Core-wide gate)', async () => {
+  const adapter = createFakeAdapter([response(wireJson())]);
+  const memory = memoryStore();
+  const state = { private: false };
+  const released: string[] = [];
+  let finishAdmit = (): void => undefined;
+  const pending = new Promise<void>((resolve) => {
+    finishAdmit = resolve;
+  });
+  const events: ShadowEvent[] = [];
+  const shadow = createShadowRecorder({
+    settings: () => settingsFor(adapter),
+    store: memory.store,
+    slotAvailable: () => true,
+    privateConversation: () => state.private,
+    spent: () => Promise.resolve('0'),
+    guard: {
+      admit: async () => {
+        await pending;
+        return {
+          ok: true,
+          settle: () => Promise.resolve(),
+          release: () => {
+            released.push('released');
+            return Promise.resolve();
+          },
+        };
+      },
+    },
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => NOW,
+    newId: () => randomUUID(),
+    onEvent: (event) => events.push(event),
+  });
+  shadow.observe(observation());
+  await new Promise((resolve) => setImmediate(resolve));
+  // 受付を待つ間に、本人が記録しない会話へ入る。
+  state.private = true;
+  finishAdmit();
+  await shadow.idle();
+  assert.equal(adapter.commands.length, 0);
+  assert.deepEqual(released, ['released']);
+  assert.equal(memory.records.length, 0);
+  assert.deepEqual(events, [
+    { kind: 'skipped', reasons: ['private_conversation'] },
+  ]);
+  // すでに記録しない会話なら、受付も作らない。読めない（例外）ときも記録しない側。
+  for (const read of [
+    () => true,
+    () => {
+      throw new Error('gate unreadable');
+    },
+  ]) {
+    const quiet = createFakeAdapter([response(wireJson())]);
+    const store = memoryStore();
+    const { guard, log } = fakeGuard();
+    const other = createShadowRecorder({
+      settings: () => settingsFor(quiet),
+      store: store.store,
+      slotAvailable: () => true,
+      privateConversation: read,
+      spent: () => Promise.resolve('0'),
+      guard,
+      contract,
+      output_schema: outputSchema,
+      schema: schemaValidator,
+      now: () => NOW,
+      newId: () => randomUUID(),
+    });
+    other.observe(observation());
+    await other.idle();
+    assert.equal(quiet.commands.length, 0);
+    assert.equal(log.admitted, 0);
+    assert.equal(store.records.length, 0);
+  }
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);

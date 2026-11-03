@@ -236,6 +236,9 @@ importers:
 
   apps/core:
     dependencies:
+      '@buddy/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@buddy/connectors':
         specifier: workspace:*
         version: link:../../packages/connectors

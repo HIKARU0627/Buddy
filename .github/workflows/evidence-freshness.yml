@@ -1,0 +1,71 @@
+# 模擬証拠（B04・B07）の記録が現在のソースと一致するかを知らせる専用のシグナル（ADR 0085）。
+#
+# - push: main・schedule・workflow_dispatch のどれでも、コミット済みの証拠を strict に照合するだけ。
+# - 生成はしない（既存の macOS shard 2/3 の artifact か、手動の evidence-macos.yml を使う）。
+#   追加の macOS job は 0。
+# - 権限は contents: read だけ。commit・push・PR の作成をしない。不一致は job summary に出す。
+# - これは必須チェックではない。main の記録が一時的に古い間も PR のマージは止めない。
+name: Simulated evidence freshness
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 週 1 回（月曜 03:00 UTC）。push: main でも検査するので、主に無変更期間の検出用。
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evidence-freshness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  identity:
+    name: Identity (committed evidence)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check committed evidence
+        id: check
+        continue-on-error: true
+        run: pnpm run evidence:check
+      - name: Write freshness summary
+        if: always()
+        env:
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          {
+            echo "## 模擬証拠の freshness"
+            echo ""
+            if [ "$CHECK_OUTCOME" = "success" ]; then
+              echo "B04・B07 の記録は現在のソースと一致しています。"
+            else
+              echo "**stale**: コミット済みの記録が現在のソースと一致しません。"
+              echo ""
+              echo "更新の手順:"
+              echo "1. この commit（main）の CI の macOS shard 2/3 の artifact \`simulated-evidence-b04-<sha>\`・\`simulated-evidence-b07-<sha>\` を取得する。"
+              echo "2. ワーカーが \`tests/integration/\` へ取り込み、\`pnpm run evidence:check\` を通す PR を作る。"
+              echo "3. artifact がないときは、Actions の \`Simulated evidence (macOS)\` を main で実行して作り直す。"
+              echo ""
+              echo "この workflow は読み取りだけで、証拠の生成・commit・PR の作成はしません。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fail when stale
+        if: steps.check.outcome == 'failure'
+        run: exit 1

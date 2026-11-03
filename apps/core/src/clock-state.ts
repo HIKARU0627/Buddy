@@ -7,8 +7,8 @@
 //   初めての起動（DB を新しく作った起動）だけは、ファイルを新しく作る。
 // - 進めすぎた時計の採り直しは、中枢の機器の前で行うローカル制御の操作（本人が見た値を明示して承認）で、記録を残す。
 // 本文を持たない。最後の 20 件の採り直しの記録（時刻・要求の ID・前後の最終確認時刻）を同じファイルに残す。
-// `storage_boundary` は記録しない区切りの世代（ADR 0045・Q7。B06-07a-2）が同居するための予約の欄で、いまは検査せず
-// 書き換えずに保つ。
+// `storage_boundary` は記録しない区切りの世代（ADR 0045・0059、Q7。B06-07a-2）。ファイル全体の検査（parseClockState）
+// では中身を見ず（世代の欄が壊れても時計の判定を止めない）、保存境界の保持者が parseStorageBoundary で読む。
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -157,36 +157,126 @@ export function serializeClockState(content: ClockStateContent): string {
   })}\n`;
 }
 
+// ---- 記録しない区切りの世代（`storage_boundary` の欄。ADR 0059、本人が 2026-10-31 に決定した Q7） ----------------------
+
+// 番号だけを置く（本文・区切りの ID・発言を持たない）。Core が再起動しても世代が戻らないことと、再起動の前に記録しない
+// 区切りが開いていたこと（終わった知らせを出すため）を知るための 2 欄。
+export interface StorageBoundaryRecord {
+  // 最後に発行した区切りの世代（10 進の文字列）。
+  readonly segment_generation: string;
+  // その世代が記録しない区切りとして開いているか。
+  readonly private_open: boolean;
+}
+
+export type StorageBoundaryLoad =
+  // ファイルは読めたが、欄がない（まだ記録しない区切りを使っていない）。
+  | { readonly status: 'absent' }
+  | { readonly status: 'ok'; readonly record: StorageBoundaryRecord }
+  // 欄はあるが形が違う（壊れている）。黙って読み替えない。
+  | { readonly status: 'invalid' }
+  // ファイルが無い・読めない。世代を知る手段も書く場所もない。
+  | { readonly status: 'unavailable' };
+
+const BOUNDARY_KEYS = ['segment_generation', 'private_open'];
+// 64 ビットの範囲に収まる桁数（入る・出るのたびに 1 進むだけなので届かない。壊れた巨大な値を受けないための上限）。
+const BOUNDARY_GENERATION = /^(0|[1-9][0-9]{0,18})$/u;
+
+export function parseStorageBoundary(
+  value: JsonValue | null,
+): StorageBoundaryLoad {
+  if (value === null) return { status: 'absent' };
+  if (!isJsonObject(value) || !sameKeys(value, BOUNDARY_KEYS))
+    return { status: 'invalid' };
+  const generation = value['segment_generation'];
+  const open = value['private_open'];
+  if (
+    typeof generation !== 'string' ||
+    !BOUNDARY_GENERATION.test(generation) ||
+    typeof open !== 'boolean'
+  )
+    return { status: 'invalid' };
+  return {
+    status: 'ok',
+    record: { segment_generation: generation, private_open: open },
+  };
+}
+
+export const serializeStorageBoundary = (
+  record: StorageBoundaryRecord,
+): JsonValue => ({
+  segment_generation: record.segment_generation,
+  private_open: record.private_open,
+});
+
 // 掃除の job が使う口。Core の試験では差し替える。
 export interface ClockStatePort {
   load(): Promise<ClockStateLoad>;
   save(content: ClockStateContent): Promise<void>;
 }
 
+// 同じファイルを掃除の job（最終確認時刻）と保存境界の保持者（記録しない区切りの世代）が書く。読んで書き換える処理を
+// 1 つずつ行い、どちらの書き込みも相手の欄を落とさない（ADR 0059）。
+export interface ClockStateFilePort extends ClockStatePort {
+  loadBoundary(): Promise<StorageBoundaryLoad>;
+  // 世代を書く。ファイルが無い・読めない・形が違うときは書かず 'unavailable'（初めての起動のファイルを作るのは掃除の
+  // job。ここで作ると、既存の DB でファイルが消えている状態を黙って作り直してしまう）。書き込みの失敗は拒否で返す。
+  saveBoundary(record: StorageBoundaryRecord): Promise<'saved' | 'unavailable'>;
+}
+
 // データディレクトリのファイル。保存は一時ファイル → fsync → rename → ディレクトリの fsync（writeFileAtomic）。
-export function createClockStateFile(dataDir: string): ClockStatePort {
+export function createClockStateFile(dataDir: string): ClockStateFilePort {
   const path = join(dataDir, CLOCK_STATE_FILE);
+  let serial: Promise<unknown> = Promise.resolve();
+  const exclusive = <T>(run: () => Promise<T>): Promise<T> => {
+    const next = serial.then(run, run);
+    serial = next.catch(() => undefined);
+    return next;
+  };
+  const read = async (): Promise<ClockStateLoad> => {
+    let text: string;
+    try {
+      text = await readFile(path, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+        return { status: 'missing' };
+      return { status: 'invalid', reason: 'unreadable' };
+    }
+    const content = parseClockState(text);
+    return content === null
+      ? { status: 'invalid', reason: 'malformed' }
+      : { status: 'verified', content };
+  };
+  const write = (content: ClockStateContent) =>
+    writeFileAtomic(dataDir, CLOCK_STATE_FILE, serializeClockState(content));
   return {
-    async load() {
-      let text: string;
-      try {
-        text = await readFile(path, 'utf8');
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-          return { status: 'missing' };
-        return { status: 'invalid', reason: 'unreadable' };
-      }
-      const content = parseClockState(text);
-      return content === null
-        ? { status: 'invalid', reason: 'malformed' }
-        : { status: 'verified', content };
-    },
-    async save(content) {
-      await writeFileAtomic(
-        dataDir,
-        CLOCK_STATE_FILE,
-        serializeClockState(content),
-      );
-    },
+    load: () => exclusive(read),
+    // 掃除の job の保存。渡された内容の `storage_boundary` は古いことがあるので、ファイルにある今の値で置き換える。
+    save: (content) =>
+      exclusive(async () => {
+        const current = await read();
+        await write(
+          current.status === 'verified'
+            ? { ...content, storage_boundary: current.content.storage_boundary }
+            : content,
+        );
+      }),
+    loadBoundary: () =>
+      exclusive(async () => {
+        const current = await read();
+        return current.status === 'verified'
+          ? parseStorageBoundary(current.content.storage_boundary)
+          : { status: 'unavailable' };
+      }),
+    // 版・最終確認時刻・採り直しの記録は変えない（時計の採り直しの照合値を動かさない）。
+    saveBoundary: (record) =>
+      exclusive(async () => {
+        const current = await read();
+        if (current.status !== 'verified') return 'unavailable';
+        await write({
+          ...current.content,
+          storage_boundary: serializeStorageBoundary(record),
+        });
+        return 'saved';
+      }),
   };
 }

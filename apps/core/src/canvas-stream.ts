@@ -501,6 +501,12 @@ const routeOf = (operationId: string): ApiRoute => {
 // 応答のキャッシュの上限（前に当てた変更の束）。
 const MAX_REPLAYS = 256;
 
+// 受け付けた要求を元の区切りへ結び付けておく期間（受付レシートの保存期限と同じ 7 日。設計 03 の command_receipt）。
+// 応答の束のキャッシュとは別に数える。
+export const ACCEPTED_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// 期限の切れた対応を片付ける目安（毎回全件を走査しない）。
+const ACCEPTED_PRUNE_THRESHOLD = 512;
+
 interface Stream {
   readonly sessionId: string;
   readonly segment: StreamSegment;
@@ -527,9 +533,14 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   // 前に当てた束（応答のキャッシュ。上限つき）と、配置を済ませた発言の ID（上限なし。1 人の流れの RAM だけ）。
   const replays = new Map<string, CanvasOpBatch | null>();
   const placed = new Set<string>();
-  // 受け付けた発言の要求（request_id）が属する区切り（会話）。同じ要求の再送は、区切りを切り替える前に
-  // 元の区切りで解決する（新しい区切りで送ると request_hash が変わり 409 になる。PR #191 のレビュー P1）。
-  const accepted = new Map<string, string>();
+  // 受け付けた発言の要求（request_id）→ 元の区切り（会話）と受付レシートの期限。同じ要求の再送は、区切りを
+  // 切り替える前にこの対応で解決する（新しい区切りで送ると request_hash が変わり 409 になる。PR #191 のレビュー P1）。
+  // 応答の束のキャッシュ（MAX_REPLAYS）とは別に、受付レシートの有効期間（`command_receipt` の 7 日。設計 03）だけ保つ。
+  // 再送の判定を応答のキャッシュの件数で捨てると、その後の再送が 409 になる（レビュー P2）。
+  const accepted = new Map<
+    string,
+    { readonly session_id: string; readonly expires_at: number }
+  >();
 
   // 今の区切り。流れの最初の発言で作り（理由: stream_started）、以後は同じ区切りを使う。同時の最初の発言でも 1 つだけ。
   const ensureStream = (request: ApiHandlerRequest): Promise<EnsureResult> => {
@@ -769,8 +780,12 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     // 同じ要求の再送は、区切りを選ぶ前に元の区切り（会話）で解決する。新しい区切りで送ると request_hash が変わり
     // 409 になるため（PR #191 のレビュー P1）。再送は区切りも切り替えない（経過も延ばさない）。
     const acceptedIn = accepted.get(requestId);
-    const replay = acceptedIn !== undefined;
-    if (replay) stream = { ...stream, sessionId: acceptedIn };
+    const replay =
+      acceptedIn !== undefined && acceptedIn.expires_at > now()
+        ? acceptedIn
+        : undefined;
+    if (replay !== undefined)
+      stream = { ...stream, sessionId: replay.session_id };
     // 自動の区切り（前の発言から 30 分・日付の変更）。初めての発言だけが区切りを始める。区切りを始められなければ、
     // 古い区切りで答えず 503 にする。
     else if (boundaryOf(stream, now()) !== null) {
@@ -794,13 +809,17 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     if (!contract.valid('TurnResponse', inner.body))
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     const turn = inner.body as TurnResponse;
-    // 初めて受け付けた発言を、その区切りに結び付ける（再送はこの区切りで解決する）。上限は応答のキャッシュと同じ。
-    if (!replay) {
-      accepted.set(requestId, stream.sessionId);
-      for (const old of accepted.keys()) {
-        if (accepted.size <= MAX_REPLAYS) break;
-        accepted.delete(old);
-      }
+    // 初めて受け付けた発言を、その区切りに結び付ける（再送はこの区切りで解決する）。受付レシートの有効期間だけ保ち、
+    // 応答の束のキャッシュの件数では捨てない（PR #191 のレビュー P2）。
+    if (replay === undefined) {
+      const at = now();
+      accepted.set(requestId, {
+        session_id: stream.sessionId,
+        expires_at: at + ACCEPTED_REQUEST_TTL_MS,
+      });
+      if (accepted.size >= ACCEPTED_PRUNE_THRESHOLD)
+        for (const [key, value] of accepted)
+          if (value.expires_at <= at) accepted.delete(key);
     }
     // 同じ要求の再送は、もう一度配置しない。配置済みかは発言の ID（turn_id。再送は保存済みの同じ発言を返す）で、
     // 応答の束のキャッシュの件数とは切り離して覚える（キャッシュから消えた後の再送でも再配置しない。そのときの束は

@@ -1321,7 +1321,8 @@ test(
   'UI-03: a request replayed after the response cache evicted it is answered but never placed again',
   { timeout: 120_000 },
   async (t) => {
-    const core = await startCanvasCore(t);
+    let at = new Date('2026-10-05T09:00:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
     const device = await insertDevice(core.handle.store);
     const scope = await bootstrap(core, device);
     const firstId = randomUUID();
@@ -1330,19 +1331,25 @@ test(
     });
     const firstBody = first.json as unknown as StreamTurnResponse;
     assert.equal(firstBody.canvas?.canvas_revision, '1');
+    // もう一度、現在の記述を版 2 にしておく（最初の束の参照へ戻されたことを見分けるため）。時計を進める前に置く。
+    const second = await postStream(core, device, scope, '今日の予定を見せて');
+    const secondBody = second.json as unknown as StreamTurnResponse;
+    assert.equal(secondBody.canvas?.canvas_revision, '2');
     // 応答のキャッシュの上限（256 件）を超えるまで、別の発言（聞き返し。配置なし）を送る。
     for (let index = 0; index < 260; index += 1) {
       const filler = await postStream(core, device, scope, 'こんにちは');
       assert.equal(filler.status, 200, filler.text);
     }
-    // もう一度、現在の記述を版 2 にしておく（最初の束の参照へ戻されたことを見分けるため）。
-    const second = await postStream(core, device, scope, '今日の予定を見せて');
-    assert.equal(
-      (second.json as unknown as StreamTurnResponse).canvas?.canvas_revision,
-      '2',
-    );
+    // 前の発言から 30 分を過ぎてから次を送り、区切りをまたぐ（受付の対応は応答のキャッシュと別に保つ）。
+    at = new Date('2026-10-05T09:31:00+09:00');
+    const boundary = await postStream(core, device, scope, 'こんにちは');
+    const boundaryBody = boundary.json as unknown as StreamTurnResponse;
+    assert.equal(boundaryBody.segment.open_reason, 'idle_timeout');
+    assert.equal(boundaryBody.canvas, null);
     const before = JSON.stringify(await canvasOf(core, device));
-    // 最初の要求の再送: 保存済みの発言の応答（文字の結果）は同じで、もう一度配置しない（版も参照も変わらない）。
+    // さらに 30 分後に最初の要求を再送する: 元の区切り（会話）で解決し、保存済みの発言の応答（文字の結果）を返す。
+    // 区切りは切り替えない（増えない）し、もう一度配置もしない（版も参照も変わらない）。
+    at = new Date('2026-10-05T10:02:00+09:00');
     const again = await postStream(core, device, scope, '今日の用事を見せて', {
       requestId: firstId,
     });
@@ -1350,6 +1357,11 @@ test(
     const againBody = again.json as unknown as StreamTurnResponse;
     assert.equal(againBody.turn_id, firstBody.turn_id);
     assert.deepEqual(againBody.result_view, firstBody.result_view);
+    assert.equal(
+      againBody.segment.segment_id,
+      boundaryBody.segment.segment_id,
+      'the replay must not open another segment',
+    );
     assert.equal(againBody.canvas, null);
     assert.equal(JSON.stringify(await canvasOf(core, device)), before);
     assert.equal((await canvasOf(core, device)).canvas_revision, '2');

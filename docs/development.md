@@ -36,6 +36,7 @@ GitHub Actions は Ubuntu / Windows / macOS のそれぞれで `pnpm run check` 
 - `scripts/test-shards.test.mjs` が検査するのは workflow の構造と条件式の文字列まで。GitHub 上での部分的な matrix の失敗・取り消しは再現しないので、集約の仕組みを変えるときは失敗する run を実際に起こして証拠を残す。
 - 1 PR あたり macOS の job が 4 つ（shard）になる。標準の runner では macOS の同時実行は 5 job までなので、複数の PR が同時に動くと待ちが出る。待ちが目立つ場合は macOS だけ shard を減らすことを検討する。
 - 模擬証拠の `source_sha256` と現行ソースの一致（記録の現在性 G1/G4）は、通常の PR CI の必須条件にしない（[ADR 0085](adr/0085-evidence-identity-and-freshness.md)）。PR の CI は実行器の期待値（G5）と `tests/test-map.json` の構造・参照・期待値の整合を検査する。証拠は macOS の既存 shard 2（B07）・shard 3（B04）で生成して artifact に残し、追加の macOS job は作らない。strict な照合は `pnpm run evidence:check` を工程の完了時と main の freshness の確認で実行し、`Verify (<os>)` の必須チェックとは分ける。
+- `evidence-freshness.yml` は push: main・週 1 回の schedule・workflow_dispatch で、読み取りのみ（`contents: read`）で記録の現在性を検査する。不一致は job summary に出し、必須チェックとは分ける。更新は、CI の macOS shard 2/3 の artifact をワーカーが取り込む PR（または `Simulated evidence (macOS)` の手動生成）で行う。bot PR・`contents: write` は作らない。
 - 権限は contents: read、外部 API キーや実データは不要。Actions は取得時点の commit SHA で固定している。
 
 - `scripts/*.test.mjs`: lint 設定が禁止した直接 import を実際に拒否するかを検証。

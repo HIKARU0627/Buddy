@@ -1,0 +1,143 @@
+# 模擬証拠（B04・B07）の記録が現在のソースと一致するかを知らせる専用のシグナル（ADR 0085）。
+#
+# - main への push: コミット済みの証拠を strict に照合する（生成しない）。
+# - schedule / workflow_dispatch: macOS で証拠を作り直し、artifact に残して照合する。
+# - 権限は contents: read だけ。commit・push・PR の作成はしない。不一致は job summary に出す。
+# - これは必須チェックではない。main の記録が一時的に古い間も PR のマージは止めない。
+name: Simulated evidence freshness
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 週 1 回（月曜 03:00 UTC）。push: main でも検査するので、主に無変更期間のドリフト検出用。
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evidence-freshness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  identity:
+    name: Identity (committed evidence)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check committed evidence
+        id: check
+        continue-on-error: true
+        run: pnpm run evidence:check
+      - name: Write freshness summary
+        if: always()
+        env:
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          {
+            echo "## 模擬証拠の freshness（main）"
+            echo ""
+            if [ "$CHECK_OUTCOME" = "success" ]; then
+              echo "B04・B07 の証拠は main のソースと一致しています。"
+            else
+              echo "**不一致**: main の記録が現在のソースと一致しません。"
+              echo ""
+              echo "更新の手順:"
+              echo "1. この push の CI（macOS shard 2/3）の artifact \`simulated-evidence-b04-<sha>\`・\`simulated-evidence-b07-<sha>\` を取得する。"
+              echo "2. ワーカーが \`tests/integration/\` へ取り込み、\`pnpm run evidence:check\` を通す PR を作る。"
+              echo "3. 手動で作り直すときは \`Simulated evidence (macOS)\` を実行する。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fail when stale
+        if: steps.check.outcome == 'failure'
+        run: exit 1
+
+  generate:
+    name: Generate and compare (macOS)
+    if: github.event_name != 'push'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      # 実行器は全反復が時間内に成功したときだけ書く（tests/integration/evidence-run.mjs）。
+      - name: Generate B04 and B07 evidence
+        id: generate
+        env:
+          BUDDY_B04_EVIDENCE_PATH: tests/integration/evidence-b04-simulated.json
+          BUDDY_B07_EVIDENCE_PATH: tests/integration/evidence-b07-simulated.json
+        run: |
+          node --test tests/integration/b04.test.mjs
+          node --test tests/integration/b07.test.mjs
+      - name: Format generated evidence
+        if: steps.generate.outcome == 'success'
+        run: >-
+          pnpm exec prettier --write
+          tests/integration/evidence-b04-simulated.json
+          tests/integration/evidence-b07-simulated.json
+      - name: Compare generated evidence with the source
+        id: check
+        if: steps.generate.outcome == 'success'
+        continue-on-error: true
+        run: pnpm run evidence:check
+      - name: Write freshness summary
+        if: always()
+        env:
+          GENERATE_OUTCOME: ${{ steps.generate.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          {
+            echo "## 模擬証拠の freshness（生成して照合）"
+            echo ""
+            if [ "$GENERATE_OUTCOME" != "success" ]; then
+              echo "**証拠の生成に失敗しました**。実行器の失敗・時間切れのため、artifact は作りません。"
+            elif [ "$CHECK_OUTCOME" = "success" ]; then
+              echo "生成した証拠は現在のソースと一致しています。既存の記録と同じ内容です。"
+            else
+              echo "**不一致**: 生成した証拠がコミット済みの記録と一致しません。"
+              echo ""
+              echo "artifact \`simulated-evidence-freshness-<sha>\` を取得し、ワーカーが \`tests/integration/\` へ取り込んで \`pnpm run evidence:check\` を通す PR を作ってください。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload generated evidence
+        if: steps.generate.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simulated-evidence-freshness-${{ github.sha }}
+          path: |
+            tests/integration/evidence-b04-simulated.json
+            tests/integration/evidence-b07-simulated.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Fail when generation or comparison failed
+        if: steps.generate.outcome == 'failure' || steps.check.outcome == 'failure'
+        run: exit 1

@@ -76,7 +76,15 @@ export interface TurnRouteStore extends EventQueryStore {
 
 // 今の区切りの世代を読む口（StorageModeGate.origin）。発言の由来の照合に使う（ADR 0045・0059）。
 export interface StorageOriginSource {
-  origin(): { readonly segment_generation: string };
+  origin(): {
+    readonly segment_id: string;
+    readonly segment_generation: string;
+  };
+  // 通常・継続相談の会話の区切りを会話の ID に結び付ける（世代は変えない）。
+  openSegment(
+    segmentId: string,
+    mode: 'normal' | 'extended',
+  ): Promise<{ readonly ok: boolean }>;
 }
 
 export interface TurnRoutesOptions {
@@ -383,6 +391,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // 再送では最初の受付の世代を返す（今の世代に付け替えない）。再起動で控えが無ければ '0' を返す。
     let responseGeneration = generation;
     if (session.session_id === newSessionId) {
+      // 会話の区切りを会話の ID に結び付ける（世代は変えない）。再起動・壊れた境界からの復旧では
+      // 区切りの ID が新しくなるので、前の会話の由来はこの ID と一致せず拒否される。
+      const opened = await options.storage.openSegment(newSessionId, mode);
+      if (!opened.ok) return apiErrorResponse(409, 'conflict', requestId);
       sessionGenerations.set(newSessionId, generation);
     } else {
       responseGeneration = sessionGenerations.get(session.session_id) ?? '0';
@@ -1172,12 +1184,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (session.value === null || session.value.ended_at !== null)
       return apiErrorResponse(409, 'conflict', requestId);
     // 端末が見ていた区切りが今のものか（会話の ID と世代）。古い・別の会話の由来では発言を保存しない。
+    // 会話の区切りは作成のときに会話の ID へ結び付ける。再起動・壊れた境界からの復旧で区切りの ID が
+    // 変わると、前の会話の由来は今の区切りと一致しない（世代が 1 に戻っても通らない）。
+    const current = options.storage.origin();
     if (
-      !originMatches(
-        body['origin'],
-        sessionId,
-        options.storage.origin().segment_generation,
-      )
+      current.segment_id !== sessionId ||
+      !originMatches(body['origin'], sessionId, current.segment_generation)
     )
       return apiErrorResponse(409, 'conflict', requestId);
     // 再送の判定は解釈より先（保存済みの応答をそのまま返し、解釈・意味検証をやり直さない）。

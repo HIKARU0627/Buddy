@@ -781,6 +781,31 @@ test(
 );
 
 test(
+  'a conversation cannot be used after the boundary segment changed even if the generation is the same',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    // 壊れた境界からの復旧（U148）は世代を 1 に戻し、区切りを新しい ID で開く。会話の ID は DB に残る。
+    // 区切りを会話の ID に結び付けてあるので、世代が同じ 1 でも前の会話の由来は通らない。
+    assert.equal(
+      (await core.handle.storage.openSegment(randomUUID(), 'normal')).ok,
+      true,
+    );
+    const stale = await postTurn(
+      core,
+      device,
+      session,
+      scope,
+      '明日の予定は？',
+    );
+    assert.equal(stale.status, 409, stale.text);
+  },
+);
+
+test(
   'X03 / X04: a preview from an old command scope, after a content change, a lock, a permission change or a restart cannot approve (410 / 409)',
   { timeout: 90_000 },
   async (t) => {
@@ -1024,7 +1049,16 @@ function pausedTurnRoutes() {
     candidates: { mailCandidates: () => Promise.resolve([]) },
     policy: TEST_TURN_POLICY,
     previews,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: (() => {
+      let segmentId = '';
+      return {
+        origin: () => ({ segment_id: segmentId, segment_generation: '1' }),
+        openSegment: (id: string) => {
+          segmentId = id;
+          return Promise.resolve({ ok: true });
+        },
+      };
+    })(),
     utcOffset: '+09:00',
   });
   const view = {

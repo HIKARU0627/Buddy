@@ -109,7 +109,10 @@ export function attachConversation(world, options = {}) {
     candidates: { mailCandidates: () => Promise.resolve([]) },
     policy: options.policy ?? TEST_TURN_POLICY,
     previews: new PreviewRegistry(),
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: {
+      origin: () => ({ segment_id: SESSION, segment_generation: '1' }),
+      openSegment: () => Promise.resolve({ ok: true }),
+    },
     utcOffset: '+09:00',
     now: () => NOW,
     onSessionControl: ({ device_id, action }) =>

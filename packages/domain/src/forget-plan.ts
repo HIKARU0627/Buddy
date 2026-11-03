@@ -347,17 +347,27 @@ export function computeForgetClosure(
       }
     // D. 由来を引けない派生物。範囲が忘れる物（core）に触れるなら消し、範囲全体（同じ会話・同じ元情報）を除外する。
     //    範囲が除外する由来に触れるだけなら、種類によらず消す。
+    //    先の巡で「触れるだけ」で消えた要約も、後から範囲の発言が core になれば範囲全体を除外する（U157。本人が
+    //    2026-11-01 に決定）。消える物かどうかで分岐を飛ばすと、辺・未帰属の並びで除外する由来が変わる。
     for (const item of graph.unattributed) {
-      if (doomed.has(nodeKey(item.artifact))) continue;
+      const key = nodeKey(item.artifact);
       const members = scopeMembers(item.scope);
       if (members.some((member) => core.has(nodeKey(member)))) {
-        doomed.set(nodeKey(item.artifact), item.artifact);
-        core.add(nodeKey(item.artifact));
+        if (!doomed.has(key)) {
+          doomed.set(key, item.artifact);
+          changed = true;
+        }
+        if (!core.has(key)) {
+          core.add(key);
+          changed = true;
+        }
         for (const member of members)
-          if (!doomed.has(nodeKey(member)) && !origins.has(nodeKey(member)))
+          if (!doomed.has(nodeKey(member)) && !origins.has(nodeKey(member))) {
             origins.set(nodeKey(member), member);
-        changed = true;
+            changed = true;
+          }
       } else if (
+        !doomed.has(key) &&
         members.some(
           (member) =>
             origins.has(nodeKey(member)) || doomed.has(nodeKey(member)),
@@ -365,7 +375,7 @@ export function computeForgetClosure(
       ) {
         // 除外する由来、または広げて消す物に属する派生物。消す（操作の確定内容は後で状態に応じて扱う）。
         // core には上げず、範囲の由来をさらに除外へ広げない（連鎖して消えるのを防ぐ境界）。
-        doomed.set(nodeKey(item.artifact), item.artifact);
+        doomed.set(key, item.artifact);
         changed = true;
       }
     }

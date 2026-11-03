@@ -329,6 +329,53 @@ test('模擬 provider の試験用の出口は、Core の製品コードとア�
     );
   }
 });
+test('LLM アダプターの試験用の出口は Core の製品コードから読めず、Core の試験からだけ読める（ADR 0080）', async () => {
+  const specifier = '@buddy/ai/testing';
+  const staticImport = await violations(
+    `export * from '${specifier}';\n`,
+    'apps/core/src/probe.ts',
+  );
+  assert.ok(
+    staticImport.some((message) => message.ruleId === 'no-restricted-imports'),
+    specifier,
+  );
+  const dynamicImport = await violations(
+    `export const load = () => import('${specifier}');\n`,
+    'apps/core/src/probe.ts',
+  );
+  assert.ok(
+    dynamicImport.some((message) => message.ruleId === 'no-restricted-syntax'),
+    specifier,
+  );
+  // 製品の出口 @buddy/ai は Core から読める（B10-03 以降で使う）。
+  assert.deepEqual(
+    await violations("export * from '@buddy/ai';\n", 'apps/core/src/probe.ts'),
+    [],
+  );
+  // Core の試験と試験の道具だけは読める。
+  for (const filePath of [
+    'apps/core/src/probe.test.ts',
+    'apps/core/src/probe-test-support.ts',
+  ])
+    assert.deepEqual(
+      await violations(
+        "export * from '@buddy/ai/testing';\nexport const load = () => import('@buddy/ai/testing');\n",
+        filePath,
+      ),
+      [],
+      filePath,
+    );
+  // 内部の dist は試験からも読めない（公開の出口だけを許す）。
+  assert.ok(
+    (
+      await violations(
+        "export * from '@buddy/ai/dist/testing.js';\n",
+        'apps/core/src/probe.test.ts',
+      )
+    ).some((message) => message.ruleId === 'no-restricted-imports'),
+    '@buddy/ai/dist/testing.js',
+  );
+});
 test('共有層から platform への直接依存を拒否する', async () => {
   for (const [filePath, specifiers] of [
     [

@@ -1406,7 +1406,64 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/connections/{connection_id}/sync:
+    get:
+      operationId: getConnectionSync
+      summary: 同期の状態
+      description: 取得集合の版・公開世代・watermark・走査中の batch と、次の走査に使う再試行の初期値を返す。トークンと本文は返さない（11 §1・§1A、ADR 0071）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 同期の状態。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/SyncStateResponse
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/connections/{connection_id}/targets:
+    get:
+      operationId: getConnectionTargets
+      summary: 取得対象の取得
+      description: 本人が選んだ取得対象と許可版を返す。新しいカレンダー・フォルダーを自動で足さない（04 取得する対象、J13・J16）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 取得対象を含む接続。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ConnectionSummary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
     put:
       operationId: updateConnectionTargets
       summary: 取得対象の変更

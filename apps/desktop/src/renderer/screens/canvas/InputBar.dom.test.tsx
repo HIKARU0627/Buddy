@@ -3,7 +3,7 @@
 import { happy } from '../../test-support/happy-dom.js';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppProviders } from '../../app/AppProviders.js';
 import { InputBar } from './InputBar.js';
@@ -11,6 +11,20 @@ import { InputBar } from './InputBar.js';
 after(async () => {
   await happy.happyDOM.close();
 });
+
+function setText(field: HTMLTextAreaElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(
+    happy.HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+  setter?.call(field, value);
+  field.dispatchEvent(
+    new happy.Event('input', { bubbles: true }) as unknown as Event,
+  );
+}
+
+const composition = (type: string): Event =>
+  new happy.Event(type, { bubbles: true }) as unknown as Event;
 
 function enter(options: KeyboardEventInit = {}): KeyboardEvent {
   return new KeyboardEvent('keydown', {
@@ -133,6 +147,54 @@ test('Enter also sends from the compact single-line input', async () => {
     field.dispatchEvent(plain);
   });
   assert.equal(sent, 1);
+  await act(async () => root.unmount());
+  container.remove();
+});
+
+test('text inserted by OS dictation is received, and composition never sends', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  let sent = '';
+  function Harness() {
+    const [value, setValue] = useState('');
+    return (
+      <AppProviders>
+        <InputBar
+          line={{ tone: 'success', mark: 'dot', text: '受付中' }}
+          enabled
+          value={value}
+          onChange={setValue}
+          onSubmit={() => {
+            sent = value;
+          }}
+          sending={false}
+          attention={false}
+          canSummon
+          onSummon={() => undefined}
+          expanded
+        />
+      </AppProviders>
+    );
+  }
+  await act(async () => root.render(<Harness />));
+  const field = container.querySelector('textarea');
+  assert(field !== null);
+  // OS の音声入力（Win+H・macOS の音声入力・AquaVoice）は input イベントで文字を入れる。
+  await act(async () => setText(field, '明日の予定を確認'));
+  assert.equal(field.value, '明日の予定を確認');
+  // 変換中は Enter でも送らない。
+  await act(async () => {
+    field.dispatchEvent(composition('compositionstart'));
+    field.dispatchEvent(enter());
+  });
+  assert.equal(sent, '');
+  // 確定してから Enter で 1 回送る。
+  await act(async () => {
+    field.dispatchEvent(composition('compositionend'));
+    field.dispatchEvent(enter());
+  });
+  assert.equal(sent, '明日の予定を確認');
   await act(async () => root.unmount());
   container.remove();
 });

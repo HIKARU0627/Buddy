@@ -61,6 +61,8 @@ export type BuddyContract =
   | CandidateSnapshot
   | SyncBatch
   | SyncScopeState
+  | SyncStateResponse
+  | ConnectorCapability
   | MemoryCandidateWire
   | MemoryCandidate
   | MemoryRecord
@@ -642,6 +644,34 @@ export type RequestEntityRevision = string;
  * 同期の実行担当の世代（設計 11 §1A）。再起動で新しい担当になると上がり、旧担当の遅着ページ・公開要求を拒否する。
  */
 export type ExecutorGeneration = string;
+/**
+ * 連携の提供元（設計 04 接続・権限）。
+ */
+export type ConnectionProvider = 'google' | 'microsoft';
+/**
+ * connector が読める対象（設計 04 接続・権限、08 §3）。書込みの前提の読み直しと結果の照合もこの読み取りだけを使う。
+ */
+export type ConnectorReadKind =
+  'permission' | 'mail.message' | 'mail.draft' | 'calendar.events';
+/**
+ * 送出の直前に前提（対象の版・許可）を確かめる方法（設計 08 §3、ADR 0027）。
+ */
+export type PreconditionMethod =
+  'conditional_request' | 'recheck_before_dispatch' | 'not_required';
+/**
+ * 結果不明のときに外部の状態を探す方法（設計 08 §3、ADR 0027）。
+ */
+export type LookupMethod = 'by_remote_id' | 'by_operation_marker' | 'none';
+/**
+ * 結果の照合の範囲（設計 08 §3、ADR 0027）。
+ */
+export type ReconcileScope =
+  'exact_target' | 'operation_marker' | 'local_transaction';
+/**
+ * 操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。
+ */
+export type OperationStepKind =
+  'apply_labels' | 'create_draft' | 'send' | 'create_task';
 /**
  * 要約記憶の種類（設計 11 §7）。保存できるのは本人が初期設定で許可した種類だけ。
  */
@@ -3738,6 +3768,76 @@ export interface SyncScopeState {
   analysis_plan_complete_generation: PublishedGeneration | null;
 }
 /**
+ * 接続の同期の状態（設計 11 §1・§1A、ADR 0071）。走査中の batch と、次の走査に使う再試行の初期値を返す。トークンと取得した本文は返さない。
+ */
+export interface SyncStateResponse {
+  connection_id: Id;
+  provider: ConnectionProvider;
+  scope_revision: ScopeRevision;
+  state: SyncScopeState;
+  active_batch: SyncBatch | null;
+  retry: ConnectorRetryPolicy;
+  last_attempt_at: UtcTime | null;
+}
+/**
+ * 参照と書込みの再試行の初期値（設計 04 再試行の初期値、ADR 0071）。測定済みの最適値ではない。値は設定で差し替えられるが、書込みの自動再送は 0 のままにする。
+ */
+export interface ConnectorRetryPolicy {
+  read_timeout_ms: number;
+  /**
+   * 初回を含む参照の試行の上限（設計 04 再試行の初期値は 3）。
+   */
+  read_max_attempts: number;
+  /**
+   * 再試行の待機の基本値。ジッターを加え、Retry-After があれば優先する。
+   *
+   * @minItems 1
+   */
+  read_base_delay_ms: [number, ...number[]];
+  /**
+   * 1 つのジョブで待つ合計の上限。超える場合はジョブを保留する。
+   */
+  read_max_total_wait_ms: number;
+  /**
+   * この回数失敗した接続は要確認にする。
+   */
+  read_failure_threshold: number;
+  write_automatic_retries: 0;
+}
+/**
+ * connector（模擬 provider を含む）が宣言する能力（設計 08 §3、ADR 0027・0071）。書込みの能力を宣言しても、承認・最終検査・結果の照合を省略しない。
+ */
+export interface ConnectorCapability {
+  provider: string;
+  reads: ConnectorReadCapability[];
+  writes: ConnectorWriteCapability[];
+}
+/**
+ * connector が宣言する読み取りの能力（ADR 0027・0071）。Read 以外を宣言できない。
+ */
+export interface ConnectorReadCapability {
+  kind: ConnectorReadKind;
+  effect_kind: 'Read';
+}
+/**
+ * connector が宣言する変更の能力（ADR 0027・0071）。種類ごとの規則は domain の表が正本で、宣言が規則に合わなければ拒否する。
+ */
+export interface ConnectorWriteCapability {
+  action_kind: OperationKind;
+  effect_kind: 'RemoteMutation';
+  /**
+   * 外部書込みの自動再送の回数。常に 0（設計 04 再試行の初期値、08 §3）。
+   */
+  automatic_http_retries: 0;
+  precondition: PreconditionMethod;
+  lookup: LookupMethod;
+  reconcile_scope: ReconcileScope;
+  /**
+   * @minItems 1
+   */
+  steps: [OperationStepKind, ...OperationStepKind[]];
+}
+/**
  * モデルが返す記憶の候補（設計 11 §7）。文は 80 文字以内（コードポイント）。忘却世代・許可・重複の判定はモデルに返させず Core が付ける。
  */
 export interface MemoryCandidateWire {
@@ -4434,7 +4534,7 @@ export interface ConnectionList {
  */
 export interface ConnectionSummary {
   connection_id: Id;
-  provider: 'google' | 'microsoft';
+  provider: ConnectionProvider;
   status: 'active' | 'needs_reauth' | 'needs_attention' | 'disconnected';
   access: 'read' | 'read_write';
   granted_scopes: string[];

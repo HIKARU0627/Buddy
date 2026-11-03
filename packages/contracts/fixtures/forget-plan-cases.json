@@ -12,7 +12,9 @@
     "turn:u-2": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "turn:u-3": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
     "turn:t2": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
-    "turn:t-dsrc": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+    "turn:t-dsrc": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1",
+    "turn:A": "f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5",
+    "turn:B": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6"
   },
   "resolve": {
     "known": [
@@ -399,6 +401,28 @@
         [
           "mem-d",
           "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2"
+        ]
+      ],
+      "operations": []
+    },
+    "order": {
+      "note": "会話 S の発言 A・B・C と、要約 sum-s（由来の辺がなく、S に属する）。記憶 X は発言 B から作り、X から発言 T1、T1 から発言 C を作った。辺の並びで C ← T1 が T1 ← X より前でも後でも、閉包は同じになる（U157）。",
+      "edges": [
+        ["turn:C", "turn:T1"],
+        ["turn:T1", "memory:X"],
+        ["memory:X", "turn:B"]
+      ],
+      "unattributed": [["session_summary:sum-s", "session:S"]],
+      "turn_sessions": [
+        ["A", "S"],
+        ["B", "S"],
+        ["C", "S"],
+        ["T1", "S2"]
+      ],
+      "memories": [
+        [
+          "X",
+          "f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7"
         ]
       ],
       "operations": []
@@ -1447,6 +1471,51 @@
         "notice_forgotten": ["memory:mem-d"],
         "notice_derived": [],
         "survivors": ["turn:t-dsrc", "user_directive:dir-2", "turn:t-dother"]
+      }
+    },
+    {
+      "id": "x15-rule-d-same-plan-whatever-the-edge-order",
+      "title": "辺の並びを入れ替えても閉包は同じ（U157）。規則 D の第 1 分岐は、前の巡で「触れるだけ」で消えた要約にも働き、範囲の発言 A も再登録の禁止にする",
+      "refs": ["X15", "ADR 0061 U157"],
+      "world": "order",
+      "input": {
+        "target": "memory:X",
+        "instruction_turn_id": null,
+        "executing_operation_id": null
+      },
+      "expected": {
+        "ok": true,
+        "targets": ["memory:X"],
+        "deletions": ["session_summary:sum-s", "memory:X", "turn:C", "turn:T1"],
+        "user_directives": [],
+        "purge_operation_contents": [],
+        "retained_operations": [],
+        "ledger": {
+          "forgotten": [
+            {
+              "source_kind": "memory",
+              "source_id": "X"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "C"
+            },
+            {
+              "source_kind": "turn",
+              "source_id": "T1"
+            }
+          ],
+          "blocked_source_hmacs": [
+            "f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5",
+            "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6"
+          ],
+          "blocked_content_keys": [
+            "f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7"
+          ]
+        },
+        "notice_forgotten": ["memory:X"],
+        "notice_derived": ["turn:C", "turn:T1"],
+        "survivors": ["turn:A", "turn:B"]
       }
     }
   ],

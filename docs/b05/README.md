@@ -82,7 +82,7 @@ BUDDY_B05_EVIDENCE_PATH=tests/integration/evidence-b05-simulated.json node --tes
 pnpm exec prettier --write tests/integration/evidence-b05-simulated.json
 ```
 
-全反復が成功し、case と seed のすべての組が完了したときだけ出力します（B04・B07 と同じ共通の部品 `tests/integration/evidence-run.mjs`）。B05 には POSIX だけの観測（ファイル権限）がないので Windows でも作れますが、`.github/workflows/evidence-macos.yml` に B05 を足し、macOS の CI でも作れるようにしました（`BUDDY_B05_EVIDENCE_PATH` を指定して実行器を走らせ、B04・B05・B07 を `simulated-evidence-<sha>` の artifact にまとめます）。今回の証拠は Windows 11（Node.js 24.19.0）で作り、`environment.os` に記録します。
+全反復が成功し、case と seed のすべての組が完了したときだけ出力します（B04・B07 と同じ共通の部品 `tests/integration/evidence-run.mjs`）。B05 には POSIX だけの観測（ファイル権限）がないので Windows でも作れますが、通常の PR の CI（`.github/workflows/verify-os.yml`）の macOS の既存 shard 4 が `BUDDY_B05_EVIDENCE_PATH` を一時ディレクトリへ向けて実行器を走らせ、整形・記録の形と commit の確認のうえ `simulated-evidence-b05-<sha>` の artifact に残します（commit はしません。ADR 0085）。明示的に作り直すときは `.github/workflows/evidence-macos.yml` でも B04・B05・B07 をまとめて作れます。今回の証拠は Windows 11（Node.js 24.19.0）で作り、`environment.os` に記録します。
 
 2026-11-01 のローカル検証（Windows 11、Node.js 24.19.0）:
 

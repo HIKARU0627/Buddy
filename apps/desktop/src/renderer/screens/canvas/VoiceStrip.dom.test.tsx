@@ -243,6 +243,11 @@ const buttonNamed = (container: HTMLElement, name: string) => {
 
 test('waiting: "続ける" is enabled and calls main; the revoke button sits next to the external mark', async () => {
   const strip = await mount(voiceStripView(shownVoice()));
+  // 通常表示も隠した面と同じ高さを予約する（下の 8 項目がロックで動かない。U162）。
+  assert.match(
+    strip.container.querySelector('section')?.className ?? '',
+    /min-h-44/u,
+  );
   const continueButton = buttonNamed(
     strip.container,
     VOICE_LABELS.continueName,

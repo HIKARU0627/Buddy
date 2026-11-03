@@ -93,7 +93,7 @@ export function VoiceStrip({
     <section
       aria-label={VOICE_LABELS.region}
       data-voice="shown"
-      className="flex flex-col gap-2"
+      className="flex min-h-44 flex-col gap-2"
     >
       <div
         className={`grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2 rounded-md px-3 py-2 ${live ? 'border border-warning-soft-foreground bg-warning-soft' : 'border border-separator'}`}

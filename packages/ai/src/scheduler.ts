@@ -58,9 +58,13 @@ const PRIORITY_ORDER: Readonly<Record<CallPriority, number>> = {
 };
 
 const rank = (request: ModelCallRequest): number =>
-  request.shadow === true
+  TASK_RULES[request.task].shadow
     ? 3
     : PRIORITY_ORDER[TASK_RULES[request.task].priority];
+
+// 影モードかどうかはジョブの規則を正本にする。running のフラグは、規則と食い違う記録も影モードとして扱う。
+const isRunningShadow = (call: RunningModelCall): boolean =>
+  call.shadow || TASK_RULES[call.task].shadow;
 
 // 受け付ける順に並べ、その時点の枠と provider の同時数で決める。戻り値は入力と同じ順。
 export function planModelCalls(
@@ -69,12 +73,15 @@ export function planModelCalls(
   requests: readonly ModelCallRequest[],
 ): readonly CallDecision[] {
   const limits = providerConcurrencyLimits(config);
-  let laneA = state.running.filter(
-    (call) => !call.shadow && TASK_RULES[call.task].lane === 'A',
+  const runningShadow = state.running.filter(isRunningShadow);
+  const runningWork = state.running.filter((call) => !isRunningShadow(call));
+  let laneA = runningWork.filter(
+    (call) => TASK_RULES[call.task].lane === 'A',
   ).length;
-  let laneB = state.running.filter(
-    (call) => !call.shadow && TASK_RULES[call.task].lane === 'B',
-  ).length;
+  // 影モードは枠 B を使う。実行中の影モードも枠 B とテキストの同時数に数える。
+  let laneB =
+    runningWork.filter((call) => TASK_RULES[call.task].lane === 'B').length +
+    runningShadow.length;
   let local = state.running.filter(
     (call) => TASK_RULES[call.task].lane === 'local',
   ).length;
@@ -82,7 +89,7 @@ export function planModelCalls(
   const providers = new Map<string, number>();
   for (const call of state.running)
     providers.set(call.provider, (providers.get(call.provider) ?? 0) + 1);
-  const runningNonShadow = state.running.some((call) => !call.shadow);
+  const runningNonShadow = runningWork.length > 0;
 
   const decisions: CallDecision[] = requests.map(() => ({
     admit: false,
@@ -98,6 +105,16 @@ export function planModelCalls(
   let admittedNonShadow = false;
   for (const { request, index } of order) {
     const rule = TASK_RULES[request.task];
+    // ジョブの規則と明示のフラグが食い違う要求は受け付けない（影モードの制御を迂回させない）。
+    if (request.shadow !== undefined && request.shadow !== rule.shadow) {
+      decisions[index] = {
+        admit: false,
+        action: 'wait',
+        reasons: ['shadow_flag_mismatch'],
+      };
+      continue;
+    }
+    const shadow = rule.shadow;
     const route = resolveModelRoute(config, request.task);
     if (!route.ok) {
       decisions[index] = {
@@ -111,7 +128,7 @@ export function planModelCalls(
     const providerLimit = limits[provider] ?? route.profile.max_concurrency;
     const providerCount = providers.get(provider) ?? 0;
 
-    if (request.shadow === true) {
+    if (shadow) {
       if (state.shadow_enabled !== true) {
         decisions[index] = {
           admit: false,
@@ -130,7 +147,8 @@ export function planModelCalls(
       }
       // 本人の依頼・自発の仕事がある間は、影モードのために枠を空けない（待たせない・skip）。
       const pendingNonShadow = requests.some(
-        (entry, entryIndex) => entryIndex !== index && entry.shadow !== true,
+        (entry, entryIndex) =>
+          entryIndex !== index && !TASK_RULES[entry.task].shadow,
       );
       if (runningNonShadow || admittedNonShadow || pendingNonShadow) {
         decisions[index] = {
@@ -159,7 +177,7 @@ export function planModelCalls(
       laneB += 1;
       text += 1;
       providers.set(provider, providerCount + 1);
-      decisions[index] = { admit: true, lane: 'B', priority: 'P2' };
+      decisions[index] = { admit: true, lane: 'B', priority: rule.priority };
       continue;
     }
 

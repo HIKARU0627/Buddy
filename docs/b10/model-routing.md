@@ -65,7 +65,7 @@
 
 - テキスト推論は**同時 2 本**。**枠 A は P0 専用**、**枠 B は P1→P2**。P0 は枠 A が空いていれば P2 の完了を待たない。
 - **ローカル生成は同時 1 本**。
-- 影モードは枠 B の内側で、P0／P1／P2 の仕事がある間は待たずに skip する（`shadow_disabled`・`shadow_budget`・`shadow_busy`・`shadow_wait`）。
+- 影モードは枠 B の内側で、P0／P1／P2 の仕事がある間は待たずに skip する（`shadow_disabled`・`shadow_budget`・`shadow_busy`・`shadow_wait`）。影モードかどうかは**ジョブの規則**（`intent_shadow`）で決め、明示のフラグと食い違う要求は `shadow_flag_mismatch` で拒否する。実行中の影モードも枠 B とテキストの同時数に数える（P0／P1 が来たら B10-03 が影モードを止める）。
 - 同時数 1 の provider を P0 と P1／P2 で共有する設定は `routingErrors` が拒否する（`provider_shared_between_priorities`）。P0 と P2 を同じ provider に置くと、P0 が P2 を待つか、同時数の上限を超えるため。
 - QA40（ローカル P0 の prefix cache の有無）は実機の測定が要る。この子では「ローカル生成 1 本」の受付と、profile の能力の登録、`localAdoption` の形（cache なしは採用条件未達、cached・uncached の遅延を安全側で記録）までを固定した。**遅延の実測は未実施**で、cache なしを採用条件未達として扱う最終判断は B10-07 の評価で行う。
 

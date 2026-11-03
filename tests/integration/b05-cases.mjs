@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { A, NO_FAULTS, withWorld } from './b05-world.mjs';
 import { CONVERSATION_CASES } from './b05-cases-conversation.mjs';
+import { INPUT_CASES } from './b05-cases-input.mjs';
 import {
   acksSince,
   closesSince,
@@ -627,6 +628,7 @@ const CASES = {
   'X30-hung-renderer-is-killed': x30HungRenderer,
   'X30-stop-playback-without-ack-escalates': x30StopPlaybackWithoutAck,
   ...CONVERSATION_CASES,
+  ...INPUT_CASES,
 };
 
 // 1 つのケースを実行し、手書きの期待値と突き合わせる。観測を返す（証拠の元）。

@@ -182,6 +182,9 @@
       "$ref": "#/$defs/ConnectorCapability"
     },
     {
+      "$ref": "#/$defs/GraphAccountState"
+    },
+    {
       "$ref": "#/$defs/MemoryCandidateWire"
     },
     {
@@ -10108,6 +10111,64 @@
       "additionalProperties": false,
       "description": "本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。"
     },
+    "GraphAccountKind": {
+      "type": "string",
+      "enum": ["personal", "work_or_school"],
+      "description": "Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。"
+    },
+    "GraphDelegationScope": {
+      "type": "string",
+      "enum": ["delegated_user"],
+      "description": "Microsoft Graph の委任されたユーザー権限だけを使う（設計 04 接続・権限）。組織全体のアプリ権限へ切り替えない。"
+    },
+    "GraphRejectionReason": {
+      "type": "string",
+      "enum": [
+        "insufficient_permission",
+        "organization_policy",
+        "admin_consent_required",
+        "tenant_restriction",
+        "unknown"
+      ],
+      "description": "接続・取得を拒否された理由（設計 04 接続・権限、QA22・QA23）。拒否を成功として扱わないための語彙。"
+    },
+    "GraphCategoryUpdateMode": {
+      "type": "string",
+      "enum": ["display_only"],
+      "description": "Outlook のカテゴリの扱い（設計 11 §5A、D7）。初期版は案の表示だけで、If-Match の検証ができるまで自動付与しない。"
+    },
+    "GraphAccountState": {
+      "type": "object",
+      "properties": {
+        "account_kind": {
+          "$ref": "#/$defs/GraphAccountKind"
+        },
+        "delegation": {
+          "$ref": "#/$defs/GraphDelegationScope"
+        },
+        "rejection_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphRejectionReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "category_updates": {
+          "$ref": "#/$defs/GraphCategoryUpdateMode"
+        }
+      },
+      "required": [
+        "account_kind",
+        "delegation",
+        "rejection_reason",
+        "category_updates"
+      ],
+      "additionalProperties": false,
+      "description": "Outlook の接続の状態（設計 04 接続・権限、ADR 0072）。拒否の理由と、カテゴリを自動付与しないことを表す。トークンを持たない。"
+    },
     "ConnectionProvider": {
       "type": "string",
       "enum": ["google", "microsoft"],
@@ -10146,6 +10207,17 @@
         },
         "scope_revision": {
           "$ref": "#/$defs/ScopeRevision"
+        },
+        "graph_account": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphAccountState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Outlook（microsoft）の接続だけが持つ。Google の接続では null。"
         }
       },
       "required": [

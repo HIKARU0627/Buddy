@@ -638,6 +638,77 @@ test('every target is judged on the same input and kept in one record; a target 
   assert.deepEqual(settled.sort(), ['lite-a', 'lite-b']);
 });
 
+test('a budget guard that throws for one target does not lose the other target', async () => {
+  const OTHER = '8e4c3f6b-5a7d-4b9e-9f0a-2d3e4f5a6b7c';
+  const good = createFakeAdapter([response(wireJson())]);
+  const broken = createFakeAdapter([response(wireJson())]);
+  const profileOf = (id: string) =>
+    syntheticProfile({
+      profile_id: id,
+      role: 'intent',
+      provider: 'gemini',
+      reasoning: null,
+      verified_capabilities: ['json_schema_strict'],
+    });
+  const settled: string[] = [];
+  const memory = memoryStore();
+  const events: ShadowEvent[] = [];
+  const shadow = createShadowRecorder({
+    settings: () =>
+      settingsFor(good, {
+        targets: [
+          {
+            deployment_id: SHADOW_DEPLOYMENT,
+            profile: profileOf('ok-a'),
+            adapter: good,
+          },
+          {
+            deployment_id: OTHER,
+            profile: profileOf('broken-b'),
+            adapter: broken,
+          },
+        ],
+      }),
+    store: memory.store,
+    slotAvailable: () => true,
+    guard: {
+      admit: (call) =>
+        call.profile.profile_id === 'broken-b'
+          ? Promise.reject(new Error('guard down'))
+          : Promise.resolve({
+              ok: true,
+              settle: () => {
+                settled.push(call.profile.profile_id);
+                return Promise.resolve();
+              },
+            }),
+    },
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => NOW,
+    newId: () => randomUUID(),
+    onEvent: (event) => events.push(event),
+  });
+  shadow.observe(observation());
+  await shadow.idle();
+  assert.equal(memory.records.length, 1);
+  assert.deepEqual(
+    memory.records[0]?.shadows.map((item) => [
+      item.deployment_id,
+      item.outcome,
+    ]),
+    [
+      [SHADOW_DEPLOYMENT, 'ok'],
+      [OTHER, 'unavailable'],
+    ],
+  );
+  assert.equal(good.commands.length, 1);
+  assert.equal(broken.commands.length, 0);
+  assert.deepEqual(settled, ['ok-a']);
+  assert.deepEqual(events, [{ kind: 'recorded', result: 'saved' }]);
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);

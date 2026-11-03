@@ -188,10 +188,20 @@ export function createShadowRecorder(
     input: IntentJudgmentInput,
   ): Promise<ShadowJudgment | null> => {
     const requestId = newId();
-    const admitted = await options.guard.admit({
-      request_id: requestId,
-      profile: target.profile,
-    });
+    let admitted: Awaited<ReturnType<ModelCallGuard['admit']>>;
+    try {
+      admitted = await options.guard.admit({
+        request_id: requestId,
+        profile: target.profile,
+      });
+    } catch {
+      // 予算の口が答えなかった: この対象だけ送らず、unavailable として記録する（他の対象の結果を巻き込まない）。
+      return judgmentOf(
+        target.deployment_id,
+        { kind: 'failed', failure: 'unavailable', retryable: true },
+        null,
+      );
+    }
     if (!admitted.ok) return null;
     const started = now();
     try {

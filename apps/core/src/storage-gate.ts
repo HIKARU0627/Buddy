@@ -194,36 +194,6 @@ export class StorageModeGate {
 
   // ---- 入る・出る -----------------------------------------------------------------------------------------------
 
-  // 通常・継続相談の会話の区切りを開く（会話の作成）。区切りの ID を会話の ID に結び付け、世代は変えない。
-  // 再起動・壊れた境界からの復旧では区切りの ID が新しくなるので、前の会話の由来はこの ID と一致せず拒否される。
-  // 記録しない区切りの間は開かない（入口は流れの経路。2b）。
-  async openSegment(
-    segmentId: string,
-    mode: 'normal' | 'extended',
-  ): Promise<
-    | { readonly ok: true }
-    | { readonly ok: false; readonly reason: 'private_conversation' | 'closed' }
-  > {
-    return this.#exclusive(async () => {
-      if (this.#closed)
-        return { ok: false as const, reason: 'closed' as const };
-      await this.#settle();
-      if (this.#state.mode === 'private')
-        return { ok: false as const, reason: 'private_conversation' as const };
-      this.#state = {
-        ...this.#state,
-        mode,
-        segment_id: segmentId,
-        private_ram: null,
-        pending_confirmations: [],
-        used_confirmation_ids: [],
-        accepted_operation_ids: [],
-        approved_confirmation_ids: [],
-      };
-      return { ok: true as const };
-    });
-  }
-
   // 記録しない区切りに入る。世代を書けたときだけ入る（命令は世代を書いた後に実行する）。
   enterPrivate(): Promise<StorageGateResult> {
     return this.#exclusive(async () => {

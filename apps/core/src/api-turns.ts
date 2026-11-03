@@ -80,11 +80,6 @@ export interface StorageOriginSource {
     readonly segment_id: string;
     readonly segment_generation: string;
   };
-  // 通常・継続相談の会話の区切りを会話の ID に結び付ける（世代は変えない）。
-  openSegment(
-    segmentId: string,
-    mode: 'normal' | 'extended',
-  ): Promise<{ readonly ok: boolean }>;
 }
 
 export interface TurnRoutesOptions {
@@ -360,9 +355,13 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
   };
 
-  // 会話の作成の再送で、最初の受付の世代を返すための控え（会話の ID → 世代）。再起動で失われるが、
-  // そのときは '0'（今の世代と一致しない）を返して最初の発言を 409 にし、会話を作り直させる。
-  const sessionGenerations = new Map<string, string>();
+  // 会話ごとの由来の控え（会話の ID → 作成したときの区切りと世代）。保存境界の保持者の状態は書き換えない。
+  // 再送ではこの控えの世代を返し、発言は控えと今の区切りの両方に一致するときだけ通す。
+  // 再起動で失われるが、そのときは '0'（今の世代と一致しない）を返して最初の発言を 409 にし、会話を作り直させる。
+  const sessionOrigins = new Map<
+    string,
+    { readonly gate_segment_id: string; readonly generation: string }
+  >();
 
   const createSession: ApiRouteHandler = async (request) => {
     const device = request.device;
@@ -372,9 +371,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // 記録しない会話（private）は保存しない会話の扱い（B05）が要るため、B04-03 では受け付けない。
     if (mode !== 'normal' && mode !== 'extended')
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
-    // 応答を返すまでに世代が進んでも、この会話の受付の時点の世代を返す（古ければ最初の発言が 409 になり、
-    // 端末は作り直す。進んだ世代を返して古い会話の発言を通さない）。
-    const generation = options.storage.origin().segment_generation;
+    const origin = options.storage.origin();
     const newSessionId = randomUUID();
     const result = await store.conversation({
       kind: 'session.create',
@@ -389,15 +386,15 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (session === null)
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     // 再送では最初の受付の世代を返す（今の世代に付け替えない）。再起動で控えが無ければ '0' を返す。
-    let responseGeneration = generation;
+    let responseGeneration = origin.segment_generation;
     if (session.session_id === newSessionId) {
-      // 会話の区切りを会話の ID に結び付ける（世代は変えない）。再起動・壊れた境界からの復旧では
-      // 区切りの ID が新しくなるので、前の会話の由来はこの ID と一致せず拒否される。
-      const opened = await options.storage.openSegment(newSessionId, mode);
-      if (!opened.ok) return apiErrorResponse(409, 'conflict', requestId);
-      sessionGenerations.set(newSessionId, generation);
+      sessionOrigins.set(newSessionId, {
+        gate_segment_id: origin.segment_id,
+        generation: origin.segment_generation,
+      });
     } else {
-      responseGeneration = sessionGenerations.get(session.session_id) ?? '0';
+      responseGeneration =
+        sessionOrigins.get(session.session_id)?.generation ?? '0';
     }
     return {
       status: 201,
@@ -1183,12 +1180,15 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (!session.ok) return conversationError(session, requestId);
     if (session.value === null || session.value.ended_at !== null)
       return apiErrorResponse(409, 'conflict', requestId);
-    // 端末が見ていた区切りが今のものか（会話の ID と世代）。古い・別の会話の由来では発言を保存しない。
-    // 会話の区切りは作成のときに会話の ID へ結び付ける。再起動・壊れた境界からの復旧で区切りの ID が
-    // 変わると、前の会話の由来は今の区切りと一致しない（世代が 1 に戻っても通らない）。
+    // 端末が見ていた区切りが今のものか（会話の ID と世代）。会話ごとの控えと、今の区切りの両方に
+    // 一致するときだけ保存する。再起動・壊れた境界からの復旧で区切りが変わると、前の会話の控えは
+    // 今の区切りと一致しない（世代が 1 に戻っても通らない）。
+    const expected = sessionOrigins.get(sessionId);
     const current = options.storage.origin();
     if (
-      current.segment_id !== sessionId ||
+      expected === undefined ||
+      expected.gate_segment_id !== current.segment_id ||
+      expected.generation !== current.segment_generation ||
       !originMatches(body['origin'], sessionId, current.segment_generation)
     )
       return apiErrorResponse(409, 'conflict', requestId);

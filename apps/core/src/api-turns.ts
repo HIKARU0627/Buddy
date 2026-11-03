@@ -74,10 +74,17 @@ export interface TurnRouteStore extends EventQueryStore {
   conversation: DbWorkerClient['conversation'];
 }
 
+// 今の区切りの世代を読む口（StorageModeGate.origin）。発言の由来の照合に使う（ADR 0045・0059）。
+export interface StorageOriginSource {
+  origin(): { readonly segment_generation: string };
+}
+
 export interface TurnRoutesOptions {
   readonly store: TurnRouteStore;
   readonly keyStore: DataKeyProvider;
   readonly interpreter: Interpreter;
+  // 保存境界の保持者（記録しない会話のゲート）。今の区切りの世代を発言の由来と照合する。
+  readonly storage: StorageOriginSource;
   // 連携の provider の読み取り。null は接続なし（Read・RemoteMutation は聞き返し）。
   readonly provider: ProviderReader | null;
   readonly candidates: CandidateSource;
@@ -288,6 +295,25 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   const contract = options.contract ?? createApiContract();
   const offset = offsetMinutes(options.utcOffset);
 
+  // 端末が見ていた区切り（会話の ID と世代）が今のものかを確かめる（ADR 0045 の P2-1・ADR 0059）。
+  // 形が違う・古い世代・別の会話は、発言を保存せずに 409 で断る。
+  const originMatches = (
+    origin: unknown,
+    sessionId: string,
+    generation: string,
+  ): boolean => {
+    if (typeof origin !== 'object' || origin === null || Array.isArray(origin))
+      return false;
+    const value = origin as Record<string, unknown>;
+    return (
+      Object.keys(value).every(
+        (key) => key === 'segment_id' || key === 'segment_generation',
+      ) &&
+      value['segment_id'] === sessionId &&
+      value['segment_generation'] === generation
+    );
+  };
+
   const loadKey = async (): Promise<DataKeyMaterial | null> => {
     try {
       const result = await options.keyStore.loadDataKey();
@@ -352,6 +378,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         request_id: requestId,
         session_id: session.session_id,
         storage_mode: session.storage_mode,
+        segment_generation: options.storage.origin().segment_generation,
         route_revision: session.route_revision,
       },
     };
@@ -1128,6 +1155,15 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     });
     if (!session.ok) return conversationError(session, requestId);
     if (session.value === null || session.value.ended_at !== null)
+      return apiErrorResponse(409, 'conflict', requestId);
+    // 端末が見ていた区切りが今のものか（会話の ID と世代）。古い・別の会話の由来では発言を保存しない。
+    if (
+      !originMatches(
+        body['origin'],
+        sessionId,
+        options.storage.origin().segment_generation,
+      )
+    )
       return apiErrorResponse(409, 'conflict', requestId);
     // 再送の判定は解釈より先（保存済みの応答をそのまま返し、解釈・意味検証をやり直さない）。
     const ref = requestRef(request, sessionId);

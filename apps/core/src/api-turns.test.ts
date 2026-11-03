@@ -212,6 +212,7 @@ const postTurn = async (
       command_scope_id: scope,
       text,
       input_kind: 'text',
+      origin: { segment_id: session, segment_generation: '1' },
     },
   );
   if (response.status === 200)
@@ -685,6 +686,45 @@ test(
 );
 
 test(
+  'turns: the origin must name the session and the current segment generation, and a wrong origin saves nothing',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const body = (origin: unknown) => ({
+      request_id: randomUUID(),
+      command_scope_id: scope,
+      text: '明日の予定は？',
+      input_kind: 'text',
+      ...(origin === undefined ? {} : { origin }),
+    });
+    const path = `/v1/sessions/${session}/turns`;
+    // 形が違う由来は Schema で 422（発言を保存しない）。
+    for (const origin of [
+      undefined,
+      { segment_id: session },
+      { segment_id: session, segment_generation: '1', extra: true },
+    ]) {
+      const response = await postJson(core, device, path, body(origin));
+      assert.equal(response.status, 422, response.text);
+    }
+    // 古い世代・別の会話の由来は 409（発言を保存しない）。
+    for (const origin of [
+      { segment_id: session, segment_generation: '2' },
+      { segment_id: randomUUID(), segment_generation: '1' },
+    ]) {
+      const response = await postJson(core, device, path, body(origin));
+      assert.equal(response.status, 409, response.text);
+    }
+    // 今の由来なら通る。
+    const ok = await postTurn(core, device, session, scope, '明日の予定は？');
+    assert.equal(ok.status, 200, ok.text);
+  },
+);
+
+test(
   'X03 / X04: a preview from an old command scope, after a content change, a lock, a permission change or a restart cannot approve (410 / 409)',
   { timeout: 90_000 },
   async (t) => {
@@ -928,6 +968,7 @@ function pausedTurnRoutes() {
     candidates: { mailCandidates: () => Promise.resolve([]) },
     policy: TEST_TURN_POLICY,
     previews,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     utcOffset: '+09:00',
   });
   const view = {

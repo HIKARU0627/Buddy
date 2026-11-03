@@ -445,6 +445,8 @@ export interface StreamRoutesOptions {
   // 既存の会話・発言の処理（api-turns.ts の createSession・postTurn）。関数として呼ぶだけで、中身は変えない。
   readonly createSession: ApiRouteHandler;
   readonly postTurn: ApiRouteHandler;
+  // 保存境界の保持者（今の区切りの世代）。流れの発言の由来に使う（ADR 0045・0059）。
+  readonly storage: { origin(): { readonly segment_generation: string } };
   readonly contract?: ApiContract;
   readonly now?: () => number;
   // 模擬の配置者の差し替え（試験用。検査に反する束を当てようとしても前の版が残ることを確かめる）。
@@ -628,6 +630,10 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         command_scope_id: stringOf(body, 'command_scope_id'),
         text: stringOf(body, 'text'),
         input_kind: stringOf(body, 'input_kind'),
+        origin: {
+          segment_id: stream.sessionId,
+          segment_generation: options.storage.origin().segment_generation,
+        },
       },
     });
     if (inner.status !== 200) return inner;

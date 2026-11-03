@@ -192,6 +192,7 @@ async function withConversation(
       candidates: { mailCandidates: () => Promise.resolve([]) },
       policy: options.policy ?? TEST_TURN_POLICY,
       previews: new PreviewRegistry(),
+      storage: { origin: () => ({ segment_generation: '1' }) },
       utcOffset: '+09:00',
       now: () => NOW,
       onSessionControl: ({ device_id, action }) =>
@@ -837,6 +838,7 @@ function typedRequest(text: string, inputKind: string): ApiHandlerRequest {
       command_scope_id: SCOPE_A,
       text,
       input_kind: inputKind,
+      origin: { segment_id: SESSION, segment_generation: '1' },
     },
     params: { session_id: SESSION },
     remoteAddress: '127.0.0.1',

@@ -1132,6 +1132,7 @@ async function startHttps(
     },
     policy: turnOptions.policy ?? TEST_TURN_POLICY,
     previews,
+    storage,
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
@@ -1159,6 +1160,7 @@ async function startHttps(
     canvas,
     createSession: turns.handlers['createSession'] as ApiRouteHandler,
     postTurn: turns.handlers['postTurn'] as ApiRouteHandler,
+    storage,
     now: () => now().getTime(),
   });
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。

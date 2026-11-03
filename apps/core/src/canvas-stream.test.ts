@@ -446,6 +446,7 @@ test('a batch that fails the checks is not applied: the turn is still answered i
     canvas: hub,
     createSession,
     postTurn,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     contract,
     place: (canvas) => ({
       base_canvas_revision: canvas.canvas_revision,
@@ -473,6 +474,7 @@ test('a batch that fails the checks is not applied: the turn is still answered i
     canvas: hub,
     createSession,
     postTurn,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     contract,
     place: (canvas) =>
       placeCanvasForTurn(
@@ -747,6 +749,7 @@ test('U120: the product screen sink reaches the canvas and the content route; th
     canvas: hub,
     createSession,
     postTurn,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     contract,
   });
   const logs: string[] = [];

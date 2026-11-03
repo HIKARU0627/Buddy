@@ -569,6 +569,15 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       entry.waiters.push(resolve);
     });
   };
+  // 受付の対応（期限の切れたものは無いものとして扱う）。
+  const acceptedIn = (
+    key: string,
+  ):
+    | { readonly session_id: string; readonly expires_at: number }
+    | undefined => {
+    const entry = accepted.get(key);
+    return entry !== undefined && entry.expires_at > now() ? entry : undefined;
+  };
 
   // 今の区切り。流れの最初の発言で作り（理由: stream_started）、以後は同じ区切りを使う。同時の最初の発言でも 1 つだけ。
   const ensureStream = (request: ApiHandlerRequest): Promise<EnsureResult> => {
@@ -644,6 +653,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     request: ApiHandlerRequest,
     from: Stream,
     requestId: string,
+    acceptedKey: string,
   ): Promise<EnsureResult> => {
     rotating ??= (async (): Promise<EnsureResult> => {
       const started = current;
@@ -655,6 +665,14 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         return { ok: true, stream: started };
       // 旧区切りで保存を待っている発言が終わるまで待つ（その発言の期限を要約の材料に入れる）。
       await settled(started.sessionId);
+      // 待つ間に、同じ要求（接続範囲＋要求 ID）が保存を終えて受付に登録されているかもしれない。そのときは区切らず、
+      // 再送として元の区切りで解決する（新しい区切りで送ると request_hash が変わり 409 になる。レビュー P2）。
+      const registered = acceptedIn(acceptedKey);
+      if (registered !== undefined)
+        return {
+          ok: true,
+          stream: { ...(current ?? started), sessionId: registered.session_id },
+        };
       const stream = current;
       if (stream === null) return { ok: true, stream: from };
       if (stream.sessionId !== started.sessionId) return { ok: true, stream };
@@ -703,6 +721,11 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
               ? created
               : apiErrorResponse(503, 'dependency_unavailable', requestId),
         };
+      // 会話を作るのを待つ間に、同じ要求が保存を終えて受付に登録されたなら、作った会話は使わず再送として解決する
+      // （新しい区切りに切り替えない。空の会話は残るが、見える区切りは増えない。レビュー P2）。
+      const late = acceptedIn(acceptedKey);
+      if (late !== undefined)
+        return { ok: true, stream: { ...stream, sessionId: late.session_id } };
       const segment: StreamSegment = {
         segment_id: body.session_id,
         storage_mode: stream.segment.storage_mode,
@@ -821,19 +844,24 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     // 再送と取り違えない。レビュー P2）。
     const scopeId = stringOf(body, 'command_scope_id');
     const acceptedKey = acceptedKeyOf(scopeId, requestId);
-    const acceptedIn = accepted.get(acceptedKey);
-    const replay =
-      acceptedIn !== undefined && acceptedIn.expires_at > now()
-        ? acceptedIn
-        : undefined;
+    let replay = acceptedIn(acceptedKey);
     if (replay !== undefined)
       stream = { ...stream, sessionId: replay.session_id };
     // 自動の区切り（前の発言から 30 分・日付の変更）。初めての発言だけが区切りを始める。区切りを始められなければ、
     // 古い区切りで答えず 503 にする。
     else if (boundaryOf(stream, now()) !== null) {
-      const rotated = await rotateSegment(request, stream, requestId);
+      const rotated = await rotateSegment(
+        request,
+        stream,
+        requestId,
+        acceptedKey,
+      );
       if (!rotated.ok) return rotated.response;
       stream = rotated.stream;
+      // 待つ間に同じ要求が保存を終えて受付に登録されたなら、再送として元の区切りで解決する（レビュー P2）。
+      replay = acceptedIn(acceptedKey);
+      if (replay !== undefined)
+        stream = { ...stream, sessionId: replay.session_id };
     }
     // この発言の保存が終わるまで、区切りの切り替えを待たせる（旧区切りの要約の材料を落とさない。レビュー P2）。
     const endSave = startTurnSave(stream.sessionId);

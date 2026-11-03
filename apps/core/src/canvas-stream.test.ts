@@ -1280,6 +1280,108 @@ test('UI-05: a new segment waits for a turn still being saved in the old segment
   assert.equal(sessions, 2);
 });
 
+test('UI-05: a resend that arrives while the first save is still running resolves in the old segment', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T23:59:59+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let release: (() => void) | null = null;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  // 保存側の受付レシートの再送（同じ会話・同じ要求 ID は保存済みの応答を返す）を模す。
+  const stored = new Map<string, object>();
+  let routes: ReturnType<typeof createStreamRoutes> | null = null;
+  routes = createStreamRoutes({
+    canvas,
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: async (request) => {
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      const key = `${sessionId}\u0000${body['request_id']}`;
+      const found = stored.get(key);
+      if (found !== undefined)
+        return { status: 200, body: { ...(found as object) } };
+      turns += 1;
+      const turn = turns;
+      if (turn === 1) {
+        // 保存を保留する（その間に 0 時をまたいで同じ要求が再送される）。
+        await gate;
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T14:59:59Z',
+          expires_at: '2026-10-12T14:59:59Z',
+        });
+      }
+      const response = {
+        request_id: body['request_id'],
+        session_id: sessionId,
+        turn_id: id(100 + turn),
+        input_id: id(200 + turn),
+        workflow_id: null,
+        status: 'answered',
+        result_view: null,
+        reply_text: null,
+      };
+      stored.set(key, response);
+      return { status: 200, body: response };
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const requestId = randomUUID();
+  const request = (): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: requestId,
+      command_scope_id: id(400),
+      text: 'こんにちは',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = handler(request());
+  await new Promise((resolve) => setImmediate(resolve));
+  // 0 時をまたいで、保存中の同じ要求を再送する。
+  at = Date.parse('2026-10-06T00:00:00+09:00');
+  const second = handler(request());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert(release !== null);
+  (release as () => void)();
+  const [firstDone, secondDone] = await Promise.all([first, second]);
+  assert.equal(firstDone.status, 200);
+  assert.equal(secondDone.status, 200);
+  const firstBody = firstDone.body as unknown as StreamTurnResponse;
+  const secondBody = secondDone.body as unknown as StreamTurnResponse;
+  // 同じ発言の応答を返し、区切りは増えない（新しい会話を作らない）。
+  assert.equal(secondBody.turn_id, firstBody.turn_id);
+  assert.equal(secondBody.segment.segment_id, firstBody.segment.segment_id);
+  assert.equal(secondBody.segment.open_reason, 'stream_started');
+  assert.equal(sessions, 1);
+  assert.equal(turns, 1);
+});
+
 test(
   'UI-03: clarifications and approval links place nothing on the canvas (approval is never put on it)',
   { timeout: 60_000 },

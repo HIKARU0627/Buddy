@@ -133,6 +133,8 @@ pnpm exec prettier --write tests/integration/evidence-b07-simulated.json
 3. 実行の artifact（通常の CI の `simulated-evidence-b07-<sha>`、または手動の `simulated-evidence-<sha>`）から JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD であることを確認します。
 4. 取り込んだあと、Windows でも `pnpm run build` の後に `pnpm run evidence:check` を実行し、`source_sha256` が取り込んだソースの対象一覧と一致することを確かめます（通常の PR の CI はこの一致を必須にしません）。artifact を CI が commit することはありません。commit・push は作業ブランチで行います。
 
+main の記録が現在のソースと一致しないことは、`evidence-freshness.yml` の job summary で分かります。更新は上の artifact を取り込む PR で行います。
+
 通常の CI（`ci.yml`・`verify-os.yml`）は証拠を commit せず、生成物は artifact にだけ残します。`workflow_dispatch` は既定ブランチに workflow ファイルがある必要があるため、この workflow の PR の上では実行できない場合があります。その場合はこの workflow が main に入ったあと、main を取り込んだブランチで実行してください。
 
 ## 未実施・残る判断

@@ -22,6 +22,14 @@ B00 では期待遷移と故障点（`fault-points.json`）、証拠の形式（
 - `pnpm run evidence:check` が、コミット済み証拠の `source_sha256` と現行ソースの対象一覧・hash の完全一致を検査します。これは工程の完了時と main の freshness の確認で実行し、PR の必須チェック（`Verify (<os>)`・`Public content / secrets`）とは分けます。
 - 通常の PR の CI の macOS の既存 shard 2（B07）・shard 3（B04）が証拠を生成して artifact に残します（追加の macOS job は作りません）。工程の完了時など明示的に作り直すときは `Simulated evidence (macOS)` を手動で実行します。main の記録の更新は、artifact を人が取り込む PR または定期の作業で行います（[開発手順](../../docs/development.md)）。
 
+main への push・週 1 回の schedule・手動の `evidence-freshness.yml` が、読み取りだけで `pnpm run evidence:check` を実行し、不一致を job summary に出します。更新は次の順で行います。
+
+1. その commit の CI の macOS shard 2/3 の artifact（`simulated-evidence-b04-<sha>`・`simulated-evidence-b07-<sha>`）を取得します。schedule・手動のときは、直近の main の CI の artifact を使うか、`Simulated evidence (macOS)` を実行して作り直します。
+2. ワーカーが `tests/integration/` へ取り込み、`pnpm run evidence:check` を通す PR を作ります。
+3. 手動で作り直すときは `Simulated evidence (macOS)` を実行します。
+
+bot PR・`contents: write` は作りません。freshness は必須チェックではないので、main の記録が一時的に古い間も PR のマージは止まりません。
+
 ## B07-06 の実行器
 
 `pnpm run build` の後、`node --test tests/integration/b07.test.mjs` で、予算の門（`apps/core` の `BudgetGate`）・DB worker・一時ディレクトリの DB・模擬の有料 provider をつないだ 18 ケース（X18 の同時の予約・超過枠・追加予約、QA42 の受付の上限・usage の重複と欠落・timeout・月替わり・M 超過の保留・承認のない超過枠・音声の予算から融通しない、QA20 の単価の境界と上限が不明、X53 の自発の枠、設定ファイルの実行時の読み込み、失敗・精算の重複・再起動の照合）を確認できます。`pnpm test` / `pnpm run check` にも含みます。18 ケース × 固定 seed 3 個 = 54 回を、関門と異なる順序で実行します。

@@ -835,6 +835,52 @@ test('turning the shadow mode off while a reservation is pending sends nothing a
   assert.equal(memory2.records.length, 0);
 });
 
+test('an input the primary refused to send (too long or blank) reserves nothing for the comparison', async () => {
+  for (const [name, text] of [
+    ['too long', 'あ'.repeat(2001)],
+    ['blank', '   '],
+  ] as const) {
+    const adapter = createFakeAdapter([response(wireJson())]);
+    const memory = memoryStore();
+    const events: ShadowEvent[] = [];
+    const { guard, log } = fakeGuard();
+    const shadow = createShadowRecorder({
+      settings: () => settingsFor(adapter),
+      store: memory.store,
+      slotAvailable: () => true,
+      spent: () => Promise.resolve('0'),
+      guard,
+      contract,
+      output_schema: outputSchema,
+      schema: schemaValidator,
+      now: () => NOW,
+      newId: () => randomUUID(),
+      onEvent: (event) => events.push(event),
+    });
+    shadow.observe(
+      observation({
+        context: { text, today: '2026-10-05', mail_candidates: [] },
+        primary: {
+          kind: 'failed',
+          failure: 'invalid_semantics',
+          retryable: false,
+        },
+      }),
+    );
+    await shadow.idle();
+    assert.equal(adapter.commands.length, 0, name);
+    // 予約（受付）も、使用量不明の精算も作らない。
+    assert.equal(log.admitted, 0, name);
+    assert.deepEqual(log.settled, [], name);
+    assert.equal(memory.records.length, 0, name);
+    assert.deepEqual(
+      events,
+      [{ kind: 'skipped', reasons: ['input_invalid'] }],
+      name,
+    );
+  }
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);

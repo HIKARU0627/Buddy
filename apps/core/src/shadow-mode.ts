@@ -16,7 +16,7 @@ import type {
   ModelProfile,
   ShadowJudgment,
 } from '@buddy/contracts';
-import { judgeIntent } from '@buddy/ai';
+import { intentInputErrors, judgeIntent } from '@buddy/ai';
 import type {
   IntentJudgment,
   IntentJudgmentInput,
@@ -236,7 +236,10 @@ export function createShadowRecorder(
         output_schema: options.output_schema,
         schema: options.schema,
       });
-      await admitted.settle(result.outcome.usage).catch(() => undefined);
+      // 送らなかった（入力の検査で止まった）なら予約を解放する。送ったときだけ精算する。
+      if (result.sent)
+        await admitted.settle(result.outcome.usage).catch(() => undefined);
+      else await admitted.release().catch(() => undefined);
       return judgmentOf(
         target.deployment_id,
         result.judgment,
@@ -298,6 +301,11 @@ export function createShadowRecorder(
     // 指定された比較モデルをすべて、同じ入力で並行して判定する。予算の口が拒否した対象は、黙って欠落させず
     // skipped として記録する（全部が拒否されたときは走らせず、記録も作らない）。
     const input = judgmentInputOf(observation.context);
+    // 本線と同じく、入力の検査に通らない発話は送らない。受付（予約）も作らない。
+    if (intentInputErrors(input).length > 0) {
+      emit({ kind: 'skipped', reasons: ['input_invalid'] });
+      return;
+    }
     const judged = await Promise.all(
       settings.targets.map((target) => judgeTarget(settings, target, input)),
     );

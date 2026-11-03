@@ -4,12 +4,15 @@
 
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
 import type {
   CanvasDocument,
   CanvasItem,
   CanvasOpBatch,
   ResultView,
+  StorageModeChangeResponse,
   StreamTurnResponse,
 } from '@buddy/contracts';
 import { createApiContract } from './api-contract.js';
@@ -27,6 +30,11 @@ import {
   placeHeldDropped,
   placeReplyForTurn,
 } from './canvas-stream.js';
+import type {
+  StreamStorageGate,
+  StreamStorageMode,
+  StreamStorageOutcome,
+} from './canvas-stream.js';
 import { createLiveScreenSink } from './live-conversation.js';
 import {
   bootstrap,
@@ -40,8 +48,24 @@ import {
 import type { EventCore } from './event-test-support.js';
 import type { TestDevice } from './api-test-support.js';
 import type { ProviderEvent, ProviderReader } from './turn-ports.js';
+import { parseClockState } from './clock-state.js';
+import { CLOCK_STATE_FILE } from './paths.js';
 
 const contract = createApiContract();
+
+// 保存境界の保持者の偽物（保存モードを切り替えない。private へは入れない）。区切りの世代だけを返す。
+const plainStorage = (
+  generation: string | (() => string) = '1',
+  mode: StreamStorageMode = 'normal',
+): StreamStorageGate => ({
+  mode,
+  origin: () => ({
+    segment_generation:
+      typeof generation === 'function' ? generation() : generation,
+  }),
+  enterPrivate: () => Promise.resolve({ ok: false, reason: 'closed' }),
+  exitPrivate: () => Promise.resolve({ ok: false, reason: 'closed' }),
+});
 
 // 設計 09 §2 の時計（2026-10-05T09:00:00+09:00）。
 const CLOCK = new Date('2026-10-05T09:00:00+09:00');
@@ -448,7 +472,7 @@ test('a batch that fails the checks is not applied: the turn is still answered i
     canvas: hub,
     createSession,
     postTurn,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     contract,
     place: (canvas) => ({
       base_canvas_revision: canvas.canvas_revision,
@@ -476,7 +500,7 @@ test('a batch that fails the checks is not applied: the turn is still answered i
     canvas: hub,
     createSession,
     postTurn,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     contract,
     place: (canvas) =>
       placeCanvasForTurn(
@@ -528,7 +552,7 @@ test('postStreamTurn passes the stream conversation id and the generation read a
     postTurn,
     // 区切りの作成の後に世代が進んだ（記録しない区切りに入った等）ことを模す。
     // 定数や作成時の値を控えて渡す実装では、この試験は通らない。
-    storage: { origin: () => ({ segment_generation: generation }) },
+    storage: plainStorage(() => generation),
     contract,
   });
   generation = '3';
@@ -815,7 +839,7 @@ test('U120: the product screen sink reaches the canvas and the content route; th
     canvas: hub,
     createSession,
     postTurn,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     contract,
   });
   const logs: string[] = [];
@@ -1032,7 +1056,7 @@ test('UI-05: when the new segment cannot be opened, the turn is not answered in 
     `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
   const routes = createStreamRoutes({
     canvas,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1150,7 +1174,7 @@ test('UI-05: the expiry kept for a turn is the one saved with it, not the clock 
     `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
   const routes = createStreamRoutes({
     canvas,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1261,7 +1285,7 @@ test('UI-05: a new segment waits for a turn still being saved in the old segment
     `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
   const routes = createStreamRoutes({
     canvas,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1366,7 +1390,7 @@ test('UI-05: a resend that arrives while the first save is still running resolve
   let routes: ReturnType<typeof createStreamRoutes> | null = null;
   routes = createStreamRoutes({
     canvas,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1468,7 +1492,7 @@ test('UI-05: a new request that waits with a resend still opens its own segment'
   let routes: ReturnType<typeof createStreamRoutes> | null = null;
   routes = createStreamRoutes({
     canvas,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1588,7 +1612,7 @@ test('UI-05: a save that finishes out of order does not move the segment start b
   let routes: ReturnType<typeof createStreamRoutes> | null = null;
   routes = createStreamRoutes({
     canvas,
-    storage: { origin: () => ({ segment_generation: '1' }) },
+    storage: plainStorage('1'),
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -2193,3 +2217,928 @@ test(
     ]);
   },
 );
+
+// --- U170: 保存モードの切り替えの経路（ADR 0060 の 2b） ---
+
+const postStorageMode = async (
+  core: EventCore,
+  device: TestDevice,
+  scope: string,
+  storageMode: 'normal' | 'extended' | 'private',
+  requestId = randomUUID(),
+) => {
+  const response = await postJson(core, device, '/v1/stream/storage-mode', {
+    request_id: requestId,
+    command_scope_id: scope,
+    storage_mode: storageMode,
+  });
+  if (response.status === 200)
+    assert(
+      contract.valid('StorageModeChangeResponse', response.json),
+      response.text,
+    );
+  return response;
+};
+
+const boundaryOf = async (core: EventCore) => {
+  const parsed = parseClockState(
+    await readFile(join(core.dataDir, CLOCK_STATE_FILE), 'utf8'),
+  );
+  assert(parsed !== null);
+  return parsed.storage_boundary;
+};
+
+test('U170: the stream route enters private without a conversation, writes private_open, and leaves it without a summary', async (t) => {
+  const core = await startCanvasCore(t);
+  const device = await insertDevice(core.handle.store);
+  const scope = await bootstrap(core, device);
+
+  // private へ入る。会話は作らず、ゲートの世代だけを進める（端末は会話の ID を送らない）。
+  const entered = await postStorageMode(core, device, scope, 'private');
+  assert.equal(entered.status, 200, entered.text);
+  const privateBody = entered.json as unknown as StorageModeChangeResponse;
+  assert.equal(privateBody.segment.storage_mode, 'private');
+  assert.equal(privateBody.segment.open_reason, 'private_started');
+  assert.equal(privateBody.segment.carried_summary, null);
+  assert.deepEqual(await boundaryOf(core), {
+    segment_generation: '2',
+    private_open: true,
+  });
+  // private の区切りは会話ではない（DB の sessions を作らない）。
+  const session = await core.handle.store.conversation({
+    kind: 'session.get',
+    session_id: privateBody.segment.segment_id,
+  });
+  assert.equal(session.ok, true);
+  assert.equal(session.ok ? session.value : 'error', null);
+
+  // 記録しない区切りの発言は保存しない（2b では DB も区切りも動かさない。RAM の保持は 2c）。
+  const privateTurn = await postStream(
+    core,
+    device,
+    scope,
+    '今日の用事を見せて',
+  );
+  assert.equal(privateTurn.status, 503, privateTurn.text);
+
+  // 出る。区切りは private_ended で、要約はつながない。
+  const exited = await postStorageMode(core, device, scope, 'extended');
+  assert.equal(exited.status, 200, exited.text);
+  const exitedBody = exited.json as unknown as StorageModeChangeResponse;
+  assert.equal(exitedBody.segment.storage_mode, 'extended');
+  assert.equal(exitedBody.segment.open_reason, 'private_ended');
+  assert.equal(exitedBody.segment.carried_summary, null);
+  assert.deepEqual(await boundaryOf(core), {
+    segment_generation: '3',
+    private_open: false,
+  });
+
+  // 出た後の発言は、新しく作った会話で保存される。
+  const after = await postStream(core, device, scope, '今日の用事を見せて');
+  assert.equal(after.status, 200, after.text);
+  assert.equal(
+    (after.json as unknown as StreamTurnResponse).segment.segment_id,
+    exitedBody.segment.segment_id,
+  );
+});
+
+test('U170: normal → extended opens a new segment, carries only the in-range summary, and treats a repeat as a no-op', async (t) => {
+  const core = await startCanvasCore(t);
+  const device = await insertDevice(core.handle.store);
+  const scope = await bootstrap(core, device);
+
+  const firstRequestId = randomUUID();
+  const first = await postStream(core, device, scope, '今日の用事を見せて', {
+    requestId: firstRequestId,
+  });
+  assert.equal(first.status, 200, first.text);
+  const firstBody = first.json as unknown as StreamTurnResponse;
+  assert.equal(firstBody.segment.storage_mode, 'normal');
+
+  const switched = await postStorageMode(core, device, scope, 'extended');
+  assert.equal(switched.status, 200, switched.text);
+  const segment = (switched.json as unknown as StorageModeChangeResponse)
+    .segment;
+  assert.equal(segment.storage_mode, 'extended');
+  assert.equal(segment.open_reason, 'storage_mode_changed');
+  assert.notEqual(segment.segment_id, firstBody.segment.segment_id);
+  // 発言は normal の保存期限（7 日）で、CLOCK の 2026-10-05T00:00:00Z から 10-12 に切れる。
+  // 元の区切りだけを由来にし、要約はその範囲でだけつなぐ。
+  assert.deepEqual(segment.carried_summary, {
+    source_segment_ids: [firstBody.segment.segment_id],
+    expires_at: '2026-10-12T00:00:00Z',
+  });
+  // normal ⇔ extended は記録しない区切りの欄を書かない（世代も private_open も動かさない）。
+  // 切り替えは会話の作成が区切りを会話の ID に結び付け直すことで表す。
+  assert.equal(await boundaryOf(core), null);
+
+  // 同じモードへの切り替えは何も動かさない（区切りも世代もそのまま）。
+  const same = await postStorageMode(core, device, scope, 'extended');
+  assert.equal(same.status, 200, same.text);
+  assert.deepEqual(
+    (same.json as unknown as StorageModeChangeResponse).segment,
+    segment,
+  );
+  assert.equal(await boundaryOf(core), null);
+
+  // 切り替え後の発言は、新しい会話の ID と今の世代で通る。
+  const second = await postStream(core, device, scope, '今日の用事を見せて');
+  assert.equal(second.status, 200, second.text);
+  assert.equal(
+    (second.json as unknown as StreamTurnResponse).segment.segment_id,
+    segment.segment_id,
+  );
+
+  // 切り替えの前と同じ要求（request_id・接続範囲・本文）の再送は、元の区切りの同じ受付結果を返す（409 にしない）。
+  const retried = await postStream(core, device, scope, '今日の用事を見せて', {
+    requestId: firstRequestId,
+  });
+  assert.equal(retried.status, 200, retried.text);
+  const retriedBody = retried.json as unknown as StreamTurnResponse;
+  assert.equal(retriedBody.turn_id, firstBody.turn_id);
+  // 同じ request_id で内容が違えば 409（保存済みの受付とは違う要求）。
+  const changed = await postStream(core, device, scope, '別の用事を見せて', {
+    requestId: firstRequestId,
+  });
+  assert.equal(changed.status, 409, changed.text);
+});
+
+test('U170: a turn accepted before private is returned on retry after leaving private', async (t) => {
+  const core = await startCanvasCore(t);
+  const device = await insertDevice(core.handle.store);
+  const scope = await bootstrap(core, device);
+  const requestId = randomUUID();
+
+  const first = await postStream(core, device, scope, '今日の用事を見せて', {
+    requestId,
+  });
+  assert.equal(first.status, 200, first.text);
+  const firstBody = first.json as unknown as StreamTurnResponse;
+  assert.equal(firstBody.segment.storage_mode, 'normal');
+
+  // private を挟む（世代が進む）。private の間の発言は保存しない。
+  assert.equal(
+    (await postStorageMode(core, device, scope, 'private')).status,
+    200,
+  );
+  const privateTurn = await postStream(
+    core,
+    device,
+    scope,
+    '今日の用事を見せて',
+  );
+  assert.equal(privateTurn.status, 503, privateTurn.text);
+  const exited = await postStorageMode(core, device, scope, 'normal');
+  assert.equal(exited.status, 200, exited.text);
+
+  // private を挟む前の同じ要求（request_id・接続範囲・本文）の再送は、保存済みの同じ受付結果を返す。
+  // 200 で同じ turn_id が返ること自体が、由来を最初に受け付けたときの会話・世代で渡せた証拠になる
+  // （今の世代で送ると request_hash が変わり 409 になる。ADR 0060）。
+  const retried = await postStream(core, device, scope, '今日の用事を見せて', {
+    requestId,
+  });
+  assert.equal(retried.status, 200, retried.text);
+  const retriedBody = retried.json as unknown as StreamTurnResponse;
+  assert.equal(retriedBody.turn_id, firstBody.turn_id);
+  // 同じ request_id で内容が違えば 409（新しい要求として保存しない）。
+  const changed = await postStream(core, device, scope, '別の用事を見せて', {
+    requestId,
+  });
+  assert.equal(changed.status, 409, changed.text);
+});
+
+test('U170: POST /v1/sessions still refuses private, and the stream route refuses a conversation id', async (t) => {
+  const core = await startCanvasCore(t);
+  const device = await insertDevice(core.handle.store);
+  const scope = await bootstrap(core, device);
+
+  // private の入口は流れの経路だけ（画面からの会話の作成は 503）。
+  const refusal = await postJson(core, device, '/v1/sessions', {
+    request_id: randomUUID(),
+    command_scope_id: scope,
+    storage_mode: 'private',
+  });
+  assert.equal(refusal.status, 503, refusal.text);
+  assert.equal(
+    (refusal.json as { code?: string }).code,
+    'dependency_unavailable',
+  );
+  // normal は今までどおり作れる。
+  const normal = await postJson(core, device, '/v1/sessions', {
+    request_id: randomUUID(),
+    command_scope_id: scope,
+    storage_mode: 'normal',
+  });
+  assert.equal(normal.status, 201, normal.text);
+
+  // 端末は会話の ID を送らない（送れば契約の形式の検査で 422）。
+  const withSession = await postJson(core, device, '/v1/stream/storage-mode', {
+    request_id: randomUUID(),
+    command_scope_id: scope,
+    storage_mode: 'private',
+    session_id: randomUUID(),
+  });
+  assert.equal(withSession.status, 422, withSession.text);
+  assert.equal((withSession.json as { code?: string }).code, 'invalid_input');
+});
+
+// 保存モードを切り替えられる偽のゲート（書込みの失敗と規則の拒否を作る）。
+class SwitchableStorage implements StreamStorageGate {
+  mode: StreamStorageMode = 'normal';
+  forced: StreamStorageOutcome | null = null;
+  readonly calls: string[] = [];
+  #generation = 1;
+  #segment = randomUUID();
+  origin(): { readonly segment_generation: string } {
+    return { segment_generation: String(this.#generation) };
+  }
+  enterPrivate(): Promise<StreamStorageOutcome> {
+    return this.#move('private', 'enter_private');
+  }
+  exitPrivate(mode: 'normal' | 'extended'): Promise<StreamStorageOutcome> {
+    return this.#move(mode, 'exit_private');
+  }
+  #move(mode: StreamStorageMode, call: string): Promise<StreamStorageOutcome> {
+    this.calls.push(call);
+    if (this.forced !== null) return Promise.resolve(this.forced);
+    this.mode = mode;
+    this.#generation += 1;
+    this.#segment = randomUUID();
+    return Promise.resolve({
+      ok: true,
+      origin: {
+        segment_id: this.#segment,
+        segment_generation: String(this.#generation),
+        storage_mode: mode,
+      },
+    });
+  }
+}
+
+test('U170: a failed switch answers 503 (or 409 for a rule refusal) and the next turn keeps the unchanged segment and generation', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  const sessionId = randomUUID();
+  const turnResponse = (requestId: string) => ({
+    request_id: requestId,
+    session_id: sessionId,
+    turn_id: randomUUID(),
+    input_id: randomUUID(),
+    workflow_id: null,
+    status: 'clarification',
+    result_view: null,
+    reply_text: 'どちらですか。',
+  });
+  let capturedOrigin: unknown = null;
+  const routes = createStreamRoutes({
+    canvas: hub,
+    createSession: () =>
+      Promise.resolve({ status: 201, body: { session_id: sessionId } }),
+    postTurn: (request) => {
+      capturedOrigin = request.body?.['origin'];
+      return Promise.resolve({
+        status: 200,
+        body: turnResponse(String(request.body?.['request_id'])),
+      });
+    },
+    storage,
+    contract,
+    now: () => CLOCK.getTime(),
+  });
+  const streamTurn = routes.handlers['postStreamTurn'] as ApiRouteHandler;
+  const storageMode = routes.handlers[
+    'postStreamStorageMode'
+  ] as ApiRouteHandler;
+  const turn = (requestId: string): ApiHandlerRequest => ({
+    route: route('postStreamTurn'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: randomUUID(),
+      text: '今日の用事を見せて',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+  });
+  const mode = (
+    requestId: string,
+    storageModeValue: string,
+  ): ApiHandlerRequest => ({
+    route: route('postStreamStorageMode'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: randomUUID(),
+      storage_mode: storageModeValue,
+    },
+  });
+
+  const first = await streamTurn(turn(randomUUID()));
+  assert.equal(first.status, 200);
+  const firstSegment = (first.body as StreamTurnResponse).segment;
+  assert.deepEqual(capturedOrigin, {
+    segment_id: sessionId,
+    segment_generation: '1',
+  });
+
+  // 世代を書けないときは 503。状態も区切りも動かさない。
+  storage.forced = { ok: false, reason: 'persist_failed' };
+  const failed = await storageMode(mode(randomUUID(), 'private'));
+  assert.equal(failed.status, 503);
+  assert.equal(
+    (failed.body as { code?: string }).code,
+    'dependency_unavailable',
+  );
+
+  // 規則の拒否は 409。
+  storage.forced = { ok: false, reason: 'already_private' };
+  const rejected = await storageMode(mode(randomUUID(), 'private'));
+  assert.equal(rejected.status, 409);
+  assert.equal((rejected.body as { code?: string }).code, 'conflict');
+
+  // 次の発言は、切り替えの前の区切りと世代のまま。切り替えは一度も成功していない。
+  storage.forced = null;
+  const next = await streamTurn(turn(randomUUID()));
+  assert.equal(next.status, 200);
+  assert.deepEqual((next.body as StreamTurnResponse).segment, firstSegment);
+  assert.deepEqual(capturedOrigin, {
+    segment_id: sessionId,
+    segment_generation: '1',
+  });
+});
+
+test('U170: a conversation failure after leaving private drops the unusable segment so private can be entered again', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  let failCreate = false;
+  let createCalls = 0;
+  const createSession: ApiRouteHandler = () => {
+    createCalls += 1;
+    return Promise.resolve(
+      failCreate
+        ? { status: 503, body: { code: 'dependency_unavailable' } }
+        : { status: 201, body: { session_id: randomUUID() } },
+    );
+  };
+  let postTurnCalls = 0;
+  const postTurn: ApiRouteHandler = (request) => {
+    postTurnCalls += 1;
+    const requestId = String(request.body?.['request_id']);
+    return Promise.resolve({
+      status: 200,
+      body: {
+        request_id: requestId,
+        session_id: randomUUID(),
+        turn_id: randomUUID(),
+        input_id: randomUUID(),
+        workflow_id: null,
+        status: 'clarification',
+        result_view: null,
+        reply_text: 'どちらですか。',
+      },
+    });
+  };
+  const routes = createStreamRoutes({
+    canvas: hub,
+    createSession,
+    postTurn,
+    storage,
+    contract,
+    now: () => CLOCK.getTime(),
+  });
+  const streamTurn = routes.handlers['postStreamTurn'] as ApiRouteHandler;
+  const storageMode = routes.handlers[
+    'postStreamStorageMode'
+  ] as ApiRouteHandler;
+  const turn = (requestId: string): ApiHandlerRequest => ({
+    route: route('postStreamTurn'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: randomUUID(),
+      text: '今日の用事を見せて',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+  });
+  const mode = (
+    requestId: string,
+    storageModeValue: string,
+  ): ApiHandlerRequest => ({
+    route: route('postStreamStorageMode'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: randomUUID(),
+      storage_mode: storageModeValue,
+    },
+  });
+
+  // private へ入る（current は private）。
+  const entered = await storageMode(mode(randomUUID(), 'private'));
+  assert.equal(entered.status, 200);
+  // 出る途中で会話の作成だけが失敗する。ゲートは normal へ確定済みなので、private の区切りを残さない。
+  failCreate = true;
+  const failed = await storageMode(mode(randomUUID(), 'normal'));
+  assert.equal(failed.status, 503);
+  assert.equal(
+    (failed.body as { code?: string }).code,
+    'dependency_unavailable',
+  );
+  assert.equal(createCalls, 1);
+  // 作り直せるまでの新しい発言は保存しない（黙って normal の会話を作って発言を残さない）。
+  const blocked = await streamTurn(turn(randomUUID()));
+  assert.equal(blocked.status, 503);
+  assert.equal(
+    (blocked.body as { code?: string }).code,
+    'dependency_unavailable',
+  );
+  assert.equal(postTurnCalls, 0);
+  assert.equal(createCalls, 1);
+  // 同じモード（private）の要求で、ゲートの今の状態から入り直せる。
+  failCreate = false;
+  const again = await storageMode(mode(randomUUID(), 'private'));
+  assert.equal(again.status, 200);
+  const segment = (again.body as StorageModeChangeResponse).segment;
+  assert.equal(segment.storage_mode, 'private');
+  assert.equal(segment.open_reason, 'private_started');
+  assert.deepEqual(storage.calls, [
+    'enter_private',
+    'exit_private',
+    'enter_private',
+  ]);
+  // 切り替えが成功すれば、その後の発言は通る。
+  const backToNormal = await storageMode(mode(randomUUID(), 'normal'));
+  assert.equal(backToNormal.status, 200);
+  const recovered = await streamTurn(turn(randomUUID()));
+  assert.equal(recovered.status, 200);
+  assert.equal(postTurnCalls, 1);
+});
+
+test('U170: the carried summary uses the saved deadlines, and concurrent out-of-order responses keep both', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  let clock = CLOCK.getTime();
+  const firstSession = randomUUID();
+  const secondSession = randomUUID();
+  let sessionCount = 0;
+  const createSession: ApiRouteHandler = () => {
+    sessionCount += 1;
+    return Promise.resolve({
+      status: 201,
+      body: {
+        session_id: sessionCount === 1 ? firstSession : secondSession,
+      },
+    });
+  };
+  const pending: {
+    readonly requestId: string;
+    readonly turnId: string;
+    readonly resolve: (response: { status: number; body: object }) => void;
+  }[] = [];
+  const routes = createStreamRoutes({
+    canvas: hub,
+    createSession,
+    postTurn: (request) =>
+      new Promise((resolve) => {
+        pending.push({
+          requestId: String(request.body?.['request_id']),
+          turnId: randomUUID(),
+          resolve,
+        });
+      }),
+    storage,
+    contract,
+    now: () => clock,
+  });
+  const streamTurn = routes.handlers['postStreamTurn'] as ApiRouteHandler;
+  const storageMode = routes.handlers[
+    'postStreamStorageMode'
+  ] as ApiRouteHandler;
+  const turn = (requestId: string): ApiHandlerRequest => ({
+    route: route('postStreamTurn'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: randomUUID(),
+      text: '今日の用事を見せて',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+  });
+  const mode = (requestId: string): ApiHandlerRequest => ({
+    route: route('postStreamStorageMode'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: randomUUID(),
+      storage_mode: 'extended',
+    },
+  });
+  const responseOf = (item: { requestId: string; turnId: string }) => ({
+    request_id: item.requestId,
+    session_id: firstSession,
+    turn_id: item.turnId,
+    input_id: randomUUID(),
+    workflow_id: null,
+    status: 'clarification',
+    result_view: null,
+    reply_text: 'どちらですか。',
+  });
+
+  // 同じ区切りへの 2 件が並行する（保存順と応答順を逆にする）。
+  const firstRequest = randomUUID();
+  const secondRequest = randomUUID();
+  const first = streamTurn(turn(firstRequest));
+  const second = streamTurn(turn(secondRequest));
+  while (pending.length < 2) await new Promise((done) => setImmediate(done));
+  const [a, b] = pending;
+  assert(a !== undefined && b !== undefined);
+  // 期限は保存の時点で確定した値。api-turns と同じく、保存の直後に区切りへ渡す（応答の時計では延ばさない）。
+  routes.recordTurn({
+    session_id: firstSession,
+    turn_id: a.turnId,
+    created_at: '2026-10-05T00:00:00.000Z',
+    expires_at: '2026-10-12T00:00:00.000Z',
+  });
+  routes.recordTurn({
+    session_id: firstSession,
+    turn_id: b.turnId,
+    created_at: '2026-10-05T00:00:10.000Z',
+    expires_at: '2026-10-20T00:00:00.000Z',
+  });
+  clock = Date.parse('2026-10-10T00:00:00Z');
+  // 遅い期限の応答（B）が先に、早い期限の応答（A）が後に届く（期限はもう保存の値で入っている）。
+  b.resolve({ status: 200, body: responseOf(b) });
+  a.resolve({ status: 200, body: responseOf(a) });
+  assert.equal((await first).status, 200);
+  assert.equal((await second).status, 200);
+
+  const switched = await storageMode(mode(randomUUID()));
+  assert.equal(switched.status, 200);
+  const segment = (switched.body as StorageModeChangeResponse).segment;
+  assert.equal(segment.open_reason, 'storage_mode_changed');
+  // 早い期限（A の保存値）が残る。B の期限（10-20）や応答時の now+7 日（10-17）にはならない。
+  assert.deepEqual(segment.carried_summary, {
+    source_segment_ids: [firstSession],
+    expires_at: '2026-10-12T00:00:00.000Z',
+  });
+});
+
+test('U170: a mode-change replay survives more than 256 later requests in the same scope', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  const routes = createStreamRoutes({
+    canvas: hub,
+    createSession: () =>
+      Promise.resolve({ status: 201, body: { session_id: randomUUID() } }),
+    postTurn: () => Promise.reject(new Error('unused')),
+    storage,
+    contract,
+    now: () => CLOCK.getTime(),
+  });
+  const storageMode = routes.handlers[
+    'postStreamStorageMode'
+  ] as ApiRouteHandler;
+  const mode = (requestId: string, value: string): ApiHandlerRequest => ({
+    route: route('postStreamStorageMode'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: 'scope-a',
+      storage_mode: value,
+    },
+  });
+
+  const firstId = randomUUID();
+  const entered = await storageMode(mode(firstId, 'private'));
+  assert.equal(entered.status, 200);
+  const firstSegment = (entered.body as StorageModeChangeResponse).segment;
+  // 同じ接続範囲で 256 件を超える要求（最初の private の後は normal の同じモード要求）。
+  for (let index = 0; index < 300; index += 1) {
+    const response = await storageMode(mode(randomUUID(), 'normal'));
+    assert.equal(response.status, 200);
+  }
+  // 最初の要求の再送は、件数で捨てられず、同じ応答を返す（enterPrivate をやり直さない）。
+  const retried = await storageMode(mode(firstId, 'private'));
+  assert.equal(retried.status, 200);
+  assert.deepEqual(
+    (retried.body as StorageModeChangeResponse).segment,
+    firstSegment,
+  );
+  assert.deepEqual(storage.calls, ['enter_private', 'exit_private']);
+});
+
+test('U170: an accepted turn replay survives more than 256 later turns in the same scope', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  const firstSession = randomUUID();
+  const secondSession = randomUUID();
+  let sessionCount = 0;
+  const createSession: ApiRouteHandler = () => {
+    sessionCount += 1;
+    return Promise.resolve({
+      status: 201,
+      body: {
+        session_id: sessionCount === 1 ? firstSession : secondSession,
+      },
+    });
+  };
+  const turnIds = new Map<string, string>();
+  const origins: unknown[] = [];
+  const postTurn: ApiRouteHandler = (request) => {
+    const requestId = String(request.body?.['request_id']);
+    origins.push(request.body?.['origin']);
+    let turnId = turnIds.get(requestId);
+    if (turnId === undefined) {
+      turnId = randomUUID();
+      turnIds.set(requestId, turnId);
+    }
+    return Promise.resolve({
+      status: 200,
+      body: {
+        request_id: requestId,
+        session_id: firstSession,
+        turn_id: turnId,
+        input_id: randomUUID(),
+        workflow_id: null,
+        status: 'clarification',
+        result_view: null,
+        reply_text: 'どちらですか。',
+      },
+    });
+  };
+  const routes = createStreamRoutes({
+    canvas: hub,
+    createSession,
+    postTurn,
+    storage,
+    contract,
+    now: () => CLOCK.getTime(),
+  });
+  const streamTurn = routes.handlers['postStreamTurn'] as ApiRouteHandler;
+  const storageMode = routes.handlers[
+    'postStreamStorageMode'
+  ] as ApiRouteHandler;
+  const turn = (requestId: string): ApiHandlerRequest => ({
+    route: route('postStreamTurn'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: 'scope-b',
+      text: '今日の用事を見せて',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+  });
+  const mode = (requestId: string, value: string): ApiHandlerRequest => ({
+    route: route('postStreamStorageMode'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: requestId,
+      command_scope_id: 'scope-b',
+      storage_mode: value,
+    },
+  });
+
+  const firstId = randomUUID();
+  const first = await streamTurn(turn(firstId));
+  assert.equal(first.status, 200);
+  const firstBody = first.body as StreamTurnResponse;
+  for (let index = 0; index < 260; index += 1) {
+    const response = await streamTurn(turn(randomUUID()));
+    assert.equal(response.status, 200);
+  }
+  const switched = await storageMode(mode(randomUUID(), 'extended'));
+  assert.equal(switched.status, 200);
+  assert.notEqual(
+    (switched.body as StorageModeChangeResponse).segment.segment_id,
+    firstSession,
+  );
+  // 最初の発言の再送は、件数で捨てられず、元の会話の受付（同じ turn_id）を返す。由来は最初に受けたときの
+  // 会話と世代のまま（今の世代を渡すと private の出入りの後に request_hash が変わる。ADR 0060）。
+  const retried = await streamTurn(turn(firstId));
+  assert.equal(retried.status, 200);
+  const retriedBody = retried.body as StreamTurnResponse;
+  assert.equal(retriedBody.turn_id, firstBody.turn_id);
+  assert.deepEqual(origins[origins.length - 1], origins[0]);
+});
+
+test('U170: a replay is bound to its connection scope, and a mode switch keeps the accepted origin', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  const sessions = [randomUUID(), randomUUID()];
+  let createCalls = 0;
+  const createSession: ApiRouteHandler = () => {
+    const sessionId = sessions[Math.min(createCalls, sessions.length - 1)];
+    assert(sessionId !== undefined);
+    createCalls += 1;
+    return Promise.resolve({ status: 201, body: { session_id: sessionId } });
+  };
+  const turnIds = new Map<string, string>();
+  const origins: { readonly key: string; readonly origin: unknown }[] = [];
+  const postTurn: ApiRouteHandler = (request) => {
+    const requestId = String(request.body?.['request_id']);
+    const scope = String(request.body?.['command_scope_id']);
+    origins.push({
+      key: `${scope}\0${requestId}`,
+      origin: request.body?.['origin'],
+    });
+    let turnId = turnIds.get(`${scope}\0${requestId}`);
+    if (turnId === undefined) {
+      turnId = randomUUID();
+      turnIds.set(`${scope}\0${requestId}`, turnId);
+    }
+    return Promise.resolve({
+      status: 200,
+      body: {
+        request_id: requestId,
+        session_id: sessions[0],
+        turn_id: turnId,
+        input_id: randomUUID(),
+        workflow_id: null,
+        status: 'clarification',
+        result_view: null,
+        reply_text: 'どちらですか。',
+      },
+    });
+  };
+  const routes = createStreamRoutes({
+    canvas: hub,
+    createSession,
+    postTurn,
+    storage,
+    contract,
+    now: () => CLOCK.getTime(),
+  });
+  const streamTurn = routes.handlers['postStreamTurn'] as ApiRouteHandler;
+  const storageMode = routes.handlers[
+    'postStreamStorageMode'
+  ] as ApiRouteHandler;
+  const request = (
+    operationId: string,
+    scope: string,
+    body: Record<string, unknown>,
+  ): ApiHandlerRequest => ({
+    route: route(operationId),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: { command_scope_id: scope, ...body },
+  });
+  const turn = (scope: string, requestId: string): ApiHandlerRequest =>
+    request('postStreamTurn', scope, {
+      request_id: requestId,
+      text: '今日の用事を見せて',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    });
+  const mode = (
+    scope: string,
+    requestId: string,
+    value: string,
+  ): ApiHandlerRequest =>
+    request('postStreamStorageMode', scope, {
+      request_id: requestId,
+      storage_mode: value,
+    });
+  const lastOrigin = (scope: string, requestId: string) =>
+    origins.filter((item) => item.key === `${scope}\0${requestId}`).at(-1)
+      ?.origin;
+
+  // 範囲 A の発言と、その再送。再送は最初に受け付けた由来で解決する。
+  const firstId = randomUUID();
+  const first = await streamTurn(turn('scope-a', firstId));
+  assert.equal(first.status, 200);
+  const firstOrigin = lastOrigin('scope-a', firstId);
+  assert.deepEqual(firstOrigin, {
+    segment_id: sessions[0],
+    segment_generation: '1',
+  });
+
+  // 範囲 B で extended へ切り替え、normal に戻してから、extended の要求を再送する。
+  const changeId = randomUUID();
+  const switched = await storageMode(mode('scope-b', changeId, 'extended'));
+  assert.equal(switched.status, 200);
+  const switchedBody = switched.body as StorageModeChangeResponse;
+  assert.equal(switchedBody.segment.segment_id, sessions[1]);
+  assert.equal(createCalls, 2);
+  const backToNormal = await storageMode(
+    mode('scope-b', randomUUID(), 'normal'),
+  );
+  assert.equal(backToNormal.status, 200);
+  assert.equal(createCalls, 3);
+  // 再送は切り替えをやり直さない（もう一度 extended へ切り替えない）。
+  const changeReplayed = await storageMode(
+    mode('scope-b', changeId, 'extended'),
+  );
+  assert.equal(changeReplayed.status, 200);
+  assert.deepEqual(
+    (changeReplayed.body as StorageModeChangeResponse).segment,
+    switchedBody.segment,
+  );
+  assert.equal(createCalls, 3);
+
+  // 範囲 A の同じ要求の再送は、切り替えを挟んでも最初に受け付けた由来のまま（今の世代を渡さない）。
+  const firstRetried = await streamTurn(turn('scope-a', firstId));
+  assert.equal(firstRetried.status, 200);
+  assert.equal(
+    (firstRetried.body as StreamTurnResponse).turn_id,
+    (first.body as StreamTurnResponse).turn_id,
+  );
+  assert.deepEqual(lastOrigin('scope-a', firstId), firstOrigin);
+
+  // 同じ request_id でも接続範囲が違えば別の要求（前の範囲の控えを再送と取り違えない）。
+  const second = await streamTurn(turn('scope-b', firstId));
+  assert.equal(second.status, 200);
+  assert.notEqual(
+    (second.body as StreamTurnResponse).turn_id,
+    (first.body as StreamTurnResponse).turn_id,
+  );
+});

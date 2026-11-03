@@ -32,6 +32,7 @@ import type {
   IntentName,
   SessionControlAction,
   StartupGateDecision,
+  StorageModeName,
 } from '@buddy/domain';
 import {
   openOperationIntent,
@@ -78,7 +79,10 @@ export interface TurnRouteStore extends EventQueryStore {
 }
 
 // 今の区切りの世代を読む口（StorageModeGate.origin）。発言の由来の照合に使う（ADR 0045・0059）。
+// mode は保存境界の保持者の今の保存モード。記録しない区切りの間は DB の sessions を引かない（ADR 0060 の 2b）。
 export interface StorageOriginSource {
+  // 今の保存モード。記録しない区切りの間は DB の sessions を引かない（ADR 0060 の 2b）。
+  readonly mode: StorageModeName;
   origin(): {
     readonly segment_id: string;
     readonly segment_generation: string;
@@ -410,7 +414,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const requestId = stringOf(request.body, 'request_id');
     if (device === null) return apiErrorResponse(401, 'unauthenticated');
     const mode = stringOf(request.body, 'storage_mode');
-    // 記録しない会話（private）は保存しない会話の扱い（B05）が要るため、B04-03 では受け付けない。
+    // 記録しない会話（private）は流れの経路（POST /v1/stream/storage-mode）が持つ。画面からの会話の作成では
+    // normal／extended だけを作り、private は受け付けない（ADR 0060 の入口の整理。503）。
     if (mode !== 'normal' && mode !== 'extended')
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     const origin = options.storage.origin();
@@ -1296,6 +1301,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const body = request.body as JsonObject;
     const requestId = stringOf(body, 'request_id');
     if (device === null) return apiErrorResponse(401, 'unauthenticated');
+    // 記録しない区切りの間は DB の sessions を引かない（流れの経路は private の会話を作らない。ADR 0060）。
+    // 記録しない発言の受け取りは RAM の経路（2c）で足す。
+    if (options.storage.mode === 'private')
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
     // 端末内の音声認識（local_asr）の入力は音声の区間と世代の照合が要る（B06）。B04-03 は文字入力だけ。
     // Live の文字起こし（voice_live）は端末のこの経路では受け付けない（中枢がサイドバンドで受ける。X49）。
     if (stringOf(body, 'input_kind') !== 'text')
@@ -1308,6 +1317,14 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (!session.ok) return conversationError(session, requestId);
     if (session.value === null || session.value.ended_at !== null)
       return apiErrorResponse(409, 'conflict', requestId);
+    // 再送の判定は解釈より先（保存済みの応答をそのまま返し、解釈・意味検証をやり直さない）。
+    // 保存済みの受付は、区切りの世代が進んだ後（private の出入り）でも同じ要求なら返せるよう、由来の照合より先に見る。
+    // 新しい要求（保存済みの受付がない）は、下の由来の照合を通らないと進めない。
+    const ref = requestRef(request, sessionId);
+    const found = await store.conversation({ kind: 'turn.find', request: ref });
+    if (!found.ok) return conversationError(found, requestId);
+    if (found.value !== null)
+      return storedResponse(found.value.response_json, requestId);
     // 端末が見ていた区切りが今のものか（会話の ID と世代）。会話ごとの控えと、今の区切りの両方に
     // 一致するときだけ保存する。再起動・壊れた境界からの復旧で区切りが変わると、前の会話の控えは
     // 今の区切りと一致しない（世代が 1 に戻っても通らない）。
@@ -1320,12 +1337,6 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       !originMatches(body['origin'], sessionId, current.segment_generation)
     )
       return apiErrorResponse(409, 'conflict', requestId);
-    // 再送の判定は解釈より先（保存済みの応答をそのまま返し、解釈・意味検証をやり直さない）。
-    const ref = requestRef(request, sessionId);
-    const found = await store.conversation({ kind: 'turn.find', request: ref });
-    if (!found.ok) return conversationError(found, requestId);
-    if (found.value !== null)
-      return storedResponse(found.value.response_json, requestId);
     const text = stringOf(body, 'text');
     // 会話の操作（照合表に全体が一致した短い発話）は、LLM を呼ばず、依頼も作らない（10 §5、X58）。
     const control = resolveSessionControl(text, SESSION_CONTROL_TABLE, 'text');

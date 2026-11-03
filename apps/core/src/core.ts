@@ -37,6 +37,10 @@ import type {
   TailscaleStatusSource,
   TlsKeyStore,
 } from '@buddy/platform';
+import {
+  CONNECTION_REVISION_CHECKED_ROUTES,
+  createConnectionRoutes,
+} from './api-connections.js';
 import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
 import type { HomeNetworkGate } from './api-home-network.js';
 import { ApiListenError, createApiServer } from './api-server.js';
@@ -1109,7 +1113,9 @@ async function startHttps(
         request_id: requestId,
       }),
   });
-  // 承認・取消・予算の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。
+  // 連携の接続の一覧・取得対象の読み取りと変更（B08-02、ADR 0089）。許可版の照合は DB の現在値で行う。
+  const connectionRoutes = createConnectionRoutes({ store });
+  // 承認・取消・予算・接続の取得対象の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。
   const environment: RequestEnvironment = {
     ...base,
     revisionMatches: (input) =>
@@ -1117,9 +1123,11 @@ async function startHttps(
         ? routes.revisionMatches(input)
         : BUDGET_REVISION_CHECKED_ROUTES.has(input.operationId)
           ? budgetRoutes.revisionMatches(input)
-          : input.operationId === 'resumeIo'
-            ? voice.revisionMatches(input.device, input.body)
-            : base.revisionMatches(input),
+          : CONNECTION_REVISION_CHECKED_ROUTES.has(input.operationId)
+            ? connectionRoutes.revisionMatches(input)
+            : input.operationId === 'resumeIo'
+              ? voice.revisionMatches(input.device, input.body)
+              : base.revisionMatches(input),
   };
   const turnOptions = https.turns ?? {};
   const turns = createTurnRoutes({
@@ -1239,6 +1247,7 @@ async function startHttps(
     turns.handlers,
     stream.handlers,
     budgetRoutes.handlers,
+    connectionRoutes.handlers,
     voiceRoutes.handlers,
   ].flatMap((handlers) => Object.keys(handlers));
   if (new Set(handlerKeys).size !== handlerKeys.length)
@@ -1261,6 +1270,7 @@ async function startHttps(
         ...turns.handlers,
         ...stream.handlers,
         ...budgetRoutes.handlers,
+        ...connectionRoutes.handlers,
         ...voiceRoutes.handlers,
       },
       eventStream: streams,

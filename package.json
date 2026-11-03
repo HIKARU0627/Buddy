@@ -20,6 +20,7 @@
     "design:check": "node scripts/check-design.mjs",
     "check": "pnpm run doctor && pnpm run format:check && pnpm run contracts:check && pnpm run lint && pnpm run build && pnpm run typecheck && pnpm test && pnpm run security:check",
     "security:setup": "node scripts/install-gitleaks.mjs",
+    "evidence:check": "node scripts/evidence-check.mjs",
     "security:check": "node scripts/check-public-content.mjs",
     "security:staged": "node scripts/check-public-content.mjs --staged && node scripts/run-gitleaks.mjs --staged",
     "security:scan": "node scripts/run-gitleaks.mjs",

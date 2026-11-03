@@ -66,7 +66,7 @@ test('対象のファイルが変わると、古い証拠は B04 の不一致と
   const tree = consistentTree();
   const changed = readOverridden({
     ...tree.files,
-    'apps/core/src/operation-runner.ts': `${defaultRead('apps/core/src/operation-runner.ts')}\n// 合成の変更\n`,
+    'apps/core/src/mock-mail-ports.ts': `${defaultRead('apps/core/src/mock-mail-ports.ts')}\n// 合成の変更\n`,
   });
   const failures = checkEvidenceSources(changed);
   assert.equal(failures.length, 1);

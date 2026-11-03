@@ -33,7 +33,7 @@
     },
     {
       "path": "apps/core/src/api-routes.ts",
-      "sha256": "9233abf05d341396017c4abcbdb60c3f7831b925655bafc0cbb833e8d3fa8825"
+      "sha256": "46a33f5b757daf5bf878c4e4e3917e498d17b0c88851a557f6e43927cab9db2a"
     },
     {
       "path": "apps/core/src/api-server.ts",
@@ -50,6 +50,26 @@
     {
       "path": "apps/core/src/api-voice.ts",
       "sha256": "ec7dea2a99bc843aff410d7be2fd1fe9e13a8c7bd279ce78d40d600372d08d53"
+    },
+    {
+      "path": "apps/core/src/backup-config.ts",
+      "sha256": "7b5482d39cc5856413f9d0651c2842bd95ae6d4c2077aaa51f66b8a554e39c76"
+    },
+    {
+      "path": "apps/core/src/backup-control.ts",
+      "sha256": "a53cf9d549acb61c0e7209cbcfa72e099293424c252cae89cdedb468ea043bf7"
+    },
+    {
+      "path": "apps/core/src/backup-files.ts",
+      "sha256": "b12420afd3ccd2d3d9426e3638953a6a20c61a50aed63edc86bf8fb0afd1d002"
+    },
+    {
+      "path": "apps/core/src/backup-service.ts",
+      "sha256": "df6735c26c4452413ea2bbe9220e77c8f3529b6b268bd21f33b36f4f4bccfc04"
+    },
+    {
+      "path": "apps/core/src/backup-setup.ts",
+      "sha256": "8caa208e1858ab7b0df01ff7ae6acfd363e5d88e99b71c7f954b6bddbbb65172"
     },
     {
       "path": "apps/core/src/budget-config.ts",
@@ -69,31 +89,31 @@
     },
     {
       "path": "apps/core/src/canvas-content.ts",
-      "sha256": "69e7e68230f52d58fbfd504dfea612e4f71977af0fbfea6dc2f1ea1463c1cc43"
+      "sha256": "45d43bf6486c63b11db3ecf1228f64be3663b9d93cc091afb25270cb24581fed"
     },
     {
       "path": "apps/core/src/canvas-stream.ts",
-      "sha256": "3721e21d895b2831a0c27d36e693dfd9ed1833c88d5d8c5f6fc67d9b88989e08"
+      "sha256": "37ab4c14b86374a58b4b69a7eb14c94515c3be5b07c77d8d61d2725270c3a1e6"
     },
     {
       "path": "apps/core/src/clock-state.ts",
-      "sha256": "a95967ae32d2b2337e98cc9740d0db2f9affb68df1cacb2e6e1bd3b2cceb31ff"
+      "sha256": "d97d73168688fc7121073e0818f05f4c48d80940af7489a2f6f141abca9b718a"
     },
     {
       "path": "apps/core/src/control-channel.ts",
-      "sha256": "26a2bb3bf93ed76f2763f55bb93599bd8aff321ae73085be0103134b3b1eb164"
+      "sha256": "0f6aae85281b7b755b5c02f21cb7ac6f6663ad9762b413a647d6513f2216d2b3"
     },
     {
       "path": "apps/core/src/control-protocol.ts",
-      "sha256": "00b448eb2fa9404abb93ee78e714c3b78d5ab2c6799ca229e68e55287a9f05d6"
+      "sha256": "dc24d3586e8e6d8187eb681d4f1d23a9bef749e1908fd58e0878b06c2876a2f8"
     },
     {
       "path": "apps/core/src/core.ts",
-      "sha256": "656293999df5be2d06a1a9a9c844963512cd3c80b0aa0fa47ff363b428c638f9"
+      "sha256": "2b0c4c11c6c7fb1b7fda22a19798f0f4ab8d93e9221fc223907bbdb46ff4a379"
     },
     {
       "path": "apps/core/src/data-dir.ts",
-      "sha256": "aabacc20892b1c62046cd919b3899086d0bfca8cd9354b98e33e2032d9ddabff"
+      "sha256": "c20d6d7153290730b1cbc4ccdfb1a6e78e9fbf28170ecc1c90acbac795bcb1f9"
     },
     {
       "path": "apps/core/src/der.ts",
@@ -133,7 +153,7 @@
     },
     {
       "path": "apps/core/src/live-conversation.ts",
-      "sha256": "8670a5f01926b06f3ef510a440cc56823e088bc7de4748be97000ab7dba2ba2b"
+      "sha256": "46acf6f7b754c13049b24717045e9242b6afa5c30d7266eff276d3cbd869bdf7"
     },
     {
       "path": "apps/core/src/live-reconcile.ts",
@@ -145,7 +165,7 @@
     },
     {
       "path": "apps/core/src/notice-sink.ts",
-      "sha256": "0f66f1ec5856d42fa96b8107817e81063d8f783823b0dd3bc92ec41782665858"
+      "sha256": "6f67d9724a9b0adc16eaa5ca308ee6ea5249038023a2c13c299cd8cdfbfe0399"
     },
     {
       "path": "apps/core/src/operation-runner.ts",
@@ -176,6 +196,10 @@
       "sha256": "673e5da744a2456ff2fc9cea5e54203dab3aae4b8c63d004b11fc1353cb7a71a"
     },
     {
+      "path": "apps/core/src/storage-gate.ts",
+      "sha256": "63b3e9a501886dd1f155fe094c809c7985084685b0fa72476b5dc4720ad1aeb4"
+    },
+    {
       "path": "apps/core/src/strict-json.ts",
       "sha256": "ab2c3e93d58bb1cfc2bdeed018da16406f87f8046757679b864dfcb399de9514"
     },
@@ -197,7 +221,7 @@
     },
     {
       "path": "apps/core/src/voice-control.ts",
-      "sha256": "4f718f123b3a74cf8518ca977fac626c47f27f24332f0b4eafd0d11771d8b951"
+      "sha256": "f294548155e4a6dfe2ca73221642fdb4a9cf8b2bef25c206b8549be65bf3ad1a"
     },
     {
       "path": "apps/core/src/voice-rig-test-support.ts",
@@ -249,7 +273,7 @@
     },
     {
       "path": "packages/contracts/schemas/buddy.schema.json",
-      "sha256": "39ad482e53525af49c7b21e0d0dcd73d69a2393fb50353b03cc8c43929eeba41"
+      "sha256": "3ecc0bcc6f50f7671ce5a51147ce24438d063cc379e5def726d097372977ad6e"
     },
     {
       "path": "packages/domain/package.json",
@@ -261,7 +285,7 @@
     },
     {
       "path": "packages/domain/src/api.ts",
-      "sha256": "c4dadb05747aecfd147ba3504771568e14095a934dce05c635d504b1d81173b0"
+      "sha256": "7f1de10cdbe77033e5e66bc27f85bcbf592d77f0857eb0278f69d1cd4e6a2a30"
     },
     {
       "path": "packages/domain/src/approval.ts",
@@ -273,7 +297,7 @@
     },
     {
       "path": "packages/domain/src/backup-keys.ts",
-      "sha256": "1eeda7fa6bea1c3c98086d4370cccca2ad1bfacf397154f70c5be4596ffe21ed"
+      "sha256": "b13e38257d064384c8ddae07b57794d8a4a7bdd3f40d8af74c9e78c47d8b04a9"
     },
     {
       "path": "packages/domain/src/backup-plan.ts",
@@ -313,7 +337,7 @@
     },
     {
       "path": "packages/domain/src/connectors.ts",
-      "sha256": "0e4a8a52888f24490a30a917cf6e74e70ed8935684ae5f0bdc5b37dc28203d9e"
+      "sha256": "27f05ff0bb1c30ff9596390eb8bdc8b380de08923c89a5cd751376d623555f93"
     },
     {
       "path": "packages/domain/src/conversation.ts",
@@ -333,7 +357,11 @@
     },
     {
       "path": "packages/domain/src/forget-plan.ts",
-      "sha256": "482cb780d310d6989a65ccd5f5e95fe21582d5b6f901a6215d8da6c176416963"
+      "sha256": "b93ab87d43f60ddce06eb302ca096935f12090564f40db5a877679cdfc219043"
+    },
+    {
+      "path": "packages/domain/src/graph.ts",
+      "sha256": "359126c52c112f33c582ee8a7f597172f78bb608ef672462f686020720477789"
     },
     {
       "path": "packages/domain/src/home-network.ts",
@@ -345,7 +373,7 @@
     },
     {
       "path": "packages/domain/src/index.ts",
-      "sha256": "12a6b5941134302f4a9e6e08e6a9932c389e85a49ba5ae4afcbb842eb94779aa"
+      "sha256": "db5481900f9c26d71cf6a32b9191e021889ab7df18b7aaf2532904bba520a190"
     },
     {
       "path": "packages/domain/src/intents.ts",
@@ -382,6 +410,10 @@
     {
       "path": "packages/domain/src/readiness.ts",
       "sha256": "f61ff1b9737ab29db8197efebd047cbdecce1bde88794d523a0071f0285e844c"
+    },
+    {
+      "path": "packages/domain/src/response-plan.ts",
+      "sha256": "3a89fb2ecf371736d9c7ab83f916ca15670fe64b039cf94e27312fb91c364900"
     },
     {
       "path": "packages/domain/src/restore-aftermath.ts",
@@ -460,12 +492,16 @@
       "sha256": "77b287eb4a67d4b1d06cb9e650c5abd2bdbf925ea74fa26da82ad7ad28e567ae"
     },
     {
+      "path": "packages/platform/src/backup-key-store.ts",
+      "sha256": "f7679d3e74a563363a07e62fd55ed554f8a2144b8c52376015c6a5bf4e889e41"
+    },
+    {
       "path": "packages/platform/src/home-fingerprint.ts",
       "sha256": "17cbcaf730471f830a687e8466901cee98897b3139b8b41a6db6b222b58e8a87"
     },
     {
       "path": "packages/platform/src/index.ts",
-      "sha256": "98e4aea83d1f9bfc63da29041464c57ce53cf3a4792a05abfb4482244c530f02"
+      "sha256": "c568581fa66a5c57409fe133ac9b0f53ed8be84e58133d8ae1fc661d015d9409"
     },
     {
       "path": "packages/platform/src/key-protection.ts",
@@ -564,6 +600,22 @@
       "sha256": "33f22b0984334e25d8fedcc400db20c7a3b196ce11c3a3ba18781cde2bf39b1f"
     },
     {
+      "path": "packages/storage/src/backup-crypto.ts",
+      "sha256": "951ad3a406284244ebb71f5ba5408829a3360082fc31c5dd6993dab33973ddfb"
+    },
+    {
+      "path": "packages/storage/src/backup-envelope.ts",
+      "sha256": "7902be3de0b70962ff242bff546d59434b44a5f1f9bbd914fc0852d1cbd55f33"
+    },
+    {
+      "path": "packages/storage/src/backup-facts.ts",
+      "sha256": "1dafe833865ae5fd0a112e7966fab0e5d68cce4aa4c178c67bfdab4aab10cb0b"
+    },
+    {
+      "path": "packages/storage/src/backup-snapshot.ts",
+      "sha256": "07d9fc7b1b38dc52c70319165e2885ab05fb7fbd8c138ed568578a8538536743"
+    },
+    {
       "path": "packages/storage/src/budget-store.ts",
       "sha256": "bfe1b6ba5232806dd1d8102d7f25e8503652d45481bc2495a909bb87c246f500"
     },
@@ -617,7 +669,7 @@
     },
     {
       "path": "packages/storage/src/forget-store.ts",
-      "sha256": "7336a7a53a5cae8d5b3bd1de3e9cf83c08c24efbb1559e2dfe555cfbddba1b79"
+      "sha256": "9a4d41beb85e4611baf56dd98b767b9072b284e6fa2b9b80d4d6b484759e160a"
     },
     {
       "path": "packages/storage/src/home-network-store.ts",
@@ -625,11 +677,11 @@
     },
     {
       "path": "packages/storage/src/index.ts",
-      "sha256": "293c4262cb423b2e2116351e388e18e255162dcac30a38dd7e6ef18c9c59965d"
+      "sha256": "11c919c3ce1a1a00872e96bdda7466eea592bc1757c026278e15d12a563a5e04"
     },
     {
       "path": "packages/storage/src/memory-store.ts",
-      "sha256": "95153742c45ed19861e24663e1319a5d8d99025fa9f23b814b0d70efaecba04e"
+      "sha256": "c05bfa131e75557755136d168f49084e7b475916bd056fd9e1b5012ff974bfcf"
     },
     {
       "path": "packages/storage/src/migrations.ts",
@@ -689,11 +741,11 @@
     },
     {
       "path": "tests/integration/b05-cases-conversation.mjs",
-      "sha256": "dbdba2c6eb65da7161c5d4e00a50281a8e2853787fa8df9d866a7b6c5ca7a6e2"
+      "sha256": "f63b9ef9f94e25ab91f013e63d2652cae30cda5ed62269c5bde83110e2adb88f"
     },
     {
       "path": "tests/integration/b05-cases-input.mjs",
-      "sha256": "6cf85288771cf79f9857a45a6036114c5304daa2efefcd4f1863c8d674460fd3"
+      "sha256": "2f6e3c69d486a2bed177e58396e9de2335b986ae1434c0c7f531b22b3b6e5dac"
     },
     {
       "path": "tests/integration/b05-cases.mjs",
@@ -701,11 +753,11 @@
     },
     {
       "path": "tests/integration/b05-conversation.mjs",
-      "sha256": "c283a9dc3daadb25a0f6bd514ed18af0860efeff4ee8de514dda911894082c23"
+      "sha256": "1d85b2ce2e6aae21374f9bded7cc2742f6e295328a8d72f890f53e5d44348239"
     },
     {
       "path": "tests/integration/b05-expectations.json",
-      "sha256": "2c2ffba9a381a4bddb0daf77bd0339e770ba3a7b0bb0a934eb2d452e25744c0a"
+      "sha256": "322bd858c229909a16cdb8250e62e210849f3db3daa4898a264f09d142f861bc"
     },
     {
       "path": "tests/integration/b05-observe.mjs",
@@ -736,7 +788,7 @@
     {
       "case_id": "X13-os-lock-stops-everything",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -750,7 +802,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -758,7 +810,7 @@
     {
       "case_id": "X13-io-epoch-sync-before-restart",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -772,7 +824,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の未了の記録: 端末が進めた io_epoch を中枢へ報告する経路は未実装（契約台帳 U70・U91）のため、端末だけが止まって再開すると中枢はリースを unknown_io_epoch で拒否し、会話は始まらない（拒否は安全側）。再開できることの確認は、試験が中枢へも停止・再開を送って世代をそろえた場合だけ。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -780,7 +832,7 @@
     {
       "case_id": "QA43-three-stops-are-distinct",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -794,7 +846,7 @@
       "provider_state_changes": 2,
       "approvals": 0,
       "final_state": "live:close_confirmed+close_confirmed|reservation:settled+settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -802,7 +854,7 @@
     {
       "case_id": "X14-global-stop-reaches-the-other-device",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -816,7 +868,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の未了の記録: 中枢から届く停止のイベント（suspend_io）を端末が止めに使う経路は未実装（ADR 0050 の「残ること」）。端末は次のハートビートでリースの更新が拒否されて止まる（理由は core_lease_lost）。",
       "voice_stop_ms": 1500,
       "outcome": "matched_expectation"
@@ -824,7 +876,7 @@
     {
       "case_id": "X25-sideband-lost-closes-and-settles",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -838,7 +890,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -846,7 +898,7 @@
     {
       "case_id": "QA24-close-unconfirmed-holds-reservation",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -860,7 +912,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -868,7 +920,7 @@
     {
       "case_id": "X30-ack-deadline-boundary",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -882,7 +934,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -890,7 +942,7 @@
     {
       "case_id": "X30-hung-renderer-is-killed",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -904,7 +956,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 301,
       "outcome": "matched_expectation"
@@ -912,7 +964,7 @@
     {
       "case_id": "X30-stop-playback-without-ack-escalates",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -926,7 +978,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -934,7 +986,7 @@
     {
       "case_id": "X58-session-control-phrases-reach-the-device",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -948,7 +1000,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -956,7 +1008,7 @@
     {
       "case_id": "X58-request-right-after-a-control-phrase",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -970,7 +1022,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の制約の記録: 会話の操作に使った発話の直後（委譲の窓 2 秒以内）の依頼は、対象が複数と判定されて聞き返しになる（依頼は実行されない。契約台帳 U151、本人の判断待ち）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -978,7 +1030,7 @@
     {
       "case_id": "X58-reply-in-text-switches-the-device",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -992,7 +1044,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1000,7 +1052,7 @@
     {
       "case_id": "X49-text-request-stays-text",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -1014,7 +1066,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1022,7 +1074,7 @@
     {
       "case_id": "QA41-live-input-four-operations-need-full-text",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -1036,7 +1088,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1044,7 +1096,7 @@
     {
       "case_id": "X51-input-is-confirmed-before-it-is-interpreted",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -1058,7 +1110,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1066,7 +1118,7 @@
     {
       "case_id": "X27-held-change-is-superseded-or-cancelled",
       "kind": "simulated",
-      "commit": "76a24108cf0bbf1d5cac151ef1e8ddcbf50c384d",
+      "commit": "a46e1c8acb0cd35ad603cb41231a2046e44b2c9b",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
@@ -1080,7 +1132,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-01T11:42:56.725Z",
+      "observed_at": "2026-11-03T09:49:33.631Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1129,6 +1181,7 @@
           },
           "late_fragment_restarts_300ms": {
             "model_calls_at_299ms": 0,
+            "model_calls_at_400ms": 1,
             "model_calls": ["「牛乳を買う」を用事に登録して"],
             "operations": 1
           },
@@ -1213,6 +1266,18 @@
                 "state": "awaiting_approval"
               }
             ],
+            "operation_intents": [
+              {
+                "kind": "task.create",
+                "title": "卵を買う"
+              }
+            ],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "sealed"
+              }
+            ],
             "workflows": ["ready"],
             "turns": [
               {
@@ -1231,6 +1296,13 @@
             },
             "commentary": [["実行前の依頼を取り消しました。"]],
             "operations": [],
+            "operation_intents": [],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "blocked"
+              }
+            ],
             "workflows": [],
             "screen_results": 0,
             "held_after": 0
@@ -3354,6 +3426,18 @@
                 "state": "awaiting_approval"
               }
             ],
+            "operation_intents": [
+              {
+                "kind": "task.create",
+                "title": "卵を買う"
+              }
+            ],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "sealed"
+              }
+            ],
             "workflows": ["ready"],
             "turns": [
               {
@@ -3372,6 +3456,13 @@
             },
             "commentary": [["実行前の依頼を取り消しました。"]],
             "operations": [],
+            "operation_intents": [],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "blocked"
+              }
+            ],
             "workflows": [],
             "screen_results": 0,
             "held_after": 0
@@ -3789,6 +3880,7 @@
           },
           "late_fragment_restarts_300ms": {
             "model_calls_at_299ms": 0,
+            "model_calls_at_400ms": 1,
             "model_calls": ["「牛乳を買う」を用事に登録して"],
             "operations": 1
           },
@@ -4402,6 +4494,7 @@
           },
           "late_fragment_restarts_300ms": {
             "model_calls_at_299ms": 0,
+            "model_calls_at_400ms": 1,
             "model_calls": ["「牛乳を買う」を用事に登録して"],
             "operations": 1
           },
@@ -5204,6 +5297,18 @@
                 "state": "awaiting_approval"
               }
             ],
+            "operation_intents": [
+              {
+                "kind": "task.create",
+                "title": "卵を買う"
+              }
+            ],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "sealed"
+              }
+            ],
             "workflows": ["ready"],
             "turns": [
               {
@@ -5222,6 +5327,13 @@
             },
             "commentary": [["実行前の依頼を取り消しました。"]],
             "operations": [],
+            "operation_intents": [],
+            "snapshots": [
+              {
+                "origin": "live_fragment",
+                "state": "blocked"
+              }
+            ],
             "workflows": [],
             "screen_results": 0,
             "held_after": 0

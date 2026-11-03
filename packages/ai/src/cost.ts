@@ -105,10 +105,11 @@ export function usageCost(request: UsageCostRequest): UsageCostOutcome {
   const rateOf = (category: PriceCategory) =>
     priceVersion.rates.find((rate) => rate.category === category);
   const bill = (category: PriceCategory, quantity: bigint): void => {
-    if (quantity <= 0n) return;
     const rate = rateOf(category);
     if (rate === undefined) {
-      reasons.push(`unpriced_category:${category}`);
+      // 出力は最低課金量を決められないので、量が 0 でも単価の欠落を拒否する。
+      if (quantity > 0n || category === 'output_tokens')
+        reasons.push(`unpriced_category:${category}`);
       return;
     }
     const unitPrice = integer(rate.unit_price);
@@ -118,8 +119,14 @@ export function usageCost(request: UsageCostRequest): UsageCostOutcome {
       reasons.push(`invalid_price:${category}`);
       return;
     }
-    // 1 回の最低課金量。量が 0 のときは掛けない（B07 の billedAmount と同じ）。
+    // 入力と cache は量が 0 のときは課金しない（B07 の estimate のゼロ免除と同じ）。
+    // 出力は「1 回の最低課金量」があるので、量が 0 でも minimum_quantity を掛ける
+    // （拒否・打ち切りで出力が 0 の応答も、出力の最低料金を落とさない）。
+    const zeroExempt =
+      category === 'input_tokens' || category === 'cached_input_tokens';
+    if (zeroExempt && quantity === 0n) return;
     const billed = quantity > minimum ? quantity : minimum;
+    if (billed === 0n) return;
     const amount = ceilDiv(billed * unitPrice * exchange, per * MICRO);
     lines.push({
       category,

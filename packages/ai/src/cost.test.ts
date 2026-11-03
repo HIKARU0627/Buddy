@@ -115,7 +115,7 @@ test('bills all input at the input rate when the version has no cached rate', ()
   });
 });
 
-test('charges the minimum quantity only when the quantity is above zero', () => {
+test('charges the output minimum even at zero output and exempts zero input/cache', () => {
   const withMinimum: PriceVersionInput = {
     ...priceVersion,
     rates: priceVersion.rates.map((rate) =>
@@ -124,6 +124,7 @@ test('charges the minimum quantity only when the quantity is above zero', () => 
         : rate,
     ),
   };
+  // 出力 100 は最低 200 に引き上げる。入力 1000 × 10 + 出力 200 × 30 = 16000。
   const result = usageCost(
     request({
       priceVersion: withMinimum,
@@ -139,17 +140,63 @@ test('charges the minimum quantity only when the quantity is above zero', () => 
       { category: 'output_tokens', quantity: '200', amount: '6000' },
     ],
   });
-  const zero = usageCost(
+  // 出力が 0 でも、出力の最低課金 200 は掛かる。
+  const zeroOutput = usageCost(
     request({
       priceVersion: withMinimum,
       usage: usage({ output_tokens: 0, reasoning_tokens: null }),
     }),
   );
-  assert.deepEqual(zero, {
+  assert.deepEqual(zeroOutput, {
     ok: true,
-    amount: '10000',
+    amount: '16000',
     price_version: 'price-xts-1',
-    lines: [{ category: 'input_tokens', quantity: '1000', amount: '10000' }],
+    lines: [
+      { category: 'input_tokens', quantity: '1000', amount: '10000' },
+      { category: 'output_tokens', quantity: '200', amount: '6000' },
+    ],
+  });
+  // 入力も 0 のときは入力のゼロ免除で、出力の最低課金だけになる。
+  const zeroInput = usageCost(
+    request({
+      priceVersion: withMinimum,
+      usage: usage({
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_tokens: null,
+      }),
+    }),
+  );
+  assert.deepEqual(zeroInput, {
+    ok: true,
+    amount: '6000',
+    price_version: 'price-xts-1',
+    lines: [{ category: 'output_tokens', quantity: '200', amount: '6000' }],
+  });
+  // cache も量が 0 なら、cache の最低課金は掛けない。
+  const cachedMinimum: PriceVersionInput = {
+    ...withMinimum,
+    rates: withMinimum.rates.map((rate) =>
+      rate.category === 'cached_input_tokens'
+        ? { ...rate, minimum_quantity: '100' }
+        : rate,
+    ),
+  };
+  const noCached = usageCost(
+    request({
+      priceVersion: cachedMinimum,
+      usage: usage({ cached_input_tokens: 0 }),
+    }),
+  );
+  assert.deepEqual(noCached, {
+    ok: true,
+    amount: '16000',
+    price_version: 'price-xts-1',
+    lines: [
+      { category: 'input_tokens', quantity: '1000', amount: '10000' },
+      { category: 'output_tokens', quantity: '200', amount: '6000' },
+    ],
   });
 });
 

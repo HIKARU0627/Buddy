@@ -333,6 +333,10 @@ test('without consent there is no revoke button; notices and refusals are shown 
   const row = strip.container.querySelector('[data-revoke-row]');
   assert.ok(row);
   assert.equal(row.children.length, 0);
+  // 取り消しの行は印の右端にそろえ、行の間は 8px 空ける（UI-08 の見た目のレビュー）。
+  assert.match(row.className, /h-8/u);
+  assert.doesNotMatch(row.className, /-mr-1/u);
+  assert.match(row.parentElement?.className ?? '', /gap-y-2/u);
   const alerts = [...strip.container.querySelectorAll('[role="alert"]')].map(
     (node) => node.textContent,
   );
@@ -348,6 +352,10 @@ test('while locked the strip keeps its place as a grey block with no content', a
   const block = strip.container.querySelector('[data-voice="hidden"]');
   assert.ok(block);
   assert.equal(block.getAttribute('aria-label'), VOICE_LABELS.hidden);
+  // ほかの状態と同じ高さ（176）を取り、中身は錠の記号だけにする（UI-08 の見た目のレビュー）。
+  assert.match(block.className, /h-44/u);
+  assert.equal(block.querySelectorAll('svg').length, 1);
+  assert.equal((block.textContent ?? '').trim(), '');
   assert.equal(strip.container.querySelectorAll('button').length, 0);
   strip.unmount();
 });

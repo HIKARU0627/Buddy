@@ -14,7 +14,11 @@ import {
   Tooltip,
 } from '@heroui/react';
 import { InlineNotice } from '../../components/InlineNotice.js';
-import { PrivacyIcon, StatusItemIcon } from '../../components/StatusIcons.js';
+import {
+  LockIcon,
+  PrivacyIcon,
+  StatusItemIcon,
+} from '../../components/StatusIcons.js';
 import { StatusMark, StatusText } from '../../components/StatusText.js';
 import { VoiceControlIcon } from '../../components/VoiceControlIcons.js';
 import type {
@@ -79,8 +83,10 @@ export function VoiceStrip({
         role="img"
         aria-label={VOICE_LABELS.hidden}
         data-voice="hidden"
-        className="h-14 rounded-md bg-default"
-      />
+        className="flex h-44 items-center justify-center rounded-md bg-default"
+      >
+        <LockIcon className="size-6 text-muted" />
+      </div>
     );
   const live = view.external === 'on';
   return (
@@ -90,7 +96,7 @@ export function VoiceStrip({
       className="flex flex-col gap-2"
     >
       <div
-        className={`grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-0.5 rounded-md px-3 py-2 ${live ? 'border border-warning-soft-foreground bg-warning-soft' : 'border border-separator'}`}
+        className={`grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2 rounded-md px-3 py-2 ${live ? 'border border-warning-soft-foreground bg-warning-soft' : 'border border-separator'}`}
       >
         <StatusItemIcon
           item="voice"
@@ -141,7 +147,7 @@ export function VoiceStrip({
         {/* 2 段目の高さはいつも取っておく（取り消しが出入りしても、下の 8 項目が動かない。見た目のレビュー）。 */}
         <span
           data-revoke-row
-          className="col-span-2 col-start-2 -mr-1 flex h-8 items-center justify-end"
+          className="col-span-2 col-start-2 flex h-8 items-center justify-end"
         >
           {view.revocable ? (
             <Button

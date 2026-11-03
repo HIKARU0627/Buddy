@@ -127,6 +127,88 @@ test('shadow runs on lane B only when nothing else is running or pending', () =>
   );
 });
 
+test('the job rule is the authority for shadow, and a conflicting flag is rejected', () => {
+  // フラグを省略しても intent_shadow は影モードとして扱い、既定 OFF を迂回させない。
+  assert.deepEqual(
+    planModelCalls(config, { running: [], shadow_enabled: false }, [
+      { task: 'intent_shadow' },
+    ]),
+    [{ admit: false, action: 'skip', reasons: ['shadow_disabled'] }],
+  );
+  // 影モードのジョブに false を明示する矛盾した要求は受け付けない。
+  assert.deepEqual(
+    planModelCalls(
+      config,
+      { running: [], shadow_enabled: true, budget_available: true },
+      [{ task: 'intent_shadow', shadow: false }],
+    ),
+    [{ admit: false, action: 'wait', reasons: ['shadow_flag_mismatch'] }],
+  );
+  // 通常のジョブに影モードを名乗る要求も受け付けない。
+  assert.deepEqual(
+    planModelCalls(config, { running: [] }, [
+      { task: 'intent_judgment', shadow: true },
+    ]),
+    [{ admit: false, action: 'wait', reasons: ['shadow_flag_mismatch'] }],
+  );
+});
+
+test('a running shadow consumes lane B and the text concurrency', () => {
+  const state: SchedulerState = {
+    running: [{ task: 'intent_shadow', provider: 'cloud-d', shadow: true }],
+    shadow_enabled: true,
+    budget_available: true,
+  };
+  // 影モードが枠 B を使っている間、P1 は枠 B を待つ。P0 は枠 A で待たない。
+  assert.deepEqual(
+    planModelCalls(config, state, [
+      { task: 'intent_judgment' },
+      { task: 'research_summary' },
+    ]),
+    [
+      { admit: true, lane: 'A', priority: 'P0' },
+      { admit: false, action: 'wait', reasons: ['lane_b_busy'] },
+    ],
+  );
+  assert.deepEqual(
+    planModelCalls(config, state, [{ task: 'intent_judgment' }]),
+    [{ admit: true, lane: 'A', priority: 'P0' }],
+  );
+  // 別の provider の影モードでも、枠 B が埋まっていれば重ねない。
+  const altShadow = syntheticProfile({
+    profile_id: 'shadow-alt',
+    role: 'intent',
+    provider: 'cloud-e',
+    reasoning: null,
+    max_concurrency: 1,
+    verified_capabilities: ['json_schema_strict'],
+  });
+  assert.deepEqual(
+    planModelCalls(
+      {
+        ...config,
+        profiles: [...config.profiles, altShadow],
+        routes: { ...config.routes, intent_shadow: 'shadow-alt' },
+      },
+      state,
+      [{ task: 'intent_shadow' }],
+    ),
+    [{ admit: false, action: 'skip', reasons: ['shadow_wait'] }],
+  );
+});
+
+test('a running call recorded with a conflicting shadow flag is still shadow', () => {
+  const state: SchedulerState = {
+    running: [{ task: 'intent_shadow', provider: 'cloud-d', shadow: false }],
+    shadow_enabled: true,
+    budget_available: true,
+  };
+  assert.deepEqual(
+    planModelCalls(config, state, [{ task: 'research_summary' }]),
+    [{ admit: false, action: 'wait', reasons: ['lane_b_busy'] }],
+  );
+});
+
 test('local generation is limited to one at a time', () => {
   const decisions = planModelCalls(
     config,

@@ -96,6 +96,9 @@ export interface ShadowRecorderOptions {
   readonly store: ShadowRecordStore;
   // 余力があるか（P0・P1・P2 の仕事がない。ai の planModelCalls の判定を呼び出し側が渡す）。
   readonly slotAvailable: () => boolean;
+  // 音声の接続（Live）が今開いているか。観測時の値（live_session_open）に加えて、受付の後の送る直前にも読み直す。
+  // 省略すると観測時の値だけで判断するので、本番の配線では必ず渡す。
+  readonly liveSessionOpen?: () => boolean;
   // 比較の費用は会話専用枠ではなく、自発的な解析と同じ側（origin: shadow_mode）の予算の口で受け付ける。
   readonly guard: ModelCallGuard;
   // 比較の実費の合計（金額は設定の通貨の整数文字列）。**必須**: 実費を取得できなければ上限（max_spend）で止められない
@@ -221,7 +224,9 @@ export function createShadowRecorder(
     settings: ShadowSettings,
     target: ShadowTarget,
     input: IntentJudgmentInput,
-  ): Promise<ShadowJudgment | null | 'disabled' | 'busy' | 'stopped'> => {
+  ): Promise<
+    ShadowJudgment | null | 'disabled' | 'live' | 'busy' | 'stopped'
+  > => {
     const requestId = newId();
     // 待ちの間に OFF・campaign の入れ替え・対象の取り外しがあったら送らない（受付・送信のどちらの直前にも確かめる）。
     const enabled = (): boolean => {
@@ -239,15 +244,22 @@ export function createShadowRecorder(
       }
     };
     // 余力（P0/P1/P2 の仕事がないこと）も、受付の前と送る直前の両方で確かめる。
-    const spare = (): boolean => {
+    // 音声の接続（Live）が開いている間は走らせない。観測時の値だけでなく、受付を待った後の送る直前にも今の状態を読む。
+    const quiet = (): 'ok' | 'live' | 'busy' => {
       try {
-        return options.slotAvailable();
+        if (options.liveSessionOpen?.() === true) return 'live';
+        return options.slotAvailable() ? 'ok' : 'busy';
       } catch {
-        return false;
+        return 'busy';
       }
     };
-    if (!enabled()) return 'disabled';
-    if (!spare()) return 'busy';
+    const blocked = (): 'disabled' | 'live' | 'busy' | null => {
+      if (!enabled()) return 'disabled';
+      const state = quiet();
+      return state === 'ok' ? null : state;
+    };
+    const before = blocked();
+    if (before !== null) return before;
     let admitted: Awaited<ReturnType<ModelCallGuard['admit']>>;
     try {
       admitted = await options.guard.admit({
@@ -264,9 +276,10 @@ export function createShadowRecorder(
     }
     if (!admitted.ok) return null;
     // 受付を待つ間に無効化された比較は送らず、予約を解放する。
-    if (!enabled() || !spare()) {
+    const afterAdmit = blocked();
+    if (afterAdmit !== null) {
       await admitted.release().catch(() => undefined);
-      return enabled() ? 'busy' : 'disabled';
+      return afterAdmit;
     }
     // 受付を待つ間に別の比較が上限に達した・日数をまたいだ・実費が上限に達したなら、送らず予約を解放する。
     const current = await campaignStatus(settings);
@@ -274,9 +287,10 @@ export function createShadowRecorder(
       await admitted.release().catch(() => undefined);
       return 'stopped';
     }
-    if (!enabled() || !spare()) {
+    const beforeSend = blocked();
+    if (beforeSend !== null) {
       await admitted.release().catch(() => undefined);
-      return enabled() ? 'busy' : 'disabled';
+      return beforeSend;
     }
     const started = now();
     try {
@@ -344,11 +358,13 @@ export function createShadowRecorder(
         kind: 'skipped',
         reasons: judged.includes('disabled')
           ? ['shadow_disabled']
-          : judged.includes('stopped')
-            ? ['campaign_stopped']
-            : judged.includes('busy')
-              ? ['no_capacity']
-              : ['shadow_budget'],
+          : judged.includes('live')
+            ? ['live_session_open']
+            : judged.includes('stopped')
+              ? ['campaign_stopped']
+              : judged.includes('busy')
+                ? ['no_capacity']
+                : ['shadow_budget'],
       });
       return;
     }

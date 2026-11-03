@@ -1010,6 +1010,56 @@ test('reaching a campaign limit while a reservation is pending sends nothing and
   }
 });
 
+test('a voice connection that opens while a reservation is pending sends nothing and releases the reservation', async () => {
+  const adapter = createFakeAdapter([response(wireJson())]);
+  const memory = memoryStore();
+  const state = { live: false };
+  const released: string[] = [];
+  let finishAdmit = (): void => undefined;
+  const pending = new Promise<void>((resolve) => {
+    finishAdmit = resolve;
+  });
+  const events: ShadowEvent[] = [];
+  const shadow = createShadowRecorder({
+    settings: () => settingsFor(adapter),
+    store: memory.store,
+    slotAvailable: () => true,
+    liveSessionOpen: () => state.live,
+    spent: () => Promise.resolve('0'),
+    guard: {
+      admit: async () => {
+        await pending;
+        return {
+          ok: true,
+          settle: () => Promise.resolve(),
+          release: () => {
+            released.push('released');
+            return Promise.resolve();
+          },
+        };
+      },
+    },
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => NOW,
+    newId: () => randomUUID(),
+    onEvent: (event) => events.push(event),
+  });
+  // 観測時は音声の接続がない。
+  shadow.observe(observation({ live_session_open: false }));
+  await new Promise((resolve) => setImmediate(resolve));
+  state.live = true;
+  finishAdmit();
+  await shadow.idle();
+  assert.equal(adapter.commands.length, 0);
+  assert.equal(memory.records.length, 0);
+  assert.deepEqual(released, ['released']);
+  assert.deepEqual(events, [
+    { kind: 'skipped', reasons: ['live_session_open'] },
+  ]);
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);

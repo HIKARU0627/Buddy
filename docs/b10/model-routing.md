@@ -32,15 +32,16 @@
 | `voice-primary`     | voice            | gpt-live | gpt-live-1         | なし   | none               | 500      | 30 秒   | 2      | `price-voice-2026-01`  | max_liability | —                                 |
 | `intent-primary`    | intent           | gemini   | gemini-3.8-flash   | low    | json_schema_strict | 500      | 8 秒    | 2      | `price-gemini-2026-01` | max_liability | json_schema_strict、reasoning:low |
 | `reply-draft`       | background_text  | gemini   | gemini-3.8-flash   | low    | none               | 400      | 20 秒   | 2      | `price-gemini-2026-01` | max_liability | reasoning:low                     |
-| `background-low`    | background_text  | gemini   | gemini-3.8-flash   | low    | json_schema_strict | 500      | 20 秒   | 1      | `price-gemini-2026-01` | max_liability | json_schema_strict、reasoning:low |
-| `background-medium` | background_text  | gemini   | gemini-3.8-flash   | medium | none               | 1,500    | 120 秒  | 1      | `price-gemini-2026-01` | max_liability | reasoning:medium                  |
-| `consult-high`      | advanced_consult | gemini   | gemini-3.8-flash   | high   | none               | 2,000    | 120 秒  | 1      | `price-gemini-2026-01` | max_liability | reasoning:high                    |
+| `background-low`    | background_text  | gemini   | gemini-3.8-flash   | low    | json_schema_strict | 500      | 20 秒   | 2      | `price-gemini-2026-01` | max_liability | json_schema_strict、reasoning:low |
+| `background-medium` | background_text  | gemini   | gemini-3.8-flash   | medium | none               | 1,500    | 120 秒  | 2      | `price-gemini-2026-01` | max_liability | reasoning:medium                  |
+| `consult-high`      | advanced_consult | gemini   | gemini-3.8-flash   | high   | none               | 2,000    | 120 秒  | 2      | `price-gemini-2026-01` | max_liability | reasoning:high                    |
 | `local-asr`         | local_asr        | local    | （ローカルの一式） | なし   | none               | なし     | 60 秒   | 1      | なし                   | max_liability | —                                 |
 
 - **endpoint は実行時の設定**（リポジトリに置かない）。API キー・認証ヘッダーも実行時の設定で、profile・codec・ログには持たせない。
 - `price_version` の ID と単価の実体は B07 の `BudgetRuntimeConfig` の設定にある。この表の ID は模擬の例で、実際の確認済みの版は設定の `verified_price_versions` と照合する。金額・為替・安全係数はこの文書とコードに置かない。
 - `確認済みの能力（模擬）` は**模擬の設定のための値**で、実 endpoint で確かめた記録ではない。実 endpoint の能力の確認と採用は B10-07 の評価・B15 の実 API の承認まで行わない。この表を実機の合格として扱わない。
 - 構造化出力を使う profile は `structured_output` と同じ名前の能力を `verified_capabilities` に持つ。思考を使う profile は `reasoning:<値>` を持つ。持たない profile は `routingErrors` が `capability_unverified` で拒否する（schema の記載から能力を推定しない）。
+- 同じ provider の profile は `max_concurrency` を揃える（この表の Gemini は 2）。揃えない設定は `provider_concurrency_mismatch:<provider>` で拒否する。ローカルは宣言値が 2 でも実効 1 として扱う。同時数 1 の provider を P0 と P1／P2 で共有しない（QA37）。
 
 ## profile と振り分けの検査
 

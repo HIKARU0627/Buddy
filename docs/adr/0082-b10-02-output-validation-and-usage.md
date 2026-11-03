@@ -55,6 +55,7 @@
 - `packages/ai/src/reservation.test.ts`: 予約の量と、B07 の `computeReservation` の M・R（p95 指定を含む）。ツール単価がある版で既知の 0 を渡す回帰（M 30000 と、0 を省いたときの 30060）、ツール 2 回の予約（M 30012）、ツール単価なしの拒否、単価の版の不一致。
 - `packages/ai/src/settlement.test.ts`: 確定した usage の精算、usage 不明の保持、価格の設定不足、ツールの実使用量がないときの不精算、既知の 0・2 回の精算、検索の不精算。
 - `packages/ai/src/local.test.ts`: QA40 の形（cache なしの不採用、cached・uncached の遅延の記録、基準なし、不正な測定）。
+- `tests/integration/evidence-b10-02-simulated.json`: QA02・QA13・QA37・QA40 の模擬の記録（B10-08 の証拠の一部。実 API・実請求・実機は未実施）。
 - **模擬のみ**。実 API・実請求・実機・実 endpoint の遅延測定は未実施で、合格扱いにしない。
 
 ## 残ること

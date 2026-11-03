@@ -965,7 +965,10 @@
       "product_test": "simulated_partial",
       "targets": ["P01", "P02"],
       "related": [],
-      "product_scope": "B10-02 の模擬の HTTP・契約 fixture: 空・途中の JSON・schema 不一致・意味不一致・拒否・打ち切り・timeout の区別、自動の再送 0 回、usage からの実費と usage 不明の区別。実 API・実請求・実機は未実施。"
+      "product_scope": "B10-02 の模擬の HTTP・契約 fixture: 空・途中の JSON・schema 不一致・意味不一致・拒否・打ち切り・timeout の区別、自動の再送 0 回、usage からの実費と usage 不明の区別。実 API・実請求・実機は未実施。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-02-simulated.json#QA02-b10-02"
+      ]
     },
     {
       "id": "QA03",
@@ -1104,7 +1107,10 @@
       "product_test": "simulated_partial",
       "targets": ["P05"],
       "related": ["X43"],
-      "product_scope": "B10-02 の模擬: P0＋P1＋P2＋影モードの同時要求で、テキスト推論 2 件以下（枠 A は P0 専用、枠 B は P1→P2）、ローカル生成 1 件以下、影モードは skip。実 API・実機は未実施。"
+      "product_scope": "B10-02 の模擬: P0＋P1＋P2＋影モードの同時要求で、テキスト推論 2 件以下（枠 A は P0 専用、枠 B は P1→P2）、ローカル生成 1 件以下、影モードは skip。実 API・実機は未実施。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-02-simulated.json#QA13-b10-02"
+      ]
     },
     {
       "id": "QA14",
@@ -1380,7 +1386,10 @@
       "product_test": "simulated_partial",
       "targets": ["H04", "P05"],
       "related": [],
-      "product_scope": "B10-02 の模擬: 同時数 1 の provider を P0 と P1/P2 で共有する設定を拒否し、P2 が動いていても P0 が枠 A で待たないことを確かめた。実 API・実機は未実施。"
+      "product_scope": "B10-02 の模擬: 同時数 1 の provider を P0 と P1/P2 で共有する設定を拒否し、P2 が動いていても P0 が枠 A で待たないことを確かめた。実 API・実機は未実施。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-02-simulated.json#QA37-b10-02"
+      ]
     },
     {
       "id": "QA38",
@@ -1408,7 +1417,10 @@
       "product_test": "simulated_partial",
       "targets": ["P02", "P09"],
       "related": [],
-      "product_scope": "B10-02 の模擬: ローカル生成 1 本の受付と、localAdoption の形（cache なしは採用条件未達、cached・uncached の遅延を安全側で記録）。実機の遅延測定は未実施。"
+      "product_scope": "B10-02 の模擬: ローカル生成 1 本の受付と、localAdoption の形（cache なしは採用条件未達、cached・uncached の遅延を安全側で記録）。実機の遅延測定は未実施。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-02-simulated.json#QA40-b10-02"
+      ]
     },
     {
       "id": "QA41",

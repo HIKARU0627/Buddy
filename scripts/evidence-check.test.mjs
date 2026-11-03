@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { b04SourceSha256 } from './b04-evidence-sources.mjs';
+import { b05SourceSha256 } from './b05-evidence-sources.mjs';
 import { b07SourceSha256 } from './b07-evidence-sources.mjs';
 import { root } from './contract-tools.mjs';
 import {
@@ -11,6 +12,7 @@ import {
 } from './evidence-check.mjs';
 
 const B04 = 'tests/integration/evidence-b04-simulated.json';
+const B05 = 'tests/integration/evidence-b05-simulated.json';
 const B07 = 'tests/integration/evidence-b07-simulated.json';
 
 const defaultRead = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -35,15 +37,16 @@ function consistentTree(overrides = {}) {
   const files = {
     ...overrides,
     [B04]: evidenceFor(b04SourceSha256(readBase)),
+    [B05]: evidenceFor(b05SourceSha256(readBase)),
     [B07]: evidenceFor(b07SourceSha256(readBase)),
   };
   return { files, read: readOverridden(files) };
 }
 
-test('証拠の対象は B04 と B07 の模擬証拠の 2 つだけ', () => {
+test('証拠の対象は B04・B05・B07 の模擬証拠の 3 つだけ', () => {
   assert.deepEqual(
     EVIDENCE_TARGETS.map((target) => target.path),
-    [B04, B07],
+    [B04, B05, B07],
   );
 });
 
@@ -71,9 +74,10 @@ test('対象のファイルが変わると、古い証拠は B04 の不一致と
   assert.match(failures[0], /不一致/u);
 });
 
-test('B04・B07 の証拠の古い hash・欠落・余分なファイルを拒否する', () => {
+test('B04・B05・B07 の証拠の古い hash・欠落・余分なファイルを拒否する', () => {
   for (const [path, label] of [
     [B04, 'B04'],
+    [B05, 'B05'],
     [B07, 'B07'],
   ]) {
     for (const mutate of [

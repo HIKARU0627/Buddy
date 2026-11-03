@@ -70,7 +70,7 @@ node --test tests/integration/b05-support.test.mjs scripts/test-map.test.mjs
 
 16 ケースを seed `7, 1007, 20261023` で並べ替えて 3 回、計 48 回実行します（`pnpm test` / `pnpm run check` に含まれます。約 2 分）。seed は、ケースの実行の順序だけを固定します。
 
-記録は [evidence-b05-simulated.json](../../tests/integration/evidence-b05-simulated.json)、実施状態は [test-map.json](../../tests/test-map.json) です。`kind: simulated` の記録で、`records` はケース別の結果（`voice_stop_ms` は模擬の時間）、`runs` は各 seed の実際の順序と、手書きの期待値と一致した観測です。`source_sha256` の対象は、B05 の実行器（`tests/integration/b05*.mjs`）が実際に読み込むファイル（端末の音声の制御・模擬の音声レンダラー・中枢の音声の制御・会話の処理・DB worker・予算の門・マイグレーション・契約・手書きの期待値）だけです（[scripts/b05-evidence-sources.mjs](../../scripts/b05-evidence-sources.mjs)。集め方は B04・B07 と共通の [scripts/evidence-sources.mjs](../../scripts/evidence-sources.mjs)）。画面・B04・B07 の実行器・別の試験・文書は含みません。`scripts/test-map.test.mjs` が、現行ソースの一覧と hash の完全一致、観測と手書きの期待値の一致、対応表の範囲を検査します。**対象のソースを変えたら、証拠を作り直してください**（古い hash は検査が失敗します）。
+記録は [evidence-b05-simulated.json](../../tests/integration/evidence-b05-simulated.json)、実施状態は [test-map.json](../../tests/test-map.json) です。`kind: simulated` の記録で、`records` はケース別の結果（`voice_stop_ms` は模擬の時間）、`runs` は各 seed の実際の順序と、手書きの期待値と一致した観測です。`source_sha256` の対象は、B05 の実行器（`tests/integration/b05*.mjs`）が実際に読み込むファイル（端末の音声の制御・模擬の音声レンダラー・中枢の音声の制御・会話の処理・DB worker・予算の門・マイグレーション・契約・手書きの期待値）だけです（[scripts/b05-evidence-sources.mjs](../../scripts/b05-evidence-sources.mjs)。集め方は B04・B07 と共通の [scripts/evidence-sources.mjs](../../scripts/evidence-sources.mjs)）。画面・B04・B07 の実行器・別の試験・文書は含みません。`kind: simulated` は**記録した commit での観測**を意味し、現在のソースや main で再現したこと、実機・実 API・実請求の合格を意味しません（[ADR 0085](../adr/0085-evidence-identity-and-freshness.md)）。**`pnpm run evidence:check` が B05 を含む証拠の対象一覧と hash の完全一致を検査します**（古い hash・欠落・余分なファイルを拒否）。この strict な検査は PR の必須チェックではなく、工程の完了時と main の freshness の確認で実行します。通常の PR の CI は実行器を回し（観測と手書きの期待値の一致は実行器が assert します）、コミット済み証拠の hash 一致を必須にしません。**対象のソースを変えたら、その head で証拠を作り直してください**。
 
 対応表は、X13・X14・X25・X27・X30・X49・X51・X58・QA24・QA41・QA43 を `simulated_partial` にしました（模擬の統合で確認した範囲だけ。実機・実 API・実請求・T04 の実測は未実施）。X28・X32・T04・T08 は証拠がないので `not_run` のままです。
 
@@ -82,14 +82,14 @@ BUDDY_B05_EVIDENCE_PATH=tests/integration/evidence-b05-simulated.json node --tes
 pnpm exec prettier --write tests/integration/evidence-b05-simulated.json
 ```
 
-全反復が成功し、case と seed のすべての組が完了したときだけ出力します（B04・B07 と同じ共通の部品 `tests/integration/evidence-run.mjs`）。B05 には POSIX だけの観測（ファイル権限）がないので、B04・B07 のように macOS の CI で作る必要はなく、`.github/workflows/evidence-macos.yml` は変更していません。今回の証拠は Windows 11（Node.js 24.19.0）で作りました（`environment.os` に記録）。
+全反復が成功し、case と seed のすべての組が完了したときだけ出力します（B04・B07 と同じ共通の部品 `tests/integration/evidence-run.mjs`）。B05 には POSIX だけの観測（ファイル権限）がないので Windows でも作れますが、`.github/workflows/evidence-macos.yml` に B05 を足し、macOS の CI でも作れるようにしました（`BUDDY_B05_EVIDENCE_PATH` を指定して実行器を走らせ、B04・B05・B07 を `simulated-evidence-<sha>` の artifact にまとめます）。今回の証拠は Windows 11（Node.js 24.19.0）で作り、`environment.os` に記録します。
 
 2026-11-01 のローカル検証（Windows 11、Node.js 24.19.0）:
 
 | 検証                                                                           | 結果                                                    |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------- |
 | `node --test tests/integration/b05.test.mjs`                                   | 48 回の観測が手書きの期待値に一致（親試験を含む 49 件） |
-| `node --test tests/integration/b05-support.test.mjs scripts/test-map.test.mjs` | 成功（突き合わせの規則 7 件・対応表と証拠の検査 23 件） |
+| `node --test tests/integration/b05-support.test.mjs scripts/test-map.test.mjs scripts/evidence-check.test.mjs` | 成功（突き合わせの規則・対応表・B05 を含む証拠の検査） |
 | `node --test apps/desktop/dist/main/voice-mock-renderer.test.js`               | 成功（10 件。再生の入口の試験を足した）                 |
 | `pnpm run lint`                                                                | 成功                                                    |
 
@@ -104,5 +104,5 @@ pnpm exec prettier --write tests/integration/evidence-b05-simulated.json
 - **U120（文字の結果・破棄の知らせの画面への配信）は #189（UI-08 の一段階、ADR 0066）で実装済み**です。声に出せなかった文字の結果と、保留を捨てた知らせは画面に表示されます（模擬の表示。実機・実 API は未実施）。承認の対象を作らないので、表示から実行権限は生まれません。
 - 模擬の音声レンダラーは発話を作らないので、10 秒の無音で閉じる判定（main の純粋な規則。`scripts/voice-*.test.mjs`）はこの統合を通していません。モデルの発話の終わり・読み上げ（定型句なしの効果音）・呼びかけ（sherpa-onnx の語の指定）は実機の工程です。
 - B04・B07 の対象のソースは変更していません（証拠の作り直しは不要）。
-- B05 の完了の判定（材料）: 親 Issue の完了条件 1〜4 は模擬の範囲で観測でき、5 は未実施です。上の既知の未了 2 つと U151 を別の Issue に残して「模擬の範囲で 1〜4 を満たした」として #15 の子を閉じ、5 と実機の確認を #132・#133 に残すか、実機の前に U70・U91 の経路を作るかは、本人の判断です。参考までに、実機で停止時間を測る前に U70・U91（世代の報告）と ADR 0050 の停止イベントの経路を先に作ると、T04 の測定が「リースの拒否で止まる」ではなく設計の経路になります。
+- B05 の完了の判定（材料）: 親 Issue の完了条件 1〜4 は模擬の範囲で観測でき、5 は未実施です。**証拠はその時点の head で作り直し、`pnpm run evidence:check`（B05 を含む）が通ることを完了の条件に含めます**（[ADR 0085](../adr/0085-evidence-identity-and-freshness.md)。PR の必須 CI は証拠の hash 一致を求めません）。上の既知の未了 2 つと U151 を別の Issue に残して「模擬の範囲で 1〜4 を満たした」として #15 の子を閉じ、5 と実機の確認を #132・#133 に残すか、実機の前に U70・U91 の経路を作るかは、本人の判断です。参考までに、実機で停止時間を測る前に U70・U91（世代の報告）と ADR 0050 の停止イベントの経路を先に作ると、T04 の測定が「リースの拒否で止まる」ではなく設計の経路になります。
 - 次の着手点は、PR（#182・#183・#185・#187 と最後の段階）のレビュー、U151 の本人の判断、U70・U91 の経路、#132・#133 の実機・実 API の計画です。

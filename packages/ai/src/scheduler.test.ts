@@ -291,6 +291,63 @@ test('a disabled shadow with no route is skipped instead of waiting', () => {
   );
 });
 
+test('a shadow request skips when the local generation slot is full', () => {
+  const localExtraction = syntheticProfile({
+    profile_id: 'local-extraction',
+    role: 'background_text',
+    provider: 'local',
+    reasoning: 'low',
+    max_concurrency: 1,
+    verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+  });
+  const localShadow = syntheticProfile({
+    profile_id: 'local-shadow',
+    role: 'intent',
+    provider: 'local',
+    reasoning: null,
+    max_concurrency: 1,
+    verified_capabilities: ['json_schema_strict'],
+  });
+  const localConfig: ModelRoutingConfig = {
+    ...config,
+    profiles: [...config.profiles, localExtraction, localShadow],
+    routes: {
+      ...config.routes,
+      mail_extraction: 'local-extraction',
+      intent_shadow: 'local-shadow',
+      // ローカルの P0 は置かない（P2 のローカルだけの有効な設定）。
+      local_asr: null,
+    },
+  };
+  // 実行中のローカル抽出がある間の影モードは、待機ではなく skip。
+  assert.deepEqual(
+    planModelCalls(
+      localConfig,
+      {
+        running: [
+          { task: 'mail_extraction', provider: 'local', shadow: false },
+        ],
+        shadow_enabled: true,
+        budget_available: true,
+      },
+      [{ task: 'intent_shadow' }],
+    ),
+    [{ admit: false, action: 'skip', reasons: ['shadow_wait'] }],
+  );
+  // 同じバッチでローカルの P2 を先に受けた場合も同じ。
+  assert.deepEqual(
+    planModelCalls(
+      localConfig,
+      { running: [], shadow_enabled: true, budget_available: true },
+      [{ task: 'mail_extraction' }, { task: 'intent_shadow' }],
+    ),
+    [
+      { admit: true, lane: 'B', priority: 'P2' },
+      { admit: false, action: 'skip', reasons: ['shadow_wait'] },
+    ],
+  );
+});
+
 test('a provider concurrency limit of one renders the second lane as wait', () => {
   const singleIntent = syntheticProfile({
     profile_id: 'single-intent',

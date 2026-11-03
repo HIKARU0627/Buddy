@@ -144,12 +144,11 @@ export function planModelCalls(
     const provider = route.profile.provider;
     const isLocal = provider === 'local';
     // ローカル生成は、ローカル ASR だけでなく、ローカル provider を使うテキストの仕事も同時 1 本まで。
+    // 影モードは、この段階で枠が埋まっていても待機にせず skip する（比較のために本人の仕事を待たせない）。
     if (isLocal && local >= LOCAL_GENERATION_LIMIT) {
-      decisions[index] = {
-        admit: false,
-        action: 'wait',
-        reasons: ['local_limit'],
-      };
+      decisions[index] = shadow
+        ? { admit: false, action: 'skip', reasons: ['shadow_wait'] }
+        : { admit: false, action: 'wait', reasons: ['local_limit'] };
       continue;
     }
     const providerLimit = limits[provider] ?? route.profile.max_concurrency;

@@ -44,6 +44,7 @@ import {
   readBackupFacts,
   readBackupFileHeader,
   readBackupPayload,
+  readSchemaVersion,
   recoveryCheckMatches,
   storagePlatform,
   unwrapBackupKey,
@@ -98,6 +99,8 @@ export interface RestoreCheckReport {
   readonly raw_payload_decrypted: boolean;
   // 段階 2 の期限切れの削除で消した行の数（RestoreResult の expired_deleted_count に使う）。
   readonly expired_deleted_count: number;
+  // 封筒を復号した直後（段階 2 の worker が移行する前）の DB の版。古いバックアップの検証に使う。
+  readonly working_schema_version: number | null;
 }
 
 export interface RestoreCheckOptions {
@@ -408,6 +411,7 @@ export async function runRestoreCheck(
   let workingPath: string | null = null;
   let rawPayloadDecrypted = false;
   let expiredDeletedCount = 0;
+  let workingSchemaVersion: number | null = null;
   let locked = false;
   const lockId = randomUUID();
   const stages: RestoreCheckStageView[] = [];
@@ -435,6 +439,7 @@ export async function runRestoreCheck(
     ledger,
     raw_payload_decrypted: rawPayloadDecrypted,
     expired_deleted_count: expiredDeletedCount,
+    working_schema_version: workingSchemaVersion,
   });
 
   const execute = async (): Promise<RestoreCheckReport> => {
@@ -686,6 +691,18 @@ export async function runRestoreCheck(
             workingPath = await (
               options.writeWorkingDatabase ?? writeWorkingDatabase
             )(workDir, plaintext);
+            try {
+              const workingDb = openWriteConnection(workingPath, {
+                platform: storagePlatform(process.platform),
+              });
+              try {
+                workingSchemaVersion = readSchemaVersion(workingDb);
+              } finally {
+                workingDb.close();
+              }
+            } catch {
+              workingSchemaVersion = null;
+            }
             rawPayloadDecrypted = true;
           } catch (error) {
             log(`作業用の DB を書けませんでした（${(error as Error).name}）。`);

@@ -63,6 +63,7 @@ import { RESTORE_WORK_DIR, runRestoreCheck } from './restore-check.js';
 import type { RestoreCheckReport } from './restore-check.js';
 import {
   installRestoredDatabase,
+  recoverRestoreInstall,
   RESTORE_INSTALL_JOURNAL,
 } from './restore-install.js';
 
@@ -381,20 +382,21 @@ export async function runRestoreRun(
     return refused(reason, value, installed, removed);
   };
   try {
+    await recoverRestoreInstall(options.dataDir);
     const check = await runRestoreCheck({
       ...options,
       retainWorkDir: true,
       lock: false,
       log,
     });
-    if (check.outcome !== 'ready') return await refuse('check_refused');
     workDir = join(
       options.dataDir,
       RESTORE_WORK_DIR,
       `restore-${check.restore_id}`,
     );
     workingPath = join(workDir, DB_FILE);
-    const workingDbPath = workingPath;
+    if (check.outcome !== 'ready') return await refuse('check_refused');
+    const workingDbPath = join(workDir, DB_FILE);
     const livePath = join(options.dataDir, DB_FILE);
     if (await exists(livePath)) {
       const live = openWriteConnection(livePath, {
@@ -491,7 +493,8 @@ export async function runRestoreRun(
     const verifyStage = restoreDbVerifyCheck({
       integrity_ok: facts.integrity_ok,
       foreign_keys_ok: facts.foreign_keys_ok,
-      restored_schema_version: facts.schema_version,
+      restored_schema_version:
+        check.working_schema_version ?? facts.schema_version,
       manifest_schema_version: manifest.db_schema_version,
       code_schema_version: facts.schema_version,
       operations_plan_ok: plan.ok,

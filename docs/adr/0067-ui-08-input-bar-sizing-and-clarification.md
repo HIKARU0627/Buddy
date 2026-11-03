@@ -48,6 +48,13 @@
 - **試験**: `VoiceStrip.dom.test.tsx` で、通常表示が `min-h-44`、隠した面が `h-44`・錠の SVG 1 つ・文字なしであること、取り消しの行が `h-8`・`-mr-1` なし・親の格子が `gap-y-2` であることを確認した。
 - 実機の macOS・Windows での見た目は未実施。Electron の実画面の撮影もこの段階では行っていない。
 
+## OS の音声入力（U163）
+
+- **受け取り**: AquaVoice・macOS の音声入力・Win+H は、前面の入力欄へ通常の文字入力（`input` イベント）として文字を入れる。入力欄は制御された `Input`／`TextArea` なので、そのまま値を受け取る。専用の IPC・権限・音声の経路は足さない。
+- **変換中は送らない**: `compositionstart` から `compositionend` までを変換中として覚え、その間は Enter でも form の submit でも送らない。確定した後の Enter で 1 回だけ送る。`isComposing`・keyCode 229 の判定も残す。
+- **試験**: `InputBar.dom.test.tsx` で、`input` イベントで入れた文字が入力欄に残ること、変換中の Enter では送らず、`compositionend` の後の Enter で 1 回送ることを確認した。
+- **未実施**: AquaVoice・macOS の音声入力・Win+H の実機での入力。Windows で可能な範囲の確認も、この段階では行っていない。
+
 ## 残ること
 
 - 聞き返しの表示（次の段階。入力バーの広がった領域に出す）。

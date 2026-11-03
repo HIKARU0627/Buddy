@@ -103,7 +103,7 @@ pnpm run contracts:check
 - 模擬の有料 provider と予算の門・DB worker は同じプロセスで、HTTP の経路（B07-05）は通しません。再起動は DB worker だけを閉じて開き直す模擬で、OS の電源断や実機の試験ではありません。
 - 設定ファイルの権限（他人が書ける設定の拒否）は POSIX だけで確かめ、Windows では期待値から外します。
 
-記録は [evidence-b07-simulated.json](../../tests/integration/evidence-b07-simulated.json)、実施状態は [test-map.json](../../tests/test-map.json) です。`kind: simulated` の記録で、`records` はケース別の結果、`runs` は各 seed の実際の順序・手書きの期待値と一致した観測（結果・利用状況・予約の行・provider の受信）です。`commit` は実行時の基点コミットで、未コミットの差分を含む検査対象は `source_sha256` で特定します。`kind: simulated` は **記録した commit での観測** を意味し、現在のソースや main で再現したこと、実機・実 API・実請求の合格を意味しません（[ADR 0085](../adr/0085-evidence-identity-and-freshness.md)）。`pnpm run evidence:check` が現行ソースの対象一覧と hash の完全一致、観測と手書きの期待値の一致、対応表の範囲を検査します。この strict な検査は PR の必須チェックではなく、工程の完了時と main の freshness の確認で実行します。通常の PR の CI は実行器を回し、コミット済み証拠の hash 一致を必須にしません。これを基点コミットだけの試験結果と読み替えないでください。
+記録は [evidence-b07-simulated.json](../../tests/integration/evidence-b07-simulated.json)、実施状態は [test-map.json](../../tests/test-map.json) です。`kind: simulated` の記録で、`records` はケース別の結果、`runs` は各 seed の実際の順序・手書きの期待値と一致した観測（結果・利用状況・予約の行・provider の受信）です。`commit` は実行時の基点コミットで、未コミットの差分を含む検査対象は `source_sha256` で特定します。`kind: simulated` は **記録した commit での観測** を意味し、現在のソースや main で再現したこと、実機・実 API・実請求の合格を意味しません（[ADR 0085](../adr/0085-evidence-identity-and-freshness.md)）。`pnpm run evidence:check` が現行ソースの対象一覧と hash の完全一致を検査します。観測と手書きの期待値の一致、対応表の範囲は `scripts/test-map.test.mjs` が検査します。この strict な検査は PR の必須チェックではなく、工程の完了時と main の freshness の確認で実行します。通常の PR の CI は実行器を回し、コミット済み証拠の hash 一致を必須にしません。これを基点コミットだけの試験結果と読み替えないでください。
 
 対応表（`tests/test-map.json`）は、B07 だけが担当の X18・X53 を `simulated`、QA42・QA20 を `simulated_partial` にしました。QA42 は担当に B04 も含み、B04 の操作の送出意図と予約の送出意図をそろえる送出の境界（ADR 0037 の「残ること」）が未実施なので、B07 の予算の範囲だけの確認です。QA20 は B10 の評価（意図判定で spend limit を先に確かめる評価）が未実施なので、B07 の範囲（単価の版の境界と上限が不明な要求）だけの確認です。MA03〜MA06 は B07-07 で `simulated`（下の「B07-07: クレジットの区分と保留」。Console の実残高との照合・実請求・実 API は未実施で、B15）にしました。
 
@@ -133,6 +133,8 @@ pnpm exec prettier --write tests/integration/evidence-b07-simulated.json
 3. 実行の artifact（通常の CI の `simulated-evidence-b07-<sha>`、または手動の `simulated-evidence-<sha>`）から JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD であることを確認します。
 4. 取り込んだあと、Windows でも `pnpm run build` の後に `pnpm run evidence:check` を実行し、`source_sha256` が取り込んだソースの対象一覧と一致することを確かめます（通常の PR の CI はこの一致を必須にしません）。artifact を CI が commit することはありません。commit・push は作業ブランチで行います。
 
+main の記録が現在のソースと一致しないことは、`evidence-freshness.yml` の job summary で分かります。更新は上の artifact を取り込む PR で行います。
+
 通常の CI（`ci.yml`・`verify-os.yml`）は証拠を commit せず、生成物は artifact にだけ残します。`workflow_dispatch` は既定ブランチに workflow ファイルがある必要があるため、この workflow の PR の上では実行できない場合があります。その場合はこの workflow が main に入ったあと、main を取り込んだブランチで実行してください。
 
 ## 未実施・残る判断
@@ -143,6 +145,6 @@ pnpm exec prettier --write tests/integration/evidence-b07-simulated.json
 - 設定の編集の画面は、キャンバス UI の置き場所が決まった後です（本人の判断）。それまでは、リポジトリの外のデータディレクトリの `budget-runtime.json` を本人が直接書きます。
 - 2 つの DB worker（別の接続）からの同時の受付は `packages/storage/src/budget-worker.test.ts` で確認しています（B07-03）。B07-06 の実行器は 1 つの DB worker に対する同時の要求です。
 - 送る直前の期限と中断の判定は、同期の処理の間も実時間が進むため、時刻の確認と送信を不可分にはできません（ADR 0037 の制限のまま）。
-- B07 の完了の判定: 親 Issue の完了条件 4 項目は模擬の範囲でそろいました。模擬の範囲で 4 項目を満たしたものとして閉じて、実請求・実残高との照合（B15）と画面（キャンバス UI）を別の Issue に残すかは本人の判断です（B07-05・B07-07 は模擬の試験まで入りました）。
+- B07 の完了の判定: 親 Issue の完了条件 4 項目は模擬の範囲でそろいました。完了 PR の head で証拠を再生成し、`pnpm run evidence:check` が通ることを確認してから判定します（[ADR 0085](../adr/0085-evidence-identity-and-freshness.md)）。模擬の範囲で 4 項目を満たしたものとして閉じて、実請求・実残高との照合（B15）と画面（キャンバス UI）を別の Issue に残すかは本人の判断です（B07-05・B07-07 は模擬の試験まで入りました）。
 - QA42 の B04 の範囲（送出の境界）は、有料の操作ができる段階で決めます（ADR 0037）。
 - 次の着手点は、B07-07（#116）の PR のレビュー、残高を取得する公式の手段の確認（観測の入力の置き換え・CLI）、実 API が使える段階での B15 の請求・実残高の照合です。

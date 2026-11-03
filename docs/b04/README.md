@@ -110,6 +110,8 @@ pnpm exec prettier --write tests/integration/evidence-b04-simulated.json
 3. 実行の artifact（通常の CI の `simulated-evidence-b04-<sha>`、または手動の `simulated-evidence-<sha>`）から JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD であることを確認します。
 4. 取り込んだあと、Windows でも `pnpm run build` の後に `pnpm run evidence:check` を実行し、`source_sha256` が取り込んだソースの対象一覧と一致することを確かめます（通常の PR の CI はこの一致を必須にしません）。artifact を CI が commit することはありません。commit・push は作業ブランチで行います。
 
+main の記録が現在のソースと一致しないことは、`evidence-freshness.yml` の job summary で分かります。更新は上の artifact を取り込む PR で行います。
+
 通常の CI（`ci.yml`・`verify-os.yml`）は証拠を commit せず、生成物は artifact にだけ残します。`workflow_dispatch` は既定ブランチに workflow ファイルがある必要があるため、この workflow の PR の上では実行できない場合があります。その場合はこの workflow が main に入ったあと、main を取り込んだブランチで実行してください。
 
 ## 未実施・残る判断
@@ -118,5 +120,5 @@ pnpm exec prettier --write tests/integration/evidence-b04-simulated.json
 - 実 API・実メール送信・実予定変更・実請求・実音声・モデル採用は未実施。
 - X10 の縦断合格は D3 により B14。表示の移動（handoff）は D6 により B05。2 端末が同じ操作を見ることと、表示権を移すことを混同しません。
 - QA27 の外部の下書きの保存は B04-07（#106、ADR 0033）で実装し、模擬で確認しました。同じ画面からの比較は、デスクトップの main の部品の試験までで、Electron の画面の操作・本物の OS 確認ダイアログは未実施です。
-- B04 の完了の判定: 親 Issue の完了条件 4 項目は模擬の範囲でそろいました。実機の確認（device-check.md）を待って閉じるか、模擬の範囲で閉じて実機を B04 の外に残すかは本人の判断です。
+- B04 の完了の判定: 親 Issue の完了条件 4 項目は模擬の範囲でそろいました。完了 PR の head で証拠を再生成し、`pnpm run evidence:check` が通ることを確認してから判定します（[ADR 0085](../adr/0085-evidence-identity-and-freshness.md)）。実機の確認（device-check.md）を待って閉じるか、模擬の範囲で閉じて実機を B04 の外に残すかは本人の判断です。
 - 次の着手点は実機用 provider の配線と device-check.md の実機確認。既存 ADR 0027〜0031・0033 の未決の読み取りは、この試験追加で承認済みに変更しません。

@@ -17,6 +17,7 @@ import { lstat, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   BACKUP_KEY_PURPOSES,
+  INTENT_POLICIES,
   buildRestoreResult,
   keyInstallPlan,
   keyWrapFor,
@@ -538,6 +539,13 @@ export async function runRestoreRun(
     // --- 段階 6: 外部の照合（OAuth トークンは封筒にないので、再認証まで pending） ---
     decisions.push(restoreReconcileCheck({ reauth_complete: false }));
 
+    // 段階 2 で確かめた時刻より前へ時計が戻っていないことを、差し替えの直前にもう一度確かめる
+    // （段階 3〜6 の間に戻った場合、期限切れの削除を当てた時刻より前の時計で差し替えない）。
+    if (options.now().getTime() < Date.parse(check.finished_at)) {
+      log('復元の途中で時計が戻ったため、差し替えません。');
+      return await refuse('clock_regression');
+    }
+
     // --- 鍵の導入（足す → 確かめる） ---
     const keys = await installKeys({
       wraps,
@@ -556,6 +564,12 @@ export async function runRestoreRun(
         backup_created_at: Date.parse(manifest.created_at),
         new_store_generation: newGeneration,
         pre_restore: preRestore,
+        approval_requirements: Object.fromEntries(
+          Object.entries(INTENT_POLICIES).map(([kind, policy]) => [
+            kind,
+            policy.approval === 'none' ? 'none' : 'required',
+          ]),
+        ),
         ledger_hmac_key_id: keys.ledger_hmac_key_id,
       });
     } catch (error) {

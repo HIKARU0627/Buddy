@@ -56,10 +56,17 @@ interface Rig {
   readonly backupPath: string;
   readonly recoveryCode: string;
   readonly operationId: string;
+  readonly memoryOperationId: string;
 }
 
-// 承認付きの LocalCommand を 1 つ、DB に直接入れる（backup に含めて J3 を確かめる。合成の値だけ）。
-function seedApprovedOperation(dataDir: string): string {
+interface SeededOperations {
+  readonly operationId: string;
+  readonly memoryOperationId: string;
+}
+
+// 承認付きの LocalCommand と、承認の要らない memory_save（approved）を DB に直接入れる
+// （backup に含めて J3 を確かめる。合成の値だけ）。
+function seedApprovedOperation(dataDir: string): SeededOperations {
   const db = openWriteConnection(join(dataDir, DB_FILE), {
     platform: storagePlatform(process.platform),
   });
@@ -92,7 +99,31 @@ function seedApprovedOperation(dataDir: string): string {
       `INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at)
        VALUES (?, ?, ?, ?, 'policy_auto', NULL, NULL, 0, 'valid', ?)`,
     ).run(randomUUID(), operationId, version, hash, T0);
-    return operationId;
+
+    // 承認の要らない LocalCommand（memory_save）。復元の後は awaiting_approval ではなく cancelled になる（U77）。
+    const memoryOperationId = randomUUID();
+    const memoryBlob = randomUUID();
+    db.prepare(
+      `INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at)
+       VALUES (?, 'operation_intent', 'operations', ?, 0, 1, ?, ?, ?, ?, ?)`,
+    ).run(
+      memoryBlob,
+      memoryOperationId,
+      DATA_KEY_ID,
+      randomBytes(12),
+      randomBytes(16),
+      randomBytes(16),
+      T0,
+    );
+    db.prepare(
+      `INSERT INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at)
+       VALUES (?, NULL, 'memory_save', 'local_command', 1, 'approved', 1, ?)`,
+    ).run(memoryOperationId, T0);
+    db.prepare(
+      `INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at)
+       VALUES (?, 1, ?, ?, ?)`,
+    ).run(memoryOperationId, hash, memoryBlob, T0);
+    return { operationId, memoryOperationId };
   } finally {
     db.close();
   }
@@ -127,7 +158,7 @@ async function rig(t: test.TestContext): Promise<Rig> {
     await handle.stop('test').catch(() => undefined);
   });
   await handle.stop('test');
-  const operationId = seedApprovedOperation(dataDir);
+  const seeded = seedApprovedOperation(dataDir);
   handle = await startCore({
     dataDir,
     keyStore: dataKeys,
@@ -181,7 +212,8 @@ async function rig(t: test.TestContext): Promise<Rig> {
     dataKeys,
     backupPath: join(backupDir, files[0] as string),
     recoveryCode,
-    operationId,
+    operationId: seeded.operationId,
+    memoryOperationId: seeded.memoryOperationId,
   };
 }
 
@@ -236,6 +268,14 @@ test('復元の実行: 段階 1〜6 を通り、承認をすべて失効させ�
         .pluck()
         .get(r.operationId),
       1,
+    );
+    // 承認の要らない LocalCommand は cancelled になり、承認待ちへ戻らない（U77）。
+    assert.equal(
+      db
+        .prepare('SELECT state FROM operations WHERE operation_id = ?')
+        .pluck()
+        .get(r.memoryOperationId),
+      'cancelled',
     );
     assert.notEqual(readStoreGeneration(db), backupGeneration);
     assert.equal(

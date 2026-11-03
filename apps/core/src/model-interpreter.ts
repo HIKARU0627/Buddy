@@ -17,6 +17,7 @@ import {
   MAX_OPEN_WORKFLOWS,
 } from '@buddy/ai';
 import type {
+  IntentJudgmentInput,
   IntentJudgmentResult,
   JudgmentCandidate,
   JudgmentWorkflow,
@@ -36,6 +37,8 @@ export type ModelCallAdmission =
       readonly ok: true;
       // 送って usage が分かったら精算する。usage が null なら usage 不明として予約を保持する（解放しない）。
       readonly settle: (usage: ModelUsage | null) => Promise<void>;
+      // 受け付けたが送らなかった（送る直前の再確認で止めた）。予約を解放する。送った可能性があるときは呼ばない。
+      readonly release: () => Promise<void>;
     }
   | { readonly ok: false; readonly reasons: readonly string[] };
 
@@ -88,6 +91,18 @@ function judgmentWorkflows(
   context: InterpretationContext,
 ): readonly JudgmentWorkflow[] {
   return (context.open_workflows ?? []).slice(0, MAX_OPEN_WORKFLOWS);
+}
+
+// 本線と影モードの比較が使う共通の入力（候補と依頼を同じ上限で絞る）。条件をそろえるため、両方がこの関数を使う。
+export function judgmentInputOf(
+  context: InterpretationContext,
+): IntentJudgmentInput {
+  return {
+    utterance: context.text,
+    today: context.today,
+    candidates: judgmentCandidates(context),
+    open_workflows: judgmentWorkflows(context),
+  };
 }
 
 function replyOf(result: IntentJudgmentResult): InterpreterReply {
@@ -152,12 +167,7 @@ export function createModelInterpreter(
           // 診断の失敗で解釈を止めない。
         }
       };
-      const input = {
-        utterance: context.text,
-        today: context.today,
-        candidates: judgmentCandidates(context),
-        open_workflows: judgmentWorkflows(context),
-      };
+      const input = judgmentInputOf(context);
       // 入力の検査に通らない発話は、予約も送信もしない（切って送ると意図が変わる）。
       if (intentInputErrors(input).length > 0) {
         diagnose(null, 'invalid_semantics', null);
@@ -203,7 +213,7 @@ export function createModelInterpreter(
         result.judgment.kind === 'failed' ? result.judgment.failure : null,
         result.outcome.usage,
       );
-      return replyOf(result);
+      return { ...replyOf(result), elapsed_ms: Math.max(0, now() - started) };
     },
   };
 }

@@ -722,8 +722,12 @@
         "packages/contracts/fixtures/storage-mode-cases.json#x48-confirmation-shadow-rejected"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
-      "t": ["T05", "T08"]
+      "product_test": "simulated_partial",
+      "t": ["T05", "T08"],
+      "product_scope": "B10-03 P3 の模擬: 既定 OFF で比較の呼出し・記録が 0、記録しない会話で呼出し 0・記録 0、300 件で止まる（同時の保存でも超えない）、保存期限は会話全文と同じ、比較の遅延・失敗が本線の応答に影響しない。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#X48-b10-03"
+      ]
     },
     {
       "id": "X49",
@@ -830,8 +834,12 @@
         "packages/contracts/fixtures/evaluation-cases.json#x57-other-uses-stay-unevaluated"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
-      "t": ["T05", "T08"]
+      "product_test": "simulated_partial",
+      "t": ["T05", "T08"],
+      "product_scope": "B10-03 の模擬: 候補モデルに同じ指示・基準日・入力を渡し、結果を候補ごとに分けて残す。評価セット・採点・採否・他用途の評価（X66）は B10-07 で未実施。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#X57-b10-03"
+      ]
     },
     {
       "id": "X58",
@@ -847,8 +855,12 @@
         "packages/contracts/fixtures/voice-silence-cases.json#wait-a-moment-said-while-speaking-extends-the-next-silence-to-sixty-seconds"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
-      "t": ["T04", "T01"]
+      "product_test": "simulated_partial",
+      "t": ["T04", "T01"],
+      "product_scope": "B10-03 P2 の模擬: 会話の操作の言い回しはモデルを呼ばずにコードで照合し、似た言い回しを含む依頼はモデルへ回る。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#X58-b10-03"
+      ]
     },
     {
       "id": "X59",
@@ -952,9 +964,13 @@
         "packages/contracts/fixtures/response-plan-cases.json#qa01-outcome-ok-retryable"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P01", "P02"],
-      "related": ["X03"]
+      "related": ["X03"],
+      "product_scope": "B10-03 P1・P2 の模擬: 余分な key・欠損・null・存在しない意図・型違いが invalid_schema になり、実行へ進まず聞き返しになる。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#QA01-b10-03"
+      ]
     },
     {
       "id": "QA02",
@@ -984,18 +1000,26 @@
         "packages/contracts/fixtures/response-plan-cases.json#qa03-plan-view-kind-mismatch"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P01", "P02"],
-      "related": []
+      "related": [],
+      "product_scope": "B10-03 P1・P2 の模擬: 渡していない候補・依頼、許可されない引数、暦にない日付などが invalid_semantics になり、unclear と混ざらず、依頼・操作を作らない。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#QA03-b10-03"
+      ]
     },
     {
       "id": "QA04",
       "phases": ["B05", "B10", "B13"],
       "contract_fixtures": [],
       "status": "specified",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P01"],
-      "related": ["X27", "X51"]
+      "related": ["X27", "X51"],
+      "product_scope": "B10-03 P1・P2 の模擬: 渡した依頼の中だけから対象を選べ、渡していない依頼は拒否、意図の無い取消が関係と対象を保って保留中の変更を止める。取消後の遅着・input_revision の不一致は B05 の既存の試験と B10-04 で扱う。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#QA04-b10-03"
+      ]
     },
     {
       "id": "QA05",

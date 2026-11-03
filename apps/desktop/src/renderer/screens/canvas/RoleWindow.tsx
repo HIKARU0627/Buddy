@@ -40,7 +40,11 @@ import {
   statusTabView,
 } from '../../state/window-role-state.js';
 import type { RendererWindowRole } from '../../state/window-role-state.js';
-import { canSubmit, submitResult } from '../../state/input-bar-state.js';
+import {
+  canSubmit,
+  clarificationAfter,
+  submitResult,
+} from '../../state/input-bar-state.js';
 import { CanvasBoard } from './CanvasBoard.js';
 import { CanvasGround } from './CanvasGround.js';
 import { InputBar } from './InputBar.js';
@@ -199,24 +203,45 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
   // 送っている間（重ねて送らない）と、入力欄の枠で知らせる要注意（聞き返し・拒否・失敗。文字は残す）。
   const [sending, setSending] = useState(false);
   const [attention, setAttention] = useState(false);
+  // 聞き返しの文（UI-08）。送信の結果が聞き返しのときだけ、広がった入力バーに出す。
+  const [clarification, setClarification] = useState<string | null>(null);
   // 送った文字が今の下書きと同じときだけ空にする（送っている間に打ち足した文字を消さない）。
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  // 下書きの世代。送信の後に編集したら進め、古い依頼の聞き返しを新しい下書きの上に出さない。
+  const draftVersion = useRef(0);
+  const statusRef = useRef(state.status);
+  statusRef.current = state.status;
   // ロック中・不明になったら下書きを捨てる（描画は inputDraftAfter で先に隠す）。
   useEffect(() => {
     setDraft((prev) => inputDraftAfter(prev, state.status));
-    if (!contentShown(state.status)) setAttention(false);
+    if (!contentShown(state.status)) {
+      draftVersion.current += 1;
+      setAttention(false);
+      setClarification(null);
+    }
   }, [state.status]);
   const enabled = inputBarEnabled(state.status);
   const value = inputDraftAfter(draft, state.status);
   const submit = useCallback(() => {
     const text = draftRef.current;
     if (!canSubmit(text, enabled, sending)) return;
+    const version = draftVersion.current;
     setSending(true);
     setAttention(false);
+    setClarification(null);
     api
       .invoke(request('desktop.turn_submit', { text }))
       .then((response) => {
+        // 送信の後に下書きが変わった・ロック中・不明なら、古い依頼の結果を今の入力欄に反映しない。
+        if (
+          version !== draftVersion.current ||
+          !contentShown(statusRef.current)
+        )
+          return;
+        setClarification(
+          clarificationAfter(response, version, draftVersion.current, true),
+        );
         if (submitResult(response) === 'sent')
           setDraft((current) => (current === text ? '' : current));
         else setAttention(true);
@@ -231,7 +256,9 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
       enabled={enabled}
       value={value}
       onChange={(next) => {
+        draftVersion.current += 1;
         setAttention(false);
+        setClarification(null);
         setDraft(next);
       }}
       onSubmit={submit}
@@ -240,6 +267,7 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
       canSummon={canSummonCanvas(state.status)}
       onSummon={summonCanvas}
       expanded={expanded}
+      clarification={contentShown(state.status) ? clarification : null}
     />
   );
 }

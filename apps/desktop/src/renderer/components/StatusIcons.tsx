@@ -89,6 +89,20 @@ const ITEM_PATHS: Readonly<Record<StatusItemKey, ReactNode>> = {
   ),
 };
 
+// ロック中・不明の面に置く錠（UI-08。読み込み中の骨組みと見分ける）。
+export function LockIcon({
+  className = 'size-4',
+}: {
+  readonly className?: string;
+}) {
+  return (
+    <Svg className={className}>
+      <rect x="3.5" y="7" width="9" height="6" rx="1" />
+      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+    </Svg>
+  );
+}
+
 export function StatusItemIcon({
   item,
   className = 'size-4',

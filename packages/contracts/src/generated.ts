@@ -63,6 +63,7 @@ export type BuddyContract =
   | SyncScopeState
   | SyncStateResponse
   | ConnectorCapability
+  | GraphAccountState
   | MemoryCandidateWire
   | MemoryCandidate
   | MemoryRecord
@@ -671,6 +672,27 @@ export type ReconcileScope =
  */
 export type OperationStepKind =
   'apply_labels' | 'create_draft' | 'send' | 'create_task';
+/**
+ * Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。
+ */
+export type GraphAccountKind = 'personal' | 'work_or_school';
+/**
+ * Microsoft Graph の委任されたユーザー権限だけを使う（設計 04 接続・権限）。組織全体のアプリ権限へ切り替えない。
+ */
+export type GraphDelegationScope = 'delegated_user';
+/**
+ * 接続・取得を拒否された理由（設計 04 接続・権限、QA22・QA23）。拒否を成功として扱わないための語彙。
+ */
+export type GraphRejectionReason =
+  | 'insufficient_permission'
+  | 'organization_policy'
+  | 'admin_consent_required'
+  | 'tenant_restriction'
+  | 'unknown';
+/**
+ * Outlook のカテゴリの扱い（設計 11 §5A、D7）。初期版は案の表示だけで、If-Match の検証ができるまで自動付与しない。
+ */
+export type GraphCategoryUpdateMode = 'display_only';
 /**
  * 要約記憶の種類（設計 11 §7）。保存できるのは本人が初期設定で許可した種類だけ。
  */
@@ -3833,6 +3855,15 @@ export interface ConnectorWriteCapability {
   steps: [OperationStepKind, ...OperationStepKind[]];
 }
 /**
+ * Outlook の接続の状態（設計 04 接続・権限、ADR 0072）。拒否の理由と、カテゴリを自動付与しないことを表す。トークンを持たない。
+ */
+export interface GraphAccountState {
+  account_kind: GraphAccountKind;
+  delegation: GraphDelegationScope;
+  rejection_reason: GraphRejectionReason | null;
+  category_updates: GraphCategoryUpdateMode;
+}
+/**
  * モデルが返す記憶の候補（設計 11 §7）。文は 80 文字以内（コードポイント）。忘却世代・許可・重複の判定はモデルに返させず Core が付ける。
  */
 export interface MemoryCandidateWire {
@@ -4536,6 +4567,10 @@ export interface ConnectionSummary {
   targets: ConnectionTargets;
   permission_revision: PermissionRevision;
   scope_revision: ScopeRevision;
+  /**
+   * Outlook（microsoft）の接続だけが持つ。Google の接続では null。
+   */
+  graph_account?: GraphAccountState | null;
 }
 /**
  * 本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。

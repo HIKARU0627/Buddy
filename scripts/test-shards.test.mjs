@@ -181,8 +181,9 @@ test('従来の pnpm run check の検査はすべて OS ごとの shard 1 かす
 test('模擬証拠は macOS の既存 shard 2/3 だけで生成し、追加の macOS job を作らない', () => {
   const job = verifyOs.jobs.shard;
   assert.deepEqual(Object.keys(verifyOs.jobs), ['shard']);
-  assert.match(job.env.BUDDY_B04_EVIDENCE_PATH, /runner\.os == 'macOS'/u);
-  assert.match(job.env.BUDDY_B07_EVIDENCE_PATH, /runner\.os == 'macOS'/u);
+  const testStep = job.steps.find((step) => /run-tests\.mjs/u.test(step.run));
+  assert.match(testStep.env.BUDDY_B04_EVIDENCE_PATH, /runner\.os == 'macOS'/u);
+  assert.match(testStep.env.BUDDY_B07_EVIDENCE_PATH, /runner\.os == 'macOS'/u);
   const steps = job.steps.filter((step) =>
     EVIDENCE_STEP_CONDITIONS.has(step.if),
   );

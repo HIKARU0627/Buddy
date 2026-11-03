@@ -105,7 +105,11 @@
           "private_conversation": false,
           "audio_lease_valid": true
         },
-        "budget_hold": { "held": false, "reasons": [], "held_pools": [] },
+        "budget_hold": {
+          "held": false,
+          "reasons": [],
+          "held_pools": []
+        },
         "sessions": [
           {
             "session_id": "00000000-0000-4000-8000-000000000003",
@@ -960,7 +964,11 @@
         {
           "type": "canvas",
           "canvas_revision": "4",
-          "canvas": { "canvas_revision": "4", "items": [], "reading_order": [] }
+          "canvas": {
+            "canvas_revision": "4",
+            "items": [],
+            "reading_order": []
+          }
         },
         {
           "type": "canvas",
@@ -1305,7 +1313,11 @@
             "emphasis": "normal",
             "group": null,
             "relations": [],
-            "grid": { "column": 2, "span": 4, "rows": 3 },
+            "grid": {
+              "column": 2,
+              "span": 4,
+              "rows": 3
+            },
             "placement": "canvas",
             "data": {
               "item_refs": [
@@ -1336,7 +1348,12 @@
         "op": {
           "kind": "move",
           "item_id": "errands",
-          "cell": { "column": 7, "row": 2, "span": 4, "rows": 3 }
+          "cell": {
+            "column": 7,
+            "row": 2,
+            "span": 4,
+            "rows": 3
+          }
         }
       },
       "response": {
@@ -1361,7 +1378,12 @@
           "op": {
             "kind": "move",
             "item_id": "errands",
-            "cell": { "column": 7, "row": 2, "span": 4, "rows": 3 },
+            "cell": {
+              "column": 7,
+              "row": 2,
+              "span": 4,
+              "rows": 3
+            },
             "x": 120
           }
         },
@@ -1369,13 +1391,20 @@
           "request_id": "00000000-0000-4000-8000-000000009101",
           "command_scope_id": "00000000-0000-4000-8000-000000009002",
           "expected_canvas_revision": "4",
-          "op": { "kind": "close", "item_id": "errands", "heading": "今日" }
+          "op": {
+            "kind": "close",
+            "item_id": "errands",
+            "heading": "今日"
+          }
         },
         {
           "request_id": "00000000-0000-4000-8000-000000009101",
           "command_scope_id": "00000000-0000-4000-8000-000000009002",
           "expected_canvas_revision": "04",
-          "op": { "kind": "shelve", "item_id": "errands" }
+          "op": {
+            "kind": "shelve",
+            "item_id": "errands"
+          }
         },
         {
           "request_id": "00000000-0000-4000-8000-000000009101",
@@ -1384,7 +1413,12 @@
           "op": {
             "kind": "resize",
             "item_id": "errands",
-            "cell": { "column": 0, "row": 2, "span": 4, "rows": 9 }
+            "cell": {
+              "column": 0,
+              "row": 2,
+              "span": 4,
+              "rows": 9
+            }
           }
         }
       ]
@@ -2292,6 +2326,73 @@
           },
           "credit_cycle_id": null
         }
+      ]
+    },
+    "getConnectionTargets": {
+      "params": {
+        "connection_id": "00000000-0000-4000-8000-000000000014"
+      },
+      "response": {
+        "connection_id": "00000000-0000-4000-8000-000000000014",
+        "provider": "google",
+        "status": "active",
+        "access": "read",
+        "granted_scopes": ["calendar.events.readonly"],
+        "targets": {
+          "calendar_ids": ["primary"],
+          "mail_container_ids": ["INBOX"],
+          "attachment_kinds": ["pdf", "text"]
+        },
+        "permission_revision": "2",
+        "scope_revision": "2"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
+      ]
+    },
+    "getConnectionSync": {
+      "params": {
+        "connection_id": "00000000-0000-4000-8000-000000000401"
+      },
+      "response": {
+        "connection_id": "00000000-0000-4000-8000-000000000401",
+        "provider": "google",
+        "scope_revision": "1",
+        "state": {
+          "scope_id": "00000000-0000-4000-8000-000000000402",
+          "scope_revision": "1",
+          "active_scan_id": null,
+          "active_generation": "0",
+          "committed_watermark": null,
+          "provider_cursor": null,
+          "executor_generation": "1",
+          "last_incremental_completed_at": null,
+          "last_full_reconciled_at": null,
+          "pending_incremental": false,
+          "pending_full": false,
+          "analysis_plan_complete_generation": null
+        },
+        "active_batch": null,
+        "retry": {
+          "read_timeout_ms": 15000,
+          "read_max_attempts": 3,
+          "read_base_delay_ms": [2000, 10000],
+          "read_max_total_wait_ms": 120000,
+          "read_failure_threshold": 3,
+          "write_automatic_retries": 0
+        },
+        "last_attempt_at": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
       ]
     }
   }

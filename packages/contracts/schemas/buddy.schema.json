@@ -11,6 +11,9 @@
       "$ref": "#/$defs/WireResponse"
     },
     {
+      "$ref": "#/$defs/ModelOutcome"
+    },
+    {
       "$ref": "#/$defs/Interpretation"
     },
     {
@@ -84,6 +87,9 @@
     },
     {
       "$ref": "#/$defs/ResultView"
+    },
+    {
+      "$ref": "#/$defs/ResponsePlan"
     },
     {
       "$ref": "#/$defs/AudioControl"
@@ -168,6 +174,15 @@
     },
     {
       "$ref": "#/$defs/SyncScopeState"
+    },
+    {
+      "$ref": "#/$defs/SyncStateResponse"
+    },
+    {
+      "$ref": "#/$defs/ConnectorCapability"
+    },
+    {
+      "$ref": "#/$defs/GraphAccountState"
     },
     {
       "$ref": "#/$defs/MemoryCandidateWire"
@@ -2016,6 +2031,194 @@
       "required": ["kind", "ref_id", "title", "start", "end", "due", "count"],
       "additionalProperties": false,
       "description": "構造化した事実の 1 項目。モデルが作った自由文を入れない。"
+    },
+    "ResponseSpeech": {
+      "type": "object",
+      "properties": {
+        "template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "template_version": {
+          "$ref": "#/$defs/TemplateVersion"
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": "読み上げる文。1 回 400 トークン以内・最大 3 回の上限に合わせ、1 部は 200 文字まで（ADR 0005）。"
+        }
+      },
+      "required": ["template_id", "template_version", "parts"],
+      "additionalProperties": false,
+      "description": "読み上げの定型文（ADR 0005・0070）。文はコードの定型文だけから作り、モデルの自由文を入れない。"
+    },
+    "ResponsePlan": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.response-plan.v1"
+        },
+        "workflow_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/RequestRevision"
+        },
+        "intent": {
+          "$ref": "#/$defs/IntentName"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["done", "needs_approval", "needs_clarification"],
+          "description": "この計画の結果の状態。聞き返しと承認は、通常完了の結果の種類より優先する（ADR 0005・0070）。"
+        },
+        "view": {
+          "$ref": "#/$defs/ResultView"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResultFact"
+          }
+        },
+        "speech": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResponseSpeech"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "workflow_id",
+        "request_revision",
+        "intent",
+        "outcome",
+        "view",
+        "facts",
+        "speech"
+      ],
+      "additionalProperties": false,
+      "description": "Core が決めた表示と読み上げの計画（ADR 0070）。モデルの生出力（WireResponse）でも、検証済みの解釈（Interpretation）でも、実行可否（ActionReadiness）でもない。応答文の本文・宛先・承認・実行経路の欄を持たない。"
+    },
+    "ModelUsage": {
+      "type": "object",
+      "properties": {
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cached_input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "usage_complete": {
+          "type": "boolean",
+          "description": "usage をすべて観測できたか。false のとき、予約を実費として精算しない（ADR 0070）。"
+        }
+      },
+      "required": [
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "usage_complete"
+      ],
+      "additionalProperties": false,
+      "description": "モデル呼出しの usage（ADR 0070）。費用の計算と予約の精算は B07 の規則を使い、この契約は金額を持たない。"
+    },
+    "ModelOutcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "ok"
+            },
+            "value": {
+              "$ref": "#/$defs/WireResponse"
+            },
+            "profile_id": {
+              "$ref": "#/$defs/ProfileId"
+            },
+            "usage": {
+              "$ref": "#/$defs/ModelUsage"
+            },
+            "retryable": {
+              "type": "boolean",
+              "const": false
+            }
+          },
+          "required": ["kind", "value", "profile_id", "usage", "retryable"],
+          "additionalProperties": false,
+          "description": "ローカルの完全検証を通った出力。value は検証前の WireResponse で、意味検証と Interpretation への変換は別に行う。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "refused",
+                "truncated",
+                "invalid_schema",
+                "invalid_semantics",
+                "timeout",
+                "unavailable",
+                "budget_denied",
+                "cancelled",
+                "stale"
+              ]
+            },
+            "retryable": {
+              "type": "boolean",
+              "description": "利用者が手で再試行したときに成功し得るか。true でも自動の再送・JSON 修復・上位モデルでの再試行をしない（ADR 0070）。"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ModelUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "出力の一部を受け取ったときの usage。観測できないときは null にし、推測で埋めない。"
+            }
+          },
+          "required": ["kind", "retryable", "usage"],
+          "additionalProperties": false,
+          "description": "意図が不明（unclear）と混ぜない失敗の区別（設計 10 §6A D15、QA02・QA03）。"
+        }
+      ],
+      "description": "モデル呼出しの結果（ADR 0070）。成功と失敗を分け、失敗の原因を保つ。失敗は自動では再試行しない。"
     },
     "DelegationResult": {
       "type": "object",
@@ -4983,6 +5186,216 @@
       ],
       "additionalProperties": false,
       "description": "取得集合（scope）ごとの同期状態（設計 11 §1・§1A）。watermark は走査の開始時刻で、後退させない。差分ゼロの公開では active_generation を進めない。"
+    },
+    "ConnectorReadKind": {
+      "type": "string",
+      "enum": ["permission", "mail.message", "mail.draft", "calendar.events"],
+      "description": "connector が読める対象（設計 04 接続・権限、08 §3）。書込みの前提の読み直しと結果の照合もこの読み取りだけを使う。"
+    },
+    "ConnectorReadCapability": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ConnectorReadKind"
+        },
+        "effect_kind": {
+          "type": "string",
+          "const": "Read"
+        }
+      },
+      "required": ["kind", "effect_kind"],
+      "additionalProperties": false,
+      "description": "connector が宣言する読み取りの能力（ADR 0027・0071）。Read 以外を宣言できない。"
+    },
+    "PreconditionMethod": {
+      "type": "string",
+      "enum": [
+        "conditional_request",
+        "recheck_before_dispatch",
+        "not_required"
+      ],
+      "description": "送出の直前に前提（対象の版・許可）を確かめる方法（設計 08 §3、ADR 0027）。"
+    },
+    "LookupMethod": {
+      "type": "string",
+      "enum": ["by_remote_id", "by_operation_marker", "none"],
+      "description": "結果不明のときに外部の状態を探す方法（設計 08 §3、ADR 0027）。"
+    },
+    "ReconcileScope": {
+      "type": "string",
+      "enum": ["exact_target", "operation_marker", "local_transaction"],
+      "description": "結果の照合の範囲（設計 08 §3、ADR 0027）。"
+    },
+    "OperationStepKind": {
+      "type": "string",
+      "enum": ["apply_labels", "create_draft", "send", "create_task"],
+      "description": "操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。"
+    },
+    "ConnectorWriteCapability": {
+      "type": "object",
+      "properties": {
+        "action_kind": {
+          "$ref": "#/$defs/OperationKind"
+        },
+        "effect_kind": {
+          "type": "string",
+          "const": "RemoteMutation"
+        },
+        "automatic_http_retries": {
+          "type": "integer",
+          "const": 0,
+          "description": "外部書込みの自動再送の回数。常に 0（設計 04 再試行の初期値、08 §3）。"
+        },
+        "precondition": {
+          "$ref": "#/$defs/PreconditionMethod"
+        },
+        "lookup": {
+          "$ref": "#/$defs/LookupMethod"
+        },
+        "reconcile_scope": {
+          "$ref": "#/$defs/ReconcileScope"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/OperationStepKind"
+          }
+        }
+      },
+      "required": [
+        "action_kind",
+        "effect_kind",
+        "automatic_http_retries",
+        "precondition",
+        "lookup",
+        "reconcile_scope",
+        "steps"
+      ],
+      "additionalProperties": false,
+      "description": "connector が宣言する変更の能力（ADR 0027・0071）。種類ごとの規則は domain の表が正本で、宣言が規則に合わなければ拒否する。"
+    },
+    "ConnectorCapability": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "reads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConnectorReadCapability"
+          }
+        },
+        "writes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConnectorWriteCapability"
+          }
+        }
+      },
+      "required": ["provider", "reads", "writes"],
+      "additionalProperties": false,
+      "description": "connector（模擬 provider を含む）が宣言する能力（設計 08 §3、ADR 0027・0071）。書込みの能力を宣言しても、承認・最終検査・結果の照合を省略しない。"
+    },
+    "ConnectorRetryPolicy": {
+      "type": "object",
+      "properties": {
+        "read_timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "read_max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "初回を含む参照の試行の上限（設計 04 再試行の初期値は 3）。"
+        },
+        "read_base_delay_ms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "再試行の待機の基本値。ジッターを加え、Retry-After があれば優先する。"
+        },
+        "read_max_total_wait_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "1 つのジョブで待つ合計の上限。超える場合はジョブを保留する。"
+        },
+        "read_failure_threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "この回数失敗した接続は要確認にする。"
+        },
+        "write_automatic_retries": {
+          "type": "integer",
+          "const": 0
+        }
+      },
+      "required": [
+        "read_timeout_ms",
+        "read_max_attempts",
+        "read_base_delay_ms",
+        "read_max_total_wait_ms",
+        "read_failure_threshold",
+        "write_automatic_retries"
+      ],
+      "additionalProperties": false,
+      "description": "参照と書込みの再試行の初期値（設計 04 再試行の初期値、ADR 0071）。測定済みの最適値ではない。値は設定で差し替えられるが、書込みの自動再送は 0 のままにする。"
+    },
+    "SyncStateResponse": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider": {
+          "$ref": "#/$defs/ConnectionProvider"
+        },
+        "scope_revision": {
+          "$ref": "#/$defs/ScopeRevision"
+        },
+        "state": {
+          "$ref": "#/$defs/SyncScopeState"
+        },
+        "active_batch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SyncBatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retry": {
+          "$ref": "#/$defs/ConnectorRetryPolicy"
+        },
+        "last_attempt_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "connection_id",
+        "provider",
+        "scope_revision",
+        "state",
+        "active_batch",
+        "retry",
+        "last_attempt_at"
+      ],
+      "additionalProperties": false,
+      "description": "接続の同期の状態（設計 11 §1・§1A、ADR 0071）。走査中の batch と、次の走査に使う再試行の初期値を返す。トークンと取得した本文は返さない。"
     },
     "WorkContext": {
       "type": "object",
@@ -9698,6 +10111,69 @@
       "additionalProperties": false,
       "description": "本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。"
     },
+    "GraphAccountKind": {
+      "type": "string",
+      "enum": ["personal", "work_or_school"],
+      "description": "Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。"
+    },
+    "GraphDelegationScope": {
+      "type": "string",
+      "enum": ["delegated_user"],
+      "description": "Microsoft Graph の委任されたユーザー権限だけを使う（設計 04 接続・権限）。組織全体のアプリ権限へ切り替えない。"
+    },
+    "GraphRejectionReason": {
+      "type": "string",
+      "enum": [
+        "insufficient_permission",
+        "organization_policy",
+        "admin_consent_required",
+        "tenant_restriction",
+        "unknown"
+      ],
+      "description": "接続・取得を拒否された理由（設計 04 接続・権限、QA22・QA23）。拒否を成功として扱わないための語彙。"
+    },
+    "GraphCategoryUpdateMode": {
+      "type": "string",
+      "enum": ["display_only"],
+      "description": "Outlook のカテゴリの扱い（設計 11 §5A、D7）。初期版は案の表示だけで、If-Match の検証ができるまで自動付与しない。"
+    },
+    "GraphAccountState": {
+      "type": "object",
+      "properties": {
+        "account_kind": {
+          "$ref": "#/$defs/GraphAccountKind"
+        },
+        "delegation": {
+          "$ref": "#/$defs/GraphDelegationScope"
+        },
+        "rejection_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphRejectionReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "category_updates": {
+          "$ref": "#/$defs/GraphCategoryUpdateMode"
+        }
+      },
+      "required": [
+        "account_kind",
+        "delegation",
+        "rejection_reason",
+        "category_updates"
+      ],
+      "additionalProperties": false,
+      "description": "Outlook の接続の状態（設計 04 接続・権限、ADR 0072）。拒否の理由と、カテゴリを自動付与しないことを表す。トークンを持たない。"
+    },
+    "ConnectionProvider": {
+      "type": "string",
+      "enum": ["google", "microsoft"],
+      "description": "連携の提供元（設計 04 接続・権限）。"
+    },
     "ConnectionSummary": {
       "type": "object",
       "properties": {
@@ -9705,8 +10181,7 @@
           "$ref": "#/$defs/Id"
         },
         "provider": {
-          "type": "string",
-          "enum": ["google", "microsoft"]
+          "$ref": "#/$defs/ConnectionProvider"
         },
         "status": {
           "type": "string",
@@ -9732,6 +10207,17 @@
         },
         "scope_revision": {
           "$ref": "#/$defs/ScopeRevision"
+        },
+        "graph_account": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphAccountState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Outlook（microsoft）の接続だけが持つ。Google の接続では null。"
         }
       },
       "required": [

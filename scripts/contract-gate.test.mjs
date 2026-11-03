@@ -27,6 +27,9 @@ const FILES = [
   'packages/contracts/fixtures/canvas-stream-cases.json',
   'packages/contracts/fixtures/voice-contract-cases.json',
   'packages/contracts/fixtures/storage-contract-cases.json',
+  'packages/contracts/fixtures/response-plan-cases.json',
+  'packages/contracts/fixtures/connector-capability-cases.json',
+  'packages/contracts/fixtures/graph-account-cases.json',
   'packages/contracts/openapi.yaml',
   'packages/contracts/model-evaluation.json',
   'packages/contracts/src/generated.ts',
@@ -66,6 +69,8 @@ async function edit(dir, file, change) {
 
 const SCHEMA = 'packages/contracts/schemas/buddy.schema.json';
 const CASES = 'packages/contracts/fixtures/schema-cases.json';
+const RESPONSE_PLAN_CASES =
+  'packages/contracts/fixtures/response-plan-cases.json';
 const OPENAPI = 'packages/contracts/openapi.yaml';
 
 const breakages = [
@@ -134,6 +139,19 @@ const breakages = [
     change: [
       CASES,
       (text) => text.replace('[\n  {', '[\n  {\n    "id": "dup",'),
+    ],
+    failing: 1,
+  },
+  {
+    name: 'response plan rejection marked as accepted',
+    change: [
+      RESPONSE_PLAN_CASES,
+      (text) => {
+        const cases = JSON.parse(text);
+        const rejected = cases.invalid.find((entry) => entry.valid === false);
+        rejected.valid = true;
+        return JSON.stringify(cases, null, 2);
+      },
     ],
     failing: 1,
   },

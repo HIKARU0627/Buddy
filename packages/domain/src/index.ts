@@ -26,6 +26,8 @@ export * from './evaluation.js';
 export * from './extraction.js';
 // B06-03: 忘却の計画（対象の解決・派生の閉包・台帳のエントリ）と遅着の検査（ADR 0044）。
 export * from './forget-plan.js';
+// B09-01: Outlook のアカウント種別・委任・拒否の理由・カテゴリの扱い（ADR 0072）。
+export * from './graph.js';
 // B03-03: 自宅ネットワークの判定（ADR 0022）。
 export * from './home-network.js';
 // B03-05: 中枢の宛先の正規化とペアリングで受け付ける宛先（ADR 0025）。
@@ -41,6 +43,7 @@ export * from './notification.js';
 export * from './operation-steps.js';
 export * from './operations.js';
 export * from './readiness.js';
+export * from './response-plan.js';
 export * from './retention.js';
 export * from './retention-sweep.js';
 // B06-04: 記録しない会話の保存の境界（許可表・入る／出るの遷移・独立した確認の中身。ADR 0045）。

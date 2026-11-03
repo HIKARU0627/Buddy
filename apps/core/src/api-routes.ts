@@ -168,6 +168,13 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'OAuthStartRequest',
     ...SCREEN,
   }),
+  // 取得対象と同期の状態（B08-01、ADR 0071）。どちらも読み取りで、トークンと本文を返さない。
+  route(
+    'getConnectionTargets',
+    'GET',
+    '/v1/connections/{connection_id}/targets',
+  ),
+  route('getConnectionSync', 'GET', '/v1/connections/{connection_id}/sync'),
   route(
     'updateConnectionTargets',
     'PUT',

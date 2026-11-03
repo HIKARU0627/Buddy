@@ -323,6 +323,26 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
   );
   assert.match(disabled, /<input[^>]*\bdisabled/u);
   assert.match(disabled, /<button[^>]*\bdisabled/u);
+  // 入力するときは窓が広がり、入力欄が複数行になる（UI-08）。
+  const expanded = render(
+    <InputBar
+      line={{ tone: 'success', mark: 'dot', text: '受付中' }}
+      enabled
+      value=""
+      onChange={noop}
+      onSubmit={noop}
+      sending={false}
+      attention={false}
+      canSummon
+      onSummon={noop}
+      expanded
+      clarification="どちらの予定ですか。"
+    />,
+  );
+  assert.equal((expanded.match(/<textarea\b/gu) ?? []).length, 1);
+  assert.match(expanded, /rows="5"/u);
+  assert.doesNotMatch(expanded, /<input\b/u);
+  assert.match(expanded, /どちらの予定ですか。/u);
 });
 
 // PR #104 のレビュー（P2）: 打てるかと内容を出せるかを分け、ロック中・不明では打った文字を描かない。
@@ -373,6 +393,23 @@ test('typed text disappears when the device locks or the lock state becomes unkn
     assert.doesNotMatch(html, /明日の予定を確認/u);
     assert.match(html, /<input[^>]*\bdisabled/u);
   }
+  // ロック中・不明では、広がった入力バーの聞き返し本文も描かない。
+  const hiddenClarification = render(
+    <InputBar
+      line={statusTabView(locked, null).line}
+      enabled={false}
+      value=""
+      onChange={noop}
+      onSubmit={noop}
+      sending={false}
+      attention={false}
+      canSummon={false}
+      onSummon={noop}
+      expanded
+      clarification="どちらの予定ですか。"
+    />,
+  );
+  assert.doesNotMatch(hiddenClarification, /どちらの予定ですか。/u);
 });
 
 test('the canvas is an empty ground; in front it shows an accent frame; locked it draws nothing inside', () => {

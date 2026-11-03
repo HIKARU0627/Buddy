@@ -212,6 +212,65 @@ assert.equal(
   responsePlanCases.intent_views.length,
   'Duplicate intent in intent_views',
 );
+// connector の能力と再試行の契約（B08-01、ADR 0027・0071）。読み取り・書込みの宣言と、
+// トークン・本文を返さない同期の状態の形式を検査する。規則との一致は scripts/connector-capability.test.mjs が確かめる。
+const connectorCases = parseStrictJson(
+  await readFile(
+    new URL(
+      'packages/contracts/fixtures/connector-capability-cases.json',
+      root,
+    ),
+    'utf8',
+  ),
+);
+for (const entry of connectorCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+assert(
+  validators['ConnectorRetryPolicy'](connectorCases.retry_policy),
+  'Invalid connector retry policy',
+);
+// Outlook のアカウント種別・委任・拒否の理由・カテゴリの扱い（B09-01、ADR 0072）。
+const graphCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/graph-account-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of graphCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+
 const plan = parseStrictJson(
   await readFile(
     new URL('packages/contracts/model-evaluation.json', root),
@@ -229,5 +288,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length + connectorCases.cases.length + graphCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

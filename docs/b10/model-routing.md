@@ -69,10 +69,10 @@
 - **ローカル生成は同時 1 本**。ローカル ASR だけでなく、ローカル provider を使うテキストの仕事も数える（`local_limit`）。
 - 影モードは枠 B の内側で、P0／P1／P2 の仕事がある間は待たずに skip する（`shadow_disabled`・`shadow_budget`・`shadow_busy`・`shadow_wait`）。既定 OFF・予算なしの skip は経路の解決より先に決め、経路が null でも待機にしない。ローカル生成の枠が埋まっているときも skip する。影モードかどうかは**ジョブの規則**（`intent_shadow`）で決め、明示のフラグと食い違う要求は `shadow_flag_mismatch` で拒否する。実行中の影モードも枠 B とテキストの同時数に数える（P0／P1 が来たら B10-03 が影モードを止める）。
 - 同時数 1 の provider を P0 と P1／P2 で共有する設定は `routingErrors` が拒否する（`provider_shared_between_priorities`）。P0 と P2 を同じ provider に置くと、P0 が P2 を待つか、同時数の上限を超えるため。ローカル provider は `max_concurrency` が 2 でも実効 1 として同じ検査をする。
-- QA40（ローカル P0 の prefix cache の有無）は実機の測定が要る。この P2 では「ローカル生成 1 本」の受付と、profile の能力の登録までで、**遅延の測定は未実施**。cache なしを採用条件未達として扱う判定は B10-07 の評価で行う。
+- QA40（ローカル P0 の prefix cache の有無）は実機の測定が要る。この子では「ローカル生成 1 本」の受付と、profile の能力の登録、`localAdoption` の形（cache なしは採用条件未達、cached・uncached の遅延を安全側で記録）までを固定した。**遅延の実測は未実施**で、cache なしを採用条件未達として扱う最終判断は B10-07 の評価で行う。
 
 ## 試験（模擬だけ）
 
 - `packages/ai/src/routing.test.ts`: 固定表の整合（枠 A は P0 だけ、枠 B に P0 を置かない、影モードは必須でない）、正常な合成設定、各拒否理由、QA37 の provider の共有（ローカルの実効上限 1 を含む）、p95 の経路ごとの制限、ローカル ASR の provider。
-- `packages/ai/src/scheduler.test.ts`: QA13（P0・P1 を受付、P2 は待機、影モードは skip）、QA37（P2 が動いていても P0 は待たない）、影モードの既定 OFF と予算なしの skip、ローカル生成 1 本、provider の同時数 1 の待機。
+- `packages/ai/src/scheduler.test.ts`: QA13（P0・P1 を受付、P2 は待機、影モードは skip）、QA37（P2 が動いていても P0 は待たない）、影モードの既定 OFF・予算なし・busy・ローカル枠の skip（経路がない設定を含む）、ローカル生成 1 本（ローカル provider のテキストの仕事を含む）、provider の同時数 1 の待機、この表に対応する構成が `routingErrors` を通り P0 を受け付けること。
 - **模擬のみ**。実 API・実請求・実機・実 endpoint の能力確認は未実施。

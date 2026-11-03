@@ -1021,6 +1021,16 @@ export function semanticErrors(name, value) {
       errors.push('view_revision_mismatch');
     if (value.view.intent !== value.intent) errors.push('view_intent_mismatch');
   }
+  // Outlook の接続はアカウント種別・委任・拒否の理由を持つ（B09-01、ADR 0072）。
+  // 拒否の理由がある接続を active にしない。
+  if (name === 'ConnectionSummary') {
+    if (value.provider === 'microsoft' && !value.graph_account)
+      errors.push('graph_account_missing');
+    if (value.provider !== 'microsoft' && value.graph_account)
+      errors.push('graph_account_unexpected');
+    if (value.graph_account?.rejection_reason && value.status === 'active')
+      errors.push('rejection_with_active');
+  }
   // 無音の延長の値は、その種類のイベントだけが持つ（B05-05、ADR 0052）。
   if (name === 'VoiceEvent') {
     if (

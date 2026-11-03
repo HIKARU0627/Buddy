@@ -30,3 +30,15 @@ export function clarificationText(response: DesktopIpcResponse): string | null {
   const text = response.turn.reply_text;
   return typeof text === 'string' && text.trim().length > 0 ? text : null;
 }
+
+// 送信の応答の聞き返しを、今の入力欄に出してよいか。送信の後に下書きが変わった（世代が進んだ）・
+// ロック中・不明のときは出さない（古い依頼の質問を新しい下書きの上に出さない。UI-08）。
+export function clarificationAfter(
+  response: DesktopIpcResponse,
+  submittedVersion: number,
+  currentVersion: number,
+  shown: boolean,
+): string | null {
+  if (!shown || submittedVersion !== currentVersion) return null;
+  return clarificationText(response);
+}

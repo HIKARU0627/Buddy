@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import type { DesktopIpcResponse } from '@buddy/contracts';
 import {
   canSubmit,
+  clarificationAfter,
   clarificationText,
   submitResult,
 } from './input-bar-state.js';
@@ -55,6 +56,25 @@ test('the clarification text is shown only for a clarification with non-blank te
     }),
     null,
   );
+});
+
+test('a late clarification is dropped after the draft changed or the screen was hidden', () => {
+  const response: DesktopIpcResponse = {
+    request_id: id,
+    channel: 'desktop.turn_submit',
+    outcome: 'ok',
+    turn: {
+      status: 'clarification',
+      reply_text: 'どちらの予定ですか。',
+      result: null,
+    },
+  };
+  assert.equal(
+    clarificationAfter(response, 3, 3, true),
+    'どちらの予定ですか。',
+  );
+  assert.equal(clarificationAfter(response, 3, 4, true), null);
+  assert.equal(clarificationAfter(response, 3, 3, false), null);
 });
 
 test('an answer empties the field; a clarification or any rejection keeps the text and flags the field', () => {

@@ -15,6 +15,7 @@
 - 入力欄の文字は、縮んだときも renderer の状態に残す。フォーカスし直すと広がり、続きを打てる。
 - **聞き返しの表示**: 送信の結果が聞き返し（`status: clarification`）のとき、`turn.reply_text` を広がった入力バーの上部に HeroUI の `Alert` で出す。説明文ではなく、その回の質問そのものを出す。小さめのときは出さず、広げたときに出す。入力の変更・送信の成功・ロック・不明で消す。ロック中・不明の render では、`InputBar` 側でも本文を出さない（effect の後片付けを待たない）。
 - **高さの収め方**: 176 の窓に、上部の `Alert`（最大 72、超えた分はスクロール）、8 の間隔、残りの入力欄を入れる。入力欄は固定の高さにせず、残りの高さに合わせて縮む（`min-h-0`）。
+- **古い聞き返しを出さない**: 送信の後に下書きを編集したら下書きの世代を進め、送信時の世代と違う応答の聞き返しは出さない。ロック・不明になったときも世代を進め、応答が遅れて届いても本文を出さない。
 
 ## 実装
 
@@ -32,7 +33,8 @@
 - `apps/desktop/src/main/window-roles.test.ts`: 小さめと入力中の位置・大きさ（下端が同じ）、作業領域に収まらないときの切り詰め。既存の「入力バーは小さな枠なし・常に最前面」の試験はそのまま通る。
 - `apps/desktop/src/renderer/screens/canvas/RoleWindow.test.tsx`: 広がっているときは `textarea`（5 行）で、小さめのときは `input`。既存の入力バーの試験はそのまま通る。
 - `apps/desktop/src/renderer/screens/canvas/InputBar.dom.test.tsx`: 広げた `TextArea` でも通常の Enter で 1 回だけ送り、IME の変換の確定（`isComposing`）と Shift+Enter では送らない。小さめの `Input` の Enter も 1 回だけ送る。小さめの入力欄にフォーカスしたまま広げると、置き換わった `TextArea` にフォーカスが移る（`document.activeElement` で確認）。
-- `apps/desktop/src/renderer/state/input-bar-state.test.ts`: 聞き返しのときだけ `reply_text` を返し、空の文と聞き返し以外では返さない。
+- `apps/desktop/src/renderer/state/input-bar-state.test.ts`: 聞き返しのときだけ `reply_text` を返し、空の文と聞き返し以外では返さない。送信時の世代と今の世代が違う・画面を出していないときは、遅れて届いた聞き返しを出さない。
+- `apps/desktop/src/renderer/screens/canvas/InputWindow.dom.test.tsx`: 応答を待つ間に下書きを編集し、その後に聞き返しが返っても、古い依頼の質問を新しい下書きの上に出さない。
 - `apps/desktop/src/renderer/screens/canvas/RoleWindow.test.tsx`: 広げた入力バーに聞き返しの文が出る。ロック中・不明で広げていても、聞き返しの本文は出ない。
 - 実機の macOS・Windows での窓の伸縮・フォーカスの往復・IME は**未実施**。
 - ビルドした画面の CSS と `InputBar` の描画を Chrome（headless）で 560 × 176 に置き、2 行の聞き返しで alert 72・入力欄 78・操作 36 が収まり、`form.scrollHeight` が 174 で窓内に収まることを確認した（`buddy-input-bar-clarification.png`。Electron の実画面ではなく、同じビルドの CSS と DOM の確認）。

@@ -437,6 +437,80 @@ test('changing the selection raises both revisions and normalizes the scope', ()
   assert.equal(big.state.scopeRevision, '1000');
 });
 
+test('an unchanged selection does not raise revisions when only the key order differs', () => {
+  const base = scope();
+  const current = state({ scope: normalizeFetchScope(base) });
+  // 同じ値を、キーを逆順に並べたオブジェクトで送る。
+  const reordered = Object.fromEntries(Object.entries(base).reverse());
+  assert.notDeepEqual(Object.keys(reordered), Object.keys(base));
+  const result = applyFetchScopeUpdate(current, {
+    expectedPermissionRevision: '4',
+    next: reordered,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, false);
+  assert.equal(result.state, current);
+  // 保存する形は決まった項目だけで、余計な項目を持ち込まない。
+  const extra = applyFetchScopeUpdate(current, {
+    expectedPermissionRevision: '4',
+    next: { ...base, mailLookbackDays: 7, note: 'extra' },
+  });
+  assert.equal(extra.changed, true);
+  assert.deepEqual(Object.keys(extra.state.scope).sort(), [
+    'attachmentKinds',
+    'attachmentMaxBytes',
+    'calendarFutureDays',
+    'calendarIds',
+    'calendarPastDays',
+    'mailContainerIds',
+    'mailLookbackDays',
+  ]);
+});
+
+test('dates that do not exist are rejected, not corrected', () => {
+  // Date.parse は 2 月 31 日を 3 月 4 日に、24 時を翌日 0 時に補正する。補正した時刻で取得を許さない。
+  const mail = (receivedAt) =>
+    checkMailMessage(scope(), { containerIds: ['INBOX'], receivedAt }, NOW);
+  for (const bad of [
+    '2026-02-31T00:00:00Z',
+    '2026-02-29T00:00:00Z', // 2026 年は平年
+    '2026-13-01T00:00:00Z',
+    '2026-00-10T00:00:00Z',
+    '2026-11-00T00:00:00Z',
+    '2026-11-03T24:00:00Z',
+    '2026-11-03T23:60:00Z',
+    '2026-11-03T23:59:60Z',
+    '2026-04-31T12:00:00Z',
+  ])
+    assert.deepEqual(mail(bad), { ok: false, reason: 'time_invalid' }, bad);
+  // 存在する日付は通る（うるう日、小数部は桁数の制限なし）。
+  assert.deepEqual(mail('2026-10-31T23:59:59Z'), { ok: true });
+  assert.deepEqual(mail('2026-10-31T23:59:59.123456Z'), { ok: true });
+  assert.deepEqual(
+    checkMailMessage(
+      scope(),
+      { containerIds: ['INBOX'], receivedAt: '2024-02-29T00:00:00Z' },
+      '2024-03-01T00:00:00Z',
+    ),
+    { ok: true },
+  );
+  // 現在時刻の側が存在しない日付でも、窓を作らない。
+  assert.equal(mailWindow(scope(), '2026-02-31T00:00:00Z'), null);
+  assert.equal(calendarWindow(scope(), '2026-11-03T24:00:00Z'), null);
+  assert.deepEqual(
+    checkCalendarEvent(
+      scope(),
+      {
+        calendarId: 'cal-work',
+        startsAt: '2026-11-31T00:00:00Z',
+        endsAt: '2026-12-01T00:00:00Z',
+      },
+      NOW,
+    ),
+    { ok: false, reason: 'time_invalid' },
+  );
+});
+
 test('an unchanged selection does not raise revisions, regardless of order', () => {
   const current = state({
     scope: normalizeFetchScope(

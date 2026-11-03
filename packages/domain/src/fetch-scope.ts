@@ -130,33 +130,69 @@ export function validateFetchScope(scope: FetchScope): FetchScopeIssue[] {
 export function normalizeFetchScope(scope: FetchScope): FetchScope {
   const sorted = (values: readonly string[]): string[] =>
     [...new Set(values)].sort();
+  // 項目を明示して作る。余計な項目を保存へ持ち込まず、キーの順にも依らない。
   return {
-    ...scope,
     calendarIds: sorted(scope.calendarIds),
     mailContainerIds: sorted(scope.mailContainerIds),
     attachmentKinds: ATTACHMENT_KINDS.filter((kind) =>
       scope.attachmentKinds.includes(kind),
     ),
+    mailLookbackDays: scope.mailLookbackDays,
+    calendarPastDays: scope.calendarPastDays,
+    calendarFutureDays: scope.calendarFutureDays,
+    attachmentMaxBytes: scope.attachmentMaxBytes,
   };
 }
 
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((value, index) => value === b[index]);
+
+// 同じ選択か。並び順・重複・オブジェクトのキーの順に依らない。
 export function sameFetchScope(a: FetchScope, b: FetchScope): boolean {
+  const x = normalizeFetchScope(a);
+  const y = normalizeFetchScope(b);
   return (
-    JSON.stringify(normalizeFetchScope(a)) ===
-    JSON.stringify(normalizeFetchScope(b))
+    sameList(x.calendarIds, y.calendarIds) &&
+    sameList(x.mailContainerIds, y.mailContainerIds) &&
+    sameList(x.attachmentKinds, y.attachmentKinds) &&
+    x.mailLookbackDays === y.mailLookbackDays &&
+    x.calendarPastDays === y.calendarPastDays &&
+    x.calendarFutureDays === y.calendarFutureDays &&
+    x.attachmentMaxBytes === y.attachmentMaxBytes
   );
 }
 
 // ---- 期間 ----
 
 const DAY_MS = 86_400_000;
-const UTC_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+// 契約の UtcTime と同じ形（小数部は桁数の制限なし。秒は 00〜59 でうるう秒は拒否）。
+const UTC_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):([0-5]\d)(?:\.(\d+))?Z$/;
 
 // UTC の時刻（契約の UtcTime）だけを受け付ける。タイムゾーン付きや日付だけの値は拒否する。
+// 存在しない日付・時刻（2 月 31 日、24 時、13 月）は Date が補正してしまうので、成分を往復で確かめて拒否する。
+// 小数部はミリ秒までで切り捨てる。
 function parseUtc(value: unknown): number | null {
-  if (typeof value !== 'string' || !UTC_TIME.test(value)) return null;
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? null : ms;
+  if (typeof value !== 'string') return null;
+  const match = UTC_TIME.exec(value);
+  if (match === null) return null;
+  const [year, month, day, hour, minute, second] = match
+    .slice(1, 7)
+    .map(Number) as [number, number, number, number, number, number];
+  const millis = Number((match[7] ?? '').padEnd(3, '0').slice(0, 3));
+  const ms = Date.UTC(year, month - 1, day, hour, minute, second, millis);
+  const back = new Date(ms);
+  if (
+    Number.isNaN(ms) ||
+    back.getUTCFullYear() !== year ||
+    back.getUTCMonth() !== month - 1 ||
+    back.getUTCDate() !== day ||
+    back.getUTCHours() !== hour ||
+    back.getUTCMinutes() !== minute ||
+    back.getUTCSeconds() !== second
+  )
+    return null;
+  return ms;
 }
 
 export interface TimeWindow {

@@ -75,6 +75,27 @@ test('schedule / workflow_dispatch は macOS の既存実行器で生成し、ar
   assert.match(summary.run, /simulated-evidence-freshness/u);
 });
 
+test('schedule / workflow_dispatch は上書き前にコミット済み証拠の古さを比べ、stale を報告する', () => {
+  const job = workflow.jobs.generate;
+  const names = steps(job).map((step) => step.name);
+  const before = names.indexOf('Check committed evidence before regeneration');
+  const generate = names.indexOf('Generate B04 and B07 evidence');
+  assert.ok(before >= 0, names.join(','));
+  assert.ok(
+    before < generate,
+    '生成の前にコミット済み証拠を照合する（上書き後の照合では古さを検出できない）',
+  );
+  const original = byName(job, 'Check committed evidence before regeneration');
+  assert.equal(original.run, 'pnpm run evidence:check');
+  assert.equal(original['continue-on-error'], true);
+  const summary = byName(job, 'Write freshness summary');
+  assert.equal(summary.env.ORIGINAL_OUTCOME, '${{ steps.original.outcome }}');
+  assert.match(summary.run, /ORIGINAL_OUTCOME/u);
+  assert.match(summary.run, /stale/u);
+  const fail = byName(job, 'Fail when generation or comparison failed');
+  assert.match(fail.if, /steps\.original\.outcome == 'failure'/u);
+});
+
 test('freshness は commit・push・PR の作成をしない', () => {
   const text = JSON.stringify(workflow);
   for (const forbidden of [

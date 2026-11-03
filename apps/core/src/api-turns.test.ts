@@ -745,6 +745,42 @@ test(
 );
 
 test(
+  'sessions: a replayed create keeps the generation from the first receipt and does not re-tag an old conversation',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const body = {
+      request_id: randomUUID(),
+      command_scope_id: scope,
+      storage_mode: 'normal',
+    };
+    const first = await postJson(core, device, '/v1/sessions', body);
+    assert.equal(first.status, 201, first.text);
+    const generation = String(first.json?.['segment_generation']);
+    assert.equal(generation, '1');
+    // 記録しない区切りに入って出る（世代が 1 → 2 → 3）。
+    assert.equal((await core.handle.storage.enterPrivate()).ok, true);
+    assert.equal((await core.handle.storage.exitPrivate('normal')).ok, true);
+    // 同じ作成要求の再送は、最初の受付の世代を返す（今の世代に付け替えない）。
+    const again = await postJson(core, device, '/v1/sessions', body);
+    assert.equal(again.status, 201, again.text);
+    assert.equal(again.json?.['session_id'], first.json?.['session_id']);
+    assert.equal(again.json?.['segment_generation'], generation);
+    // 古い世代のままの発言は 409（古い会話を新しい世代に付け替えない）。
+    const stale = await postTurn(
+      core,
+      device,
+      String(first.json?.['session_id']),
+      scope,
+      '明日の予定は？',
+    );
+    assert.equal(stale.status, 409, stale.text);
+  },
+);
+
+test(
   'X03 / X04: a preview from an old command scope, after a content change, a lock, a permission change or a restart cannot approve (410 / 409)',
   { timeout: 90_000 },
   async (t) => {

@@ -352,6 +352,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
   };
 
+  // 会話の作成の再送で、最初の受付の世代を返すための控え（会話の ID → 世代）。再起動で失われるが、
+  // そのときは '0'（今の世代と一致しない）を返して最初の発言を 409 にし、会話を作り直させる。
+  const sessionGenerations = new Map<string, string>();
+
   const createSession: ApiRouteHandler = async (request) => {
     const device = request.device;
     const requestId = stringOf(request.body, 'request_id');
@@ -363,9 +367,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // 応答を返すまでに世代が進んでも、この会話の受付の時点の世代を返す（古ければ最初の発言が 409 になり、
     // 端末は作り直す。進んだ世代を返して古い会話の発言を通さない）。
     const generation = options.storage.origin().segment_generation;
+    const newSessionId = randomUUID();
     const result = await store.conversation({
       kind: 'session.create',
-      session_id: randomUUID(),
+      session_id: newSessionId,
       storage_mode: mode,
       display_device_id: device.device_id,
       created_at: now(),
@@ -375,13 +380,20 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const session = result.value;
     if (session === null)
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    // 再送では最初の受付の世代を返す（今の世代に付け替えない）。再起動で控えが無ければ '0' を返す。
+    let responseGeneration = generation;
+    if (session.session_id === newSessionId) {
+      sessionGenerations.set(newSessionId, generation);
+    } else {
+      responseGeneration = sessionGenerations.get(session.session_id) ?? '0';
+    }
     return {
       status: 201,
       body: {
         request_id: requestId,
         session_id: session.session_id,
         storage_mode: session.storage_mode,
-        segment_generation: generation,
+        segment_generation: responseGeneration,
         route_revision: session.route_revision,
       },
     };

@@ -485,6 +485,86 @@ test('a context over the input limits is trimmed the same way for the comparison
   assert.equal(memory.records[0]?.shadows[0]?.outcome, 'ok');
 });
 
+test('every target is judged on the same input and kept in one record; a target the budget refuses is recorded as skipped', async () => {
+  const SECOND_DEPLOYMENT = '8e4c3f6b-5a7d-4b9e-9f0a-2d3e4f5a6b7c';
+  const THIRD_DEPLOYMENT = '9f5d4a7c-6b8e-4c0f-8a1b-3e4f5a6b7c8d';
+  const first = createFakeAdapter([response(wireJson())]);
+  const second = createFakeAdapter([{ kind: 'timeout', usage: null }]);
+  const third = createFakeAdapter([response(wireJson())]);
+  const profileOf = (id: string) =>
+    syntheticProfile({
+      profile_id: id,
+      role: 'intent',
+      provider: 'gemini',
+      reasoning: null,
+      verified_capabilities: ['json_schema_strict'],
+    });
+  const settings = settingsFor(first, {
+    targets: [
+      {
+        deployment_id: SHADOW_DEPLOYMENT,
+        profile: profileOf('lite-a'),
+        adapter: first,
+      },
+      {
+        deployment_id: SECOND_DEPLOYMENT,
+        profile: profileOf('lite-b'),
+        adapter: second,
+      },
+      {
+        deployment_id: THIRD_DEPLOYMENT,
+        profile: profileOf('lite-c'),
+        adapter: third,
+      },
+    ],
+  });
+  const memory = memoryStore();
+  const settled: string[] = [];
+  const shadow = createShadowRecorder({
+    settings: () => settings,
+    store: memory.store,
+    slotAvailable: () => true,
+    // lite-c だけ予算の口が拒否する。
+    guard: {
+      admit: (call) =>
+        Promise.resolve(
+          call.profile.profile_id === 'lite-c'
+            ? { ok: false, reasons: ['pool_empty'] }
+            : {
+                ok: true,
+                settle: () => {
+                  settled.push(call.profile.profile_id);
+                  return Promise.resolve();
+                },
+              },
+        ),
+    },
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => NOW,
+    newId: () => randomUUID(),
+  });
+  shadow.observe(observation());
+  await shadow.idle();
+  assert.equal(memory.records.length, 1);
+  const record = memory.records[0] as IntentShadowRecord;
+  assert.deepEqual(
+    record.shadows.map((item) => [item.deployment_id, item.outcome]),
+    [
+      [SHADOW_DEPLOYMENT, 'ok'],
+      [SECOND_DEPLOYMENT, 'timeout'],
+      [THIRD_DEPLOYMENT, 'skipped'],
+    ],
+  );
+  // 呼ばれたのは受け付けられた 2 対象で、入力は同じ。拒否された対象は呼ばない。
+  assert.equal(first.commands.length, 1);
+  assert.equal(second.commands.length, 1);
+  assert.equal(third.commands.length, 0);
+  assert.deepEqual(first.commands[0]?.messages, second.commands[0]?.messages);
+  assert.deepEqual(settled.sort(), ['lite-a', 'lite-b']);
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);

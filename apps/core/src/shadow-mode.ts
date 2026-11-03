@@ -17,7 +17,12 @@ import type {
   ShadowJudgment,
 } from '@buddy/contracts';
 import { judgeIntent } from '@buddy/ai';
-import type { IntentJudgment, LlmAdapter, SchemaValidator } from '@buddy/ai';
+import type {
+  IntentJudgment,
+  IntentJudgmentInput,
+  LlmAdapter,
+  SchemaValidator,
+} from '@buddy/ai';
 import {
   shadowAdmission,
   storageModeStateEffects,
@@ -176,13 +181,49 @@ export function createShadowRecorder(
     }
   };
 
+  // 1 つの比較モデルを判定する。予算の口が拒否したら null（呼ばない）。失敗・例外は outcome にして返す。
+  const judgeTarget = async (
+    target: ShadowTarget,
+    input: IntentJudgmentInput,
+  ): Promise<ShadowJudgment | null> => {
+    const requestId = newId();
+    const admitted = await options.guard.admit({
+      request_id: requestId,
+      profile: target.profile,
+    });
+    if (!admitted.ok) return null;
+    const started = now();
+    try {
+      const result = await judgeIntent(target.adapter, {
+        request_id: requestId,
+        profile: target.profile,
+        // 比較は本線と同じ入力にする（同じ上限で絞る。条件の差を評価結果にしない）。
+        input,
+        output_schema: options.output_schema,
+        schema: options.schema,
+      });
+      await admitted.settle(result.outcome.usage).catch(() => undefined);
+      return judgmentOf(
+        target.deployment_id,
+        result.judgment,
+        Math.max(0, now() - started),
+      );
+    } catch {
+      await admitted.settle(null).catch(() => undefined);
+      return judgmentOf(
+        target.deployment_id,
+        { kind: 'failed', failure: 'unavailable', retryable: true },
+        null,
+      );
+    }
+  };
+
   const run = async (
     observation: ShadowObservation,
     settings: ShadowSettings,
     retentionMs: number,
   ): Promise<void> => {
-    const target = settings.targets[0];
-    if (target === undefined) return;
+    if (settings.targets.length === 0) return;
     const limit = Math.min(settings.max_inputs, SHADOW_MAX_INPUTS);
     // 開始前の確認: 件数・実費・日数の最初の到達で止める（保存側の上限とは別に、無駄な呼出しをしない）。
     const confirmed = await options.store.count(settings.campaign_id);
@@ -210,40 +251,25 @@ export function createShadowRecorder(
       emit({ kind: 'skipped', reasons: admission.reasons });
       return;
     }
-    const requestId = newId();
-    const admitted = await options.guard.admit({
-      request_id: requestId,
-      profile: target.profile,
-    });
-    if (!admitted.ok) {
+    // 指定された比較モデルをすべて、同じ入力で並行して判定する。予算の口が拒否した対象は、黙って欠落させず
+    // skipped として記録する（全部が拒否されたときは走らせず、記録も作らない）。
+    const input = judgmentInputOf(observation.context);
+    const judged = await Promise.all(
+      settings.targets.map((target) => judgeTarget(target, input)),
+    );
+    if (judged.every((item) => item === null)) {
       emit({ kind: 'skipped', reasons: ['shadow_budget'] });
       return;
     }
-    const started = now();
-    let shadow: ShadowJudgment;
-    try {
-      const result = await judgeIntent(target.adapter, {
-        request_id: requestId,
-        profile: target.profile,
-        // 比較は本線と同じ入力にする（同じ上限で絞る。条件の差を評価結果にしない）。
-        input: judgmentInputOf(observation.context),
-        output_schema: options.output_schema,
-        schema: options.schema,
-      });
-      await admitted.settle(result.outcome.usage).catch(() => undefined);
-      shadow = judgmentOf(
-        target.deployment_id,
-        result.judgment,
-        Math.max(0, now() - started),
-      );
-    } catch {
-      await admitted.settle(null).catch(() => undefined);
-      shadow = judgmentOf(
-        target.deployment_id,
-        { kind: 'failed', failure: 'unavailable', retryable: true },
-        null,
-      );
-    }
+    const shadows = judged.map(
+      (item, index): ShadowJudgment =>
+        item ??
+        judgmentOf(
+          (settings.targets[index] as ShadowTarget).deployment_id,
+          { kind: 'failed', failure: 'budget_denied', retryable: true },
+          null,
+        ),
+    );
     const recordedAt = now();
     const record: IntentShadowRecord = {
       schema: 'buddy.intent-shadow.v1',
@@ -256,7 +282,8 @@ export function createShadowRecorder(
         observation.primary,
         observation.primary.elapsed_ms ?? null,
       ),
-      shadows: [shadow],
+      // 対象は 1 件以上（上で確認済み）なので、契約の minItems: 1 を満たす。
+      shadows: shadows as IntentShadowRecord['shadows'],
       recorded_at: new Date(recordedAt).toISOString(),
       expires_at: new Date(recordedAt + retentionMs).toISOString(),
       used_for_execution: false,

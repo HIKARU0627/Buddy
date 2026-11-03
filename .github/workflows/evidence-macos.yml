@@ -1,4 +1,4 @@
-# B04・B07 の模擬の証拠を macOS で作り、artifact として取り出す（Issue #170、本人の決定 2026-10-31）。
+# B04・B05・B07 の模擬の証拠を macOS で作り、artifact として取り出す（Issue #170、本人の決定 2026-10-31）。
 # 証拠には POSIX のファイル権限の観測（他人が書ける設定の拒否）が含まれ、Windows では作れない。
 # 通常の CI（ci.yml・verify-os.yml）はこの workflow を呼ばず、証拠を書き換えない。
 # 手で実行したときだけ、指定したブランチのソースから証拠を作る。commit・push はしない。
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   evidence:
-    name: B04/B07 evidence (macos-latest)
+    name: B04/B05/B07 evidence (macos-latest)
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -39,6 +39,10 @@ jobs:
         env:
           BUDDY_B04_EVIDENCE_PATH: tests/integration/evidence-b04-simulated.json
         run: node --test tests/integration/b04.test.mjs
+      - name: B05 evidence
+        env:
+          BUDDY_B05_EVIDENCE_PATH: tests/integration/evidence-b05-simulated.json
+        run: node --test tests/integration/b05.test.mjs
       - name: B07 evidence
         env:
           BUDDY_B07_EVIDENCE_PATH: tests/integration/evidence-b07-simulated.json
@@ -47,6 +51,7 @@ jobs:
         run: >-
           pnpm exec prettier --write
           tests/integration/evidence-b04-simulated.json
+          tests/integration/evidence-b05-simulated.json
           tests/integration/evidence-b07-simulated.json
       - name: Check evidence
         run: |
@@ -56,6 +61,7 @@ jobs:
             const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
             for (const path of [
               "tests/integration/evidence-b04-simulated.json",
+              "tests/integration/evidence-b05-simulated.json",
               "tests/integration/evidence-b07-simulated.json",
             ]) {
               const evidence = JSON.parse(readFileSync(path, "utf8"));
@@ -76,13 +82,14 @@ jobs:
             echo "- commit: \`$GITHUB_SHA\`"
             echo "- artifact: \`simulated-evidence-$GITHUB_SHA\`"
             echo ""
-            echo "B04・B07 の証拠を macOS で作りました。artifact を取得し、作業ブランチの \`tests/integration/\` へ取り込んでください。"
+            echo "B04・B05・B07 の証拠を macOS で作りました。artifact を取得し、作業ブランチの \`tests/integration/\` へ取り込んでください。"
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: simulated-evidence-${{ github.sha }}
           path: |
             tests/integration/evidence-b04-simulated.json
+            tests/integration/evidence-b05-simulated.json
             tests/integration/evidence-b07-simulated.json
           if-no-files-found: error
           retention-days: 30

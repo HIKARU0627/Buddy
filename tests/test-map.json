@@ -760,7 +760,7 @@
         "tests/integration/evidence-b05-simulated.json#X49-text-request-stays-text",
         "tests/integration/evidence-b05-simulated.json#X58-reply-in-text-switches-the-device"
       ],
-      "product_scope": "B05-07 の固定 seed 3 回。文字の依頼は音声の接続が開いていても文字で返し（声の接続へも再生へも何も送らない）、HTTP の経路の voice_live は 503、文字で返す設定では声の会話を始められないことを確認。結果を画面へ回す表示（U120）は UI-08 の別 PR で未了。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
+      "product_scope": "B05-07 の固定 seed 3 回。文字の依頼は音声の接続が開いていても文字で返し（声の接続へも再生へも何も送らない）、HTTP の経路の voice_live は 503、文字で返す設定では声の会話を始められないことを確認。結果を画面へ回す表示（U120）は #189（UI-08 の一段階、ADR 0066）で実装済み（模擬の表示。実機・実 API は未実施）。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T01", "T08"]
     },
     {

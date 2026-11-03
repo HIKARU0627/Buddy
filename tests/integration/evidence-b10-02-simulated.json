@@ -1,0 +1,153 @@
+{
+  "status": "recorded",
+  "description": "B10-02 の模擬結果。packages/ai のアダプター・振り分け・同時数・出力の検証・usage の計上を、差し替え可能な模擬の HTTP と合成の通貨 XTS で確かめた。実 API・実キー・実請求・実機は未実施（B15 と本人の承認まで扱わない）。UI-09・B10-03 以降の配線は未実施。",
+  "command": "node --test packages/ai/dist/*.test.js",
+  "source_sha256": [
+    {
+      "path": "packages/ai/src/routing.ts",
+      "sha256": "9e8196b59af93dc32f2f89bb2d7ea40c1b9d85bcdeccfe5d81d075da4dbe6540"
+    },
+    {
+      "path": "packages/ai/src/scheduler.ts",
+      "sha256": "399182cd580fb242818422d25c938a5698ecf1268ae8a0c1335b92ce00fc9cd3"
+    },
+    {
+      "path": "packages/ai/src/validation.ts",
+      "sha256": "f68766f06d58acab3233bfa957f645934371f6833cd547681c44a5df9945b129"
+    },
+    {
+      "path": "packages/ai/src/cost.ts",
+      "sha256": "690c2fd342dfa46ae3e70a40a4572a79c99acd4be04763859e721a6ffe08c027"
+    },
+    {
+      "path": "packages/ai/src/reservation.ts",
+      "sha256": "9aab0257dfb1a14ce14345c35e2e1c44809f615a51fd9da25eebce5c9cb695f7"
+    },
+    {
+      "path": "packages/ai/src/settlement.ts",
+      "sha256": "fb8462d812f0ff1647853981a0b07d35353a91da0a598264ea76a0e678e57c95"
+    },
+    {
+      "path": "packages/ai/src/local.ts",
+      "sha256": "16f318abfa2814d555ed93f069ee288b615267e624605124d0c305b6b1b94db5"
+    },
+    {
+      "path": "packages/ai/src/routing.test.ts",
+      "sha256": "c9de92fa941087d8960fc5b2c98aa579d26d0dcf2547de62eeae39bf59c2cc11"
+    },
+    {
+      "path": "packages/ai/src/scheduler.test.ts",
+      "sha256": "b8980d05979dd176e2553c482889dfe56594581b9966245603fe1d9580446d0b"
+    },
+    {
+      "path": "packages/ai/src/validation.test.ts",
+      "sha256": "0accd5e5d8ca4cc7539c9fe9ec12248743ea2f2614b0d846cd2a9ac366d99c04"
+    },
+    {
+      "path": "packages/ai/src/cost.test.ts",
+      "sha256": "5f3a94faca6de6232266f9a786f05c2ee69f01de309a1d116592fd296ae7f919"
+    },
+    {
+      "path": "packages/ai/src/reservation.test.ts",
+      "sha256": "3a51168b6e7309f462e9c4183ee3468b700d4777819562cf7f6c12825d6d12e8"
+    },
+    {
+      "path": "packages/ai/src/settlement.test.ts",
+      "sha256": "da6b8a11b8e8b7ec9886f54c6b281e5a3051f3e46717e840b68e5dcb5e4c17b2"
+    },
+    {
+      "path": "packages/ai/src/local.test.ts",
+      "sha256": "f1406fdfa799503b9f9edaafb6fa27c7ed2f407c4c4a0a0ddb327bcba49094bb"
+    }
+  ],
+  "records": [
+    {
+      "case_id": "QA02-b10-02",
+      "kind": "simulated",
+      "commit": "24c05e61513b66c2197608a7a914ce98998d38a5",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの模擬の HTTP と契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "model_output_validation",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "ok,refused,truncated,invalid_schema,invalid_semantics,timeout,unavailable,cancelled,usage_unknown",
+      "observed_at": "2026-11-03T05:30:00.000Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA13-b10-02",
+      "kind": "simulated",
+      "commit": "24c05e61513b66c2197608a7a914ce98998d38a5",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの模擬の HTTP と契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "concurrent_call_admission",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "p0_admitted,p1_admitted,p2_wait,shadow_skip",
+      "observed_at": "2026-11-03T05:30:00.000Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA37-b10-02",
+      "kind": "simulated",
+      "commit": "24c05e61513b66c2197608a7a914ce98998d38a5",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの模擬の HTTP と契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "provider_concurrency_sharing",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "provider_shared_rejected,p0_not_waiting_for_p2",
+      "observed_at": "2026-11-03T05:30:00.000Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA40-b10-02",
+      "kind": "simulated",
+      "commit": "24c05e61513b66c2197608a7a914ce98998d38a5",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの模擬の HTTP と契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "local_prefix_cache",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "prefix_cache_missing_not_adopted,cached_and_uncached_recorded",
+      "observed_at": "2026-11-03T05:30:00.000Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    }
+  ]
+}

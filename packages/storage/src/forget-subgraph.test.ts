@@ -397,7 +397,7 @@ test('partial read: only the edges the closure touches are read, however many un
   });
 });
 
-test('closure rule D depends on edge order (U157): the partial read keeps the whole read order and gives the same plan', async () => {
+test('closure rule D does not depend on edge order (U157): A is excluded too and the partial read gives the same plan', async () => {
   await withTempDir((dir) => {
     const db = openSeededDatabase(databasePath(dir));
     try {
@@ -431,7 +431,8 @@ test('closure rule D depends on edge order (U157): the partial read keeps the wh
       // 忘れる記憶 X は発言 B から。X から発言 T1 を作り、T1 から発言 C を作る。
       // 辺の並びは（派生物の種類・ID の順）で C ← T1 が T1 ← X より前になるので、C が core になるのは閉包の 2 巡目。
       // 1 巡目の規則 D は、B が除外する由来なので要約 S を「触れるだけ」で消す（core に上げず、範囲を広げない）。
-      // 2 巡目で C が core になっても、S はもう消える物なので範囲の発言 A は除外する由来にならない。
+      // 2 巡目で C が core になると、規則 D の第 1 分岐をすでに消える物の S にも適用し、範囲の発言 A も除外する
+      // （U157。本人が 2026-11-01 に決定）。並びを変えても同じ結果になる。
       insertMemory(db, X, sha256hex('order-x'), [
         { source_kind: 'turn', source_id: B },
       ]);
@@ -447,14 +448,98 @@ test('closure rule D depends on edge order (U157): the partial read keeps the wh
       assert.deepEqual(partial, full);
       assert.equal(full.ok, true);
       if (!full.ok) return;
-      // 手で導いた期待値: 消える物は要約 S・記憶 X・発言 C・T1。除外する由来は B だけ（A は除外されない）。
+      // 手で導いた期待値: 消える物は要約 S・記憶 X・発言 C・T1。除外する由来は A と B（どちらも再登録を禁じる）。
       assert.deepEqual(
         full.plan.deletions.map((node) => `${node.kind}:${node.id}`),
         [`session_summary:${S}`, `memory:${X}`, `turn:${C}`, `turn:${T1}`],
       );
-      assert.deepEqual(full.plan.ledger.blocked_source_hmacs, [
-        hmacOf({ source_kind: 'turn', source_id: B }),
-      ]);
+      assert.deepEqual(
+        full.plan.ledger.blocked_source_hmacs,
+        [
+          hmacOf({ source_kind: 'turn', source_id: A }),
+          hmacOf({ source_kind: 'turn', source_id: B }),
+        ].sort(),
+      );
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// 並びを変えても計画が変わらないこと（U157）を、乱択の世界で確かめるための入れ替え。
+function shuffled<T>(items: readonly T[], random: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    const a = out[i] as T;
+    out[i] = out[j] as T;
+    out[j] = a;
+  }
+  return out;
+}
+
+test('closure rule D gives the same plan whatever the order of edges, unattributed items and session turns (U157)', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      const densities = [12, 24, 40, 70];
+      for (let world = 1; world <= 8; world += 1) {
+        const built = addWorld(
+          db,
+          world,
+          world * 7919 + 13,
+          densities[world % densities.length] as number,
+        );
+        const full = readForgetGraph(db);
+        const targets: MemorySource[] = [
+          ...built.turns.map((id) => ({
+            source_kind: 'turn' as const,
+            source_id: id,
+          })),
+          ...[...built.memories, built.ghostMemory].map((id) => ({
+            source_kind: 'memory' as const,
+            source_id: id,
+          })),
+          ...built.sourceItems.map((id) => ({
+            source_kind: 'source_item' as const,
+            source_id: id,
+          })),
+        ];
+        const random = rng(world * 15485863);
+        const instruction = built.turns[
+          Math.floor(random() * built.turns.length)
+        ] as string;
+        for (const target of targets)
+          for (const instructionTurn of [null, instruction]) {
+            const partial = readForgetSubgraph(db, {
+              target,
+              instruction_turn_id: instructionTurn,
+            });
+            const expected = planOf(full, target, instructionTurn);
+            // 全件読みと部分読みの両方で、3 通りずつ並びを入れ替えても同じ計画になる。
+            for (const [name, graph] of [
+              ['whole', full],
+              ['partial', partial],
+            ] as const)
+              for (let round = 0; round < 3; round += 1)
+                assert.deepEqual(
+                  planForget({
+                    target,
+                    instruction_turn_id: instructionTurn,
+                    executing_operation_id: null,
+                    graph: {
+                      ...graph,
+                      edges: shuffled(graph.edges, random),
+                      unattributed: shuffled(graph.unattributed, random),
+                      turn_sessions: shuffled(graph.turn_sessions, random),
+                    },
+                    sourceHmac: hmacOf,
+                  }),
+                  expected,
+                  `world ${world} ${name} target ${target.source_kind}:${target.source_id} instruction ${instructionTurn} round ${round}`,
+                );
+          }
+      }
     } finally {
       db.close();
     }

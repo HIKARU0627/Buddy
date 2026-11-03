@@ -6,6 +6,7 @@
 export type BuddyContract =
   | InputSnapshot
   | WireResponse
+  | ModelOutcome
   | Interpretation
   | WorkflowRequest
   | WorkContext
@@ -31,6 +32,7 @@ export type BuddyContract =
   | DelegationResult
   | PendingClarification
   | ResultView
+  | ResponsePlan
   | AudioControl
   | Lease
   | LiveSessionRequest
@@ -59,6 +61,9 @@ export type BuddyContract =
   | CandidateSnapshot
   | SyncBatch
   | SyncScopeState
+  | SyncStateResponse
+  | ConnectorCapability
+  | GraphAccountState
   | MemoryCandidateWire
   | MemoryCandidate
   | MemoryRecord
@@ -135,6 +140,7 @@ export type BuddyContract =
   | BackupManifest
   | RestoreResult
   | RetentionNotice
+  | StorageBoundaryNotice
   | StorageModeState
   | RecoveryKeyRecord
   | RecoveryKeyDisplay
@@ -316,6 +322,41 @@ export type LocalDate = string;
  */
 export type LocalDateTime = string;
 /**
+ * モデル呼出しの結果（ADR 0070）。成功と失敗を分け、失敗の原因を保つ。失敗は自動では再試行しない。
+ */
+export type ModelOutcome =
+  | {
+      kind: 'ok';
+      value: WireResponse;
+      profile_id: ProfileId;
+      usage: ModelUsage;
+      retryable: false;
+    }
+  | {
+      kind:
+        | 'refused'
+        | 'truncated'
+        | 'invalid_schema'
+        | 'invalid_semantics'
+        | 'timeout'
+        | 'unavailable'
+        | 'budget_denied'
+        | 'cancelled'
+        | 'stale';
+      /**
+       * 利用者が手で再試行したときに成功し得るか。true でも自動の再送・JSON 修復・上位モデルでの再試行をしない（ADR 0070）。
+       */
+      retryable: boolean;
+      /**
+       * 出力の一部を受け取ったときの usage。観測できないときは null にし、推測で埋めない。
+       */
+      usage: ModelUsage | null;
+    };
+/**
+ * モデル・endpoint 別の profile の ID（ModelProfile.profile_id、設計 05 P02）。予約・受付で同じ型を使う（ADR 0034）。
+ */
+export type ProfileId = string;
+/**
  * 元サービスが返す対象の版（etag、履歴 ID など）。不透明な文字列で、大小比較しない（設計 07 §1、11 §3）。
  */
 export type SourceRevision = string;
@@ -386,10 +427,6 @@ export type EventCursor = string;
  * 予約行の版。追加予約（top-up）ごとに上がる（ADR 0006）。
  */
 export type ReservationRevision = string;
-/**
- * モデル・endpoint 別の profile の ID（ModelProfile.profile_id、設計 05 P02）。予約・受付で同じ型を使う（ADR 0034）。
- */
-export type ProfileId = string;
 /**
  * 単価の版の ID（設計 05 費用の計算 D15）。設定で決める不透明な ID で、順序比較しない（ADR 0006・0034）。
  */
@@ -608,6 +645,55 @@ export type RequestEntityRevision = string;
  * 同期の実行担当の世代（設計 11 §1A）。再起動で新しい担当になると上がり、旧担当の遅着ページ・公開要求を拒否する。
  */
 export type ExecutorGeneration = string;
+/**
+ * 連携の提供元（設計 04 接続・権限）。
+ */
+export type ConnectionProvider = 'google' | 'microsoft';
+/**
+ * connector が読める対象（設計 04 接続・権限、08 §3）。書込みの前提の読み直しと結果の照合もこの読み取りだけを使う。
+ */
+export type ConnectorReadKind =
+  'permission' | 'mail.message' | 'mail.draft' | 'calendar.events';
+/**
+ * 送出の直前に前提（対象の版・許可）を確かめる方法（設計 08 §3、ADR 0027）。
+ */
+export type PreconditionMethod =
+  'conditional_request' | 'recheck_before_dispatch' | 'not_required';
+/**
+ * 結果不明のときに外部の状態を探す方法（設計 08 §3、ADR 0027）。
+ */
+export type LookupMethod = 'by_remote_id' | 'by_operation_marker' | 'none';
+/**
+ * 結果の照合の範囲（設計 08 §3、ADR 0027）。
+ */
+export type ReconcileScope =
+  'exact_target' | 'operation_marker' | 'local_transaction';
+/**
+ * 操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。
+ */
+export type OperationStepKind =
+  'apply_labels' | 'create_draft' | 'send' | 'create_task';
+/**
+ * Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。
+ */
+export type GraphAccountKind = 'personal' | 'work_or_school';
+/**
+ * Microsoft Graph の委任されたユーザー権限だけを使う（設計 04 接続・権限）。組織全体のアプリ権限へ切り替えない。
+ */
+export type GraphDelegationScope = 'delegated_user';
+/**
+ * 接続・取得を拒否された理由（設計 04 接続・権限、QA22・QA23）。拒否を成功として扱わないための語彙。
+ */
+export type GraphRejectionReason =
+  | 'insufficient_permission'
+  | 'organization_policy'
+  | 'admin_consent_required'
+  | 'tenant_restriction'
+  | 'unknown';
+/**
+ * Outlook のカテゴリの扱い（設計 11 §5A、D7）。初期版は案の表示だけで、If-Match の検証ができるまで自動付与しない。
+ */
+export type GraphCategoryUpdateMode = 'display_only';
 /**
  * 要約記憶の種類（設計 11 §7）。保存できるのは本人が初期設定で許可した種類だけ。
  */
@@ -1848,6 +1934,10 @@ export type RetentionNotice =
       items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
     };
 /**
+ * 保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。
+ */
+export type SegmentGeneration = string;
+/**
  * 区切りの保存モードの状態（設計 03 保存期限・記録しない会話の境界、ADR 0040）。モードごとに何を保存し何を禁じるかを固定の値で持ち、private では発言・要約・記憶・抽出・影モードの記録・Live の接続を持てない。端末内の音声認識（③）は使える。判定は Core のコードが持ち、クライアントは表示にだけ使う。
  */
 export type StorageModeState =
@@ -1961,6 +2051,19 @@ export interface IntentArgs {
     | null;
   query: string | null;
   device_name: string | null;
+}
+/**
+ * モデル呼出しの usage（ADR 0070）。費用の計算と予約の精算は B07 の規則を使い、この契約は金額を持たない。
+ */
+export interface ModelUsage {
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number | null;
+  /**
+   * usage をすべて観測できたか。false のとき、予約を実費として精算しない（ADR 0070）。
+   */
+  usage_complete: boolean;
 }
 /**
  * Core が対象解決と意味検証を終えた後だけ作る。schema に合格しただけでは検証済みにならない。
@@ -3009,6 +3112,36 @@ export interface ResultView {
   template_version: TemplateVersion | null;
 }
 /**
+ * Core が決めた表示と読み上げの計画（ADR 0070）。モデルの生出力（WireResponse）でも、検証済みの解釈（Interpretation）でも、実行可否（ActionReadiness）でもない。応答文の本文・宛先・承認・実行経路の欄を持たない。
+ */
+export interface ResponsePlan {
+  schema: 'buddy.response-plan.v1';
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  intent: IntentName;
+  /**
+   * この計画の結果の状態。聞き返しと承認は、通常完了の結果の種類より優先する（ADR 0005・0070）。
+   */
+  outcome: 'done' | 'needs_approval' | 'needs_clarification';
+  view: ResultView;
+  facts: ResultFact[];
+  speech: ResponseSpeech | null;
+}
+/**
+ * 読み上げの定型文（ADR 0005・0070）。文はコードの定型文だけから作り、モデルの自由文を入れない。
+ */
+export interface ResponseSpeech {
+  template_id: string;
+  template_version: TemplateVersion;
+  /**
+   * 読み上げる文。1 回 400 トークン以内・最大 3 回の上限に合わせ、1 部は 200 文字まで（ADR 0005）。
+   *
+   * @minItems 1
+   * @maxItems 3
+   */
+  parts: [string] | [string, string] | [string, string, string];
+}
+/**
  * 音声・機密表示のリース（設計 07 §5、10 §2A）。端末は要求送信時の単調時計から期限を計算し、遅れた応答の受信時刻から足し直さない。heartbeat 2 秒・期限 6 秒は設計初期値。
  */
 export interface Lease {
@@ -3655,6 +3788,85 @@ export interface SyncScopeState {
   pending_incremental: boolean;
   pending_full: boolean;
   analysis_plan_complete_generation: PublishedGeneration | null;
+}
+/**
+ * 接続の同期の状態（設計 11 §1・§1A、ADR 0071）。走査中の batch と、次の走査に使う再試行の初期値を返す。トークンと取得した本文は返さない。
+ */
+export interface SyncStateResponse {
+  connection_id: Id;
+  provider: ConnectionProvider;
+  scope_revision: ScopeRevision;
+  state: SyncScopeState;
+  active_batch: SyncBatch | null;
+  retry: ConnectorRetryPolicy;
+  last_attempt_at: UtcTime | null;
+}
+/**
+ * 参照と書込みの再試行の初期値（設計 04 再試行の初期値、ADR 0071）。測定済みの最適値ではない。値は設定で差し替えられるが、書込みの自動再送は 0 のままにする。
+ */
+export interface ConnectorRetryPolicy {
+  read_timeout_ms: number;
+  /**
+   * 初回を含む参照の試行の上限（設計 04 再試行の初期値は 3）。
+   */
+  read_max_attempts: number;
+  /**
+   * 再試行の待機の基本値。ジッターを加え、Retry-After があれば優先する。
+   *
+   * @minItems 1
+   */
+  read_base_delay_ms: [number, ...number[]];
+  /**
+   * 1 つのジョブで待つ合計の上限。超える場合はジョブを保留する。
+   */
+  read_max_total_wait_ms: number;
+  /**
+   * この回数失敗した接続は要確認にする。
+   */
+  read_failure_threshold: number;
+  write_automatic_retries: 0;
+}
+/**
+ * connector（模擬 provider を含む）が宣言する能力（設計 08 §3、ADR 0027・0071）。書込みの能力を宣言しても、承認・最終検査・結果の照合を省略しない。
+ */
+export interface ConnectorCapability {
+  provider: string;
+  reads: ConnectorReadCapability[];
+  writes: ConnectorWriteCapability[];
+}
+/**
+ * connector が宣言する読み取りの能力（ADR 0027・0071）。Read 以外を宣言できない。
+ */
+export interface ConnectorReadCapability {
+  kind: ConnectorReadKind;
+  effect_kind: 'Read';
+}
+/**
+ * connector が宣言する変更の能力（ADR 0027・0071）。種類ごとの規則は domain の表が正本で、宣言が規則に合わなければ拒否する。
+ */
+export interface ConnectorWriteCapability {
+  action_kind: OperationKind;
+  effect_kind: 'RemoteMutation';
+  /**
+   * 外部書込みの自動再送の回数。常に 0（設計 04 再試行の初期値、08 §3）。
+   */
+  automatic_http_retries: 0;
+  precondition: PreconditionMethod;
+  lookup: LookupMethod;
+  reconcile_scope: ReconcileScope;
+  /**
+   * @minItems 1
+   */
+  steps: [OperationStepKind, ...OperationStepKind[]];
+}
+/**
+ * Outlook の接続の状態（設計 04 接続・権限、ADR 0072）。拒否の理由と、カテゴリを自動付与しないことを表す。トークンを持たない。
+ */
+export interface GraphAccountState {
+  account_kind: GraphAccountKind;
+  delegation: GraphDelegationScope;
+  rejection_reason: GraphRejectionReason | null;
+  category_updates: GraphCategoryUpdateMode;
 }
 /**
  * モデルが返す記憶の候補（設計 11 §7）。文は 80 文字以内（コードポイント）。忘却世代・許可・重複の判定はモデルに返させず Core が付ける。
@@ -4353,13 +4565,17 @@ export interface ConnectionList {
  */
 export interface ConnectionSummary {
   connection_id: Id;
-  provider: 'google' | 'microsoft';
+  provider: ConnectionProvider;
   status: 'active' | 'needs_reauth' | 'needs_attention' | 'disconnected';
   access: 'read' | 'read_write';
   granted_scopes: string[];
   targets: ConnectionTargets;
   permission_revision: PermissionRevision;
   scope_revision: ScopeRevision;
+  /**
+   * Outlook（microsoft）の接続だけが持つ。Google の接続では null。
+   */
+  graph_account?: GraphAccountState | null;
 }
 /**
  * 本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。
@@ -5602,6 +5818,19 @@ export interface RestoreAftermath {
 export interface RetentionNoticeItem {
   item_kind: 'turn' | 'source_item' | 'memory' | 'carried_summary';
   item_id: OriginalSourceId;
+}
+/**
+ * 記録しない会話が終わったことの知らせ（キャンバス向け。UI-05、ADR 0059）。Core が再起動して記録しない区切りの RAM を失ったので、通常の区切りへ戻した。ended_generation は終わった記録しない区切りの世代、segment_id と segment_generation は戻った先の通常の区切り。区切りの本文・発言・要約を入れない。端末は ended_generation 以前の由来の入力・結果を送らない（送っても Core が拒否する）。
+ */
+export interface StorageBoundaryNotice {
+  schema: 'buddy.storage-boundary-notice.v1';
+  notice_id: Id;
+  occurred_at: UtcTime;
+  kind: 'private_ended';
+  reason: 'core_restarted';
+  ended_generation: SegmentGeneration;
+  segment_id: Id;
+  segment_generation: SegmentGeneration;
 }
 /**
  * 復旧キーの初回の表示（J1、ADR 0040）。CLI のプロセスが OS の乱数で作った 256 ビットを Crockford base32（4 文字 × 13 組）にした文字列で、作った直後に 1 度だけ端末の画面へ出す。Core には渡さず（Core へ渡すのは包んだ鍵 BackupKeyWrap と確認値だけ）、HTTP・制御チャネル・イベント・ログ・DB・バックアップへ出さない。

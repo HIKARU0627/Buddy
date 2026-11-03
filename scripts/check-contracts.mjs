@@ -132,6 +132,145 @@ for (const entry of storageCases.scenarios) {
       `${entry.id} step ${index + 1} ${step.event}`,
     );
 }
+// 表示・読み上げの計画とモデル呼出しの結果（B10-01、ADR 0070）。許可例・拒否例と、24 意図すべての
+// 手書きの対応表を検査する。対応表は domain の結果の種類の表と scripts/response-plan.test.mjs で照合する。
+const responsePlanCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/response-plan-cases.json', root),
+    'utf8',
+  ),
+);
+const responsePlanEntries = [
+  ...responsePlanCases.plans,
+  ...responsePlanCases.outcomes,
+  ...responsePlanCases.invalid,
+  ...responsePlanCases.semantic_cases,
+];
+for (const entry of responsePlanEntries) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+// 24 意図の手書きの対応表から最小の計画を組み立て、形式と段の一致を確かめる。期待値（結果の種類）は
+// fixture に手で書いた値で、実装の表から作らない。
+const planUuid = (index) =>
+  `00000000-0000-4000-8000-${String(300 + index).padStart(12, '0')}`;
+const planRows = [
+  ...responsePlanCases.intent_views.map((row) => ({
+    ...row,
+    outcome: 'done',
+  })),
+  ...responsePlanCases.outcome_cases,
+];
+for (const [index, row] of planRows.entries()) {
+  const workflowId = planUuid(index);
+  const value = {
+    schema: 'buddy.response-plan.v1',
+    workflow_id: workflowId,
+    request_revision: '1',
+    intent: row.intent,
+    outcome: row.outcome,
+    view: {
+      workflow_id: workflowId,
+      request_revision: '1',
+      intent: row.intent,
+      kind: row.view_kind,
+      status: 'ready',
+      item_refs: [],
+      more_count: 0,
+      template_id: null,
+      template_version: null,
+    },
+    facts: [],
+    speech: null,
+  };
+  assert(
+    validators['ResponsePlan'](value),
+    `${row.intent}: ${JSON.stringify(validators['ResponsePlan'].errors)}`,
+  );
+  assert.deepEqual(
+    semanticErrors('ResponsePlan', value),
+    [],
+    row.id ?? row.intent,
+  );
+}
+assert.equal(
+  new Set(responsePlanCases.intent_views.map((row) => row.intent)).size,
+  responsePlanCases.intent_views.length,
+  'Duplicate intent in intent_views',
+);
+// connector の能力と再試行の契約（B08-01、ADR 0027・0071）。読み取り・書込みの宣言と、
+// トークン・本文を返さない同期の状態の形式を検査する。規則との一致は scripts/connector-capability.test.mjs が確かめる。
+const connectorCases = parseStrictJson(
+  await readFile(
+    new URL(
+      'packages/contracts/fixtures/connector-capability-cases.json',
+      root,
+    ),
+    'utf8',
+  ),
+);
+for (const entry of connectorCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+assert(
+  validators['ConnectorRetryPolicy'](connectorCases.retry_policy),
+  'Invalid connector retry policy',
+);
+// Outlook のアカウント種別・委任・拒否の理由・カテゴリの扱い（B09-01、ADR 0072）。
+const graphCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/graph-account-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of graphCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+
 const plan = parseStrictJson(
   await readFile(
     new URL('packages/contracts/model-evaluation.json', root),
@@ -149,5 +288,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length + connectorCases.cases.length + graphCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

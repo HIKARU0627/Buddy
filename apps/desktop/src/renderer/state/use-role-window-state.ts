@@ -203,6 +203,22 @@ export function useWindowWidth(): number {
   return width;
 }
 
+// 入力バーが広がっているか（UI-08）。main が focus で窓を 176 に広げ、blur で 56 に縮める。画面は高さで判断する。
+export const INPUT_BAR_EXPANDED_MIN_HEIGHT = 120;
+
+export function useInputBarExpanded(): boolean {
+  const [expanded, setExpanded] = useState(
+    () => window.innerHeight >= INPUT_BAR_EXPANDED_MIN_HEIGHT,
+  );
+  useEffect(() => {
+    const onResize = () =>
+      setExpanded(window.innerHeight >= INPUT_BAR_EXPANDED_MIN_HEIGHT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return expanded;
+}
+
 // 窓が前面にある（キー入力を受ける）か。キャンバスが前に出たことを、窓の枠で示すために使う。
 export function useWindowFocused(): boolean {
   const [focused, setFocused] = useState(() => document.hasFocus());

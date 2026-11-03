@@ -6,21 +6,12 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { parseStrictJson, root } from './contract-tools.mjs';
 import {
-  assertB04EvidenceSources,
   b04SourceFiles,
   b04SourceSha256,
   runtimeSpecifiers,
 } from './b04-evidence-sources.mjs';
-import {
-  assertB05EvidenceSources,
-  b05SourceFiles,
-  b05SourceSha256,
-} from './b05-evidence-sources.mjs';
-import {
-  assertB07EvidenceSources,
-  b07SourceFiles,
-  b07SourceSha256,
-} from './b07-evidence-sources.mjs';
+import { b05SourceFiles } from './b05-evidence-sources.mjs';
+import { b07SourceFiles, b07SourceSha256 } from './b07-evidence-sources.mjs';
 
 // 試験 ID の対応表・B04 へ渡す故障点・証拠の形式を検査する（B00-10 #29、ADR 0011）。
 const read = async (path) =>
@@ -279,34 +270,8 @@ test('B04 のケース・seed・観測値・対応表の範囲が証拠と一致
   ]);
 });
 
-test('B04 の証拠は現行ソースの全対象ファイルと hash が一致する', async () => {
-  const evidence = await read('tests/integration/evidence-b04-simulated.json');
-  assertB04EvidenceSources(evidence);
-});
-
-test('B04 の証拠の古い hash・欠落・余分なファイルを拒否する', async () => {
-  const evidence = await read('tests/integration/evidence-b04-simulated.json');
-  for (const mutate of [
-    (sources) => {
-      sources[0].sha256 = '0'.repeat(64);
-    },
-    (sources) => {
-      sources.pop();
-    },
-    (sources) => {
-      sources.push({ path: 'tests/removed.mjs', sha256: '0'.repeat(64) });
-    },
-  ]) {
-    const changed = structuredClone(evidence);
-    mutate(changed.source_sha256);
-    assert.throws(
-      () => assertB04EvidenceSources(changed),
-      /B04 の証拠と現行ソースが不一致/u,
-    );
-  }
-});
-
 // 証拠の hash の対象は、B04 の実行器が実際に読み込むファイルと期待値・fixture だけ（司令塔の依頼、PR #107）。
+// 現行ソースとの strict な一致は scripts/evidence-check.test.mjs（pnpm run evidence:check）が検査する（ADR 0085）。
 const readOverridden = (overrides) => (path) =>
   path in overrides
     ? overrides[path]
@@ -349,7 +314,7 @@ test('B04 の証拠の対象は実行器が読み込むファイルだけで、�
   assert(files.every((path) => !path.startsWith('apps/desktop/src/renderer/')));
 });
 
-test('B04 の証拠は exports の解決に使った package.json を含み、対象のファイル同士で参照先を差し替えると失敗する', async () => {
+test('B04 の証拠は exports の解決に使った package.json を含み、対象のファイル同士で参照先を差し替えると hash が変わる', () => {
   const files = b04SourceFiles();
   for (const path of [
     'packages/domain/package.json',
@@ -358,8 +323,7 @@ test('B04 の証拠は exports の解決に使った package.json を含み、�
     'packages/contracts/package.json',
   ])
     assert(files.includes(path), path);
-  const evidence = await read('tests/integration/evidence-b04-simulated.json');
-  // domain の入口を、すでに対象にある別のファイル（api.ts）へ差し替える。ファイルの集合は変わらなくても失敗する。
+  // domain の入口を、すでに対象にある別のファイル（api.ts）へ差し替える。ファイルの集合は変わらなくても hash が変わる。
   const manifest = JSON.parse(
     readOverridden({})('packages/domain/package.json'),
   );
@@ -369,14 +333,9 @@ test('B04 の証拠は exports の解決に使った package.json を含み、�
   });
   assert(b04SourceFiles(swapped).includes('packages/domain/src/api.ts'));
   assert.notDeepEqual(b04SourceSha256(swapped), b04SourceSha256());
-  assert.throws(
-    () => assertB04EvidenceSources(evidence, swapped),
-    /B04 の証拠と現行ソースが不一致/u,
-  );
 });
 
-test('B04 の証拠の対象外のファイルが変わっても検査は通り、対象のファイルが変われば失敗する', async () => {
-  const evidence = await read('tests/integration/evidence-b04-simulated.json');
+test('B04 の証拠の対象外のファイルが変わっても hash は同じで、対象のファイルが変われば hash が変わる', () => {
   const base = b04SourceSha256();
   // 対象外（画面・デスクトップの main の他の部品）を変えても、対象と hash は同じ。
   const outside = readOverridden({
@@ -384,8 +343,7 @@ test('B04 の証拠の対象外のファイルが変わっても検査は通り�
     'apps/desktop/src/main/operation-bridge.ts': '// 合成の変更\n',
   });
   assert.deepEqual(b04SourceSha256(outside), base);
-  assertB04EvidenceSources(evidence, outside);
-  // 対象（実行担当・期待値）を変えると失敗する。
+  // 対象（実行担当・期待値）を変えると hash が変わる。
   for (const path of [
     'apps/core/src/operation-runner.ts',
     'tests/integration/fault-points.json',
@@ -394,11 +352,6 @@ test('B04 の証拠の対象外のファイルが変わっても検査は通り�
       [path]: `${readOverridden({})(path)}\n// 合成の変更\n`,
     });
     assert.notDeepEqual(b04SourceSha256(inside), base, path);
-    assert.throws(
-      () => assertB04EvidenceSources(evidence, inside),
-      /B04 の証拠と現行ソースが不一致/u,
-      path,
-    );
   }
 });
 
@@ -549,33 +502,6 @@ test('B07 のケース・seed・観測値・対応表の範囲が証拠と一致
   assert(!/"(JPY|USD|EUR)"/u.test(text));
 });
 
-test('B07 の証拠は現行ソースの全対象ファイルと hash が一致する', async () => {
-  const evidence = await read('tests/integration/evidence-b07-simulated.json');
-  assertB07EvidenceSources(evidence);
-});
-
-test('B07 の証拠の古い hash・欠落・余分なファイルを拒否する', async () => {
-  const evidence = await read('tests/integration/evidence-b07-simulated.json');
-  for (const mutate of [
-    (sources) => {
-      sources[0].sha256 = '0'.repeat(64);
-    },
-    (sources) => {
-      sources.pop();
-    },
-    (sources) => {
-      sources.push({ path: 'tests/removed.mjs', sha256: '0'.repeat(64) });
-    },
-  ]) {
-    const changed = structuredClone(evidence);
-    mutate(changed.source_sha256);
-    assert.throws(
-      () => assertB07EvidenceSources(changed),
-      /B07 の証拠と現行ソースが不一致/u,
-    );
-  }
-});
-
 test('B07 の証拠の対象は実行器が読み込むファイルだけで、B04 の実行器・画面・別の試験を含めない', () => {
   const files = b07SourceFiles();
   for (const path of [
@@ -622,8 +548,7 @@ test('B07 の証拠の対象は実行器が読み込むファイルだけで、B
   assert(!b04.includes('apps/core/src/budget-test-support.ts'));
 });
 
-test('B07 の証拠の対象外のファイルが変わっても検査は通り、対象のファイルが変われば失敗する', async () => {
-  const evidence = await read('tests/integration/evidence-b07-simulated.json');
+test('B07 の証拠の対象外のファイルが変わっても hash は同じで、対象のファイルが変われば hash が変わる', () => {
   const base = b07SourceSha256();
   const outside = readOverridden({
     'apps/desktop/src/renderer/screens/work/WorkPanel.tsx': '// 合成の変更\n',
@@ -631,7 +556,6 @@ test('B07 の証拠の対象外のファイルが変わっても検査は通り�
     'apps/core/src/operation-runner.ts': '// 合成の変更\n',
   });
   assert.deepEqual(b07SourceSha256(outside), base);
-  assertB07EvidenceSources(evidence, outside);
   for (const path of [
     'apps/core/src/budget-gate.ts',
     'packages/storage/src/budget-store.ts',
@@ -642,11 +566,6 @@ test('B07 の証拠の対象外のファイルが変わっても検査は通り�
       [path]: `${readOverridden({})(path)}\n// 合成の変更\n`,
     });
     assert.notDeepEqual(b07SourceSha256(inside), base, path);
-    assert.throws(
-      () => assertB07EvidenceSources(evidence, inside),
-      /B07 の証拠と現行ソースが不一致/u,
-      path,
-    );
   }
 });
 
@@ -789,33 +708,6 @@ test('B05 のケース・seed・観測値・対応表の範囲が証拠と一致
   assert(!/https?:\/\//u.test(text));
 });
 
-test('B05 の証拠は現行ソースの全対象ファイルと hash が一致する', async () => {
-  const evidence = await read('tests/integration/evidence-b05-simulated.json');
-  assertB05EvidenceSources(evidence);
-});
-
-test('B05 の証拠の古い hash・欠落・余分なファイルを拒否する', async () => {
-  const evidence = await read('tests/integration/evidence-b05-simulated.json');
-  for (const mutate of [
-    (sources) => {
-      sources[0].sha256 = '0'.repeat(64);
-    },
-    (sources) => {
-      sources.pop();
-    },
-    (sources) => {
-      sources.push({ path: 'tests/removed.mjs', sha256: '0'.repeat(64) });
-    },
-  ]) {
-    const changed = structuredClone(evidence);
-    mutate(changed.source_sha256);
-    assert.throws(
-      () => assertB05EvidenceSources(changed),
-      /B05 の証拠と現行ソースが不一致/u,
-    );
-  }
-});
-
 test('B05 の証拠の対象は実行器が読み込むファイルだけで、B04・B07 の実行器・画面・別の試験を含めない', () => {
   const files = b05SourceFiles();
   for (const path of [
@@ -859,32 +751,3 @@ test('B05 の証拠の対象は実行器が読み込むファイルだけで、B
   assert(!b07SourceFiles().some((path) => /\/b05[-.]/u.test(path)));
 });
 
-test('B05 の証拠の対象外のファイルが変わっても検査は通り、対象のファイルが変われば失敗する', async () => {
-  const evidence = await read('tests/integration/evidence-b05-simulated.json');
-  const base = b05SourceSha256();
-  const outside = readOverridden({
-    'apps/desktop/src/renderer/screens/canvas/VoiceStrip.tsx':
-      '// 合成の変更\n',
-    'apps/desktop/src/main/voice-controller.test.ts': '// 合成の変更\n',
-    'apps/core/src/voice-control.test.ts': '// 合成の変更\n',
-  });
-  assert.deepEqual(b05SourceSha256(outside), base);
-  assertB05EvidenceSources(evidence, outside);
-  for (const path of [
-    'apps/desktop/src/main/voice-controller.ts',
-    'apps/desktop/src/main/voice-mock-renderer.ts',
-    'apps/core/src/voice-control.ts',
-    'apps/core/src/live-conversation.ts',
-    'tests/integration/b05-expectations.json',
-  ]) {
-    const inside = readOverridden({
-      [path]: `${readOverridden({})(path)}\n// 合成の変更\n`,
-    });
-    assert.notDeepEqual(b05SourceSha256(inside), base, path);
-    assert.throws(
-      () => assertB05EvidenceSources(evidence, inside),
-      /B05 の証拠と現行ソースが不一致/u,
-      path,
-    );
-  }
-});

@@ -10108,11 +10108,43 @@
             "type": "string",
             "enum": ["pdf", "text"]
           }
+        },
+        "mail_lookback_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90,
+          "description": "メールを遡る日数。設計の初期値 90 日が上限で、狭くだけできる。"
+        },
+        "calendar_past_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30,
+          "description": "カレンダーを遡る日数。設計の初期値 30 日が上限。"
+        },
+        "calendar_future_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 90,
+          "description": "カレンダーの先の日数。設計の初期値 90 日が上限。"
+        },
+        "attachment_max_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000,
+          "description": "添付 1 件のバイト数の上限。設計の初期値 10MB（10,000,000 バイト）が上限。"
         }
       },
-      "required": ["calendar_ids", "mail_container_ids", "attachment_kinds"],
+      "required": [
+        "calendar_ids",
+        "mail_container_ids",
+        "attachment_kinds",
+        "mail_lookback_days",
+        "calendar_past_days",
+        "calendar_future_days",
+        "attachment_max_bytes"
+      ],
       "additionalProperties": false,
-      "description": "本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。"
+      "description": "本人が選んだ取得対象と、取得範囲を狭める設定（設計 04 取得する対象、J13・J16、D5、ADR 0087）。新しいカレンダー・フォルダーを見つけても自動で追加しない。期間とサイズの項目は設計の初期値を上限とし、上限を超える値を契約で拒否する。OAuth の権限より狭い範囲を Buddy 側で検査する。"
     },
     "GraphAccountKind": {
       "type": "string",

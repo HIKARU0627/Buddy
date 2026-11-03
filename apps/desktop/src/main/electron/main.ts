@@ -104,6 +104,7 @@ import {
   canvasResendAfter,
   rolesForMode,
   senderFactsOf,
+  inputBarBounds,
   uiWindowMode,
   uiWindowSpec,
   windowSender,
@@ -269,6 +270,8 @@ const statusPanel = new StatusPanel({
 let stopShortcut: StopShortcutState = 'registered';
 // main が作った窓の webContents と役割の対応。送信元の検査と通知の宛先はこれだけで決める。
 const windows = new UiWindowRegistry<BrowserWindow>();
+// 入力バーを広げているか（UI-08）。main が正本で、focus で広げ、blur・非表示で縮める。
+let inputBarExpanded = false;
 let tray: Tray | null = null;
 let controller: DesktopDeviceController | null = null;
 let link: DesktopCoreLink | null = null;
@@ -413,6 +416,15 @@ function uiDisplay() {
   );
 }
 
+// 入力バーの大きさを切り替える（UI-08）。下端は固定したまま、入力するときだけ上へ広げる。
+function setInputBarExpanded(expanded: boolean): void {
+  if (uiMode !== 'canvas' || inputBarExpanded === expanded) return;
+  inputBarExpanded = expanded;
+  const window = liveWindow('input');
+  if (window === null || window.isDestroyed()) return;
+  window.setBounds(inputBarBounds(uiDisplay().workArea, expanded));
+}
+
 // 画面の追加・取り外し・大きさの変更（UI-06）。置く画面を選び直し、3 つの窓をその画面へ置き直す。
 function placeRoleWindows(): void {
   if (uiMode !== 'canvas') return;
@@ -420,6 +432,10 @@ function placeRoleWindows(): void {
   for (const role of ['canvas', 'input'] as const) {
     const window = liveWindow(role);
     if (window === null) continue;
+    if (role === 'input') {
+      window.setBounds(inputBarBounds(display.workArea, inputBarExpanded));
+      continue;
+    }
     const { x, y, width, height } = uiWindowSpec(
       role,
       process.platform,
@@ -504,6 +520,12 @@ function createWindow(role: UiWindowRole): BrowserWindow {
     // 確認のダイアログ（パネルを親にしたシート・モーダル）へフォーカスが移った blur ではしまわない（status-panel.ts）。
     window.on('blur', () => statusPanel.hide('blur'));
     window.on('hide', () => statusPanel.hide('hidden'));
+  }
+  if (role === 'input') {
+    // 入力するときだけ広げる（UI-08）。下端は固定したまま上へ伸ばし、離れると縮める。
+    window.on('focus', () => setInputBarExpanded(true));
+    window.on('blur', () => setInputBarExpanded(false));
+    window.on('hide', () => setInputBarExpanded(false));
   }
   if (role === 'canvas') {
     // 前に出したキャンバスは、Esc・ほかのアプリへの移動（前面でなくなる）で後ろへ戻る。

@@ -69,6 +69,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [B05 の音声の契約の補い（音声レンダラーの限定 IPC・制御接続・リース・世代の永続・input_kind・外部への送信の同意）](docs/adr/0038-b05-voice-contract-additions.md)
 - [B06 の保存の契約（忘却台帳の別ファイル・バックアップの封筒・復元の結果・期限切れと忘却の知らせ・保存モード・復旧キー）と本人の判断](docs/adr/0040-b06-storage-contracts-and-owner-decisions.md)
 - [UI-08 の U120（遅着した文字の結果・保留を捨てた知らせをキャンバスの text に出す）](docs/adr/0066-ui-08-u120-late-result-and-held-dropped-display.md)
+- [UI-08 の入力バーの伸縮と聞き返しの表示](docs/adr/0067-ui-08-input-bar-sizing-and-clarification.md)
 - [AI の役割分担と採用条件](docs/design/model-routing.md)
 
 ## 構成

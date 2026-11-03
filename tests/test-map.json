@@ -8,8 +8,8 @@
   "product_tests": {
     "not_run": "未実施。合格扱いにしない",
     "deferred": "後回しの決定のため対象外。採用時に契約と試験を追加する",
-    "simulated": "記載した範囲の模擬試験で期待値に一致。実機・実 API・実請求は未実施。",
-    "simulated_partial": "模擬の一部だけ確認済み。ケース全体を合格扱いにしない。未実施範囲は product_scope。"
+    "simulated": "記載した範囲の模擬試験を、記録した commit で観測し期待値に一致。現在のソースでの再現や、実機・実 API・実請求の合格を意味しない（ADR 0085）。",
+    "simulated_partial": "模擬の一部だけを、記録した commit で確認済み。ケース全体を合格扱いにしない。未実施範囲は product_scope（ADR 0085）。"
   },
   "tests": [
     {

@@ -52,6 +52,8 @@ export interface RestoreAftermathInput {
   readonly approval_requirements?: Readonly<
     Record<string, 'required' | 'none'>
   >;
+  // 復元した DB が使う台帳・記憶の HMAC の鍵の ID（U134。KeyStore に導入した封筒の鍵）。
+  readonly ledger_hmac_key_id?: string;
 }
 
 export interface RestoreAftermathValue {
@@ -444,6 +446,11 @@ function writeAftermath(
   setMeta.run('store_generation', input.new_store_generation);
   setMeta.run('restore_restored_at', String(input.restored_at));
   setMeta.run('restore_backup_created_at', String(input.backup_created_at));
+  if (input.ledger_hmac_key_id !== undefined) {
+    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/u.test(input.ledger_hmac_key_id))
+      throw new RestoreAftermathRejection(['ledger_hmac_key_id_invalid']);
+    setMeta.run('ledger_hmac_key_id', input.ledger_hmac_key_id);
+  }
 
   // 読み戻して確かめる（契約の RestoredOperation の意味検査と同じ）。
   const problems = readRestoredOperations(db).flatMap(

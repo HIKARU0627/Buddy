@@ -44,6 +44,7 @@ import {
   readBackupFacts,
   readBackupFileHeader,
   readBackupPayload,
+  readSchemaVersion,
   recoveryCheckMatches,
   storagePlatform,
   unwrapBackupKey,
@@ -64,6 +65,7 @@ import {
   createRetentionSweepPort,
   RetentionSweeper,
 } from './retention-sweeper.js';
+import type { RetentionSweepPort } from './retention-sweeper.js';
 
 export const RESTORE_WORK_DIR = 'restore-work';
 export const RESTORE_CHECK_SCHEMA = 'buddy.restore-check.v1';
@@ -91,9 +93,14 @@ export interface RestoreCheckReport {
   readonly ledger: {
     readonly holder: string;
     readonly head_generation: string;
+    readonly ledger_id: string;
   } | null;
   // 封筒の本体を復号して作業用の DB に置けたか（確認の後に消す。パスは返さない）。
   readonly raw_payload_decrypted: boolean;
+  // 段階 2 の期限切れの削除で消した行の数（RestoreResult の expired_deleted_count に使う）。
+  readonly expired_deleted_count: number;
+  // 封筒を復号した直後（段階 2 の worker が移行する前）の DB の版。古いバックアップの検証に使う。
+  readonly working_schema_version: number | null;
 }
 
 export interface RestoreCheckOptions {
@@ -115,7 +122,11 @@ export interface RestoreCheckOptions {
   readonly purge?: (
     workingPath: string,
     workDir: string,
-  ) => Promise<{ readonly ok: boolean; readonly reasons: readonly string[] }>;
+  ) => Promise<{
+    readonly ok: boolean;
+    readonly reasons: readonly string[];
+    readonly deleted_count?: number;
+  }>;
   // 試験で差し替える作業用の DB の書き込み（途中で失敗したときの後始末を確かめる）。
   readonly writeWorkingDatabase?: (
     workDir: string,
@@ -123,6 +134,8 @@ export interface RestoreCheckOptions {
   ) => Promise<string>;
   // 試験で差し替える作業用の DB の削除（失敗したときの扱いを確かめる）。失敗は例外で知らせる。
   readonly removeWorkDir?: (workDir: string) => Promise<void>;
+  // `restore run` が続きの段階 3〜6 を行うときは、ready の作業用の DB を残す（ほかの経路では消す）。
+  readonly retainWorkDir?: boolean;
 }
 
 const iso = (date: Date): string => date.toISOString().replace('.000Z', 'Z');
@@ -184,11 +197,30 @@ async function purgeWorkingDatabase(
   workingPath: string,
   workDir: string,
   now: () => Date,
-): Promise<{ readonly ok: boolean; readonly reasons: readonly string[] }> {
+): Promise<{
+  readonly ok: boolean;
+  readonly reasons: readonly string[];
+  readonly deleted_count: number;
+}> {
   const store = await DbWorkerClient.start({ path: workingPath });
   try {
+    const port = createRetentionSweepPort(store);
+    let deletedCount = 0;
+    const counting: RetentionSweepPort = {
+      ...port,
+      async deleteExpired(family, ids, at) {
+        const value = await port.deleteExpired!(family, ids, at);
+        deletedCount += value.deleted.length;
+        return value;
+      },
+      async deleteDueMemory(memoryId, at) {
+        const value = await port.deleteDueMemory!(memoryId, at);
+        if (value.deleted) deletedCount += 1;
+        return value;
+      },
+    };
     const sweeper = new RetentionSweeper({
-      port: createRetentionSweepPort(store),
+      port: counting,
       epoch: randomUUID(),
       now: () => now().getTime(),
       clock: createClockStateFile(workDir),
@@ -198,8 +230,8 @@ async function purgeWorkingDatabase(
       const record = await sweeper.runOnce(true);
       await sweeper.drain();
       return record.status === 'completed' && record.failed_actions === 0
-        ? { ok: true, reasons: [] }
-        : { ok: false, reasons: ['expiry_purge_failed'] };
+        ? { ok: true, reasons: [], deleted_count: deletedCount }
+        : { ok: false, reasons: ['expiry_purge_failed'], deleted_count: 0 };
     } finally {
       sweeper.close();
     }
@@ -378,11 +410,17 @@ export async function runRestoreCheck(
   );
   let workingPath: string | null = null;
   let rawPayloadDecrypted = false;
+  let expiredDeletedCount = 0;
+  let workingSchemaVersion: number | null = null;
   let locked = false;
   const lockId = randomUUID();
   const stages: RestoreCheckStageView[] = [];
   let settingsOnlyEligible = false;
-  let ledger: { holder: string; head_generation: string } | null = null;
+  let ledger: {
+    holder: string;
+    head_generation: string;
+    ledger_id: string;
+  } | null = null;
   let backupId = '';
   let backupCreatedAt: string | null = null;
   // 封筒から開いた鍵。確認が終わったらメモリー上の値を消す（保存しない）。
@@ -400,6 +438,8 @@ export async function runRestoreCheck(
     settings_only_eligible: settingsOnlyEligible,
     ledger,
     raw_payload_decrypted: rawPayloadDecrypted,
+    expired_deleted_count: expiredDeletedCount,
+    working_schema_version: workingSchemaVersion,
   });
 
   const execute = async (): Promise<RestoreCheckReport> => {
@@ -651,6 +691,18 @@ export async function runRestoreCheck(
             workingPath = await (
               options.writeWorkingDatabase ?? writeWorkingDatabase
             )(workDir, plaintext);
+            try {
+              const workingDb = openWriteConnection(workingPath, {
+                platform: storagePlatform(process.platform),
+              });
+              try {
+                workingSchemaVersion = readSchemaVersion(workingDb);
+              } finally {
+                workingDb.close();
+              }
+            } catch {
+              workingSchemaVersion = null;
+            }
             rawPayloadDecrypted = true;
           } catch (error) {
             log(`作業用の DB を書けませんでした（${(error as Error).name}）。`);
@@ -772,7 +824,10 @@ export async function runRestoreCheck(
       settingsOnlyEligible = diverged
         ? false
         : ledgerCheck.settings_only_eligible;
-      ledger = diverged ? null : ledgerCheck.ledger;
+      ledger =
+        diverged || ledgerCheck.ledger === null
+          ? null
+          : { ...ledgerCheck.ledger, ledger_id: manifest.ledger_id };
       if (ledgerDecision.status === 'failed') {
         log(
           `最新の台帳を確認できないため、記憶と会話は戻しません（${ledgerDecision.reasons.join(', ')}）。`,
@@ -791,8 +846,10 @@ export async function runRestoreCheck(
             ((path: string, dir: string) =>
               purgeWorkingDatabase(path, dir, options.now))
           )(workingPath, workDir);
-          if (purged.ok) purgeAppliedAt = iso(options.now());
-          else
+          if (purged.ok) {
+            purgeAppliedAt = iso(options.now());
+            expiredDeletedCount = purged.deleted_count ?? 0;
+          } else
             log(
               `期限切れの削除を当てられませんでした（${purged.reasons.join(', ')}）。`,
             );
@@ -837,6 +894,8 @@ export async function runRestoreCheck(
         );
         return report('rejected');
       }
+      // `restore run` はこの作業用の DB で段階 3〜6 を続ける。消さずに返し、run 側が最後に消す。
+      if (options.retainWorkDir === true) return report('ready');
       // 平文の DB を消せないまま成功（終了コード 0）を返さない。消せなければ段階 2 の失敗として報告する。
       let removed = true;
       try {
@@ -878,6 +937,8 @@ export async function runRestoreCheck(
     await deleteWorkDir(workDir);
     throw error;
   }
+  if (options.retainWorkDir === true && result.outcome === 'ready')
+    return result;
   let removed = true;
   try {
     if (options.removeWorkDir !== undefined) {

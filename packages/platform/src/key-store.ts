@@ -33,6 +33,8 @@ export type KeyStoreFailureReason =
   | 'data_key_length_invalid'
   // 作成した鍵を読み戻した値が書いた値と一致しない（並行した作成など）。
   | 'data_key_verify_failed'
+  // 復元で別のデータ鍵を入れようとしたが、違う素材の既存の鍵がある（上書きしない）。
+  | 'data_key_exists'
   | 'windows_core_not_supported_in_initial_release'
   | 'linux_core_not_supported_in_initial_release'
   | 'platform_not_supported'
@@ -92,6 +94,11 @@ export interface KeyStore {
   readonly backend: KeyStoreBackend;
   /** 既存のデータ鍵を読む。なければ data_key_missing（作成しない）。 */
   loadDataKey(): Promise<DataKeyResult>;
+  /**
+   * 復元で取り出したデータ鍵を置く。同じ ID に同じ素材があれば何もしない。違う素材があれば上書きせず
+   * data_key_exists。置いた値を読み戻して確かめる（U130・U134）。
+   */
+  importDataKey(material: Uint8Array): Promise<DataKeyResult>;
   /**
    * 既存のデータ鍵を読み、なければ 32 バイトの暗号論的乱数で作成して保存し、読み戻して確かめる。
    * 既存の値が不正なときは上書きしない（既存の暗号文を読めなくしないため）。
@@ -202,11 +209,61 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     };
   }
 
+  async function importKey(material: Uint8Array): Promise<DataKeyResult> {
+    if (material.length !== DATA_KEY_BYTES)
+      return fail('data_key_length_invalid');
+    let slot: SecretSlot;
+    try {
+      slot = await options.openSlot();
+    } catch {
+      return fail(unavailableReason);
+    }
+    let stored: string | null;
+    try {
+      stored = await slot.read();
+    } catch {
+      return fail('keystore_read_failed');
+    }
+    const encoded = Buffer.from(material).toString('base64');
+    if (stored !== null) {
+      if (typeof stored !== 'string') return fail('data_key_format_invalid');
+      const decoded = decodeStoredDataKey(stored);
+      if (!decoded.ok) return fail(decoded.reason);
+      if (!decoded.bytes.equals(Buffer.from(material)))
+        return fail('data_key_exists');
+      return {
+        ok: true,
+        backend,
+        dataKey: new DataKey(keyId, decoded.bytes),
+        created: false,
+      };
+    }
+    try {
+      await slot.write(encoded);
+    } catch {
+      return fail('keystore_write_failed');
+    }
+    let readBack: string | null;
+    try {
+      readBack = await slot.read();
+    } catch {
+      return fail('keystore_read_failed');
+    }
+    if (readBack !== encoded) return fail('data_key_verify_failed');
+    return {
+      ok: true,
+      backend,
+      dataKey: new DataKey(keyId, Buffer.from(material)),
+      created: false,
+    };
+  }
+
   return {
     kind,
     backend,
     loadDataKey: () => load(false),
     loadOrCreateDataKey: () => load(true),
+    importDataKey: importKey,
   };
 }
 
@@ -301,6 +358,7 @@ export function createUnsupportedKeyStore(nodePlatform: string): KeyStore {
     backend: 'none',
     loadDataKey: () => Promise.resolve(result),
     loadOrCreateDataKey: () => Promise.resolve(result),
+    importDataKey: () => Promise.resolve(result),
   };
 }
 

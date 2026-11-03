@@ -40,7 +40,6 @@ import type {
 
 // 比較の件数の上限（設計 09 X48・設計 05 P05 の初期値。設定で下げられるが、300 を超えない）。
 export const SHADOW_MAX_INPUTS = 300;
-const DAY_MS = 86_400_000;
 
 export interface ShadowTarget {
   // 比較するモデルの配備の ID（記録の deployment_id）。
@@ -79,6 +78,8 @@ export interface ShadowObservation {
   readonly live_session_open: boolean;
   readonly input_id: string;
   readonly request_revision: string;
+  // 保存した発言の期限（UTC のミリ秒）。比較の記録の期限はこれと同じにする（比較の待ち時間で延ばさない）。
+  readonly turn_expires_at: number;
   readonly context: InterpretationContext;
   // 本線の判定（これを実行に使った結果と並べて記録する）。
   readonly primary: InterpreterReply;
@@ -221,7 +222,6 @@ export function createShadowRecorder(
   const run = async (
     observation: ShadowObservation,
     settings: ShadowSettings,
-    retentionMs: number,
   ): Promise<void> => {
     if (settings.targets.length === 0) return;
     const limit = Math.min(settings.max_inputs, SHADOW_MAX_INPUTS);
@@ -271,6 +271,11 @@ export function createShadowRecorder(
         ),
     );
     const recordedAt = now();
+    // 比較が遅れて発言がすでに失効したなら、抽出した引数を残さない（会話全文より長く残さない）。
+    if (observation.turn_expires_at <= recordedAt) {
+      emit({ kind: 'skipped', reasons: ['turn_expired'] });
+      return;
+    }
     const record: IntentShadowRecord = {
       schema: 'buddy.intent-shadow.v1',
       record_id: newId(),
@@ -285,7 +290,7 @@ export function createShadowRecorder(
       // 対象は 1 件以上（上で確認済み）なので、契約の minItems: 1 を満たす。
       shadows: shadows as IntentShadowRecord['shadows'],
       recorded_at: new Date(recordedAt).toISOString(),
-      expires_at: new Date(recordedAt + retentionMs).toISOString(),
+      expires_at: new Date(observation.turn_expires_at).toISOString(),
       used_for_execution: false,
     };
     // 契約に合わない記録は保存しない（ID・時刻の形式、本文を持たないこと）。
@@ -319,8 +324,7 @@ export function createShadowRecorder(
         emit({ kind: 'skipped', reasons: ['private_conversation'] });
         return;
       }
-      const retentionMs = effects.turn_retention_days * DAY_MS;
-      const task = run(observation, settings, retentionMs)
+      const task = run(observation, settings)
         .catch(() => emit({ kind: 'error' }))
         .finally(() => running.delete(task));
       running.add(task);

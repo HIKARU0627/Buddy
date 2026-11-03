@@ -170,6 +170,7 @@ const observation = (
     live_session_open: false,
     input_id: `00000000-0000-4000-8000-${String(inputCounter).padStart(12, '0')}`,
     request_revision: '1',
+    turn_expires_at: NOW + 7 * DAY,
     context: {
       text: '用事に歯医者の予約を追加して',
       today: '2026-10-05',
@@ -261,11 +262,8 @@ test('a normal conversation records one comparison without a body and never mark
   assert.equal(typeof record.shadows[0]?.latency_ms, 'number');
   // 発話の本文を記録に持たない。
   assert.ok(!JSON.stringify(record).includes('用事に歯医者の予約を追加して'));
-  // 保存期限は会話全文と同じ（通常の会話は 7 日）。
-  assert.equal(
-    Date.parse(record.expires_at) - Date.parse(record.recorded_at),
-    7 * DAY,
-  );
+  // 保存期限は会話全文と同じ（通常の会話は 7 日）。手で書いた期限（2026-10-12T09:00+09:00）と一致する。
+  assert.equal(record.expires_at, '2026-10-12T00:00:00.000Z');
   assert.deepEqual(log.settled, [usage]);
 });
 
@@ -276,13 +274,88 @@ test('an extended conversation keeps the record as long as the conversation text
     settings: settingsFor(adapter),
     store: memory.store,
   });
-  shadow.observe(observation({ storage_mode: 'extended' }));
+  shadow.observe(
+    observation({ storage_mode: 'extended', turn_expires_at: NOW + 30 * DAY }),
+  );
   await shadow.idle();
   const record = memory.records[0] as IntentShadowRecord;
-  assert.equal(
-    Date.parse(record.expires_at) - Date.parse(record.recorded_at),
-    30 * DAY,
-  );
+  assert.equal(record.expires_at, '2026-11-04T00:00:00.000Z');
+});
+
+test('a slow comparison never extends the record past the conversation text; an already expired turn leaves no record', async () => {
+  // 比較の完了が元の発言から遅れても、期限は発言の期限のまま（比較の完了時刻 + 7 日にしない）。
+  let release = (): void => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const inner = createFakeAdapter([response(wireJson())]);
+  const slow = {
+    commands: inner.commands,
+    complete: async (command: Parameters<typeof inner.complete>[0]) => {
+      await gate;
+      return inner.complete(command);
+    },
+  };
+  const memory = memoryStore();
+  const clock = { value: NOW };
+  const events: ShadowEvent[] = [];
+  const shadow = createShadowRecorder({
+    settings: () =>
+      settingsFor(slow as unknown as ReturnType<typeof createFakeAdapter>),
+    store: memory.store,
+    slotAvailable: () => true,
+    guard: fakeGuard().guard,
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => clock.value,
+    newId: () => randomUUID(),
+    onEvent: (event) => events.push(event),
+  });
+  shadow.observe(observation({ turn_expires_at: NOW + 7 * DAY }));
+  // 比較の待ちの間に 3 日たつ。
+  clock.value = NOW + 3 * DAY;
+  release();
+  await shadow.idle();
+  const record = memory.records[0] as IntentShadowRecord;
+  assert.equal(record.recorded_at, '2026-10-08T00:00:00.000Z');
+  assert.equal(record.expires_at, '2026-10-12T00:00:00.000Z');
+  // 比較が終わる前に発言が失効していたら、記録を残さない。
+  const lateMemory = memoryStore();
+  clock.value = NOW;
+  const lateInner = createFakeAdapter([response(wireJson())]);
+  let lateRelease = (): void => undefined;
+  const lateGate = new Promise<void>((resolve) => {
+    lateRelease = resolve;
+  });
+  const lateShadow = createShadowRecorder({
+    settings: () =>
+      settingsFor({
+        commands: lateInner.commands,
+        complete: async (command: Parameters<typeof lateInner.complete>[0]) => {
+          await lateGate;
+          return lateInner.complete(command);
+        },
+      } as unknown as ReturnType<typeof createFakeAdapter>),
+    store: lateMemory.store,
+    slotAvailable: () => true,
+    guard: fakeGuard().guard,
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => clock.value,
+    newId: () => randomUUID(),
+    onEvent: (event) => events.push(event),
+  });
+  lateShadow.observe(observation({ turn_expires_at: NOW + 1 * DAY }));
+  clock.value = NOW + 2 * DAY;
+  lateRelease();
+  await lateShadow.idle();
+  assert.equal(lateMemory.records.length, 0);
+  assert.deepEqual(events.at(-1), {
+    kind: 'skipped',
+    reasons: ['turn_expired'],
+  });
 });
 
 test('X48: a private conversation runs no comparison and leaves 0 records', async () => {
@@ -652,6 +725,7 @@ async function startWith(
           live_session_open: false,
           input_id: event.input_id,
           request_revision: event.request_revision,
+          turn_expires_at: event.turn_expires_at,
           context: event.context,
           primary: event.primary,
         }),

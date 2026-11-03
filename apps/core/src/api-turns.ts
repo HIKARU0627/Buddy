@@ -101,6 +101,8 @@ export interface TurnRoutesOptions {
     readonly storage_mode: string;
     readonly input_id: string;
     readonly request_revision: string;
+    // 保存した発言の期限（UTC のミリ秒）。比較の記録は会話全文と同じ期限にそろえる。
+    readonly turn_expires_at: number;
     readonly context: InterpretationContext;
     readonly primary: InterpreterReply;
   }) => void;
@@ -1034,6 +1036,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         readonly body: object;
         readonly replayed: boolean;
         readonly plan: TurnPlan;
+        // 発言を保存したときの期限（保存した場合だけ）。
+        readonly expires_at?: number;
       }
     | { readonly kind: 'held' }
   > => {
@@ -1203,6 +1207,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       body: responseBody,
       replayed: false,
       plan,
+      expires_at: createdAt + rule.ms,
     };
   };
 
@@ -1279,7 +1284,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       options.onInterpreted !== undefined &&
       basis !== undefined &&
       done.status === 200 &&
-      !done.replayed
+      !done.replayed &&
+      done.expires_at !== undefined
     ) {
       try {
         options.onInterpreted({
@@ -1287,6 +1293,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           storage_mode: session.value.storage_mode,
           input_id: stringOf(done.body as JsonObject, 'input_id'),
           request_revision: '1',
+          turn_expires_at: done.expires_at,
           context: basis.context,
           primary: basis.reply,
         });

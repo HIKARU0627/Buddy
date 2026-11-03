@@ -255,6 +255,51 @@ test('rejects a price version with a category that usage cannot settle', () => {
     ok: false,
     reasonCodes: ['unsettled_category:tool_calls'],
   });
+  // 実使用量が 0 でも、既知の 0 を渡せば token の実費だけを精算できる。
+  assert.deepEqual(
+    usageCost(request({ priceVersion: withTools, tool_calls: 0 })),
+    {
+      ok: true,
+      amount: '13000',
+      price_version: 'price-xts-1',
+      lines: [
+        { category: 'input_tokens', quantity: '1000', amount: '10000' },
+        { category: 'output_tokens', quantity: '100', amount: '3000' },
+      ],
+    },
+  );
+  // ツールを 2 回使った要求は、ツールの実費 2 × 5 = 10 を足す。
+  assert.deepEqual(
+    usageCost(request({ priceVersion: withTools, tool_calls: 2 })),
+    {
+      ok: true,
+      amount: '13010',
+      price_version: 'price-xts-1',
+      lines: [
+        { category: 'input_tokens', quantity: '1000', amount: '10000' },
+        { category: 'output_tokens', quantity: '100', amount: '3000' },
+        { category: 'tool_calls', quantity: '2', amount: '10' },
+      ],
+    },
+  );
+  // 検索の回数はこの段階では実使用量を確定できないので拒否する。
+  const withSearch: PriceVersionInput = {
+    ...priceVersion,
+    rates: [
+      ...priceVersion.rates,
+      {
+        category: 'search_requests',
+        unit_price: '5',
+        per_quantity: '1',
+        minimum_quantity: '0',
+        max_quantity_per_request: '1',
+      },
+    ],
+  };
+  assert.deepEqual(usageCost(request({ priceVersion: withSearch })), {
+    ok: false,
+    reasonCodes: ['unsettled_category:search_requests'],
+  });
 });
 
 test('rejects an amount above the 18-digit limit', () => {

@@ -50,9 +50,11 @@ export function planReservation(input: ReservationInput): ReservationOutcome {
     input.priceVersion.price_version !== priceVersion
   )
     reasons.push('price_version_mismatch');
-  // ツールの実使用量は ModelUsage から確定できないので、ツールを使う要求は精算できない（U192）。
-  // 予約だけして実費を少なく計上するより、この段階では受け付けない。
-  if (toolCalls > 0) reasons.push('tool_calls_not_settleable');
+  // ツールの実使用量は usage と別に渡す。単価の版がツールを課金するときだけ件数を渡せる。
+  const pricedTools =
+    input.priceVersion?.rates.some((rate) => rate.category === 'tool_calls') ===
+    true;
+  if (toolCalls > 0 && !pricedTools) reasons.push('tool_calls_unpriced');
   if (outputLimit === null || priceVersion === null || reasons.length > 0)
     return { ok: false, reasonCodes: unique(reasons) };
 
@@ -61,11 +63,7 @@ export function planReservation(input: ReservationInput): ReservationOutcome {
     output_tokens: String(outputLimit),
   };
   // B07 は単価の版にある区分をすべて見て、省略した区分は max_quantity_per_request を使う。
-  // ツールを使わない要求でも、ツールの単価がある版では既知の 0 を渡して最大回数を予約しない。
-  if (
-    input.priceVersion?.rates.some((rate) => rate.category === 'tool_calls') ===
-    true
-  )
-    quantities.tool_calls = '0';
+  // ツールの単価がある版では、使わない要求でも既知の 0 を渡して最大回数を予約しない。
+  if (pricedTools) quantities.tool_calls = String(toolCalls);
   return { ok: true, plan: { quantities, price_version: priceVersion } };
 }

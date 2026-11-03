@@ -215,15 +215,51 @@ test('a known zero tool count prevents B07 from reserving the per-request maximu
   if (withoutZero.ok) assert.equal(withoutZero.maxLiability, '30060');
 });
 
-test('a request that uses tools is not reserved because its usage cannot be settled yet', () => {
+test('a known tool count is reserved and feeds B07 with the actual count', () => {
+  const planned = planReservation({
+    profile,
+    input_tokens: 1000,
+    tool_calls: 2,
+    priceVersion: withTools,
+  });
+  assert.equal(planned.ok, true);
+  if (!planned.ok) return;
+  assert.deepEqual(planned.plan.quantities, {
+    input_tokens: '1000',
+    output_tokens: '500',
+    tool_calls: '2',
+  });
+  const result = computeReservation({
+    budgetCurrency: 'XTS',
+    priceKey: 'llm.xts',
+    priceVersions: [withTools],
+    verifiedPriceVersions: ['price-xts-1'],
+    billableFrom: '2030-10-01T00:00:00Z',
+    billableUntil: '2030-10-01T00:00:20Z',
+    quantities: planned.plan.quantities,
+    profileId: 'intent-primary',
+    profileRevision: '1',
+    p95ProfileIds: [],
+    measurement: null,
+  });
+  assert.equal(result.ok, true);
+  // 30000 + ツール 2 × 5 × 1.2 = 30012。
+  if (result.ok) assert.equal(result.maxLiability, '30012');
+});
+
+test('a tool count without a tool price is rejected', () => {
+  assert.deepEqual(
+    planReservation({ profile, input_tokens: 1000, tool_calls: 1 }),
+    { ok: false, reasonCodes: ['tool_calls_unpriced'] },
+  );
   assert.deepEqual(
     planReservation({
       profile,
       input_tokens: 1000,
       tool_calls: 1,
-      priceVersion: withTools,
+      priceVersion,
     }),
-    { ok: false, reasonCodes: ['tool_calls_not_settleable'] },
+    { ok: false, reasonCodes: ['tool_calls_unpriced'] },
   );
 });
 

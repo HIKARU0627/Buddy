@@ -28,11 +28,16 @@ export type UsageSettlement =
 export function planUsageSettlement(
   usage: ModelUsage | null,
   request: UsageSettlementRequest,
+  toolCalls?: number,
 ): UsageSettlement {
   if (usage === null) return { kind: 'usage_unknown', reason: 'usage_missing' };
   if (usage.usage_complete !== true)
     return { kind: 'usage_unknown', reason: 'usage_incomplete' };
-  const cost = usageCost({ usage, ...request });
+  const cost = usageCost({
+    usage,
+    ...request,
+    ...(toolCalls === undefined ? {} : { tool_calls: toolCalls }),
+  });
   if (!cost.ok) return { kind: 'invalid', reasonCodes: cost.reasonCodes };
   return {
     kind: 'settle',

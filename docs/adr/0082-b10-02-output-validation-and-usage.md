@@ -23,25 +23,25 @@
 
 ## usage から実費（`cost.ts`）
 
-| 対象             | 決定                                                                                                                                                                                                                                                             |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 精算の条件       | `usage_complete: true` のときだけ実費を確定する。false・usage なしは usage 不明として R と M を保持する（ADR 0070・0037）                                                                                                                                        |
-| 入力             | `input_tokens` のうち `cached_input_tokens` を命中分として分ける。命中分は `cached_input_tokens` の単価、残りは `input_tokens` の単価。版に命中分の単価がなければ、命中分も入力の単価で課金する                                                                  |
-| 思考             | 契約の `PriceCategory` の説明どおり、`output_tokens` は思考を含む。`reasoning_tokens` は内訳で、**足して二重に数えない**。`reasoning_tokens` が `output_tokens` を超える記録は `reasoning_exceeds_output` で拒否する（矛盾した usage で少なく数えない）          |
-| 安全係数         | 実費には掛けない（M の見積もりの余裕。B07 の会話の実費と同じ）                                                                                                                                                                                                   |
-| 最低課金量       | 入力・cache は量が 0 のときは掛けない（ゼロ免除）。出力は量が 0 でも `minimum_quantity` を掛ける（拒否・打ち切りで出力が 0 の応答も最低料金を落とさない。B07 の `estimate` と同じ）。量が 1 以上で最低課金量を下回るときは、最低課金量で課金する                 |
-| 丸め             | 区分ごとに切り上げ、合計する（少なく数えない。ADR 0035 と同じ）                                                                                                                                                                                                  |
-| 上限             | 合計が 18 桁（契約の `Amount`）を超えたら `amount_overflow` で拒否する                                                                                                                                                                                           |
-| 1 要求の最大量   | 実費では `max_quantity_per_request` で切らない。実際に使った量を全額記録し、M を超えたら B07 の門が異常超過として扱う                                                                                                                                            |
-| 扱えない料金区分 | token 以外（`tool_calls`・`search_requests`・`live_seconds`）の単価がある版は、実使用量を `ModelUsage` から確定できないので `unsettled_category:<category>` で精算しない（少なく数えない）。B10-03 以降でツールの実使用量を usage に足したら精算を広げる（U192） |
-| 通貨             | `price_version.conversion.to_currency` が予算の通貨と一致しなければ拒否する                                                                                                                                                                                      |
-| 単価の版         | 予約で固定した `price_version` を使う。金額・単価・為替はコード・文書・fixture に置かず、合成の通貨 XTS で試験する                                                                                                                                               |
+| 対象             | 決定                                                                                                                                                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 精算の条件       | `usage_complete: true` のときだけ実費を確定する。false・usage なしは usage 不明として R と M を保持する（ADR 0070・0037）                                                                                                                                                             |
+| 入力             | `input_tokens` のうち `cached_input_tokens` を命中分として分ける。命中分は `cached_input_tokens` の単価、残りは `input_tokens` の単価。版に命中分の単価がなければ、命中分も入力の単価で課金する                                                                                       |
+| 思考             | 契約の `PriceCategory` の説明どおり、`output_tokens` は思考を含む。`reasoning_tokens` は内訳で、**足して二重に数えない**。`reasoning_tokens` が `output_tokens` を超える記録は `reasoning_exceeds_output` で拒否する（矛盾した usage で少なく数えない）                               |
+| 安全係数         | 実費には掛けない（M の見積もりの余裕。B07 の会話の実費と同じ）                                                                                                                                                                                                                        |
+| 最低課金量       | 入力・cache は量が 0 のときは掛けない（ゼロ免除）。出力は量が 0 でも `minimum_quantity` を掛ける（拒否・打ち切りで出力が 0 の応答も最低料金を落とさない。B07 の `estimate` と同じ）。量が 1 以上で最低課金量を下回るときは、最低課金量で課金する                                      |
+| 丸め             | 区分ごとに切り上げ、合計する（少なく数えない。ADR 0035 と同じ）                                                                                                                                                                                                                       |
+| 上限             | 合計が 18 桁（契約の `Amount`）を超えたら `amount_overflow` で拒否する                                                                                                                                                                                                                |
+| 1 要求の最大量   | 実費では `max_quantity_per_request` で切らない。実際に使った量を全額記録し、M を超えたら B07 の門が異常超過として扱う                                                                                                                                                                 |
+| 扱えない料金区分 | `tool_calls` は実使用量（0 も既知の値）を別に受け取れば精算する。受け取っていないときは `unsettled_category:tool_calls` で精算しない。`search_requests`・`live_seconds` はこの段階では実使用量を確定できないので `unsettled_category:<category>` で精算しない（少なく数えない。U192） |
+| 通貨             | `price_version.conversion.to_currency` が予算の通貨と一致しなければ拒否する                                                                                                                                                                                                           |
+| 単価の版         | 予約で固定した `price_version` を使う。金額・単価・為替はコード・文書・fixture に置かず、合成の通貨 XTS で試験する                                                                                                                                                                    |
 
 ## 予約の量（`reservation.ts`）と精算（`settlement.ts`）
 
 - `planReservation` は、入力の実量と profile の `output_limit_tokens` を `PaidRequest.quantities` の形（`input_tokens`・`output_tokens`）にする。出力上限がない・`price_version` がない profile は受け付けない。**M・R の計算は B07 の `computeReservation` をそのまま使い、作り直さない。** 試験は合成の XTS の単価で、M と R の手書きの期待値（M = 30000、p95 の R = 16320）を確かめる。
-- ツールの単価がある版では、ツールを使わない要求でも `tool_calls: '0'` を渡す。B07 は省略した区分に `max_quantity_per_request` を使うため、既知の 0 を渡さないと最大回数を予約してしまう（ツール単価がある版で M が 30000 ではなく 30060 になる回帰を試験で固定）。ツールを 1 回以上使う要求は、実使用量を精算できないので `tool_calls_not_settleable` で受け付けない（U192）。予約に使う単価の版が profile の `price_version` と違えば `price_version_mismatch` で拒否する。
-- `planUsageSettlement` は、usage が確定していれば `{ kind: 'settle', actual_gross, price_version }` を返し、`BudgetGate.settle` に渡せる形にする。usage がない・`usage_complete: false` なら `{ kind: 'usage_unknown' }` を返し、予約を解放しない。価格の設定が足りない・token 以外の料金区分があるときは金額を作らず `invalid` を返す。
+- ツールの単価がある版では、ツールの件数（0 も既知の値）を `tool_calls` として渡す。B07 は省略した区分に `max_quantity_per_request` を使うため、既知の 0 を渡さないと最大回数を予約してしまう（ツール単価がある版で M が 30000 ではなく 30060 になる回帰を試験で固定）。ツールの単価がない版に 1 回以上のツールを使う要求は `tool_calls_unpriced` で拒否する。予約に使う単価の版が profile の `price_version` と違えば `price_version_mismatch` で拒否する。
+- `planUsageSettlement` は、usage が確定していれば `{ kind: 'settle', actual_gross, price_version }` を返し、`BudgetGate.settle` に渡せる形にする。usage がない・`usage_complete: false` なら `{ kind: 'usage_unknown' }` を返し、予約を解放しない。ツールの実使用量は第 3 引数で受け取り、単価の版がツールを課金するときは必須にする。価格の設定が足りない・確定できない料金区分があるときは金額を作らず `invalid` を返す。
 
 ## ローカル P0 の採用条件の形（`local.ts`、QA40）
 
@@ -51,9 +51,9 @@
 ## 試験（模擬だけ）
 
 - `packages/ai/src/validation.test.ts`: 契約の `WireResponse` の fixture を Ajv で検査し、成功・空・途中の JSON・schema 不一致・意味不一致・拒否・打ち切り・timeout・unavailable・cancelled・usage なし・出力上限・文字数上限を区別する。生成した `ModelOutcome` が契約の `ModelOutcome` に合格することも確かめる。
-- `packages/ai/src/cost.test.ts`: XTS の合成の単価で、入力・cache・出力・最低課金量・usage 不完全・通貨不一致・単価なし・18 桁超え・token 以外の料金区分の拒否を確かめる。期待値は手書き。
-- `packages/ai/src/reservation.test.ts`: 予約の量と、B07 の `computeReservation` の M・R（p95 指定を含む）。ツール単価がある版で既知の 0 を渡す回帰（M 30000 と、0 を省いたときの 30060）、ツールを使う要求の拒否、単価の版の不一致。
-- `packages/ai/src/settlement.test.ts`: 確定した usage の精算、usage 不明の保持、価格の設定不足、token 以外の料金区分があるときの不精算。
+- `packages/ai/src/cost.test.ts`: XTS の合成の単価で、入力・cache・出力・最低課金量・usage 不完全・通貨不一致・単価なし・18 桁超え・ツールの実費（0 と 2 回）・確定できない検索の拒否を確かめる。期待値は手書き。
+- `packages/ai/src/reservation.test.ts`: 予約の量と、B07 の `computeReservation` の M・R（p95 指定を含む）。ツール単価がある版で既知の 0 を渡す回帰（M 30000 と、0 を省いたときの 30060）、ツール 2 回の予約（M 30012）、ツール単価なしの拒否、単価の版の不一致。
+- `packages/ai/src/settlement.test.ts`: 確定した usage の精算、usage 不明の保持、価格の設定不足、ツールの実使用量がないときの不精算、既知の 0・2 回の精算、検索の不精算。
 - `packages/ai/src/local.test.ts`: QA40 の形（cache なしの不採用、cached・uncached の遅延の記録、基準なし、不正な測定）。
 - **模擬のみ**。実 API・実請求・実機・実 endpoint の遅延測定は未実施で、合格扱いにしない。
 

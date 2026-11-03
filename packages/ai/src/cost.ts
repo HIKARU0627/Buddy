@@ -13,7 +13,7 @@ const AMOUNT_MAX = 999_999_999_999_999_999n;
 const INTEGER = /^(0|[1-9][0-9]*)$/u;
 const DECIMAL = /^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$/u;
 const MICRO = 1_000_000n;
-// usage（token）から確定できる料金区分。ツール・検索・会話の秒数は usage に実量がないので、この段階では精算しない。
+// token の料金区分。ツールは実使用量を別に受け取り、検索・会話の秒数はこの段階では精算しない。
 const TOKEN_CATEGORIES: readonly PriceCategory[] = [
   'input_tokens',
   'cached_input_tokens',
@@ -39,6 +39,8 @@ export interface UsageCostRequest {
   readonly usage: ModelUsage;
   readonly priceVersion: PriceVersionInput;
   readonly budgetCurrency: string;
+  // 1 回の要求で実際に使ったツールの呼び出し数。単価の版がツールを課金するときに必須。
+  readonly tool_calls?: number;
 }
 
 export interface UsageCostLine {
@@ -87,18 +89,35 @@ export function usageCost(request: UsageCostRequest): UsageCostOutcome {
   const exchange = micros(priceVersion.conversion.rate);
   if (exchange === null || exchange === 0n)
     return { ok: false, reasonCodes: ['invalid_conversion'] };
-  // token 以外の料金区分（ツール・検索・会話の秒数）は実使用量を ModelUsage から確定できない。
-  // 少なく数えて精算しないよう、この段階では拒否する（U192）。
-  const unsettled = priceVersion.rates
-    .map((rate) => rate.category)
-    .filter((category) => !TOKEN_CATEGORIES.includes(category));
-  if (unsettled.length > 0)
+  // token 以外の料金区分のうち、ツールは実使用量を別に受け取れば精算できる。検索・会話の秒数は
+  // この段階では実使用量を確定できないので、少なく数えないよう拒否する（U192）。
+  const toolCalls = request.tool_calls;
+  if (
+    toolCalls !== undefined &&
+    (!Number.isSafeInteger(toolCalls) || toolCalls < 0)
+  )
+    return { ok: false, reasonCodes: ['invalid_tool_calls'] };
+  const priced = new Set(priceVersion.rates.map((rate) => rate.category));
+  const unsupported = [...priced].filter(
+    (category) =>
+      !TOKEN_CATEGORIES.includes(category) && category !== 'tool_calls',
+  );
+  if (unsupported.length > 0)
     return {
       ok: false,
       reasonCodes: unique(
-        unsettled.map((category) => `unsettled_category:${category}`),
+        unsupported.map((category) => `unsettled_category:${category}`),
       ),
     };
+  // ツールの単価がある版では、実使用量（0 も既知の値）を受け取るまで精算しない。
+  if (priced.has('tool_calls') && toolCalls === undefined)
+    return { ok: false, reasonCodes: ['unsettled_category:tool_calls'] };
+  if (
+    priced.has('tool_calls') === false &&
+    toolCalls !== undefined &&
+    toolCalls > 0
+  )
+    return { ok: false, reasonCodes: ['unsettled_category:tool_calls'] };
 
   const reasons: string[] = [];
   const lines: UsageCostLine[] = [];
@@ -147,6 +166,9 @@ export function usageCost(request: UsageCostRequest): UsageCostOutcome {
   }
   // output_tokens は思考を含む（契約の PriceCategory の説明）。reasoning_tokens は内訳で、足さない。
   bill('output_tokens', BigInt(usage.output_tokens));
+  // ツールの実使用量が分かっているときだけ、ツールの区分を課金する（0 は既知の 0）。
+  if (priced.has('tool_calls') && toolCalls !== undefined)
+    bill('tool_calls', BigInt(toolCalls));
 
   const total = lines.reduce((sum, line) => sum + BigInt(line.amount), 0n);
   if (total > AMOUNT_MAX) reasons.push('amount_overflow');

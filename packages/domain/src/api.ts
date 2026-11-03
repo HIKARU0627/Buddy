@@ -69,6 +69,9 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 失効も中枢の画面だけ（本人の判断 2026-10-21、B03-07、ADR 0021）。乗っ取られた端末に他の端末を締め出させない。
   revokeDevice: [...SCREEN, 'hub_screen'],
   startOAuth: [...SCREEN, 'hub_screen'],
+  // 取得対象と同期の状態（B08-01、ADR 0071）。接続の状態を含むのでロック解除を求める。
+  getConnectionTargets: [...READ, 'unlocked'],
+  getConnectionSync: [...READ, 'unlocked'],
   updateConnectionTargets: [...SCREEN, 'expected_revision'],
   disconnectConnection: [...SCREEN, 'expected_revision'],
   // 自宅の指紋の報告（B03-03、ADR 0022）。報告そのものが自宅判定の材料なので home_network を求めない。

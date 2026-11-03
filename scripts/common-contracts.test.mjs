@@ -87,6 +87,7 @@ const REQUEST_ENTITY_DEFS = new Set([
   'ExtractedRequest',
   'RequestEntity',
   'CandidateSnapshot',
+  'CandidateEvidence',
 ]);
 const DECIMAL_KINDS = [
   'RequestRevision',

@@ -185,10 +185,27 @@ export function createShadowRecorder(
 
   // 1 つの比較モデルを判定する。予算の口が拒否したら null（呼ばない）。失敗・例外は outcome にして返す。
   const judgeTarget = async (
+    settings: ShadowSettings,
     target: ShadowTarget,
     input: IntentJudgmentInput,
-  ): Promise<ShadowJudgment | null> => {
+  ): Promise<ShadowJudgment | null | 'disabled'> => {
     const requestId = newId();
+    // 待ちの間に OFF・campaign の入れ替え・対象の取り外しがあったら送らない（受付・送信のどちらの直前にも確かめる）。
+    const enabled = (): boolean => {
+      try {
+        const current = options.settings();
+        return (
+          current !== null &&
+          current.campaign_id === settings.campaign_id &&
+          current.targets.some(
+            (item) => item.deployment_id === target.deployment_id,
+          )
+        );
+      } catch {
+        return false;
+      }
+    };
+    if (!enabled()) return 'disabled';
     let admitted: Awaited<ReturnType<ModelCallGuard['admit']>>;
     try {
       admitted = await options.guard.admit({
@@ -204,6 +221,11 @@ export function createShadowRecorder(
       );
     }
     if (!admitted.ok) return null;
+    // 受付を待つ間に無効化された比較は送らず、予約を解放する。
+    if (!enabled()) {
+      await admitted.release().catch(() => undefined);
+      return 'disabled';
+    }
     const started = now();
     try {
       const result = await judgeIntent(target.adapter, {
@@ -277,20 +299,25 @@ export function createShadowRecorder(
     // skipped として記録する（全部が拒否されたときは走らせず、記録も作らない）。
     const input = judgmentInputOf(observation.context);
     const judged = await Promise.all(
-      settings.targets.map((target) => judgeTarget(target, input)),
+      settings.targets.map((target) => judgeTarget(settings, target, input)),
     );
-    if (judged.every((item) => item === null)) {
-      emit({ kind: 'skipped', reasons: ['shadow_budget'] });
+    if (judged.every((item) => item === null || item === 'disabled')) {
+      emit({
+        kind: 'skipped',
+        reasons: judged.includes('disabled')
+          ? ['shadow_disabled']
+          : ['shadow_budget'],
+      });
       return;
     }
-    const shadows = judged.map(
-      (item, index): ShadowJudgment =>
-        item ??
-        judgmentOf(
-          (settings.targets[index] as ShadowTarget).deployment_id,
-          { kind: 'failed', failure: 'budget_denied', retryable: true },
-          null,
-        ),
+    const shadows = judged.map((item, index): ShadowJudgment =>
+      item === null || item === 'disabled'
+        ? judgmentOf(
+            (settings.targets[index] as ShadowTarget).deployment_id,
+            { kind: 'failed', failure: 'budget_denied', retryable: true },
+            null,
+          )
+        : item,
     );
     const recordedAt = now();
     // 比較が遅れて発言がすでに失効したなら、抽出した引数を残さない（会話全文より長く残さない）。

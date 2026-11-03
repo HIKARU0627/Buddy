@@ -106,6 +106,7 @@ function fakeGuard(options: { deny?: boolean; throws?: boolean } = {}) {
       log.admitted.push(call.request_id);
       return Promise.resolve({
         ok: true,
+        release: () => Promise.resolve(),
         settle: (used) => {
           log.settled.push(used);
           return Promise.resolve();

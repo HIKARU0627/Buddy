@@ -120,6 +120,7 @@ function fakeGuard(deny = false) {
       log.admitted += 1;
       return Promise.resolve({
         ok: true,
+        release: () => Promise.resolve(),
         settle: (used) => {
           log.settled.push(used);
           return Promise.resolve();
@@ -608,6 +609,7 @@ test('every target is judged on the same input and kept in one record; a target 
             ? { ok: false, reasons: ['pool_empty'] }
             : {
                 ok: true,
+                release: () => Promise.resolve(),
                 settle: () => {
                   settled.push(call.profile.profile_id);
                   return Promise.resolve();
@@ -681,6 +683,7 @@ test('a budget guard that throws for one target does not lose the other target',
           ? Promise.reject(new Error('guard down'))
           : Promise.resolve({
               ok: true,
+              release: () => Promise.resolve(),
               settle: () => {
                 settled.push(call.profile.profile_id);
                 return Promise.resolve();
@@ -747,6 +750,89 @@ test('without a way to read the spend the comparison never starts, so the spend 
       name,
     );
   }
+});
+
+test('turning the shadow mode off while a reservation is pending sends nothing and releases the reservation', async () => {
+  const adapter = createFakeAdapter([response(wireJson())]);
+  const memory = memoryStore();
+  const state = { on: true };
+  const released: string[] = [];
+  let finishAdmit = (): void => undefined;
+  const pending = new Promise<void>((resolve) => {
+    finishAdmit = resolve;
+  });
+  const events: ShadowEvent[] = [];
+  const shadow = createShadowRecorder({
+    settings: () => (state.on ? settingsFor(adapter) : null),
+    store: memory.store,
+    slotAvailable: () => true,
+    spent: () => Promise.resolve('0'),
+    guard: {
+      admit: async () => {
+        await pending;
+        return {
+          ok: true,
+          settle: () => Promise.resolve(),
+          release: () => {
+            released.push('released');
+            return Promise.resolve();
+          },
+        };
+      },
+    },
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => NOW,
+    newId: () => randomUUID(),
+    onEvent: (event) => events.push(event),
+  });
+  shadow.observe(observation());
+  // 受付を保留している間に、本人が影モードを OFF にする。
+  await new Promise((resolve) => setImmediate(resolve));
+  state.on = false;
+  finishAdmit();
+  await shadow.idle();
+  assert.equal(adapter.commands.length, 0);
+  assert.equal(memory.records.length, 0);
+  assert.deepEqual(released, ['released']);
+  assert.deepEqual(events, [{ kind: 'skipped', reasons: ['shadow_disabled'] }]);
+  // 別の campaign に入れ替わった場合も送らない。
+  const swapped = createFakeAdapter([response(wireJson())]);
+  const state2 = { campaign: CAMPAIGN };
+  let finish2 = (): void => undefined;
+  const pending2 = new Promise<void>((resolve) => {
+    finish2 = resolve;
+  });
+  const memory2 = memoryStore();
+  const shadow2 = createShadowRecorder({
+    settings: () => settingsFor(swapped, { campaign_id: state2.campaign }),
+    store: memory2.store,
+    slotAvailable: () => true,
+    spent: () => Promise.resolve('0'),
+    guard: {
+      admit: async () => {
+        await pending2;
+        return {
+          ok: true,
+          settle: () => Promise.resolve(),
+          release: () => Promise.resolve(),
+        };
+      },
+    },
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => NOW,
+    newId: () => randomUUID(),
+  });
+  shadow2.observe(observation());
+  await new Promise((resolve) => setImmediate(resolve));
+  state2.campaign = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
+  finish2();
+  await shadow2.idle();
+  assert.equal(swapped.commands.length, 0);
+  assert.equal(memory2.records.length, 0);
 });
 
 test('a configured limit above 300 is clamped to 300', async () => {

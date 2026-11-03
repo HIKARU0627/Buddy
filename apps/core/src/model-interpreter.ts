@@ -37,6 +37,8 @@ export type ModelCallAdmission =
       readonly ok: true;
       // 送って usage が分かったら精算する。usage が null なら usage 不明として予約を保持する（解放しない）。
       readonly settle: (usage: ModelUsage | null) => Promise<void>;
+      // 受け付けたが送らなかった（送る直前の再確認で止めた）。予約を解放する。送った可能性があるときは呼ばない。
+      readonly release: () => Promise<void>;
     }
   | { readonly ok: false; readonly reasons: readonly string[] };
 

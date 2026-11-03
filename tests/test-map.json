@@ -939,8 +939,15 @@
     {
       "id": "QA01",
       "phases": ["B01", "B03", "B10"],
-      "contract_fixtures": [],
-      "status": "specified",
+      "contract_fixtures": [
+        "packages/contracts/fixtures/response-plan-cases.json#qa01-wire-missing-field",
+        "packages/contracts/fixtures/response-plan-cases.json#qa01-wire-null-intent",
+        "packages/contracts/fixtures/response-plan-cases.json#qa01-wire-unknown-intent",
+        "packages/contracts/fixtures/response-plan-cases.json#qa01-wire-wrong-type",
+        "packages/contracts/fixtures/response-plan-cases.json#qa01-plan-reply-text",
+        "packages/contracts/fixtures/response-plan-cases.json#qa01-outcome-ok-retryable"
+      ],
+      "status": "contract_fixture",
       "product_test": "not_run",
       "targets": ["P01", "P02"],
       "related": ["X03"]
@@ -948,8 +955,13 @@
     {
       "id": "QA02",
       "phases": ["B10"],
-      "contract_fixtures": [],
-      "status": "specified",
+      "contract_fixtures": [
+        "packages/contracts/fixtures/response-plan-cases.json#qa02-outcome-truncated",
+        "packages/contracts/fixtures/response-plan-cases.json#qa02-outcome-refused",
+        "packages/contracts/fixtures/response-plan-cases.json#qa02-outcome-invalid-schema",
+        "packages/contracts/fixtures/response-plan-cases.json#qa02-outcome-timeout"
+      ],
+      "status": "contract_fixture",
       "product_test": "not_run",
       "targets": ["P01", "P02"],
       "related": []
@@ -958,7 +970,10 @@
       "id": "QA03",
       "phases": ["B10", "B13"],
       "contract_fixtures": [
-        "packages/contracts/fixtures/readiness-cases.json#target-unresolved"
+        "packages/contracts/fixtures/readiness-cases.json#target-unresolved",
+        "packages/contracts/fixtures/response-plan-cases.json#qa03-outcome-invalid-semantics",
+        "packages/contracts/fixtures/response-plan-cases.json#qa03-plan-view-workflow-mismatch",
+        "packages/contracts/fixtures/response-plan-cases.json#qa03-plan-view-kind-mismatch"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

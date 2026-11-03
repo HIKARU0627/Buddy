@@ -299,8 +299,39 @@ export interface UiWindowSpec {
 // status-panel.ts の statusWindowBounds。
 export const STATUS_TAB_SIZE = { width: 56, height: 232 } as const;
 export const INPUT_BAR_SIZE = { width: 560, height: 56 } as const;
+// 入力するときの大きさ（UI-08）。下の端を固定して上へ伸ばす。
+export const INPUT_BAR_EXPANDED_SIZE = { width: 560, height: 176 } as const;
 // 入力バーと作業領域の下端の間。
 export const INPUT_BAR_MARGIN = 16;
+
+// 入力バーの窓の位置と大きさ（UI-08）。下端を固定し、広げるときは上へ伸ばす。作業領域に収まらない高さは作業領域に合わせる。
+export function inputBarBounds(
+  area: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  },
+  expanded: boolean,
+): {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+} {
+  const size = expanded ? INPUT_BAR_EXPANDED_SIZE : INPUT_BAR_SIZE;
+  const width = Math.min(size.width, area.width);
+  const height = Math.min(
+    size.height,
+    Math.max(0, area.height - INPUT_BAR_MARGIN),
+  );
+  return {
+    x: area.x + Math.round((area.width - width) / 2),
+    y: area.y + area.height - height - INPUT_BAR_MARGIN,
+    width,
+    height,
+  };
+}
 
 function webPreferences(preload: string, role: UiWindowRole): UiWebPreferences {
   return {
@@ -436,17 +467,15 @@ export function uiWindowSpec(
       };
     }
     case 'input': {
-      const area = display.workArea;
-      // 作業領域の下の中ほどに置く帯。
+      // 作業領域の下の中ほどに置く帯。最初は小さく、入力するときに広げる。
+      const bounds = inputBarBounds(display.workArea, false);
       return {
         role,
         options: {
           ...smallWindowBase(platform),
           show: false,
           title: 'Buddy',
-          x: area.x + Math.round((area.width - INPUT_BAR_SIZE.width) / 2),
-          y: area.y + area.height - INPUT_BAR_SIZE.height - INPUT_BAR_MARGIN,
-          ...INPUT_BAR_SIZE,
+          ...bounds,
           webPreferences: prefs,
         },
         contentProtection: false,

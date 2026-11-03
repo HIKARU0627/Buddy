@@ -44,33 +44,34 @@
 
 ## profile と振り分けの検査
 
-| 理由コード                                                         | 拒否する条件                                                      |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| `duplicate_profile:<id>`                                           | 同じ `profile_id` が 2 つ以上ある                                 |
-| `required_route_missing:<task>`                                    | 必須のジョブ（音声・意図・文字会話）に経路がない                  |
-| `unknown_profile:<task>`                                           | 経路が存在しない profile を指す                                   |
-| `role_mismatch:<task>`                                             | profile の役割がジョブの役割と違う                                |
-| `reasoning_mismatch:<task>`                                        | 思考の値がジョブの表と違う（表が null なら profile も null）      |
-| `structured_output_missing:<task>`                                 | 構造化出力が要るジョブに `none` の profile を割り当てた           |
-| `output_limit_missing:<task>`                                      | 有料の provider の profile に出力上限がない（M を有限にできない） |
-| `price_version_missing` / `price_version_unverified:<task>`        | 有料の profile に `price_version` がない・確認済みの一覧にない    |
-| `timeout_out_of_range:<task>`                                      | `timeout_ms` が 1 未満、またはジョブの上限を超える                |
-| `concurrency_invalid` / `provider_concurrency_mismatch:<provider>` | 同時数が 1 未満、または同じ provider の profile で同時数が違う    |
-| `capability_duplicate` / `capability_unverified`                   | 能力の重複、または宣言した構造化出力・思考が確認済みの能力にない  |
-| `p95_not_intent`                                                   | 意図以外の profile に `measured_p95` を使う                       |
-| `local_provider_required`                                          | `local_asr` の profile の provider が `local` でない              |
-| `provider_shared_between_priorities:<provider>`                    | QA37。同時数 1 の provider を P0 と P1／P2 で共有する             |
+| 理由コード                                                         | 拒否する条件                                                             |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `duplicate_profile:<id>`                                           | 同じ `profile_id` が 2 つ以上ある                                        |
+| `required_route_missing:<task>`                                    | 必須のジョブ（音声・意図・文字会話）に経路がない                         |
+| `unknown_profile:<task>`                                           | 経路が存在しない profile を指す                                          |
+| `role_mismatch:<task>`                                             | profile の役割がジョブの役割と違う                                       |
+| `reasoning_mismatch:<task>`                                        | 思考の値がジョブの表と違う（表が null なら profile も null）             |
+| `structured_output_missing:<task>`                                 | 構造化出力が要るジョブに `none` の profile を割り当てた                  |
+| `output_limit_missing:<task>`                                      | 有料の provider の profile に出力上限がない（M を有限にできない）        |
+| `price_version_missing` / `price_version_unverified:<task>`        | 有料の profile に `price_version` がない・確認済みの一覧にない           |
+| `timeout_out_of_range:<task>`                                      | `timeout_ms` が 1 未満、またはジョブの上限を超える                       |
+| `concurrency_invalid` / `provider_concurrency_mismatch:<provider>` | 同時数が 1 未満、または同じ provider の profile で同時数が違う           |
+| `capability_duplicate` / `capability_unverified`                   | 能力の重複、または宣言した構造化出力・思考が確認済みの能力にない         |
+| `p95_not_intent`                                                   | 意図以外の profile に `measured_p95` を使う                              |
+| `p95_not_judgment:<task>`                                          | 意図判定（`intent_judgment`）以外の経路に `measured_p95` を使う          |
+| `local_provider_required`                                          | `local_asr` の profile の provider が `local` でない                     |
+| `provider_shared_between_priorities:<provider>`                    | QA37。同時数 1 の provider（ローカルは実効 1）を P0 と P1／P2 で共有する |
 
 ## 同時数と優先度（QA13・QA37）
 
 - テキスト推論は**同時 2 本**。**枠 A は P0 専用**、**枠 B は P1→P2**。P0 は枠 A が空いていれば P2 の完了を待たない。
 - **ローカル生成は同時 1 本**。ローカル ASR だけでなく、ローカル provider を使うテキストの仕事も数える（`local_limit`）。
 - 影モードは枠 B の内側で、P0／P1／P2 の仕事がある間は待たずに skip する（`shadow_disabled`・`shadow_budget`・`shadow_busy`・`shadow_wait`）。既定 OFF・予算なしの skip は経路の解決より先に決め、経路が null でも待機にしない。影モードかどうかは**ジョブの規則**（`intent_shadow`）で決め、明示のフラグと食い違う要求は `shadow_flag_mismatch` で拒否する。実行中の影モードも枠 B とテキストの同時数に数える（P0／P1 が来たら B10-03 が影モードを止める）。
-- 同時数 1 の provider を P0 と P1／P2 で共有する設定は `routingErrors` が拒否する（`provider_shared_between_priorities`）。P0 と P2 を同じ provider に置くと、P0 が P2 を待つか、同時数の上限を超えるため。
+- 同時数 1 の provider を P0 と P1／P2 で共有する設定は `routingErrors` が拒否する（`provider_shared_between_priorities`）。P0 と P2 を同じ provider に置くと、P0 が P2 を待つか、同時数の上限を超えるため。ローカル provider は `max_concurrency` が 2 でも実効 1 として同じ検査をする。
 - QA40（ローカル P0 の prefix cache の有無）は実機の測定が要る。この P2 では「ローカル生成 1 本」の受付と、profile の能力の登録までで、**遅延の測定は未実施**。cache なしを採用条件未達として扱う判定は B10-07 の評価で行う。
 
 ## 試験（模擬だけ）
 
-- `packages/ai/src/routing.test.ts`: 固定表の整合（枠 A は P0 だけ、枠 B に P0 を置かない、影モードは必須でない）、正常な合成設定、各拒否理由、QA37 の provider の共有、p95 の制限、ローカル ASR の provider。
+- `packages/ai/src/routing.test.ts`: 固定表の整合（枠 A は P0 だけ、枠 B に P0 を置かない、影モードは必須でない）、正常な合成設定、各拒否理由、QA37 の provider の共有（ローカルの実効上限 1 を含む）、p95 の経路ごとの制限、ローカル ASR の provider。
 - `packages/ai/src/scheduler.test.ts`: QA13（P0・P1 を受付、P2 は待機、影モードは skip）、QA37（P2 が動いていても P0 は待たない）、影モードの既定 OFF と予算なしの skip、ローカル生成 1 本、provider の同時数 1 の待機。
 - **模擬のみ**。実 API・実請求・実機・実 endpoint の能力確認は未実施。

@@ -5,6 +5,7 @@
 // - 同時数 1 の provider を P0 と P1／P2 で共有する設定は routingErrors が拒否する（QA37）。
 // ここは純粋な計画で、実際の待ち行列・timer・provider の呼び出しは持たない。
 import {
+  LOCAL_GENERATION_LIMIT,
   providerConcurrencyLimits,
   resolveModelRoute,
   TASK_RULES,
@@ -14,8 +15,9 @@ import {
   type ModelTask,
 } from './routing.js';
 
+export { LOCAL_GENERATION_LIMIT };
+
 export const TEXT_INFERENCE_LIMIT = 2;
-export const LOCAL_GENERATION_LIMIT = 1;
 export const LANE_A_LIMIT = 1;
 export const LANE_B_LIMIT = 1;
 

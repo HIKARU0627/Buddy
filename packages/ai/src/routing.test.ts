@@ -316,6 +316,75 @@ test('QA37: a concurrency-1 provider is not shared between P0 and P1/P2', () => 
   );
 });
 
+test('QA37: the effective local limit rejects sharing local between P0 and P2', () => {
+  // ローカルは max_concurrency が 2 でも実効 1。宣言値だけを見ると共有を見逃す。
+  const localIntent = syntheticProfile({
+    profile_id: 'local-intent',
+    role: 'intent',
+    provider: 'local',
+    max_concurrency: 2,
+    verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+  });
+  const localExtraction = syntheticProfile({
+    profile_id: 'local-extraction',
+    role: 'background_text',
+    provider: 'local',
+    reasoning: 'low',
+    max_concurrency: 2,
+    verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+  });
+  const localProfiles = profiles.map((profile) =>
+    profile.profile_id === 'local-asr'
+      ? { ...profile, max_concurrency: 2 }
+      : profile,
+  );
+  const routes = {
+    ...config().routes,
+    intent_judgment: 'local-intent',
+    text_chat: 'local-intent',
+    mail_extraction: 'local-extraction',
+  };
+  assert.deepEqual(
+    routingErrors(
+      config({
+        profiles: [...localProfiles, localIntent, localExtraction],
+        routes,
+      }),
+    ),
+    ['provider_shared_between_priorities:local'],
+  );
+});
+
+test('p95 reservation is accepted only for the intent judgment route', () => {
+  const p95Intent = syntheticProfile({
+    profile_id: 'intent-p95',
+    role: 'intent',
+    provider: 'cloud-intent',
+    reservation_method: 'measured_p95',
+    verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+  });
+  const onlyIntent = {
+    ...config().routes,
+    intent_judgment: 'intent-p95',
+  };
+  assert.deepEqual(
+    routingErrors(
+      config({ profiles: [...profiles, p95Intent], routes: onlyIntent }),
+    ),
+    [],
+  );
+  // 同じ intent の役割でも、文字会話へ流用したら拒否する。
+  assert.deepEqual(
+    routingErrors(
+      config({
+        profiles: [...profiles, p95Intent],
+        routes: { ...onlyIntent, text_chat: 'intent-p95' },
+      }),
+    ),
+    ['p95_not_judgment:text_chat'],
+  );
+});
+
 test('p95 reservation is limited to intent profiles and local ASR uses the local provider', () => {
   const p95Background = syntheticProfile({
     profile_id: 'p95-background',

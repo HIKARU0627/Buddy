@@ -48,6 +48,8 @@ jobs:
           pnpm exec prettier --write
           tests/integration/evidence-b04-simulated.json
           tests/integration/evidence-b07-simulated.json
+      - name: Check evidence identity
+        run: pnpm run evidence:check
       - name: Check evidence
         run: |
           node --input-type=module -e '

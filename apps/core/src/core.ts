@@ -71,6 +71,7 @@ import {
 import { ForgetLedgerError, syncForgetLedger } from './forget-ledger.js';
 import { createClockStateFile } from './clock-state.js';
 import type { NoticeSink } from './notice-sink.js';
+import { StorageModeGate } from './storage-gate.js';
 import {
   RestoreInstallError,
   recoverRestoreInstall,
@@ -385,6 +386,8 @@ export interface CoreHandle {
   readonly homeNetwork: HomeNetworkGate | null;
   // 保存期限の掃除の job（ADR 0053）。gate() が開くまで検索・クラウドへの送信・自動利用を許さない。
   readonly retention: RetentionSweeper;
+  // 保存境界の保持者（記録しない会話のゲート。ADR 0045・0059）。今の保存モード・区切りの世代・由来の照合を持つ。
+  readonly storage: StorageModeGate;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -631,6 +634,7 @@ export async function startCore(
   let backupContext: BackupControlContext | null = null;
   let backupScheduler: BackupScheduler | null = null;
   let retention: RetentionSweeper | null = null;
+  let storageGate: StorageModeGate | null = null;
   let voice: VoiceControl | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
@@ -677,6 +681,10 @@ export async function startCore(
       await backup?.close();
     });
     retention?.close();
+    // 入る・出るを受けなくし、合わせ直せていない世代の書き込みが残っていれば最後に試す。
+    await step(async () => {
+      await storageGate?.close();
+    });
     // WSS の購読を理由つき（1001）で閉じ、配信の元を止めてから HTTPS を閉じる。
     await step(async () => {
       await streams?.closeAll();
@@ -712,12 +720,14 @@ export async function startCore(
     // 送信・自動利用の入口は、済むまで retention.gate() が閉じていることを確かめる。
     // 順序（ADR 0058）: 台帳のファイルの同期（openStore）→ 掃除 → ゲートが開く。時計の最終確認時刻と epoch は
     // データディレクトリのファイルに置く（初めての起動＝DB を新しく作ったときだけファイルを作る）。
+    // 時計の状態ファイルは掃除の job と保存境界の保持者が同じ口（読んで書き換える処理を 1 つずつ行う）で使う（ADR 0059）。
+    const clockFile = createClockStateFile(dataDir);
     retention = new RetentionSweeper({
       port: createRetentionSweepPort(opened.store),
       epoch: coreInstanceId,
       now: () => now().getTime(),
       log,
-      clock: createClockStateFile(dataDir),
+      clock: clockFile,
       freshClockState: opened.binding.storeGenerationSource === 'created',
       monotonic: options.retention?.monotonic ?? (() => performance.now()),
       ...(options.retention?.notices === undefined
@@ -728,6 +738,22 @@ export async function startCore(
         : { sweepIntervalMs: options.retention.sweepIntervalMs }),
     });
     retention.start();
+    // 保存境界の保持者（ADR 0059）。前の起動で記録しない区切りが開いていたら、通常の区切りへ戻して知らせる。HTTPS の受付
+    // （Live の開始・入出力の状態）より前に作る。命令のうち Live を閉じるだけを音声の制御へつなぐ（ほかの保存先は次の段階）。
+    storageGate = await StorageModeGate.open({
+      clock: clockFile,
+      ...(options.retention?.notices === undefined
+        ? {}
+        : { notices: options.retention.notices }),
+      effects: {
+        run: (command) => {
+          if (command.type === 'close_voice_session')
+            voice?.closeForPrivateConversation();
+        },
+      },
+      now: () => now().getTime(),
+      log,
+    });
     const startedBudget = await startBudgetGate(
       dataDir,
       options,
@@ -807,6 +833,7 @@ export async function startCore(
         options.keyStore,
         budget,
         retention,
+        storageGate,
       );
       api = started.api;
       streams = started.streams;
@@ -913,6 +940,7 @@ export async function startCore(
     budget: budgetGate,
     backup: backupService,
     retention: retention as RetentionSweeper,
+    storage: storageGate as StorageModeGate,
     pairing,
     get state() {
       return lifecycle.state;
@@ -937,6 +965,7 @@ async function startHttps(
   keyStore: DataKeyProvider,
   budget: BudgetGate,
   retention: RetentionSweeper | null,
+  storage: StorageModeGate,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -1024,6 +1053,9 @@ async function startHttps(
     ...(voiceOptions.consent === undefined
       ? {}
       : { consent: voiceOptions.consent }),
+    // 記録しない会話の間は Live を開かない・入力を受けない（保存境界の保持者の値。ADR 0059）。
+    privateConversation: () => storage.privateConversation(),
+    storageBoundary: () => storage.origin().segment_generation,
     // Live の開始は外部への送信。起動・復帰の掃除が済むまで開かない（ADR 0058 の U108）。
     ...(retention === null
       ? {}

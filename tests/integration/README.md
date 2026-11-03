@@ -20,7 +20,15 @@ B00 では期待遷移と故障点（`fault-points.json`）、証拠の形式（
 
 - PR の CI は、実行器を回して手書きの期待値と一致すること（G2/G5）と、`tests/test-map.json` の構造・参照・期待値の整合を検査します。コミット済み証拠の hash が現在の木と一致すること（G1/G4）は必須にしません。
 - `pnpm run evidence:check` が、コミット済み証拠の `source_sha256` と現行ソースの対象一覧・hash の完全一致を検査します。これは工程の完了時と main の freshness の確認で実行し、PR の必須チェック（`Verify (<os>)`・`Public content / secrets`）とは分けます。
-- 現在は、証拠が必要なときに `Simulated evidence (macOS)` を手動で実行し、artifact から取り込みます。PR-3 で macOS の既存 shard 2（B07）・shard 3（B04）が証拠を生成して artifact に残す予定です（追加の macOS job は作りません）。main の記録の更新は、artifact を人が取り込む PR または定期の作業で行います（[開発手順](../../docs/development.md)）。
+- 通常の PR の CI の macOS の既存 shard 2（B07）・shard 3（B04）が証拠を生成して artifact に残します（追加の macOS job は作りません）。工程の完了時など明示的に作り直すときは `Simulated evidence (macOS)` を手動で実行します。main の記録の更新は、artifact を人が取り込む PR または定期の作業で行います（[開発手順](../../docs/development.md)）。
+
+main への push・週 1 回の schedule・手動の `evidence-freshness.yml` が、読み取りだけで `pnpm run evidence:check` を実行し、不一致を job summary に出します。更新は次の順で行います。
+
+1. その commit の CI の macOS shard 2/3 の artifact（`simulated-evidence-b04-<sha>`・`simulated-evidence-b07-<sha>`）を取得します。schedule・手動のときは、直近の main の CI の artifact を使うか、`Simulated evidence (macOS)` を実行して作り直します。
+2. ワーカーが `tests/integration/` へ取り込み、`pnpm run evidence:check` を通す PR を作ります。
+3. 手動で作り直すときは `Simulated evidence (macOS)` を実行します。
+
+bot PR・`contents: write` は作りません。freshness は必須チェックではないので、main の記録が一時的に古い間も PR のマージは止まりません。
 
 ## B07-06 の実行器
 

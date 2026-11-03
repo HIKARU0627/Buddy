@@ -6,7 +6,7 @@ import {
   type CallDecision,
   type SchedulerState,
 } from './scheduler.js';
-import type { ModelRoutingConfig } from './routing.js';
+import { routingErrors, type ModelRoutingConfig } from './routing.js';
 import { syntheticProfile } from './testing.js';
 
 const intent = syntheticProfile({
@@ -222,6 +222,132 @@ test('local generation is limited to one at a time', () => {
   ]);
 });
 
+test('a local provider is limited to one generation even for text jobs', () => {
+  const localIntent = syntheticProfile({
+    profile_id: 'local-intent',
+    role: 'intent',
+    provider: 'local',
+    max_concurrency: 2,
+    verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+  });
+  const localResearch = syntheticProfile({
+    profile_id: 'local-research',
+    role: 'background_text',
+    provider: 'local',
+    reasoning: 'medium',
+    max_concurrency: 2,
+    verified_capabilities: ['json_schema_strict', 'reasoning:medium'],
+  });
+  const localConfig: ModelRoutingConfig = {
+    profiles: [localIntent, localResearch],
+    routes: {
+      intent_judgment: 'local-intent',
+      research_summary: 'local-research',
+    },
+    verified_price_versions: ['price-2026-01'],
+  };
+  assert.deepEqual(
+    planModelCalls(localConfig, { running: [] }, [
+      { task: 'intent_judgment' },
+      { task: 'research_summary' },
+    ]),
+    [
+      { admit: true, lane: 'A', priority: 'P0' },
+      { admit: false, action: 'wait', reasons: ['local_limit'] },
+    ],
+  );
+  // 実行中のローカルのテキスト生成も数える。
+  assert.deepEqual(
+    planModelCalls(
+      localConfig,
+      {
+        running: [
+          { task: 'research_summary', provider: 'local', shadow: false },
+        ],
+      },
+      [{ task: 'intent_judgment' }],
+    ),
+    [{ admit: false, action: 'wait', reasons: ['local_limit'] }],
+  );
+});
+
+test('a disabled shadow with no route is skipped instead of waiting', () => {
+  const noShadowRoute: ModelRoutingConfig = {
+    ...config,
+    routes: { ...config.routes, intent_shadow: null },
+  };
+  assert.deepEqual(
+    planModelCalls(noShadowRoute, { running: [] }, [{ task: 'intent_shadow' }]),
+    [{ admit: false, action: 'skip', reasons: ['shadow_disabled'] }],
+  );
+  // 有効なのに経路がない設定は、設定の誤りとして待機にする。
+  assert.deepEqual(
+    planModelCalls(
+      noShadowRoute,
+      { running: [], shadow_enabled: true, budget_available: true },
+      [{ task: 'intent_shadow' }],
+    ),
+    [{ admit: false, action: 'wait', reasons: ['route_missing'] }],
+  );
+});
+
+test('a shadow request skips when the local generation slot is full', () => {
+  const localExtraction = syntheticProfile({
+    profile_id: 'local-extraction',
+    role: 'background_text',
+    provider: 'local',
+    reasoning: 'low',
+    max_concurrency: 1,
+    verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+  });
+  const localShadow = syntheticProfile({
+    profile_id: 'local-shadow',
+    role: 'intent',
+    provider: 'local',
+    reasoning: null,
+    max_concurrency: 1,
+    verified_capabilities: ['json_schema_strict'],
+  });
+  const localConfig: ModelRoutingConfig = {
+    ...config,
+    profiles: [...config.profiles, localExtraction, localShadow],
+    routes: {
+      ...config.routes,
+      mail_extraction: 'local-extraction',
+      intent_shadow: 'local-shadow',
+      // ローカルの P0 は置かない（P2 のローカルだけの有効な設定）。
+      local_asr: null,
+    },
+  };
+  // 実行中のローカル抽出がある間の影モードは、待機ではなく skip。
+  assert.deepEqual(
+    planModelCalls(
+      localConfig,
+      {
+        running: [
+          { task: 'mail_extraction', provider: 'local', shadow: false },
+        ],
+        shadow_enabled: true,
+        budget_available: true,
+      },
+      [{ task: 'intent_shadow' }],
+    ),
+    [{ admit: false, action: 'skip', reasons: ['shadow_wait'] }],
+  );
+  // 同じバッチでローカルの P2 を先に受けた場合も同じ。
+  assert.deepEqual(
+    planModelCalls(
+      localConfig,
+      { running: [], shadow_enabled: true, budget_available: true },
+      [{ task: 'mail_extraction' }, { task: 'intent_shadow' }],
+    ),
+    [
+      { admit: true, lane: 'B', priority: 'P2' },
+      { admit: false, action: 'skip', reasons: ['shadow_wait'] },
+    ],
+  );
+});
+
 test('a provider concurrency limit of one renders the second lane as wait', () => {
   const singleIntent = syntheticProfile({
     profile_id: 'single-intent',
@@ -255,4 +381,125 @@ test('a provider concurrency limit of one renders the second lane as wait', () =
     { admit: false, action: 'wait', reasons: ['provider_limit:single'] },
   ]);
   noUnplanned(decisions);
+});
+
+test('the documented profile table is a valid routing and admits P0 while P2 runs', () => {
+  const tableProfiles = [
+    syntheticProfile({
+      profile_id: 'voice-primary',
+      role: 'voice',
+      provider: 'gpt-live',
+      reasoning: null,
+      structured_output: 'none',
+      price_version: 'price-voice-2026-01',
+      max_concurrency: 2,
+      timeout_ms: 30_000,
+      verified_capabilities: [],
+    }),
+    syntheticProfile({
+      profile_id: 'intent-primary',
+      role: 'intent',
+      provider: 'gemini',
+      price_version: 'price-gemini-2026-01',
+      max_concurrency: 2,
+      timeout_ms: 8000,
+      verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+    }),
+    syntheticProfile({
+      profile_id: 'reply-draft',
+      role: 'background_text',
+      provider: 'gemini',
+      price_version: 'price-gemini-2026-01',
+      structured_output: 'none',
+      output_limit_tokens: 400,
+      max_concurrency: 2,
+      verified_capabilities: ['reasoning:low'],
+    }),
+    syntheticProfile({
+      profile_id: 'background-low',
+      role: 'background_text',
+      provider: 'gemini',
+      price_version: 'price-gemini-2026-01',
+      max_concurrency: 2,
+      verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+    }),
+    syntheticProfile({
+      profile_id: 'background-medium',
+      role: 'background_text',
+      provider: 'gemini',
+      price_version: 'price-gemini-2026-01',
+      reasoning: 'medium',
+      structured_output: 'none',
+      output_limit_tokens: 1500,
+      timeout_ms: 120_000,
+      max_concurrency: 2,
+      verified_capabilities: ['reasoning:medium'],
+    }),
+    syntheticProfile({
+      profile_id: 'consult-high',
+      role: 'advanced_consult',
+      provider: 'gemini',
+      price_version: 'price-gemini-2026-01',
+      reasoning: 'high',
+      structured_output: 'none',
+      output_limit_tokens: 2000,
+      timeout_ms: 120_000,
+      max_concurrency: 2,
+      verified_capabilities: ['reasoning:high'],
+    }),
+    syntheticProfile({
+      profile_id: 'local-asr',
+      role: 'local_asr',
+      provider: 'local',
+      reasoning: null,
+      structured_output: 'none',
+      output_limit_tokens: null,
+      price_version: null,
+      max_concurrency: 1,
+      timeout_ms: 60_000,
+      verified_capabilities: [],
+    }),
+  ];
+  const tableConfig: ModelRoutingConfig = {
+    profiles: tableProfiles,
+    routes: {
+      voice_reply: 'voice-primary',
+      intent_judgment: 'intent-primary',
+      text_chat: 'intent-primary',
+      intent_shadow: null,
+      mail_extraction: 'background-low',
+      reply_draft: 'reply-draft',
+      research_summary: 'background-medium',
+      consult: 'consult-high',
+      memory_extraction: 'background-low',
+      conversation_summary: 'background-low',
+      local_asr: 'local-asr',
+    },
+    verified_price_versions: ['price-voice-2026-01', 'price-gemini-2026-01'],
+  };
+  assert.deepEqual(routingErrors(tableConfig), []);
+  // P2（メール抽出）が gemini で動いていても、P0（意図判定）は枠 A で待たない。
+  assert.deepEqual(
+    planModelCalls(
+      tableConfig,
+      {
+        running: [
+          { task: 'mail_extraction', provider: 'gemini', shadow: false },
+        ],
+      },
+      [{ task: 'intent_judgment' }],
+    ),
+    [{ admit: true, lane: 'A', priority: 'P0' }],
+  );
+  // 同時 2 本の範囲で、P0 と P2 を同じ provider に並べられる。
+  assert.deepEqual(
+    planModelCalls(tableConfig, { running: [] }, [
+      { task: 'intent_judgment' },
+      { task: 'mail_extraction' },
+    ]),
+    [
+      { admit: true, lane: 'A', priority: 'P0' },
+      { admit: true, lane: 'B', priority: 'P2' },
+    ],
+  );
 });

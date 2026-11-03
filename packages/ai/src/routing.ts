@@ -23,6 +23,9 @@ export const MODEL_TASKS = [
 
 export type ModelTask = (typeof MODEL_TASKS)[number];
 
+// ローカル生成の同時数の上限。プロバイダの max_concurrency が 2 でも、実効は 1（scheduler も同じ値を使う）。
+export const LOCAL_GENERATION_LIMIT = 1;
+
 // 設計 11 §9 の優先度。P0＝対話、P1＝本人が頼んだ裏のジョブ、P2＝自発的解析。
 export type CallPriority = 'P0' | 'P1' | 'P2';
 
@@ -278,10 +281,22 @@ export function routingErrors(config: ModelRoutingConfig): string[] {
       errors.add(`price_version_unverified:${task}`);
     if (profile.timeout_ms < 1 || profile.timeout_ms > rule.max_timeout_ms)
       errors.add(`timeout_out_of_range:${task}`);
+    // p95 予約は意図判定の比較 profile だけ（設計 05 質問132、ADR 0035）。同じ intent の役割でも、
+    // 文字会話や影モードへ流用しない。
+    if (
+      profile.reservation_method === 'measured_p95' &&
+      task !== 'intent_judgment'
+    )
+      errors.add(`p95_not_judgment:${task}`);
   }
   // QA37: 同時数 1 の provider を P0 と P1／P2 で共有しない。P0 が P2 の完了を待たないため。
+  // ローカルは max_concurrency が 2 でも実効 1（LOCAL_GENERATION_LIMIT）なので、その値で検査する。
   for (const [provider, concurrency] of providerConcurrency) {
-    if (concurrency !== 1) continue;
+    const effective =
+      provider === 'local'
+        ? Math.min(concurrency, LOCAL_GENERATION_LIMIT)
+        : concurrency;
+    if (effective !== 1) continue;
     const priorities = new Set(
       routed
         .filter((entry) => entry.profile.provider === provider)

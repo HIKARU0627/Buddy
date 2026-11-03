@@ -141,6 +141,8 @@ interface Conv {
   readonly rig: Rig;
   readonly script: Script;
   readonly turns: TurnRoutes;
+  // 画面からの発言（postTurn）に使う会話。Live の会話とは別に 1 つ作る。
+  readonly typedSessionId: string;
   readonly conversation: LiveConversation;
   readonly sb: MockSideband;
   readonly liveId: string;
@@ -192,11 +194,37 @@ async function withConversation(
       candidates: { mailCandidates: () => Promise.resolve([]) },
       policy: options.policy ?? TEST_TURN_POLICY,
       previews: new PreviewRegistry(),
+      storage: {
+        origin: () => ({ segment_id: SESSION, segment_generation: '1' }),
+      },
       utcOffset: '+09:00',
       now: () => NOW,
       onSessionControl: ({ device_id, action }) =>
         rig.voice.applySessionControlForDevice(device_id, action),
     });
+    // 画面の発言の会話を 1 つ作る（postTurn は会話ごとの由来の控えを必要とする）。
+    const createRoute = API_ROUTES.find(
+      (entry) => entry.operationId === 'createSession',
+    );
+    assert(createRoute !== undefined);
+    const createdSession = await turns.handlers['createSession']?.({
+      route: createRoute,
+      device: A,
+      body: {
+        request_id: uuid(0x700000),
+        command_scope_id: SCOPE_A,
+        storage_mode: 'normal',
+      },
+      params: {},
+      remoteAddress: '127.0.0.1',
+      query: {},
+      declaredLockState: 'unlocked',
+    });
+    assert.equal(createdSession?.status, 201);
+    const typedSessionId = String(
+      (createdSession?.body as { session_id?: unknown } | undefined)
+        ?.session_id,
+    );
     const hooks: Conv['hooks'] = {
       beforeRecord: null,
       beforeCommit: null,
@@ -267,6 +295,7 @@ async function withConversation(
       rig,
       script,
       turns,
+      typedSessionId,
       conversation,
       sb: rig.provider.last,
       liveId,
@@ -826,7 +855,11 @@ test(
 
 // ---- X49: 文字の依頼は、音声の接続が開いていても文字で返す ------------------------------------------------------
 
-function typedRequest(text: string, inputKind: string): ApiHandlerRequest {
+function typedRequest(
+  text: string,
+  inputKind: string,
+  sessionId: string,
+): ApiHandlerRequest {
   const route = API_ROUTES.find((entry) => entry.operationId === 'postTurn');
   assert(route !== undefined);
   return {
@@ -837,8 +870,9 @@ function typedRequest(text: string, inputKind: string): ApiHandlerRequest {
       command_scope_id: SCOPE_A,
       text,
       input_kind: inputKind,
+      origin: { segment_id: sessionId, segment_generation: '1' },
     },
-    params: { session_id: SESSION },
+    params: { session_id: sessionId },
     remoteAddress: '127.0.0.1',
     query: {},
     declaredLockState: 'unlocked',
@@ -852,7 +886,9 @@ test(
     await withConversation(async (c) => {
       const handler = c.turns.handlers['postTurn'];
       assert(handler !== undefined);
-      const typed = await handler(typedRequest('今日の予定を見せて', 'text'));
+      const typed = await handler(
+        typedRequest('今日の予定を見せて', 'text', c.typedSessionId),
+      );
       assert.equal(typed.status, 200, JSON.stringify(typed.body));
       const body = typed.body as Record<string, unknown>;
       assert.equal(body['status'], 'answered');
@@ -868,7 +904,7 @@ test(
       assert.deepEqual(c.shown, []);
       // 端末の HTTP の経路で voice_live を名乗る入力は受け付けない（中枢がサイドバンドで受ける）。
       const claimed = await handler(
-        typedRequest('今日の予定を見せて', 'voice_live'),
+        typedRequest('今日の予定を見せて', 'voice_live', c.typedSessionId),
       );
       assert.equal(claimed.status, 503);
       assert.deepEqual(turnsOf(c.rig), [{ input_kind: 'text', role: 'user' }]);
@@ -1011,7 +1047,9 @@ test(
     await withConversation(async (c) => {
       const handler = c.turns.handlers['postTurn'];
       assert(handler !== undefined);
-      const typed = await handler(typedRequest('文字で返して', 'text'));
+      const typed = await handler(
+        typedRequest('文字で返して', 'text', c.typedSessionId),
+      );
       assert.equal(typed.status, 200, JSON.stringify(typed.body));
       assert.deepEqual(
         {

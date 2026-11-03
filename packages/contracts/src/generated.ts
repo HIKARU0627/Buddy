@@ -63,6 +63,7 @@ export type BuddyContract =
   | SyncScopeState
   | SyncStateResponse
   | ConnectorCapability
+  | GraphAccountState
   | MemoryCandidateWire
   | MemoryCandidate
   | MemoryRecord
@@ -139,6 +140,7 @@ export type BuddyContract =
   | BackupManifest
   | RestoreResult
   | RetentionNotice
+  | StorageBoundaryNotice
   | StorageModeState
   | RecoveryKeyRecord
   | RecoveryKeyDisplay
@@ -671,6 +673,27 @@ export type ReconcileScope =
  */
 export type OperationStepKind =
   'apply_labels' | 'create_draft' | 'send' | 'create_task';
+/**
+ * Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。
+ */
+export type GraphAccountKind = 'personal' | 'work_or_school';
+/**
+ * Microsoft Graph の委任されたユーザー権限だけを使う（設計 04 接続・権限）。組織全体のアプリ権限へ切り替えない。
+ */
+export type GraphDelegationScope = 'delegated_user';
+/**
+ * 接続・取得を拒否された理由（設計 04 接続・権限、QA22・QA23）。拒否を成功として扱わないための語彙。
+ */
+export type GraphRejectionReason =
+  | 'insufficient_permission'
+  | 'organization_policy'
+  | 'admin_consent_required'
+  | 'tenant_restriction'
+  | 'unknown';
+/**
+ * Outlook のカテゴリの扱い（設計 11 §5A、D7）。初期版は案の表示だけで、If-Match の検証ができるまで自動付与しない。
+ */
+export type GraphCategoryUpdateMode = 'display_only';
 /**
  * 要約記憶の種類（設計 11 §7）。保存できるのは本人が初期設定で許可した種類だけ。
  */
@@ -1910,6 +1933,10 @@ export type RetentionNotice =
        */
       items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
     };
+/**
+ * 保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。
+ */
+export type SegmentGeneration = string;
 /**
  * 区切りの保存モードの状態（設計 03 保存期限・記録しない会話の境界、ADR 0040）。モードごとに何を保存し何を禁じるかを固定の値で持ち、private では発言・要約・記憶・抽出・影モードの記録・Live の接続を持てない。端末内の音声認識（③）は使える。判定は Core のコードが持ち、クライアントは表示にだけ使う。
  */
@@ -3833,6 +3860,15 @@ export interface ConnectorWriteCapability {
   steps: [OperationStepKind, ...OperationStepKind[]];
 }
 /**
+ * Outlook の接続の状態（設計 04 接続・権限、ADR 0072）。拒否の理由と、カテゴリを自動付与しないことを表す。トークンを持たない。
+ */
+export interface GraphAccountState {
+  account_kind: GraphAccountKind;
+  delegation: GraphDelegationScope;
+  rejection_reason: GraphRejectionReason | null;
+  category_updates: GraphCategoryUpdateMode;
+}
+/**
  * モデルが返す記憶の候補（設計 11 §7）。文は 80 文字以内（コードポイント）。忘却世代・許可・重複の判定はモデルに返させず Core が付ける。
  */
 export interface MemoryCandidateWire {
@@ -4536,6 +4572,10 @@ export interface ConnectionSummary {
   targets: ConnectionTargets;
   permission_revision: PermissionRevision;
   scope_revision: ScopeRevision;
+  /**
+   * Outlook（microsoft）の接続だけが持つ。Google の接続では null。
+   */
+  graph_account?: GraphAccountState | null;
 }
 /**
  * 本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。
@@ -5778,6 +5818,19 @@ export interface RestoreAftermath {
 export interface RetentionNoticeItem {
   item_kind: 'turn' | 'source_item' | 'memory' | 'carried_summary';
   item_id: OriginalSourceId;
+}
+/**
+ * 記録しない会話が終わったことの知らせ（キャンバス向け。UI-05、ADR 0059）。Core が再起動して記録しない区切りの RAM を失ったので、通常の区切りへ戻した。ended_generation は終わった記録しない区切りの世代、segment_id と segment_generation は戻った先の通常の区切り。区切りの本文・発言・要約を入れない。端末は ended_generation 以前の由来の入力・結果を送らない（送っても Core が拒否する）。
+ */
+export interface StorageBoundaryNotice {
+  schema: 'buddy.storage-boundary-notice.v1';
+  notice_id: Id;
+  occurred_at: UtcTime;
+  kind: 'private_ended';
+  reason: 'core_restarted';
+  ended_generation: SegmentGeneration;
+  segment_id: Id;
+  segment_generation: SegmentGeneration;
 }
 /**
  * 復旧キーの初回の表示（J1、ADR 0040）。CLI のプロセスが OS の乱数で作った 256 ビットを Crockford base32（4 文字 × 13 組）にした文字列で、作った直後に 1 度だけ端末の画面へ出す。Core には渡さず（Core へ渡すのは包んだ鍵 BackupKeyWrap と確認値だけ）、HTTP・制御チャネル・イベント・ログ・DB・バックアップへ出さない。

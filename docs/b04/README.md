@@ -82,14 +82,14 @@ pnpm run contracts:check
 
 記録は [evidence-b04-simulated.json](../../tests/integration/evidence-b04-simulated.json)、実施状態は [test-map.json](../../tests/test-map.json) です。`kind: simulated` を証拠 Schema に追加し、旧 `mock_service` は既存例の互換用に残しました。X10 は `B04-x10-…-mechanism` の記録で、X10 全体の合格記録を作りません。QA27 は 5 ケース（read・local・remote・auth・expiry）を記録し、対応表は `simulated`（範囲は `product_scope`）です。
 
-証拠の `records` はケース別の結果、`runs` は各 seed の実際の順序・状態履歴・provider 受信 ID・適用内容・真のラベル集合と工程・承認と試行です。`commit` は実行時の基点コミットです。未コミット差分を含む検査対象を特定するため、`source_sha256` にソース・fixture・検証スクリプトの内容 hash を併記しています。`scripts/test-map.test.mjs` が現行ソースの対象一覧と hash の完全一致を検査し、変更・追加・削除・証拠の欠落を拒否します。これを基点コミットだけの試験結果と読み替えないでください。公開文書・秘密・鍵・トークン・メール本文は観測へ含めません。
+証拠の `records` はケース別の結果、`runs` は各 seed の実際の順序・状態履歴・provider 受信 ID・適用内容・真のラベル集合と工程・承認と試行です。`commit` は実行時の基点コミットです。未コミット差分を含む検査対象を特定するため、`source_sha256` にソース・fixture・検証スクリプトの内容 hash を併記しています。`kind: simulated` は **記録した commit での観測** を意味し、現在のソースや main で再現したこと、実機・実 API・実請求の合格を意味しません（[ADR 0085](../adr/0085-evidence-identity-and-freshness.md)）。`pnpm run evidence:check` が現行ソースの対象一覧と hash の完全一致を検査し、変更・追加・削除・証拠の欠落を拒否します。この strict な検査は PR の必須チェックではなく、工程の完了時と main の freshness の確認で実行します。通常の PR の CI は実行器を回し（期待値の assert は実行器にある）、コミット済み証拠の hash 一致を必須にしません。公開文書・秘密・鍵・トークン・メール本文は観測へ含めません。
 
 `source_sha256` の対象の決め方（[scripts/b04-evidence-sources.mjs](../../scripts/b04-evidence-sources.mjs)、B04-07 で絞った）:
 
 - 対象は、B04 の実行器（`tests/integration/b04*.mjs`）が実際に読み込んで動かすファイルと、期待値・fixture だけです。以前は `apps`・`packages`・`scripts`・`tests` の全ファイル（約 350 件）で、画面など B04 と関係のない変更でも証拠を作り直す必要があり、PR 同士の衝突も起きていました。
 - 対象は機械的に集めます（集め方は B07 と共通の [scripts/evidence-sources.mjs](../../scripts/evidence-sources.mjs) で、`scripts/b04-evidence-sources.mjs` は B04 の入口と明示するファイルだけを決める薄い部品。B07-06 で共通化した）。入口の `tests/integration/b04*.mjs` から、`import`・`export … from`・文字列の動的 `import()`・`new URL('…', import.meta.url)`・`import.meta.resolve('…')` を辿ります。`import type` / `export type` だけの文は実行されないので辿りません。`dist` を指す参照は同じワークスペースの `src` へ、`@buddy/*` は各 `package.json` の `exports` で解決し、解決に使った `package.json` も対象に含めます（参照先の差し替えも検出する）。ディレクトリの参照（SQL のマイグレーション）は中のファイルを含め、説明文（`.md`）は除きます。
 - `node:` の組み込みと外部の依存（node_modules・pnpm-lock.yaml）は含めません。実行器が読まないが期待値の整合に使う状態の遷移表（`packages/contracts/fixtures/operation-transitions.json`）は、明示して含めます（`EXTRA_FILES`）。
-- 対象の件数と一覧は、証拠（`tests/integration/evidence-b04-simulated.json`）の `source_sha256` が正本です。PR ごとに件数を書き換えると衝突するため、ここには書きません。デスクトップの画面（`apps/desktop/src/renderer/`）や、実行器が読まない main の部品は対象外です。`scripts/test-map.test.mjs` が、対象外のファイルを変えても検査が通ること、対象のファイルを変えると失敗すること、実行器に足した import の先が自動で対象に入ること、型だけの import は辿らないこと、対象のファイル同士で `exports` の参照先を差し替えると失敗することを確かめます。
+- 対象の件数と一覧は、証拠（`tests/integration/evidence-b04-simulated.json`）の `source_sha256` が正本です。PR ごとに件数を書き換えると衝突するため、ここには書きません。デスクトップの画面（`apps/desktop/src/renderer/`）や、実行器が読まない main の部品は対象外です。`scripts/test-map.test.mjs` が、対象外のファイルを変えても対象の hash が変わらないこと、対象のファイルを変えると hash が変わること、実行器に足した import の先が自動で対象に入ること、型だけの import は辿らないこと、対象のファイル同士で `exports` の参照先を差し替えると hash が変わることを確かめます。古い hash・欠落・余分なファイルは `scripts/evidence-check.test.mjs`（`pnpm run evidence:check`）が拒否します。
 
 POSIX シェルで新しい証拠を保存する場合:
 
@@ -103,14 +103,16 @@ pnpm exec prettier --write tests/integration/evidence-b04-simulated.json
 
 ### macOS の CI で証拠を作る（Windows で作業する場合）
 
-証拠には POSIX のファイル権限の観測（他人が書ける設定の拒否など）が含まれ、Windows では作れません。Windows で作業するときは、macOS の CI に証拠を作らせ、artifact から取り込みます（本人の決定 2026-10-31、Issue #170）。
+証拠には POSIX のファイル権限の観測（他人が書ける設定の拒否など）が含まれ、Windows では作れません。Windows で作業するときは、macOS の CI に証拠を作らせ、artifact から取り込みます（本人の決定 2026-10-31、Issue #170。検査の分離は ADR 0085）。
 
-1. ブランチを push したあと、GitHub の Actions で `Simulated evidence (macOS)` を選び、`Run workflow` のブランチにそのブランチを指定して実行します。CLI では `gh workflow run evidence-macos.yml --ref <ブランチ>` です。
-2. workflow は `macos-latest` で `pnpm install --frozen-lockfile` と `pnpm run build` のあと、`BUDDY_B04_EVIDENCE_PATH`・`BUDDY_B07_EVIDENCE_PATH` を指定して B04・B07 の実行器を走らせ、prettier で整えた `evidence-b04-simulated.json` と `evidence-b07-simulated.json` を `simulated-evidence-<sha>` という artifact にまとめます。権限は `contents: read` だけで、秘密は使いません。
-3. 実行の artifact から 2 つの JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD、`source_sha256` が取り込んだソースと一致することを確認します（`scripts/test-map.test.mjs` が一覧と hash の一致を検査します）。
-4. 取り込んだあと、Windows でも `pnpm run build` と `pnpm run check` を実行し、証拠が現在のソースと一致することを確かめます。artifact を CI が commit することはありません。commit・push は作業ブランチで行います。
+1. 通常の PR の CI の macOS の shard 3（B04）が、`BUDDY_B04_EVIDENCE_PATH` を実行用の一時ディレクトリへ向けて実行器を走らせ、`simulated-evidence-b04-<sha>` という artifact にまとめます。追加の macOS job は作りません。権限は `contents: read` だけで、秘密は使いません。
+2. 工程の完了時など、明示的に作り直すときは、GitHub の Actions で `Simulated evidence (macOS)` を選び、`Run workflow` のブランチにそのブランチを指定して実行します。CLI では `gh workflow run evidence-macos.yml --ref <ブランチ>` です。workflow は `macos-latest` で `pnpm install --frozen-lockfile` と `pnpm run build` のあと、`BUDDY_B04_EVIDENCE_PATH`・`BUDDY_B07_EVIDENCE_PATH` を指定して B04・B07 の実行器を走らせ、prettier で整えた 2 つの JSON を `simulated-evidence-<sha>` という artifact にまとめます。権限は `contents: read` だけで、秘密は使いません。
+3. 実行の artifact（通常の CI の `simulated-evidence-b04-<sha>`、または手動の `simulated-evidence-<sha>`）から JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD であることを確認します。
+4. 取り込んだあと、Windows でも `pnpm run build` の後に `pnpm run evidence:check` を実行し、`source_sha256` が取り込んだソースの対象一覧と一致することを確かめます（通常の PR の CI はこの一致を必須にしません）。artifact を CI が commit することはありません。commit・push は作業ブランチで行います。
 
-通常の CI（`ci.yml`・`verify-os.yml`）はこの workflow を呼ばず、証拠を書き換えません。`workflow_dispatch` は既定ブランチに workflow ファイルがある必要があるため、この workflow の PR の上では実行できない場合があります。その場合はこの workflow が main に入ったあと、main を取り込んだブランチで実行してください。
+main の記録が現在のソースと一致しないことは、`evidence-freshness.yml` の job summary で分かります。更新は上の artifact を取り込む PR で行います。
+
+通常の CI（`ci.yml`・`verify-os.yml`）は証拠を commit せず、生成物は artifact にだけ残します。`workflow_dispatch` は既定ブランチに workflow ファイルがある必要があるため、この workflow の PR の上では実行できない場合があります。その場合はこの workflow が main に入ったあと、main を取り込んだブランチで実行してください。
 
 ## 未実施・残る判断
 

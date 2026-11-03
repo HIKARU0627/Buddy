@@ -8,8 +8,8 @@
   "product_tests": {
     "not_run": "未実施。合格扱いにしない",
     "deferred": "後回しの決定のため対象外。採用時に契約と試験を追加する",
-    "simulated": "記載した範囲の模擬試験で期待値に一致。実機・実 API・実請求は未実施。",
-    "simulated_partial": "模擬の一部だけ確認済み。ケース全体を合格扱いにしない。未実施範囲は product_scope。"
+    "simulated": "記載した範囲の模擬試験を、記録した commit で観測し期待値に一致。現在のソースでの再現や、実機・実 API・実請求の合格を意味しない（ADR 0085）。",
+    "simulated_partial": "模擬の一部だけを、記録した commit で確認済み。ケース全体を合格扱いにしない。未実施範囲は product_scope（ADR 0085）。"
   },
   "tests": [
     {
@@ -319,6 +319,10 @@
         "packages/contracts/fixtures/memory-cases.json#private-conversation",
         "packages/contracts/fixtures/memory-cases.json#x17-private-conversation",
         "packages/contracts/fixtures/consent-cases.json#private-conversation",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-boundary-notice-private-ended-core-restarted",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-boundary-notice-with-text-field-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-boundary-notice-unknown-reason-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x17-boundary-notice-generation-leading-zero-rejected",
         "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private",
         "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private-opens-live-rejected",
         "packages/contracts/fixtures/storage-contract-cases.json#x17-storage-mode-private-persists-turns-rejected",
@@ -962,9 +966,13 @@
         "packages/contracts/fixtures/response-plan-cases.json#qa02-outcome-timeout"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P01", "P02"],
-      "related": []
+      "related": [],
+      "product_scope": "B10-02 の模擬の HTTP・契約 fixture: 空・途中の JSON・schema 不一致・意味不一致・拒否・打ち切り・timeout の区別、自動の再送 0 回、usage からの実費と usage 不明の区別。実 API・実請求・実機は未実施。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-02-simulated.json#QA02-b10-02"
+      ]
     },
     {
       "id": "QA03",
@@ -1100,9 +1108,13 @@
         "packages/contracts/fixtures/evaluation-cases.json#qa13-no-capacity-skips"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P05"],
-      "related": ["X43"]
+      "related": ["X43"],
+      "product_scope": "B10-02 の模擬: P0＋P1＋P2＋影モードの同時要求で、テキスト推論 2 件以下（枠 A は P0 専用、枠 B は P1→P2）、ローカル生成 1 件以下、影モードは skip。実 API・実機は未実施。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-02-simulated.json#QA13-b10-02"
+      ]
     },
     {
       "id": "QA14",
@@ -1186,7 +1198,7 @@
         "tests/integration/evidence-b07-simulated.json#QA20-price-boundary",
         "tests/integration/evidence-b07-simulated.json#QA20-limit-unknown"
       ],
-      "product_scope": "B07-06 の固定 seed 3 回・合成の通貨 XTS と縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、上限を超えた予約 0 件・精算は一度だけを確認。実 API・実請求・実機は未実施で、実請求の照合は B15。 単価の版の境界（M は区分ごとの高い単価）と上限が不明な要求の拒否まで。B10 の評価（意図判定の spend limit first）は未実施。"
+      "product_scope": "B07-06 の固定 seed 3 回・合成の通貨 XTS と縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、上限を超えた予約 0 件・精算は一度だけを確認。実 API・実請求・実機は未実施で、実請求の照合は B15。 単価の版の境界（M は区分ごとの高い単価）と上限が不明な要求の拒否まで。B10 の評価（意図判定の spend limit first）は未実施。 B10-02 の模擬: XTS の合成の単価で、usage から実費を求め、予約の量を B07 の computeReservation に渡して M・R を確かめた。実 API・実請求は未実施。"
     },
     {
       "id": "QA21",
@@ -1375,9 +1387,13 @@
       "phases": ["B01", "B10"],
       "contract_fixtures": [],
       "status": "specified",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["H04", "P05"],
-      "related": []
+      "related": [],
+      "product_scope": "B10-02 の模擬: 同時数 1 の provider を P0 と P1/P2 で共有する設定を拒否し、P2 が動いていても P0 が枠 A で待たないことを確かめた。実 API・実機は未実施。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-02-simulated.json#QA37-b10-02"
+      ]
     },
     {
       "id": "QA38",
@@ -1402,9 +1418,13 @@
       "phases": ["B05", "B10"],
       "contract_fixtures": [],
       "status": "specified",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P02", "P09"],
-      "related": []
+      "related": [],
+      "product_scope": "B10-02 の模擬: ローカル生成 1 本の受付と、localAdoption の形（cache なしは採用条件未達、cached・uncached の遅延を安全側で記録）。実機の遅延測定は未実施。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-02-simulated.json#QA40-b10-02"
+      ]
     },
     {
       "id": "QA41",

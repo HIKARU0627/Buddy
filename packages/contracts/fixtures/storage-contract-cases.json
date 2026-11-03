@@ -3623,6 +3623,72 @@
       }
     },
     {
+      "id": "x17-boundary-notice-private-ended-core-restarted",
+      "schema": "StorageBoundaryNotice",
+      "valid": true,
+      "note": "Core が再起動して記録しない区切りの RAM を失い、通常の区切りへ戻した知らせ。世代の番号と区切りの ID だけ。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.storage-boundary-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008101",
+        "occurred_at": "2026-11-01T02:00:00Z",
+        "kind": "private_ended",
+        "reason": "core_restarted",
+        "ended_generation": "3",
+        "segment_id": "00000000-0000-4000-8000-000000008102",
+        "segment_generation": "4"
+      }
+    },
+    {
+      "id": "x17-boundary-notice-with-text-field-rejected",
+      "schema": "StorageBoundaryNotice",
+      "valid": false,
+      "note": "知らせに会話の文を入れる欄はない（番号と ID だけ）。",
+      "value": {
+        "schema": "buddy.storage-boundary-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008101",
+        "occurred_at": "2026-11-01T02:00:00Z",
+        "kind": "private_ended",
+        "reason": "core_restarted",
+        "ended_generation": "3",
+        "segment_id": "00000000-0000-4000-8000-000000008102",
+        "segment_generation": "4",
+        "summary": "さっきの相談の続き"
+      }
+    },
+    {
+      "id": "x17-boundary-notice-unknown-reason-rejected",
+      "schema": "StorageBoundaryNotice",
+      "valid": false,
+      "note": "理由は core_restarted だけ（利用者が出た場合の知らせは別。端末が自分で知っている）。",
+      "value": {
+        "schema": "buddy.storage-boundary-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008101",
+        "occurred_at": "2026-11-01T02:00:00Z",
+        "kind": "private_ended",
+        "reason": "user_exited",
+        "ended_generation": "3",
+        "segment_id": "00000000-0000-4000-8000-000000008102",
+        "segment_generation": "4"
+      }
+    },
+    {
+      "id": "x17-boundary-notice-generation-leading-zero-rejected",
+      "schema": "StorageBoundaryNotice",
+      "valid": false,
+      "note": "世代は先頭に 0 を付けない 10 進の文字列（数値や '03' は拒否）。",
+      "value": {
+        "schema": "buddy.storage-boundary-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008101",
+        "occurred_at": "2026-11-01T02:00:00Z",
+        "kind": "private_ended",
+        "reason": "core_restarted",
+        "ended_generation": "03",
+        "segment_id": "00000000-0000-4000-8000-000000008102",
+        "segment_generation": "4"
+      }
+    },
+    {
       "id": "x15-notice-forgotten",
       "schema": "RetentionNotice",
       "valid": true,

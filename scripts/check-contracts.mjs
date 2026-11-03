@@ -245,6 +245,31 @@ assert(
   validators['ConnectorRetryPolicy'](connectorCases.retry_policy),
   'Invalid connector retry policy',
 );
+// Outlook のアカウント種別・委任・拒否の理由・カテゴリの扱い（B09-01、ADR 0072）。
+const graphCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/graph-account-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of graphCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
 
 const plan = parseStrictJson(
   await readFile(
@@ -263,5 +288,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length + connectorCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length + connectorCases.cases.length + graphCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

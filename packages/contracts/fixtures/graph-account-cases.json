@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "description": "B09-01 の Outlook のアカウント種別・委任・拒否の理由・カテゴリの扱い（ADR 0072、QA22・QA23）。拒否を成功として扱わず、カテゴリは案の表示だけにする。模擬だけ。",
+  "cases": [
+    {
+      "id": "graph-personal-connected",
+      "schema": "ConnectionSummary",
+      "valid": true,
+      "value": {
+        "connection_id": "00000000-0000-4000-8000-000000000501",
+        "provider": "microsoft",
+        "status": "active",
+        "access": "read",
+        "granted_scopes": ["Mail.Read", "offline_access"],
+        "targets": {
+          "calendar_ids": [],
+          "mail_container_ids": ["inbox"],
+          "attachment_kinds": ["pdf", "text"]
+        },
+        "permission_revision": "1",
+        "scope_revision": "1",
+        "graph_account": {
+          "account_kind": "personal",
+          "delegation": "delegated_user",
+          "rejection_reason": null,
+          "category_updates": "display_only"
+        }
+      }
+    },
+    {
+      "id": "graph-work-school-rejected",
+      "schema": "ConnectionSummary",
+      "valid": true,
+      "value": {
+        "connection_id": "00000000-0000-4000-8000-000000000502",
+        "provider": "microsoft",
+        "status": "needs_attention",
+        "access": "read",
+        "granted_scopes": ["Mail.Read"],
+        "targets": {
+          "calendar_ids": [],
+          "mail_container_ids": ["inbox"],
+          "attachment_kinds": []
+        },
+        "permission_revision": "1",
+        "scope_revision": "1",
+        "graph_account": {
+          "account_kind": "work_or_school",
+          "delegation": "delegated_user",
+          "rejection_reason": "organization_policy",
+          "category_updates": "display_only"
+        }
+      }
+    },
+    {
+      "id": "graph-insufficient-permission",
+      "schema": "ConnectionSummary",
+      "valid": true,
+      "value": {
+        "connection_id": "00000000-0000-4000-8000-000000000503",
+        "provider": "microsoft",
+        "status": "needs_reauth",
+        "access": "read",
+        "granted_scopes": [],
+        "targets": {
+          "calendar_ids": [],
+          "mail_container_ids": [],
+          "attachment_kinds": []
+        },
+        "permission_revision": "1",
+        "scope_revision": "1",
+        "graph_account": {
+          "account_kind": "personal",
+          "delegation": "delegated_user",
+          "rejection_reason": "insufficient_permission",
+          "category_updates": "display_only"
+        }
+      }
+    },
+    {
+      "id": "graph-microsoft-missing-account",
+      "schema": "ConnectionSummary",
+      "valid": true,
+      "semantic_errors": ["graph_account_missing"],
+      "value": {
+        "connection_id": "00000000-0000-4000-8000-000000000504",
+        "provider": "microsoft",
+        "status": "needs_attention",
+        "access": "read",
+        "granted_scopes": [],
+        "targets": {
+          "calendar_ids": [],
+          "mail_container_ids": [],
+          "attachment_kinds": []
+        },
+        "permission_revision": "1",
+        "scope_revision": "1"
+      }
+    },
+    {
+      "id": "graph-google-with-account",
+      "schema": "ConnectionSummary",
+      "valid": true,
+      "semantic_errors": ["graph_account_unexpected"],
+      "value": {
+        "connection_id": "00000000-0000-4000-8000-000000000505",
+        "provider": "google",
+        "status": "active",
+        "access": "read",
+        "granted_scopes": ["gmail.readonly"],
+        "targets": {
+          "calendar_ids": [],
+          "mail_container_ids": ["INBOX"],
+          "attachment_kinds": []
+        },
+        "permission_revision": "1",
+        "scope_revision": "1",
+        "graph_account": {
+          "account_kind": "personal",
+          "delegation": "delegated_user",
+          "rejection_reason": null,
+          "category_updates": "display_only"
+        }
+      }
+    },
+    {
+      "id": "graph-rejection-with-active",
+      "schema": "ConnectionSummary",
+      "valid": true,
+      "semantic_errors": ["rejection_with_active"],
+      "value": {
+        "connection_id": "00000000-0000-4000-8000-000000000506",
+        "provider": "microsoft",
+        "status": "active",
+        "access": "read",
+        "granted_scopes": ["Mail.Read"],
+        "targets": {
+          "calendar_ids": [],
+          "mail_container_ids": ["inbox"],
+          "attachment_kinds": []
+        },
+        "permission_revision": "1",
+        "scope_revision": "1",
+        "graph_account": {
+          "account_kind": "work_or_school",
+          "delegation": "delegated_user",
+          "rejection_reason": "admin_consent_required",
+          "category_updates": "display_only"
+        }
+      }
+    },
+    {
+      "id": "graph-category-automatic-forbidden",
+      "schema": "GraphAccountState",
+      "valid": false,
+      "value": {
+        "account_kind": "personal",
+        "delegation": "delegated_user",
+        "rejection_reason": null,
+        "category_updates": "automatic"
+      }
+    },
+    {
+      "id": "graph-unknown-rejection",
+      "schema": "GraphAccountState",
+      "valid": false,
+      "value": {
+        "account_kind": "work_or_school",
+        "delegation": "delegated_user",
+        "rejection_reason": "blocked_by_admin",
+        "category_updates": "display_only"
+      }
+    },
+    {
+      "id": "graph-account-delegated-only",
+      "schema": "GraphAccountState",
+      "valid": false,
+      "value": {
+        "account_kind": "personal",
+        "delegation": "application",
+        "rejection_reason": null,
+        "category_updates": "display_only"
+      }
+    }
+  ],
+  "domain_cases": [
+    {
+      "id": "domain-personal-connected",
+      "expected_errors": [],
+      "input": {
+        "provider": "microsoft",
+        "status": "active",
+        "graph_account": {
+          "account_kind": "personal",
+          "delegation": "delegated_user",
+          "rejection_reason": null,
+          "category_updates": "display_only"
+        }
+      }
+    },
+    {
+      "id": "domain-work-school-rejected",
+      "expected_errors": [],
+      "input": {
+        "provider": "microsoft",
+        "status": "needs_attention",
+        "graph_account": {
+          "account_kind": "work_or_school",
+          "delegation": "delegated_user",
+          "rejection_reason": "organization_policy",
+          "category_updates": "display_only"
+        }
+      }
+    },
+    {
+      "id": "domain-microsoft-missing",
+      "expected_errors": ["graph_account_missing"],
+      "input": { "provider": "microsoft", "status": "needs_attention" }
+    },
+    {
+      "id": "domain-google-unexpected",
+      "expected_errors": ["graph_account_unexpected"],
+      "input": {
+        "provider": "google",
+        "status": "active",
+        "graph_account": {
+          "account_kind": "personal",
+          "delegation": "delegated_user",
+          "rejection_reason": null,
+          "category_updates": "display_only"
+        }
+      }
+    },
+    {
+      "id": "domain-rejection-active",
+      "expected_errors": ["rejection_with_active"],
+      "input": {
+        "provider": "microsoft",
+        "status": "active",
+        "graph_account": {
+          "account_kind": "personal",
+          "delegation": "delegated_user",
+          "rejection_reason": "tenant_restriction",
+          "category_updates": "display_only"
+        }
+      }
+    }
+  ]
+}

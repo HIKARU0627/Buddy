@@ -28,6 +28,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createApiContract } from './api-contract.js';
 import { runBackupSetup } from './backup-setup.js';
 import { callControl } from './control-channel.js';
+import { runRestoreCheck } from './restore-check.js';
+import { readRecoveryKeyFromTty, stderrPrompt } from './restore-tty.js';
 import { CoreStartError, startCore } from './core.js';
 import type { CoreHandle, CoreHttpsOptions } from './core.js';
 import { parseLockRecord } from './lock.js';
@@ -57,6 +59,8 @@ const EXIT = {
   backup_refused: 11,
   // clock: Core が拒否した（本人が見た値が今の状態と違う・採り直すものがないなど）。
   clock_refused: 10,
+  // restore: 復元を続けられない（鍵の入力・置き場所・台帳の確認・期限切れの削除）。
+  restore_refused: 12,
 } as const;
 
 // 鍵保護・データ鍵の照合による拒否（終了コード 5）。それ以外の起動の拒否は 4。
@@ -99,6 +103,10 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
          backup-config.json（データディレクトリ）に書く
   backup status
          設定・置き場所の検査・鍵・最後の成功を表示する（置き場所のパス・鍵は表示しない）
+  restore check --backup <path>
+         復元できるかを確かめる（段階 1〜2）。封筒・鍵・本体を確かめ、中枢の台帳と照合し、作業用の DB に期限切れの
+         削除を当てる。復旧キーは端末の標準入力からのみ読み、画面には出さない。記憶と会話はまだ戻さない（段階 3〜6 は
+         次の PR）。Core は止めておく（動いていると拒否する）
   budget calendar status
          予算月の状態（今の月・始まり・記録の始まりと tz データで求め直した始まり・時計の戻りの下限・受付を
          止めている理由）を表示する。金額は表示しない
@@ -145,6 +153,7 @@ async function main(argv: readonly string[]): Promise<number> {
         'clock-revision': { type: 'string' },
         'observed-last-checked-at': { type: 'string' },
         'observed-now': { type: 'string' },
+        backup: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -181,6 +190,8 @@ async function main(argv: readonly string[]): Promise<number> {
     command === 'backup' &&
     positionals.length === 2 &&
     ['setup', 'run', 'status'].includes(action ?? '');
+  const restoreCommand =
+    command === 'restore' && positionals.length === 2 && action === 'check';
   const clockCommand =
     command === 'clock' &&
     positionals.length === 2 &&
@@ -191,6 +202,7 @@ async function main(argv: readonly string[]): Promise<number> {
     !deviceCommand &&
     !budgetCommand &&
     !backupCommand &&
+    !restoreCommand &&
     !clockCommand &&
     (positionals.length !== 1 ||
       !['start', 'status', 'stop'].includes(command ?? ''))
@@ -226,6 +238,10 @@ async function main(argv: readonly string[]): Promise<number> {
     (deviceCommand && action === 'revoke')
   ) {
     log('--device-id は device revoke で必ず指定し、他では使えません。');
+    return EXIT.usage;
+  }
+  if ((values.backup !== undefined) !== restoreCommand) {
+    log('--backup は restore check で必ず指定し、他では使えません。');
     return EXIT.usage;
   }
   const confirmCommand = budgetCommand && positionals[2] === 'confirm';
@@ -298,6 +314,7 @@ async function main(argv: readonly string[]): Promise<number> {
         : { host: values['https-host'], port: httpsPort };
     return start(dataDir, mode, https);
   }
+  if (restoreCommand) return restore(dataDir, values.backup as string);
   if (backupCommand)
     return backup(dataDir, action as 'setup' | 'run' | 'status');
   if (autostartCommand) return autostart(action as AutostartAction, dataDir);
@@ -595,6 +612,39 @@ async function budgetCalendar(
   if (result.body['error'] === 'unavailable') return EXIT.not_running;
   if (result.body['error'] === 'invalid_request') return EXIT.usage;
   return EXIT.budget_refused;
+}
+
+// 復元の確認（ADR 0056。段階 1〜2）。復旧キーは端末の標準入力からだけ読む（U128）。Core は止めておく。
+async function restore(dataDir: string, backupPath: string): Promise<number> {
+  const input = await readRecoveryKeyFromTty(process.stdin, stderrPrompt);
+  if (!input.ok) {
+    log(
+      `復旧キーを読めませんでした（${input.reason}）。端末から入力してください。`,
+    );
+    out({ ok: false, state: 'recovery_key', reason: input.reason });
+    return EXIT.restore_refused;
+  }
+  try {
+    const report = await runRestoreCheck({
+      dataDir,
+      contract: createApiContract(),
+      backupPath: resolve(backupPath),
+      recoveryKey: input.key,
+      dataKeys: createCoreKeyStore('os'),
+      backupKeys: createBackupKeyStore(process.platform),
+      now: () => new Date(),
+      log,
+    });
+    out(report);
+    if (report.outcome !== 'ready') {
+      log('復元を続けられません。記憶と会話は戻していません。');
+      return EXIT.restore_refused;
+    }
+    log('復元の段階 1〜2 を通りました。');
+    return EXIT.ok;
+  } finally {
+    input.key.fill(0);
+  }
 }
 
 // バックアップの設定・実行・状態（ADR 0055）。実行と状態は動いている Core の制御チャネルへ頼む（DB を直接開かない）。

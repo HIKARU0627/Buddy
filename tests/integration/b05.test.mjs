@@ -93,7 +93,7 @@ test(
         const evidence = {
           status: 'recorded',
           description:
-            'B05-07 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。端末の音声の制御・模擬の音声レンダラー・中枢の音声の制御・DB worker・予算の門・模擬の Live の provider・会話の処理をつないだ統合で、端末が音声レンダラーへ送った命令・音声レンダラーの状態・Core の Live と予約の行・provider 自身の真の使用時間を突き合わせた。実機・実 API・実請求は未実施（#132・#133）。U120（文字の結果・破棄の知らせの画面配信）は UI-08 の別 PR で未了。',
+            'B05-07 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。端末の音声の制御・模擬の音声レンダラー・中枢の音声の制御・DB worker・予算の門・模擬の Live の provider・会話の処理をつないだ統合で、端末が音声レンダラーへ送った命令・音声レンダラーの状態・Core の Live と予約の行・provider 自身の真の使用時間を突き合わせた。実機・実 API・実請求は未実施（#132・#133）。U120（文字の結果・破棄の知らせの画面配信）は #189（UI-08 の一段階、ADR 0066）で実装済み（模擬の表示）。',
           command: 'node --test tests/integration/b05.test.mjs',
           source_sha256: sourceSha256,
           records,

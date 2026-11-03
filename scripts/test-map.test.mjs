@@ -750,4 +750,3 @@ test('B05 の証拠の対象は実行器が読み込むファイルだけで、B
   assert(!b04SourceFiles().some((path) => /\/b05[-.]/u.test(path)));
   assert(!b07SourceFiles().some((path) => /\/b05[-.]/u.test(path)));
 });
-

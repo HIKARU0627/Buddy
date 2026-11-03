@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -730,10 +730,8 @@ test('forget: a directive made from an unrelated turn stays, with its text and i
 
 test('restore ledger: a newer ledger entry applied to an older DB deletes the closure and keeps the chain hash', async () => {
   await withWorld((db) => {
-    const copyPath = join(
-      tmpdir(),
-      `buddy-restore-ledger-${randomUUID()}.sqlite`,
-    );
+    const dir = mkdtempSync(join(tmpdir(), 'buddy-restore-ledger-'));
+    const copyPath = join(dir, 'copy.sqlite');
     db.exec(`VACUUM INTO '${copyPath.replace(/'/gu, "''")}'`);
     try {
       value<ForgetApplyValue>(forgetM(db));
@@ -785,7 +783,7 @@ test('restore ledger: a newer ledger entry applied to an older DB deletes the cl
         copy.close();
       }
     } finally {
-      rmSync(copyPath, { force: true });
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

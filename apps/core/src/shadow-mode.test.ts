@@ -928,6 +928,88 @@ test('losing the spare capacity while a reservation is pending sends nothing and
   assert.deepEqual(events, [{ kind: 'skipped', reasons: ['no_capacity'] }]);
 });
 
+test('reaching a campaign limit while a reservation is pending sends nothing and releases the reservation', async () => {
+  const scenarios: [
+    string,
+    (state: { count: number; spent: string; clock: number }) => void,
+  ][] = [
+    [
+      'count reaches 300',
+      (state) => {
+        state.count = 300;
+      },
+    ],
+    [
+      'spend reaches the limit',
+      (state) => {
+        state.spent = '1000000';
+      },
+    ],
+    [
+      'the day limit passes',
+      (state) => {
+        state.clock = NOW + 40 * DAY;
+      },
+    ],
+  ];
+  for (const [name, change] of scenarios) {
+    const adapter = createFakeAdapter([response(wireJson())]);
+    const state = { count: 299, spent: '0', clock: NOW };
+    const saved: IntentShadowRecord[] = [];
+    const released: string[] = [];
+    let finishAdmit = (): void => undefined;
+    const pending = new Promise<void>((resolve) => {
+      finishAdmit = resolve;
+    });
+    const events: ShadowEvent[] = [];
+    const shadow = createShadowRecorder({
+      settings: () => settingsFor(adapter),
+      store: {
+        count: () => Promise.resolve(state.count),
+        save: (record) => {
+          saved.push(record);
+          return Promise.resolve('saved');
+        },
+      },
+      slotAvailable: () => true,
+      spent: () => Promise.resolve(state.spent),
+      guard: {
+        admit: async () => {
+          await pending;
+          return {
+            ok: true,
+            settle: () => Promise.resolve(),
+            release: () => {
+              released.push('released');
+              return Promise.resolve();
+            },
+          };
+        },
+      },
+      contract,
+      output_schema: outputSchema,
+      schema: schemaValidator,
+      now: () => state.clock,
+      newId: () => randomUUID(),
+      onEvent: (event) => events.push(event),
+    });
+    shadow.observe(observation({ turn_expires_at: NOW + 60 * DAY }));
+    await new Promise((resolve) => setImmediate(resolve));
+    // 受付を待つ間に、別の比較が 300 件目を保存した・別の精算で実費が上限に達した・日数をまたいだ。
+    change(state);
+    finishAdmit();
+    await shadow.idle();
+    assert.equal(adapter.commands.length, 0, name);
+    assert.equal(saved.length, 0, name);
+    assert.deepEqual(released, ['released'], name);
+    assert.deepEqual(
+      events,
+      [{ kind: 'skipped', reasons: ['campaign_stopped'] }],
+      name,
+    );
+  }
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);

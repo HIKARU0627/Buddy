@@ -183,12 +183,45 @@ export function createShadowRecorder(
     }
   };
 
+  // campaign の停止条件（件数・実費・日数の最初の到達）を、保存先の件数と実費の口から今の値で求める。実費を取得できな
+  // ければ null（始めない）。開始前と、予算の受付を待った後の送る直前の両方で呼ぶ。保存側の上限（save の limit）とは別に、
+  // 上限到達後の無駄な呼出し・費用を防ぐ。
+  const campaignStatus = async (
+    settings: ShadowSettings,
+  ): Promise<ShadowCampaign | null> => {
+    const limit = Math.min(settings.max_inputs, SHADOW_MAX_INPUTS);
+    let confirmed: number;
+    let spent: string | null = null;
+    try {
+      confirmed = await options.store.count(settings.campaign_id);
+      const value: unknown = await options.spent(settings.campaign_id);
+      if (typeof value === 'string' && /^(0|[1-9][0-9]*)$/u.test(value))
+        spent = value;
+    } catch {
+      return null;
+    }
+    if (spent === null) return null;
+    return updateShadowCampaign(
+      {
+        started_at: settings.started_at,
+        confirmed_inputs: confirmed,
+        spent,
+        max_inputs: limit,
+        max_spend: settings.max_spend,
+        max_days: settings.max_days,
+        status: 'running',
+        stop_reason: null,
+      },
+      { addedInputs: 0, addedCost: '0', now: new Date(now()).toISOString() },
+    );
+  };
+
   // 1 つの比較モデルを判定する。予算の口が拒否したら null（呼ばない）。失敗・例外は outcome にして返す。
   const judgeTarget = async (
     settings: ShadowSettings,
     target: ShadowTarget,
     input: IntentJudgmentInput,
-  ): Promise<ShadowJudgment | null | 'disabled' | 'busy'> => {
+  ): Promise<ShadowJudgment | null | 'disabled' | 'busy' | 'stopped'> => {
     const requestId = newId();
     // 待ちの間に OFF・campaign の入れ替え・対象の取り外しがあったら送らない（受付・送信のどちらの直前にも確かめる）。
     const enabled = (): boolean => {
@@ -235,6 +268,16 @@ export function createShadowRecorder(
       await admitted.release().catch(() => undefined);
       return enabled() ? 'busy' : 'disabled';
     }
+    // 受付を待つ間に別の比較が上限に達した・日数をまたいだ・実費が上限に達したなら、送らず予約を解放する。
+    const current = await campaignStatus(settings);
+    if (current === null || current.status !== 'running') {
+      await admitted.release().catch(() => undefined);
+      return 'stopped';
+    }
+    if (!enabled() || !spare()) {
+      await admitted.release().catch(() => undefined);
+      return enabled() ? 'busy' : 'disabled';
+    }
     const started = now();
     try {
       const result = await judgeIntent(target.adapter, {
@@ -270,33 +313,11 @@ export function createShadowRecorder(
   ): Promise<void> => {
     if (settings.targets.length === 0) return;
     const limit = Math.min(settings.max_inputs, SHADOW_MAX_INPUTS);
-    // 開始前の確認: 件数・実費・日数の最初の到達で止める（保存側の上限とは別に、無駄な呼出しをしない）。
-    const confirmed = await options.store.count(settings.campaign_id);
-    let spent: string | null = null;
-    try {
-      const value: unknown = await options.spent(settings.campaign_id);
-      if (typeof value === 'string' && /^(0|[1-9][0-9]*)$/u.test(value))
-        spent = value;
-    } catch {
-      // 取得できない（下で skip）。
-    }
-    if (spent === null) {
+    const campaign = await campaignStatus(settings);
+    if (campaign === null) {
       emit({ kind: 'skipped', reasons: ['spent_unavailable'] });
       return;
     }
-    const campaign: ShadowCampaign = updateShadowCampaign(
-      {
-        started_at: settings.started_at,
-        confirmed_inputs: confirmed,
-        spent,
-        max_inputs: limit,
-        max_spend: settings.max_spend,
-        max_days: settings.max_days,
-        status: 'running',
-        stop_reason: null,
-      },
-      { addedInputs: 0, addedCost: '0', now: new Date(now()).toISOString() },
-    );
     const admission = shadowAdmission({
       privateConversation: false,
       liveSessionOpen: observation.live_session_open,
@@ -318,23 +339,21 @@ export function createShadowRecorder(
     const judged = await Promise.all(
       settings.targets.map((target) => judgeTarget(settings, target, input)),
     );
-    if (
-      judged.every(
-        (item) => item === null || item === 'disabled' || item === 'busy',
-      )
-    ) {
+    if (judged.every((item) => item === null || typeof item === 'string')) {
       emit({
         kind: 'skipped',
         reasons: judged.includes('disabled')
           ? ['shadow_disabled']
-          : judged.includes('busy')
-            ? ['no_capacity']
-            : ['shadow_budget'],
+          : judged.includes('stopped')
+            ? ['campaign_stopped']
+            : judged.includes('busy')
+              ? ['no_capacity']
+              : ['shadow_budget'],
       });
       return;
     }
     const shadows = judged.map((item, index): ShadowJudgment =>
-      item === null || item === 'disabled' || item === 'busy'
+      item === null || typeof item === 'string'
         ? judgmentOf(
             (settings.targets[index] as ShadowTarget).deployment_id,
             { kind: 'failed', failure: 'budget_denied', retryable: true },

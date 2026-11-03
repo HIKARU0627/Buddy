@@ -238,6 +238,32 @@ test('the derivation closure matches the hand-written plans', () => {
   }
 });
 
+test('the closure does not depend on the order of edges or unattributed items (U157)', () => {
+  const reverse = (items) => [...items].reverse();
+  const rotate = (items) =>
+    items.length < 2 ? [...items] : [...items.slice(1), items[0]];
+  for (const entry of spec.plans) {
+    const expected = planForget(planInput(entry));
+    const input = planInput(entry);
+    for (const reorder of [reverse, rotate]) {
+      const graph = input.graph;
+      assert.deepEqual(
+        planForget({
+          ...input,
+          graph: {
+            ...graph,
+            edges: reorder(graph.edges),
+            unattributed: reorder(graph.unattributed),
+            turn_sessions: reorder(graph.turn_sessions),
+          },
+        }),
+        expected,
+        entry.id,
+      );
+    }
+  }
+});
+
 test('the closure leaves no live derivative of a forgotten item', () => {
   for (const entry of spec.plans) {
     const world = spec.worlds[entry.world];

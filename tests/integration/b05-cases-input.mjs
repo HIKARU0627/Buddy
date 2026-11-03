@@ -161,10 +161,15 @@ async function x51Confirmation() {
     await w.rig.wait();
     const at299 = conv.script.calls.length;
     await w.advance(101);
+    // 断片から 400 ms（安定の閾値 300 ms を超えた時点）で解釈が始まっていること。これが無いと、閾値が 300 ms より
+    // 長くなっても advanceUntil が上限まで待つだけで合格してしまう（上限側を確かめる）。
+    await w.rig.wait();
+    const at400 = conv.script.calls.length;
     await w.advanceUntil('応答', () => conv.sb().commentary.length === 1, 100);
     settle(w);
     late = {
       model_calls_at_299ms: at299,
+      model_calls_at_400ms: at400,
       model_calls: conv.script.calls,
       operations: conv.operations().length,
     };
@@ -273,6 +278,12 @@ async function x27Held() {
           while_held: held,
           commentary: conv.sb().commentary,
           operations: conv.operations(),
+          // 確定した操作の意図を復号し、訂正後の依頼（卵を買う）が操作になったことを内容で確かめる。
+          operation_intents: conv.operationIntents(),
+          // 古い依頼の入力と訂正後の入力の状態（操作の内容は operation_intents で確かめる）。
+          snapshots: conv
+            .snapshots()
+            .map((row) => ({ origin: row.origin, state: row.state })),
           workflows: conv.workflowStates(),
           turns: conv.turnsOf(),
           screen_results: conv.shown.length,

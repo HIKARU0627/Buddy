@@ -59,6 +59,31 @@ jobs:
     with:
       os: macos-latest
 
+  # 記録の現在性（G1/G4）の strict な照合。main への push でだけ知らせる。
+  # 必須チェック（`Verify (<os>)`・`Public content / secrets`）には含めないので、main の記録が
+  # 一時的に古い間も PR のマージは止まらない。証拠の生成は verify-os.yml の macOS shard 2/3 が行う。
+  evidence-identity:
+    name: Evidence identity (main)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check committed evidence against main
+        run: pnpm run evidence:check
+
   # main の ruleset が必須とする `Verify (<os>)` の名前。その OS の全 shard が成功したときだけ成功する。
   # 上流が失敗・取り消し・スキップのときも always() で必ず走り、失敗にする。
   verify-ubuntu:

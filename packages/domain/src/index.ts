@@ -54,6 +54,8 @@ export * from './backup-keys.js';
 export * from './restore-plan.js';
 export * from './restore-aftermath.js';
 export * from './sync.js';
+// B08-02: 取得範囲（カレンダー・フォルダー／ラベル・期間・添付の種類とサイズ）の検査と版（ADR 0086）。
+export * from './fetch-scope.js';
 // B05-01: 音声レンダラーの限定 IPC・Live の制御接続・リースの更新・input_kind の受付・外部への送信の同意（ADR 0038）。
 export * from './voice.js';
 // B05-02: リースの期限・世代の発行と逆行の拒否・3 層の停止の時間・無音・追加予約・通知の頻度・方式 A/C・ASR の比較（ADR 0041）。

@@ -67,7 +67,7 @@
 - **ローカル生成は同時 1 本**。
 - 影モードは枠 B の内側で、P0／P1／P2 の仕事がある間は待たずに skip する（`shadow_disabled`・`shadow_budget`・`shadow_busy`・`shadow_wait`）。
 - 同時数 1 の provider を P0 と P1／P2 で共有する設定は `routingErrors` が拒否する（`provider_shared_between_priorities`）。P0 と P2 を同じ provider に置くと、P0 が P2 を待つか、同時数の上限を超えるため。
-- QA40（ローカル P0 の prefix cache の有無）は実機の測定が要る。この P2 では「ローカル生成 1 本」の受付と、profile の能力の登録までで、**遅延の測定は未実施**。cache なしを採用条件未達として扱う判定は B10-07 の評価で行う。
+- QA40（ローカル P0 の prefix cache の有無）は実機の測定が要る。この子では「ローカル生成 1 本」の受付と、profile の能力の登録、`localAdoption` の形（cache なしは採用条件未達、cached・uncached の遅延を安全側で記録）までを固定した。**遅延の実測は未実施**で、cache なしを採用条件未達として扱う最終判断は B10-07 の評価で行う。
 
 ## 試験（模擬だけ）
 

@@ -4,6 +4,9 @@
 
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import type { MemorySource } from '@buddy/domain';
 import type {
@@ -11,6 +14,12 @@ import type {
   ForgetApplyValue,
   ForgetLedgerExport,
   MemoryOp,
+} from './index.js';
+import {
+  applyRestoreLedger,
+  exportForgetLedger,
+  openWriteConnection,
+  readLedgerId,
 } from './index.js';
 import {
   DIRECTIVE,
@@ -716,5 +725,67 @@ test('forget: a directive made from an unrelated turn stays, with its text and i
       count(db, 'SELECT count(*) FROM sealed_blobs WHERE blob_id = ?', blob),
       1,
     );
+  });
+});
+
+test('restore ledger: a newer ledger entry applied to an older DB deletes the closure and keeps the chain hash', async () => {
+  await withWorld((db) => {
+    const copyPath = join(
+      tmpdir(),
+      `buddy-restore-ledger-${randomUUID()}.sqlite`,
+    );
+    db.exec(`VACUUM INTO '${copyPath.replace(/'/gu, "''")}'`);
+    try {
+      value<ForgetApplyValue>(forgetM(db));
+      const exported = exportForgetLedger(db);
+      assert.equal(exported.entries.length, 1);
+      const copy = openWriteConnection(copyPath, { platform: 'macos' });
+      try {
+        assert.equal(readLedgerId(copy), null);
+        const applied = applyRestoreLedger(copy, {
+          entries: exported.entries,
+          ledger_hmac_key: Buffer.alloc(32, 0x42),
+          ledger_id: LEDGER_ID,
+          now: NOW_1 + 1000,
+        });
+        assert.equal(applied.applied_generations.length, 1);
+        assert.equal(
+          applied.forgotten_applied,
+          exported.entries[0]?.entry.forgotten.length,
+        );
+        // 忘れた記憶・そこから作った記憶・気づき・指示の発言は戻らない。
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M),
+          0,
+        );
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M2),
+          0,
+        );
+        assert.equal(
+          count(
+            copy,
+            "SELECT count(*) FROM notification_candidates WHERE candidate_id = 'n-1'",
+          ),
+          0,
+        );
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_INST),
+          0,
+        );
+        // 台帳は与えられた連鎖のまま（hash を書き換えない）。
+        assert.equal(readLedgerId(copy), LEDGER_ID);
+        const after = exportForgetLedger(copy);
+        assert.equal(
+          after.head.forgetting_generation,
+          exported.head.forgetting_generation,
+        );
+        assert.equal(after.head.entry_hash, exported.head.entry_hash);
+      } finally {
+        copy.close();
+      }
+    } finally {
+      rmSync(copyPath, { force: true });
+    }
   });
 });

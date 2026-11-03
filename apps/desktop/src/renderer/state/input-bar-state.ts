@@ -22,3 +22,11 @@ export function submitResult(response: DesktopIpcResponse): SubmitResult {
     return 'needs_attention';
   return response.turn.status === 'clarification' ? 'needs_attention' : 'sent';
 }
+
+// 聞き返しの文（UI-08）。入力バーの広がった領域に出す。聞き返しでなければ null。
+export function clarificationText(response: DesktopIpcResponse): string | null {
+  if (response.outcome !== 'ok' || !('turn' in response)) return null;
+  if (response.turn.status !== 'clarification') return null;
+  const text = response.turn.reply_text;
+  return typeof text === 'string' && text.trim().length > 0 ? text : null;
+}

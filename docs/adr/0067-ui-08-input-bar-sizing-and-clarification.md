@@ -13,21 +13,26 @@
 - **キャンバスの配置**は従来の小さめの予約（592 × 88）のまま。入力中は入力バーがキャンバスのカードに重なるが、入力している間だけの一時の重なりとして許す。入力が終われば縮んで元に戻る。
 - **新しい IPC は足さない**。大きさの正本は main（Electron の窓）で、renderer は窓の高さ（`window.innerHeight`）で入力欄を 1 行の `Input` と複数行の `TextArea` に切り替える。画面から main へ大きさを要求しない（承認・停止のチャネルを増やさない）。
 - 入力欄の文字は、縮んだときも renderer の状態に残す。フォーカスし直すと広がり、続きを打てる。
+- **聞き返しの表示**: 送信の結果が聞き返し（`status: clarification`）のとき、`turn.reply_text` を広がった入力バーの上部に HeroUI の `Alert` で出す。説明文ではなく、その回の質問そのものを出す。小さめのときは出さず、広げたときに出す。入力の変更・送信の成功・ロック・不明で消す。
 
 ## 実装
 
-| 場所                                                       | 内容                                                                                                                                              |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/desktop/src/main/window-roles.ts`                    | `INPUT_BAR_EXPANDED_SIZE`・`inputBarBounds(area, expanded)`。下端固定・中央・作業領域内に収める                                                   |
-| `apps/desktop/src/main/electron/main.ts`                   | `inputBarExpanded` の正本、`setInputBarExpanded`、`input` 窓の `focus`／`blur`／`hide`、画面の変更時の置き直し                                    |
-| `apps/desktop/src/renderer/state/use-role-window-state.ts` | `useInputBarExpanded`（窓の高さ 120 以上で広がっていると判断）                                                                                    |
-| `apps/desktop/src/renderer/screens/canvas/InputBar.tsx`    | 広がっているときは HeroUI の `TextArea`（5 行・高さ 128）、小さめのときは `Input`。下端に寄せる。広がった後に置き換わった入力欄へフォーカスを移す |
+| 場所                                                       | 内容                                                                                                                                                                               |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/desktop/src/main/window-roles.ts`                    | `INPUT_BAR_EXPANDED_SIZE`・`inputBarBounds(area, expanded)`。下端固定・中央・作業領域内に収める                                                                                    |
+| `apps/desktop/src/main/electron/main.ts`                   | `inputBarExpanded` の正本、`setInputBarExpanded`、`input` 窓の `focus`／`blur`／`hide`、画面の変更時の置き直し                                                                     |
+| `apps/desktop/src/renderer/state/use-role-window-state.ts` | `useInputBarExpanded`（窓の高さ 120 以上で広がっていると判断）                                                                                                                     |
+| `apps/desktop/src/renderer/state/input-bar-state.ts`       | `clarificationText`（聞き返しのときだけ `reply_text` を返す）                                                                                                                      |
+| `apps/desktop/src/renderer/screens/canvas/InputBar.tsx`    | 広がっているときは HeroUI の `TextArea`（5 行・高さ 128）、小さめのときは `Input`。下端に寄せる。広がった後に置き換わった入力欄へフォーカスを移す。聞き返しは上部の `Alert` に出す |
+| `apps/desktop/src/renderer/screens/canvas/RoleWindow.tsx`  | 送信の結果から聞き返しの文を取り、入力の変更・成功・ロックで消す                                                                                                                   |
 
 ## 試験（模擬のみ）
 
 - `apps/desktop/src/main/window-roles.test.ts`: 小さめと入力中の位置・大きさ（下端が同じ）、作業領域に収まらないときの切り詰め。既存の「入力バーは小さな枠なし・常に最前面」の試験はそのまま通る。
 - `apps/desktop/src/renderer/screens/canvas/RoleWindow.test.tsx`: 広がっているときは `textarea`（5 行）で、小さめのときは `input`。既存の入力バーの試験はそのまま通る。
 - `apps/desktop/src/renderer/screens/canvas/InputBar.dom.test.tsx`: 広げた `TextArea` でも通常の Enter で 1 回だけ送り、IME の変換の確定（`isComposing`）と Shift+Enter では送らない。小さめの `Input` の Enter も 1 回だけ送る。小さめの入力欄にフォーカスしたまま広げると、置き換わった `TextArea` にフォーカスが移る（`document.activeElement` で確認）。
+- `apps/desktop/src/renderer/state/input-bar-state.test.ts`: 聞き返しのときだけ `reply_text` を返し、空の文と聞き返し以外では返さない。
+- `apps/desktop/src/renderer/screens/canvas/RoleWindow.test.tsx`: 広げた入力バーに聞き返しの文が出る。
 - 実機の macOS・Windows での窓の伸縮・フォーカスの往復・IME は**未実施**。撮影用の起動での確認もこの段階では行っていない。
 
 ## 残ること

@@ -2,7 +2,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DesktopIpcResponse } from '@buddy/contracts';
-import { canSubmit, submitResult } from './input-bar-state.js';
+import {
+  canSubmit,
+  clarificationText,
+  submitResult,
+} from './input-bar-state.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
 
@@ -21,6 +25,36 @@ test('only a non-blank text is sent, while enabled and not already sending', () 
   assert.equal(canSubmit('  　 ', true, false), false);
   assert.equal(canSubmit('今日の用事を見せて', false, false), false);
   assert.equal(canSubmit('今日の用事を見せて', true, true), false);
+});
+
+test('the clarification text is shown only for a clarification with non-blank text', () => {
+  assert.equal(clarificationText(turn('clarification')), null);
+  assert.equal(
+    clarificationText({
+      request_id: id,
+      channel: 'desktop.turn_submit',
+      outcome: 'ok',
+      turn: {
+        status: 'clarification',
+        reply_text: 'どちらの予定ですか。',
+        result: null,
+      },
+    }),
+    'どちらの予定ですか。',
+  );
+  assert.equal(
+    clarificationText({
+      request_id: id,
+      channel: 'desktop.turn_submit',
+      outcome: 'ok',
+      turn: {
+        status: 'answered',
+        reply_text: '予定は 2 件です。',
+        result: null,
+      },
+    }),
+    null,
+  );
 });
 
 test('an answer empties the field; a clarification or any rejection keeps the text and flags the field', () => {

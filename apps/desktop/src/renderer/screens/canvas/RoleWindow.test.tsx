@@ -336,11 +336,13 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
       canSummon
       onSummon={noop}
       expanded
+      clarification="どちらの予定ですか。"
     />,
   );
   assert.equal((expanded.match(/<textarea\b/gu) ?? []).length, 1);
   assert.match(expanded, /rows="5"/u);
   assert.doesNotMatch(expanded, /<input\b/u);
+  assert.match(expanded, /どちらの予定ですか。/u);
 });
 
 // PR #104 のレビュー（P2）: 打てるかと内容を出せるかを分け、ロック中・不明では打った文字を描かない。

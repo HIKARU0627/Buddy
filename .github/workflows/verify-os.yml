@@ -70,6 +70,13 @@ jobs:
           BUDDY_B07_EVIDENCE_PATH: "${{ runner.os == 'macOS' && format('{0}/evidence-b07-simulated.json', runner.temp) || '' }}"
         run: node scripts/run-tests.mjs --shard ${{ matrix.shard }}/${{ strategy.job-total }}
       # 生成器は全反復が時間内に成功したときだけ書く（tests/integration/evidence-run.mjs）。
+      # artifact を取り込んだ PR が format:check で落ちないよう、upload の前に Prettier で整える。
+      - name: Format B04 evidence
+        if: runner.os == 'macOS' && matrix.shard == 3
+        run: pnpm exec prettier --write "${{ runner.temp }}/evidence-b04-simulated.json"
+      - name: Format B07 evidence
+        if: runner.os == 'macOS' && matrix.shard == 2
+        run: pnpm exec prettier --write "${{ runner.temp }}/evidence-b07-simulated.json"
       # ここでは artifact に残す前に、記録の形と実行した commit を確かめる。
       - name: Check generated B04 evidence
         if: runner.os == 'macOS' && matrix.shard == 3

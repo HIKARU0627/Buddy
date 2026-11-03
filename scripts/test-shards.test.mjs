@@ -190,6 +190,8 @@ test('模擬証拠は macOS の既存 shard 2/3 だけで生成し、追加の m
   assert.deepEqual(
     steps.map((step) => step.name),
     [
+      'Format B04 evidence',
+      'Format B07 evidence',
       'Check generated B04 evidence',
       'Check generated B07 evidence',
       'Upload B04 evidence artifact',

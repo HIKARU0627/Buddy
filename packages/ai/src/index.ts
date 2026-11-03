@@ -3,3 +3,5 @@ export type * from './types.js';
 export type * from './http.js';
 export type * from './provider.js';
 export * from './adapter.js';
+export * from './routing.js';
+export * from './scheduler.js';

@@ -64,6 +64,7 @@ import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   CandidateSource,
   Interpreter,
+  OpenWorkflow,
   ProviderConnection,
   ProviderReader,
   TurnPolicy,
@@ -146,6 +147,11 @@ const CLARIFY = {
   no_change: 'すでにその状態です。変更はありません。',
   blocked: '今は進められません。少し待ってからもう一度お願いします。',
   unsupported: 'その依頼にはまだ対応していません。',
+  // 判定の失敗（モデルが分からないと答えたのではない）。実行へは進まない（QA02・QA03）。
+  model_invalid:
+    'うまく読み取れませんでした。もう一度、言い換えてお願いします。',
+  model_unavailable:
+    '今は判定できませんでした。少し待ってから、もう一度お願いします。',
   // 声（方式 C）の入力は 4 操作だけを進める。それ以外は画面で全文を確かめてから（B05-05）。
   full_text:
     'この操作は、画面で内容を確かめてからにします。画面から送ってください。',
@@ -277,7 +283,10 @@ export interface TurnRoutes {
   readonly previewCurrent: (previewId: string) => boolean;
   readonly prime: () => Promise<void>;
   // 発言の解釈（外部へは送らない。副作用なし）。
-  readonly interpret: (text: string) => Promise<InterpretedTurn>;
+  readonly interpret: (
+    text: string,
+    options?: { readonly open_workflows?: readonly OpenWorkflow[] },
+  ) => Promise<InterpretedTurn>;
   // Live の委譲から発言・依頼・操作（承認待ち）を保存する。
   readonly commitLive: (input: LiveCommitInput) => Promise<LiveCommitResult>;
 }
@@ -816,7 +825,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   };
 
   // 解釈と、意図表・契約での引数の検査。聞き返しなら plan、通れば意図と引数を返す。
-  const interpretTurn = async (text: string): Promise<InterpretedTurn> => {
+  const interpretTurn = async (
+    text: string,
+    interpretOptions: {
+      readonly open_workflows?: readonly OpenWorkflow[];
+    } = {},
+  ): Promise<InterpretedTurn> => {
     const done = (plan: TurnPlan) => ({ kind: 'plan' as const, plan });
     let candidates;
     try {
@@ -830,10 +844,29 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         text,
         today: today(),
         mail_candidates: candidates,
+        ...(interpretOptions.open_workflows === undefined
+          ? {}
+          : { open_workflows: interpretOptions.open_workflows }),
       });
     } catch {
       return done(clarify('unclear', null));
     }
+    // 判定の失敗は「意図が不明」と混ぜず、別の聞き返しにする（実行へは進まない。QA02・QA03）。
+    if (reply !== null && typeof reply === 'object' && reply.kind === 'failed')
+      return done(
+        clarify(
+          [
+            'timeout',
+            'unavailable',
+            'budget_denied',
+            'cancelled',
+            'stale',
+          ].includes(reply.failure)
+            ? 'model_unavailable'
+            : 'model_invalid',
+          null,
+        ),
+      );
     // 解釈の結果を信用しない: 意図表にない意図・契約に合わない引数は知らない文と同じ扱い。
     if (
       reply === null ||

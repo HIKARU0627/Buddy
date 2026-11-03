@@ -61,6 +61,7 @@ import type {
   LiveCommitResult,
 } from './api-turns.js';
 import type { VoiceTimers } from './voice-control.js';
+import type { OpenWorkflow } from './turn-ports.js';
 
 // 方式 C の暫定方針の版（live_transcript_policy には必須。契約の PolicyVersion は先頭ゼロのない整数の文字列）。
 export const LIVE_POLICY_VERSION = '1';
@@ -151,7 +152,10 @@ export function createLiveScreenSink(options: {
 }
 
 export interface LiveConversationTurns {
-  interpret(text: string): Promise<InterpretedTurn>;
+  interpret(
+    text: string,
+    options?: { readonly open_workflows?: readonly OpenWorkflow[] },
+  ): Promise<InterpretedTurn>;
   commitLive(input: LiveCommitInput): Promise<LiveCommitResult>;
 }
 
@@ -634,7 +638,17 @@ export class LiveConversation implements LiveConversationPort {
     }
     let interpreted: InterpretedTurn;
     try {
-      interpreted = await this.#options.turns.interpret(text);
+      // 訂正・取消・補足の対象にできる直前の依頼は、保留中の変更だけ（この委譲自身は除く）。モデルはここから選ぶだけで、
+      // 存在と一意性はコードが検証する（5A-4、QA04）。
+      interpreted = await this.#options.turns.interpret(text, {
+        open_workflows: context.hold.entries
+          .filter((entry) => entry.workflow_id !== pending.workflow_id)
+          .map((entry) => ({
+            workflow_id: entry.workflow_id,
+            intent: null,
+            state: 'in_flight' as const,
+          })),
+      });
     } catch {
       interpreted = { kind: 'plan', plan: this.#unclearPlan() };
     }

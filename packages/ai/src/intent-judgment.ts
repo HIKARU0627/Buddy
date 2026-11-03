@@ -42,7 +42,8 @@ export interface JudgmentCandidate {
 // 訂正・取消・補足の対象にできる直前の依頼（5A）。モデルはこの中からだけ target_workflow_id を選べる。
 export interface JudgmentWorkflow {
   readonly workflow_id: string;
-  readonly intent: IntentName;
+  // 意図が分かっている依頼だけ。分からなければ null（目印に出さない）。
+  readonly intent: IntentName | null;
   readonly state: 'clarifying' | 'in_flight';
 }
 
@@ -142,7 +143,7 @@ export function intentUserMessage(input: IntentJudgmentInput): ModelMessage {
       : input.open_workflows
           .map(
             (item) =>
-              `- workflow_id=${item.workflow_id} 意図=${item.intent} 状態=${item.state}`,
+              `- workflow_id=${item.workflow_id}${item.intent === null ? '' : ` 意図=${item.intent}`} 状態=${item.state}`,
           )
           .join('\n');
   return {

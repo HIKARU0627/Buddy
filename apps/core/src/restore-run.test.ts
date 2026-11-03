@@ -272,6 +272,26 @@ test('復元の実行: 段階 1〜6 を通り、承認をすべて失効させ�
   );
 });
 
+test('復元の実行: データ鍵がない KeyStore でも封筒の data-key-v1 を導⼊して復元できる', async (t) => {
+  const r = await rig(t);
+  const empty = createMockKeyStore();
+  const report = await runRestoreRun({
+    dataDir: r.dataDir,
+    contract,
+    backupPath: r.backupPath,
+    recoveryKey: Buffer.from(decodeRecoveryCode(r.recoveryCode) as Uint8Array),
+    dataKeys: empty,
+    backupKeys: r.keys,
+    now: () => new Date(T0 + 2000),
+    lock: true,
+    log: () => undefined,
+  });
+  assert.equal(report.outcome, 'restored', JSON.stringify(report));
+  const loaded = await empty.loadDataKey();
+  assert.equal(loaded.ok, true);
+  assert.ok(loaded.ok && loaded.dataKey.key.equals(DATA_KEY));
+});
+
 test('復元の実行: 差し替えの記録が残った失敗では作業用の DB を消さず、差し替えていないことを返す', async (t) => {
   const r = await rig(t);
   let locked = false;

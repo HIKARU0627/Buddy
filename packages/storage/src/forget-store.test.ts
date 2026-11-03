@@ -740,6 +740,9 @@ test('restore ledger: a newer ledger entry applied to an older DB deletes the cl
       const copy = openWriteConnection(copyPath, { platform: 'macos' });
       try {
         assert.equal(readLedgerId(copy), null);
+        // 台帳の対象の記憶が既に消えていても（期限切れの削除など）、残った派生物は閉包で消える。
+        copy.prepare('DELETE FROM memory_sources WHERE memory_id = ?').run(M);
+        copy.prepare('DELETE FROM memories WHERE memory_id = ?').run(M);
         const applied = applyRestoreLedger(copy, {
           entries: exported.entries,
           ledger_hmac_key: Buffer.alloc(32, 0x42),

@@ -273,15 +273,19 @@ async function runKeySteps(
 ): Promise<boolean> {
   for (const step of plan.steps) {
     if (step.step === 'stage_key') {
-      if (step.purpose === 'data_key') return false;
       const material = input.unwrapped[step.purpose];
       if (material === undefined) return false;
-      const placed = await input.backupKeys.put(
-        step.purpose,
-        step.key_id,
-        material,
-      );
-      if (!placed.ok) return false;
+      if (step.purpose === 'data_key') {
+        const imported = await input.dataKeys.importDataKey(material);
+        if (!imported.ok) return false;
+      } else {
+        const placed = await input.backupKeys.put(
+          step.purpose,
+          step.key_id,
+          material,
+        );
+        if (!placed.ok) return false;
+      }
     } else if (step.step === 'verify_staged_keys') {
       for (const purpose of ['backup_file', 'ledger_hmac_key'] as const) {
         const wrap = plan.steps.find(

@@ -18,6 +18,7 @@ import {
   LEDGER_SUBKEY_INFO,
   buildLedgerEntry,
   computeForgetClosure,
+  operationContentPurgeable,
   planForget,
 } from '@buddy/domain';
 import type {
@@ -1323,26 +1324,32 @@ export function applyRestoreLedger(
       // 台帳に残っている対象から、今の系譜で閉包を作り直す。
       const graph = readForgetGraph(db);
       const targets = restoreLedgerTargets(entry, graph, sourceHmac);
-      const plans: ForgetPlan[] = [];
-      for (const target of targets) {
-        const planned = planForget({
-          target,
-          instruction_turn_id: null,
-          executing_operation_id: null,
-          graph,
-          sourceHmac,
-        });
-        if (!planned.ok) throw new ForgetRejection(planned.reasons);
-        plans.push(planned.plan);
-      }
       const nodes = new Map<string, ForgetNode>();
       const purge = new Set<string>();
       const retained = new Set<string>();
-      for (const plan of plans) {
-        for (const node of plan.deletions) nodes.set(nodeKey(node), node);
-        for (const id of plan.operation_contents.purge) purge.add(id);
-        for (const value of plan.operation_contents.retained)
-          retained.add(value.operation_id);
+      const states = new Map(
+        graph.operations.map((operation) => [
+          operation.operation_id,
+          operation.state,
+        ]),
+      );
+      // 台帳に残る対象が既に消えていても、系譜の辺から閉包を作れる（memory の存在確認に依存しない）。
+      const closure = computeForgetClosure(
+        graph,
+        targets.map((target) => ({
+          kind: target.source_kind,
+          id: target.source_id,
+        })),
+      );
+      for (const node of closure.doomed.values()) {
+        if (node.kind !== 'operation_content') {
+          nodes.set(nodeKey(node), node);
+          continue;
+        }
+        const state = states.get(node.id);
+        if (state !== undefined && operationContentPurgeable(state))
+          purge.add(node.id);
+        else retained.add(node.id);
       }
       const ordered = [...nodes.values()].sort(
         (a, b) =>

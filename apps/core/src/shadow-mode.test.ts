@@ -881,6 +881,53 @@ test('an input the primary refused to send (too long or blank) reserves nothing 
   }
 });
 
+test('losing the spare capacity while a reservation is pending sends nothing and releases the reservation', async () => {
+  const adapter = createFakeAdapter([response(wireJson())]);
+  const memory = memoryStore();
+  const state = { spare: true };
+  const released: string[] = [];
+  let finishAdmit = (): void => undefined;
+  const pending = new Promise<void>((resolve) => {
+    finishAdmit = resolve;
+  });
+  const events: ShadowEvent[] = [];
+  const shadow = createShadowRecorder({
+    settings: () => settingsFor(adapter),
+    store: memory.store,
+    slotAvailable: () => state.spare,
+    spent: () => Promise.resolve('0'),
+    guard: {
+      admit: async () => {
+        await pending;
+        return {
+          ok: true,
+          settle: () => Promise.resolve(),
+          release: () => {
+            released.push('released');
+            return Promise.resolve();
+          },
+        };
+      },
+    },
+    contract,
+    output_schema: outputSchema,
+    schema: schemaValidator,
+    now: () => NOW,
+    newId: () => randomUUID(),
+    onEvent: (event) => events.push(event),
+  });
+  shadow.observe(observation());
+  await new Promise((resolve) => setImmediate(resolve));
+  // 受付を待つ間に、本人の依頼（P0）が入って余力がなくなる。
+  state.spare = false;
+  finishAdmit();
+  await shadow.idle();
+  assert.equal(adapter.commands.length, 0);
+  assert.equal(memory.records.length, 0);
+  assert.deepEqual(released, ['released']);
+  assert.deepEqual(events, [{ kind: 'skipped', reasons: ['no_capacity'] }]);
+});
+
 test('a configured limit above 300 is clamped to 300', async () => {
   const adapter = createFakeAdapter([response(wireJson())]);
   const memory = memoryStore(300);

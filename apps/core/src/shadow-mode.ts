@@ -188,7 +188,7 @@ export function createShadowRecorder(
     settings: ShadowSettings,
     target: ShadowTarget,
     input: IntentJudgmentInput,
-  ): Promise<ShadowJudgment | null | 'disabled'> => {
+  ): Promise<ShadowJudgment | null | 'disabled' | 'busy'> => {
     const requestId = newId();
     // 待ちの間に OFF・campaign の入れ替え・対象の取り外しがあったら送らない（受付・送信のどちらの直前にも確かめる）。
     const enabled = (): boolean => {
@@ -205,7 +205,16 @@ export function createShadowRecorder(
         return false;
       }
     };
+    // 余力（P0/P1/P2 の仕事がないこと）も、受付の前と送る直前の両方で確かめる。
+    const spare = (): boolean => {
+      try {
+        return options.slotAvailable();
+      } catch {
+        return false;
+      }
+    };
     if (!enabled()) return 'disabled';
+    if (!spare()) return 'busy';
     let admitted: Awaited<ReturnType<ModelCallGuard['admit']>>;
     try {
       admitted = await options.guard.admit({
@@ -222,9 +231,9 @@ export function createShadowRecorder(
     }
     if (!admitted.ok) return null;
     // 受付を待つ間に無効化された比較は送らず、予約を解放する。
-    if (!enabled()) {
+    if (!enabled() || !spare()) {
       await admitted.release().catch(() => undefined);
-      return 'disabled';
+      return enabled() ? 'busy' : 'disabled';
     }
     const started = now();
     try {
@@ -309,17 +318,23 @@ export function createShadowRecorder(
     const judged = await Promise.all(
       settings.targets.map((target) => judgeTarget(settings, target, input)),
     );
-    if (judged.every((item) => item === null || item === 'disabled')) {
+    if (
+      judged.every(
+        (item) => item === null || item === 'disabled' || item === 'busy',
+      )
+    ) {
       emit({
         kind: 'skipped',
         reasons: judged.includes('disabled')
           ? ['shadow_disabled']
-          : ['shadow_budget'],
+          : judged.includes('busy')
+            ? ['no_capacity']
+            : ['shadow_budget'],
       });
       return;
     }
     const shadows = judged.map((item, index): ShadowJudgment =>
-      item === null || item === 'disabled'
+      item === null || item === 'disabled' || item === 'busy'
         ? judgmentOf(
             (settings.targets[index] as ShadowTarget).deployment_id,
             { kind: 'failed', failure: 'budget_denied', retryable: true },

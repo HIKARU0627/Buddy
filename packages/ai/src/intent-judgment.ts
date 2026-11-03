@@ -230,8 +230,13 @@ function isValidDateOrTime(text: string): boolean {
   return hour < 24 && minute < 60 && second < 60;
 }
 
-// 先頭の日付と時刻の部分の比較用の値（時差は見ない。同じ表記どうしの順序だけを見る）。
-const sortKey = (text: string): string => text.slice(0, 19);
+// 比較用の値。LocalDateTime は秒を省略できるので、省略した秒は 00 として正規化する（"T10:00" と "T10:00:00" は同じ）。
+// 日付だけの値と日時は精度が違い、日付だけを 00:00 や 23:59 に変換しない（設計 11 §5 D15）ので、同じ精度どうしだけ比べる。
+function orderKey(text: string): { precision: 'date' | 'time'; key: string } {
+  return text.length === 10
+    ? { precision: 'date', key: text }
+    : { precision: 'time', key: text.length === 16 ? `${text}:00` : text };
+}
 
 const REPLY_TEXT_INTENTS: ReadonlySet<IntentName> = new Set([
   'smalltalk',
@@ -271,10 +276,13 @@ export function intentSemanticErrors(
     start !== null &&
     end !== null &&
     isValidDateOrTime(start) &&
-    isValidDateOrTime(end) &&
-    sortKey(end) < sortKey(start)
-  )
-    reasons.push('end_before_start');
+    isValidDateOrTime(end)
+  ) {
+    const from = orderKey(start);
+    const to = orderKey(end);
+    if (from.precision === to.precision && to.key < from.key)
+      reasons.push('end_before_start');
+  }
   const targetWorkflow = wire.target_workflow_id;
   if (wire.relation === 'new' && targetWorkflow !== null)
     reasons.push('new_with_target_workflow');
@@ -313,6 +321,9 @@ export type IntentJudgment =
       readonly kind: 'unclear';
       readonly confidence: number;
       readonly clarify_question: string | null;
+      // 「それやめて」のように新しい意図を持たない取消・訂正は、意図が unclear でも関係と対象を保つ。
+      readonly relation: WireResponse['relation'];
+      readonly target_workflow_id: string | null;
     }
   // 判定に失敗した。unclear と混ぜない。
   | {
@@ -354,6 +365,8 @@ export function judgmentFromOutcome(outcome: ModelOutcome): IntentJudgment {
       kind: 'unclear',
       confidence: wire.confidence,
       clarify_question: wire.clarify_question,
+      relation: wire.relation,
+      target_workflow_id: wire.target_workflow_id,
     };
   return {
     kind: 'intent',

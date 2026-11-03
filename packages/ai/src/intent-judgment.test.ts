@@ -309,7 +309,36 @@ test('an unclear answer from the model is not a failure', async () => {
     kind: 'unclear',
     confidence: 0.2,
     clarify_question: 'どうしたいか教えてください',
+    relation: 'new',
+    target_workflow_id: null,
   });
+});
+
+test('a cancel or correction without its own intent keeps its relation and target', async () => {
+  for (const [relation, target] of [
+    ['cancel', WORKFLOW],
+    ['cancel', null],
+    ['correction', WORKFLOW],
+  ] as const) {
+    const value = wire({
+      intent: 'unclear',
+      args: { ...emptyArgs },
+      relation,
+      target_workflow_id: target,
+      confidence: 0.8,
+    });
+    const result = await judgeIntent(
+      createFakeAdapter([reply(JSON.stringify(value))]),
+      { request_id: 'r', profile, input, output_schema: {}, schema: validator },
+    );
+    assert.deepEqual(result.judgment, {
+      kind: 'unclear',
+      confidence: 0.8,
+      clarify_question: null,
+      relation,
+      target_workflow_id: target,
+    });
+  }
 });
 
 test('QA03: semantic errors are invalid_semantics', () => {
@@ -354,6 +383,17 @@ test('QA03: semantic errors are invalid_semantics', () => {
       'end_before_start',
     ],
     [
+      'end before start when only the start has seconds',
+      wire({
+        args: {
+          ...emptyArgs,
+          start: '2026-11-05T10:00:30',
+          end: '2026-11-05T10:00',
+        },
+      }),
+      'end_before_start',
+    ],
+    [
       'new relation with a target workflow',
       wire({ target_workflow_id: WORKFLOW }),
       'new_with_target_workflow',
@@ -383,6 +423,25 @@ test('QA03: semantic errors are invalid_semantics', () => {
 test('valid combinations pass the semantic check, including missing required args', () => {
   const ok: WireResponse[] = [
     wire(),
+    // 秒を省略した日時と秒つきの日時は同じ日時（どちらの表記順でも通る）。
+    wire({
+      args: {
+        ...emptyArgs,
+        start: '2026-11-05T10:00:00',
+        end: '2026-11-05T10:00',
+      },
+    }),
+    wire({
+      args: {
+        ...emptyArgs,
+        start: '2026-11-05T10:00',
+        end: '2026-11-05T10:00:00',
+      },
+    }),
+    // 日付だけの終了は、同じ日の日時の開始と比べない（日付を時刻に変換しない）。
+    wire({
+      args: { ...emptyArgs, start: '2026-11-05T10:00', end: '2026-11-05' },
+    }),
     wire({
       relation: 'correction',
       target_workflow_id: WORKFLOW,

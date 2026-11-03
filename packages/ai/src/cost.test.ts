@@ -190,6 +190,26 @@ test('rejects a category that the price version does not price', () => {
   });
 });
 
+test('rejects a price version with a category that usage cannot settle', () => {
+  const withTools: PriceVersionInput = {
+    ...priceVersion,
+    rates: [
+      ...priceVersion.rates,
+      {
+        category: 'tool_calls',
+        unit_price: '5',
+        per_quantity: '1',
+        minimum_quantity: '0',
+        max_quantity_per_request: '10',
+      },
+    ],
+  };
+  assert.deepEqual(usageCost(request({ priceVersion: withTools })), {
+    ok: false,
+    reasonCodes: ['unsettled_category:tool_calls'],
+  });
+});
+
 test('rejects an amount above the 18-digit limit', () => {
   const huge: PriceVersionInput = {
     ...priceVersion,

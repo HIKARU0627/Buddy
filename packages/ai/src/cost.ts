@@ -13,6 +13,12 @@ const AMOUNT_MAX = 999_999_999_999_999_999n;
 const INTEGER = /^(0|[1-9][0-9]*)$/u;
 const DECIMAL = /^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$/u;
 const MICRO = 1_000_000n;
+// usage（token）から確定できる料金区分。ツール・検索・会話の秒数は usage に実量がないので、この段階では精算しない。
+const TOKEN_CATEGORIES: readonly PriceCategory[] = [
+  'input_tokens',
+  'cached_input_tokens',
+  'output_tokens',
+];
 
 const integer = (text: string): bigint | null =>
   INTEGER.test(text) ? BigInt(text) : null;
@@ -81,6 +87,18 @@ export function usageCost(request: UsageCostRequest): UsageCostOutcome {
   const exchange = micros(priceVersion.conversion.rate);
   if (exchange === null || exchange === 0n)
     return { ok: false, reasonCodes: ['invalid_conversion'] };
+  // token 以外の料金区分（ツール・検索・会話の秒数）は実使用量を ModelUsage から確定できない。
+  // 少なく数えて精算しないよう、この段階では拒否する（U192）。
+  const unsettled = priceVersion.rates
+    .map((rate) => rate.category)
+    .filter((category) => !TOKEN_CATEGORIES.includes(category));
+  if (unsettled.length > 0)
+    return {
+      ok: false,
+      reasonCodes: unique(
+        unsettled.map((category) => `unsettled_category:${category}`),
+      ),
+    };
 
   const reasons: string[] = [];
   const lines: UsageCostLine[] = [];

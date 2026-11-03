@@ -83,3 +83,26 @@ test('reports an invalid price configuration instead of inventing an amount', ()
     { kind: 'invalid', reasonCodes: ['unpriced_category:output_tokens'] },
   );
 });
+
+test('does not settle when the price version has a category usage cannot price', () => {
+  const withTools: PriceVersionInput = {
+    ...priceVersion,
+    rates: [
+      ...priceVersion.rates,
+      {
+        category: 'tool_calls',
+        unit_price: '5',
+        per_quantity: '1',
+        minimum_quantity: '0',
+        max_quantity_per_request: '10',
+      },
+    ],
+  };
+  assert.deepEqual(
+    planUsageSettlement(usage, {
+      priceVersion: withTools,
+      budgetCurrency: 'XTS',
+    }),
+    { kind: 'invalid', reasonCodes: ['unsettled_category:tool_calls'] },
+  );
+});

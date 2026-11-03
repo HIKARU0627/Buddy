@@ -5,7 +5,7 @@
 // - 入力は実際に送る量を input_tokens にすべて入れる（cached に分けない。B07 の M の見積もりと同じ）。
 // - 有料の provider は price_version が要る。ローカルは B07 の門を通さない（price_version なし）。
 import type { ModelProfile } from '@buddy/contracts';
-import type { PriceCategory } from '@buddy/domain';
+import type { PriceCategory, PriceVersionInput } from '@buddy/domain';
 
 export type ReservationQuantities = Readonly<
   Partial<Record<PriceCategory, string>>
@@ -16,6 +16,8 @@ export interface ReservationInput {
   readonly input_tokens: number;
   // 1 回の要求で使うツールの呼び出し数（省略は 0）。
   readonly tool_calls?: number;
+  // 実行時の単価の版。ツールの料金区分があるかを確かめ、既知の 0 を渡すために使う。
+  readonly priceVersion?: PriceVersionInput;
 }
 
 export interface ReservationPlan {
@@ -32,26 +34,38 @@ const unique = (items: readonly string[]): string[] =>
 
 export function planReservation(input: ReservationInput): ReservationOutcome {
   const reasons: string[] = [];
+  const toolCalls = input.tool_calls ?? 0;
   if (!Number.isSafeInteger(input.input_tokens) || input.input_tokens < 0)
     reasons.push('invalid_input_tokens');
-  if (
-    input.tool_calls !== undefined &&
-    (!Number.isSafeInteger(input.tool_calls) || input.tool_calls < 0)
-  )
+  if (!Number.isSafeInteger(toolCalls) || toolCalls < 0)
     reasons.push('invalid_tool_calls');
   const outputLimit = input.profile.output_limit_tokens;
   const priceVersion = input.profile.price_version;
   if (outputLimit === null) reasons.push('output_limit_missing');
   if (priceVersion === null) reasons.push('price_version_missing');
-  if (outputLimit === null || priceVersion === null)
+  // 予約に使う単価の版は、profile に固定した版と一致しなければならない（区分の判定をすり替えない）。
+  if (
+    input.priceVersion !== undefined &&
+    priceVersion !== null &&
+    input.priceVersion.price_version !== priceVersion
+  )
+    reasons.push('price_version_mismatch');
+  // ツールの実使用量は ModelUsage から確定できないので、ツールを使う要求は精算できない（U192）。
+  // 予約だけして実費を少なく計上するより、この段階では受け付けない。
+  if (toolCalls > 0) reasons.push('tool_calls_not_settleable');
+  if (outputLimit === null || priceVersion === null || reasons.length > 0)
     return { ok: false, reasonCodes: unique(reasons) };
-  if (reasons.length > 0) return { ok: false, reasonCodes: unique(reasons) };
 
   const quantities: Partial<Record<PriceCategory, string>> = {
     input_tokens: String(input.input_tokens),
     output_tokens: String(outputLimit),
   };
-  if (input.tool_calls !== undefined && input.tool_calls > 0)
-    quantities.tool_calls = String(input.tool_calls);
+  // B07 は単価の版にある区分をすべて見て、省略した区分は max_quantity_per_request を使う。
+  // ツールを使わない要求でも、ツールの単価がある版では既知の 0 を渡して最大回数を予約しない。
+  if (
+    input.priceVersion?.rates.some((rate) => rate.category === 'tool_calls') ===
+    true
+  )
+    quantities.tool_calls = '0';
   return { ok: true, plan: { quantities, price_version: priceVersion } };
 }

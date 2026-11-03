@@ -44,6 +44,21 @@ const profile = syntheticProfile({
   verified_capabilities: ['json_schema_strict', 'reasoning:low'],
 });
 
+// ツールの料金区分を持つ版。予約の回帰（既知の 0 を渡す）に使う。
+const withTools: PriceVersionInput = {
+  ...priceVersion,
+  rates: [
+    ...priceVersion.rates,
+    {
+      category: 'tool_calls',
+      unit_price: '5',
+      per_quantity: '1',
+      minimum_quantity: '0',
+      max_quantity_per_request: '10',
+    },
+  ],
+};
+
 test('turns the input quantity and the profile output limit into reservation quantities', () => {
   assert.deepEqual(planReservation({ profile, input_tokens: 1000 }), {
     ok: true,
@@ -141,4 +156,84 @@ test('a designated p95 profile reserves the output p95 times 1.2', () => {
     priceVersion: 'price-xts-1',
     priceVersions: ['price-xts-1'],
   });
+});
+
+test('a known zero tool count prevents B07 from reserving the per-request maximum', () => {
+  // ツールの単価がある版で両方とも既知の 0 を渡す（省略と明示の 0 で同じ結果）。
+  const omitted = planReservation({
+    profile,
+    input_tokens: 1000,
+    priceVersion: withTools,
+  });
+  const explicit = planReservation({
+    profile,
+    input_tokens: 1000,
+    tool_calls: 0,
+    priceVersion: withTools,
+  });
+  assert.deepEqual(omitted, explicit);
+  assert.equal(omitted.ok, true);
+  if (!omitted.ok) return;
+  assert.deepEqual(omitted.plan.quantities, {
+    input_tokens: '1000',
+    output_tokens: '500',
+    tool_calls: '0',
+  });
+
+  // 0 を渡せば、tool_calls は最小課金 0 で M に足されない（30000）。
+  const withZero = computeReservation({
+    budgetCurrency: 'XTS',
+    priceKey: 'llm.xts',
+    priceVersions: [withTools],
+    verifiedPriceVersions: ['price-xts-1'],
+    billableFrom: '2030-10-01T00:00:00Z',
+    billableUntil: '2030-10-01T00:00:20Z',
+    quantities: omitted.plan.quantities,
+    profileId: 'intent-primary',
+    profileRevision: '1',
+    p95ProfileIds: [],
+    measurement: null,
+  });
+  assert.equal(withZero.ok, true);
+  if (withZero.ok) assert.equal(withZero.maxLiability, '30000');
+
+  // 省略すると、B07 は max_quantity_per_request の 10 回を使い、60 を余計に予約する。
+  const withoutZero = computeReservation({
+    budgetCurrency: 'XTS',
+    priceKey: 'llm.xts',
+    priceVersions: [withTools],
+    verifiedPriceVersions: ['price-xts-1'],
+    billableFrom: '2030-10-01T00:00:00Z',
+    billableUntil: '2030-10-01T00:00:20Z',
+    quantities: { input_tokens: '1000', output_tokens: '500' },
+    profileId: 'intent-primary',
+    profileRevision: '1',
+    p95ProfileIds: [],
+    measurement: null,
+  });
+  assert.equal(withoutZero.ok, true);
+  if (withoutZero.ok) assert.equal(withoutZero.maxLiability, '30060');
+});
+
+test('a request that uses tools is not reserved because its usage cannot be settled yet', () => {
+  assert.deepEqual(
+    planReservation({
+      profile,
+      input_tokens: 1000,
+      tool_calls: 1,
+      priceVersion: withTools,
+    }),
+    { ok: false, reasonCodes: ['tool_calls_not_settleable'] },
+  );
+});
+
+test('the price version used for the reservation must match the profile version', () => {
+  assert.deepEqual(
+    planReservation({
+      profile,
+      input_tokens: 1000,
+      priceVersion: { ...withTools, price_version: 'price-xts-2' },
+    }),
+    { ok: false, reasonCodes: ['price_version_mismatch'] },
+  );
 });

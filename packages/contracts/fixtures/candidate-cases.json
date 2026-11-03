@@ -124,25 +124,65 @@
         "excerpt": null,
         "body": "メールの本文全体"
       }
+    },
+    {
+      "id": "candidate-evidence-reversed-range",
+      "schema": "CandidateEvidence",
+      "valid": true,
+      "semantic_errors": ["quote_range"],
+      "value": {
+        "candidate_id": "00000000-0000-4000-8000-000000000601",
+        "request_entity_id": "00000000-0000-4000-8000-000000000611",
+        "request_revision": "2",
+        "source": {
+          "source_id": "synthetic-message-1",
+          "source_revision": "r1",
+          "quote": "参加可否をご返信ください",
+          "start": 5,
+          "end": 2
+        },
+        "unread": true,
+        "excerpt": "参加可否をご返信ください。期限は10月7日です。"
+      }
     }
   ],
   "transitions": [
-    { "id": "new-open", "from": "new", "event": "open", "to": "seen" },
-    { "id": "new-act", "from": "new", "event": "act", "to": "acted" },
+    {
+      "id": "new-open",
+      "from": "new",
+      "event": "open",
+      "to": "seen"
+    },
+    {
+      "id": "new-act",
+      "from": "new",
+      "event": "act",
+      "to": "acted"
+    },
     {
       "id": "new-dismiss",
       "from": "new",
       "event": "dismiss",
       "to": "dismissed"
     },
-    { "id": "new-snooze", "from": "new", "event": "snooze", "to": "snoozed" },
+    {
+      "id": "new-snooze",
+      "from": "new",
+      "event": "snooze",
+      "to": "snoozed"
+    },
     {
       "id": "new-resolve",
       "from": "new",
       "event": "resolve",
       "to": "resolved"
     },
-    { "id": "seen-act", "from": "seen", "event": "act", "to": "acted" },
+    {
+      "id": "seen-act",
+      "from": "seen",
+      "event": "act",
+      "to": "acted"
+    },
     {
       "id": "seen-resolve",
       "from": "seen",
@@ -161,7 +201,12 @@
       "event": "dismiss",
       "to": null
     },
-    { "id": "snoozed-open", "from": "snoozed", "event": "open", "to": "seen" },
+    {
+      "id": "snoozed-open",
+      "from": "snoozed",
+      "event": "open",
+      "to": "seen"
+    },
     {
       "id": "dismissed-open-invalid",
       "from": "dismissed",

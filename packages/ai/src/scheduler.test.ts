@@ -222,6 +222,75 @@ test('local generation is limited to one at a time', () => {
   ]);
 });
 
+test('a local provider is limited to one generation even for text jobs', () => {
+  const localIntent = syntheticProfile({
+    profile_id: 'local-intent',
+    role: 'intent',
+    provider: 'local',
+    max_concurrency: 2,
+    verified_capabilities: ['json_schema_strict', 'reasoning:low'],
+  });
+  const localResearch = syntheticProfile({
+    profile_id: 'local-research',
+    role: 'background_text',
+    provider: 'local',
+    reasoning: 'medium',
+    max_concurrency: 2,
+    verified_capabilities: ['json_schema_strict', 'reasoning:medium'],
+  });
+  const localConfig: ModelRoutingConfig = {
+    profiles: [localIntent, localResearch],
+    routes: {
+      intent_judgment: 'local-intent',
+      research_summary: 'local-research',
+    },
+    verified_price_versions: ['price-2026-01'],
+  };
+  assert.deepEqual(
+    planModelCalls(localConfig, { running: [] }, [
+      { task: 'intent_judgment' },
+      { task: 'research_summary' },
+    ]),
+    [
+      { admit: true, lane: 'A', priority: 'P0' },
+      { admit: false, action: 'wait', reasons: ['local_limit'] },
+    ],
+  );
+  // 実行中のローカルのテキスト生成も数える。
+  assert.deepEqual(
+    planModelCalls(
+      localConfig,
+      {
+        running: [
+          { task: 'research_summary', provider: 'local', shadow: false },
+        ],
+      },
+      [{ task: 'intent_judgment' }],
+    ),
+    [{ admit: false, action: 'wait', reasons: ['local_limit'] }],
+  );
+});
+
+test('a disabled shadow with no route is skipped instead of waiting', () => {
+  const noShadowRoute: ModelRoutingConfig = {
+    ...config,
+    routes: { ...config.routes, intent_shadow: null },
+  };
+  assert.deepEqual(
+    planModelCalls(noShadowRoute, { running: [] }, [{ task: 'intent_shadow' }]),
+    [{ admit: false, action: 'skip', reasons: ['shadow_disabled'] }],
+  );
+  // 有効なのに経路がない設定は、設定の誤りとして待機にする。
+  assert.deepEqual(
+    planModelCalls(
+      noShadowRoute,
+      { running: [], shadow_enabled: true, budget_available: true },
+      [{ task: 'intent_shadow' }],
+    ),
+    [{ admit: false, action: 'wait', reasons: ['route_missing'] }],
+  );
+});
+
 test('a provider concurrency limit of one renders the second lane as wait', () => {
   const singleIntent = syntheticProfile({
     profile_id: 'single-intent',

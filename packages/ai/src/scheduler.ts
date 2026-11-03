@@ -82,9 +82,7 @@ export function planModelCalls(
   let laneB =
     runningWork.filter((call) => TASK_RULES[call.task].lane === 'B').length +
     runningShadow.length;
-  let local = state.running.filter(
-    (call) => TASK_RULES[call.task].lane === 'local',
-  ).length;
+  let local = state.running.filter((call) => call.provider === 'local').length;
   let text = laneA + laneB;
   const providers = new Map<string, number>();
   for (const call of state.running)
@@ -115,6 +113,23 @@ export function planModelCalls(
       continue;
     }
     const shadow = rule.shadow;
+    // 既定 OFF・予算なしの影モードは、経路の有無より先に skip する（経路が null でも待機にしない）。
+    if (shadow && state.shadow_enabled !== true) {
+      decisions[index] = {
+        admit: false,
+        action: 'skip',
+        reasons: ['shadow_disabled'],
+      };
+      continue;
+    }
+    if (shadow && state.budget_available !== true) {
+      decisions[index] = {
+        admit: false,
+        action: 'skip',
+        reasons: ['shadow_budget'],
+      };
+      continue;
+    }
     const route = resolveModelRoute(config, request.task);
     if (!route.ok) {
       decisions[index] = {
@@ -125,26 +140,20 @@ export function planModelCalls(
       continue;
     }
     const provider = route.profile.provider;
+    const isLocal = provider === 'local';
+    // ローカル生成は、ローカル ASR だけでなく、ローカル provider を使うテキストの仕事も同時 1 本まで。
+    if (isLocal && local >= LOCAL_GENERATION_LIMIT) {
+      decisions[index] = {
+        admit: false,
+        action: 'wait',
+        reasons: ['local_limit'],
+      };
+      continue;
+    }
     const providerLimit = limits[provider] ?? route.profile.max_concurrency;
     const providerCount = providers.get(provider) ?? 0;
 
     if (shadow) {
-      if (state.shadow_enabled !== true) {
-        decisions[index] = {
-          admit: false,
-          action: 'skip',
-          reasons: ['shadow_disabled'],
-        };
-        continue;
-      }
-      if (state.budget_available !== true) {
-        decisions[index] = {
-          admit: false,
-          action: 'skip',
-          reasons: ['shadow_budget'],
-        };
-        continue;
-      }
       // 本人の依頼・自発の仕事がある間は、影モードのために枠を空けない（待たせない・skip）。
       const pendingNonShadow = requests.some(
         (entry, entryIndex) =>
@@ -176,6 +185,7 @@ export function planModelCalls(
       }
       laneB += 1;
       text += 1;
+      if (isLocal) local += 1;
       providers.set(provider, providerCount + 1);
       decisions[index] = { admit: true, lane: 'B', priority: rule.priority };
       continue;
@@ -245,6 +255,7 @@ export function planModelCalls(
     if (lane === 'A') laneA += 1;
     else laneB += 1;
     text += 1;
+    if (isLocal) local += 1;
     providers.set(provider, providerCount + 1);
     admittedNonShadow = true;
     decisions[index] = { admit: true, lane, priority: rule.priority };

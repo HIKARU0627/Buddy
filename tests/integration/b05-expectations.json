@@ -843,6 +843,228 @@
           "voice_commentary": 0
         }
       }
+    },
+    {
+      "id": "QA41-live-input-four-operations-need-full-text",
+      "title": "QA41: Live の文字起こし（方式 C）から承認待ちの操作になるのは、自動実行を許す方針での 4 操作（用事の登録など）の完全な観測だけで、実行ではない。既定の方針は全文の確定を案内して操作を作らない。記憶の保存・メール送信・削除・予定の変更・忘却・表示の移動は、自動実行を許す方針でも操作を作らず、端末の音声レンダラーには何も届かない",
+      "faults": [],
+      "expected": {
+        "complete_observation": {
+          "commentary": [["画面で確認してください。"]],
+          "operations": [
+            {
+              "kind": "task.create",
+              "effect_route": "local_command",
+              "state": "awaiting_approval"
+            }
+          ],
+          "workflows": ["ready"],
+          "model_calls": 1,
+          "renderer_commands": [],
+          "live_closure": "open"
+        },
+        "default_policy": {
+          "commentary": [
+            [
+              "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+            ]
+          ],
+          "operations": [],
+          "workflows": ["clarifying"],
+          "model_calls": 1,
+          "renderer_commands": [],
+          "live_closure": "open"
+        },
+        "never_without_full_text": {
+          "commentary": [
+            [
+              "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+            ],
+            [
+              "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+            ],
+            [
+              "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+            ],
+            [
+              "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+            ],
+            [
+              "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+            ],
+            [
+              "この依頼はまだ実行していません。画面から全文を入力し直してください。"
+            ]
+          ],
+          "operations": [],
+          "workflows": [],
+          "snapshots": [
+            {
+              "origin": "live_fragment",
+              "state": "blocked",
+              "seal_reason": null,
+              "input_evidence": "unverified",
+              "policy_version": null
+            },
+            {
+              "origin": "live_fragment",
+              "state": "blocked",
+              "seal_reason": null,
+              "input_evidence": "unverified",
+              "policy_version": null
+            },
+            {
+              "origin": "live_fragment",
+              "state": "blocked",
+              "seal_reason": null,
+              "input_evidence": "unverified",
+              "policy_version": null
+            },
+            {
+              "origin": "live_fragment",
+              "state": "blocked",
+              "seal_reason": null,
+              "input_evidence": "unverified",
+              "policy_version": null
+            },
+            {
+              "origin": "live_fragment",
+              "state": "blocked",
+              "seal_reason": null,
+              "input_evidence": "unverified",
+              "policy_version": null
+            },
+            {
+              "origin": "live_fragment",
+              "state": "blocked",
+              "seal_reason": null,
+              "input_evidence": "unverified",
+              "policy_version": null
+            }
+          ],
+          "memories_saved": 0,
+          "renderer_commands": []
+        }
+      }
+    },
+    {
+      "id": "X51-input-is-confirmed-before-it-is-interpreted",
+      "title": "X51: 発話の終了候補がなければ時間が経っても解釈しない。終了候補の後に最後の断片から 300 ms 変化がなければ進み（299 ms では進まず、400 ms では解釈を始める）、終了候補の後に届いた断片も解釈する文に含める。断片の欠落・連番なし・複数の対象・時刻の対応不明は変更を進めずに聞き返す",
+      "faults": [],
+      "expected": {
+        "waits": {
+          "before_end_candidate": {
+            "model_calls": 0,
+            "pending": 1
+          },
+          "after_end_candidate": {
+            "model_calls": ["「牛乳を買う」を用事に登録して"],
+            "operations": 1
+          }
+        },
+        "late_fragment_restarts_300ms": {
+          "model_calls_at_299ms": 0,
+          "model_calls_at_400ms": 1,
+          "model_calls": ["「牛乳を買う」を用事に登録して"],
+          "operations": 1
+        },
+        "unconfirmed_input": {
+          "skipped_fragment_number": {
+            "commentary": [
+              ["うまく聞き取れませんでした。もう一度言ってください。"]
+            ],
+            "operations": [],
+            "workflows": [],
+            "renderer_commands": []
+          },
+          "fragment_without_number": {
+            "commentary": [
+              ["うまく聞き取れませんでした。もう一度言ってください。"]
+            ],
+            "operations": [],
+            "workflows": [],
+            "renderer_commands": []
+          },
+          "two_utterances_before_one_delegation": {
+            "commentary": [
+              ["うまく聞き取れませんでした。もう一度言ってください。"]
+            ],
+            "operations": [],
+            "workflows": [],
+            "renderer_commands": []
+          },
+          "unknown_offset": {
+            "commentary": [
+              ["うまく聞き取れませんでした。もう一度言ってください。"]
+            ],
+            "operations": [],
+            "workflows": [],
+            "renderer_commands": []
+          }
+        }
+      }
+    },
+    {
+      "id": "X27-held-change-is-superseded-or-cancelled",
+      "title": "X27: 新しい本人の発話の開始で、送出前の変更を一時保留する（保留の間は操作も発言も声もない）。保留中の変更に決まった訂正は古い変更に置き換わり（古い変更は作られず結果も読まれない）、取消は送出前に止めて取り消したと答える",
+      "faults": [],
+      "expected": {
+        "correction": {
+          "while_held": {
+            "operations": 0,
+            "turns": 0,
+            "commentary": 0
+          },
+          "commentary": [["画面で確認してください。"]],
+          "operations": [
+            {
+              "kind": "task.create",
+              "effect_route": "local_command",
+              "state": "awaiting_approval"
+            }
+          ],
+          "operation_intents": [
+            {
+              "kind": "task.create",
+              "title": "卵を買う"
+            }
+          ],
+          "snapshots": [
+            {
+              "origin": "live_fragment",
+              "state": "sealed"
+            }
+          ],
+          "workflows": ["ready"],
+          "turns": [
+            {
+              "input_kind": "voice_live",
+              "role": "user"
+            }
+          ],
+          "screen_results": 0,
+          "held_after": 0
+        },
+        "cancel": {
+          "while_held": {
+            "operations": 0,
+            "turns": 0,
+            "commentary": 0
+          },
+          "commentary": [["実行前の依頼を取り消しました。"]],
+          "operations": [],
+          "operation_intents": [],
+          "snapshots": [
+            {
+              "origin": "live_fragment",
+              "state": "blocked"
+            }
+          ],
+          "workflows": [],
+          "screen_results": 0,
+          "held_after": 0
+        }
+      }
     }
   ]
 }

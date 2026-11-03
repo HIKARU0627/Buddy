@@ -358,6 +358,13 @@ export async function withWorld(options, body) {
             );
             await world.advance(stepMs);
             elapsed += stepMs;
+            // 条件がまだなら、中枢の保存（DB worker）など実時間で進む処理に追いつく機会を与えてから、時計を進める。
+            // 実時間の待ちは短く区切り、条件が満たされたらすぐ抜ける（模擬の時間は進めない）。負荷の高い実行機でも、模擬の時間だけが
+            // 先に進んで上限に達しないようにする。
+            for (let turn = 0; turn < 20 && !done(); turn += 1) {
+              await rig.wait();
+              await new Promise((resolve) => setTimeout(resolve, 2));
+            }
           }
           return elapsed;
         },

@@ -1323,7 +1323,13 @@ export function applyRestoreLedger(
 
       // 台帳に残っている対象から、今の系譜で閉包を作り直す。
       const graph = readForgetGraph(db);
-      const targets = restoreLedgerTargets(entry, graph, sourceHmac);
+      const sourceIds = db
+        .prepare(
+          'SELECT DISTINCT remote_id FROM source_items ORDER BY remote_id',
+        )
+        .pluck()
+        .all() as string[];
+      const targets = restoreLedgerTargets(entry, graph, sourceHmac, sourceIds);
       const nodes = new Map<string, ForgetNode>();
       const purge = new Set<string>();
       const retained = new Set<string>();
@@ -1431,9 +1437,10 @@ function restoreLedgerTargets(
   entry: ForgetLedgerEntryDraft,
   graph: ForgetGraph,
   sourceHmac: (source: MemorySource) => string,
+  storedSourceIds: readonly string[],
 ): MemorySource[] {
   const targets = new Map<string, MemorySource>();
-  const sourceItems = new Set<string>();
+  const sourceItems = new Set<string>(storedSourceIds);
   for (const edge of graph.edges) {
     if (edge.source.kind === 'source_item') sourceItems.add(edge.source.id);
     if (edge.artifact.kind === 'source_item') sourceItems.add(edge.artifact.id);

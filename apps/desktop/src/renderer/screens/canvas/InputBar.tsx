@@ -44,11 +44,15 @@ export function InputBar({
   // 聞き返しの文（UI-08）。広がった領域に出す。説明文ではなく、その回の質問そのもの。
   readonly clarification?: string | null;
 }) {
+  // IME・OS の音声入力（AquaVoice・macOS の音声入力・Win+H）の変換中は送らない。composition の間は form の
+  // submit も通さず、確定してから Enter で送る。
+  const composingRef = useRef(false);
   // Enter で送る（IME の変換の確定は除く）。TextArea の Enter は改行なので、form の submit に頼らずここで送る。
   const sendOnEnter = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Enter' || event.shiftKey) return;
     const native = event.nativeEvent;
-    if (native.isComposing || native.keyCode === 229) return;
+    if (composingRef.current || native.isComposing || native.keyCode === 229)
+      return;
     event.preventDefault();
     onSubmit();
   };
@@ -65,7 +69,13 @@ export function InputBar({
       className="flex h-screen w-screen flex-col gap-2 border border-separator bg-surface p-2 text-foreground"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        if (!composingRef.current) onSubmit();
+      }}
+      onCompositionStart={() => {
+        composingRef.current = true;
+      }}
+      onCompositionEnd={() => {
+        composingRef.current = false;
       }}
     >
       {expanded && enabled && clarification !== null ? (

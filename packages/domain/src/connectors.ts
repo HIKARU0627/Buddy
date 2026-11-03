@@ -16,25 +16,69 @@ export type OperationKind = (typeof OPERATION_KINDS)[number];
 // conditional_request: 元サービスが版の一致を条件にした要求で、前提の崩れを原子的に拒否できる。
 // recheck_before_dispatch: 送出の直前に Core が対象を読み直す。原子的ではないので、読み直しと送出の間の変更は照合で扱う。
 // not_required: 外部の対象の前提がない（Buddy 内の用事など）。
-export type PreconditionMethod =
-  'conditional_request' | 'recheck_before_dispatch' | 'not_required';
+export const PRECONDITION_METHODS = [
+  'conditional_request',
+  'recheck_before_dispatch',
+  'not_required',
+] as const;
+export type PreconditionMethod = (typeof PRECONDITION_METHODS)[number];
 
 // 結果不明のときに外部の状態を探す方法。
 // by_remote_id: 対象 ID で読み、変更が適用済みかを見る。
 // by_operation_marker: 作成物に付けた操作の目印（operationMarker）でアカウント内を探す。
 // none: 外部を探さない（LocalCommand は transaction の結果が正本）。
-export type LookupMethod = 'by_remote_id' | 'by_operation_marker' | 'none';
+export const LOOKUP_METHODS = [
+  'by_remote_id',
+  'by_operation_marker',
+  'none',
+] as const;
+export type LookupMethod = (typeof LOOKUP_METHODS)[number];
 
 // 照合の範囲（契約の確定 intent の effects.reconcile_scope と同じ値）。
-export type ReconcileScope =
-  'exact_target' | 'operation_marker' | 'local_transaction';
+export const RECONCILE_SCOPES = [
+  'exact_target',
+  'operation_marker',
+  'local_transaction',
+] as const;
+export type ReconcileScope = (typeof RECONCILE_SCOPES)[number];
 
 // 操作の工程（operation_steps.step_kind）。2 工程の操作（下書き → 送信）は D3 で仕組みだけを作り、X10 の合格は B14。
-export type OperationStepKind =
-  'apply_labels' | 'create_draft' | 'send' | 'create_task';
+export const OPERATION_STEP_KINDS = [
+  'apply_labels',
+  'create_draft',
+  'send',
+  'create_task',
+] as const;
+export type OperationStepKind = (typeof OPERATION_STEP_KINDS)[number];
+
 // connector が読める対象（Read。承認なし）。照合の lookup もこの読み取りで行う。
-export type ConnectorReadKind =
-  'permission' | 'mail.message' | 'mail.draft' | 'calendar.events';
+export const CONNECTOR_READ_KINDS = [
+  'permission',
+  'mail.message',
+  'mail.draft',
+  'calendar.events',
+] as const;
+export type ConnectorReadKind = (typeof CONNECTOR_READ_KINDS)[number];
+
+// 参照と書込みの再試行の初期値（設計 04 再試行の初期値、ADR 0071）。
+// 測定済みの最適値ではない。書込みの自動再送は 0 のままにする。
+export interface ConnectorRetryPolicy {
+  readonly read_timeout_ms: number;
+  readonly read_max_attempts: number;
+  readonly read_base_delay_ms: readonly number[];
+  readonly read_max_total_wait_ms: number;
+  readonly read_failure_threshold: number;
+  readonly write_automatic_retries: 0;
+}
+
+export const CONNECTOR_RETRY_POLICY: ConnectorRetryPolicy = {
+  read_timeout_ms: 15_000,
+  read_max_attempts: 3,
+  read_base_delay_ms: [2_000, 10_000],
+  read_max_total_wait_ms: 120_000,
+  read_failure_threshold: 3,
+  write_automatic_retries: 0,
+};
 
 export interface OperationKindRule {
   readonly route: OperationRoute;

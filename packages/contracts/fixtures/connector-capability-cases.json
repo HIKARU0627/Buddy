@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "description": "B08-01 の connector の能力と再試行の契約（ADR 0027・0071）。QA18・QA19・QA22・QA36・QA44 の前提（読み取りの範囲・書込みの再送 0 回・照合の範囲・工程）を固定する。模擬だけ。",
+  "retry_policy": {
+    "read_timeout_ms": 15000,
+    "read_max_attempts": 3,
+    "read_base_delay_ms": [2000, 10000],
+    "read_max_total_wait_ms": 120000,
+    "read_failure_threshold": 3,
+    "write_automatic_retries": 0
+  },
+  "cases": [
+    {
+      "id": "google-read-only",
+      "schema": "ConnectorCapability",
+      "valid": true,
+      "value": {
+        "provider": "google",
+        "reads": [
+          { "kind": "permission", "effect_kind": "Read" },
+          { "kind": "mail.message", "effect_kind": "Read" },
+          { "kind": "mail.draft", "effect_kind": "Read" },
+          { "kind": "calendar.events", "effect_kind": "Read" }
+        ],
+        "writes": []
+      }
+    },
+    {
+      "id": "google-label-write",
+      "schema": "ConnectorCapability",
+      "valid": true,
+      "value": {
+        "provider": "google",
+        "reads": [
+          { "kind": "permission", "effect_kind": "Read" },
+          { "kind": "mail.message", "effect_kind": "Read" }
+        ],
+        "writes": [
+          {
+            "action_kind": "mail.labels.change",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "conditional_request",
+            "lookup": "by_remote_id",
+            "reconcile_scope": "exact_target",
+            "steps": ["apply_labels"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "microsoft-draft-write",
+      "schema": "ConnectorCapability",
+      "valid": true,
+      "value": {
+        "provider": "microsoft",
+        "reads": [
+          { "kind": "permission", "effect_kind": "Read" },
+          { "kind": "mail.message", "effect_kind": "Read" },
+          { "kind": "mail.draft", "effect_kind": "Read" }
+        ],
+        "writes": [
+          {
+            "action_kind": "mail.draft.create",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "recheck_before_dispatch",
+            "lookup": "by_operation_marker",
+            "reconcile_scope": "operation_marker",
+            "steps": ["create_draft"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "write-automatic-retry-forbidden",
+      "schema": "ConnectorCapability",
+      "valid": false,
+      "value": {
+        "provider": "google",
+        "reads": [{ "kind": "permission", "effect_kind": "Read" }],
+        "writes": [
+          {
+            "action_kind": "mail.labels.change",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 1,
+            "precondition": "conditional_request",
+            "lookup": "by_remote_id",
+            "reconcile_scope": "exact_target",
+            "steps": ["apply_labels"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "write-effect-kind-read",
+      "schema": "ConnectorCapability",
+      "valid": false,
+      "value": {
+        "provider": "google",
+        "reads": [{ "kind": "permission", "effect_kind": "Read" }],
+        "writes": [
+          {
+            "action_kind": "mail.labels.change",
+            "effect_kind": "Read",
+            "automatic_http_retries": 0,
+            "precondition": "conditional_request",
+            "lookup": "by_remote_id",
+            "reconcile_scope": "exact_target",
+            "steps": ["apply_labels"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "unknown-read-kind",
+      "schema": "ConnectorCapability",
+      "valid": false,
+      "value": {
+        "provider": "google",
+        "reads": [{ "kind": "calendar.write", "effect_kind": "Read" }],
+        "writes": []
+      }
+    },
+    {
+      "id": "unknown-precondition",
+      "schema": "ConnectorCapability",
+      "valid": false,
+      "value": {
+        "provider": "google",
+        "reads": [{ "kind": "permission", "effect_kind": "Read" }],
+        "writes": [
+          {
+            "action_kind": "mail.labels.change",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "retry_after",
+            "lookup": "by_remote_id",
+            "reconcile_scope": "exact_target",
+            "steps": ["apply_labels"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "missing-steps",
+      "schema": "ConnectorCapability",
+      "valid": false,
+      "value": {
+        "provider": "google",
+        "reads": [{ "kind": "permission", "effect_kind": "Read" }],
+        "writes": [
+          {
+            "action_kind": "mail.labels.change",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "conditional_request",
+            "lookup": "by_remote_id",
+            "reconcile_scope": "exact_target"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sync-state",
+      "schema": "SyncStateResponse",
+      "valid": true,
+      "value": {
+        "connection_id": "00000000-0000-4000-8000-000000000401",
+        "provider": "google",
+        "scope_revision": "1",
+        "state": {
+          "scope_id": "00000000-0000-4000-8000-000000000402",
+          "scope_revision": "1",
+          "active_scan_id": null,
+          "active_generation": "0",
+          "committed_watermark": null,
+          "provider_cursor": null,
+          "executor_generation": "1",
+          "last_incremental_completed_at": null,
+          "last_full_reconciled_at": null,
+          "pending_incremental": false,
+          "pending_full": false,
+          "analysis_plan_complete_generation": null
+        },
+        "active_batch": null,
+        "retry": {
+          "read_timeout_ms": 15000,
+          "read_max_attempts": 3,
+          "read_base_delay_ms": [2000, 10000],
+          "read_max_total_wait_ms": 120000,
+          "read_failure_threshold": 3,
+          "write_automatic_retries": 0
+        },
+        "last_attempt_at": null
+      }
+    },
+    {
+      "id": "sync-state-token",
+      "schema": "SyncStateResponse",
+      "valid": false,
+      "value": {
+        "connection_id": "00000000-0000-4000-8000-000000000401",
+        "provider": "google",
+        "scope_revision": "1",
+        "state": {
+          "scope_id": "00000000-0000-4000-8000-000000000402",
+          "scope_revision": "1",
+          "active_scan_id": null,
+          "active_generation": "0",
+          "committed_watermark": null,
+          "provider_cursor": null,
+          "executor_generation": "1",
+          "last_incremental_completed_at": null,
+          "last_full_reconciled_at": null,
+          "pending_incremental": false,
+          "pending_full": false,
+          "analysis_plan_complete_generation": null
+        },
+        "active_batch": null,
+        "retry": {
+          "read_timeout_ms": 15000,
+          "read_max_attempts": 3,
+          "read_base_delay_ms": [2000, 10000],
+          "read_max_total_wait_ms": 120000,
+          "read_failure_threshold": 3,
+          "write_automatic_retries": 0
+        },
+        "last_attempt_at": null,
+        "access_token": "synthetic-token"
+      }
+    }
+  ],
+  "domain_cases": [
+    {
+      "id": "domain-label-write-ok",
+      "expected_errors": [],
+      "capability": {
+        "provider": "google",
+        "reads": [
+          { "kind": "permission", "effect_kind": "Read" },
+          { "kind": "mail.message", "effect_kind": "Read" }
+        ],
+        "writes": [
+          {
+            "action_kind": "mail.labels.change",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "conditional_request",
+            "lookup": "by_remote_id",
+            "reconcile_scope": "exact_target",
+            "steps": ["apply_labels"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "domain-duplicate-write",
+      "expected_errors": ["mail.labels.change:duplicate_write"],
+      "capability": {
+        "provider": "google",
+        "reads": [
+          { "kind": "permission", "effect_kind": "Read" },
+          { "kind": "mail.message", "effect_kind": "Read" }
+        ],
+        "writes": [
+          {
+            "action_kind": "mail.labels.change",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "conditional_request",
+            "lookup": "by_remote_id",
+            "reconcile_scope": "exact_target",
+            "steps": ["apply_labels"]
+          },
+          {
+            "action_kind": "mail.labels.change",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "conditional_request",
+            "lookup": "by_remote_id",
+            "reconcile_scope": "exact_target",
+            "steps": ["apply_labels"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "domain-local-command-with-connector",
+      "expected_errors": ["task.create:local_command_without_connector"],
+      "capability": {
+        "provider": "google",
+        "reads": [],
+        "writes": [
+          {
+            "action_kind": "task.create",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "not_required",
+            "lookup": "none",
+            "reconcile_scope": "local_transaction",
+            "steps": ["create_task"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "domain-lookup-read-missing",
+      "expected_errors": ["mail.draft.create:lookup_read_missing"],
+      "capability": {
+        "provider": "google",
+        "reads": [
+          { "kind": "permission", "effect_kind": "Read" },
+          { "kind": "mail.message", "effect_kind": "Read" }
+        ],
+        "writes": [
+          {
+            "action_kind": "mail.draft.create",
+            "effect_kind": "RemoteMutation",
+            "automatic_http_retries": 0,
+            "precondition": "conditional_request",
+            "lookup": "by_operation_marker",
+            "reconcile_scope": "operation_marker",
+            "steps": ["create_draft"]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -269,13 +269,13 @@ export function checkCalendarEvent(
   if (validateFetchScope(scope).length > 0) return reject('scope_invalid');
   if (!scope.calendarIds.includes(event.calendarId))
     return reject('calendar_not_selected');
-  const window = calendarWindow(scope, now);
+  const range = calendarWindow(scope, now);
   const start = parseUtc(event.startsAt);
   const end = parseUtc(event.endsAt);
-  if (window === null || start === null || end === null || end < start)
+  if (range === null || start === null || end === null || end < start)
     return reject('time_invalid');
-  if (end <= Date.parse(window.start)) return reject('before_window');
-  if (start >= Date.parse(window.end)) return reject('after_window');
+  if (end <= Date.parse(range.start)) return reject('before_window');
+  if (start >= Date.parse(range.end)) return reject('after_window');
   return ok;
 }
 
@@ -294,11 +294,11 @@ export function checkMailMessage(
   if (validateFetchScope(scope).length > 0) return reject('scope_invalid');
   if (!message.containerIds.some((id) => scope.mailContainerIds.includes(id)))
     return reject('container_not_selected');
-  const window = mailWindow(scope, now);
+  const range = mailWindow(scope, now);
   const received = parseUtc(message.receivedAt);
-  if (window === null || received === null) return reject('time_invalid');
-  if (received < Date.parse(window.start)) return reject('before_window');
-  if (received > Date.parse(window.end)) return reject('after_window');
+  if (range === null || received === null) return reject('time_invalid');
+  if (received < Date.parse(range.start)) return reject('before_window');
+  if (received > Date.parse(range.end)) return reject('after_window');
   return ok;
 }
 

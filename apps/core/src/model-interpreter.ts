@@ -203,7 +203,7 @@ export function createModelInterpreter(
         result.judgment.kind === 'failed' ? result.judgment.failure : null,
         result.outcome.usage,
       );
-      return replyOf(result);
+      return { ...replyOf(result), elapsed_ms: Math.max(0, now() - started) };
     },
   };
 }

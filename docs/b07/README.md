@@ -128,9 +128,9 @@ pnpm exec prettier --write tests/integration/evidence-b07-simulated.json
 
 証拠には POSIX のファイル権限の観測（他人が書ける設定の拒否。`posix_only.writable_by_others`）が含まれ、Windows では期待値から外れて作れません。Windows で作業するときは、macOS の CI に証拠を作らせ、artifact から取り込みます（本人の決定 2026-10-31、Issue #170。検査の分離は ADR 0085）。
 
-1. 現在の通常の PR CI は証拠を保存しません。証拠が必要なときは、次の手順で `Simulated evidence (macOS)` を実行します。PR-3 で macOS の既存 shard 2（B07）が証拠を生成して artifact に残す予定です（追加の macOS job は作りません）。
-2. GitHub の Actions で `Simulated evidence (macOS)` を選び、`Run workflow` のブランチにそのブランチを指定して実行します。CLI では `gh workflow run evidence-macos.yml --ref <ブランチ>` です。workflow は `macos-latest` で `pnpm install --frozen-lockfile` と `pnpm run build` のあと、`BUDDY_B04_EVIDENCE_PATH`・`BUDDY_B07_EVIDENCE_PATH` を指定して B04・B07 の実行器を走らせ、prettier で整えた 2 つの JSON を `simulated-evidence-<sha>` という artifact にまとめます。権限は `contents: read` だけで、秘密は使いません。
-3. 実行の artifact から JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD であることを確認します。
+1. 通常の PR の CI の macOS の shard 2（B07）が、`BUDDY_B07_EVIDENCE_PATH` を実行用の一時ディレクトリへ向けて実行器を走らせ、`simulated-evidence-b07-<sha>` という artifact にまとめます。追加の macOS job は作りません。権限は `contents: read` だけで、秘密は使いません。
+2. 工程の完了時など、明示的に作り直すときは、GitHub の Actions で `Simulated evidence (macOS)` を選び、`Run workflow` のブランチにそのブランチを指定して実行します。CLI では `gh workflow run evidence-macos.yml --ref <ブランチ>` です。workflow は `macos-latest` で `pnpm install --frozen-lockfile` と `pnpm run build` のあと、`BUDDY_B04_EVIDENCE_PATH`・`BUDDY_B07_EVIDENCE_PATH` を指定して B04・B07 の実行器を走らせ、prettier で整えた 2 つの JSON を `simulated-evidence-<sha>` という artifact にまとめます。権限は `contents: read` だけで、秘密は使いません。
+3. 実行の artifact（通常の CI の `simulated-evidence-b07-<sha>`、または手動の `simulated-evidence-<sha>`）から JSON を取得し、`tests/integration/` の同じ名前のファイルへ置きます。`commit` が実行したブランチの HEAD であることを確認します。
 4. 取り込んだあと、Windows でも `pnpm run build` の後に `pnpm run evidence:check` を実行し、`source_sha256` が取り込んだソースの対象一覧と一致することを確かめます（通常の PR の CI はこの一致を必須にしません）。artifact を CI が commit することはありません。commit・push は作業ブランチで行います。
 
 通常の CI（`ci.yml`・`verify-os.yml`）は証拠を commit せず、生成物は artifact にだけ残します。`workflow_dispatch` は既定ブランチに workflow ファイルがある必要があるため、この workflow の PR の上では実行できない場合があります。その場合はこの workflow が main に入ったあと、main を取り込んだブランチで実行してください。

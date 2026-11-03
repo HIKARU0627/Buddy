@@ -20,7 +20,7 @@ B00 では期待遷移と故障点（`fault-points.json`）、証拠の形式（
 
 - PR の CI は、実行器を回して手書きの期待値と一致すること（G2/G5）と、`tests/test-map.json` の構造・参照・期待値の整合を検査します。コミット済み証拠の hash が現在の木と一致すること（G1/G4）は必須にしません。
 - `pnpm run evidence:check` が、コミット済み証拠の `source_sha256` と現行ソースの対象一覧・hash の完全一致を検査します。これは工程の完了時と main の freshness の確認で実行し、PR の必須チェック（`Verify (<os>)`・`Public content / secrets`）とは分けます。
-- 現在は、証拠が必要なときに `Simulated evidence (macOS)` を手動で実行し、artifact から取り込みます。PR-3 で macOS の既存 shard 2（B07）・shard 3（B04）が証拠を生成して artifact に残す予定です（追加の macOS job は作りません）。main の記録の更新は、artifact を人が取り込む PR または定期の作業で行います（[開発手順](../../docs/development.md)）。
+- 通常の PR の CI の macOS の既存 shard 2（B07）・shard 3（B04）が証拠を生成して artifact に残します（追加の macOS job は作りません）。工程の完了時など明示的に作り直すときは `Simulated evidence (macOS)` を手動で実行します。main の記録の更新は、artifact を人が取り込む PR または定期の作業で行います（[開発手順](../../docs/development.md)）。
 
 ## B07-06 の実行器
 

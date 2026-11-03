@@ -653,9 +653,19 @@ async function restore(
       const report = await runRestoreRun(common);
       out(report.result ?? report);
       if (report.outcome !== 'restored') {
-        log('復元できませんでした。中枢の DB は差し替えていません。');
+        if (report.installed)
+          log(
+            '中枢の DB は差し替えましたが、台帳の別ファイルを作り直せませんでした。Core を起動する前に台帳を確認してください。',
+          );
+        else log('復元できませんでした。中枢の DB は差し替えていません。');
+        if (!report.plaintext_deleted)
+          log(
+            '作業用の平文の DB を消せませんでした。復旧のために残しています。',
+          );
         return EXIT.restore_refused;
       }
+      if (!report.plaintext_deleted)
+        log('作業用の平文の DB を消せませんでした。手で削除してください。');
       log('復元しました。中枢の Core を起動してください。');
       return EXIT.ok;
     }

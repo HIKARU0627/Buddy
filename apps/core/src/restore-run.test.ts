@@ -40,6 +40,7 @@ import { startCore } from './core.js';
 import type { CoreHandle } from './core.js';
 import { DB_FILE, FORGET_LEDGER_FILE } from './paths.js';
 import { RESTORE_WORK_DIR } from './restore-check.js';
+import { RESTORE_INSTALL_JOURNAL } from './restore-install.js';
 import { runRestoreRun } from './restore-run.js';
 
 const DATA_KEY = Buffer.alloc(32, 0x41);
@@ -269,4 +270,57 @@ test('復元の実行: 段階 1〜6 を通り、承認をすべて失効させ�
     dataKey.ok ? keyWrapFor(keyWraps, 'data_key')?.key_id : null,
     DATA_KEY_ID,
   );
+});
+
+test('復元の実行: 差し替えの記録が残った失敗では作業用の DB を消さず、差し替えていないことを返す', async (t) => {
+  const r = await rig(t);
+  let locked = false;
+  const report = await runRestoreRun({
+    dataDir: r.dataDir,
+    contract,
+    backupPath: r.backupPath,
+    recoveryKey: Buffer.from(decodeRecoveryCode(r.recoveryCode) as Uint8Array),
+    dataKeys: r.dataKeys,
+    backupKeys: r.keys,
+    now: () => new Date(T0 + 2000),
+    lock: true,
+    log: () => undefined,
+    install: async (options) => {
+      locked = options.alreadyLocked === true;
+      // 差し替えの記録を書いた後に止まった（復旧が作業用の DB を参照する）。
+      await writeFile(
+        join(options.dataDir, RESTORE_INSTALL_JOURNAL),
+        '{"schema":"buddy.restore-install.v1"}\n',
+      );
+      throw new Error('injected_install_failure');
+    },
+  });
+  assert.equal(locked, true);
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  if (report.outcome !== 'refused') return;
+  assert.equal(report.reason, 'install_failed');
+  assert.equal(report.installed, false);
+  assert.equal(report.plaintext_deleted, false);
+  // 差し替えの記録が参照する作業用の DB は残す。
+  const restores = await readdir(join(r.dataDir, RESTORE_WORK_DIR));
+  assert.equal(restores.length, 1);
+  const work = join(r.dataDir, RESTORE_WORK_DIR, restores[0] as string);
+  assert.equal((await readdir(work)).includes(DB_FILE), true);
+  // 中枢の DB は差し替えていない（バックアップの世代のまま）。
+  const db = openWriteConnection(join(r.dataDir, DB_FILE), {
+    platform: storagePlatform(process.platform),
+  });
+  try {
+    assert.equal(
+      db
+        .prepare(
+          "SELECT count(*) FROM approvals WHERE operation_id = ? AND status = 'valid'",
+        )
+        .pluck()
+        .get(r.operationId),
+      1,
+    );
+  } finally {
+    db.close();
+  }
 });

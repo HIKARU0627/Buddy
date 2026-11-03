@@ -56,11 +56,15 @@ import type {
   SqliteDatabase,
 } from '@buddy/storage';
 import type { ApiContract } from './api-contract.js';
+import { prepareDataDir } from './data-dir.js';
 import { acquireLock, defaultIsPidAlive, releaseLock } from './lock.js';
 import { DB_FILE, FORGET_LEDGER_FILE, controlEndpoint } from './paths.js';
 import { RESTORE_WORK_DIR, runRestoreCheck } from './restore-check.js';
 import type { RestoreCheckReport } from './restore-check.js';
-import { installRestoredDatabase } from './restore-install.js';
+import {
+  installRestoredDatabase,
+  RESTORE_INSTALL_JOURNAL,
+} from './restore-install.js';
 
 export const RESTORE_RUN_SCHEMA = 'buddy.restore-run.v1';
 
@@ -85,6 +89,8 @@ export type RestoreRunReport =
       readonly schema: typeof RESTORE_RUN_SCHEMA;
       readonly outcome: 'restored';
       readonly result: RestoreResultLike;
+      readonly installed: true;
+      readonly plaintext_deleted: boolean;
     }
   | {
       readonly schema: typeof RESTORE_RUN_SCHEMA;
@@ -92,6 +98,10 @@ export type RestoreRunReport =
       readonly reason: string;
       // 段階 1〜6 のどこかで止まったときの結果（契約の RestoreResult）。差し替えの前に止まったとき。
       readonly result: RestoreResultLike | null;
+      // DB を差し替えたか（台帳の別ファイルの作り直しだけ失敗したときは true）。
+      readonly installed: boolean;
+      // 作業用の平文を消せたか（差し替えの記録が残って保持したときは false）。
+      readonly plaintext_deleted: boolean;
     };
 
 const iso = (date: Date): string => date.toISOString().replace('.000Z', 'Z');
@@ -310,40 +320,11 @@ export async function runRestoreRun(
   options: RestoreRunOptions,
 ): Promise<RestoreRunReport> {
   const log = options.log ?? (() => undefined);
-  const check = await runRestoreCheck({
-    ...options,
-    retainWorkDir: true,
-    log,
-  });
-  if (check.outcome !== 'ready') {
-    return {
-      schema: RESTORE_RUN_SCHEMA,
-      outcome: 'refused',
-      reason: 'check_refused',
-      result: null,
-    };
-  }
-  const workDir = join(
-    options.dataDir,
-    RESTORE_WORK_DIR,
-    `restore-${check.restore_id}`,
-  );
-  const workingPath = join(workDir, DB_FILE);
   const endpoint = controlEndpoint(options.dataDir, process.platform);
   const lockId = randomUUID();
   let locked = false;
-  let working: SqliteDatabase | null = null;
-  let preRestore: ReturnType<typeof readPreRestoreState> | null = null;
-  let newGeneration: string;
-  let result: RestoreResultLike | null;
-  const refuse = async (
-    reason: string,
-    value: RestoreResultLike | null = null,
-  ): Promise<RestoreRunReport> => {
-    await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
-    return refused(reason, value);
-  };
   try {
+    await prepareDataDir(options.dataDir);
     if (options.lock !== false) {
       await acquireLock({
         dataDir: options.dataDir,
@@ -361,6 +342,59 @@ export async function runRestoreRun(
       });
       locked = true;
     }
+  } catch (error) {
+    log(`Core のロックを取れませんでした（${(error as Error).name}）。`);
+    return refused('core_running', null, false, true);
+  }
+  let workDir: string | null = null;
+  let workingPath: string | null;
+  let working: SqliteDatabase | null = null;
+  let preRestore: ReturnType<typeof readPreRestoreState> | null = null;
+  let newGeneration: string;
+  let result: RestoreResultLike | null;
+  const closeWorking = (): void => {
+    if (working === null) return;
+    try {
+      working.close();
+    } catch {
+      // 閉じられなくても、プロセスの終了で解放される。
+    }
+    working = null;
+  };
+  const removeWorkDir = async (): Promise<boolean> => {
+    if (workDir === null) return true;
+    try {
+      await rm(workDir, { recursive: true, force: true });
+      return true;
+    } catch (error) {
+      // データディレクトリの下に何も作れていない（ENOTDIR）なら平文はない。
+      return (error as NodeJS.ErrnoException).code === 'ENOTDIR';
+    }
+  };
+  const refuse = async (
+    reason: string,
+    value: RestoreResultLike | null = null,
+    installed = false,
+  ): Promise<RestoreRunReport> => {
+    closeWorking();
+    const removed = await removeWorkDir();
+    return refused(reason, value, installed, removed);
+  };
+  try {
+    const check = await runRestoreCheck({
+      ...options,
+      retainWorkDir: true,
+      lock: false,
+      log,
+    });
+    if (check.outcome !== 'ready') return await refuse('check_refused');
+    workDir = join(
+      options.dataDir,
+      RESTORE_WORK_DIR,
+      `restore-${check.restore_id}`,
+    );
+    workingPath = join(workDir, DB_FILE);
+    const workingDbPath = workingPath;
     const livePath = join(options.dataDir, DB_FILE);
     if (await exists(livePath)) {
       const live = openWriteConnection(livePath, {
@@ -416,7 +450,7 @@ export async function runRestoreRun(
       backup_file: backupKey,
     };
 
-    working = openWriteConnection(workingPath, {
+    working = openWriteConnection(workingDbPath, {
       platform: storagePlatform(process.platform),
     });
     const decisions = checkDecisions(check);
@@ -547,67 +581,89 @@ export async function runRestoreRun(
       return await refuse('result_invalid');
     }
     result = built.result;
-    working.close();
-    working = null;
-  } finally {
-    if (working !== null) {
-      try {
-        working.close();
-      } catch {
-        // 閉じられなくても、プロセスの終了で解放される。
+    closeWorking();
+
+    // 差し替え。ロックは check の前からこの後まで連続して持っている（Core が途中で起動して忘却を進めない）。
+    if (workingPath === null) return await refuse('internal_error');
+    try {
+      await (options.install ?? installRestoredDatabase)({
+        dataDir: options.dataDir,
+        workingPath,
+        endpoint,
+        alreadyLocked: true,
+        ...(options.isPidAlive === undefined
+          ? {}
+          : { isPidAlive: options.isPidAlive }),
+        ...(options.probeTimeoutMs === undefined
+          ? {}
+          : { probeTimeoutMs: options.probeTimeoutMs }),
+      });
+    } catch (error) {
+      log(
+        `復元した DB を差し替えられませんでした（${(error as Error).name}）。`,
+      );
+      // 差し替えの記録が残っているときは、作業用の DB を消さない（次の起動・差し替えの復旧が参照する）。
+      const journal = await exists(
+        join(options.dataDir, RESTORE_INSTALL_JOURNAL),
+      );
+      if (journal) {
+        log(
+          '差し替えの記録が残っているため、作業用の DB を復旧のために残します。',
+        );
+        return refused('install_failed', null, false, false);
       }
+      return await refuse('install_failed', null, false);
     }
+    // 差し替えた DB の台帳から、台帳の別ファイルを作り直す（Core の起動時の照合で止まらないように）。
+    try {
+      const live = openWriteConnection(join(options.dataDir, DB_FILE), {
+        platform: storagePlatform(process.platform),
+      });
+      try {
+        const exported = exportForgetLedger(live);
+        await writeLedgerFileAtomic(
+          join(options.dataDir, FORGET_LEDGER_FILE),
+          buildLedgerFile(exported, options.now()),
+        );
+      } finally {
+        live.close();
+      }
+    } catch (error) {
+      log(
+        `台帳の別ファイルを作り直せませんでした（${(error as Error).name}）。`,
+      );
+      return await refuse('ledger_file_failed', null, true);
+    }
+    const removed = await removeWorkDir();
+    return {
+      schema: RESTORE_RUN_SCHEMA,
+      outcome: 'restored',
+      result: result as RestoreResultLike,
+      installed: true,
+      plaintext_deleted: removed,
+    };
+  } catch (error) {
+    log(`復元の実行中に失敗しました（${(error as Error).name}）。`);
+    return await refuse('internal_error');
+  } finally {
+    closeWorking();
     if (locked)
       await releaseLock(options.dataDir, lockId).catch(() => undefined);
   }
-
-  // 差し替え（Core が止まっていることをロックで確かめる）。
-  try {
-    await (options.install ?? installRestoredDatabase)({
-      dataDir: options.dataDir,
-      workingPath,
-      endpoint,
-      ...(options.isPidAlive === undefined
-        ? {}
-        : { isPidAlive: options.isPidAlive }),
-      ...(options.probeTimeoutMs === undefined
-        ? {}
-        : { probeTimeoutMs: options.probeTimeoutMs }),
-    });
-  } catch (error) {
-    log(`復元した DB を差し替えられませんでした（${(error as Error).name}）。`);
-    await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
-    return refused('install_failed', result);
-  }
-  // 差し替えた DB の台帳から、台帳の別ファイルを作り直す（Core の起動時の照合で止まらないように）。
-  try {
-    const live = openWriteConnection(join(options.dataDir, DB_FILE), {
-      platform: storagePlatform(process.platform),
-    });
-    try {
-      const exported = exportForgetLedger(live);
-      await writeLedgerFileAtomic(
-        join(options.dataDir, FORGET_LEDGER_FILE),
-        buildLedgerFile(exported, options.now()),
-      );
-    } finally {
-      live.close();
-    }
-  } catch (error) {
-    log(`台帳の別ファイルを作り直せませんでした（${(error as Error).name}）。`);
-    return refused('ledger_file_failed', result);
-  }
-  await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
-  return {
-    schema: RESTORE_RUN_SCHEMA,
-    outcome: 'restored',
-    result: result as RestoreResultLike,
-  };
 }
 
 function refused(
   reason: string,
   result: RestoreResultLike | null = null,
+  installed = false,
+  plaintextDeleted = true,
 ): RestoreRunReport {
-  return { schema: RESTORE_RUN_SCHEMA, outcome: 'refused', reason, result };
+  return {
+    schema: RESTORE_RUN_SCHEMA,
+    outcome: 'refused',
+    reason,
+    result,
+    installed,
+    plaintext_deleted: plaintextDeleted,
+  };
 }

@@ -529,3 +529,64 @@ test('QA45: a failure in another thread does not stop this one', () => {
   );
   assert.equal(result.ok, false);
 });
+
+test('the version also advances when a resolved change appears or its target changes, but not when the changes are only reordered (review)', () => {
+  const entityB = 'b8c1e2d3-4a5f-4b6c-8d7e-9f0a1b2c3d4e';
+  const base = plan([source('m1'), source('m2')]);
+  // 解析のやり直しで、変更が [] から確定した取消に変わる（未解決の数は 0 のまま）。
+  const cancelled = plan([source('m1'), source('m2', analyzed, [cancelOfA])], {
+    previous: base.snapshot,
+  });
+  assert.equal(cancelled.related.unresolved_change_count, 0);
+  assert.equal(cancelled.related.source_set_hash, base.related.source_set_hash);
+  assert.equal(cancelled.related.analysis_revision, '2');
+  // 取消の対象が A から B に変わる。
+  const retargeted = plan(
+    [
+      source('m1'),
+      source('m2', analyzed, [
+        { ...cancelOfA, target_request_entity_id: entityB },
+      ]),
+    ],
+    { previous: cancelled.snapshot },
+  );
+  assert.equal(retargeted.related.analysis_revision, '3');
+  // 関係が取消から完了に変わる。
+  const completed = plan(
+    [
+      source('m1'),
+      source('m2', analyzed, [{ ...cancelOfA, relation: 'complete' }]),
+    ],
+    { previous: cancelled.snapshot },
+  );
+  assert.equal(completed.related.analysis_revision, '3');
+  // 変更の並び替えだけでは進まない。
+  const other: ResolvedChange = {
+    relation: 'new',
+    target_request_entity_id: null,
+    resolution: 'resolved',
+  };
+  const two = plan([source('m1'), source('m2', analyzed, [cancelOfA, other])], {
+    previous: cancelled.snapshot,
+  });
+  assert.equal(two.related.analysis_revision, '3');
+  const reordered = plan(
+    [source('m1'), source('m2', analyzed, [other, cancelOfA])],
+    {
+      previous: two.snapshot,
+    },
+  );
+  assert.equal(reordered.related.analysis_revision, '3');
+  assert.deepEqual(reordered, two);
+  // 版が進んだので、旧版を使った候補の最終ガードは失効する。
+  const reader = {
+    analyses: { current: () => cancelled.analysis },
+    entities: {
+      current: () => ({ record: entityRecord, request_revision: '1' }),
+    },
+  };
+  const guard = finalGuard(baseGuard, reader.analyses, reader.entities);
+  assert.equal(guard.ok, false);
+  if (!guard.ok)
+    assert.equal(guard.reasons.includes('analysis_revision_changed'), true);
+});

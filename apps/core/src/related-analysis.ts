@@ -122,6 +122,17 @@ export function planRelatedAnalysis(
         source.source_id,
         source.analysis.state,
         source.analysis.rule_id,
+        // 解決した変更の内容（関係・対象・解決の状態）。依頼の有効状態を変える解析結果が更新されたら版を進める。
+        // 並びに依存しないように、変更ごとの JSON を整列する。
+        source.changes
+          .map((change) =>
+            JSON.stringify([
+              change.relation,
+              change.target_request_entity_id,
+              change.resolution,
+            ]),
+          )
+          .sort(),
       ]),
       unresolved,
     ]),

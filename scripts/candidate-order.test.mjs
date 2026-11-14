@@ -375,3 +375,40 @@ test('a time that does not exist in the zone is still ordered next to its neighb
     after.candidate_id,
   ]);
 });
+
+test('the clock must be a real UTC time; a time without a zone or on a day that does not exist is refused', () => {
+  const bad = [
+    '2030-10-09T12:00:00', // タイムゾーンが無い（端末の時計で読まれる）
+    '2030-10-09T12:00:00+09:00', // UTC ではない
+    '2030-02-30T00:00:00Z', // 暦にない日
+    '2030-10-09 12:00:00Z',
+    '2030-10-09',
+    '',
+  ];
+  for (const now of bad)
+    assert.deepEqual(
+      orderCandidates([], { now, zone: ZONE }),
+      {
+        ok: false,
+        reason: 'now_invalid',
+      },
+      now,
+    );
+  assert.equal(
+    orderCandidates([], { now: '2030-10-09T03:00:00.000Z', zone: ZONE }).ok,
+    true,
+  );
+  // 受信の時刻が UTC として読めない候補は、最も古いものとして並ぶ（端末の時計で読まない）。
+  const unreadable = item({
+    deadline: on('2030-10-20'),
+    received_at: '2030-10-08T00:00:00',
+  });
+  const readable = item({
+    deadline: on('2030-10-20'),
+    received_at: '2020-01-01T00:00:00Z',
+  });
+  assert.deepEqual(
+    idsOf(orderCandidates([unreadable, readable], context), 'later'),
+    [readable.candidate_id, unreadable.candidate_id],
+  );
+});

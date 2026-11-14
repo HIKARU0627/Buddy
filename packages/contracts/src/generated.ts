@@ -87,6 +87,7 @@ export type BuddyContract =
   | HandoffState
   | AutoActionList
   | PolicyApprovalRecord
+  | AutoExecutionPolicy
   | SafetyResumeRequest
   | SafetyState
   | IoStopRequest
@@ -4435,6 +4436,19 @@ export interface PolicyApprovalRecord {
   content_version: ContentVersion;
   content_hash: Hash;
   approved_at: UtcTime;
+}
+/**
+ * 自動実行の有効・無効の方針（設計 08 §9、D6、ADR 0074）。4 種類すべてを明示し、未設定・初期状態はすべて無効（false）。T10 の合格後に本人が有効化する。
+ */
+export interface AutoExecutionPolicy {
+  schema: 'buddy.auto-execution.v1';
+  policy_version: PolicyVersion;
+  rules: {
+    'task.register': boolean;
+    'event.create_own': boolean;
+    'mail.apply_existing_label': boolean;
+    'mail.save_draft': boolean;
+  };
 }
 export interface SafetyResumeRequest {
   request_id: Id;

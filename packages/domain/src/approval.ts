@@ -164,3 +164,35 @@ export function autoApprovalAllowed(
     return true;
   return counter.auto_approvals < counter.limit;
 }
+
+// 自動実行の 4 種類（設計 08 §9、D6、ADR 0074）。初期状態はすべて無効で、
+// T10 の合格後に本人が有効化する。未設定・未知の規則は無効として扱う。
+export const AUTO_EXECUTION_RULES = [
+  'task.register',
+  'event.create_own',
+  'mail.apply_existing_label',
+  'mail.save_draft',
+] as const;
+export type AutoExecutionRule = (typeof AUTO_EXECUTION_RULES)[number];
+
+export interface AutoExecutionPolicy {
+  readonly policy_version: string;
+  readonly rules: Readonly<Record<AutoExecutionRule, boolean>>;
+}
+
+export const DEFAULT_AUTO_EXECUTION_POLICY: AutoExecutionPolicy = {
+  policy_version: '0',
+  rules: {
+    'task.register': false,
+    'event.create_own': false,
+    'mail.apply_existing_label': false,
+    'mail.save_draft': false,
+  },
+};
+
+export function autoExecutionEnabled(
+  policy: AutoExecutionPolicy | null | undefined,
+  rule: AutoExecutionRule,
+): boolean {
+  return policy?.rules[rule] === true;
+}

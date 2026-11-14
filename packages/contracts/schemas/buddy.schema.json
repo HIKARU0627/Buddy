@@ -254,6 +254,9 @@
       "$ref": "#/$defs/PolicyApprovalRecord"
     },
     {
+      "$ref": "#/$defs/AutoExecutionPolicy"
+    },
+    {
       "$ref": "#/$defs/SafetyResumeRequest"
     },
     {
@@ -9490,6 +9493,37 @@
       ],
       "additionalProperties": false,
       "description": "自動承認の時間窓の件数（設計 08 §9、ADR 0074）。初期値は 10 分間に 20 件で、T10 で調整する。"
+    },
+    "AutoExecutionPolicy": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.auto-execution.v1"
+        },
+        "policy_version": {
+          "$ref": "#/$defs/PolicyVersion"
+        },
+        "rules": {
+          "type": "object",
+          "properties": {
+            "task.register": { "type": "boolean" },
+            "event.create_own": { "type": "boolean" },
+            "mail.apply_existing_label": { "type": "boolean" },
+            "mail.save_draft": { "type": "boolean" }
+          },
+          "required": [
+            "task.register",
+            "event.create_own",
+            "mail.apply_existing_label",
+            "mail.save_draft"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["schema", "policy_version", "rules"],
+      "additionalProperties": false,
+      "description": "自動実行の有効・無効の方針（設計 08 §9、D6、ADR 0074）。4 種類すべてを明示し、未設定・初期状態はすべて無効（false）。T10 の合格後に本人が有効化する。"
     },
     "PolicyApprovalRecord": {
       "type": "object",

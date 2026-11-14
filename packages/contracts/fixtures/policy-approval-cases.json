@@ -95,6 +95,66 @@
           "content_version": "1"
         }
       }
+    },
+    {
+      "id": "auto-execution-default",
+      "schema": "AutoExecutionPolicy",
+      "valid": true,
+      "value": {
+        "schema": "buddy.auto-execution.v1",
+        "policy_version": "0",
+        "rules": {
+          "task.register": false,
+          "event.create_own": false,
+          "mail.apply_existing_label": false,
+          "mail.save_draft": false
+        }
+      }
+    },
+    {
+      "id": "auto-execution-enabled",
+      "schema": "AutoExecutionPolicy",
+      "valid": true,
+      "value": {
+        "schema": "buddy.auto-execution.v1",
+        "policy_version": "1",
+        "rules": {
+          "task.register": true,
+          "event.create_own": false,
+          "mail.apply_existing_label": false,
+          "mail.save_draft": false
+        }
+      }
+    },
+    {
+      "id": "auto-execution-missing-rule",
+      "schema": "AutoExecutionPolicy",
+      "valid": false,
+      "value": {
+        "schema": "buddy.auto-execution.v1",
+        "policy_version": "1",
+        "rules": {
+          "task.register": false,
+          "event.create_own": false,
+          "mail.apply_existing_label": false
+        }
+      }
+    },
+    {
+      "id": "auto-execution-unknown-rule",
+      "schema": "AutoExecutionPolicy",
+      "valid": false,
+      "value": {
+        "schema": "buddy.auto-execution.v1",
+        "policy_version": "1",
+        "rules": {
+          "task.register": false,
+          "event.create_own": false,
+          "mail.apply_existing_label": false,
+          "mail.save_draft": false,
+          "mail.send": true
+        }
+      }
     }
   ],
   "domain_cases": [
@@ -137,5 +197,17 @@
       "now": "2030-01-01T00:10:00Z",
       "expected": true
     }
-  ]
+  ],
+  "auto_execution": {
+    "default_policy": {
+      "schema": "buddy.auto-execution.v1",
+      "policy_version": "0",
+      "rules": {
+        "task.register": false,
+        "event.create_own": false,
+        "mail.apply_existing_label": false,
+        "mail.save_draft": false
+      }
+    }
+  }
 }

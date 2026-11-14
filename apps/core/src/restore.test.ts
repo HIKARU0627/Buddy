@@ -443,6 +443,7 @@ test('a different data key, a missing key after the lock, and a key replaced bef
       return result;
     },
     loadDataKey: () => keyStoreOf(current).loadDataKey(),
+    importDataKey: (material) => keyStoreOf(current).importDataKey(material),
   };
   const racedCore = await start(t, raceDir, {
     keyStore: raced,
